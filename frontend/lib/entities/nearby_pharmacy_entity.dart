@@ -139,6 +139,9 @@ class NearbyPharmacy {
   final DateTime? nextOpenAt;
   final DateTime? sourceUpdatedAt;
   final String sourceName;
+  // 병원 화면에서만 쓰는 진료과목과 기관 구분. 약국 응답은 기존 값을 유지한다.
+  final List<String> departments;
+  final String? institutionType;
 
   // 함수이름: NearbyPharmacy
   // 함수역할: 약국의 위치·연락처·거리·영업시간과 공공심야 지정 및 자료 최신성 메타데이터를 검색 결과로 보존한다.
@@ -198,6 +201,8 @@ class NearbyPharmacy {
     this.nextOpenAt,
     this.sourceUpdatedAt,
     this.sourceName = 'National Emergency Medical Center',
+    this.departments = const [],
+    this.institutionType,
   });
 
   // 함수이름: NearbyPharmacy.fromJson
@@ -208,7 +213,13 @@ class NearbyPharmacy {
   // - NearbyPharmacy: 필드 검증과 기본값 처리를 거쳐 복원한 레코드.
   factory NearbyPharmacy.fromJson(Map<String, dynamic> json) {
     return NearbyPharmacy(
-      pharmacyId: _readString(json['pharmacy_id']),
+      pharmacyId: _readString(json['pharmacy_id'] ?? json['hospital_id']),
+      departments: json['departments'] is List
+          ? List<String>.unmodifiable(
+              (json['departments'] as List).whereType<String>(),
+            )
+          : const [],
+      institutionType: _readNullableString(json['institution_type']),
       name: _readString(json['name']),
       address: _readString(json['address']),
       telephone: _readString(json['telephone']),
@@ -362,6 +373,7 @@ class NearbyPharmacySearchResult {
   final DateTime? catalogUpdatedAt;
   final bool catalogIsStale;
   final String holidayScheduleStatus;
+  final bool searchTruncated;
 
   // Function Name: NearbyPharmacySearchResult
   // Description: Captures the pharmacy list together with effective search time, filter mode, and catalog freshness and holiday status.
@@ -382,5 +394,6 @@ class NearbyPharmacySearchResult {
     required this.catalogUpdatedAt,
     required this.catalogIsStale,
     required this.holidayScheduleStatus,
+    this.searchTruncated = false,
   });
 }

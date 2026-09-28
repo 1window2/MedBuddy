@@ -3,6 +3,7 @@
 
 import 'dart:developer' as developer;
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../entities/nearby_pharmacy_entity.dart';
@@ -34,6 +35,13 @@ class CheckNearbyPharmacy {
   final http.Client _client;
   final PharmacyExternalActionService _externalActionService;
   final bool _ownsClient;
+
+  // 병원 검색에서도 위치·인증·외부 지도 동작을 공유하고 조회 경로만 바꾼다.
+  @protected
+  String get nearbySearchUrl => ApiConfig.pharmacyUrl('/nearby');
+
+  @protected
+  Map<String, String> get additionalSearchParameters => const {};
 
   // 함수이름: CheckNearbyPharmacy
   // 함수역할: 위치 조회·인증 HTTP·URI 실행·클립보드 경계를 연결하고 주입하지 않은 클라이언트만 직접 소유한다.
@@ -90,11 +98,12 @@ class CheckNearbyPharmacy {
     double maxDistanceKm = 20,
     PharmacySearchArea? searchArea,
   }) async {
+    final extraParameters = Map<String, String>.of(additionalSearchParameters);
     final area = searchArea ?? await requestSearchArea(radiusKm: maxDistanceKm);
     if (!area.isValid) throw ArgumentError('Invalid pharmacy search area.');
     final coordinate = area.center;
     final effectiveTarget = targetDateTime ?? DateTime.now();
-    final uri = Uri.parse(ApiConfig.pharmacyUrl('/nearby')).replace(
+    final uri = Uri.parse(nearbySearchUrl).replace(
       queryParameters: {
         'latitude': coordinate.latitude.toStringAsFixed(7),
         'longitude': coordinate.longitude.toStringAsFixed(7),
@@ -102,6 +111,7 @@ class CheckNearbyPharmacy {
         'target_datetime': effectiveTarget.toIso8601String(),
         'limit': '30',
         'max_distance_km': area.radiusKm.toStringAsFixed(1),
+        ...extraParameters,
       },
     );
 
@@ -156,6 +166,7 @@ class CheckNearbyPharmacy {
         catalogIsStale: decoded['catalog_is_stale'] == true,
         holidayScheduleStatus:
             decoded['holiday_schedule_status']?.toString() ?? 'not_applicable',
+        searchTruncated: decoded['search_truncated'] == true,
       );
     } on DeviceLocationException {
       rethrow;

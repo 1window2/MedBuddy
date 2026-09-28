@@ -1,7 +1,6 @@
 // File Name: api_config.dart
 // Role: Defines backend endpoint construction, contract versioning, and development-only local URL exceptions.
 
-
 import 'package:flutter/foundation.dart';
 
 // 클래스명: ApiConfig
@@ -56,6 +55,11 @@ class ApiConfig {
   // - 완성된 약국 API 주소
   static String pharmacyUrl(String path) {
     return _siblingApiUrl('pharmacy', path);
+  }
+
+  // 병원 조회도 약국과 동일한 서버·인증 경로를 사용한다.
+  static String hospitalUrl(String path) {
+    return _siblingApiUrl('hospitals', path);
   }
 
   // 함수이름: chatUrl

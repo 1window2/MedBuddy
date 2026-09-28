@@ -15,6 +15,7 @@ class PharmacyFavoriteService {
 
   final Future<SharedPreferences> Function() _preferencesLoader;
   final String userHash;
+  final bool hospitals;
 
   // 함수이름: PharmacyFavoriteService
   // 함수역할: 현재 사용자 범위와 교체 가능한 설정 저장소 로더를 연결해 약국 즐겨찾기를 관리한다.
@@ -26,6 +27,7 @@ class PharmacyFavoriteService {
   PharmacyFavoriteService({
     Future<SharedPreferences> Function()? preferencesLoader,
     this.userHash = '',
+    this.hospitals = false,
   }) : _preferencesLoader = preferencesLoader ?? SharedPreferences.getInstance;
 
   // 함수이름: _storageKey
@@ -35,11 +37,14 @@ class PharmacyFavoriteService {
   // 반환값:
   // - String: 사용자 해시가 있으면 전용 접미사를 붙이고 없으면 구형 공통 즐겨찾기 키를 사용한다.
   String get _storageKey {
+    final prefix = hospitals
+        ? 'medbuddy.favorite_hospital_ids'
+        : _storageKeyPrefix;
     final normalizedUserHash = userHash.trim();
     if (normalizedUserHash.isEmpty) {
-      return _storageKeyPrefix;
+      return prefix;
     }
-    return '$_storageKeyPrefix.$normalizedUserHash';
+    return '$prefix.$normalizedUserHash';
   }
 
   // 함수이름: loadFavoriteIds
@@ -51,20 +56,24 @@ class PharmacyFavoriteService {
   Future<Set<String>> loadFavoriteIds() async {
     final preferences = await _preferencesLoader();
     return (preferences.getStringList(_storageKey) ?? const <String>[])
-        .map(/* 함수이름: map 콜백
+        .map(
+          /* 함수이름: map 콜백
          * 함수역할: 저장된 즐겨찾기 약국 ID의 앞뒤 공백을 제거한다.
          * 매개변수:
          * - value (String): 공백·빈 값을 정리할 즐겨찾기 약국 ID
          * 반환값:
          * - 공백 정리된 약국 ID.
-         */(value) => value.trim())
-        .where(/* 함수이름: where 콜백
+         */ (value) => value.trim(),
+        )
+        .where(
+          /* 함수이름: where 콜백
          * 함수역할: 저장된 즐겨찾기에서 빈 약국 ID를 제외한다.
          * 매개변수:
          * - value (String): 공백·빈 값을 정리할 즐겨찾기 약국 ID
          * 반환값:
          * - 약국 ID가 비어 있지 않으면 true.
-         */(value) => value.isNotEmpty)
+         */ (value) => value.isNotEmpty,
+        )
         .toSet();
   }
 
@@ -78,20 +87,24 @@ class PharmacyFavoriteService {
     final preferences = await _preferencesLoader();
     final normalizedIds =
         pharmacyIds
-            .map(/* 함수이름: map 콜백
+            .map(
+              /* 함수이름: map 콜백
              * 함수역할: 저장할 즐겨찾기 약국 ID의 앞뒤 공백을 정리한다.
              * 매개변수:
              * - value (String): 공백·빈 값을 정리할 즐겨찾기 약국 ID
              * 반환값:
              * - 공백 정리된 약국 ID.
-             */(value) => value.trim())
-            .where(/* 함수이름: where 콜백
+             */ (value) => value.trim(),
+            )
+            .where(
+              /* 함수이름: where 콜백
              * 함수역할: 즐겨찾기 저장 목록에서 빈 약국 ID를 제외한다.
              * 매개변수:
              * - value (String): 공백·빈 값을 정리할 즐겨찾기 약국 ID
              * 반환값:
              * - 약국 ID가 비어 있지 않으면 true.
-             */(value) => value.isNotEmpty)
+             */ (value) => value.isNotEmpty,
+            )
             .toList(growable: false)
           ..sort();
     return preferences.setStringList(_storageKey, normalizedIds);

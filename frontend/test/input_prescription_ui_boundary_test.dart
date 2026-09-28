@@ -9,6 +9,7 @@ import 'package:medbuddy_frontend/boundaries/medication_capture_options_ui_bound
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/input_prescription_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/check_nearby_pharmacy_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/medbuddy_bottom_navigation_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/notification_inbox_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/pill_identification_ui_boundary.dart';
@@ -763,6 +764,34 @@ void main() {
     );
   });
 
+  // 홈 선택창에서 고른 병원·약국만 해당 지도 화면으로 연결한다.
+  for (final hospitals in [true, false]) {
+    testWidgets('home selects nearby care hospitals=$hospitals', (tester) async {
+      _setViewport(tester, const Size(390, 844));
+      final viewModel = MedBuddyViewModel();
+      addTearDown(viewModel.dispose);
+      await tester.pumpWidget(
+        ChangeNotifierProvider<MedBuddyViewModel>.value(
+          value: viewModel,
+          child: const MaterialApp(home: HomeScreen()),
+        ),
+      );
+      tester.widget<InputPrescriptionUI>(find.byType(InputPrescriptionUI))
+          .onNearbyPharmacyRequested?.call();
+      await tester.pumpAndSettle();
+      expect(find.byType(CheckNearbyPharmacyUI), findsNothing);
+      await tester.tap(find.text(hospitals ? '근처 병원' : '근처 약국'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      final screen = tester.widget<CheckNearbyPharmacyUI>(find.byType(CheckNearbyPharmacyUI));
+      expect(screen.hospitals, hospitals);
+      expect(screen.selectionMode, isFalse);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 30));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   // 함수이름: 홈 기본 기능 테스트
   // 함수역할: 실험실 설정 없이 약국을 포함한 홈 바로가기와 하단 탐색을 분리해 표시하는지 확인한다.
   // 매개변수: tester: 화면 테스트 도구. 반환값: 검증 완료.
@@ -788,7 +817,8 @@ void main() {
     expect(find.text('약 등록·식별'), findsOneWidget);
     expect(find.text('낱알약 식별'), findsNothing);
     expect(find.text('건강 관리 추천'), findsOneWidget);
-    expect(find.text('근처 운영 약국'), findsOneWidget);
+    expect(find.text('근처 운영 병원·약국'), findsOneWidget);
+    expect(find.text('가까운 병원·약국의 운영시간을 확인해요'), findsOneWidget);
     expect(find.text('환경설정'), findsOneWidget);
     expect(find.byKey(const ValueKey('homeMedicationTipCard')), findsNothing);
     expect(find.text('복약 팁'), findsNothing);
@@ -1245,7 +1275,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Settings'), findsOneWidget);
-    expect(find.text('Nearby Pharmacy'), findsOneWidget);
+    expect(find.text('Nearby Hospitals & Pharmacies'), findsOneWidget);
   });
 
   // 함수이름: 큰 글씨 카드 회귀 테스트

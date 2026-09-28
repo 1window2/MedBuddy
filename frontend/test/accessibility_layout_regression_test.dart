@@ -520,7 +520,7 @@ void main() {
 
         expect(find.text('MedBuddy'), findsOneWidget);
         expect(find.text('약 등록·식별'), findsOneWidget);
-        expect(find.text('근처 운영 약국'), findsOneWidget);
+        expect(find.text('근처 운영 병원·약국'), findsOneWidget);
         await tester.drag(
           find.byKey(const ValueKey('homeDashboardScrollView')),
           const Offset(0, -300),

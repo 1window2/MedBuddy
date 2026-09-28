@@ -298,17 +298,85 @@ Widget _buildTestMap({
   );
 }
 
+// 조회 조건 초안은 스크롤로 선택한 뒤 적용해야 실제 지도 검색에 반영된다.
+Future<void> _applySearchFilter(WidgetTester tester, String option) async {
+  final target = find.byKey(ValueKey('pharmacy-filter-option-$option'));
+  await tester.ensureVisible(target);
+  await tester.pumpAndSettle();
+  await tester.tap(target);
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const Key('care-filter-apply')));
+  await tester.pumpAndSettle();
+}
+
 // 함수이름: main
-// 함수역할:
-// - 약국 필터, 지도 선택, 위치 오류와 새로고침 제한 검증 사례와 테스트 대역을 등록한다.
-// 매개변수:
-// - 없음.
-// 반환값:
-// - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
+// 함수역할: 약국 필터, 지도 선택, 위치 오류와 새로고침 제한 검증 사례를 등록한다.
 void main() {
   // 함수이름: setUp 콜백
   // 함수역할: 즐겨찾기 저장소를 격리한다. 매개변수: 없음. 반환값: 없음.
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  for (final language in ['ko', 'en']) {
+    // 약국도 날짜를 조회 조건 안에만 표시하며 취소·적용·재진입 동안 값을 정확히 유지한다.
+    testWidgets('pharmacy date lives inside conditions in $language', (
+      tester,
+    ) async {
+      final times = <DateTime>[];
+      final control = _buildControl(requestedTimes: times);
+      addTearDown(control.dispose);
+      await tester.binding.setSurfaceSize(const Size(320, 720));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        _testApp(
+          control,
+          language: language,
+          clock: () => DateTime(2026, 9, 28, 21, 26),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final map = find.byKey(const Key('test-nearby-pharmacy-map'));
+      final height = tester.getSize(map).height;
+      final selector = find.byKey(const Key('pharmacy-map-filter-selector'));
+      await tester.tap(selector);
+      await tester.pumpAndSettle();
+      expect(find.text(language == 'ko' ? '날짜' : 'Date'), findsOneWidget);
+      expect(
+        find.text(language == 'ko' ? '영업 상태' : 'Business status'),
+        findsOneWidget,
+      );
+      final option = find.byKey(const ValueKey('pharmacy-filter-option-all'));
+      await tester.ensureVisible(option);
+      await tester.tap(option);
+      await tester.pumpAndSettle();
+      final date = find.byKey(const Key('care-filter-date'));
+      await tester.ensureVisible(date);
+      await tester.tap(date);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('30'));
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(times, hasLength(1));
+      await tester.tap(find.byKey(const Key('care-filter-apply')));
+      await tester.pumpAndSettle();
+      expect(times.last, DateTime(2026, 9, 30, 12));
+      expect(times, hasLength(2));
+      expect(find.byKey(const Key('pharmacy-map-search-date')), findsNothing);
+      expect(tester.getSize(map).height, height);
+      await tester.tap(selector);
+      await tester.pumpAndSettle();
+      expect(find.text('2026-09-30'), findsOneWidget);
+      expect(find.textContaining('12:00'), findsNothing);
+      await tester.tap(date);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(find.text('2026-09-30'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('care-filter-apply')));
+      await tester.pumpAndSettle();
+      expect(times, hasLength(2));
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   // 함수이름: 즐겨찾기 중복 저장 차단 테스트
   // 함수역할: 저장이 완료되지 않은 동안 중복 클릭으로 저장 순서가 뒤집히지 않도록 한다.
@@ -942,6 +1010,17 @@ void main() {
     await tester.tap(find.byKey(const Key('test-map-marker-open')));
     await tester.pumpAndSettle();
     final check = find.byType(CheckboxListTile);
+    // 공유 영역에서 상세 제목을 반복하지 않되 전화 확인 기능은 유지한다.
+    final title = tester
+        .widget<Text>(find.byKey(const Key('pharmacy-detail-name')))
+        .data!;
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('pharmacy-detail-sheet')),
+        matching: find.text(title),
+      ),
+      findsOneWidget,
+    );
     for (
       var drag = 0;
       drag < 8 && check.hitTestable().evaluate().isEmpty;
@@ -1204,12 +1283,10 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('pharmacy-filter-selector')));
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const ValueKey('pharmacy-filter-option-lateHours')),
-      );
-      await tester.pumpAndSettle();
+      await _applySearchFilter(tester, 'lateHours');
       expect(requestedTimes.last, now);
-      expect(find.text('조회 날짜: 2026-09-12 00:50'), findsOneWidget);
+      expect(find.text('조회 날짜: 2026-09-12 00:50'), findsNothing);
+      expect(find.byKey(const Key('pharmacy-search-date')), findsNothing);
       expect(find.text('조회 시각 영업'), findsWidgets);
       expect(find.text('영업 중'), findsNothing);
       expect(find.textContaining('조회일 '), findsWidgets);
@@ -1296,8 +1373,7 @@ void main() {
     for (final option in ['lateHours', 'weekendHoliday', 'all', 'openNow']) {
       await tester.tap(find.byKey(const Key('pharmacy-map-filter-selector')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(ValueKey('pharmacy-filter-option-$option')));
-      await tester.pumpAndSettle();
+      await _applySearchFilter(tester, option);
       expect(find.byKey(const Key('pharmacy-list-panel')), findsNothing);
       expect(
         tester.element(find.byKey(const Key('test-nearby-pharmacy-map'))),
@@ -1311,10 +1387,7 @@ void main() {
         find.byKey(const ValueKey('test-map-marker-closed')),
         option == 'all' ? findsOneWidget : findsNothing,
       );
-      expect(
-        find.byKey(const Key('pharmacy-map-search-date')),
-        option == 'openNow' ? findsNothing : findsOneWidget,
-      );
+      expect(find.byKey(const Key('pharmacy-map-search-date')), findsNothing);
       expect(tester.takeException(), isNull);
     }
     expect(modes, [
@@ -1326,7 +1399,7 @@ void main() {
     ]);
     await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
     await tester.pumpAndSettle();
-    expect(find.text('조회 조건: 현재 영업 중'), findsOneWidget);
+    expect(find.text('조회 조건'), findsOneWidget);
     expect(find.byKey(const Key('pharmacy-map-filter-selector')), findsNothing);
   });
 
@@ -1363,7 +1436,7 @@ void main() {
     expect(find.text('영업종료 메드버디약국'), findsNothing);
     expect(find.text('영업 중'), findsWidgets);
     expect(find.text('24시간'), findsNothing);
-    expect(find.text('조회 조건: 현재 영업 중'), findsOneWidget);
+    expect(find.text('조회 조건'), findsOneWidget);
     expect(find.byKey(const Key('pharmacy-search-date')), findsNothing);
     expect(find.textContaining('시각:'), findsNothing);
     expect(find.byType(RefreshIndicator), findsNothing);
@@ -1388,8 +1461,7 @@ void main() {
     expect(find.text('공공심야약국'), findsNothing);
     expect(find.text('늦게까지 영업'), findsOneWidget);
     expect(find.text('주말·공휴일 영업'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('pharmacy-filter-option-all')));
-    await tester.pumpAndSettle();
+    await _applySearchFilter(tester, 'all');
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('pharmacy-card-closed')),
       180,
@@ -1413,10 +1485,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('pharmacy-filter-selector')));
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey('pharmacy-filter-option-openNow')),
-    );
-    await tester.pumpAndSettle();
+    await _applySearchFilter(tester, 'openNow');
     expect(find.byKey(const ValueKey('test-map-marker-open')), findsOneWidget);
     expect(find.byKey(const ValueKey('test-map-marker-closed')), findsNothing);
     expect(find.byKey(const ValueKey('pharmacy-card-closed')), findsNothing);
@@ -1661,13 +1730,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('pharmacy-filter-selector')));
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey('pharmacy-filter-option-lateHours')),
-    );
-    await tester.pumpAndSettle();
+    await _applySearchFilter(tester, 'lateHours');
 
     expect(find.textContaining('심야 운영 약국이 없습니다'), findsOneWidget);
-    expect(find.byKey(const Key('pharmacy-search-date')), findsOneWidget);
+    expect(find.byKey(const Key('pharmacy-search-date')), findsNothing);
     expect(find.textContaining('시각:'), findsNothing);
     await tester.scrollUntilVisible(
       find.text('전체 약국 보기'),

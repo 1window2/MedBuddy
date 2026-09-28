@@ -8,6 +8,7 @@ part of 'check_nearby_pharmacy_ui_boundary.dart';
 class _PharmacyDetailsSheet extends StatefulWidget {
   static const initialExtent = .65;
   final bool isEnglish;
+  final bool hospitals;
   final ValueChanged<double> onExtentChanged;
   final Widget Function(BuildContext, bool) contentBuilder;
 
@@ -16,6 +17,7 @@ class _PharmacyDetailsSheet extends StatefulWidget {
   const _PharmacyDetailsSheet({
     super.key,
     required this.isEnglish,
+    this.hospitals = false,
     required this.onExtentChanged,
     required this.contentBuilder,
   });
@@ -178,9 +180,10 @@ class _PharmacyDetailsSheetState extends State<_PharmacyDetailsSheet> {
                       Tooltip(
                         message: widget.isEnglish
                             ? (_compact
-                                  ? 'Expand pharmacy details'
-                                  : 'Collapse pharmacy details')
-                            : (_compact ? '약국 정보 펼치기' : '약국 정보 접기'),
+                                  ? 'Expand ${widget.hospitals ? 'hospital' : 'pharmacy'} details'
+                                  : 'Collapse ${widget.hospitals ? 'hospital' : 'pharmacy'} details')
+                            : '${widget.hospitals ? '병원' : '약국'} 정보 '
+                                  '${_compact ? '펼치기' : '접기'}',
                         child: InkWell(
                           key: const Key('pharmacy-detail-handle'),
                           onTap: _toggleExtent,

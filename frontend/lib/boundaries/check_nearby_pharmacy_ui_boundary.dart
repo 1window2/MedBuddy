@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../widgets/medbuddy_page_header.dart';
 import 'package:flutter/rendering.dart';
 
+import '../controls/check_nearby_hospital_control.dart';
 import '../controls/check_nearby_pharmacy_control.dart';
 import '../entities/nearby_pharmacy_entity.dart';
 import '../entities/user_setting_entity.dart';
@@ -17,6 +18,8 @@ import 'nearby_pharmacy_map_widget.dart';
 
 part 'pharmacy_details_sheet.dart';
 part 'pharmacy_list_panel.dart';
+part 'hospital_department_sheet.dart';
+part 'nearby_care_filter_sheet.dart';
 
 // 클래스명: _PharmacyFilter
 // 역할: 현재 영업·심야·주말공휴일·전체 약국 조회 조건을 담당한다.
@@ -32,6 +35,37 @@ enum _PharmacyDirectionsChoice { installedMapApp, googleMaps, copyAddress }
 
 const _refreshCooldownDuration = Duration(seconds: 10);
 const _mapDistanceGuideDuration = Duration(seconds: 4);
+const _hospitalSearchGuideDuration = Duration(seconds: 4);
+
+// 국립중앙의료원 진료과목 코드를 검색 요청과 표시 문구에 함께 사용한다.
+const _hospitalDepartments = <String, (String, String)>{
+  '': ('전체', 'All'),
+  'D001': ('내과', 'Internal medicine'),
+  'D013': ('이비인후과', 'ENT'),
+  'D002': ('소아청소년과', 'Pediatrics'),
+  'D008': ('정형외과', 'Orthopedics'),
+  'D005': ('피부과', 'Dermatology'),
+  'D026': ('치과', 'Dentistry'),
+  'D012': ('안과', 'Ophthalmology'),
+  'D011': ('산부인과', 'Obstetrics and gynecology'),
+  'D022': ('가정의학과', 'Family medicine'),
+  'D003': ('신경과', 'Neurology'),
+  'D004': ('정신건강의학과', 'Psychiatry'),
+  'D006': ('외과', 'Surgery'),
+  'D007': ('흉부외과', 'Thoracic surgery'),
+  'D009': ('신경외과', 'Neurosurgery'),
+  'D010': ('성형외과', 'Plastic surgery'),
+  'D014': ('비뇨기과', 'Urology'),
+  'D016': ('재활의학과', 'Rehabilitation medicine'),
+  'D017': ('마취통증의학과', 'Anesthesiology and pain medicine'),
+  'D018': ('영상의학과', 'Radiology'),
+  'D019': ('방사선종양학과', 'Radiation oncology'),
+  'D020': ('진단검사의학과', 'Laboratory medicine'),
+  'D021': ('병리과', 'Pathology'),
+  'D023': ('핵의학과', 'Nuclear medicine'),
+  'D024': ('응급의학과', 'Emergency medicine'),
+  'D034': ('구강악안면외과', 'Oral and maxillofacial surgery'),
+};
 
 // 클래스명: NearbyPharmacySelection
 // 역할: 채팅에 공유할 약국과 사용자의 전화 확인 여부를 함께 반환한다.
@@ -44,6 +78,7 @@ const _mapDistanceGuideDuration = Duration(seconds: 4);
 class NearbyPharmacySelection {
   final NearbyPharmacy pharmacy;
   final bool phoneVerified;
+  final DateTime? scheduleDate;
 
   // 함수이름: NearbyPharmacySelection
   // 함수역할: 채팅 공유 호출자에게 돌려줄 약국과 전화 확인 여부를 변경 불가능한 결과 객체에 담는다.
@@ -54,6 +89,7 @@ class NearbyPharmacySelection {
   const NearbyPharmacySelection({
     required this.pharmacy,
     required this.phoneVerified,
+    this.scheduleDate,
   });
 }
 
@@ -110,6 +146,7 @@ class CheckNearbyPharmacyUI extends StatefulWidget {
   final NearbyPharmacyMapBuilder? mapBuilder;
   final PharmacyFavoriteService? favoriteService;
   final bool selectionMode;
+  final bool hospitals;
   final DateTime Function()? clock;
 
   // 함수이름: CheckNearbyPharmacyUI
@@ -128,6 +165,7 @@ class CheckNearbyPharmacyUI extends StatefulWidget {
     this.mapBuilder,
     this.favoriteService,
     this.clock,
+    this.hospitals = false,
   }) : selectionMode = false;
 
   // 함수이름: CheckNearbyPharmacyUI.selection
@@ -146,6 +184,7 @@ class CheckNearbyPharmacyUI extends StatefulWidget {
     this.mapBuilder,
     this.favoriteService,
     this.clock,
+    this.hospitals = false,
   }) : selectionMode = true;
 
   // 함수이름: createState
@@ -188,6 +227,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   Timer? _mapDistanceGuideTimer;
   bool _hasShownMapDistanceGuide = false;
   bool _showMapDistanceGuide = false;
+  Timer? _hospitalSearchGuideTimer;
+  bool _hasShownHospitalSearchGuide = false;
+  bool _showHospitalSearchGuide = false;
   _PharmacyFilter _filter = _PharmacyFilter.openNow;
   String? _selectedPharmacyId;
   DateTime _targetDateTime = DateTime.now();
@@ -195,6 +237,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
 
   DateTime _now() => widget.clock?.call() ?? DateTime.now();
   bool _catalogIsStale = false;
+  bool _searchTruncated = false;
   String _holidayScheduleStatus = 'not_applicable';
   DateTime? _lastRefreshedAt;
   bool _selectedPhoneVerified = false;
@@ -236,8 +279,23 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   // 매개변수:
   // - 없음.
   // 반환값: _NearbyPharmacyText: 현재 화면 언어의 문구 제공 객체.
-  _NearbyPharmacyText get _text =>
-      _NearbyPharmacyText(widget.userSetting.language);
+  _NearbyPharmacyText get _text => widget.hospitals
+      ? _NearbyHospitalText(
+          widget.userSetting.language,
+          searchTruncated: _searchTruncated,
+          calendarUnknown: _holidayScheduleStatus == 'unknown',
+          requiresWeekendDate: _requiresHospitalHolidayDate,
+        )
+      : _NearbyPharmacyText(widget.userSetting.language);
+
+  // 공휴일 달력에서 평일로 확인된 날짜만 날짜 변경 안내 대상으로 삼는다.
+  bool get _requiresHospitalHolidayDate =>
+      widget.hospitals &&
+      !_isLoading &&
+      _errorMessage == null &&
+      _filter == _PharmacyFilter.weekendHoliday &&
+      _targetDateTime.weekday < DateTime.saturday &&
+      _holidayScheduleStatus == 'not_applicable';
 
   // 함수이름: initState
   // 함수역할: 약국 조회·즐겨찾기 의존성을 준비하고 첫 프레임 뒤 두 정보를 불러온다.
@@ -249,10 +307,15 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _ownsControl = widget.control == null;
-    _control = widget.control ?? CheckNearbyPharmacy();
+    _control =
+        widget.control ??
+        (widget.hospitals ? CheckNearbyHospital() : CheckNearbyPharmacy());
     _favoriteService =
         widget.favoriteService ??
-        PharmacyFavoriteService(userHash: widget.userSetting.userHash);
+        PharmacyFavoriteService(
+          userHash: widget.userSetting.userHash,
+          hospitals: widget.hospitals,
+        );
     // 함수이름: initState.addPostFrameCallback callback
     // 함수역할: 현재 사용자의 저장된 약국 즐겨찾기를 화면 선택 집합에 반영한다.
     // 매개변수:
@@ -265,7 +328,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   }
 
   // 함수이름: dispose
-  // 함수역할: 새로고침·거리 안내 타이머와 _control을 정리하고 화면 수명 종료 처리를 수행한다.
+  // 함수역할: 새로고침·거리·부분 조회 안내 타이머와 _control을 정리하고 화면 수명 종료 처리를 수행한다.
   // 매개변수:
   // - 없음.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
@@ -274,6 +337,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     WidgetsBinding.instance.removeObserver(this);
     _refreshCooldownTimer?.cancel();
     _mapDistanceGuideTimer?.cancel();
+    _hospitalSearchGuideTimer?.cancel();
     if (_ownsControl) {
       _control.dispose();
     }
@@ -340,6 +404,8 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
         }
         _pharmacies = result.data;
         _catalogIsStale = result.catalogIsStale;
+        _searchTruncated = result.searchTruncated;
+        _updateHospitalSearchGuide();
         _holidayScheduleStatus = result.holidayScheduleStatus;
         final selectedStillExists = result.data.any(
           // 함수이름: _loadPharmacies.any callback
@@ -409,6 +475,21 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     _showMapDistanceGuide = true;
     _mapDistanceGuideTimer = Timer(_mapDistanceGuideDuration, () {
       if (mounted) setState(() => _showMapDistanceGuide = false);
+    });
+  }
+
+  // 부분 조회 상태는 유지하되 상단 안내만 화면 진입당 한 번, 4초간 표시한다.
+  void _updateHospitalSearchGuide() {
+    if (!widget.hospitals || !_searchTruncated) {
+      _hospitalSearchGuideTimer?.cancel();
+      _showHospitalSearchGuide = false;
+      return;
+    }
+    if (_hasShownHospitalSearchGuide) return;
+    _hasShownHospitalSearchGuide = true;
+    _showHospitalSearchGuide = true;
+    _hospitalSearchGuideTimer = Timer(_hospitalSearchGuideDuration, () {
+      if (mounted) setState(() => _showHospitalSearchGuide = false);
     });
   }
 
@@ -498,7 +579,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   bool _operatesLate(NearbyPharmacy pharmacy) {
     return pharmacy.is24Hours ||
         pharmacy.isOpenLate ||
-        pharmacy.isOfficialLateNight;
+        (!widget.hospitals && pharmacy.isOfficialLateNight);
   }
 
   // 함수이름: _loadFavorites
@@ -594,13 +675,12 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     await _loadPharmacies();
   }
 
-  // 함수이름: _showFilterPicker
-  // 함수역할: 약국 조회 조건 시트를 열고 취소·동일 선택을 제외한 변경을 적용한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
-  Future<void> _showFilterPicker() async {
-    final selectedFilter = await showModalBottomSheet<_PharmacyFilter>(
+  // 선택한 진료과목은 지도 지역과 조회 날짜를 유지한 채 재검색한다.
+  Future<void> _showDepartmentPicker() async {
+    final control = _control;
+    if (control is! CheckNearbyHospital || _isLoading) return;
+    final department = control.department ?? '';
+    final selected = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -608,171 +688,158 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
       ),
-      // 함수이름: _showFilterPicker.builder callback
-      // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도에 EdgeInsets.fromLTRB, TextStyle, SizedBox, Icon, Divider을 적용해 현재 배치를 구성한다.
-      // 매개변수:
-      // - sheetContext (BuildContext): 현재 대화상자·하단 시트의 화면 종료와 테마 참조 위치.
-      // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-      builder: (sheetContext) {
-        return FractionallySizedBox(
-          heightFactor: 0.78,
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 12, 10),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _text.filterPickerTitle,
-                            style: const TextStyle(
-                              color: MedBuddyColors.textStrong,
-                              fontSize: 22,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _text.filterPickerDescription,
-                            style: const TextStyle(
-                              color: MedBuddyColors.textMuted,
-                              fontSize: 14,
-                              height: 1.35,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: _text.close,
-                      // 함수이름: _showFilterPicker.onPressed callback
-                      // 함수역할: `Navigator.pop(sheetContext)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-                      // 매개변수:
-                      // - 없음.
-                      // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-                      onPressed: () => Navigator.pop(sheetContext),
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
+      builder: (sheetContext) => _HospitalDepartmentSheet(
+        selected: department,
+        english: _text.isEnglish,
+        closeLabel: _text.close,
+      ),
+    );
+    if (!mounted || selected == null || selected == department) return;
+    setState(() {
+      control.department = selected.isEmpty ? null : selected;
+      _selectedPharmacyId = null;
+      _selectedPhoneVerified = false;
+      _pharmacies = [];
+    });
+    await _loadPharmacies();
+  }
+
+  // 진료과목 코드를 현재 언어의 표시명으로 바꾼다.
+  String _departmentLabel(String code) {
+    final label = _hospitalDepartments[code];
+    return label == null ? code : (_text.isEnglish ? label.$2 : label.$1);
+  }
+
+  // 좁은 화면에서도 진료과목은 왼쪽, 운영 조건은 오른쪽에 유지한다.
+  Widget _buildHospitalFilters({required bool map}) {
+    final control = _control;
+    final department = control is CheckNearbyHospital
+        ? control.department ?? ''
+        : '';
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = (constraints.maxWidth - 8) / 2;
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            SizedBox(
+              width: width,
+              child: _buildHospitalFilterButton(
+                key: Key(
+                  map
+                      ? 'hospital-map-department-selector'
+                      : 'hospital-department-selector',
                 ),
+                icon: Icons.medical_services_outlined,
+                label: _departmentLabel(department),
+                tooltip: _text.isEnglish ? 'Specialty' : '진료과목',
+                onPressed: _showDepartmentPicker,
               ),
-              const Divider(height: 1),
-              Expanded(
-                child: ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                  itemCount: _PharmacyFilter.values.length,
-                  // 함수이름: _showFilterPicker.separatorBuilder callback
-                  // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도의 인접 항목 사이에 지정한 간격 또는 구분선을 배치한다.
-                  // 매개변수:
-                  // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
-                  // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
-                  // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-                  separatorBuilder: (_, _) => const SizedBox(height: 8),
-                  // 함수이름: _showFilterPicker.itemBuilder callback
-                  // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도에 EdgeInsets.symmetric, SizedBox, TextStyle을 적용해 현재 배치를 구성한다.
-                  // 매개변수:
-                  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-                  // - index (int): 대상 약품·사진·행의 0부터 시작하는 목록 위치.
-                  // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-                  itemBuilder: (context, index) {
-                    final filter = _PharmacyFilter.values[index];
-                    final isSelected = filter == _filter;
-                    return Semantics(
-                      selected: isSelected,
-                      button: true,
-                      child: Material(
-                        color: isSelected
-                            ? MedBuddyColors.successSurface
-                            : Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          side: BorderSide(
-                            color: isSelected
-                                ? MedBuddyColors.primary
-                                : MedBuddyColors.outline,
-                            width: isSelected ? 2 : 1,
-                          ),
-                        ),
-                        child: InkWell(
-                          key: ValueKey(
-                            'pharmacy-filter-option-${filter.name}',
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                          // 함수이름: _showFilterPicker.onTap callback
-                          // 함수역할: `Navigator.pop(sheetContext, filter)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-                          // 매개변수:
-                          // - 없음.
-                          // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-                          onTap: () => Navigator.pop(sheetContext, filter),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 14,
-                            ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Icon(
-                                  isSelected
-                                      ? Icons.radio_button_checked
-                                      : Icons.radio_button_off,
-                                  color: isSelected
-                                      ? MedBuddyColors.primary
-                                      : MedBuddyColors.textSubtle,
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        _filterLabel(filter),
-                                        style: const TextStyle(
-                                          color: MedBuddyColors.textStrong,
-                                          fontSize: 17,
-                                          fontWeight: FontWeight.w800,
-                                          letterSpacing: 0,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        _text.filterDescription(filter),
-                                        style: const TextStyle(
-                                          color: MedBuddyColors.textMuted,
-                                          fontSize: 14,
-                                          height: 1.35,
-                                          fontWeight: FontWeight.w500,
-                                          letterSpacing: 0,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
+            ),
+            SizedBox(
+              width: width,
+              child: _buildHospitalFilterButton(
+                key: Key(
+                  map
+                      ? 'pharmacy-map-filter-selector'
+                      : 'pharmacy-filter-selector',
                 ),
+                icon: Icons.filter_alt_outlined,
+                label: _text.filterPickerTitle,
+                tooltip:
+                    '${_text.filterPickerTitle}: ${_text.filterDescription(_filter)}',
+                onPressed: _showFilterPicker,
               ),
-            ],
-          ),
+            ),
+          ],
         );
       },
     );
-    if (!mounted || selectedFilter == null || selectedFilter == _filter) {
+  }
+
+  // 필터 이름을 생략하지 않고 버튼 너비 안에서 줄바꿈한다.
+  Widget _buildHospitalFilterButton({
+    required Key key,
+    required IconData icon,
+    required String label,
+    required String tooltip,
+    required VoidCallback onPressed,
+  }) {
+    final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.3;
+    final labelWidget = Text(label, style: const TextStyle(letterSpacing: 0));
+    return Tooltip(
+      message: tooltip,
+      child: OutlinedButton(
+        key: key,
+        onPressed: _isLoading ? null : onPressed,
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          minimumSize: const Size(0, 48),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        child: largeText
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Icon(icon, size: 20),
+                      const Icon(Icons.keyboard_arrow_down, size: 20),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  labelWidget,
+                ],
+              )
+            : Row(
+                children: [
+                  Icon(icon, size: 20),
+                  const SizedBox(width: 6),
+                  Expanded(child: labelWidget),
+                ],
+              ),
+      ),
+    );
+  }
+
+  // 조회 조건의 날짜와 운영 상태를 함께 적용하고 취소한 선택은 버린다.
+  Future<void> _showFilterPicker() async {
+    if (_isLoading) return;
+    final selected = await showModalBottomSheet<_NearbyCareConditions>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+      ),
+      builder: (_) => _NearbyCareFilterSheet(
+        filter: _filter,
+        selectedDate: _hasSelectedSearchDate ? _targetDateTime : null,
+        now: _now,
+        hospitals: widget.hospitals,
+        text: _text,
+        filterLabel: _filterLabel,
+      ),
+    );
+    if (!mounted || selected == null) return;
+    final previousDate = _hasSelectedSearchDate ? _targetDateTime : null;
+    if (selected.filter == _filter &&
+        DateUtils.isSameDay(selected.date, previousDate)) {
       return;
     }
-    await _selectFilter(selectedFilter);
+    setState(() {
+      _filter = selected.filter;
+      _hasSelectedSearchDate = selected.date != null;
+      _targetDateTime = selected.date ?? _now();
+      _selectedPharmacyId = null;
+      _selectedPhoneVerified = false;
+      _pharmacies = [];
+    });
+    await _loadPharmacies();
   }
 
   // 함수이름: _filterLabel
@@ -787,40 +854,6 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       _PharmacyFilter.weekendHoliday => _text.weekendHoliday,
       _PharmacyFilter.all => _text.allPharmacies,
     };
-  }
-
-  // 함수이름: _pickSearchDate
-  // 함수역할: 조회 날짜를 선택받아 정오를 기준 시각으로 지정하고 약국을 다시 찾는다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
-  Future<void> _pickSearchDate() async {
-    final today = DateTime.now();
-    final selected = await showDatePicker(
-      context: context,
-      initialDate: _targetDateTime,
-      firstDate: today.subtract(const Duration(days: 7)),
-      lastDate: today.add(const Duration(days: 366)),
-    );
-    if (selected == null || !mounted) {
-      return;
-    }
-    // 함수이름: _pickSearchDate.setState callback
-    // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도의 입력·요청 상태를 `_targetDateTime = DateTime(selected.year, selected.month, selected.day, 12, 0)`로 갱신한다.
-    // 매개변수:
-    // - 없음.
-    // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-    setState(() {
-      _hasSelectedSearchDate = true;
-      _targetDateTime = DateTime(
-        selected.year,
-        selected.month,
-        selected.day,
-        12,
-        0,
-      );
-    });
-    await _loadPharmacies();
   }
 
   // 함수이름: build
@@ -912,7 +945,30 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     final english = widget.userSetting.language.toLowerCase().startsWith('en');
     return Column(
       children: [
-        if (_searchArea!.isFallback ||
+        if (widget.selectionMode)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
+            child: Text(
+              _searchArea!.isFallback
+                  ? (english
+                        ? 'Search area: Hongik University, Seoul (location unavailable)'
+                        : '검색 기준: 홍익대학교 서울캠퍼스 (위치 확인 불가)')
+                  : _searchArea!.isMapArea
+                  ? (english
+                        ? 'Search area: selected map area'
+                        : '검색 기준: 선택한 지도 지역')
+                  : (english
+                        ? 'Search area: this device location'
+                        : '검색 기준: 이 기기 위치'),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 13,
+                color: MedBuddyColors.textMuted,
+              ),
+            ),
+          ),
+        if (_showHospitalSearchGuide ||
+            _searchArea!.isFallback ||
             (_searchArea!.isMapArea && _showMapDistanceGuide) ||
             _errorMessage != null)
           Padding(
@@ -922,9 +978,15 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                   ? (english
                         ? 'Search failed. Move the map to try again, or refresh.'
                         : '검색하지 못했어요. 지도를 옮겨 다시 검색하거나 새로고침해주세요.')
+                  : _showHospitalSearchGuide
+                  ? (english
+                        ? 'Only some nearby hospitals were checked. Move the map to search again.'
+                        : '가까운 병원 일부를 조회했습니다. 지도를 옮겨 다시 검색해 주세요.')
                   : _searchArea!.isFallback
                   ? (english
-                        ? 'Location unavailable. Searching near Hongik University, Seoul.'
+                        ? (widget.hospitals
+                              ? 'Location unavailable. Near Hongik University, Seoul.'
+                              : 'Location unavailable. Searching near Hongik University, Seoul.')
                         : '위치를 확인하지 못해 홍익대학교 서울캠퍼스 기준으로 검색했어요.')
                   : (english
                         ? 'Distances are measured from the searched map center.'
@@ -939,29 +1001,23 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
               ),
             ),
           ),
-        if (!_listExpanded)
+        if (!_listExpanded && widget.hospitals)
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  OutlinedButton.icon(
-                    key: const Key('pharmacy-map-filter-selector'),
-                    onPressed: _isLoading ? null : _showFilterPicker,
-                    icon: const Icon(Icons.filter_alt_outlined),
-                    label: Text(_text.selectedFilter(_filterLabel(_filter))),
-                  ),
-                  if (_filter != _PharmacyFilter.openNow) ...[
-                    const SizedBox(width: 8),
-                    OutlinedButton.icon(
-                      key: const Key('pharmacy-map-search-date'),
-                      onPressed: _isLoading ? null : _pickSearchDate,
-                      icon: const Icon(Icons.event_outlined),
-                      label: Text(_text.searchDate(_targetDateTime)),
-                    ),
-                  ],
-                ],
+            child: _buildHospitalFilters(map: true),
+          ),
+        if (!_listExpanded && !widget.hospitals)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+            child: Center(
+              child: Tooltip(
+                message: _text.selectedFilter(_filterLabel(_filter)),
+                child: OutlinedButton.icon(
+                  key: const Key('pharmacy-map-filter-selector'),
+                  onPressed: _isLoading ? null : _showFilterPicker,
+                  icon: const Icon(Icons.filter_alt_outlined),
+                  label: Text(_text.filterPickerTitle),
+                ),
               ),
             ),
           ),
@@ -994,6 +1050,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                         'pharmacy-sheet-${selected.pharmacyId}-$_centerRevision',
                       ),
                       isEnglish: english,
+                      hospitals: widget.hospitals,
                       onExtentChanged: (extent) {
                         if ((_detailExtent - extent).abs() > .001) {
                           setState(() => _detailExtent = extent);
@@ -1024,7 +1081,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                                 _requestDirections(selected),
                           ),
                           if (widget.selectionMode)
-                            _buildSelectionFooter(pharmacies),
+                            _buildSelectionFooter(pharmacies, embedded: true),
                         ],
                       ),
                     ),
@@ -1077,9 +1134,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
               label: Text(
                 _listExpanded
                     ? (english ? 'Show map' : '지도 크게 보기')
-                    : (english
-                          ? 'Show pharmacies (${pharmacies.length})'
-                          : '약국 목록 보기 (${pharmacies.length})'),
+                    : _text.showList(pharmacies.length),
               ),
             ),
           ),
@@ -1149,23 +1204,29 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   Widget _buildBody({bool showStatus = true}) {
     final text = _text;
     if (_isLoading) {
-      return _PharmacyLoadingState(message: text.findingNearby);
+      final loading = _PharmacyLoadingState(message: text.findingNearby);
+      return widget.hospitals
+          ? Center(child: SingleChildScrollView(child: loading))
+          : loading;
     }
     if (_locationFailure != null) {
       return _buildLocationFailure(_locationFailure!);
     }
-    if (_errorMessage != null) {
-      return _PharmacyMessageState(
-        icon: Icons.cloud_off_outlined,
-        title: text.unavailableTitle,
-        message: _errorMessage!,
-        actionLabel: text.retry,
-        onAction: _requestRefresh,
-      );
-    }
+    final failureState = _errorMessage != null
+        ? _PharmacyMessageState(
+            icon: Icons.cloud_off_outlined,
+            title: text.unavailableTitle,
+            message: _errorMessage!,
+            actionLabel: text.retry,
+            onAction: _requestRefresh,
+          )
+        : null;
+    // 병원 조회 실패 후에도 날짜·진료과·조회 조건을 바로 바꿀 수 있게 유지한다.
+    if (failureState != null && !widget.hospitals) return failureState;
 
     final visiblePharmacies = _visiblePharmacies;
-    return Column(
+    final body = Column(
+      mainAxisSize: widget.hospitals ? MainAxisSize.min : MainAxisSize.max,
       children: [
         if (showStatus) _buildListStatus(),
         Padding(
@@ -1178,212 +1239,238 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (_filter != _PharmacyFilter.openNow) ...[
-                OutlinedButton.icon(
-                  key: const Key('pharmacy-search-date'),
-                  onPressed: _pickSearchDate,
-                  icon: const Icon(Icons.event_outlined),
-                  label: Text(text.searchDate(_targetDateTime)),
-                ),
-                const SizedBox(height: 8),
-              ],
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  key: const Key('pharmacy-filter-selector'),
-                  onPressed: _showFilterPicker,
-                  style: OutlinedButton.styleFrom(
-                    alignment: Alignment.centerLeft,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 14,
-                    ),
-                    side: const BorderSide(color: MedBuddyColors.outline),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.filter_alt_outlined,
-                        color: MedBuddyColors.primaryDark,
+              if (widget.hospitals)
+                _buildHospitalFilters(map: false)
+              else
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    key: const Key('pharmacy-filter-selector'),
+                    onPressed: _showFilterPicker,
+                    style: OutlinedButton.styleFrom(
+                      alignment: Alignment.centerLeft,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          text.selectedFilter(_filterLabel(_filter)),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: MedBuddyColors.textStrong,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0,
+                      side: const BorderSide(color: MedBuddyColors.outline),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.filter_alt_outlined,
+                          color: MedBuddyColors.primaryDark,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            text.filterPickerTitle,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: MedBuddyColors.textStrong,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0,
+                            ),
                           ),
                         ),
-                      ),
-                      const Icon(
-                        Icons.keyboard_arrow_down,
-                        color: MedBuddyColors.textMuted,
-                      ),
-                    ],
+                        const Icon(
+                          Icons.keyboard_arrow_down,
+                          color: MedBuddyColors.textMuted,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
         ),
-        Expanded(
-          child: visiblePharmacies.isEmpty
-              ? _PharmacyMessageState(
-                  icon: Icons.local_pharmacy_outlined,
-                  title: switch (_filter) {
-                    _PharmacyFilter.openNow => text.noOpenPharmacy,
-                    _PharmacyFilter.lateHours => text.noLateNightPharmacy,
-                    _PharmacyFilter.weekendHoliday =>
-                      text.noWeekendHolidayPharmacy,
-                    _PharmacyFilter.all => text.noNearbyPharmacy,
-                  },
-                  message: _filter == _PharmacyFilter.all
-                      ? text.checkLocation
-                      : text.tryAllPharmacies,
-                  actionLabel: _filter == _PharmacyFilter.all
-                      ? text.refresh
-                      : text.showAll,
-                  onAction: _filter == _PharmacyFilter.all
-                      ? _requestRefresh
-                      // Function Name: _buildBody.onAction callback
-                      // Description: Clears pharmacy selection after changing the search filter and reloads matching results.
-                      // Parameters:
-                      // - None.
-                      // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
-                      : () => _selectFilter(_PharmacyFilter.all),
-                )
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
-                  itemCount: visiblePharmacies.length + 1,
-                  // 함수이름: _buildBody.separatorBuilder callback
-                  // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도의 인접 항목 사이에 지정한 간격 또는 구분선을 배치한다.
-                  // 매개변수:
-                  // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
-                  // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
-                  // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-                  separatorBuilder: (_, _) => const SizedBox(height: 12),
-                  // 함수이름: _buildBody.itemBuilder callback
-                  // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도에 현재 부모의 레이아웃 제약을 적용해 현재 배치를 구성한다.
-                  // 매개변수:
-                  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-                  // - index (int): 대상 약품·사진·행의 0부터 시작하는 목록 위치.
-                  // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-                  itemBuilder: (context, index) {
-                    if (index == visiblePharmacies.length) {
-                      return _PharmacySourceNotice(
-                        message: text.sourceNotice(
-                          catalogIsStale: _catalogIsStale,
-                          holidayScheduleStatus: _holidayScheduleStatus,
-                        ),
-                      );
-                    }
-                    final pharmacy = visiblePharmacies[index];
-                    return _PharmacyCard(
-                      pharmacy: pharmacy,
-                      text: text,
-                      usesSelectedTime: _filter != _PharmacyFilter.openNow,
-                      isSelected: pharmacy.pharmacyId == _selectedPharmacyId,
-                      isFavorite: _favoritePharmacyIds.contains(
-                        pharmacy.pharmacyId,
-                      ),
-                      // 함수이름: _buildBody.onSelected callback
-                      // 함수역할: 지도에 표시할 약국을 선택하고 다른 약국으로 바뀌면 전화 확인 상태를 지운다.
-                      // 매개변수:
-                      // - 없음.
-                      // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                      onSelected: () => _selectPharmacy(pharmacy),
-                      // 함수이름: _buildBody.onFavoriteRequested callback
-                      // 함수역할: 즐겨찾기를 즉시 전환하고 저장 실패 시 해당 변경을 되돌려 안내한다.
-                      // 매개변수:
-                      // - 없음.
-                      // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                      onFavoriteRequested: _canChangeFavorite
-                          ? () => _toggleFavorite(pharmacy)
+        Flexible(
+          fit: widget.hospitals ? FlexFit.loose : FlexFit.tight,
+          child:
+              failureState ??
+              (visiblePharmacies.isEmpty
+                  ? _PharmacyMessageState(
+                      icon: widget.hospitals
+                          ? Icons.local_hospital_outlined
+                          : Icons.local_pharmacy_outlined,
+                      title: switch (_filter) {
+                        _PharmacyFilter.openNow => text.noOpenPharmacy,
+                        _PharmacyFilter.lateHours => text.noLateNightPharmacy,
+                        _PharmacyFilter.weekendHoliday =>
+                          text.noWeekendHolidayPharmacy,
+                        _PharmacyFilter.all => text.noNearbyPharmacy,
+                      },
+                      message: _filter == _PharmacyFilter.all
+                          ? text.checkLocation
+                          : text.tryAllPharmacies,
+                      actionLabel: _requiresHospitalHolidayDate
+                          ? (text.isEnglish
+                                ? 'Change search conditions'
+                                : '조회 조건 변경')
+                          : _filter == _PharmacyFilter.all
+                          ? text.refresh
+                          : text.showAll,
+                      onAction: _requiresHospitalHolidayDate
+                          ? _showFilterPicker
+                          : _filter == _PharmacyFilter.all
+                          ? _requestRefresh
+                          // Function Name: _buildBody.onAction callback
+                          // Description: Clears pharmacy selection after changing the search filter and reloads matching results.
+                          // Parameters:
+                          // - None.
+                          // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
+                          : () => _selectFilter(_PharmacyFilter.all),
+                    )
+                  : ListView.separated(
+                      shrinkWrap: widget.hospitals,
+                      physics: widget.hospitals
+                          ? const NeverScrollableScrollPhysics()
                           : null,
-                      onPhoneRequested: pharmacy.telephone.isEmpty
-                          ? null
-                          // 함수이름: _buildBody.onPhoneRequested callback
-                          // 함수역할: 약국 전화번호로 전화 앱을 열고 실패 시 안내한다.
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+                      itemCount: visiblePharmacies.length + 1,
+                      // 함수이름: _buildBody.separatorBuilder callback
+                      // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도의 인접 항목 사이에 지정한 간격 또는 구분선을 배치한다.
+                      // 매개변수:
+                      // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
+                      // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
+                      // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
+                      separatorBuilder: (_, _) => const SizedBox(height: 12),
+                      // 함수이름: _buildBody.itemBuilder callback
+                      // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도에 현재 부모의 레이아웃 제약을 적용해 현재 배치를 구성한다.
+                      // 매개변수:
+                      // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
+                      // - index (int): 대상 약품·사진·행의 0부터 시작하는 목록 위치.
+                      // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
+                      itemBuilder: (context, index) {
+                        if (index == visiblePharmacies.length) {
+                          return _PharmacySourceNotice(
+                            message: text.sourceNotice(
+                              catalogIsStale: _catalogIsStale,
+                              holidayScheduleStatus: _holidayScheduleStatus,
+                            ),
+                          );
+                        }
+                        final pharmacy = visiblePharmacies[index];
+                        return _PharmacyCard(
+                          pharmacy: pharmacy,
+                          text: text,
+                          usesSelectedTime: _filter != _PharmacyFilter.openNow,
+                          isSelected:
+                              pharmacy.pharmacyId == _selectedPharmacyId,
+                          isFavorite: _favoritePharmacyIds.contains(
+                            pharmacy.pharmacyId,
+                          ),
+                          // 함수이름: _buildBody.onSelected callback
+                          // 함수역할: 지도에 표시할 약국을 선택하고 다른 약국으로 바뀌면 전화 확인 상태를 지운다.
                           // 매개변수:
                           // - 없음.
                           // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                          : () => _requestPhoneCall(pharmacy),
-                      // 함수이름: _buildBody.onDirectionsRequested callback
-                      // 함수역할: 지도 앱 선택을 처리하고 실행 불가 시 Google 지도와 주소 복사로 대체한다.
-                      // 매개변수:
-                      // - 없음.
-                      // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                      onDirectionsRequested: () => _requestDirections(pharmacy),
-                    );
-                  },
-                ),
+                          onSelected: () => _selectPharmacy(pharmacy),
+                          // 함수이름: _buildBody.onFavoriteRequested callback
+                          // 함수역할: 즐겨찾기를 즉시 전환하고 저장 실패 시 해당 변경을 되돌려 안내한다.
+                          // 매개변수:
+                          // - 없음.
+                          // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                          onFavoriteRequested: _canChangeFavorite
+                              ? () => _toggleFavorite(pharmacy)
+                              : null,
+                          onPhoneRequested: pharmacy.telephone.isEmpty
+                              ? null
+                              // 함수이름: _buildBody.onPhoneRequested callback
+                              // 함수역할: 약국 전화번호로 전화 앱을 열고 실패 시 안내한다.
+                              // 매개변수:
+                              // - 없음.
+                              // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                              : () => _requestPhoneCall(pharmacy),
+                          // 함수이름: _buildBody.onDirectionsRequested callback
+                          // 함수역할: 지도 앱 선택을 처리하고 실행 불가 시 Google 지도와 주소 복사로 대체한다.
+                          // 매개변수:
+                          // - 없음.
+                          // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                          onDirectionsRequested: () =>
+                              _requestDirections(pharmacy),
+                        );
+                      },
+                    )),
         ),
         if (widget.selectionMode && _selectedPharmacyId != null)
           _buildSelectionFooter(visiblePharmacies),
       ],
     );
+    // 병원 목록은 필터·날짜도 함께 스크롤해 큰 글씨에서 결과 공간을 확보한다.
+    return widget.hospitals
+        ? SingleChildScrollView(
+            key: const Key('hospital-results-scroll'),
+            child: body,
+          )
+        : body;
   }
 
   // 함수이름: _buildSelectionFooter
   // 함수역할: 선택한 약국의 전화 확인 체크와 채팅 공유 확정 버튼을 표시한다.
   // 매개변수:
   // - visiblePharmacies (List<NearbyPharmacy>): 지도 또는 목록에 배치할 약국 검색 결과.
+  // - embedded (bool): 상세창에서는 이름을 반복하지 않고 기존 동작 버튼에 이어 표시한다.
   // 반환값: 위치 권한·조회 조건에 따른 약국 목록과 지도에 쓰는 위젯 트리.
-  Widget _buildSelectionFooter(List<NearbyPharmacy> visiblePharmacies) {
+  Widget _buildSelectionFooter(
+    List<NearbyPharmacy> visiblePharmacies, {
+    bool embedded = false,
+  }) {
     final selectedPharmacy = _findSelectedPharmacy(visiblePharmacies);
     if (selectedPharmacy == null) {
       return const SizedBox.shrink();
     }
     return Material(
       color: Colors.white,
-      elevation: 10,
+      elevation: embedded ? 0 : 10,
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+          padding: embedded
+              ? const EdgeInsets.fromLTRB(18, 0, 18, 12)
+              : const EdgeInsets.fromLTRB(16, 10, 16, 12),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                selectedPharmacy.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: MedBuddyColors.textStrong,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0,
+              if (!embedded)
+                Text(
+                  selectedPharmacy.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: MedBuddyColors.textStrong,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0,
+                  ),
                 ),
-              ),
-              CheckboxListTile(
-                value: _selectedPhoneVerified,
-                // 함수이름: _buildSelectionFooter.onChanged callback
-                // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도에서 캡처된 작업 `setState(() => _selectedPhoneVerified = value == true)`을 실행한다.
-                // 매개변수:
-                // - value (콜백 계약에서 추론): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-                // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                onChanged: (value) {
-                  // 함수이름: _buildSelectionFooter.setState callback
-                  // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도의 입력·요청 상태를 `_selectedPhoneVerified = value == true`로 갱신한다.
+              if (!widget.hospitals)
+                CheckboxListTile(
+                  value: _selectedPhoneVerified,
+                  // 함수이름: _buildSelectionFooter.onChanged callback
+                  // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도에서 캡처된 작업 `setState(() => _selectedPhoneVerified = value == true)`을 실행한다.
                   // 매개변수:
-                  // - 없음.
-                  // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-                  setState(() => _selectedPhoneVerified = value == true);
-                },
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                controlAffinity: ListTileControlAffinity.leading,
-                title: Text(_text.phoneVerified),
-              ),
+                  // - value (콜백 계약에서 추론): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
+                  // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                  onChanged: (value) {
+                    // 함수이름: _buildSelectionFooter.setState callback
+                    // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도의 입력·요청 상태를 `_selectedPhoneVerified = value == true`로 갱신한다.
+                    // 매개변수:
+                    // - 없음.
+                    // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
+                    setState(() => _selectedPhoneVerified = value == true);
+                  },
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: Text(_text.phoneVerified),
+                ),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
@@ -1398,6 +1485,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                       NearbyPharmacySelection(
                         pharmacy: selectedPharmacy,
                         phoneVerified: _selectedPhoneVerified,
+                        scheduleDate: _targetDateTime,
                       ),
                     );
                   },
@@ -1425,9 +1513,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     final text = _text;
     final selectedPharmacy = _findSelectedPharmacy(pharmacies);
     final statusText = pharmacies.isEmpty
-        ? (text.isEnglish
-              ? 'No pharmacies match here. Move the map or change the filter.'
-              : '조건에 맞는 약국이 없어요. 지도를 옮기거나 조회 조건을 바꿔보세요.')
+        ? text.noMapMatches
         : selectedPharmacy == null
         ? text.mapInstruction
         : null;
@@ -1452,6 +1538,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       );
     }
     return NearbyPharmacyMap(
+      hospitals: widget.hospitals,
       favoritePharmacyIds: _favoritePharmacyIds,
       bottomInset: bottomInset,
       showControls: showControls,
@@ -2211,9 +2298,7 @@ class _PharmacyCard extends StatelessWidget {
                             if (onClose != null)
                               IconButton(
                                 key: const Key('pharmacy-detail-close'),
-                                tooltip: text.isEnglish
-                                    ? 'Close pharmacy details'
-                                    : '약국 정보 닫기',
+                                tooltip: text.closeDetails,
                                 onPressed: onClose,
                                 icon: const Icon(Icons.close),
                               ),
@@ -2255,6 +2340,21 @@ class _PharmacyCard extends StatelessWidget {
                     text: text.distance(pharmacy.distanceLabel),
                   ),
                 if (!compact) ...[
+                  if (text.hospitals && pharmacy.departments.isNotEmpty) ...[
+                    const SizedBox(height: 7),
+                    _PharmacyInfoLine(
+                      icon: Icons.medical_services_outlined,
+                      text: pharmacy.departments.join(' · '),
+                    ),
+                  ],
+                  if (text.hospitals &&
+                      pharmacy.institutionType?.isNotEmpty == true) ...[
+                    const SizedBox(height: 7),
+                    _PharmacyInfoLine(
+                      icon: Icons.local_hospital_outlined,
+                      text: pharmacy.institutionType!,
+                    ),
+                  ],
                   const SizedBox(height: 7),
                   _PharmacyInfoLine(
                     icon: Icons.schedule_outlined,
@@ -2272,9 +2372,7 @@ class _PharmacyCard extends StatelessWidget {
                       text: operatingStatusDetail,
                     ),
                   ],
-                  if (pharmacy.isOfficialLateNight ||
-                      pharmacy.isOpenLate ||
-                      pharmacy.hasWeekendOrHolidayHours) ...[
+                  if (text.scheduleTags(pharmacy).isNotEmpty) ...[
                     const SizedBox(height: 7),
                     _PharmacyInfoLine(
                       icon: Icons.nightlight_outlined,
@@ -2429,6 +2527,18 @@ class _NearbyPharmacyText {
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
   bool get isEnglish => language.trim().toLowerCase().startsWith('en');
 
+  bool get hospitals => false;
+
+  // 지도와 목록 전환에 사용할 시설별 문구를 제공한다.
+  String showList(int count) =>
+      isEnglish ? 'Show pharmacies ($count)' : '약국 목록 보기 ($count)';
+
+  String get closeDetails => isEnglish ? 'Close pharmacy details' : '약국 정보 닫기';
+
+  String get noMapMatches => isEnglish
+      ? 'No pharmacies match here. Move the map or change the filter.'
+      : '조건에 맞는 약국이 없어요. 지도를 옮기거나 조회 조건을 바꿔보세요.';
+
   // 함수이름: back
   // 함수역할: 현재 언어와 입력값에 맞춰 "뒤로 가기" 문구를 제공한다.
   // 매개변수:
@@ -2543,14 +2653,6 @@ class _NearbyPharmacyText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get filterPickerTitle => isEnglish ? 'Search filter' : '조회 조건';
-  // 함수이름: filterPickerDescription
-  // 함수역할: 현재 언어와 입력값에 맞춰 "약국 목록에 적용할 조건을 하나 선택해주세요." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get filterPickerDescription => isEnglish
-      ? 'Choose one condition for the map and pharmacy list.'
-      : '지도와 약국 목록에 적용할 조건을 하나 선택해주세요.';
   // 함수이름: selectedFilter
   // 함수역할: 현재 언어와 입력값에 맞춰 "조회 조건: $label" 문구를 제공한다.
   // 매개변수:
@@ -2855,7 +2957,7 @@ class _NearbyPharmacyText {
   }
 
   // Function Name: searchDate
-  // Description: Provides localized wording for "${value.year.toString().padLeft(4," using the current language and message inputs.
+  // Description: Formats a search calendar date without a time component.
   // Parameters:
   // - value (DateTime): Input to validate, normalize, display, or pass through a selection callback.
   // Returns: The formatted display text or identifier described above.
@@ -2863,10 +2965,8 @@ class _NearbyPharmacyText {
     final formatted =
         '${value.year.toString().padLeft(4, '0')}-'
         '${value.month.toString().padLeft(2, '0')}-'
-        '${value.day.toString().padLeft(2, '0')} '
-        '${value.hour.toString().padLeft(2, '0')}:'
-        '${value.minute.toString().padLeft(2, '0')}';
-    return isEnglish ? 'Search date: $formatted' : '조회 날짜: $formatted';
+        '${value.day.toString().padLeft(2, '0')}';
+    return formatted;
   }
 
   // 함수이름: phone
@@ -3080,5 +3180,230 @@ class _NearbyPharmacyText {
         ? ' Call before visiting to confirm actual opening hours.'
         : ' 방문 전 전화로 실제 운영 여부를 확인해주세요.';
     return '$base$warning$holidayWarning$callFirst';
+  }
+}
+
+// 공통 동작 문구는 재사용하고 병원 진료·출처 문구만 구분한다.
+class _NearbyHospitalText extends _NearbyPharmacyText {
+  final bool searchTruncated;
+  final bool calendarUnknown;
+  final bool requiresWeekendDate;
+
+  const _NearbyHospitalText(
+    super.language, {
+    this.searchTruncated = false,
+    this.calendarUnknown = false,
+    this.requiresWeekendDate = false,
+  });
+
+  String get _chooseWeekendDate =>
+      isEnglish ? 'Choose a weekend or public holiday' : '주말이나 공휴일을 선택해주세요';
+
+  String get _noPartialMatches => isEnglish
+      ? 'No matches among the hospitals checked'
+      : '조회한 병원 중 조건에 맞는 결과가 없습니다';
+
+  String get _consultationUnavailable => isEnglish
+      ? 'Consultation status cannot be verified'
+      : '진료 여부를 확인할 수 없습니다';
+
+  @override
+  bool get hospitals => true;
+  @override
+  String get title => isEnglish ? 'Nearby Hospitals' : '근처 운영 병원';
+  @override
+  String get subtitle =>
+      isEnglish ? 'Find hospitals in this area.' : '주변 병원을 확인합니다.';
+  @override
+  String get refreshTooltip =>
+      isEnglish ? 'Refresh hospital list' : '병원 목록 새로고침';
+  @override
+  String get loadFailed => isEnglish
+      ? 'Could not load hospital information.\nPlease try again shortly.'
+      : '병원 정보를 불러오지 못했습니다.\n잠시 후 다시 시도해주세요.';
+  @override
+  String get loadingAction =>
+      isEnglish ? 'Hospital information is loading.' : '병원 정보를 불러오는 중입니다.';
+  @override
+  String get unavailableTitle =>
+      isEnglish ? 'Hospital information is unavailable' : '병원 정보를 확인할 수 없습니다';
+  @override
+  String get openNow => isEnglish ? 'Open now' : '진료 중';
+  @override
+  String get openAtSearchTime => isEnglish ? 'Open at search time' : '조회 시각 진료';
+  @override
+  String get closedAtSearchTime =>
+      isEnglish ? 'Closed at search time' : '조회 시각 진료 종료';
+  @override
+  String get closed => isEnglish ? 'Closed' : '진료 종료';
+  @override
+  String get hoursNeedCheck =>
+      isEnglish ? 'Check consultation hours' : '진료시간 확인 필요';
+  @override
+  String get openFilter => isEnglish ? 'Open now' : '현재 진료 중';
+  @override
+  String get lateHours => isEnglish ? 'Evening consultations' : '저녁 진료';
+  @override
+  String get weekendHoliday => isEnglish ? 'Weekends / holidays' : '주말·공휴일 진료';
+  @override
+  String get allPharmacies => isEnglish ? 'All hospitals' : '전체 병원';
+  // 병원 필터는 신고 진료시간만 안내하며 약국 지정 여부를 주장하지 않는다.
+  @override
+  String filterDescription(_PharmacyFilter filter) => switch (filter) {
+    _PharmacyFilter.openNow =>
+      isEnglish
+          ? 'Find hospitals reporting consultation hours for the current time.'
+          : '현재 시각에 진료시간이 등록된 병원을 찾습니다.',
+    _PharmacyFilter.lateHours =>
+      isEnglish
+          ? 'Find hospitals with consultation hours after 6 PM on the selected date.'
+          : '선택한 날짜에 오후 6시 이후에도 진료시간이 있는 병원을 찾습니다.',
+    _PharmacyFilter.weekendHoliday =>
+      isEnglish
+          ? 'Find hospitals with reported weekend or holiday consultation hours.'
+          : '주말이나 공휴일 진료시간이 등록된 병원을 찾습니다.',
+    _PharmacyFilter.all =>
+      isEnglish
+          ? 'Show nearby hospitals regardless of consultation hours.'
+          : '진료시간과 관계없이 주변 병원을 표시합니다.',
+  };
+
+  @override
+  String get noOpenPharmacy => calendarUnknown
+      ? _consultationUnavailable
+      : searchTruncated
+      ? _noPartialMatches
+      : isEnglish
+      ? 'No open hospitals were found in this search area'
+      : '검색한 지역에 진료 중인 병원이 없습니다';
+  @override
+  String get noLateNightPharmacy => calendarUnknown
+      ? _consultationUnavailable
+      : searchTruncated
+      ? _noPartialMatches
+      : isEnglish
+      ? 'No hospitals with consultation hours after 6 PM were found in this search area'
+      : '검색한 지역에 오후 6시 이후 진료하는 병원이 없습니다';
+  @override
+  String get noWeekendHolidayPharmacy => requiresWeekendDate
+      ? _chooseWeekendDate
+      : calendarUnknown
+      ? _consultationUnavailable
+      : searchTruncated
+      ? _noPartialMatches
+      : isEnglish
+      ? 'No hospitals with weekend or holiday hours were found in this search area'
+      : '검색한 지역에 주말·공휴일 진료 병원이 없습니다';
+  @override
+  String get noNearbyPharmacy => searchTruncated
+      ? _noPartialMatches
+      : isEnglish
+      ? 'No nearby hospitals were found'
+      : '주변 병원을 찾지 못했습니다';
+  @override
+  String get tryAllPharmacies => requiresWeekendDate
+      ? (isEnglish
+            ? 'The selected date is a weekday. Choose the weekend or public holiday you plan to visit.'
+            : '선택한 날짜는 평일입니다. 방문할 주말이나 공휴일로 조회 날짜를 바꿔주세요.')
+      : isEnglish
+      ? 'Switch to all hospitals, change the specialty, or try again shortly.'
+      : '전체 병원으로 전환하거나 진료과목을 바꿔 다시 확인해주세요.';
+  @override
+  String get showAll => isEnglish ? 'Show all hospitals' : '전체 병원 보기';
+  @override
+  String get locationDisabledMessage => isEnglish
+      ? 'Turn on device location to find hospitals near you.'
+      : '현재 위치에서 가까운 병원을 찾으려면 기기 위치를 켜주세요.';
+  @override
+  String get locationPermissionMessage => isEnglish
+      ? 'Location is used only to find nearby hospitals and is not stored in the server database.'
+      : '위치는 근처 병원을 찾을 때만 사용하며 서버 DB에 저장하지 않습니다.';
+  @override
+  String get mapInstruction => isEnglish
+      ? 'Tap a marker or open the hospital list for details'
+      : '지도 표시를 누르거나 병원 목록을 열어 상세 정보를 확인하세요';
+  @override
+  String get selectMarkerHint =>
+      isEnglish ? 'Show this hospital on the map' : '이 병원을 지도에서 보기';
+  @override
+  String get mapUnavailable => isEnglish
+      ? 'Map coordinates are unavailable for these hospitals.'
+      : '표시할 수 있는 병원 좌표가 없습니다.';
+  @override
+  String get findingNearby => isEnglish
+      ? 'Finding hospitals near the search location'
+      : '검색 위치 주변 병원을 찾고 있습니다';
+  @override
+  String get addressCopied =>
+      isEnglish ? 'The hospital address was copied.' : '병원 주소를 복사했습니다.';
+  @override
+  String get mapUnavailableAddressCopied => isEnglish
+      ? 'No map app could be opened, so the address was copied.'
+      : '열 수 있는 지도 앱이 없어 병원 주소를 복사했습니다.';
+  @override
+  String get favoriteSaveFailed => isEnglish
+      ? 'Could not save the hospital favorite.'
+      : '병원 즐겨찾기를 저장하지 못했습니다.';
+  @override
+  String showList(int count) =>
+      isEnglish ? 'Hospitals ($count)' : '병원 목록 보기 ($count)';
+  @override
+  String get closeDetails => isEnglish ? 'Close hospital details' : '병원 정보 닫기';
+  @override
+  String get noMapMatches => requiresWeekendDate
+      ? _chooseWeekendDate
+      : calendarUnknown
+      ? _consultationUnavailable
+      : searchTruncated
+      ? _noPartialMatches
+      : isEnglish
+      ? 'No hospitals match here. Move the map or change the filters.'
+      : '조건에 맞는 병원이 없어요. 지도를 옮기거나 조회 조건을 바꿔보세요.';
+
+  // 조회 날짜별 진료시간과 확인이 필요한 상태를 표시한다.
+  @override
+  String todayHours(NearbyPharmacy pharmacy, {bool usesSelectedTime = false}) {
+    if (pharmacy.is24Hours) {
+      return isEnglish ? '24-hour consultation schedule' : '24시간 진료 일정';
+    }
+    if (pharmacy.todayOpenTime == null || pharmacy.todayCloseTime == null) {
+      return usesSelectedTime
+          ? (isEnglish
+                ? 'Check search-date consultation hours'
+                : '조회일 진료시간 확인 필요')
+          : (isEnglish ? "Check today's consultation hours" : '오늘 진료시간 확인 필요');
+    }
+    return super.todayHours(pharmacy, usesSelectedTime: usesSelectedTime);
+  }
+
+  // 병원 태그에는 약국 공공심야 지정 정보를 사용하지 않는다.
+  @override
+  String scheduleTags(NearbyPharmacy pharmacy) => [
+    if (pharmacy.isOpenLate) lateHours,
+    if (pharmacy.hasWeekendOrHolidayHours) weekendHoliday,
+  ].join(' · ');
+
+  // 시간 계산은 공통 구현을 사용하고 진료 용어만 바꾼다.
+  @override
+  String? operatingStatusDetail(NearbyPharmacy pharmacy) {
+    final detail = super.operatingStatusDetail(pharmacy);
+    return isEnglish ? detail : detail?.replaceAll('영업', '진료');
+  }
+
+  // 병원 데이터의 한계와 방문 전 전화 확인을 안내한다.
+  @override
+  String sourceNotice({
+    required bool catalogIsStale,
+    required String holidayScheduleStatus,
+  }) {
+    final warning = catalogIsStale
+        ? (isEnglish
+              ? ' Cached hospital information may be out of date.'
+              : ' 저장된 병원 정보가 오래되었을 수 있습니다.')
+        : '';
+    final base = isEnglish
+        ? 'Based on National Emergency Medical Center public hospital data. Reported consultation hours may differ on holidays or when appointments close. Call before visiting to confirm the specialty and actual consultation hours.'
+        : '국립중앙의료원 병원 공공데이터를 기준으로 표시합니다. 공휴일·접수 마감 등에 따라 신고 진료시간과 다를 수 있으니 방문 전 전화로 진료과목과 실제 진료 여부를 확인해주세요.';
+    return '$base$warning';
   }
 }

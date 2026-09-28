@@ -13,6 +13,7 @@ import '../boundaries/caregiver_home_summary_ui_boundary.dart';
 import '../boundaries/check_caregiver_medication_ui_boundary.dart';
 import '../boundaries/chat_list_ui_boundary.dart';
 import '../boundaries/check_nearby_pharmacy_ui_boundary.dart';
+import '../boundaries/nearby_care_options_sheet.dart';
 import '../boundaries/check_schedule_ui_boundary.dart';
 import '../boundaries/check_saved_medication_ui_boundary.dart';
 import '../boundaries/health_recommendation_ui_boundary.dart';
@@ -888,22 +889,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
       },
       onNearbyPharmacyRequested:
-          // 함수이름: _buildHomeInput.onNearbyPharmacyRequested callback
-          // 함수역할: 처방 분석 단계와 앱 탐색 목적지별 활성 화면에서 캡처된 작업 `Navigator.push(context, MaterialPageRoute(builder: (context) => CheckNearbyPharmacyUI(userSetting: viewModel.userSetting))); MaterialPageRoute(builder: (context) => CheckNearbyPharmacyUI(userSetting: viewModel.userSetting))`을 실행한다.
-          // 매개변수:
-          // - 없음.
-          // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-          () {
-            Navigator.push(
+          // 병원·약국을 선택한 뒤 같은 지도 탐색 화면으로 이동한다.
+          () async {
+            final destination = await showNearbyCareOptions(
+              context: context,
+              userSetting: viewModel.userSetting,
+            );
+            if (!context.mounted || destination == null) return;
+            await Navigator.push(
               context,
               MaterialPageRoute(
-                // 함수이름: _buildHomeInput.builder callback
-                // 함수역할: 처방 분석 단계와 앱 탐색 목적지별 활성 화면에 현재 부모의 레이아웃 제약을 적용해 현재 배치를 구성한다.
-                // 매개변수:
-                // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-                // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-                builder: (context) =>
-                    CheckNearbyPharmacyUI(userSetting: viewModel.userSetting),
+                builder: (context) => CheckNearbyPharmacyUI(
+                  userSetting: viewModel.userSetting,
+                  hospitals: destination == NearbyCareDestination.hospital,
+                ),
               ),
             );
           },

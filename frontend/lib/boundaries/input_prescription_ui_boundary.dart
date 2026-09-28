@@ -72,7 +72,7 @@ class InputPrescriptionUI extends StatelessWidget {
   // - onTodayScheduleRequested (VoidCallback?): Callback opening today's medication schedule.
   // - onMedicationSlotStatusRequested (Future<bool> Function(String, bool)?): Updates the selected dose slot and returns whether the change was saved.
   // - isNextMedicationCompletionLoading (bool): Whether the associated save, analysis, or medication update is in progress.
-  // - onNearbyPharmacyRequested (VoidCallback?): Callback opening nearby-pharmacy search.
+  // - onNearbyPharmacyRequested (VoidCallback?): Callback opening the nearby hospital/pharmacy chooser.
   // - onHealthRecommendationRequested (VoidCallback?): Callback opening health recommendations.
   // - onMedicationReminderRequested (VoidCallback?): Callback opening the associated slot's reminder settings.
   // - onUserSettingRequested (VoidCallback?): Callback opening user settings.
@@ -342,8 +342,10 @@ class InputPrescriptionUI extends StatelessWidget {
                                       mainAxisSpacing: useCompactDashboard
                                           ? 10
                                           : 14,
+                                      // Reserve room for two-line titles and descriptions in narrow cards.
                                       childAspectRatio: useCompactDashboard
-                                          ? 1.25
+                                          ? ((constraints.maxWidth - 10) / 2 / 144)
+                                                .clamp(1.0, 1.25)
                                           : 1,
                                       children: homeActions,
                                     ),
@@ -989,18 +991,20 @@ class _HomeText {
       ? 'Adjust reminder times to fit your routine'
       : '복약 알림 시간을 내 생활에 맞게 조정해요';
   // 함수이름: nearbyPharmacy
-  // 함수역할: 현재 언어와 입력값에 맞춰 "근처 운영 약국" 문구를 제공한다.
+  // 함수역할: 병원·약국을 함께 찾는 홈 진입점의 제목을 제공한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get nearbyPharmacy => isEnglish ? 'Nearby Pharmacy' : '근처 운영 약국';
+  String get nearbyPharmacy =>
+      isEnglish ? 'Nearby Hospitals & Pharmacies' : '근처 운영 병원·약국';
   // 함수이름: nearbyPharmacySubtitle
-  // 함수역할: 2×2 기능 카드에서 읽기 쉬운 약국 탐색 설명을 제공한다.
+  // 함수역할: 2×2 기능 카드에서 주변 병원·약국의 운영시간 조회를 안내한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get nearbyPharmacySubtitle =>
-      isEnglish ? 'Find an open pharmacy nearby' : '가까운 운영 약국을 찾아요';
+  String get nearbyPharmacySubtitle => isEnglish
+      ? 'Check nearby hospital and pharmacy hours'
+      : '가까운 병원·약국의 운영시간을 확인해요';
   // 함수이름: analyzingTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "처방전 인식 중..." 문구를 제공한다.
   // 매개변수:

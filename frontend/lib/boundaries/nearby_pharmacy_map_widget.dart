@@ -23,6 +23,7 @@ import 'pharmacy_map_symbols.dart';
 // - onPharmacySelected (ValueChanged<NearbyPharmacy>): 목록·마커에서 선택한 약국을 전달할 콜백.
 // - onAttributionRequested (VoidCallback): 지도 데이터의 출처·저작권 안내를 여는 콜백.
 class NearbyPharmacyMap extends StatefulWidget {
+  final bool hospitals;
   final PharmacySearchArea searchArea;
 
   /// Last device fix, independent from a manually moved search area.
@@ -68,6 +69,7 @@ class NearbyPharmacyMap extends StatefulWidget {
   // 반환값: 입력 설정이 반영된 NearbyPharmacyMap 인스턴스.
   const NearbyPharmacyMap({
     super.key,
+    this.hospitals = false,
     this.searchArea = PharmacySearchArea.hongik,
     this.deviceLocation,
     this.centerRevision = 0,
@@ -123,12 +125,14 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   // 함수역할: 일반·선택·즐겨찾기 마커와 현재 위치 이미지를 한 번 생성한다.
   // 매개변수: 없음. 반환값: 이미지 준비 완료.
   Future<void> _loadSymbols() => _symbolLoading ??= () async {
+    // 지도 SDK의 임시 이미지 폴더 초기화가 동시에 실행되지 않게 첫 이미지는 기다린다.
+    _pinIcon = await NOverlayImage.fromWidget(
+      widget: const PharmacyMapPin(),
+      size: PharmacyMapPin.size,
+      context: context,
+    );
+    if (!mounted) return;
     final icons = await Future.wait([
-      NOverlayImage.fromWidget(
-        widget: const PharmacyMapPin(),
-        size: PharmacyMapPin.size,
-        context: context,
-      ),
       NOverlayImage.fromWidget(
         widget: const PharmacyMapPin(selected: true),
         size: PharmacyMapPin.size,
@@ -145,10 +149,9 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
         context: context,
       ),
     ]);
-    _pinIcon = icons[0];
-    _selectedPinIcon = icons[1];
-    _locationIcon = icons[2];
-    _favoritePinIcon = icons[3];
+    _selectedPinIcon = icons[0];
+    _locationIcon = icons[1];
+    _favoritePinIcon = icons[2];
   }();
 
   // 함수이름: _mappablePharmacies
@@ -178,6 +181,7 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     }
     if (selectionChanged ||
         pharmaciesChanged ||
+        oldWidget.hospitals != widget.hospitals ||
         !setEquals(oldWidget.favoritePharmacyIds, widget.favoritePharmacyIds) ||
         recenter ||
         oldWidget.deviceLocation != widget.deviceLocation) {
@@ -485,7 +489,7 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
       ),
       captionAligns: const [NAlign.bottom],
       captionOffset: 3,
-      // 밀집 지역의 이름 겹침은 줄이되 선택한 약국 이름은 유지한다.
+      // 밀집된 병원 이름은 겹침을 피하고 선택한 장소의 이름을 우선 표시한다.
       isHideCollidedCaptions: true,
       isForceShowCaption: isSelected,
     );

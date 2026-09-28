@@ -213,9 +213,12 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('pharmacy-filter-selector')));
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const ValueKey('pharmacy-filter-option-all')),
-      );
+      final all = find.byKey(const ValueKey('pharmacy-filter-option-all'));
+      await tester.ensureVisible(all);
+      await tester.pumpAndSettle();
+      await tester.tap(all);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('care-filter-apply')));
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('약국 목록 새로고침'));
       await tester.pumpAndSettle();
