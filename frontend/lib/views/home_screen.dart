@@ -676,7 +676,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final viewModel = context.read<MedBuddyViewModel>();
       switch (destination) {
         case MedBuddyDestination.schedule:
-          unawaited(viewModel.refreshMedicationSchedule());
+          unawaited(viewModel.refreshMedicationSchedule(reuseRecent: true));
         case MedBuddyDestination.medicationCabinet:
           unawaited(viewModel.fetchSavedMedicationInfo());
         case MedBuddyDestination.home:

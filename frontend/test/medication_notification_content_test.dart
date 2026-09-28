@@ -5,6 +5,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/services/notification_service.dart';
 import 'package:timezone/timezone.dart' as timezone;
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -16,6 +17,8 @@ void main() {
   var rejectExact = false;
 
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    NotificationService.instance.setHistoryUser(null, persistSession: false);
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     AndroidFlutterLocalNotificationsPlugin.registerWith();
     scheduled.clear();
@@ -52,6 +55,62 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
     debugDefaultTargetPlatformOverride = null;
+  });
+
+  // 같은 예약·미루기는 보존하고 변경된 날짜와 시각만 기기에 반영한다.
+  test('unchanged reminders and snoozes survive differential refresh', () async {
+    final service = NotificationService.instance;
+    await service.initialize();
+    final now = timezone.TZDateTime.now(timezone.local);
+    final first = DateTime(now.year, now.month, now.day + 1);
+    final second = DateTime(now.year, now.month, now.day + 2);
+    Future<void> refresh(List<DateTime> dates, {int hour = 8}) => service.registerNotification(
+      id: 101, slotKey: 'morning', slotTitle: '아침', hour: hour, minute: 0,
+      medicationNames: [], activeDates: dates,
+    );
+    await refresh([first, second]);
+    expect(scheduled.length, 2);
+    for (final item in scheduled) {
+      pending.add({'id': item['id'], 'payload': item['payload']});
+    }
+    final firstId = scheduled.first['id'] as int;
+    scheduled.clear();
+    cancelled.clear();
+    await refresh([first, second]);
+    expect(scheduled, isEmpty);
+    expect(cancelled, isEmpty);
+    await service.snoozeMedicationReminder(id: firstId, slotKey: 'morning',
+        slotTitle: '아침', scheduleDate: first);
+    scheduled.clear();
+    await refresh([first, second]);
+    expect(scheduled, isEmpty);
+    expect(cancelled, isEmpty);
+    await refresh([second], hour: 9);
+    expect(cancelled, contains(containsPair('id', firstId)));
+    expect(scheduled, hasLength(1));
+    expect(scheduled.single['scheduledDateTime'].toString(), contains('09:00'));
+  });
+
+  test('account and missing platform reservations cannot reuse another plan', () async {
+    final service = NotificationService.instance;
+    await service.initialize();
+    final now = timezone.TZDateTime.now(timezone.local);
+    final date = DateTime(now.year, now.month, now.day + 1);
+    Future<void> refresh() => service.registerNotification(id: 101,
+        slotKey: 'morning', slotTitle: '아침', hour: 8, minute: 0,
+        medicationNames: [], activeDates: [date]);
+    service.setHistoryUser('first', persistSession: false);
+    await refresh();
+    final item = scheduled.single;
+    pending.add({'id': item['id'], 'payload': item['payload']});
+    scheduled.clear();
+    service.setHistoryUser('second', persistSession: false);
+    await refresh();
+    expect(scheduled, hasLength(1));
+    scheduled.clear();
+    pending.clear();
+    await refresh();
+    expect(scheduled, hasLength(1));
   });
 
   test('disabling reminders removes delivered actions but preserves other alerts', () async {

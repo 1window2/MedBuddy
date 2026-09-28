@@ -31,6 +31,40 @@ import 'package:shared_preferences/shared_preferences.dart';
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  // 탭 재방문은 최근 조회를 재사용하지만 직접 새로고침·상태 변경은 다시 읽는다.
+  test('recent tab refreshes share reads without hiding explicit updates', () async {
+    SharedPreferences.setMockInitialValues({});
+    var reads = 0;
+    Completer<http.Response>? gate;
+    final client = MockClient((request) async {
+      reads++;
+      if (gate != null) return gate.future;
+      return _jsonResponse({'success': true, 'data': []});
+    });
+    final vm = MedBuddyViewModel(
+      checkSchedule: CheckSchedule(patientHash: 'patient-a', client: client),
+      setNotification: SetNotification(patientHash: 'patient-a', client: client),
+      notificationService: _FakeNotificationService(),
+    );
+    addTearDown(vm.dispose);
+    addTearDown(client.close);
+    await vm.refreshMedicationSchedule();
+    expect(reads, 2);
+    await vm.refreshMedicationSchedule(reuseRecent: true);
+    expect(reads, 2);
+    await vm.refreshMedicationSchedule();
+    expect(reads, 4);
+    vm.applyConfirmedTodaySchedules([]);
+    await vm.refreshMedicationSchedule(reuseRecent: true);
+    expect(reads, 6);
+    gate = Completer<http.Response>();
+    final first = vm.refreshMedicationSchedule();
+    final second = vm.refreshMedicationSchedule();
+    await Future<void>.delayed(Duration.zero);
+    expect(reads, 8);
+    gate.complete(_jsonResponse({'success': true, 'data': []}));
+    await Future.wait([first, second]);
+  });
   // Default-time saves refresh read-only alarm state without rescheduling
   // explicit alarms, enabling notifications, or clearing a pending snooze.
   test(

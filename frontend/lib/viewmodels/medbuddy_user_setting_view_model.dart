@@ -52,20 +52,45 @@ extension MedBuddyUserSettingViewModel on MedBuddyViewModel {
       fetchTodayMedicationInfo(),
     ]);
     await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
+    _scheduleRefreshedAt = _schedules.lastLoadSucceeded && _reminders.lastLoadSucceeded
+        ? DateTime.now() : null;
   }
 
   // 함수이름: refreshMedicationSchedule
   // 함수역할: 알림 설정과 오늘 전체 일정을 함께 조회하고 최신 일정으로 알림 예약을 동기화한다.
   // 매개변수:
-  // - 없음.
+  // - reuseRecent (bool): 탭 재방문 시 같은 날의 최근 성공 조회를 재사용할지 여부.
   // 반환값:
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
-  Future<void> refreshMedicationSchedule() async {
+  Future<void> refreshMedicationSchedule({bool reuseRecent = false}) {
+    final last = _scheduleRefreshedAt;
+    final now = DateTime.now();
+    if (reuseRecent && last != null && _schedules.lastLoadSucceeded &&
+        _reminders.lastLoadSucceeded && doseScheduleDay(last) == doseScheduleDay(now) &&
+        now.difference(last) >= Duration.zero &&
+        now.difference(last) < const Duration(seconds: 15)) {
+      return Future<void>.value();
+    }
+    if (_scheduleRefresh != null &&
+        (reuseRecent || !_schedules.hasTodayScheduleLoadError)) {
+      return _scheduleRefresh!;
+    }
+    // 실패 화면의 명시적 재시도는 별도 알림 조회가 끝나기 전에도 허용한다.
+    late final Future<void> refresh;
+    refresh = _refreshMedicationSchedule().whenComplete(() {
+      if (identical(_scheduleRefresh, refresh)) _scheduleRefresh = null;
+    });
+    return _scheduleRefresh = refresh;
+  }
+
+  Future<void> _refreshMedicationSchedule() async {
     await Future.wait([
       loadMedicationReminderSettings(notifyAfterLoad: false),
       fetchTodayMedicationSchedule(),
     ]);
     await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
+    _scheduleRefreshedAt = _schedules.lastLoadSucceeded && _reminders.lastLoadSucceeded
+        ? DateTime.now() : null;
   }
 
   // 함수이름: clearAnalysisResult

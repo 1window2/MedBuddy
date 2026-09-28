@@ -647,6 +647,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   // Parameters: message: Schedule feedback. Returns: None.
   void _onScheduleChanged(String message) {
     if (_isDisposed) return;
+    _scheduleRefreshedAt = null;
     if (message.isNotEmpty) _statusMessage = message;
     _notifyViewModelListeners(MedBuddyFeature.schedule);
   }
@@ -760,6 +761,8 @@ class MedBuddyViewModel extends ChangeNotifier {
   Future<void> _synchronizeMedicationReminderSchedulesIfScheduleIsFresh() =>
       _reminders.synchronizeIfFresh();
   DoseSyncService? doseSync;
+  Future<void>? _scheduleRefresh;
+  DateTime? _scheduleRefreshedAt;
 
   // Function Name: _onSavedMedicationChanged
   // Description: Bridges owned feature state to legacy facade subscribers.
