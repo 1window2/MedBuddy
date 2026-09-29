@@ -50,6 +50,9 @@ box "FastAPI Backend"
     control "QueueMissedDoseAlerts" as MissedControl
     control "ProcessCaregiverAlertOutbox" as OutboxControl
     participant "CaregiverAlertOutboxWorker" as OutboxWorker
+    control "ManageCaregiverAlert" as AlertControl
+    control "ProcessChatNotifications" as ChatPushControl
+    participant "ChatNotificationWorker" as ChatPushWorker
     participant "Backend Service / Boundary\nOIDCTokenVerifier\nOCRServiceBoundary\nLLMService\nPublicDrug / Pill / Pharmacy Boundary\nChatConnectionManager" as BackService
     participant "PillIdentificationCatalogRepository" as Repository
     database "Application Database\nSQLAlchemy" as Database
@@ -57,6 +60,14 @@ box "FastAPI Backend"
 end box
 
 == 1. 앱 실행 및 사용자 접근 ==
+
+note over UI,ViewModel : MedBuddyViewModel은 기존 화면 API를 유지하면서\n처방·저장 약·일정·알림·설정·건강 추천의 독립 상태 객체에 위임한다.
+
+note over Router,Database
+Backend는 Worker 시작 전에 Alembic revision과 필수 table/column을 검증한다.
+자동 초기화는 빈 DB에만 migration을 적용하며 기존 DB를 임의 보정하지 않는다.
+핵심 서비스 시작과 Catalog 준비 상태는 분리하며 Catalog 실패로 채팅·일정을 막지 않는다.
+end note
 
 User -> UI : MedBuddyApp 실행
 UI -> AuthControl : 초기화 및 현재 인증 상태 확인
@@ -168,7 +179,7 @@ note right of FrontService
 end note
 FrontService -> FCM : 기기 FCM Token 요청
 FCM --> FrontService : 기기 FCM Token
-FrontService -> ApiClient : POST /api/v1/auth/push-token
+FrontService -> ApiClient : POST /api/v1/auth/push-token\nsupports_caregiver_actions 등록
 ApiClient -> Router : Token 등록 요청
 Router -> BackControl : ManagePushToken.registerPushToken()
 BackControl -> Database : device_push_tokens 저장
@@ -780,6 +791,12 @@ opt 보호자 홈 또는 감시 자료 갱신
     note right of BackControl : 홈·위젯은 알림을 끈 환자도 포함하며 약 상세는 제외한다.\n감시 전용 조회는 활성 알림 정책이 있는 환자만 조회한다.
 end
 
+opt 내 일정이 선택되어 있고 활성 연결 환자가 있음
+    UI --> Caregiver : 주요 동작 아래 연결된 환자 일정 보기 안내
+    Caregiver -> UI : 안내 선택
+    UI -> UI : 환경설정의 화면 및 음성으로 이동\n홈 조회 대상은 사용자가 직접 변경
+end
+
 opt 환자 또는 보호자가 활성 연결 해제
     User -> UI : 연결 목록에서 해제 승인
     UI -> FrontControl : LinkPatientCaregiver.requestUnlink(linkId)
@@ -814,8 +831,7 @@ Router --> ApiClient : 저장 결과
 ApiClient --> FrontControl : CaregiverNotification
 FrontControl --> UI : 알림 정책 반영
 
-alt Firebase 인증 mode
-    loop 서버 Outbox Worker 주기
+    loop 서버 Outbox Worker 주기 (인증 mode와 무관)
         OutboxWorker -> MissedControl : queueDue()
         MissedControl -> Database : 활성 연결·마감 정책·오늘 미완료 조회
         opt 마감이 지났고 미완료인 대상
@@ -827,9 +843,16 @@ alt Firebase 인증 mode
             OutboxControl -> BackControl : DispatchCaregiverAlert.notifySlotMissed()
             BackControl -> Database : 대상 날짜·활성 연결·정책·현재 미완료\n사용자 알림 설정·Push Token 재검증
             alt 여전히 유효한 미복약 대상
+              alt Firebase 인증 mode
                 BackControl -> BackService : FirebasePushNotificationBoundary.send_notification()
-                BackService -> FCM : 보호자 미복약 Push
-                FCM --> Caregiver : 환자 미복약 알림
+                BackService -> FCM : 미복약 알림 + 원본/전달 ID·연결·날짜·시간대
+                FCM -> FrontService : 지원 기기는 action data 수신
+                FrontService -> LocalNotification : CaregiverAlertDeliveryService로\n계정·전달 건 중복 방지 및 두 action 표시
+                LocalNotification --> Caregiver : 미복약 알림
+                note over FCM,FrontService : action 미지원 기기는 기존 OS 알림을 유지한다.\n구형 payload에서 신규 action을 실행하지 않는다.
+              else 인증 비활성 개발 mode
+                BackControl -> BackService : DisabledPushNotificationBoundary (외부 전송 없음)
+              end
             else 이미 완료·연결 해제·정책 변경 또는 지난 날짜
                 BackControl -> BackControl : 전송 생략
             end
@@ -842,17 +865,45 @@ alt Firebase 인증 mode
             end
         end
     end
-else 인증 비활성 개발 mode
-    loop Foreground 감시 또는 Android Workmanager 주기
-        Workmanager -> FrontService : 개발용 기기 감시
-        FrontService -> FrontControl : 연결 환자별 정책·일정 조회
-        FrontControl -> ApiClient : GET /caregiver/monitoring
-        ApiClient -> Router : 보호자 snapshot 요청
-        Router --> FrontService : 환자별 정책과 조회된 상태
-        opt 마감이 지났고 미완료인 대상
-            FrontService -> LocalNotification : 기기 중복 방지 후 미복약 알림
+opt 인증 비활성 개발 mode의 기기 전달 조회
+    loop Foreground 감시 또는 Android background 조회
+        FrontService -> FrontControl : CaregiverAlertActionControl.requestLocalDeliveries()
+        FrontControl -> ApiClient : GET /caregiver-alerts/local-deliveries
+        ApiClient -> Router : 현재 보호자의 개발용 전달 조회
+        Router -> AlertControl : localDeliveries(caregiver)
+        AlertControl -> Database : sent인 당일 요청 조회 및 유효성 재검증
+        AlertControl --> FrontService : 유효한 전달 context
+        opt 아직 표시하지 않은 전달 건
+            FrontService -> LocalNotification : 같은 전달 서비스로 두 action 표시
             LocalNotification --> Caregiver : 환자 미복약 알림
         end
+    end
+end
+opt 보호자가 알림의 action 선택
+    Caregiver -> UI : 10분 후 다시 알림 / 채팅으로 알림
+    UI -> FrontControl : CaregiverAlertActionControl.execute(context, action)
+    note over UI,ApiClient : 현재 계정과 context를 확인하고 기존 인증 Client를 사용한다.\nToken/App Check credential을 알림 payload에 저장하지 않는다.
+    alt 10분 후 다시 알림
+        FrontControl -> ApiClient : POST /caregiver-alerts/{alertId}/snooze
+        ApiClient -> Router : 인증 Principal로 요청자 결정
+        Router -> AlertControl : snooze(alertId, caregiver)
+        AlertControl -> Database : 소유권·활성 연결 및 기존 child 확인
+        alt 동일 전달 건의 child가 이미 있음
+            AlertControl --> UI : 기존 예약 결과
+        else 신규이며 현재 날짜·정책·미복약 상태가 유효함
+            AlertControl -> Database : 10분 뒤 처리할 child Outbox 저장·commit
+            AlertControl --> UI : 재알림 예약 확인
+            ref over OutboxWorker,Database : 위 서버 Worker 경로로 전송 직전 재검증·전달\n전달된 child는 다시 미루기 가능
+        else 오래되었거나 유효하지 않음
+            AlertControl --> UI : 요청 거절, 복약 상태·설정 유지
+        end
+    else 채팅으로 알림
+        FrontControl -> ApiClient : 기존 POST /chat/links/{linkId}/messages\nslot_check_request + source_alert_id
+        ApiClient -> Router : 보호자 인증과 원본 미복약 context
+        Router -> BackControl : ManageLinkedChat.send_message()
+        BackControl -> AlertControl : 원본·연결·시간대 검증 및 신규 요청 유효성 확인
+        ref over Router,Database : Flow 13 저장·방송·별도 채팅 알림 큐\n원본 미복약 건별 동일 요청 ID로 중복 방지
+        BackControl --> UI : 전송 결과 안내, 확인 실패 시 재시도 제공
     end
 end
 opt 보호자가 미복약 알림 선택
@@ -1117,14 +1168,18 @@ BackControl --> Router : ChatSendResult
 opt 중복 요청이 아닌 신규 메시지
     Router -> BackService : ChatConnectionManager.broadcast()
     BackService --> UI : 상대 WebSocket에 새 메시지 Event
-    BackService -> Database : ChatNotificationWorker가 저장된 채팅 알림 작업 선점
-    BackService -> BackService : 수신자 접속 여부와 Push 제한 재검증
+end
+loop 서버 ChatNotificationWorker 주기 (HTTP 요청과 독립)
+    ChatPushWorker -> ChatPushControl : run_once()
+    ChatPushControl -> Database : ChatNotificationJob 선점\n재시작 후 미완료 작업도 복구
+    ChatPushControl -> BackService : 수신자 접속 여부와 Push 제한 재검증
     alt 상대 미접속이며 Push 전송 허용
-        BackService -> BackControl : ProcessChatNotifications에서 DispatchChatMessageAlert 호출
+        ChatPushControl -> BackControl : DispatchChatMessageAlert\n현재 연결·읽음·삭제·알림 허용 재검증
         BackControl -> BackService : FirebasePushNotificationBoundary.send_notification()
         BackService -> FCM : 표시 정책에 따른 미리보기와 messageKind/slotKey
-        FCM --> User : 채팅 또는 해당 복약 시간대로 이동할 알림
+        FCM --> User : 활성 연결·역할 확인 후 해당 채팅을 여는 알림
     end
+    ChatPushControl -> Database : 완료·억제 또는 실패 재시도 상태 저장\n만료·한도 도달 시 dead 보존
 end
 note over Router,BackService : 일반 채팅은 메시지와 ChatNotificationJob을 같은 Transaction에 저장한다.\n별도 Worker가 재시도하며 caregiver 완료·미복약 Outbox와는 구분한다.\nWebSocket Registry는 프로세스 메모리이고 Redis는 요청 제한 Counter로 사용한다.
 opt 환자가 시간대의 모든 약을 완료
@@ -1168,6 +1223,7 @@ note over BackService,Database : DataMaintenanceService가 ChatMessageRetentionP
 
 ref over UI,Database : NearbyCareSharing.puml: 진료과목·날짜·상태 / 서버 검증 공유
 note over UI,BackControl : 약국 조회와 지도·목록 UI를 공유하되 병원 API와 캐시는 분리한다.\n공휴일을 알 수 없으면 평일로 단정하지 않고 불확실 상태로 표시한다.
+note over UI,BackControl : 진료과목(또는 전체)을 먼저 선택한 후 위치와 병원을 조회한다.\n현재 위치의 빈 결과만 제한 범위까지 확장하며 수동 지도 영역은 유지한다.
 
 == 15. 운영 Catalog 주기 갱신 ==
 

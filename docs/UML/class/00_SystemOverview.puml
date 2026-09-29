@@ -27,7 +27,7 @@ actor Caregiver as Caregiver
 rectangle "Flutter Frontend\n\nMobile UI and device services" as Frontend #E8F4FF
 rectangle "FastAPI Backend\n\nBusiness rules and secured APIs" as Backend #EAF8F0
 database "PostgreSQL / SQLite\nApplication Data" as Database #F8FAFC
-cloud "External Services\n\nFirebase, MFDS, Gemini\n약국·공휴일 API, Naver 지도" as External #FFF7E6
+cloud "External Services\n\nFirebase, MFDS, Gemini\n병원·약국·공휴일 API, Naver 지도" as External #FFF7E6
 
 Patient --> Frontend : uses
 Caregiver --> Frontend : uses

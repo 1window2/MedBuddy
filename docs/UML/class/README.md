@@ -58,10 +58,9 @@
 상대가 읽으면 사라지는 `1` 표시는 [읽음 상태 문서](../../Chat%20Read%20State%20and%20Notification%20Entry.md)를 따른다.
 
 일반 채팅은 복용 약이 없어도 가능하며, HTTP 저장 후 Router에서 WebSocket으로 방송한다.
-Ordinary chat push now uses a separate durable `chat_notification_jobs` queue,
-committed with the user message and processed by `ChatNotificationWorker`.
-The older sequence/PNG BackgroundTasks depiction is superseded by the
-[durable chat delivery design note](../../MedBuddy%20-%20Durable%20Chat%20Delivery.md).
+일반 채팅 Push는 사용자 메시지와 함께 저장한 별도 `chat_notification_jobs`를
+`ChatNotificationWorker`가 처리·재시도한다. 전체 Sequence와 Class에도 이 구조를 반영한다.
+세부 정책은 [영속 채팅 전달 설계](../../MedBuddy%20-%20Durable%20Chat%20Delivery.md)를 따른다.
 Outbox의 자동 완료 메시지 저장 자체는 WebSocket 방송을 수행하지 않는다.
 환자의 `먹었어요`는 선택한 약·시간대·날짜를 기기에 먼저 저장하고 서버의 복약
 기록과 채팅 영수증을 함께 갱신한다. 응답 전까지 전송 대기를 표시하며 같은 요청을
@@ -81,6 +80,13 @@ WebSocket 연결 Registry를 채팅 Database 또는 분산 방송 broker로 혼�
 보호자 홈은 모든 활성 환자의 오늘 일정을 일괄 조회하며 약 상세는 포함하지 않는다.
 정상 채팅 연결에서는 반복 조회를 멈추고 복귀·장애 시 누락분을 확인한다.
 
+`MedBuddyViewModel`은 기존 화면 API를 유지하면서 처방·저장 약·일정·알림·설정·건강 추천의
+독립 ViewModel에 상태 관리를 위임한다. 홈의 '연결된 환자 일정 보기'는 화면 및 음성 설정으로
+이동할 뿐 선택값을 자동 변경하지 않는다. 알림을 모두 끈 연결 환자도 홈·위젯에서 조회한다.
+미복약 판단은 모든 인증 mode에서 서버가 담당하며, 개발 mode의 기기는 처리 완료된 요청을 조회한다.
+'10분 후 다시 알림'은 전달 건별 child Outbox, '채팅으로 알림'은 원본 건별 기존 채팅 요청을 재사용한다.
+두 action 모두 서버에서 현재 권한과 유효성을 확인하며 환자의 복약 기록을 변경하지 않는다.
+
 발표에서는 `00`부터 필요한 기능 다이어그램까지 순서대로 사용하고,
 전체 `ClassDiagram`은 상세 설명이나 부록에 배치한다. 구조가 변경되면 `.puml`을
 먼저 수정한 뒤 같은 이름의 `.png`도 다시 생성한다.
@@ -88,3 +94,6 @@ WebSocket 연결 Registry를 채팅 Database 또는 분산 방송 broker로 혼�
 기존 beta/v0.2.0 정합성 갱신은 텍스트 원본만 반영했다. 2026-09-21에는 새 `06`
 클래스 그림과 복약 동기화·홈 위젯·전체 시스템 시퀀스 PNG를 원본에서 생성했다.
 그 밖의 기존 PNG는 최신 텍스트 원본과 차이가 있을 수 있다.
+
+2026-09-29 갱신은 `63b6165`의 실제 구현과 각 문서의 최근 수정 내용을 대조했다.
+이번에는 `.md`·`.puml`만 갱신하고 PNG는 생성·변경하지 않았으므로 최신 내용은 텍스트 원본을 기준으로 확인한다.

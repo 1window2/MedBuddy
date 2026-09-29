@@ -35,6 +35,10 @@ package "Flutter Frontend" #E8F4FF {
   class CheckSavedMedicationUI <<UI>>
   class CheckMedicationDetailUI <<UI>>
   class MedBuddyViewModel <<Control>>
+  class MedBuddyScheduleViewModel <<Control>>
+  class MedBuddySavedMedicationViewModel <<Control>>
+  class MedBuddyReminderViewModel <<Control>>
+  class DoseSyncService <<Service>>
   class NotificationService <<Service>>
   class ManualMedicationImageStore <<Service>>
   class "CheckSchedule" as FCheckSchedule <<Control>>
@@ -61,11 +65,15 @@ cloud "MFDS Drug APIs" as MFDS
 CheckScheduleUI --> MedBuddyViewModel
 CheckSavedMedicationUI --> MedBuddyViewModel
 CheckMedicationDetailUI --> MedBuddyViewModel
-MedBuddyViewModel --> FCheckSchedule
-MedBuddyViewModel --> FCheckSavedMedication
+MedBuddyViewModel *-- MedBuddyScheduleViewModel
+MedBuddyViewModel *-- MedBuddySavedMedicationViewModel
+MedBuddyViewModel *-- MedBuddyReminderViewModel
+MedBuddyScheduleViewModel --> FCheckSchedule
+MedBuddyScheduleViewModel --> DoseSyncService : 기기 선저장·멱등 전송
+MedBuddySavedMedicationViewModel --> FCheckSavedMedication
 MedBuddyViewModel --> FCheckMedicationDetail
-MedBuddyViewModel --> NotificationService : reconcile reminder plans
-MedBuddyViewModel --> ManualMedicationImageStore : local image persistence
+MedBuddyReminderViewModel --> NotificationService : 알림 계획 조정
+MedBuddySavedMedicationViewModel --> ManualMedicationImageStore : 기기 사진 저장
 
 note bottom of MedBuddyViewModel
   일정 탭 재방문은 같은 날의 성공한 조회를 15초 미만 재사용한다.

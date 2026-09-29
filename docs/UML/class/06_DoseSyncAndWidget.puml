@@ -12,7 +12,7 @@ package "Flutter" {
   class CaregiverNotificationMonitorService <<Service>>
   class DoseSyncService <<Service>>
   class DoseOutboxStore <<Service>>
-  class DoseWidgetStore <<extension>>
+  note "dose_widget_store.dart\nDart extension DoseWidgetStore on DoseOutboxStore\n독립 객체가 아닌 암호화 저장소 확장" as DoseWidgetStore
   class DoseSyncBackgroundScheduler <<Service>>
   class DoseHomeWidget <<Service>>
   class DoseWidgetState <<Entity>>
@@ -20,7 +20,7 @@ package "Flutter" {
 }
 package "Android" {
   class DoseWidgetProvider <<Boundary>>
-  class DoseWidgetLayout <<Boundary helper>>
+  class DoseWidgetLayout <<Kotlin object>>
   class WorkManager <<External>>
 }
 package "FastAPI" {
@@ -46,7 +46,7 @@ SyncDose --> ManageLinkedChat : 선택적 채팅 기록
 MedBuddyViewModel --> DoseHomeWidget : 기록·설정 변경 발행
 UserSetting --> DoseHomeWidget : homeScheduleSource
 CaregiverHomeSummaryUI --> CheckCaregiverHome : 환자별 미리보기·전환
-DoseHomeWidget --> CheckCaregiverHome : 연결 환자 읽기 전용 조회
+DoseHomeWidget --> CheckCaregiverMedication : background 연결 환자 읽기 전용 조회
 CheckCaregiverHome --> CheckCaregiverMedication : 연결 환자 일정 일괄 조회
 CaregiverNotificationMonitorService --> CheckCaregiverMedication : 같은 전경 세션의 조회 공유
 CheckCaregiverMedication --> CheckCaregiverMonitoring : /caregiver/schedules 또는 /monitoring

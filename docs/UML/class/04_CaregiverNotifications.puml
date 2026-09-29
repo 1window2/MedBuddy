@@ -49,6 +49,9 @@ package "Flutter Frontend" #E8F4FF {
   class ManageNotificationInbox <<Control>>
   class NotificationInboxStore <<Service>>
   class NotificationInboxEntry
+  class CaregiverAlertActionControl <<Control>>
+  class CaregiverAlertDeliveryService <<Service>>
+  class CaregiverAlertContext
 }
 
 package "FastAPI Backend" #EAF8F0 {
@@ -60,6 +63,13 @@ package "FastAPI Backend" #EAF8F0 {
   class DispatchCaregiverAlert <<Control>>
   class ProcessCaregiverAlertOutbox <<Control>>
   class CaregiverAlertOutboxWorker <<Service>>
+  class ManageCaregiverAlert <<Control>>
+  class ProcessChatNotifications <<Control>>
+  class ChatNotificationWorker <<Service>>
+  class DispatchChatMessageAlert <<Control>>
+  class ChatConnectionManager <<Service>>
+  database "chat_messages" as DBChatMessage <<Database>>
+  database "chat_notification_jobs" as DBChatNotificationJob <<Database>>
   class PatientCaregiverLinkRepository <<Service>>
   database "patient_caregiver_links" as DBPatientCaregiverLink <<Database>>
   database "guardian_alert_settings" as DBCaregiverNotification <<Database>>
@@ -134,12 +144,32 @@ DispatchCaregiverAlert --> DBDevicePushToken
 DispatchCaregiverAlert --> FCM
 FCM --> PushNotificationService
 PushNotificationService --> NotificationService
+PushNotificationService --> CaregiverAlertDeliveryService
+CaregiverAlertDeliveryService --> NotificationService : 검증된 context의 두 action 표시
+CaregiverAlertDeliveryService --> CaregiverAlertContext
+CaregiverAlertActionControl --> CaregiverAlertContext
+CaregiverAlertActionControl --> ManageLinkedChat : 원본 미복약별 slot_check_request
+CaregiverAlertActionControl --> ManageCaregiverAlert : 인증된 snooze / 개발용 전달 조회 API
+ManageCaregiverAlert --> DBCaregiverAlertOutbox : 전달 건별 10분 child, 반복 요청 멱등
+ManageCaregiverAlert --> DispatchCaregiverAlert : 날짜·연결·정책·미복약 재검증
+BManageLinkedChat --> ManageCaregiverAlert : 알림의 채팅 요청 검증
+BManageLinkedChat --> DBChatMessage
+BManageLinkedChat --> DBChatNotificationJob : 사용자 메시지와 같은 transaction
+ChatNotificationWorker --> ProcessChatNotifications
+ProcessChatNotifications --> DBChatNotificationJob : 선점·복구·재시도
+ProcessChatNotifications --> ChatConnectionManager : 현재 수신자 접속 여부
+ProcessChatNotifications --> DispatchChatMessageAlert
+DispatchChatMessageAlert --> DBChatMessage : 현재 읽음·삭제 상태 재검증
+DispatchChatMessageAlert --> DBDevicePushToken
+DispatchChatMessageAlert --> FCM
 
 note bottom of DispatchCaregiverAlert
   Firebase 인증 mode의 완료·미복약 알림은
   durable Outbox에서 재검증·전송·재시도한다.
   한도 도달 시 dead_letter를 보존한다.
-  기기 미복약 감지는 인증 비활성 개발 mode용이다.
+  개발 mode도 서버가 미복약을 판단하며, 기기는
+  localDeliveries()에서 유효한 sent 요청을 조회해 표시한다.
+  일반 채팅 알림 큐와 보호자 Outbox는 별개이다.
 end note
 note bottom of NotificationInboxStore
   Per-account device history, not a server mailbox.

@@ -10,7 +10,7 @@ hide empty members
 title Nearby Hospital / Pharmacy Search and Verified Chat Sharing
 
 package "Flutter: Boundary / Control / Entity" {
-  class "showNearbyCareOptions()" as NearbyCareOptionsSheet <<BoundaryFunction>>
+  note "module-level UI function\nshowNearbyCareOptions()" as NearbyCareOptionsSheet
   class CheckNearbyPharmacyUI <<Boundary>>
   class "_HospitalDepartmentSheet" as HospitalDepartmentSheet <<Boundary>>
   class "_NearbyCareFilterSheet" as NearbyCareFilterSheet <<Boundary>>
@@ -24,8 +24,8 @@ package "Flutter: Boundary / Control / Entity" {
   class ChatPlaceContext <<Entity>>
 }
 package "FastAPI: Boundary / Control / Entity" {
-  class HospitalRouter <<Boundary>>
-  class ChatRouter <<Boundary>>
+  note "module-level route functions\napi/hospital_router.py" as HospitalRouter
+  note "module-level route functions\napi/chat_router.py" as ChatRouter
   class "CheckNearbyHospital" as BHospital <<Control>> {
     + requestNearbyHospitalSearch(...)
     + requestShareContext(hospital_id, schedule_date)
@@ -39,10 +39,14 @@ package "FastAPI: Boundary / Control / Entity" {
   class NationalEmergencyMedicalCenterHospitalAPI <<Boundary>>
   class KoreanHolidayAPI <<Boundary>>
   class PersistentKoreanHolidayLookup <<Boundary>>
+  interface HolidayLookupBoundary
+  class SessionScopedKoreanHolidayCache <<Repository>>
+  class PharmacyCatalogRepository <<Repository>>
   class "ManageLinkedChat" as BChat <<Control>>
   class HospitalDetails <<Entity>>
   class HospitalLocationPage <<Entity>>
-  class "find_department_candidates()" as DepartmentSearch <<ControlFunction>>
+  note "module-level 검색 함수\nfind_department_candidates()" as DepartmentSearch
+  note "module-level 순수 계산 함수\nnearby_care_policy.py\n시간·거리 판정" as NearbyCarePolicy
   class DepartmentCandidates {
     + records
     + partial
@@ -72,7 +76,12 @@ NationalEmergencyMedicalCenterHospitalAPI ..|> HospitalLookupBoundary
 NationalEmergencyMedicalCenterHospitalAPI --> NEMC
 NationalEmergencyMedicalCenterHospitalAPI --> HospitalDetails
 NationalEmergencyMedicalCenterHospitalAPI --> HospitalLocationPage
-BHospital --> PersistentKoreanHolidayLookup
+BHospital --> HolidayLookupBoundary
+PersistentKoreanHolidayLookup ..|> HolidayLookupBoundary : 구조적 Protocol 충족
+PersistentKoreanHolidayLookup --> SessionScopedKoreanHolidayCache
+SessionScopedKoreanHolidayCache --> PharmacyCatalogRepository : 작업별 독립 DB Session
+BHospital ..> NearbyCarePolicy
+DepartmentSearch ..> NearbyCarePolicy
 PersistentKoreanHolidayLookup --> KoreanHolidayAPI
 KoreanHolidayAPI --> KASI
 LinkedChatUI --> CheckNearbyPharmacyUI : choose place (no send yet)
