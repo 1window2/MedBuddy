@@ -100,3 +100,19 @@ This adapter refines the persistence implementation behind the existing nearby
 care boundary without changing public APIs, authorization, or database schema.
 An async deadline can stop waiting for a cache worker; it does not forcibly cancel
 an executing SQL statement. Such a worker still owns and closes its own session.
+
+## Shared calculation policy
+
+Both backend nearby-care controllers use `services/nearby_care_policy.py` for
+time parsing/formatting, interval status, minutes until closing and distance.
+The hospital specialty-candidate helper uses the same distance function.
+Neither controller imports the other or calls its private methods. The shared
+module is pure: it has no provider, database, configuration or controller imports.
+`HolidayLookupBoundary` lives in its own boundary module rather than inside the
+pharmacy use case.
+
+Feature-specific validation and selection stay with each controller: hospitals
+still reject ambiguous equal opening/closing times and use their evening-clinic
+threshold; pharmacy late-night designations, dated rosters and next-opening
+selection remain pharmacy-owned. This refines the implementation behind the
+existing UML use cases without changing their public operations or sequence.

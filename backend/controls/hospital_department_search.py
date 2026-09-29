@@ -8,9 +8,9 @@ import math
 from boundaries.hospital_api_boundary import (
     HospitalApiResponseError, HospitalApiUnavailableError, HospitalLookupBoundary,
 )
-from controls.check_nearby_pharmacy_control import CheckNearbyPharmacy
 from core.config import settings
 from entities.nearby_hospital_entity import HospitalLocationRecord
+from services.nearby_care_policy import haversine_distance
 
 _PROVINCES = {
     "서울특별시", "부산광역시", "대구광역시", "인천광역시", "광주광역시",
@@ -140,7 +140,7 @@ async def find_department_candidates(
         successful_pages += 1
         partial |= page.row_count != len(page.records)
         for record in page.records:
-            distance = CheckNearbyPharmacy._haversine_distance(
+            distance = haversine_distance(
                 latitude, longitude, record.latitude, record.longitude,
             )
             if distance <= radius_km:

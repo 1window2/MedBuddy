@@ -6,21 +6,26 @@ from datetime import date, datetime, timedelta
 import re
 from zoneinfo import ZoneInfo
 
+from boundaries.holiday_lookup_boundary import HolidayLookupBoundary
 from boundaries.hospital_api_boundary import (
     HospitalApiResponseError,
     HospitalApiUnavailableError,
     HospitalLookupBoundary,
 )
 from boundaries.pharmacy_api_boundary import PharmacyApiUnavailableError
-from controls.check_nearby_pharmacy_control import CheckNearbyPharmacy, HolidayLookupBoundary
 from controls.hospital_department_search import find_department_candidates
 from core.config import settings
 from entities.nearby_hospital_entity import HospitalDetails, HospitalLocationRecord
 from schemas.hospital import HospitalSearchMode, NearbyHospitalItem, NearbyHospitalResponse
+from services.nearby_care_policy import (
+    format_time,
+    haversine_distance,
+    is_open_now,
+    minutes_until_close,
+    parse_minutes,
+)
 
 
-# 약국 지정·당번표 없이 순수 시간·거리 계산만 공유한다.
-_Schedule = CheckNearbyPharmacy
 _PAGE_SIZE = 30
 # 공공데이터포털 15000736의 공식 활용가이드 코드와 명시적인 명칭 변경만 연결한다.
 DEPARTMENT_NAMES: dict[str, tuple[str, ...]] = {
@@ -153,7 +158,7 @@ class CheckNearbyHospital:
                 if record.hospital_id in seen:
                     continue
                 seen.add(record.hospital_id)
-                distance = _Schedule._haversine_distance(
+                distance = haversine_distance(
                     latitude, longitude, record.latitude, record.longitude
                 )
                 if distance <= max_distance_km:
@@ -246,7 +251,7 @@ class CheckNearbyHospital:
             "latitude": location.latitude, "longitude": location.longitude,
             "departments": list(detail.departments),
             "schedule_date": schedule_date.isoformat(),
-            "today_hours": (f"{_Schedule._format_time(start)} - {_Schedule._format_time(end)}"
+            "today_hours": (f"{format_time(start)} - {format_time(end)}"
                             if start is not None and end is not None else ""),
             "source_updated_at": detail.fetched_at.isoformat(),
         }
@@ -294,8 +299,8 @@ class CheckNearbyHospital:
     def _hours(values: tuple[str, str]) -> tuple[int | None, int | None]:
         if not all(re.fullmatch(r"(?:[0-9]{3,4}|[0-9]{1,2}:[0-9]{2})", value) for value in values):
             return None, None
-        start = _Schedule._parse_minutes(values[0])
-        end = _Schedule._parse_minutes(values[1], allow_24=True)
+        start = parse_minutes(values[0])
+        end = parse_minutes(values[1], allow_24=True)
         if start is None or end is None or start == end:
             return None, None
         return start, end
@@ -313,7 +318,7 @@ class CheckNearbyHospital:
         previous_key = "8" if previous_holiday else str(previous.isoweekday())
         start, end = cls._hours(hours.get(today_key, ("", ""))) if today_holiday is not None else (None, None)
         prev_start, prev_end = cls._hours(hours.get(previous_key, ("", ""))) if previous_holiday is not None else (None, None)
-        opened = _Schedule._is_open_now(
+        opened = is_open_now(
             now=target, start_minutes=start, end_minutes=end,
             previous_start_minutes=prev_start, previous_end_minutes=prev_end,
         )
@@ -338,15 +343,15 @@ class CheckNearbyHospital:
             distance_km=round(distance, 3),
             departments=list(details.departments), institution_type=details.institution_type or record.institution_type,
             operating_notes=details.operating_notes,
-            today_open_time=_Schedule._format_time(start),
-            today_close_time=_Schedule._format_time(end), is_open_now=opened,
+            today_open_time=format_time(start),
+            today_close_time=format_time(end), is_open_now=opened,
             is_24_hours=start == 0 and end in {1439, 1440}, is_open_late=late,
             has_weekend_or_holiday_hours=any(
                 cls._hours(hours.get(day, ("", "")))[0] is not None for day in ("6", "7", "8")
             ),
             is_public_holiday=today_holiday is True, schedule_date=target.date(),
             schedule_source="nemc_hospital_weekly_report" if start is not None or opened is True else "unknown",
-            minutes_until_close=_Schedule._minutes_until_close(
+            minutes_until_close=minutes_until_close(
                 now=target, is_open_now=opened, start_minutes=start, end_minutes=end,
                 previous_start_minutes=prev_start, previous_end_minutes=prev_end,
             ),
