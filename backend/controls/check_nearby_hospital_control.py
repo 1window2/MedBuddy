@@ -13,6 +13,7 @@ from boundaries.hospital_api_boundary import (
 )
 from boundaries.pharmacy_api_boundary import PharmacyApiUnavailableError
 from controls.check_nearby_pharmacy_control import CheckNearbyPharmacy, HolidayLookupBoundary
+from controls.hospital_department_search import find_department_candidates
 from core.config import settings
 from entities.nearby_hospital_entity import HospitalDetails, HospitalLocationRecord
 from schemas.hospital import HospitalSearchMode, NearbyHospitalItem, NearbyHospitalResponse
@@ -109,29 +110,46 @@ class CheckNearbyHospital:
         detail_successes = 0
         new_detail_requests = 0
         page_size = _PAGE_SIZE
-        for page_no in range(1, settings.HOSPITAL_SEARCH_MAX_PAGES + 1):
+        department_candidates = None
+        if department is not None:
             try:
-                async with asyncio.timeout_at(deadline):
-                    page = await self._boundary.fetchNearbyPage(
-                        latitude=latitude, longitude=longitude,
-                        page_no=page_no, page_size=page_size,
-                    )
+                department_candidates = await find_department_candidates(
+                    self._boundary, latitude=latitude, longitude=longitude,
+                    radius_km=max_distance_km, department=department,
+                    # 상세 진료시간 조회에 쓸 시간을 남긴다.
+                    deadline=max(asyncio.get_running_loop().time(), deadline - 5),
+                )
             except TimeoutError:
-                if page_no == 1:
-                    raise HospitalApiUnavailableError("Hospital search timed out.") from None
-                partial = True
-                break
-            except (HospitalApiUnavailableError, HospitalApiResponseError):
-                if page_no == 1:
-                    raise
-                partial = True
-                break
-            partial = partial or page.row_count > len(page.records)
-            page_size = page.page_size
-            more_pages = page_no * page_size < page.total_count
+                raise HospitalApiUnavailableError("Hospital department search timed out.") from None
+            partial = department_candidates.partial
+        for page_no in range(1, settings.HOSPITAL_SEARCH_MAX_PAGES + 1):
+            if department_candidates is not None:
+                records = department_candidates.records
+                more_pages = False
+            else:
+                try:
+                    async with asyncio.timeout_at(deadline):
+                        page = await self._boundary.fetchNearbyPage(
+                            latitude=latitude, longitude=longitude,
+                            page_no=page_no, page_size=page_size,
+                        )
+                except TimeoutError:
+                    if page_no == 1:
+                        raise HospitalApiUnavailableError("Hospital search timed out.") from None
+                    partial = True
+                    break
+                except (HospitalApiUnavailableError, HospitalApiResponseError):
+                    if page_no == 1:
+                        raise
+                    partial = True
+                    break
+                partial = partial or page.row_count > len(page.records)
+                page_size = page.page_size
+                more_pages = page_no * page_size < page.total_count
+                records = page.records
             candidates: list[tuple[HospitalLocationRecord, float]] = []
             detail_ids: set[str] = set()
-            for record in page.records:
+            for record in records:
                 if record.hospital_id in seen:
                     continue
                 seen.add(record.hospital_id)
@@ -191,7 +209,11 @@ class CheckNearbyHospital:
                 "unknown" if today_holiday is None
                 else "weekly_report" if today_holiday else "not_applicable"
             ),
-            search_truncated=partial or (more_pages and len(matches) < limit),
+            search_truncated=partial or more_pages or len(matches) > limit,
+            region_scope_uncertain=(
+                department_candidates.region_scope_uncertain
+                if department_candidates is not None else False
+            ),
         )
 
     # 공휴일 확인 실패 시 평일로 단정하지 않는다.

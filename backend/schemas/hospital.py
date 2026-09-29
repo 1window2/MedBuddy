@@ -52,3 +52,5 @@ class NearbyHospitalResponse(BaseModel):
     catalog_is_stale: bool = False
     holiday_schedule_status: str = "unknown"
     search_truncated: bool = False
+    # 주소 표본의 지역 불확실성은 실제 진료과·상세 조회 제한과 별개다.
+    region_scope_uncertain: bool = False

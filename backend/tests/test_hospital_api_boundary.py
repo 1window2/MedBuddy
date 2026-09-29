@@ -92,6 +92,45 @@ async def test_details_key_override_and_department_parsing(monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_department_page_filters_provider_and_separates_cache():
+    """진료과·지역은 요청과 캐시 키에 포함되고 좌표 조회와 혼합되지 않는다."""
+    calls = []
+
+    def handle(request):
+        calls.append(request)
+        assert request.url.path.endswith('/getHsptlMdcncListInfoInqire')
+        assert request.url.params['Q0'] == '서울특별시'
+        assert request.url.params['Q1'] == '마포구'
+        assert 'WGS84_LAT' not in request.url.params
+        return httpx.Response(200, content=envelope(location(), size=100))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        api = NationalEmergencyMedicalCenterHospitalAPI(client=client)
+        for code in ('D001', 'D001', 'D013'):
+            page = await api.fetchDepartmentPage(province='서울특별시', district='마포구',
+                department=code, page_no=1, page_size=100)
+            assert page.records[0].hospital_id == 'A1'
+        assert len(calls) == 2
+        assert [call.url.params['QD'] for call in calls] == ['D001', 'D013']
+
+
+@pytest.mark.anyio
+async def test_department_page_sejong_omits_district_and_rejects_bad_query():
+    """시군구가 없는 세종시와 잘못된 조회 조건을 구별한다."""
+    def handle(request):
+        assert 'Q1' not in request.url.params
+        return httpx.Response(200, content=envelope('', size=100, total=0))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        api = NationalEmergencyMedicalCenterHospitalAPI(client=client)
+        query = dict(province='세종특별자치시', district='', department='D001', page_no=1, page_size=100)
+        assert not (await api.fetchDepartmentPage(**query)).records
+        for changes in ({'department':'내과'}, {'page_size':101}, {'page_no':0}, {'province':''}):
+            with pytest.raises(ValueError):
+                await api.fetchDepartmentPage(**dict(query, **changes))
+
+
+@pytest.mark.anyio
 async def test_cache_coalescing_ttl_and_cancelled_waiter(monkeypatch):
     """동시 요청·취소·만료가 호출 증폭이나 캐시 손상을 만들지 않는다."""
     tick = [0.0]

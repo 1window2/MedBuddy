@@ -116,6 +116,7 @@ class Settings(BaseSettings):
     HOSPITAL_DETAIL_CACHE_SECONDS: int = Field(default=86400, ge=1, le=86400)
     HOSPITAL_CACHE_MAX_ENTRIES: int = Field(default=512, ge=16, le=2048)
     HOSPITAL_SEARCH_MAX_PAGES: int = Field(default=3, ge=1, le=5)
+    HOSPITAL_DEPARTMENT_MAX_PAGES: int = Field(default=24, ge=1, le=50)
     HOSPITAL_DETAIL_REQUEST_BUDGET: int = Field(default=12, ge=1, le=30)
     HOSPITAL_SEARCH_TIMEOUT_SECONDS: float = Field(default=22, gt=0, le=24)
     HOSPITAL_CALENDAR_TIMEOUT_SECONDS: float = Field(default=2, gt=0, le=3)

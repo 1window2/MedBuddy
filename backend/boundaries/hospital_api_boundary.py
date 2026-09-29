@@ -24,6 +24,7 @@ from entities.nearby_hospital_entity import (
 
 _LOCATION_PATH = "/getHsptlMdcncLcinfoInqire"
 _DETAIL_PATH = "/getHsptlBassInfoInqire"
+_DEPARTMENT_PATH = "/getHsptlMdcncListInfoInqire"
 _MAX_RESPONSE_BYTES = 1024 * 1024
 
 
@@ -42,6 +43,12 @@ class HospitalLookupBoundary(Protocol):
     # 좌표 주변의 한 페이지를 가져온다.
     async def fetchNearbyPage(
         self, *, latitude: float, longitude: float, page_no: int, page_size: int
+    ) -> HospitalLocationPage: ...
+
+    # 지역과 진료과를 제공자에게 전달해 해당 과목의 목록부터 조회한다.
+    async def fetchDepartmentPage(
+        self, *, province: str, district: str, department: str,
+        page_no: int, page_size: int,
     ) -> HospitalLocationPage: ...
 
     # 선택한 병원의 주간 운영표와 진료과를 가져온다.
@@ -111,6 +118,27 @@ class NationalEmergencyMedicalCenterHospitalAPI:
         assert isinstance(result, HospitalDetails)
         return result
 
+    # 좌표 조회와 캐시를 분리하고 지역·진료과·페이지 조합별 목록을 재사용한다.
+    async def fetchDepartmentPage(
+        self, *, province: str, district: str, department: str,
+        page_no: int, page_size: int,
+    ) -> HospitalLocationPage:
+        if (not re.fullmatch(r"[가-힣]{2,20}", province)
+                or (district and not re.fullmatch(r"[가-힣]{1,20}[시군구]", district))
+                or not re.fullmatch(r"D[0-9]{3}", department)
+                or not 1 <= page_no <= settings.HOSPITAL_DEPARTMENT_MAX_PAGES
+                or not 1 <= page_size <= 100):
+            raise ValueError("Invalid hospital department search.")
+        params = {"Q0": province, "QD": department,
+                  "pageNo": str(page_no), "numOfRows": str(page_size)}
+        if district:
+            params["Q1"] = district
+        result = await self._cached(
+            _DEPARTMENT_PATH, params, settings.HOSPITAL_LOCATION_CACHE_SECONDS,
+        )
+        assert isinstance(result, HospitalLocationPage)
+        return result
+
     # 실패 캐시와 진행 중 작업도 재사용해 반복 필터의 호출량을 제한한다.
     def hasCachedDetails(self, hospital_id: str) -> bool:
         key = (_DETAIL_PATH, (("HPID", hospital_id),))
@@ -146,7 +174,7 @@ class NationalEmergencyMedicalCenterHospitalAPI:
                     root = await self._request(path, params)
                     value = (
                         self._parse_page(root, int(params["pageNo"]), int(params["numOfRows"]))
-                        if path == _LOCATION_PATH
+                        if path in {_LOCATION_PATH, _DEPARTMENT_PATH}
                         else self._parse_details(root, params["HPID"])
                     )
                 entry = _CacheEntry(self._clock() + ttl, value=value)

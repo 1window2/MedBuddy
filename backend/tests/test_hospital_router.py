@@ -61,6 +61,20 @@ async def test_envelope_department_and_generic_route_contract(app_control):
     assert resolve_rate_limit_rule("GET", "/api/v1/hospitals/nearby")[0].max_requests == 30
 
 
+@pytest.mark.anyio
+async def test_region_scope_metadata_is_independent_of_search_limit(app_control):
+    """응답 직렬화에서도 지역 표본의 한계를 조회 제한으로 합치지 않는다."""
+    app, control = app_control
+    result = control.requestNearbyHospitalSearch.return_value
+    result.search_truncated = False
+    result.region_scope_uncertain = True
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/v1/hospitals/nearby", params={"latitude": 37.5, "longitude": 127})
+    assert response.status_code == 200
+    assert response.json()["search_truncated"] is False
+    assert response.json()["region_scope_uncertain"] is True
+
+
 @pytest.mark.parametrize("params", [
     {"latitude": "NaN"}, {"longitude": 181}, {"limit": 31}, {"limit": 0},
     {"max_distance_km": 51}, {"max_distance_km": 0}, {"department": "내과"},

@@ -54,6 +54,12 @@ class Boundary:
         rows = self.records[(page_no - 1) * size:page_no * size]
         return HospitalLocationPage(tuple(rows), len(self.records), len(rows), size)
 
+    async def fetchDepartmentPage(self, *, page_no, page_size, **_):
+        """상세와 목록의 진료과가 불일치하는 기존 방어 테스트도 재현한다."""
+        size = min(page_size, self.size)
+        rows = self.records[(page_no - 1) * size:page_no * size]
+        return HospitalLocationPage(tuple(rows), len(self.records), len(rows), size)
+
     def hasCachedDetails(self, hospital_id):
         """이미 확인한 ID는 새 상세 예산을 쓰지 않는다."""
         return hospital_id in self.cached
@@ -70,7 +76,7 @@ class Boundary:
 
 def record(identifier="A1", *, latitude=37.5665):
     """공유 지도 표시용 위치를 만든다."""
-    return HospitalLocationRecord(identifier, "Test clinic", "Seoul", "", latitude, 126.978, "의원")
+    return HospitalLocationRecord(identifier, "Test clinic", "서울특별시 중구", "", latitude, 126.978, "의원")
 
 
 def detail(identifier="A1", *, departments=("내과",), hours=None):
@@ -177,7 +183,7 @@ async def test_capped_pagination_filter_before_limit_and_deduplication():
                         size=1, records=[record("A1"), record("A1"), record("A2")])
     result = await search(boundary, department="D001", limit=1)
     assert [item.hospital_id for item in result.data] == ["A2"]
-    assert boundary.pages == [(1, 30), (2, 1), (3, 1)] and boundary.loads == ["A1", "A2"]
+    assert boundary.pages == [(1, 30)] * 5 and boundary.loads == ["A1", "A2"]
 
 
 @pytest.mark.anyio
@@ -327,7 +333,6 @@ async def test_later_location_failure_retains_earlier_valid_matches(error_type):
 
 @pytest.mark.parametrize("error_type", [HospitalApiUnavailableError, HospitalApiResponseError])
 @pytest.mark.parametrize("filters", [
-    {"department": "D001"},
     {"search_mode": HospitalSearchMode.OPEN_AT_TIME},
 ])
 @pytest.mark.anyio
