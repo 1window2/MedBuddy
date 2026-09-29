@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/check_nearby_pharmacy_ui_boundary.dart';
+import 'package:medbuddy_frontend/controls/check_nearby_hospital_control.dart';
 import 'package:medbuddy_frontend/controls/check_nearby_pharmacy_control.dart';
 import 'package:medbuddy_frontend/entities/nearby_pharmacy_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
@@ -89,9 +90,11 @@ Widget _app(
   CheckNearbyPharmacy control,
   _MapProbe map, {
   String language = 'ko',
+  bool hospitals = false,
 }) {
   return MaterialApp(
     home: CheckNearbyPharmacyUI(
+      hospitals: hospitals,
       control: control,
       mapBuilder: map.build,
       userSetting: UserSetting(fontSize: 24, language: language),
@@ -102,6 +105,87 @@ Widget _app(
 // 함수이름: main
 // 함수역할: 검색 지역과 위치 실패의 회귀 검증을 등록한다. 매개변수: 없음. 반환값: 없음.
 void main() {
+  // 결과가 있으면 병원은 300m, 약국은 20km에 머무르고 수동 지역·새로고침은 반경을 보존한다.
+  for (final hospitals in [true, false]) {
+    for (final fallback in [false, true]) {
+      testWidgets(
+        'initial radius and GPS reset: hospitals=$hospitals fallback=$fallback',
+        (tester) async {
+          final location = _Location();
+          if (fallback) location.error = StateError('GPS unavailable');
+          final requests = <Uri>[];
+          final client = MockClient((request) async {
+            requests.add(request.url);
+            return http.Response(
+              '{"data":[{"hospital_id":"A1","pharmacy_id":"A1","name":"Sample","latitude":37.56,"longitude":126.98}]}',
+              200,
+            );
+          });
+          final control = hospitals
+              ? CheckNearbyHospital(locationBoundary: location, client: client)
+              : CheckNearbyPharmacy(locationBoundary: location, client: client);
+          addTearDown(control.dispose);
+          addTearDown(client.close);
+          final map = _MapProbe();
+          final initialRadius = hospitals ? .3 : 20.0;
+          await tester.pumpWidget(_app(control, map, hospitals: hospitals));
+          await tester.pumpAndSettle();
+          if (hospitals) {
+            expect(requests, isEmpty);
+            expect(location.calls, 0);
+            await tester.tap(
+              find.byKey(const ValueKey('hospital-department-option-')),
+            );
+            await tester.pumpAndSettle();
+          }
+          expect(
+            requests.single.path,
+            hospitals ? '/api/v1/hospitals/nearby' : '/api/v1/pharmacy/nearby',
+          );
+          expect(
+            requests.single.queryParameters['max_distance_km'],
+            initialRadius.toStringAsFixed(1),
+          );
+          expect(map.area.radiusKm, initialRadius);
+          expect(map.area.isFallback, fallback);
+          if (!hospitals) {
+            expect(
+              find.byKey(const Key('hospital-search-notice')),
+              findsNothing,
+            );
+          }
+
+          final search = map.search(_mapArea);
+          await tester.pumpAndSettle();
+          expect(await search, isTrue);
+          expect(requests.last.queryParameters['max_distance_km'], '3.2');
+          expect(location.calls, 1);
+          if (control is CheckNearbyHospital) control.department = 'D001';
+          await tester.tap(
+            find.byTooltip(hospitals ? '병원 목록 새로고침' : '약국 목록 새로고침'),
+          );
+          await tester.pumpAndSettle();
+          expect(requests.last.queryParameters['max_distance_km'], '3.2');
+          expect(map.area, same(_mapArea));
+          if (hospitals) {
+            expect(requests.last.queryParameters['department'], 'D001');
+          }
+
+          map.locate();
+          await tester.pumpAndSettle();
+          expect(location.calls, 2);
+          expect(
+            requests.last.queryParameters['max_distance_km'],
+            initialRadius.toStringAsFixed(1),
+          );
+          expect(map.area.radiusKm, initialRadius);
+          expect(map.area.isFallback, fallback);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
   // 함수이름: 명시적 지도 지역 테스트
   // 함수역할: 지도에서 고른 좌표·반경을 보내며 GPS를 다시 조회하지 않는지 확인한다.
   // 매개변수: 없음. 반환값: 검증 완료.

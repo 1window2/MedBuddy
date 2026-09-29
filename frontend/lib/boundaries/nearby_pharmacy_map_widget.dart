@@ -2,6 +2,7 @@
 // 역할: 약국 좌표와 선택 상태를 반영하는 네이버 지도를 제공한다.
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -226,7 +227,7 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
                     widget.searchArea.center.latitude,
                     widget.searchArea.center.longitude,
                   ),
-                  zoom: 13,
+                  zoom: _searchAreaZoom,
                 ),
                 minZoom: 5,
                 maxZoom: 19,
@@ -528,10 +529,17 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
           widget.searchArea.center.latitude,
           widget.searchArea.center.longitude,
         ),
-        zoom: 13,
+        zoom: _searchAreaZoom,
       ),
     );
   }
+
+  // 병원 지도는 실제 검색 반경에 맞춰 확대하고 약국의 기존 배율은 유지한다.
+  double get _searchAreaZoom => widget.hospitals
+      ? (14 - math.log(widget.searchArea.radiusKm) / math.ln2)
+            .clamp(5, 18)
+            .toDouble()
+      : 13;
 
   // 함수이름: _findSelectedPharmacy
   // 함수역할: 현재 선택 ID에 해당하는 약국을 목록에서 찾고 없으면 null을 반환한다.

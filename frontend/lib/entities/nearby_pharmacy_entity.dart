@@ -374,6 +374,8 @@ class NearbyPharmacySearchResult {
   final bool catalogIsStale;
   final String holidayScheduleStatus;
   final bool searchTruncated;
+  // 병원 검색의 주소 표본 한계이며 실제 목록 조회 제한과 구별한다.
+  final bool regionScopeUncertain;
 
   // Function Name: NearbyPharmacySearchResult
   // Description: Captures the pharmacy list together with effective search time, filter mode, and catalog freshness and holiday status.
@@ -395,5 +397,6 @@ class NearbyPharmacySearchResult {
     required this.catalogIsStale,
     required this.holidayScheduleStatus,
     this.searchTruncated = false,
+    this.regionScopeUncertain = false,
   });
 }

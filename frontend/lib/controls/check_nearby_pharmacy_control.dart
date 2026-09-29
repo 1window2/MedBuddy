@@ -167,6 +167,7 @@ class CheckNearbyPharmacy {
         holidayScheduleStatus:
             decoded['holiday_schedule_status']?.toString() ?? 'not_applicable',
         searchTruncated: decoded['search_truncated'] == true,
+        regionScopeUncertain: decoded['region_scope_uncertain'] == true,
       );
     } on DeviceLocationException {
       rethrow;

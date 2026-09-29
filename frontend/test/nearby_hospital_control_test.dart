@@ -35,6 +35,202 @@ http.Response _response({Object? data = const []}) => http.Response(
 );
 
 void main() {
+  // 지역 표본의 한계를 실제 조회 제한과 별개로 읽고 구버전 응답도 허용한다.
+  for (final scope in [null, false, true]) {
+    for (final truncated in [false, true]) {
+      test(
+        'region scope $scope is independent of truncation $truncated',
+        () async {
+          final control = CheckNearbyHospital(
+            client: MockClient(
+              (_) async => http.Response(
+                jsonEncode({
+                  'data': [],
+                  'search_truncated': truncated,
+                  'region_scope_uncertain': ?scope,
+                }),
+                200,
+              ),
+            ),
+          );
+          addTearDown(control.dispose);
+          final result = await control.requestNearbyPharmacySearch(
+            searchArea: _area,
+          );
+          expect(result.searchTruncated, truncated);
+          expect(result.regionScopeUncertain, scope == true);
+        },
+      );
+    }
+  }
+
+  // 300m부터 결과가 있는 첫 범위에서 멈추고, 끝까지 비어 있어도 2km까지만 조회한다.
+  for (final foundAt in <double?>[.3, .5, 1, 2, null]) {
+    test('empty nearby search widens until $foundAt', () async {
+      final requests = <Uri>[];
+      final location = _Location()..result.complete(_area.center);
+      final time = DateTime(2026, 9, 29, 10);
+      final control = CheckNearbyHospital(
+        department: 'D013',
+        locationBoundary: location,
+        client: MockClient((request) async {
+          requests.add(request.url);
+          final radius = double.parse(
+            request.url.queryParameters['max_distance_km']!,
+          );
+          return _response(
+            data: radius == foundAt
+                ? [
+                    {'hospital_id': 'A1', 'name': 'Sample'},
+                  ]
+                : [],
+          );
+        }),
+      );
+      addTearDown(control.dispose);
+      final result = await control.requestNearbyPharmacySearch(
+        searchMode: PharmacySearchMode.all,
+        targetDateTime: time,
+      );
+      final expected = [
+        .3,
+        .5,
+        1.0,
+        2.0,
+      ].where((r) => foundAt == null || r <= foundAt).toList();
+      expect(
+        requests.map(
+          (uri) => double.parse(uri.queryParameters['max_distance_km']!),
+        ),
+        expected,
+      );
+      expect(result.searchArea!.radiusKm, expected.last);
+      expect(result.searchArea!.isMapArea, isFalse);
+      expect(
+        requests.every(
+          (uri) =>
+              uri.queryParameters['department'] == 'D013' &&
+              uri.queryParameters['latitude'] == '37.5500000' &&
+              uri.queryParameters['longitude'] == '126.9200000' &&
+              uri.queryParameters['target_datetime'] == time.toIso8601String(),
+        ),
+        isTrue,
+      );
+    });
+  }
+
+  // 직접 고른 지도는 좁더라도 자동으로 확장하지 않는다.
+  test('empty manually selected 300m area is preserved', () async {
+    var calls = 0;
+    final area = PharmacySearchArea(
+      center: _area.center,
+      radiusKm: .3,
+      isMapArea: true,
+    );
+    final control = CheckNearbyHospital(
+      client: MockClient((_) async {
+        calls++;
+        return _response();
+      }),
+    );
+    addTearDown(control.dispose);
+    final result = await control.requestNearbyPharmacySearch(searchArea: area);
+    expect(calls, 1);
+    expect(result.searchArea, same(area));
+  });
+
+  // 위치 대체 상태와 중심을 유지해 보호자의 실제 위치로 오인하지 않게 한다.
+  test('automatic expansion preserves fallback source', () async {
+    final control = CheckNearbyHospital(
+      client: MockClient((_) async => _response()),
+    );
+    addTearDown(control.dispose);
+    final result = await control.requestNearbyPharmacySearch(
+      searchArea: PharmacySearchArea(
+        center: _area.center,
+        radiusKm: .3,
+        isFallback: true,
+      ),
+    );
+    expect(result.searchArea!.radiusKm, 2);
+    expect(result.searchArea!.isFallback, isTrue);
+    expect(result.searchArea!.center, _area.center);
+  });
+
+  // 운영 판정 장애와 날짜 조건 불일치를 거리 부족으로 오인하지 않는다.
+  for (final unknown in [true, false]) {
+    test('calendar condition prevents expansion: unknown=$unknown', () async {
+      var calls = 0;
+      final control = CheckNearbyHospital(
+        client: MockClient((_) async {
+          calls++;
+          return http.Response(
+            jsonEncode({
+              'data': [],
+              'holiday_schedule_status': unknown ? 'unknown' : 'not_applicable',
+            }),
+            200,
+          );
+        }),
+      );
+      addTearDown(control.dispose);
+      await control.requestNearbyPharmacySearch(
+        searchArea: PharmacySearchArea(center: _area.center, radiusKm: .3),
+        targetDateTime: DateTime(2026, 9, 29),
+        searchMode: unknown
+            ? PharmacySearchMode.openAtTime
+            : PharmacySearchMode.weekendHoliday,
+      );
+      expect(calls, 1);
+    });
+  }
+
+  // 확장 도중 장애도 정상 빈 결과로 숨기지 않고 추가 요청을 멈춘다.
+  test('expansion failure is propagated without further requests', () async {
+    var calls = 0;
+    final control = CheckNearbyHospital(
+      client: MockClient((_) async {
+        calls++;
+        return calls == 1 ? _response() : http.Response('{}', 503);
+      }),
+    );
+    addTearDown(control.dispose);
+    await expectLater(
+      control.requestNearbyPharmacySearch(
+        searchArea: PharmacySearchArea(center: _area.center, radiusKm: .3),
+      ),
+      throwsStateError,
+    );
+    expect(calls, 2);
+  });
+
+  // 화면 종료 또는 새 검색이 시작되면 이전 응답이 다음 반경 요청을 만들지 않는다.
+  for (final dispose in [true, false]) {
+    test('obsolete search does not expand: dispose=$dispose', () async {
+      final gate = Completer<http.Response>();
+      var calls = 0;
+      final control = CheckNearbyHospital(
+        client: MockClient((_) async {
+          calls++;
+          return calls == 1 ? gate.future : _response();
+        }),
+      );
+      final pending = control.requestNearbyPharmacySearch(
+        searchArea: PharmacySearchArea(center: _area.center, radiusKm: .3),
+      );
+      await Future<void>.delayed(Duration.zero);
+      if (dispose) {
+        control.dispose();
+      } else {
+        await control.requestNearbyPharmacySearch(searchArea: _area);
+      }
+      gate.complete(_response());
+      await pending;
+      expect(calls, dispose ? 1 : 2);
+      if (!dispose) control.dispose();
+    });
+  }
+
   // 진료과목과 운영 조건은 독립적으로 서버에 전달되어야 한다.
   test(
     'hospital request combines department, operating filter and map area',
