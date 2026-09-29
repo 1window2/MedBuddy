@@ -4,6 +4,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/medbuddy_page_header.dart';
 import 'package:flutter/rendering.dart';
 
@@ -35,7 +36,8 @@ enum _PharmacyDirectionsChoice { installedMapApp, googleMaps, copyAddress }
 
 const _refreshCooldownDuration = Duration(seconds: 10);
 const _mapDistanceGuideDuration = Duration(seconds: 4);
-const _hospitalSearchGuideDuration = Duration(seconds: 4);
+const _hospitalSearchGuidePreference = 'medbuddy.hospital_search_guide_v1';
+const _hospitalWideSearchRadiusKm = 3.0;
 
 // 국립중앙의료원 진료과목 코드를 검색 요청과 표시 문구에 함께 사용한다.
 const _hospitalDepartments = <String, (String, String)>{
@@ -227,9 +229,8 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   Timer? _mapDistanceGuideTimer;
   bool _hasShownMapDistanceGuide = false;
   bool _showMapDistanceGuide = false;
-  Timer? _hospitalSearchGuideTimer;
-  bool _hasShownHospitalSearchGuide = false;
-  bool _showHospitalSearchGuide = false;
+  bool _showHospitalFirstGuide = false;
+  bool _hasSelectedHospitalDepartment = false;
   _PharmacyFilter _filter = _PharmacyFilter.openNow;
   String? _selectedPharmacyId;
   DateTime _targetDateTime = DateTime.now();
@@ -238,6 +239,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   DateTime _now() => widget.clock?.call() ?? DateTime.now();
   bool _catalogIsStale = false;
   bool _searchTruncated = false;
+  bool _regionScopeUncertain = false;
   String _holidayScheduleStatus = 'not_applicable';
   DateTime? _lastRefreshedAt;
   bool _selectedPhoneVerified = false;
@@ -248,6 +250,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   bool _resumeRefreshPending = false;
   DateTime? _lastSearchStartedAt;
 
+  bool get _awaitingHospitalDepartment =>
+      widget.hospitals && !_hasSelectedHospitalDepartment;
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
@@ -256,7 +261,11 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     }
     if (state != AppLifecycleState.resumed || !_wasBackgrounded) return;
     _wasBackgrounded = false;
-    if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
+    if (!mounted ||
+        _awaitingHospitalDepartment ||
+        ModalRoute.of(context)?.isCurrent != true) {
+      return;
+    }
     final now = _now();
     final previous = _lastSearchStartedAt;
     final stale =
@@ -283,6 +292,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       ? _NearbyHospitalText(
           widget.userSetting.language,
           searchTruncated: _searchTruncated,
+          regionScopeUncertain: _regionScopeUncertain,
           calendarUnknown: _holidayScheduleStatus == 'unknown',
           requiresWeekendDate: _requiresHospitalHolidayDate,
         )
@@ -310,6 +320,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     _control =
         widget.control ??
         (widget.hospitals ? CheckNearbyHospital() : CheckNearbyPharmacy());
+    _isLoading = !widget.hospitals;
     _favoriteService =
         widget.favoriteService ??
         PharmacyFavoriteService(
@@ -323,12 +334,13 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_loadFavorites());
-      unawaited(_loadPharmacies());
+      if (!widget.hospitals) unawaited(_loadPharmacies());
+      if (widget.hospitals) unawaited(_loadHospitalFirstGuide());
     });
   }
 
   // 함수이름: dispose
-  // 함수역할: 새로고침·거리·부분 조회 안내 타이머와 _control을 정리하고 화면 수명 종료 처리를 수행한다.
+  // 함수역할: 새로고침·거리 안내 타이머와 _control을 정리하고 화면 수명 종료 처리를 수행한다.
   // 매개변수:
   // - 없음.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
@@ -337,7 +349,6 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     WidgetsBinding.instance.removeObserver(this);
     _refreshCooldownTimer?.cancel();
     _mapDistanceGuideTimer?.cancel();
-    _hospitalSearchGuideTimer?.cancel();
     if (_ownsControl) {
       _control.dispose();
     }
@@ -353,7 +364,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     PharmacySearchArea? searchArea,
     bool locate = false,
   }) async {
-    if (!mounted) {
+    if (!mounted || _awaitingHospitalDepartment) {
       return false;
     }
     final generation = ++_searchGeneration;
@@ -377,12 +388,22 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     try {
       final result = await _control.requestNearbyPharmacySearch(
         searchArea: requestedArea,
+        // 최초 조회와 내 위치 재검색만 좁힌다. 지도에서 고른 지역은 우선 유지한다.
+        maxDistanceKm: widget.hospitals
+            ? CheckNearbyHospital.defaultRadiusKm
+            : 20,
         searchMode: _searchModeForFilter(_filter),
         targetDateTime: _targetDateTime,
       );
       if (!mounted || generation != _searchGeneration) {
         return false;
       }
+      final expanded =
+          widget.hospitals &&
+          result.searchArea != null &&
+          !result.searchArea!.isMapArea &&
+          result.searchArea!.radiusKm >
+              (requestedArea?.radiusKm ?? CheckNearbyHospital.defaultRadiusKm);
       // 함수이름: _loadPharmacies.setState callback
       // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도의 입력·요청 상태를 `_pharmacies = result.data; _catalogIsStale = result.catalogIsStale; _holidayScheduleStatus = result.holidayScheduleStatus`로 갱신한다.
       // 매개변수:
@@ -397,7 +418,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
         } else if (_searchArea!.isFallback) {
           _deviceLocation = null;
         }
-        if (locate) _centerRevision++;
+        if (locate || expanded) _centerRevision++;
         if (searchArea != null || locate) {
           _selectedPharmacyId = null;
           _selectedPhoneVerified = false;
@@ -405,7 +426,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
         _pharmacies = result.data;
         _catalogIsStale = result.catalogIsStale;
         _searchTruncated = result.searchTruncated;
-        _updateHospitalSearchGuide();
+        _regionScopeUncertain = result.regionScopeUncertain;
         _holidayScheduleStatus = result.holidayScheduleStatus;
         final selectedStillExists = result.data.any(
           // 함수이름: _loadPharmacies.any callback
@@ -421,6 +442,22 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
         }
         _lastRefreshedAt = _now();
       });
+      if (expanded) {
+        final radius = result.searchArea!.radiusKm;
+        final distance = radius < 1
+            ? '${(radius * 1000).round()}m'
+            : '${radius.toStringAsFixed(0)}km';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _text.isEnglish
+                  ? 'Search expanded to $distance.'
+                  : '반경 $distance까지 넓혀 검색했어요.',
+            ),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
       return true;
     } on DeviceLocationException catch (error) {
       if (mounted && generation == _searchGeneration) {
@@ -478,19 +515,88 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     });
   }
 
-  // 부분 조회 상태는 유지하되 상단 안내만 화면 진입당 한 번, 4초간 표시한다.
-  void _updateHospitalSearchGuide() {
-    if (!widget.hospitals || !_searchTruncated) {
-      _hospitalSearchGuideTimer?.cancel();
-      _showHospitalSearchGuide = false;
-      return;
+  // 최초 안내 확인 여부는 기기에 저장하며 실제 부분 조회 경고와 구분한다.
+  Future<void> _loadHospitalFirstGuide() async {
+    var seen = false;
+    try {
+      seen =
+          (await SharedPreferences.getInstance()).getBool(
+            _hospitalSearchGuidePreference,
+          ) ??
+          false;
+    } catch (_) {
+      // 저장소 장애가 검색을 막거나 제한 안내를 숨기지 않게 한다.
     }
-    if (_hasShownHospitalSearchGuide) return;
-    _hasShownHospitalSearchGuide = true;
-    _showHospitalSearchGuide = true;
-    _hospitalSearchGuideTimer = Timer(_hospitalSearchGuideDuration, () {
-      if (mounted) setState(() => _showHospitalSearchGuide = false);
-    });
+    if (mounted) setState(() => _showHospitalFirstGuide = !seen);
+  }
+
+  // 닫기 버튼은 최초 안내에만 제공하며 경고에는 표시하지 않는다.
+  Future<void> _acknowledgeHospitalGuide() async {
+    setState(() => _showHospitalFirstGuide = false);
+    try {
+      await (await SharedPreferences.getInstance()).setBool(
+        _hospitalSearchGuidePreference,
+        true,
+      );
+    } catch (_) {
+      // 다음 진입에서 안내가 다시 보이더라도 조회 결과는 그대로 유지한다.
+    }
+  }
+
+  // 실제 검색 반경과 응답 상태를 사용하며 줌 수준만으로 완전 조회를 판단하지 않는다.
+  Widget _buildHospitalSearchNotice() {
+    final wide = (_searchArea?.radiusKm ?? 0) >= _hospitalWideSearchRadiusKm;
+    if (!widget.hospitals ||
+        _errorMessage != null ||
+        (!_showHospitalFirstGuide && !_searchTruncated && !wide)) {
+      return const SizedBox.shrink();
+    }
+    final english = widget.userSetting.language.toLowerCase().startsWith('en');
+    final message = _searchTruncated
+        ? (english
+              ? 'Some hospital data is unavailable. Try again.'
+              : '일부 병원 정보를 확인하지 못했어요. 다시 검색하거나 조회 조건을 바꿔보세요.')
+        : wide
+        ? (english
+              ? 'This search covers a wide area. Some hospitals may not appear.'
+              : '검색 범위가 넓어 일부 병원이 표시되지 않을 수 있어요.')
+        : (english
+              ? 'Hospital listings and hours may be incomplete or outdated.'
+              : '공공데이터에 일부 병원이 누락되거나 진료시간이 실제와 다를 수 있어요.');
+    return Padding(
+      key: const Key('hospital-search-notice'),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 2, right: 8),
+            child: Icon(
+              Icons.info_outline,
+              size: 18,
+              color: MedBuddyColors.textMuted,
+            ),
+          ),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                fontSize: 13,
+                height: 1.35,
+                color: MedBuddyColors.textMuted,
+              ),
+            ),
+          ),
+          if (_showHospitalFirstGuide && !_searchTruncated && !wide)
+            IconButton(
+              key: const Key('hospital-guide-acknowledge'),
+              tooltip: english ? 'Dismiss introduction' : '첫 안내 닫기',
+              onPressed: _acknowledgeHospitalGuide,
+              icon: const Icon(Icons.close, size: 20),
+            ),
+        ],
+      ),
+    );
   }
 
   // 함수이름: _searchMapArea
@@ -694,8 +800,20 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
         closeLabel: _text.close,
       ),
     );
-    if (!mounted || selected == null || selected == department) return;
+    if (!mounted || selected == null) return;
+    await _selectHospitalDepartment(selected);
+  }
+
+  // 최초 진료과 선택 전에는 GPS·병원 API를 호출하지 않는다. 전체도 명시적 선택으로만 조회한다.
+  Future<void> _selectHospitalDepartment(String selected) async {
+    final control = _control;
+    if (!mounted || control is! CheckNearbyHospital || _isLoading) return;
+    if (_hasSelectedHospitalDepartment &&
+        selected == (control.department ?? '')) {
+      return;
+    }
     setState(() {
+      _hasSelectedHospitalDepartment = true;
       control.department = selected.isEmpty ? null : selected;
       _selectedPharmacyId = null;
       _selectedPhoneVerified = false;
@@ -922,11 +1040,12 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       backTooltip: text.back,
       onBackRequested: _handleBack,
       actions: [
-        IconButton(
-          tooltip: text.refreshTooltip,
-          onPressed: _requestRefresh,
-          icon: const Icon(Icons.refresh),
-        ),
+        if (!_awaitingHospitalDepartment)
+          IconButton(
+            tooltip: text.refreshTooltip,
+            onPressed: _requestRefresh,
+            icon: const Icon(Icons.refresh),
+          ),
       ],
     );
   }
@@ -937,209 +1056,239 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   // - 없음.
   // 반환값: 위치 권한·조회 조건에 따른 약국 목록과 지도에 쓰는 위젯 트리.
   Widget _buildMapFirstBody() {
+    if (_awaitingHospitalDepartment) {
+      return _HospitalDepartmentSheet(
+        selected: null,
+        english: _text.isEnglish,
+        closeLabel: _text.close,
+        embedded: true,
+        onSelected: (code) => unawaited(_selectHospitalDepartment(code)),
+      );
+    }
     final pharmacies = _visiblePharmacies;
     final selected = _findSelectedPharmacy(pharmacies);
     if (_searchArea == null) {
       return _buildBody();
     }
     final english = widget.userSetting.language.toLowerCase().startsWith('en');
-    return Column(
-      children: [
-        if (widget.selectionMode)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
-            child: Text(
-              _searchArea!.isFallback
-                  ? (english
-                        ? 'Search area: Hongik University, Seoul (location unavailable)'
-                        : '검색 기준: 홍익대학교 서울캠퍼스 (위치 확인 불가)')
-                  : _searchArea!.isMapArea
-                  ? (english
-                        ? 'Search area: selected map area'
-                        : '검색 기준: 선택한 지도 지역')
-                  : (english
-                        ? 'Search area: this device location'
-                        : '검색 기준: 이 기기 위치'),
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 13,
-                color: MedBuddyColors.textMuted,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Column(
+          children: [
+            // 큰 글씨에서도 상단 조건을 스크롤해 확인하고 지도 공간을 유지한다.
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: widget.hospitals
+                    ? constraints.maxHeight * .45
+                    : double.infinity,
               ),
-            ),
-          ),
-        if (_showHospitalSearchGuide ||
-            _searchArea!.isFallback ||
-            (_searchArea!.isMapArea && _showMapDistanceGuide) ||
-            _errorMessage != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
-            child: Text(
-              _errorMessage != null
-                  ? (english
-                        ? 'Search failed. Move the map to try again, or refresh.'
-                        : '검색하지 못했어요. 지도를 옮겨 다시 검색하거나 새로고침해주세요.')
-                  : _showHospitalSearchGuide
-                  ? (english
-                        ? 'Only some nearby hospitals were checked. Move the map to search again.'
-                        : '가까운 병원 일부를 조회했습니다. 지도를 옮겨 다시 검색해 주세요.')
-                  : _searchArea!.isFallback
-                  ? (english
-                        ? (widget.hospitals
-                              ? 'Location unavailable. Near Hongik University, Seoul.'
-                              : 'Location unavailable. Searching near Hongik University, Seoul.')
-                        : '위치를 확인하지 못해 홍익대학교 서울캠퍼스 기준으로 검색했어요.')
-                  : (english
-                        ? 'Distances are measured from the searched map center.'
-                        : '거리는 검색한 지도 중심을 기준으로 표시해요.'),
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                height: 1.35,
-                letterSpacing: 0,
-                color: MedBuddyColors.textMuted,
-              ),
-            ),
-          ),
-        if (!_listExpanded && widget.hospitals)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-            child: _buildHospitalFilters(map: true),
-          ),
-        if (!_listExpanded && !widget.hospitals)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-            child: Center(
-              child: Tooltip(
-                message: _text.selectedFilter(_filterLabel(_filter)),
-                child: OutlinedButton.icon(
-                  key: const Key('pharmacy-map-filter-selector'),
-                  onPressed: _isLoading ? null : _showFilterPicker,
-                  icon: const Icon(Icons.filter_alt_outlined),
-                  label: Text(_text.filterPickerTitle),
-                ),
-              ),
-            ),
-          ),
-        Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final showDetails = !_listExpanded && selected != null;
-              final bottomInset = showDetails
-                  ? constraints.maxHeight * _detailExtent.clamp(0.0, .92)
-                  : 0.0;
-              return Stack(
-                children: [
-                  Positioned.fill(
-                    child: ExcludeSemantics(
-                      excluding: _listExpanded || _isLoading,
-                      child: IgnorePointer(
-                        ignoring: _listExpanded || _isLoading,
-                        child: _buildPharmacyMap(
-                          pharmacies,
-                          bottomInset: bottomInset,
-                          showControls:
-                              constraints.maxHeight - bottomInset >= 128,
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    if (widget.selectionMode)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
+                        child: Text(
+                          _searchArea!.isFallback
+                              ? (english
+                                    ? 'Search area: Hongik University, Seoul (location unavailable)'
+                                    : '검색 기준: 홍익대학교 서울캠퍼스 (위치 확인 불가)')
+                              : _searchArea!.isMapArea
+                              ? (english
+                                    ? 'Search area: selected map area'
+                                    : '검색 기준: 선택한 지도 지역')
+                              : (english
+                                    ? 'Search area: this device location'
+                                    : '검색 기준: 이 기기 위치'),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: MedBuddyColors.textMuted,
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                  if (showDetails)
-                    _PharmacyDetailsSheet(
-                      key: ValueKey(
-                        'pharmacy-sheet-${selected.pharmacyId}-$_centerRevision',
-                      ),
-                      isEnglish: english,
-                      hospitals: widget.hospitals,
-                      onExtentChanged: (extent) {
-                        if ((_detailExtent - extent).abs() > .001) {
-                          setState(() => _detailExtent = extent);
-                        }
-                      },
-                      contentBuilder: (context, compact) => Column(
-                        children: [
-                          _PharmacyCard(
-                            pharmacy: selected,
-                            text: _text,
-                            usesSelectedTime:
-                                _filter != _PharmacyFilter.openNow,
-                            isSelected: true,
-                            isFavorite: _favoritePharmacyIds.contains(
-                              selected.pharmacyId,
-                            ),
-                            embedded: true,
-                            compact: compact,
-                            onClose: _closePharmacyDetails,
-                            onSelected: () => _selectPharmacy(selected),
-                            onFavoriteRequested: _canChangeFavorite
-                                ? () => _toggleFavorite(selected)
-                                : null,
-                            onPhoneRequested: selected.telephone.isEmpty
-                                ? null
-                                : () => _requestPhoneCall(selected),
-                            onDirectionsRequested: () =>
-                                _requestDirections(selected),
+                    if (_searchArea!.isFallback ||
+                        (_searchArea!.isMapArea && _showMapDistanceGuide) ||
+                        _errorMessage != null)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+                        child: Text(
+                          _errorMessage != null
+                              ? (english
+                                    ? 'Search failed. Move the map to try again, or refresh.'
+                                    : '검색하지 못했어요. 지도를 옮겨 다시 검색하거나 새로고침해주세요.')
+                              : _searchArea!.isFallback
+                              ? (english
+                                    ? (widget.hospitals
+                                          ? 'Location unavailable. Near Hongik University, Seoul.'
+                                          : 'Location unavailable. Searching near Hongik University, Seoul.')
+                                    : '위치를 확인하지 못해 홍익대학교 서울캠퍼스 기준으로 검색했어요.')
+                              : (english
+                                    ? 'Distances are measured from the searched map center.'
+                                    : '거리는 검색한 지도 중심을 기준으로 표시해요.'),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            height: 1.35,
+                            letterSpacing: 0,
+                            color: MedBuddyColors.textMuted,
                           ),
-                          if (widget.selectionMode)
-                            _buildSelectionFooter(pharmacies, embedded: true),
-                        ],
+                        ),
                       ),
-                    ),
-                  if (_listExpanded)
-                    Positioned.fill(
-                      top: 12,
-                      child: _PharmacyListPanel(
-                        header: _buildListStatus(),
-                        showMapLabel: english ? 'Show map' : '지도 크게 보기',
-                        onDismissed: _handleBack,
-                        child: _buildBody(showStatus: false),
+                    if (!_listExpanded && widget.hospitals)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+                        child: _buildHospitalFilters(map: true),
                       ),
-                    ),
-                  if (_isLoading)
-                    const Positioned(
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      child: LinearProgressIndicator(
-                        color: MedBuddyColors.primary,
+                    if (!_listExpanded && !widget.hospitals)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+                        child: Center(
+                          child: Tooltip(
+                            message: _text.selectedFilter(
+                              _filterLabel(_filter),
+                            ),
+                            child: OutlinedButton.icon(
+                              key: const Key('pharmacy-map-filter-selector'),
+                              onPressed: _isLoading ? null : _showFilterPicker,
+                              icon: const Icon(Icons.filter_alt_outlined),
+                              label: Text(_text.filterPickerTitle),
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
-                ],
-              );
-            },
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              key: const Key('pharmacy-list-toggle'),
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  vertical: 16,
-                  horizontal: 16,
+                  ],
                 ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              onPressed: _isLoading
-                  ? null
-                  : () => setState(() {
-                      _listExpanded = !_listExpanded;
-                      _detailExtent = _PharmacyDetailsSheet.initialExtent;
-                    }),
-              icon: Icon(_listExpanded ? Icons.map_outlined : Icons.list_alt),
-              label: Text(
-                _listExpanded
-                    ? (english ? 'Show map' : '지도 크게 보기')
-                    : _text.showList(pharmacies.length),
               ),
             ),
-          ),
-        ),
-      ],
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final showDetails = !_listExpanded && selected != null;
+                  final bottomInset = showDetails
+                      ? constraints.maxHeight * _detailExtent.clamp(0.0, .92)
+                      : 0.0;
+                  return Stack(
+                    children: [
+                      Positioned.fill(
+                        child: ExcludeSemantics(
+                          excluding: _listExpanded || _isLoading,
+                          child: IgnorePointer(
+                            ignoring: _listExpanded || _isLoading,
+                            child: _buildPharmacyMap(
+                              pharmacies,
+                              bottomInset: bottomInset,
+                              showControls:
+                                  constraints.maxHeight - bottomInset >= 128,
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (showDetails)
+                        _PharmacyDetailsSheet(
+                          key: ValueKey(
+                            'pharmacy-sheet-${selected.pharmacyId}-$_centerRevision',
+                          ),
+                          isEnglish: english,
+                          hospitals: widget.hospitals,
+                          onExtentChanged: (extent) {
+                            if ((_detailExtent - extent).abs() > .001) {
+                              setState(() => _detailExtent = extent);
+                            }
+                          },
+                          contentBuilder: (context, compact) => Column(
+                            children: [
+                              _PharmacyCard(
+                                pharmacy: selected,
+                                text: _text,
+                                usesSelectedTime:
+                                    _filter != _PharmacyFilter.openNow,
+                                isSelected: true,
+                                isFavorite: _favoritePharmacyIds.contains(
+                                  selected.pharmacyId,
+                                ),
+                                embedded: true,
+                                compact: compact,
+                                onClose: _closePharmacyDetails,
+                                onSelected: () => _selectPharmacy(selected),
+                                onFavoriteRequested: _canChangeFavorite
+                                    ? () => _toggleFavorite(selected)
+                                    : null,
+                                onPhoneRequested: selected.telephone.isEmpty
+                                    ? null
+                                    : () => _requestPhoneCall(selected),
+                                onDirectionsRequested: () =>
+                                    _requestDirections(selected),
+                              ),
+                              if (widget.selectionMode)
+                                _buildSelectionFooter(
+                                  pharmacies,
+                                  embedded: true,
+                                ),
+                            ],
+                          ),
+                        ),
+                      if (_listExpanded)
+                        Positioned.fill(
+                          top: 12,
+                          child: _PharmacyListPanel(
+                            header: _buildListStatus(),
+                            showMapLabel: english ? 'Show map' : '지도 크게 보기',
+                            onDismissed: _handleBack,
+                            child: _buildBody(showStatus: false),
+                          ),
+                        ),
+                      if (_isLoading)
+                        const Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          child: LinearProgressIndicator(
+                            color: MedBuddyColors.primary,
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+            ),
+            _buildHospitalSearchNotice(),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  key: const Key('pharmacy-list-toggle'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 16,
+                      horizontal: 16,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  onPressed: _isLoading
+                      ? null
+                      : () => setState(() {
+                          _listExpanded = !_listExpanded;
+                          _detailExtent = _PharmacyDetailsSheet.initialExtent;
+                        }),
+                  icon: Icon(
+                    _listExpanded ? Icons.map_outlined : Icons.list_alt,
+                  ),
+                  label: Text(
+                    _listExpanded
+                        ? (english ? 'Show map' : '지도 크게 보기')
+                        : _text.showList(pharmacies.length),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -3186,12 +3335,14 @@ class _NearbyPharmacyText {
 // 공통 동작 문구는 재사용하고 병원 진료·출처 문구만 구분한다.
 class _NearbyHospitalText extends _NearbyPharmacyText {
   final bool searchTruncated;
+  final bool regionScopeUncertain;
   final bool calendarUnknown;
   final bool requiresWeekendDate;
 
   const _NearbyHospitalText(
     super.language, {
     this.searchTruncated = false,
+    this.regionScopeUncertain = false,
     this.calendarUnknown = false,
     this.requiresWeekendDate = false,
   });
@@ -3202,6 +3353,9 @@ class _NearbyHospitalText extends _NearbyPharmacyText {
   String get _noPartialMatches => isEnglish
       ? 'No matches among the hospitals checked'
       : '조회한 병원 중 조건에 맞는 결과가 없습니다';
+
+  // 지역 탐색이 표본인 경우에도 빈 결과를 주변 병원 전체의 부재로 단정하지 않는다.
+  bool get _incompleteCoverage => searchTruncated || regionScopeUncertain;
 
   String get _consultationUnavailable => isEnglish
       ? 'Consultation status cannot be verified'
@@ -3271,7 +3425,7 @@ class _NearbyHospitalText extends _NearbyPharmacyText {
   @override
   String get noOpenPharmacy => calendarUnknown
       ? _consultationUnavailable
-      : searchTruncated
+      : _incompleteCoverage
       ? _noPartialMatches
       : isEnglish
       ? 'No open hospitals were found in this search area'
@@ -3279,7 +3433,7 @@ class _NearbyHospitalText extends _NearbyPharmacyText {
   @override
   String get noLateNightPharmacy => calendarUnknown
       ? _consultationUnavailable
-      : searchTruncated
+      : _incompleteCoverage
       ? _noPartialMatches
       : isEnglish
       ? 'No hospitals with consultation hours after 6 PM were found in this search area'
@@ -3289,13 +3443,13 @@ class _NearbyHospitalText extends _NearbyPharmacyText {
       ? _chooseWeekendDate
       : calendarUnknown
       ? _consultationUnavailable
-      : searchTruncated
+      : _incompleteCoverage
       ? _noPartialMatches
       : isEnglish
       ? 'No hospitals with weekend or holiday hours were found in this search area'
       : '검색한 지역에 주말·공휴일 진료 병원이 없습니다';
   @override
-  String get noNearbyPharmacy => searchTruncated
+  String get noNearbyPharmacy => _incompleteCoverage
       ? _noPartialMatches
       : isEnglish
       ? 'No nearby hospitals were found'
@@ -3354,7 +3508,7 @@ class _NearbyHospitalText extends _NearbyPharmacyText {
       ? _chooseWeekendDate
       : calendarUnknown
       ? _consultationUnavailable
-      : searchTruncated
+      : _incompleteCoverage
       ? _noPartialMatches
       : isEnglish
       ? 'No hospitals match here. Move the map or change the filters.'
@@ -3404,6 +3558,11 @@ class _NearbyHospitalText extends _NearbyPharmacyText {
     final base = isEnglish
         ? 'Based on National Emergency Medical Center public hospital data. Reported consultation hours may differ on holidays or when appointments close. Call before visiting to confirm the specialty and actual consultation hours.'
         : '국립중앙의료원 병원 공공데이터를 기준으로 표시합니다. 공휴일·접수 마감 등에 따라 신고 진료시간과 다를 수 있으니 방문 전 전화로 진료과목과 실제 진료 여부를 확인해주세요.';
-    return '$base$warning';
+    final scope = regionScopeUncertain
+        ? (isEnglish
+              ? ' Search regions are inferred from nearby addresses; hospitals across administrative boundaries may be missing.'
+              : ' 주변 주소로 검색 지역을 파악하므로 행정구역 경계의 일부 병원이 누락될 수 있습니다.')
+        : '';
+    return '$base$warning$scope';
   }
 }

@@ -27,7 +27,12 @@ class _HospitalControl extends CheckNearbyHospital {
   bool fail = false;
   bool empty = false;
   bool truncated = false;
-  PharmacySearchArea initialArea = PharmacySearchArea.hongik;
+  bool regionScopeUncertain = false;
+  PharmacySearchArea initialArea = PharmacySearchArea(
+    center: PharmacySearchArea.hongik.center,
+    radiusKm: .3,
+    isFallback: true,
+  );
   String holidayStatus = 'stale_fallback';
   Completer<void>? responseGate;
 
@@ -75,6 +80,7 @@ class _HospitalControl extends CheckNearbyHospital {
       catalogUpdatedAt: null,
       catalogIsStale: true,
       searchTruncated: truncated,
+      regionScopeUncertain: regionScopeUncertain,
       holidayScheduleStatus: holidayStatus,
     );
   }
@@ -152,6 +158,7 @@ Future<void> _pumpHospital(
   double scale = 1,
   String language = 'ko',
   bool selection = false,
+  bool chooseDepartment = true,
   DateTime Function()? clock,
 }) async {
   await tester.binding.setSurfaceSize(Size(width, 720));
@@ -182,6 +189,10 @@ Future<void> _pumpHospital(
     ),
   );
   await tester.pumpAndSettle();
+  if (chooseDepartment) {
+    await tester.tap(find.byKey(const ValueKey('hospital-department-option-')));
+    await tester.pumpAndSettle();
+  }
 }
 
 // 운영 조건 선택창에서 스크롤이 필요한 항목도 선택한다.
@@ -251,6 +262,91 @@ void _expectFilterLayout(WidgetTester tester, {bool map = true}) {
 
 // 병원 전용 표시와 약국 기본 경로의 호환성을 검증한다.
 void main() {
+  // 일반 검색과 채팅 공유 모두 사용자가 진료과를 고르기 전에는 검색하지 않는다.
+  for (final selection in [false, true]) {
+    for (final language in ['ko', 'en']) {
+      testWidgets('specialty is chosen before search: $selection/$language', (
+        tester,
+      ) async {
+        final control = _HospitalControl();
+        await _pumpHospital(
+          tester,
+          control,
+          _MapProbe(),
+          selection: selection,
+          language: language,
+          width: 320,
+          scale: 1.6,
+          chooseDepartment: false,
+        );
+        expect(control.requests, isEmpty);
+        expect(
+          find.text(language == 'ko' ? '진료과목 선택' : 'Select specialty'),
+          findsOneWidget,
+        );
+        expect(find.byKey(const Key('hospital-test-map')), findsNothing);
+        expect(find.byKey(const Key('pharmacy-list-toggle')), findsNothing);
+        expect(
+          find.byTooltip(language == 'ko' ? '병원 목록 새로고침' : 'Refresh hospitals'),
+          findsNothing,
+        );
+        expect(find.byIcon(Icons.radio_button_checked), findsNothing);
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pumpAndSettle();
+        expect(control.requests, isEmpty);
+        final option = find.byKey(
+          const ValueKey('hospital-department-option-D001'),
+        );
+        await tester.ensureVisible(option);
+        await tester.pumpAndSettle();
+        await tester.tap(option);
+        await tester.pumpAndSettle();
+        expect(control.requests, hasLength(1));
+        expect(control.requests.single.department, 'D001');
+        expect(find.byKey(const Key('hospital-test-map')), findsOneWidget);
+        expect(
+          find.text(language == 'ko' ? '진료과목 선택' : 'Select specialty'),
+          findsNothing,
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  // 전체 선택도 취소나 미선택과 구분하여 첫 요청을 한 번만 만든다.
+  testWidgets('all departments requires an explicit first selection', (
+    tester,
+  ) async {
+    final control = _HospitalControl();
+    await _pumpHospital(tester, control, _MapProbe(), chooseDepartment: false);
+    expect(control.requests, isEmpty);
+    await tester.tap(find.byKey(const ValueKey('hospital-department-option-')));
+    await tester.pumpAndSettle();
+    expect(control.requests, hasLength(1));
+    expect(control.requests.single.department, isNull);
+    await tester.tap(find.byKey(const Key('hospital-map-department-selector')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('닫기'));
+    await tester.pumpAndSettle();
+    expect(control.requests, hasLength(1));
+    expect(tester.takeException(), isNull);
+  });
+
+  // 처음 선택하지 않고 화면을 종료하면 뒤늦은 조회도 발생하지 않는다.
+  testWidgets('leaving before specialty selection never searches', (
+    tester,
+  ) async {
+    final control = _HospitalControl();
+    await _pumpHospital(tester, control, _MapProbe(), chooseDepartment: false);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 30));
+    expect(control.requests, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final language in ['ko', 'en']) {
     // 날짜·상태를 고르는 동안 조회하지 않고, 취소와 적용을 구분하며 지도 높이를 유지한다.
     testWidgets('hospital date and status apply together in $language', (
@@ -409,24 +505,29 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
-  setUp(() => SharedPreferences.setMockInitialValues({}));
+  setUp(
+    () => SharedPreferences.setMockInitialValues({
+      'medbuddy.hospital_search_guide_v1': true,
+    }),
+  );
 
   for (final language in ['ko', 'en']) {
-    // 안내만 사라져 지도 공간이 늘어나며 같은 화면에서는 재조회해도 반복하지 않는다.
-    testWidgets('partial hospital guide expires once in $language', (
+    // 실제 부분 조회 안내는 시간이 지나거나 필터를 바꿔도 하단에 유지한다.
+    testWidgets('partial hospital guide stays below map in $language', (
       tester,
     ) async {
       final control = _HospitalControl()
         ..truncated = true
         ..initialArea = PharmacySearchArea(
           center: PharmacySearchArea.hongik.center,
+          radiusKm: 1,
         );
       final map = _MapProbe();
       await _pumpHospital(tester, control, map, language: language);
       final guide = find.text(
         language == 'ko'
-            ? '가까운 병원 일부를 조회했습니다. 지도를 옮겨 다시 검색해 주세요.'
-            : 'Only some nearby hospitals were checked. Move the map to search again.',
+            ? '일부 병원 정보를 확인하지 못했어요. 다시 검색하거나 조회 조건을 바꿔보세요.'
+            : 'Some hospital data is unavailable. Try again.',
       );
       expect(guide, findsOneWidget);
       final mapFinder = find.byKey(const Key('hospital-test-map'));
@@ -436,21 +537,31 @@ void main() {
       expect(guide, findsOneWidget);
       await tester.pump(const Duration(seconds: 1));
       await tester.pumpAndSettle();
-      expect(guide, findsNothing);
-      expect(tester.getSize(mapFinder).height, greaterThan(heightWithGuide));
+      expect(guide, findsOneWidget);
+      expect(tester.getSize(mapFinder).height, heightWithGuide);
+      expect(
+        tester.getRect(guide).top,
+        greaterThanOrEqualTo(tester.getRect(mapFinder).bottom),
+      );
+      expect(
+        tester.getRect(guide).bottom,
+        lessThan(
+          tester.getRect(find.byKey(const Key('pharmacy-list-toggle'))).top,
+        ),
+      );
       expect(tester.element(mapFinder), same(mapElement));
       expect(control.requests, hasLength(1));
       await _chooseFilter(tester, 'lateHours');
-      expect(guide, findsNothing);
+      expect(guide, findsOneWidget);
       await map.search(control.initialArea);
       await tester.pumpAndSettle();
-      expect(guide, findsNothing);
+      expect(guide, findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }
 
-  // 부분 조회 안내의 종료가 위치 확인 실패나 채팅 공유의 검색 기준을 숨기지 않는다.
-  testWidgets('fallback area survives the partial hospital guide timeout', (
+  // 하단 부분 조회 안내가 위치 실패나 채팅 공유의 검색 기준을 숨기지 않는다.
+  testWidgets('fallback area survives persistent partial hospital guide', (
     tester,
   ) async {
     final control = _HospitalControl()..truncated = true;
@@ -462,7 +573,7 @@ void main() {
   });
 
   // 안내 표시 중 재조회가 실패해도 오류는 시간 제한 없이 남아 있어야 한다.
-  testWidgets('search failure survives the partial hospital guide timeout', (
+  testWidgets('search failure replaces the partial hospital guide', (
     tester,
   ) async {
     final control = _HospitalControl()..truncated = true;
@@ -476,14 +587,14 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 전체 조회로 바뀌면 남은 안내와 타이머를 즉시 정리한다.
-  testWidgets('complete results clear the partial hospital guide early', (
+  // 완료 결과에서는 숨기고 다시 부분 결과가 되면 표시한다.
+  testWidgets('complete results clear and partial results restore the guide', (
     tester,
   ) async {
     final control = _HospitalControl()..truncated = true;
     final map = _MapProbe();
     await _pumpHospital(tester, control, map);
-    const guide = '가까운 병원 일부를 조회했습니다. 지도를 옮겨 다시 검색해 주세요.';
+    const guide = '일부 병원 정보를 확인하지 못했어요. 다시 검색하거나 조회 조건을 바꿔보세요.';
     expect(find.text(guide), findsOneWidget);
     control.truncated = false;
     await map.search(control.initialArea);
@@ -492,13 +603,13 @@ void main() {
     control.truncated = true;
     await map.search(control.initialArea);
     await tester.pumpAndSettle();
-    expect(find.text(guide), findsNothing);
+    expect(find.text(guide), findsOneWidget);
     await tester.pump(const Duration(seconds: 5));
     expect(tester.takeException(), isNull);
   });
 
-  // 안내 중 화면을 닫아도 종료된 화면을 타이머가 갱신하지 않는다.
-  testWidgets('closing hospital screen cancels the partial guide timer', (
+  // 안내 중 화면을 닫아도 종료된 화면을 뒤늦게 갱신하지 않는다.
+  testWidgets('closing hospital screen does not update disposed state', (
     tester,
   ) async {
     await _pumpHospital(
@@ -510,6 +621,131 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
     expect(tester.takeException(), isNull);
   });
+
+  // 확인한 최초 안내는 재진입 시 반복하지 않고, 경고는 그와 독립적으로 남긴다.
+  testWidgets('first hospital notice is acknowledged once per device', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    await _pumpHospital(tester, _HospitalControl(), _MapProbe());
+    expect(find.byKey(const Key('hospital-search-notice')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('hospital-guide-acknowledge')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('hospital-search-notice')), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await _pumpHospital(tester, _HospitalControl(), _MapProbe());
+    expect(find.byKey(const Key('hospital-search-notice')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('partial warning has no misleading dismiss button', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    await _pumpHospital(
+      tester,
+      _HospitalControl()..truncated = true,
+      _MapProbe(),
+    );
+    expect(find.byKey(const Key('hospital-guide-acknowledge')), findsNothing);
+    expect(find.byKey(const Key('hospital-search-notice')), findsOneWidget);
+  });
+
+  // 반경 안내는 실제 검색한 3km부터 유지되며 작은 반경에서도 부분 조회가 우선한다.
+  for (final language in ['ko', 'en']) {
+    // 병원이 없는 지역의 첫 안내가 범위를 더 좁히라는 잘못된 방향을 제시하지 않는다.
+    testWidgets('empty rural introduction does not ask to narrow in $language', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      final control = _HospitalControl()
+        ..empty = true
+        ..regionScopeUncertain = true
+        ..initialArea = const PharmacySearchArea(
+          center: DeviceCoordinate(latitude: 33.36, longitude: 126.356),
+          radiusKm: 2,
+        );
+      await _pumpHospital(tester, control, _MapProbe(), language: language);
+      expect(
+        find.text(
+          language == 'ko'
+              ? '공공데이터에 일부 병원이 누락되거나 진료시간이 실제와 다를 수 있어요.'
+              : 'Hospital listings and hours may be incomplete or outdated.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining(language == 'ko' ? '좁혀' : 'smaller'),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    // 최초 안내가 긴 언어에서도 확인 버튼과 지도·목록을 가리지 않는다.
+    testWidgets('first guide fits narrow large-text screen in $language', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      await _pumpHospital(
+        tester,
+        _HospitalControl(),
+        _MapProbe(),
+        width: 320,
+        scale: 1.6,
+        language: language,
+      );
+      expect(
+        tester.getSize(find.byKey(const Key('hospital-test-map'))).height,
+        greaterThan(0),
+      );
+      expect(
+        tester.getRect(find.byKey(const Key('pharmacy-list-toggle'))).bottom,
+        lessThanOrEqualTo(720),
+      );
+      await tester.tap(find.byKey(const Key('hospital-guide-acknowledge')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('hospital-search-notice')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('wide area notice follows searched radius in $language', (
+      tester,
+    ) async {
+      final control = _HospitalControl();
+      final map = _MapProbe();
+      await _pumpHospital(
+        tester,
+        control,
+        map,
+        width: 320,
+        scale: 1.6,
+        language: language,
+      );
+      final notice = find.byKey(const Key('hospital-search-notice'));
+      for (final radius in [2.9, 3.0, 10.0, 1.0]) {
+        await map.search(
+          PharmacySearchArea(
+            center: control.initialArea.center,
+            radiusKm: radius,
+            isMapArea: true,
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(notice, radius >= 3 ? findsOneWidget : findsNothing);
+        await tester.pump(const Duration(seconds: 5));
+        expect(notice, radius >= 3 ? findsOneWidget : findsNothing);
+        expect(tester.takeException(), isNull);
+      }
+      control.truncated = true;
+      await map.search(control.initialArea);
+      await tester.pumpAndSettle();
+      expect(notice, findsOneWidget);
+      await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
+      await tester.pumpAndSettle();
+      expect(notice, findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   for (final language in ['ko', 'en']) {
     testWidgets('hospital filters stay left/right at 320px in $language', (
@@ -845,6 +1081,62 @@ void main() {
     );
   }
 
+  for (final language in ['ko', 'en']) {
+    // 한 건을 정상 조회한 경우 주소 표본만으로 지도 아래 경고를 만들지 않는다.
+    testWidgets('sampled region does not add a limit banner in $language', (
+      tester,
+    ) async {
+      final control = _HospitalControl()..regionScopeUncertain = true;
+      await _pumpHospital(tester, control, _MapProbe(), language: language);
+      expect(find.byKey(const Key('hospital-search-notice')), findsNothing);
+      expect(
+        find.byKey(const Key('hospital-marker-hospital-1')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
+      await tester.pumpAndSettle();
+      final source = find.textContaining(
+        language == 'ko'
+            ? '주변 주소로 검색 지역을 파악하므로'
+            : 'Search regions are inferred from nearby addresses',
+      );
+      await tester.scrollUntilVisible(
+        source,
+        180,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const Key('hospital-results-scroll')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      expect(source, findsOneWidget);
+      expect(find.byKey(const Key('hospital-search-notice')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    // 지역이 표본인 빈 결과는 주변에 병원이 없다는 단정 대신 확인한 범위로 한정한다.
+    testWidgets(
+      'sampled empty region is not an exhaustive search in $language',
+      (tester) async {
+        final control = _HospitalControl()
+          ..regionScopeUncertain = true
+          ..empty = true;
+        await _pumpHospital(tester, control, _MapProbe(), language: language);
+        final message = language == 'ko'
+            ? '조회한 병원 중 조건에 맞는 결과가 없습니다'
+            : 'No matches among the hospitals checked';
+        expect(find.text(message), findsOneWidget);
+        expect(find.byKey(const Key('hospital-search-notice')), findsNothing);
+        await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
+        await tester.pumpAndSettle();
+        expect(find.text(message), findsWidgets);
+        expect(find.byKey(const Key('hospital-search-notice')), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'partial empty hospital results do not claim an exhaustive search',
     (tester) async {
@@ -852,16 +1144,16 @@ void main() {
         ..empty = true
         ..truncated = true;
       await _pumpHospital(tester, control, _MapProbe());
-      const notice = '가까운 병원 일부를 조회했습니다. 지도를 옮겨 다시 검색해 주세요.';
+      const notice = '일부 병원 정보를 확인하지 못했어요. 다시 검색하거나 조회 조건을 바꿔보세요.';
       expect(find.text(notice), findsOneWidget);
       expect(find.text('조회한 병원 중 조건에 맞는 결과가 없습니다'), findsOneWidget);
       await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
       await tester.pumpAndSettle();
       expect(find.text(notice), findsOneWidget);
       expect(find.textContaining('진료 중인 병원이 없습니다'), findsNothing);
-      // 상단 안내가 사라져도 빈 결과를 전체 병원에 대한 결론처럼 표시하지 않는다.
+      // 시간이 지나도 빈 결과를 전체 병원에 대한 결론처럼 표시하지 않는다.
       await tester.pump(const Duration(seconds: 4));
-      expect(find.text(notice), findsNothing);
+      expect(find.text(notice), findsOneWidget);
       expect(find.text('조회한 병원 중 조건에 맞는 결과가 없습니다'), findsWidgets);
       expect(find.textContaining('진료 중인 병원이 없습니다'), findsNothing);
       expect(tester.takeException(), isNull);

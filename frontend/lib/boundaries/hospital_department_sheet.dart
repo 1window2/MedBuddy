@@ -6,11 +6,15 @@ class _HospitalDepartmentSheet extends StatefulWidget {
     required this.selected,
     required this.english,
     required this.closeLabel,
+    this.embedded = false,
+    this.onSelected,
   });
 
-  final String selected;
+  final String? selected;
   final bool english;
   final String closeLabel;
+  final bool embedded;
+  final ValueChanged<String>? onSelected;
 
   @override
   State<_HospitalDepartmentSheet> createState() =>
@@ -80,12 +84,14 @@ class _HospitalDepartmentSheetState extends State<_HospitalDepartmentSheet> {
           : Icons.radio_button_off,
     ),
     title: Text(_label(code)),
-    onTap: () => Navigator.pop(context, code),
+    onTap: () => widget.onSelected != null
+        ? widget.onSelected!(code)
+        : Navigator.pop(context, code),
   );
 
   @override
   Widget build(BuildContext context) => FractionallySizedBox(
-    heightFactor: .78,
+    heightFactor: widget.embedded ? 1 : .78,
     child: SafeArea(
       top: false,
       child: Column(
@@ -96,7 +102,9 @@ class _HospitalDepartmentSheetState extends State<_HospitalDepartmentSheet> {
               children: [
                 Expanded(
                   child: Text(
-                    widget.english ? 'Specialty' : '진료과목',
+                    widget.embedded
+                        ? (widget.english ? 'Select specialty' : '진료과목 선택')
+                        : (widget.english ? 'Specialty' : '진료과목'),
                     style: const TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w800,
@@ -104,11 +112,12 @@ class _HospitalDepartmentSheetState extends State<_HospitalDepartmentSheet> {
                     ),
                   ),
                 ),
-                IconButton(
-                  tooltip: widget.closeLabel,
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close),
-                ),
+                if (!widget.embedded)
+                  IconButton(
+                    tooltip: widget.closeLabel,
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                  ),
               ],
             ),
           ),
