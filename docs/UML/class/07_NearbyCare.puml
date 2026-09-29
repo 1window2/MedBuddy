@@ -32,6 +32,7 @@ package "FastAPI: Boundary / Control / Entity" {
   }
   interface HospitalLookupBoundary {
     + fetchNearbyPage(...)
+    + fetchDepartmentPage(province, district, department, page_no, page_size)
     + fetchDetails(hospital_id)
     + hasCachedDetails(hospital_id)
   }
@@ -41,6 +42,12 @@ package "FastAPI: Boundary / Control / Entity" {
   class "ManageLinkedChat" as BChat <<Control>>
   class HospitalDetails <<Entity>>
   class HospitalLocationPage <<Entity>>
+  class "find_department_candidates()" as DepartmentSearch <<ControlFunction>>
+  class DepartmentCandidates {
+    + records
+    + partial
+    + region_scope_uncertain
+  }
   class ChatMessageRepository
 }
 cloud "NEMC hospital API" as NEMC
@@ -48,7 +55,7 @@ cloud "KASI legal-holiday API" as KASI
 database "Messages / notification jobs" as DB
 
 NearbyCareOptionsSheet --> CheckNearbyPharmacyUI : hospital or pharmacy
-CheckNearbyPharmacyUI --> HospitalDepartmentSheet : hospital only
+CheckNearbyPharmacyUI --> HospitalDepartmentSheet : first choice before GPS/API; later filter sheet
 CheckNearbyPharmacyUI --> NearbyCareFilterSheet : draft date + status / apply
 CheckNearbyPharmacyUI --> PharmacyDetailsSheet
 CheckNearbyPharmacyUI --> NearbyPharmacyMapWidget
@@ -58,6 +65,9 @@ FHospital --> HospitalRouter : authenticated hospital endpoint
 FPharmacy --> NearbyPharmacy
 HospitalRouter --> BHospital
 BHospital --> HospitalLookupBoundary
+BHospital --> DepartmentSearch : selected specialty
+DepartmentSearch --> HospitalLookupBoundary : region probes + Q0/Q1/QD pages
+DepartmentSearch --> DepartmentCandidates : deduplicated, radius-filtered, distance-sorted
 NationalEmergencyMedicalCenterHospitalAPI ..|> HospitalLookupBoundary
 NationalEmergencyMedicalCenterHospitalAPI --> NEMC
 NationalEmergencyMedicalCenterHospitalAPI --> HospitalDetails
@@ -83,5 +93,23 @@ note bottom of BHospital
   Unknown calendar or incomplete details do not mean closed.
   Evening consultation means closing after 18:00, not emergency care.
   Pharmacy catalog/roster logic remains separate.
+end note
+note bottom of DepartmentSearch
+  Five concurrent location probes discover nearby regions, not all boundaries.
+  Specialty list pages share one bounded budget across regions.
+  A timeout stops further pages while retaining previously collected candidates.
+  Failed probes or incomplete specialty/detail queries preserve partial status.
+  Unread address-sample pages use separate region_scope_uncertain metadata.
+end note
+note bottom of CheckNearbyPharmacyUI
+  Hospital entry requires an explicit specialty (or All) choice.
+  No map, GPS, or hospital request before that choice.
+  Hospitals start at 300 m; pharmacies retain 20 km.
+  Empty GPS results expand to 500 m, 1 km, then 2 km.
+  Manual map areas never auto-expand; camera follows searched radius.
+  Only the first-use introduction has a dismiss button.
+  At >= 3 km, or for partial results, retain a bottom warning.
+  Sampled regions alone do not trigger the limit warning.
+  Explain region uncertainty in source notes and qualify empty results.
 end note
 @enduml
