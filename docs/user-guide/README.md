@@ -1795,7 +1795,7 @@ Google 안내가 나오면 사용할 계정을 확인하고 인증을 진행하�
 
 #### 3. 병원 또는 약국 선택
 
-‘근처 병원’ 또는 ‘근처 약국’을 고르세요. 대화 상대와 선택한 약을 유지한 채 공유할 장소를 찾는 화면이 열립니다.
+‘근처 병원’ 또는 ‘근처 약국’을 고르세요. 병원은 먼저 진료과목이나 ‘전체’를 선택합니다. 대화 상대와 선택한 약은 유지됩니다.
 
 1. 병원 검색
 2. 약국 검색
@@ -2884,9 +2884,9 @@ Android의 미복용 알림을 펼쳐 ‘채팅으로 알림’을 누르면 작
 1. 병원·의원 검색
 2. 약국 검색
 
-#### 3. 병원 지도 확인
+#### 3. 진료과목 먼저 선택
 
-병원 지도에서 위치와 이름을 확인하세요. 처음 위치 권한을 물으면 사용 중 허용하세요. 위치를 확인하지 못했다는 안내가 있으면 검색 기준 지역부터 확인하세요.
+병원은 지도를 열기 전에 진료과목을 먼저 고릅니다. 원하는 과목이나 ‘전체’를 누르세요. 선택 전에는 병원 조회를 시작하지 않습니다.
 
 #### 4. 약국 지도 확인
 
@@ -2904,33 +2904,56 @@ Android의 미복용 알림을 펼쳐 ‘채팅으로 알림’을 누르면 작
 
 [화면 예시: PDF 158쪽](MedBuddy_User_Guide_ko.pdf#page=158)
 
-#### 1. 진료과목 열기
+#### 1. 진료과목 목록 살펴보기
 
-병원 화면 왼쪽의 진료과목 버튼을 누르세요. 처음에는 ‘전체’로 표시됩니다. 오른쪽의 ‘조회 조건’과는 별도 선택입니다.
+병원 검색을 열면 진료과목 목록이 먼저 나옵니다. 필요한 과목을 찾거나 과목 제한 없이 보려면 ‘전체’를 선택하세요.
 
-#### 2. 과목 목록 확인
+#### 2. 초성으로 바로 이동
 
-목록에서 필요한 진료과목을 찾으세요. ‘전체’를 선택하면 과목 제한 없이 병원을 조회합니다.
+오른쪽 초성을 누르면 해당 글자로 시작하는 과목 위치로 이동합니다. 예를 들어 치과를 찾으려면 ‘ㅊ’을 누르세요. 아직 과목이 선택된 것은 아닙니다.
 
-#### 3. 초성으로 빠르게 이동
+#### 3. 찾은 진료과목 선택
 
-오른쪽 초성을 누르면 해당 글자로 시작하는 과목 위치로 이동합니다. 초성을 누른 것만으로 진료과목이 선택되지는 않습니다.
+목록에 보이는 ‘치과’를 누르면 해당 진료과목으로 병원을 찾습니다. 다른 과목도 같은 방식으로 선택하세요.
 
-#### 4. 과목 선택 후 결과 확인
+#### 4. 가까운 결과 확인
 
-원하는 과목 이름을 누르면 창이 닫히고 해당 과목으로 다시 조회됩니다. 선택한 과목은 왼쪽 버튼에 표시됩니다.
+선택한 진료과목이 왼쪽에 표시됩니다. 지도 표시와 ‘병원 목록 보기’로 결과를 확인하세요. 처음에는 현재 위치 가까운 범위부터 찾습니다.
+
+1. 선택한 진료과목
+2. 이번에 찾은 병원 목록
 
 <a id="manual_page_159"></a>
+
+[화면 예시: PDF 159쪽](MedBuddy_User_Guide_ko.pdf#page=159)
+
+#### 5. 현재 위치에서 다시 찾기
+
+현재 위치 버튼을 누르면 기기 위치 주변부터 다시 찾습니다. 가까운 결과가 없으면 범위를 순서대로 넓히며, 확대되면 안내가 잠깐 나타납니다.
+
+#### 6. 진료과목 바꾸기
+
+지도 왼쪽 과목 버튼을 눌러 목록을 다시 여세요. 다른 과목을 고르면 즉시 조회합니다. ‘전체’로 과목 제한을 해제할 수 있습니다.
+
+#### 7. 다른 지도 지역 검색
+
+지도를 옮기거나 축소한 뒤 ‘이 지역에서 검색’을 누르세요. 지도를 움직이기만 해서는 결과가 바뀌지 않습니다. 넓게 검색할수록 누락 가능성에 유의하세요.
+
+#### 8. 일부 정보 미확인 안내
+
+하단에 일부 정보를 확인하지 못했다는 안내가 있으면 다시 조회하거나 조건을 바꿔보세요. 결과가 한 건이어도 정보가 불완전하면 안내가 나타날 수 있습니다.
+
+<a id="manual_page_160"></a>
 
 <a id="section-8-3"></a>
 
 ### 8.3 병원 조회 조건과 날짜 바꾸기
 
-[소섹션: PDF 159쪽](MedBuddy_User_Guide_ko.pdf#page=159)
+[소섹션: PDF 160쪽](MedBuddy_User_Guide_ko.pdf#page=160)
 
-<a id="manual_page_160"></a>
+<a id="manual_page_161"></a>
 
-[화면 예시: PDF 160쪽](MedBuddy_User_Guide_ko.pdf#page=160)
+[화면 예시: PDF 161쪽](MedBuddy_User_Guide_ko.pdf#page=161)
 
 #### 1. 조회 조건 열기
 
@@ -2954,9 +2977,9 @@ Android의 미복용 알림을 펼쳐 ‘채팅으로 알림’을 누르면 작
 1. 방문 날짜도 확인
 2. 시간 조건 없이 조회
 
-<a id="manual_page_161"></a>
+<a id="manual_page_162"></a>
 
-[화면 예시: PDF 161쪽](MedBuddy_User_Guide_ko.pdf#page=161)
+[화면 예시: PDF 162쪽](MedBuddy_User_Guide_ko.pdf#page=162)
 
 #### 5. 날짜 선택 열기
 
@@ -2974,17 +2997,17 @@ Android의 미복용 알림을 펼쳐 ‘채팅으로 알림’을 누르면 작
 
 결과를 보고 ‘조회 조건’을 다시 열면 현재 적용된 날짜와 진료 상태를 확인할 수 있습니다. 실제 진료 여부는 방문 전에 전화로 확인하세요.
 
-<a id="manual_page_162"></a>
+<a id="manual_page_163"></a>
 
 <a id="section-8-4"></a>
 
 ### 8.4 병원 목록과 상세 정보 보기
 
-[소섹션: PDF 162쪽](MedBuddy_User_Guide_ko.pdf#page=162)
+[소섹션: PDF 163쪽](MedBuddy_User_Guide_ko.pdf#page=163)
 
-<a id="manual_page_163"></a>
+<a id="manual_page_164"></a>
 
-[화면 예시: PDF 163쪽](MedBuddy_User_Guide_ko.pdf#page=163)
+[화면 예시: PDF 164쪽](MedBuddy_User_Guide_ko.pdf#page=164)
 
 #### 1. 병원 목록 열기
 
@@ -3005,17 +3028,17 @@ Android의 미복용 알림을 펼쳐 ‘채팅으로 알림’을 누르면 작
 1. 접기·펼치기
 2. 상세 닫기
 
-<a id="manual_page_164"></a>
+<a id="manual_page_165"></a>
 
 <a id="section-8-5"></a>
 
 ### 8.5 병원 즐겨찾기와 방문 준비
 
-[소섹션: PDF 164쪽](MedBuddy_User_Guide_ko.pdf#page=164)
+[소섹션: PDF 165쪽](MedBuddy_User_Guide_ko.pdf#page=165)
 
-<a id="manual_page_165"></a>
+<a id="manual_page_166"></a>
 
-[화면 예시: PDF 165쪽](MedBuddy_User_Guide_ko.pdf#page=165)
+[화면 예시: PDF 166쪽](MedBuddy_User_Guide_ko.pdf#page=166)
 
 #### 1. 즐겨찾기 등록
 
@@ -3037,17 +3060,17 @@ Android의 미복용 알림을 펼쳐 ‘채팅으로 알림’을 누르면 작
 2. Google 지도
 3. 주소 복사
 
-<a id="manual_page_166"></a>
+<a id="manual_page_167"></a>
 
 <a id="section-8-6"></a>
 
 ### 8.6 주변 약국 조회하기
 
-[소섹션: PDF 166쪽](MedBuddy_User_Guide_ko.pdf#page=166)
+[소섹션: PDF 167쪽](MedBuddy_User_Guide_ko.pdf#page=167)
 
-<a id="manual_page_167"></a>
+<a id="manual_page_168"></a>
 
-[화면 예시: PDF 167쪽](MedBuddy_User_Guide_ko.pdf#page=167)
+[화면 예시: PDF 168쪽](MedBuddy_User_Guide_ko.pdf#page=168)
 
 #### 1. 근처 약국 선택
 
@@ -3065,17 +3088,17 @@ Android의 미복용 알림을 펼쳐 ‘채팅으로 알림’을 누르면 작
 
 목록의 거리와 주소를 함께 읽으세요. 가까운 순서나 거리만으로 방문할 곳을 정하지 말고 영업 상태와 전화 확인도 함께 이용하세요.
 
-<a id="manual_page_168"></a>
+<a id="manual_page_169"></a>
 
 <a id="section-8-7"></a>
 
 ### 8.7 약국 조회 조건과 날짜 바꾸기
 
-[소섹션: PDF 168쪽](MedBuddy_User_Guide_ko.pdf#page=168)
+[소섹션: PDF 169쪽](MedBuddy_User_Guide_ko.pdf#page=169)
 
-<a id="manual_page_169"></a>
+<a id="manual_page_170"></a>
 
-[화면 예시: PDF 169쪽](MedBuddy_User_Guide_ko.pdf#page=169)
+[화면 예시: PDF 170쪽](MedBuddy_User_Guide_ko.pdf#page=170)
 
 #### 1. 조회 조건 열기
 
@@ -3093,9 +3116,9 @@ Android의 미복용 알림을 펼쳐 ‘채팅으로 알림’을 누르면 작
 
 ‘날짜’ 아래의 날짜 버튼을 눌러 달력을 여세요. 예전처럼 지도 위에 날짜 줄을 따로 찾을 필요가 없습니다.
 
-<a id="manual_page_170"></a>
+<a id="manual_page_171"></a>
 
-[화면 예시: PDF 170쪽](MedBuddy_User_Guide_ko.pdf#page=170)
+[화면 예시: PDF 171쪽](MedBuddy_User_Guide_ko.pdf#page=171)
 
 #### 5. 방문일 고르기
 
@@ -3116,17 +3139,17 @@ Android의 미복용 알림을 펼쳐 ‘채팅으로 알림’을 누르면 작
 
 다시 ‘조회 조건’을 열어 ‘현재 영업 중’을 고르고 ‘적용’을 누르면 오늘 현재 기준으로 조회합니다. 날짜 버튼은 비활성화됩니다.
 
-<a id="manual_page_171"></a>
+<a id="manual_page_172"></a>
 
 <a id="section-8-8"></a>
 
 ### 8.8 약국 목록과 상세 정보 보기
 
-[소섹션: PDF 171쪽](MedBuddy_User_Guide_ko.pdf#page=171)
+[소섹션: PDF 172쪽](MedBuddy_User_Guide_ko.pdf#page=172)
 
-<a id="manual_page_172"></a>
+<a id="manual_page_173"></a>
 
-[화면 예시: PDF 172쪽](MedBuddy_User_Guide_ko.pdf#page=172)
+[화면 예시: PDF 173쪽](MedBuddy_User_Guide_ko.pdf#page=173)
 
 #### 1. 약국 목록 살펴보기
 
@@ -3147,17 +3170,17 @@ Android의 미복용 알림을 펼쳐 ‘채팅으로 알림’을 누르면 작
 1. 지도 복귀 버튼
 2. 아래로 당기는 손잡이
 
-<a id="manual_page_173"></a>
+<a id="manual_page_174"></a>
 
 <a id="section-8-9"></a>
 
 ### 8.9 약국 즐겨찾기
 
-[소섹션: PDF 173쪽](MedBuddy_User_Guide_ko.pdf#page=173)
+[소섹션: PDF 174쪽](MedBuddy_User_Guide_ko.pdf#page=174)
 
-<a id="manual_page_174"></a>
+<a id="manual_page_175"></a>
 
-[화면 예시: PDF 174쪽](MedBuddy_User_Guide_ko.pdf#page=174)
+[화면 예시: PDF 175쪽](MedBuddy_User_Guide_ko.pdf#page=175)
 
 #### 1. 즐겨찾기 등록
 
@@ -3175,17 +3198,17 @@ Android의 미복용 알림을 펼쳐 ‘채팅으로 알림’을 누르면 작
 
 즐겨찾기에 있더라도 실제 방문 전 영업 상태와 운영시간을 다시 조회하고 전화로 확인하세요.
 
-<a id="manual_page_175"></a>
+<a id="manual_page_176"></a>
 
 <a id="section-8-10"></a>
 
 ### 8.10 약국 전화와 길찾기
 
-[소섹션: PDF 175쪽](MedBuddy_User_Guide_ko.pdf#page=175)
+[소섹션: PDF 176쪽](MedBuddy_User_Guide_ko.pdf#page=176)
 
-<a id="manual_page_176"></a>
+<a id="manual_page_177"></a>
 
-[화면 예시: PDF 176쪽](MedBuddy_User_Guide_ko.pdf#page=176)
+[화면 예시: PDF 177쪽](MedBuddy_User_Guide_ko.pdf#page=177)
 
 #### 1. 전화 앱 열기
 
@@ -3206,7 +3229,7 @@ Android의 미복용 알림을 펼쳐 ‘채팅으로 알림’을 누르면 작
 
 주소 복사를 선택하면 표시된 주소를 다른 지도나 메모 앱에 붙여 넣을 수 있습니다. 작업 후 MedBuddy로 돌아오면 검색을 이어갈 수 있습니다.
 
-<a id="manual_page_177"></a>
+<a id="manual_page_178"></a>
 
 ### 참고
 
@@ -3214,83 +3237,95 @@ Android의 미복용 알림을 펼쳐 ‘채팅으로 알림’을 누르면 작
 
 화면은 조작 예시입니다. 지도는 실제 조회 화면을 사용했고, 일부 홈·채팅·알림·목록·상세 예시는 최신 앱에 예시 데이터를 넣어 별도로 촬영했습니다. 화면의 기관 정보·시간·검색 개수는 이용 시점과 지역에 따라 달라집니다.
 
-**[8.1 - 156페이지 - 2~3번 사진](MedBuddy_User_Guide_ko.pdf#page=156)**
+**[8.1 - 156페이지 - 2번 사진](MedBuddy_User_Guide_ko.pdf#page=156)**
 
 신고된 진료시간과 실제 접수·진료 여부는 다를 수 있습니다. 방문 전 진료과목과 진료 가능 여부를 전화로 확인하세요. 병원 찾기는 진료 예약이나 응급의료 요청 기능이 아닙니다.
+
+**[8.1 - 156페이지 - 3번 사진](MedBuddy_User_Guide_ko.pdf#page=156)**
+
+병원을 열 때마다 진료과목을 먼저 선택합니다. 전체 과목을 보고 싶어도 ‘전체’를 직접 누르세요. 위치 권한을 요청하면 앱 사용 중 허용하세요. 위치를 확인하지 못하면 대체 검색 지역 안내를 확인하세요.
 
 **[8.1 - 156페이지 - 4번 사진](MedBuddy_User_Guide_ko.pdf#page=156)**
 
 위치를 확인하지 못하면 기본 지역 안내가 표시됩니다. 거리 표시는 검색 기준 위치에서의 거리이며 실제 이동 경로의 거리가 아닙니다. 지도 이동 후에는 표시된 검색 지역과 새 결과를 확인하세요.
 
-**[8.2 - 158페이지 - 4번 사진](MedBuddy_User_Guide_ko.pdf#page=158)**
+**[8.2 - 158페이지 - 1, 3번 사진](MedBuddy_User_Guide_ko.pdf#page=158)**
 
-신고된 진료시간과 실제 접수·진료 여부는 다를 수 있습니다. 방문 전 진료과목과 진료 가능 여부를 전화로 확인하세요. 병원 찾기는 진료 예약이나 응급의료 요청 기능이 아닙니다.
+신고된 진료시간과 실제 접수·진료 여부는 다를 수 있습니다. 방문 전 진료과목과 진료 가능 여부를 전화로 확인하세요. 병원 찾기는 진료 예약이나 응급의료 요청 기능이 아닙니다. 진료과목 선택은 진단이 아니라 해당 과목을 진료하는 기관을 찾는 조건입니다.
 
-**[8.3 - 160페이지 - 1~2, 4번 사진](MedBuddy_User_Guide_ko.pdf#page=160) / [8.3 - 161페이지 - 5~7번 사진](MedBuddy_User_Guide_ko.pdf#page=161)**
+**[8.2 - 158페이지 - 4번 사진](MedBuddy_User_Guide_ko.pdf#page=158) / [8.2 - 159페이지 - 5~6번 사진](MedBuddy_User_Guide_ko.pdf#page=159)**
 
-진료과목은 선택하면 바로 조회되지만, 날짜·진료 상태는 ‘적용’을 눌러야 반영됩니다. 조회 조건 창을 X나 뒤로가기로 닫으면 변경을 버립니다. ‘현재 진료 중’을 고르면 오늘 현재 기준으로 돌아가며 날짜 버튼은 비활성화됩니다.
+병원은 현재 위치 주변 300m부터 찾고, 결과가 없으면 같은 조건으로 500m, 1km, 2km 순서로 넓힙니다. 결과가 나오면 멈춥니다. 조회 오류·시간 제한이나 공휴일 확인 불가 등에서는 확대가 중단될 수 있습니다. 지도를 직접 옮겨 검색한 범위는 자동으로 넓히지 않습니다. 약국 검색 범위는 기존과 같습니다. 과목 변경 시 날짜·진료 상태와 직접 선택한 지도 범위는 유지됩니다. 날짜·진료 상태 변경은 ‘적용’을 눌러야 반영됩니다.
 
-**[8.3 - 160페이지 - 3번 사진](MedBuddy_User_Guide_ko.pdf#page=160) / [8.3 - 161페이지 - 8번 사진](MedBuddy_User_Guide_ko.pdf#page=161)**
+**[8.2 - 159페이지 - 7~8번 사진](MedBuddy_User_Guide_ko.pdf#page=159)**
 
-신고된 진료시간과 실제 접수·진료 여부는 다를 수 있습니다. 방문 전 진료과목과 진료 가능 여부를 전화로 확인하세요. 병원 찾기는 진료 예약이나 응급의료 요청 기능이 아닙니다.
-
-**[8.4 - 163페이지 - 1~3번 사진](MedBuddy_User_Guide_ko.pdf#page=163)**
-
-신고된 진료시간과 실제 접수·진료 여부는 다를 수 있습니다. 방문 전 진료과목과 진료 가능 여부를 전화로 확인하세요. 병원 찾기는 진료 예약이나 응급의료 요청 기능이 아닙니다.
-
-**[8.4 - 163페이지 - 4번 사진](MedBuddy_User_Guide_ko.pdf#page=163)**
-
-목록의 위쪽 손잡이를 아래로 당기거나 ‘지도 크게 보기’를 눌러도 지도로 돌아옵니다. 상세 창을 닫아도 선택한 조회 조건은 유지됩니다.
-
-<a id="manual_page_178"></a>
-
-**[8.5 - 165페이지 - 1번 사진](MedBuddy_User_Guide_ko.pdf#page=165)**
-
-병원과 약국 즐겨찾기는 구분해 저장합니다. 다른 기기에 자동으로 같아지는 목록은 아닙니다.
-
-**[8.5 - 165페이지 - 3번 사진](MedBuddy_User_Guide_ko.pdf#page=165)**
-
-신고된 진료시간과 실제 접수·진료 여부는 다를 수 있습니다. 방문 전 진료과목과 진료 가능 여부를 전화로 확인하세요. 병원 찾기는 진료 예약이나 응급의료 요청 기능이 아닙니다.
-
-**[8.5 - 165페이지 - 4번 사진](MedBuddy_User_Guide_ko.pdf#page=165)**
-
-주소 복사는 전화번호 복사나 진료 예약이 아닙니다. 외부 앱으로 이동한 뒤 MedBuddy로 돌아오면 검색을 이어갈 수 있습니다.
-
-**[8.6 - 167페이지 - 1~2, 4번 사진](MedBuddy_User_Guide_ko.pdf#page=167)**
-
-약국 영업시간과 실제 운영 여부는 달라질 수 있습니다. 방문 전에 전화로 확인하세요. ‘늦게까지 영업’에는 밤 10시 이후까지 영업하거나 자정을 넘겨 영업하는 약국, 24시간 또는 공공심야약국이 포함될 수 있습니다. 병원의 ‘저녁 진료’와 기준이 다릅니다.
-
-**[8.6 - 167페이지 - 3번 사진](MedBuddy_User_Guide_ko.pdf#page=167)**
-
-검색 지역을 옮기면 거리는 새 검색 중심을 기준으로 표시합니다. 위치 권한이 없거나 위치를 확인하지 못한 경우 안내된 기본 지역을 확인하세요.
-
-**[8.7 - 169페이지 - 1, 3~4번 사진](MedBuddy_User_Guide_ko.pdf#page=169) / [8.7 - 170페이지 - 5~6, 8번 사진](MedBuddy_User_Guide_ko.pdf#page=170)**
-
-날짜와 영업 상태를 바꾸는 동안 기존 결과는 유지됩니다. ‘적용’을 눌러야 새 조건으로 조회합니다. X나 뒤로가기로 닫으면 변경을 버립니다. ‘현재 영업 중’에서는 현재 기준으로 조회하므로 날짜를 따로 선택할 수 없습니다.
-
-**[8.7 - 169페이지 - 2번 사진](MedBuddy_User_Guide_ko.pdf#page=169) / [8.7 - 170페이지 - 7번 사진](MedBuddy_User_Guide_ko.pdf#page=170)**
-
-약국 영업시간과 실제 운영 여부는 달라질 수 있습니다. 방문 전에 전화로 확인하세요. ‘늦게까지 영업’에는 밤 10시 이후까지 영업하거나 자정을 넘겨 영업하는 약국, 24시간 또는 공공심야약국이 포함될 수 있습니다. 병원의 ‘저녁 진료’와 기준이 다릅니다.
-
-**[8.8 - 172페이지 - 1~2번 사진](MedBuddy_User_Guide_ko.pdf#page=172)**
-
-약국 영업시간과 실제 운영 여부는 달라질 수 있습니다. 방문 전에 전화로 확인하세요. ‘늦게까지 영업’에는 밤 10시 이후까지 영업하거나 자정을 넘겨 영업하는 약국, 24시간 또는 공공심야약국이 포함될 수 있습니다. 병원의 ‘저녁 진료’와 기준이 다릅니다.
+최초 공공데이터 안내만 X로 닫을 수 있습니다. 실제로 검색한 반경이 3km 이상이거나 일부 정보를 확인하지 못한 경우에는 안내를 유지합니다. 지도만 축소하고 재검색하지 않았다면 마지막 검색 범위가 기준입니다. 주변 모든 병원의 조회를 보장하지 않으며 행정구역 경계에서 일부 병원이 누락될 수 있습니다.
 
 <a id="manual_page_179"></a>
 
-**[8.9 - 174페이지 - 1번 사진](MedBuddy_User_Guide_ko.pdf#page=174)**
+**[8.3 - 161페이지 - 1~2, 4번 사진](MedBuddy_User_Guide_ko.pdf#page=161) / [8.3 - 162페이지 - 5~7번 사진](MedBuddy_User_Guide_ko.pdf#page=162)**
+
+진료과목은 선택하면 바로 조회되지만, 날짜·진료 상태는 ‘적용’을 눌러야 반영됩니다. 조회 조건 창을 X나 뒤로가기로 닫으면 변경을 버립니다. ‘현재 진료 중’을 고르면 오늘 현재 기준으로 돌아가며 날짜 버튼은 비활성화됩니다.
+
+**[8.3 - 161페이지 - 3번 사진](MedBuddy_User_Guide_ko.pdf#page=161) / [8.3 - 162페이지 - 8번 사진](MedBuddy_User_Guide_ko.pdf#page=162)**
+
+신고된 진료시간과 실제 접수·진료 여부는 다를 수 있습니다. 방문 전 진료과목과 진료 가능 여부를 전화로 확인하세요. 병원 찾기는 진료 예약이나 응급의료 요청 기능이 아닙니다.
+
+**[8.4 - 164페이지 - 1~3번 사진](MedBuddy_User_Guide_ko.pdf#page=164)**
+
+신고된 진료시간과 실제 접수·진료 여부는 다를 수 있습니다. 방문 전 진료과목과 진료 가능 여부를 전화로 확인하세요. 병원 찾기는 진료 예약이나 응급의료 요청 기능이 아닙니다.
+
+**[8.4 - 164페이지 - 4번 사진](MedBuddy_User_Guide_ko.pdf#page=164)**
+
+목록의 위쪽 손잡이를 아래로 당기거나 ‘지도 크게 보기’를 눌러도 지도로 돌아옵니다. 상세 창을 닫아도 선택한 조회 조건은 유지됩니다.
+
+**[8.5 - 166페이지 - 1번 사진](MedBuddy_User_Guide_ko.pdf#page=166)**
+
+병원과 약국 즐겨찾기는 구분해 저장합니다. 다른 기기에 자동으로 같아지는 목록은 아닙니다.
+
+**[8.5 - 166페이지 - 3번 사진](MedBuddy_User_Guide_ko.pdf#page=166)**
+
+신고된 진료시간과 실제 접수·진료 여부는 다를 수 있습니다. 방문 전 진료과목과 진료 가능 여부를 전화로 확인하세요. 병원 찾기는 진료 예약이나 응급의료 요청 기능이 아닙니다.
+
+**[8.5 - 166페이지 - 4번 사진](MedBuddy_User_Guide_ko.pdf#page=166)**
+
+주소 복사는 전화번호 복사나 진료 예약이 아닙니다. 외부 앱으로 이동한 뒤 MedBuddy로 돌아오면 검색을 이어갈 수 있습니다.
+
+**[8.6 - 168페이지 - 1~2, 4번 사진](MedBuddy_User_Guide_ko.pdf#page=168)**
+
+약국 영업시간과 실제 운영 여부는 달라질 수 있습니다. 방문 전에 전화로 확인하세요. ‘늦게까지 영업’에는 밤 10시 이후까지 영업하거나 자정을 넘겨 영업하는 약국, 24시간 또는 공공심야약국이 포함될 수 있습니다. 병원의 ‘저녁 진료’와 기준이 다릅니다.
+
+<a id="manual_page_180"></a>
+
+**[8.6 - 168페이지 - 3번 사진](MedBuddy_User_Guide_ko.pdf#page=168)**
+
+검색 지역을 옮기면 거리는 새 검색 중심을 기준으로 표시합니다. 위치 권한이 없거나 위치를 확인하지 못한 경우 안내된 기본 지역을 확인하세요.
+
+**[8.7 - 170페이지 - 1, 3~4번 사진](MedBuddy_User_Guide_ko.pdf#page=170) / [8.7 - 171페이지 - 5~6, 8번 사진](MedBuddy_User_Guide_ko.pdf#page=171)**
+
+날짜와 영업 상태를 바꾸는 동안 기존 결과는 유지됩니다. ‘적용’을 눌러야 새 조건으로 조회합니다. X나 뒤로가기로 닫으면 변경을 버립니다. ‘현재 영업 중’에서는 현재 기준으로 조회하므로 날짜를 따로 선택할 수 없습니다.
+
+**[8.7 - 170페이지 - 2번 사진](MedBuddy_User_Guide_ko.pdf#page=170) / [8.7 - 171페이지 - 7번 사진](MedBuddy_User_Guide_ko.pdf#page=171)**
+
+약국 영업시간과 실제 운영 여부는 달라질 수 있습니다. 방문 전에 전화로 확인하세요. ‘늦게까지 영업’에는 밤 10시 이후까지 영업하거나 자정을 넘겨 영업하는 약국, 24시간 또는 공공심야약국이 포함될 수 있습니다. 병원의 ‘저녁 진료’와 기준이 다릅니다.
+
+**[8.8 - 173페이지 - 1~2번 사진](MedBuddy_User_Guide_ko.pdf#page=173)**
+
+약국 영업시간과 실제 운영 여부는 달라질 수 있습니다. 방문 전에 전화로 확인하세요. ‘늦게까지 영업’에는 밤 10시 이후까지 영업하거나 자정을 넘겨 영업하는 약국, 24시간 또는 공공심야약국이 포함될 수 있습니다. 병원의 ‘저녁 진료’와 기준이 다릅니다.
+
+**[8.9 - 175페이지 - 1번 사진](MedBuddy_User_Guide_ko.pdf#page=175)**
 
 즐겨찾기는 이 기기에 계정별로 저장됩니다. 병원 즐겨찾기와 약국 즐겨찾기는 서로 구분됩니다.
 
-**[8.9 - 174페이지 - 4번 사진](MedBuddy_User_Guide_ko.pdf#page=174)**
+**[8.9 - 175페이지 - 4번 사진](MedBuddy_User_Guide_ko.pdf#page=175)**
 
 약국 영업시간과 실제 운영 여부는 달라질 수 있습니다. 방문 전에 전화로 확인하세요. ‘늦게까지 영업’에는 밤 10시 이후까지 영업하거나 자정을 넘겨 영업하는 약국, 24시간 또는 공공심야약국이 포함될 수 있습니다. 병원의 ‘저녁 진료’와 기준이 다릅니다.
 
-**[8.10 - 176페이지 - 1번 사진](MedBuddy_User_Guide_ko.pdf#page=176)**
+**[8.10 - 177페이지 - 1번 사진](MedBuddy_User_Guide_ko.pdf#page=177)**
 
 약국 영업시간과 실제 운영 여부는 달라질 수 있습니다. 방문 전에 전화로 확인하세요. ‘늦게까지 영업’에는 밤 10시 이후까지 영업하거나 자정을 넘겨 영업하는 약국, 24시간 또는 공공심야약국이 포함될 수 있습니다. 병원의 ‘저녁 진료’와 기준이 다릅니다.
 
-**[8.10 - 176페이지 - 3번 사진](MedBuddy_User_Guide_ko.pdf#page=176)**
+**[8.10 - 177페이지 - 3번 사진](MedBuddy_User_Guide_ko.pdf#page=177)**
 
 설치된 지도 앱이 없거나 열리지 않으면 Google 지도 또는 주소 복사를 이용하세요.
 
@@ -3299,17 +3334,17 @@ Android의 미복용 알림을 펼쳐 ‘채팅으로 알림’을 누르면 작
 
 ## 9 환경설정과 계정 관리
 
-<a id="manual_page_180"></a>
+<a id="manual_page_181"></a>
 
 <a id="section-9-1"></a>
 
 ### 9.1 설정 저장과 변경 취소하기
 
-[소섹션: PDF 180쪽](MedBuddy_User_Guide_ko.pdf#page=180)
+[소섹션: PDF 181쪽](MedBuddy_User_Guide_ko.pdf#page=181)
 
-<a id="manual_page_181"></a>
+<a id="manual_page_182"></a>
 
-[화면 예시: PDF 181쪽](MedBuddy_User_Guide_ko.pdf#page=181)
+[화면 예시: PDF 182쪽](MedBuddy_User_Guide_ko.pdf#page=182)
 
 #### 1. 설정 분류 선택
 
@@ -3336,9 +3371,9 @@ Android의 미복용 알림을 펼쳐 ‘채팅으로 알림’을 누르면 작
 1. 변경 설정 저장 여부
 2. 저장하고 나가기
 
-<a id="manual_page_182"></a>
+<a id="manual_page_183"></a>
 
-[화면 예시: PDF 182쪽](MedBuddy_User_Guide_ko.pdf#page=182)
+[화면 예시: PDF 183쪽](MedBuddy_User_Guide_ko.pdf#page=183)
 
 #### 5. 취소하거나 계속 편집
 
@@ -3347,17 +3382,17 @@ Android의 미복용 알림을 펼쳐 ‘채팅으로 알림’을 누르면 작
 1. 바꾼 값 계속 편집
 2. 변경 버리고 나가기
 
-<a id="manual_page_183"></a>
+<a id="manual_page_184"></a>
 
 <a id="section-9-2"></a>
 
 ### 9.2 글씨크기 바꾸기
 
-[소섹션: PDF 183쪽](MedBuddy_User_Guide_ko.pdf#page=183)
+[소섹션: PDF 184쪽](MedBuddy_User_Guide_ko.pdf#page=184)
 
-<a id="manual_page_184"></a>
+<a id="manual_page_185"></a>
 
-[화면 예시: PDF 184쪽](MedBuddy_User_Guide_ko.pdf#page=184)
+[화면 예시: PDF 185쪽](MedBuddy_User_Guide_ko.pdf#page=185)
 
 #### 1. 글씨크기 선택
 
@@ -3371,17 +3406,17 @@ Android의 미복용 알림을 펼쳐 ‘채팅으로 알림’을 누르면 작
 
 글자가 읽기 편한지 확인하고 ‘저장하기’를 눌러 선택한 크기를 저장하세요. 실제 글씨크기에는 기기 설정도 영향을 줍니다.
 
-<a id="manual_page_185"></a>
+<a id="manual_page_186"></a>
 
 <a id="section-9-3"></a>
 
 ### 9.3 읽기속도와 음성 미리보기
 
-[소섹션: PDF 185쪽](MedBuddy_User_Guide_ko.pdf#page=185)
+[소섹션: PDF 186쪽](MedBuddy_User_Guide_ko.pdf#page=186)
 
-<a id="manual_page_186"></a>
+<a id="manual_page_187"></a>
 
-[화면 예시: PDF 186쪽](MedBuddy_User_Guide_ko.pdf#page=186)
+[화면 예시: PDF 187쪽](MedBuddy_User_Guide_ko.pdf#page=187)
 
 #### 1. 읽기속도 선택
 
@@ -3399,17 +3434,17 @@ Android의 미복용 알림을 펼쳐 ‘채팅으로 알림’을 누르면 작
 
 원하는 속도를 정한 뒤 ‘저장하기’를 눌러 읽기속도를 저장하세요. 뒤로 나가면 미리보기 재생이 중지됩니다.
 
-<a id="manual_page_187"></a>
+<a id="manual_page_188"></a>
 
 <a id="section-9-4"></a>
 
 ### 9.4 언어와 시간 표시 바꾸기
 
-[소섹션: PDF 187쪽](MedBuddy_User_Guide_ko.pdf#page=187)
+[소섹션: PDF 188쪽](MedBuddy_User_Guide_ko.pdf#page=188)
 
-<a id="manual_page_188"></a>
+<a id="manual_page_189"></a>
 
-[화면 예시: PDF 188쪽](MedBuddy_User_Guide_ko.pdf#page=188)
+[화면 예시: PDF 189쪽](MedBuddy_User_Guide_ko.pdf#page=189)
 
 #### 1. 언어 선택
 
@@ -3430,17 +3465,17 @@ Android의 미복용 알림을 펼쳐 ‘채팅으로 알림’을 누르면 작
 
 ‘저장하기’를 눌러 선택한 언어와 시간 표시 방식을 저장하세요. 영어 화면에서는 ‘Save’를 누르세요.
 
-<a id="manual_page_189"></a>
+<a id="manual_page_190"></a>
 
 <a id="section-9-5"></a>
 
 ### 9.5 홈에 표시할 일정 선택하기
 
-[소섹션: PDF 189쪽](MedBuddy_User_Guide_ko.pdf#page=189)
+[소섹션: PDF 190쪽](MedBuddy_User_Guide_ko.pdf#page=190)
 
-<a id="manual_page_190"></a>
+<a id="manual_page_191"></a>
 
-[화면 예시: PDF 190쪽](MedBuddy_User_Guide_ko.pdf#page=190)
+[화면 예시: PDF 191쪽](MedBuddy_User_Guide_ko.pdf#page=191)
 
 #### 1. 일정 대상 선택
 
@@ -3453,17 +3488,17 @@ Android의 미복용 알림을 펼쳐 ‘채팅으로 알림’을 누르면 작
 
 ‘저장하기’를 누른 뒤 홈으로 돌아가 선택한 대상의 일정을 확인하세요. 내 일정은 삭제되지 않으며 나중에 다시 선택할 수 있습니다.
 
-<a id="manual_page_191"></a>
+<a id="manual_page_192"></a>
 
 <a id="section-9-6"></a>
 
 ### 9.6 받을 알림 고르기
 
-[소섹션: PDF 191쪽](MedBuddy_User_Guide_ko.pdf#page=191)
+[소섹션: PDF 192쪽](MedBuddy_User_Guide_ko.pdf#page=192)
 
-<a id="manual_page_192"></a>
+<a id="manual_page_193"></a>
 
-[화면 예시: PDF 192쪽](MedBuddy_User_Guide_ko.pdf#page=192)
+[화면 예시: PDF 193쪽](MedBuddy_User_Guide_ko.pdf#page=193)
 
 #### 1. 알림 수신 스위치
 
@@ -3477,17 +3512,17 @@ Android의 미복용 알림을 펼쳐 ‘채팅으로 알림’을 누르면 작
 
 아래의 ‘저장하기’를 눌러 알림 수신 설정을 저장하세요. 알림을 꺼도 복약 일정은 삭제되지 않습니다.
 
-<a id="manual_page_193"></a>
+<a id="manual_page_194"></a>
 
 <a id="section-9-7"></a>
 
 ### 9.7 기본 복약 시간 바꾸기
 
-[소섹션: PDF 193쪽](MedBuddy_User_Guide_ko.pdf#page=193)
+[소섹션: PDF 194쪽](MedBuddy_User_Guide_ko.pdf#page=194)
 
-<a id="manual_page_194"></a>
+<a id="manual_page_195"></a>
 
-[화면 예시: PDF 194쪽](MedBuddy_User_Guide_ko.pdf#page=194)
+[화면 예시: PDF 195쪽](MedBuddy_User_Guide_ko.pdf#page=195)
 
 #### 1. 시간대 선택
 
@@ -3516,9 +3551,9 @@ Android의 미복용 알림을 펼쳐 ‘채팅으로 알림’을 누르면 작
 1. 선택된 시 눌러 입력
 2. 선택된 분 눌러 입력
 
-<a id="manual_page_195"></a>
+<a id="manual_page_196"></a>
 
-[화면 예시: PDF 195쪽](MedBuddy_User_Guide_ko.pdf#page=195)
+[화면 예시: PDF 196쪽](MedBuddy_User_Guide_ko.pdf#page=196)
 
 #### 5. 숫자 적용
 
@@ -3532,17 +3567,17 @@ Android의 미복용 알림을 펼쳐 ‘채팅으로 알림’을 누르면 작
 
 체크 모양 ‘확인’을 누른 뒤 설정 화면의 ‘저장하기’까지 눌러야 최종 저장됩니다. 숫자 입력의 ‘적용’과 시간 선택의 ‘확인’만으로는 저장되지 않습니다.
 
-<a id="manual_page_196"></a>
+<a id="manual_page_197"></a>
 
 <a id="section-9-8"></a>
 
 ### 9.8 알림 내용 공개 범위 정하기
 
-[소섹션: PDF 196쪽](MedBuddy_User_Guide_ko.pdf#page=196)
+[소섹션: PDF 197쪽](MedBuddy_User_Guide_ko.pdf#page=197)
 
-<a id="manual_page_197"></a>
+<a id="manual_page_198"></a>
 
-[화면 예시: PDF 197쪽](MedBuddy_User_Guide_ko.pdf#page=197)
+[화면 예시: PDF 198쪽](MedBuddy_User_Guide_ko.pdf#page=198)
 
 #### 1. 알림 내용 공개 범위
 
@@ -3555,17 +3590,17 @@ Android의 미복용 알림을 펼쳐 ‘채팅으로 알림’을 누르면 작
 
 선택 창이 닫히면 ‘저장하기’를 누르세요. 저장한 공개 범위는 위젯의 약 이름 표시에도 적용됩니다.
 
-<a id="manual_page_198"></a>
+<a id="manual_page_199"></a>
 
 <a id="section-9-9"></a>
 
 ### 9.9 휴대폰 알림 설정과 위젯 추가 열기
 
-[소섹션: PDF 198쪽](MedBuddy_User_Guide_ko.pdf#page=198)
+[소섹션: PDF 199쪽](MedBuddy_User_Guide_ko.pdf#page=199)
 
-<a id="manual_page_199"></a>
+<a id="manual_page_200"></a>
 
-[화면 예시: PDF 199쪽](MedBuddy_User_Guide_ko.pdf#page=199)
+[화면 예시: PDF 200쪽](MedBuddy_User_Guide_ko.pdf#page=200)
 
 #### 1. 휴대폰 알림 설정 열기
 
@@ -3582,17 +3617,17 @@ Android의 MedBuddy에서 ‘환경설정’ → ‘복약 및 알림’ 아래�
 
 Android의 MedBuddy에서 ‘환경설정’ → ‘복약 및 알림’ 아래쪽 ‘홈 화면 복약 위젯 추가’를 누르세요. 휴대전화의 추가 안내를 마친 뒤 홈 화면에 위젯이 생겼는지 확인하세요.
 
-<a id="manual_page_200"></a>
+<a id="manual_page_201"></a>
 
 <a id="section-9-10"></a>
 
 ### 9.10 로그아웃하기
 
-[소섹션: PDF 200쪽](MedBuddy_User_Guide_ko.pdf#page=200)
+[소섹션: PDF 201쪽](MedBuddy_User_Guide_ko.pdf#page=201)
 
-<a id="manual_page_201"></a>
+<a id="manual_page_202"></a>
 
-[화면 예시: PDF 201쪽](MedBuddy_User_Guide_ko.pdf#page=201)
+[화면 예시: PDF 202쪽](MedBuddy_User_Guide_ko.pdf#page=202)
 
 #### 1. 일반 계정 로그아웃
 
@@ -3624,9 +3659,9 @@ Android의 MedBuddy에서 ‘환경설정’ → ‘복약 및 알림’ 아래�
 3. 취소하여 자료 유지
 4. 삭제하고 로그아웃
 
-<a id="manual_page_202"></a>
+<a id="manual_page_203"></a>
 
-[화면 예시: PDF 202쪽](MedBuddy_User_Guide_ko.pdf#page=202)
+[화면 예시: PDF 203쪽](MedBuddy_User_Guide_ko.pdf#page=203)
 
 #### 5. 로그아웃 완료
 
@@ -3635,17 +3670,17 @@ Android의 MedBuddy에서 ‘환경설정’ → ‘복약 및 알림’ 아래�
 1. 이메일 로그인 버튼
 2. 새 게스트 계정 시작
 
-<a id="manual_page_203"></a>
+<a id="manual_page_204"></a>
 
 <a id="section-9-11"></a>
 
 ### 9.11 계정 데이터 삭제하기
 
-[소섹션: PDF 203쪽](MedBuddy_User_Guide_ko.pdf#page=203)
+[소섹션: PDF 204쪽](MedBuddy_User_Guide_ko.pdf#page=204)
 
-<a id="manual_page_204"></a>
+<a id="manual_page_205"></a>
 
-[화면 예시: PDF 204쪽](MedBuddy_User_Guide_ko.pdf#page=204)
+[화면 예시: PDF 205쪽](MedBuddy_User_Guide_ko.pdf#page=205)
 
 #### 1. 삭제 확인 창 열기
 
@@ -3667,69 +3702,69 @@ Android의 MedBuddy에서 ‘환경설정’ → ‘복약 및 알림’ 아래�
 1. 작업 후 로그인 화면
 2. 로그인 버튼 위치
 
-<a id="manual_page_205"></a>
+<a id="manual_page_206"></a>
 
 ### 참고
 
-**[9.1 - 181페이지 - 1~2번 사진](MedBuddy_User_Guide_ko.pdf#page=181)**
+**[9.1 - 182페이지 - 1~2번 사진](MedBuddy_User_Guide_ko.pdf#page=182)**
 
 ‘계속 편집’은 설정 화면에 남습니다. ‘기기에만 저장했습니다. 서버 연결 후 다시 저장해주세요.’는 연결 후 재저장하세요. 저장 실패 때는 선택값을 확인하고 다시 시도합니다. 설정 전체 초기화 버튼은 없으며 계정 삭제로 대신하면 안 됩니다.
 
-**[9.1 - 181페이지 - 3~4번 사진](MedBuddy_User_Guide_ko.pdf#page=181) / [9.1 - 182페이지 - 5번 사진](MedBuddy_User_Guide_ko.pdf#page=182)**
+**[9.1 - 182페이지 - 3~4번 사진](MedBuddy_User_Guide_ko.pdf#page=182) / [9.1 - 183페이지 - 5번 사진](MedBuddy_User_Guide_ko.pdf#page=183)**
 
 뒤로가기 화살표만 누른 상태에서는 변경값이 아직 저장되지 않았습니다.
 
-**[9.2 - 184페이지 - 1~2번 사진](MedBuddy_User_Guide_ko.pdf#page=184)**
+**[9.2 - 185페이지 - 1~2번 사진](MedBuddy_User_Guide_ko.pdf#page=185)**
 
 선택하지 않고 창을 닫으면 기존 크기가 유지됩니다. 큰 글씨를 선택한 후 저장하지 않으려면 뒤로가기의 ‘변경 취소’를 이용하세요.
 
-**[9.3 - 186페이지 - 1~3번 사진](MedBuddy_User_Guide_ko.pdf#page=186)**
+**[9.3 - 187페이지 - 1~3번 사진](MedBuddy_User_Guide_ko.pdf#page=187)**
 
 미리보기 문장은 예시이며 내 처방이 아닙니다. 재생하지 못하면 기기의 음량과 음성 재생 상태를 확인한 뒤 다시 시도하세요. 앱에는 목소리나 음량을 바꾸는 별도 설정이 없습니다.
 
-**[9.4 - 188페이지 - 1~3번 사진](MedBuddy_User_Guide_ko.pdf#page=188)**
+**[9.4 - 189페이지 - 1~3번 사진](MedBuddy_User_Guide_ko.pdf#page=189)**
 
 선택한 언어는 설정 화면에 먼저 반영됩니다. ‘기기 설정 따르기’는 기기 언어가 영어일 때 영어, 그 외에는 한국어를 사용합니다. 로그인·가입·이메일 인증 안내도 선택한 언어로 표시됩니다. 시간 선택 창은 계속 24시간제입니다. 미저장 취소는 ‘변경 취소’ 또는 ‘Discard changes’입니다.
 
-**[9.5 - 190페이지 - 1~2번 사진](MedBuddy_User_Guide_ko.pdf#page=190)**
+**[9.5 - 191페이지 - 1~2번 사진](MedBuddy_User_Guide_ko.pdf#page=191)**
 
 ‘연결된 환자가 없습니다.’가 나오면 ‘환자 연결’을 이용하거나 ‘내 일정’으로 바꾸세요. 여러 환자는 홈의 이름 옆 화살표로 바꾸고 조회 오류는 새로고침을 이용합니다. 연결된 환자의 위젯은 조회용입니다.
 
-**[9.6 - 192페이지 - 1~2번 사진](MedBuddy_User_Guide_ko.pdf#page=192)**
+**[9.6 - 193페이지 - 1~2번 사진](MedBuddy_User_Guide_ko.pdf#page=193)**
 
 첫 설정 화면에서 켜진 알림 종류 수를 확인할 수 있습니다. 보호자 알림은 전체 수신 여부이며 환자별 조건은 별도로 확인하세요. 알림이 오지 않으면 휴대폰 권한, 등록 일정, 시간대별 알림, 연동 상태를 확인합니다.
 
-**[9.7 - 194페이지 - 1~2번 사진](MedBuddy_User_Guide_ko.pdf#page=194)**
+**[9.7 - 195페이지 - 1~2번 사진](MedBuddy_User_Guide_ko.pdf#page=195)**
 
 기본 시간은 알림을 따로 저장하지 않은 시간대에 사용합니다. 이미 알림을 저장했다면 새 약을 추가해도 기존 시각을 유지합니다. 기존 일정의 알림은 ‘시간대별 세부 설정’을 눌러 ‘오늘의 복약 일정’에서 확인하세요. 이동하기 전에 환경설정 변경을 저장하세요. 처음 표시되는 시각은 개인별 복용 지시가 아닙니다.
 
-<a id="manual_page_206"></a>
+<a id="manual_page_207"></a>
 
-**[9.7 - 194페이지 - 3번 사진](MedBuddy_User_Guide_ko.pdf#page=194)**
+**[9.7 - 195페이지 - 3번 사진](MedBuddy_User_Guide_ko.pdf#page=195)**
 
 기존 일정의 알림은 ‘시간대별 세부 설정’을 눌러 ‘오늘의 복약 일정’에서 확인하세요. 이동하기 전에 환경설정 변경을 저장하세요. 처음 표시되는 시각은 개인별 복용 지시가 아닙니다.
 
-**[9.7 - 194페이지 - 4번 사진](MedBuddy_User_Guide_ko.pdf#page=194) / [9.7 - 195페이지 - 5~6번 사진](MedBuddy_User_Guide_ko.pdf#page=195)**
+**[9.7 - 195페이지 - 4번 사진](MedBuddy_User_Guide_ko.pdf#page=195) / [9.7 - 196페이지 - 5~6번 사진](MedBuddy_User_Guide_ko.pdf#page=196)**
 
 화면의 시간 표시를 ‘오전/오후’로 정했더라도 이 입력 창의 시는 0~23으로 입력합니다. 숫자는 최대 두 자리까지 입력할 수 있습니다.
 
-**[9.8 - 197페이지 - 1~2번 사진](MedBuddy_User_Guide_ko.pdf#page=197)**
+**[9.8 - 198페이지 - 1~2번 사진](MedBuddy_User_Guide_ko.pdf#page=198)**
 
 ‘알림 종류만 표시’일 때 위젯은 약 이름 대신 복용 완료·미복용 개수를 보여 줍니다. 표시 이름·개수·상태를 전부 숨기지는 않습니다. 잠금 화면의 노출 방식은 휴대폰 설정도 확인하세요. 기존 알림이 모두 즉시 바뀌는 것은 아닙니다.
 
-**[9.9 - 199페이지 - 1~3번 사진](MedBuddy_User_Guide_ko.pdf#page=199)**
+**[9.9 - 200페이지 - 1~3번 사진](MedBuddy_User_Guide_ko.pdf#page=200)**
 
 항목 이름은 휴대폰마다 다를 수 있으며 앱의 저장만으로 휴대폰 권한이 허용되지는 않습니다. 설정을 열지 못하면 휴대폰 설정 앱을 이용하세요. 위젯 자동 추가가 안 되면 홈 화면의 위젯 목록에서 MedBuddy를 찾습니다. 추가 창의 취소는 위젯을 추가하지 않습니다.
 
-**[9.10 - 201페이지 - 1~2번 사진](MedBuddy_User_Guide_ko.pdf#page=201)**
+**[9.10 - 202페이지 - 1~2번 사진](MedBuddy_User_Guide_ko.pdf#page=202)**
 
 일반 로그아웃은 계정 데이터 삭제와 다릅니다. 실패 안내가 나오면 연결 상태를 확인하고 다시 시도하세요. 홈 화면의 위젯도 로그인 안내로 바뀝니다. 위젯에서 다시 로그인하는 방법은 6.3절을 참고하세요.
 
-**[9.10 - 202페이지 - 5번 사진](MedBuddy_User_Guide_ko.pdf#page=202)**
+**[9.10 - 203페이지 - 5번 사진](MedBuddy_User_Guide_ko.pdf#page=203)**
 
 사진은 로그아웃 후 표시되는 로그인 화면의 구성 예시입니다.
 
-**[9.11 - 204페이지 - 1~3번 사진](MedBuddy_User_Guide_ko.pdf#page=204)**
+**[9.11 - 205페이지 - 1~3번 사진](MedBuddy_User_Guide_ko.pdf#page=205)**
 
 복약정보·일정·보호자 연동·설정과 MedBuddy 로그인 계정이 삭제됩니다. 보안상 다시 로그인하라는 안내가 나오면 로그아웃 후 다시 로그인하여 진행하세요. Google 계정 자체를 삭제하는 기능은 아닙니다. 마지막 사진은 작업 후 표시되는 로그인 화면의 구성 예시입니다.
 
@@ -3738,17 +3773,17 @@ Android의 MedBuddy에서 ‘환경설정’ → ‘복약 및 알림’ 아래�
 
 ## 10 문제 해결
 
-<a id="manual_page_207"></a>
+<a id="manual_page_208"></a>
 
 <a id="section-10-1"></a>
 
 ### 10.1 로그인 입력과 연결 오류 확인하기
 
-[소섹션: PDF 207쪽](MedBuddy_User_Guide_ko.pdf#page=207)
+[소섹션: PDF 208쪽](MedBuddy_User_Guide_ko.pdf#page=208)
 
-<a id="manual_page_208"></a>
+<a id="manual_page_209"></a>
 
-[화면 예시: PDF 208쪽](MedBuddy_User_Guide_ko.pdf#page=208)
+[화면 예시: PDF 209쪽](MedBuddy_User_Guide_ko.pdf#page=209)
 
 #### 1. 가입 정보 확인
 
@@ -3774,25 +3809,25 @@ Android의 MedBuddy에서 ‘환경설정’ → ‘복약 및 알림’ 아래�
 
 자동 재시도 중에는 ‘보안 세션 다시 연결’ 버튼이 잠시 비활성화될 수 있습니다. 버튼이 활성화되면 눌러 다시 연결하세요.
 
-<a id="manual_page_209"></a>
+<a id="manual_page_210"></a>
 
-[화면 예시: PDF 209쪽](MedBuddy_User_Guide_ko.pdf#page=209)
+[화면 예시: PDF 210쪽](MedBuddy_User_Guide_ko.pdf#page=210)
 
 #### 5. 연결 복구 확인
 
 연결이 복구되어 홈으로 돌아왔는지 확인하세요. 계정을 새로 만들거나 앱 데이터를 지울 필요는 없습니다.
 
-<a id="manual_page_210"></a>
+<a id="manual_page_211"></a>
 
 <a id="section-10-2"></a>
 
 ### 10.2 처방전 촬영과 분석 문제 해결하기
 
-[소섹션: PDF 210쪽](MedBuddy_User_Guide_ko.pdf#page=210)
+[소섹션: PDF 211쪽](MedBuddy_User_Guide_ko.pdf#page=211)
 
-<a id="manual_page_211"></a>
+<a id="manual_page_212"></a>
 
-[화면 예시: PDF 211쪽](MedBuddy_User_Guide_ko.pdf#page=211)
+[화면 예시: PDF 212쪽](MedBuddy_User_Guide_ko.pdf#page=212)
 
 #### 1. 오류 내용 확인
 
@@ -3806,17 +3841,17 @@ Android의 MedBuddy에서 ‘환경설정’ → ‘복약 및 알림’ 아래�
 2. 저장된 사진 다시 선택
 3. 홈으로 돌아가기
 
-<a id="manual_page_212"></a>
+<a id="manual_page_213"></a>
 
 <a id="section-10-3"></a>
 
 ### 10.3 알약 후보가 없거나 분석에 실패했을 때
 
-[소섹션: PDF 212쪽](MedBuddy_User_Guide_ko.pdf#page=212)
+[소섹션: PDF 213쪽](MedBuddy_User_Guide_ko.pdf#page=213)
 
-<a id="manual_page_213"></a>
+<a id="manual_page_214"></a>
 
-[화면 예시: PDF 213쪽](MedBuddy_User_Guide_ko.pdf#page=213)
+[화면 예시: PDF 214쪽](MedBuddy_User_Guide_ko.pdf#page=214)
 
 #### 1. 해당 알약 다시 확인
 
@@ -3826,17 +3861,17 @@ Android의 MedBuddy에서 ‘환경설정’ → ‘복약 및 알림’ 아래�
 
 전체 분석 실패 시 ‘이 사진 다시 분석’이 보이면 누르세요. 사진이 흐리거나 읽히지 않으면 ‘사진 변경’으로 바꾸세요. 사진은 변경 버튼 위치를 보여 줍니다.
 
-<a id="manual_page_214"></a>
+<a id="manual_page_215"></a>
 
 <a id="section-10-4"></a>
 
 ### 10.4 알림이 오지 않을 때
 
-[소섹션: PDF 214쪽](MedBuddy_User_Guide_ko.pdf#page=214)
+[소섹션: PDF 215쪽](MedBuddy_User_Guide_ko.pdf#page=215)
 
-<a id="manual_page_215"></a>
+<a id="manual_page_216"></a>
 
-[화면 예시: PDF 215쪽](MedBuddy_User_Guide_ko.pdf#page=215)
+[화면 예시: PDF 216쪽](MedBuddy_User_Guide_ko.pdf#page=216)
 
 #### 1. 받을 알림 켜기
 
@@ -3850,17 +3885,17 @@ Android의 MedBuddy에서 ‘환경설정’ → ‘복약 및 알림’ 아래�
 
 ‘휴대폰 알림 설정’에서 MedBuddy 알림이 허용됐는지 확인하세요. 항목 이름·위치는 기기마다 다르며 잠금 화면·방해 금지·배터리 제한도 알림 표시에 영향을 줄 수 있습니다.
 
-<a id="manual_page_216"></a>
+<a id="manual_page_217"></a>
 
 <a id="section-10-5"></a>
 
 ### 10.5 기록이나 위젯이 늦게 바뀔 때
 
-[소섹션: PDF 216쪽](MedBuddy_User_Guide_ko.pdf#page=216)
+[소섹션: PDF 217쪽](MedBuddy_User_Guide_ko.pdf#page=217)
 
-<a id="manual_page_217"></a>
+<a id="manual_page_218"></a>
 
-[화면 예시: PDF 217쪽](MedBuddy_User_Guide_ko.pdf#page=217)
+[화면 예시: PDF 218쪽](MedBuddy_User_Guide_ko.pdf#page=218)
 
 #### 1. 대기 기록 확인
 
@@ -3877,17 +3912,17 @@ Android의 MedBuddy에서 ‘환경설정’ → ‘복약 및 알림’ 아래�
 2. 환자 기록 다시 조회
 3. 환자가 기록한 복약 상태
 
-<a id="manual_page_218"></a>
+<a id="manual_page_219"></a>
 
 <a id="section-10-6"></a>
 
 ### 10.6 병원·약국 결과를 다시 확인할 때
 
-[소섹션: PDF 218쪽](MedBuddy_User_Guide_ko.pdf#page=218)
+[소섹션: PDF 219쪽](MedBuddy_User_Guide_ko.pdf#page=219)
 
-<a id="manual_page_219"></a>
+<a id="manual_page_220"></a>
 
-[화면 예시: PDF 219쪽](MedBuddy_User_Guide_ko.pdf#page=219)
+[화면 예시: PDF 220쪽](MedBuddy_User_Guide_ko.pdf#page=220)
 
 #### 1. 약국 결과가 없을 때
 
@@ -3895,7 +3930,7 @@ Android의 MedBuddy에서 ‘환경설정’ → ‘복약 및 알림’ 아래�
 
 #### 2. 병원 결과가 없을 때
 
-진료과목을 ‘전체’로 바꾸거나 날짜·진료 상태를 확인하세요. 주말·공휴일 조건이면 실제 방문할 주말·공휴일 날짜를 고른 뒤 적용하세요.
+가까운 결과가 없으면 병원 검색은 범위를 순서대로 넓힙니다. 그래도 결과가 없으면 진료과목·날짜·진료 상태를 확인하거나 지도를 옮겨 재검색하세요.
 
 1. 진료과목 변경
 2. 날짜·진료 상태 확인
@@ -3904,50 +3939,59 @@ Android의 MedBuddy에서 ‘환경설정’ → ‘복약 및 알림’ 아래�
 
 새로고침으로 최신 정보를 다시 요청하세요. 네트워크 오류가 표시되면 연결을 확인하고 다시 시도하세요. 표시된 일부 결과가 주변 모든 병원을 뜻하지는 않습니다.
 
+1. 다시 조회
+2. 일부 정보 미확인 안내
+
 #### 4. 운영 정보가 불확실할 때
 
 ‘전체 병원’ 또는 ‘전체 약국’에서 주소·연락처를 확인하고 전화로 실제 진료·영업 여부를 확인하세요. 시간 정보가 없으면 열려 있다고 단정하지 마세요.
 
-<a id="manual_page_220"></a>
+<a id="manual_page_221"></a>
 
 ### 참고
 
-**[10.1 - 208페이지 - 1~2번 사진](MedBuddy_User_Guide_ko.pdf#page=208)**
+**[10.1 - 209페이지 - 1~2번 사진](MedBuddy_User_Guide_ko.pdf#page=209)**
 
 가입 폼의 빨간 안내를 먼저 확인하세요. 로그인에 실패했다면 비밀번호를 새로 설정할 수 있습니다.
 
-**[10.1 - 208페이지 - 3~4번 사진](MedBuddy_User_Guide_ko.pdf#page=208) / [10.1 - 209페이지 - 5번 사진](MedBuddy_User_Guide_ko.pdf#page=209)**
+**[10.1 - 209페이지 - 3~4번 사진](MedBuddy_User_Guide_ko.pdf#page=209) / [10.1 - 210페이지 - 5번 사진](MedBuddy_User_Guide_ko.pdf#page=210)**
 
 일시 연결 실패와 이메일 미인증은 다른 상태입니다. 계정이나 앱 데이터를 지워 복구하지 마세요.
 
-**[10.2 - 211페이지 - 1~2번 사진](MedBuddy_User_Guide_ko.pdf#page=211)**
+**[10.2 - 212페이지 - 1~2번 사진](MedBuddy_User_Guide_ko.pdf#page=212)**
 
 이 화면은 서버가 일시적으로 응답하지 않은 예시입니다. 사진 불량이 원인이라고 단정하지 마세요.
 
-**[10.3 - 213페이지 - 1~2번 사진](MedBuddy_User_Guide_ko.pdf#page=213)**
+**[10.3 - 214페이지 - 1~2번 사진](MedBuddy_User_Guide_ko.pdf#page=214)**
 
 사진은 재분석·사진 변경 버튼의 위치를 보여 주는 관련 화면이며 오류 화면은 아닙니다. 반복 실패 시 연결을 확인하고, 확인되지 않은 후보는 저장하지 마세요.
 
-**[10.4 - 215페이지 - 1~2번 사진](MedBuddy_User_Guide_ko.pdf#page=215)**
+**[10.4 - 216페이지 - 1~2번 사진](MedBuddy_User_Guide_ko.pdf#page=216)**
 
 보호자 알림은 환자와 연결된 상태에서 받습니다. 알림이 없더라도 앱의 환자 일정에서 기록을 직접 확인할 수 있습니다. 알림만으로 실제 복용 여부를 단정하지 마세요.
 
-**[10.5 - 217페이지 - 1번 사진](MedBuddy_User_Guide_ko.pdf#page=217)**
+**[10.5 - 218페이지 - 1번 사진](MedBuddy_User_Guide_ko.pdf#page=218)**
 
 전송 대기가 남아 있을 때 앱 삭제나 데이터 초기화로 해결하려고 하지 마세요. 기기에만 있는 기록을 잃을 수 있습니다. 날짜가 바뀌어도 이전 날짜 기록을 오늘 복용으로 다시 입력하지 마세요.
 
-**[10.5 - 217페이지 - 2번 사진](MedBuddy_User_Guide_ko.pdf#page=217)**
+**[10.5 - 218페이지 - 2번 사진](MedBuddy_User_Guide_ko.pdf#page=218)**
 
 보호자 위젯은 환자의 기록을 조회하는 화면입니다. 보호자 본인의 ‘서버 저장 완료’나 전송 대기는 해당 환자의 조회 완료를 뜻하지 않습니다. 환자 이름과 조회 상태를 확인하세요.
 
-**[10.6 - 219페이지 - 1번 사진](MedBuddy_User_Guide_ko.pdf#page=219)**
+**[10.6 - 220페이지 - 1번 사진](MedBuddy_User_Guide_ko.pdf#page=220)**
 
 지도를 다른 지역으로 옮겨 다시 검색할 수도 있습니다. 조회 오류나 정보 없음과 실제 영업 종료를 구분하세요.
 
-**[10.6 - 219페이지 - 2, 4번 사진](MedBuddy_User_Guide_ko.pdf#page=219)**
+**[10.6 - 220페이지 - 2번 사진](MedBuddy_User_Guide_ko.pdf#page=220)**
+
+병원은 현재 위치 주변 300m부터 찾고, 결과가 없으면 같은 조건으로 500m, 1km, 2km 순서로 넓힙니다. 결과가 나오면 멈춥니다. 조회 오류·시간 제한이나 공휴일 확인 불가 등에서는 확대가 중단될 수 있습니다. 지도를 직접 옮겨 검색한 범위는 자동으로 넓히지 않습니다. 약국 검색 범위는 기존과 같습니다.
+
+<a id="manual_page_222"></a>
+
+**[10.6 - 220페이지 - 3번 사진](MedBuddy_User_Guide_ko.pdf#page=220)**
+
+시간표 미확인, 제공자 응답 누락, 조회 제한 등 여러 이유로 일부 결과만 확인할 수 있습니다. 병원 수만으로 판단하지 마세요. 정보가 없다는 것은 휴진이 확정됐다는 뜻이 아닙니다. 최초 공공데이터 안내만 X로 닫을 수 있습니다. 실제로 검색한 반경이 3km 이상이거나 일부 정보를 확인하지 못한 경우에는 안내를 유지합니다. 지도만 축소하고 재검색하지 않았다면 마지막 검색 범위가 기준입니다. 주변 모든 병원의 조회를 보장하지 않으며 행정구역 경계에서 일부 병원이 누락될 수 있습니다.
+
+**[10.6 - 220페이지 - 4번 사진](MedBuddy_User_Guide_ko.pdf#page=220)**
 
 신고된 진료시간과 실제 접수·진료 여부는 다를 수 있습니다. 방문 전 진료과목과 진료 가능 여부를 전화로 확인하세요. 병원 찾기는 진료 예약이나 응급의료 요청 기능이 아닙니다.
-
-**[10.6 - 219페이지 - 3번 사진](MedBuddy_User_Guide_ko.pdf#page=219)**
-
-일부 병원만 조회했다는 안내는 잠시 표시됩니다. 지도를 옮기거나 조건을 바꿔 다시 검색할 수 있습니다. 진료시간 확인 실패는 휴진 확정이 아닙니다.
