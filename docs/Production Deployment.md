@@ -70,6 +70,13 @@ Its unauthenticated feature probes must reach FastAPI's JSON authentication
 denial before the release workflow can proceed. It performs no authenticated
 search or chat write.
 
+Operational status on September 30: the live Cloudflare rule now includes both
+exceptions and remains active with the `Block` action. The public hospital route
+and `/ready/catalogs` now reach FastAPI but return JSON HTTP 404: the deployed
+backend is older than the v0.2.0 source. Do not add more Cloudflare exceptions
+to address this 404. Back up and deploy the matching backend/schema revision,
+then repeat the ingress and catalog-readiness probes below.
+
 ## Local Production Configuration
 
 The following real configuration files stay outside Git:

@@ -43,12 +43,12 @@ def test_ingress_accepts_backend_authentication_denials(status: int) -> None:
 
 
 # Function Name: test_ingress_command_probes_without_credentials_and_fails_closed
-# Description: Exercise response handling and prevent auth tokens or error bodies from being printed.
-# Parameters: monkeypatch, capsys: Isolated runtime; blocked: Simulate a hospital edge block.
+# Description: Distinguish edge blocking from an undeployed API route without leaking response bodies.
+# Parameters: monkeypatch, capsys: Isolated runtime; outcome: Simulated hospital response.
 # Returns: None.
-@pytest.mark.parametrize("blocked", [False, True])
+@pytest.mark.parametrize("outcome", ["ready", "edge", "missing"])
 def test_ingress_command_probes_without_credentials_and_fails_closed(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture, blocked: bool,
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture, outcome: str,
 ) -> None:
     urls = []
 
@@ -57,23 +57,33 @@ def test_ingress_command_probes_without_credentials_and_fails_closed(
     # Responsibilities: Record requested routes and return API denials or an HTML edge block.
     class Opener:
         # Function Name: open
-        # Description: Verify finite timeout and absent credentials, then raise a response-shaped HTTP error.
+        # Description: Verify finite timeout and absent credentials, then return the selected denial.
         # Parameters: request: Prepared URL and headers; timeout: Finite network budget.
         # Returns: Never returns; raises an HTTP response consumed by the command.
         def open(self, request: object, timeout: int) -> None:
             urls.append(request.full_url)
             assert timeout == 15 and request.get_header("Authorization") is None
             assert request.get_header("X-firebase-appcheck") is None
-            edge = blocked and "hospitals" in request.full_url
-            raise HTTPError(request.full_url, 403 if edge else 401, "denied",
-                            {"Content-Type": "text/html" if edge else "application/json"},
-                            io.BytesIO(b"private-body-never-print" if edge else b'{"detail":"Authentication required"}'))
+            hospital_failure = outcome != "ready" and "hospitals" in request.full_url
+            status = 403 if outcome == "edge" and hospital_failure else 404 if hospital_failure else 401
+            body = (
+                b"private-body-never-print" if status == 403
+                else b'{"detail":"Not Found"}' if status == 404
+                else b'{"detail":"Authentication required"}'
+            )
+            raise HTTPError(request.full_url, status, "denied",
+                            {"Content-Type": "text/html" if status == 403 else "application/json"},
+                            io.BytesIO(body))
 
     monkeypatch.setattr(gate, "build_opener", lambda *args: Opener())
-    assert gate.main(["--origin", "https://example.test"]) == (1 if blocked else 0)
-    assert len(urls) == (2 if blocked else 3)
+    assert gate.main(["--origin", "https://example.test"]) == (0 if outcome == "ready" else 1)
+    assert len(urls) == (3 if outcome == "ready" else 2)
     captured = capsys.readouterr()
     assert "private-body-never-print" not in captured.out + captured.err
+    if outcome == "edge":
+        assert "hospital: Non-JSON authentication response" in captured.err
+    if outcome == "missing":
+        assert "hospital: API route returned HTTP 404" in captured.err
     assert gate.NoRedirect().redirect_request(None, None, 302, "", None, "https://other.test") is None
 
 

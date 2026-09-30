@@ -35,9 +35,16 @@ class NoRedirect(HTTPRedirectHandler):
 # Parameters: status: HTTP status; content_type: Response media type; body: Bounded bytes.
 # Returns: None; raises ValueError on unusable ingress evidence.
 def validate_response(status: int, content_type: str, body: bytes) -> None:
-    if status not in {401, 403} or content_type.split(";", 1)[0].strip().lower() != "application/json":
-        raise ValueError("Route must return a JSON authentication denial.")
-    payload = json.loads(body)
+    if status == 404:
+        raise ValueError("API route returned HTTP 404; deploy the matching backend revision.")
+    if status not in {401, 403}:
+        raise ValueError(f"Unexpected HTTP {status}; expected an authentication denial.")
+    if content_type.split(";", 1)[0].strip().lower() != "application/json":
+        raise ValueError("Non-JSON authentication response; check the ingress security rules.")
+    try:
+        payload = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise ValueError("Invalid API authentication JSON.") from None
     if not isinstance(payload, dict) or not isinstance(payload.get("detail"), str) or not payload["detail"]:
         raise ValueError("Route did not return the API error contract.")
 
@@ -59,7 +66,10 @@ def check_routes(origin: str) -> None:
         except HTTPError as error:
             response = error
         with response:
-            validate_response(response.code, response.headers.get("Content-Type", ""), response.read(65537))
+            try:
+                validate_response(response.code, response.headers.get("Content-Type", ""), response.read(65537))
+            except ValueError as exc:
+                raise ValueError(f"{feature}: {exc}") from None
         print(f"{feature}: public route reaches API authentication")
 
 
@@ -74,9 +84,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         check_routes(args.origin)
         return 0
-    except Exception as exc:
-        print(f"Release ingress gate rejected: {type(exc).__name__}. "
-              "Verify public feature prefixes in the ingress allowlist.", file=sys.stderr)
+    except ValueError as exc:
+        print(f"Release ingress gate rejected: {exc}", file=sys.stderr)
+        return 1
+    except Exception:
+        print("Release ingress gate rejected: network or transport failure.", file=sys.stderr)
         return 1
 
 
