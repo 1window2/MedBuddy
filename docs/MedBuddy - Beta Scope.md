@@ -2,7 +2,7 @@
 
 ## Status
 
-- Scope review: 2026-09-01
+- Scope review: 2026-09-30
 - Stable functional baseline: `v0.1.1-beta`
 - Active development branch: `beta/v0.2.0`
 - Target release tag: `v0.2.0-beta`
@@ -77,6 +77,16 @@ The following implemented flows are in v0.2.0 verification:
     requests, automatic slot-completion events, medication shortage/discomfort
     context, pharmacy snapshots, participant-specific quick replies, and patient
     navigation from a schedule card to the matching slot in today's schedule.
+12. Nearby-hospital search with an explicit specialty choice before location
+    lookup, bounded provider queries and radius expansion, date/status filters,
+    partial-result and calendar uncertainty, and server-verified hospital chat
+    sharing. Hospital information requires telephone confirmation before visiting.
+
+Linked chat also includes unread counts and boundaries, recipient read receipts,
+notification entry with role/recipient validation, and durable notification jobs.
+Provider/database waits use independent calendar sessions and shared pure
+nearby-care calculations. These source changes retain the physical-device and
+production acceptance gates below.
 
 다중 알약 식별·근처 약국·채팅은 별도 실험실 설정 없이 제공하며, 환경설정에서
 실험실 메뉴를 제거한다. 채팅 탭은 활성 연동이 있을 때만 표시한다. 구형 실험실
@@ -84,7 +94,7 @@ The following implemented flows are in v0.2.0 verification:
 
 ## Required Beta Hardening
 
-Implementation status as of 2026-09-09: P0 controls and release configuration
+Implementation status as of 2026-09-30: P0 controls and release configuration
 are present in source. The source also includes versioned Alembic migrations,
 Firebase App Check, Redis-backed distributed quotas, a shared PostgreSQL pill
 catalog, on-device prescription OCR and privacy filtering, authenticated FCM
@@ -93,13 +103,20 @@ settings, and tested recovery and feedback paths for the medication workflow.
 The v0.2.0 source also includes direct medication entry, bounded multi-pill
 identification, schedule review, guided-camera cropping, backend-mediated
 nearby-pharmacy lookup, structured medication-context chat, and idempotent
-adoption of compatible pre-existing pharmacy tables. The two new
-network features remain disabled by default through laboratory settings.
+adoption of compatible pre-existing pharmacy tables. Nearby care is available
+from Home and chat is available for active links; legacy laboratory settings no
+longer control their visibility.
 The self-hosted FastAPI/PostgreSQL/Redis stack, public HTTPS ingress, protected
 host secrets, and scheduled server-side missed-deadline delivery are present in
 source. Deployment of the latest revision, signed physical-device testing,
 backup/restore, and operational abuse-control validation remain release gates.
 Historical Google Cloud workflows are disabled.
+
+The September 30 review found public HTML 403 responses for hospital search and
+`/ready/catalogs` despite healthy core readiness. The corrected ingress rule and
+credential-free signing probes are in source; applying the rule and obtaining
+successful public probes remain deployment gates. See the
+[launch readiness review](qa/v0.2.0-2026-09-30-launch-readiness.md).
 
 ### P0: Identity and Transport Security
 

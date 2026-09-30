@@ -156,6 +156,7 @@ jobs:
           print(f"{parsed.scheme}://{parsed.netloc}")
           PY
           )"
+          python3 ../scripts/check_release_ingress.py --origin "${BACKEND_ORIGIN}"
           curl --fail --silent --show-error \
             --retry 3 --retry-all-errors --retry-delay 2 \
             "${BACKEND_ORIGIN}/health" > "${RUNNER_TEMP}/backend-health.json"

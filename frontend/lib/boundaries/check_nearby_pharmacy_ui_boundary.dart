@@ -1447,13 +1447,19 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                       icon: widget.hospitals
                           ? Icons.local_hospital_outlined
                           : Icons.local_pharmacy_outlined,
-                      title: switch (_filter) {
-                        _PharmacyFilter.openNow => text.noOpenPharmacy,
-                        _PharmacyFilter.lateHours => text.noLateNightPharmacy,
-                        _PharmacyFilter.weekendHoliday =>
-                          text.noWeekendHolidayPharmacy,
-                        _PharmacyFilter.all => text.noNearbyPharmacy,
-                      },
+                      title:
+                          !widget.hospitals &&
+                              _holidayScheduleStatus == 'unknown' &&
+                              _filter != _PharmacyFilter.all
+                          ? text.openingStatusUnverified
+                          : switch (_filter) {
+                              _PharmacyFilter.openNow => text.noOpenPharmacy,
+                              _PharmacyFilter.lateHours =>
+                                text.noLateNightPharmacy,
+                              _PharmacyFilter.weekendHoliday =>
+                                text.noWeekendHolidayPharmacy,
+                              _PharmacyFilter.all => text.noNearbyPharmacy,
+                            },
                       message: _filter == _PharmacyFilter.all
                           ? text.checkLocation
                           : text.tryAllPharmacies,
@@ -2843,6 +2849,12 @@ class _NearbyPharmacyText {
   String get noOpenPharmacy => isEnglish
       ? 'No open pharmacies were found in this search area'
       : '검색한 지역에 영업 중인 약국이 없습니다';
+  // Function Name: openingStatusUnverified
+  // Description: Explain an empty time-filtered search when calendar verification failed.
+  // Parameters: None. Returns: Localized uncertainty message.
+  String get openingStatusUnverified => isEnglish
+      ? 'Pharmacy opening status could not be verified'
+      : '약국 영업 여부를 확인할 수 없습니다';
   // 함수이름: noLateNightPharmacy
   // 함수역할: 선택 지역의 심야 약국 검색 결과가 없음을 안내한다. 매개변수: 없음. 반환값: 번역 문구.
   String get noLateNightPharmacy => isEnglish
@@ -3312,6 +3324,10 @@ class _NearbyPharmacyText {
               : ' 동기화된 약국 목록이 예상보다 오래되었습니다.')
         : '';
     final holidayWarning = switch (holidayScheduleStatus) {
+      'unknown' =>
+        isEnglish
+            ? ' The holiday calendar could not be verified; opening status may be unknown.'
+            : ' 공휴일 여부를 확인하지 못해 영업 상태가 미확인일 수 있습니다.',
       'stale_fallback' =>
         isEnglish
             ? ' A cached holiday roster is being used.'

@@ -116,6 +116,7 @@ CheckNearbyPharmacy _buildControl({
   List<DateTime>? requestedTimes,
   Future<void> Function()? beforeResponse,
   Set<String> emptyModes = const {},
+  String holidayScheduleStatus = 'not_applicable',
   List<Map<String, Object?>>? customPharmacies,
   Future<bool> Function(Uri uri)? uriLauncher,
   Future<void> Function(String text)? clipboardWriter,
@@ -172,7 +173,10 @@ CheckNearbyPharmacy _buildControl({
                     },
                 ];
       return http.Response(
-        jsonEncode({'data': responseData}),
+        jsonEncode({
+          'data': responseData,
+          'holiday_schedule_status': holidayScheduleStatus,
+        }),
         200,
         headers: {'content-type': 'application/json; charset=utf-8'},
       );
@@ -1401,6 +1405,28 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('조회 조건'), findsOneWidget);
     expect(find.byKey(const Key('pharmacy-map-filter-selector')), findsNothing);
+  });
+
+  // Function Name: calendar verification failure keeps an empty search uncertain
+  // Description: A missing calendar must not tell users that every nearby pharmacy is closed.
+  // Parameters: tester: Widget test driver. Returns: Completed regression check.
+  testWidgets('calendar verification failure keeps an empty search uncertain', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _testApp(
+        _buildControl(
+          emptyModes: {'open_at_time'},
+          holidayScheduleStatus: 'unknown',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.text('약국 영업 여부를 확인할 수 없습니다'), findsOneWidget);
+    expect(find.text('검색한 지역에 영업 중인 약국이 없습니다'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('shows open pharmacies first and filters closed pharmacies', (

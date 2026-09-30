@@ -46,9 +46,11 @@ public backend prefix before enabling a new client feature. The v0.2.0 rule is:
   starts_with(http.request.uri.path, "/api/v1/medication/") or
   starts_with(http.request.uri.path, "/api/v1/auth/") or
   starts_with(http.request.uri.path, "/api/v1/pharmacy/") or
+  starts_with(http.request.uri.path, "/api/v1/hospitals/") or
   starts_with(http.request.uri.path, "/api/v1/chat/") or
   http.request.uri.path eq "/health" or
   http.request.uri.path eq "/ready" or
+  http.request.uri.path eq "/ready/catalogs" or
   starts_with(http.request.uri.path, "/cdn-cgi/")
 ))
 ```
@@ -57,6 +59,16 @@ Its action is `Block`, so paths outside that list stop at Cloudflare. Adding a
 prefix here only permits routing to FastAPI; Firebase Authentication, optional
 App Check enforcement, active-link authorization, validation, and rate limits
 still apply at the backend.
+
+Before signing v0.2.0, apply the hospital prefix and exact `/ready/catalogs`
+exception to the live rule. A September 30 public probe returned HTTP 200 for
+`/ready` but HTML HTTP 403 for both the hospital route and `/ready/catalogs`.
+The repository rule is a deployment instruction; editing it does not update
+Cloudflare. Verify `/ready/catalogs` returns ready JSON, and run
+`python3 scripts/check_release_ingress.py --origin https://api.medbuddy.pp.ua`.
+Its unauthenticated feature probes must reach FastAPI's JSON authentication
+denial before the release workflow can proceed. It performs no authenticated
+search or chat write.
 
 ## Local Production Configuration
 

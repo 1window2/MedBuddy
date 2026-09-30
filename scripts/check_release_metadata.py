@@ -63,6 +63,7 @@ def main() -> int:
         "mandatory release signing": "MEDBUDDY_REQUIRE_RELEASE_SIGNING: 'true'",
         "APK build": "flutter build apk --release --no-pub",
         "app bundle build": "flutter build appbundle --release --no-pub",
+        "public feature ingress": "python3 ../scripts/check_release_ingress.py",
     }
     for label, expected_text in required_release_controls.items():
         if expected_text not in release_workflow:

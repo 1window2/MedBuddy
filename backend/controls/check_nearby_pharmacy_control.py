@@ -3,9 +3,11 @@
 
 """현재 위치를 기준으로 가까운 약국을 조회하는 사용 사례."""
 
+import asyncio
 import logging
 import math
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta, tzinfo
 from enum import StrEnum
 from typing import Protocol
@@ -249,19 +251,11 @@ class CheckNearbyPharmacy:
             max_distance_km=max_distance_km,
         )
         now = self._normalize_target_datetime(target_datetime)
-        is_public_holiday = False
-        was_public_holiday = False
-        if self._holiday_boundary is not None:
-            try:
-                is_public_holiday = await self._holiday_boundary.isHoliday(now.date())
-                was_public_holiday = await self._holiday_boundary.isHoliday(
-                    now.date() - timedelta(days=1)
-                )
-            except (PharmacyApiUnavailableError, PharmacyApiResponseError):
-                # 공휴일 조회 실패가 일반 요일표 기반 약국 검색까지 막지 않게 한다.
-                logger.warning(
-                    "Holiday lookup unavailable; using regular weekly schedules."
-                )
+        is_public_holiday, was_public_holiday = await asyncio.gather(
+            self._lookup_holiday(now.date()),
+            self._lookup_holiday(now.date() - timedelta(days=1)),
+        )
+        calendar_unknown = is_public_holiday is None or was_public_holiday is None
 
         repository = self._pharmacy_repository
         catalog_updated_at: datetime | None = None
@@ -293,13 +287,13 @@ class CheckNearbyPharmacy:
             holiday_schedules, holiday_schedule_status = (
                 await self._resolve_holiday_schedules(
                     now.date(),
-                    is_public_holiday=is_public_holiday,
+                    is_public_holiday=is_public_holiday is True,
                 )
             )
             previous_holiday_schedules, previous_status = (
                 await self._resolve_holiday_schedules(
                     now.date() - timedelta(days=1),
-                    is_public_holiday=was_public_holiday,
+                    is_public_holiday=was_public_holiday is True,
                 )
             )
             if previous_status in {"fresh", "stale_fallback", "weekly_fallback"}:
@@ -311,9 +305,9 @@ class CheckNearbyPharmacy:
                 self._catalog_entry_to_location_record(
                     entry,
                     day_of_week=now.isoweekday(),
-                    is_public_holiday=is_public_holiday,
+                    is_public_holiday=is_public_holiday is True,
                     previous_day_of_week=(now.date() - timedelta(days=1)).isoweekday(),
-                    was_public_holiday=was_public_holiday,
+                    was_public_holiday=was_public_holiday is True,
                     holiday_schedule=holiday_schedules.get(entry.pharmacy_id),
                     previous_holiday_schedule=previous_holiday_schedules.get(
                         entry.pharmacy_id
@@ -347,16 +341,33 @@ class CheckNearbyPharmacy:
             if record.pharmacy_id in seen_ids:
                 continue
             seen_ids.add(record.pharmacy_id)
+            # An unverified calendar day cannot select its regular weekly interval.
+            if calendar_unknown:
+                record = replace(
+                    record,
+                    start_time="" if is_public_holiday is None else record.start_time,
+                    end_time="" if is_public_holiday is None else record.end_time,
+                    previous_start_time=(
+                        "" if was_public_holiday is None else record.previous_start_time
+                    ),
+                    previous_end_time=(
+                        "" if was_public_holiday is None else record.previous_end_time
+                    ),
+                    weekly_hours=None,
+                    schedule_source="unknown" if is_public_holiday is None else record.schedule_source,
+                )
             pharmacy = self._to_nearby_pharmacy(
                 record,
                 latitude=latitude,
                 longitude=longitude,
                 now=now,
-                is_public_holiday=is_public_holiday,
+                is_public_holiday=is_public_holiday is True,
                 has_weekend_or_holiday_hours=(
                     record.pharmacy_id in weekend_or_holiday_ids
                 ),
             )
+            if calendar_unknown and pharmacy.is_open_now is not True:
+                pharmacy = replace(pharmacy, is_open_now=None, minutes_until_close=None)
             if pharmacy.distance_km > max_distance_km:
                 continue
             if not self._matches_search_mode(
@@ -393,8 +404,22 @@ class CheckNearbyPharmacy:
             target_datetime=now,
             catalog_updated_at=catalog_updated_at,
             catalog_is_stale=catalog_is_stale,
-            holiday_schedule_status=holiday_schedule_status,
+            holiday_schedule_status="unknown" if calendar_unknown else holiday_schedule_status,
         )
+
+    # Function Name: _lookup_holiday
+    # Description: Preserve unknown calendar status after errors or a bounded lookup timeout.
+    # Parameters: value: Calendar day to classify.
+    # Returns: Verified holiday status, None on failure, or legacy weekday behavior without a provider.
+    async def _lookup_holiday(self, value: date) -> bool | None:
+        if self._holiday_boundary is None:
+            return False
+        try:
+            async with asyncio.timeout(min(3.0, settings.PHARMACY_API_TIMEOUT_SECONDS)):
+                return await self._holiday_boundary.isHoliday(value)
+        except (PharmacyApiUnavailableError, PharmacyApiResponseError, TimeoutError):
+            logger.warning("Pharmacy calendar lookup unavailable; opening status may be unknown.")
+            return None
 
     # 함수이름: _catalog_entry_to_location_record
     # 함수역할:
