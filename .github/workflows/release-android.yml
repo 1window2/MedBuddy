@@ -101,6 +101,14 @@ jobs:
                   "FIREBASE_APP_CHECK_REQUIRED must be true or false."
               )
           normalized = value or "true"
+          if (
+              os.environ["GITHUB_REF"] == "refs/heads/main"
+              and normalized != "true"
+          ):
+              raise SystemExit(
+                  "Main release builds require Firebase App Check. "
+                  "The off-Play exception is restricted to beta/v0.2.0."
+              )
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
               output.write(
                   "MEDBUDDY_APP_CHECK_REQUIRED_NORMALIZED="
