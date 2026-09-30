@@ -60,22 +60,26 @@ prefix here only permits routing to FastAPI; Firebase Authentication, optional
 App Check enforcement, active-link authorization, validation, and rate limits
 still apply at the backend.
 
-Before signing v0.2.0, apply the hospital prefix and exact `/ready/catalogs`
-exception to the live rule. A September 30 public probe returned HTTP 200 for
-`/ready` but HTML HTTP 403 for both the hospital route and `/ready/catalogs`.
-The repository rule is a deployment instruction; editing it does not update
-Cloudflare. Verify `/ready/catalogs` returns ready JSON, and run
+Before signing v0.2.0, verify that the hospital prefix and exact
+`/ready/catalogs` exception remain in the live rule. The repository rule is a
+deployment instruction; editing it does not update Cloudflare. Verify
+`/ready/catalogs` returns ready JSON, and run
 `python3 scripts/check_release_ingress.py --origin https://api.medbuddy.pp.ua`.
 Its unauthenticated feature probes must reach FastAPI's JSON authentication
 denial before the release workflow can proceed. It performs no authenticated
 search or chat write.
 
-Operational status on September 30: the live Cloudflare rule now includes both
-exceptions and remains active with the `Block` action. The public hospital route
-and `/ready/catalogs` now reach FastAPI but return JSON HTTP 404: the deployed
-backend is older than the v0.2.0 source. Do not add more Cloudflare exceptions
-to address this 404. Back up and deploy the matching backend/schema revision,
-then repeat the ingress and catalog-readiness probes below.
+Operational status on September 30: the live Cloudflare rule includes both
+exceptions and remains active with the `Block` action. The reviewed v0.2.0
+backend at `16191b2` was deployed after a database backup and isolated
+restore/migration rehearsal. The live database is at `b3a7d9e2f601`;
+pharmacy, hospital, and chat probes reach FastAPI authentication, public
+`/ready/catalogs` returns JSON HTTP 200, and an unknown API path still receives
+Cloudflare HTML HTTP 403. This closes the ingress/backend-version gate, not
+App Check, upstream hospital access, catalog freshness, or physical-device
+acceptance. The hospital provider currently returns HTTP 403/reason code `30`
+for the production key; see the blocker in [the release TODO](TODO.md).
+See [the production rollout evidence](qa/v0.2.0-2026-09-30-production-rollout.md).
 
 ## Local Production Configuration
 
@@ -333,12 +337,15 @@ docker compose --env-file deploy/.env -f compose.self-hosted.yml \
   exec -T backend alembic current
 ```
 
-The reported head must be `c2a7e4d9f610`. The v0.2.0 tail adds the shared
-pharmacy catalog (`8f2c6d4a1b90`), pharmacy schedule provenance and holiday
+The reported head must be `b3a7d9e2f601` for this source revision. The
+v0.2.0 tail adds the shared pharmacy catalog (`8f2c6d4a1b90`), pharmacy schedule provenance and holiday
 cache (`b6d14f8c2a70`), and structured chat message/context columns
 (`b4e7c2d9a160`), then merges the catalog/chat migration branches
 (`9c4e7b2a6d10`), adds linked-chat deletion markers (`c2e4a6b8d901`), and
-generalizes the caregiver alert outbox (`c2a7e4d9f610`). Cloudflare Tunnel must
+generalizes the caregiver alert outbox (`c2a7e4d9f610`), then adds dose-sync
+operations (`a6e2d903bc71`), merges the caregiver-action branch
+(`f8a2c6d901be`), adds the pharmacy search cache (`6d4f8a2c9301`), and adds
+durable chat notification jobs (`b3a7d9e2f601`). Cloudflare Tunnel must
 also permit WebSocket upgrades for
 `/api/v1/chat/links/*/stream`; no separate public port or second backend is
 required.

@@ -13,9 +13,25 @@ The event-loop blocking correction and exact-commit signing gate are recorded in
 [the P1 architecture follow-up](qa/v0.2.0-2026-09-26-p1-architecture-fixes.md).
 Ordinary chat push now has a transactional queue; migration and acceptance
 requirements are in [the durable delivery design](MedBuddy%20-%20Durable%20Chat%20Delivery.md).
+The September 30 production backup, isolated restore and migration rehearsal,
+deployment, and public ingress checks are recorded in
+[the rollout evidence](qa/v0.2.0-2026-09-30-production-rollout.md).
 Individual physical checks below remain open unless their exact scope has evidence;
 the September 13 slot-specific cancellation pass does not close global-toggle or
 account-cleanup acceptance.
+
+## v0.2.0 release blocker: restore hospital provider access
+
+The September 30 production hospital lookup reached the upstream national
+hospital service but received HTTP 403 with XML reason code `30`. The current
+backend has no `HOSPITAL_API_KEY` override and reuses `PUBLIC_DATA_API_KEY`.
+The same shared key succeeded for a KASI holiday lookup, so first verify the
+hospital-service usage application, approval state, and correct key in the
+[public-data portal](https://www.data.go.kr/data/15000736/openapi.do). Do not
+commit or print the credential. Configure a hospital-specific key if needed,
+then repeat one bounded live hospital-result check and normal feature
+acceptance. Cloudflare ingress and catalog readiness are already passing; they
+do not close this upstream gate.
 
 ## v0.2.0 release blocker: restore Firebase App Check with Play Integrity
 
