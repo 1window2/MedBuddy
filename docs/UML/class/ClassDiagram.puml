@@ -1046,6 +1046,13 @@ package "FastAPI Backend" {
             + cache_search_results(pharmacies): void
             + replace_all(entries): void
         }
+        class "AsyncPharmacyCatalog" as AsyncPharmacyCatalog <<Repository: 작업별 비동기 약국 조회>> {
+            + count(): awaitable<int>
+            + search_nearby_candidates(latitude, longitude, max_distance_km): awaitable<list<PharmacyCatalogEntry>>
+            + get_cached_holiday_schedules(date, max_age): awaitable<dict?>
+            + replace_holiday_schedules(date, schedules): awaitable<void>
+            + cache_search_results(pharmacies): awaitable<void>
+        }
 
         class "ManageLinkedChat" as BManageLinkedChat <<Control: 연결 채팅 권한·메시지 관리>> {
             - db: Session
@@ -2112,7 +2119,8 @@ MFDSPillCatalogBoundary ..> PillCatalogRepository
 MFDSPillCatalogBoundary ..> BPillCatalogEntry
 PillCatalogRepository --> DBPillIdentificationReference
 
-BCheckNearbyPharmacy o-- PharmacyCatalogRepository
+BCheckNearbyPharmacy o-- AsyncPharmacyCatalog
+AsyncPharmacyCatalog ..> PharmacyCatalogRepository : worker thread; independent session per operation
 BCheckNearbyPharmacy o-- PersistentKoreanHolidayLookup
 BCheckNearbyPharmacy o-- HolidayEmergencyPharmacyAPI
 BCheckNearbyPharmacy o-- PharmacyLookupBoundary

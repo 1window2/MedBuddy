@@ -30,6 +30,7 @@ package "FastAPI: Boundary / Control / Entity" {
     + requestNearbyHospitalSearch(...)
     + requestShareContext(hospital_id, schedule_date)
   }
+  class "CheckNearbyPharmacy" as BPharmacy <<Control>>
   interface HospitalLookupBoundary {
     + fetchNearbyPage(...)
     + fetchDepartmentPage(province, district, department, page_no, page_size)
@@ -41,6 +42,7 @@ package "FastAPI: Boundary / Control / Entity" {
   class PersistentKoreanHolidayLookup <<Boundary>>
   interface HolidayLookupBoundary
   class SessionScopedKoreanHolidayCache <<Repository>>
+  class AsyncPharmacyCatalog <<Repository>>
   class PharmacyCatalogRepository <<Repository>>
   class "ManageLinkedChat" as BChat <<Control>>
   class HospitalDetails <<Entity>>
@@ -80,6 +82,8 @@ BHospital --> HolidayLookupBoundary
 PersistentKoreanHolidayLookup ..|> HolidayLookupBoundary : 구조적 Protocol 충족
 PersistentKoreanHolidayLookup --> SessionScopedKoreanHolidayCache
 SessionScopedKoreanHolidayCache --> PharmacyCatalogRepository : 작업별 독립 DB Session
+AsyncPharmacyCatalog --> PharmacyCatalogRepository : worker thread + 작업별 DB Session
+BPharmacy --> AsyncPharmacyCatalog : 비동기 카탈로그·당번표 조회
 BHospital ..> NearbyCarePolicy
 DepartmentSearch ..> NearbyCarePolicy
 PersistentKoreanHolidayLookup --> KoreanHolidayAPI

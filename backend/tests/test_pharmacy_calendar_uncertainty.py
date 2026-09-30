@@ -3,7 +3,7 @@
 
 import asyncio
 from datetime import date, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -34,7 +34,7 @@ def control_for(unknown: set[date], *, hour: int = 12, live: bool = False) -> Ch
         return False
 
     calendar.isHoliday.side_effect = classify
-    repository = MagicMock()
+    repository = AsyncMock()
     repository.latest_updated_at.return_value = datetime(2026, 9, 30)
     repository.count.return_value = 0 if live else 1
     repository.search_nearby_candidates.return_value = [PharmacyCatalogEntry(

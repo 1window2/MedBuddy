@@ -3,12 +3,13 @@
 
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from controls.check_nearby_pharmacy_control import CheckNearbyPharmacy, PharmacySearchMode
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
@@ -17,6 +18,7 @@ from core.database import Base
 from entities.nearby_pharmacy_entity import NearbyPharmacySearchResult, PharmacyLocationRecord
 from entities.pharmacy_catalog_entity import PharmacyCatalogRecord, PharmacySearchCacheRecord
 from repositories.pharmacy_catalog_repository import PharmacyCatalogRepository
+from repositories.async_pharmacy_catalog import AsyncPharmacyCatalog
 
 PharmacyChatFlow = tuple[
     Session, PharmacyCatalogRepository, CheckNearbyPharmacy, AsyncMock, int,
@@ -25,10 +27,10 @@ PharmacyChatFlow = tuple[
 
 # 함수이름: flow
 # 함수역할: 실제 데모 DB와 분리한 저장소·연동·공공 검색 대역을 준비한다.
-# 매개변수: 없음. 반환값: 검색·공유 시험에 필요한 의존성.
+# 매개변수: tmp_path 격리된 파일 DB 디렉터리. 반환값: 검색·공유 시험에 필요한 의존성.
 @pytest.fixture
-def flow() -> Iterator[PharmacyChatFlow]:
-    engine = create_engine("sqlite:///:memory:")
+def flow(tmp_path: Path) -> Iterator[PharmacyChatFlow]:
+    engine = create_engine(f"sqlite:///{tmp_path / 'pharmacy-chat.db'}")
     Base.metadata.create_all(engine)
     with Session(engine) as db:
         links = LinkPatientCaregiver(db)
@@ -41,7 +43,10 @@ def flow() -> Iterator[PharmacyChatFlow]:
             distance_km=None, start_time="0900", end_time="2200",
         )]
         repository = PharmacyCatalogRepository(db)
-        control = CheckNearbyPharmacy(pharmacy_boundary=boundary, pharmacy_repository=repository)
+        control = CheckNearbyPharmacy(
+            pharmacy_boundary=boundary,
+            pharmacy_repository=AsyncPharmacyCatalog(sessionmaker(bind=engine)),
+        )
         yield db, repository, control, boundary, int(link_id)
     engine.dispose()
 
@@ -143,8 +148,8 @@ async def test_catalog_entry_takes_precedence_over_search_cache(flow: PharmacyCh
 # 매개변수: flow 격리 흐름. 반환값: 없음.
 @pytest.mark.anyio
 async def test_cache_failure_does_not_hide_usable_search_results(flow: PharmacyChatFlow) -> None:
-    _, repository, control, _, _ = flow
-    with patch.object(repository, "cache_search_results", side_effect=RuntimeError("cache unavailable")):
+    _, _, control, _, _ = flow
+    with patch.object(PharmacyCatalogRepository, "cache_search_results", side_effect=RuntimeError("cache unavailable")):
         result = await _search(control)
     assert result.data[0].pharmacy_id == "public-pharmacy"
 
@@ -155,7 +160,7 @@ async def test_cache_failure_does_not_hide_usable_search_results(flow: PharmacyC
 @pytest.mark.anyio
 async def test_cache_commit_failure_rolls_back_partial_rows(flow: PharmacyChatFlow) -> None:
     db, repository, control, _, _ = flow
-    with patch.object(db, "commit", side_effect=RuntimeError("commit unavailable")):
+    with patch.object(Session, "commit", side_effect=RuntimeError("commit unavailable")):
         result = await _search(control)
     assert result.data[0].pharmacy_id == "public-pharmacy"
     assert db.query(PharmacySearchCacheRecord).count() == 0

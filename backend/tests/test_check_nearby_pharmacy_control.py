@@ -101,7 +101,7 @@ class _FakePharmacyRepository:
     # - None.
     # Returns:
     # - int: Number of configured local catalog entries.
-    def count(self) -> int:
+    async def count(self) -> int:
         return len(self.entries)
 
     # Function Name: search_nearby_candidates
@@ -113,7 +113,7 @@ class _FakePharmacyRepository:
     #   this double.
     # Returns:
     # - list[PharmacyCatalogEntry]: All configured local pharmacy candidates.
-    def search_nearby_candidates(self, **_: object) -> list[PharmacyCatalogEntry]:
+    async def search_nearby_candidates(self, **_: object) -> list[PharmacyCatalogEntry]:
         return self.entries
 
     # Function Name: latest_updated_at
@@ -123,7 +123,7 @@ class _FakePharmacyRepository:
     # - None.
     # Returns:
     # - datetime: Fixed catalog timestamp: 2026-08-24 at midnight.
-    def latest_updated_at(self) -> datetime:
+    async def latest_updated_at(self) -> datetime:
         return datetime(2026, 8, 24)
 
     # Function Name: get_cached_holiday_schedules
@@ -134,7 +134,7 @@ class _FakePharmacyRepository:
     # - max_age (timedelta): Maximum allowed age of the cached calendar or roster.
     # Returns:
     # - None.
-    def get_cached_holiday_schedules(
+    async def get_cached_holiday_schedules(
         self,
         value: date,
         *,
@@ -153,7 +153,7 @@ class _FakePharmacyRepository:
     #   offered by the boundary.
     # Returns:
     # - None.
-    def replace_holiday_schedules(
+    async def replace_holiday_schedules(
         self,
         value: date,
         schedules: list[PharmacyHolidaySchedule],
@@ -256,7 +256,7 @@ class _StaleHolidayRepository(_FakePharmacyRepository):
     # Returns:
     # - dict[str, PharmacyHolidaySchedule] | None: None on a cache miss; the stale-roster
     #   double returns date-specific hours only under its allowed age.
-    def get_cached_holiday_schedules(
+    async def get_cached_holiday_schedules(
         self,
         value: date,
         *,

@@ -88,6 +88,7 @@ from controls.set_caregiver_notification_control import SetCaregiverNotification
 from controls.set_notification_control import SetNotification
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from repositories.pharmacy_catalog_repository import PharmacyCatalogRepository
+from repositories.async_pharmacy_catalog import AsyncPharmacyCatalog
 from repositories.korean_holiday_cache import SessionScopedKoreanHolidayCache
 
 logger = logging.getLogger(__name__)
@@ -779,16 +780,16 @@ def get_check_medication_detail(
 # 매개변수:
 # - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
 # 반환값:
-# - 요청 세션을 사용하는 CheckNearbyPharmacy.
+# - 독립적인 작업 세션을 사용하는 CheckNearbyPharmacy.
 def get_check_nearby_pharmacy(
     db: Session = Depends(get_db),
 ) -> CheckNearbyPharmacy:
-    pharmacy_repository = PharmacyCatalogRepository(db)
+    session_factory = sessionmaker(bind=db.get_bind())
     return CheckNearbyPharmacy(
         pharmacy_boundary=_pharmacy_api,
-        pharmacy_repository=pharmacy_repository,
+        pharmacy_repository=AsyncPharmacyCatalog(session_factory),
         holiday_boundary=PersistentKoreanHolidayLookup(
-            cache=SessionScopedKoreanHolidayCache(sessionmaker(bind=db.get_bind())),
+            cache=SessionScopedKoreanHolidayCache(session_factory),
             upstream=_korean_holiday_api,
         ),
         holiday_emergency_boundary=_holiday_emergency_pharmacy_api,

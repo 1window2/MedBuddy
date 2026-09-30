@@ -101,6 +101,13 @@ care boundary without changing public APIs, authorization, or database schema.
 An async deadline can stop waiting for a cache worker; it does not forcibly cancel
 an executing SQL statement. Such a worker still owns and closes its own session.
 
+Nearby pharmacy search uses the same isolation principle through
+`AsyncPharmacyCatalog`: catalogue reads, dated roster reads/writes, and public
+fallback-cache writes run in a worker, each with a new session. No request-owned
+ORM session crosses a worker thread or stays open during a provider await. Linked
+chat's synchronous repository retains its separate request transaction; no public
+API or database schema changes are involved.
+
 ## Shared calculation policy
 
 Both backend nearby-care controllers use `services/nearby_care_policy.py` for

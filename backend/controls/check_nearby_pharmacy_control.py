@@ -71,7 +71,7 @@ class PharmacyCatalogLookup(Protocol):
     # - None.
     # Returns:
     # - Number of catalog entries.
-    def count(self) -> int: ...
+    async def count(self) -> int: ...
 
     # Function Name: search_nearby_candidates
     # Description:
@@ -82,7 +82,7 @@ class PharmacyCatalogLookup(Protocol):
     # - max_distance_km (float): Maximum accepted search radius in kilometers.
     # Returns:
     # - Candidate pharmacy catalog entries within the repository's geographic search bounds.
-    def search_nearby_candidates(
+    async def search_nearby_candidates(
         self,
         *,
         latitude: float,
@@ -97,7 +97,7 @@ class PharmacyCatalogLookup(Protocol):
     # - None.
     # Returns:
     # - Latest catalog timestamp, or None when no update is available.
-    def latest_updated_at(self) -> datetime | None: ...
+    async def latest_updated_at(self) -> datetime | None: ...
 
     # Function Name: get_cached_holiday_schedules
     # Description:
@@ -107,7 +107,7 @@ class PharmacyCatalogLookup(Protocol):
     # - max_age (timedelta): Maximum acceptable age of the cached holiday roster.
     # Returns:
     # - Roster keyed by pharmacy ID, or None for an absent or expired cache.
-    def get_cached_holiday_schedules(
+    async def get_cached_holiday_schedules(
         self,
         value: date,
         *,
@@ -122,11 +122,17 @@ class PharmacyCatalogLookup(Protocol):
     # - schedules (list[PharmacyHolidaySchedule]): Complete date-specific pharmacy roster replacing the cached entries.
     # Returns:
     # - None.
-    def replace_holiday_schedules(
+    async def replace_holiday_schedules(
         self,
         value: date,
         schedules: list[PharmacyHolidaySchedule],
     ) -> None: ...
+
+    # Function Name: cache_search_results
+    # Description: Stores validated public fallback results for later sharing.
+    # Parameters: pharmacies: Selected nearby pharmacies.
+    # Returns: None.
+    async def cache_search_results(self, pharmacies: list[NearbyPharmacy]) -> None: ...
 
 
 # Class Name: HolidayEmergencyPharmacyBoundary
@@ -266,11 +272,11 @@ class CheckNearbyPharmacy:
             try:
                 latest_updated_at = getattr(repository, "latest_updated_at", None)
                 catalog_updated_at = (
-                    latest_updated_at() if callable(latest_updated_at) else None
+                    await latest_updated_at() if callable(latest_updated_at) else None
                 )
                 catalog_is_stale = self._is_catalog_stale(catalog_updated_at)
-                if repository.count() > 0:
-                    catalog_entries = repository.search_nearby_candidates(
+                if await repository.count() > 0:
+                    catalog_entries = await repository.search_nearby_candidates(
                         latitude=latitude,
                         longitude=longitude,
                         max_distance_km=max_distance_km,
@@ -394,7 +400,7 @@ class CheckNearbyPharmacy:
         cache_results = getattr(repository, "cache_search_results", None)
         if not catalog_entries and callable(cache_results):
             try:
-                cache_results(selected)
+                await cache_results(selected)
             except Exception:
                 # 캐시 쓰기 실패는 사용 가능한 공공 검색 결과까지 숨기지 않는다.
                 logger.exception("Pharmacy share cache could not be updated.")
@@ -557,7 +563,7 @@ class CheckNearbyPharmacy:
         boundary = self._holiday_emergency_boundary
         if repository is None or boundary is None:
             return {}, "weekly_fallback"
-        cached = repository.get_cached_holiday_schedules(
+        cached = await repository.get_cached_holiday_schedules(
             value,
             max_age=_HOLIDAY_CACHE_MAX_AGE,
         )
@@ -565,13 +571,13 @@ class CheckNearbyPharmacy:
             return cached, "fresh" if cached else "weekly_fallback"
         try:
             schedules = await boundary.fetchSchedules(value)
-            repository.replace_holiday_schedules(value, schedules)
+            await repository.replace_holiday_schedules(value, schedules)
             return (
                 {schedule.pharmacy_id: schedule for schedule in schedules},
                 "fresh" if schedules else "weekly_fallback",
             )
         except (PharmacyApiUnavailableError, PharmacyApiResponseError):
-            stale = repository.get_cached_holiday_schedules(
+            stale = await repository.get_cached_holiday_schedules(
                 value,
                 max_age=_HOLIDAY_STALE_FALLBACK_MAX_AGE,
             )
