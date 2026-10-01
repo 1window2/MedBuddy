@@ -20,18 +20,24 @@ Individual physical checks below remain open unless their exact scope has eviden
 the September 13 slot-specific cancellation pass does not close global-toggle or
 account-cleanup acceptance.
 
-## v0.2.0 release blocker: restore hospital provider access
+## v0.2.0 release blocker: verify hospital access from production
 
-The September 30 production hospital lookup reached the upstream national
-hospital service but received HTTP 403 with XML reason code `30`. The current
-backend has no `HOSPITAL_API_KEY` override and reuses `PUBLIC_DATA_API_KEY`.
-The same shared key succeeded for a KASI holiday lookup, so first verify the
-hospital-service usage application, approval state, and correct key in the
-[public-data portal](https://www.data.go.kr/data/15000736/openapi.do). Do not
-commit or print the credential. Configure a hospital-specific key if needed,
-then repeat one bounded live hospital-result check and normal feature
-acceptance. Cloudflare ingress and catalog readiness are already passing; they
-do not close this upstream gate.
+The September 30 production lookup received HTTP 403 with XML reason code `30`.
+On October 1, the [public-data portal](https://www.data.go.kr/data/15000736/openapi.do)
+confirmed an approved hospital-service development account, valid through
+October 1, 2028, with 1,000 calls per day per operation. Bounded browser requests
+using the portal credential returned `00 / NORMAL SERVICE` and nonempty results
+for location, hospital details, and specialty-filtered list operations.
+See [the provider approval evidence](qa/v0.2.0-2026-10-01-hospital-provider-approval.md).
+
+Production access is **not yet verified**. The last deployed configuration used
+`PUBLIC_DATA_API_KEY` without a `HOSPITAL_API_KEY` override; the portal credential
+has not been compared with the deployed credential. First retry a bounded lookup
+from the deployed backend: approval may have restored the existing shared key.
+If it still fails, verify the key privately and configure `HOSPITAL_API_KEY` only
+if needed. Confirm specialty search and detail parsing through the actual backend
+before closing this gate. Do not commit or print credentials. Passing portal
+previews, ingress, or catalog readiness does not close production acceptance.
 
 ## v0.2.0 release blocker: restore Firebase App Check with Play Integrity
 

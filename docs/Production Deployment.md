@@ -77,8 +77,12 @@ pharmacy, hospital, and chat probes reach FastAPI authentication, public
 `/ready/catalogs` returns JSON HTTP 200, and an unknown API path still receives
 Cloudflare HTML HTTP 403. This closes the ingress/backend-version gate, not
 App Check, upstream hospital access, catalog freshness, or physical-device
-acceptance. The hospital provider currently returns HTTP 403/reason code `30`
-for the production key; see the blocker in [the release TODO](TODO.md).
+acceptance. The September 30 hospital probe returned HTTP 403/reason code `30`.
+On October 1, hospital-service approval and successful bounded location, detail,
+and specialty-list responses were verified in the portal using its credential.
+The deployed key and backend path still need verification; retry before replacing
+the key or restarting services. See [the provider follow-up](qa/v0.2.0-2026-10-01-hospital-provider-approval.md)
+and the blocker in [the release TODO](TODO.md).
 See [the production rollout evidence](qa/v0.2.0-2026-09-30-production-rollout.md).
 
 ## Local Production Configuration
