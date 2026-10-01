@@ -20,7 +20,7 @@ Individual physical checks below remain open unless their exact scope has eviden
 the September 13 slot-specific cancellation pass does not close global-toggle or
 account-cleanup acceptance.
 
-## v0.2.0 release blocker: verify hospital access from production
+## Hospital provider access: restored on October 1
 
 The September 30 production lookup received HTTP 403 with XML reason code `30`.
 On October 1, the [public-data portal](https://www.data.go.kr/data/15000736/openapi.do)
@@ -30,14 +30,18 @@ using the portal credential returned `00 / NORMAL SERVICE` and nonempty results
 for location, hospital details, and specialty-filtered list operations.
 See [the provider approval evidence](qa/v0.2.0-2026-10-01-hospital-provider-approval.md).
 
-Production access is **not yet verified**. The last deployed configuration used
-`PUBLIC_DATA_API_KEY` without a `HOSPITAL_API_KEY` override; the portal credential
-has not been compared with the deployed credential. First retry a bounded lookup
-from the deployed backend: approval may have restored the existing shared key.
-If it still fails, verify the key privately and configure `HOSPITAL_API_KEY` only
-if needed. Confirm specialty search and detail parsing through the actual backend
-before closing this gate. Do not commit or print credentials. Passing portal
-previews, ingress, or catalog readiness does not close production acceptance.
+The deployed backend at `16191b2` now passes bounded location, detail and
+specialty-list checks with its existing `PUBLIC_DATA_API_KEY` fallback. No
+hospital-key override, secret replacement, code deployment or restart was needed.
+The actual search control and calendar dependency also returned one verified
+internal-medicine result for both `all` and `open_at_time`, with consultation
+hours and successful response serialization. The searches reported truncation
+and uncertain region scope; this is not a completeness certificate.
+
+The upstream credential/parser blocker is closed. Authenticated client acceptance,
+provider outage/quota behavior and the deferred physical-device checks remain
+separate release gates. Core and catalog readiness return HTTP 200, and public
+feature routes still reach FastAPI authentication. Do not commit or print keys.
 
 ## v0.2.0 release blocker: restore Firebase App Check with Play Integrity
 

@@ -78,11 +78,14 @@ pharmacy, hospital, and chat probes reach FastAPI authentication, public
 Cloudflare HTML HTTP 403. This closes the ingress/backend-version gate, not
 App Check, upstream hospital access, catalog freshness, or physical-device
 acceptance. The September 30 hospital probe returned HTTP 403/reason code `30`.
-On October 1, hospital-service approval and successful bounded location, detail,
-and specialty-list responses were verified in the portal using its credential.
-The deployed key and backend path still need verification; retry before replacing
-the key or restarting services. See [the provider follow-up](qa/v0.2.0-2026-10-01-hospital-provider-approval.md)
-and the blocker in [the release TODO](TODO.md).
+On October 1, hospital-service approval was verified in the portal, then bounded
+location, detail and specialty-list checks passed through the deployed backend's
+parser using its existing shared key. Its search control and calendar dependency
+also passed one-result specialty and open-at-time searches. No secret replacement,
+application deployment or restart was needed. This closes the upstream
+credential/parser blocker; authenticated client acceptance and outage/quota
+checks remain open. See [the provider follow-up](qa/v0.2.0-2026-10-01-hospital-provider-approval.md)
+and remaining gates in [the release TODO](TODO.md).
 See [the production rollout evidence](qa/v0.2.0-2026-09-30-production-rollout.md).
 
 ## Local Production Configuration
