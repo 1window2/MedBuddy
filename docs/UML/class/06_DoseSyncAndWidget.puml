@@ -15,7 +15,12 @@ package "Flutter" {
   note "dose_widget_store.dart\nDart extension DoseWidgetStore on DoseOutboxStore\n독립 객체가 아닌 암호화 저장소 확장" as DoseWidgetStore
   class DoseSyncBackgroundScheduler <<Service>>
   class DoseHomeWidget <<Service>>
-  class DoseWidgetState <<Entity>>
+  class DoseWidgetState <<Entity>> {
+    + completedReminderSlots(now): Iterable<String>
+  }
+  class NotificationService <<Service>> {
+    + cancelReminderForDate(owner, slotKey, date): Future<void>
+  }
   class UserSetting <<Entity>>
 }
 package "Android" {
@@ -53,6 +58,8 @@ CheckCaregiverMedication --> CheckCaregiverMonitoring : /caregiver/schedules 또
 DoseHomeWidget --> DoseWidgetStore
 DoseWidgetStore ..> DoseOutboxStore : 암호화 저장소 확장
 DoseWidgetStore --> DoseWidgetState
+DoseHomeWidget --> DoseWidgetState : 오늘 본인 완료 시간대 검사
+DoseHomeWidget --> NotificationService : 기기 저장 이후 날짜별 재알림 취소
 DoseHomeWidget --> DoseWidgetProvider : 표시 상태·불투명 토큰
 DoseWidgetProvider --> DoseHomeWidget : 버튼 백그라운드 콜백
 DoseWidgetProvider --> DoseWidgetLayout : 내용·클릭 동작을 유지한 크기별 배치
@@ -82,5 +89,10 @@ end note
 note bottom of SyncDose
   영수증·복약 변경·선택적 채팅을 함께 커밋한다.
   응답 유실 후 재전송도 이후 취소 기록을 되돌리지 않는다.
+end note
+note right of NotificationService
+  활성 계정·오늘 날짜·완료 시간대의 예약과 재알림만 취소한다.
+  오프라인에서도 취소하며 다른 날짜·시간대·보호자 알림은 유지한다.
+  취소 실패는 영속 기록을 되돌리지 않고 다음 발행에서 재시도한다.
 end note
 @enduml

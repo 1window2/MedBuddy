@@ -7,6 +7,7 @@ database "Encrypted dose store" as Store
 participant "Existing dose sync worker" as Sync
 participant "Completion API" as API
 participant "Linked-patient schedule Control" as Schedules
+participant "NotificationService" as Notifications
 
 User -> Callback: Set home schedule source (self / patients)
 Callback -> Store: Persist shared source; invalidate incompatible actions
@@ -41,6 +42,11 @@ Store -> Store: Project pending records and select next incomplete slot\n(in con
 end
 Store --> Callback: Local saved state
 Callback -> Widget: All slot pages + next slot + pending sync + acknowledge token
+opt Current-day own slots fully completed in durable local state
+Callback -> Notifications: cancelReminderForDate(owner, slotKey, date)
+Notifications -> Notifications: Recheck active account; cancel exact dated ID\nPending/delivered reminder and future inbox entry
+note right of Notifications: Includes a 10-minute snooze, even offline.\nOther dates, slots and caregiver reminders remain.\nFailures retain saved dose state; next publication retries.
+end
 alt Taken
 Widget -> Widget: Advance the initiating widget to next incomplete slot
 else Undo dose

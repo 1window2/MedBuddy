@@ -97,3 +97,10 @@ WebSocket 연결 Registry를 채팅 Database 또는 분산 방송 broker로 혼�
 
 2026-09-29 갱신은 `63b6165`의 실제 구현과 각 문서의 최근 수정 내용을 대조했다.
 이번에는 `.md`·`.puml`만 갱신하고 PNG는 생성·변경하지 않았으므로 최신 내용은 텍스트 원본을 기준으로 확인한다.
+
+2026-10-02에는 원문 함량·제형 검증, 약명 후보 직접 확인과 계정 잠금 재시도,
+위젯 완료 후 날짜별 재알림 취소를 자연어 명세와 UML에 반영했다.
+`02_PrescriptionAnalysis`, `06_DoseSyncAndWidget`, `ClassDiagram`,
+`HomeDoseWidget`, `OverallSystemSequenceDiagram`의 PNG도 해당 원본에서 다시 생성했다.
+상세 계약은 [약명 매칭과 후보 확인](../../Medication%20Matching%20Review.md),
+검증 범위는 [2026-10-02 기록](../../qa/v0.2.0-2026-10-02-medication-matching-widget.md)을 참고한다.

@@ -35,6 +35,11 @@ package "Flutter Frontend" #E8F4FF {
   class PrescriptionLocalOcrService <<Service>>
   class PrescriptionPrivacyFilter <<Service>>
   class PrescriptionAnalysisPreviewUI <<UI>>
+  class MedicationCandidateDialog <<UI>>
+  class MedBuddyPrescriptionViewModel <<Control>>
+  class "CheckMedicationDetail" as FCheckMedicationDetail <<Control>>
+  class MedicationMatchReview <<Entity>>
+  class MedicationLookupBusy <<Entity>>
   class "InputPrescription" as FInputPrescription <<Control>>
 }
 
@@ -43,6 +48,11 @@ package "FastAPI Backend" #EAF8F0 {
   class OCRServiceBoundary <<Service>>
   class "_PrescriptionMedicationNameVerifier" as MedicationNameVerifier <<Service>>
   class "MedicationSchedule" as BMedicationSchedule <<Entity>>
+  class "CheckMedicationDetail" as BCheckMedicationDetail <<Control>>
+  class "medication_match_safety" as MatchSafety <<Service>> {
+    + match_conflict(original, candidate)
+    + can_auto_match(original, candidate)
+  }
 }
 
 cloud "Gemini 비식별 텍스트 분석" as Gemini
@@ -58,10 +68,26 @@ BInputPrescription -right-> OCRServiceBoundary : structures text
 OCRServiceBoundary -right-> Gemini
 BInputPrescription -right-> MedicationNameVerifier : verifies medication names
 BInputPrescription -right-> BMedicationSchedule : response DTO
+MedicationNameVerifier --> MatchSafety : rejects incompatible OCR / AI correction
+PrescriptionAnalysisPreviewUI --> MedBuddyPrescriptionViewModel : review and confirm one row
+PrescriptionAnalysisPreviewUI --> MedicationCandidateDialog : explicit candidate choice
+MedBuddyPrescriptionViewModel --> FCheckMedicationDetail : six-way lookup; busy-only serial retry once
+FCheckMedicationDetail --> BCheckMedicationDetail : /identify + original_text
+FCheckMedicationDetail --> MedicationMatchReview : confirmation-only candidates
+FCheckMedicationDetail --> MedicationLookupBusy : known account-busy 503 + retryAt
+BCheckMedicationDetail --> MatchSafety : original strength / dosage form; exact name only
 
 note bottom of PrescriptionAnalysisPreviewUI
   Users review OCR rows and restore
   missing medications before analysis.
+  Uncertain products require explicit choice;
+  confirmation alone does not save a medication.
+end note
+
+note bottom of MatchSafety
+  Local, cached and public results use the original evidence.
+  Candidate-only replies leave data empty for older clients.
+  Similarity discovers candidates, not therapeutic substitutes.
 end note
 
 note bottom of PrescriptionImageCropService

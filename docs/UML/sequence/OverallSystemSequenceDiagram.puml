@@ -340,53 +340,82 @@ User -> UI : 시작일, 기간, 1일 횟수, 1회 용량과 시간대 확인 또
 UI -> UI : 날짜 범위와 일정 일관성 검증
 UI -> ViewModel : requestPrescriptionAnalysis()
 
-loop 인식된 MedicationSchedule마다
+loop 인식된 MedicationSchedule마다 (최대 여섯 건 동시 조회)
     ViewModel -> FrontControl : CheckMedicationDetail.requestMedicationDetail(schedule)
-    FrontControl -> ApiClient : POST /identify
+    FrontControl -> ApiClient : POST /identify\nextracted_text + 자동 보정 전 original_text
     ApiClient -> Router : 약 상세 조회 요청
-    Router -> BackControl : CheckMedicationDetail.requestMedicationDetail(rawText)
-    BackControl -> BackService : _MedicationDetailCache.get(drugName)
-    BackService -> Redis : Cache 조회
+    Router -> BackControl : CheckMedicationDetail.requestMedicationDetail(rawText, original_text)
+    note right of BackControl : 함량 포함 원문부터 조회하고 검색 변형은 최대 8개.\n로컬·캐시·API 후보 모두 원문 함량·제형을 검사한다.\nOCR 로컬·AI 교정도 같은 안전 규칙을 적용한다.
+    BackControl -> BackService : _LocalMedicationCatalog.fetch_drug_info()
+    BackService -> Database : drug_basic_infos 및\ndrug_approval_infos 조회
+    Database --> BackService : Local 약품 후보
+    BackService --> BackControl : 원문 기준으로 순위·안전 조건 검사
 
-    alt Redis Cache Hit
-        Redis --> BackService : MedicationDetail 목록
-        BackService --> BackControl : Cache 결과
-    else Redis Cache Miss 또는 Redis 사용 불가
-        BackService --> BackControl : Cache 없음
-        BackControl -> BackService : _LocalMedicationCatalog.fetch_drug_info()
-        BackService -> Database : drug_basic_infos 및\ndrug_approval_infos 조회
+    alt 검증 가능한 Local 후보 있음
+        BackControl -> BackControl : 상세·이미지 보완
+    else Local 후보 없음 또는 원문 조건 불일치
+        BackControl -> BackService : _MedicationDetailCache.get(reference + search keyword)
+        BackService -> Redis : 원문별 Cache 조회
+        Redis --> BackService : Cache 후보 또는 없음
+        BackService --> BackControl : Cache에도 원문 기준 검사
 
-        alt Local Catalog에 충분한 정보 존재
-            Database --> BackService : Local 약품 정보
-        else Local Catalog 정보가 없거나 불충분
-            Database --> BackService : 조회 결과 없음
+        alt Cache에 검증 가능한 후보 있음
+            BackControl -> BackControl : 상세·이미지 보완
+        else Cache 없음·사용 불가 또는 원문 조건 불일치
             BackService -> MFDS : PublicDrugSmallAPI.searchMedication()
             MFDS --> BackService : 의약품 기본정보
             BackService -> MFDS : PublicDrugLargeAPI.searchMedication()
             MFDS --> BackService : 의약품 허가정보
+            BackService -> BackService : 원문 함량·제형으로 후보 제한
+            opt 허가정보 요약이 필요한 경우
+                BackService -> Gemini : 검증된 후보 최대 3개 요약\n단일 정확 일치이면 그 제품만 요약
+                Gemini --> BackService : 환자용 효능, 복용법, 경고 요약
+            end
             BackService -> MFDS : PillImageAPI.searchMedicationImage()
             MFDS --> BackService : 약품 이미지 URL
+            BackService -> Redis : 원문별 MedicationDetail Cache 저장
+            BackService --> BackControl : MedicationDetail 목록
         end
-
-        opt 허가정보 요약이 필요한 경우
-            BackService -> Gemini : 약품 정보 요약 요청
-            Gemini --> BackService : 환자용 효능, 복용법, 경고 요약
-        end
-
-        BackService -> Redis : MedicationDetail Cache 저장
-        BackService --> BackControl : MedicationDetail 목록
     end
 
-    alt 약명이 일치하고 상세 조회 성공
+    alt 정규화한 제품명이 같은 단일 후보이며 함량·제형 충돌 없음
         BackControl --> Router : MedicationResponse
         Router --> ApiClient : 약 상세 응답
         ApiClient --> FrontControl : MedicationDetail
         FrontControl --> ViewModel : 원래 처방 행의 AnalyzedMedication
+    else 유사 이름 또는 복수 제품으로 직접 확인 필요
+        BackControl --> Router : requires_confirmation=true\ndata=[], candidates, review_reason
+        Router --> ApiClient : 확인 전용 응답 (구형 앱도 자동 연결하지 않음)
+        ApiClient --> FrontControl : 제품명·제조사 포함 후보
+        FrontControl --> ViewModel : MedicationMatchReview를 원래 행별 보존
+    else 계정 잠금의 명시적 503 + Retry-After
+        Router --> ApiClient : This account is busy. Retry the request shortly.
+        ApiClient --> FrontControl : 계정 사용 중 응답
+        FrontControl --> ViewModel : MedicationLookupBusy(retryAt)
     else 약명 불일치 또는 일시적 조회 실패
         BackControl --> Router : 빈 결과 또는 일시적 오류
         Router --> ApiClient : 미일치 또는 오류 응답
         ApiClient --> FrontControl : 실패 원인
         FrontControl --> ViewModel : 확인되지 않은 처방 행과 실패 원인 보존
+    end
+end
+
+opt 계정 사용 중인 요청이 있음
+    ViewModel -> ViewModel : 현재 묶음 완료 후 대기 시간 확인\n현재 분석인 경우에만 해당 요청을 순차 재시도 1회
+    ViewModel -> FrontControl : requestMedicationDetail(schedule)
+    ref over FrontControl,BackControl : 위 상세조회·후보 검증 경로 재사용
+    FrontControl --> ViewModel : 확인 결과 또는 오류\n반복 실패·다른 503은 무한 재시도하지 않음
+end
+
+opt 직접 확인할 후보가 있음
+    ViewModel --> UI : 행별 후보 확인 동작
+    User -> UI : 원문·전체 제품명·제조사 비교 후 후보 선택
+    UI -> UI : 초기 미선택; 선택 후에만 확인 허용
+    alt 사용자가 확인
+        UI -> ViewModel : confirmMedicationCandidate(index, detail)
+        ViewModel -> ViewModel : 현재 후보인지 검증; 해당 행만 확인\n원문·용량·기간 보존, user_selection, 저장하지 않음
+    else 취소 또는 오래된 후보
+        UI -> ViewModel : 확인하지 않음; 미확인 행 유지
     end
 end
 
