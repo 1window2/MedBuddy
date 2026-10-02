@@ -27,6 +27,16 @@ class DoseWidgetState {
   Map<String, dynamic> get view =>
       Map<String, dynamic>.from(data['view'] as Map);
 
+  // 오늘 본인 일정에서 모든 약의 기기 저장이 끝난 시간대만 알림 취소 대상으로 삼는다.
+  Iterable<String> completedReminderSlots(DateTime now) {
+    if ((data['config'] as Map?)?['source'] == 'patients' ||
+        view['date'] != doseWidgetDay(now)) {
+      return const [];
+    }
+    final completed = data['cancels'] as Map? ?? {};
+    return medicationScheduleSlotKeys.where(completed.containsKey);
+  }
+
   static List<MedicationSchedule> projectedSchedules(
     Map<String, dynamic>? cache,
     List<Map<String, dynamic>> operations,

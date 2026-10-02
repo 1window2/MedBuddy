@@ -95,6 +95,31 @@ void main() {
     await directory.delete(recursive: true);
   });
 
+  test('local completion cancels only complete slots, including offline writes', () async {
+    final initial = await state();
+    expect(initial.completedReminderSlots(now), isEmpty);
+    final completed = (await tap(page(initial, 'morning')))!;
+    expect(completed.completedReminderSlots(now), ['morning']);
+    expect(completed.completedReminderSlots(now.add(const Duration(days: 1))), isEmpty);
+    final undone = (await tap(page(completed, 'morning')))!;
+    expect(undone.completedReminderSlots(now), isEmpty);
+    final caregiver = await state(config: {'source': 'patients'});
+    expect(caregiver.completedReminderSlots(now), isEmpty);
+  });
+
+  test('partial or stale completion cannot cancel the slot reminder', () async {
+    await cache(schedules: [
+      medication.copyWith(slotStatuses: {'morning': true, 'evening': false}),
+      const MedicationSchedule(medicationID: '92', medicationName: 'other',
+        scheduleSlotKeys: ['morning'], slotStatuses: {'morning': false}),
+    ]);
+    expect((await state()).completedReminderSlots(now), isEmpty);
+    await cache(date: '2026-09-20', schedules: [
+      medication.copyWith(slotStatuses: {'morning': true, 'evening': true}),
+    ]);
+    expect((await state()).completedReminderSlots(now), isEmpty);
+  });
+
   // 함수이름: patient
   // 함수역할: 소유 계정·별칭·활성 여부·일정을 지정한 환자 조회 응답을 만든다.
   // 매개변수: id: 연동 식별자, alias: 별칭, caregiver: 보호자 계정, active: 연결 상태, schedules: 일정. 반환값: 환자 연동과 일정을 담은 응답 데이터.

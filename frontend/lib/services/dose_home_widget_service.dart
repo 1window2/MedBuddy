@@ -17,6 +17,7 @@ import 'dose_outbox_store.dart';
 import 'dose_sync_background_service.dart';
 import 'dose_sync_service.dart';
 import 'firebase_runtime_service.dart';
+import 'notification_service.dart';
 
 @pragma('vm:entry-point')
 Future<void> doseHomeWidgetCallback(Uri? uri) async {
@@ -84,6 +85,19 @@ class DoseHomeWidget {
     );
     await HomeWidget.updateWidget(qualifiedAndroidName: provider);
     if (state != null) {
+      // 서버 응답을 기다리지 않고, 기기에 확정한 완료 기록으로 재알림을 취소한다.
+      // 취소 실패가 위젯 표시나 전송 대기 기록을 막지 않으며 다음 갱신에서 재시도한다.
+      try {
+        for (final slot in state.completedReminderSlots(DateTime.now())) {
+          await NotificationService.instance.cancelReminderForDate(
+            owner: state.data['owner'] as String,
+            slotKey: slot,
+            date: DateTime.parse(state.view['date'] as String),
+          );
+        }
+      } catch (error) {
+        debugPrint('Widget reminder cancellation failed: ${error.runtimeType}');
+      }
       await HomeWidget.scheduleWidgetUpdates([
         DateTime.fromMillisecondsSinceEpoch(state.view['expires'] as int),
       ], qualifiedAndroidName: provider);

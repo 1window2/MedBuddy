@@ -846,6 +846,41 @@ class NotificationService {
   Future<void> cancelReminder(int id, {String? slotKey}) =>
       _serializeReminder(() => _cancelReminder(id, slotKey: slotKey));
 
+  // 완료된 날짜의 예약·재알림만 취소한다. 다른 날짜와 계정의 예약은 보존한다.
+  Future<void> cancelReminderForDate({
+    required String owner,
+    required String slotKey,
+    required DateTime date,
+  }) => _serializeReminder(() async {
+    if (owner.trim().isEmpty ||
+        !const ['morning', 'lunch', 'evening', 'bedtime'].contains(slotKey)) {
+      return;
+    }
+    final preferences = await SharedPreferences.getInstance();
+    Future<bool> stillActive() async {
+      await preferences.reload();
+      return preferences.getString(NotificationInboxStore.activeUserKey) == owner;
+    }
+
+    if (!await stillActive()) return;
+    await initialize();
+    final baseId = MedicationAlarm.defaults(slotKey)
+        .copyWith(patientHash: owner)
+        .notificationId;
+    final id = _notificationIdForDate(baseId, slotKey, date);
+    if (!await stillActive()) return;
+    await _plugin.cancel(id: id);
+    // Android가 표시 중인 알림의 payload를 반환하지 않아 날짜별 ID로 구분한다.
+    for (final notification in await _plugin.getActiveNotifications()) {
+      if (notification.id == id &&
+          notification.channelId == 'medbuddy_medication_reminders') {
+        if (!await stillActive()) return;
+        await _plugin.cancel(id: id, tag: notification.tag);
+      }
+    }
+    await NotificationInboxStore(userHash: owner).cancelFutureReminders(id: id);
+  });
+
   Future<void> _cancelReminder(int id, {String? slotKey}) async {
     await _cancelInboxReminders(slotKey: slotKey, id: id);
     await initialize();

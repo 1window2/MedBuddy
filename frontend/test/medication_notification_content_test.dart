@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/services/notification_service.dart';
+import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
+import 'package:medbuddy_frontend/services/notification_inbox_store.dart';
 import 'package:timezone/timezone.dart' as timezone;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -55,6 +57,70 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
     debugDefaultTargetPlatformOverride = null;
+  });
+
+  test('completed widget dose cancels its dated snooze without losing other reminders', () async {
+    final service = NotificationService.instance;
+    service.setHistoryUser('patient-a', persistSession: false);
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(NotificationInboxStore.activeUserKey, 'patient-a');
+    await service.initialize();
+    final now = timezone.TZDateTime.now(timezone.local);
+    final first = DateTime(now.year, now.month, now.day + 1);
+    final second = DateTime(now.year, now.month, now.day + 2);
+    for (final owner in ['patient-a', 'patient-b']) {
+      for (final slot in ['morning', 'evening']) {
+        await service.registerNotification(
+          id: MedicationAlarm.defaults(slot).copyWith(patientHash: owner).notificationId,
+          slotKey: slot, slotTitle: slot, hour: 8, minute: 0,
+          medicationNames: [], activeDates: [first, second],
+        );
+      }
+    }
+    final target = scheduled.first['id'] as int;
+    final preserved = scheduled.skip(1).map((item) => item['id']).toSet();
+    pending.addAll(scheduled.map((item) => {'id': item['id'], 'payload': item['payload']}));
+    active.addAll([
+      {'id': target, 'tag': 'dose', 'channelId': 'medbuddy_medication_reminders'},
+      {'id': target, 'tag': 'chat', 'channelId': 'medbuddy_linked_chat'},
+      {'id': 77, 'channelId': 'medbuddy_caregiver_updates'},
+    ]);
+    await service.snoozeMedicationReminder(
+      id: target, slotKey: 'morning', slotTitle: '아침',
+      scheduleDate: first, delay: const Duration(days: 2),
+    );
+    cancelled.clear();
+    // 백그라운드 isolate는 전경의 메모리 계정을 공유하지 않는다.
+    service.setHistoryUser(null, persistSession: false);
+    await service.cancelReminderForDate(owner: 'patient-a', slotKey: 'morning', date: first);
+    expect(cancelled, contains(containsPair('id', target)));
+    expect(cancelled, contains(containsPair('tag', 'dose')));
+    expect(cancelled, isNot(contains(containsPair('tag', 'chat'))));
+    expect(cancelled, isNot(contains(containsPair('id', 77))));
+    for (final id in preserved) {
+      expect(cancelled, isNot(contains(containsPair('id', id))));
+    }
+    final history = await NotificationInboxStore(
+      userHash: 'patient-a', now: () => now.add(const Duration(days: 3)),
+    ).load();
+    expect(history.where((entry) => entry.payload.split(':')[2] == '$target'), isEmpty);
+    expect(history, hasLength(7));
+    expect(preferences.getString(NotificationInboxStore.activeUserKey), 'patient-a');
+  });
+
+  test('widget cancellation stops after logout or account switch', () async {
+    final preferences = await SharedPreferences.getInstance();
+    for (final owner in [null, 'patient-b']) {
+      if (owner == null) {
+        await preferences.remove(NotificationInboxStore.activeUserKey);
+      } else {
+        await preferences.setString(NotificationInboxStore.activeUserKey, owner);
+      }
+      await NotificationService.instance.cancelReminderForDate(
+        owner: 'patient-a', slotKey: 'morning', date: DateTime(2026, 10, 2),
+      );
+      expect(cancelled, isEmpty);
+    }
   });
 
   // 같은 예약·미루기는 보존하고 변경된 날짜와 시각만 기기에 반영한다.

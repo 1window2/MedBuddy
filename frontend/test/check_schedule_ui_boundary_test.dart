@@ -504,6 +504,13 @@ class _SuccessfulNotificationService implements NotificationService {
   @override
   Future<void> cancelReminder(int id, {String? slotKey}) async {}
 
+  @override
+  Future<void> cancelReminderForDate({
+    required String owner,
+    required String slotKey,
+    required DateTime date,
+  }) async {}
+
   // Function Name: cancelAllMedicationReminders
   // Description:
   // - Acknowledge session reminder cleanup without calling the platform plugin.
@@ -700,6 +707,13 @@ class _FailingNotificationService implements NotificationService {
   // - Future<void>; 플랫폼 호출 없이 완료된다.
   @override
   Future<void> cancelReminder(int id, {String? slotKey}) async {}
+
+  @override
+  Future<void> cancelReminderForDate({
+    required String owner,
+    required String slotKey,
+    required DateTime date,
+  }) async {}
 
   // Function Name: cancelAllMedicationReminders
   // Description:

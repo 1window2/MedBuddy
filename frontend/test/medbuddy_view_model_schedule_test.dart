@@ -1662,6 +1662,13 @@ class _FakeNotificationService implements NotificationService {
     canceledIds.add(id);
   }
 
+  @override
+  Future<void> cancelReminderForDate({
+    required String owner,
+    required String slotKey,
+    required DateTime date,
+  }) async {}
+
   // Function Name: cancelAllMedicationReminders
   // Description:
   // - Record that all medication reminders were canceled before account cleanup.
