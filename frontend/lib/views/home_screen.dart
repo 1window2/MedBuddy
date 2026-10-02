@@ -453,6 +453,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           onMedicationScheduleAdded: viewModel.addRecognizedMedicationSchedule,
           verifiedScheduleIndexes: viewModel.verifiedMedicationScheduleIndexes,
           isMedicationLookupReview: true,
+          lookupErrorMessage: viewModel.analysisErrorMessage,
+          matchReviews: viewModel.medicationMatchReviews,
+          onCandidateConfirmed: viewModel.confirmMedicationCandidate,
           onVerifiedOnlyContinueRequested:
               viewModel.continueWithVerifiedMedicationAnalysis,
         ),

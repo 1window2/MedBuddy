@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../controls/check_health_recommendation_control.dart';
 import '../controls/check_medication_detail_control.dart';
+import '../entities/medication_match_review_entity.dart';
 import '../controls/check_prescription_change_control.dart';
 import '../controls/check_schedule_control.dart';
 import '../controls/check_saved_medication_control.dart';
@@ -280,6 +281,11 @@ class MedBuddyViewModel extends ChangeNotifier {
       _prescriptions.verifiedMedicationScheduleIndexes;
   Set<int> get unverifiedMedicationScheduleIndexes =>
       _prescriptions.unverifiedMedicationScheduleIndexes;
+  Map<int, MedicationMatchReview> get medicationMatchReviews =>
+      _prescriptions.medicationMatchReviews;
+
+  void confirmMedicationCandidate(int index, MedicationDetail detail) =>
+      _prescriptions.confirmMedicationCandidate(index, detail);
 
   PrescriptionChangeRadar? get prescriptionChangeRadar =>
       _prescriptions.prescriptionChangeRadar;

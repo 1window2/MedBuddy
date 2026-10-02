@@ -1480,13 +1480,13 @@ class _PreviewText {
       : '표를 옆으로 밀어 모든 복약 정보를 확인해보세요.';
 
   // 함수이름: lookupReviewGuide
-  // 함수역할: 현재 언어와 입력값에 맞춰 "약 $count개를 공공데이터에서 확인하지 못했습니다. 확인된 행은 취소선으로 잠겨 있습니다. 나머지 약명을 수정한 뒤 다시 조회해주세요." 문구를 제공한다.
+  // 함수역할: 확인이 필요한 후보 비교와 약명·함량 재검토를 안내한다.
   // 매개변수:
   // - count (int): 문구나 목록에 표시할 항목 수 또는 일련번호.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String lookupReviewGuide(int count) => isEnglish
-      ? '$count medication item(s) could not be matched. Verified rows are crossed out and locked. Correct the remaining rows, then retry.'
-      : '약 $count개를 공공데이터에서 확인하지 못했습니다. 확인된 행은 취소선으로 잠겨 있습니다. 나머지 약명을 수정한 뒤 다시 조회해주세요.';
+      ? '$count medication item(s) need confirmation. Compare candidates with your prescription. If none match, check and correct the name and strength.'
+      : '약 $count개는 확인이 필요합니다. 후보가 있으면 처방전과 비교해 선택해주세요. 일치하는 약이 없으면 약 이름과 함량을 확인한 뒤 수정해주세요.';
 
   // 함수이름: slotLabel
   // 함수역할: 현재 언어와 입력값에 맞춰 "취침 전" 문구를 제공한다.

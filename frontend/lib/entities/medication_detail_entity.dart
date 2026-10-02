@@ -35,6 +35,7 @@ class MedicationDetail {
   final DateTime? createdDate;
   final DateTime? prescriptionDate;
   final String itemName;
+  final String manufacturer;
   final String efficacy;
   final String usageMethod;
   final String warning;
@@ -80,6 +81,7 @@ class MedicationDetail {
     this.createdDate,
     this.prescriptionDate,
     required this.itemName,
+    this.manufacturer = '',
     required this.efficacy,
     required this.usageMethod,
     required this.warning,
@@ -111,6 +113,7 @@ class MedicationDetail {
         json['prescription_date'] ?? json['prescriptionDate'],
       ),
       itemName: _readString(json['item_name']),
+      manufacturer: _readString(json['manufacturer']),
       efficacy: _readString(json['efficacy']),
       usageMethod: _readString(json['usage_method'] ?? json['use_method']),
       warning: _readString(json['warning'] ?? json['warning_message']),
@@ -177,6 +180,7 @@ class MedicationDetail {
     DateTime? createdDate,
     DateTime? prescriptionDate,
     String? itemName,
+    String? manufacturer,
     String? efficacy,
     String? usageMethod,
     String? warning,
@@ -198,6 +202,7 @@ class MedicationDetail {
       createdDate: createdDate ?? this.createdDate,
       prescriptionDate: prescriptionDate ?? this.prescriptionDate,
       itemName: itemName ?? this.itemName,
+      manufacturer: manufacturer ?? this.manufacturer,
       efficacy: efficacy ?? this.efficacy,
       usageMethod: usageMethod ?? this.usageMethod,
       warning: warning ?? this.warning,

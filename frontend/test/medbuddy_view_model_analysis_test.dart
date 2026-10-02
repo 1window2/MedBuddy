@@ -10,6 +10,7 @@ import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
 import 'package:medbuddy_frontend/controls/input_prescription_control.dart';
 import 'package:medbuddy_frontend/entities/analyzed_medication_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
+import 'package:medbuddy_frontend/entities/medication_match_review_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/prescription_flow_entity.dart';
 import 'package:medbuddy_frontend/entities/prescription_change_entity.dart';
@@ -383,7 +384,161 @@ class _FakeCheckPrescriptionChange extends CheckPrescriptionChange {
 // - 없음.
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
+class _AccountLockedMedicationDetail extends CheckMedicationDetail {
+  final Map<String, int> calls = {};
+  int active = 0;
+  final bool alwaysBusy;
+  _AccountLockedMedicationDetail({this.alwaysBusy = false});
+
+  @override
+  Future<MedicationDetail?> requestMedicationDetail(
+    MedicationSchedule schedule,
+  ) async {
+    calls.update(
+      schedule.medicationName,
+      (value) => value + 1,
+      ifAbsent: () => 1,
+    );
+    if (active > 0 || alwaysBusy) throw MedicationLookupBusy(Duration.zero);
+    active++;
+    await Future<void>.delayed(const Duration(milliseconds: 1));
+    active--;
+    return MedicationDetail(
+      itemName: schedule.medicationName,
+      efficacy: '',
+      usageMethod: '',
+      warning: '',
+    );
+  }
+}
+
+class _ReviewMedicationDetail extends CheckMedicationDetail {
+  final review = MedicationMatchReview(const [
+    MedicationDetail(
+      itemName: '애니코프캡슐300밀리그램',
+      itemSeq: 'test-product',
+      efficacy: '',
+      usageMethod: '',
+      warning: '',
+    ),
+  ]);
+
+  @override
+  Future<MedicationDetail?> requestMedicationDetail(
+    MedicationSchedule schedule,
+  ) async {
+    throw review;
+  }
+}
+
 void main() {
+  for (final alwaysBusy in [false, true]) {
+    test(
+      'account lock retry is serialized and bounded (always busy: $alwaysBusy)',
+      () async {
+        final control = _AccountLockedMedicationDetail(alwaysBusy: alwaysBusy);
+        final model = MedBuddyViewModel(
+          inputPrescription: _FakeInputPrescription(const [
+            MedicationSchedule(medicationName: 'first'),
+            MedicationSchedule(medicationName: 'second'),
+            MedicationSchedule(medicationName: 'third'),
+          ]),
+          checkMedicationDetail: control,
+        );
+        addTearDown(model.dispose);
+        await model.requestPrescriptionImageFromGallery();
+        await model.requestPrescriptionAnalysis();
+        expect(control.calls, {
+          'first': alwaysBusy ? 2 : 1,
+          'second': 2,
+          'third': 2,
+        });
+        expect(
+          model.prescriptionFlowState,
+          alwaysBusy
+              ? PrescriptionFlowState.analysisFailed
+              : PrescriptionFlowState.analysisSucceeded,
+        );
+        expect(model.analyzedMedicationList, hasLength(alwaysBusy ? 0 : 3));
+      },
+    );
+  }
+  test(
+    'candidate confirmation preserves intake and never saves automatically',
+    () async {
+      final control = _ReviewMedicationDetail();
+      final model = MedBuddyViewModel(
+        inputPrescription: _FakeInputPrescription(const [
+          MedicationSchedule(
+            medicationName: '에니코프캡슐300mg',
+            dosage: '0.5캡슐',
+            intakeTime: '2회',
+            medicationTime: 7,
+          ),
+        ]),
+        checkMedicationDetail: control,
+      );
+      addTearDown(model.dispose);
+      await model.requestPrescriptionImageFromGallery();
+      await model.requestPrescriptionAnalysis();
+      expect(
+        model.prescriptionFlowState,
+        PrescriptionFlowState.medicationReviewRequired,
+      );
+      expect(model.analyzedMedicationList, isEmpty);
+      expect(model.unverifiedMedicationScheduleIndexes, {0});
+      expect(model.medicationMatchReviews[0], same(control.review));
+      model.confirmMedicationCandidate(0, control.review.candidates.single);
+      expect(
+        model.prescriptionFlowState,
+        PrescriptionFlowState.analysisSucceeded,
+      );
+      expect(model.analyzedMedicationList.single.schedule.dosage, '0.5캡슐');
+      expect(model.analyzedMedicationList.single.schedule.medicationTime, 7);
+      expect(
+        model.recognizedMedicationScheduleList.single.rawMedicationName,
+        '에니코프캡슐300mg',
+      );
+      expect(model.completedMedicationSaveIndexes, isEmpty);
+      expect(model.medicationMatchReviews, isEmpty);
+    },
+  );
+
+  test(
+    'editing a name invalidates stale candidates and preserves explicit edits',
+    () async {
+      final control = _ReviewMedicationDetail();
+      final model = MedBuddyViewModel(
+        inputPrescription: _FakeInputPrescription(const [
+          MedicationSchedule(medicationName: '에니코프캡슐300mg'),
+        ]),
+        checkMedicationDetail: control,
+      );
+      addTearDown(model.dispose);
+      await model.requestPrescriptionImageFromGallery();
+      await model.requestPrescriptionAnalysis();
+      model.updateRecognizedMedicationSchedule(
+        0,
+        model.recognizedMedicationScheduleList.single.copyWith(
+          medicationName: '새약정100mg',
+        ),
+      );
+      expect(model.medicationMatchReviews, isEmpty);
+      model.confirmMedicationCandidate(0, control.review.candidates.single);
+      expect(model.analyzedMedicationList, isEmpty);
+      model.updateRecognizedMedicationSchedule(
+        0,
+        model.recognizedMedicationScheduleList.single.copyWith(dosage: '1정'),
+      );
+      expect(
+        model.recognizedMedicationScheduleList.single.nameCorrectionSource,
+        'user_edit',
+      );
+      model.clearAnalysisResult();
+      model.confirmMedicationCandidate(0, control.review.candidates.single);
+      expect(model.prescriptionFlowState, PrescriptionFlowState.idle);
+    },
+  );
   // Function Name: reset during save test
   // Description: A late save failure cannot replace the new prescription flow's guidance.
   // Parameters: None. Returns: Test completion.
@@ -486,7 +641,7 @@ void main() {
     expect(viewModel.analyzedMedicationList, hasLength(1));
     expect(viewModel.verifiedMedicationScheduleIndexes, {0});
     expect(viewModel.unverifiedMedicationScheduleIndexes, {1});
-    expect(viewModel.statusMessage, contains('1개 약 정보'));
+    expect(viewModel.statusMessage, contains('1개 약은 확인'));
     expect(viewModel.canRetryPrescriptionAnalysis, isTrue);
 
     final continued = viewModel.continueWithVerifiedMedicationAnalysis();

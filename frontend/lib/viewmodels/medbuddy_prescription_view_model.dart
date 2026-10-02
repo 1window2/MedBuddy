@@ -7,6 +7,8 @@ import '../controls/check_medication_detail_control.dart';
 import '../controls/check_prescription_change_control.dart';
 import '../controls/check_saved_medication_control.dart';
 import '../entities/analyzed_medication_entity.dart';
+import '../entities/medication_detail_entity.dart';
+import '../entities/medication_match_review_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/prescription_flow_entity.dart';
 import '../entities/prescription_change_entity.dart';
@@ -240,6 +242,9 @@ class MedBuddyPrescriptionViewModel {
   // 상세조회가 끝난 약은 원래 OCR 행 인덱스와 함께 보존해 재조회 시 중복 호출을 막는다.
   final Map<int, AnalyzedMedication> _analyzedMedicationByScheduleIndex = {};
   final Set<int> _unverifiedMedicationScheduleIndexes = {};
+  final Map<int, MedicationMatchReview> _medicationMatchReviews = {};
+  Map<int, MedicationMatchReview> get medicationMatchReviews =>
+      Map.unmodifiable(_medicationMatchReviews);
   // 함수이름: verifiedMedicationScheduleIndexes
   // 함수역할: 공공데이터 상세 조회가 성공한 원래 OCR 행 인덱스를 읽기 전용 집합으로 제공한다.
   // 매개변수:
@@ -327,6 +332,7 @@ class MedBuddyPrescriptionViewModel {
   // 반환값:
   // - 없음.
   void clearAnalysisResult() {
+    _medicationMatchReviews.clear();
     _cancelPrescriptionOperation();
     inputPrescription.cancelPendingRequests();
     unawaited(inputPrescription.clearSelectedImage());
@@ -439,6 +445,12 @@ class MedBuddyPrescriptionViewModel {
           ? 'unverified'
           : isNameChanged
           ? 'user_edit'
+          : {
+              'user_edit',
+              'manual_add',
+              'user_selection',
+            }.contains(currentSchedule.nameCorrectionSource)
+          ? currentSchedule.nameCorrectionSource
           : 'user_review',
     );
 
@@ -447,6 +459,7 @@ class MedBuddyPrescriptionViewModel {
     );
     updatedScheduleList[scheduleIndex] = normalizedSchedule;
     _recognizedMedicationScheduleList = updatedScheduleList;
+    _medicationMatchReviews.remove(scheduleIndex);
     if (isReviewState) {
       _analyzedMedicationByScheduleIndex.remove(scheduleIndex);
       _unverifiedMedicationScheduleIndexes.add(scheduleIndex);
@@ -531,6 +544,7 @@ class MedBuddyPrescriptionViewModel {
   // 반환값:
   // - 없음.
   void returnToPrescriptionPreview() {
+    _medicationMatchReviews.clear();
     if (_recognizedMedicationScheduleList.isEmpty) {
       return;
     }
@@ -580,6 +594,7 @@ class MedBuddyPrescriptionViewModel {
             growable: false,
           );
     if (!isRetryingUnverifiedMedication) {
+      _medicationMatchReviews.clear();
       _analyzedMedicationByScheduleIndex.clear();
       _unverifiedMedicationScheduleIndexes.clear();
     }
@@ -603,12 +618,17 @@ class MedBuddyPrescriptionViewModel {
       final analysisBatch = await _analyzeMedicationSchedules(
         recognizedSchedules,
         targetIndexes,
+        operationId,
       );
       if (!_isCurrentPrescriptionOperation(operationId)) {
         return;
       }
 
       _unverifiedMedicationScheduleIndexes.removeAll(targetIndexes);
+      _medicationMatchReviews.removeWhere(
+        (index, _) => targetIndexes.contains(index),
+      );
+      _medicationMatchReviews.addAll(analysisBatch.reviews);
       _analyzedMedicationByScheduleIndex.addAll(
         analysisBatch.analyzedMedicationByScheduleIndex,
       );
@@ -638,7 +658,7 @@ class MedBuddyPrescriptionViewModel {
         _prescriptionFlowState = PrescriptionFlowState.medicationReviewRequired;
         _statusMessage = _isEnglishSetting
             ? '$unverifiedCount medication item(s) could not be verified. Review and retry them.'
-            : '$unverifiedCount개 약 정보를 확인하지 못했습니다. 약명을 수정한 뒤 다시 조회해주세요.';
+            : '$unverifiedCount개 약은 확인이 필요합니다. 후보를 처방전과 비교하거나 약명을 수정해주세요.';
         _notifyViewModelListeners(MedBuddyFeature.prescription);
         return;
       }
@@ -683,47 +703,64 @@ class MedBuddyPrescriptionViewModel {
   Future<_MedicationAnalysisBatch> _analyzeMedicationSchedules(
     List<MedicationSchedule> schedules,
     List<int> scheduleIndexes,
+    int operationId,
   ) async {
     const batchSize = 6;
     final analyzedMedicationByScheduleIndex = <int, AnalyzedMedication>{};
     final unmatchedScheduleIndexes = <int>{};
     final errorMessagesByScheduleIndex = <int, String>{};
+    final reviews = <int, MedicationMatchReview>{};
+
+    Future<_MedicationLookupResult> lookup(int index) async {
+      final schedule = schedules[index];
+      try {
+        final detail = await checkMedicationDetail.requestMedicationDetail(
+          schedule,
+        );
+        return detail == null
+            ? _MedicationLookupResult.unmatched(index)
+            : _MedicationLookupResult.matched(
+                index,
+                AnalyzedMedication(schedule: schedule, detail: detail),
+              );
+      } on MedicationMatchReview catch (review) {
+        return _MedicationLookupResult._(scheduleIndex: index, review: review);
+      } on MedicationLookupBusy catch (busy) {
+        return _MedicationLookupResult._(
+          scheduleIndex: index,
+          busy: busy,
+          errorMessage: _isEnglishSetting
+              ? 'Another request is in progress. Please retry shortly.'
+              : '다른 요청을 처리 중입니다. 잠시 후 다시 조회해주세요.',
+        );
+      } catch (error) {
+        return _MedicationLookupResult.failed(
+          index,
+          UserFacingErrorMessage.resolve(
+            error,
+            isEnglish: _isEnglishSetting,
+            context: UserFacingErrorContext.medicationLookup,
+          ),
+        );
+      }
+    }
+
     for (var start = 0; start < scheduleIndexes.length; start += batchSize) {
       final end = math.min(start + batchSize, scheduleIndexes.length);
       final batchIndexes = scheduleIndexes.sublist(start, end);
-      final batchResults = await Future.wait(
-        batchIndexes.map(/* 함수이름: map 콜백
-         * 함수역할: 일정별 약 상세 조회를 실행하고 일치·미일치·실패를 원래 인덱스와 함께 결과로 묶는다.
-         * 매개변수:
-         * - scheduleIndex (int): 원래 OCR 목록의 대상 행 인덱스
-         * 반환값:
-         * - 해당 일정의 상세 조회 결과를 완료하는 Future.
-         */ (scheduleIndex) async {
-          final schedule = schedules[scheduleIndex];
-          try {
-            final detail = await checkMedicationDetail.requestMedicationDetail(
-              schedule,
-            );
-            if (detail == null) {
-              return _MedicationLookupResult.unmatched(scheduleIndex);
-            }
-            return _MedicationLookupResult.matched(
-              scheduleIndex,
-              AnalyzedMedication(schedule: schedule, detail: detail),
-            );
-          } catch (error) {
-            return _MedicationLookupResult.failed(
-              scheduleIndex,
-              UserFacingErrorMessage.resolve(
-                error,
-                isEnglish: _isEnglishSetting,
-                context: UserFacingErrorContext.medicationLookup,
-              ),
-            );
-          }
-        }),
-      );
-      for (final result in batchResults) {
+      final batchResults = await Future.wait(batchIndexes.map(lookup));
+      for (var result in batchResults) {
+        // SQLite 계정 잠금 충돌만 선행 조회 종료 후 한 번씩 직렬 재시도한다.
+        if (result.busy != null) {
+          if (!_isCurrentPrescriptionOperation(operationId)) break;
+          final delay = result.busy!.retryAt.difference(DateTime.now());
+          if (delay > Duration.zero) await Future<void>.delayed(delay);
+          if (!_isCurrentPrescriptionOperation(operationId)) break;
+          result = await lookup(result.scheduleIndex);
+        }
+        if (result.review != null) {
+          reviews[result.scheduleIndex] = result.review!;
+        }
         if (result.analyzedMedication != null) {
           analyzedMedicationByScheduleIndex[result.scheduleIndex] =
               result.analyzedMedication!;
@@ -734,12 +771,49 @@ class MedBuddyPrescriptionViewModel {
           unmatchedScheduleIndexes.add(result.scheduleIndex);
         }
       }
+      if (!_isCurrentPrescriptionOperation(operationId)) break;
     }
     return _MedicationAnalysisBatch(
       analyzedMedicationByScheduleIndex: analyzedMedicationByScheduleIndex,
       unmatchedScheduleIndexes: unmatchedScheduleIndexes,
       errorMessagesByScheduleIndex: errorMessagesByScheduleIndex,
+      reviews: reviews,
     );
+  }
+
+  // 오래된 확인창에서 돌아온 선택은 현재 후보와 일치할 때만 반영한다.
+  void confirmMedicationCandidate(int index, MedicationDetail detail) {
+    final review = _medicationMatchReviews[index];
+    if (_prescriptionFlowState !=
+            PrescriptionFlowState.medicationReviewRequired ||
+        review == null ||
+        !review.candidates.contains(detail)) {
+      return;
+    }
+    final original = _recognizedMedicationScheduleList[index];
+    final schedule = original.copyWith(
+      medicationName: detail.itemName,
+      rawMedicationName: original.rawMedicationName.isEmpty
+          ? original.medicationName
+          : original.rawMedicationName,
+      nameCorrectionSource: 'user_selection',
+      nameConfidence: 1,
+    );
+    _recognizedMedicationScheduleList = List.of(
+      _recognizedMedicationScheduleList,
+    )..[index] = schedule;
+    _analyzedMedicationByScheduleIndex[index] = AnalyzedMedication(
+      schedule: schedule,
+      detail: detail,
+    );
+    _unverifiedMedicationScheduleIndexes.remove(index);
+    _medicationMatchReviews.remove(index);
+    _analyzedMedicationList = _orderedAnalyzedMedications();
+    _analysisErrorMessage = '';
+    if (_unverifiedMedicationScheduleIndexes.isEmpty) {
+      _prescriptionFlowState = PrescriptionFlowState.analysisSucceeded;
+    }
+    _notifyViewModelListeners(MedBuddyFeature.prescription);
   }
 
   // 함수이름: continueWithVerifiedMedicationAnalysis
@@ -1011,6 +1085,7 @@ class MedBuddyPrescriptionViewModel {
   }) async {
     final operationId = _beginPrescriptionOperation();
     _recognizedMedicationScheduleList = [];
+    _medicationMatchReviews.clear();
     _recognizedTextRegionList = [];
     _prescriptionPreviewImagePath = '';
     _analyzedMedicationList = [];
@@ -1239,6 +1314,8 @@ class MedBuddyPrescriptionViewModel {
 // - analyzedMedication (AnalyzedMedication?): OCR 일정과 상세정보가 결합된 분석 결과
 // - errorMessage (String): 실패 상태에 사용할 사용자 안내문
 class _MedicationLookupResult {
+  final MedicationLookupBusy? busy;
+  final MedicationMatchReview? review;
   final int scheduleIndex;
   final AnalyzedMedication? analyzedMedication;
   final String errorMessage;
@@ -1252,6 +1329,8 @@ class _MedicationLookupResult {
   // 반환값:
   // - _MedicationLookupResult: 초기화된 인스턴스.
   const _MedicationLookupResult._({
+    this.busy,
+    this.review,
     required this.scheduleIndex,
     this.analyzedMedication,
     this.errorMessage = '',
@@ -1311,6 +1390,7 @@ class _MedicationLookupResult {
 // - unmatchedScheduleIndexes (Set<int>): 상세 조회에서 일치 약을 찾지 못한 OCR 행
 // - errorMessagesByScheduleIndex (Map<int, String>): 원래 OCR 행별 기술 오류 안내
 class _MedicationAnalysisBatch {
+  final Map<int, MedicationMatchReview> reviews;
   final Map<int, AnalyzedMedication> analyzedMedicationByScheduleIndex;
   final Set<int> unmatchedScheduleIndexes;
   final Map<int, String> errorMessagesByScheduleIndex;
@@ -1324,6 +1404,7 @@ class _MedicationAnalysisBatch {
   // 반환값:
   // - _MedicationAnalysisBatch: 초기화된 인스턴스.
   const _MedicationAnalysisBatch({
+    this.reviews = const {},
     required this.analyzedMedicationByScheduleIndex,
     required this.unmatchedScheduleIndexes,
     required this.errorMessagesByScheduleIndex,

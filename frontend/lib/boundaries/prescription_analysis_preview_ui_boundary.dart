@@ -7,6 +7,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../entities/medication_schedule_entity.dart';
+import '../entities/medication_detail_entity.dart';
+import '../entities/medication_match_review_entity.dart';
+import 'medication_candidate_dialog.dart';
 import '../entities/recognized_text_region_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
@@ -56,6 +59,7 @@ class PrescriptionAnalysisPreviewUI extends StatefulWidget {
   final List<RecognizedTextRegion> recognizedTextRegions;
   final String previewImagePath;
   final String recognitionNotice;
+  final String lookupErrorMessage;
   final UserSetting userSetting;
   final VoidCallback onBackRequested;
   final VoidCallback onAnalysisRequested;
@@ -64,6 +68,8 @@ class PrescriptionAnalysisPreviewUI extends StatefulWidget {
   final Set<int> verifiedScheduleIndexes;
   final bool isMedicationLookupReview;
   final VoidCallback? onVerifiedOnlyContinueRequested;
+  final Map<int, MedicationMatchReview> matchReviews;
+  final void Function(int, MedicationDetail)? onCandidateConfirmed;
 
   // 함수이름: PrescriptionAnalysisPreviewUI
   // 함수역할: OCR 복약 표 검토·수정·추가와 분석 재개에 필요한 입력값과 표시 설정을 초기화한다.
@@ -88,6 +94,7 @@ class PrescriptionAnalysisPreviewUI extends StatefulWidget {
     this.recognizedTextRegions = const [],
     this.previewImagePath = '',
     this.recognitionNotice = '',
+    this.lookupErrorMessage = '',
     required this.userSetting,
     required this.onBackRequested,
     required this.onAnalysisRequested,
@@ -96,6 +103,8 @@ class PrescriptionAnalysisPreviewUI extends StatefulWidget {
     this.verifiedScheduleIndexes = const {},
     this.isMedicationLookupReview = false,
     this.onVerifiedOnlyContinueRequested,
+    this.matchReviews = const {},
+    this.onCandidateConfirmed,
   });
 
   // 함수이름: createState
@@ -230,6 +239,13 @@ class _PrescriptionAnalysisPreviewUIState
                             scale: scale,
                           ),
                           const SizedBox(height: 20),
+                          if (widget.lookupErrorMessage.isNotEmpty) ...[
+                            _RecognitionNoticeBanner(
+                              message: widget.lookupErrorMessage,
+                              scale: scale,
+                            ),
+                            const SizedBox(height: 12),
+                          ],
                         ] else if (recognitionNotice.isNotEmpty) ...[
                           const SizedBox(height: 14),
                           _RecognitionNoticeBanner(
@@ -270,6 +286,26 @@ class _PrescriptionAnalysisPreviewUIState
                               widget.verifiedScheduleIndexes,
                         ),
                         if (widget.isMedicationLookupReview &&
+                            widget.onCandidateConfirmed != null)
+                          for (final entry in widget.matchReviews.entries)
+                            if (entry.value.candidates.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 12),
+                                child: OutlinedButton.icon(
+                                  key: Key(
+                                    'medication-candidates-${entry.key}',
+                                  ),
+                                  icon: const Icon(Icons.fact_check_outlined),
+                                  label: Text(
+                                    '${entry.key + 1}. ${widget.medicationScheduleList[entry.key].medicationName}\n${widget.userSetting.language == 'en' ? 'Review medication candidates' : '약품 후보 확인'}',
+                                  ),
+                                  onPressed: () => _showMedicationCandidates(
+                                    entry.key,
+                                    entry.value,
+                                  ),
+                                ),
+                              ),
+                        if (widget.isMedicationLookupReview &&
                             widget.verifiedScheduleIndexes.isNotEmpty &&
                             widget.onVerifiedOnlyContinueRequested != null) ...[
                           const SizedBox(height: 18),
@@ -295,6 +331,35 @@ class _PrescriptionAnalysisPreviewUIState
         ),
       ),
     );
+  }
+
+  Future<void> _showMedicationCandidates(
+    int index,
+    MedicationMatchReview review,
+  ) async {
+    final schedule = widget.medicationScheduleList[index];
+    final selected = await showDialog<MedicationDetail>(
+      context: context,
+      builder: (context) => MedicationCandidateDialog(
+        originalName:
+            schedule.rawMedicationName.isEmpty ||
+                {
+                  'user_edit',
+                  'manual_add',
+                  'user_selection',
+                }.contains(schedule.nameCorrectionSource)
+            ? schedule.medicationName
+            : schedule.rawMedicationName,
+        candidates: review.candidates,
+        isEnglish: widget.userSetting.language == 'en',
+      ),
+    );
+    if (!mounted ||
+        selected == null ||
+        !identical(widget.matchReviews[index], review)) {
+      return;
+    }
+    widget.onCandidateConfirmed?.call(index, selected);
   }
 
   // 함수이름: _showMedicationEditor

@@ -800,7 +800,7 @@ void main() {
     await tester.pump(const Duration(seconds: 4));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('공공데이터에서 확인하지 못했습니다'), findsOneWidget);
+    expect(find.textContaining('후보가 있으면 처방전과 비교'), findsOneWidget);
     expect(find.text('확인됨'), findsOneWidget);
     final verifiedName = tester.widget<Text>(find.text('확인된약'));
     expect(verifiedName.style?.decoration, TextDecoration.lineThrough);
