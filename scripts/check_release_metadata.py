@@ -59,11 +59,12 @@ def main() -> int:
 
     release_workflow = _read(".github/workflows/release-android.yml")
     required_release_controls = {
-        "main-only signed release": "github.ref == 'refs/heads/main'",
+        "exact-ref signed release": "github.ref == 'refs/heads/main'",
         "mandatory release signing": "MEDBUDDY_REQUIRE_RELEASE_SIGNING: 'true'",
         "APK build": "flutter build apk --release --no-pub",
         "app bundle build": "flutter build appbundle --release --no-pub",
         "public feature ingress": "python3 ../scripts/check_release_ingress.py",
+        "live App Check preflight": "python3 ../scripts/check_release_app_check.py",
     }
     for label, expected_text in required_release_controls.items():
         if expected_text not in release_workflow:

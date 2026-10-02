@@ -513,15 +513,32 @@ secrets. It supplies `ANDROID_SIGNING_CERT_SHA256`,
 `ANDROID_SIGNING_CERT_SHA1`, `MEDBUDDY_API_BASE_URL`, `FIREBASE_API_KEY`, `FIREBASE_APP_ID`,
 `FIREBASE_MESSAGING_SENDER_ID`, and `FIREBASE_PROJECT_ID` as environment
 variables for Flutter compile-time configuration. Firebase API/app identifiers
-and certificate fingerprints are identifiers rather than credentials; the
-environment requires owner approval and an exact custom deployment policy for
-only `main`. The workflow repeats that exact-ref gate before repository build
-code can receive signing material. Beta branches and version-like tags cannot
-access the environment. The protected environment
+and certificate fingerprints are identifiers rather than credentials. The
+environment must require owner approval and an exact custom deployment policy
+for `main` and the active `beta/v0.2.0` branch. The workflow repeats that exact-ref
+gate before repository build code can receive signing material. Other beta
+branches and version-like tags cannot access the environment. The protected environment
 also prevents accidental cross-project builds rather than treating public
 Firebase identifiers as authorization secrets.
 The signed-build workflow sets `MEDBUDDY_REQUIRE_RELEASE_SIGNING=true`, verifies
 the upload certificate fingerprint and cross-checks the restored Firebase
-Android configuration before building. It builds both APK and AAB outputs and
-publishes SHA-256 checksum files. Play distribution should use Play App Signing
+Android configuration before building. It builds an AAB and, only when the
+normalized artifact policy permits it, a direct APK; each has a SHA-256 checksum
+file. Play distribution should use Play App Signing
 and retain the protected key as the upload key.
+
+Protected builds also use a dedicated, read-only federated identity to compare
+live Firebase Android SHA-256 registration for
+`ANDROID_PLAY_SIGNING_CERT_SHA256` with the intended app's Play Integrity verdict
+policy. Protected releases default to Play-only AAB output; dual-channel output
+requires the upload/APK and Play signing certificates to match, since Firebase
+registration cannot make a differently signed APK Play-recognized. The temporary
+off-Play beta still builds its unprotected APK and protected AAB separately.
+This configuration preflight is separate from
+artifact signature verification: Google Play signs delivered apps with its
+app-signing key, which need not equal the upload key. The preflight runs before
+Firebase/keystore secret restoration and never changes IAM, app registration,
+verdict requirements or backend enforcement. Its identity setup is owner-gated
+and remains pending; [deployment prerequisites](Production%20Deployment.md#protected-android-app-check-preflight)
+describe the exact protected variables and least-privilege permissions. Passing
+this gate is not evidence of working device attestation or Play project linkage.

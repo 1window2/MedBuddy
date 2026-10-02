@@ -38,6 +38,9 @@ jobs:
       github.ref == 'refs/heads/beta/v0.2.0'
     runs-on: ubuntu-latest
     environment: beta-android
+    permissions:
+      contents: read
+      id-token: write
 
     defaults:
       run:
@@ -88,6 +91,7 @@ jobs:
         shell: bash
         env:
           FIREBASE_APP_CHECK_REQUIRED: ${{ vars.FIREBASE_APP_CHECK_REQUIRED }}
+          APP_CHECK_RELEASE_DISTRIBUTION: ${{ vars.APP_CHECK_RELEASE_DISTRIBUTION }}
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -101,6 +105,13 @@ jobs:
                   "FIREBASE_APP_CHECK_REQUIRED must be true or false."
               )
           normalized = value or "true"
+          distribution = os.environ.get(
+              "APP_CHECK_RELEASE_DISTRIBUTION", ""
+          ).strip().lower() or "play"
+          if distribution not in ("play", "both"):
+              raise SystemExit(
+                  "APP_CHECK_RELEASE_DISTRIBUTION must be play or both."
+              )
           if (
               os.environ["GITHUB_REF"] == "refs/heads/main"
               and normalized != "true"
@@ -114,7 +125,45 @@ jobs:
                   "MEDBUDDY_APP_CHECK_REQUIRED_NORMALIZED="
                   f"{normalized}\n"
               )
+              output.write(f"MEDBUDDY_RELEASE_DISTRIBUTION={distribution}\n")
+              build_apk = normalized == "false" or distribution == "both"
+              output.write(f"MEDBUDDY_BUILD_DIRECT_APK={str(build_apk).lower()}\n")
           PY
+
+      - name: Authenticate read-only Firebase preflight
+        if: env.MEDBUDDY_APP_CHECK_REQUIRED_NORMALIZED == 'true'
+        id: app-check-auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_APP_CHECK_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_APP_CHECK_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_lifetime: 300s
+          access_token_scopes: https://www.googleapis.com/auth/cloud-platform
+          create_credentials_file: false
+          export_environment_variables: false
+
+      - name: Verify live Firebase App Check release configuration
+        if: env.MEDBUDDY_APP_CHECK_REQUIRED_NORMALIZED == 'true'
+        shell: bash
+        env:
+          GOOGLE_ACCESS_TOKEN: ${{ steps.app-check-auth.outputs.access_token }}
+          FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+          FIREBASE_PROJECT_NUMBER: ${{ vars.FIREBASE_MESSAGING_SENDER_ID }}
+          FIREBASE_APP_ID: ${{ vars.FIREBASE_APP_ID }}
+          UPLOAD_CERT_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
+          PLAY_CERT_SHA256: ${{ vars.ANDROID_PLAY_SIGNING_CERT_SHA256 }}
+          RELEASE_DEVICE_INTEGRITY: ${{ vars.APP_CHECK_RELEASE_DEVICE_INTEGRITY || 'NO_INTEGRITY' }}
+        run: |
+          set -euo pipefail
+          python3 ../scripts/check_release_app_check.py \
+            --project-id "${FIREBASE_PROJECT_ID}" \
+            --project-number "${FIREBASE_PROJECT_NUMBER}" \
+            --app-id "${FIREBASE_APP_ID}" \
+            --upload-cert-sha256 "${UPLOAD_CERT_SHA256}" \
+            --play-cert-sha256 "${PLAY_CERT_SHA256}" \
+            --distribution "${MEDBUDDY_RELEASE_DISTRIBUTION}" \
+            --device-integrity "${RELEASE_DEVICE_INTEGRITY}"
 
       - name: Validate standalone backend endpoint
         shell: bash
@@ -379,14 +428,22 @@ jobs:
             "--dart-define=MEDBUDDY_FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}"
             "--dart-define=MEDBUDDY_NAVER_MAP_CLIENT_ID=${NAVER_MAP_CLIENT_ID}"
           )
-          flutter build apk --release --no-pub \
-            "${COMMON_DEFINES[@]}" \
-            "--dart-define=MEDBUDDY_FIREBASE_APP_CHECK_REQUIRED=${APP_CHECK_REQUIRED}"
+          if [[ "${MEDBUDDY_BUILD_DIRECT_APK}" == "true" ]]; then
+            flutter build apk --release --no-pub \
+              "${COMMON_DEFINES[@]}" \
+              "--dart-define=MEDBUDDY_FIREBASE_APP_CHECK_REQUIRED=${APP_CHECK_REQUIRED}"
+            sha256sum build/app/outputs/flutter-apk/app-release.apk > build/app-release.apk.sha256
+          fi
           flutter build appbundle --release --no-pub \
             "${COMMON_DEFINES[@]}" \
             --dart-define=MEDBUDDY_FIREBASE_APP_CHECK_REQUIRED=true
-          sha256sum build/app/outputs/flutter-apk/app-release.apk > build/app-release.apk.sha256
           sha256sum build/app/outputs/bundle/release/app-release.aab > build/app-release.aab.sha256
+          printf '%s\n' \
+            "App Check required for APK: ${APP_CHECK_REQUIRED}" \
+            "Protected distribution: ${MEDBUDDY_RELEASE_DISTRIBUTION}" \
+            "Direct APK included: ${MEDBUDDY_BUILD_DIRECT_APK}" \
+            'AAB always requires App Check; Play/device acceptance remains a separate publication gate.' \
+            >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Verify signed release artifacts
         shell: bash
@@ -397,25 +454,33 @@ jobs:
           APK="build/app/outputs/flutter-apk/app-release.apk"
           AAB="build/app/outputs/bundle/release/app-release.aab"
           EXPECTED_CERT="$(printf '%s' "${EXPECTED_SIGNING_CERT_SHA256}" | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
-          APKSIGNER="$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           test -n "${EXPECTED_CERT}"
-          test -x "${APKSIGNER}"
-
-          set +e
-          APK_VERIFY_OUTPUT="$("${APKSIGNER}" verify --verbose --print-certs "${APK}" 2>&1)"
-          APK_VERIFY_STATUS=$?
-          set -e
-          printf '%s\n' "${APK_VERIFY_OUTPUT}"
-          if (( APK_VERIFY_STATUS != 0 )); then
-            echo "APK signature verification failed with exit code ${APK_VERIFY_STATUS}." >&2
-            exit "${APK_VERIFY_STATUS}"
+          if [[ "${MEDBUDDY_BUILD_DIRECT_APK}" == "true" ]]; then
+            APKSIGNER="$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+            test -x "${APKSIGNER}"
+            set +e
+            APK_VERIFY_OUTPUT="$("${APKSIGNER}" verify --verbose --print-certs "${APK}" 2>&1)"
+            APK_VERIFY_STATUS=$?
+            set -e
+            printf '%s\n' "${APK_VERIFY_OUTPUT}"
+            if (( APK_VERIFY_STATUS != 0 )); then
+              echo "APK signature verification failed with exit code ${APK_VERIFY_STATUS}." >&2
+              exit "${APK_VERIFY_STATUS}"
+            fi
+            APK_CERT="$(printf '%s\n' "${APK_VERIFY_OUTPUT}" \
+              | awk -F': ' '/^(Signer #[0-9]+|V[0-9]+ Signer): certificate SHA-256 digest: [[:xdigit:]:]+$/ { print $NF; exit }' \
+              | head -n 1 \
+              | tr -d ':[:space:]' \
+              | tr '[:lower:]' '[:upper:]')"
+            if [[ ! "${APK_CERT}" =~ ^[0-9A-F]{64}$ ]]; then
+              echo "APK certificate fingerprint extraction failed." >&2
+              exit 1
+            fi
+            if [[ "${APK_CERT}" != "${EXPECTED_CERT}" ]]; then
+              echo "APK signing certificate SHA-256 mismatch." >&2
+              exit 1
+            fi
           fi
-
-          APK_CERT="$(printf '%s\n' "${APK_VERIFY_OUTPUT}" \
-            | awk -F': ' '/^(Signer #[0-9]+|V[0-9]+ Signer): certificate SHA-256 digest: [[:xdigit:]:]+$/ { print $NF; exit }' \
-            | head -n 1 \
-            | tr -d ':[:space:]' \
-            | tr '[:lower:]' '[:upper:]')"
           set +e
           AAB_VERIFY_OUTPUT="$(jarsigner -verify "${AAB}" 2>&1)"
           AAB_VERIFY_STATUS=$?
@@ -439,16 +504,8 @@ jobs:
             | tr -d ':[:space:]' \
             | tr '[:lower:]' '[:upper:]')"
 
-          if [[ ! "${APK_CERT}" =~ ^[0-9A-F]{64}$ ]]; then
-            echo "APK certificate fingerprint extraction failed." >&2
-            exit 1
-          fi
           if [[ ! "${AAB_CERT}" =~ ^[0-9A-F]{64}$ ]]; then
             echo "AAB certificate fingerprint extraction failed." >&2
-            exit 1
-          fi
-          if [[ "${APK_CERT}" != "${EXPECTED_CERT}" ]]; then
-            echo "APK signing certificate SHA-256 mismatch." >&2
             exit 1
           fi
           if [[ "${AAB_CERT}" != "${EXPECTED_CERT}" ]]; then
@@ -456,14 +513,23 @@ jobs:
             exit 1
           fi
 
-      - name: Upload signed release artifacts
+      - name: Upload signed Play bundle
         uses: actions/upload-artifact@v7
         with:
           name: medbuddy-android-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
-            frontend/build/app/outputs/flutter-apk/app-release.apk
             frontend/build/app/outputs/bundle/release/app-release.aab
-            frontend/build/app-release.apk.sha256
             frontend/build/app-release.aab.sha256
+
+      - name: Upload signed direct APK
+        if: env.MEDBUDDY_BUILD_DIRECT_APK == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: medbuddy-android-apk-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            frontend/build/app/outputs/flutter-apk/app-release.apk
+            frontend/build/app-release.apk.sha256

@@ -198,6 +198,75 @@ the directly installable APK; its Google Play AAB is always built with App
 Check enabled. The temporary exception and the mandatory v0.2.0 restoration
 checklist are tracked in [TODO.md](TODO.md).
 
+### Protected Android App Check preflight
+
+Account enrollment is owner-managed and deferred as of October 2. Keep the
+existing off-Play exception unchanged until an eligible client and the rollout
+evidence are ready. Do not enable backend enforcement merely because Firebase
+Console shows a registered provider.
+
+Every signed build whose normalized App Check policy is `true` now reads the
+live Firebase Android app and Play Integrity configuration before restoring
+Firebase configuration or keystore secrets. Missing identity configuration,
+denied reads, redirects, unavailable APIs, certificate mismatches and
+unreviewed verdict settings block the build. The temporary `false` beta APK
+path skips this preflight; `main` cannot use that exception. An AAB generated
+under the beta exception still requires full Play acceptance before publication.
+
+Owner prerequisites, to configure when enrollment resumes:
+
+- In Play Console, obtain the **app signing** SHA-256 fingerprint, not just the
+  upload-key fingerprint. Register the delivered Play certificate in the
+  intended Firebase Android app. The protected environment's `ANDROID_SIGNING_CERT_SHA256` continues to
+  verify the locally signed APK/AAB upload artifacts;
+  `ANDROID_PLAY_SIGNING_CERT_SHA256` identifies the Play-delivered certificate.
+- Enable Firebase Management and Firebase App Check APIs in the same project.
+  Create a dedicated service account with a project-level custom role containing
+  only `firebase.clients.get` and `firebaseappcheck.playIntegrityConfig.get`.
+  Do not reuse a backend Admin credential or deployment identity. These read
+  permissions are listed in the official [Firebase IAM reference](https://docs.cloud.google.com/iam/docs/roles-permissions/firebase)
+  and [App Check IAM reference](https://docs.cloud.google.com/iam/docs/roles-permissions/firebaseappcheck).
+- Configure Workload Identity Federation for the exact repository identity,
+  `beta-android` environment and `release-android.yml` workflow, restricted to
+  `main` and `beta/v0.2.0` refs. Grant the scoped federated principal
+  `roles/iam.workloadIdentityUser` on that service account, not a general
+  repository-wide deployment grant. Set protected variables
+  `GCP_APP_CHECK_WORKLOAD_IDENTITY_PROVIDER` and `GCP_APP_CHECK_SERVICE_ACCOUNT`.
+  The [Google authentication action](https://github.com/google-github-actions/auth)
+  generates a five-minute OAuth token with no credential file or SDK credential
+  export. Its API-required `cloud-platform` scope does not override the service
+  account's read-only IAM permissions.
+- Set `APP_CHECK_RELEASE_DISTRIBUTION` to `play` (default, Play-only licensing
+  required) or `both` (Play and recognized direct installs). Protected `play`
+  builds produce and verify only an AAB. `both` additionally builds an APK, but
+  its upload/APK certificate must equal the Play app-signing certificate:
+  [Play recognition checks the delivered app and certificate](https://developer.android.com/google/play/integrity/verdicts#application-integrity-field).
+  Registering a different upload certificate in Firebase cannot make that APK
+  Play-recognized. Matching certificates still do not prove that this version
+  is published or eligible. Set
+  `APP_CHECK_RELEASE_DEVICE_INTEGRITY` to the reviewed `NO_INTEGRITY` default or
+  `MEETS_DEVICE_INTEGRITY`. The preflight requires `PLAY_RECOGNIZED` in either
+  channel policy, checks licensing and the exact device level, and rejects
+  optional basic/strong levels until their separate opt-in/acceptance is
+  addressed. Review [Firebase's channel recommendations](https://firebase.google.com/docs/app-check/android/play-integrity-provider)
+  before choosing these values; the script never changes the provider policy.
+
+The `medbuddy-android-<commit>` artifact contains the AAB and its checksum.
+The separate `medbuddy-android-apk-<commit>` artifact is uploaded only when the
+normalized policy permits a direct APK. This prevents an old or unverified APK
+from being included in a Play-only artifact. Off-Play beta builds keep the APK
+with App Check disabled and the AAB with App Check enabled; their AAB is not
+publication-ready merely because compilation succeeds.
+
+`scripts/check_release_app_check.py` can also run manually with a short-lived
+OAuth token supplied only through `GOOGLE_ACCESS_TOKEN` and its documented
+`--help` arguments. Never put the token in command-line arguments, Git, issue
+comments or logs. The check compares the active Android app's project, package,
+app ID and live SHA-256 registrations, then verifies the corresponding
+[Play Integrity configuration](https://firebase.google.com/docs/reference/appcheck/rest/v1beta/projects.apps.playIntegrityConfig).
+Passing it does **not** prove the Play-to-Cloud project link, runtime token
+issuance, quota headroom, or physical-device acceptance. Those gates stay open.
+
 ## Start or Update Production
 
 ### Durable chat rollout (`b3a7d9e2f601`)

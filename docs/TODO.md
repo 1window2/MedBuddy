@@ -48,6 +48,17 @@ feature routes still reach FastAPI authentication. Do not commit or print keys.
 **Status:** Deferred only for direct-install functionality testing. This item
 must be completed before the public v0.2.0 Google Play release.
 
+On October 2, Firebase Console showed `com.medbuddy.app` registered with Play
+Integrity. The signed-in account had no Google Play developer account; the
+owner has deferred enrollment until further notice. Registration alone does
+not prove signing fingerprints, verdict policy, Play project linkage, or a
+working device token. No console settings or backend enforcement were changed.
+
+The repository now has a tested, read-only live-configuration preflight before
+protected Android builds receive Firebase/signing secrets. Its federated
+identity and Play signing fingerprint still need owner configuration after
+enrollment; see [the setup instructions](Production%20Deployment.md#protected-android-app-check-preflight).
+
 The current off-Play beta keeps Firebase Authentication, HTTPS, trusted-host
 validation, and Redis-backed rate limiting enabled, but temporarily builds the
 directly installable APK and deploys the backend with App Check enforcement
@@ -72,6 +83,9 @@ Check enabled.
       Android app and App Check registration settings.
 - [ ] Configure Firebase App Check verdict requirements for the intended v0.2.0
       distribution channels and confirm the production device-integrity level.
+- [ ] Configure the dedicated read-only preflight identity and protected
+      `beta-android` variables, then pass `check_release_app_check.py` against
+      the live project. Local regression tests are not live acceptance.
 - [ ] Deploy the backend with `FIREBASE_APP_CHECK_REQUIRED=true` and
       `FIREBASE_OFF_PLAY_BETA_MODE=false`.
 - [ ] Set the `beta-android` GitHub environment variable
