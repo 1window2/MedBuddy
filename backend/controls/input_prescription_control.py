@@ -26,6 +26,7 @@ from entities.prescription_analysis_entity import (
     PrescriptionAnalysisResult,
     PrescriptionText,
 )
+from services.medication_match_safety import match_conflict
 from services.prescription_parser import (
     INFO_UNAVAILABLE,
     normalize_prescription_candidates,
@@ -223,6 +224,8 @@ class _PrescriptionMedicationNameVerifier:
             if index < 0 or index >= len(corrected_verifications):
                 continue
             catalog_candidate, confidence = correction
+            if match_conflict(raw_names[index], catalog_candidate.item_name):
+                continue
             corrected_verifications[index] = _MedicationNameVerification(
                 raw_name=raw_names[index],
                 canonical_name=catalog_candidate.item_name,
@@ -395,7 +398,7 @@ class _PrescriptionMedicationNameVerifier:
 
         candidates = self._build_candidates(normalized_raw_name)
         catalog_match = self._find_catalog_match(candidates)
-        if catalog_match is None:
+        if catalog_match is None or match_conflict(raw_name, catalog_match[1]):
             return _MedicationNameVerification(
                 raw_name=raw_name,
                 canonical_name=raw_name,
@@ -553,7 +556,7 @@ class _PrescriptionMedicationNameVerifier:
                 selected_name,
                 request.candidates,
             )
-            if selected_candidate is None:
+            if selected_candidate is None or match_conflict(request.raw_name, selected_candidate.item_name):
                 continue
 
             corrections[index] = (

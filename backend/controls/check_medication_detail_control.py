@@ -29,6 +29,7 @@ from entities.medication_detail_entity import (
     _DrugBasicInfo,
 )
 from schemas.medication import MedicationResponse
+from services.medication_match_safety import can_auto_match, match_conflict
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +144,7 @@ class _MedicationTextNormalizer:
         outside_parentheses, parenthesized_candidates = (
             self._split_parenthesized_text(normalized_text)
         )
-        raw_candidates = [outside_parentheses, normalized_text]
+        raw_candidates = [normalized_text, outside_parentheses]
         raw_candidates.extend(parenthesized_candidates)
 
         search_keywords: list[str] = []
@@ -211,7 +212,7 @@ class _MedicationTextNormalizer:
         parts = self._DOSAGE_PATTERN.split(normalized_candidate)
         dosage_trimmed_candidate = parts[0].strip() if parts else normalized_candidate
         structural_keywords: list[str] = []
-        for base_keyword in [dosage_trimmed_candidate, normalized_candidate]:
+        for base_keyword in [normalized_candidate, dosage_trimmed_candidate]:
             structural_keywords.extend(self._structural_variants(base_keyword))
 
         ocr_keywords: list[str] = []
@@ -344,6 +345,10 @@ class _MedicationNameMatcher:
     # 반환값:
     # - 0.0 이상 1.0 이하의 이름 유사도 점수
     def calculate_score(self, search_text: str, candidate_name: str) -> float:
+        if match_conflict(search_text, candidate_name):
+            return 0.0
+        if can_auto_match(search_text, candidate_name):
+            return 1.0
         direct_search_key = self._normalize_match_key(search_text)
         direct_candidate_key = self._normalize_match_key(candidate_name)
         direct_score = self._calculate_pair_score(
@@ -745,6 +750,7 @@ class _MedicationSummaryGenerator:
         return MedicationDetail(
             item_seq=read_public_item_sequence(advanced_item),
             item_name=actual_item_name,
+            manufacturer=_read_text(advanced_item.get("ENTP_NAME") or advanced_item.get("entpName")),
             efficacy=_read_text(summary_data.get("efficacy"), "요약 실패"),
             usage_method=_read_text(summary_data.get("use_method"), "요약 실패"),
             warning=_read_text(summary_data.get("warning_message"), "요약 실패"),
@@ -788,7 +794,7 @@ class _LocalMedicationCatalog:
 
     # 함수이름: fetch_drug_info
     # 함수역할:
-    # - 로컬 기본 정보를 우선 반환하고, 없으면 가장 가까운 허가 정보의 요약을 사용한다.
+    # - 로컬 기본 정보를 우선 반환하고, 없으면 상위 허가 후보를 확인용으로 보존한다.
     # 매개변수:
     # - drug_name (str): 검색 또는 직렬화할 약품명.
     # 반환값:
@@ -809,7 +815,9 @@ class _LocalMedicationCatalog:
             return []
 
         logger.info("[Local DB] approval lookup succeeded.")
-        return [await self._build_approval_detail(drug_name, approval_items[0])]
+        return list(await asyncio.gather(*(
+            self._build_approval_detail(drug_name, item) for item in approval_items
+        )))
 
     # 함수이름: _search_catalog
     # 함수역할:
@@ -911,7 +919,7 @@ class _LocalMedicationCatalog:
     def _search_approval(
         self,
         drug_name: str,
-        limit: int = 1,
+        limit: int = 3,
     ) -> list[_DrugApprovalInfo]:
         keyword = self._normalize_name(drug_name)
         if not keyword:
@@ -999,6 +1007,7 @@ class _LocalMedicationCatalog:
             medication_detail = MedicationDetail(
                 item_seq=item.item_seq or "",
                 item_name=item.item_name,
+                manufacturer=item.entp_name or "",
                 efficacy=item.efficacy or "정보 없음",
                 usage_method=item.use_method or "정보 없음",
                 warning=item.warning_message or "정보 없음",
@@ -1036,7 +1045,7 @@ class _LocalMedicationCatalog:
             raw_item,
         )
         medication_detail = medication_detail.model_copy(
-            update={"source": "Local DB (허가정보) + AI 요약"}
+            update={"source": "Local DB (허가정보) + AI 요약", "manufacturer": approval_item.entp_name or ""}
         )
         self._save_approval_summary(approval_item, medication_detail)
         return medication_detail
@@ -1062,6 +1071,7 @@ class _LocalMedicationCatalog:
         return MedicationDetail(
             item_seq=approval_item.item_seq or "",
             item_name=approval_item.item_name,
+            manufacturer=approval_item.entp_name or "",
             efficacy=approval_item.summary_efficacy,
             usage_method=approval_item.summary_use_method,
             warning=approval_item.summary_warning_message,
@@ -1322,11 +1332,16 @@ class CheckMedicationDetail:
     # - Normalizes medication text and fetches detailed drug information.
     # Parameters:
     # - raw_text (str): Raw medication text supplied by the frontend.
+    # - original_text (str | None): OCR evidence retained before an automatic name correction.
     # Returns:
-    # - MedicationResponse with success flag and MedicationDetail list.
-    async def requestMedicationDetail(self, raw_text: str) -> MedicationResponse:
+    # - Exact product details, or confirmation-only candidates without automatic data.
+    async def requestMedicationDetail(
+        self, raw_text: str, *, original_text: str | None = None,
+    ) -> MedicationResponse:
         normalized_text = self.text_normalizer.normalize_raw_text(raw_text)
         self._validate_lookup_text(normalized_text)
+        reference = self.text_normalizer.normalize_raw_text(original_text or raw_text)
+        self._validate_lookup_text(reference)
 
         search_keywords = self.text_normalizer.build_search_keywords(normalized_text)
         if not search_keywords:
@@ -1335,8 +1350,14 @@ class CheckMedicationDetail:
         logger.info("Medication lookup generated %s candidate(s).", len(search_keywords))
 
         medication_details: list[MedicationDetail] = []
-        for search_keyword in search_keywords:
-            medication_details = await self._fetch_drug_info(search_keyword)
+        rejected = False
+        for search_keyword in search_keywords[:8]:
+            found = await self._fetch_drug_info(search_keyword, reference=reference)
+            safe = [item for item in found if not match_conflict(reference, item.item_name)]
+            rejected = rejected or len(safe) != len(found)
+            medication_details = self.name_matcher.rank_candidates(
+                reference, safe, lambda item: item.item_name, limit=5,
+            )
             if medication_details:
                 break
 
@@ -1345,6 +1366,22 @@ class CheckMedicationDetail:
                 success=False,
                 message=f"No medication information found for '{search_keywords[0]}'.",
                 data=[],
+                review_reason='strength_or_form' if rejected else 'not_found',
+            )
+
+        unique = {
+            item.item_seq or (item.item_name, item.manufacturer): item
+            for item in medication_details
+        }
+        medication_details = list(unique.values())
+        exact = [item for item in medication_details if can_auto_match(reference, item.item_name)]
+        if len(exact) == 1:
+            medication_details = exact
+        else:
+            return MedicationResponse(
+                success=True, message="Confirm the product against the prescription.",
+                data=[], candidates=medication_details, requires_confirmation=True,
+                review_reason='ambiguous_product',
             )
 
         return MedicationResponse(
@@ -1373,15 +1410,20 @@ class CheckMedicationDetail:
     # - drug_name (str): 검색 또는 직렬화할 약품명.
     # 반환값:
     # - 이미지가 보완된 약품 상세 목록; 일치 약품이 없으면 빈 목록.
-    async def _fetch_drug_info(self, drug_name: str) -> list[MedicationDetail]:
+    async def _fetch_drug_info(self, drug_name: str, *, reference: str | None = None) -> list[MedicationDetail]:
+        reference = reference or drug_name
         local_drugs = await self.local_medication_catalog.fetch_drug_info(drug_name)
+        local_drugs = self.name_matcher.rank_candidates(
+            reference, local_drugs, lambda item: item.item_name, limit=5,
+        )
         if local_drugs:
             return await self._enrich_missing_image_urls(local_drugs)
 
-        cached_drugs = await self.medication_cache.get(drug_name)
+        cache_name = drug_name if reference == drug_name else f'{reference}|{drug_name}'
+        cached_drugs = await self.medication_cache.get(cache_name)
         if cached_drugs is not None:
             ranked_cached_drugs = self.name_matcher.rank_candidates(
-                drug_name,
+                reference,
                 cached_drugs,
                 lambda item: item.item_name,
                 limit=3,
@@ -1389,8 +1431,8 @@ class CheckMedicationDetail:
             if ranked_cached_drugs:
                 return await self._enrich_missing_image_urls(ranked_cached_drugs)
 
-        medication_details = await self._fetch_public_drug_info(drug_name)
-        await self.medication_cache.set(drug_name, medication_details)
+        medication_details = await self._fetch_public_drug_info(drug_name, reference=reference)
+        await self.medication_cache.set(cache_name, medication_details)
         return medication_details
 
     # 함수이름: _enrich_missing_image_urls
@@ -1436,7 +1478,7 @@ class CheckMedicationDetail:
 
     # 함수이름: _fetch_public_drug_info
     # 함수역할:
-    # - 기본 API의 상위 후보를 우선 사용하고 없으면 허가 API 최상위 후보를 요약한다.
+    # - 기본 API의 상위 후보를 우선 사용하고 없으면 허가 API 후보를 최대 세 개 요약한다.
     # 매개변수:
     # - drug_name (str): 검색 또는 직렬화할 약품명.
     # 반환값:
@@ -1444,10 +1486,11 @@ class CheckMedicationDetail:
     async def _fetch_public_drug_info(
         self,
         drug_name: str,
+        *, reference: str | None = None,
     ) -> list[MedicationDetail]:
         basic_items = await self.public_drug_small_api.searchMedication(drug_name)
         basic_items = self.name_matcher.rank_candidates(
-            drug_name,
+            reference or drug_name,
             basic_items,
             read_public_item_name,
             limit=3,
@@ -1463,29 +1506,24 @@ class CheckMedicationDetail:
         logger.info("[Basic API] no result. Trying Advanced API fallback.")
         advanced_items = await self.public_drug_large_api.searchMedication(drug_name)
         advanced_items = self.name_matcher.rank_candidates(
-            drug_name,
+            reference or drug_name,
             advanced_items,
             read_public_item_name,
-            limit=1,
+            limit=3,
         )
         if not advanced_items:
             logger.warning("No drug information found in public drug databases.")
             return []
 
-        advanced_item = dict(advanced_items[0])
-        if not read_public_image_url(advanced_item):
-            image_url = await self.pill_image_api.searchMedicationImage(
-                read_public_item_name(advanced_item) or drug_name,
-                read_public_item_sequence(advanced_item),
-            )
-            if image_url:
-                advanced_item["ITEM_IMAGE"] = image_url
-
-        advanced_drug = await self.summary_generator.summarize_advanced_item(
-            drug_name,
-            advanced_item,
-        )
-        return [advanced_drug]
+        exact = [item for item in advanced_items
+                 if can_auto_match(reference or drug_name, read_public_item_name(item))]
+        if len(exact) == 1:
+            advanced_items = exact
+        details = list(await asyncio.gather(*(
+            self.summary_generator.summarize_advanced_item(drug_name, dict(item))
+            for item in advanced_items
+        )))
+        return await self._enrich_missing_image_urls(details)
 
     # 함수이름: _build_basic_drug_infos
     # 함수역할:
@@ -1502,6 +1540,7 @@ class CheckMedicationDetail:
             MedicationDetail(
                 item_seq=read_public_item_sequence(item),
                 item_name=_read_text(item.get("itemName")),
+                manufacturer=_read_text(item.get("entpName")),
                 efficacy=_read_text(item.get("efcyQesitm")),
                 usage_method=_read_text(item.get("useMethodQesitm")),
                 warning=_read_text(item.get("atpnWarnQesitm")),

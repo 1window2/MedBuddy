@@ -30,6 +30,7 @@ class MedicationDetail(BaseModel):
 
     item_seq: str = ""
     item_name: str
+    manufacturer: str = ""
     efficacy: str
     usage_method: str = Field(alias="use_method")
     warning: str = Field(alias="warning_message")

@@ -128,8 +128,8 @@ def test_build_search_keywords_splits_product_and_ingredient_names() -> None:
     search_keywords = normalizer.build_search_keywords("켈로인(펠루비프로펜)")
 
     assert search_keywords == [
-        "켈로인",
         "켈로인(펠루비프로펜)",
+        "켈로인",
         "펠루비프로펜",
     ]
 
@@ -192,7 +192,7 @@ def test_split_parenthesized_text_preserves_nested_groups() -> None:
 
 # 함수이름: test_build_search_keywords_strips_korean_dosage_unit
 # 함수역할:
-# - 한국어 용량 표기를 제거한 제품명과 제형을 줄인 이름이 원문보다 먼저 검색되는지 검증한다.
+# - 함량을 포함한 원문을 먼저 조회하고 이후에만 검색어를 넓히는지 검증한다.
 # 매개변수:
 # - 없음.
 # 반환값:
@@ -203,9 +203,9 @@ def test_build_search_keywords_strips_korean_dosage_unit() -> None:
     search_keywords = normalizer.build_search_keywords("에니코프캡슐300밀리그램")
 
     assert search_keywords[:3] == [
+        "에니코프캡슐300밀리그램",
         "에니코프캡슐",
         "에니코프",
-        "에니코프캡슐300밀리그램",
     ]
 
 

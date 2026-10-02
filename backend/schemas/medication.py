@@ -36,6 +36,7 @@ _PRESCRIPTION_BATCH_ID_PATTERN = r"^[A-Za-z0-9_-]{16,64}$"
 # 속성:
 # - extracted_text (Optional[str]): 기기 또는 분석 흐름에서 추출한 약품 텍스트.
 class MedicationRequest(BaseModel):
+    original_text: str | None = Field(default=None, max_length=100)
     extracted_text: Optional[str] = Field(
         default=None,
         max_length=_MAX_DETAIL_TEXT_LENGTH,
@@ -414,6 +415,9 @@ class MedicationResponse(BaseModel):
     success: bool
     message: str
     data: list[MedicationDetail] = Field(default_factory=list)
+    candidates: list[MedicationDetail] = Field(default_factory=list)
+    requires_confirmation: bool = False
+    review_reason: str = ''
 
 
 # 클래스명: PrescriptionMedicationResponse

@@ -292,7 +292,8 @@ async def identify_medication(
 
     try:
         return await check_medication_detail.requestMedicationDetail(
-            request.extracted_text
+            request.extracted_text,
+            **({'original_text': request.original_text} if request.original_text else {}),
         )
     except HTTPException:
         raise
