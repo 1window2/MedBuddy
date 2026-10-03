@@ -1,5 +1,5 @@
 # File Name: check_saved_medication_control.py
-# Role: Control class for saved medication persistence workflows.
+# Role: Persists and retrieves patient-owned medication snapshots with deduplication and retention rules.
 
 import logging
 from datetime import date
@@ -30,14 +30,24 @@ logger = logging.getLogger(__name__)
 
 
 # Class Name: CheckSavedMedication
-# Role: Coordinates saved medication CRUD use cases.
+# Role:
+# - Coordinates saved medication CRUD use cases.
 # Responsibilities:
-#   - Save medication snapshots.
-#   - List saved medications for one patient-owned scope.
-#   - Delete saved medications with not-found handling.
+# - Save medication snapshots.
+# - List saved medications for one patient-owned scope.
+# - Delete saved medications with not-found handling.
 # Attributes:
-#   - db: SQLAlchemy session used for persistence operations.
+# - db (Session): SQLAlchemy session used for persistence operations.
 class CheckSavedMedication:
+    # 함수이름: __init__
+    # 함수역할:
+    # - 저장 약 저장소와 복용 기간·보관 만료 정책을 같은 세션에 연결한다.
+    # 매개변수:
+    # - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
+    # - course_policy (MedicationCoursePolicy | None): 약 복용 시작·종료·활성 날짜의 공통 판정 정책.
+    # - medication_repository (SavedMedicationRepository | None): 환자 소유 저장 약품 스냅샷 저장소.
+    # 반환값:
+    # - 없음.
     def __init__(
         self,
         db: Session,
@@ -55,7 +65,7 @@ class CheckSavedMedication:
     # Description:
     # - Persists a selected medication as a saved medication snapshot.
     # Parameters:
-    # - medication: Validated saved medication DTO.
+    # - medication (SavedMedicationCreate): Validated saved medication DTO.
     # Returns:
     # - API-compatible success response dictionary.
     def saveMedicationDetail(
@@ -143,7 +153,7 @@ class CheckSavedMedication:
     # Description:
     # - Reads saved medications for one patient scope.
     # Parameters:
-    # - patient_hash: Patient ownership key used to scope saved medication lookup.
+    # - patient_hash (str | None): Patient ownership key used to scope saved medication lookup.
     # Returns:
     # - API-compatible list response dictionary.
     def requestSavedMedicationInfo(
@@ -154,6 +164,13 @@ class CheckSavedMedication:
         saved_medications = self._load_saved_medications(normalized_patient_hash)
         return self._build_list_response(saved_medications)
 
+    # 함수이름: _load_saved_medications
+    # 함수역할:
+    # - 환자 소유 저장 약 중 보관 기간이 만료되지 않은 항목만 조회한다.
+    # 매개변수:
+    # - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
+    # 반환값:
+    # - 보관 대상인 저장 약 행 목록.
     def _load_saved_medications(
         self,
         patient_hash: str,
@@ -166,6 +183,13 @@ class CheckSavedMedication:
             if not self.retention_policy.is_expired(medication, today)
         ]
 
+    # Function Name: _build_list_response
+    # Description:
+    # - Serializes saved snapshots through the shared medication response adapter.
+    # Parameters:
+    # - saved_medications (list[_SavedMedication]): Patient-owned medication snapshots selected for serialization.
+    # Returns:
+    # - Success envelope with the serialized pillbox list.
     def _build_list_response(
         self,
         saved_medications: list[_SavedMedication],
@@ -185,8 +209,8 @@ class CheckSavedMedication:
     # Description:
     # - Deletes a saved medication by id.
     # Parameters:
-    # - medication_id: Saved medication primary key.
-    # - patient_hash: Patient ownership key used to scope deletion.
+    # - medication_id (int): Saved medication primary key.
+    # - patient_hash (str): Patient ownership key used to scope deletion.
     # Returns:
     # - API-compatible success response dictionary.
     def requestDelete(
@@ -217,7 +241,7 @@ class CheckSavedMedication:
     # Description:
     # - Converts a SavedMedication ORM entity into a JSON-serializable API DTO.
     # Parameters:
-    # - medication: SavedMedication entity from persistence layer.
+    # - medication (_SavedMedication): SavedMedication entity from persistence layer.
     # Returns:
     # - JSON-compatible saved medication dictionary.
     def _to_response_dict(
@@ -256,14 +280,14 @@ class CheckSavedMedication:
             "ai_guide": medication.ai_guide,
         }
 
-    # Function Name: _get_existing_medication
-    # Description:
-    # - Finds an existing saved medication or raises a 404 error.
-    # Parameters:
-    # - medication_id: Saved medication primary key.
-    # - patient_hash: Patient ownership key used to scope lookup.
-    # Returns:
-    # - Existing _SavedMedication row.
+    # 함수이름: _get_existing_medication
+    # 함수역할:
+    # - 약 식별자와 환자 소유 범위를 함께 확인한다.
+    # 매개변수:
+    # - medication_id (int): 선택할 저장 약의 식별자.
+    # - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
+    # 반환값:
+    # - 환자 소유 저장 약; 존재하지 않으면 HTTP 404.
     def _get_existing_medication(
         self,
         medication_id: int,
@@ -282,7 +306,7 @@ class CheckSavedMedication:
     # Description:
     # - Removes per-slot completion rows owned by a saved medication.
     # Parameters:
-    # - medication: Saved medication row being deleted.
+    # - medication (_SavedMedication): Saved medication row being deleted.
     # Returns:
     # - None.
     def _delete_medication_completions(self, medication: _SavedMedication) -> None:
@@ -294,14 +318,14 @@ class CheckSavedMedication:
             ),
         ).delete(synchronize_session=False)
 
-    # 함수명: _find_today_duplicate
+    # 함수이름: _find_today_duplicate
     # 함수역할:
     # - 같은 환자와 오늘 날짜에 이미 저장된 동일 복약 정보를 확인한다.
     # - 약 이름이 같아도 조제일자나 실제 복용기간이 다르면 별도 정보로 취급한다.
     # 매개변수:
-    # - patient_hash: 저장 범위를 구분하는 환자 해시
-    # - registration_date: 등록일자
-    # - deduplication_key: 처방 핵심값을 정규화한 중복 키
+    # - patient_hash (str): 저장 범위를 구분하는 환자 해시
+    # - registration_date (date): 등록일자
+    # - deduplication_key (str): 처방 핵심값을 정규화한 중복 키
     # 반환값:
     # - 중복 row가 있으면 _SavedMedication
     # - 중복이 없으면 None
@@ -317,9 +341,13 @@ class CheckSavedMedication:
             deduplication_key=deduplication_key,
         )
 
-    # 함수명: _build_deduplication_key
-    # 역할:
-    # - DB 유니크 제약과 사전 중복 조회가 공유할 결정적 처방 키를 만든다.
+    # Function Name: _build_deduplication_key
+    # Description:
+    # - Uses confirmed slots, or frequency-derived slots when absent, to build the shared prescription snapshot fingerprint.
+    # Parameters:
+    # - medication (SavedMedicationCreate): Validated medication snapshot and course fields selected for saving.
+    # Returns:
+    # - Stable deduplication hash for the medication and its course fields.
     def _build_deduplication_key(
         self,
         medication: SavedMedicationCreate,

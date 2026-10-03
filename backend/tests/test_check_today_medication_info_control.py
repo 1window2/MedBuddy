@@ -1,5 +1,5 @@
 # File Name: test_check_today_medication_info_control.py
-# Role: Verifies today's medication summary control.
+# Role: Regression coverage for slot-level totals and progress in today's medication summary.
 
 import sys
 import unittest
@@ -28,7 +28,29 @@ from entities.saved_medication_entity import (  # noqa: E402
 )
 
 
+# Class Name: CheckTodayMedicationInfoTest
+# Role: Isolated tests of medication-summary aggregation over patient-scoped dose schedules.
+# Responsibilities:
+# - Persists a seven-day medication starting today with the selected patient, name, and dose
+#   frequency.
+# - Requires one completed dose of a three-dose medication to yield totals of three, one, and
+#   two with one-third progress.
+# Attributes:
+# - engine (Engine): Isolated in-memory SQLite engine.
+# - db (Session): SQLAlchemy session holding only this test's database state.
+# - schedule_control (CheckSchedule): Schedule control injected into medication-summary
+#   aggregation.
+# - control (CheckTodayMedicationInfo): Use-case control under test, isolated from production
+#   state.
 class CheckTodayMedicationInfoTest(unittest.TestCase):
+    # Function Name: setUp
+    # Description:
+    # - Creates current medication/completion schemas and wires the summary control to an
+    #   isolated schedule control.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def setUp(self) -> None:
         self.engine = create_engine(
             "sqlite:///:memory:",
@@ -49,10 +71,28 @@ class CheckTodayMedicationInfoTest(unittest.TestCase):
             check_schedule=self.schedule_control,
         )
 
+    # Function Name: tearDown
+    # Description:
+    # - Closes the summary-test session and disposes the database engine.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def tearDown(self) -> None:
         self.db.close()
         self.engine.dispose()
 
+    # Function Name: _saved_medication
+    # Description:
+    # - Persists a seven-day medication starting today with the selected patient, name, and
+    #   dose frequency.
+    # Parameters:
+    # - patient_hash (str): Patient owner identifying the medication or linked-data scope.
+    # - item_name (str): Product name in the authoritative or saved medication record.
+    # - daily_frequency (str): Prescription dose-frequency label.
+    # Returns:
+    # - _SavedMedication: Persisted and refreshed medication row, including its generated
+    #   ID.
     def _saved_medication(
         self,
         *,
@@ -75,6 +115,14 @@ class CheckTodayMedicationInfoTest(unittest.TestCase):
         self.db.refresh(medication)
         return medication
 
+    # Function Name: test_today_medication_info_counts_slot_level_progress
+    # Description:
+    # - Requires one completed dose of a three-dose medication to yield totals of three,
+    #   one, and two with one-third progress.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_today_medication_info_counts_slot_level_progress(self) -> None:
         medication = self._saved_medication()
         self.db.add(

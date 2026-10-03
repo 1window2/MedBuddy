@@ -1,0 +1,128 @@
+@startuml
+allowmixing
+!pragma layout smetana
+scale max 1920 width
+left to right direction
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+hide empty members
+title Nearby Hospital / Pharmacy Search and Verified Chat Sharing
+
+package "Flutter: Boundary / Control / Entity" {
+  note "module-level UI function\nshowNearbyCareOptions()" as NearbyCareOptionsSheet
+  class CheckNearbyPharmacyUI <<Boundary>>
+  class "_HospitalDepartmentSheet" as HospitalDepartmentSheet <<Boundary>>
+  class "_NearbyCareFilterSheet" as NearbyCareFilterSheet <<Boundary>>
+  class "_PharmacyDetailsSheet" as PharmacyDetailsSheet <<Boundary>>
+  class "NearbyPharmacyMap" as NearbyPharmacyMapWidget <<Boundary>>
+  class "CheckNearbyPharmacy" as FPharmacy <<Control>>
+  class "CheckNearbyHospital" as FHospital <<Control>>
+  class NearbyPharmacy <<Entity>>
+  class LinkedChatUI <<Boundary>>
+  class "ManageLinkedChat" as FChat <<Control>>
+  class ChatPlaceContext <<Entity>>
+}
+package "FastAPI: Boundary / Control / Entity" {
+  note "module-level route functions\napi/hospital_router.py" as HospitalRouter
+  note "module-level route functions\napi/chat_router.py" as ChatRouter
+  class "CheckNearbyHospital" as BHospital <<Control>> {
+    + requestNearbyHospitalSearch(...)
+    + requestShareContext(hospital_id, schedule_date)
+  }
+  class "CheckNearbyPharmacy" as BPharmacy <<Control>>
+  interface HospitalLookupBoundary {
+    + fetchNearbyPage(...)
+    + fetchDepartmentPage(province, district, department, page_no, page_size)
+    + fetchDetails(hospital_id)
+    + hasCachedDetails(hospital_id)
+  }
+  class NationalEmergencyMedicalCenterHospitalAPI <<Boundary>>
+  class KoreanHolidayAPI <<Boundary>>
+  class PersistentKoreanHolidayLookup <<Boundary>>
+  interface HolidayLookupBoundary
+  class SessionScopedKoreanHolidayCache <<Repository>>
+  class AsyncPharmacyCatalog <<Repository>>
+  class PharmacyCatalogRepository <<Repository>>
+  class "ManageLinkedChat" as BChat <<Control>>
+  class HospitalDetails <<Entity>>
+  class HospitalLocationPage <<Entity>>
+  note "module-level 검색 함수\nfind_department_candidates()" as DepartmentSearch
+  note "module-level 순수 계산 함수\nnearby_care_policy.py\n시간·거리 판정" as NearbyCarePolicy
+  class DepartmentCandidates {
+    + records
+    + partial
+    + region_scope_uncertain
+  }
+  class ChatMessageRepository
+}
+cloud "NEMC hospital API" as NEMC
+cloud "KASI legal-holiday API" as KASI
+database "Messages / notification jobs" as DB
+
+NearbyCareOptionsSheet --> CheckNearbyPharmacyUI : hospital or pharmacy
+CheckNearbyPharmacyUI --> HospitalDepartmentSheet : first choice before GPS/API; later filter sheet
+CheckNearbyPharmacyUI --> NearbyCareFilterSheet : draft date + status / apply
+CheckNearbyPharmacyUI --> PharmacyDetailsSheet
+CheckNearbyPharmacyUI --> NearbyPharmacyMapWidget
+CheckNearbyPharmacyUI --> FPharmacy
+FHospital --|> FPharmacy
+FHospital --> HospitalRouter : authenticated hospital endpoint
+FPharmacy --> NearbyPharmacy
+HospitalRouter --> BHospital
+BHospital --> HospitalLookupBoundary
+BHospital --> DepartmentSearch : selected specialty
+DepartmentSearch --> HospitalLookupBoundary : region probes + Q0/Q1/QD pages
+DepartmentSearch --> DepartmentCandidates : deduplicated, radius-filtered, distance-sorted
+NationalEmergencyMedicalCenterHospitalAPI ..|> HospitalLookupBoundary
+NationalEmergencyMedicalCenterHospitalAPI --> NEMC
+NationalEmergencyMedicalCenterHospitalAPI --> HospitalDetails
+NationalEmergencyMedicalCenterHospitalAPI --> HospitalLocationPage
+BHospital --> HolidayLookupBoundary
+PersistentKoreanHolidayLookup ..|> HolidayLookupBoundary : 구조적 Protocol 충족
+PersistentKoreanHolidayLookup --> SessionScopedKoreanHolidayCache
+SessionScopedKoreanHolidayCache --> PharmacyCatalogRepository : 작업별 독립 DB Session
+AsyncPharmacyCatalog --> PharmacyCatalogRepository : worker thread + 작업별 DB Session
+BPharmacy --> AsyncPharmacyCatalog : 비동기 카탈로그·당번표 조회
+BHospital ..> NearbyCarePolicy
+DepartmentSearch ..> NearbyCarePolicy
+PersistentKoreanHolidayLookup --> KoreanHolidayAPI
+KoreanHolidayAPI --> KASI
+LinkedChatUI --> CheckNearbyPharmacyUI : choose place (no send yet)
+LinkedChatUI --> FChat : confirm recipient / place / message
+FChat --> ChatRouter : hospital ID + selected date
+ChatRouter --> BHospital : server-verified share context
+ChatRouter --> BChat : role / link / idempotency checks
+BChat --> ChatMessageRepository
+ChatMessageRepository --> DB
+FChat --> ChatPlaceContext : verified response snapshot
+
+note bottom of NationalEmergencyMedicalCenterHospitalAPI
+  Bounded pages, detail budget, shared in-flight requests and TTL cache.
+  Daily provider budget is per process, not a distributed quota.
+  Real provider keys remain on the backend, never in Flutter.
+end note
+note bottom of BHospital
+  Unknown calendar or incomplete details do not mean closed.
+  Evening consultation means closing after 18:00, not emergency care.
+  Pharmacy catalog/roster logic remains separate.
+end note
+note bottom of DepartmentSearch
+  Five concurrent location probes discover nearby regions, not all boundaries.
+  Specialty list pages share one bounded budget across regions.
+  A timeout stops further pages while retaining previously collected candidates.
+  Failed probes or incomplete specialty/detail queries preserve partial status.
+  Unread address-sample pages use separate region_scope_uncertain metadata.
+end note
+note bottom of CheckNearbyPharmacyUI
+  Hospital entry requires an explicit specialty (or All) choice.
+  No map, GPS, or hospital request before that choice.
+  Hospitals start at 300 m; pharmacies retain 20 km.
+  Empty GPS results expand to 500 m, 1 km, then 2 km.
+  Manual map areas never auto-expand; camera follows searched radius.
+  Only the first-use introduction has a dismiss button.
+  At >= 3 km, or for partial results, retain a bottom warning.
+  Sampled regions alone do not trigger the limit warning.
+  Explain region uncertainty in source notes and qualify empty results.
+end note
+@enduml

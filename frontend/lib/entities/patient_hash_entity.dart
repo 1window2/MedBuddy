@@ -1,5 +1,5 @@
-// 파일명: patient_hash_entity.dart
-// 역할: 로컬 사용자와 환자-보호자 연동에 필요한 환자 식별 값을 관리한다.
+// File Name: patient_hash_entity.dart
+// Role: Provides the default local patient identity and shared hash normalization rules.
 
 // 클래스명: PatientHash
 // 역할: 기본 환자 식별자와 환자 연동 코드를 생성/정규화한다.
@@ -8,6 +8,8 @@
 // - 환자 식별자와 연동 코드의 공통 입력 규칙을 제공한다.
 // - 보호자 연동에 사용할 짧은 코드 값을 생성한다.
 // - 비어 있는 환자 해시를 기본값으로 보정한다.
+// 속성:
+// - patientHash (String): 조회·저장·알림 대상 환자의 소유권 해시
 class PatientHash {
   static const String defaultPatientHash = 'local_patient';
   static const int maxPatientHashLength = 128;
@@ -15,15 +17,20 @@ class PatientHash {
 
   final String patientHash;
 
+  // Function Name: PatientHash
+  // Description: Stores a patient key, defaulting to the explicit local-demo identity when construction omits it.
+  // Parameters:
+  // - patientHash (String): Ownership hash of the patient targeted by lookup, storage, or alerts.
+  // Returns:
+  // - PatientHash: the initialized instance.
   const PatientHash({this.patientHash = defaultPatientHash});
 
-  // 함수명: normalizePatientHash
-  // 함수역할:
-  // - API 요청에 사용할 환자 해시가 비어 있으면 기본 로컬 환자 해시로 보정한다.
-  // 매개변수:
-  // - patientHash: 외부에서 전달된 환자 해시 값
-  // 반환값:
-  // - 공백이 제거된 환자 해시 또는 기본값
+  // Function Name: normalizePatientHash
+  // Description: Trims a provided patient key and substitutes the local-demo hash only when the input is absent or blank.
+  // Parameters:
+  // - patientHash (String?): Ownership hash of the patient targeted by lookup, storage, or alerts.
+  // Returns:
+  // - String: Trims a provided patient key and substitutes the local-demo hash only when the input is absent or blank.
   static String normalizePatientHash(String? patientHash) {
     final normalizedPatientHash = patientHash?.trim() ?? '';
     if (normalizedPatientHash.isNotEmpty) {

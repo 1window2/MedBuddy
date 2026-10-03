@@ -1,3 +1,6 @@
+# File Name: test_medication_detail_local_catalog.py
+# Role: Regression coverage for local drug-catalog aliases and product-code preservation in
+#   medication details.
 import asyncio
 import json
 import os
@@ -19,7 +22,23 @@ from entities.medication_detail_entity import (  # noqa: E402
 )
 
 
+# Class Name: MedicationDetailLocalCatalogTest
+# Role: Local medication-detail tests covering approval payload normalization and cached product
+#   identity.
+# Responsibilities:
+# - Normalizes alternate approval keys while retaining product name/code, efficacy, usage,
+#   warnings, and the official image URL.
+# - Preserves the product code when building details from the local basic-drug catalog.
+# - Preserves the product code in a nonempty cached approval-detail response.
 class MedicationDetailLocalCatalogTest(unittest.TestCase):
+    # Function Name: test_raw_approval_item_with_alternate_keys_is_normalized
+    # Description:
+    # - Normalizes alternate approval keys while retaining product name/code, efficacy,
+    #   usage, warnings, and the official image URL.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_raw_approval_item_with_alternate_keys_is_normalized(self) -> None:
         catalog = _LocalMedicationCatalog(db=None, summary_generator=object())
         approval_item = _DrugApprovalInfo(
@@ -51,6 +70,13 @@ class MedicationDetailLocalCatalogTest(unittest.TestCase):
             "https://nedrug.mfds.go.kr/pill.png",
         )
 
+    # Function Name: test_local_basic_detail_preserves_product_code
+    # Description:
+    # - Preserves the product code when building details from the local basic-drug catalog.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_local_basic_detail_preserves_product_code(self) -> None:
         catalog = _LocalMedicationCatalog(db=None, summary_generator=object())
         basic_item = _DrugBasicInfo(
@@ -67,6 +93,13 @@ class MedicationDetailLocalCatalogTest(unittest.TestCase):
 
         self.assertEqual(details[0].item_seq, "200000001")
 
+    # Function Name: test_cached_approval_detail_preserves_product_code
+    # Description:
+    # - Preserves the product code in a nonempty cached approval-detail response.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_cached_approval_detail_preserves_product_code(self) -> None:
         catalog = _LocalMedicationCatalog(db=None, summary_generator=object())
         approval_item = _DrugApprovalInfo(

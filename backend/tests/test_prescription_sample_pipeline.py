@@ -1,3 +1,6 @@
+# File Name: test_prescription_sample_pipeline.py
+# Role: Regression coverage for a synthetic prescription flowing through name correction,
+#   saving, schedules, progress, and alarms.
 import asyncio
 import json
 import os
@@ -46,43 +49,151 @@ SUDAFED_OCR_NAME = "\uc288\ub2e4\ud398\ub4dc\uc815"
 SMILE_PHARMACY = "\uc2a4\ub9c8\uc77c\uc57d\uad6d"
 
 
+# Class Name: _FakeGeminiResponse
+# Role: Gemini response double exposing configured text for the synthetic prescription pipeline.
+# Responsibilities:
+# - Gemini response double exposing configured text for the synthetic prescription pipeline.
+# Attributes:
+# - text (str): Text payload exposed by the Gemini-compatible response.
 class _FakeGeminiResponse:
+    # Function Name: __init__
+    # Description:
+    # - Stores the response text supplied to the synthetic analysis client.
+    # Parameters:
+    # - text (str): Text captured by the response or prescription-analysis double.
+    # Returns:
+    # - None.
     def __init__(self, text: str) -> None:
         self.text = text
 
 
+# Class Name: _FakeGeminiModels
+# Role: Gemini models double counting fallback requests and returning a deterministic text
+#   response.
+# Responsibilities:
+# - Counts Gemini fallback calls and returns the configured response object.
+# Attributes:
+# - response_text (str): Deterministic AI text response returned by the double.
+# - call_count (int): Number of external-analysis calls observed.
 class _FakeGeminiModels:
+    # Function Name: __init__
+    # Description:
+    # - Stores the fallback response and initializes its request count.
+    # Parameters:
+    # - response_text (str): Deterministic text/JSON output returned by the AI double.
+    # Returns:
+    # - None.
     def __init__(self, response_text: str) -> None:
         self.response_text = response_text
         self.call_count = 0
 
+    # Function Name: generate_content
+    # Description:
+    # - Counts Gemini fallback calls and returns the configured response object.
+    # Parameters:
+    # - **_kwargs (object): Keyword arguments accepted by the substituted service interface.
+    # Returns:
+    # - _FakeGeminiResponse: Gemini-compatible response carrying the configured analysis
+    #   JSON.
     async def generate_content(self, **_kwargs: object) -> _FakeGeminiResponse:
         self.call_count += 1
         return _FakeGeminiResponse(self.response_text)
 
 
+# Class Name: _FakeGeminiAio
+# Role: Asynchronous Gemini namespace double sharing the recording models object.
+# Responsibilities:
+# - Asynchronous Gemini namespace double sharing the recording models object.
+# Attributes:
+# - models (_FakeGeminiModels): Recording Gemini-compatible model interface.
 class _FakeGeminiAio:
+    # Function Name: __init__
+    # Description:
+    # - Exposes the supplied models object through the asynchronous client namespace.
+    # Parameters:
+    # - models (_FakeGeminiModels): Injected Gemini-compatible model implementation.
+    # Returns:
+    # - None.
     def __init__(self, models: _FakeGeminiModels) -> None:
         self.models = models
 
 
+# Class Name: _FakeGeminiClient
+# Role: Gemini client double supporting both sync and async model access in the sample pipeline.
+# Responsibilities:
+# - Gemini client double supporting both sync and async model access in the sample pipeline.
+# Attributes:
+# - models (_FakeGeminiModels): Recording Gemini-compatible model interface.
+# - aio (_FakeGeminiAio): Gemini-compatible asynchronous namespace or owned async client.
 class _FakeGeminiClient:
+    # Function Name: __init__
+    # Description:
+    # - Creates response-backed models and attaches their asynchronous namespace.
+    # Parameters:
+    # - response_text (str): Deterministic text/JSON output returned by the AI double.
+    # Returns:
+    # - None.
     def __init__(self, response_text: str) -> None:
         self.models = _FakeGeminiModels(response_text)
         self.aio = _FakeGeminiAio(self.models)
 
 
+# Class Name: _FakePrescriptionTextBoundary
+# Role: Prescription text boundary double recording masked input and supplying sample analysis
+#   JSON.
+# Responsibilities:
+# - Records the masked sample prescription text and returns its configured analysis response.
+# Attributes:
+# - response_text (str): Deterministic AI text response returned by the double.
+# - received_text (str): Prescription text captured by the analysis double.
 class _FakePrescriptionTextBoundary:
+    # Function Name: __init__
+    # Description:
+    # - Stores the sample response and initializes empty captured text.
+    # Parameters:
+    # - response_text (str): Deterministic text/JSON output returned by the AI double.
+    # Returns:
+    # - None.
     def __init__(self, response_text: str) -> None:
         self.response_text = response_text
         self.received_text = ""
 
+    # Function Name: extractPrescriptionTextData
+    # Description:
+    # - Records the masked sample prescription text and returns its configured analysis
+    #   response.
+    # Parameters:
+    # - masked_text (str): De-identified prescription text allowed across the AI boundary.
+    # Returns:
+    # - str: Configured prescription analysis JSON text.
     async def extractPrescriptionTextData(self, masked_text: str) -> str:
         self.received_text = masked_text
         return self.response_text
 
 
+# Class Name: PrescriptionSamplePipelineTest
+# Role: End-to-end synthetic prescription tests connecting local name verification to schedules
+#   and notification settings.
+# Responsibilities:
+# - Corrects five sample names locally without Gemini, preserves thirteen dose slots, updates
+#   completion progress, and saves a custom morning alarm.
+# - Builds today's five-medication OCR JSON with vowel, strength-unit, and prefix variants for
+#   deterministic correction tests.
+# - Returns an initially incomplete morning/lunch/evening status map for a three-dose
+#   medication.
+# Attributes:
+# - engine (Engine): Isolated in-memory SQLite engine.
+# - db (Session): SQLAlchemy session holding only this test's database state.
+# - patient_hash (str): Owner of the synthetic sample prescription.
 class PrescriptionSamplePipelineTest(unittest.TestCase):
+    # Function Name: setUp
+    # Description:
+    # - Creates current medication, completion, and alarm schemas and seeds five
+    #   authoritative sample product names.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def setUp(self) -> None:
         self.engine = create_engine(
             "sqlite:///:memory:",
@@ -101,10 +212,25 @@ class PrescriptionSamplePipelineTest(unittest.TestCase):
         self.patient_hash = "sample-patient"
         self._seed_catalog_names(ANIPEN, PAMOTER, PROCOUGH, CELLEON, SUDAFED)
 
+    # Function Name: tearDown
+    # Description:
+    # - Closes the sample-pipeline database session and disposes its engine.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def tearDown(self) -> None:
         self.db.close()
         self.engine.dispose()
 
+    # Function Name: test_sample_prescription_flows_into_today_schedule_and_notifications
+    # Description:
+    # - Corrects five sample names locally without Gemini, preserves thirteen dose slots,
+    #   updates completion progress, and saves a custom morning alarm.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_sample_prescription_flows_into_today_schedule_and_notifications(
         self,
     ) -> None:
@@ -242,6 +368,14 @@ class PrescriptionSamplePipelineTest(unittest.TestCase):
         self.assertEqual(saved_alarm["hour"], 8)
         self.assertEqual(saved_alarm["minute"], 32)
 
+    # Function Name: _seed_catalog_names
+    # Description:
+    # - Seeds each supplied sample drug name with a stable product code and normalized local
+    #   lookup key.
+    # Parameters:
+    # - *names (str): Medication names to seed as separate authoritative catalog entries.
+    # Returns:
+    # - None.
     def _seed_catalog_names(self, *names: str) -> None:
         for index, name in enumerate(names, start=1):
             self.db.add(
@@ -254,6 +388,14 @@ class PrescriptionSamplePipelineTest(unittest.TestCase):
             )
         self.db.commit()
 
+    # Function Name: _sample_ocr_response
+    # Description:
+    # - Builds today's five-medication OCR JSON with vowel, strength-unit, and prefix
+    #   variants for deterministic correction tests.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - str: Today's five-medication sample prescription encoded as JSON.
     def _sample_ocr_response(self) -> str:
         return json.dumps(
             {
@@ -270,6 +412,17 @@ class PrescriptionSamplePipelineTest(unittest.TestCase):
             ensure_ascii=False,
         )
 
+    # Function Name: _medication
+    # Description:
+    # - Builds one OCR medication object with the specified drug name, dose, frequency, and
+    #   treatment duration.
+    # Parameters:
+    # - drug_name (str): OCR or canonical medication name used in the payload.
+    # - dosage_per_time (str): Amount taken in one medication dose.
+    # - daily_frequency (str): Prescription dose-frequency label.
+    # - total_days (str): Prescribed course-duration label, possibly unknown.
+    # Returns:
+    # - dict[str, str]: Medication payload preserving the supplied four prescription fields.
     def _medication(
         self,
         drug_name: str,
@@ -284,6 +437,14 @@ class PrescriptionSamplePipelineTest(unittest.TestCase):
             "total_days": total_days,
         }
 
+    # Function Name: _three_times_slots
+    # Description:
+    # - Returns an initially incomplete morning/lunch/evening status map for a three-dose
+    #   medication.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - dict[str, bool]: Morning, lunch, and evening mapped to incomplete states.
     def _three_times_slots(self) -> dict[str, bool]:
         return {"morning": False, "lunch": False, "evening": False}
 

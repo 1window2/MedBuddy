@@ -11,6 +11,20 @@ import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
 import '../services/notification_service.dart';
 
+// Function Name: NotificationRegistrar
+// Description: Defines platform registration of reminders for explicit active dates, with slot identity, localized text, time, and date-specific medication names.
+// Parameters:
+// - id (int): Platform identifier used to schedule, replace, or cancel an alert.
+// - slotKey (String): Medication slot key: morning, lunch, evening, or bedtime.
+// - slotTitle (String): Localized medication slot name.
+// - hour (int): Local hour in 24-hour time.
+// - minute (int): Minute component of local time.
+// - medicationNames (List<String>): Medication display names used in reminders or recommendations.
+// - activeDates (List<DateTime>): Reminder dates within the medication course.
+// - medicationNamesByDate (Map<String, List<String>>): Active medication names grouped by calendar date.
+// - language (String): Language code used for display or speech guidance.
+// Returns:
+// - Future<void>: asynchronous completion without a result payload.
 typedef NotificationRegistrar =
     Future<void> Function({
       required int id,
@@ -25,7 +39,7 @@ typedef NotificationRegistrar =
     });
 
 // File Name: set_notification_control.dart
-// Role: Handles medication alarm API calls.
+// Role: Persists patient alarm settings and delegates dated notification registration to the platform boundary.
 
 // Class Name: SetNotification
 // Role: Coordinates patient medication alarm setting requests with the backend.
@@ -33,6 +47,11 @@ typedef NotificationRegistrar =
 // - Load patient-scoped medication alarm settings.
 // - Save one enabled alarm setting for a medication schedule slot.
 // - Disable one alarm setting while preserving the selected time.
+// Attributes:
+// - baseUrl (String): Base URL of the medication API.
+// - patientHash (String): Ownership hash of the patient targeted by lookup, storage, or alerts.
+// - _client (http.Client): HTTP transport; constructor documentation specifies ownership for injected clients.
+// - _notificationRegistrar (NotificationRegistrar): Boundary for registering dated local reminders.
 class SetNotification {
   final String baseUrl;
   final String patientHash;
@@ -40,6 +59,15 @@ class SetNotification {
   final bool _ownsClient;
   final NotificationRegistrar _notificationRegistrar;
 
+  // Function Name: SetNotification
+  // Description: Normalizes patient ownership, binds the alarm API client, and selects an injected or shared platform notification registrar.
+  // Parameters:
+  // - baseUrl (String): Base URL of the medication API.
+  // - patientHash (String): Ownership hash of the patient targeted by lookup, storage, or alerts.
+  // - client (http.Client?): HTTP transport; constructor documentation specifies ownership for injected clients.
+  // - notificationRegistrar (NotificationRegistrar?): Boundary for registering dated local reminders.
+  // Returns:
+  // - SetNotification: the initialized instance.
   SetNotification({
     this.baseUrl = ApiConfig.baseUrl,
     String patientHash = PatientHash.defaultPatientHash,
@@ -53,8 +81,9 @@ class SetNotification {
            NotificationService.instance.registerNotification;
 
   // Function Name: requestMedicationAlarm
-  // Description:
-  // - Requests all schedule-slot medication alarm settings.
+  // Description: Requests all schedule-slot medication alarm settings.
+  // Parameters:
+  // - None.
   // Returns:
   // - MedicationAlarm list decoded from the backend response.
   Future<List<MedicationAlarm>> requestMedicationAlarm() async {
@@ -79,6 +108,12 @@ class SetNotification {
       return rawSettings
           .whereType<Map>()
           .map(
+            // Function Name: map callback
+            // Description: Parses each server reminder entry into a medication alarm.
+            // Parameters:
+            // - item (Map): Current response or collection entry being transformed or checked.
+            // Returns:
+            // - The reminder's slot, time, and enabled state.
             (item) => MedicationAlarm.fromJson(Map<String, dynamic>.from(item)),
           )
           .toList(growable: false);
@@ -96,12 +131,11 @@ class SetNotification {
   }
 
   // Function Name: saveNotificationSetting
-  // Description:
-  // - Saves and enables one medication alarm setting.
+  // Description: Saves and enables one medication alarm setting.
   // Parameters:
-  // - slotKey: Medication schedule slot key.
-  // - hour: 24-hour local alarm hour.
-  // - minute: Local alarm minute.
+  // - slotKey (String): Medication schedule slot key.
+  // - hour (int): 24-hour local alarm hour.
+  // - minute (int): Local alarm minute.
   // Returns:
   // - Saved MedicationAlarm.
   Future<MedicationAlarm> saveNotificationSetting({
@@ -141,10 +175,20 @@ class SetNotification {
     }
   }
 
-  // 함수명: registerNotification
-  // 역할:
-  // - 서버 설정 저장 후 복용 기간 날짜 목록을 플랫폼 알림 서비스에 전달한다.
-  // - 알림 플러그인 세부 구현은 NotificationService 안에 유지한다.
+  // Function Name: registerNotification
+  // Description: Passes active course dates and date-specific medication names to the notification registrar, keeping plugin details inside NotificationService.
+  // Parameters:
+  // - id (int): Platform identifier used to schedule, replace, or cancel an alert.
+  // - slotKey (String): Medication slot key: morning, lunch, evening, or bedtime.
+  // - slotTitle (String): Localized medication slot name.
+  // - hour (int): Local hour in 24-hour time.
+  // - minute (int): Minute component of local time.
+  // - medicationNames (List<String>): Medication display names used in reminders or recommendations.
+  // - activeDates (List<DateTime>): Reminder dates within the medication course.
+  // - medicationNamesByDate (Map<String, List<String>>): Active medication names grouped by calendar date.
+  // - language (String): Language code used for display or speech guidance.
+  // Returns:
+  // - Future<void>: asynchronous completion without a result payload.
   Future<void> registerNotification({
     required int id,
     required String slotKey,
@@ -170,10 +214,9 @@ class SetNotification {
   }
 
   // Function Name: disableAlarmSetting
-  // Description:
-  // - Disables one medication alarm setting.
+  // Description: Disables one medication alarm setting.
   // Parameters:
-  // - slotKey: Medication schedule slot key.
+  // - slotKey (String): Medication schedule slot key.
   // Returns:
   // - Disabled MedicationAlarm.
   Future<MedicationAlarm> disableAlarmSetting(String slotKey) async {
@@ -209,6 +252,12 @@ class SetNotification {
     }
   }
 
+  // Function Name: _decodeSetting
+  // Description: Requires a medication-alarm data map and converts it to the saved alarm entity.
+  // Parameters:
+  // - responseBody (String): Server response body decoded as UTF-8.
+  // Returns:
+  // - MedicationAlarm: Requires a medication-alarm data map and converts it to the saved alarm entity.
   MedicationAlarm _decodeSetting(String responseBody) {
     final decodedData = ApiResponseParser.decodeMap(responseBody);
     final rawSetting = decodedData['data'];
@@ -218,12 +267,24 @@ class SetNotification {
     throw StateError('Server response did not include a medication alarm.');
   }
 
+  // Function Name: _buildNotificationUri
+  // Description: Builds a notification-setting endpoint URI with the normalized patient hash.
+  // Parameters:
+  // - path (String): Relative path appended to the configured API resource.
+  // Returns:
+  // - Uri: Builds a notification-setting endpoint URI with the normalized patient hash.
   Uri _buildNotificationUri(String path) {
     return Uri.parse(
       '$baseUrl/$path',
     ).replace(queryParameters: {'patient_hash': patientHash});
   }
 
+  // Function Name: _normalizeSlotKey
+  // Description: Trims and lowercases a slot key and rejects keys outside the supported medication schedule slots.
+  // Parameters:
+  // - slotKey (String): Medication slot key: morning, lunch, evening, or bedtime.
+  // Returns:
+  // - String: Trims and lowercases a slot key and rejects keys outside the supported medication schedule slots.
   String _normalizeSlotKey(String slotKey) {
     final normalizedSlotKey = slotKey.trim().toLowerCase();
     if (!medicationScheduleSlotKeys.contains(normalizedSlotKey)) {
@@ -232,6 +293,12 @@ class SetNotification {
     return normalizedSlotKey;
   }
 
+  // Function Name: dispose
+  // Description: Closes the HTTP client only when this control created it; injected clients remain owned by the caller.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No return value.
   void dispose() {
     if (_ownsClient) {
       _client.close();

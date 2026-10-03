@@ -28,14 +28,15 @@ from services.prescription_similarity import (
 
 
 # 클래스명: CheckPrescriptionChange
-# 역할: 저장된 이전 처방과 새로 분석한 현재 처방의 객관적 차이를 계산한다.
+# 역할:
+# - 저장된 이전 처방과 새로 분석한 현재 처방의 객관적 차이를 계산한다.
 # 주요 책임:
-#   - 환자 범위와 90일 비교 기간을 기준으로 이전 처방 후보를 조회한다.
-#   - 약품, 성분과 치료 맥락 관련성이 가장 높은 후보를 선택한다.
-#   - 품목 식별자와 정규화된 약품명으로 같은 약품을 연결한다.
-#   - 추가, 이번 처방 미확인, 복약 일정 변경을 구분한다.
+# - 환자 범위와 90일 비교 기간을 기준으로 이전 처방 후보를 조회한다.
+# - 약품, 성분과 치료 맥락 관련성이 가장 높은 후보를 선택한다.
+# - 품목 식별자와 정규화된 약품명으로 같은 약품을 연결한다.
+# - 추가, 이번 처방 미확인, 복약 일정 변경을 구분한다.
 # 속성:
-#   - db: 저장된 복약 정보를 조회하는 SQLAlchemy 세션
+# - db (Session): 저장된 복약 정보를 조회하는 SQLAlchemy 세션
 class CheckPrescriptionChange:
     _SPACE_PATTERN = re.compile(r"\s+")
     _NON_NAME_PATTERN = re.compile(r"[^0-9a-z가-힣]")
@@ -45,6 +46,15 @@ class CheckPrescriptionChange:
         "total_days",
     )
 
+    # 함수이름: __init__
+    # 함수역할:
+    # - 저장된 처방 조회와 약품 구성 유사도 비교를 요청 세션에 연결한다.
+    # 매개변수:
+    # - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
+    # - similarity_service (PrescriptionSimilarityService | None): 처방 약품 구성을 객관적으로 비교하는 서비스.
+    # - medication_repository (SavedMedicationRepository | None): 환자 소유 저장 약품 스냅샷 저장소.
+    # 반환값:
+    # - 없음.
     def __init__(
         self,
         db: Session,
@@ -62,7 +72,7 @@ class CheckPrescriptionChange:
     # - 현재 처방과 최근의 관련 이전 처방을 비교해 변화 요약을 생성한다.
     # - 관련 처방이 없거나 비교 기간을 지났으면 빈 변화 결과를 반환한다.
     # 매개변수:
-    # - request: 환자 정보와 현재 처방 약품 목록
+    # - request (PrescriptionChangeRequest): 환자 정보와 현재 처방 약품 목록
     # 반환값:
     # - 처방 변화 요약과 약품별 변화 목록
     def request_prescription_change(
@@ -111,9 +121,9 @@ class CheckPrescriptionChange:
     # - 최근 비교 기간 안의 이전 처방들을 관련성 점수로 평가한다.
     # - 관련성이 확인된 후보 중 점수가 가장 높은 처방을 비교 기준으로 선택한다.
     # 매개변수:
-    # - patient_hash: 조회 범위를 제한하는 환자 해시
-    # - current_date: 현재 분석 중인 처방의 조제일자
-    # - current_medications: 현재 분석한 처방 약품 목록
+    # - patient_hash (str): 조회 범위를 제한하는 환자 해시
+    # - current_date (date | None): 현재 분석 중인 처방의 조제일자
+    # - current_medications (list[PrescriptionChangeMedication]): 현재 분석한 처방 약품 목록
     # 반환값:
     # - 비교 상태, 선택한 날짜와 약품 목록, 유사도 점수와 판정 근거
     def _select_related_prescription(
@@ -179,8 +189,8 @@ class CheckPrescriptionChange:
     # - batch가 없는 기존 데이터만 날짜 단위 호환 그룹으로 취급한다.
     # - 과거 기록 자체가 없는 경우와 비교 기간을 지난 경우를 구분한다.
     # 매개변수:
-    # - patient_hash: 조회 범위를 제한하는 환자 해시
-    # - current_date: 현재 분석 중인 처방의 조제일자
+    # - patient_hash (str): 조회 범위를 제한하는 환자 해시
+    # - current_date (date | None): 현재 분석 중인 처방의 조제일자
     # 반환값:
     # - 기록 상태와 날짜별 이전 처방 후보 목록
     def _load_candidate_prescriptions(
@@ -243,8 +253,8 @@ class CheckPrescriptionChange:
     # 함수역할:
     # - 로컬 의약품 허가정보에서 비교 후보 약품의 주성분을 한 번에 조회한다.
     # 매개변수:
-    # - current_medications: 현재 처방 약품 목록
-    # - previous_medications: 후보 이전 처방의 전체 약품 목록
+    # - current_medications (list[PrescriptionChangeMedication]): 현재 처방 약품 목록
+    # - previous_medications (list[_SavedMedication]): 후보 이전 처방의 전체 약품 목록
     # 반환값:
     # - 품목 식별자별 주성분 문자열
     def _load_main_ingredients(
@@ -275,8 +285,8 @@ class CheckPrescriptionChange:
     # 함수역할:
     # - 저장 약품과 현재 요청 약품을 관련성 판정 전용 값 객체로 변환한다.
     # 매개변수:
-    # - medications: 변환할 처방 약품 목록
-    # - ingredient_by_sequence: 품목 식별자별 주성분
+    # - medications (list[_SavedMedication] | list[PrescriptionChangeMedication]): 변환할 처방 약품 목록
+    # - ingredient_by_sequence (dict[str, str]): 품목 식별자별 주성분
     # 반환값:
     # - 외부 저장소에 의존하지 않는 유사도 판정 입력 목록
     def _to_similarity_medications(
@@ -301,8 +311,8 @@ class CheckPrescriptionChange:
     # - 품목 식별자를 우선 사용하고 약품명을 보조 키로 사용해 처방 전후를 연결한다.
     # - 연결된 약은 복약 일정 변경을 확인하고, 연결되지 않은 약은 추가 또는 미확인으로 분류한다.
     # 매개변수:
-    # - previous_medications: 이전 처방에 저장된 약품 목록
-    # - current_medications: 현재 분석한 약품 목록
+    # - previous_medications (list[_SavedMedication]): 이전 처방에 저장된 약품 목록
+    # - current_medications (list[PrescriptionChangeMedication]): 현재 분석한 약품 목록
     # 반환값:
     # - 화면에 표시할 변화 목록과 변경 없는 약품 개수
     def _compare_medications(
@@ -349,8 +359,8 @@ class CheckPrescriptionChange:
     # - 품목 식별자와 약품명 순서로 현재 약품에 대응하는 이전 약품을 찾는다.
     # - 일대일 비교를 위해 찾은 이전 약품은 미연결 목록에서 제거한다.
     # 매개변수:
-    # - previous_medications: 아직 연결되지 않은 이전 처방 약품 목록
-    # - current: 연결할 현재 처방 약품
+    # - previous_medications (list[_SavedMedication]): 아직 연결되지 않은 이전 처방 약품 목록
+    # - current (PrescriptionChangeMedication): 연결할 현재 처방 약품
     # 반환값:
     # - 연결된 이전 약품 또는 일치 항목이 없으면 None
     def _take_matching_previous(
@@ -374,8 +384,8 @@ class CheckPrescriptionChange:
     # 함수역할:
     # - 이전 처방과 현재 처방에서 값이 달라진 복약 일정 필드명을 찾는다.
     # 매개변수:
-    # - previous: 이전 처방의 저장 약품
-    # - current: 현재 처방의 비교 약품
+    # - previous (_SavedMedication): 이전 처방의 저장 약품
+    # - current (PrescriptionChangeMedication): 현재 처방의 비교 약품
     # 반환값:
     # - 값이 달라진 필드명 목록
     def _changed_schedule_fields(
@@ -394,7 +404,7 @@ class CheckPrescriptionChange:
     # 함수역할:
     # - 현재 처방에만 존재하는 약품을 추가 변화 항목으로 변환한다.
     # 매개변수:
-    # - current: 현재 처방의 비교 약품
+    # - current (PrescriptionChangeMedication): 현재 처방의 비교 약품
     # 반환값:
     # - added 유형의 처방 변화 항목
     def _build_added_change(
@@ -411,8 +421,8 @@ class CheckPrescriptionChange:
     # 함수역할:
     # - 약품별 변화 목록을 유형별 개수로 집계한다.
     # 매개변수:
-    # - changes: 약품별 처방 변화 목록
-    # - unchanged_count: 변경되지 않은 약품 개수
+    # - changes (Iterable[PrescriptionMedicationChange]): 약품별 처방 변화 목록
+    # - unchanged_count (int): 변경되지 않은 약품 개수
     # 반환값:
     # - 처방 변화 유형별 요약
     def _build_summary(
@@ -434,7 +444,7 @@ class CheckPrescriptionChange:
     # 함수역할:
     # - 저장 약품 또는 현재 비교 약품을 복약 일정 스냅샷으로 변환한다.
     # 매개변수:
-    # - medication: 일정 값을 읽을 약품 객체
+    # - medication (_SavedMedication | PrescriptionChangeMedication): 일정 값을 읽을 약품 객체
     # 반환값:
     # - 처방 전후 화면 표시에 사용하는 일정 스냅샷
     def _snapshot(
@@ -455,7 +465,7 @@ class CheckPrescriptionChange:
     # 함수역할:
     # - 조제일자가 없을 때 등록일자를 비교 기준일로 사용한다.
     # 매개변수:
-    # - medication: 저장된 약품 정보
+    # - medication (_SavedMedication): 저장된 약품 정보
     # 반환값:
     # - 비교에 사용할 처방 기준일
     def _effective_prescription_date(
@@ -468,7 +478,7 @@ class CheckPrescriptionChange:
     # 함수역할:
     # - 공백과 구두점을 제거해 약품명 비교 키를 생성한다.
     # 매개변수:
-    # - item_name: 원본 약품명
+    # - item_name (str): 원본 약품명
     # 반환값:
     # - 정규화된 약품명
     def _normalize_item_name(self, item_name: str) -> str:
@@ -479,7 +489,7 @@ class CheckPrescriptionChange:
     # 함수역할:
     # - 복약 일정 값의 공백과 대소문자 차이를 제거한다.
     # 매개변수:
-    # - value: 원본 복약 일정 값
+    # - value (object): 원본 복약 일정 값
     # 반환값:
     # - 비교용 복약 일정 문자열
     def _normalize_schedule_value(self, value: object) -> str:
@@ -489,7 +499,7 @@ class CheckPrescriptionChange:
     # 함수역할:
     # - 선택 필드 값을 안전한 문자열로 변환한다.
     # 매개변수:
-    # - value: 문자열로 변환할 값
+    # - value (object): 문자열로 변환할 값
     # 반환값:
     # - 앞뒤 공백이 제거된 문자열
     def _read_text(self, value: object) -> str:

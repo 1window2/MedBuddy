@@ -1,0 +1,88 @@
+@startuml
+scale max 1920 width
+skinparam backgroundColor white
+skinparam shadowing false
+title Nearby Care Search and Hospital Sharing
+actor User
+participant "Nearby care UI" as UI
+participant "Frontend Control" as FC
+participant "HospitalRouter / ChatRouter" as API
+participant "CheckNearbyHospital" as HC
+participant "Hospital API boundary" as HB
+participant "Holiday lookup" as Holiday
+participant "ManageLinkedChat" as Chat
+database "Messages + notification jobs" as DB
+
+User -> UI : Open hospital search (home or chat)
+UI --> User : Specialty selection, including explicit All
+note over UI,FC
+  No GPS or hospital query before selection; leaving does not search.
+end note
+User -> UI : Choose specialty
+UI -> FC : Search current GPS (300 m) or selected map area
+FC -> API : authenticated GET /hospitals/nearby
+API -> HC : validated coordinates and filters
+alt Specific department selected
+  HC -> HB : concurrent first-page location probes (center + four directions)
+  HB --> HC : addresses for nearby administrative regions
+  loop region pages within shared budget and deadline
+    HC -> HB : department list (Q0, Q1, QD, pagination)
+    HB --> HC : selected-specialty records
+  end
+  note over HC,HB
+    On timeout, stop remaining region/page requests immediately.
+    Keep previous candidates as partial; no successful page means failure.
+  end note
+  HC -> HC : deduplicate, filter radius, sort all candidates by distance
+else All departments
+  HC -> HB : bounded nearby location pages
+  HB --> HC : cached or validated provider records
+end
+HC -> HB : selected details within remaining time and detail budget
+HB --> HC : verified specialties and weekly hours
+HC -> Holiday : legal-holiday classification (bounded wait)
+Holiday --> HC : known holiday/weekday or unknown
+HC --> UI : filtered results + partial/availability + region_scope_uncertain
+opt Empty GPS results with usable calendar, within expansion budget
+  FC -> API : retry same center/filters at 500 m, 1 km, then 2 km
+  API --> FC : stop at first nonempty result or error
+  FC --> UI : effective radius and result metadata
+  UI --> User : adjust camera; briefly report expanded radius
+end
+UI --> User : shared map, list, favorite, call and directions
+UI --> User : dismissible introduction; button-free warning at >= 3 km or partial results
+note over UI
+  Address sampling alone does not trigger the limit warning.
+  Region uncertainty remains in source notes and empty-result wording.
+  Partial results can also mean missing hours; do not label every cause a quota limit.
+end note
+User -> UI : Change specialty or date/status if needed
+UI -> UI : Keep date/status drafts until Apply; retain chosen map area
+
+User -> UI : Choose hospital in a linked conversation
+UI --> User : Recipient, hospital and editable message preview
+alt User cancels
+  UI --> User : Keep composer; no message is sent
+else User confirms
+  UI -> FC : sendMessage(stable clientMessageId, hospitalId, date)
+  FC -> API : POST /chat/links/{id}/messages
+  API -> Chat : active participant + existing request check
+  alt Existing successful request
+    Chat --> API : original stored message
+  else New request
+    API -> HC : requestShareContext(id, date)
+    HC -> HB : fetch verified details
+    HC -> Holiday : date classification
+    HC --> API : server-owned place snapshot
+    API -> Chat : save verified context, not client display fields
+    Chat -> DB : message + notification job in same transaction
+    DB --> Chat : saved message
+  end
+  API --> UI : saved message / actionable failure
+end
+note over UI,DB
+  Failed sends keep the selected place and client request ID for retry.
+  Symptom/shortage prompts do not automatically open or send a place.
+  Hospital hours are not an emergency-service availability guarantee.
+end note
+@enduml

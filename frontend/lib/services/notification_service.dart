@@ -1,49 +1,175 @@
+// 파일명: notification_service.dart
+// 역할: 복약, 보호자와 채팅 로컬 알림의 초기화, 예약, 표시와 취소를 담당한다.
+
+import 'dart:async';
+import 'dart:convert';
+import 'dart:developer' as developer;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as timezone_data;
 import 'package:timezone/timezone.dart' as timezone;
 
 import '../entities/medication_alarm_entity.dart';
+import '../entities/caregiver_alert_context_entity.dart';
+import '../entities/medication_notification_selection_entity.dart';
+import '../entities/notification_inbox_entity.dart';
+import 'medication_notification_payload_codec.dart';
+import 'notification_inbox_store.dart';
 
-enum MedicationNotificationDestination { schedule, caregiverSchedule }
+// Preserve existing imports while keeping the action contract platform-neutral.
+export '../entities/medication_notification_selection_entity.dart';
 
-// 클래스명: MedicationNotificationSelection
-// 역할: 사용자가 누른 알림의 이동 화면과 선택 환자를 함께 전달한다.
-class MedicationNotificationSelection {
-  final MedicationNotificationDestination destination;
-  final String? patientHash;
-
-  const MedicationNotificationSelection({
-    required this.destination,
-    this.patientHash,
-  });
-}
-
-typedef MedicationNotificationSelectionHandler =
-    void Function(MedicationNotificationSelection selection);
-
-// 파일명: notification_service.dart
-// 역할: 복약 알림을 휴대폰 로컬 알림으로 예약하고 취소한다.
-
-// 클래스명: NotificationService
-// 역할: Flutter local notifications 플러그인을 감싸 복약 알림 전용 API를 제공한다.
-// 주요 책임:
-// - 앱 시작 시 알림 플러그인과 한국 시간대를 초기화한다.
-// - 알림 권한을 요청한다.
-// - 복용 기간에 포함된 날짜만 시간대별 알림으로 예약하거나 취소한다.
+// Class Name: NotificationService
+// Role: Wraps local notifications for medication, caregiver, and linked-chat workflows.
+// Responsibilities:
+// - Initialize the Seoul timezone and plugin, request permissions, schedule course-bounded dates, apply privacy settings, dispatch selections, and cancel session-owned alerts.
+// Attributes:
+// - _showSensitiveDetails (bool): Whether notification bodies may include sensitive details.
 class NotificationService {
+  // Function Name: NotificationService._
+  // Description: Creates the private notification-service instance used by the shared singleton.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - NotificationService: the initialized instance.
   NotificationService._();
 
   static final NotificationService instance = NotificationService._();
+  static const String markSlotTakenActionId =
+      MedicationNotificationPayloadCodec.markSlotTakenActionId;
+  static const String snoozeTenMinutesActionId =
+      MedicationNotificationPayloadCodec.snoozeTenMinutesActionId;
+  static const String caregiverSnoozeActionId =
+      MedicationNotificationPayloadCodec.caregiverSnoozeActionId;
+  static const String caregiverChatActionId =
+      MedicationNotificationPayloadCodec.caregiverChatActionId;
   static MedicationNotificationSelectionHandler? _selectionHandler;
   static MedicationNotificationSelection? _pendingSelection;
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
+  static const MethodChannel _settingsChannel = MethodChannel(
+    'com.medbuddy.app/settings',
+  );
   bool _isInitialized = false;
   Future<void>? _initializationFuture;
+  bool _showSensitiveDetails = true;
+  String? _historyUserHash;
+  Future<void> _scopeWrite = Future<void>.value();
+  Future<void>? _reminderWrite;
 
+  // 예약·미루기·취소의 호출 순서를 지켜 늦은 예약이 취소를 되돌리지 않게 한다.
+  Future<void> _serializeReminder(Future<void> Function() action) {
+    final owner = _historyUserHash;
+    final previous = _reminderWrite;
+    late final Future<void> current;
+    current = (() async {
+      if (previous != null) {
+        try { await previous; } catch (_) { /* 다음 요청은 재시도할 수 있다. */ }
+      }
+      if (owner == _historyUserHash) await action();
+    })().whenComplete(() {
+      if (identical(_reminderWrite, current)) _reminderWrite = null;
+    });
+    return _reminderWrite = current;
+  }
+
+  // 함수이름: setHistoryUser
+  // 함수역할: 알림 기록의 계정 범위를 교체한다. 매개변수: userHash, 전경 세션 저장 여부. 반환값: 없음.
+  void setHistoryUser(String? userHash, {bool persistSession = true}) {
+    _historyUserHash = userHash?.trim();
+    if (!persistSession) return;
+    _scopeWrite = _scopeWrite
+        .catchError((Object _) {})
+        .then((_) async {
+          final preferences = await SharedPreferences.getInstance();
+          final current = _historyUserHash;
+          if (current == null || current.isEmpty) {
+            await preferences.remove(NotificationInboxStore.activeUserKey);
+          } else {
+            await preferences.setString(
+              NotificationInboxStore.activeUserKey,
+              current,
+            );
+          }
+        })
+        .catchError((Object error, StackTrace stack) {
+          developer.log(
+            '알림함 세션을 저장하지 못했습니다.',
+            name: 'NotificationService',
+            error: error,
+            stackTrace: stack,
+          );
+        });
+  }
+
+  // 함수이름: _recordInbox
+  // 함수역할: 기록 오류가 실제 알림 표시를 막지 않게 한다. 매개변수: owner, entry. 반환값: 기록 시도 완료.
+  Future<void> _recordInbox(String? owner, NotificationInboxEntry entry) async {
+    if (owner == null || owner.isEmpty) return;
+    try {
+      await NotificationInboxStore(userHash: owner).record(entry);
+    } catch (error, stack) {
+      developer.log(
+        '알림 내역 저장 실패',
+        name: 'NotificationService',
+        error: error,
+        stackTrace: stack,
+      );
+    }
+  }
+
+  // 함수이름: _cancelInboxReminders
+  // 함수역할: 알림함의 미래 예약만 취소한다. 매개변수: 선택적 slotKey, id. 반환값: 완료.
+  Future<void> _cancelInboxReminders({String? slotKey, int? id}) async {
+    final owner = _historyUserHash;
+    if (owner == null || owner.isEmpty) return;
+    try {
+      await NotificationInboxStore(
+        userHash: owner,
+      ).cancelFutureReminders(slotKey: slotKey, id: id);
+    } catch (error, stack) {
+      developer.log(
+        '알림 내역 예약 취소 실패',
+        name: 'NotificationService',
+        error: error,
+        stackTrace: stack,
+      );
+    }
+  }
+
+  // 함수이름: setShowSensitiveDetails
+  // 함수역할: 이후 표시·예약하는 복약·보호자·채팅 알림에 적용할 민감정보 본문 노출 여부를 바꾼다.
+  // 매개변수:
+  // - showSensitiveDetails (bool): 알림 본문에 민감한 세부 내용을 포함할지 여부
+  // 반환값:
+  // - 없음.
+  void setShowSensitiveDetails(bool showSensitiveDetails) {
+    _showSensitiveDetails = showSensitiveDetails;
+  }
+
+  // 함수이름: openSystemNotificationSettings
+  // 함수역할: 사용자가 MedBuddy의 휴대폰 알림 권한과 잠금 화면 정책을 확인하게 한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  Future<void> openSystemNotificationSettings() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      throw UnsupportedError('Notification settings are unavailable.');
+    }
+    await _settingsChannel.invokeMethod<void>('openNotificationSettings');
+  }
+
+  // 함수이름: setNotificationSelectionHandler
+  // 함수역할: 알림 선택 수신자를 교체하고 새 수신자가 준비되면 보류된 선택을 한 번 전달한다.
+  // 매개변수:
+  // - handler (MedicationNotificationSelectionHandler?): 알림 선택 수신자; null이면 등록 해제
+  // 반환값:
+  // - 없음.
   static void setNotificationSelectionHandler(
     MedicationNotificationSelectionHandler? handler,
   ) {
@@ -56,55 +182,56 @@ class NotificationService {
     handler(pendingSelection);
   }
 
+  // 함수이름: destinationFromPayload
+  // 함수역할: 유효한 알림 payload에서 이동 대상만 추출하고 형식 오류는 null로 처리한다.
+  // 매개변수:
+  // - payload (String?): 시스템 알림 또는 FCM에서 전달한 이동 문자열
+  // 반환값:
+  // - MedicationNotificationDestination?: 유효한 알림 payload에서 이동 대상만 추출하고 형식 오류는 null로 처리한다.
   static MedicationNotificationDestination? destinationFromPayload(
     String? payload,
   ) {
     return selectionFromPayload(payload)?.destination;
   }
 
-  // 함수명: selectionFromPayload
-  // 함수역할:
-  // - 일반 복약 알림과 보호자 알림 payload를 안전한 화면 이동 정보로 변환한다.
-  // 매개변수:
-  // - payload: 로컬 알림 또는 FCM 데이터에서 받은 문자열
-  // 반환값:
-  // - 유효한 이동 대상과 환자 hash, 형식이 잘못됐으면 null
+  // Function Name: selectionFromPayload
+  // Description: Preserves the public parser API while delegating validation to the platform-independent codec.
+  // Parameters:
+  // - payload (String?): Navigation payload from a system notification or FCM.
+  // - actionId (String?): System notification button identifier.
+  // - notificationId (int?): Platform notification or server setting identifier.
+  // Returns:
+  // - MedicationNotificationSelection?: Validated navigation/action arguments, or null for a malformed payload.
   static MedicationNotificationSelection? selectionFromPayload(
-    String? payload,
-  ) {
-    final segments = payload?.split(':') ?? const <String>[];
-    if (segments.length == 3 &&
-        segments[0] == 'schedule' &&
-        segments[1].trim().isNotEmpty) {
-      final notificationID = int.tryParse(segments[2]);
-      if (notificationID == null || notificationID < 0) {
-        return null;
-      }
-      return const MedicationNotificationSelection(
-        destination: MedicationNotificationDestination.schedule,
-      );
-    }
-    if (segments.length == 2 &&
-        segments[0] == 'caregiver' &&
-        segments[1].trim().isNotEmpty) {
-      try {
-        final patientHash = Uri.decodeComponent(segments[1]).trim();
-        if (patientHash.isEmpty) {
-          return null;
-        }
-        return MedicationNotificationSelection(
-          destination: MedicationNotificationDestination.caregiverSchedule,
-          patientHash: patientHash,
-        );
-      } on FormatException {
-        return null;
-      }
-    }
-    return null;
+    String? payload, {
+    String? actionId,
+    int? notificationId,
+  }) {
+    return MedicationNotificationPayloadCodec.decode(
+      payload,
+      actionId: actionId,
+      notificationId: notificationId,
+    );
   }
 
-  static void handleNotificationPayload(String? payload) {
-    final selection = selectionFromPayload(payload);
+  // Function Name: handleNotificationPayload
+  // Description: Dispatches a valid parsed notification selection to the active handler or retains it until a handler is registered.
+  // Parameters:
+  // - payload (String?): Navigation payload from a system notification or FCM.
+  // - actionId (String?): System notification button identifier.
+  // - notificationId (int?): Platform notification or server setting identifier.
+  // Returns:
+  // - No return value.
+  static void handleNotificationPayload(
+    String? payload, {
+    String? actionId,
+    int? notificationId,
+  }) {
+    final selection = selectionFromPayload(
+      payload,
+      actionId: actionId,
+      notificationId: notificationId,
+    );
     if (selection == null) {
       return;
     }
@@ -116,17 +243,23 @@ class NotificationService {
     handler(selection);
   }
 
+  // 함수이름: isSessionNotificationPayload
+  // 함수역할: 복약·보호자·채팅 접두사를 확인해 현재 세션 정리 대상인 MedBuddy 알림인지 판정한다.
+  // 매개변수:
+  // - payload (String?): 시스템 알림 또는 FCM에서 전달한 이동 문자열
+  // 반환값:
+  // - bool: 복약·보호자·채팅 접두사를 확인해 현재 세션 정리 대상인 MedBuddy 알림인지 판정한다.
   @visibleForTesting
   static bool isSessionNotificationPayload(String? payload) {
-    return payload?.startsWith('schedule:') == true ||
-        payload?.startsWith('caregiver:') == true;
+    return MedicationNotificationPayloadCodec.isSessionPayload(payload);
   }
 
-  // 함수명: initialize
-  // 함수역할:
-  // - 알림 플러그인과 timezone 패키지를 한 번만 초기화한다.
-  // 반환값:
-  // - 없음
+  // Function Name: initialize
+  // Description: Reuses the completed or in-flight notification initialization so concurrent callers do not initialize the platform plugin twice.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: asynchronous completion without a result payload.
   Future<void> initialize() {
     if (_isInitialized) {
       return Future<void>.value();
@@ -134,6 +267,12 @@ class NotificationService {
     return _initializationFuture ??= _initialize();
   }
 
+  // Function Name: _initialize
+  // Description: Initializes timezone data and the Seoul local zone, installs the response callback, restores launch selections, and clears the shared future after failure for retry.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: asynchronous completion without a result payload.
   Future<void> _initialize() async {
     try {
       timezone_data.initializeTimeZones();
@@ -154,7 +293,12 @@ class NotificationService {
       _isInitialized = true;
 
       if (launchDetails?.didNotificationLaunchApp ?? false) {
-        handleNotificationPayload(launchDetails?.notificationResponse?.payload);
+        final response = launchDetails?.notificationResponse;
+        handleNotificationPayload(
+          response?.payload,
+          actionId: response?.actionId,
+          notificationId: response?.id,
+        );
       }
     } catch (_) {
       _initializationFuture = null;
@@ -162,15 +306,26 @@ class NotificationService {
     }
   }
 
+  // Function Name: _handleNotificationResponse
+  // Description: Passes the plugin response payload, action identifier, and notification ID through the shared selection parser.
+  // Parameters:
+  // - response (NotificationResponse): Platform response identifying the selected notification or action.
+  // Returns:
+  // - No return value.
   static void _handleNotificationResponse(NotificationResponse response) {
-    handleNotificationPayload(response.payload);
+    handleNotificationPayload(
+      response.payload,
+      actionId: response.actionId,
+      notificationId: response.id,
+    );
   }
 
-  // 함수명: requestPermission
-  // 함수역할:
-  // - Android/iOS에서 알림 표시 권한을 요청한다.
-  // 반환값:
-  // - 알림 표시 권한이 허용되었거나 권한 요청이 필요 없는 플랫폼이면 True
+  // Function Name: requestPermission
+  // Description: Initializes notifications and requests Android or iOS display permissions, treating other platforms or absent platform implementations as not requiring a request.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<bool>: Initializes notifications and requests Android or iOS display permissions, treating other platforms or absent platform implementations as not requiring a request.
   Future<bool> requestPermission() async {
     await initialize();
 
@@ -198,20 +353,20 @@ class NotificationService {
     return true;
   }
 
-  // 함수명: registerNotification
-  // 함수역할:
-  // - 복용 기간에 포함된 날짜 중 지정한 시간에만 복약 알림을 예약한다.
-  // 매개변수:
-  // - id: 시간대별 고정 알림 id
-  // - slotTitle: 아침, 점심 등 시간대명
-  // - hour: 24시간 기준 시
-  // - minute: 분
-  // - medicationNames: 알림 본문에 보여줄 약 이름 목록
-  // - activeDates: 이 시간대 알림이 필요한 복용 날짜 목록
-  // - medicationNamesByDate: 날짜별로 실제 복용 중인 약 이름 목록
-  // - language: 알림 제목과 안내 문장에 사용할 언어 코드
-  // 반환값:
-  // - 없음
+  // Function Name: registerNotification
+  // Description: Replaces dated slot reminders with neutral text and an inexact fallback when exact alarms are unavailable.
+  // Parameters:
+  // - id (int): Platform identifier used to schedule, replace, or cancel an alert.
+  // - slotKey (String): Medication slot key: morning, lunch, evening, or bedtime.
+  // - slotTitle (String): Localized medication slot name.
+  // - hour (int): Local hour in 24-hour time.
+  // - minute (int): Minute component of local time.
+  // - medicationNames (List<String>): Retained for caller compatibility; never used as a live pending-dose claim.
+  // - activeDates (List<DateTime>): Reminder dates within the medication course.
+  // - medicationNamesByDate (Map<String, List<String>>): Legacy name snapshots, deliberately excluded from reminder text.
+  // - language (String): Language code used for display or speech guidance.
+  // Returns:
+  // - Future<void>: asynchronous completion without a result payload.
   Future<void> registerNotification({
     required int id,
     required String slotKey,
@@ -222,9 +377,37 @@ class NotificationService {
     required List<DateTime> activeDates,
     Map<String, List<String>> medicationNamesByDate = const {},
     String language = 'ko',
+  }) {
+    final owner = _historyUserHash;
+    return _serializeReminder(() =>
+      _reconcileReminder(owner: owner, id: id, slotKey: slotKey,
+          slotTitle: slotTitle, hour: hour, minute: minute,
+          activeDates: List.of(activeDates), language: language));
+  }
+
+  // 날짜별 예약 계획을 보존해 동일한 예약과 사용자가 미룬 알림은 건드리지 않는다.
+  Future<void> _reconcileReminder({
+    required String? owner, required int id, required String slotKey,
+    required String slotTitle, required int hour, required int minute,
+    required List<DateTime> activeDates, required String language,
   }) async {
     await initialize();
-    await _cancelScheduledNotificationsForSlot(slotKey, legacyId: id);
+    if (owner != _historyUserHash) return;
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.reload();
+    if (owner != _historyUserHash) return;
+    final planKey = 'medbuddy_reminder_plan_${owner ?? "guest"}_$slotKey';
+    Map<String, dynamic> previous = {};
+    try {
+      previous = Map<String, dynamic>.from(jsonDecode(preferences.getString(planKey) ?? '{}'));
+    } catch (_) {
+      // 손상된 계획은 실제 기기 예약을 확인한 뒤 다시 작성한다.
+    }
+    final pending = {
+      for (final request in await _plugin.pendingNotificationRequests())
+        if (request.id == id || (request.payload?.startsWith('schedule:$slotKey:') ?? false))
+          request.id: request,
+    };
     final now = timezone.TZDateTime.now(timezone.local);
     final uniqueDates = <String, DateTime>{};
     for (final activeDate in activeDates) {
@@ -236,12 +419,19 @@ class NotificationService {
       uniqueDates[_dateKey(normalizedDate)] = normalizedDate;
     }
     final sortedDates = uniqueDates.values.toList(growable: false)..sort();
+    final desiredIds = {
+      for (final date in sortedDates) _notificationIdForDate(id, slotKey, date),
+    };
+    for (final staleId in pending.keys.where((key) => !desiredIds.contains(key))) {
+      if (owner != _historyUserHash) return;
+      await _plugin.cancel(id: staleId);
+      await _cancelInboxReminders(id: staleId);
+    }
+    final nextPlan = <String, String>{};
 
     for (final activeDate in sortedDates) {
-      final body = _buildReminderBody(
-        medicationNamesByDate[_dateKey(activeDate)] ?? medicationNames,
-        language,
-      );
+      if (owner != _historyUserHash) return;
+      final body = _buildReminderBody(language);
       final scheduledDate = timezone.TZDateTime(
         timezone.local,
         activeDate.year,
@@ -250,12 +440,17 @@ class NotificationService {
         hour,
         minute,
       );
-      if (!scheduledDate.isAfter(now)) {
+      final notificationId = _notificationIdForDate(id, slotKey, activeDate);
+      final key = '$notificationId';
+      final signature = jsonEncode([hour, minute, slotTitle, language, body]);
+      nextPlan[key] = signature;
+      if (!scheduledDate.isAfter(now) ||
+          (pending.containsKey(notificationId) && previous[key] == signature)) {
         continue;
       }
-      final notificationId = _notificationIdForDate(id, slotKey, activeDate);
       try {
         await _scheduleWithMode(
+          owner: owner,
           id: notificationId,
           slotKey: slotKey,
           slotTitle: slotTitle,
@@ -266,6 +461,7 @@ class NotificationService {
         );
       } on PlatformException {
         await _scheduleWithMode(
+          owner: owner,
           id: notificationId,
           slotKey: slotKey,
           slotTitle: slotTitle,
@@ -276,15 +472,23 @@ class NotificationService {
         );
       }
     }
+    if (owner == _historyUserHash) {
+      await preferences.setString(planKey, jsonEncode(nextPlan));
+    }
   }
 
-  // 함수명: _cancelScheduledNotificationsForSlot
-  // 함수역할:
-  // - 같은 시간대에 남아 있는 기존 반복 알림과 날짜별 단발 알림을 모두 취소한다.
+  // 함수이름: _cancelScheduledNotificationsForSlot
+  // 함수역할: 같은 시간대에 남아 있는 기존 반복 알림과 날짜별 단발 알림을 모두 취소한다.
+  // 매개변수:
+  // - slotKey (String): morning·lunch·evening·bedtime 복약 시간대 키
+  // - legacyId (int?): 함께 취소할 구형 고정 알림 ID
+  // 반환값:
+  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
   Future<void> _cancelScheduledNotificationsForSlot(
     String slotKey, {
     int? legacyId,
   }) async {
+    await _cancelInboxReminders(slotKey: slotKey);
     if (legacyId != null) {
       await _plugin.cancel(id: legacyId);
     }
@@ -297,15 +501,26 @@ class NotificationService {
     }
   }
 
+  // 함수이름: _dateKey
+  // 함수역할: 알림 날짜별 약명과 안정 ID에 사용할 YYYY-MM-DD 달력 날짜 키를 만든다.
+  // 매개변수:
+  // - date (DateTime): 달력 날짜 계산 또는 비교의 기준 시각
+  // 반환값:
+  // - String: 알림 날짜별 약명과 안정 ID에 사용할 YYYY-MM-DD 달력 날짜 키를 만든다.
   String _dateKey(DateTime date) {
     return '${date.year.toString().padLeft(4, '0')}-'
         '${date.month.toString().padLeft(2, '0')}-'
         '${date.day.toString().padLeft(2, '0')}';
   }
 
-  // 함수명: _notificationIdForDate
-  // 함수역할:
-  // - 시간대와 복용 날짜마다 충돌 가능성이 낮은 고정 알림 ID를 생성한다.
+  // 함수이름: _notificationIdForDate
+  // 함수역할: 시간대와 복용 날짜마다 충돌 가능성이 낮은 고정 알림 ID를 생성한다.
+  // 매개변수:
+  // - baseId (int): 날짜별 알림 ID 계산에 쓸 기본 ID
+  // - slotKey (String): morning·lunch·evening·bedtime 복약 시간대 키
+  // - date (DateTime): 달력 날짜 계산 또는 비교의 기준 시각
+  // 반환값:
+  // - int: 시간대와 복용 날짜마다 충돌 가능성이 낮은 고정 알림 ID를 생성한다.
   int _notificationIdForDate(int baseId, String slotKey, DateTime date) {
     final source = '$baseId|$slotKey|${_dateKey(date)}';
     var hash = 0x811C9DC5;
@@ -316,67 +531,45 @@ class NotificationService {
     return 100000 + (hash % 2000000000);
   }
 
-  // 함수명: _buildReminderBody
-  // 함수역할:
-  // - 알림 본문을 긴 약품명 나열 대신 사용자가 바로 이해할 수 있는 문장으로 만든다.
+  // 함수이름: _buildReminderBody
+  // 함수역할: 예약 후 복용 상태가 바뀌어도 재복용을 지시하지 않는 중립적 안내를 만든다.
   // 매개변수:
-  // - medicationNames: 해당 시간대에 복용할 약 이름 목록
-  // - language: 안내 문장에 사용할 언어 코드
+  // - language (String): 안내 문장에 사용할 언어 코드
   // 반환값:
   // - 알림 본문 문자열
-  String _buildReminderBody(List<String> medicationNames, String language) {
-    final isEnglish = _isEnglish(language);
-    final names = medicationNames
-        .map((name) => name.trim())
-        .where((name) => name.isNotEmpty)
-        .toList(growable: false);
-    if (names.isEmpty) {
-      return isEnglish ? 'Please check your medication.' : '복용할 약을 확인해 주세요.';
-    }
-
-    final representativeName = _shortenMedicationName(names.first);
-    if (names.length == 1) {
-      return isEnglish
-          ? 'Time to take $representativeName.'
-          : '$representativeName 복용 시간입니다.';
-    }
-    return isEnglish
-        ? 'Time to take $representativeName and ${names.length - 1} more.'
-        : '$representativeName 외 ${names.length - 1}개 약을 복용할 시간입니다.';
+  String _buildReminderBody(String language) {
+    // Android retains this text until delivery. A name snapshot cannot tell us
+    // which doses are still pending then, even when sensitive details are on.
+    return _isEnglish(language)
+        ? 'Check your medication schedule and recorded completion status.'
+        : '복약 일정과 복용 완료 기록을 확인해 주세요.';
   }
 
+  // 함수이름: _isEnglish
+  // 함수역할: 언어 코드의 공백과 대소문자를 정리한 뒤 en 접두사로 영어 계열을 판정한다.
+  // 매개변수:
+  // - language (String): 표시·음성 안내에 사용할 언어 코드
+  // 반환값:
+  // - bool: 언어 코드의 공백과 대소문자를 정리한 뒤 en 접두사로 영어 계열을 판정한다.
   bool _isEnglish(String language) {
     return language.trim().toLowerCase().startsWith('en');
   }
 
-  // 함수명: _shortenMedicationName
-  // 함수역할:
-  // - 알림창에서 한눈에 보이도록 긴 약품명을 짧게 줄인다.
-  // 매개변수:
-  // - medicationName: 원본 약품명
-  // 반환값:
-  // - 알림용으로 축약한 약품명
-  String _shortenMedicationName(String medicationName) {
-    const maxLength = 14;
-    if (medicationName.length <= maxLength) {
-      return medicationName;
-    }
-    return '${medicationName.substring(0, maxLength)}...';
-  }
-
-  // 함수명: _scheduleWithMode
-  // 함수역할:
-  // - Android 예약 모드를 주입받아 실제 로컬 알림 예약을 수행한다.
-  // 매개변수:
-  // - id: 시간대별 고정 알림 id
-  // - slotTitle: 알림 제목에 들어갈 시간대명
-  // - language: 알림 제목에 사용할 언어 코드
-  // - body: 알림 본문
-  // - scheduledDate: 예약 기준 시각
-  // - scheduleMode: Android 알림 예약 방식
-  // 반환값:
-  // - 없음
+  // Function Name: _scheduleWithMode
+  // Description: Schedules a localized zoned reminder with the chosen Android precision mode, completion and snooze actions, and a slot-aware navigation payload.
+  // Parameters:
+  // - id (int): Platform identifier used to schedule, replace, or cancel an alert.
+  // - slotKey (String): Medication slot key: morning, lunch, evening, or bedtime.
+  // - slotTitle (String): Localized medication slot name.
+  // - language (String): Language code used for display or speech guidance.
+  // - body (String): Message or notification body to send or display.
+  // - scheduledDate (timezone.TZDateTime): Zoned timestamp at which the notification is scheduled.
+  // - scheduleMode (AndroidScheduleMode): Exact or inexact Android scheduling mode.
+  // - scheduleDate (DateTime?): Original dose day when rescheduling a snooze.
+  // Returns:
+  // - Future<void>: asynchronous completion without a result payload.
   Future<void> _scheduleWithMode({
+    required String? owner,
     required int id,
     required String slotKey,
     required String slotTitle,
@@ -384,54 +577,219 @@ class NotificationService {
     required String body,
     required timezone.TZDateTime scheduledDate,
     required AndroidScheduleMode scheduleMode,
+    DateTime? scheduleDate,
   }) async {
+    // 예약 도중 계정이 바뀌면 나머지 예약을 새 계정에 남기지 않는다.
+    if (owner != _historyUserHash) return;
     final title = _isEnglish(language)
-        ? '$slotTitle medication time'
-        : '$slotTitle 복약 시간입니다';
+        ? '$slotTitle medication schedule'
+        : '$slotTitle 복약 일정 확인';
 
     await _plugin.zonedSchedule(
       id: id,
       title: title,
       body: body,
       scheduledDate: scheduledDate,
-      notificationDetails: const NotificationDetails(
+      notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           'medbuddy_medication_reminders',
-          '복약 알림',
-          channelDescription: 'MedBuddy 복약 시간 알림',
+          _isEnglish(language) ? 'Medication reminders' : '복약 알림',
+          channelDescription: _isEnglish(language)
+              ? 'MedBuddy medication time reminders'
+              : 'MedBuddy 복약 시간 알림',
           importance: Importance.high,
           priority: Priority.high,
+          groupKey: 'medbuddy.reminder.$slotKey',
+          actions: <AndroidNotificationAction>[
+            AndroidNotificationAction(
+              markSlotTakenActionId,
+              _isEnglish(language) ? 'Taken' : '복용했어요',
+              showsUserInterface: true,
+            ),
+            AndroidNotificationAction(
+              snoozeTenMinutesActionId,
+              _isEnglish(language) ? 'Remind in 10 min' : '10분 후 다시 알림',
+              showsUserInterface: true,
+            ),
+          ],
         ),
-        iOS: DarwinNotificationDetails(),
+        iOS: const DarwinNotificationDetails(),
       ),
       androidScheduleMode: scheduleMode,
-      payload: 'schedule:$slotKey:$id',
+      payload:
+          'schedule:$slotKey:$id:${_dateKey(scheduleDate ?? scheduledDate)}',
+    );
+    await _recordInbox(
+      owner,
+      NotificationInboxEntry(
+        id: 'reminder:$id:${scheduledDate.millisecondsSinceEpoch}',
+        title: title,
+        body: body,
+        payload:
+            'schedule:$slotKey:$id:${_dateKey(scheduleDate ?? scheduledDate)}',
+        category: NotificationInboxCategory.medication,
+        occurredAt: scheduledDate,
+      ),
     );
   }
 
-  // 함수명: cancelReminder
-  // 함수역할:
-  // - 지정한 복약 알림 예약을 취소한다.
+  // Function Name: snoozeMedicationReminder
+  // Description: Reschedules the selected slot after the supplied delay, defaulting to ten minutes, with privacy-neutral text and an inexact-alarm fallback.
+  // Parameters:
+  // - id (int): Platform identifier used to schedule, replace, or cancel an alert.
+  // - slotKey (String): Medication slot key: morning, lunch, evening, or bedtime.
+  // - slotTitle (String): Localized medication slot name.
+  // - language (String): Language code used for display or speech guidance.
+  // - delay (Duration): Delay before displaying the snoozed reminder.
+  // - scheduleDate (DateTime?): Original dose day; defaults to today's date.
+  // Returns:
+  // - Future<void>: asynchronous completion without a result payload.
+  Future<void> snoozeMedicationReminder({
+    required int id,
+    required String slotKey,
+    required String slotTitle,
+    String language = 'ko',
+    Duration delay = const Duration(minutes: 10),
+    DateTime? scheduleDate,
+  }) => _serializeReminder(() => _snoozeMedicationReminder(
+    id: id, slotKey: slotKey, slotTitle: slotTitle, language: language,
+    delay: delay, scheduleDate: scheduleDate,
+  ));
+
+  Future<void> _snoozeMedicationReminder({
+    required int id, required String slotKey, required String slotTitle,
+    required String language, required Duration delay, DateTime? scheduleDate,
+  }) async {
+    final owner = _historyUserHash;
+    await initialize();
+    final now = timezone.TZDateTime.now(timezone.local);
+    final scheduledDate = now.add(delay);
+    final originalDate = scheduleDate ?? now;
+    final body = _buildReminderBody(language);
+    try {
+      await _scheduleWithMode(
+        owner: owner,
+        id: id,
+        slotKey: slotKey,
+        slotTitle: slotTitle,
+        language: language,
+        body: body,
+        scheduledDate: scheduledDate,
+        scheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        scheduleDate: originalDate,
+      );
+    } on PlatformException {
+      await _scheduleWithMode(
+        owner: owner,
+        id: id,
+        slotKey: slotKey,
+        slotTitle: slotTitle,
+        language: language,
+        body: body,
+        scheduledDate: scheduledDate,
+        scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        scheduleDate: originalDate,
+      );
+    }
+  }
+
+  // 함수이름: cancelReminder
+  // 함수역할: 지정한 복약 알림 예약을 취소한다.
   // 매개변수:
-  // - id: 취소할 알림 id
+  // - id (int): 취소할 알림 id
+  // - slotKey (String?): morning·lunch·evening·bedtime 복약 시간대 키
   // 반환값:
-  // - 없음
-  Future<void> cancelReminder(int id, {String? slotKey}) async {
+  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  Future<void> cancelReminder(int id, {String? slotKey}) =>
+      _serializeReminder(() => _cancelReminder(id, slotKey: slotKey));
+
+  // 완료된 날짜의 예약·재알림만 취소한다. 다른 날짜와 계정의 예약은 보존한다.
+  Future<void> cancelReminderForDate({
+    required String owner,
+    required String slotKey,
+    required DateTime date,
+  }) => _serializeReminder(() async {
+    if (owner.trim().isEmpty ||
+        !const ['morning', 'lunch', 'evening', 'bedtime'].contains(slotKey)) {
+      return;
+    }
+    final preferences = await SharedPreferences.getInstance();
+    Future<bool> stillActive() async {
+      await preferences.reload();
+      return preferences.getString(NotificationInboxStore.activeUserKey) == owner;
+    }
+
+    if (!await stillActive()) return;
+    await initialize();
+    final baseId = MedicationAlarm.defaults(slotKey)
+        .copyWith(patientHash: owner)
+        .notificationId;
+    final id = _notificationIdForDate(baseId, slotKey, date);
+    if (!await stillActive()) return;
+    await _plugin.cancel(id: id);
+    // Android가 표시 중인 알림의 payload를 반환하지 않아 날짜별 ID로 구분한다.
+    for (final notification in await _plugin.getActiveNotifications()) {
+      if (notification.id == id &&
+          notification.channelId == 'medbuddy_medication_reminders') {
+        if (!await stillActive()) return;
+        await _plugin.cancel(id: id, tag: notification.tag);
+      }
+    }
+    await NotificationInboxStore(userHash: owner).cancelFutureReminders(id: id);
+  });
+
+  Future<void> _cancelReminder(int id, {String? slotKey}) async {
+    await _cancelInboxReminders(slotKey: slotKey, id: id);
     await initialize();
     if (slotKey != null && slotKey.trim().isNotEmpty) {
       await _cancelScheduledNotificationsForSlot(slotKey, legacyId: id);
+      // Delivered date-specific reminders are no longer pending. Explicitly
+      // disabling this slot must remove their completion/snooze shortcuts too.
+      // Keep this out of routine rescheduling, which should retain delivered
+      // reminders while refreshing future dates.
+      final activeNotifications = await _plugin.getActiveNotifications();
+      // Android's plugin does not return payload for active notifications.
+      // Older builds also lack our group marker: recognize their deterministic
+      // IDs over the same 90-day window as local reminder history, but only on
+      // the medication channel. Unknown/other-slot notifications stay intact.
+      final now = timezone.TZDateTime.now(timezone.local);
+      final legacyIds = <int>{id};
+      for (var day = 0; day <= 90; day++) {
+        legacyIds.add(_notificationIdForDate(
+          id,
+          slotKey,
+          DateTime(now.year, now.month, now.day - day),
+        ));
+      }
+      for (final notification in activeNotifications) {
+        final notificationId = notification.id;
+        final androidMatch =
+            notification.channelId == 'medbuddy_medication_reminders' &&
+            (notification.groupKey == 'medbuddy.reminder.$slotKey' ||
+                (notification.groupKey == null &&
+                    legacyIds.contains(notificationId)));
+        if (notificationId != null &&
+            (androidMatch ||
+                (notification.payload?.startsWith('schedule:$slotKey:') ?? false))) {
+          await _plugin.cancel(id: notificationId, tag: notification.tag);
+        }
+      }
       return;
     }
     await _plugin.cancel(id: id);
   }
 
   // Function Name: cancelAllMedicationReminders
-  // Description:
-  // - Cancels every pending medication reminder and every displayed caregiver
-  //   alert before session exit, while preserving unrelated notifications.
+  // Description: Cancels pending and displayed session-owned medication, caregiver, and chat notifications plus legacy reminder IDs, while preserving unrelated notifications and clearing pending selections.
+  // Parameters:
+  // - None.
   // Returns:
-  // - Completes after session-owned notifications and selections are removed.
-  Future<void> cancelAllMedicationReminders() async {
+  // - Future<void>: asynchronous completion without a result payload.
+  Future<void> cancelAllMedicationReminders() =>
+      _serializeReminder(_cancelAllMedicationReminders);
+
+  Future<void> _cancelAllMedicationReminders() async {
+    await _cancelInboxReminders();
     await initialize();
     final pendingRequests = await _plugin.pendingNotificationRequests();
     for (final request in pendingRequests) {
@@ -443,7 +801,12 @@ class NotificationService {
     for (final notification in activeNotifications) {
       final notificationId = notification.id;
       if (notificationId != null &&
-          isSessionNotificationPayload(notification.payload)) {
+          (isSessionNotificationPayload(notification.payload) ||
+              const {
+                'medbuddy_medication_reminders',
+                'medbuddy_caregiver_updates',
+                'medbuddy_linked_chat',
+              }.contains(notification.channelId))) {
         await _plugin.cancel(id: notificationId, tag: notification.tag);
       }
     }
@@ -457,40 +820,223 @@ class NotificationService {
     }
   }
 
-  // 함수명: showCaregiverAlert
-  // 역할:
-  // - 환자의 복약 체크 변화를 보호자 기기의 즉시 로컬 알림으로 표시한다.
+  // 함수이름: cancelAllScheduledMedicationReminders
+  // 함수역할: 보호자·채팅 알림은 유지하고 예약 및 표시 중인 복약 알림을 취소한다.
   // 매개변수:
-  // - id: 중복 알림을 교체하기 위한 고정 알림 식별자
-  // - title: 보호자 알림 제목
-  // - body: 보호자에게 보여줄 복약 상태 설명
-  // - patientHash: 알림을 누를 때 열어야 하는 환자 식별 hash
+  // - 없음.
   // 반환값:
-  // - 없음
+  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  Future<void> cancelAllScheduledMedicationReminders() =>
+      _serializeReminder(_cancelAllScheduledMedicationReminders);
+
+  Future<void> _cancelAllScheduledMedicationReminders() async {
+    await _cancelInboxReminders();
+    await initialize();
+    final pendingRequests = await _plugin.pendingNotificationRequests();
+    for (final request in pendingRequests) {
+      if ((request.payload ?? '').startsWith('schedule:')) {
+        await _plugin.cancel(id: request.id);
+      }
+    }
+    // Delivered reminders are no longer pending. Remove their quick actions
+    // too, so disabling reminders does not leave a visible snooze shortcut.
+    final activeNotifications = await _plugin.getActiveNotifications();
+    for (final notification in activeNotifications) {
+      final id = notification.id;
+      if (id != null &&
+          (notification.channelId == 'medbuddy_medication_reminders' ||
+              (notification.payload ?? '').startsWith('schedule:'))) {
+        await _plugin.cancel(id: id, tag: notification.tag);
+      }
+    }
+    for (final slotKey in const ['morning', 'lunch', 'evening', 'bedtime']) {
+      await _plugin.cancel(
+        id: MedicationAlarm.legacyNotificationIdForSlot(slotKey),
+      );
+    }
+  }
+
+  // 함수이름: showCaregiverAlert
+  // 함수역할: 환자의 복약 체크 변화를 보호자 기기의 즉시 로컬 알림으로 표시한다.
+  // 매개변수:
+  // - id (int): 중복 알림을 교체하기 위한 고정 알림 식별자
+  // - title (String): 보호자 알림 제목
+  // - body (String): 보호자에게 보여줄 복약 상태 설명
+  // - patientHash (String?): 알림을 누를 때 열어야 하는 환자 식별 hash
+  // - language (String): 알림 채널 안내에 사용할 언어 코드
+  // 반환값:
+  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
   Future<void> showCaregiverAlert({
     required int id,
     required String title,
     required String body,
     String? patientHash,
+    String language = 'ko',
+    String? historyUserHash,
+    bool recordHistory = true,
+    CaregiverAlertContext? alertContext,
   }) async {
+    final owner = historyUserHash ?? _historyUserHash;
     await initialize();
+    final isEnglish = _isEnglish(language);
+    final visibleBody = _showSensitiveDetails
+        ? body
+        : isEnglish
+        ? 'A linked patient has a medication update.'
+        : '연동된 환자의 복약 상태가 변경되었습니다.';
     await _plugin.show(
       id: id,
       title: title,
-      body: body,
-      notificationDetails: const NotificationDetails(
+      body: visibleBody,
+      notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           'medbuddy_caregiver_updates',
-          '보호자 복약 확인',
-          channelDescription: '연동된 환자의 복약 완료 및 미복용 상태 알림',
+          isEnglish ? 'Caregiver medication updates' : '보호자 복약 확인',
+          channelDescription: isEnglish
+              ? 'Medication completion and missed-dose updates for linked patients'
+              : '연동된 환자의 복약 완료 및 미복용 상태 알림',
+          importance: Importance.high,
+          priority: Priority.high,
+          actions: alertContext == null ? null : [
+            AndroidNotificationAction(caregiverSnoozeActionId,
+                isEnglish ? 'Remind in 10 min' : '10분 후 다시 알림', showsUserInterface: true),
+            AndroidNotificationAction(caregiverChatActionId,
+                isEnglish ? 'Send chat request' : '채팅으로 알림', showsUserInterface: true),
+          ],
+        ),
+        iOS: const DarwinNotificationDetails(),
+      ),
+      payload: alertContext?.payload ?? (patientHash == null || patientHash.trim().isEmpty
+          ? null
+          : 'caregiver:${Uri.encodeComponent(patientHash.trim())}'),
+    );
+    if (recordHistory && patientHash != null && patientHash.trim().isNotEmpty) {
+      await _recordInbox(
+        owner,
+        NotificationInboxEntry(
+          id: 'caregiver:$id',
+          // 표시가 허용된 실제 완료·미복용 설명을 보존한다.
+          title: _showSensitiveDetails
+              ? title
+              : isEnglish
+              ? 'Medication update'
+              : '복약 상태 알림',
+          body: visibleBody,
+          payload: alertContext?.payload ?? 'caregiver:${Uri.encodeComponent(patientHash.trim())}',
+          category: NotificationInboxCategory.medication,
+          occurredAt: DateTime.now(),
+        ),
+      );
+    }
+  }
+
+  // 함수이름: showLinkedChatAlert
+  // 함수역할: 전경에서 받은 가족 채팅 푸시를 제한된 메시지 미리보기와 함께 표시한다.
+  // 매개변수:
+  // - id (int): 플랫폼 알림의 예약·교체·취소 식별자
+  // - linkId (int): 조회·전송·감시 대상 연동 ID
+  // - language (String): 표시·음성 안내에 사용할 언어 코드
+  // - messagePreview (String?): 시스템 알림과 알림함에 표시할 선택적 메시지 미리보기
+  // - messageKind (String?): 일반·복약·약국 맥락 메시지 유형
+  // - slotKey (String?): morning·lunch·evening·bedtime 복약 시간대 키
+  // - historyUserHash (String?): 기록할 수신 계정. 생략하면 현재 세션을 사용한다.
+  // - recordHistory (bool): 푸시 처리기에서 이미 저장한 알림의 중복 기록을 막는 선택값.
+  // 반환값:
+  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  Future<void> showLinkedChatAlert({
+    required int id,
+    required int linkId,
+    String language = 'ko',
+    String? messagePreview,
+    String? messageKind,
+    String? slotKey,
+    String? historyUserHash,
+    bool recordHistory = true,
+  }) async {
+    final owner = historyUserHash ?? _historyUserHash;
+    final body = buildLinkedChatNotificationBody(
+      messagePreview: messagePreview,
+      showSensitiveDetails: _showSensitiveDetails,
+      language: language,
+    );
+    await initialize();
+    final isEnglish = _isEnglish(language);
+    await _plugin.show(
+      id: id,
+      title: isEnglish ? 'New family message' : '새 가족 메시지',
+      body: body,
+      notificationDetails: NotificationDetails(
+        android: AndroidNotificationDetails(
+          'medbuddy_linked_chat',
+          isEnglish ? 'Family chat' : '가족 채팅',
+          channelDescription: isEnglish
+              ? 'New chat messages between linked patients and caregivers'
+              : '연동된 환자와 보호자의 새 채팅 메시지 알림',
           importance: Importance.high,
           priority: Priority.high,
         ),
-        iOS: DarwinNotificationDetails(),
+        iOS: const DarwinNotificationDetails(),
       ),
-      payload: patientHash == null || patientHash.trim().isEmpty
-          ? null
-          : 'caregiver:${Uri.encodeComponent(patientHash.trim())}',
+      // A dose-check request is still a chat message. Open its conversation;
+      // the patient chooses whether to record a dose from there.
+      payload: 'chat:$linkId',
     );
+    if (recordHistory) {
+      await _recordInbox(
+        owner,
+        NotificationInboxEntry(
+          id: 'chat:$linkId:$id',
+          title: isEnglish ? 'New family message' : '새 가족 메시지',
+          body: body,
+          payload: 'chat:$linkId',
+          category: NotificationInboxCategory.chat,
+          occurredAt: DateTime.now(),
+        ),
+      );
+    }
+  }
+
+  // 함수이름: buildLinkedChatNotificationBody
+  // 함수역할: 로컬·푸시 알림함이 같은 미리보기 길이와 내용 숨김 규칙을 사용하게 한다.
+  // 매개변수: messagePreview: 수신 내용, showSensitiveDetails: 내용 표시 허용 여부, language: 언어.
+  // 반환값: 최대 120자의 미리보기 또는 내용 없는 알림의 대체 문구.
+  static String buildLinkedChatNotificationBody({
+    String? messagePreview,
+    bool showSensitiveDetails = true,
+    String language = 'ko',
+  }) {
+    final preview = _linkedChatMessagePreview(messagePreview);
+    if (showSensitiveDetails && preview.isNotEmpty) return preview;
+    return language.trim().toLowerCase().startsWith('en')
+        ? 'You received a new message from a linked family member.'
+        : '연동된 가족에게 새 메시지가 도착했습니다.';
+  }
+
+  // 함수이름: _linkedChatMessagePreview
+  // 함수역할: 채팅 알림 본문을 한 줄로 정리하고 시스템 알림에 적합한 길이로 제한한다.
+  // 매개변수:
+  // - value (String?): 알림 길이에 맞게 공백 정리·축약할 채팅 본문
+  // 반환값:
+  // - String: 채팅 알림 본문을 한 줄로 정리하고 시스템 알림에 적합한 길이로 제한한다.
+  static String _linkedChatMessagePreview(String? value) {
+    const maximumLength = 120;
+    final normalized = (value ?? '')
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where(
+          /* 함수이름: where 콜백
+         * 함수역할: 알림 본문 조각 중 비어 있지 않은 부분만 결합 대상으로 남긴다.
+         * 매개변수:
+         * - part (String): 알림 본문에 결합할 문구 조각
+         * 반환값:
+         * - 본문 조각이 비어 있지 않으면 true.
+         */
+          (part) => part.isNotEmpty,
+        )
+        .join(' ');
+    if (normalized.length <= maximumLength) {
+      return normalized;
+    }
+    return '${normalized.substring(0, maximumLength - 1).trimRight()}…';
   }
 }

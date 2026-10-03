@@ -9,7 +9,7 @@ title Patient-Caregiver Link and Notifications - Key Classes
 skinparam backgroundColor white
 skinparam shadowing false
 skinparam linetype ortho
-skinparam defaultFontName Arial
+skinparam defaultFontName SansSerif
 skinparam defaultFontSize 15
 skinparam ArrowColor #64748B
 skinparam ArrowThickness 2
@@ -29,6 +29,13 @@ skinparam classBackgroundColor<<External>> #FFF7E6
 skinparam classBorderColor<<External>> #D97706
 
 package "Flutter Frontend" #E8F4FF {
+  class HomeScreen <<UI>>
+  class ChatListUI <<UI>>
+  class LinkedChatUI <<UI>>
+  class LinkedChatEntryUI <<UI>>
+  class ChatUnreadSummary
+  class ManageChatList <<Control>>
+  class ManageLinkedChat <<Control>>
   class LinkPatientCaregiverUI <<UI>>
   class CheckCaregiverMedicationUI <<UI>>
   class "LinkPatientCaregiver" as FLinkPatientCaregiver <<Control>>
@@ -38,15 +45,31 @@ package "Flutter Frontend" #E8F4FF {
   class CaregiverPatientLocalStateService <<Service>>
   class PushNotificationService <<Service>>
   class NotificationService <<Service>>
+  class NotificationInboxUI <<UI>>
+  class ManageNotificationInbox <<Control>>
+  class NotificationInboxStore <<Service>>
+  class NotificationInboxEntry
+  class CaregiverAlertActionControl <<Control>>
+  class CaregiverAlertDeliveryService <<Service>>
+  class CaregiverAlertContext
 }
 
 package "FastAPI Backend" #EAF8F0 {
   class "LinkPatientCaregiver" as BLinkPatientCaregiver <<Control>>
   class "CheckCaregiverMedication" as BCheckCaregiverMedication <<Control>>
   class "CheckSchedule" as BCheckSchedule <<Control>>
+  class "ManageLinkedChat" as BManageLinkedChat <<Control>>
+  class QueueMissedDoseAlerts <<Control>>
   class DispatchCaregiverAlert <<Control>>
   class ProcessCaregiverAlertOutbox <<Control>>
   class CaregiverAlertOutboxWorker <<Service>>
+  class ManageCaregiverAlert <<Control>>
+  class ProcessChatNotifications <<Control>>
+  class ChatNotificationWorker <<Service>>
+  class DispatchChatMessageAlert <<Control>>
+  class ChatConnectionManager <<Service>>
+  database "chat_messages" as DBChatMessage <<Database>>
+  database "chat_notification_jobs" as DBChatNotificationJob <<Database>>
   class PatientCaregiverLinkRepository <<Service>>
   database "patient_caregiver_links" as DBPatientCaregiverLink <<Database>>
   database "guardian_alert_settings" as DBCaregiverNotification <<Database>>
@@ -57,11 +80,45 @@ package "FastAPI Backend" #EAF8F0 {
 cloud "Firebase Cloud Messaging" as FCM
 
 LinkPatientCaregiverUI --> FLinkPatientCaregiver
+HomeScreen --> ManageChatList : active connections
+HomeScreen --> NotificationInboxUI : bell / unread badge
+HomeScreen --> ManageNotificationInbox : lifecycle / unread count
+NotificationInboxUI --> ManageNotificationInbox : list / read / delete
+ManageNotificationInbox --> NotificationInboxStore : per-account local history
+ManageNotificationInbox --> ManageChatList : current peer names
+NotificationInboxStore --> NotificationInboxEntry
+NotificationService --> NotificationInboxStore : local alerts / reminder events
+PushNotificationService --> NotificationInboxStore : recipient-scoped push
+NotificationInboxUI --> NotificationService : existing navigation handler
+HomeScreen --> ChatListUI : conditional chat tab
+ChatListUI --> LinkedChatUI : selected conversation
+ChatListUI --> ManageChatList
+ManageChatList --> FLinkPatientCaregiver
+ManageChatList --> ManageCaregiverPatientLocalState
+ManageChatList --> ManageLinkedChat : latest messages / unread summary
+NotificationService --> LinkedChatEntryUI : recipient-scoped chat route
+LinkedChatEntryUI --> FLinkPatientCaregiver : verify active link and role
+LinkedChatEntryUI --> LinkedChatUI : patient hash / peer / current settings
+ManageLinkedChat --> ChatUnreadSummary
+LinkedChatUI --> ManageLinkedChat
+note top of LinkedChatUI
+  실시간 연결과 이력 조회가 정상이면 반복 조회하지 않는다.
+  장애 시 현재 대화방에서만 12초 보완 조회한다.
+  백그라운드에서 중지하고 복귀·재연결 시 누락분을 읽는다.
+  동시 조회와 반복 재연결로 조회가 겹치거나 미뤄지지 않게 한다.
+  최초 미확인 ID에 읽음 경계를 고정하고 최신 위치에서만 읽음 처리한다.
+  보낸 말풍선의 1은 상대 read_at이 확인되면 사라진다.
+  같은 알림 재진입은 초안을 유지하며 최신 메시지로 이동한다.
+end note
 LinkPatientCaregiverUI --> ManageCaregiverPatientLocalState
 CheckCaregiverMedicationUI --> FCheckCaregiverMedication
 CheckCaregiverMedicationUI --> FSetCaregiverNotification
 CheckCaregiverMedicationUI --> ManageCaregiverPatientLocalState
 ManageCaregiverPatientLocalState --> CaregiverPatientLocalStateService
+note bottom of ManageCaregiverPatientLocalState
+  활성 연결의 서버 별칭을 기기 cache에 반영한다.
+  별칭 정보가 없는 구형 연결만 cache로 보완한다.
+end note
 
 FLinkPatientCaregiver --> BLinkPatientCaregiver : link API
 FCheckCaregiverMedication --> BCheckCaregiverMedication : patient status API
@@ -74,15 +131,49 @@ BCheckCaregiverMedication --> BCheckSchedule : reads schedule
 BCheckSchedule --> DBCaregiverAlertOutbox : completion event
 DBCaregiverAlertOutbox --> ProcessCaregiverAlertOutbox
 CaregiverAlertOutboxWorker --> ProcessCaregiverAlertOutbox : retry due events
+CaregiverAlertOutboxWorker --> QueueMissedDoseAlerts : 서버 미복약 검사
+QueueMissedDoseAlerts --> BCheckSchedule : 현재 미완료 확인
+QueueMissedDoseAlerts --> DBPatientCaregiverLink
+QueueMissedDoseAlerts --> DBCaregiverNotification
+QueueMissedDoseAlerts --> DBCaregiverAlertOutbox : missed_deadline
 ProcessCaregiverAlertOutbox --> DispatchCaregiverAlert
+ProcessCaregiverAlertOutbox --> BManageLinkedChat : 완료 chat record 저장, 직접 방송 없음
+DispatchCaregiverAlert --> BCheckSchedule : 미복약 전송 전 재검증
 DispatchCaregiverAlert --> DBCaregiverNotification
 DispatchCaregiverAlert --> DBDevicePushToken
 DispatchCaregiverAlert --> FCM
 FCM --> PushNotificationService
 PushNotificationService --> NotificationService
+PushNotificationService --> CaregiverAlertDeliveryService
+CaregiverAlertDeliveryService --> NotificationService : 검증된 context의 두 action 표시
+CaregiverAlertDeliveryService --> CaregiverAlertContext
+CaregiverAlertActionControl --> CaregiverAlertContext
+CaregiverAlertActionControl --> ManageLinkedChat : 원본 미복약별 slot_check_request
+CaregiverAlertActionControl --> ManageCaregiverAlert : 인증된 snooze / 개발용 전달 조회 API
+ManageCaregiverAlert --> DBCaregiverAlertOutbox : 전달 건별 10분 child, 반복 요청 멱등
+ManageCaregiverAlert --> DispatchCaregiverAlert : 날짜·연결·정책·미복약 재검증
+BManageLinkedChat --> ManageCaregiverAlert : 알림의 채팅 요청 검증
+BManageLinkedChat --> DBChatMessage
+BManageLinkedChat --> DBChatNotificationJob : 사용자 메시지와 같은 transaction
+ChatNotificationWorker --> ProcessChatNotifications
+ProcessChatNotifications --> DBChatNotificationJob : 선점·복구·재시도
+ProcessChatNotifications --> ChatConnectionManager : 현재 수신자 접속 여부
+ProcessChatNotifications --> DispatchChatMessageAlert
+DispatchChatMessageAlert --> DBChatMessage : 현재 읽음·삭제 상태 재검증
+DispatchChatMessageAlert --> DBDevicePushToken
+DispatchChatMessageAlert --> FCM
 
 note bottom of DispatchCaregiverAlert
-  Medication completion is delivered through
-  a retryable outbox instead of direct best-effort push.
+  Firebase 인증 mode의 완료·미복약 알림은
+  durable Outbox에서 재검증·전송·재시도한다.
+  한도 도달 시 dead_letter를 보존한다.
+  개발 mode도 서버가 미복약을 판단하며, 기기는
+  localDeliveries()에서 유효한 sent 요청을 조회해 표시한다.
+  일반 채팅 알림 큐와 보호자 Outbox는 별개이다.
+end note
+note bottom of NotificationInboxStore
+  Per-account device history, not a server mailbox.
+  Chat previews follow content-visibility settings.
+  Reminder entries represent scheduled events.
 end note
 @enduml

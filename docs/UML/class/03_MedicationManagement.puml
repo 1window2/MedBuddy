@@ -9,7 +9,7 @@ title Medication Management - Key Classes
 skinparam backgroundColor white
 skinparam shadowing false
 skinparam linetype ortho
-skinparam defaultFontName Arial
+skinparam defaultFontName SansSerif
 skinparam defaultFontSize 15
 skinparam ArrowColor #64748B
 skinparam ArrowThickness 2
@@ -35,6 +35,14 @@ package "Flutter Frontend" #E8F4FF {
   class CheckSavedMedicationUI <<UI>>
   class CheckMedicationDetailUI <<UI>>
   class MedBuddyViewModel <<Control>>
+  class MedBuddyScheduleViewModel <<Control>>
+  class MedBuddySavedMedicationViewModel <<Control>>
+  class MedBuddyReminderViewModel <<Control>>
+  class DoseSyncService <<Service>>
+  class NotificationService <<Service>>
+  class MedicationNotificationPayloadCodec <<Service>>
+  class MedicationNotificationSelection <<Entity>>
+  class ManualMedicationImageStore <<Service>>
   class "CheckSchedule" as FCheckSchedule <<Control>>
   class "CheckSavedMedication" as FCheckSavedMedication <<Control>>
   class "CheckMedicationDetail" as FCheckMedicationDetail <<Control>>
@@ -49,7 +57,7 @@ package "FastAPI Backend" #EAF8F0 {
   class MedicationCoursePolicy <<Service>>
   class SavedMedicationRetentionPolicy <<Service>>
   class SavedMedicationRepository <<Service>>
-  class LocalMedicationCatalog <<Service>>
+  class "_LocalMedicationCatalog" as LocalMedicationCatalog <<Service>>
   database "saved_medications" as DBSavedMedication <<Database>>
   database "medication_completions" as DBMedicationCompletion <<Database>>
 }
@@ -59,9 +67,36 @@ cloud "MFDS Drug APIs" as MFDS
 CheckScheduleUI --> MedBuddyViewModel
 CheckSavedMedicationUI --> MedBuddyViewModel
 CheckMedicationDetailUI --> MedBuddyViewModel
-MedBuddyViewModel --> FCheckSchedule
-MedBuddyViewModel --> FCheckSavedMedication
+MedBuddyViewModel *-- MedBuddyScheduleViewModel
+MedBuddyViewModel *-- MedBuddySavedMedicationViewModel
+MedBuddyViewModel *-- MedBuddyReminderViewModel
+MedBuddyScheduleViewModel --> FCheckSchedule
+MedBuddyScheduleViewModel --> DoseSyncService : 기기 선저장·멱등 전송
+MedBuddySavedMedicationViewModel --> FCheckSavedMedication
 MedBuddyViewModel --> FCheckMedicationDetail
+MedBuddyReminderViewModel --> NotificationService : 알림 계획 조정
+NotificationService --> MedicationNotificationPayloadCodec : shared wire validation
+MedicationNotificationPayloadCodec --> MedicationNotificationSelection
+note bottom of MedicationNotificationPayloadCodec
+  Platform-independent payload and action protocol.
+  Original dose dates and legacy navigation semantics stay unchanged.
+  Scheduling and plugin lifecycle remain in NotificationService.
+end note
+MedBuddySavedMedicationViewModel --> ManualMedicationImageStore : 기기 사진 저장
+
+note bottom of MedBuddyViewModel
+  일정 탭 재방문은 같은 날의 성공한 조회를 15초 미만 재사용한다.
+  명시적 새로고침은 재조회하며 상태 변경은 캐시를 무효화한다.
+  진행 중인 일정·알림 설정 조회는 합친다.
+end note
+note bottom of NotificationService
+  날짜별 계획과 기기 예약을 비교하여 변경분만 갱신한다.
+  동일 예약과 미루기를 보존하고 예약·미루기·취소를 직렬화한다.
+end note
+note bottom of ManualMedicationImageStore
+  사진 축소·압축은 별도 isolate에서 처리한다.
+  목록 썸네일은 표시 크기에 맞춰 디코딩 크기를 제한한다.
+end note
 
 FCheckSchedule --> BCheckSchedule : schedule API
 FCheckSavedMedication --> BCheckSavedMedication : saved medication API
@@ -72,6 +107,13 @@ BCheckSchedule --> SavedMedicationRetentionPolicy
 BCheckSchedule --> SavedMedicationRepository
 BCheckSchedule --> DBSavedMedication
 BCheckSchedule --> DBMedicationCompletion
+
+note bottom of BCheckSchedule
+  개별 약과 시간대 전체 완료·취소를 처리한다.
+  홈·알림은 전체 완료 후 일정 확인으로 연결한다.
+  알림의 대상 날짜를 검사하고 신규 시간대 완료는
+  같은 Transaction에 보호자 Outbox로 기록한다.
+end note
 
 BCheckSavedMedication --> MedicationCoursePolicy
 BCheckSavedMedication --> SavedMedicationRetentionPolicy

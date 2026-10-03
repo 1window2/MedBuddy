@@ -1,7 +1,23 @@
+// File Name: medication_schedule_entity_test.dart
+// Role: Regression coverage for preserved OCR dosage values and explicit localized units.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 
+// Function Name: main
+// Description:
+// - Register regression cases for preserved OCR dosage values and explicit localized units.
+// Parameters:
+// - None.
+// Returns:
+// - No value; the test framework executes the registered cases.
 void main() {
+  // Function Name: test callback
+  // Description:
+  // - Expected behavior: unitless OCR dosage is preserved instead of inferred from drug name.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; a failed expectation fails this test.
   test(
     'unitless OCR dosage is preserved instead of inferred from drug name',
     () {
@@ -18,6 +34,13 @@ void main() {
     },
   );
 
+  // Function Name: test callback
+  // Description:
+  // - Expected behavior: explicit structured dosage units remain localized.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; a failed expectation fails this test.
   test('explicit structured dosage units remain localized', () {
     const schedule = MedicationSchedule(
       medicationName: '테스트 캡슐',

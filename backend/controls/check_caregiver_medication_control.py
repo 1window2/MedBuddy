@@ -1,5 +1,5 @@
 # File Name: check_caregiver_medication_control.py
-# Role: Control mapped from CheckCaregiverMedication in integrated class diagram v5.
+# Role: Combines a linked patient's saved medications and daily summary for read-only caregiver access.
 
 from sqlalchemy.orm import Session
 
@@ -10,12 +10,27 @@ from entities.patient_hash_entity import normalize_patient_hash
 
 
 # Class Name: CheckCaregiverMedication
-# Role: Provides read-only medication information for one linked patient.
+# Role:
+# - Provides read-only medication information for one linked patient.
 # Responsibilities:
-#   - Validate the selected caregiver-patient relationship.
-#   - Compose saved medication and today's schedule information.
-#   - Keep caregiver reads separate from patient mutation controls.
+# - Validate the selected caregiver-patient relationship.
+# - Compose saved medication and today's schedule information.
+# - Keep caregiver reads separate from patient mutation controls.
+# Attributes:
+# - check_saved_medication (CheckSavedMedication): Control for patient-owned pillbox snapshots.
+# - check_today_medication_info (CheckTodayMedicationInfo): Control for daily dose counts and progress.
+# - link_patient_caregiver (LinkPatientCaregiver): Control for temporary codes and active patient-caregiver links.
 class CheckCaregiverMedication:
+    # Function Name: __init__
+    # Description:
+    # - Binds saved-medication, daily-summary and link controls to the supplied session.
+    # Parameters:
+    # - db (Session): SQLAlchemy session for this unit of work.
+    # - check_saved_medication (CheckSavedMedication | None): Control for patient-owned pillbox snapshots.
+    # - check_today_medication_info (CheckTodayMedicationInfo | None): Control for daily dose counts and progress.
+    # - link_patient_caregiver (LinkPatientCaregiver | None): Control for temporary codes and active patient-caregiver links.
+    # Returns:
+    # - None.
     def __init__(
         self,
         db: Session,
@@ -35,7 +50,12 @@ class CheckCaregiverMedication:
 
     # Function Name: requestPatientMedicationInfo
     # Description:
-    # - Returns medication information for an explicitly selected linked patient.
+    # - Verifies the selected patient link and combines saved medications with today's read-only dose summary.
+    # Parameters:
+    # - caregiver_hash (str): Caregiver account participating in the patient link.
+    # - patient_hash (str): Patient ownership scope for the operation.
+    # Returns:
+    # - Success envelope containing caregiver/patient scopes, saved medications and today's summary.
     def requestPatientMedicationInfo(
         self,
         caregiver_hash: str,

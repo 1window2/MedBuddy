@@ -1,3 +1,5 @@
+# File Name: llm_service_boundary.py
+# Role: Requests medication-aware lifestyle guidance from Gemini and normalizes localized response fields.
 """LLM boundary for medication-aware health recommendations."""
 
 import asyncio
@@ -13,9 +15,27 @@ from core.config import settings
 logger = logging.getLogger(__name__)
 
 
+# Class Name: LLMService
+# Role:
+# - Generates medication-aware diet, exercise and caution guidance.
+# Responsibilities:
+# - Bound generation time, enforce JSON responses and provide localized fallbacks for missing content.
+# Attributes:
+# - ai_client (genai.Client): Gemini generation client.
+# - model_name (str): Selected model identifier.
+# - timeout_seconds (float): Positive finite generation timeout.
 class LLMService:
     """UML external service for generating health recommendations."""
 
+    # Function Name: __init__
+    # Description:
+    # - Resolve the recommendation timeout, reject nonpositive or nonfinite values and bind the Gemini client and model.
+    # Parameters:
+    # - ai_client (genai.Client | None): Optional injected Gemini client; omitted to use the configured API key.
+    # - model_name (str): Gemini model identifier used for generation.
+    # - timeout_seconds (float | None): Maximum external request duration in seconds; None uses settings.
+    # Returns:
+    # - None; invalid timeout configuration raises ValueError.
     def __init__(
         self,
         ai_client: genai.Client | None = None,
@@ -35,6 +55,14 @@ class LLMService:
         self.model_name = model_name
         self.timeout_seconds = resolved_timeout
 
+    # Function Name: requestHealthRecommendation
+    # Description:
+    # - Request JSON health guidance within the configured timeout and normalize the response for the requested language.
+    # Parameters:
+    # - medication_summaries (list[dict[str, str]]): Current medications and their summarized guidance fields.
+    # - language (str): Requested output language; an en prefix selects English.
+    # Returns:
+    # - Diet and exercise text plus caution items; raises RuntimeError for timeout or generation failure.
     async def requestHealthRecommendation(
         self,
         medication_summaries: list[dict[str, str]],
@@ -63,6 +91,14 @@ class LLMService:
 
         return self._normalize_response(raw_data, language)
 
+    # Function Name: _build_prompt
+    # Description:
+    # - Embed medication summaries in localized guidance instructions that prohibit diagnoses and medication changes.
+    # Parameters:
+    # - medication_summaries (list[dict[str, str]]): Current medications and their summarized guidance fields.
+    # - language (str): Requested output language; an en prefix selects English.
+    # Returns:
+    # - English or Korean prompt requesting diet, exercise and caution JSON fields.
     def _build_prompt(
         self,
         medication_summaries: list[dict[str, str]],
@@ -119,6 +155,14 @@ class LLMService:
         {medication_json}
         """
 
+    # Function Name: _normalize_response
+    # Description:
+    # - Validate the response object, retain up to five nonempty cautions and supply localized fallback guidance.
+    # Parameters:
+    # - raw_data (Any): Decoded Gemini JSON response before shape validation.
+    # - language (str): Requested output language; an en prefix selects English.
+    # Returns:
+    # - Normalized diet recommendation, exercise recommendation and caution list.
     def _normalize_response(
         self,
         raw_data: Any,
@@ -163,11 +207,26 @@ class LLMService:
             or ["몸에 이상 반응이 느껴지면 의료진과 상담하세요."],
         }
 
+    # Function Name: _read_text
+    # Description:
+    # - Trim a supplied field and substitute the fallback when its text is absent or empty.
+    # Parameters:
+    # - value (Any): Possibly missing recommendation field.
+    # - fallback (str): Replacement text when the supplied value is empty.
+    # Returns:
+    # - Nonempty normalized text or the supplied fallback.
     @staticmethod
     def _read_text(value: Any, fallback: str) -> str:
         text = "" if value is None else str(value).strip()
         return text or fallback
 
+    # Function Name: _is_english
+    # Description:
+    # - Recognize English locale variants by a case-insensitive en prefix after trimming.
+    # Parameters:
+    # - language (str): Requested output language; an en prefix selects English.
+    # Returns:
+    # - True for an English locale; False otherwise.
     @staticmethod
     def _is_english(language: str) -> bool:
         return (language or "").strip().lower().startswith("en")

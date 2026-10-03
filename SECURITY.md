@@ -2,15 +2,18 @@
 
 ## Project Status
 
-MedBuddy has published its first Android beta and is preparing the v0.1.1
-maintenance beta. Published alpha demos remain superseded pre-release builds.
+MedBuddy has completed the Android v0.1.1 beta and is developing v0.2.0 on that
+stable baseline. Laboratory pharmacy and linked-chat features are not
+production-ready until the v0.2.0 privacy and two-device release checks are
+complete.
 
 ## Supported Versions
 
 | Version | Status | Security Handling |
 | --- | --- | --- |
-| `v0.1.1-beta` source | Maintenance beta candidate | Applicable fixes are prepared on `beta/v0.1.1` and must pass the release gates before publication. |
-| `v0.1.0-beta` | Published beta | Remains the current downloadable beta until v0.1.1 is published; applicable fixes are accumulated on `beta/v0.1.1`. |
+| `v0.2.0-beta` source | In development | Security fixes are applied before the v0.2.0 beta is published. |
+| `v0.1.1-beta` | Current baseline | Critical fixes are evaluated for the supported release line and merged forward into v0.2.0. |
+| `v0.1.0-beta` | Superseded beta | Receives no routine backports. |
 | `v0.0.9-alpha` and earlier | Published alpha demos | Superseded demos receive no routine backports. |
 
 The release tag and default branch must include all applicable security fixes.
@@ -95,8 +98,40 @@ as untrusted input:
 - Loose-pill photos follow a separate flow and may be sent to an external AI
   service for visible-attribute extraction. Do not persist or log those
   images.
+- Direct medication-entry images are optional and remain in app-owned local
+  storage. They are not uploaded by the direct-entry flow. Delete unreferenced
+  copies when an entry is abandoned or removed, without deleting gallery
+  originals owned by the user.
+- Nearby-pharmacy lookup sends the current latitude and longitude to the
+  authenticated MedBuddy backend only after foreground permission is granted.
+  The backend forwards the minimum query to the National Emergency Medical
+  Center public API. Do not persist coordinates, include them in application
+  logs, or expose the public-data credential to Flutter.
 - Keep user-facing guidance clearly informational and avoid presenting it as a
   substitute for professional medical advice.
+
+## Linked Medication Chat
+
+Medication-context chat is an experimental linked-care feature, not a general
+messenger. Every history, send, read, unread-count, and WebSocket operation must
+verify the authenticated principal, the active patient-caregiver link, and the
+requested link identifier on the server. Every selected medication identifier
+must belong to the linked patient and be active on the current date. The server
+must deduplicate and bound the selection before rebuilding display snapshots.
+
+Chat text and medication contexts are stored medical-adjacent communication
+data. Apply bounded message length, normalize client-generated message IDs,
+enforce idempotent retries, and never log message bodies. Revoking a link must
+immediately deny REST and WebSocket access. The laboratory setting controls UI
+visibility only; it is not an authorization mechanism.
+
+Chat notifications may show a whitespace-normalized message preview capped at
+120 characters so the recipient can understand the conversation without
+opening the app. The preview is sensitive delivery data and can appear on a
+device lock screen according to operating-system notification settings. The
+notification must not add medication names, patient display names, image URLs,
+or any data beyond the user-authored preview and the private link identifier
+needed for authenticated in-app navigation.
 
 ## Push Notification Data
 
@@ -114,6 +149,12 @@ per-slot preference before dispatch. Firebase mode sends newly completed-dose
 events through FCM. Missed-deadline checks currently run through the
 authenticated Android background monitor; local demo mode polls for both event
 types and displays local notifications without remote push delivery.
+
+Linked-chat notifications follow the same token lifecycle but use a separate
+event category. After rechecking the active link, the backend sends the bounded
+message preview or a generic fallback when the body is empty. Local demo
+monitoring applies the same normalization and length limit and deduplicates
+already observed messages.
 
 ## Identity and Authorization Boundary
 
@@ -142,6 +183,14 @@ revalidated before API responses. Prescription-region responses retain only
 validated categories and coordinates, never model-returned region text.
 Caregiver lock-screen notification content remains generic while the private
 payload retains the patient scope needed for authenticated in-app navigation.
+Chat REST and WebSocket routes apply the same principal and active-link checks;
+WebSocket authentication does not create a weaker alternate path. Medication,
+schedule-slot, and pharmacy context identifiers are revalidated and rebuilt as
+server snapshots instead of accepting client-supplied medical or location
+details. Slot-completion events are idempotent and cannot be used by a caregiver
+to modify the patient's completion record. Nearby-pharmacy favorites remain a
+device-local preference and never grant access. Laboratory toggles never grant
+data access by themselves.
 
 The approved migration boundary and delivery order are documented in
 [`docs/MedBuddy - Beta Security Architecture.md`](docs/MedBuddy%20-%20Beta%20Security%20Architecture.md).
@@ -154,10 +203,11 @@ keystores ignored, and provides a protected GitHub Environment workflow that
 requires release signing credentials. Ordinary pull requests can compile an
 unsigned release artifact but never receive signing material.
 
-The Android manifests do not enable clear-text API traffic. Debug builds retain
-Internet permission for ADB, breakpoints, and Flutter hot reload, while
-`ApiConfig` requires the same public HTTPS backend contract in debug, profile,
-and release builds. The beta backend runs FastAPI, PostgreSQL, Redis, and
+The profile and release Android manifests do not enable clear-text API traffic.
+Debug builds retain a local-demo exception, and `ApiConfig` limits it to
+`10.0.2.2` or loopback hosts on port 8000 when
+`MEDBUDDY_ALLOW_LOCAL_HTTP=true`. Profile and release builds require the public
+HTTPS backend contract. The beta backend runs FastAPI, PostgreSQL, Redis, and
 `cloudflared` on a dedicated team-controlled Ubuntu host. PostgreSQL and Redis
 remain on the private Docker network, FastAPI port 8000 is bound only to host
 loopback, and Cloudflare Tunnel is the only public ingress path. Router port
