@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/check_nearby_hospital_control.dart';
+import 'package:medbuddy_frontend/entities/device_coordinate_entity.dart';
 import 'package:medbuddy_frontend/entities/nearby_pharmacy_entity.dart';
 import 'package:medbuddy_frontend/services/device_location_service.dart';
 import 'package:medbuddy_frontend/services/pharmacy_favorite_service.dart';
@@ -54,7 +55,7 @@ void main() {
             ),
           );
           addTearDown(control.dispose);
-          final result = await control.requestNearbyPharmacySearch(
+          final result = await control.requestNearbyCareSearch(
             searchArea: _area,
           );
           expect(result.searchTruncated, truncated);
@@ -88,7 +89,7 @@ void main() {
         }),
       );
       addTearDown(control.dispose);
-      final result = await control.requestNearbyPharmacySearch(
+      final result = await control.requestNearbyCareSearch(
         searchMode: PharmacySearchMode.all,
         targetDateTime: time,
       );
@@ -134,7 +135,7 @@ void main() {
       }),
     );
     addTearDown(control.dispose);
-    final result = await control.requestNearbyPharmacySearch(searchArea: area);
+    final result = await control.requestNearbyCareSearch(searchArea: area);
     expect(calls, 1);
     expect(result.searchArea, same(area));
   });
@@ -145,7 +146,7 @@ void main() {
       client: MockClient((_) async => _response()),
     );
     addTearDown(control.dispose);
-    final result = await control.requestNearbyPharmacySearch(
+    final result = await control.requestNearbyCareSearch(
       searchArea: PharmacySearchArea(
         center: _area.center,
         radiusKm: .3,
@@ -174,7 +175,7 @@ void main() {
         }),
       );
       addTearDown(control.dispose);
-      await control.requestNearbyPharmacySearch(
+      await control.requestNearbyCareSearch(
         searchArea: PharmacySearchArea(center: _area.center, radiusKm: .3),
         targetDateTime: DateTime(2026, 9, 29),
         searchMode: unknown
@@ -196,7 +197,7 @@ void main() {
     );
     addTearDown(control.dispose);
     await expectLater(
-      control.requestNearbyPharmacySearch(
+      control.requestNearbyCareSearch(
         searchArea: PharmacySearchArea(center: _area.center, radiusKm: .3),
       ),
       throwsStateError,
@@ -215,14 +216,14 @@ void main() {
           return calls == 1 ? gate.future : _response();
         }),
       );
-      final pending = control.requestNearbyPharmacySearch(
+      final pending = control.requestNearbyCareSearch(
         searchArea: PharmacySearchArea(center: _area.center, radiusKm: .3),
       );
       await Future<void>.delayed(Duration.zero);
       if (dispose) {
         control.dispose();
       } else {
-        await control.requestNearbyPharmacySearch(searchArea: _area);
+        await control.requestNearbyCareSearch(searchArea: _area);
       }
       gate.complete(_response());
       await pending;
@@ -261,7 +262,7 @@ void main() {
           );
         }),
       );
-      final result = await control.requestNearbyPharmacySearch(
+      final result = await control.requestNearbyCareSearch(
         searchArea: _area,
         searchMode: PharmacySearchMode.lateHours,
       );
@@ -284,7 +285,7 @@ void main() {
         return _response();
       }),
     );
-    await control.requestNearbyPharmacySearch(searchArea: _area);
+    await control.requestNearbyCareSearch(searchArea: _area);
     control.dispose();
   });
 
@@ -299,7 +300,7 @@ void main() {
         return _response();
       }),
     );
-    final pending = control.requestNearbyPharmacySearch();
+    final pending = control.requestNearbyCareSearch();
     control.department = 'D013';
     location.result.complete(_area.center);
     await pending;
@@ -316,7 +317,7 @@ void main() {
         client: MockClient((_) async => response),
       );
       await expectLater(
-        control.requestNearbyPharmacySearch(searchArea: _area),
+        control.requestNearbyCareSearch(searchArea: _area),
         throwsStateError,
       );
       control.dispose();

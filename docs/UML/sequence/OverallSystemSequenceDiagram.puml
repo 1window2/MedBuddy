@@ -38,6 +38,7 @@ box "Flutter Frontend"
     participant "DoseSyncService" as DoseSync
     database "DoseOutboxStore\n계정별 암호화 SQLite" as DoseStore
     control "MedBuddyViewModel" as ViewModel
+    control "LinkedChatHistoryViewModel" as ChatHistory
     control "Frontend Controller\nInputPrescription\nCheckMedicationDetail\nCheckSchedule\nCheckSavedMedication\nIdentifyPillBatch\nCheckNearbyPharmacy\nManageLinkedChat 등" as FrontControl
     participant "Frontend Service\nPrescriptionLocalOcrService\nPrescriptionFrameAnalyzer\nPrescriptionCameraOrientationService\nPrescriptionImageCropService\nDeviceLocationBoundary\nNotificationService\nCaregiverPatientLocalStateService\nLinkedChatRealtimeService 등" as FrontService
     participant "AuthenticatedApiClient" as ApiClient
@@ -346,15 +347,21 @@ loop 인식된 MedicationSchedule마다 (최대 여섯 건 동시 조회)
     ApiClient -> Router : 약 상세 조회 요청
     Router -> BackControl : CheckMedicationDetail.requestMedicationDetail(rawText, original_text)
     note right of BackControl : 함량 포함 원문부터 조회하고 검색 변형은 최대 8개.\n로컬·캐시·API 후보 모두 원문 함량·제형을 검사한다.\nOCR 로컬·AI 교정도 같은 안전 규칙을 적용한다.
-    BackControl -> BackService : _LocalMedicationCatalog.fetch_drug_info()
+    BackControl -> BackService : LocalMedicationCatalog.fetch_drug_info()
     BackService -> Database : drug_basic_infos 및\ndrug_approval_infos 조회
     Database --> BackService : Local 약품 후보
+    note right of BackService
+      Catalog reads use worker-owned sessions, not the request session.
+      Generated approval summaries cache in an isolated worker transaction
+      only if product identity and source documents still match.
+      Connection-local in-memory SQLite skips optional summary persistence.
+    end note
     BackService --> BackControl : 원문 기준으로 순위·안전 조건 검사
 
     alt 검증 가능한 Local 후보 있음
         BackControl -> BackControl : 상세·이미지 보완
     else Local 후보 없음 또는 원문 조건 불일치
-        BackControl -> BackService : _MedicationDetailCache.get(reference + search keyword)
+        BackControl -> BackService : MedicationDetailCache.get(reference + search keyword)
         BackService -> Redis : 원문별 Cache 조회
         Redis --> BackService : Cache 후보 또는 없음
         BackService --> BackControl : Cache에도 원문 기준 검사
@@ -1029,7 +1036,7 @@ ViewModel --> UI : 저장 결과와 갱신된 일정
 == 12. 근처 운영 약국 지도·목록 조회 ==
 
 User -> UI : 홈의 근처 운영 약국 선택
-UI -> FrontControl : CheckNearbyPharmacy.requestNearbyPharmacies()
+UI -> FrontControl : CheckNearbyCare.requestNearbyCareSearch()
 FrontControl -> FrontService : DeviceLocationBoundary.requestCurrentCoordinate()
 FrontService -> LocationService : 전경 위치 권한과 현재 좌표 요청
 LocationService --> FrontService : 현재 좌표 또는 권한 오류
@@ -1114,7 +1121,8 @@ end
 == 13. 복약 맥락 채팅 ==
 
 User -> UI : 활성 환자-보호자 연결의 채팅 선택
-UI -> FrontControl : ManageLinkedChat.requestHistory(linkId)
+UI -> ChatHistory : initialize immutable account/link session
+ChatHistory -> FrontControl : ManageLinkedChat.requestHistory(linkId)
 FrontControl -> ApiClient : GET /chat/links/{linkId}/messages
 ApiClient -> Router : Bearer Token과 연결 범위 요청
 Router -> BackControl : ManageLinkedChat.require_active_link()
@@ -1124,8 +1132,15 @@ Database --> BackControl : 연결과 ChatMessage 목록
 BackControl --> Router : 복약 문맥 Snapshot을 포함한 채팅 이력
 Router --> ApiClient : 채팅 이력 응답
 ApiClient --> FrontControl : ChatMessage 목록
-FrontControl --> UI : 채팅 이력 출력
-UI -> FrontService : LinkedChatRealtimeService.start()
+FrontControl --> ChatHistory : scoped history response
+ChatHistory --> UI : immutable reconciled history
+ChatHistory -> FrontService : LinkedChatRealtimeService.start()
+note right of ChatHistory
+  Coalesces recovery; owns pagination, read/deletion evidence and fallback timer.
+  UI owns composer/actions and supplies visible/latest-position predicates.
+  Account/link/patient changes replace the keyed presentation session.
+  Disposed callbacks and wrong-link events never publish to the new session.
+end note
 FrontService -> ApiClient : buildAuthenticationHeaders(streamUri)
 ApiClient --> FrontService : ID Token, API contract, 조건부 App Check Token
 FrontService -> Router : 인증 header와 WSS /chat/links/{linkId}/stream

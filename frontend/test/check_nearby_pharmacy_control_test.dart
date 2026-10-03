@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/check_nearby_pharmacy_control.dart';
+import 'package:medbuddy_frontend/entities/device_coordinate_entity.dart';
 import 'package:medbuddy_frontend/entities/nearby_pharmacy_entity.dart';
 import 'package:medbuddy_frontend/services/device_location_service.dart';
 import 'package:medbuddy_frontend/services/pharmacy_external_action_service.dart';

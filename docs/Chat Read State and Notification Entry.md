@@ -40,5 +40,19 @@
 읽음 표시는 대화를 확인한 상태이지 실제 복용·진료·메시지 이해 여부를 검증한 결과가 아니다.
 Firebase 운영 푸시 도착은 로컬 인증 비활성 데모와 별도 검증이 필요하다.
 
+## Conversation-state ownership
+
+`LinkedChatHistoryViewModel` owns one immutable account/link scope: coalesced history
+recovery, backwards pagination, monotonic read receipts, deletion evidence and
+failure-only polling. The UI supplies visibility/latest-position predicates and
+rendering callbacks; it cannot mutate the history snapshot. Authenticated REST and
+realtime adapters remain borrowed resources owned by the conversation presentation.
+Late responses and wrong-link events cannot publish into a disposed history owner.
+
+Changing account, link or patient replaces the conversation session and its
+adapters, draft and history. Updating settings or re-entering the same conversation
+keeps that session and draft. No backend authorization, message wire fields,
+read-receipt meaning or retry/idempotency contract changes with this refactor.
+
 관련 UML: [읽음·알림 진입 시퀀스](UML/sequence/ChatReadState.puml),
 [연동·알림 클래스](UML/class/04_CaregiverNotifications.puml).

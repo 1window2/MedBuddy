@@ -71,7 +71,12 @@ class AccountOperationLocks:
         acquired = False
         try:
             # Step 2: Bound the asynchronous wait and hold through endpoint execution.
-            await asyncio.wait_for(entry.lock.acquire(), timeout=timeout)
+            if timeout <= 0:
+                raise TimeoutError
+            # Inline acquisition preserves cancellation at ownership handoff;
+            # wait_for can swallow it when its acquisition child has just finished.
+            async with asyncio.timeout(timeout):
+                await entry.lock.acquire()
             acquired = True
             yield
         finally:

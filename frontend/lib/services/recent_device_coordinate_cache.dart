@@ -1,9 +1,9 @@
-import '../entities/nearby_pharmacy_entity.dart';
+import '../entities/device_coordinate_entity.dart';
 
 /// Process-memory-only GPS reuse. Never persists or logs location.
 class RecentDeviceCoordinateCache {
   RecentDeviceCoordinateCache({DateTime Function()? now})
-      : _now = now ?? DateTime.now;
+    : _now = now ?? DateTime.now;
 
   final DateTime Function() _now;
   DeviceCoordinate? _coordinate;

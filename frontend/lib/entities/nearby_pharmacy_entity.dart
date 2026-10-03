@@ -1,26 +1,7 @@
 // 파일명: nearby_pharmacy_entity.dart
 // 역할: 현재 위치와 근처 약국 조회 결과를 표현한다.
 
-// 클래스명: DeviceCoordinate
-// 역할: 위치 플러그인과 분리된 WGS84 위도·경도 값이다.
-// 주요 책임:
-// - 주변 약국 조회와 외부 길찾기에서 동일한 좌표 계약을 사용하게 한다.
-// 속성:
-// - latitude (double): WGS84 위도(도 단위)
-// - longitude (double): WGS84 경도(도 단위)
-class DeviceCoordinate {
-  final double latitude;
-  final double longitude;
-
-  // 함수이름: DeviceCoordinate
-  // 함수역할: 기기의 WGS84 위도와 경도를 외부 위치 플러그인에 의존하지 않는 값으로 묶는다.
-  // 매개변수:
-  // - latitude (double): WGS84 위도(도 단위)
-  // - longitude (double): WGS84 경도(도 단위)
-  // 반환값:
-  // - DeviceCoordinate: 초기화된 인스턴스.
-  const DeviceCoordinate({required this.latitude, required this.longitude});
-}
+import 'device_coordinate_entity.dart';
 
 // 클래스명: PharmacySearchArea
 // 역할: 기기 위치·지도 중심·기본 위치의 검색 좌표와 반경을 보관한다.

@@ -10,6 +10,8 @@ import 'package:flutter/rendering.dart';
 
 import '../controls/check_nearby_hospital_control.dart';
 import '../controls/check_nearby_pharmacy_control.dart';
+import '../controls/check_nearby_care_control.dart';
+import '../entities/device_coordinate_entity.dart';
 import '../entities/nearby_pharmacy_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/device_location_service.dart';
@@ -138,13 +140,13 @@ typedef NearbyPharmacyMapBuilder =
 // - 약국별 전화 및 외부 지도 길찾기 요청을 Control에 전달한다.
 // 속성:
 // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-// - control (CheckNearbyPharmacy?): 화면의 조회·변경 요청을 처리할 컨트롤러.
+// - control (CheckNearbyCare?): 화면의 조회·변경 요청을 처리할 컨트롤러.
 // - mapBuilder (NearbyPharmacyMapBuilder?): 약국 목록과 선택 상태로 지도 위젯을 만드는 주입 함수.
 // - favoriteService (PharmacyFavoriteService?): 사용자별 약국 즐겨찾기 저장소.
 // - selectionMode (bool): 일반 검색(false) 또는 약국·전화 확인 여부를 반환하는 채팅 공유 선택(true) 모드.
 class CheckNearbyPharmacyUI extends StatefulWidget {
   final UserSetting userSetting;
-  final CheckNearbyPharmacy? control;
+  final CheckNearbyCare? control;
   final NearbyPharmacyMapBuilder? mapBuilder;
   final PharmacyFavoriteService? favoriteService;
   final bool selectionMode;
@@ -156,7 +158,7 @@ class CheckNearbyPharmacyUI extends StatefulWidget {
   // 매개변수:
   // - key (Key?): 위젯을 구분하고 상태를 유지할 식별 키.
   // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-  // - control (CheckNearbyPharmacy?): 화면의 조회·변경 요청을 처리할 컨트롤러.
+  // - control (CheckNearbyCare?): 화면의 조회·변경 요청을 처리할 컨트롤러.
   // - mapBuilder (NearbyPharmacyMapBuilder?): 약국 목록과 선택 상태로 지도 위젯을 만드는 주입 함수.
   // - favoriteService (PharmacyFavoriteService?): 사용자별 약국 즐겨찾기 저장소.
   // 반환값: 입력 설정이 반영된 CheckNearbyPharmacyUI 인스턴스.
@@ -175,7 +177,7 @@ class CheckNearbyPharmacyUI extends StatefulWidget {
   // 매개변수:
   // - key (Key?): 위젯을 구분하고 상태를 유지할 식별 키.
   // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-  // - control (CheckNearbyPharmacy?): 화면의 조회·변경 요청을 처리할 컨트롤러.
+  // - control (CheckNearbyCare?): 화면의 조회·변경 요청을 처리할 컨트롤러.
   // - mapBuilder (NearbyPharmacyMapBuilder?): 약국 목록과 선택 상태로 지도 위젯을 만드는 주입 함수.
   // - favoriteService (PharmacyFavoriteService?): 사용자별 약국 즐겨찾기 저장소.
   // 반환값: 입력 설정이 반영된 CheckNearbyPharmacyUI 인스턴스.
@@ -211,7 +213,7 @@ class CheckNearbyPharmacyUI extends StatefulWidget {
 // - _isLoading (bool): 진행 중 표시를 보여줄지 여부.
 class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     with WidgetsBindingObserver {
-  late final CheckNearbyPharmacy _control;
+  late final CheckNearbyCare _control;
   late final bool _ownsControl;
   late final PharmacyFavoriteService _favoriteService;
   List<NearbyPharmacy> _pharmacies = const [];
@@ -386,7 +388,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       _errorMessage = null;
     });
     try {
-      final result = await _control.requestNearbyPharmacySearch(
+      final result = await _control.requestNearbyCareSearch(
         searchArea: requestedArea,
         // 최초 조회와 내 위치 재검색만 좁힌다. 지도에서 고른 지역은 우선 유지한다.
         maxDistanceKm: widget.hospitals

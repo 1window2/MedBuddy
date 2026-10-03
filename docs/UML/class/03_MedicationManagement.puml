@@ -57,7 +57,11 @@ package "FastAPI Backend" #EAF8F0 {
   class MedicationCoursePolicy <<Service>>
   class SavedMedicationRetentionPolicy <<Service>>
   class SavedMedicationRepository <<Service>>
-  class "_LocalMedicationCatalog" as LocalMedicationCatalog <<Service>>
+  class LocalMedicationCatalog <<Service>>
+  class MedicationTextNormalizer <<Service>>
+  class MedicationNameMatcher <<Service>>
+  class MedicationDetailCache <<Boundary>>
+  class MedicationSummaryGenerator <<Boundary>>
   database "saved_medications" as DBSavedMedication <<Database>>
   database "medication_completions" as DBMedicationCompletion <<Database>>
 }
@@ -121,6 +125,20 @@ BCheckSavedMedication --> SavedMedicationRepository
 BCheckSavedMedication --> DBSavedMedication
 
 BCheckMedicationDetail --> LocalMedicationCatalog
+BCheckMedicationDetail --> MedicationTextNormalizer
+BCheckMedicationDetail --> MedicationNameMatcher
+BCheckMedicationDetail --> MedicationDetailCache
+BCheckMedicationDetail --> MedicationSummaryGenerator
+LocalMedicationCatalog --> MedicationNameMatcher
+LocalMedicationCatalog --> MedicationSummaryGenerator
+MedicationNameMatcher --> MedicationTextNormalizer
+note bottom of LocalMedicationCatalog
+  Workers own read/write sessions; request transactions are never committed.
+  Summary writes compare the original product/document snapshot atomically.
+  Refresh/deletion races do not attach old guidance to a changed catalog row.
+  Optional caching failure does not hide generated details.
+  Connection-local in-memory SQLite skips summary persistence.
+end note
 BCheckMedicationDetail --> MFDS
 
 BCheckSchedule --> FMedicationSchedule : daily schedule

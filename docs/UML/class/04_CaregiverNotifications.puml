@@ -32,6 +32,9 @@ package "Flutter Frontend" #E8F4FF {
   class HomeScreen <<UI>>
   class ChatListUI <<UI>>
   class LinkedChatUI <<UI>>
+  class LinkedChatHistoryViewModel <<Control>>
+  interface LinkedChatSessionTransport
+  class LinkedChatRealtimeService <<Service>>
   class LinkedChatEntryUI <<UI>>
   class ChatUnreadSummary
   class ManageChatList <<Control>>
@@ -101,6 +104,16 @@ LinkedChatEntryUI --> FLinkPatientCaregiver : verify active link and role
 LinkedChatEntryUI --> LinkedChatUI : patient hash / peer / current settings
 ManageLinkedChat --> ChatUnreadSummary
 LinkedChatUI --> ManageLinkedChat
+LinkedChatUI *-- LinkedChatHistoryViewModel : account/link/patient session
+LinkedChatHistoryViewModel --> ManageLinkedChat : borrowed authenticated control
+LinkedChatHistoryViewModel --> LinkedChatSessionTransport : borrowed lifecycle contract
+LinkedChatRealtimeService ..|> LinkedChatSessionTransport
+note bottom of LinkedChatHistoryViewModel
+  Owns history recovery, backwards pagination, read/deletion evidence
+  and failure-only polling; publishes immutable snapshots.
+  UI supplies visibility/latest-position predicates and owns the draft.
+  Late/disposed or wrong-link responses cannot update another session.
+end note
 note top of LinkedChatUI
   실시간 연결과 이력 조회가 정상이면 반복 조회하지 않는다.
   장애 시 현재 대화방에서만 12초 보완 조회한다.

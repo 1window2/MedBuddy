@@ -64,8 +64,8 @@ from core.request_rate_limits import (
 from controls.authorization_control import AuthorizationControl
 from controls.check_medication_detail_control import (
     CheckMedicationDetail,
-    _MedicationDetailCache,
 )
+from boundaries.medication_detail_cache_boundary import MedicationDetailCache
 from controls.check_nearby_pharmacy_control import CheckNearbyPharmacy
 from controls.check_nearby_hospital_control import CheckNearbyHospital
 from controls.check_prescription_change_control import CheckPrescriptionChange
@@ -93,7 +93,7 @@ from repositories.async_pharmacy_catalog import AsyncPharmacyCatalog
 from repositories.korean_holiday_cache import SessionScopedKoreanHolidayCache
 
 logger = logging.getLogger(__name__)
-_medication_detail_cache: _MedicationDetailCache | None = None
+_medication_detail_cache: MedicationDetailCache | None = None
 _public_drug_transport = _PublicDrugTransport()
 _public_drug_small_api = PublicDrugSmallAPI(transport=_public_drug_transport)
 _public_drug_large_api = PublicDrugLargeAPI(transport=_public_drug_transport)
@@ -518,10 +518,10 @@ def get_manage_account(
 # - None.
 # Returns:
 # - Shared medication-detail cache instance.
-async def get_medication_detail_cache() -> _MedicationDetailCache:
+async def get_medication_detail_cache() -> MedicationDetailCache:
     global _medication_detail_cache
     if _medication_detail_cache is None:
-        _medication_detail_cache = _MedicationDetailCache()
+        _medication_detail_cache = MedicationDetailCache()
     return _medication_detail_cache
 
 
@@ -677,12 +677,12 @@ def get_identify_pill() -> IdentifyPill:
 # - Binds local drug lookup to the request session while reusing Redis and public drug/image clients.
 # Parameters:
 # - db (Session): SQLAlchemy session for this unit of work.
-# - medication_cache (_MedicationDetailCache): Shared Redis cache of medication detail results.
+# - medication_cache (MedicationDetailCache): Shared Redis cache of medication detail results.
 # Returns:
 # - Request-scoped CheckMedicationDetail control.
 def get_check_medication_detail(
     db: Session = Depends(get_db),
-    medication_cache: _MedicationDetailCache = Depends(
+    medication_cache: MedicationDetailCache = Depends(
         get_medication_detail_cache
     ),
 ) -> CheckMedicationDetail:

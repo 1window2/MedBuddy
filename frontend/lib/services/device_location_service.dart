@@ -3,7 +3,7 @@
 
 import 'package:geolocator/geolocator.dart';
 
-import '../entities/nearby_pharmacy_entity.dart';
+import '../entities/device_coordinate_entity.dart';
 import 'recent_device_coordinate_cache.dart';
 
 // 클래스명: DeviceLocationFailure
@@ -122,7 +122,8 @@ class GeolocatorDeviceLocationService implements DeviceLocationBoundary {
         latitude: position.latitude,
         longitude: position.longitude,
       );
-      if (position.accuracy.isFinite && position.accuracy >= 0 &&
+      if (position.accuracy.isFinite &&
+          position.accuracy >= 0 &&
           position.accuracy <= 100) {
         _recentFix.store(coordinate);
       } else {

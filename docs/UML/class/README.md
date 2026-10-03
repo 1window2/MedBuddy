@@ -111,3 +111,10 @@ cleanup and cancellation-safe request database work are reflected in the changed
 sources and their regenerated PNGs. `ClassDiagram` explicitly uses the bundled
 ELK layout engine; the compact feature diagrams retain Smetana. Rendered locally
 with PlantUML 1.2026.6 without transmitting diagram source to a remote service.
+
+The follow-up refactoring separates medication-detail cache, summary, name matching
+and local catalog collaborators; nearby hospital/pharmacy controls are siblings
+under `CheckNearbyCare`, and generic GPS values live outside the pharmacy module.
+Chat history/recovery/read state belongs to `LinkedChatHistoryViewModel`, while
+conversation-scoped presentation retains composer, navigation and adapter ownership.
+The changed class and sequence PNGs are regenerated together with their sources.

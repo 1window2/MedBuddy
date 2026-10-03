@@ -9,6 +9,8 @@ import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/check_nearby_pharmacy_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_nearby_hospital_control.dart';
 import 'package:medbuddy_frontend/controls/check_nearby_pharmacy_control.dart';
+import 'package:medbuddy_frontend/controls/check_nearby_care_control.dart';
+import 'package:medbuddy_frontend/entities/device_coordinate_entity.dart';
 import 'package:medbuddy_frontend/entities/nearby_pharmacy_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/services/device_location_service.dart';
@@ -87,7 +89,7 @@ class _MapProbe {
 // 함수이름: _app
 // 함수역할: 약국 화면과 지도 대역을 연결한다. 매개변수: 제어기·지도·언어. 반환값: 테스트 앱.
 Widget _app(
-  CheckNearbyPharmacy control,
+  CheckNearbyCare control,
   _MapProbe map, {
   String language = 'ko',
   bool hospitals = false,
@@ -202,7 +204,7 @@ void main() {
         }),
       );
       final time = DateTime(2026, 9, 12, 12);
-      final result = await control.requestNearbyPharmacySearch(
+      final result = await control.requestNearbyCareSearch(
         searchArea: _mapArea,
         searchMode: PharmacySearchMode.all,
         targetDateTime: time,
@@ -234,7 +236,7 @@ void main() {
           return http.Response('{"data":[]}', 200);
         }),
       );
-      final result = await control.requestNearbyPharmacySearch();
+      final result = await control.requestNearbyCareSearch();
       expect(result.searchArea!.isFallback, isTrue);
       expect(requested.queryParameters['latitude'], '37.5516000');
       expect(requested.queryParameters['longitude'], '126.9250000');
@@ -253,13 +255,13 @@ void main() {
       client: MockClient((_) async => http.Response('{"detail":"down"}', 500)),
     );
     expect((await control.requestSearchArea()).isFallback, isTrue);
-    await expectLater(control.requestNearbyPharmacySearch(), throwsStateError);
+    await expectLater(control.requestNearbyCareSearch(), throwsStateError);
     await expectLater(
       control.requestSearchArea(radiusKm: 51),
       throwsArgumentError,
     );
     await expectLater(
-      control.requestNearbyPharmacySearch(
+      control.requestNearbyCareSearch(
         searchArea: const PharmacySearchArea(
           center: DeviceCoordinate(latitude: 91, longitude: 127),
         ),

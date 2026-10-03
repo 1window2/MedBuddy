@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/linked_chat_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/manage_linked_chat_control.dart';
+import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/services/authenticated_api_client.dart';
 import 'package:medbuddy_frontend/services/linked_chat_realtime_service.dart';
 
@@ -17,6 +18,109 @@ import 'package:medbuddy_frontend/services/linked_chat_realtime_service.dart';
 // 함수역할: 화면 노출과 응답 순서에 따른 채팅 회귀 사례를 등록한다.
 // 매개변수: 없음. 반환값: 없음.
 void main() {
+  for (final scope in [
+    (
+      name: 'account',
+      userHash: 'patient-b',
+      linkId: 17,
+      patientHash: 'patient-a',
+    ),
+    (name: 'link', userHash: 'patient-a', linkId: 18, patientHash: 'patient-a'),
+    (
+      name: 'patient',
+      userHash: 'patient-a',
+      linkId: 17,
+      patientHash: 'patient-b',
+    ),
+  ]) {
+    // Verifies each scope identity change replaces drafts, subscriptions and pending recovery ownership.
+    testWidgets(
+      'chat session replaces stale ${scope.name} state and ignores late history',
+      (tester) async {
+        final previous = _ChatFlow()..history = [_message(1)];
+        final next = _ChatFlow(userHash: scope.userHash, linkId: scope.linkId)
+          ..history = [
+            _message(2, sender: scope.userHash, linkId: scope.linkId),
+          ];
+        addTearDown(() => previous.close(tester));
+        addTearDown(() => next.close(tester));
+        await previous.open(tester);
+        await tester.enterText(find.byType(TextField), 'Private draft');
+        final delayed = Completer<List<Map<String, dynamic>>>();
+        previous.nextHistory = delayed;
+        await tester.pump(const Duration(seconds: 12));
+        expect(previous.historyRequests, 2);
+        await tester.pumpWidget(
+          MaterialApp(
+            navigatorKey: previous.navigator,
+            home: LinkedChatUI(
+              linkId: scope.linkId,
+              currentUserHash: scope.userHash,
+              patientHash: scope.patientHash,
+              control: next.control,
+              apiClient: next.authentication,
+              realtimeService: next.realtime,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<TextField>(find.byType(TextField)).controller!.text,
+          isEmpty,
+        );
+        expect(find.text('시험 메시지 2'), findsOneWidget);
+        delayed.complete([
+          for (var id = 100; id < 150; id++)
+            _message(id, sender: 'caregiver-a'),
+        ]);
+        previous.realtime.emit({
+          'type': 'chat_message',
+          'message': _message(200, sender: 'caregiver-a'),
+        });
+        await tester.pumpAndSettle();
+        expect(previous.historyRequests, 2);
+        expect(previous.readRequests, isEmpty);
+        expect(find.text('시험 메시지 149'), findsNothing);
+        expect(find.text('시험 메시지 200'), findsNothing);
+        expect(find.text('시험 메시지 2'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  // Verifies same-conversation display changes retain composer and authenticated adapter lifetime.
+  testWidgets('same-scope settings and peer updates preserve the draft', (
+    tester,
+  ) async {
+    final flow = _ChatFlow();
+    addTearDown(() => flow.close(tester));
+    await flow.open(tester);
+    await tester.enterText(find.byType(TextField), 'Keep this draft');
+    final requestsBefore = flow.historyRequests;
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: flow.navigator,
+        home: LinkedChatUI(
+          linkId: 17,
+          currentUserHash: 'patient-a',
+          patientHash: 'patient-a',
+          peerName: 'Updated peer',
+          userSetting: const UserSetting(language: 'en'),
+          control: flow.control,
+          apiClient: flow.authentication,
+          realtimeService: flow.realtime,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      'Keep this draft',
+    );
+    expect(find.textContaining('Updated peer'), findsWidgets);
+    expect(flow.historyRequests, requestsBefore);
+  });
+
   for (final background in [false, true]) {
     // 함수이름: 보이지 않는 채팅 읽음 차단 테스트
     // 함수역할: 다른 화면·백그라운드에서는 읽지 않고 채팅으로 돌아오면 읽음 처리한다.
@@ -140,9 +244,13 @@ void main() {
 // 함수이름: _message
 // 함수역할: 개인정보 없는 채팅 메시지 응답을 만든다.
 // 매개변수: id 메시지 번호, sender 발신자. 반환값: API 형식 메시지.
-Map<String, dynamic> _message(int id, {String sender = 'patient-a'}) => {
+Map<String, dynamic> _message(
+  int id, {
+  String sender = 'patient-a',
+  int linkId = 17,
+}) => {
   'message_id': id,
-  'link_id': 17,
+  'link_id': linkId,
   'sender_hash': sender,
   'client_message_id': 'audit_message_$id',
   'body': '시험 메시지 $id',
@@ -153,8 +261,11 @@ Map<String, dynamic> _message(int id, {String sender = 'patient-a'}) => {
 // 역할: 실제 채팅 UI·Control에 격리된 HTTP 응답과 실시간 이벤트를 연결한다.
 // 주요 책임: 읽음 요청을 기록하고 다음 이력 응답의 지연을 제어한다.
 class _ChatFlow {
+  final String userHash;
+  final int linkId;
   final navigator = GlobalKey<NavigatorState>();
   final readRequests = <int>[];
+  int historyRequests = 0;
   List<Map<String, dynamic>> history = [];
   Completer<List<Map<String, dynamic>>>? nextHistory;
   late final MockClient client;
@@ -162,10 +273,10 @@ class _ChatFlow {
   late final ManageLinkedChat control;
   late final _Realtime realtime;
 
-  // 함수이름: _ChatFlow
-  // 함수역할: 외부 네트워크 없이 이력·읽음·맥락 API를 연결한다.
-  // 매개변수: 없음. 반환값: 시험 흐름.
-  _ChatFlow() {
+  // Function Name: _ChatFlow
+  // Description: Connects history/read/context APIs without external network access.
+  // Parameters: userHash/linkId: Authenticated conversation scope. Returns: An isolated chat flow.
+  _ChatFlow({this.userHash = 'patient-a', this.linkId = 17}) {
     client = MockClient(_respond);
     authentication = AuthenticatedApiClient(
       inner: client,
@@ -173,8 +284,8 @@ class _ChatFlow {
       appCheckTokenProvider: () async => null,
       trustedBaseUri: Uri.parse('http://localhost/api/v1/medication'),
     );
-    control = ManageLinkedChat(userHash: 'patient-a', client: client);
-    realtime = _Realtime(authentication);
+    control = ManageLinkedChat(userHash: userHash, client: client);
+    realtime = _Realtime(authentication, linkId: linkId, userHash: userHash);
   }
 
   // 함수이름: _respond
@@ -183,6 +294,7 @@ class _ChatFlow {
   Future<http.Response> _respond(http.Request request) async {
     Object data = <Object>[];
     if (request.url.path.endsWith('/messages')) {
+      historyRequests++;
       final delayed = nextHistory;
       nextHistory = null;
       data = delayed == null ? history : await delayed.future;
@@ -240,11 +352,15 @@ class _ChatFlow {
 // 주요 책임: 이력 응답과 별도 순서로 실시간 이벤트를 주입한다.
 class _Realtime extends LinkedChatRealtimeService {
   final _events = StreamController<Map<String, dynamic>>.broadcast();
-  // 함수이름: _Realtime
-  // 함수역할: 시험 계정·연동에 연결된 서비스 대역을 초기화한다.
-  // 매개변수: client 시험 인증 경계. 반환값: 실시간 대역.
-  _Realtime(AuthenticatedApiClient client)
-    : super(linkId: 17, userHash: 'patient-a', authenticationClient: client);
+  // Function Name: _Realtime
+  // Description: Initializes a scoped, socket-free realtime adapter.
+  // Parameters: client: Authentication boundary; linkId/userHash: Conversation scope.
+  // Returns: A deterministic realtime adapter.
+  _Realtime(
+    AuthenticatedApiClient client, {
+    super.linkId = 17,
+    super.userHash = 'patient-a',
+  }) : super(authenticationClient: client);
   // 함수이름: events
   // 함수역할: 시험이 제어하는 이벤트 스트림을 제공한다.
   // 매개변수: 없음. 반환값: 메시지 이벤트 스트림.

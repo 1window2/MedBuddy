@@ -172,3 +172,89 @@ async def test_cancelled_holder_releases_ownership() -> None:
     with pytest.raises(asyncio.CancelledError):
         await holder
     assert locks.active_scope_count == 0
+
+
+# Function Name: test_ownership_handoff_preserves_request_cancellation
+# Description:
+# - Cancels precisely when the waiting acquisition succeeds, exposing wait_for's completed-child cancellation race.
+# - The request must propagate its original cancellation rather than finish normally after the ownership handoff.
+# Parameters:
+# - monkeypatch (pytest.MonkeyPatch): Instruments only the current account lock's acquisition boundary.
+# Returns:
+# - None; fails on swallowed cancellation, lost cancellation message or retained ownership.
+@pytest.mark.anyio
+async def test_ownership_handoff_preserves_request_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    locks = AccountOperationLocks()
+    waiting = asyncio.Event()
+    finish_body = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    request_task: asyncio.Task[None] | None = None
+
+    # Function Name: request
+    # Description:
+    # - Uses the real five-second account policy and awaits an acknowledgement inside the owned scope.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None; request cancellation must interrupt the protected body and release ownership.
+    async def request() -> None:
+        async with locks.hold("account", timeout=5):
+            await finish_body.wait()
+
+    async with locks.hold("account", timeout=5):
+        account_lock = locks._entries["account"].lock
+        original_acquire = account_lock.acquire
+
+        # Function Name: acquire_at_handoff
+        # Description:
+        # - Cancels the request after real ownership succeeds but before the acquisition coroutine returns.
+        # - Releases the body's acknowledgement on the next loop turn so a broken implementation also terminates.
+        # Parameters:
+        # - None.
+        # Returns:
+        # - The underlying lock's acquisition result.
+        async def acquire_at_handoff() -> bool:
+            waiting.set()
+            acquired = await original_acquire()
+            assert request_task is not None
+            request_task.cancel("cancelled at account ownership handoff")
+            loop.call_soon(finish_body.set)
+            return acquired
+
+        monkeypatch.setattr(account_lock, "acquire", acquire_at_handoff)
+        request_task = asyncio.create_task(request())
+        async with asyncio.timeout(1):
+            await waiting.wait()
+
+    try:
+        completed, _ = await asyncio.wait({request_task}, timeout=1)
+        assert request_task in completed, "Account handoff did not finish within the test deadline."
+        with pytest.raises(asyncio.CancelledError) as rejected:
+            await request_task
+        assert rejected.value.args == ("cancelled at account ownership handoff",)
+    finally:
+        finish_body.set()
+        request_task.cancel()
+        await asyncio.wait_for(
+            asyncio.gather(request_task, return_exceptions=True), timeout=1,
+        )
+    assert locks.active_scope_count == 0
+
+
+# Function Name: test_expired_lock_deadline_never_enters_even_an_idle_scope
+# Description:
+# - Preserves wait_for's rejection of an already expired deadline without relying on scheduler timing.
+# Parameters:
+# - timeout (float): Zero or negative acquisition deadline.
+# Returns:
+# - None; fails if the request enters or retains an account scope.
+@pytest.mark.anyio
+@pytest.mark.parametrize("timeout", [0.0, -1.0])
+async def test_expired_lock_deadline_never_enters_even_an_idle_scope(timeout: float) -> None:
+    locks = AccountOperationLocks()
+    with pytest.raises(TimeoutError):
+        async with locks.hold("account", timeout=timeout):
+            pytest.fail("An expired deadline must not acquire an idle account scope")
+    assert locks.active_scope_count == 0

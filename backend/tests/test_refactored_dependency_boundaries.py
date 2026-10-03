@@ -1,5 +1,5 @@
 # File Name: test_refactored_dependency_boundaries.py
-# Role: Keeps extracted prescription, account-lock and release-policy components independent of higher application layers.
+# Role: Keeps extracted medication, prescription, account-lock and release-policy components independent of higher application layers.
 
 import ast
 import sys
@@ -100,3 +100,60 @@ def test_android_release_configuration_uses_only_the_standard_library() -> None:
 # - None; an assertion reports an external or application dependency.
 def test_account_operation_locks_uses_only_the_standard_library() -> None:
     _assert_standard_library_only(ROOT / "backend/core/account_operation_locks.py")
+
+
+# Function Name: test_medication_detail_collaborators_do_not_depend_on_orchestration
+# Description:
+# - Prevents extracted catalog/cache/summary/matching components from importing their control or API composition.
+# Parameters:
+# - None.
+# Returns:
+# - None; an assertion identifies an upward dependency in any collaborator.
+def test_medication_detail_collaborators_do_not_depend_on_orchestration() -> None:
+    for relative_path in (
+        "services/local_medication_catalog.py",
+        "services/medication_name_matching.py",
+        "boundaries/medication_detail_cache_boundary.py",
+        "boundaries/medication_summary_boundary.py",
+    ):
+        imported = _imported_modules(ROOT / "backend" / relative_path)
+        forbidden = {
+            module
+            for module in imported
+            if module.lstrip(".").split(".", 1)[0] in {"api", "controls"}
+        }
+        assert not forbidden, f"{relative_path} acquired orchestration dependencies: {sorted(forbidden)}"
+
+
+# Function Name: test_medication_name_matching_stays_runtime_independent
+# Description:
+# - Allows only standard-library dependencies and the existing pure medication safety policy.
+# - Also checks that policy remains standard-library-only so the allowed edge cannot acquire runtime coupling.
+# Parameters:
+# - None.
+# Returns:
+# - None; imports requiring application startup, persistence or external clients are rejected.
+def test_medication_name_matching_stays_runtime_independent() -> None:
+    imported = _imported_modules(ROOT / "backend/services/medication_name_matching.py")
+    forbidden = {
+        module
+        for module in imported
+        if module.split(".", 1)[0] not in sys.stdlib_module_names
+        and module != "services.medication_match_safety"
+        and not module.startswith("services.medication_match_safety.")
+    }
+    assert not forbidden, f"Medication name matching acquired runtime dependencies: {sorted(forbidden)}"
+    _assert_standard_library_only(ROOT / "backend/services/medication_match_safety.py")
+
+
+# Function Name: test_medication_detail_control_contains_only_orchestration_class
+# Description:
+# - Keeps storage/client implementation classes out of the medication-detail use-case control.
+# Parameters:
+# - None.
+# Returns:
+# - None; helpers must remain public collaborators rather than be embedded again.
+def test_medication_detail_control_contains_only_orchestration_class() -> None:
+    source = ROOT / "backend/controls/check_medication_detail_control.py"
+    classes = [node.name for node in ast.parse(source.read_text()).body if isinstance(node, ast.ClassDef)]
+    assert classes == ["CheckMedicationDetail"]

@@ -1,9 +1,9 @@
 // 병원 검색의 진료과목 조건을 공통 위치·지도 조회 흐름에 연결한다.
 import '../services/api_config.dart';
 import '../entities/nearby_pharmacy_entity.dart';
-import 'check_nearby_pharmacy_control.dart';
+import 'check_nearby_care_control.dart';
 
-class CheckNearbyHospital extends CheckNearbyPharmacy {
+class CheckNearbyHospital extends CheckNearbyCare {
   static const defaultRadiusKm = .3;
   static const _expandedRadiiKm = [.5, 1.0, 2.0];
   String? department;
@@ -29,7 +29,7 @@ class CheckNearbyHospital extends CheckNearbyPharmacy {
 
   // 빈 위치 검색만 같은 중심·날짜·조건으로 넓힌다. 수동 지도 범위는 변경하지 않는다.
   @override
-  Future<NearbyPharmacySearchResult> requestNearbyPharmacySearch({
+  Future<NearbyPharmacySearchResult> requestNearbyCareSearch({
     PharmacySearchMode searchMode = PharmacySearchMode.openAtTime,
     DateTime? targetDateTime,
     double maxDistanceKm = defaultRadiusKm,
@@ -40,7 +40,7 @@ class CheckNearbyHospital extends CheckNearbyPharmacy {
     final selectedDepartment = department;
     final target = targetDateTime ?? DateTime.now();
     final elapsed = Stopwatch()..start();
-    var result = await super.requestNearbyPharmacySearch(
+    var result = await super.requestNearbyCareSearch(
       searchArea: searchArea,
       maxDistanceKm: maxDistanceKm,
       searchMode: searchMode,
@@ -66,7 +66,7 @@ class CheckNearbyHospital extends CheckNearbyPharmacy {
         break;
       }
       if (radius <= area.radiusKm) continue;
-      result = await super.requestNearbyPharmacySearch(
+      result = await super.requestNearbyCareSearch(
         searchArea: PharmacySearchArea(
           center: area.center,
           radiusKm: radius,

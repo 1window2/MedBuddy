@@ -20,6 +20,7 @@ import '../services/linked_chat_realtime_service.dart';
 import '../services/pharmacy_external_action_service.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
+import '../viewmodels/linked_chat_history_view_model.dart';
 import '../services/dose_sync_service.dart';
 import '../widgets/dose_sync_status.dart';
 import '../widgets/medbuddy_page_header.dart';
@@ -33,7 +34,7 @@ import '../widgets/medbuddy_page_header.dart';
 // - currentUserHash (String): 현재 작업의 계정 범위를 정하는 사용자 해시.
 // - patientHash (String): 연동된 환자의 계정 해시.
 // - peerName (String): 대화 상대를 표시할 이름.
-class LinkedChatUI extends StatefulWidget {
+class LinkedChatUI extends StatelessWidget {
   final int linkId;
   final String currentUserHash;
   final String patientHash;
@@ -75,28 +76,52 @@ class LinkedChatUI extends StatefulWidget {
     this.latestMessageRequest,
   });
 
-  // 함수이름: createState
-  // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 입력·표시 상태를 관리할 State 객체를 만든다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 새 _LinkedChatUIState 인스턴스.
+  // Function Name: build
+  // Description: Preserves same-conversation drafts and disposes scoped state after an account/link change.
+  // Parameters: context: Build context. Returns: An identity-keyed conversation session.
   @override
-  State<LinkedChatUI> createState() => _LinkedChatUIState();
+  Widget build(BuildContext context) => _LinkedChatSessionUI(
+    key: ValueKey((currentUserHash, linkId, patientHash)),
+    configuration: this,
+  );
 }
 
-// 클래스명: _LinkedChatUIState
-// 역할: 연동 사용자 메시지와 복약 관련 첨부의 화면 상태를 관리한다.
-// 주요 책임:
-// - 앱 복귀 시 실시간 연결·메시지 조회를 재개하고 비활성 상태에서는 연결을 멈춘다.
-// - 메시지·약품·시간대 맥락과 실시간 연결을 함께 초기화한 뒤 12초 보완 조회를 시작한다.
-// - 메시지 추가·삭제·읽음 이벤트를 검증해 반영하고 복약 관련 맥락을 필요 시 갱신한다.
-// 속성:
-// - _scrollController (ScrollController): 목록 위치 제어와 스크롤 안내에 사용할 컨트롤러.
-// - _apiClient (AuthenticatedApiClient): 인증 세션을 사용하는 API 요청 클라이언트.
-// - _control (ManageLinkedChat): 화면의 조회·변경 요청을 처리할 컨트롤러.
-// - _realtimeService (LinkedChatRealtimeService): 연동 채팅의 이벤트·연결 상태 스트림 제공자.
-class _LinkedChatUIState extends State<LinkedChatUI>
+// Class Name: _LinkedChatSessionUI
+// Role: Gives account/link-scoped asynchronous work an explicit widget lifetime.
+// Responsibilities: Own presentation/composer state for one immutable conversation identity.
+// Attributes: configuration: Current presentation inputs and optional borrowed adapters.
+class _LinkedChatSessionUI extends StatefulWidget {
+  final LinkedChatUI configuration;
+
+  // Function Name: _LinkedChatSessionUI
+  // Description: Stores screen inputs behind a conversation identity key.
+  // Parameters: key: Scope identity; configuration: Screen inputs. Returns: A scoped widget.
+  const _LinkedChatSessionUI({super.key, required this.configuration});
+
+  // Function Name: createState
+  // Description: Creates presentation/composer state for this account/link lifetime.
+  // Parameters: None. Returns: A new session state.
+  @override
+  State<_LinkedChatSessionUI> createState() => _LinkedChatUIState();
+}
+
+// Class Name: _LinkedChatUIState
+// Role: Owns composer, selection, navigation and viewport presentation for one account/link session.
+// Responsibilities:
+// - Delegate history/retry/read concurrency to an independently scoped history owner.
+// - Translate presentation ports into viewport/context updates without exposing mutable history.
+// - Dispose history before closing only adapters created by this session.
+// Attributes:
+// - _scrollController: Presentation-only viewport state.
+// - _history: Reconciliation, transport subscriptions and read/retry lifetime owner.
+// - _control/_apiClient/_realtimeService: Borrowed or explicitly owned authenticated adapters.
+class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     with WidgetsBindingObserver {
+  // Function Name: _configuration
+  // Description: Reads current presentation inputs for this immutable account/link session.
+  // Parameters: None. Returns: Public screen configuration.
+  LinkedChatUI get _configuration => widget.configuration;
+
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final Random _random = Random.secure();
@@ -110,28 +135,18 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   late final bool _ownsControl;
   late final bool _ownsRealtimeService;
 
-  StreamSubscription<Map<String, dynamic>>? _eventSubscription;
-  StreamSubscription<LinkedChatConnectionState>? _stateSubscription;
-  Timer? _fallbackRefreshTimer;
   Timer? _medicationContextGuideTimer;
-  List<ChatMessage> _messages = const [];
   List<ChatMedicationContext> _medicationContexts = const [];
   List<ChatScheduleContext> _scheduleContexts = const [];
   List<ChatMedicationContext> _selectedMedicationContexts = const [];
   String? _selectedMedicationScheduleDate;
-  LinkedChatConnectionState _connectionState =
-      LinkedChatConnectionState.connecting;
-  String? _errorMessage;
   String? _sendErrorMessage;
-  bool _isLoading = true;
   bool _isSending = false;
   bool _isChoosingTaken = false;
   final Map<String, String> _pendingTakenRequests = {};
   bool _isSelectingMessages = false;
   bool _isDeletingMessages = false;
   final Set<int> _selectedMessageIds = {};
-  final Set<int> _hiddenMessageIds = {};
-  final Set<int> _deletedMessageIds = {};
   String? _pendingClientMessageId;
   String? _pendingMessageBody;
   String? _pendingMedicationIdsSignature;
@@ -149,20 +164,52 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   _pendingCareShare;
   int? _loadingMedicationId;
   int _requestGeneration = 0;
-  Future<void>? _historyRefresh;
-  bool _historyRefreshAgain = false;
-  bool _historyNeedsRecovery = false;
-  int? _historyRecoveryBoundary;
   bool _chatInitialized = false;
   bool _wasChatVisible = false;
   bool _showMedicationContextGuide = true;
-  int? _firstUnreadMessageId;
-  bool _readBoundaryCaptured = false;
-  bool _hasOlderMessages = false;
-  bool _loadingOlderMessages = false;
-  bool _olderMessagesFailed = false;
-  int? _lastMarkedIncomingId;
-  bool _markingRead = false;
+
+  late final LinkedChatHistoryViewModel _history;
+
+  // Function Name: _messages
+  // Description: Reads independently owned history presentation state.
+  // Parameters: None. Returns: Immutable visible messages.
+  List<ChatMessage> get _messages => _history.messages;
+
+  // Function Name: _isLoading
+  // Description: Reads independently owned history presentation state.
+  // Parameters: None. Returns: Whether initial/retry history is loading.
+  bool get _isLoading => _history.isLoading;
+
+  // Function Name: _connectionState
+  // Description: Reads independently owned history presentation state.
+  // Parameters: None. Returns: Current realtime connection state.
+  LinkedChatConnectionState get _connectionState => _history.connectionState;
+
+  // Function Name: _firstUnreadMessageId
+  // Description: Reads independently owned history presentation state.
+  // Parameters: None. Returns: Stable first-unread separator for this visit.
+  int? get _firstUnreadMessageId => _history.firstUnreadMessageId;
+
+  // Function Name: _hasOlderMessages
+  // Description: Reads independently owned history presentation state.
+  // Parameters: None. Returns: Whether an older page can be requested.
+  bool get _hasOlderMessages => _history.hasOlderMessages;
+
+  // Function Name: _loadingOlderMessages
+  // Description: Reads independently owned history presentation state.
+  // Parameters: None. Returns: Whether backward pagination is in flight.
+  bool get _loadingOlderMessages => _history.loadingOlderMessages;
+
+  // Function Name: _olderMessagesFailed
+  // Description: Reads independently owned history presentation state.
+  // Parameters: None. Returns: Whether the last older page failed.
+  bool get _olderMessagesFailed => _history.olderMessagesFailed;
+
+  // Function Name: _errorMessage
+  // Description: Localizes technical history failure at the presentation boundary.
+  // Parameters: None. Returns: Initial-history failure text, or null.
+  String? get _errorMessage =>
+      _history.historyFailed ? _text.historyLoadFailed : null;
 
   // 역방향 목록의 0 위치는 메시지 높이와 무관하게 항상 최신 대화다.
   bool get _isAtLatest =>
@@ -184,7 +231,8 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   // 매개변수:
   // - 없음.
   // 반환값: _LinkedChatText: 현재 화면 언어의 문구 제공 객체.
-  _LinkedChatText get _text => _LinkedChatText(widget.userSetting.language);
+  _LinkedChatText get _text =>
+      _LinkedChatText(_configuration.userSetting.language);
 
   // 함수이름: _isPatient
   // 함수역할: 현재 사용자 해시가 비어 있지 않은 연결 환자 해시와 같은지 확인한다.
@@ -192,8 +240,8 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   // - 없음.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
   bool get _isPatient =>
-      widget.patientHash.isNotEmpty &&
-      widget.currentUserHash == widget.patientHash;
+      _configuration.patientHash.isNotEmpty &&
+      _configuration.currentUserHash == _configuration.patientHash;
 
   // 함수이름: _requestableScheduleContexts
   // 함수역할: 환자에게는 요청 도구를 숨기고 서버가 확인 요청을 허용한 시간대만 제공한다.
@@ -216,10 +264,10 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get _peerName {
-    if (_text.isEnglish && widget.peerName == '가족') {
+    if (_text.isEnglish && _configuration.peerName == '가족') {
       return _text.family;
     }
-    return widget.peerName;
+    return _configuration.peerName;
   }
 
   // 함수이름: initState
@@ -230,43 +278,39 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   @override
   void initState() {
     super.initState();
-    widget.latestMessageRequest?.addListener(_onLatestMessageRequested);
-    _medicationContexts = widget.initialMedicationContexts;
+    _configuration.latestMessageRequest?.addListener(_onLatestMessageRequested);
+    _medicationContexts = _configuration.initialMedicationContexts;
     WidgetsBinding.instance.addObserver(this);
-    _ownsApiClient = widget.apiClient == null;
-    _apiClient = widget.apiClient ?? AuthenticatedApiClient();
-    _ownsControl = widget.control == null;
+    _ownsApiClient = _configuration.apiClient == null;
+    _apiClient = _configuration.apiClient ?? AuthenticatedApiClient();
+    _ownsControl = _configuration.control == null;
     _control =
-        widget.control ??
-        ManageLinkedChat(userHash: widget.currentUserHash, client: _apiClient);
-    _ownsRealtimeService = widget.realtimeService == null;
+        _configuration.control ??
+        ManageLinkedChat(
+          userHash: _configuration.currentUserHash,
+          client: _apiClient,
+        );
+    _ownsRealtimeService = _configuration.realtimeService == null;
     _realtimeService =
-        widget.realtimeService ??
+        _configuration.realtimeService ??
         LinkedChatRealtimeService(
-          linkId: widget.linkId,
-          userHash: widget.currentUserHash,
+          linkId: _configuration.linkId,
+          userHash: _configuration.currentUserHash,
           authenticationClient: _apiClient,
         );
-    _eventSubscription = _realtimeService.events.listen(_handleRealtimeEvent);
-    // 함수이름: initState.listen callback
-    // 함수역할: 연동 사용자 메시지와 복약 관련 첨부에서 캡처된 작업 `setState(() => _connectionState = state)`을 실행한다.
-    // 매개변수:
-    // - state (콜백 계약에서 추론): 현재 인증 초기화·로그인 상태 또는 전달된 앱 생명주기 상태.
-    // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-    _stateSubscription = _realtimeService.states.listen((state) {
-      if (mounted) {
-        // 함수이름: initState.setState callback
-        // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 입력·요청 상태를 `_connectionState = state`로 갱신한다.
-        // 매개변수:
-        // - 없음.
-        // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-        setState(() => _connectionState = state);
-        _updateFallbackRefresh();
-        if (state == LinkedChatConnectionState.connected && _isChatVisible) {
-          unawaited(_refreshMessages(showLoading: false, catchUp: true));
-        }
-      }
-    });
+    _history = LinkedChatHistoryViewModel(
+      linkId: _configuration.linkId,
+      userHash: _configuration.currentUserHash,
+      control: _control,
+      realtime: _realtimeService,
+      isVisible: () => _isChatVisible,
+      isAtLatest: () => _isAtLatest,
+      onScrollRequested: (force) => _scrollToLatest(force: force),
+      onScheduleChanged: () => unawaited(_refreshScheduleContexts()),
+      onDeleted: (ids) {
+        if (mounted) setState(() => _selectedMessageIds.removeAll(ids));
+      },
+    )..addListener(_historyChanged);
     // 함수이름: initState.Timer callback
     // 함수역할: 연동 사용자 메시지와 복약 관련 첨부에서 캡처된 작업 `setState(() => _showMedicationContextGuide = false)`을 실행한다.
     // 매개변수:
@@ -292,6 +336,13 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     });
   }
 
+  // Function Name: _historyChanged
+  // Description: Rebuilds after a complete independently reconciled history update.
+  // Parameters: None. Returns: None; composer state remains presentation-owned.
+  void _historyChanged() {
+    if (mounted) setState(() {});
+  }
+
   // 같은 알림 경로를 다시 열어도 초안과 선택을 유지하며 최신 대화로 이동한다.
   void _onLatestMessageRequested() {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -304,11 +355,16 @@ class _LinkedChatUIState extends State<LinkedChatUI>
 
   // 알림 진입 신호가 교체될 때 이전 구독이 남지 않게 한다.
   @override
-  void didUpdateWidget(covariant LinkedChatUI oldWidget) {
+  void didUpdateWidget(covariant _LinkedChatSessionUI oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.latestMessageRequest != widget.latestMessageRequest) {
-      oldWidget.latestMessageRequest?.removeListener(_onLatestMessageRequested);
-      widget.latestMessageRequest?.addListener(_onLatestMessageRequested);
+    if (oldWidget.configuration.latestMessageRequest !=
+        _configuration.latestMessageRequest) {
+      oldWidget.configuration.latestMessageRequest?.removeListener(
+        _onLatestMessageRequested,
+      );
+      _configuration.latestMessageRequest?.addListener(
+        _onLatestMessageRequested,
+      );
     }
   }
 
@@ -335,19 +391,20 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   }
 
   // 함수이름: dispose
-  // 함수역할: _fallbackRefreshTimer, _medicationContextGuideTimer, _eventSubscription, _stateSubscription, _realtimeService, _control, _apiClient, _messageController, _scrollController 관련 자원을 정리하고 화면 수명 종료 처리를 수행한다.
+  // Description: Disposes owned history/presentation resources before owned authenticated adapters.
   // 매개변수:
   // - 없음.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
   @override
   void dispose() {
-    widget.latestMessageRequest?.removeListener(_onLatestMessageRequested);
+    _configuration.latestMessageRequest?.removeListener(
+      _onLatestMessageRequested,
+    );
     WidgetsBinding.instance.removeObserver(this);
     _requestGeneration += 1;
-    _fallbackRefreshTimer?.cancel();
     _medicationContextGuideTimer?.cancel();
-    unawaited(_eventSubscription?.cancel());
-    unawaited(_stateSubscription?.cancel());
+    _history.removeListener(_historyChanged);
+    _history.dispose();
     if (_ownsRealtimeService) {
       unawaited(_realtimeService.dispose());
     }
@@ -369,20 +426,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      unawaited(_realtimeService.start());
-      _updateFallbackRefresh();
-      unawaited(_refreshMessages(showLoading: false, catchUp: true));
-      return;
-    }
-    if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached ||
-        state == AppLifecycleState.hidden) {
-      _fallbackRefreshTimer?.cancel();
-      _fallbackRefreshTimer = null;
-      unawaited(_realtimeService.stop());
-    }
+    _history.setForeground(state == AppLifecycleState.resumed);
   }
 
   // 함수이름: _initializeChat
@@ -391,40 +435,13 @@ class _LinkedChatUIState extends State<LinkedChatUI>
   // - 없음.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _initializeChat() async {
+    if (!mounted) return;
     _chatInitialized = true;
     await Future.wait([
-      _refreshMessages(showLoading: true),
+      _history.initialize(),
       _refreshMedicationContexts(),
       _refreshScheduleContexts(),
-      _realtimeService.start(),
     ]);
-    if (!mounted) {
-      return;
-    }
-    // 함수이름: _initializeChat.periodic callback
-    // 함수역할: 연동 사용자 메시지와 복약 관련 첨부에서 캡처된 작업 `_refreshMessages(showLoading: false)`을 실행한다.
-    // 매개변수:
-    // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
-    // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-    _updateFallbackRefresh();
-  }
-
-  // 정상 연결은 실시간 수신을 사용하고, 끊긴 동안에만 보완 조회한다.
-  void _updateFallbackRefresh() {
-    final lifecycle = WidgetsBinding.instance.lifecycleState;
-    if (!mounted ||
-        (lifecycle != null && lifecycle != AppLifecycleState.resumed) ||
-        (_connectionState == LinkedChatConnectionState.connected &&
-            !_historyNeedsRecovery)) {
-      _fallbackRefreshTimer?.cancel();
-      _fallbackRefreshTimer = null;
-      return;
-    }
-    // 재연결 재시도는 기존 조회 주기를 미루지 않는다.
-    if (_fallbackRefreshTimer?.isActive == true) return;
-    _fallbackRefreshTimer = Timer.periodic(const Duration(seconds: 12), (_) {
-      if (_isChatVisible) unawaited(_refreshMessages(showLoading: false));
-    });
   }
 
   // 함수이름: _refreshMedicationContexts
@@ -436,7 +453,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     final generation = _requestGeneration;
     try {
       final medications = await _control.requestMedicationContexts(
-        linkId: widget.linkId,
+        linkId: _configuration.linkId,
       );
       if (!mounted || generation != _requestGeneration) {
         return;
@@ -505,7 +522,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     final generation = _requestGeneration;
     try {
       final contexts = await _control.requestScheduleContexts(
-        linkId: widget.linkId,
+        linkId: _configuration.linkId,
       );
       if (!mounted || generation != _requestGeneration) {
         return;
@@ -521,317 +538,24 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     }
   }
 
-  // 함수이름: _refreshMessages
-  // 함수역할: 최초 기록과 WebSocket 누락 가능성이 있는 메시지를 REST 조회로 보완한다.
-  // 매개변수:
-  // - showLoading (bool): 진행 중 표시를 보여줄지 여부.
-  // - catchUp (bool): 복귀·재연결 중 기존 조회가 진행 중이면 완료 후 누락분을 다시 확인할지 여부.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // Function Name: _refreshMessages
+  // Description: Requests history refresh without owning transport/concurrency state.
+  // Parameters: showLoading: Retry UI; catchUp: Retain a reconnect/resume follow-up.
+  // Returns: Completion of independently owned refresh.
   Future<void> _refreshMessages({
     required bool showLoading,
     bool catchUp = false,
-  }) {
-    final pending = _historyRefresh;
-    if (pending != null) {
-      // 연결 복구가 조회 도중 발생했으면 완료 후 한 번 더 누락분을 확인한다.
-      _historyRefreshAgain |= catchUp;
-      return pending;
-    }
-    return _historyRefresh = _refreshHistoryLoop(showLoading).whenComplete(() {
-      _historyRefresh = null;
-    });
-  }
+  }) => _history.refresh(showLoading: showLoading, catchUp: catchUp);
 
-  Future<void> _refreshHistoryLoop(bool showLoading) async {
-    do {
-      _historyRefreshAgain = false;
-      await _loadMessages(showLoading: showLoading);
-      showLoading = false;
-    } while (_historyRefreshAgain && _isChatVisible);
-  }
+  // Function Name: _loadOlderMessages
+  // Description: Requests one serialized older page from the history owner.
+  // Parameters: None. Returns: Completion of backward pagination.
+  Future<void> _loadOlderMessages() => _history.loadOlderMessages();
 
-  Future<void> _loadMessages({required bool showLoading}) async {
-    final generation = _requestGeneration;
-    if (showLoading && mounted) {
-      // 함수이름: _refreshMessages.setState callback
-      // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 입력·요청 상태를 `_isLoading = true; _errorMessage = null`로 갱신한다.
-      // 매개변수:
-      // - 없음.
-      // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-      setState(() {
-        _isLoading = true;
-        _errorMessage = null;
-      });
-    }
-    try {
-      final unreadFuture = _readBoundaryCaptured
-          ? Future<ChatUnreadSummary?>.value()
-          : _requestInitialUnread();
-      _historyRecoveryBoundary ??= _messages.isEmpty
-          ? null
-          : _messages.map((m) => m.messageId).reduce((a, b) => a > b ? a : b);
-      final newestKnownId = _historyRecoveryBoundary;
-      var page = await _control.requestHistory(linkId: widget.linkId);
-      final initialPageIsFull = page.length == 50;
-      final messages = [...page];
-      final unread = await unreadFuture;
-      // 긴 연결 단절에서도 마지막으로 본 메시지까지 이어서 읽어 누락을 막는다.
-      int? previousBoundary;
-      while (newestKnownId != null && page.length == 50) {
-        final oldest = page
-            .map((m) => m.messageId)
-            .reduce((a, b) => a < b ? a : b);
-        if (oldest <= newestKnownId ||
-            (previousBoundary != null && oldest >= previousBoundary)) {
-          break;
-        }
-        if (!mounted || generation != _requestGeneration || !_isChatVisible) {
-          _historyNeedsRecovery = true;
-          return;
-        }
-        previousBoundary = oldest;
-        page = await _control.requestHistory(
-          linkId: widget.linkId,
-          beforeMessageId: oldest,
-        );
-        messages.addAll(page);
-      }
-      if (!mounted || generation != _requestGeneration) {
-        return;
-      }
-      _historyRecoveryBoundary = null;
-      _historyNeedsRecovery = false;
-      _updateFallbackRefresh();
-      // 함수이름: _refreshMessages.setState callback
-      // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 입력·요청 상태를 `_messages = _mergeMessages(_messages, messages); _isLoading = false; _errorMessage = null`로 갱신한다.
-      // 매개변수:
-      // - 없음.
-      // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-      setState(() {
-        _messages = _mergeMessages(_messages, messages);
-        if (!_readBoundaryCaptured) {
-          _firstUnreadMessageId = unread?.firstMessageId;
-          // 구버전 서버도 최근 기록의 읽음 상태로 구분선을 표시할 수 있다.
-          if (_firstUnreadMessageId == null &&
-              (unread == null || unread.count > 0)) {
-            for (final message in _messages) {
-              if (message.senderHash != widget.currentUserHash &&
-                  message.readAt == null &&
-                  !message.deletedForEveryone) {
-                _firstUnreadMessageId = message.messageId;
-                break;
-              }
-            }
-          }
-          _hasOlderMessages = initialPageIsFull;
-          _readBoundaryCaptured = true;
-        }
-        _isLoading = false;
-        _errorMessage = null;
-      });
-      _scrollToLatest(force: showLoading);
-      await _markLatestIncomingRead();
-    } catch (_) {
-      if (!mounted || generation != _requestGeneration) {
-        return;
-      }
-      _historyNeedsRecovery = true;
-      _updateFallbackRefresh();
-      // 함수이름: _refreshMessages.setState callback
-      // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 입력·요청 상태를 `_isLoading = false; _errorMessage = _text.historyLoadFailed`로 갱신한다.
-      // 매개변수:
-      // - 없음.
-      // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-      setState(() {
-        _isLoading = false;
-        if (_messages.isEmpty) {
-          _errorMessage = _text.historyLoadFailed;
-        }
-      });
-    }
-  }
-
-  // 개수 조회 실패는 대화 진입을 막지 않으며 목록의 읽음 표시로 보완한다.
-  Future<ChatUnreadSummary?> _requestInitialUnread() async {
-    try {
-      return await _control.requestUnreadSummary(linkId: widget.linkId);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  // 오래된 미확인 경계도 찾을 수 있도록 필요할 때만 이전 기록을 가져온다.
-  Future<void> _loadOlderMessages() async {
-    if (_loadingOlderMessages || !_hasOlderMessages || _messages.isEmpty) {
-      return;
-    }
-    final generation = _requestGeneration;
-    final beforeId = _messages.first.messageId;
-    setState(() {
-      _loadingOlderMessages = true;
-      _olderMessagesFailed = false;
-    });
-    try {
-      final older = await _control.requestHistory(
-        linkId: widget.linkId,
-        beforeMessageId: beforeId,
-      );
-      if (!mounted || generation != _requestGeneration) return;
-      setState(() {
-        _messages = _mergeMessages(_messages, older);
-        _hasOlderMessages =
-            older.length == 50 && older.any((m) => m.messageId < beforeId);
-      });
-    } catch (_) {
-      if (mounted && generation == _requestGeneration) {
-        setState(() => _olderMessagesFailed = true);
-      }
-    } finally {
-      if (mounted && generation == _requestGeneration) {
-        setState(() => _loadingOlderMessages = false);
-      }
-    }
-  }
-
-  // 함수이름: _handleRealtimeEvent
-  // 함수역할: 메시지 추가·삭제·읽음 이벤트를 검증해 반영하고 복약 관련 맥락을 필요 시 갱신한다.
-  // 매개변수:
-  // - event (Map<String, dynamic>): 실시간 메시지·읽음·삭제 이벤트 데이터.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
-  void _handleRealtimeEvent(Map<String, dynamic> event) {
-    if (!mounted) {
-      return;
-    }
-    final type = event['type']?.toString();
-    if (type == 'chat_messages_deleted') {
-      final ids = event['message_ids'];
-      if (ids is List &&
-          (event['scope'] == 'me' || event['scope'] == 'everyone')) {
-        _applyMessageDeletion(
-          ids.whereType<int>().toList(),
-          event['scope'] == 'me'
-              ? ChatDeletionScope.me
-              : ChatDeletionScope.everyone,
-        );
-      }
-      return;
-    }
-    if (type == 'chat_message') {
-      final rawMessage = event['message'];
-      if (rawMessage is! Map) {
-        return;
-      }
-      try {
-        final message = ChatMessage.fromJson(
-          Map<String, dynamic>.from(rawMessage),
-        );
-        // 함수이름: _handleRealtimeEvent.setState callback
-        // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 입력·요청 상태를 `_messages = _mergeMessages(_messages, [message]); _errorMessage = null`로 갱신한다.
-        // 매개변수:
-        // - 없음.
-        // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-        setState(() {
-          if (!_isLoading &&
-              !_isAtLatest &&
-              message.senderHash != widget.currentUserHash &&
-              !message.deletedForEveryone &&
-              message.readAt == null) {
-            _firstUnreadMessageId ??= message.messageId;
-          }
-          _messages = _mergeMessages(_messages, [message]);
-          _errorMessage = null;
-        });
-        _scrollToLatest(force: false);
-        if (message.messageKind == ChatMessageKind.slotCheckRequest ||
-            message.messageKind == ChatMessageKind.slotCompletion) {
-          unawaited(_refreshScheduleContexts());
-        }
-        if (message.senderHash != widget.currentUserHash) {
-          unawaited(_markLatestIncomingRead());
-        }
-      } on FormatException {
-        return;
-      }
-      return;
-    }
-    if (type == 'chat_read' &&
-        event['reader_hash']?.toString() != widget.currentUserHash) {
-      final throughMessageId = int.tryParse(
-        event['through_message_id']?.toString() ?? '',
-      );
-      final readAt = DateTime.tryParse(event['read_at']?.toString() ?? '');
-      if (throughMessageId == null || readAt == null) {
-        return;
-      }
-      // 함수이름: _handleRealtimeEvent.setState callback
-      // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 입력·요청 상태를 `_messages = _messages.map((message) => message.senderHash == widget.currentUserHash && message.me...`로 갱신한다.
-      // 매개변수:
-      // - 없음.
-      // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-      setState(() {
-        _messages = _messages
-            .map(
-              // 함수이름: _handleRealtimeEvent.map callback
-              // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 변환값을 `message.senderHash == widget.currentUserHash && message.messageId <= throughMessageId ? message.copyWith(readAt: readAt) :...` 규칙으로 계산한다.
-              // 매개변수:
-              // - message (콜백 계약에서 추론): 현재 작업 결과·오류·상태에 대한 표시 문구.
-              // 반환값: 컬렉션 연산에 전달할 변환값.
-              (message) =>
-                  message.senderHash == widget.currentUserHash &&
-                      message.messageId <= throughMessageId
-                  ? message.copyWith(readAt: readAt)
-                  : message,
-            )
-            .toList(growable: false);
-      });
-    }
-  }
-
-  // 함수이름: _markLatestIncomingRead
-  // 함수역할: 가장 최근 수신 메시지까지 읽음 처리하고 실패는 이후 갱신에서 재시도하도록 남긴다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
-  Future<void> _markLatestIncomingRead() async {
-    if (!_isChatVisible || _isLoading || !_isAtLatest || _markingRead) return;
-    final incoming = _messages
-        // 함수이름: _markLatestIncomingRead.where callback
-        // 함수역할: 연동 사용자 메시지와 복약 관련 첨부에 대해 `message.senderHash != widget.currentUserHash` 조건으로 컬렉션 항목을 판별한다.
-        // 매개변수:
-        // - message (콜백 계약에서 추론): 현재 작업 결과·오류·상태에 대한 표시 문구.
-        // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
-        .where((message) => message.senderHash != widget.currentUserHash)
-        .toList(growable: false);
-    if (incoming.isEmpty) {
-      return;
-    }
-    final latestId = incoming.last.messageId;
-    if (_lastMarkedIncomingId != null && latestId <= _lastMarkedIncomingId!) {
-      return;
-    }
-    _markingRead = true;
-    try {
-      await _control.markRead(
-        linkId: widget.linkId,
-        throughMessageId: latestId,
-      );
-      if (_lastMarkedIncomingId == null || latestId > _lastMarkedIncomingId!) {
-        _lastMarkedIncomingId = latestId;
-      }
-    } catch (_) {
-      // 읽음 표시는 다음 실시간 이벤트 또는 보완 조회에서 다시 시도한다.
-    } finally {
-      _markingRead = false;
-    }
-    if (mounted &&
-        _lastMarkedIncomingId == latestId &&
-        _messages.any(
-          (m) =>
-              m.senderHash != widget.currentUserHash && m.messageId > latestId,
-        )) {
-      unawaited(_markLatestIncomingRead());
-    }
-  }
+  // Function Name: _markLatestIncomingRead
+  // Description: Acknowledges only a currently visible latest viewport through the history owner.
+  // Parameters: None. Returns: Completion of a coalesced acknowledgement.
+  Future<void> _markLatestIncomingRead() => _history.markLatestIncomingRead();
 
   // 함수이름: _sendMessage
   // 함수역할: 작성한 본문과 선택 약품을 전송하고 성공 시 작성창·선택 해제를 요청한다.
@@ -912,7 +636,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     _pendingHospitalDate = hospitalScheduleDate;
     try {
       final message = await _control.sendMessage(
-        linkId: widget.linkId,
+        linkId: _configuration.linkId,
         clientMessageId: clientMessageId,
         body: normalizedBody,
         medicationId: medications.isEmpty
@@ -940,7 +664,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
       }
       _clearPendingRequest();
       // 함수이름: _submitMessage.setState callback
-      // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 입력·요청 상태를 `_selectedMedicationContexts = const []; _messages = _mergeMessages(_messages, [message]); _errorMessage = null`로 갱신한다.
+      // Description: Clears presentation-owned composer selections after an accepted send.
       // 매개변수:
       // - 없음.
       // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
@@ -948,10 +672,10 @@ class _LinkedChatUIState extends State<LinkedChatUI>
         if (clearMedicationSelection) {
           _selectedMedicationContexts = const [];
         }
-        _messages = _mergeMessages(_messages, [message]);
-        _errorMessage = null;
+
         _sendErrorMessage = null;
       });
+      _history.addMessage(message);
       _scrollToLatest();
       return message;
     } catch (_) {
@@ -1078,7 +802,9 @@ class _LinkedChatUIState extends State<LinkedChatUI>
                   ],
                 ),
             ]
-          : await _control.requestScheduleContexts(linkId: widget.linkId);
+          : await _control.requestScheduleContexts(
+              linkId: _configuration.linkId,
+            );
       if (!mounted) return;
       final requests = <({ChatScheduleContext slot, List<int> ids})>[];
       for (final slotKey in medicationScheduleSlotKeys) {
@@ -1120,7 +846,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
             slotKey: slot.slotKey,
             completed: true,
             scheduleDate: slot.scheduleDate,
-            linkId: widget.linkId,
+            linkId: _configuration.linkId,
             medicationNames: selectedMedications
                 .where((m) => medicationIds.contains(m.medicationId))
                 .map((m) => m.medicationName)
@@ -1133,21 +859,19 @@ class _LinkedChatUIState extends State<LinkedChatUI>
             _createClientMessageId,
           );
           final result = await _control.recordMedicationTaken(
-            linkId: widget.linkId,
+            linkId: _configuration.linkId,
             clientMessageId: requestId,
             scheduleDate: slot.scheduleDate,
             slotKey: slot.slotKey,
             medicationIds: medicationIds,
           );
           if (viewModel != null &&
-              viewModel.patientHash == widget.currentUserHash) {
+              viewModel.patientHash == _configuration.currentUserHash) {
             viewModel.applyConfirmedTodaySchedules(result.schedules);
           }
           _pendingTakenRequests.remove(signature);
           if (mounted) {
-            setState(
-              () => _messages = _mergeMessages(_messages, [result.message]),
-            );
+            _history.addMessage(result.message);
           }
         }
         if (!mounted) return;
@@ -1193,7 +917,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     );
     final destination = await showNearbyCareOptions(
       context: context,
-      userSetting: widget.userSetting,
+      userSetting: _configuration.userSetting,
     );
     if (destination == null || !mounted) return;
     await _showPharmacySelector(
@@ -1222,10 +946,10 @@ class _LinkedChatUIState extends State<LinkedChatUI>
         // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
         // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
         builder: (_) =>
-            widget.careSelectorBuilder?.call(hospitals) ??
+            _configuration.careSelectorBuilder?.call(hospitals) ??
             CheckNearbyPharmacyUI.selection(
-              userSetting: widget.userSetting.copyWith(
-                userHash: widget.currentUserHash,
+              userSetting: _configuration.userSetting.copyWith(
+                userHash: _configuration.currentUserHash,
               ),
               hospitals: hospitals,
             ),
@@ -1461,7 +1185,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
         // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
         builder: (context) => CheckScheduleUI.selection(
           schedules: selectionSchedules,
-          language: widget.userSetting.language,
+          language: _configuration.userSetting.language,
           selectedMedicationSlots: {
             for (final item in _selectedMedicationContexts)
               item.medicationId.toString(): item.scheduleSlotKeys.toSet(),
@@ -1573,7 +1297,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     });
     try {
       final detail = await _control.requestMedicationDetail(
-        linkId: widget.linkId,
+        linkId: _configuration.linkId,
         medicationId: medication.medicationId,
       );
       if (!mounted) {
@@ -1594,7 +1318,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
           // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
           builder: (_) => CheckMedicationDetailUI(
             medicationDetail: detail,
-            userSetting: widget.userSetting,
+            userSetting: _configuration.userSetting,
           ),
         ),
       );
@@ -1625,77 +1349,12 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     return 'msg_${timestamp}_$randomPart';
   }
 
-  // 함수이름: _mergeMessages
-  // 함수역할: 메시지 ID로 결과를 병합하되 확인된 읽음·삭제 상태를 오래된 응답으로 되돌리지 않는다.
-  // 매개변수:
-  // - current (List<ChatMessage>): 병합 이전에 화면이 보관한 메시지 목록.
-  // - incoming (List<ChatMessage>): 조회 또는 실시간으로 수신한 메시지 목록.
-  // 반환값: List<ChatMessage>: 숨김·삭제 상태를 반영하고 ID로 정렬한 메시지 목록.
-  List<ChatMessage> _mergeMessages(
-    List<ChatMessage> current,
-    List<ChatMessage> incoming,
-  ) {
-    final byId = <int, ChatMessage>{
-      for (final message in current) message.messageId: message,
-    };
-    for (final message in incoming) {
-      final knownReadAt = byId[message.messageId]?.readAt;
-      byId[message.messageId] =
-          knownReadAt != null &&
-              (message.readAt == null || message.readAt!.isBefore(knownReadAt))
-          ? message.copyWith(readAt: knownReadAt)
-          : message;
-      if (message.hiddenForMe) _hiddenMessageIds.add(message.messageId);
-      if (message.deletedForEveryone) _deletedMessageIds.add(message.messageId);
-    }
-    final merged =
-        byId.values
-            // 함수이름: _mergeMessages.where callback
-            // 함수역할: 연동 사용자 메시지와 복약 관련 첨부에 대해 `!_hiddenMessageIds.contains(message.messageId)` 조건으로 컬렉션 항목을 판별한다.
-            // 매개변수:
-            // - message (콜백 계약에서 추론): 현재 작업 결과·오류·상태에 대한 표시 문구.
-            // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
-            .where((message) => !_hiddenMessageIds.contains(message.messageId))
-            .map(
-              // 함수이름: _mergeMessages.map callback
-              // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 변환값을 `_deletedMessageIds.contains(message.messageId) ? message.copyWith(deletedForEveryone: true) : message` 규칙으로 계산한다.
-              // 매개변수:
-              // - message (콜백 계약에서 추론): 현재 작업 결과·오류·상태에 대한 표시 문구.
-              // 반환값: 컬렉션 연산에 전달할 변환값.
-              (message) => _deletedMessageIds.contains(message.messageId)
-                  ? message.copyWith(deletedForEveryone: true)
-                  : message,
-            )
-            .toList(growable: false)
-          // 함수이름: _mergeMessages.sort callback
-          // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 정렬 비교값을 `left.messageId.compareTo(right.messageId)` 규칙으로 계산한다.
-          // 매개변수:
-          // - left (콜백 계약에서 추론): 정렬 순서를 비교할 두 항목 중 해당 항목.
-          // - right (콜백 계약에서 추론): 정렬 순서를 비교할 두 항목 중 해당 항목.
-          // 반환값: 컬렉션 연산에 전달할 정렬 비교값.
-          ..sort((left, right) => left.messageId.compareTo(right.messageId));
-    return merged;
-  }
-
-  // 함수이름: _applyMessageDeletion
-  // 함수역할: 삭제 범위별 ID를 누적해 지연 응답이 삭제된 본문·약품 카드를 복원하지 못하게 하고 메시지 병합과 선택 상태를 갱신한다.
-  // 매개변수:
-  // - ids (List<int>): 선택·삭제 대상으로 사용할 메시지 식별자.
-  // - scope (ChatDeletionScope): 본인에게만 삭제할지 모든 참여자에게 삭제할지 범위.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
+  // Function Name: _applyMessageDeletion
+  // Description: Applies server-confirmed deletion evidence through the scoped history owner.
+  // Parameters: ids: Message identifiers; scope: Authorized deletion scope.
+  // Returns: None; selection cleanup is a separate presentation callback.
   void _applyMessageDeletion(List<int> ids, ChatDeletionScope scope) {
-    if (!mounted) return;
-    // 함수이름: _applyMessageDeletion.setState callback
-    // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 입력·요청 상태를 `_messages = _mergeMessages(_messages, const [])`로 갱신한다.
-    // 매개변수:
-    // - 없음.
-    // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-    setState(() {
-      (scope == ChatDeletionScope.me ? _hiddenMessageIds : _deletedMessageIds)
-          .addAll(ids);
-      _messages = _mergeMessages(_messages, const []);
-      _selectedMessageIds.removeAll(ids);
-    });
+    if (mounted) _history.applyDeletion(ids, scope);
   }
 
   // 함수이름: _toggleMessageSelection
@@ -1738,12 +1397,12 @@ class _LinkedChatUIState extends State<LinkedChatUI>
         selected.isNotEmpty &&
         selected.every(
           // 함수이름: _confirmMessageDeletion.every callback
-          // 함수역할: 연동 사용자 메시지와 복약 관련 첨부에 대해 `message.canDeleteForEveryone(widget.currentUserHash, DateTime.now())` 조건으로 컬렉션 항목을 판별한다.
+          // 함수역할: 연동 사용자 메시지와 복약 관련 첨부에 대해 `message.canDeleteForEveryone(_configuration.currentUserHash, DateTime.now())` 조건으로 컬렉션 항목을 판별한다.
           // 매개변수:
           // - message (콜백 계약에서 추론): 현재 작업 결과·오류·상태에 대한 표시 문구.
           // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
           (message) => message.canDeleteForEveryone(
-            widget.currentUserHash,
+            _configuration.currentUserHash,
             DateTime.now(),
           ),
         );
@@ -1835,7 +1494,7 @@ class _LinkedChatUIState extends State<LinkedChatUI>
     setState(() => _isDeletingMessages = true);
     try {
       await _control.deleteMessages(
-        linkId: widget.linkId,
+        linkId: _configuration.linkId,
         messageIds: ids,
         scope: scope,
       );
@@ -2213,9 +1872,9 @@ class _LinkedChatUIState extends State<LinkedChatUI>
                                 message: _messages[index],
                                 isMine:
                                     _messages[index].senderHash ==
-                                    widget.currentUserHash,
+                                    _configuration.currentUserHash,
                                 text: _text,
-                                userSetting: widget.userSetting,
+                                userSetting: _configuration.userSetting,
                                 loadingMedicationId: _loadingMedicationId,
                                 onMedicationPressed: _openMedicationDetail,
                                 onSchedulePressed: _isPatient

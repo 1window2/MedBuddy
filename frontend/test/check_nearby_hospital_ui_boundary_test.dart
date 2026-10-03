@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:medbuddy_frontend/boundaries/check_nearby_pharmacy_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_nearby_hospital_control.dart';
+import 'package:medbuddy_frontend/entities/device_coordinate_entity.dart';
 import 'package:medbuddy_frontend/entities/nearby_pharmacy_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/services/pharmacy_favorite_service.dart';
@@ -38,7 +39,7 @@ class _HospitalControl extends CheckNearbyHospital {
 
   // 네트워크 없이 조회 조건과 지도 지역을 기록한다.
   @override
-  Future<NearbyPharmacySearchResult> requestNearbyPharmacySearch({
+  Future<NearbyPharmacySearchResult> requestNearbyCareSearch({
     PharmacySearchMode searchMode = PharmacySearchMode.openAtTime,
     DateTime? targetDateTime,
     double maxDistanceKm = 20,
@@ -654,32 +655,33 @@ void main() {
   // 반경 안내는 실제 검색한 3km부터 유지되며 작은 반경에서도 부분 조회가 우선한다.
   for (final language in ['ko', 'en']) {
     // 병원이 없는 지역의 첫 안내가 범위를 더 좁히라는 잘못된 방향을 제시하지 않는다.
-    testWidgets('empty rural introduction does not ask to narrow in $language', (
-      tester,
-    ) async {
-      SharedPreferences.setMockInitialValues({});
-      final control = _HospitalControl()
-        ..empty = true
-        ..regionScopeUncertain = true
-        ..initialArea = const PharmacySearchArea(
-          center: DeviceCoordinate(latitude: 33.36, longitude: 126.356),
-          radiusKm: 2,
+    testWidgets(
+      'empty rural introduction does not ask to narrow in $language',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final control = _HospitalControl()
+          ..empty = true
+          ..regionScopeUncertain = true
+          ..initialArea = const PharmacySearchArea(
+            center: DeviceCoordinate(latitude: 33.36, longitude: 126.356),
+            radiusKm: 2,
+          );
+        await _pumpHospital(tester, control, _MapProbe(), language: language);
+        expect(
+          find.text(
+            language == 'ko'
+                ? '공공데이터에 일부 병원이 누락되거나 진료시간이 실제와 다를 수 있어요.'
+                : 'Hospital listings and hours may be incomplete or outdated.',
+          ),
+          findsOneWidget,
         );
-      await _pumpHospital(tester, control, _MapProbe(), language: language);
-      expect(
-        find.text(
-          language == 'ko'
-              ? '공공데이터에 일부 병원이 누락되거나 진료시간이 실제와 다를 수 있어요.'
-              : 'Hospital listings and hours may be incomplete or outdated.',
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.textContaining(language == 'ko' ? '좁혀' : 'smaller'),
-        findsNothing,
-      );
-      expect(tester.takeException(), isNull);
-    });
+        expect(
+          find.textContaining(language == 'ko' ? '좁혀' : 'smaller'),
+          findsNothing,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
 
     // 최초 안내가 긴 언어에서도 확인 버튼과 지도·목록을 가리지 않는다.
     testWidgets('first guide fits narrow large-text screen in $language', (

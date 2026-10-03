@@ -15,7 +15,7 @@ if str(BACKEND_DIR) not in sys.path:
 os.environ.setdefault("GEMINI_API_KEY", "test-gemini-key")
 os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
 
-from controls.check_medication_detail_control import _LocalMedicationCatalog  # noqa: E402
+from services.local_medication_catalog import LocalMedicationCatalog  # noqa: E402
 from entities.medication_detail_entity import (  # noqa: E402
     _DrugApprovalInfo,
     _DrugBasicInfo,
@@ -40,7 +40,7 @@ class MedicationDetailLocalCatalogTest(unittest.TestCase):
     # Returns:
     # - None.
     def test_raw_approval_item_with_alternate_keys_is_normalized(self) -> None:
-        catalog = _LocalMedicationCatalog(db=None, summary_generator=object())
+        catalog = LocalMedicationCatalog(db=None, summary_generator=object())
         approval_item = _DrugApprovalInfo(
             item_seq="200000001",
             item_name="same-tablet",
@@ -78,7 +78,7 @@ class MedicationDetailLocalCatalogTest(unittest.TestCase):
     # Returns:
     # - None.
     def test_local_basic_detail_preserves_product_code(self) -> None:
-        catalog = _LocalMedicationCatalog(db=None, summary_generator=object())
+        catalog = LocalMedicationCatalog(db=None, summary_generator=object())
         basic_item = _DrugBasicInfo(
             item_seq="200000001",
             item_name="same-tablet",
@@ -101,7 +101,7 @@ class MedicationDetailLocalCatalogTest(unittest.TestCase):
     # Returns:
     # - None.
     def test_cached_approval_detail_preserves_product_code(self) -> None:
-        catalog = _LocalMedicationCatalog(db=None, summary_generator=object())
+        catalog = LocalMedicationCatalog(db=None, summary_generator=object())
         approval_item = _DrugApprovalInfo(
             item_seq="200000001",
             item_name="same-tablet",

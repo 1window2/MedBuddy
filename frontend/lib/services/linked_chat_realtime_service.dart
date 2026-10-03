@@ -51,6 +51,23 @@ enum LinkedChatConnectionState {
   disconnected,
 }
 
+// Class Name: LinkedChatSessionTransport
+// Role: Provides connection visibility and foreground control for a scoped chat session.
+// Responsibilities: Extend the event-source contract without expanding existing monitor consumers.
+// Attributes: states: Connection state stream; stop: Reversible foreground transport suspension.
+abstract interface class LinkedChatSessionTransport
+    implements LinkedChatEventSource {
+  // Function Name: states
+  // Description: Exposes connection state independently of message events.
+  // Parameters: None. Returns: Connection state stream for a borrowed session transport.
+  Stream<LinkedChatConnectionState> get states;
+
+  // Function Name: stop
+  // Description: Suspends transport and reconnect work without disposing the adapter.
+  // Parameters: None. Returns: Completion of background suspension.
+  Future<void> stop();
+}
+
 // 클래스명: LinkedChatRealtimeService
 // 역할: 한 환자·보호자 연동의 인증 WebSocket 연결을 관리한다.
 // 주요 책임:
@@ -61,7 +78,7 @@ enum LinkedChatConnectionState {
 // - authenticationClient (AuthenticatedApiClient): REST와 소켓의 공통 인증 헤더 제공자
 // - _socket (WebSocket?): 현재 heartbeat와 수신에 사용할 WebSocket
 // - _generation (int): 이전 비동기 응답을 차단할 현재 작업 세대
-class LinkedChatRealtimeService implements LinkedChatEventSource {
+class LinkedChatRealtimeService implements LinkedChatSessionTransport {
   static const List<Duration> _reconnectDelays = [
     Duration(seconds: 1),
     Duration(seconds: 2),
@@ -112,6 +129,7 @@ class LinkedChatRealtimeService implements LinkedChatEventSource {
   // - 없음.
   // 반환값:
   // - Stream<LinkedChatConnectionState>: 연결 시작·성공·재연결·종료 상태를 구독자에게 방송하는 스트림을 제공한다.
+  @override
   Stream<LinkedChatConnectionState> get states => _stateController.stream;
 
   // 함수이름: start
@@ -180,7 +198,7 @@ class LinkedChatRealtimeService implements LinkedChatEventSource {
          * - stackTrace (StackTrace): 오류 진단에 함께 기록할 호출 스택
          * 반환값:
          * - 없음.
-         */(Object error, StackTrace stackTrace) {
+         */ (Object error, StackTrace stackTrace) {
           _reportError(error, stackTrace);
           _handleDisconnected(socket, generation);
         },
@@ -190,7 +208,8 @@ class LinkedChatRealtimeService implements LinkedChatEventSource {
          * - 없음.
          * 반환값:
          * - 없음.
-         */() => _handleDisconnected(socket, generation),
+         */ () =>
+            _handleDisconnected(socket, generation),
         cancelOnError: true,
       );
     } catch (error, stackTrace) {
@@ -225,17 +244,22 @@ class LinkedChatRealtimeService implements LinkedChatEventSource {
   // - 없음.
   void _startHeartbeat(WebSocket socket, int generation) {
     _heartbeatTimer?.cancel();
-    _heartbeatTimer = Timer.periodic(const Duration(seconds: 20), /* 함수이름: periodic 콜백
+    _heartbeatTimer = Timer.periodic(
+      const Duration(seconds: 20),
+      /* 함수이름: periodic 콜백
      * 함수역할: 서비스가 시작 상태이고 같은 소켓 세대가 유지될 때만 ping을 전송한다.
      * 매개변수:
      * - _ (Timer): 콜백 계약으로 전달되지만 사용하지 않는 이벤트 값.
      * 반환값:
      * - 없음.
-     */(_) {
-      if (_started && generation == _generation && identical(_socket, socket)) {
-        socket.add('ping');
-      }
-    });
+     */ (_) {
+        if (_started &&
+            generation == _generation &&
+            identical(_socket, socket)) {
+          socket.add('ping');
+        }
+      },
+    );
   }
 
   // 함수이름: _handleDisconnected
@@ -274,7 +298,7 @@ class LinkedChatRealtimeService implements LinkedChatEventSource {
      * - 없음.
      * 반환값:
      * - 없음.
-     */() {
+     */ () {
       _reconnectTimer = null;
       unawaited(_connect(generation, reconnecting: true));
     });
@@ -286,6 +310,7 @@ class LinkedChatRealtimeService implements LinkedChatEventSource {
   // - 없음.
   // 반환값:
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  @override
   Future<void> stop() async {
     if (!_started) {
       return;

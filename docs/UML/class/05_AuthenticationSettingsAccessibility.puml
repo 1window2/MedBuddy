@@ -85,6 +85,7 @@ BAccountDependencies --> BAuthorizationControl
 BAccountDependencies --> AccountOperationLocks : SQLite request-lifetime scope
 note bottom of AccountOperationLocks
   Owns holder/waiter references and cancellation-safe cleanup.
+  Inline timed acquisition preserves cancellation during ownership handoff.
   Idle account identities are removed; locks are process-local.
   PostgreSQL retains its transaction-scoped advisory locks.
 end note

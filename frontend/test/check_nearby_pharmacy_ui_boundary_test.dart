@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:medbuddy_frontend/boundaries/check_nearby_pharmacy_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/nearby_pharmacy_map_widget.dart';
 import 'package:medbuddy_frontend/controls/check_nearby_pharmacy_control.dart';
+import 'package:medbuddy_frontend/entities/device_coordinate_entity.dart';
 import 'package:medbuddy_frontend/entities/nearby_pharmacy_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/services/device_location_service.dart';

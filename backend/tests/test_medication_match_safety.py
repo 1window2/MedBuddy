@@ -4,8 +4,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from controls.check_medication_detail_control import (
-    CheckMedicationDetail, _MedicationNameMatcher, _MedicationTextNormalizer,
+from controls.check_medication_detail_control import CheckMedicationDetail
+from services.medication_name_matching import (
+    MedicationNameMatcher,
+    MedicationTextNormalizer,
 )
 from entities.medication_detail_entity import MedicationDetail
 from services.medication_match_safety import can_auto_match, match_conflict
@@ -45,7 +47,7 @@ def test_equivalent_strengths(original, candidate):
 def test_unsafe_strength_or_form_is_excluded(original, candidate):
     assert match_conflict(original, candidate)
     assert not can_auto_match(original, candidate)
-    assert _MedicationNameMatcher().calculate_score(original, candidate) == 0
+    assert MedicationNameMatcher().calculate_score(original, candidate) == 0
 
 
 def test_missing_strength_and_typo_require_confirmation():
@@ -60,8 +62,8 @@ def detail(name, item_seq='1'):
 
 def control_with_results(results):
     control = object.__new__(CheckMedicationDetail)
-    control.text_normalizer = _MedicationTextNormalizer()
-    control.name_matcher = _MedicationNameMatcher()
+    control.text_normalizer = MedicationTextNormalizer()
+    control.name_matcher = MedicationNameMatcher()
     control._fetch_drug_info = AsyncMock(return_value=results)
     return control
 
@@ -109,7 +111,7 @@ def test_same_name_different_product_ids_require_confirmation():
 def test_local_and_cached_wrong_strength_cannot_skip_public_lookup(source):
     control = object.__new__(CheckMedicationDetail)
     wrong = [detail('테스트정500mg')]
-    control.name_matcher = _MedicationNameMatcher()
+    control.name_matcher = MedicationNameMatcher()
     control.local_medication_catalog = SimpleNamespace(
         fetch_drug_info=AsyncMock(return_value=wrong if source == 'local' else []))
     control.medication_cache = SimpleNamespace(

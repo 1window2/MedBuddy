@@ -8,6 +8,7 @@ participant "NotificationService" as Notification
 participant "LinkedChatEntryUI" as Entry
 participant "LinkPatientCaregiver" as Link
 participant "LinkedChatUI" as UI
+participant "LinkedChatHistoryViewModel" as History
 participant "ManageLinkedChat" as Control
 participant "Chat API / Repository" as API
 participant "Other participant" as Peer
@@ -22,14 +23,17 @@ else New conversation route
   Link --> Entry : current patient/caregiver role and peer
   Entry -> UI : verified role, patient hash and current settings
 end
-UI -> Control : recent history + unread summary
+UI -> History : initialize / coalesced refresh
+History -> Control : recent history + unread summary
 Control -> API : GET messages / unread-count
-API --> UI : recent page + count + first_unread_message_id
-UI -> UI : fix unread boundary for this visit
+API --> History : recent page + count + first_unread_message_id
+History -> History : fix unread boundary for this visit
+History --> UI : immutable reconciled history
 UI --> User : latest message (reverse-list offset 0)
 
 alt Foreground + current route + latest position
-  UI -> Control : markRead(latest incoming ID)
+  UI -> History : visible/latest-position predicates
+  History -> Control : markRead(latest incoming ID)
   Control -> API : POST read; deduplicate acknowledged range
   API --> Peer : read event
   Peer -> Peer : remove outgoing unread 1
@@ -38,11 +42,19 @@ else Older history / covered route / background
 end
 
 User -> UI : Scroll toward older messages
-UI -> Control : request previous page (before_id, limit 50)
+UI -> History : loadOlderMessages()
+History -> Control : request previous page (before_id, limit 50)
 Control -> API : authorized visible history
-API --> UI : older page; preserve first-unread divider
-Peer --> UI : incoming message or read event
-UI -> UI : merge by ID; never roll back known read_at
+API --> History : older page; preserve first-unread divider
+Peer --> History : incoming message or read event
+History -> History : merge by ID; never roll back read/deletion evidence
+History --> UI : read-only snapshot; presentation keeps draft/scroll
+note over UI,History
+  Account/link/patient changes replace the identity-keyed session.
+  Disposal invalidates pending responses, timers and event subscriptions.
+  Same-conversation settings/notification re-entry preserves its draft.
+  Borrowed authenticated adapters stay owned by presentation.
+end note
 note over UI,API
   Message-list counts and local notification-inbox counts are distinct.
   Hidden/deleted/own messages do not count as incoming unread messages.

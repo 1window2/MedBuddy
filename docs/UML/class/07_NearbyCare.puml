@@ -16,8 +16,15 @@ package "Flutter: Boundary / Control / Entity" {
   class "_NearbyCareFilterSheet" as NearbyCareFilterSheet <<Boundary>>
   class "_PharmacyDetailsSheet" as PharmacyDetailsSheet <<Boundary>>
   class "NearbyPharmacyMap" as NearbyPharmacyMapWidget <<Boundary>>
+  abstract class "CheckNearbyCare" as FCare <<Control>> {
+    + requestNearbyCareSearch(...)
+    + requestSearchArea(...)
+    + dispose()
+  }
   class "CheckNearbyPharmacy" as FPharmacy <<Control>>
   class "CheckNearbyHospital" as FHospital <<Control>>
+  class DeviceCoordinate <<Entity>>
+  interface DeviceLocationBoundary
   class NearbyPharmacy <<Entity>>
   class LinkedChatUI <<Boundary>>
   class "ManageLinkedChat" as FChat <<Control>>
@@ -66,9 +73,13 @@ CheckNearbyPharmacyUI --> NearbyCareFilterSheet : draft date + status / apply
 CheckNearbyPharmacyUI --> PharmacyDetailsSheet
 CheckNearbyPharmacyUI --> NearbyPharmacyMapWidget
 CheckNearbyPharmacyUI --> FPharmacy
-FHospital --|> FPharmacy
+CheckNearbyPharmacyUI --> FCare : shared contract
+FHospital --|> FCare
+FPharmacy --|> FCare
+FCare --> DeviceLocationBoundary
+DeviceLocationBoundary --> DeviceCoordinate : neutral WGS84 value
 FHospital --> HospitalRouter : authenticated hospital endpoint
-FPharmacy --> NearbyPharmacy
+FCare --> NearbyPharmacy : existing shared display DTO
 HospitalRouter --> BHospital
 BHospital --> HospitalLookupBoundary
 BHospital --> DepartmentSearch : selected specialty
@@ -124,5 +135,12 @@ note bottom of CheckNearbyPharmacyUI
   At >= 3 km, or for partial results, retain a bottom warning.
   Sampled regions alone do not trigger the limit warning.
   Explain region uncertainty in source notes and qualify empty results.
+end note
+note bottom of FCare
+  Sibling controls share transport, not pharmacy-specific policy.
+  Only pharmacy exposes the 20 km list convenience operation.
+  Hospital defaults remain 300 m with bounded expansion.
+  Disposal rejects new searches and HTTP after pending GPS.
+  Caller-provided clients remain caller-owned.
 end note
 @enduml

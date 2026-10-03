@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 
+import '../entities/device_coordinate_entity.dart';
 import '../entities/nearby_pharmacy_entity.dart';
 import '../services/naver_map_config.dart';
 import '../theme/medbuddy_theme.dart';

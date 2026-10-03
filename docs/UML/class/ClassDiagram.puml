@@ -127,7 +127,7 @@ package "Flutter Frontend" {
 
         class "CheckNearbyPharmacyUI" as CheckNearbyPharmacyUI <<UI: 공통 병원·약국 검색>> {
             + userSetting: UserSetting
-            + control: CheckNearbyPharmacy
+            + control: CheckNearbyCare
             + createState(): State
         }
 
@@ -164,7 +164,19 @@ package "Flutter Frontend" {
             + link: PatientCaregiverLink
             + userSetting: UserSetting
             + chatControl: ManageLinkedChat
-            + createState(): State
+            + build(context): Widget
+        }
+
+        class LinkedChatHistoryViewModel <<ViewModel: scoped conversation history>> {
+            + linkId: int
+            + userHash: String
+            + messages: List<ChatMessage> {readOnly}
+            + initialize(): Future<void>
+            + refresh(showLoading, catchUp): Future<void>
+            + loadOlderMessages(): Future<void>
+            + markLatestIncomingRead(): Future<void>
+            + setForeground(foreground): void
+            + dispose(): void
         }
 
         class "LinkPatientCaregiverUI" as LinkPatientCaregiverUI <<UI: 환자-보호자 연결>> {
@@ -362,19 +374,25 @@ package "Flutter Frontend" {
             + mergeEquivalentRequests(requests): List<IdentifiedPillSaveRequest>
         }
 
-        class "CheckNearbyPharmacy" as FCheckNearbyPharmacy <<Controller: 근처 약국 조회>> {
-            + requestNearbyPharmacies(): Future<List<NearbyPharmacy>>
-            + requestNearbyPharmacySearch(searchArea): Future<NearbyPharmacySearchResult>
+        abstract class "CheckNearbyCare" as FCheckNearbyCare <<Controller: shared nearby-care operations>> {
+            + requestNearbyCareSearch(searchArea): Future<NearbyPharmacySearchResult>
             + requestSearchArea(): Future<PharmacySearchArea>
             + requestPhoneCall(telephone): Future<bool>
             + requestDirections(pharmacy): Future<bool>
             + openApplicationSettings(): Future<bool>
             + openDeviceLocationSettings(): Future<bool>
+            + dispose(): void
+        }
+
+        class "CheckNearbyPharmacy" as FCheckNearbyPharmacy <<Controller: 근처 약국 조회>> {
+            + requestNearbyPharmacies(): Future<List<NearbyPharmacy>>
+            + nearbySearchUrl: String
         }
 
         class "CheckNearbyHospital" as FCheckNearbyHospital <<Controller: 병원 검색 확장>> {
             + department: String?
             + nearbySearchUrl: String
+            + requestNearbyCareSearch(maxDistanceKm=0.3): Future<NearbyPharmacySearchResult>
         }
         class "LinkedChatEntryUI" as LinkedChatEntryUI <<UI: 알림의 활성 연결·역할 확인>>
 
@@ -598,6 +616,11 @@ package "Flutter Frontend" {
             + events: Stream<Map<String, dynamic>>
             + start(): Future<void>
             + dispose(): Future<void>
+        }
+
+        interface LinkedChatSessionTransport {
+            + states: Stream<LinkedChatConnectionState>
+            + stop(): Future<void>
         }
 
         class "LinkedChatRealtimeService" as LinkedChatRealtimeService <<Service: WebSocket 채팅 동기화>> {
@@ -895,7 +918,12 @@ package "Flutter Frontend" {
             + dosage: String
         }
 
-        class "PharmacySearchArea" as PharmacySearchArea <<Entity: 약국 검색 지역>> {
+        class DeviceCoordinate <<Entity: provider-neutral WGS84>> {
+            + latitude: double
+            + longitude: double
+        }
+
+        class "PharmacySearchArea" as PharmacySearchArea <<Entity: shared display search area>> {
             + center: DeviceCoordinate
             + radiusKm: double
             + isFallback: bool
@@ -1016,19 +1044,28 @@ package "FastAPI Backend" {
             + review_reason: str
         }
 
-        class "_MedicationDetailCache" as MedicationDetailCache <<Service: Redis Cache>> {
+        class "MedicationDetailCache" as MedicationDetailCache <<Boundary: Redis Cache>> {
             - redis_client: Redis
             + get(drug_name): list<MedicationDetail>
             + set(drug_name, details): void
             + close(): void
         }
 
-        class "_LocalMedicationCatalog" as LocalMedicationCatalog <<Service: Local 약품 Catalog>> {
+        class "LocalMedicationCatalog" as LocalMedicationCatalog <<Service: Local 약품 Catalog>> {
             - db: Session
             + fetch_drug_info(drug_name): list<MedicationDetail>
         }
 
-        class "_MedicationSummaryGenerator" as MedicationSummaryGenerator <<Service: 허가정보 요약>> {
+        class MedicationTextNormalizer <<Service: pure search variants>> {
+            + normalize_raw_text(raw_text): str
+            + build_search_keywords(raw_text): list<str>
+        }
+
+        class MedicationNameMatcher <<Service: pure candidate ranking>> {
+            + rank_candidates(reference, candidates, name_reader, limit): list
+        }
+
+        class "MedicationSummaryGenerator" as MedicationSummaryGenerator <<Boundary: 허가정보 요약>> {
             + model_name: str
             + summarize_advanced_item(item): MedicationDetail
         }
@@ -1947,7 +1984,7 @@ PrescriptionAnalysisPreviewUI ..> MedicationScheduleReviewBoundary
 PrescriptionAnalysisPreviewUI ..> MedicationCandidateDialog
 PrescriptionAnalysisPreviewUI ..> MedicationMatchReview
 MedicationCandidateDialog --> FMedicationDetail : 제품명·제조사 비교; 명시적 선택
-CheckNearbyPharmacyUI o-- FCheckNearbyPharmacy
+CheckNearbyPharmacyUI o-- FCheckNearbyCare
 CheckNearbyPharmacyUI *-- NearbyPharmacyMap
 CheckNearbyPharmacyUI *-- PharmacyDetailsSheet : 선택 약국의 접힘·펼침 정보
 CheckNearbyPharmacyUI *-- PharmacyListPanel : 상단 드래그·탭으로 지도 복귀
@@ -2046,12 +2083,17 @@ FCheckPrescriptionChange ..> AuthenticatedApiClient
 FCheckHealthRecommendation ..> AuthenticatedApiClient
 FIdentifyPill ..> AuthenticatedApiClient
 FIdentifyPillBatch *-- FIdentifyPill
-FCheckNearbyPharmacy ..> AuthenticatedApiClient
-FCheckNearbyPharmacy o-- DeviceLocationBoundary
+FCheckNearbyCare ..> AuthenticatedApiClient
+FCheckNearbyCare o-- DeviceLocationBoundary
+DeviceLocationBoundary --> DeviceCoordinate
 GeolocatorDeviceLocationService ..|> DeviceLocationBoundary
 FManageLinkedChat ..> AuthenticatedApiClient
-LinkedChatRealtimeService ..|> LinkedChatEventSource
+LinkedChatSessionTransport --|> LinkedChatEventSource
+LinkedChatRealtimeService ..|> LinkedChatSessionTransport
 LinkedChatRealtimeService ..> AuthenticatedApiClient
+LinkedChatUI *-- LinkedChatHistoryViewModel : identity-keyed account/link/patient session
+LinkedChatHistoryViewModel --> FManageLinkedChat : history / receipt / recovery
+LinkedChatHistoryViewModel --> LinkedChatSessionTransport : borrowed transport contract
 FLinkPatientCaregiver ..> AuthenticatedApiClient
 FCheckCaregiverMedication ..> AuthenticatedApiClient
 FSetNotification ..> AuthenticatedApiClient
@@ -2110,8 +2152,8 @@ FCheckHealthRecommendation ..> FHealthRecommendation
 FIdentifyPill ..> FPillIdentificationResult
 FIdentifyPill ..> FMultiplePillIdentificationResult
 FIdentifyPillBatch ..> FPillIdentificationResult
-FCheckNearbyPharmacy ..> FNearbyPharmacy
-FCheckNearbyPharmacy ..> PharmacySearchArea : GPS 실패 시 홍익대 기준
+FCheckNearbyCare ..> FNearbyPharmacy
+FCheckNearbyCare ..> PharmacySearchArea : GPS 실패 시 홍익대 기준
 FManageLinkedChat ..> FChatMessage
 FManageLinkedChat ..> FChatMedicationContext
 FManageLinkedChat ..> FChatScheduleContext
@@ -2142,6 +2184,11 @@ BCheckMedicationDetail ..> MedicationMatchSafety
 BCheckMedicationDetail --> MedicationResponse
 MedicationNameVerifier ..> MedicationMatchSafety
 BCheckMedicationDetail o-- LocalMedicationCatalog
+BCheckMedicationDetail o-- MedicationTextNormalizer
+BCheckMedicationDetail o-- MedicationNameMatcher
+LocalMedicationCatalog --> MedicationNameMatcher
+LocalMedicationCatalog --> MedicationSummaryGenerator
+MedicationNameMatcher --> MedicationTextNormalizer
 BCheckMedicationDetail o-- MedicationSummaryGenerator
 BCheckMedicationDetail o-- PublicDrugSmallAPI
 BCheckMedicationDetail o-- PublicDrugLargeAPI
@@ -2342,7 +2389,8 @@ DBUserAccount "0..1" -- "0..*" DBPatientLinkCode : caregiver {FK, SET NULL}
 DBUserAccount "1" -- "0..*" DBCaregiverNotification : patient {FK, CASCADE}
 DBUserAccount "1" -- "0..*" DBCaregiverNotification : caregiver {FK, CASCADE}
 
-FCheckNearbyHospital --|> FCheckNearbyPharmacy
+FCheckNearbyHospital --|> FCheckNearbyCare
+FCheckNearbyPharmacy --|> FCheckNearbyCare
 FCheckNearbyHospital --> HospitalRouter
 HospitalRouter --> BCheckNearbyHospital
 BCheckNearbyHospital --> NEMCHospitalAPI

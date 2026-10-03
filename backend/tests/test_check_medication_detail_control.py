@@ -22,13 +22,15 @@ from boundaries.public_drug_api_boundary import (
     read_public_image_url,
 )
 from core.config import settings
-from controls.check_medication_detail_control import (
-    CheckMedicationDetail,
-    _MedicationDetailCache,
-    _MedicationNameMatcher,
-    _MedicationSummaryGenerator,
-    _MedicationTextNormalizer,
-    _read_text,
+from boundaries.medication_detail_cache_boundary import MedicationDetailCache
+from boundaries.medication_summary_boundary import (
+    MedicationSummaryGenerator,
+    read_medication_detail_text,
+)
+from controls.check_medication_detail_control import CheckMedicationDetail
+from services.medication_name_matching import (
+    MedicationNameMatcher,
+    MedicationTextNormalizer,
 )
 from entities.medication_detail_entity import MedicationDetail
 
@@ -123,7 +125,7 @@ def anyio_backend() -> str:
 # 반환값:
 # - 없음 (None).
 def test_build_search_keywords_splits_product_and_ingredient_names() -> None:
-    normalizer = _MedicationTextNormalizer()
+    normalizer = MedicationTextNormalizer()
 
     search_keywords = normalizer.build_search_keywords("켈로인(펠루비프로펜)")
 
@@ -143,7 +145,7 @@ def test_build_search_keywords_splits_product_and_ingredient_names() -> None:
 # Returns:
 # - None.
 def test_split_parenthesized_text_uses_linear_scan() -> None:
-    normalizer = _MedicationTextNormalizer()
+    normalizer = MedicationTextNormalizer()
 
     outside_text, parenthesized_candidates = normalizer._split_parenthesized_text(
         "Alpha(Beta) Gamma"
@@ -162,7 +164,7 @@ def test_split_parenthesized_text_uses_linear_scan() -> None:
 # Returns:
 # - None.
 def test_split_parenthesized_text_ignores_oversized_parentheses() -> None:
-    normalizer = _MedicationTextNormalizer()
+    normalizer = MedicationTextNormalizer()
 
     outside_text, parenthesized_candidates = normalizer._split_parenthesized_text(
         "Alpha(" + ("B" * 10000) + ") Gamma"
@@ -180,7 +182,7 @@ def test_split_parenthesized_text_ignores_oversized_parentheses() -> None:
 # Returns:
 # - None.
 def test_split_parenthesized_text_preserves_nested_groups() -> None:
-    normalizer = _MedicationTextNormalizer()
+    normalizer = MedicationTextNormalizer()
 
     outside_text, parenthesized_candidates = normalizer._split_parenthesized_text(
         "Drug((ingredient)) 20mg"
@@ -198,7 +200,7 @@ def test_split_parenthesized_text_preserves_nested_groups() -> None:
 # 반환값:
 # - 없음 (None).
 def test_build_search_keywords_strips_korean_dosage_unit() -> None:
-    normalizer = _MedicationTextNormalizer()
+    normalizer = MedicationTextNormalizer()
 
     search_keywords = normalizer.build_search_keywords("에니코프캡슐300밀리그램")
 
@@ -217,7 +219,7 @@ def test_build_search_keywords_strips_korean_dosage_unit() -> None:
 # 반환값:
 # - 없음 (None).
 def test_build_search_keywords_adds_hangul_ocr_vowel_variants() -> None:
-    normalizer = _MedicationTextNormalizer()
+    normalizer = MedicationTextNormalizer()
 
     search_keywords = normalizer.build_search_keywords("에니코프캡슐300밀리그램")
 
@@ -232,7 +234,7 @@ def test_build_search_keywords_adds_hangul_ocr_vowel_variants() -> None:
 # 반환값:
 # - 없음 (None).
 def test_build_search_keywords_removes_known_manufacturer_prefix() -> None:
-    normalizer = _MedicationTextNormalizer()
+    normalizer = MedicationTextNormalizer()
 
     search_keywords = normalizer.build_search_keywords(
         "대웅바이오클래리트로마이신정250mg"
@@ -251,7 +253,7 @@ def test_build_search_keywords_removes_known_manufacturer_prefix() -> None:
 # Returns:
 # - None.
 def test_build_search_keywords_caps_parenthesized_request_amplification() -> None:
-    normalizer = _MedicationTextNormalizer()
+    normalizer = MedicationTextNormalizer()
     crafted_name = "drug" + "".join(
         f"({chr(codepoint)})" for codepoint in range(ord("a"), ord("z") + 1)
     )
@@ -269,7 +271,7 @@ def test_build_search_keywords_caps_parenthesized_request_amplification() -> Non
 # 반환값:
 # - 없음 (None).
 def test_name_matcher_accepts_parenthesized_ingredient_and_dosage() -> None:
-    matcher = _MedicationNameMatcher()
+    matcher = MedicationNameMatcher()
 
     score = matcher.calculate_score(
         "켈로인정(펠루비프로펜)",
@@ -291,7 +293,7 @@ def test_name_matcher_accepts_parenthesized_ingredient_and_dosage() -> None:
 # 반환값:
 # - 없음 (None).
 def test_name_matcher_accepts_one_character_error_in_long_name() -> None:
-    matcher = _MedicationNameMatcher()
+    matcher = MedicationNameMatcher()
 
     assert matcher.is_confident_match(
         "클래리트로마이산",
@@ -307,7 +309,7 @@ def test_name_matcher_accepts_one_character_error_in_long_name() -> None:
 # 반환값:
 # - 없음 (None).
 def test_name_matcher_rejects_unrelated_medication_name() -> None:
-    matcher = _MedicationNameMatcher()
+    matcher = MedicationNameMatcher()
 
     assert not matcher.is_confident_match("아스피린정", "타이레놀정")
 
@@ -320,7 +322,7 @@ def test_name_matcher_rejects_unrelated_medication_name() -> None:
 # 반환값:
 # - 없음 (None).
 def test_name_matcher_ranks_best_candidate_first() -> None:
-    matcher = _MedicationNameMatcher()
+    matcher = MedicationNameMatcher()
     candidates = [
         {"itemName": "클래리트로마이신정500밀리그램"},
         {"itemName": "아목시실린캡슐500밀리그램"},
@@ -346,9 +348,9 @@ def test_name_matcher_ranks_best_candidate_first() -> None:
 # 반환값:
 # - 없음 (None).
 def test_read_text_replaces_missing_public_api_fields() -> None:
-    assert _read_text(None) == "정보 없음"
-    assert _read_text("") == "정보 없음"
-    assert _read_text(None, "") == ""
+    assert read_medication_detail_text(None) == "정보 없음"
+    assert read_medication_detail_text("") == "정보 없음"
+    assert read_medication_detail_text(None, "") == ""
 
 
 # Function Name: test_public_medication_image_url_accepts_documented_aliases
@@ -743,7 +745,7 @@ async def test_advanced_detail_preserves_product_code() -> None:
         (),
         {"aio": type("Aio", (), {"models": _FakeModels()})()},
     )()
-    generator = _MedicationSummaryGenerator(ai_client=fake_client)
+    generator = MedicationSummaryGenerator(ai_client=fake_client)
 
     detail = await generator.summarize_advanced_item(
         "test-tablet",
@@ -772,7 +774,7 @@ def test_medication_summary_timeout_uses_configured_default(
 ) -> None:
     monkeypatch.setattr(settings, "MEDICATION_SUMMARY_TIMEOUT_SECONDS", 0.25)
 
-    generator = _MedicationSummaryGenerator(ai_client=object())
+    generator = MedicationSummaryGenerator(ai_client=object())
 
     assert generator.timeout_seconds == 0.25
 
@@ -792,7 +794,7 @@ def test_medication_summary_rejects_unbounded_timeout(
     timeout_seconds: float,
 ) -> None:
     with pytest.raises(ValueError, match="finite and positive"):
-        _MedicationSummaryGenerator(
+        MedicationSummaryGenerator(
             ai_client=object(),
             timeout_seconds=timeout_seconds,
         )
@@ -850,7 +852,7 @@ async def test_medication_summary_timeout_is_stable_and_cancels_request() -> Non
         (),
         {"aio": type("Aio", (), {"models": models})()},
     )()
-    generator = _MedicationSummaryGenerator(
+    generator = MedicationSummaryGenerator(
         ai_client=fake_client,
         timeout_seconds=0.01,
     )
@@ -881,7 +883,7 @@ async def test_medication_summary_timeout_is_stable_and_cancels_request() -> Non
 @pytest.mark.anyio
 async def test_medication_cache_disables_after_lookup_failure() -> None:
     redis_client = _FailingRedisClient()
-    cache = _MedicationDetailCache(redis_client=redis_client)
+    cache = MedicationDetailCache(redis_client=redis_client)
 
     assert await cache.get("엘타인캡슐") is None
     assert await cache.get("엘타인캡슐") is None
@@ -898,7 +900,7 @@ async def test_medication_cache_disables_after_lookup_failure() -> None:
 @pytest.mark.anyio
 async def test_medication_cache_closes_its_redis_client() -> None:
     redis_client = _FailingRedisClient()
-    cache = _MedicationDetailCache(redis_client=redis_client)
+    cache = MedicationDetailCache(redis_client=redis_client)
 
     await cache.close()
 
