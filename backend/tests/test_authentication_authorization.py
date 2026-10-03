@@ -2,6 +2,8 @@
 # Role: Regression coverage for Firebase identity, patient authorization, production settings,
 #   and request-scoped account locks.
 import asyncio
+import threading
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
@@ -13,7 +15,6 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from api.dependencies import (
-    _sqlite_account_locks,
     get_authenticated_principal,
     get_registered_principal,
     verify_app_check_token,
@@ -28,6 +29,7 @@ from boundaries.app_check_token_verifier_boundary import (
 )
 from controls.authorization_control import AuthorizationControl
 from core.config import Settings
+from core.account_operation_locks import AccountOperationLocks
 from core.database import Base
 from core.request_rate_limits import RateLimitRule, RequestRateLimitStore
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
@@ -394,7 +396,7 @@ async def test_registered_principal_quota_uses_stable_identity_and_route_scope(
 # - None.
 @pytest.mark.anyio
 async def test_sqlite_account_lock_is_held_until_dependency_cleanup(
-    db_session,
+    db_session: Session,
 ) -> None:
     principal = _principal("request-lifetime-lock-user")
     app = FastAPI()
@@ -404,10 +406,13 @@ async def test_sqlite_account_lock_is_held_until_dependency_cleanup(
         db=db_session,
     )
 
-    with patch("api.dependencies.settings.RATE_LIMIT_ENABLED", False):
+    registry = AccountOperationLocks()
+    with (
+        patch("api.dependencies.settings.RATE_LIMIT_ENABLED", False),
+        patch("api.dependencies._sqlite_account_lock_registry", registry),
+    ):
         assert await anext(dependency) == principal
-        account_lock = _sqlite_account_locks[principal.user_hash]
-        assert account_lock.locked()
+        assert registry.active_scope_count == 1
 
         contender = get_registered_principal(
             request=_request(app, "GET", "/list"),
@@ -415,7 +420,7 @@ async def test_sqlite_account_lock_is_held_until_dependency_cleanup(
             db=db_session,
         )
         with patch(
-            "api.dependencies.run_in_threadpool",
+            "api.dependencies.run_request_database_work",
             side_effect=AssertionError("SQLite lock waits must remain asynchronous"),
         ):
             contender_task = asyncio.create_task(anext(contender))
@@ -425,8 +430,142 @@ async def test_sqlite_account_lock_is_held_until_dependency_cleanup(
             assert await contender_task == principal
             await contender.aclose()
 
-    assert account_lock.locked() is False
-    assert principal.user_hash not in _sqlite_account_locks
+    assert registry.active_scope_count == 0
+
+
+# Function Name: test_cancelled_postgres_registration_finishes_before_session_cleanup
+# Description:
+# - Exercises the PostgreSQL registration branch with a blocking double and forbids cleanup while the worker still uses its request session.
+# Parameters:
+# - None.
+# Returns:
+# - None; fails if cancellation abandons registration or permits concurrent session closure.
+@pytest.mark.anyio
+async def test_cancelled_postgres_registration_finishes_before_session_cleanup() -> None:
+    principal = _principal("cancelled-postgres-registration")
+    started = threading.Event()
+    release = threading.Event()
+    calls: list[str] = []
+    loop_thread = threading.get_ident()
+    db = SimpleNamespace(get_bind=lambda: SimpleNamespace(dialect=SimpleNamespace(name="postgresql")))
+
+    # Function Name: register
+    # Description: Simulates account registration while holding the caller's session in a worker.
+    # Parameters: session (object): Request-owned session double; user_hash (str): Verified caller scope.
+    # Returns: None after the test permits worker completion.
+    def register(session: object, user_hash: str) -> None:
+        assert threading.get_ident() != loop_thread
+        assert session is db and user_hash == principal.user_hash
+        started.set()
+        if not release.wait(2):
+            raise AssertionError("Registration cancellation did not release database work.")
+        calls.append("registration_complete")
+
+    dependency = get_registered_principal(
+        request=_request(FastAPI(), "POST", "/save"), principal=principal, db=db,
+    )
+
+    # Function Name: request
+    # Description: Models dependency teardown and session closure after cancelled registration.
+    # Parameters: None.
+    # Returns: None; cancellation is raised only after registration finishes.
+    async def request() -> None:
+        try:
+            await anext(dependency)
+        finally:
+            await dependency.aclose()
+            assert calls == ["registration_complete"]
+            calls.append("session_close")
+
+    with (
+        patch("api.dependencies.settings.RATE_LIMIT_ENABLED", False),
+        patch("api.dependencies._register_account_scope", side_effect=register),
+    ):
+        task = asyncio.create_task(request())
+        try:
+            async with asyncio.timeout(1):
+                while not started.is_set():
+                    await asyncio.sleep(0)
+            task.cancel()
+            await asyncio.sleep(0)
+            assert not task.done() and calls == []
+        finally:
+            release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    assert calls == ["registration_complete", "session_close"]
+
+
+# Function Name: test_cancelled_sqlite_account_dependency_cleans_up_waiter
+# Description:
+# - Cancels a waiting request without retaining its account scope after teardown.
+# Parameters:
+# - db_session (Session): Isolated account database supplied by the fixture.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_cancelled_sqlite_account_dependency_cleans_up_waiter(
+    db_session: Session,
+) -> None:
+    principal = _principal("cancelled-account-waiter")
+    app = FastAPI()
+    registry = AccountOperationLocks()
+    holder = get_registered_principal(
+        request=_request(app, "POST", "/save"),
+        principal=principal,
+        db=db_session,
+    )
+    contender = get_registered_principal(
+        request=_request(app, "GET", "/list"),
+        principal=principal,
+        db=db_session,
+    )
+    with (
+        patch("api.dependencies.settings.RATE_LIMIT_ENABLED", False),
+        patch("api.dependencies._sqlite_account_lock_registry", registry),
+    ):
+        assert await anext(holder) == principal
+        waiter = asyncio.create_task(anext(contender))
+        await asyncio.sleep(0)
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+        await contender.aclose()
+        assert registry.active_scope_count == 1
+        await holder.aclose()
+    assert registry.active_scope_count == 0
+
+
+# Function Name: test_sqlite_account_timeout_preserves_busy_response
+# Description:
+# - Preserves the retryable HTTP contract when a competing account scope times out.
+# Parameters:
+# - db_session (Session): Isolated account database supplied by the fixture.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_sqlite_account_timeout_preserves_busy_response(
+    db_session: Session,
+) -> None:
+    principal = _principal("busy-account")
+    registry = AccountOperationLocks()
+    dependency = get_registered_principal(
+        request=_request(FastAPI(), "GET", "/list"),
+        principal=principal,
+        db=db_session,
+    )
+    with (
+        patch("api.dependencies.settings.RATE_LIMIT_ENABLED", False),
+        patch("api.dependencies._sqlite_account_lock_registry", registry),
+        patch("api.dependencies._SQLITE_ACCOUNT_LOCK_WAIT_SECONDS", 0.01),
+    ):
+        async with registry.hold(principal.user_hash, timeout=1):
+            with pytest.raises(HTTPException) as busy:
+                await anext(dependency)
+            assert busy.value.status_code == 503
+            assert busy.value.headers == {"Retry-After": "5"}
+        await dependency.aclose()
+    assert registry.active_scope_count == 0
 
 
 # Function Name: test_production_configuration_fails_closed_without_firebase

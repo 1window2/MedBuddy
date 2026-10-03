@@ -1,15 +1,23 @@
 # File Name: test_release_app_check_policy.py
 # Role: Keep the temporary off-Play attestation exception out of main release artifacts.
 
+import importlib.util
+import sys
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
+SPEC = importlib.util.spec_from_file_location(
+    "android_release_configuration_policy", ROOT / "scripts/check_android_release_configuration.py",
+)
+gate = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = gate
+SPEC.loader.exec_module(gate)
 
 
 # Function Name: test_signed_workflow_requires_attestation_on_main
-# Description: Execute the actual workflow normalization step before it can access signing material.
+# Description: Execute the workflow's shared policy command before it can access signing material.
 # Parameters: monkeypatch, tmp_path: Isolated environment/output; ref: Source branch;
 #   policy: Environment setting; expected: Accepted normalized value or rejection.
 # Returns: None.
@@ -25,21 +33,16 @@ def test_signed_workflow_requires_attestation_on_main(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
     ref: str, policy: str, expected: str | None,
 ) -> None:
-    workflow = (ROOT / ".github/workflows/release-android.yml").read_text()
-    step = workflow.split("- name: Normalize release App Check policy", 1)[1].split("\n      - name:", 1)[0]
-    script = step.split("python - <<'PY'\n", 1)[1].split("\n          PY", 1)[0]
-    script = "\n".join(line[10:] for line in script.splitlines())
     output = tmp_path / "github-env"
     monkeypatch.setenv("GITHUB_REF", ref)
     monkeypatch.setenv("FIREBASE_APP_CHECK_REQUIRED", policy)
     monkeypatch.setenv("APP_CHECK_RELEASE_DISTRIBUTION", "")
     monkeypatch.setenv("GITHUB_ENV", str(output))
     if expected is None:
-        with pytest.raises(SystemExit):
-            exec(compile(script, "release-app-check-policy", "exec"), {})
+        assert gate.main(["policy"]) == 1
         assert not output.exists()
     else:
-        exec(compile(script, "release-app-check-policy", "exec"), {})
+        assert gate.main(["policy"]) == 0
         assert output.read_text() == (
             f"MEDBUDDY_APP_CHECK_REQUIRED_NORMALIZED={expected}\n"
             "MEDBUDDY_RELEASE_DISTRIBUTION=play\n"
@@ -60,20 +63,27 @@ def test_signed_workflow_normalizes_one_shared_artifact_plan(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
     policy: str, channel: str, expected: str | None,
 ) -> None:
-    workflow = (ROOT / ".github/workflows/release-android.yml").read_text()
-    step = workflow.split("- name: Normalize release App Check policy", 1)[1].split("\n      - name:", 1)[0]
-    script = step.split("python - <<'PY'\n", 1)[1].split("\n          PY", 1)[0]
-    script = "\n".join(line[10:] for line in script.splitlines())
     output = tmp_path / "github-env"
     monkeypatch.setenv("GITHUB_REF", "refs/heads/beta/v0.2.0")
     monkeypatch.setenv("FIREBASE_APP_CHECK_REQUIRED", policy)
     monkeypatch.setenv("APP_CHECK_RELEASE_DISTRIBUTION", channel)
     monkeypatch.setenv("GITHUB_ENV", str(output))
     if expected is None:
-        with pytest.raises(SystemExit):
-            exec(compile(script, "release-app-check-policy", "exec"), {})
+        assert gate.main(["policy"]) == 1
         assert not output.exists()
     else:
-        exec(compile(script, "release-app-check-policy", "exec"), {})
+        assert gate.main(["policy"]) == 0
         assert f"MEDBUDDY_BUILD_DIRECT_APK={expected}\n" in output.read_text()
         assert f"MEDBUDDY_RELEASE_DISTRIBUTION={channel.strip().lower()}\n" in output.read_text()
+
+
+# Function Name: test_workflow_uses_one_policy_implementation_before_signing
+# Description: Keep policy validation in the module, with YAML only responsible for invoking it.
+# Parameters: None.
+# Returns: None.
+def test_workflow_uses_one_policy_implementation_before_signing() -> None:
+    workflow = (ROOT / ".github/workflows/release-android.yml").read_text()
+    command = "python3 ../scripts/check_android_release_configuration.py policy"
+    assert workflow.count(command) == 1
+    assert workflow.index(command) < workflow.index("Restore release keystore")
+    assert "python - <<'PY'" not in workflow

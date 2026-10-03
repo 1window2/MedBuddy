@@ -22,7 +22,10 @@ os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
 from controls.input_prescription_control import (  # noqa: E402
     InputPrescription,
     PrescriptionAnalysisTimeoutError,
-    _PrescriptionMedicationNameVerifier,
+)
+from services.prescription_medication_name_verifier import (  # noqa: E402
+    MedicationNameVerification,
+    PrescriptionMedicationNameVerifier,
 )
 from core.database import Base  # noqa: E402
 from entities.medication_detail_entity import _DrugApprovalInfo, _DrugBasicInfo  # noqa: E402
@@ -225,6 +228,60 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
         self.db.close()
         self.engine.dispose()
 
+    # Function Name: test_name_verifier_is_usable_without_prescription_orchestration
+    # Description:
+    # - Uses the standalone service directly and retains typed verification evidence without invoking OCR.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None; fails if catalog verification depends on the prescription control or external AI.
+    def test_name_verifier_is_usable_without_prescription_orchestration(self) -> None:
+        canonical_name = "Catalog Medicine"
+        self._save_basic_drug(canonical_name)
+        verifier = PrescriptionMedicationNameVerifier(self.db)
+        fake_client = _FakeGeminiClient("{}")
+
+        results = asyncio.run(verifier.verify_many(
+            [canonical_name],
+            fake_client,
+            "test-model",
+        ))
+
+        self.assertEqual(len(results), 1)
+        self.assertIsInstance(results[0], MedicationNameVerification)
+        self.assertEqual(results[0].raw_name, canonical_name)
+        self.assertEqual(results[0].canonical_name, canonical_name)
+        self.assertEqual(results[0].source, "local_catalog_exact")
+        self.assertEqual(fake_client.models.call_count, 0)
+
+    # Function Name: test_prescription_control_reuses_injected_name_verifier
+    # Description:
+    # - Composes OCR orchestration with an independently constructed verification service and preserves response metadata.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None; fails if the control replaces its injected verifier or changes the public medication payload.
+    def test_prescription_control_reuses_injected_name_verifier(self) -> None:
+        canonical_name = "Catalog Medicine"
+        self._save_basic_drug(canonical_name)
+        verifier = PrescriptionMedicationNameVerifier(self.db)
+        ocr_boundary = _RecordingOCRServiceBoundary(json.dumps({
+            "medications": [self._medication_item(canonical_name)],
+        }))
+        control = InputPrescription(
+            client=object(),
+            medication_name_verifier=verifier,
+            ocr_service_boundary=ocr_boundary,
+        )
+
+        payload = asyncio.run(control.requestPrescriptionText("masked text"))
+
+        self.assertIs(control.medication_name_verifier, verifier)
+        self.assertEqual(ocr_boundary.received_text, "masked text")
+        self.assertEqual(payload["medications"][0]["drug_name"], canonical_name)
+        self.assertEqual(payload["medications"][0]["raw_drug_name"], canonical_name)
+        self.assertEqual(payload["medications"][0]["name_correction_source"], "local_catalog_exact")
+
     # Function Name: test_corrects_hangul_ocr_vowel_variant_from_local_catalog
     # Description:
     # - Corrects a Hangul OCR vowel variant from the local catalog while preserving the raw
@@ -306,7 +363,7 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
     # Returns:
     # - None.
     def test_fuzzy_catalog_lookup_bounds_fragments_and_queries(self) -> None:
-        verifier = _PrescriptionMedicationNameVerifier(self.db)
+        verifier = PrescriptionMedicationNameVerifier(self.db)
         query_count = 0
 
         # Function Name: count_catalog_queries
@@ -397,7 +454,7 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
 
         event.listen(self.engine, "before_cursor_execute", capture_catalog_queries)
         try:
-            verification = _PrescriptionMedicationNameVerifier(self.db).verify(
+            verification = PrescriptionMedicationNameVerifier(self.db).verify(
                 "\ud504\ub85c\ucf54\ud478\uc815"
             )
         finally:
@@ -553,7 +610,7 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
     # Returns:
     # - None.
     def test_prefix_match_checks_distinct_names_before_limiting_rows(self) -> None:
-        verifier = _PrescriptionMedicationNameVerifier(self.db)
+        verifier = PrescriptionMedicationNameVerifier(self.db)
         self.db.add_all(
             [
                 _DrugBasicInfo(

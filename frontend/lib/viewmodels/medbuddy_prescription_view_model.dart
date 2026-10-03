@@ -781,7 +781,12 @@ class MedBuddyPrescriptionViewModel {
     );
   }
 
-  // 오래된 확인창에서 돌아온 선택은 현재 후보와 일치할 때만 반영한다.
+  // Function Name: confirmMedicationCandidate
+  // Description: Confirms only a current review candidate without hiding failures on other unverified rows.
+  // Parameters:
+  // - index (int): Original OCR row associated with the current candidate review.
+  // - detail (MedicationDetail): Candidate object from that row's current review.
+  // Returns: None; a valid selection updates that row but never saves medication automatically.
   void confirmMedicationCandidate(int index, MedicationDetail detail) {
     final review = _medicationMatchReviews[index];
     if (_prescriptionFlowState !=
@@ -809,8 +814,8 @@ class MedBuddyPrescriptionViewModel {
     _unverifiedMedicationScheduleIndexes.remove(index);
     _medicationMatchReviews.remove(index);
     _analyzedMedicationList = _orderedAnalyzedMedications();
-    _analysisErrorMessage = '';
     if (_unverifiedMedicationScheduleIndexes.isEmpty) {
+      _analysisErrorMessage = '';
       _prescriptionFlowState = PrescriptionFlowState.analysisSucceeded;
     }
     _notifyViewModelListeners(MedBuddyFeature.prescription);

@@ -431,7 +431,94 @@ class _ReviewMedicationDetail extends CheckMedicationDetail {
   }
 }
 
+// Class Name: _MixedReviewMedicationDetail
+// Role: Models a candidate review alongside an independent recoverable lookup failure.
+// Responsibilities:
+// - Require explicit confirmation for one row while another row fails technically.
+// - Resolve the failed row only after the test enables retry recovery.
+// Attributes:
+// - failLookup (bool): Whether the designated network row still fails.
+class _MixedReviewMedicationDetail extends _ReviewMedicationDetail {
+  bool failLookup = true;
+
+  // Function Name: requestMedicationDetail
+  // Description: Returns candidates for the first row and a technical failure or recovered match for the second.
+  // Parameters: schedule (MedicationSchedule): Recognized row identifying the simulated lookup outcome.
+  // Returns: A recovered detail, or throws a candidate review or technical lookup error.
+  @override
+  Future<MedicationDetail?> requestMedicationDetail(
+    MedicationSchedule schedule,
+  ) async {
+    if (schedule.medicationName != 'network-tablet') throw review;
+    if (failLookup) throw StateError('The medication server is unavailable.');
+    return MedicationDetail(
+      itemName: schedule.medicationName,
+      efficacy: '',
+      usageMethod: '',
+      warning: '',
+    );
+  }
+}
+
 void main() {
+  for (final recovery in ['retry', 'recognition', 'reset']) {
+    // Function Name: mixed review and lookup failure test
+    // Description: Retains another row's technical error after confirmation and clears it on recovery or a new flow.
+    // Parameters: None.
+    // Returns: Completion after scoped confirmation and error lifecycle assertions pass.
+    test(
+      'candidate confirmation retains unrelated lookup failure until $recovery',
+      () async {
+        final control = _MixedReviewMedicationDetail();
+        final model = MedBuddyViewModel(
+          inputPrescription: _FakeInputPrescription(const [
+            MedicationSchedule(medicationName: 'uncertain-tablet'),
+            MedicationSchedule(medicationName: 'network-tablet'),
+          ]),
+          checkMedicationDetail: control,
+        );
+        addTearDown(model.dispose);
+        await model.requestPrescriptionImageFromGallery();
+        await model.requestPrescriptionAnalysis();
+        final lookupError = model.analysisErrorMessage;
+        expect(lookupError, isNotEmpty);
+        expect(model.unverifiedMedicationScheduleIndexes, {0, 1});
+        model.confirmMedicationCandidate(0, control.review.candidates.single);
+        expect(
+          model.prescriptionFlowState,
+          PrescriptionFlowState.medicationReviewRequired,
+        );
+        expect(model.unverifiedMedicationScheduleIndexes, {1});
+        expect(model.analysisErrorMessage, lookupError);
+        expect(model.analyzedMedicationList, hasLength(1));
+        expect(model.completedMedicationSaveIndexes, isEmpty);
+
+        switch (recovery) {
+          case 'retry':
+            control.failLookup = false;
+            await model.requestPrescriptionAnalysis();
+            expect(
+              model.prescriptionFlowState,
+              PrescriptionFlowState.analysisSucceeded,
+            );
+            expect(model.unverifiedMedicationScheduleIndexes, isEmpty);
+            expect(model.analyzedMedicationList, hasLength(2));
+          case 'recognition':
+            await model.requestPrescriptionImageFromGallery();
+            expect(
+              model.prescriptionFlowState,
+              PrescriptionFlowState.previewReady,
+            );
+            expect(model.medicationMatchReviews, isEmpty);
+          case 'reset':
+            model.clearAnalysisResult();
+            expect(model.prescriptionFlowState, PrescriptionFlowState.idle);
+            expect(model.medicationMatchReviews, isEmpty);
+        }
+        expect(model.analysisErrorMessage, isEmpty);
+      },
+    );
+  }
   for (final alwaysBusy in [false, true]) {
     test(
       'account lock retry is serialized and bounded (always busy: $alwaysBusy)',

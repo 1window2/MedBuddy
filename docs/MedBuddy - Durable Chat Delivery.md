@@ -24,6 +24,22 @@ delivery remains in its own outbox; the two queues are not conflated.
 
 ## Delivery semantics
 
+Request-owned database work in async chat routes and the WebSocket handshake
+uses `run_request_database_work`, also shared by PostgreSQL account registration
+and health recommendation reads/cache writes. Calls remain sequential in the
+bounded worker pool. Direct or repeated request cancellation drains the active
+worker before session cleanup or account-lock release, then propagates the
+original cancellation. A completed write may still have committed even when its
+response is cancelled; existing idempotency and transaction policy remain in the
+controls. This adapter does not make cancellation a database rollback.
+
+Health recommendations retain the request transaction and its PostgreSQL
+account-deletion advisory lock during the external LLM wait. Their summaries
+are plain values, but authorization serialization is not released early.
+Independent-session queue/catalog workers remain separately owned and do not
+use this request-lifecycle adapter. Database deadlines must bound underlying
+operations; safe shutdown cannot abandon an active request session.
+
 Delivery is **at least once**, not exactly once. A crash after FCM acceptance but
 before result persistence, or a partial multi-device failure, can duplicate a
 push. Retries preserve the existing `chat:<link>:<message>` event ID. A recorded

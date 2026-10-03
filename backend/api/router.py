@@ -81,6 +81,7 @@ from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from core.database import SessionLocal
 from core.application_clock import application_today
+from core.request_database_work import run_request_database_work
 from core.database import get_db
 from core.config import settings
 from sqlalchemy.orm import Session
@@ -882,7 +883,8 @@ async def get_health_recommendation(
     ),
 ) -> dict[str, object]:
     try:
-        authorized_patient_hash = authorization.resolvePatientScope(
+        authorized_patient_hash = await run_request_database_work(
+            authorization.resolvePatientScope,
             principal,
             patient_hash,
             allow_caregiver=True,

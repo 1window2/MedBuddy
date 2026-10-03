@@ -8,7 +8,6 @@ import 'package:medbuddy_frontend/boundaries/authentication_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/check_medication_detail_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/check_result_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/check_schedule_ui_boundary.dart';
-import 'package:medbuddy_frontend/boundaries/check_today_medication_info_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/health_recommendation_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/input_prescription_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/manage_user_setting_ui_boundary.dart';
@@ -28,6 +27,8 @@ import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
+import 'package:medbuddy_frontend/widgets/home_medication_preview.dart';
+import 'package:medbuddy_frontend/widgets/home_medication_slot_pager.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -696,43 +697,42 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    // 함수이름: testWidgets 콜백
-    // 함수역할:
-    // - 기대 동작: 홈 일정 요약은 긴 약 이름과 2배 글씨에서도 카드 높이를 늘린다.
-    // 매개변수:
-    // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-    // 반환값:
-    // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-    testWidgets('홈 일정 요약은 긴 약 이름과 2배 글씨에서도 카드 높이를 늘린다', (tester) async {
+    // Function Name: active home accessibility test
+    // Description: Exercises the current preview and slot pager at a compact viewport with doubled text.
+    // Parameters: tester (WidgetTester): Harness for rendering and scrolling the active home components.
+    // Returns: Completion after the long medication summary remains reachable without layout errors.
+    testWidgets('active home preview handles long names and doubled text', (
+      tester,
+    ) async {
       await _setViewport(tester, const Size(320, 568));
 
       await tester.pumpWidget(
         _scaledMaterialApp(
           textScale: 2,
           home: Scaffold(
-            body: Padding(
+            body: SingleChildScrollView(
               padding: const EdgeInsets.all(12),
-              child: CheckTodayMedicationInfoUI(
+              child: HomeMedicationPreview(
                 title: '오늘의 복약 일정',
-                noMedicationLabel: '등록된 약이 없습니다',
-                userSetting: const UserSetting(),
-                schedules: const [
-                  MedicationSchedule(
-                    medicationName: '대웅바이오클래리트로마이신건조시럽125mg/5mL',
-                  ),
-                  MedicationSchedule(medicationName: '아세트아미노펜서방정650mg'),
-                ],
-                completedCount: 1,
-                totalCount: 6,
-                isLoading: false,
-                // 함수이름: onTap 콜백
-                // 함수역할:
-                // - 표시된 복약 카드 명령 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
-                // 매개변수:
-                // - 없음.
-                // 반환값:
-                // - 없음; 외부 동작을 수행하지 않는다.
-                onTap: () {},
+                progressTitle: '오늘의 복약 진행률',
+                progressLabel: '1/6회 완료',
+                progress: 1 / 6,
+                scheduleTitle: '',
+                scheduleDescription: '',
+                hasPendingMedication: true,
+                scheduleContent: const HomeMedicationSlotPager(
+                  isEnglish: false,
+                  schedules: [
+                    MedicationSchedule(
+                      medicationName: '대웅바이오클래리트로마이신건조시럽125mg/5mL',
+                      scheduleSlotKeys: ['lunch'],
+                    ),
+                    MedicationSchedule(
+                      medicationName: '아세트아미노펜서방정650mg',
+                      scheduleSlotKeys: ['lunch'],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -741,6 +741,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('오늘의 복약 일정'), findsOneWidget);
+      await tester.ensureVisible(find.text('점심 · 미복용'));
+      expect(find.textContaining('대웅바이오클래리트로마이신'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 

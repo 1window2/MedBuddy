@@ -301,7 +301,7 @@ BackControl -> Database : Local Drug Catalog에서 약명 후보 조회
 Database --> BackControl : 약명 후보
 
 alt 정확하거나 신뢰 가능한 약명이 존재
-    BackControl -> BackControl : _PrescriptionMedicationNameVerifier.verify()
+    BackControl -> BackControl : PrescriptionMedicationNameVerifier.verify()
 else 약명 보정이 필요한 경우
     BackControl -> BackService : 제한된 Catalog 후보 내 보정 요청
     BackService -> Gemini : 후보 선택 요청

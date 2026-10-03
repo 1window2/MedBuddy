@@ -37,6 +37,7 @@ from controls.manage_linked_chat_control import ChatSendResult, ManageLinkedChat
 from controls.process_caregiver_alert_outbox_control import ProcessCaregiverAlertOutbox
 from core.config import settings
 from core.database import SessionLocal
+from core.request_database_work import run_request_database_work
 from core.request_rate_limits import RateLimitRule, RequestRateLimitStore
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
@@ -49,8 +50,9 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # Async routes await each blocking operation sequentially using the bounded
-# AnyIO worker pool. Request-scoped sessions must never be shared with parallel
-# tasks; FastAPI's get_db dependency retains responsibility for REST cleanup.
+# AnyIO worker pool. Cancellation drains each database operation before request
+# cleanup; sessions must never be shared with parallel tasks. FastAPI's get_db
+# dependency retains responsibility for REST cleanup.
 # WebSocket sessions are closed by the handshake, not retained by idle sockets.
 
 
@@ -125,10 +127,10 @@ async def delete_chat_messages(
     authorization: AuthorizationControl = Depends(get_authorization_control),
     chat: ManageLinkedChat = Depends(get_manage_linked_chat),
 ) -> dict[str, object]:
-    authorized_user_hash = await run_in_threadpool(
+    authorized_user_hash = await run_request_database_work(
         authorization.resolveOwnUserHash, principal, user_hash,
     )
-    response = await run_in_threadpool(
+    response = await run_request_database_work(
         chat.delete_messages,
         link_id=link_id, user_hash=authorized_user_hash,
         message_ids=payload.message_ids, scope=payload.scope,
@@ -249,7 +251,7 @@ async def post_chat_message(
     chat: ManageLinkedChat = Depends(get_manage_linked_chat),
 ) -> dict[str, object]:
     """Persist message and notification job atomically, then broadcast live state."""
-    authorized_user_hash = await run_in_threadpool(
+    authorized_user_hash = await run_request_database_work(
         authorization.resolveOwnUserHash, principal, user_hash,
     )
     await _enforce_chat_daily_quota(
@@ -258,7 +260,7 @@ async def post_chat_message(
     )
     hospital_arguments = {}
     if payload.message_kind == CHAT_MESSAGE_KIND_HOSPITAL_SHARE:
-        existing = await run_in_threadpool(
+        existing = await run_request_database_work(
             chat.find_sent_message, link_id=link_id, sender_hash=authorized_user_hash,
             client_message_id=payload.client_message_id,
         )
@@ -275,7 +277,7 @@ async def post_chat_message(
         except (HospitalApiUnavailableError, HospitalApiResponseError, TimeoutError):
             raise HTTPException(503, "Hospital information is temporarily unavailable.",
                                 headers={"Retry-After": "5"}) from None
-    result = await run_in_threadpool(
+    result = await run_request_database_work(
         chat.send_message,
         link_id=link_id,
         sender_hash=authorized_user_hash,
@@ -304,11 +306,11 @@ async def record_chat_medication_taken(
     chat: ManageLinkedChat = Depends(get_manage_linked_chat),
 ) -> dict[str, object]:
     """Record only the patient's explicitly confirmed dose and publish its receipt."""
-    authorized_user_hash = await run_in_threadpool(
+    authorized_user_hash = await run_request_database_work(
         authorization.resolveOwnUserHash, principal, user_hash,
     )
     await _enforce_chat_daily_quota(request=request, user_hash=authorized_user_hash)
-    result, completion_events = await run_in_threadpool(
+    result, completion_events = await run_request_database_work(
         chat.record_medication_taken,
         link_id=link_id, sender_hash=authorized_user_hash,
         client_message_id=payload.client_message_id,
@@ -319,7 +321,7 @@ async def record_chat_medication_taken(
         background_tasks.add_task(_process_completion_alert, int(event["outbox_id"]))
     # Return current state on retries too, rather than the historical message's
     # snapshot, so a later correction is never visually changed back to taken.
-    schedule_response = await run_in_threadpool(
+    schedule_response = await run_request_database_work(
         CheckSchedule(chat.db).requestTodayMedicationSchedule, authorized_user_hash,
     )
     schedules = schedule_response["data"]
@@ -382,10 +384,10 @@ async def mark_chat_read(
     chat: ManageLinkedChat = Depends(get_manage_linked_chat),
 ) -> dict[str, object]:
     """현재 참여자가 확인한 상대 메시지를 읽음 처리하고 실시간으로 알린다."""
-    authorized_user_hash = await run_in_threadpool(
+    authorized_user_hash = await run_request_database_work(
         authorization.resolveOwnUserHash, principal, user_hash,
     )
-    response = await run_in_threadpool(
+    response = await run_request_database_work(
         chat.mark_read,
         link_id=link_id,
         reader_hash=authorized_user_hash,
@@ -457,7 +459,7 @@ async def stream_chat_events(
     try:
         principal = await run_in_threadpool(_authenticate_websocket, websocket)
         authorization = AuthorizationControl(db)
-        authorized_user_hash = await run_in_threadpool(
+        authorized_user_hash = await run_request_database_work(
             authorization.resolveOwnUserHash, principal, user_hash,
         )
         try:
@@ -471,22 +473,22 @@ async def stream_chat_events(
         if not allowed:
             await websocket.close(code=4429, reason=str(max(1, retry_after)))
             return
-        await run_in_threadpool(
+        await run_request_database_work(
             ManageLinkedChat(db).require_active_link,
             link_id=link_id,
             user_hash=authorized_user_hash,
         )
-        await run_in_threadpool(db.commit)
+        await run_request_database_work(db.commit)
     except HTTPException as exc:
-        await run_in_threadpool(db.rollback)
+        await run_request_database_work(db.rollback)
         await websocket.close(code=_websocket_close_code(exc.status_code))
         return
     except Exception:
-        await run_in_threadpool(db.rollback)
+        await run_request_database_work(db.rollback)
         await websocket.close(code=1011)
         return
     finally:
-        await run_in_threadpool(db.close)
+        await run_request_database_work(db.close)
     try:
         connected = await manager.connect(
             link_id=link_id,

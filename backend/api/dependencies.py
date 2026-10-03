@@ -3,6 +3,7 @@
 
 import asyncio
 from collections.abc import AsyncGenerator
+from contextlib import AsyncExitStack
 from datetime import UTC, datetime, timedelta
 import logging
 from threading import Lock
@@ -12,7 +13,6 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
-from starlette.concurrency import run_in_threadpool
 
 from boundaries.firebase_identity_boundary import (
     FirebaseIdentityDeletionBoundary,
@@ -54,7 +54,9 @@ from boundaries.push_notification_boundary import (
     PushNotificationBoundary,
 )
 from core.config import settings
+from core.account_operation_locks import AccountOperationLocks
 from core.database import get_db
+from core.request_database_work import run_request_database_work
 from core.request_rate_limits import (
     RequestRateLimitStore,
     resolve_rate_limit_rule,
@@ -87,7 +89,6 @@ from controls.request_voice_guide_control import RequestVoiceGuide
 from controls.set_caregiver_notification_control import SetCaregiverNotification
 from controls.set_notification_control import SetNotification
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
-from repositories.pharmacy_catalog_repository import PharmacyCatalogRepository
 from repositories.async_pharmacy_catalog import AsyncPharmacyCatalog
 from repositories.korean_holiday_cache import SessionScopedKoreanHolidayCache
 
@@ -111,9 +112,7 @@ _app_check_token_verifier_lock = Lock()
 _app_check_token_verifier: AppCheckTokenVerifier | None = None
 _push_notification_boundary_lock = Lock()
 _push_notification_boundary: PushNotificationBoundary | None = None
-_sqlite_account_lock_registry_guard = Lock()
-_sqlite_account_locks: dict[str, asyncio.Lock] = {}
-_sqlite_account_lock_references: dict[str, int] = {}
+_sqlite_account_lock_registry = AccountOperationLocks()
 _SQLITE_ACCOUNT_LOCK_WAIT_SECONDS = 5.0
 _bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -339,56 +338,6 @@ def _register_account_scope(db: Session, user_hash: str) -> None:
         db.commit()
 
 
-# Function Name: _retain_sqlite_account_lock
-# Description:
-# - Returns one process-local lock per authenticated account for SQLite mode.
-# - Reference counting removes idle locks so anonymous account churn cannot grow the registry without bound.
-# Parameters:
-# - user_hash (str): Server-derived account scope used as the serialization key.
-# Returns:
-# - The retained per-account lock.
-def _retain_sqlite_account_lock(user_hash: str) -> asyncio.Lock:
-    with _sqlite_account_lock_registry_guard:
-        account_lock = _sqlite_account_locks.setdefault(user_hash, asyncio.Lock())
-        _sqlite_account_lock_references[user_hash] = (
-            _sqlite_account_lock_references.get(user_hash, 0) + 1
-        )
-        return account_lock
-
-
-# Function Name: _drop_sqlite_account_lock_reference
-# Description:
-# - Releases one registry reference and removes an idle per-account lock.
-# Parameters:
-# - user_hash (str): Server-derived account scope used as the serialization key.
-# - account_lock (asyncio.Lock): Exact lock instance retained for the current request.
-# Returns:
-# - None.
-def _drop_sqlite_account_lock_reference(
-    user_hash: str,
-    account_lock: asyncio.Lock,
-) -> None:
-    with _sqlite_account_lock_registry_guard:
-        references = _sqlite_account_lock_references.get(user_hash, 0) - 1
-        if references <= 0 and _sqlite_account_locks.get(user_hash) is account_lock:
-            _sqlite_account_lock_references.pop(user_hash, None)
-            _sqlite_account_locks.pop(user_hash, None)
-            return
-        _sqlite_account_lock_references[user_hash] = references
-
-
-# Function Name: _release_sqlite_account_lock
-# Description:
-# - Releases request ownership before dropping its registry reference.
-# Parameters:
-# - user_hash (str): Server-derived account scope used as the serialization key.
-# - account_lock (asyncio.Lock): Lock held for the completed request.
-# Returns:
-# - None.
-def _release_sqlite_account_lock(user_hash: str, account_lock: asyncio.Lock) -> None:
-    account_lock.release()
-    _drop_sqlite_account_lock_reference(user_hash, account_lock)
-
 # Function Name: get_registered_principal
 # Description:
 # - Enforces per-user request quotas and account registration, holding the SQLite account lock through endpoint execution and allowing deletion retries.
@@ -430,81 +379,53 @@ async def get_registered_principal(
                 detail="요청이 너무 많습니다. 잠시 후 다시 시도해주세요.",
                 headers={"Retry-After": str(max(1, retry_after))},
             )
-    sqlite_account_lock: asyncio.Lock | None = None
-    if db.get_bind().dialect.name == "sqlite":
-        sqlite_account_lock = _retain_sqlite_account_lock(principal.user_hash)
+    # Step 1: Hold SQLite ownership through registration and endpoint teardown.
+    async with AsyncExitStack() as account_scope:
+        if db.get_bind().dialect.name == "sqlite":
+            try:
+                await account_scope.enter_async_context(
+                    _sqlite_account_lock_registry.hold(
+                        principal.user_hash,
+                        timeout=_SQLITE_ACCOUNT_LOCK_WAIT_SECONDS,
+                    )
+                )
+            except TimeoutError as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail="This account is busy. Retry the request shortly.",
+                    headers={"Retry-After": "5"},
+                ) from exc
+
+        # Step 2: Keep PostgreSQL registration off-loop and map account failures.
         try:
-            await asyncio.wait_for(
-                sqlite_account_lock.acquire(),
-                timeout=_SQLITE_ACCOUNT_LOCK_WAIT_SECONDS,
+            if db.get_bind().dialect.name == "postgresql":
+                await run_request_database_work(
+                    _register_account_scope,
+                    db,
+                    principal.user_hash,
+                )
+            else:
+                _register_account_scope(db, principal.user_hash)
+        except AccountDeletionPendingError as exc:
+            is_account_deletion_retry = (
+                request.method.upper() == "DELETE"
+                and request.url.path == "/api/v1/auth/account-data"
             )
-        except TimeoutError:
-            _drop_sqlite_account_lock_reference(
-                principal.user_hash,
-                sqlite_account_lock,
-            )
+            if not is_account_deletion_retry:
+                raise HTTPException(
+                    status_code=410,
+                    detail="This MedBuddy account has been deleted.",
+                ) from exc
+        except OperationalError as exc:
+            db.rollback()
             raise HTTPException(
                 status_code=503,
                 detail="This account is busy. Retry the request shortly.",
                 headers={"Retry-After": "5"},
-            )
-
-    try:
-        if db.get_bind().dialect.name == "postgresql":
-            await run_in_threadpool(
-                _register_account_scope,
-                db,
-                principal.user_hash,
-            )
-        else:
-            _register_account_scope(db, principal.user_hash)
-    except AccountDeletionPendingError as exc:
-        is_account_deletion_retry = (
-            request.method.upper() == "DELETE"
-            and request.url.path == "/api/v1/auth/account-data"
-        )
-        if is_account_deletion_retry:
-            pass
-        else:
-            if sqlite_account_lock is not None:
-                _release_sqlite_account_lock(
-                    principal.user_hash,
-                    sqlite_account_lock,
-                )
-                sqlite_account_lock = None
-            raise HTTPException(
-                status_code=410,
-                detail="This MedBuddy account has been deleted.",
             ) from exc
-    except OperationalError as exc:
-        db.rollback()
-        if sqlite_account_lock is not None:
-            _release_sqlite_account_lock(
-                principal.user_hash,
-                sqlite_account_lock,
-            )
-            sqlite_account_lock = None
-        raise HTTPException(
-            status_code=503,
-            detail="This account is busy. Retry the request shortly.",
-            headers={"Retry-After": "5"},
-        ) from exc
-    except BaseException:
-        if sqlite_account_lock is not None:
-            _release_sqlite_account_lock(
-                principal.user_hash,
-                sqlite_account_lock,
-            )
-            sqlite_account_lock = None
-        raise
-    try:
+
+        # Step 3: Yield the principal; the scope handles every cleanup path.
         yield principal
-    finally:
-        if sqlite_account_lock is not None:
-            _release_sqlite_account_lock(
-                principal.user_hash,
-                sqlite_account_lock,
-            )
 
 
 # 함수이름: get_authenticated_app_principal

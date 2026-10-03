@@ -104,3 +104,10 @@ WebSocket 연결 Registry를 채팅 Database 또는 분산 방송 broker로 혼�
 `HomeDoseWidget`, `OverallSystemSequenceDiagram`의 PNG도 해당 원본에서 다시 생성했다.
 상세 계약은 [약명 매칭과 후보 확인](../../Medication%20Matching%20Review.md),
 검증 범위는 [2026-10-02 기록](../../qa/v0.2.0-2026-10-02-medication-matching-widget.md)을 참고한다.
+
+The 2026-10-03 refactoring update preserves those medication-review and widget
+flows. Prescription verification, notification protocol ownership, account-lock
+cleanup and cancellation-safe request database work are reflected in the changed
+sources and their regenerated PNGs. `ClassDiagram` explicitly uses the bundled
+ELK layout engine; the compact feature diagrams retain Smetana. Rendered locally
+with PlantUML 1.2026.6 without transmitting diagram source to a remote service.

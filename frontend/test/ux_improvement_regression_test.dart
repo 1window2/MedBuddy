@@ -6,7 +6,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/check_result_ui_boundary.dart';
-import 'package:medbuddy_frontend/boundaries/check_today_medication_info_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/prescription_analysis_status_ui_boundary.dart';
 import 'package:medbuddy_frontend/entities/analyzed_medication_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
@@ -15,6 +14,8 @@ import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/prescription_flow_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/services/user_facing_error_message.dart';
+import 'package:medbuddy_frontend/widgets/home_medication_preview.dart';
+import 'package:medbuddy_frontend/widgets/home_medication_slot_pager.dart';
 
 
 // 함수이름: main
@@ -25,15 +26,13 @@ import 'package:medbuddy_frontend/services/user_facing_error_message.dart';
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: 홈 카드가 다음 복약 시간과 오늘 진행률을 안내한다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  testWidgets('홈 카드가 다음 복약 시간과 오늘 진행률을 안내한다', (tester) async {
-    final fixedNow = DateTime(2026, 8, 3, 10);
+  // Function Name: home preview test
+  // Description: Verifies the active preview and slot pager show progress and the next unfinished slot.
+  // Parameters: tester (WidgetTester): Harness for rendering the current home components.
+  // Returns: Completion after the displayed progress, time, and medication assertions pass.
+  testWidgets('active home preview shows the next dose and progress', (
+    tester,
+  ) async {
     const schedules = [
       MedicationSchedule(
         medicationName: '아침약',
@@ -46,45 +45,40 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: CheckTodayMedicationInfoUI(
+          body: HomeMedicationPreview(
             title: '오늘의 복약 일정',
-            noMedicationLabel: '등록된 약이 없습니다',
-            userSetting: const UserSetting(),
-            schedules: schedules,
-            reminderSettings: const {
-              'lunch': MedicationAlarm(
-                slotKey: 'lunch',
-                hour: 12,
-                minute: 30,
-                enabled: true,
-              ),
-            },
-            completedCount: 1,
-            totalCount: 2,
-            isLoading: false,
-            // 함수이름: onTap 콜백
-            // 함수역할:
-            // - 표시된 복약 카드 명령 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
-            // 매개변수:
-            // - 없음.
-            // 반환값:
-            // - 없음; 외부 동작을 수행하지 않는다.
-            onTap: () {},
-            // 함수이름: nowProvider 콜백
-            // 함수역할:
-            // - 실제 시계와 무관하게 복약 마감과 알림 날짜 범위를 검사할 기준 시각을 제공한다.
-            // 매개변수:
-            // - 없음.
-            // 반환값:
-            // - fixedNow에서 얻은 기준 DateTime.
-            nowProvider: () => fixedNow,
+            progressTitle: '오늘의 복약 진행률',
+            progressLabel: '1/2회 완료',
+            progress: .5,
+            scheduleTitle: '',
+            scheduleDescription: '',
+            hasPendingMedication: true,
+            scheduleContent: HomeMedicationSlotPager(
+              schedules: schedules,
+              isEnglish: false,
+              reminderSettings: const {
+                'lunch': MedicationAlarm(
+                  slotKey: 'lunch',
+                  hour: 12,
+                  minute: 30,
+                  enabled: true,
+                ),
+              },
+            ),
           ),
         ),
       ),
     );
 
-    expect(find.text('다음 복약: 점심 12:30'), findsOneWidget);
-    expect(find.text('복용할 약 1개 · 오늘 1/2회 완료'), findsOneWidget);
+    expect(find.text('점심 · 미복용'), findsOneWidget);
+    expect(find.text('12:30 · 점심약'), findsOneWidget);
+    expect(find.text('1/2회 완료'), findsOneWidget);
+    expect(
+      tester.widget<LinearProgressIndicator>(
+        find.byType(LinearProgressIndicator),
+      ).value,
+      .5,
+    );
     expect(tester.takeException(), isNull);
   });
 

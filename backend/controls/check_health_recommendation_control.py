@@ -11,13 +11,13 @@ from sqlalchemy.orm import Session
 
 from boundaries.llm_service_boundary import LLMService
 from core.application_clock import application_today
+from core.request_database_work import run_request_database_work
 from entities.health_recommendation_cache_entity import _HealthRecommendationCache
 from entities.health_recommendation_entity import HealthRecommendation
 from entities.patient_hash_entity import normalize_patient_hash
 from entities.saved_medication_entity import _SavedMedication
 from repositories.saved_medication_repository import SavedMedicationRepository
 from services.medication_course_policy import MedicationCoursePolicy
-from services.saved_medication_retention import SavedMedicationRetentionPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,6 @@ logger = logging.getLogger(__name__)
 # - 오늘 복용 중인 약을 모아 건강 관리 안내를 생성하고 환자별 캐시를 관리한다.
 # 주요 책임:
 # - 환자 또는 보호자 권한 범위의 현재 복용 약을 조회한다.
-# - 복용 기간이 지난 오래된 저장 정보를 정리한다.
 # - 같은 약 조합의 추천 결과가 있으면 로컬 캐시를 재사용한다.
 # - 캐시가 없으면 현재 복용 약 조합을 AI 추천 생성기로 전달한다.
 # 속성:
@@ -35,16 +34,16 @@ logger = logging.getLogger(__name__)
 # - llm_service (LLMService): 활성 약품 요약으로 건강 관리 안내를 생성하는 서비스.
 # - course_policy (MedicationCoursePolicy): 약 복용 시작·종료·활성 날짜의 공통 판정 정책.
 class CheckHealthRecommendation:
-    # 함수이름: __init__
-    # 함수역할:
-    # - 저장 약 조회, 복용 기간 정책, AI 안내 생성과 보관 정책을 준비한다.
-    # 매개변수:
-    # - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
-    # - llm_service (LLMService | None): 활성 약품 요약으로 건강 관리 안내를 생성하는 서비스.
-    # - course_policy (MedicationCoursePolicy | None): 약 복용 시작·종료·활성 날짜의 공통 판정 정책.
-    # - medication_repository (SavedMedicationRepository | None): 환자 소유 저장 약품 스냅샷 저장소.
-    # 반환값:
-    # - 없음.
+    # Function Name: __init__
+    # Description:
+    # - Binds the request session, active-course policy, medication repository and guidance service.
+    # Parameters:
+    # - db (Session): Caller-owned session used sequentially throughout the request.
+    # - llm_service (LLMService | None): Injected guidance generator or the default LLM boundary.
+    # - course_policy (MedicationCoursePolicy | None): Shared active-course date policy.
+    # - medication_repository (SavedMedicationRepository | None): Patient-owned medication lookup.
+    # Returns:
+    # - None.
     def __init__(
         self,
         db: Session,
@@ -58,43 +57,31 @@ class CheckHealthRecommendation:
         )
         self.llm_service = llm_service or LLMService()
         self.course_policy = course_policy or MedicationCoursePolicy()
-        self.retention_policy = SavedMedicationRetentionPolicy(self.course_policy)
 
-    # 함수이름: requestHealthRecommendation
-    # 함수역할:
-    # - 현재 복용 약과 언어로 캐시를 조회하고, 없으면 AI 안내를 생성해 저장한다.
-    # 매개변수:
-    # - patient_hash (str | None): 건강 추천 조회 범위를 구분하는 환자 해시
-    # - language (str): 추천 응답 언어
-    # 반환값:
-    # - 약품명과 건강 관리 안내를 담은 응답; 복용 중인 약이 없으면 HTTP 404.
+    # Function Name: requestHealthRecommendation
+    # Description:
+    # - Loads a detached recommendation snapshot off-loop, generates missing guidance and caches it in a second sequential worker phase.
+    # - Retains the caller's transaction and account-deletion lock; cancellation drains database work before session cleanup.
+    # Parameters:
+    # - patient_hash (str | None): Authorized patient ownership scope.
+    # - language (str): Requested recommendation language.
+    # Returns:
+    # - Medication names and guidance; raises HTTP 404 when no active medications exist.
     async def requestHealthRecommendation(
         self,
         patient_hash: str | None = None,
         language: str = "ko",
     ) -> dict[str, object]:
         normalized_patient_hash = normalize_patient_hash(patient_hash)
-        active_medications = self._get_active_medications(
+        (
+            medication_summaries,
+            recommendation_key,
+            cached_recommendation,
+        ) = await run_request_database_work(
+            self._read_recommendation_snapshot,
             normalized_patient_hash,
             application_today(),
-        )
-        if not active_medications:
-            raise HTTPException(
-                status_code=404,
-                detail="오늘 복용 중인 약 정보가 없습니다.",
-            )
-
-        medication_summaries = [
-            self._to_medication_summary(medication)
-            for medication in active_medications
-        ]
-        recommendation_key = self._build_recommendation_key(
-            medication_summaries,
             language,
-        )
-        cached_recommendation = self._get_cached_recommendation(
-            normalized_patient_hash,
-            recommendation_key,
         )
         if cached_recommendation is not None:
             return self._build_response(
@@ -107,7 +94,8 @@ class CheckHealthRecommendation:
             medication_summaries,
             language,
         )
-        self._save_cached_recommendation(
+        await run_request_database_work(
+            self._save_cached_recommendation,
             normalized_patient_hash,
             recommendation_key,
             recommendation,
@@ -116,6 +104,38 @@ class CheckHealthRecommendation:
             recommendation,
             medication_summaries,
             "Health recommendation generated.",
+        )
+
+    # Function Name: _read_recommendation_snapshot
+    # Description:
+    # - Selects active medications, materializes plain summary values and reads their matching cache in one sequential worker operation.
+    # Parameters:
+    # - patient_hash (str): Authorized patient ownership scope.
+    # - today (date): Application-local course evaluation date.
+    # - language (str): Requested recommendation language.
+    # Returns:
+    # - Medication summaries, stable cache key and cached guidance; raises HTTP 404 for an empty active course.
+    def _read_recommendation_snapshot(
+        self,
+        patient_hash: str,
+        today: date,
+        language: str,
+    ) -> tuple[list[dict[str, str]], str, dict[str, object] | None]:
+        active_medications = self._get_active_medications(patient_hash, today)
+        if not active_medications:
+            raise HTTPException(
+                status_code=404,
+                detail="오늘 복용 중인 약 정보가 없습니다.",
+            )
+        summaries = [
+            self._to_medication_summary(medication)
+            for medication in active_medications
+        ]
+        recommendation_key = self._build_recommendation_key(summaries, language)
+        return (
+            summaries,
+            recommendation_key,
+            self._get_cached_recommendation(patient_hash, recommendation_key),
         )
 
     # Function Name: _build_response

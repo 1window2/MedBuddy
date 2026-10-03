@@ -49,6 +49,7 @@ package "FastAPI Backend" #EAF8F0 {
   class OIDCTokenVerifier <<Service>>
   class AppCheckTokenVerifier <<Service>>
   class ApiContractMiddleware <<Service>>
+  class AccountOperationLocks <<Service>>
   note "api/dependencies.py module functions\nApp Check 및 ID Token 검증\nauth freshness, account lock, registration" as BAccountDependencies
   class "AuthorizationControl" as BAuthorizationControl <<Control>>
   class "ManageUserSetting" as BManageUserSetting <<Control>>
@@ -81,6 +82,12 @@ AppCheckTokenVerifier --> FirebaseAppCheck : Firebase Admin verification
 BAccountDependencies --> OIDCTokenVerifier : ID token verification
 BAccountDependencies --> AppCheckTokenVerifier : App Check verification
 BAccountDependencies --> BAuthorizationControl
+BAccountDependencies --> AccountOperationLocks : SQLite request-lifetime scope
+note bottom of AccountOperationLocks
+  Owns holder/waiter references and cancellation-safe cleanup.
+  Idle account identities are removed; locks are process-local.
+  PostgreSQL retains its transaction-scoped advisory locks.
+end note
 BAuthorizationControl --> DBUserAccount
 
 ManageUserSettingUI --> FManageUserSetting

@@ -9,9 +9,9 @@ from controls.check_medication_detail_control import (
 )
 from entities.medication_detail_entity import MedicationDetail
 from services.medication_match_safety import can_auto_match, match_conflict
-from controls.input_prescription_control import (
+from services.prescription_medication_name_verifier import (
     _CatalogMedicationName, _MedicationNameFallbackRequest,
-    _MedicationNameVerification, _PrescriptionMedicationNameVerifier,
+    MedicationNameVerification, PrescriptionMedicationNameVerifier,
 )
 
 
@@ -124,7 +124,7 @@ def test_local_and_cached_wrong_strength_cannot_skip_public_lookup(source):
 
 
 def test_ai_choice_cannot_override_strength_even_at_full_confidence():
-    verifier = _PrescriptionMedicationNameVerifier()
+    verifier = PrescriptionMedicationNameVerifier()
     candidate = _CatalogMedicationName('테스트정500mg', '테스트정500mg')
     result = verifier._select_ai_verified_corrections(
         {'corrections': [{'index': 0, 'corrected_name': candidate.item_name, 'confidence': 1}]},
@@ -134,9 +134,9 @@ def test_ai_choice_cannot_override_strength_even_at_full_confidence():
 
 
 def test_old_ai_cached_correction_is_rechecked():
-    verifier = _PrescriptionMedicationNameVerifier()
+    verifier = PrescriptionMedicationNameVerifier()
     candidate = _CatalogMedicationName('테스트정500mg', '테스트정500mg')
-    original = _MedicationNameVerification('테스트정100mg', '테스트정100mg', 0, 'unverified')
+    original = MedicationNameVerification('테스트정100mg', '테스트정100mg', 0, 'unverified')
     request = _MedicationNameFallbackRequest(0, original.raw_name, [candidate])
     verifier._requires_current_thread_session = lambda: True
     verifier._prepare_verifications = lambda _: ([original], [request])
@@ -146,7 +146,7 @@ def test_old_ai_cached_correction_is_rechecked():
 
 
 def test_local_prefix_match_cannot_turn_100_into_1000():
-    verifier = _PrescriptionMedicationNameVerifier(db=object())
+    verifier = PrescriptionMedicationNameVerifier(db=object())
     verifier._find_catalog_match = lambda _: (object(), '테스트정1000mg')
     result = verifier.verify('테스트정100mg')
     assert result.canonical_name == '테스트정100mg'

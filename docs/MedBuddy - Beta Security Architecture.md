@@ -527,6 +527,13 @@ normalized artifact policy permits it, a direct APK; each has a SHA-256 checksum
 file. Play distribution should use Play App Signing
 and retain the protected key as the upload key.
 
+Local policy, endpoint/readiness identity and restored Firebase-client checks
+live in `scripts/check_android_release_configuration.py`, not embedded workflow
+Python. Its immutable expectation objects are tested independently; its CLI
+adapts environment variables and probe files. The workflow retains orchestration,
+external probes and signature-tool execution, while live attestation verification
+remains the separate read-only `check_release_app_check.py` responsibility.
+
 Protected builds also use a dedicated, read-only federated identity to compare
 live Firebase Android SHA-256 registration for
 `ANDROID_PLAY_SIGNING_CERT_SHA256` with the intended app's Play Integrity verdict

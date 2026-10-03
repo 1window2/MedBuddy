@@ -1,4 +1,5 @@
 @startuml
+!pragma layout elk
 scale max 4096*4096
 left to right direction
 
@@ -620,6 +621,17 @@ package "Flutter Frontend" {
             + showCaregiverAlert(): Future<void>
         }
 
+        class "MedicationNotificationPayloadCodec" as MedicationNotificationPayloadCodec <<Service: Notification protocol>> {
+            + {static} decode(payload, actionId, notificationId): MedicationNotificationSelection?
+            + {static} isSessionPayload(payload): bool
+        }
+        class "MedicationNotificationSelection" as MedicationNotificationSelection <<Entity: Notification destination/action>> {
+            + destination: MedicationNotificationDestination
+            + action: MedicationNotificationAction
+            + scheduleDate: DateTime?
+            + isForDate(date): bool
+        }
+
         class "CaregiverAlertDeliveryService" as CaregiverAlertDeliveryService <<Service: 계정·전달별 알림 표시>> {
             + {static} display(data): Future<bool>
         }
@@ -976,9 +988,9 @@ package "FastAPI Backend" {
             + maskSensitiveInfo(rawText): str
         }
 
-        class "_PrescriptionMedicationNameVerifier" as MedicationNameVerifier <<Service: 약명 검증>> {
+        class "PrescriptionMedicationNameVerifier" as MedicationNameVerifier <<Service: 약명 검증>> {
             + verify_many(raw_names): list
-            + verify(raw_name): _MedicationNameVerification
+            + verify(raw_name): MedicationNameVerification
         }
 
         class "CheckMedicationDetail" as BCheckMedicationDetail <<Control: 약 상세 조회>> {
@@ -1051,6 +1063,13 @@ package "FastAPI Backend" {
             - db: Session
             + requestHealthRecommendation(patient_hash, language): dict
         }
+
+        note bottom of BCheckHealthRecommendation
+            Authorization and database phases use run_request_database_work().
+            Blocking work stays off-loop, sequentially using the request session.
+            Cancellation drains workers before session or account-lock cleanup.
+            PostgreSQL account transaction remains held during the LLM wait.
+        end note
 
         class "IdentifyPill" as BIdentifyPill <<Control: 낱알 후보 순위화>> {
             + candidate_limit: int
@@ -1185,6 +1204,10 @@ package "FastAPI Backend" {
         }
 
         note "api/dependencies.py module functions\nverify_app_check_token()\nget_authenticated_principal()\nget_recently_authenticated_principal()\n_lock_account_operation()\nget_registered_principal()" as BAccountDependencies
+        class "AccountOperationLocks" as AccountOperationLocks <<Service: SQLite request ownership>> {
+            + active_scope_count: int
+            + hold(user_hash, timeout): AsyncContextManager
+        }
 
         class "TrustedHostMiddleware" as BTrustedHostMiddleware <<Framework Middleware: production Host allowlist>> {
             + allowed_hosts: list<str>
@@ -2047,6 +2070,8 @@ FRequestVoiceGuide o-- TTSService
 PushNotificationService ..> NotificationService
 PushNotificationService ..> NotificationInboxStore : 수신자 범위 Push 기록
 NotificationService ..> NotificationInboxStore : local 알림·예약 기록
+NotificationService ..> MedicationNotificationPayloadCodec : shared payload validation
+MedicationNotificationPayloadCodec --> MedicationNotificationSelection
 CaregiverNotificationMonitorService ..> NotificationService
 CaregiverNotificationMonitorService ..> FLinkPatientCaregiver
 CaregiverNotificationMonitorService ..> FCheckCaregiverMedication
@@ -2244,6 +2269,7 @@ BAccountDependencies ..> AppCheckTokenVerifier : App Check Token 검증
 BAccountDependencies --> BAuthenticatedPrincipal : identity 생성 및 freshness policy
 BAccountDependencies ..> BManageAccount : tombstone registration
 BAccountDependencies --> DBUserAccount : transaction lock scope
+BAccountDependencies --> AccountOperationLocks : SQLite holder/waiter lifecycle
 
 DispatchCaregiverAlert --|> MedicationCompletionEventBoundary
 DispatchCaregiverAlert o-- PushNotificationBoundary

@@ -222,7 +222,7 @@ def test_core_startup_does_not_depend_on_catalog_imports() -> None:
     assert "RUNTIME_ROLE: migration" in migration
     release = (_REPOSITORY_ROOT / ".github/workflows/release-android.yml").read_text(encoding="utf-8")
     assert '${BACKEND_ORIGIN}/ready/catalogs' in release
-    assert 'payload.get("status") != "ready"' in release
+    assert "check_android_release_configuration.py backend-readiness" in release
 
 
 # Function Name: test_self_hosted_backend_prepares_secret_then_drops_privileges

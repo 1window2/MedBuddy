@@ -14,89 +14,13 @@ import 'package:timezone/timezone.dart' as timezone;
 
 import '../entities/medication_alarm_entity.dart';
 import '../entities/caregiver_alert_context_entity.dart';
+import '../entities/medication_notification_selection_entity.dart';
 import '../entities/notification_inbox_entity.dart';
+import 'medication_notification_payload_codec.dart';
 import 'notification_inbox_store.dart';
 
-// 클래스명: MedicationNotificationDestination
-// 역할: 복약 일정·보호자 환자 일정·가족 채팅 알림의 이동 대상을 구분한다.
-// 주요 책임:
-// - payload 해석과 앱 내 경로 선택에서 동일한 목적지 분류를 사용하게 한다.
-enum MedicationNotificationDestination {
-  schedule,
-  caregiverSchedule,
-  linkedChat,
-}
-
-// Class Name: MedicationNotificationAction
-// Role: Distinguishes opening a reminder, completing its slot, and snoozing for ten minutes.
-// Responsibilities:
-// - Preserve the selected system-notification action for application dispatch.
-enum MedicationNotificationAction { open, markSlotTaken, snoozeTenMinutes, caregiverSnooze, caregiverRequestCheck }
-
-// Class Name: MedicationNotificationSelection
-// Role: Carries a notification destination and its scoped navigation or action arguments.
-// Responsibilities:
-// - Preserve patient, link, slot, and notification identifiers so navigation and quick actions target the intended record.
-// Attributes:
-// - destination (MedicationNotificationDestination): Screen destination selected by the notification.
-// - patientHash (String?): Ownership hash of the patient targeted by lookup, storage, or alerts.
-// - linkId (int?): Link ID targeted by lookup, messaging, or monitoring.
-// - slotKey (String?): Medication slot key: morning, lunch, evening, or bedtime.
-// - notificationId (int?): Platform notification or server setting identifier.
-// - action (MedicationNotificationAction): Selected open, completion, or snooze action.
-// - scheduleDate (DateTime?): Original dose day; absent on legacy notifications.
-class MedicationNotificationSelection {
-  final MedicationNotificationDestination destination;
-  final String? patientHash;
-  final int? linkId;
-  final String? slotKey;
-  final int? notificationId;
-  final MedicationNotificationAction action;
-  final DateTime? scheduleDate;
-  final CaregiverAlertContext? caregiverAlert;
-
-  // Function Name: MedicationNotificationSelection
-  // Description: Captures a parsed notification destination with optional patient, link, slot, and notification identifiers plus the selected action.
-  // Parameters:
-  // - destination (MedicationNotificationDestination): Screen destination selected by the notification.
-  // - patientHash (String?): Ownership hash of the patient targeted by lookup, storage, or alerts.
-  // - linkId (int?): Link ID targeted by lookup, messaging, or monitoring.
-  // - slotKey (String?): Medication slot key: morning, lunch, evening, or bedtime.
-  // - notificationId (int?): Platform notification or server setting identifier.
-  // - action (MedicationNotificationAction): Selected open, completion, or snooze action.
-  // - scheduleDate (DateTime?): Original dose day, preserved across snoozes.
-  // Returns:
-  // - MedicationNotificationSelection: the initialized instance.
-  const MedicationNotificationSelection({
-    required this.destination,
-    this.patientHash,
-    this.linkId,
-    this.slotKey,
-    this.notificationId,
-    this.action = MedicationNotificationAction.open,
-    this.scheduleDate,
-    this.caregiverAlert,
-  });
-
-  // Function Name: isForDate
-  // Description: Rejects undated legacy actions and actions for a different dose day.
-  // Parameters: date (DateTime): Current local calendar date.
-  // Returns: Whether a quick action belongs to the supplied day.
-  bool isForDate(DateTime date) =>
-      scheduleDate != null &&
-      scheduleDate!.year == date.year &&
-      scheduleDate!.month == date.month &&
-      scheduleDate!.day == date.day;
-}
-
-// 함수이름: MedicationNotificationSelectionHandler
-// 함수역할: 해석된 알림 이동 대상과 사용자 액션을 앱 내비게이션 경계에 전달하는 계약이다.
-// 매개변수:
-// - selection (MedicationNotificationSelection): 해석된 알림 목적지와 액션 인자
-// 반환값:
-// - 없음.
-typedef MedicationNotificationSelectionHandler =
-    void Function(MedicationNotificationSelection selection);
+// Preserve existing imports while keeping the action contract platform-neutral.
+export '../entities/medication_notification_selection_entity.dart';
 
 // Class Name: NotificationService
 // Role: Wraps local notifications for medication, caregiver, and linked-chat workflows.
@@ -114,10 +38,14 @@ class NotificationService {
   NotificationService._();
 
   static final NotificationService instance = NotificationService._();
-  static const String markSlotTakenActionId = 'medbuddy_mark_slot_taken';
-  static const String snoozeTenMinutesActionId = 'medbuddy_snooze_10_minutes';
-  static const String caregiverSnoozeActionId = 'medbuddy_caregiver_snooze';
-  static const String caregiverChatActionId = 'medbuddy_caregiver_chat';
+  static const String markSlotTakenActionId =
+      MedicationNotificationPayloadCodec.markSlotTakenActionId;
+  static const String snoozeTenMinutesActionId =
+      MedicationNotificationPayloadCodec.snoozeTenMinutesActionId;
+  static const String caregiverSnoozeActionId =
+      MedicationNotificationPayloadCodec.caregiverSnoozeActionId;
+  static const String caregiverChatActionId =
+      MedicationNotificationPayloadCodec.caregiverChatActionId;
   static MedicationNotificationSelectionHandler? _selectionHandler;
   static MedicationNotificationSelection? _pendingSelection;
 
@@ -267,91 +195,23 @@ class NotificationService {
   }
 
   // Function Name: selectionFromPayload
-  // Description: Parses personal schedule actions, encoded caregiver patient hashes, or positive chat link IDs and rejects malformed navigation payloads.
+  // Description: Preserves the public parser API while delegating validation to the platform-independent codec.
   // Parameters:
   // - payload (String?): Navigation payload from a system notification or FCM.
   // - actionId (String?): System notification button identifier.
   // - notificationId (int?): Platform notification or server setting identifier.
   // Returns:
-  // - MedicationNotificationSelection?: Parses personal schedule actions, encoded caregiver patient hashes, or positive chat link IDs and rejects malformed navigation payloads.
+  // - MedicationNotificationSelection?: Validated navigation/action arguments, or null for a malformed payload.
   static MedicationNotificationSelection? selectionFromPayload(
     String? payload, {
     String? actionId,
     int? notificationId,
   }) {
-    if (payload?.startsWith('caregiver-v1:') ?? false) {
-      final alert = CaregiverAlertContext.fromPayload(payload!);
-      if (alert == null) return null;
-      return MedicationNotificationSelection(
-        destination: MedicationNotificationDestination.caregiverSchedule,
-        patientHash: alert.patientHash, slotKey: alert.slotKey, linkId: alert.linkId,
-        scheduleDate: DateTime.parse(alert.scheduleDate), caregiverAlert: alert,
-        action: switch (actionId) {
-          caregiverSnoozeActionId => MedicationNotificationAction.caregiverSnooze,
-          caregiverChatActionId => MedicationNotificationAction.caregiverRequestCheck,
-          _ => MedicationNotificationAction.open,
-        },
-      );
-    }
-    final segments = payload?.split(':') ?? const <String>[];
-    if ((segments.length == 3 || segments.length == 4) &&
-        segments[0] == 'schedule' &&
-        const {'morning', 'lunch', 'evening', 'bedtime'}
-            .contains(segments[1].trim().toLowerCase())) {
-      final notificationID = int.tryParse(segments[2]);
-      if (notificationID == null || notificationID < 0) {
-        return null;
-      }
-      DateTime? scheduleDate;
-      if (segments.length == 4) {
-        final rawDate = segments[3];
-        scheduleDate = DateTime.tryParse(rawDate);
-        if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(rawDate) ||
-            scheduleDate == null ||
-            scheduleDate.toIso8601String().split('T').first != rawDate) {
-          return null;
-        }
-      }
-      return MedicationNotificationSelection(
-        destination: MedicationNotificationDestination.schedule,
-        slotKey: segments[1].trim().toLowerCase(),
-        notificationId: notificationId ?? notificationID,
-        scheduleDate: scheduleDate,
-        action: switch (actionId) {
-          markSlotTakenActionId => MedicationNotificationAction.markSlotTaken,
-          snoozeTenMinutesActionId =>
-            MedicationNotificationAction.snoozeTenMinutes,
-          _ => MedicationNotificationAction.open,
-        },
-      );
-    }
-    if (segments.length == 2 &&
-        segments[0] == 'caregiver' &&
-        segments[1].trim().isNotEmpty) {
-      try {
-        final patientHash = Uri.decodeComponent(segments[1]).trim();
-        if (patientHash.isEmpty) {
-          return null;
-        }
-        return MedicationNotificationSelection(
-          destination: MedicationNotificationDestination.caregiverSchedule,
-          patientHash: patientHash,
-        );
-      } on FormatException {
-        return null;
-      }
-    }
-    if (segments.length == 2 && segments[0] == 'chat') {
-      final linkId = int.tryParse(segments[1]);
-      if (linkId == null || linkId < 1) {
-        return null;
-      }
-      return MedicationNotificationSelection(
-        destination: MedicationNotificationDestination.linkedChat,
-        linkId: linkId,
-      );
-    }
-    return null;
+    return MedicationNotificationPayloadCodec.decode(
+      payload,
+      actionId: actionId,
+      notificationId: notificationId,
+    );
   }
 
   // Function Name: handleNotificationPayload
@@ -391,10 +251,7 @@ class NotificationService {
   // - bool: 복약·보호자·채팅 접두사를 확인해 현재 세션 정리 대상인 MedBuddy 알림인지 판정한다.
   @visibleForTesting
   static bool isSessionNotificationPayload(String? payload) {
-    return payload?.startsWith('schedule:') == true ||
-        payload?.startsWith('caregiver-v1:') == true ||
-        payload?.startsWith('caregiver:') == true ||
-        payload?.startsWith('chat:') == true;
+    return MedicationNotificationPayloadCodec.isSessionPayload(payload);
   }
 
   // Function Name: initialize

@@ -40,6 +40,8 @@ package "Flutter Frontend" #E8F4FF {
   class MedBuddyReminderViewModel <<Control>>
   class DoseSyncService <<Service>>
   class NotificationService <<Service>>
+  class MedicationNotificationPayloadCodec <<Service>>
+  class MedicationNotificationSelection <<Entity>>
   class ManualMedicationImageStore <<Service>>
   class "CheckSchedule" as FCheckSchedule <<Control>>
   class "CheckSavedMedication" as FCheckSavedMedication <<Control>>
@@ -73,6 +75,13 @@ MedBuddyScheduleViewModel --> DoseSyncService : 기기 선저장·멱등 전송
 MedBuddySavedMedicationViewModel --> FCheckSavedMedication
 MedBuddyViewModel --> FCheckMedicationDetail
 MedBuddyReminderViewModel --> NotificationService : 알림 계획 조정
+NotificationService --> MedicationNotificationPayloadCodec : shared wire validation
+MedicationNotificationPayloadCodec --> MedicationNotificationSelection
+note bottom of MedicationNotificationPayloadCodec
+  Platform-independent payload and action protocol.
+  Original dose dates and legacy navigation semantics stay unchanged.
+  Scheduling and plugin lifecycle remain in NotificationService.
+end note
 MedBuddySavedMedicationViewModel --> ManualMedicationImageStore : 기기 사진 저장
 
 note bottom of MedBuddyViewModel

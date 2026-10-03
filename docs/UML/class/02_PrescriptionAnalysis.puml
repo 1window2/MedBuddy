@@ -46,7 +46,7 @@ package "Flutter Frontend" #E8F4FF {
 package "FastAPI Backend" #EAF8F0 {
   class "InputPrescription" as BInputPrescription <<Control>>
   class OCRServiceBoundary <<Service>>
-  class "_PrescriptionMedicationNameVerifier" as MedicationNameVerifier <<Service>>
+  class "PrescriptionMedicationNameVerifier" as MedicationNameVerifier <<Service>>
   class "MedicationSchedule" as BMedicationSchedule <<Entity>>
   class "CheckMedicationDetail" as BCheckMedicationDetail <<Control>>
   class "medication_match_safety" as MatchSafety <<Service>> {
@@ -76,6 +76,13 @@ FCheckMedicationDetail --> BCheckMedicationDetail : /identify + original_text
 FCheckMedicationDetail --> MedicationMatchReview : confirmation-only candidates
 FCheckMedicationDetail --> MedicationLookupBusy : known account-busy 503 + retryAt
 BCheckMedicationDetail --> MatchSafety : original strength / dosage form; exact name only
+
+note right of MedicationNameVerifier
+  Standalone catalog-name verification service.
+  Isolates database work from the OCR control
+  and permits AI corrections only from bounded
+  authoritative catalog candidates.
+end note
 
 note bottom of PrescriptionAnalysisPreviewUI
   Users review OCR rows and restore

@@ -70,6 +70,73 @@ def test_rest_chat_operations_leave_event_loop_responsive(operation: str) -> Non
     asyncio.run(exercise())
 
 
+# Function Name: test_cancelled_websocket_handshake_finishes_database_work_before_close
+# Description: Cancels an active handshake and requires worker completion before its session is closed, without accepting the socket.
+# Parameters: None.
+# Returns: None; fails if cancellation overlaps session use with cleanup.
+def test_cancelled_websocket_handshake_finishes_database_work_before_close() -> None:
+    # Function Name: exercise
+    # Description: Holds a simulated authorization operation while cancelling the socket task.
+    # Parameters: None.
+    # Returns: Completion of cleanup-order assertions.
+    async def exercise() -> None:
+        started = threading.Event()
+        release = threading.Event()
+        calls: list[str] = []
+        loop_thread = threading.get_ident()
+
+        # Function Name: authorize
+        # Description: Retains simulated session work until cancellation has reached the route.
+        # Parameters: principal (object): Verified caller; user_hash (str): Requested account scope.
+        # Returns: Verified user hash after its blocking work has finished.
+        def authorize(principal: object, user_hash: str) -> str:
+            assert threading.get_ident() != loop_thread
+            started.set()
+            if not release.wait(2):
+                raise AssertionError("Handshake cancellation did not release database work.")
+            calls.append("database_complete")
+            return "patient"
+
+        # Function Name: close_session
+        # Description: Requires database completion before worker-thread session cleanup.
+        # Parameters: None.
+        # Returns: None.
+        def close_session() -> None:
+            assert threading.get_ident() != loop_thread
+            assert calls == ["database_complete"]
+            calls.append("close")
+
+        db = SimpleNamespace(commit=lambda: None, rollback=lambda: None, close=close_session)
+        manager = ChatConnectionManager()
+        manager.connect = AsyncMock(return_value=True)
+        socket = SimpleNamespace(
+            app=SimpleNamespace(state=SimpleNamespace(chat_connection_manager=manager)),
+            close=AsyncMock(), send_json=AsyncMock(),
+        )
+        with (
+            patch.object(chat_router, "SessionLocal", return_value=db),
+            patch.object(chat_router, "_authenticate_websocket", return_value=object()),
+            patch.object(chat_router, "AuthorizationControl", return_value=SimpleNamespace(resolveOwnUserHash=authorize)),
+        ):
+            task = asyncio.create_task(chat_router.stream_chat_events(socket, 1, "patient"))
+            try:
+                async with asyncio.timeout(1):
+                    while not started.is_set():
+                        await asyncio.sleep(0)
+                task.cancel()
+                await asyncio.sleep(0)
+                assert not task.done() and calls == []
+            finally:
+                release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        assert calls == ["database_complete", "close"]
+        manager.connect.assert_not_awaited()
+        socket.send_json.assert_not_awaited()
+
+    asyncio.run(exercise())
+
+
 # Function Name: test_websocket_handshake_offloads_auth_and_closes_session
 # Description: Bound DB lifetime to the handshake and preserve failure close codes.
 # Parameters: failure - successful handshake, rejected quota, or authorization failure.
