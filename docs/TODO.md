@@ -11,10 +11,12 @@ history rewrite or automatic merge/tag/publication. See the
 [latest refactoring evidence](qa/v0.2.0-architecture-gates.md).
 
 Code cleanup is not release acceptance. On October 5, the owner authorized testing
-one physical Android phone with a dedicated synthetic profile. Connection/pairing
-and candidate installation prerequisites remain incomplete; no physical item is
-passed yet. Google Play enrollment remains deferred and two-device checks remain
-unperformed; all related unchecked gates stay open.
+one physical Android phone with a dedicated synthetic profile. Secure pairing and
+existing-installation startup succeeded; its APK matches the historical September
+14 signed build. See [the older-build baseline](qa/v0.2.0-map-direct-filter-device-validation.md#baseline-reconnection--2026-10-05).
+The latest candidate is not installed or physically accepted; all candidate
+checklist items remain open. Google Play enrollment remains deferred and
+two-device checks remain unperformed.
 Unimplemented enhancements below are explicitly outside this candidate.
 
 ### Current stabilization acceptance follow-up

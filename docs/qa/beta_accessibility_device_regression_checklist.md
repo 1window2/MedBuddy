@@ -11,11 +11,13 @@
 > 확보하면 배포된 후보 커밋을 기준으로 검증을 재개한다.
 
 > Update (2026-10-05): The owner now authorizes testing one physical Android
-> phone using a dedicated synthetic profile. Its Tailscale peer is reachable and
-> a Wireless debugging endpoint has been discovered, but this Mac is not paired
-> yet. No checklist item is passed. Verify the installed build and update signer
-> before any replace-only installation; never uninstall or clear app data.
-> Single-phone checks do not close two-device or Play/App Check acceptance.
+> phone using a dedicated synthetic profile. Secure pairing and startup succeeded
+> on Samsung SM-N976N / Android 12 (API 31). Its installed APK hash matches the
+> historical September 14 signed build; see [the baseline record](v0.2.0-map-direct-filter-device-validation.md#baseline-reconnection--2026-10-05).
+> The latest candidate is not installed or physically accepted; checklist items
+> remain unchecked. Verify candidate provenance and matching signer before any
+> replace-only update; never uninstall or clear app data. API 34+, two-device and
+> Play/App Check acceptance remain open.
 
 ## 자동 검증 범위
 
