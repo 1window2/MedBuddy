@@ -33,9 +33,18 @@ original cancellation. A completed write may still have committed even when its
 response is cancelled; existing idempotency and transaction policy remain in the
 controls. This adapter does not make cancellation a database rollback.
 
-Health recommendations retain the request transaction and its PostgreSQL
-account-deletion advisory lock during the external LLM wait. Their summaries
-are plain values, but authorization serialization is not released early.
+The health-recommendation API releases its connection before the external LLM
+wait. Each read/cache phase reacquires sorted caller/patient account locks and
+checks account existence, deletion tombstones and the active caregiver link.
+Before caching or returning newly generated guidance it rereads the active
+medication inputs; changed inputs require a fresh request (409), and removed
+accounts or links are rejected without recreating data. Cancellation still
+drains database work. Direct control callers without the revalidation callback
+retain the legacy caller-owned transaction contract.
+
+Explicit public catalog, prescription-analysis, pill-identification, voice-guide
+and nearby-care lookup routes commit account registration before external work.
+User-data mutation routes retain their existing account-operation locking.
 Independent-session queue/catalog workers remain separately owned and do not
 use this request-lifecycle adapter. Database deadlines must bound underlying
 operations; safe shutdown cannot abandon an active request session.
