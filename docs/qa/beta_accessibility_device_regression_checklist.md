@@ -10,6 +10,13 @@
 > 검증은 계속 진행한다. 이 보류는 v0.1.1 배포를 막지 않으며, 실기기를
 > 확보하면 배포된 후보 커밋을 기준으로 검증을 재개한다.
 
+> Update (2026-10-05): The owner now authorizes testing one physical Android
+> phone using a dedicated synthetic profile. Its Tailscale peer is reachable and
+> a Wireless debugging endpoint has been discovered, but this Mac is not paired
+> yet. No checklist item is passed. Verify the installed build and update signer
+> before any replace-only installation; never uninstall or clear app data.
+> Single-phone checks do not close two-device or Play/App Check acceptance.
+
 ## 자동 검증 범위
 
 - 320px, 360px, 412px 너비에서 핵심 화면 레이아웃 확인

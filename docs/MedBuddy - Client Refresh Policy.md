@@ -95,6 +95,12 @@
 이름·좌표가 같아 마커를 유지해도 탭 시에는 최신 영업시간·연락처를 전달한다.
 사용자가 직접 지도를 움직이거나 선택을 해제하면 대기 중인 자동 이동은 취소한다.
 
+If a native batch addition fails after applying only some markers, its cached diff
+is no longer authoritative. The next existing queued update clears only markers
+before rebuilding the current result. A failed clear remains retryable, and an old
+controller's completion cannot reset a replacement controller's cache. Normal
+successful updates remain incremental; no automatic network retry is introduced.
+
 ## 사진 처리
 
 처방전 촬영 이미지의 방향 보정·자르기·JPEG 변환과 직접 등록 사진의 크기 조절·

@@ -117,6 +117,7 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   NaverMapController? _mapController;
   int _overlayGeneration = 0;
   final _renderedMarkers = <String, NearbyCareMarkerStyle>{};
+  bool _markerStateUncertain = false;
   Future<void> _overlayWork = Future.value();
   bool _pendingCameraMove = false;
   String? _pendingCameraSelection;
@@ -257,6 +258,7 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
                 if (!mounted) return;
                 if (!identical(_mapController, controller)) {
                   _renderedMarkers.clear();
+                  _markerStateUncertain = false;
                 }
                 setState(() => _mapController = controller);
                 unawaited(_synchronizeMap());
@@ -475,6 +477,14 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     }
     await _loadSymbols();
     if (!mounted || generation != _overlayGeneration) return;
+    if (_markerStateUncertain) {
+      // A native batch may fail after adding some markers, so its cached diff is no longer authoritative.
+      await controller.clearOverlays(type: NOverlayType.marker);
+      if (!mounted || !identical(_mapController, controller)) return;
+      _renderedMarkers.clear();
+      _markerStateUncertain = false;
+      if (generation != _overlayGeneration) return;
+    }
     final locationOverlay = controller.getLocationOverlay();
     if (!mounted || generation != _overlayGeneration) return;
     final coordinate = widget.deviceLocation;
@@ -516,7 +526,14 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
         .map(_buildMarker)
         .toSet();
     if (markers.isNotEmpty) {
-      await controller.addOverlayAll(markers);
+      try {
+        await controller.addOverlayAll(markers);
+      } catch (_) {
+        if (mounted && identical(_mapController, controller)) {
+          _markerStateUncertain = true;
+        }
+        rethrow;
+      }
       if (!mounted || !identical(_mapController, controller)) return;
       for (final id in diff.add) {
         _renderedMarkers[id] = next[id]!;

@@ -10,8 +10,11 @@ history rewrite or automatic merge/tag/publication. See the
 [candidate boundary and release gates](releases/v0.2.0-beta.md) and
 [latest refactoring evidence](qa/v0.2.0-architecture-gates.md).
 
-Code cleanup is not release acceptance. Physical-device tests and Google Play
-enrollment remain deferred by the owner; all related unchecked gates stay open.
+Code cleanup is not release acceptance. On October 5, the owner authorized testing
+one physical Android phone with a dedicated synthetic profile. Connection/pairing
+and candidate installation prerequisites remain incomplete; no physical item is
+passed yet. Google Play enrollment remains deferred and two-device checks remain
+unperformed; all related unchecked gates stay open.
 Unimplemented enhancements below are explicitly outside this candidate.
 
 ### Current stabilization acceptance follow-up
@@ -21,11 +24,11 @@ Unimplemented enhancements below are explicitly outside this candidate.
       Later generation/cache/retry success does not establish the original cause
       or close this finding. Preserve sanitized failure evidence before changing
       existing behavior; do not add product functionality as part of this triage.
-- [ ] Validate native map-marker recovery after a partially successful platform
-      addition followed by a failed call and then empty/changed search results.
-      The incremental cache records additions only after the whole call succeeds;
-      pure-diff tests do not establish native failure recovery. This is a
-      review-identified conditional risk, not an observed device failure.
+- [ ] Physically confirm corrected native map-marker recovery after a partially
+      successful addition, failed call and then empty/changed results. The queue
+      now clears uncertain marker state before the next diff; synthetic platform
+      regressions cover empty/same results, failed clearing and controller
+      replacement. This is not yet physical-device acceptance.
 
 Current implementation, verification evidence, and remaining work are summarized
 in [the September 21 architecture and roadmap review](qa/v0.2.0-2026-09-21-architecture-review.md).

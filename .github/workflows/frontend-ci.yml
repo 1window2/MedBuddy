@@ -49,6 +49,9 @@ jobs:
     - name: Run Flutter Tests
       run: flutter test --no-pub
 
+    - name: Run Synthetic Nearby Care Marker Regressions
+      run: flutter test --no-pub --dart-define=MEDBUDDY_NAVER_MAP_CLIENT_ID=test-only test/nearby_care_marker_diff_test.dart
+
     - name: Prepare compile-only Firebase configuration
       shell: bash
       run: cp android/app/google-services.json.example android/app/google-services.json
