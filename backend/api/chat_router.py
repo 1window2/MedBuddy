@@ -19,7 +19,6 @@ from fastapi import (
 )
 from fastapi.security import HTTPAuthorizationCredentials
 from starlette.concurrency import run_in_threadpool
-from sqlalchemy.orm import Session
 
 from api.dependencies import (
     get_authenticated_app_principal,

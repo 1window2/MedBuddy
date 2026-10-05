@@ -1976,68 +1976,116 @@ void main() {
     control.dispose();
   });
 
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: 보호자는 시간대 카드를 골라 환자에게 복약 확인을 요청한다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  testWidgets('보호자는 시간대 카드를 골라 환자에게 복약 확인을 요청한다', (tester) async {
-    final control = _RetryChatControl(
-      failFirstSend: false,
-      scheduleContexts: const [
-        ChatScheduleContext(
-          slotKey: 'morning',
-          alarmTime: '08:00',
-          alarmEnabled: true,
-          completedCount: 1,
-          totalCount: 2,
-          canRequestCheck: true,
-          medications: [
-            ChatMedicationContext(
-              medicationId: 91,
-              medicationName: '테스트정',
-              dosagePerTime: '1정',
+  for (final language in ['ko', 'en']) {
+    // Function Name: caregiver requestable schedule test
+    // Description: Shows only requestable caregiver contexts and their existing localized description.
+    // Parameters: tester: Widget test driver. Returns: Asynchronous filtering, text and send assertions.
+    testWidgets(
+      'caregiver selects only requestable medication times: $language',
+      (tester) async {
+        final isEnglish = language == 'en';
+        final control = _RetryChatControl(
+          failFirstSend: false,
+          scheduleContexts: const [
+            ChatScheduleContext(
+              slotKey: 'morning',
+              alarmTime: '08:00',
+              alarmEnabled: true,
+              completedCount: 1,
+              totalCount: 2,
+              canRequestCheck: true,
+              medications: [
+                ChatMedicationContext(
+                  medicationId: 91,
+                  medicationName: '테스트정',
+                  dosagePerTime: '1정',
+                ),
+              ],
+            ),
+            ChatScheduleContext(
+              slotKey: 'evening',
+              alarmTime: '18:00',
+              alarmEnabled: true,
+              completedCount: 0,
+              totalCount: 1,
+              canRequestCheck: false,
+              medications: [],
             ),
           ],
-        ),
-      ],
+        );
+        final realtimeService = _FakeRealtimeService();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: LinkedChatUI(
+              linkId: 17,
+              currentUserHash: 'caregiver-a',
+              patientHash: 'patient-a',
+              userSetting: UserSetting(language: language),
+              control: control,
+              realtimeService: realtimeService,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byTooltip(isEnglish ? 'Request a medication check' : '복약 확인 요청'),
+          findsOneWidget,
+        );
+        await tester.tap(find.byKey(const ValueKey('chatScheduleSelector')));
+        await tester.pumpAndSettle();
+        expect(
+          find.text(isEnglish ? "Today's medication times" : '오늘의 복약 시간대'),
+          findsOneWidget,
+        );
+        expect(
+          find.text(
+            isEnglish
+                ? 'Choose a time to ask the patient to check their medication.'
+                : '확인이 필요한 시간대를 선택해 환자에게 알려주세요.',
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.text(
+            isEnglish
+                ? 'Review progress for each medication time.'
+                : '시간대별 약과 복용 진행률을 확인할 수 있습니다.',
+          ),
+          findsNothing,
+        );
+        expect(
+          find.text(isEnglish ? 'Evening 18:00' : '저녁 18:00'),
+          findsNothing,
+        );
+        expect(
+          find.text(isEnglish ? 'Morning 08:00' : '아침 08:00'),
+          findsOneWidget,
+        );
+
+        await tester.tap(find.text(isEnglish ? 'Morning 08:00' : '아침 08:00'));
+        await tester.pumpAndSettle();
+
+        expect(control.messageKinds, [ChatMessageKind.slotCheckRequest]);
+        expect(control.slotKeys, ['morning']);
+        expect(
+          find.text(
+            isEnglish
+                ? 'Please check your morning medication.'
+                : '아침 복약을 확인해주세요.',
+          ),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+        await realtimeService.dispose();
+        control.dispose();
+      },
     );
-    final realtimeService = _FakeRealtimeService();
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: LinkedChatUI(
-          linkId: 17,
-          currentUserHash: 'caregiver-a',
-          patientHash: 'patient-a',
-          control: control,
-          realtimeService: realtimeService,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.byTooltip('복약 확인 요청'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('chatScheduleSelector')));
-    await tester.pumpAndSettle();
-    expect(find.text('오늘의 복약 시간대'), findsOneWidget);
-    expect(find.text('아침 08:00'), findsOneWidget);
-
-    await tester.tap(find.text('아침 08:00'));
-    await tester.pumpAndSettle();
-
-    expect(control.messageKinds, [ChatMessageKind.slotCheckRequest]);
-    expect(control.slotKeys, ['morning']);
-    expect(find.text('아침 복약을 확인해주세요.'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-
-    await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pump();
-    await realtimeService.dispose();
-    control.dispose();
-  });
+  }
 
   for (final language in ['ko', 'en']) {
     for (final scenario in [

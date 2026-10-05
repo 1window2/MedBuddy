@@ -1,5 +1,19 @@
 # MedBuddy Release TODO
 
+## v0.2.0 feature freeze and stabilization
+
+As of October 5, finish the existing candidate without new features or implementation
+paths. Cleanup may reorganize existing responsibilities, remove proven dead code and
+reduce duplication, but must preserve behavior, API/storage contracts, dependencies
+and safety/release gates. Use bounded reviewed commits on `beta/v0.2.0`; no shared
+history rewrite or automatic merge/tag/publication. See the
+[candidate boundary and release gates](releases/v0.2.0-beta.md) and
+[latest refactoring evidence](qa/v0.2.0-architecture-gates.md).
+
+Code cleanup is not release acceptance. Physical-device tests and Google Play
+enrollment remain deferred by the owner; all related unchecked gates stay open.
+Unimplemented enhancements below are explicitly outside this candidate.
+
 Current implementation, verification evidence, and remaining work are summarized
 in [the September 21 architecture and roadmap review](qa/v0.2.0-2026-09-21-architecture-review.md).
 The subsequent offline-dose date-boundary correction and SDK/lockfile follow-up
@@ -145,21 +159,26 @@ silently inferred from weak evidence.
       linked physical devices, including patient/caregiver force-stop and
       transient FCM failure. The Android polling path is retained only for
       local/demo authentication mode.
-- [ ] Add caregiver escalation levels with explicit consent, quiet hours,
-      cooldowns, acknowledgement, and deduplication. Do not implement literal
-      notification flooding: it increases alarm fatigue and can hide urgent
-      events.
 - [x] Define and implement selected-message deletion: private deletion at any
       age; sender-only shared redaction before 24 hours, with server validation,
       confirmation, and retention/export semantics in [Chat Message Deletion.md](Chat%20Message%20Deletion.md).
 - [ ] Verify selected-message deletion on two physical devices, including
       reconnect, offline failure, delivered previews and the 24-hour deadline.
-- [ ] Add a remotely controlled maintenance notice with a clear start/end time
-      and retry guidance before the next planned service interruption.
 - [ ] Run a short task-count usability study with older adults or proxy users:
       record taps, text entry, completion time, error recovery, large-text
       layout, TalkBack labels, and one-handed reachability for the medication,
       caregiver, and chat flows.
+
+### Post-v0.2.0 product backlog — not release-blocking implementation work
+
+These ideas remain recorded, but feature freeze defers their implementation until
+after v0.2.0. Existing-flow acceptance tests above remain release requirements.
+
+- [ ] Add caregiver escalation levels with explicit consent, quiet hours,
+      cooldowns, acknowledgement, and deduplication. Do not implement literal
+      notification flooding: it increases alarm fatigue and can hide urgent events.
+- [ ] Add a remotely controlled maintenance notice with a clear start/end time
+      and retry guidance before a future planned service interruption.
 - [ ] Continue the evidence-gated intake automation stages in
       `MedBuddy - Medication Intake Automation Roadmap.md`. A camera or model
       may preselect a dose, but ambiguous identity, count, or timing must still

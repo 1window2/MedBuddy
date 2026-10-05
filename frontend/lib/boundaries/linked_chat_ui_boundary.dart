@@ -2204,14 +2204,7 @@ class _ScheduleContextSelector extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                // 함수이름: build.any callback
-                // 함수역할: 채팅에 연결할 복약 일정 요약 선택에 대해 `item.canRequestCheck` 조건으로 컬렉션 항목을 판별한다.
-                // 매개변수:
-                // - item (콜백 계약에서 추론): 표시·변환·저장·비교할 약품 데이터.
-                // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
-                contexts.any((item) => item.canRequestCheck)
-                    ? text.scheduleSelectorCaregiverDescription
-                    : text.scheduleSelectorPatientDescription,
+                text.scheduleSelectorCaregiverDescription,
                 style: const TextStyle(
                   color: MedBuddyColors.textMuted,
                   fontSize: 14,
@@ -3693,14 +3686,6 @@ class _LinkedChatText {
   String get scheduleSelectorCaregiverDescription => isEnglish
       ? 'Choose a time to ask the patient to check their medication.'
       : '확인이 필요한 시간대를 선택해 환자에게 알려주세요.';
-  // 함수이름: scheduleSelectorPatientDescription
-  // 함수역할: 현재 언어와 입력값에 맞춰 "시간대별 약과 복용 진행률을 확인할 수 있습니다." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get scheduleSelectorPatientDescription => isEnglish
-      ? 'Review progress for each medication time.'
-      : '시간대별 약과 복용 진행률을 확인할 수 있습니다.';
   // 함수이름: slotLabel
   // 함수역할: 현재 언어와 입력값에 맞춰 "취침 전" 문구를 제공한다.
   // 매개변수:

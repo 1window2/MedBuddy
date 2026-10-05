@@ -139,7 +139,6 @@ jobs:
         run: |
           set -euo pipefail
           BACKEND_ORIGIN="$(python3 ../scripts/check_android_release_configuration.py backend-origin)"
-          printf 'BACKEND_ORIGIN=%s\n' "${BACKEND_ORIGIN}" >> "${GITHUB_ENV}"
           python3 ../scripts/check_release_ingress.py --origin "${BACKEND_ORIGIN}"
           curl --fail --silent --show-error \
             --retry 3 --retry-all-errors --retry-delay 2 \

@@ -252,7 +252,7 @@ def test_configuration_cli_runs_standalone_from_the_frontend_directory() -> None
 
 
 # Function Name: test_workflow_wires_configuration_checks_to_the_original_gates
-# Description: Keep public probes and local config verification before signing without inline Python.
+# Description: Keep public probes and local config verification before signing without inline Python or unused job state.
 # Parameters: None.
 # Returns: None.
 def test_workflow_wires_configuration_checks_to_the_original_gates() -> None:
@@ -262,3 +262,17 @@ def test_workflow_wires_configuration_checks_to_the_original_gates() -> None:
     assert workflow.index("backend-origin") < workflow.index("check_release_ingress.py")
     assert workflow.index("backend-readiness") < workflow.index("Restore Firebase Android configuration")
     assert workflow.index("check_android_release_configuration.py firebase") < workflow.index("Restore release keystore")
+    endpoint_step = workflow.split("      - name: Validate standalone backend endpoint\n", 1)[1].split(
+        "      - name: Restore Firebase Android configuration\n", 1,
+    )[0]
+    assert 'BACKEND_ORIGIN="$(python3 ../scripts/check_android_release_configuration.py backend-origin)"' in endpoint_step
+    assert 'python3 ../scripts/check_release_ingress.py --origin "${BACKEND_ORIGIN}"' in endpoint_step
+    for endpoint, filename in (
+        ("health", "backend-health.json"),
+        ("ready", "backend-ready.json"),
+        ("ready/catalogs", "backend-catalogs.json"),
+    ):
+        assert f'"${{BACKEND_ORIGIN}}/{endpoint}" > "${{RUNNER_TEMP}}/{filename}"' in endpoint_step
+    assert "${GITHUB_ENV}" not in endpoint_step
+    later_steps = workflow.split("      - name: Restore Firebase Android configuration\n", 1)[1]
+    assert "BACKEND_ORIGIN" not in later_steps
