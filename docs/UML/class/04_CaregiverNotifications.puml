@@ -127,6 +127,8 @@ note bottom of LinkedChatComposerViewModel
   Disposed completions cannot clear or publish another session's draft.
 end note
 note top of LinkedChatUI
+  입력 변경은 StatefulBuilder의 입력 행만 갱신한다.
+  기존 메시지 목록과 말풍선의 입력별 재구성을 피한다.
   실시간 연결과 이력 조회가 정상이면 반복 조회하지 않는다.
   장애 시 현재 대화방에서만 12초 보완 조회한다.
   백그라운드에서 중지하고 복귀·재연결 시 누락분을 읽는다.

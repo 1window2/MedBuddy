@@ -822,7 +822,14 @@ opt 보호자 홈 또는 감시 자료 갱신
     opt 새 API 요청이 필요함
     ApiClient -> Router : 현재 보호자의 통합 snapshot 요청
     Router -> BackControl : CheckCaregiverMonitoring.requestMonitoringSnapshot(include_all_schedules)
-    BackControl -> Database : 활성 연결과 환자별 알림 정책·복약 상태 조회
+    BackControl -> Database : 활성 연결·알림 정책 각 1회 조회
+    loop 조회 대상 환자 400명 단위
+        BackControl -> Database : 일정에 필요한 저장 약 필드 일괄 조회
+        opt 복용 중인 약이 있음
+            BackControl -> Database : 소유 환자와 오늘 날짜로 한정한 완료 기록 일괄 조회
+        end
+        BackControl -> BackControl : 기존 일정 DTO와 시간대별 요약 생성
+    end
     BackControl --> UI : 환자별 서버 별칭과 조회된 현황
     end
     note right of BackControl : 홈·위젯은 알림을 끈 환자도 포함하며 약 상세는 제외한다.\n감시 전용 조회는 활성 알림 정책이 있는 환자만 조회한다.
@@ -958,19 +965,32 @@ UI -> ViewModel : fetchHealthRecommendation()
 ViewModel -> FrontControl : CheckHealthRecommendation.requestHealthRecommendation()
 FrontControl -> ApiClient : GET /health/recommendation
 ApiClient -> Router : 건강 추천 요청
-Router -> BackControl : CheckHealthRecommendation.requestHealthRecommendation()
+Router -> Database : 인증 계정 등록 commit·연결 반환\n초기 환자 범위 조회 후 rollback
+Router -> BackControl : requestHealthRecommendation(validate_access callback)
+BackControl -> Database : 새 transaction에서 호출자·환자 잠금\n계정 존재·삭제 요청·현재 보호자 연동 재검증
 BackControl -> Database : 활성 저장 약과\nhealth_recommendation_cache 조회
+BackControl -> Database : commit·연결 반환
 
 alt 동일한 약 조합의 유효한 Cache 존재
     Database --> BackControl : 저장된 HealthRecommendation
 else Cache가 없거나 만료됨
     Database --> BackControl : 활성 복약 목록
     BackControl -> BackService : LLMService.requestHealthRecommendation()
+    note over BackControl,Database : AI 대기 중 DB 연결·계정 transaction을 보유하지 않음
     BackService -> Gemini : 건강 추천 생성 요청
     Gemini --> BackService : 식이, 운동, 주의사항
     BackService --> BackControl : HealthRecommendation
-    BackControl -> Database : health_recommendation_cache 저장
-    Database --> BackControl : 저장 완료
+    BackControl -> Database : 새 transaction·계정 잠금\n삭제·연동·현재 복약 조합 재검증
+    alt 권한 또는 복약 조합이 변경됨
+      break 오류 응답으로 요청 종료
+        BackControl -> Database : rollback·연결 반환, cache 저장 안 함
+        BackControl --> Router : 삭제 410 / 연동 해제 403 / 복약 변경 409
+        Router --> UI : 오류 안내·필요 시 다시 조회
+      end
+    else 여전히 유효함
+        BackControl -> Database : health_recommendation_cache 저장 또는 동시 저장 cache 재사용
+        Database --> BackControl : 저장 commit 또는 기존 cache 재사용 후 연결 반환
+    end
 end
 
 BackControl --> Router : HealthRecommendation

@@ -1129,6 +1129,7 @@ package "FastAPI Backend" {
         class "CheckSchedule" as BCheckSchedule <<Control: 복약 일정 및 완료>> {
             - db: Session
             + requestTodayMedicationSchedule(patient_hash): dict
+            + requestTodayMedicationSchedulesForPatients(patient_hashes): dict
             + requestMedicationScheduleWindow(patient_hash, days): dict
             + updateMedicationStatus(patient_hash, medication_id, status): dict
             + updateMedicationSlotStatus(patient_hash, slot_key, status): dict
@@ -1138,6 +1139,7 @@ package "FastAPI Backend" {
         class "CheckTodayMedicationInfo" as BCheckTodayMedicationInfo <<Control: 오늘 복약 요약>> {
             - db: Session
             + requestTodayMedicationInfo(patient_hash): dict
+            + requestTodayMedicationInfoForPatients(patient_hashes): dict
         }
 
         class "CheckPrescriptionChange" as BCheckPrescriptionChange <<Control: 처방 변경 비교>> {
@@ -1147,14 +1149,17 @@ package "FastAPI Backend" {
 
         class "CheckHealthRecommendation" as BCheckHealthRecommendation <<Control: 건강 추천>> {
             - db: Session
-            + requestHealthRecommendation(patient_hash, language): dict
+            + requestHealthRecommendation(patient_hash, language, validate_access): dict
         }
 
         note bottom of BCheckHealthRecommendation
             Authorization and database phases use run_request_database_work().
             Blocking work stays off-loop, sequentially using the request session.
             Cancellation drains workers before session or account-lock cleanup.
-            PostgreSQL account transaction remains held during the LLM wait.
+            API 호출은 조회·저장 단계마다 계정 삭제와 보호자 연동을 재검증한다.
+            AI 대기 중에는 transaction과 DB 연결을 반환한다.
+            저장 전 복약 조합이 달라지면 409로 재조회를 요청한다.
+            검증 callback 없는 직접 호출은 기존 호출자 transaction 계약을 유지한다.
         end note
 
         class "IdentifyPill" as BIdentifyPill <<Control: 낱알 후보 순위화>> {
@@ -1235,6 +1240,8 @@ package "FastAPI Backend" {
             /caregiver/schedules는 알림 OFF 환자도 포함한다.
             /caregiver/monitoring은 활성 알림 정책으로 제한한다.
             홈·위젯 조회에 약 상세는 포함하지 않는다.
+            환자 400명 단위로 일정 필드와 오늘 완료 기록을 일괄 조회한다.
+            400명 이하는 연결·설정·일정·완료 기록을 최대 4회 조회한다.
         end note
 
         class "SetNotification" as BSetNotification <<Control: 환자 알림 저장>> {
@@ -1279,6 +1286,7 @@ package "FastAPI Backend" {
             + resolveOwnUserHash(principal, requested_hash): str
             + resolvePatientScope(principal, patient_hash): str
             + requireLinkedPatient(caregiver_hash, patient_hash): str
+            + validateRecommendationScope(principal, patient_hash): void
         }
 
         class "AuthenticatedPrincipal" as BAuthenticatedPrincipal <<Entity: verified request identity>> {
@@ -1413,6 +1421,7 @@ package "FastAPI Backend" {
         class "SavedMedicationRepository" as SavedMedicationRepository <<Repository: 저장 복약정보 조회>> {
             - db: Session
             + list_by_patient(patient_hash): list
+            + list_schedule_medications_for_patients(patient_hashes): list
             + list_all(): list
             + list_recent_by_patient(patient_hash): list
             + find_owned_by_id(medication_id, patient_hash): _SavedMedication?
@@ -2038,6 +2047,17 @@ CheckNearbyPharmacyUI *-- NearbyPharmacyMap
 CheckNearbyPharmacyUI *-- PharmacyDetailsSheet : 선택 약국의 접힘·펼침 정보
 CheckNearbyPharmacyUI *-- PharmacyListPanel : 상단 드래그·탭으로 지도 복귀
 NearbyPharmacyMap ..> NearbyCareSearchArea
+class NearbyCareMarkerDiff <<Service: 순수 마커 변경 계산>> {
+    + between(previous, next): NearbyCareMarkerDiff
+    + remove: Set<String>
+    + add: Set<String>
+}
+NearbyPharmacyMap --> NearbyCareMarkerDiff
+note right of NearbyCareMarkerDiff
+    이름·좌표·선택·즐겨찾기가 바뀐 마커만 교체한다.
+    플랫폼 작업을 직렬화하고 오래된 대기 요청은 건너뛴다.
+    유지한 마커도 클릭 시 최신 상세 정보를 전달한다.
+end note
 CheckNearbyPharmacyUI o-- PharmacyFavoriteService
 CheckNearbyPharmacyUI o-- PharmacyExternalActionService
 LinkPatientCaregiverUI ..> FLinkPatientCaregiver
@@ -2142,6 +2162,11 @@ LinkedChatRealtimeService ..|> LinkedChatSessionTransport
 LinkedChatRealtimeService ..> AuthenticatedApiClient
 LinkedChatUI *-- LinkedChatHistoryViewModel : identity-keyed account/link/patient session
 LinkedChatUI *-- LinkedChatComposerViewModel : outgoing request owner
+note right of LinkedChatUI
+    입력 중에는 StatefulBuilder의 입력 행만 갱신한다.
+    대화 목록·말풍선은 입력 한 글자마다 재구성하지 않는다.
+    초안 controller와 전송·읽음 상태의 소유권은 유지한다.
+end note
 LinkedChatComposerViewModel --> FManageLinkedChat : borrowed send adapter
 LinkedChatComposerViewModel --> ChatMessageDraft : payload and retry identity
 LinkedChatHistoryViewModel --> FManageLinkedChat : history / receipt / recovery
@@ -2406,6 +2431,15 @@ FirebasePushNotificationBoundary ..> PushNotificationBoundary : 구조적 Protoc
 
 BAuthorizationControl --> DBUserAccount
 BAuthorizationControl --> DBPatientCaregiverLink
+note "core/account_database_lock.py\nlock_account_operations(db, user_hashes)\n정렬·중복 제거한 계정별 PostgreSQL advisory transaction lock\nSQLite BEGIN IMMEDIATE; 새 transaction에서만 사용" as AccountDatabaseLock
+BAuthorizationControl ..> AccountDatabaseLock : 추천 조회·저장 단계
+BAccountDependencies ..> AccountDatabaseLock : 계정 등록·기존 mutation 보호
+BCheckHealthRecommendation ..> BAuthorizationControl : Router가 주입한 validate_access callback
+note bottom of BAccountDependencies
+    명시한 외부 조회 API만 계정 등록 commit 후 연결을 반환한다.
+    약 저장·채팅·계정 삭제 등 mutation의 요청 잠금은 유지한다.
+    건강 추천은 DB 단계마다 계정·연동을 다시 검사한다.
+end note
 SavedMedicationRetentionPolicy *-- MedicationCoursePolicy
 SavedMedicationRetentionPolicy --> DBSavedMedication
 SavedMedicationRetentionPolicy --> DBMedicationCompletion

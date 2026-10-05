@@ -16,6 +16,11 @@ package "Flutter: Boundary / Control / Entity" {
   class "_NearbyCareFilterSheet" as NearbyCareFilterSheet <<Boundary>>
   class "_PharmacyDetailsSheet" as PharmacyDetailsSheet <<Boundary>>
   class "NearbyPharmacyMap" as NearbyPharmacyMapWidget <<Boundary>>
+  class NearbyCareMarkerDiff <<Service>> {
+    + between(previous, next)
+    + remove
+    + add
+  }
   abstract class "CheckNearbyCare" as FCare <<Control>> {
     + requestNearbyCareSearch(...)
     + requestSearchArea(...)
@@ -101,6 +106,13 @@ NearbyCareSelection --> NearbyCarePlace
 NearbyCareSearchArea --> DeviceCoordinate
 CheckNearbyPharmacyUI --> NearbyCareSelection : selection result, no send
 NearbyPharmacyMapWidget --> NearbyCarePlace
+NearbyPharmacyMapWidget --> NearbyCareMarkerDiff : 변경된 마커만 교체
+note bottom of NearbyCareMarkerDiff
+  이름·좌표·선택·즐겨찾기 상태를 비교한다.
+  플랫폼 삭제·추가는 직렬 실행하고 오래된 요청은 건너뛴다.
+  유지된 마커도 탭 시 최신 상세 정보를 전달한다.
+  명시적 선택·내 위치 이동 외에는 사용자의 지도 범위를 유지한다.
+end note
 HospitalRouter --> BHospital
 BHospital --> HospitalLookupBoundary
 BHospital --> DepartmentSearch : selected specialty
