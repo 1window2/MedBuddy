@@ -4,6 +4,9 @@
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import OperationalError
+
+from core.account_database_lock import lock_account_operations
 
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from entities.patient_hash_entity import normalize_patient_hash
@@ -136,3 +139,28 @@ class AuthorizationControl:
         if self.link_repository is None:
             return False
         return self.link_repository.has_active_pair(caregiver_hash, patient_hash)
+
+    # 외부 AI 대기 전후에 호출한다. 호출자와 환자를 잠근 뒤 삭제·연동을 다시 검사한다.
+    # 함수이름: validateRecommendationScope
+    # 함수역할: 계정을 재생성하지 않고 삭제 여부와 현재 보호자 연동을 재검증한다.
+    # 매개변수: principal: 인증 주체, patient_hash: 조회 대상 환자.
+    # 반환값: 없음. 삭제 410, 연동 실패 403, 잠금 실패 503.
+    def validateRecommendationScope(
+        self, principal: AuthenticatedPrincipal, patient_hash: str,
+    ) -> None:
+        if self.db is None:
+            raise RuntimeError("Recommendation scope requires a database session.")
+        try:
+            lock_account_operations(self.db, [principal.user_hash, patient_hash])
+            self.db.expire_all()
+            # 재검증 단계에서는 없어진 계정을 생성하지 않는다. 로컬 계정 삭제도 포함한다.
+            for owner in {principal.user_hash, patient_hash}:
+                account = self.db.get(_UserAccount, owner)
+                if account is None or account.deletion_requested_at is not None:
+                    raise HTTPException(410, "This MedBuddy account has been deleted.")
+            self.resolvePatientScope(principal, patient_hash, allow_caregiver=True)
+        except OperationalError as exc:
+            raise HTTPException(
+                503, "This account is busy. Retry the request shortly.",
+                headers={"Retry-After": "5"},
+            ) from exc

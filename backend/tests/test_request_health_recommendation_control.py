@@ -317,7 +317,7 @@ class CheckHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(HTTPException) as rejected:
             await get_health_recommendation(
                 patient_hash="other-patient", language="ko", principal=object(),
-                authorization=SimpleNamespace(resolvePatientScope=deny_scope),
+                authorization=SimpleNamespace(resolvePatientScope=deny_scope, db=self.db),
                 check_health_recommendation=recommendation,
             )
         self.assertEqual(rejected.exception.status_code, 403)
