@@ -11,6 +11,7 @@ import 'package:flutter_naver_map/flutter_naver_map.dart';
 import '../entities/device_coordinate_entity.dart';
 import '../entities/nearby_care_entity.dart';
 import '../services/naver_map_config.dart';
+import '../services/nearby_care_marker_diff.dart';
 import '../theme/medbuddy_theme.dart';
 import 'pharmacy_map_symbols.dart';
 
@@ -111,9 +112,15 @@ class NearbyPharmacyMap extends StatefulWidget {
 // - 기존 약국 마커를 지운 뒤 최신 세대의 마커만 추가하고 카메라 범위를 갱신한다.
 // - 약국 좌표에 선택 크기·색상·이름과 탭 선택 콜백을 갖춘 마커를 만든다.
 // - 검색 후에는 지도 중심과 확대 수준을 유지하고 약국 선택·내 위치 요청 때만 이동한다.
+// 현재 갱신 방식: 전체 삭제 대신 변경된 마커만 교체하며 플랫폼 작업 순서를 보장한다.
 class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   NaverMapController? _mapController;
   int _overlayGeneration = 0;
+  final _renderedMarkers = <String, NearbyCareMarkerStyle>{};
+  Future<void> _overlayWork = Future.value();
+  bool _pendingCameraMove = false;
+  String? _pendingCameraSelection;
+  int _pendingCameraGeneration = 0;
   bool _cameraMoved = false;
   NearbyCareSearchArea? _pendingArea;
   int _cameraGeneration = 0;
@@ -248,6 +255,9 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
               // Returns: No payload; applies the captured state changes.
               onMapReady: (controller) {
                 if (!mounted) return;
+                if (!identical(_mapController, controller)) {
+                  _renderedMarkers.clear();
+                }
                 setState(() => _mapController = controller);
                 unawaited(_synchronizeMap());
               },
@@ -434,11 +444,35 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   // 함수역할: 최신 결과의 마커만 표시하고 요청한 경우에만 카메라를 이동한다.
   // 매개변수: moveCamera: 명시적 위치 이동 여부. 반환값: 지도 갱신 완료.
   Future<void> _synchronizeMap({bool moveCamera = false}) async {
-    final controller = _mapController;
-    if (controller == null) {
-      return;
+    if (moveCamera) {
+      _pendingCameraMove = true;
+      _pendingCameraSelection = widget.selectedPharmacyId;
+      _pendingCameraGeneration = _cameraGeneration;
     }
     final generation = ++_overlayGeneration;
+    // 플랫폼 마커 명령을 직렬화하고, 대기 중 들어온 요청은 최신 상태로 합친다.
+    final work = _overlayWork.then((_) => _applyMapChanges(generation));
+    _overlayWork = work.catchError((Object error, StackTrace stack) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stack,
+          library: 'nearby care map',
+        ),
+      );
+    });
+    await _overlayWork;
+  }
+
+  // 삭제·추가 완료 뒤에만 기록을 갱신해 도중에 새 검색이 와도 다음 요청이 복구한다.
+  // 함수이름: _applyMapChanges
+  // 함수역할: 최신 마커 변경을 직렬 적용하고 유효한 명시적 카메라 이동만 수행한다.
+  // 매개변수: generation: 대기 작업 세대. 반환값: 지도 반영 완료.
+  Future<void> _applyMapChanges(int generation) async {
+    final controller = _mapController;
+    if (!mounted || generation != _overlayGeneration || controller == null) {
+      return;
+    }
     await _loadSymbols();
     if (!mounted || generation != _overlayGeneration) return;
     final locationOverlay = controller.getLocationOverlay();
@@ -460,18 +494,45 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
       locationOverlay.setSubIcon(null);
     }
     final pharmacies = _mappablePharmacies;
-    final markers = pharmacies.map(_buildMarker).toSet();
-    await controller.clearOverlays(type: NOverlayType.marker);
-    if (!mounted || generation != _overlayGeneration) {
-      return;
+    final next = {
+      for (final place in pharmacies)
+        place.placeId: nearbyCareMarkerStyle(
+          place,
+          selectedId: widget.selectedPharmacyId,
+          favoriteIds: widget.favoritePharmacyIds,
+        ),
+    };
+    final diff = NearbyCareMarkerDiff.between(_renderedMarkers, next);
+    for (final id in diff.remove) {
+      await controller.deleteOverlay(
+        NOverlayInfo(type: NOverlayType.marker, id: 'pharmacy-$id'),
+      );
+      if (!mounted || !identical(_mapController, controller)) return;
+      _renderedMarkers.remove(id);
+      if (!mounted || generation != _overlayGeneration) return;
     }
+    final markers = pharmacies
+        .where((place) => diff.add.contains(place.placeId))
+        .map(_buildMarker)
+        .toSet();
     if (markers.isNotEmpty) {
       await controller.addOverlayAll(markers);
+      if (!mounted || !identical(_mapController, controller)) return;
+      for (final id in diff.add) {
+        _renderedMarkers[id] = next[id]!;
+      }
     }
     if (!mounted || generation != _overlayGeneration) {
       return;
     }
-    if (moveCamera) await _updateCamera(controller, pharmacies);
+    if (_pendingCameraMove) {
+      _pendingCameraMove = false;
+      // 갱신을 기다리던 중 선택을 해제하거나 지도를 직접 움직였다면 이동을 취소한다.
+      if (_pendingCameraSelection == widget.selectedPharmacyId &&
+          _pendingCameraGeneration == _cameraGeneration) {
+        await _updateCamera(controller, pharmacies);
+      }
+    }
   }
 
   // 함수이름: _buildMarker
@@ -504,7 +565,16 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     // Parameters:
     // - _ (inferred by callback contract): Argument required by the callback contract but unused by the body.
     // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
-    marker.setOnTapListener((_) => widget.onPharmacySelected(pharmacy));
+    marker.setOnTapListener((_) {
+      if (!mounted) return;
+      // 마커 모양이 같아도 상세창에는 최신 영업시간·연락처를 전달한다.
+      for (final current in widget.pharmacies) {
+        if (current.placeId == pharmacy.placeId) {
+          widget.onPharmacySelected(current);
+          return;
+        }
+      }
+    });
     return marker;
   }
 
