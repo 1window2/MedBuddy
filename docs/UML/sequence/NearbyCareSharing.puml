@@ -6,6 +6,7 @@ title Nearby Care Search and Hospital Sharing
 actor User
 participant "Nearby care UI" as UI
 participant "Frontend Control" as FC
+participant "LinkedChatComposerViewModel" as Composer
 participant "HospitalRouter / ChatRouter" as API
 participant "CheckNearbyHospital" as HC
 participant "Hospital API boundary" as HB
@@ -64,7 +65,9 @@ UI --> User : Recipient, hospital and editable message preview
 alt User cancels
   UI --> User : Keep composer; no message is sent
 else User confirms
-  UI -> FC : sendMessage(stable clientMessageId, hospitalId, date)
+  UI -> Composer : send(immutable ChatMessageDraft, explicit retry ID?)
+  Composer -> Composer : serialize send; retain failed payload/request identity
+  Composer -> FC : sendMessage(stable clientMessageId, hospitalId, date)
   FC -> API : POST /chat/links/{id}/messages
   API -> Chat : active participant + existing request check
   alt Existing successful request
@@ -78,10 +81,15 @@ else User confirms
     Chat -> DB : message + notification job in same transaction
     DB --> Chat : saved message
   end
-  API --> UI : saved message / actionable failure
+  API --> FC : saved message / actionable failure
+  FC --> Composer : transport result
+  Composer --> UI : accepted message or retryable failure
 end
 note over UI,DB
   Failed sends keep the selected place and client request ID for retry.
+  Search/selection uses NearbyCarePlace / NearbyCareSelection, not pharmacy DTOs.
+  Concrete provider determines pharmacy_id vs hospital_id; wire fields stay unchanged.
+  Disposed composer results cannot clear the new conversation's draft.
   Symptom/shortage prompts do not automatically open or send a place.
   Hospital hours are not an emergency-service availability guarantee.
 end note

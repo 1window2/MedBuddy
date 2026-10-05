@@ -1,7 +1,7 @@
 // File Name: check_nearby_pharmacy_control.dart
 // Role: Selects pharmacy search policy without making hospitals a pharmacy subtype.
 
-import '../entities/nearby_pharmacy_entity.dart';
+import '../entities/nearby_care_entity.dart';
 import '../services/api_config.dart';
 import 'check_nearby_care_control.dart';
 
@@ -34,8 +34,8 @@ class CheckNearbyPharmacy extends CheckNearbyCare {
   // Description: Returns pharmacy records without exposing this 20 km shortcut to hospitals.
   // Parameters: searchMode, targetDateTime, maxDistanceKm: pharmacy filter, time and radius.
   // Returns: The records from the complete nearby-care search result.
-  Future<List<NearbyPharmacy>> requestNearbyPharmacies({
-    PharmacySearchMode searchMode = PharmacySearchMode.openAtTime,
+  Future<List<NearbyCarePlace>> requestNearbyPharmacies({
+    NearbyCareSearchMode searchMode = NearbyCareSearchMode.openAtTime,
     DateTime? targetDateTime,
     double maxDistanceKm = 20,
   }) async {

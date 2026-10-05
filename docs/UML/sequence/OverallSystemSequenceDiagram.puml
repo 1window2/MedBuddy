@@ -39,6 +39,7 @@ box "Flutter Frontend"
     database "DoseOutboxStore\n계정별 암호화 SQLite" as DoseStore
     control "MedBuddyViewModel" as ViewModel
     control "LinkedChatHistoryViewModel" as ChatHistory
+    control "LinkedChatComposerViewModel" as ChatComposer
     control "Frontend Controller\nInputPrescription\nCheckMedicationDetail\nCheckSchedule\nCheckSavedMedication\nIdentifyPillBatch\nCheckNearbyPharmacy\nManageLinkedChat 등" as FrontControl
     participant "Frontend Service\nPrescriptionLocalOcrService\nPrescriptionFrameAnalyzer\nPrescriptionCameraOrientationService\nPrescriptionImageCropService\nDeviceLocationBoundary\nNotificationService\nCaregiverPatientLocalStateService\nLinkedChatRealtimeService 등" as FrontService
     participant "AuthenticatedApiClient" as ApiClient
@@ -1137,7 +1138,8 @@ ChatHistory --> UI : immutable reconciled history
 ChatHistory -> FrontService : LinkedChatRealtimeService.start()
 note right of ChatHistory
   Coalesces recovery; owns pagination, read/deletion evidence and fallback timer.
-  UI owns composer/actions and supplies visible/latest-position predicates.
+  UI owns text fields/navigation and supplies visible/latest-position predicates.
+  ChatComposer owns outgoing concurrency, immutable payloads and retry IDs.
   Account/link/patient changes replace the keyed presentation session.
   Disposed callbacks and wrong-link events never publish to the new session.
 end note
@@ -1202,7 +1204,9 @@ opt 나머지 역할별 추천 문구 사용
     UI --> User : 수정 가능한 입력 문구 제공
 end
 User -> UI : 일반 메시지 또는 선택 약들을 포함한 메시지 전송
-UI -> FrontControl : sendMessage(clientMessageId, medicationIds?, body)
+UI -> ChatComposer : send(immutable ChatMessageDraft, requestId?)
+ChatComposer -> ChatComposer : retain one pending identity; serialize outgoing requests
+ChatComposer -> FrontControl : sendMessage(clientMessageId, medicationIds?, body)
 FrontControl -> ApiClient : POST /chat/links/{linkId}/messages
 ApiClient -> Router : 채팅 전송 요청
 Router -> BackControl : ManageLinkedChat.send_message()
@@ -1213,6 +1217,10 @@ opt 중복 요청이 아닌 신규 메시지
     Router -> BackService : ChatConnectionManager.broadcast()
     BackService --> UI : 상대 WebSocket에 새 메시지 Event
 end
+Router --> ApiClient : accepted response / actionable failure
+ApiClient --> FrontControl : transport result
+FrontControl --> ChatComposer : saved message or failure
+ChatComposer --> UI : publish only within the live keyed session
 loop 서버 ChatNotificationWorker 주기 (HTTP 요청과 독립)
     ChatPushWorker -> ChatPushControl : run_once()
     ChatPushControl -> Database : ChatNotificationJob 선점\n재시작 후 미완료 작업도 복구

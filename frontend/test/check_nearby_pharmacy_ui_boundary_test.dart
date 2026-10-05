@@ -13,7 +13,7 @@ import 'package:medbuddy_frontend/boundaries/check_nearby_pharmacy_ui_boundary.d
 import 'package:medbuddy_frontend/boundaries/nearby_pharmacy_map_widget.dart';
 import 'package:medbuddy_frontend/controls/check_nearby_pharmacy_control.dart';
 import 'package:medbuddy_frontend/entities/device_coordinate_entity.dart';
-import 'package:medbuddy_frontend/entities/nearby_pharmacy_entity.dart';
+import 'package:medbuddy_frontend/entities/nearby_care_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/services/device_location_service.dart';
 import 'package:medbuddy_frontend/services/pharmacy_favorite_service.dart';
@@ -230,9 +230,9 @@ Widget _testApp(
 // 함수역할:
 // - 외부 지도 대신 상태 문구와 가로로 나열한 약국 선택 버튼을 표시한다.
 // 매개변수:
-// - pharmacies (List<NearbyPharmacy>): 가짜 지도 마커로 표시할 약국 목록.
+// - pharmacies (List<NearbyCarePlace>): 가짜 지도 마커로 표시할 약국 목록.
 // - selectedPharmacyId (String?): 현재 지도에서 초점을 맞춘 약국 식별자. 이 대역에서는 직접 사용하지 않는다.
-// - onPharmacySelected (ValueChanged<NearbyPharmacy>): 지도에서 고른 약국을 전달받을 처리기.
+// - onPharmacySelected (ValueChanged<NearbyCarePlace>): 지도에서 고른 약국을 전달받을 처리기.
 // - onAttributionRequested (VoidCallback): 지도 출처 표시 요청 콜백. 이 대역에서는 직접 사용하지 않는다.
 // - statusText (String?): 대체 지도 위젯에 표시할 선택적 상태 문구.
 // - selectMarkerHint (String): 약국 마커 선택에 대한 접근성 힌트. 이 대역에서는 직접 사용하지 않는다.
@@ -243,14 +243,14 @@ Widget _testApp(
 // 반환값:
 // - 높이 80의 지도 대체 위젯.
 Widget _buildTestMap({
-  required PharmacySearchArea searchArea,
+  required NearbyCareSearchArea searchArea,
   required int centerRevision,
   required bool isSearching,
-  required Future<bool> Function(PharmacySearchArea) onSearchAreaRequested,
+  required Future<bool> Function(NearbyCareSearchArea) onSearchAreaRequested,
   required VoidCallback onCurrentLocationRequested,
-  required List<NearbyPharmacy> pharmacies,
+  required List<NearbyCarePlace> pharmacies,
   required String? selectedPharmacyId,
-  required ValueChanged<NearbyPharmacy> onPharmacySelected,
+  required ValueChanged<NearbyCarePlace> onPharmacySelected,
   required VoidCallback onAttributionRequested,
   required String? statusText,
   required String selectMarkerHint,
@@ -279,11 +279,11 @@ Widget _buildTestMap({
                   // 함수역할:
                   // - 각 약국에 안정된 키와 선택 콜백을 가진 가짜 지도 마커 버튼을 만든다.
                   // 매개변수:
-                  // - pharmacy (NearbyPharmacy): 선택 마커에 대응하는 약국.
+                  // - pharmacy (NearbyCarePlace): 선택 마커에 대응하는 약국.
                   // 반환값:
                   // - 약국명을 표시하는 TextButton.
                   (pharmacy) => TextButton(
-                    key: ValueKey('test-map-marker-${pharmacy.pharmacyId}'),
+                    key: ValueKey('test-map-marker-${pharmacy.placeId}'),
                     // 함수이름: onPressed 콜백
                     // 함수역할:
                     // - 가짜 지도 마커를 누르면 해당 약국을 선택 처리기에 전달한다.
@@ -986,14 +986,14 @@ void main() {
   testWidgets('detail sheet preserves the pharmacy chat-sharing result', (
     tester,
   ) async {
-    NearbyPharmacySelection? selection;
+    NearbyCareSelection? selection;
     await tester.pumpWidget(
       MaterialApp(
         home: Builder(
           builder: (context) {
             return TextButton(
               onPressed: () async {
-                selection = await Navigator.push<NearbyPharmacySelection>(
+                selection = await Navigator.push<NearbyCareSelection>(
                   context,
                   MaterialPageRoute(
                     builder: (_) => CheckNearbyPharmacyUI.selection(
@@ -1045,7 +1045,7 @@ void main() {
     expect(find.text('채팅에 공유').hitTestable(), findsOneWidget);
     await tester.tap(find.text('채팅에 공유'));
     await tester.pumpAndSettle();
-    expect(selection?.pharmacy.pharmacyId, 'open');
+    expect(selection?.place.placeId, 'open');
     expect(selection?.phoneVerified, isTrue);
     expect(find.text('open selection'), findsOneWidget);
   });
@@ -1060,8 +1060,9 @@ void main() {
     var map = tester.widget<NearbyPharmacyMap>(find.byType(NearbyPharmacyMap));
     final fix = map.deviceLocation;
     expect(fix, isNotNull);
-    const moved = PharmacySearchArea(
+    const moved = NearbyCareSearchArea(
       center: DeviceCoordinate(latitude: 37.5, longitude: 127.1),
+      radiusKm: 20,
       isMapArea: true,
     );
     await map.onSearchAreaRequested!(moved);
@@ -1096,8 +1097,9 @@ void main() {
         expect(guide, findsNothing);
         final mapFinder = find.byType(NearbyPharmacyMap);
         final mapElement = tester.element(mapFinder);
-        const area = PharmacySearchArea(
+        const area = NearbyCareSearchArea(
           center: DeviceCoordinate(latitude: 37.5, longitude: 127.1),
+          radiusKm: 20,
           isMapArea: true,
         );
         await tester
@@ -1140,8 +1142,9 @@ void main() {
     await tester
         .widget<NearbyPharmacyMap>(find.byType(NearbyPharmacyMap))
         .onSearchAreaRequested!(
-      const PharmacySearchArea(
+      const NearbyCareSearchArea(
         center: DeviceCoordinate(latitude: 37.5, longitude: 127.1),
+        radiusKm: 20,
         isMapArea: true,
       ),
     );
@@ -1166,8 +1169,9 @@ void main() {
     addTearDown(control.dispose);
     await tester.pumpWidget(_testApp(control, nativeMap: true));
     await tester.pumpAndSettle();
-    const area = PharmacySearchArea(
+    const area = NearbyCareSearchArea(
       center: DeviceCoordinate(latitude: 37.5, longitude: 127.1),
+      radiusKm: 20,
       isMapArea: true,
     );
     final mapFinder = find.byType(NearbyPharmacyMap);
@@ -1307,8 +1311,8 @@ void main() {
   // 반환값:
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('지도 설정 누락과 약국 좌표 누락을 서로 다르게 안내한다', (tester) async {
-    const pharmacy = NearbyPharmacy(
-      pharmacyId: 'configured-location',
+    const pharmacy = NearbyCarePlace(
+      placeId: 'configured-location',
       name: '좌표가 있는 약국',
       address: '서울특별시 마포구',
       telephone: '02-000-0000',
@@ -1325,13 +1329,18 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: NearbyPharmacyMap(
+            searchArea: const NearbyCareSearchArea(
+              center: NearbyCareSearchArea.fallbackCenter,
+              radiusKm: 20,
+              isFallback: true,
+            ),
             pharmacies: const [pharmacy],
             selectedPharmacyId: null,
             // 함수이름: onPharmacySelected 콜백
             // 함수역할:
             // - 약국 선택 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
             // 매개변수:
-            // - _ (NearbyPharmacy): 콜백 계약을 유지하기 위해 받지만 사용하지 않는 인자.
+            // - _ (NearbyCarePlace): 콜백 계약을 유지하기 위해 받지만 사용하지 않는 인자.
             // 반환값:
             // - 없음; 외부 동작을 수행하지 않는다.
             onPharmacySelected: (_) {},

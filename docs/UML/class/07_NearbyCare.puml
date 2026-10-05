@@ -25,7 +25,20 @@ package "Flutter: Boundary / Control / Entity" {
   class "CheckNearbyHospital" as FHospital <<Control>>
   class DeviceCoordinate <<Entity>>
   interface DeviceLocationBoundary
-  class NearbyPharmacy <<Entity>>
+  class NearbyCarePlace <<Entity>> {
+    + placeId
+  }
+  class NearbyCareSearchArea <<Entity>> {
+    + center
+    + radiusKm
+  }
+  enum NearbyCareSearchMode
+  class NearbyCareSearchResult <<Entity>>
+  class NearbyCareSelection <<Entity>> {
+    + place
+    + phoneVerified
+    + scheduleDate
+  }
   class LinkedChatUI <<Boundary>>
   class "ManageLinkedChat" as FChat <<Control>>
   class ChatPlaceContext <<Entity>>
@@ -79,7 +92,15 @@ FPharmacy --|> FCare
 FCare --> DeviceLocationBoundary
 DeviceLocationBoundary --> DeviceCoordinate : neutral WGS84 value
 FHospital --> HospitalRouter : authenticated hospital endpoint
-FCare --> NearbyPharmacy : existing shared display DTO
+FCare --> NearbyCareSearchArea : explicit radius; provider sets policy
+FCare --> NearbyCareSearchMode : unchanged backend filter values
+FCare --> NearbyCareSearchResult
+NearbyCareSearchResult o-- NearbyCarePlace
+NearbyCareSearchResult --> NearbyCareSearchArea
+NearbyCareSelection --> NearbyCarePlace
+NearbyCareSearchArea --> DeviceCoordinate
+CheckNearbyPharmacyUI --> NearbyCareSelection : selection result, no send
+NearbyPharmacyMapWidget --> NearbyCarePlace
 HospitalRouter --> BHospital
 BHospital --> HospitalLookupBoundary
 BHospital --> DepartmentSearch : selected specialty
@@ -100,6 +121,7 @@ DepartmentSearch ..> NearbyCarePolicy
 PersistentKoreanHolidayLookup --> KoreanHolidayAPI
 KoreanHolidayAPI --> KASI
 LinkedChatUI --> CheckNearbyPharmacyUI : choose place (no send yet)
+LinkedChatUI --> NearbyCareSelection : entity contract, not UI-owned value
 LinkedChatUI --> FChat : confirm recipient / place / message
 FChat --> ChatRouter : hospital ID + selected date
 ChatRouter --> BHospital : server-verified share context
@@ -140,7 +162,10 @@ note bottom of FCare
   Sibling controls share transport, not pharmacy-specific policy.
   Only pharmacy exposes the 20 km list convenience operation.
   Hospital defaults remain 300 m with bounded expansion.
+  Direct hospital search-area requests also default to 300 m, not 20 km.
   Disposal rejects new searches and HTTP after pending GPS.
   Caller-provided clients remain caller-owned.
+  Neutral entities contain no UI/control imports or implicit 20 km area.
+  Existing pharmacy_id/hospital_id wire fields and favorite keys stay intact.
 end note
 @enduml

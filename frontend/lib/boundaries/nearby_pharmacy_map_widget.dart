@@ -9,7 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 
 import '../entities/device_coordinate_entity.dart';
-import '../entities/nearby_pharmacy_entity.dart';
+import '../entities/nearby_care_entity.dart';
 import '../services/naver_map_config.dart';
 import '../theme/medbuddy_theme.dart';
 import 'pharmacy_map_symbols.dart';
@@ -19,14 +19,14 @@ import 'pharmacy_map_symbols.dart';
 // 주요 책임:
 // - 약국 마커·선택 강조·확대·출처 명령의 State가 사용할 화면 설정과 외부 의존성을 보관한다.
 // 속성:
-// - pharmacies (List<NearbyPharmacy>): 지도 또는 목록에 배치할 약국 검색 결과.
+// - pharmacies (List<NearbyCarePlace>): 지도 또는 목록에 배치할 약국 검색 결과.
 // - selectedPharmacyId (String?): 공유하거나 지도에서 선택한 약국 ID.
 // - favoritePharmacyIds (Set<String>): 골드색 별로 표시할 사용자별 약국 ID.
-// - onPharmacySelected (ValueChanged<NearbyPharmacy>): 목록·마커에서 선택한 약국을 전달할 콜백.
+// - onPharmacySelected (ValueChanged<NearbyCarePlace>): 목록·마커에서 선택한 약국을 전달할 콜백.
 // - onAttributionRequested (VoidCallback): 지도 데이터의 출처·저작권 안내를 여는 콜백.
 class NearbyPharmacyMap extends StatefulWidget {
   final bool hospitals;
-  final PharmacySearchArea searchArea;
+  final NearbyCareSearchArea searchArea;
 
   /// Last device fix, independent from a manually moved search area.
   final DeviceCoordinate? deviceLocation;
@@ -35,14 +35,14 @@ class NearbyPharmacyMap extends StatefulWidget {
   final double bottomInset;
   final bool showControls;
   final bool isSearching;
-  final Future<bool> Function(PharmacySearchArea)? onSearchAreaRequested;
+  final Future<bool> Function(NearbyCareSearchArea)? onSearchAreaRequested;
   final VoidCallback? onCurrentLocationRequested;
   final String searchAreaLabel;
-  final List<NearbyPharmacy> pharmacies;
+  final List<NearbyCarePlace> pharmacies;
   // 현재 사용자가 저장한 약국 ID로 즐겨찾기 마커를 구분한다.
   final Set<String> favoritePharmacyIds;
   final String? selectedPharmacyId;
-  final ValueChanged<NearbyPharmacy> onPharmacySelected;
+  final ValueChanged<NearbyCarePlace> onPharmacySelected;
   final VoidCallback onAttributionRequested;
   final String? statusText;
   final String selectMarkerHint;
@@ -57,10 +57,10 @@ class NearbyPharmacyMap extends StatefulWidget {
   // 함수역할: 약국 마커·선택 강조·확대·출처 명령에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - key (Key?): 위젯을 구분하고 상태를 유지할 식별 키.
-  // - pharmacies (List<NearbyPharmacy>): 지도 또는 목록에 배치할 약국 검색 결과.
+  // - pharmacies (List<NearbyCarePlace>): 지도 또는 목록에 배치할 약국 검색 결과.
   // - selectedPharmacyId (String?): 공유하거나 지도에서 선택한 약국 ID.
   // - favoritePharmacyIds (Set<String>): 지도에 반영할 사용자별 즐겨찾기 ID.
-  // - onPharmacySelected (ValueChanged<NearbyPharmacy>): 목록·마커에서 선택한 약국을 전달할 콜백.
+  // - onPharmacySelected (ValueChanged<NearbyCarePlace>): 목록·마커에서 선택한 약국을 전달할 콜백.
   // - onAttributionRequested (VoidCallback): 지도 데이터의 출처·저작권 안내를 여는 콜백.
   // - statusText (String?): 현재 작업 결과·오류·상태에 대한 표시 문구.
   // - selectMarkerHint (String): 아이콘의 동작을 설명할 도움말·접근성 문구.
@@ -72,7 +72,7 @@ class NearbyPharmacyMap extends StatefulWidget {
   const NearbyPharmacyMap({
     super.key,
     this.hospitals = false,
-    this.searchArea = PharmacySearchArea.hongik,
+    required this.searchArea,
     this.deviceLocation,
     this.centerRevision = 0,
     this.bottomInset = 0,
@@ -115,7 +115,7 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   NaverMapController? _mapController;
   int _overlayGeneration = 0;
   bool _cameraMoved = false;
-  PharmacySearchArea? _pendingArea;
+  NearbyCareSearchArea? _pendingArea;
   int _cameraGeneration = 0;
   Future<void>? _symbolLoading;
   NOverlayImage? _pinIcon;
@@ -160,8 +160,8 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   // 함수역할: 유효한 위도·경도를 가진 약국만 지도 표시 목록으로 선택한다.
   // 매개변수:
   // - 없음.
-  // 반환값: List<NearbyPharmacy>: 조회 또는 좌표 조건을 반영한 지도·목록용 약국 목록.
-  List<NearbyPharmacy> get _mappablePharmacies =>
+  // 반환값: List<NearbyCarePlace>: 조회 또는 좌표 조건을 반영한 지도·목록용 약국 목록.
+  List<NearbyCarePlace> get _mappablePharmacies =>
       widget.pharmacies.where(_hasValidCoordinate).toList(growable: false);
 
   // 함수이름: didUpdateWidget
@@ -401,7 +401,7 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
         position.target.distanceTo(bounds.southWest),
         position.target.distanceTo(bounds.northEast),
       ].reduce((a, b) => a > b ? a : b);
-      final area = PharmacySearchArea(
+      final area = NearbyCareSearchArea(
         center: DeviceCoordinate(
           latitude: position.target.latitude,
           longitude: position.target.longitude,
@@ -445,7 +445,11 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     if (!mounted || generation != _overlayGeneration) return;
     final coordinate = widget.deviceLocation;
     final validLocation =
-        coordinate != null && PharmacySearchArea(center: coordinate).isValid;
+        coordinate != null &&
+        NearbyCareSearchArea(
+          center: coordinate,
+          radiusKm: widget.searchArea.radiusKm,
+        ).isValid;
     locationOverlay.setIsVisible(validLocation);
     if (validLocation) {
       locationOverlay.setPosition(
@@ -473,11 +477,11 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   // 함수이름: _buildMarker
   // 함수역할: 즐겨찾기는 골드색 별로 표시하고 선택한 약국은 크기로 강조한다.
   // 매개변수: pharmacy: 지도에 표시할 약국. 반환값: 이름과 선택 동작을 가진 마커.
-  NMarker _buildMarker(NearbyPharmacy pharmacy) {
-    final isSelected = pharmacy.pharmacyId == widget.selectedPharmacyId;
-    final isFavorite = widget.favoritePharmacyIds.contains(pharmacy.pharmacyId);
+  NMarker _buildMarker(NearbyCarePlace pharmacy) {
+    final isSelected = pharmacy.placeId == widget.selectedPharmacyId;
+    final isFavorite = widget.favoritePharmacyIds.contains(pharmacy.placeId);
     final marker = NMarker(
-      id: 'pharmacy-${pharmacy.pharmacyId}',
+      id: 'pharmacy-${pharmacy.placeId}',
       position: NLatLng(pharmacy.latitude, pharmacy.longitude),
       icon: isFavorite
           ? _favoritePinIcon
@@ -508,11 +512,11 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   // 함수역할: 약국 선택 또는 내 위치 재검색 때만 카메라를 이동해 지역 검색 후 확대·중심을 보존한다.
   // 매개변수:
   // - controller (NaverMapController): 마커와 카메라 이동에 사용할 준비된 네이버 지도 컨트롤러.
-  // - pharmacies (List<NearbyPharmacy>): 지도 또는 목록에 배치할 약국 검색 결과.
+  // - pharmacies (List<NearbyCarePlace>): 지도 또는 목록에 배치할 약국 검색 결과.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _updateCamera(
     NaverMapController controller,
-    List<NearbyPharmacy> pharmacies,
+    List<NearbyCarePlace> pharmacies,
   ) async {
     final selected = _findSelectedPharmacy(pharmacies);
     if (selected != null) {
@@ -545,11 +549,11 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   // 함수이름: _findSelectedPharmacy
   // 함수역할: 현재 선택 ID에 해당하는 약국을 목록에서 찾고 없으면 null을 반환한다.
   // 매개변수:
-  // - pharmacies (List<NearbyPharmacy>): 지도 또는 목록에 배치할 약국 검색 결과.
-  // 반환값: NearbyPharmacy?: 선택 ID와 일치하는 약국; 없으면 null.
-  NearbyPharmacy? _findSelectedPharmacy(List<NearbyPharmacy> pharmacies) {
+  // - pharmacies (List<NearbyCarePlace>): 지도 또는 목록에 배치할 약국 검색 결과.
+  // 반환값: NearbyCarePlace?: 선택 ID와 일치하는 약국; 없으면 null.
+  NearbyCarePlace? _findSelectedPharmacy(List<NearbyCarePlace> pharmacies) {
     for (final pharmacy in pharmacies) {
-      if (pharmacy.pharmacyId == widget.selectedPharmacyId) {
+      if (pharmacy.placeId == widget.selectedPharmacyId) {
         return pharmacy;
       }
     }
@@ -574,9 +578,9 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   // 함수이름: _hasValidCoordinate
   // 함수역할: 유한한 위도·경도 범위를 검증하고 둘 다 0인 좌표를 제외한다.
   // 매개변수:
-  // - pharmacy (NearbyPharmacy): 표시하거나 전화·길찾기·공유할 약국.
+  // - pharmacy (NearbyCarePlace): 표시하거나 전화·길찾기·공유할 약국.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
-  bool _hasValidCoordinate(NearbyPharmacy pharmacy) {
+  bool _hasValidCoordinate(NearbyCarePlace pharmacy) {
     final latitude = pharmacy.latitude;
     final longitude = pharmacy.longitude;
     return latitude.isFinite &&
@@ -591,9 +595,9 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   // 함수이름: _coordinateSignature
   // 함수역할: 약국 ID·이름·좌표를 연결해 지도 표시 갱신 여부를 비교한다.
   // 매개변수:
-  // - pharmacies (List<NearbyPharmacy>): 지도 또는 목록에 배치할 약국 검색 결과.
+  // - pharmacies (List<NearbyCarePlace>): 지도 또는 목록에 배치할 약국 검색 결과.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String _coordinateSignature(List<NearbyPharmacy> pharmacies) {
+  String _coordinateSignature(List<NearbyCarePlace> pharmacies) {
     return pharmacies
         .map(
           // 함수이름: _coordinateSignature.map callback
@@ -602,7 +606,7 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
           // - pharmacy (콜백 계약에서 추론): 표시하거나 전화·길찾기·공유할 약국.
           // 반환값: 컬렉션 연산에 전달할 변환값.
           (pharmacy) =>
-              '${pharmacy.pharmacyId}:${pharmacy.name}:${pharmacy.latitude}:${pharmacy.longitude}',
+              '${pharmacy.placeId}:${pharmacy.name}:${pharmacy.latitude}:${pharmacy.longitude}',
         )
         .join('|');
   }

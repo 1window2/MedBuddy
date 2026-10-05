@@ -6,7 +6,7 @@ import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
-import '../entities/nearby_pharmacy_entity.dart';
+import '../entities/nearby_care_entity.dart';
 import '../services/api_response_parser.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/device_location_service.dart';
@@ -71,12 +71,12 @@ abstract class CheckNearbyCare {
   // Description: Searches an explicit area or fresh location, preserving fallback provenance and server failures.
   // Parameters: searchMode, targetDateTime, maxDistanceKm, searchArea: filter, time, radius and optional area.
   // Returns: The existing shared display result with catalog/calendar uncertainty unchanged.
-  // Note: Pharmacy-named wire/display DTOs remain compatible; provider ownership is independent.
-  Future<NearbyPharmacySearchResult> requestNearbyCareSearch({
-    PharmacySearchMode searchMode = PharmacySearchMode.openAtTime,
+  // Note: Neutral display identifiers never replace provider-specific backend wire fields.
+  Future<NearbyCareSearchResult> requestNearbyCareSearch({
+    NearbyCareSearchMode searchMode = NearbyCareSearchMode.openAtTime,
     DateTime? targetDateTime,
     double maxDistanceKm = 20,
-    PharmacySearchArea? searchArea,
+    NearbyCareSearchArea? searchArea,
   }) async {
     if (_disposed) throw StateError('Nearby care search is disposed.');
     final extraParameters = Map<String, String>.of(additionalSearchParameters);
@@ -123,20 +123,20 @@ abstract class CheckNearbyCare {
             // - item (Map): 현재 변환·검사 중인 응답 또는 목록 항목
             // 반환값:
             // - 위치와 영업 정보를 담은 약국 모델.
-            (item) => NearbyPharmacy.fromJson(Map<String, dynamic>.from(item)),
+            (item) => NearbyCarePlace.fromJson(Map<String, dynamic>.from(item)),
           )
           .where(
             /* 함수이름: where 콜백
            * 함수역할: 식별자와 이름이 모두 있는 약국만 검색 결과에 남긴다.
            * 매개변수:
-           * - item (NearbyPharmacy): 현재 변환·검사 중인 응답 또는 목록 항목
+           * - item (NearbyCarePlace): 현재 변환·검사 중인 응답 또는 목록 항목
            * 반환값:
            * - 두 필수 필드가 비어 있지 않으면 true.
            */
-            (item) => item.pharmacyId.isNotEmpty && item.name.isNotEmpty,
+            (item) => item.placeId.isNotEmpty && item.name.isNotEmpty,
           )
           .toList(growable: false);
-      return NearbyPharmacySearchResult(
+      return NearbyCareSearchResult(
         searchArea: area,
         data: pharmacies,
         searchMode: searchMode,
@@ -170,7 +170,7 @@ abstract class CheckNearbyCare {
   // 함수이름: requestSearchArea
   // 함수역할: 현재 위치를 시도하고 권한·GPS·시간 초과·잘못된 좌표는 홍익대 기본 지역으로 대체한다.
   // 매개변수: radiusKm: 검색 반경. 반환값: 실제 위치 또는 기본 검색 지역.
-  Future<PharmacySearchArea> requestSearchArea({double radiusKm = 20}) async {
+  Future<NearbyCareSearchArea> requestSearchArea({double radiusKm = 20}) async {
     if (_disposed) throw StateError('Nearby care search is disposed.');
     if (!radiusKm.isFinite || radiusKm < 0.1 || radiusKm > 50) {
       throw ArgumentError('Invalid pharmacy search radius.');
@@ -179,14 +179,14 @@ abstract class CheckNearbyCare {
       final coordinate = await _locationBoundary
           .requestCurrentCoordinate()
           .timeout(const Duration(seconds: 16));
-      final area = PharmacySearchArea(center: coordinate, radiusKm: radiusKm);
+      final area = NearbyCareSearchArea(center: coordinate, radiusKm: radiusKm);
       if (!_disposed && area.isValid) return area;
     } catch (_) {
       // 위치 실패만 대체한다. 약국 API 실패를 정상 검색 결과로 숨기지 않는다.
     }
     if (_disposed) throw StateError('Nearby care search is disposed.');
-    return PharmacySearchArea(
-      center: PharmacySearchArea.hongik.center,
+    return NearbyCareSearchArea(
+      center: NearbyCareSearchArea.fallbackCenter,
       radiusKm: radiusKm,
       isFallback: true,
     );
@@ -205,10 +205,10 @@ abstract class CheckNearbyCare {
   // 함수이름: requestDirections
   // 함수역할: 약국명과 주소를 목적지로 지정한 외부 지도 길찾기를 실행한다.
   // 매개변수:
-  // - pharmacy (NearbyPharmacy): 전화·주소·길찾기 대상 약국
+  // - pharmacy (NearbyCarePlace): 전화·주소·길찾기 대상 약국
   // 반환값:
   // - Future<bool>: 약국명과 주소를 목적지로 지정한 외부 지도 길찾기를 실행한다.
-  Future<bool> requestDirections(NearbyPharmacy pharmacy) async {
+  Future<bool> requestDirections(NearbyCarePlace pharmacy) async {
     return _externalActionService.requestDirections(
       name: pharmacy.name,
       address: pharmacy.address,
@@ -220,10 +220,10 @@ abstract class CheckNearbyCare {
   // 함수이름: requestInstalledMapDirections
   // 함수역할: 사용자가 설치한 지도 앱 중 하나를 선택해 약국 길찾기를 시작한다.
   // 매개변수:
-  // - pharmacy (NearbyPharmacy): 전화·주소·길찾기 대상 약국
+  // - pharmacy (NearbyCarePlace): 전화·주소·길찾기 대상 약국
   // 반환값:
   // - Future<bool>: 사용자가 설치한 지도 앱 중 하나를 선택해 약국 길찾기를 시작한다.
-  Future<bool> requestInstalledMapDirections(NearbyPharmacy pharmacy) {
+  Future<bool> requestInstalledMapDirections(NearbyCarePlace pharmacy) {
     return _externalActionService.requestInstalledMapDirections(
       name: pharmacy.name,
       latitude: pharmacy.latitude,
@@ -234,10 +234,10 @@ abstract class CheckNearbyCare {
   // 함수이름: requestGoogleMapDirections
   // 함수역할: Google 지도 앱 또는 웹 브라우저에서 약국 길찾기를 시작한다.
   // 매개변수:
-  // - pharmacy (NearbyPharmacy): 전화·주소·길찾기 대상 약국
+  // - pharmacy (NearbyCarePlace): 전화·주소·길찾기 대상 약국
   // 반환값:
   // - Future<bool>: Google 지도 앱 또는 웹 브라우저에서 약국 길찾기를 시작한다.
-  Future<bool> requestGoogleMapDirections(NearbyPharmacy pharmacy) {
+  Future<bool> requestGoogleMapDirections(NearbyCarePlace pharmacy) {
     return _externalActionService.requestGoogleMapDirections(
       name: pharmacy.name,
       address: pharmacy.address,

@@ -3,6 +3,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
 from controls.check_medication_detail_control import CheckMedicationDetail
 from services.medication_name_matching import (
@@ -147,12 +149,24 @@ def test_old_ai_cached_correction_is_rechecked():
     assert result == [original]
 
 
-def test_local_prefix_match_cannot_turn_100_into_1000():
-    verifier = PrescriptionMedicationNameVerifier(db=object())
-    verifier._find_catalog_match = lambda _: (object(), '테스트정1000mg')
-    result = verifier.verify('테스트정100mg')
-    assert result.canonical_name == '테스트정100mg'
-    assert result.source == 'unverified'
+# Function Name: test_local_prefix_match_cannot_turn_100_into_1000
+# Description:
+# - Rejects a fabricated prefix match with incompatible strength while composing with a valid session binding.
+# Parameters:
+# - None.
+# Returns:
+# - None; only match discovery is stubbed, never the production session ownership contract.
+def test_local_prefix_match_cannot_turn_100_into_1000() -> None:
+    engine = create_engine('sqlite:///:memory:')
+    try:
+        with Session(engine) as db:
+            verifier = PrescriptionMedicationNameVerifier(db=db)
+            verifier._find_catalog_match = lambda _: (object(), '테스트정1000mg')
+            result = verifier.verify('테스트정100mg')
+            assert result.canonical_name == '테스트정100mg'
+            assert result.source == 'unverified'
+    finally:
+        engine.dispose()
 
 
 def test_identical_names_without_ids_keep_different_manufacturers():

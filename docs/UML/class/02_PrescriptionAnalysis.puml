@@ -82,6 +82,9 @@ note right of MedicationNameVerifier
   Isolates database work from the OCR control
   and permits AI corrections only from bounded
   authoritative catalog candidates.
+  Captures an Engine-only worker factory at composition;
+  worker reads never consult a borrowed request Session/Connection.
+  Connection-local in-memory SQLite retains same-thread reads.
 end note
 
 note bottom of PrescriptionAnalysisPreviewUI

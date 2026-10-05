@@ -7,7 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/check_nearby_hospital_control.dart';
 import 'package:medbuddy_frontend/entities/device_coordinate_entity.dart';
-import 'package:medbuddy_frontend/entities/nearby_pharmacy_entity.dart';
+import 'package:medbuddy_frontend/entities/nearby_care_entity.dart';
 import 'package:medbuddy_frontend/services/device_location_service.dart';
 import 'package:medbuddy_frontend/services/pharmacy_favorite_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,7 +22,7 @@ class _Location implements DeviceLocationBoundary {
   Future<bool> openDeviceLocationSettings() async => true;
 }
 
-const _area = PharmacySearchArea(
+const _area = NearbyCareSearchArea(
   center: DeviceCoordinate(latitude: 37.55, longitude: 126.92),
   radiusKm: 5,
   isMapArea: true,
@@ -90,7 +90,7 @@ void main() {
       );
       addTearDown(control.dispose);
       final result = await control.requestNearbyCareSearch(
-        searchMode: PharmacySearchMode.all,
+        searchMode: NearbyCareSearchMode.all,
         targetDateTime: time,
       );
       final expected = [
@@ -123,7 +123,7 @@ void main() {
   // 직접 고른 지도는 좁더라도 자동으로 확장하지 않는다.
   test('empty manually selected 300m area is preserved', () async {
     var calls = 0;
-    final area = PharmacySearchArea(
+    final area = NearbyCareSearchArea(
       center: _area.center,
       radiusKm: .3,
       isMapArea: true,
@@ -147,7 +147,7 @@ void main() {
     );
     addTearDown(control.dispose);
     final result = await control.requestNearbyCareSearch(
-      searchArea: PharmacySearchArea(
+      searchArea: NearbyCareSearchArea(
         center: _area.center,
         radiusKm: .3,
         isFallback: true,
@@ -176,11 +176,11 @@ void main() {
       );
       addTearDown(control.dispose);
       await control.requestNearbyCareSearch(
-        searchArea: PharmacySearchArea(center: _area.center, radiusKm: .3),
+        searchArea: NearbyCareSearchArea(center: _area.center, radiusKm: .3),
         targetDateTime: DateTime(2026, 9, 29),
         searchMode: unknown
-            ? PharmacySearchMode.openAtTime
-            : PharmacySearchMode.weekendHoliday,
+            ? NearbyCareSearchMode.openAtTime
+            : NearbyCareSearchMode.weekendHoliday,
       );
       expect(calls, 1);
     });
@@ -198,7 +198,7 @@ void main() {
     addTearDown(control.dispose);
     await expectLater(
       control.requestNearbyCareSearch(
-        searchArea: PharmacySearchArea(center: _area.center, radiusKm: .3),
+        searchArea: NearbyCareSearchArea(center: _area.center, radiusKm: .3),
       ),
       throwsStateError,
     );
@@ -217,7 +217,7 @@ void main() {
         }),
       );
       final pending = control.requestNearbyCareSearch(
-        searchArea: PharmacySearchArea(center: _area.center, radiusKm: .3),
+        searchArea: NearbyCareSearchArea(center: _area.center, radiusKm: .3),
       );
       await Future<void>.delayed(Duration.zero);
       if (dispose) {
@@ -264,10 +264,10 @@ void main() {
       );
       final result = await control.requestNearbyCareSearch(
         searchArea: _area,
-        searchMode: PharmacySearchMode.lateHours,
+        searchMode: NearbyCareSearchMode.lateHours,
       );
       final item = result.data.single;
-      expect(item.pharmacyId, 'A123');
+      expect(item.placeId, 'A123');
       expect(item.departments, ['이비인후과']);
       expect(item.institutionType, '의원');
       expect(item.isOpenNow, isNull);

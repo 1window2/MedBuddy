@@ -157,3 +157,42 @@ def test_medication_detail_control_contains_only_orchestration_class() -> None:
     source = ROOT / "backend/controls/check_medication_detail_control.py"
     classes = [node.name for node in ast.parse(source.read_text()).body if isinstance(node, ast.ClassDef)]
     assert classes == ["CheckMedicationDetail"]
+
+
+# Function Name: test_catalog_workers_never_consult_borrowed_request_sessions
+# Description:
+# - Guards worker setup/read/write methods against reacquiring or sharing their owner's request Session.
+# - Keeps captured Engine-bound factories as the only worker-session composition port.
+# Parameters:
+# - None.
+# Returns:
+# - None; a direct self.db access identifies the lifecycle regression before runtime.
+def test_catalog_workers_never_consult_borrowed_request_sessions() -> None:
+    for relative_path, method_names in (
+        ("services/prescription_medication_name_verifier.py", {
+            "_requires_current_thread_session",
+            "_prepare_verifications_with_isolated_session",
+        }),
+        ("services/local_medication_catalog.py", {
+            "_search_catalog_with_isolated_session",
+            "_save_approval_summary_with_isolated_session",
+        }),
+    ):
+        tree = ast.parse((ROOT / "backend" / relative_path).read_text())
+        methods = {
+            node.name: node
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name in method_names
+        }
+        assert set(methods) == method_names
+        for name, method in methods.items():
+            forbidden = [
+                node
+                for node in ast.walk(method)
+                if isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "self"
+                and node.attr == "db"
+            ]
+            assert not forbidden, f"{relative_path}:{name} acquired borrowed request-session access"

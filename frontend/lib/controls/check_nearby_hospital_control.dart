@@ -1,6 +1,6 @@
 // 병원 검색의 진료과목 조건을 공통 위치·지도 조회 흐름에 연결한다.
 import '../services/api_config.dart';
-import '../entities/nearby_pharmacy_entity.dart';
+import '../entities/nearby_care_entity.dart';
 import 'check_nearby_care_control.dart';
 
 class CheckNearbyHospital extends CheckNearbyCare {
@@ -27,13 +27,22 @@ class CheckNearbyHospital extends CheckNearbyCare {
     if (department != null && department!.isNotEmpty) 'department': department!,
   };
 
+  // Function Name: requestSearchArea
+  // Description: Applies the hospital radius even when a caller requests only GPS/fallback scope.
+  // Parameters: radiusKm: explicit override or the hospital's existing 300 m default.
+  // Returns: A shared search area with preserved device/fallback provenance.
+  @override
+  Future<NearbyCareSearchArea> requestSearchArea({
+    double radiusKm = defaultRadiusKm,
+  }) => super.requestSearchArea(radiusKm: radiusKm);
+
   // 빈 위치 검색만 같은 중심·날짜·조건으로 넓힌다. 수동 지도 범위는 변경하지 않는다.
   @override
-  Future<NearbyPharmacySearchResult> requestNearbyCareSearch({
-    PharmacySearchMode searchMode = PharmacySearchMode.openAtTime,
+  Future<NearbyCareSearchResult> requestNearbyCareSearch({
+    NearbyCareSearchMode searchMode = NearbyCareSearchMode.openAtTime,
     DateTime? targetDateTime,
     double maxDistanceKm = defaultRadiusKm,
-    PharmacySearchArea? searchArea,
+    NearbyCareSearchArea? searchArea,
   }) async {
     if (_disposed) throw StateError('Hospital search is disposed.');
     final generation = ++_searchGeneration;
@@ -59,15 +68,15 @@ class CheckNearbyHospital extends CheckNearbyCare {
       }
       // 달력 장애나 평일의 주말 조건은 거리를 넓혀도 해결되지 않는다.
       if ((result.holidayScheduleStatus == 'unknown' &&
-              searchMode != PharmacySearchMode.all) ||
-          (searchMode == PharmacySearchMode.weekendHoliday &&
+              searchMode != NearbyCareSearchMode.all) ||
+          (searchMode == NearbyCareSearchMode.weekendHoliday &&
               target.weekday < DateTime.saturday &&
               result.holidayScheduleStatus == 'not_applicable')) {
         break;
       }
       if (radius <= area.radiusKm) continue;
       result = await super.requestNearbyCareSearch(
-        searchArea: PharmacySearchArea(
+        searchArea: NearbyCareSearchArea(
           center: area.center,
           radiusKm: radius,
           isFallback: area.isFallback,

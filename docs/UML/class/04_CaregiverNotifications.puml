@@ -33,6 +33,8 @@ package "Flutter Frontend" #E8F4FF {
   class ChatListUI <<UI>>
   class LinkedChatUI <<UI>>
   class LinkedChatHistoryViewModel <<Control>>
+  class LinkedChatComposerViewModel <<Control>>
+  class ChatMessageDraft <<Entity>>
   interface LinkedChatSessionTransport
   class LinkedChatRealtimeService <<Service>>
   class LinkedChatEntryUI <<UI>>
@@ -105,6 +107,9 @@ LinkedChatEntryUI --> LinkedChatUI : patient hash / peer / current settings
 ManageLinkedChat --> ChatUnreadSummary
 LinkedChatUI --> ManageLinkedChat
 LinkedChatUI *-- LinkedChatHistoryViewModel : account/link/patient session
+LinkedChatUI *-- LinkedChatComposerViewModel : same identity-keyed session
+LinkedChatComposerViewModel --> ManageLinkedChat : borrowed authenticated send adapter
+LinkedChatComposerViewModel --> ChatMessageDraft : immutable payload / retry comparison
 LinkedChatHistoryViewModel --> ManageLinkedChat : borrowed authenticated control
 LinkedChatHistoryViewModel --> LinkedChatSessionTransport : borrowed lifecycle contract
 LinkedChatRealtimeService ..|> LinkedChatSessionTransport
@@ -113,6 +118,13 @@ note bottom of LinkedChatHistoryViewModel
   and failure-only polling; publishes immutable snapshots.
   UI supplies visibility/latest-position predicates and owns the draft.
   Late/disposed or wrong-link responses cannot update another session.
+end note
+note bottom of LinkedChatComposerViewModel
+  Serializes outgoing sends and retains failed payload/request identity.
+  Attachment comparison is order-independent; primary wire order is preserved.
+  UI keeps text fields, attachments, navigation and care retry display metadata.
+  Dose recording keeps its separate operation identities.
+  Disposed completions cannot clear or publish another session's draft.
 end note
 note top of LinkedChatUI
   실시간 연결과 이력 조회가 정상이면 반복 조회하지 않는다.

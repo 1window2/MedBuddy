@@ -18,6 +18,67 @@ import 'package:medbuddy_frontend/services/linked_chat_realtime_service.dart';
 // 함수역할: 화면 노출과 응답 순서에 따른 채팅 회귀 사례를 등록한다.
 // 매개변수: 없음. 반환값: 없음.
 void main() {
+  for (final outgoingScope in [
+    (name: 'account', userHash: 'patient-b', linkId: 17),
+    (name: 'link', userHash: 'patient-a', linkId: 18),
+  ]) {
+    for (final fails in [false, true]) {
+      // Function Name: pending outgoing scope-switch test
+      // Description: A late old account/link send cannot clear the new draft, add messages, or show an old error.
+      // Parameters: tester: Widget test driver. Returns: Asynchronous assertions.
+      testWidgets(
+        '${outgoingScope.name} change ignores late send completion: failure=$fails',
+        (tester) async {
+          final previous = _ChatFlow();
+          final next = _ChatFlow(
+            userHash: outgoingScope.userHash,
+            linkId: outgoingScope.linkId,
+          );
+          addTearDown(() => previous.close(tester));
+          addTearDown(() => next.close(tester));
+          await previous.open(tester);
+          final delayed = Completer<Map<String, dynamic>>();
+          previous.nextSend = delayed;
+          await tester.enterText(find.byType(TextField), 'Old outgoing draft');
+          await tester.pump();
+          await tester.tap(find.byKey(const ValueKey('chatSendButton')));
+          await tester.pump();
+          expect(previous.sendRequests, 1);
+          await tester.pumpWidget(
+            MaterialApp(
+              navigatorKey: previous.navigator,
+              home: LinkedChatUI(
+                linkId: outgoingScope.linkId,
+                currentUserHash: outgoingScope.userHash,
+                patientHash: outgoingScope.userHash,
+                control: next.control,
+                apiClient: next.authentication,
+                realtimeService: next.realtime,
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          await tester.enterText(find.byType(TextField), 'New private draft');
+          if (fails) {
+            delayed.completeError(StateError('Old account transport failure'));
+          } else {
+            delayed.complete({..._message(100), 'body': 'Old outgoing draft'});
+          }
+          await tester.pumpAndSettle();
+          expect(
+            tester.widget<TextField>(find.byType(TextField)).controller!.text,
+            'New private draft',
+          );
+          expect(find.byKey(const ValueKey('chat-message-100')), findsNothing);
+          expect(find.text('메시지를 보내지 못했습니다. 다시 눌러주세요.'), findsNothing);
+          expect(next.sendRequests, 0);
+          expect(previous.sendRequests, 1);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
   for (final scope in [
     (
       name: 'account',
@@ -266,8 +327,10 @@ class _ChatFlow {
   final navigator = GlobalKey<NavigatorState>();
   final readRequests = <int>[];
   int historyRequests = 0;
+  int sendRequests = 0;
   List<Map<String, dynamic>> history = [];
   Completer<List<Map<String, dynamic>>>? nextHistory;
+  Completer<Map<String, dynamic>>? nextSend;
   late final MockClient client;
   late final AuthenticatedApiClient authentication;
   late final ManageLinkedChat control;
@@ -288,12 +351,20 @@ class _ChatFlow {
     realtime = _Realtime(authentication, linkId: linkId, userHash: userHash);
   }
 
-  // 함수이름: _respond
-  // 함수역할: 요청을 기록하고 선택한 이력 요청만 대기시킨다.
-  // 매개변수: request Control의 요청. 반환값: 시험 응답.
+  // Function Name: _respond
+  // Description: Records history/read/send requests and independently gates selected completions.
+  // Parameters: request: Authenticated control request. Returns: Synthetic server response or gated failure.
   Future<http.Response> _respond(http.Request request) async {
     Object data = <Object>[];
-    if (request.url.path.endsWith('/messages')) {
+    if (request.url.path.endsWith('/messages') && request.method == 'POST') {
+      sendRequests++;
+      final delayed = nextSend;
+      nextSend = null;
+      final outgoing = jsonDecode(request.body) as Map<String, dynamic>;
+      data = delayed == null
+          ? {..._message(100, sender: userHash, linkId: linkId), ...outgoing}
+          : await delayed.future;
+    } else if (request.url.path.endsWith('/messages')) {
       historyRequests++;
       final delayed = nextHistory;
       nextHistory = null;

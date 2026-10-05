@@ -132,7 +132,7 @@ package "Flutter Frontend" {
         }
 
         class "NearbyPharmacyMap" as NearbyPharmacyMap <<UI: 지도 지역 검색>> {
-            + searchArea: PharmacySearchArea
+            + searchArea: NearbyCareSearchArea
             + selectedPharmacyId: String?
             + favoritePharmacyIds: Set<String>
             + bottomInset: double
@@ -176,6 +176,17 @@ package "Flutter Frontend" {
             + loadOlderMessages(): Future<void>
             + markLatestIncomingRead(): Future<void>
             + setForeground(foreground): void
+            + dispose(): void
+        }
+
+        class LinkedChatComposerViewModel <<ViewModel: scoped outgoing requests>> {
+            + linkId: int
+            + isSending: bool {readOnly}
+            + sendFailed: bool {readOnly}
+            + pendingRequestId: String? {readOnly}
+            + send(draft, requestId): Future<ChatMessage?>
+            + resetRetry(): void
+            + createClientMessageId(): String
             + dispose(): void
         }
 
@@ -375,8 +386,8 @@ package "Flutter Frontend" {
         }
 
         abstract class "CheckNearbyCare" as FCheckNearbyCare <<Controller: shared nearby-care operations>> {
-            + requestNearbyCareSearch(searchArea): Future<NearbyPharmacySearchResult>
-            + requestSearchArea(): Future<PharmacySearchArea>
+            + requestNearbyCareSearch(searchArea): Future<NearbyCareSearchResult>
+            + requestSearchArea(): Future<NearbyCareSearchArea>
             + requestPhoneCall(telephone): Future<bool>
             + requestDirections(pharmacy): Future<bool>
             + openApplicationSettings(): Future<bool>
@@ -385,14 +396,15 @@ package "Flutter Frontend" {
         }
 
         class "CheckNearbyPharmacy" as FCheckNearbyPharmacy <<Controller: 근처 약국 조회>> {
-            + requestNearbyPharmacies(): Future<List<NearbyPharmacy>>
+            + requestNearbyPharmacies(): Future<List<NearbyCarePlace>>
             + nearbySearchUrl: String
         }
 
         class "CheckNearbyHospital" as FCheckNearbyHospital <<Controller: 병원 검색 확장>> {
             + department: String?
             + nearbySearchUrl: String
-            + requestNearbyCareSearch(maxDistanceKm=0.3): Future<NearbyPharmacySearchResult>
+            + requestNearbyCareSearch(maxDistanceKm=0.3): Future<NearbyCareSearchResult>
+            + requestSearchArea(radiusKm=0.3): Future<NearbyCareSearchArea>
         }
         class "LinkedChatEntryUI" as LinkedChatEntryUI <<UI: 알림의 활성 연결·역할 확인>>
 
@@ -923,15 +935,15 @@ package "Flutter Frontend" {
             + longitude: double
         }
 
-        class "PharmacySearchArea" as PharmacySearchArea <<Entity: shared display search area>> {
+        class NearbyCareSearchArea <<Entity: explicit provider-neutral search area>> {
             + center: DeviceCoordinate
             + radiusKm: double
             + isFallback: bool
             + isMapArea: bool
         }
 
-        class "NearbyPharmacy" as FNearbyPharmacy <<Entity: 근처 약국>> {
-            + pharmacyId: String
+        class NearbyCarePlace <<Entity: hospital or pharmacy display record>> {
+            + placeId: String
             + name: String
             + address: String
             + telephone: String
@@ -945,11 +957,43 @@ package "Flutter Frontend" {
             + sourceUpdatedAt: DateTime?
         }
 
+        enum NearbyCareSearchMode {
+            + apiValue: String
+        }
+
+        class NearbyCareSearchResult <<Entity: provider-neutral search snapshot>> {
+            + data: List<NearbyCarePlace>
+            + searchArea: NearbyCareSearchArea?
+            + searchMode: NearbyCareSearchMode
+            + targetDateTime: DateTime
+            + holidayScheduleStatus: String
+            + searchTruncated: bool
+            + regionScopeUncertain: bool
+        }
+
+        class NearbyCareSelection <<Entity: confirmed place selection>> {
+            + place: NearbyCarePlace
+            + phoneVerified: bool
+            + scheduleDate: DateTime?
+        }
+
         class "ChatMedicationContext" as FChatMedicationContext <<Entity: 채팅 약 문맥>> {
             + medicationId: int
             + medicationName: String
             + imageUrl: String
             + dosagePerTime: String
+        }
+
+        class ChatMessageDraft <<Entity: immutable outgoing payload>> {
+            + body: String
+            + medicationIds: List<int> {readOnly}
+            + primaryMedicationId: int?
+            + messageKind: ChatMessageKind
+            + slotKey: String?
+            + pharmacyId: String?
+            + hospitalId: String?
+            + hospitalScheduleDate: String?
+            + matchesRetryOf(other): bool
         }
 
         class "ChatScheduleContext" as FChatScheduleContext <<Entity: 채팅 복용 시간대 문맥>> {
@@ -1020,6 +1064,11 @@ package "FastAPI Backend" {
             + verify_many(raw_names): list
             + verify(raw_name): MedicationNameVerification
         }
+        note right of MedicationNameVerifier
+            Engine-only worker factory captured at composition.
+            No borrowed Session/Connection access from worker threads.
+            Connection-local in-memory SQLite stays on the caller thread.
+        end note
 
         class "CheckMedicationDetail" as BCheckMedicationDetail <<Control: 약 상세 조회>> {
             + requestMedicationDetail(raw_text, original_text): MedicationResponse
@@ -1988,7 +2037,7 @@ CheckNearbyPharmacyUI o-- FCheckNearbyCare
 CheckNearbyPharmacyUI *-- NearbyPharmacyMap
 CheckNearbyPharmacyUI *-- PharmacyDetailsSheet : 선택 약국의 접힘·펼침 정보
 CheckNearbyPharmacyUI *-- PharmacyListPanel : 상단 드래그·탭으로 지도 복귀
-NearbyPharmacyMap ..> PharmacySearchArea
+NearbyPharmacyMap ..> NearbyCareSearchArea
 CheckNearbyPharmacyUI o-- PharmacyFavoriteService
 CheckNearbyPharmacyUI o-- PharmacyExternalActionService
 LinkPatientCaregiverUI ..> FLinkPatientCaregiver
@@ -2092,6 +2141,9 @@ LinkedChatSessionTransport --|> LinkedChatEventSource
 LinkedChatRealtimeService ..|> LinkedChatSessionTransport
 LinkedChatRealtimeService ..> AuthenticatedApiClient
 LinkedChatUI *-- LinkedChatHistoryViewModel : identity-keyed account/link/patient session
+LinkedChatUI *-- LinkedChatComposerViewModel : outgoing request owner
+LinkedChatComposerViewModel --> FManageLinkedChat : borrowed send adapter
+LinkedChatComposerViewModel --> ChatMessageDraft : payload and retry identity
 LinkedChatHistoryViewModel --> FManageLinkedChat : history / receipt / recovery
 LinkedChatHistoryViewModel --> LinkedChatSessionTransport : borrowed transport contract
 FLinkPatientCaregiver ..> AuthenticatedApiClient
@@ -2152,8 +2204,16 @@ FCheckHealthRecommendation ..> FHealthRecommendation
 FIdentifyPill ..> FPillIdentificationResult
 FIdentifyPill ..> FMultiplePillIdentificationResult
 FIdentifyPillBatch ..> FPillIdentificationResult
-FCheckNearbyCare ..> FNearbyPharmacy
-FCheckNearbyCare ..> PharmacySearchArea : GPS 실패 시 홍익대 기준
+FCheckNearbyCare ..> NearbyCarePlace
+FCheckNearbyCare ..> NearbyCareSearchArea : fallback coordinates with provider radius
+FCheckNearbyCare ..> NearbyCareSearchMode
+FCheckNearbyCare ..> NearbyCareSearchResult
+NearbyCareSearchArea --> DeviceCoordinate
+NearbyCareSearchResult o-- NearbyCarePlace
+NearbyCareSearchResult --> NearbyCareSearchArea
+NearbyCareSelection --> NearbyCarePlace
+CheckNearbyPharmacyUI --> NearbyCareSelection
+LinkedChatUI --> NearbyCareSelection
 FManageLinkedChat ..> FChatMessage
 FManageLinkedChat ..> FChatMedicationContext
 FManageLinkedChat ..> FChatScheduleContext

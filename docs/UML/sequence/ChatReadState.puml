@@ -51,9 +51,10 @@ History -> History : merge by ID; never roll back read/deletion evidence
 History --> UI : read-only snapshot; presentation keeps draft/scroll
 note over UI,History
   Account/link/patient changes replace the identity-keyed session.
-  Disposal invalidates pending responses, timers and event subscriptions.
+  Disposal invalidates history and composer responses, timers and subscriptions.
   Same-conversation settings/notification re-entry preserves its draft.
   Borrowed authenticated adapters stay owned by presentation.
+  LinkedChatComposerViewModel owns sends/retry IDs; UI keeps text fields.
 end note
 note over UI,API
   Message-list counts and local notification-inbox counts are distinct.

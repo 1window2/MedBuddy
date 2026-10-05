@@ -11,11 +11,11 @@ import 'package:medbuddy_frontend/controls/check_nearby_hospital_control.dart';
 import 'package:medbuddy_frontend/controls/check_nearby_pharmacy_control.dart';
 import 'package:medbuddy_frontend/controls/check_nearby_care_control.dart';
 import 'package:medbuddy_frontend/entities/device_coordinate_entity.dart';
-import 'package:medbuddy_frontend/entities/nearby_pharmacy_entity.dart';
+import 'package:medbuddy_frontend/entities/nearby_care_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/services/device_location_service.dart';
 
-const _mapArea = PharmacySearchArea(
+const _mapArea = NearbyCareSearchArea(
   center: DeviceCoordinate(latitude: 37.5, longitude: 127.03),
   radiusKm: 3.2,
   isMapArea: true,
@@ -54,22 +54,22 @@ class _Location implements DeviceLocationBoundary {
 // 클래스명: _MapProbe
 // 역할: 네이티브 지도를 대신해 화면이 전달하는 검색 기준과 사용자 명령을 기록한다.
 class _MapProbe {
-  late PharmacySearchArea area;
-  late Future<bool> Function(PharmacySearchArea) search;
+  late NearbyCareSearchArea area;
+  late Future<bool> Function(NearbyCareSearchArea) search;
   late VoidCallback locate;
   int revision = 0;
 
   // 함수이름: build
   // 함수역할: 지도 계약의 검색 위치·명령을 기록한다. 매개변수: 지도 생성 계약. 반환값: 빈 지도 대역.
   Widget build({
-    required PharmacySearchArea searchArea,
+    required NearbyCareSearchArea searchArea,
     required int centerRevision,
     required bool isSearching,
-    required Future<bool> Function(PharmacySearchArea) onSearchAreaRequested,
+    required Future<bool> Function(NearbyCareSearchArea) onSearchAreaRequested,
     required VoidCallback onCurrentLocationRequested,
-    required List<NearbyPharmacy> pharmacies,
+    required List<NearbyCarePlace> pharmacies,
     required String? selectedPharmacyId,
-    required ValueChanged<NearbyPharmacy> onPharmacySelected,
+    required ValueChanged<NearbyCarePlace> onPharmacySelected,
     required VoidCallback onAttributionRequested,
     required String? statusText,
     required String selectMarkerHint,
@@ -206,7 +206,7 @@ void main() {
       final time = DateTime(2026, 9, 12, 12);
       final result = await control.requestNearbyCareSearch(
         searchArea: _mapArea,
-        searchMode: PharmacySearchMode.all,
+        searchMode: NearbyCareSearchMode.all,
         targetDateTime: time,
       );
       expect(location.calls, 0);
@@ -262,8 +262,9 @@ void main() {
     );
     await expectLater(
       control.requestNearbyCareSearch(
-        searchArea: const PharmacySearchArea(
+        searchArea: const NearbyCareSearchArea(
           center: DeviceCoordinate(latitude: 91, longitude: 127),
+          radiusKm: 20,
         ),
       ),
       throwsArgumentError,
@@ -376,7 +377,16 @@ void main() {
     await tester.pumpWidget(_app(control, map));
     await tester.pumpAndSettle();
     final areaSearch = map.search(_mapArea);
-    expect(await map.search(PharmacySearchArea.hongik), isFalse);
+    expect(
+      await map.search(
+        const NearbyCareSearchArea(
+          center: NearbyCareSearchArea.fallbackCenter,
+          radiusKm: 20,
+          isFallback: true,
+        ),
+      ),
+      isFalse,
+    );
     map.locate();
     await tester.pump();
     expect(calls, 2);

@@ -49,6 +49,17 @@ rendering callbacks; it cannot mutate the history snapshot. Authenticated REST a
 realtime adapters remain borrowed resources owned by the conversation presentation.
 Late responses and wrong-link events cannot publish into a disposed history owner.
 
+`LinkedChatComposerViewModel` independently owns outgoing concurrency, the failed
+request identity and immutable `ChatMessageDraft` payloads. The UI keeps text-field
+controllers, attachment selection, navigation, localized feedback and care-share
+retry display metadata. Medication IDs compare without regard to order for the
+existing retry contract, while their primary attachment and wire order remain
+unchanged. Structured kind, slot, pharmacy, hospital and selected date all participate
+in retry comparison. Explicit care retry IDs survive another failed message; dose
+recording retains its separate operation identities. A disposed composer cannot
+publish a late result or clear another conversation's draft. Cancellation does not
+undo a message that the server has already stored.
+
 Changing account, link or patient replaces the conversation session and its
 adapters, draft and history. Updating settings or re-entering the same conversation
 keeps that session and draft. No backend authorization, message wire fields,

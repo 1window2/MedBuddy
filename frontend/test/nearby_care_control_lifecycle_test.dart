@@ -90,6 +90,9 @@ void main() {
           hospital ? '/api/v1/hospitals/nearby' : '/api/v1/pharmacy/nearby',
         ]);
         expect(location.requests, 1);
+        final area = await control.requestSearchArea();
+        expect(area.radiusKm, hospital ? .3 : 20);
+        expect(location.requests, 2);
       },
     );
 

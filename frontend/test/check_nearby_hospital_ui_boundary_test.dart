@@ -9,7 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:medbuddy_frontend/boundaries/check_nearby_pharmacy_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_nearby_hospital_control.dart';
 import 'package:medbuddy_frontend/entities/device_coordinate_entity.dart';
-import 'package:medbuddy_frontend/entities/nearby_pharmacy_entity.dart';
+import 'package:medbuddy_frontend/entities/nearby_care_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/services/pharmacy_favorite_service.dart';
 
@@ -18,8 +18,8 @@ class _HospitalControl extends CheckNearbyHospital {
       <
         ({
           String? department,
-          PharmacySearchMode mode,
-          PharmacySearchArea? area,
+          NearbyCareSearchMode mode,
+          NearbyCareSearchArea? area,
           DateTime time,
         })
       >[];
@@ -29,8 +29,8 @@ class _HospitalControl extends CheckNearbyHospital {
   bool empty = false;
   bool truncated = false;
   bool regionScopeUncertain = false;
-  PharmacySearchArea initialArea = PharmacySearchArea(
-    center: PharmacySearchArea.hongik.center,
+  NearbyCareSearchArea initialArea = NearbyCareSearchArea(
+    center: NearbyCareSearchArea.fallbackCenter,
     radiusKm: .3,
     isFallback: true,
   );
@@ -39,11 +39,11 @@ class _HospitalControl extends CheckNearbyHospital {
 
   // 네트워크 없이 조회 조건과 지도 지역을 기록한다.
   @override
-  Future<NearbyPharmacySearchResult> requestNearbyCareSearch({
-    PharmacySearchMode searchMode = PharmacySearchMode.openAtTime,
+  Future<NearbyCareSearchResult> requestNearbyCareSearch({
+    NearbyCareSearchMode searchMode = NearbyCareSearchMode.openAtTime,
     DateTime? targetDateTime,
     double maxDistanceKm = 20,
-    PharmacySearchArea? searchArea,
+    NearbyCareSearchArea? searchArea,
   }) async {
     final time = targetDateTime ?? DateTime.now();
     requests.add((
@@ -54,12 +54,12 @@ class _HospitalControl extends CheckNearbyHospital {
     ));
     await responseGate?.future;
     if (fail) throw StateError('test failure');
-    return NearbyPharmacySearchResult(
+    return NearbyCareSearchResult(
       searchArea: searchArea ?? initialArea,
       data: empty
           ? []
           : [
-              NearbyPharmacy.fromJson({
+              NearbyCarePlace.fromJson({
                 'hospital_id': 'hospital-1',
                 'name': '메드버디의원',
                 'address': '서울특별시 마포구',
@@ -94,28 +94,28 @@ class _HospitalControl extends CheckNearbyHospital {
   }
 
   @override
-  Future<bool> requestInstalledMapDirections(NearbyPharmacy pharmacy) async {
-    directions.add(pharmacy.pharmacyId);
+  Future<bool> requestInstalledMapDirections(NearbyCarePlace pharmacy) async {
+    directions.add(pharmacy.placeId);
     return true;
   }
 }
 
 class _MapProbe {
-  late Future<bool> Function(PharmacySearchArea) search;
+  late Future<bool> Function(NearbyCareSearchArea) search;
   late VoidCallback locate;
   String? selected;
-  PharmacySearchArea? area;
+  NearbyCareSearchArea? area;
 
   // 지도 계약은 그대로 두고 결과 이름과 선택 콜백만 표시한다.
   Widget build({
-    required PharmacySearchArea searchArea,
+    required NearbyCareSearchArea searchArea,
     required int centerRevision,
     required bool isSearching,
-    required Future<bool> Function(PharmacySearchArea) onSearchAreaRequested,
+    required Future<bool> Function(NearbyCareSearchArea) onSearchAreaRequested,
     required VoidCallback onCurrentLocationRequested,
-    required List<NearbyPharmacy> pharmacies,
+    required List<NearbyCarePlace> pharmacies,
     required String? selectedPharmacyId,
-    required ValueChanged<NearbyPharmacy> onPharmacySelected,
+    required ValueChanged<NearbyCarePlace> onPharmacySelected,
     required VoidCallback onAttributionRequested,
     required String? statusText,
     required String selectMarkerHint,
@@ -139,7 +139,7 @@ class _MapProbe {
               Text(statusText, maxLines: 2, overflow: TextOverflow.ellipsis),
             for (final pharmacy in pharmacies)
               TextButton(
-                key: ValueKey('hospital-marker-${pharmacy.pharmacyId}'),
+                key: ValueKey('hospital-marker-${pharmacy.placeId}'),
                 onPressed: () => onPharmacySelected(pharmacy),
                 child: Text(pharmacy.name),
               ),
@@ -408,7 +408,7 @@ void main() {
       await tester.tap(find.byKey(const Key('care-filter-apply')));
       await tester.pumpAndSettle();
       expect(control.requests, hasLength(2));
-      expect(control.requests.last.mode, PharmacySearchMode.lateHours);
+      expect(control.requests.last.mode, NearbyCareSearchMode.lateHours);
       expect(control.requests.last.time, DateTime(2026, 9, 30, 12));
       expect(find.byKey(const Key('pharmacy-map-search-date')), findsNothing);
       expect(tester.getSize(map).height, greaterThanOrEqualTo(height));
@@ -502,7 +502,7 @@ void main() {
       await _chooseFilter(tester, 'lateHours');
       expect(find.text('검색 기준: 홍익대학교 서울캠퍼스 (위치 확인 불가)'), findsOneWidget);
       expect(find.text('조회 조건'), findsOneWidget);
-      expect(control.requests.last.mode, PharmacySearchMode.lateHours);
+      expect(control.requests.last.mode, NearbyCareSearchMode.lateHours);
       expect(tester.takeException(), isNull);
     },
   );
@@ -519,8 +519,8 @@ void main() {
     ) async {
       final control = _HospitalControl()
         ..truncated = true
-        ..initialArea = PharmacySearchArea(
-          center: PharmacySearchArea.hongik.center,
+        ..initialArea = NearbyCareSearchArea(
+          center: NearbyCareSearchArea.fallbackCenter,
           radiusKm: 1,
         );
       final map = _MapProbe();
@@ -662,7 +662,7 @@ void main() {
         final control = _HospitalControl()
           ..empty = true
           ..regionScopeUncertain = true
-          ..initialArea = const PharmacySearchArea(
+          ..initialArea = const NearbyCareSearchArea(
             center: DeviceCoordinate(latitude: 33.36, longitude: 126.356),
             radiusKm: 2,
           );
@@ -726,7 +726,7 @@ void main() {
       final notice = find.byKey(const Key('hospital-search-notice'));
       for (final radius in [2.9, 3.0, 10.0, 1.0]) {
         await map.search(
-          PharmacySearchArea(
+          NearbyCareSearchArea(
             center: control.initialArea.center,
             radiusKm: radius,
             isMapArea: true,
@@ -765,7 +765,7 @@ void main() {
       _expectFilterLayout(tester);
       await _chooseFilter(tester, 'weekendHoliday');
       _expectFilterLayout(tester);
-      expect(control.requests.last.mode, PharmacySearchMode.weekendHoliday);
+      expect(control.requests.last.mode, NearbyCareSearchMode.weekendHoliday);
       await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
       await tester.pumpAndSettle();
       _expectFilterLayout(tester, map: false);
@@ -790,7 +790,7 @@ void main() {
     final mapElement = tester.element(
       find.byKey(const Key('hospital-test-map')),
     );
-    const area = PharmacySearchArea(
+    const area = NearbyCareSearchArea(
       center: DeviceCoordinate(latitude: 37.5, longitude: 127),
       radiusKm: 4,
       isMapArea: true,
@@ -972,7 +972,7 @@ void main() {
       await tester.pumpAndSettle();
       control.fail = false;
       await _chooseFilter(tester, 'all', map: false);
-      expect(control.requests.last.mode, PharmacySearchMode.all);
+      expect(control.requests.last.mode, NearbyCareSearchMode.all);
       expect(
         find.byKey(const ValueKey('pharmacy-card-hospital-1')),
         findsOneWidget,
@@ -1027,7 +1027,7 @@ void main() {
       control.responseGate!.complete();
       await tester.pumpAndSettle();
       expect(control.requests.last.time, DateTime(2026, 10, 5, 12));
-      expect(control.requests.last.mode, PharmacySearchMode.weekendHoliday);
+      expect(control.requests.last.mode, NearbyCareSearchMode.weekendHoliday);
       expect(find.text(prompt), findsNothing);
       expect(
         find.byKey(const ValueKey('pharmacy-card-hospital-1')),
@@ -1213,7 +1213,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        expect(control.requests.last.mode, PharmacySearchMode.openAtTime);
+        expect(control.requests.last.mode, NearbyCareSearchMode.openAtTime);
         expect(tester.element(mapFinder), same(mapElement));
         expect(
           find.byKey(const Key('hospital-marker-hospital-1')),

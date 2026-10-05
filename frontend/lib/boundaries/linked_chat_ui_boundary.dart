@@ -13,6 +13,8 @@ import 'check_nearby_pharmacy_ui_boundary.dart';
 import 'nearby_care_options_sheet.dart';
 import '../controls/manage_linked_chat_control.dart';
 import '../entities/chat_message_entity.dart';
+import '../entities/chat_message_draft_entity.dart';
+import '../entities/nearby_care_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/authenticated_api_client.dart';
@@ -21,6 +23,7 @@ import '../services/pharmacy_external_action_service.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 import '../viewmodels/linked_chat_history_view_model.dart';
+import '../viewmodels/linked_chat_composer_view_model.dart';
 import '../services/dose_sync_service.dart';
 import '../widgets/dose_sync_status.dart';
 import '../widgets/medbuddy_page_header.dart';
@@ -124,7 +127,6 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
 
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final Random _random = Random.secure();
   final PharmacyExternalActionService _pharmacyActionService =
       PharmacyExternalActionService();
 
@@ -141,22 +143,14 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   List<ChatMedicationContext> _selectedMedicationContexts = const [];
   String? _selectedMedicationScheduleDate;
   String? _sendErrorMessage;
-  bool _isSending = false;
+  bool _isRecordingTaken = false;
   bool _isChoosingTaken = false;
   final Map<String, String> _pendingTakenRequests = {};
   bool _isSelectingMessages = false;
   bool _isDeletingMessages = false;
   final Set<int> _selectedMessageIds = {};
-  String? _pendingClientMessageId;
-  String? _pendingMessageBody;
-  String? _pendingMedicationIdsSignature;
-  ChatMessageKind _pendingMessageKind = ChatMessageKind.text;
-  String? _pendingSlotKey;
-  String? _pendingPharmacyId;
-  String? _pendingHospitalId;
-  String? _pendingHospitalDate;
   ({
-    NearbyPharmacySelection selection,
+    NearbyCareSelection selection,
     bool hospitals,
     List<ChatMedicationContext> medications,
     String clientMessageId,
@@ -169,6 +163,13 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   bool _showMedicationContextGuide = true;
 
   late final LinkedChatHistoryViewModel _history;
+
+  late final LinkedChatComposerViewModel _composer;
+
+  // Function Name: _isSending
+  // Description: Prevents UI actions from racing either an outgoing message or a dose record.
+  // Parameters: None. Returns: Whether one of the two independent operations is busy.
+  bool get _isSending => _composer.isSending || _isRecordingTaken;
 
   // Function Name: _messages
   // Description: Reads independently owned history presentation state.
@@ -298,6 +299,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
           userHash: _configuration.currentUserHash,
           authenticationClient: _apiClient,
         );
+    _composer = LinkedChatComposerViewModel(
+      linkId: _configuration.linkId,
+      control: _control,
+    )..addListener(_composerChanged);
     _history = LinkedChatHistoryViewModel(
       linkId: _configuration.linkId,
       userHash: _configuration.currentUserHash,
@@ -333,6 +338,20 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_initializeChat());
+    });
+  }
+
+  // Function Name: _composerChanged
+  // Description: Localizes outgoing failure and rebuilds busy state without owning retry/concurrency logic.
+  // Parameters: None. Returns: None; context/dose errors remain presentation-owned.
+  void _composerChanged() {
+    if (!mounted) return;
+    setState(() {
+      if (_composer.isSending) {
+        _sendErrorMessage = null;
+      } else if (_composer.sendFailed) {
+        _sendErrorMessage = _text.sendFailed;
+      }
     });
   }
 
@@ -405,6 +424,8 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     _medicationContextGuideTimer?.cancel();
     _history.removeListener(_historyChanged);
     _history.dispose();
+    _composer.removeListener(_composerChanged);
+    _composer.dispose();
     if (_ownsRealtimeService) {
       unawaited(_realtimeService.dispose());
     }
@@ -572,17 +593,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     );
   }
 
-  // 함수이름: _submitMessage
-  // 함수역할: 일반 문장과 구조화된 복약·약국 메시지의 전송, 재시도와 화면 갱신을 한곳에서 처리한다.
-  // 매개변수:
-  // - body (String): 앞뒤 공백 제거 후 전송할 메시지 본문.
-  // - medications (List<ChatMedicationContext>): 조회·선택·정렬·표시에 사용할 약품 목록.
-  // - messageKind (ChatMessageKind): 일반 텍스트·복약·약국 공유 등 메시지 종류.
-  // - slotKey (String?): 아침·점심·저녁·취침 전을 구분하는 시간대 키.
-  // - pharmacyId (String?): 공유하거나 지도에서 선택한 약국 ID.
-  // - clearComposer (bool): 전송 성공 후 작성 본문을 비울지 여부.
-  // - clearMedicationSelection (bool): 전송 성공 후 선택한 약 첨부를 해제할지 여부.
-  // 반환값: Future<ChatMessage?>: 저장된 메시지; 전송 실패 또는 요청 생략 시 null.
+  // Function Name: _submitMessage
+  // Description: Adapts current input to the outgoing owner, then applies accepted presentation changes.
+  // Parameters: body/attachments/context fields: Existing outgoing input; requestId: Explicit share retry identity.
+  // Returns: Accepted message, or null for failed/blocked/disposed work. The UI retains drafts on failure.
   Future<ChatMessage?> _submitMessage({
     required String body,
     List<ChatMedicationContext> medications = const [],
@@ -595,59 +609,17 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     bool clearComposer = false,
     bool clearMedicationSelection = false,
   }) async {
-    final normalizedBody = body.trim();
     if (_isSending ||
         _isDeletingMessages ||
         _isSelectingMessages ||
-        normalizedBody.isEmpty) {
+        body.trim().isEmpty) {
       return null;
     }
     FocusScope.of(context).unfocus();
-    // 함수이름: _submitMessage.setState callback
-    // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 입력·요청 상태를 `_isSending = true; _sendErrorMessage = null`로 갱신한다.
-    // 매개변수:
-    // - 없음.
-    // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-    setState(() {
-      _isSending = true;
-      _sendErrorMessage = null;
-    });
-    final medicationIdsSignature = _medicationIdsSignature(medications);
-    final canReusePendingRequest =
-        _pendingMessageBody == normalizedBody &&
-        _pendingMedicationIdsSignature == medicationIdsSignature &&
-        _pendingMessageKind == messageKind &&
-        _pendingSlotKey == slotKey &&
-        _pendingPharmacyId == pharmacyId &&
-        _pendingHospitalId == hospitalId &&
-        _pendingHospitalDate == hospitalScheduleDate;
-    final clientMessageId =
-        requestId ??
-        (canReusePendingRequest
-            ? _pendingClientMessageId ?? _createClientMessageId()
-            : _createClientMessageId());
-    _pendingClientMessageId = clientMessageId;
-    _pendingMessageBody = normalizedBody;
-    _pendingMedicationIdsSignature = medicationIdsSignature;
-    _pendingMessageKind = messageKind;
-    _pendingSlotKey = slotKey;
-    _pendingPharmacyId = pharmacyId;
-    _pendingHospitalId = hospitalId;
-    _pendingHospitalDate = hospitalScheduleDate;
-    try {
-      final message = await _control.sendMessage(
-        linkId: _configuration.linkId,
-        clientMessageId: clientMessageId,
-        body: normalizedBody,
-        medicationId: medications.isEmpty
-            ? null
-            : medications.first.medicationId,
+    final message = await _composer.send(
+      ChatMessageDraft(
+        body: body,
         medicationIds: medications
-            // 함수이름: _submitMessage.map callback
-            // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 변환값을 `item.medicationId` 규칙으로 계산한다.
-            // 매개변수:
-            // - item (콜백 계약에서 추론): 표시·변환·저장·비교할 약품 데이터.
-            // 반환값: 컬렉션 연산에 전달할 변환값.
             .map((item) => item.medicationId)
             .toList(growable: false),
         messageKind: messageKind,
@@ -655,68 +627,26 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
         pharmacyId: pharmacyId,
         hospitalId: hospitalId,
         hospitalScheduleDate: hospitalScheduleDate,
-      );
-      if (!mounted) {
-        return message;
-      }
-      if (clearComposer) {
-        _messageController.clear();
-      }
-      _clearPendingRequest();
-      // 함수이름: _submitMessage.setState callback
-      // Description: Clears presentation-owned composer selections after an accepted send.
-      // 매개변수:
-      // - 없음.
-      // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-      setState(() {
-        if (clearMedicationSelection) {
-          _selectedMedicationContexts = const [];
-        }
-
-        _sendErrorMessage = null;
-      });
-      _history.addMessage(message);
-      _scrollToLatest();
-      return message;
-    } catch (_) {
-      if (!mounted) {
-        return null;
-      }
-      // 함수이름: _submitMessage.setState callback
-      // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 입력·요청 상태를 `_sendErrorMessage = _text.sendFailed`로 갱신한다.
-      // 매개변수:
-      // - 없음.
-      // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-      setState(() {
-        _sendErrorMessage = _text.sendFailed;
-      });
-      return null;
-    } finally {
-      if (mounted) {
-        // 함수이름: _submitMessage.setState callback
-        // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 입력·요청 상태를 `_isSending = false`로 갱신한다.
-        // 매개변수:
-        // - 없음.
-        // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-        setState(() => _isSending = false);
-      }
-    }
+      ),
+      requestId: requestId,
+    );
+    if (!mounted || message == null) return message;
+    if (clearComposer) _messageController.clear();
+    _clearPendingRequest();
+    setState(() {
+      if (clearMedicationSelection) _selectedMedicationContexts = const [];
+      _sendErrorMessage = null;
+    });
+    _history.addMessage(message);
+    _scrollToLatest();
+    return message;
   }
 
-  // 함수이름: _clearPendingRequest
-  // 함수역할: 재전송에 사용하던 메시지 ID·본문·첨부·종류·시간대·약국 정보를 초기화한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
+  // Function Name: _clearPendingRequest
+  // Description: Clears transport retry identity and presentation-owned care retry metadata after edits/success.
+  // Parameters: None. Returns: None; it does not modify dose-record retry identities.
   void _clearPendingRequest() {
-    _pendingClientMessageId = null;
-    _pendingMessageBody = null;
-    _pendingMedicationIdsSignature = null;
-    _pendingMessageKind = ChatMessageKind.text;
-    _pendingSlotKey = null;
-    _pendingPharmacyId = null;
-    _pendingHospitalId = null;
-    _pendingHospitalDate = null;
+    _composer.resetRetry();
     _pendingCareShare = null;
   }
 
@@ -773,7 +703,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     final selectedDate = _selectedMedicationScheduleDate;
     setState(() {
       _isChoosingTaken = true;
-      _isSending = true;
+      _isRecordingTaken = true;
       _sendErrorMessage = null;
     });
     try {
@@ -856,7 +786,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
         } else {
           final requestId = _pendingTakenRequests.putIfAbsent(
             signature,
-            _createClientMessageId,
+            _composer.createClientMessageId,
           );
           final result = await _control.recordMedicationTaken(
             linkId: _configuration.linkId,
@@ -902,7 +832,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     } finally {
       if (mounted) {
         setState(() {
-          _isSending = false;
+          _isRecordingTaken = false;
           _isChoosingTaken = false;
         });
       }
@@ -938,7 +868,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     if (_isSending) {
       return;
     }
-    final selection = await Navigator.of(context).push<NearbyPharmacySelection>(
+    final selection = await Navigator.of(context).push<NearbyCareSelection>(
       MaterialPageRoute(
         // 함수이름: _showPharmacySelector.builder callback
         // 함수역할: 연동 사용자 메시지와 복약 관련 첨부에 현재 부모의 레이아웃 제약을 적용해 현재 배치를 구성한다.
@@ -970,16 +900,16 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
             Text(_text.shareRecipient(_peerName)),
             const SizedBox(height: 12),
             Text(
-              selection.pharmacy.name,
+              selection.place.name,
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
-            Text(selection.pharmacy.address),
+            Text(selection.place.address),
             if (hospitals && selection.scheduleDate != null)
               Text(_text.careDate(selection.scheduleDate!)),
-            if (selection.pharmacy.todayOpenTime != null &&
-                selection.pharmacy.todayCloseTime != null)
+            if (selection.place.todayOpenTime != null &&
+                selection.place.todayCloseTime != null)
               Text(
-                '${selection.pharmacy.todayOpenTime} - ${selection.pharmacy.todayCloseTime}',
+                '${selection.place.todayOpenTime} - ${selection.place.todayCloseTime}',
               ),
             if (medications.isNotEmpty) ...[
               const SizedBox(height: 8),
@@ -1015,7 +945,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
 
   // 다른 메시지를 보내다 실패해도 장소 공유 자체의 재시도 ID는 유지한다.
   Future<void> _sendCareSelection(
-    NearbyPharmacySelection selection, {
+    NearbyCareSelection selection, {
     required bool hospitals,
     required List<ChatMedicationContext> medications,
     String? requestId,
@@ -1029,14 +959,14 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     final sent = await _submitMessage(
       requestId: requestId,
       body: hospitals
-          ? _text.hospitalShareBody(selection.pharmacy.name)
+          ? _text.hospitalShareBody(selection.place.name)
           : selection.phoneVerified
-          ? _text.pharmacyPhoneVerifiedBody(selection.pharmacy.name)
-          : _text.pharmacyShareBody(selection.pharmacy.name),
+          ? _text.pharmacyPhoneVerifiedBody(selection.place.name)
+          : _text.pharmacyShareBody(selection.place.name),
       medications: medications,
       messageKind: messageKind,
-      pharmacyId: hospitals ? null : selection.pharmacy.pharmacyId,
-      hospitalId: hospitals ? selection.pharmacy.pharmacyId : null,
+      pharmacyId: hospitals ? null : selection.place.placeId,
+      hospitalId: hospitals ? selection.place.placeId : null,
       hospitalScheduleDate: hospitals
           ? (selection.scheduleDate ?? DateTime.now())
                 .toIso8601String()
@@ -1051,7 +981,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
           selection: selection,
           hospitals: hospitals,
           medications: List.of(medications),
-          clientMessageId: _pendingClientMessageId!,
+          clientMessageId: _composer.pendingRequestId!,
         ),
       );
     } else if (mounted) {
@@ -1262,21 +1192,6 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     );
   }
 
-  // 함수이름: _medicationIdsSignature
-  // 함수역할: 선택한 약품 ID를 정렬해 순서와 무관한 재전송 비교 키를 만든다.
-  // 매개변수:
-  // - medications (List<ChatMedicationContext>): 조회·선택·정렬·표시에 사용할 약품 목록.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String _medicationIdsSignature(List<ChatMedicationContext> medications) {
-    // 함수이름: _medicationIdsSignature.map callback
-    // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 변환값을 `item.medicationId` 규칙으로 계산한다.
-    // 매개변수:
-    // - item (콜백 계약에서 추론): 표시·변환·저장·비교할 약품 데이터.
-    // 반환값: 컬렉션 연산에 전달할 변환값.
-    final ids = medications.map((item) => item.medicationId).toList()..sort();
-    return ids.join(',');
-  }
-
   // 함수이름: _openMedicationDetail
   // 함수역할: 중복 조회를 막고 연동 범위의 약 상세를 조회한 뒤 상세 화면을 열거나 오류를 안내한다.
   // 매개변수:
@@ -1336,17 +1251,6 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
         context,
       ).showSnackBar(SnackBar(content: Text(_text.medicationDetailLoadFailed)));
     }
-  }
-
-  // 함수이름: _createClientMessageId
-  // 함수역할: 마이크로초 시각과 임의의 16진수 값을 조합해 전송 중복 방지용 메시지 ID를 만든다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String _createClientMessageId() {
-    final timestamp = DateTime.now().microsecondsSinceEpoch;
-    final randomPart = _random.nextInt(0x7fffffff).toRadixString(16);
-    return 'msg_${timestamp}_$randomPart';
   }
 
   // Function Name: _applyMessageDeletion

@@ -9,8 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/linked_chat_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/check_schedule_ui_boundary.dart';
-import 'package:medbuddy_frontend/boundaries/check_nearby_pharmacy_ui_boundary.dart';
-import 'package:medbuddy_frontend/entities/nearby_pharmacy_entity.dart';
+import 'package:medbuddy_frontend/entities/nearby_care_entity.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/controls/manage_linked_chat_control.dart';
 import 'package:medbuddy_frontend/controls/set_notification_control.dart';
@@ -42,6 +41,7 @@ class _RetryChatControl extends ManageLinkedChat {
   final List<ChatMessageKind> messageKinds = [];
   final List<String?> slotKeys = [];
   final List<String?> hospitalIds = [];
+  final List<String?> pharmacyIds = [];
   final List<String?> hospitalDates = [];
   final bool failFirstSend;
   bool failSends = false;
@@ -218,6 +218,7 @@ class _RetryChatControl extends ManageLinkedChat {
     messageKinds.add(messageKind);
     slotKeys.add(slotKey);
     hospitalIds.add(hospitalId);
+    pharmacyIds.add(pharmacyId);
     hospitalDates.add(hospitalScheduleDate);
     if (failSends || (failFirstSend && sendAttempts == 1)) {
       throw StateError('temporary failure');
@@ -887,94 +888,129 @@ void main() {
     control.dispose();
   });
 
-  // 공유 확인을 취소하면 전송하지 않고, 실패 재시도는 같은 식별자와 날짜를 사용한다.
-  testWidgets(
-    'hospital sharing confirms recipient and retries the same request',
-    (tester) async {
-      final control = _RetryChatControl();
-      final realtime = _FakeRealtimeService();
-      final selectedModes = <bool>[];
-      await tester.pumpWidget(
-        MaterialApp(
-          home: LinkedChatUI(
-            linkId: 17,
-            currentUserHash: 'patient-a',
-            patientHash: 'patient-a',
-            peerName: '보호자 테스트',
-            control: control,
-            realtimeService: realtime,
-            careSelectorBuilder: (hospitals) {
-              selectedModes.add(hospitals);
-              return Scaffold(
-                body: Builder(
-                  builder: (context) => FilledButton(
-                    key: const Key('pick-test-hospital'),
-                    onPressed: () => Navigator.pop(
-                      context,
-                      NearbyPharmacySelection(
-                        pharmacy: NearbyPharmacy.fromJson({
-                          'hospital_id': 'A123',
-                          'name': '공유병원',
-                          'address': '서울',
-                          'latitude': 37.55,
-                          'longitude': 126.92,
-                        }),
-                        phoneVerified: false,
-                        scheduleDate: DateTime(2026, 10, 5),
+  for (final mode in [
+    (hospitals: true, phoneVerified: false),
+    (hospitals: false, phoneVerified: false),
+    (hospitals: false, phoneVerified: true),
+  ]) {
+    // Function Name: provider-neutral care sharing retry test
+    // Description: Routes the same neutral place ID by explicit provider while retaining phone/date and retry identity.
+    // Parameters: tester: Widget test driver. Returns: Asynchronous assertions.
+    testWidgets(
+      'care sharing confirms provider context and retries the same request: $mode',
+      (tester) async {
+        final control = _RetryChatControl();
+        final realtime = _FakeRealtimeService();
+        final selectedModes = <bool>[];
+        await tester.pumpWidget(
+          MaterialApp(
+            home: LinkedChatUI(
+              linkId: 17,
+              currentUserHash: 'patient-a',
+              patientHash: 'patient-a',
+              peerName: '보호자 테스트',
+              control: control,
+              realtimeService: realtime,
+              careSelectorBuilder: (hospitals) {
+                selectedModes.add(hospitals);
+                return Scaffold(
+                  body: Builder(
+                    builder: (context) => FilledButton(
+                      key: const Key('pick-test-hospital'),
+                      onPressed: () => Navigator.pop(
+                        context,
+                        NearbyCareSelection(
+                          place: NearbyCarePlace.fromJson({
+                            if (mode.hospitals)
+                              'hospital_id': 'shared-place'
+                            else
+                              'pharmacy_id': 'shared-place',
+                            'name': '공유병원',
+                            'address': '서울',
+                            'latitude': 37.55,
+                            'longitude': 126.92,
+                          }),
+                          phoneVerified: mode.phoneVerified,
+                          scheduleDate: DateTime(2026, 10, 5),
+                        ),
                       ),
+                      child: const Text('병원 선택'),
                     ),
-                    child: const Text('병원 선택'),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      for (final confirm in [false, true]) {
-        await tester.tap(find.byKey(const ValueKey('chatCareSelector')));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('근처 병원'));
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const Key('pick-test-hospital')));
-        await tester.pumpAndSettle();
-        expect(find.text('받는 사람: 보호자 테스트'), findsOneWidget);
-        expect(find.text('진료 날짜: 2026년 10월 5일'), findsOneWidget);
-        await tester.tap(
-          confirm
-              ? find.byKey(const ValueKey('confirmCareShare'))
-              : find.text('취소'),
         );
         await tester.pumpAndSettle();
-        expect(control.sendAttempts, confirm ? 1 : 0);
-      }
-      // 일반 메시지 실패가 끼어도 먼저 실패한 병원 공유 ID를 잃지 않는다.
-      control.failSends = true;
-      await tester.enterText(find.byType(TextField), '다른 메시지');
-      await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('chatSendButton')));
-      await tester.pumpAndSettle();
-      control.failSends = false;
-      await tester.tap(find.byKey(const ValueKey('retryCareShare')));
-      await tester.pumpAndSettle();
-      expect(selectedModes, [true, true]);
-      expect(control.messageKinds, [
-        ChatMessageKind.hospitalShare,
-        ChatMessageKind.text,
-        ChatMessageKind.hospitalShare,
-      ]);
-      expect(control.hospitalIds, ['A123', null, 'A123']);
-      expect(control.hospitalDates, ['2026-10-05', null, '2026-10-05']);
-      expect(control.clientMessageIds[0], control.clientMessageIds[2]);
-      expect(control.clientMessageIds[0], isNot(control.clientMessageIds[1]));
-      expect(find.byKey(const ValueKey('retryCareShare')), findsNothing);
-      expect(tester.takeException(), isNull);
-      await tester.pumpWidget(const SizedBox.shrink());
-      await realtime.dispose();
-      control.dispose();
-    },
-  );
+        for (final confirm in [false, true]) {
+          await tester.tap(find.byKey(const ValueKey('chatCareSelector')));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text(mode.hospitals ? '근처 병원' : '근처 약국'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.byKey(const Key('pick-test-hospital')));
+          await tester.pumpAndSettle();
+          expect(find.text('받는 사람: 보호자 테스트'), findsOneWidget);
+          expect(
+            find.text('진료 날짜: 2026년 10월 5일'),
+            mode.hospitals ? findsOneWidget : findsNothing,
+          );
+          await tester.tap(
+            confirm
+                ? find.byKey(const ValueKey('confirmCareShare'))
+                : find.text('취소'),
+          );
+          await tester.pumpAndSettle();
+          expect(control.sendAttempts, confirm ? 1 : 0);
+        }
+        // 일반 메시지 실패가 끼어도 먼저 실패한 병원 공유 ID를 잃지 않는다.
+        control.failSends = true;
+        await tester.enterText(find.byType(TextField), '다른 메시지');
+        await tester.pump();
+        await tester.tap(find.byKey(const ValueKey('chatSendButton')));
+        await tester.pumpAndSettle();
+        control.failSends = false;
+        await tester.tap(find.byKey(const ValueKey('retryCareShare')));
+        await tester.pumpAndSettle();
+        expect(selectedModes, [mode.hospitals, mode.hospitals]);
+        final expectedKind = mode.hospitals
+            ? ChatMessageKind.hospitalShare
+            : mode.phoneVerified
+            ? ChatMessageKind.pharmacyPhoneVerified
+            : ChatMessageKind.pharmacyShare;
+        expect(control.messageKinds, [
+          expectedKind,
+          ChatMessageKind.text,
+          expectedKind,
+        ]);
+        expect(
+          control.hospitalIds,
+          mode.hospitals
+              ? ['shared-place', null, 'shared-place']
+              : [null, null, null],
+        );
+        expect(
+          control.pharmacyIds,
+          mode.hospitals
+              ? [null, null, null]
+              : ['shared-place', null, 'shared-place'],
+        );
+        expect(
+          control.hospitalDates,
+          mode.hospitals
+              ? ['2026-10-05', null, '2026-10-05']
+              : [null, null, null],
+        );
+        expect(control.clientMessageIds[0], control.clientMessageIds[2]);
+        expect(control.clientMessageIds[0], isNot(control.clientMessageIds[1]));
+        expect(find.byKey(const ValueKey('retryCareShare')), findsNothing);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await realtime.dispose();
+        control.dispose();
+      },
+    );
+  }
 
   // 약 부족·불편 안내에서는 메시지의 모든 약 첨부를 유지하고 검색은 명시적 선택으로만 연다.
   for (final kind in [

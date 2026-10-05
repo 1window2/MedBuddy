@@ -1,29 +1,33 @@
-// 파일명: nearby_pharmacy_entity.dart
-// 역할: 현재 위치와 근처 약국 조회 결과를 표현한다.
+// File Name: nearby_care_entity.dart
+// Role: Defines provider-neutral nearby-care search, display and selection contracts.
 
 import 'device_coordinate_entity.dart';
 
-// 클래스명: PharmacySearchArea
-// 역할: 기기 위치·지도 중심·기본 위치의 검색 좌표와 반경을 보관한다.
-class PharmacySearchArea {
+// Class Name: NearbyCareSearchArea
+// Role: Preserves an explicit search radius and the provenance of its center.
+// Responsibilities: Validate coordinates/radius without choosing a provider's radius policy.
+// Attributes: center, radiusKm, isFallback and isMapArea: immutable search scope.
+class NearbyCareSearchArea {
   final DeviceCoordinate center;
   final double radiusKm;
   final bool isFallback;
   final bool isMapArea;
 
-  // 함수이름: PharmacySearchArea
-  // 함수역할: 검색 기준과 표시 출처를 묶는다. 매개변수: center, radiusKm, isFallback, isMapArea. 반환값: 검색 지역.
-  const PharmacySearchArea({
+  // Function Name: NearbyCareSearchArea
+  // Description: Captures a caller-selected center and radius without a provider default.
+  // Parameters: center/radiusKm: explicit search scope; isFallback/isMapArea: location provenance.
+  // Returns: A search area; isValid separately checks the backend's allowed bounds.
+  const NearbyCareSearchArea({
     required this.center,
-    this.radiusKm = 20,
+    required this.radiusKm,
     this.isFallback = false,
     this.isMapArea = false,
   });
 
   // 홍익대학교 서울캠퍼스(와우산로 94). 기기 위치로 기록하거나 캐시하지 않는다.
-  static const hongik = PharmacySearchArea(
-    center: DeviceCoordinate(latitude: 37.5516, longitude: 126.9250),
-    isFallback: true,
+  static const fallbackCenter = DeviceCoordinate(
+    latitude: 37.5516,
+    longitude: 126.9250,
   );
 
   // 함수이름: isValid
@@ -41,11 +45,11 @@ class PharmacySearchArea {
       radiusKm <= 50;
 }
 
-// Class Name: PharmacySearchMode
-// Role: Defines the pharmacy search filters supported by the backend.
+// Class Name: NearbyCareSearchMode
+// Role: Defines the wire-level search choices shared by nearby-care controls.
 // Responsibilities:
-// - Map all-pharmacy, open-at-time, extended-hours, official late-night, and weekend/holiday choices to API wire values.
-enum PharmacySearchMode {
+// - Preserve backend values; concrete providers and their UI own applicable choices.
+enum NearbyCareSearchMode {
   all('all'),
   openAtTime('open_at_time'),
   lateHours('late_hours'),
@@ -53,48 +57,23 @@ enum PharmacySearchMode {
   weekendHoliday('weekend_holiday');
 
   final String apiValue;
-  // Function Name: PharmacySearchMode
-  // Description: Associates each pharmacy search choice with the exact backend query value.
+  // Function Name: NearbyCareSearchMode
+  // Description: Associates each nearby-care search choice with the exact backend query value.
   // Parameters:
   // - apiValue (String): Wire value defined by the backend contract.
   // Returns:
-  // - PharmacySearchMode: the initialized instance.
-  const PharmacySearchMode(this.apiValue);
+  // - NearbyCareSearchMode: the initialized instance.
+  const NearbyCareSearchMode(this.apiValue);
 }
 
-// 클래스명: NearbyPharmacy
-// 역할: 근처 약국의 영업 상태, 연락처와 위치 및 출처 정보를 표현한다.
-// 주요 책임:
-// - 거리·당일 시간을 표시하고 날짜별 영업 및 공공심야 지정 정보의 최신성을 구분한다.
-// 속성:
-// - pharmacyId (String): 공공데이터 또는 서버의 약국 식별자
-// - name (String): 표시하거나 길찾기에 사용할 약국 이름
-// - address (String): 복사하거나 표시할 약국 주소
-// - telephone (String): 약국 전화번호 원문
-// - latitude (double): WGS84 위도(도 단위)
-// - longitude (double): WGS84 경도(도 단위)
-// - distanceKm (double): 기준 위치에서 약국까지 거리(km)
-// - todayOpenTime (String?): 조회 날짜의 영업 종료·시작 시각
-// - todayCloseTime (String?): 조회 날짜의 영업 종료·시작 시각
-// - isOpenNow (bool?): 기준 시각 영업 여부; 미확인은 null
-// - is24Hours (bool): 24시간 운영 약국 여부
-// - isOpenLate (bool): 야간 영업 조건 충족 여부
-// - hasWeekendOrHolidayHours (bool): 주말 또는 공휴일 영업시간 자료 존재 여부
-// - isPublicHoliday (bool): 조회 날짜의 공휴일 여부
-// - isOfficialLateNight (bool): 공식 공공심야 약국 지정 여부
-// - designationSourceName (String?): 공공심야 지정 정보를 제공한 기관명
-// - designationSourceUrl (String?): 공공심야 지정 근거 자료의 주소
-// - designationVerifiedAt (DateTime?): 공공심야 지정 정보를 확인한 시각
-// - designationIsStale (bool): 공공심야 지정 정보의 최신성 초과 여부
-// - scheduleDate (DateTime?): 해당 약국 영업시간이 적용되는 날짜
-// - scheduleSource (String): 약국 영업시간 자료의 출처 유형
-// - scheduleIsDateSpecific (bool): 특정 날짜를 확인한 영업시간인지 여부
-// - minutesUntilClose (int?): 폐점까지 남은 분; 알 수 없으면 null
-// - nextOpenAt (DateTime?): 다음 영업 시작 예상 시각
-// - sourceUpdatedAt (DateTime?): 원본 약국 자료의 갱신 시각
-// - sourceName (String): 약국 자료 제공 기관 이름
-class NearbyPharmacy {
-  final String pharmacyId;
+// Class Name: NearbyCarePlace
+// Role: Represents a hospital or pharmacy for shared map, list and contact display.
+// Note: placeId is a display identifier, never a choice of authenticated server route.
+// Responsibilities: Preserve operating uncertainty, source freshness and provider-specific metadata.
+// Attributes: placeId: original hospital/pharmacy identifier; contact, coordinate, schedule and source fields.
+// Note: Optional late-night designation applies to pharmacies; departments apply to hospitals.
+class NearbyCarePlace {
+  final String placeId;
   final String name;
   final String address;
   final String telephone;
@@ -124,39 +103,17 @@ class NearbyPharmacy {
   final List<String> departments;
   final String? institutionType;
 
-  // 함수이름: NearbyPharmacy
-  // 함수역할: 약국의 위치·연락처·거리·영업시간과 공공심야 지정 및 자료 최신성 메타데이터를 검색 결과로 보존한다.
-  // 매개변수:
-  // - pharmacyId (String): 공공데이터 또는 서버의 약국 식별자
-  // - name (String): 표시하거나 길찾기에 사용할 약국 이름
-  // - address (String): 복사하거나 표시할 약국 주소
-  // - telephone (String): 약국 전화번호 원문
-  // - latitude (double): WGS84 위도(도 단위)
-  // - longitude (double): WGS84 경도(도 단위)
-  // - distanceKm (double): 기준 위치에서 약국까지 거리(km)
-  // - todayOpenTime (String?): 조회 날짜의 영업 종료·시작 시각
-  // - todayCloseTime (String?): 조회 날짜의 영업 종료·시작 시각
-  // - isOpenNow (bool?): 기준 시각 영업 여부; 미확인은 null
-  // - is24Hours (bool): 24시간 운영 약국 여부
-  // - isOpenLate (bool): 야간 영업 조건 충족 여부
-  // - hasWeekendOrHolidayHours (bool): 주말 또는 공휴일 영업시간 자료 존재 여부
-  // - isPublicHoliday (bool): 조회 날짜의 공휴일 여부
-  // - isOfficialLateNight (bool): 공식 공공심야 약국 지정 여부
-  // - designationSourceName (String?): 공공심야 지정 정보를 제공한 기관명
-  // - designationSourceUrl (String?): 공공심야 지정 근거 자료의 주소
-  // - designationVerifiedAt (DateTime?): 공공심야 지정 정보를 확인한 시각
-  // - designationIsStale (bool): 공공심야 지정 정보의 최신성 초과 여부
-  // - scheduleDate (DateTime?): 해당 약국 영업시간이 적용되는 날짜
-  // - scheduleSource (String): 약국 영업시간 자료의 출처 유형
-  // - scheduleIsDateSpecific (bool): 특정 날짜를 확인한 영업시간인지 여부
-  // - minutesUntilClose (int?): 폐점까지 남은 분; 알 수 없으면 null
-  // - nextOpenAt (DateTime?): 다음 영업 시작 예상 시각
-  // - sourceUpdatedAt (DateTime?): 원본 약국 자료의 갱신 시각
-  // - sourceName (String): 약국 자료 제공 기관 이름
-  // 반환값:
-  // - NearbyPharmacy: 초기화된 인스턴스.
-  const NearbyPharmacy({
-    required this.pharmacyId,
+  // Function Name: NearbyCarePlace
+  // Description: Captures a display snapshot without authorizing a server route or guaranteeing availability.
+  // Parameters:
+  // - placeId/name/address/telephone: original provider identifier and public contact fields.
+  // - latitude/longitude/distanceKm: WGS84 location and query-relative distance.
+  // - todayOpenTime/todayCloseTime/isOpenNow/is24Hours and optional schedule fields: reported operating evidence.
+  // - Optional designation/source fields: pharmacy designation, provenance and freshness.
+  // - departments/institutionType: optional hospital metadata.
+  // Returns: A nearby-care place; unknown opening status remains nullable.
+  const NearbyCarePlace({
+    required this.placeId,
     required this.name,
     required this.address,
     required this.telephone,
@@ -186,15 +143,14 @@ class NearbyPharmacy {
     this.institutionType,
   });
 
-  // 함수이름: NearbyPharmacy.fromJson
-  // 함수역할: 약국 응답을 변환하고 영업 여부의 미확인 상태를 null로 유지하며 지정 출처·날짜별 일정·자료 갱신 시각을 보존한다.
-  // 매개변수:
-  // - json (Map<String, dynamic>): 해당 모델의 서버 응답 또는 저장 JSON 객체
-  // 반환값:
-  // - NearbyPharmacy: 필드 검증과 기본값 처리를 거쳐 복원한 레코드.
-  factory NearbyPharmacy.fromJson(Map<String, dynamic> json) {
-    return NearbyPharmacy(
-      pharmacyId: _readString(json['pharmacy_id'] ?? json['hospital_id']),
+  // Function Name: NearbyCarePlace.fromJson
+  // Description: Decodes original pharmacy_id or hospital_id without changing provider wire contracts.
+  // Parameters: json: authenticated backend display payload with optional operating/source metadata.
+  // Returns: A neutral display place preserving unknown status, specialty and freshness evidence.
+  // Note: Legacy pharmacy_id precedence is retained if both identifiers are supplied.
+  factory NearbyCarePlace.fromJson(Map<String, dynamic> json) {
+    return NearbyCarePlace(
+      placeId: _readString(json['pharmacy_id'] ?? json['hospital_id']),
       departments: json['departments'] is List
           ? List<String>.unmodifiable(
               (json['departments'] as List).whereType<String>(),
@@ -335,21 +291,14 @@ class NearbyPharmacy {
   }
 }
 
-// Class Name: NearbyPharmacySearchResult
-// Role: Bundles pharmacy results with the query time and catalog reliability metadata.
-// Responsibilities:
-// - Preserve the chosen search mode, stale-catalog flag, update timestamp, and holiday-schedule status for result guidance.
-// Attributes:
-// - data (List<NearbyPharmacy>): Retrieved pharmacy records.
-// - searchMode (PharmacySearchMode): Pharmacy filter such as opening time or late-night service.
-// - targetDateTime (DateTime): Reference timestamp for checking pharmacy opening status.
-// - catalogUpdatedAt (DateTime?): Most recent pharmacy catalog update timestamp.
-// - catalogIsStale (bool): Whether the pharmacy catalog exceeds its freshness limit.
-// - holidayScheduleStatus (String): Verification status of holiday opening hours.
-class NearbyPharmacySearchResult {
-  final PharmacySearchArea? searchArea;
-  final List<NearbyPharmacy> data;
-  final PharmacySearchMode searchMode;
+// Class Name: NearbyCareSearchResult
+// Role: Bundles nearby-care places with search scope and reliability metadata.
+// Responsibilities: Preserve catalog/calendar freshness, partial-result and sampled-region uncertainty separately.
+// Attributes: data: display places; searchArea/searchMode/targetDateTime: effective query; remaining fields: reliability.
+class NearbyCareSearchResult {
+  final NearbyCareSearchArea? searchArea;
+  final List<NearbyCarePlace> data;
+  final NearbyCareSearchMode searchMode;
   final DateTime targetDateTime;
   final DateTime? catalogUpdatedAt;
   final bool catalogIsStale;
@@ -358,18 +307,12 @@ class NearbyPharmacySearchResult {
   // 병원 검색의 주소 표본 한계이며 실제 목록 조회 제한과 구별한다.
   final bool regionScopeUncertain;
 
-  // Function Name: NearbyPharmacySearchResult
-  // Description: Captures the pharmacy list together with effective search time, filter mode, and catalog freshness and holiday status.
-  // Parameters:
-  // - data (List<NearbyPharmacy>): Retrieved pharmacy records.
-  // - searchMode (PharmacySearchMode): Pharmacy filter such as opening time or late-night service.
-  // - targetDateTime (DateTime): Reference timestamp for checking pharmacy opening status.
-  // - catalogUpdatedAt (DateTime?): Most recent pharmacy catalog update timestamp.
-  // - catalogIsStale (bool): Whether the pharmacy catalog exceeds its freshness limit.
-  // - holidayScheduleStatus (String): Verification status of holiday opening hours.
-  // Returns:
-  // - NearbyPharmacySearchResult: the initialized instance.
-  const NearbyPharmacySearchResult({
+  // Function Name: NearbyCareSearchResult
+  // Description: Preserves the provider's effective query scope and uncertainty without treating unknown as closed.
+  // Parameters: data/searchArea/searchMode/targetDateTime: result/query; catalog and holiday fields: reliability.
+  // - searchTruncated/regionScopeUncertain: result incompleteness and region-sampling evidence, respectively.
+  // Returns: A display result whose optional searchArea supports existing injected controller responses.
+  const NearbyCareSearchResult({
     this.searchArea,
     required this.data,
     required this.searchMode,
@@ -379,5 +322,26 @@ class NearbyPharmacySearchResult {
     required this.holidayScheduleStatus,
     this.searchTruncated = false,
     this.regionScopeUncertain = false,
+  });
+}
+
+// Class Name: NearbyCareSelection
+// Role: Returns a chosen display place and user confirmation without owning a UI or server route.
+// Responsibilities: Preserve the exact phone-confirmation and selected-date provenance for chat preview.
+// Attributes: place, phoneVerified, scheduleDate: immutable user selection values.
+// Note: The caller's captured provider choice still selects hospitalId versus pharmacyId on send.
+class NearbyCareSelection {
+  final NearbyCarePlace place;
+  final bool phoneVerified;
+  final DateTime? scheduleDate;
+
+  // Function Name: NearbyCareSelection
+  // Description: Captures display data and user confirmation for one selected search date.
+  // Parameters: place: selected result; phoneVerified: explicit confirmation; scheduleDate: queried date.
+  // Returns: A provider-neutral selection; no message is sent and no route is inferred from its ID.
+  const NearbyCareSelection({
+    required this.place,
+    required this.phoneVerified,
+    this.scheduleDate,
   });
 }

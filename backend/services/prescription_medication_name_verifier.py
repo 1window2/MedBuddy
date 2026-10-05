@@ -14,6 +14,7 @@ from typing import Any
 from google import genai
 from google.genai import types
 from sqlalchemy import or_
+from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Session, sessionmaker
 
 from entities.medication_detail_entity import _DrugApprovalInfo, _DrugBasicInfo
@@ -95,6 +96,7 @@ _MedicationNameFallbackCacheKey = tuple[str, str, tuple[tuple[str, str], ...]]
 # 속성:
 # - db (Session | None): 현재 작업에 사용할 SQLAlchemy 세션.
 # - ai_timeout_seconds (float): 카탈로그 후보 내 AI 보정의 최대 허용 시간(초).
+# Note: Async file-backed/PostgreSQL reads own Engine-bound worker sessions; only the in-memory fallback and sync verify() borrow db.
 class PrescriptionMedicationNameVerifier:
     _WHITESPACE_PATTERN = re.compile(r"\s+")
     _MAX_CANDIDATES = 48
@@ -132,6 +134,7 @@ class PrescriptionMedicationNameVerifier:
     # Function Name: __init__
     # Description:
     # - Validates the AI fallback timeout and prepares a bounded least-recently-used correction cache.
+    # - Captures an Engine-only worker factory before asynchronous OCR/database work or request cleanup.
     # Parameters:
     # - db (Session | None): SQLAlchemy session for this unit of work.
     # - ai_timeout_seconds (float): Maximum duration of the catalog-constrained AI fallback.
@@ -146,6 +149,16 @@ class PrescriptionMedicationNameVerifier:
             raise ValueError("AI fallback timeout must be greater than zero.")
         self.db = db
         self.ai_timeout_seconds = ai_timeout_seconds
+        bind = db.get_bind() if db is not None else None
+        engine = bind.engine if isinstance(bind, Connection) else bind
+        self._worker_session_factory = (
+            sessionmaker(bind=engine) if engine is not None else None
+        )
+        self._uses_memory_sqlite = (
+            engine is not None
+            and engine.dialect.name == "sqlite"
+            and engine.url.database in {None, "", ":memory:"}
+        )
         self._ai_fallback_cache: OrderedDict[
             _MedicationNameFallbackCacheKey,
             tuple[_CatalogMedicationName, float] | None,
@@ -241,15 +254,9 @@ class PrescriptionMedicationNameVerifier:
     # - 없음.
     # 반환값:
     # - DB 세션이 없거나 별도 스레드 연결로 옮길 수 없는 인메모리 SQLite 세션이면 True.
+    # Note: Reads only composition-time policy, never a request-session bind after asynchronous work.
     def _requires_current_thread_session(self) -> bool:
-        if self.db is None:
-            return True
-        bind = self.db.get_bind()
-        return bind.dialect.name == "sqlite" and bind.url.database in {
-            None,
-            "",
-            ":memory:",
-        }
+        return self._worker_session_factory is None or self._uses_memory_sqlite
 
     # 함수이름: _prepare_verifications_with_isolated_session
     # 함수역할:
@@ -258,6 +265,7 @@ class PrescriptionMedicationNameVerifier:
     # - raw_names (list[str]): OCR에서 추출한 원본 약명 목록
     # 반환값:
     # - 로컬 검증 결과와 AI 보완 후보 요청 목록
+    # Note: Captured Engine ownership lets cancelled request cleanup proceed without sharing or closing this worker's transaction.
     def _prepare_verifications_with_isolated_session(
         self,
         raw_names: list[str],
@@ -265,10 +273,9 @@ class PrescriptionMedicationNameVerifier:
         list[MedicationNameVerification],
         list[_MedicationNameFallbackRequest],
     ]:
-        if self.db is None:
+        if self._worker_session_factory is None:
             return self._prepare_verifications(raw_names)
-        worker_session_factory = sessionmaker(bind=self.db.get_bind())
-        worker_db = worker_session_factory()
+        worker_db = self._worker_session_factory()
         try:
             worker = PrescriptionMedicationNameVerifier(
                 db=worker_db,

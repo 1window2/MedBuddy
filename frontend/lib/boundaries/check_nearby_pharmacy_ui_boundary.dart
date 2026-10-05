@@ -12,7 +12,7 @@ import '../controls/check_nearby_hospital_control.dart';
 import '../controls/check_nearby_pharmacy_control.dart';
 import '../controls/check_nearby_care_control.dart';
 import '../entities/device_coordinate_entity.dart';
-import '../entities/nearby_pharmacy_entity.dart';
+import '../entities/nearby_care_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/device_location_service.dart';
 import '../services/pharmacy_favorite_service.dart';
@@ -71,40 +71,14 @@ const _hospitalDepartments = <String, (String, String)>{
   'D034': ('구강악안면외과', 'Oral and maxillofacial surgery'),
 };
 
-// 클래스명: NearbyPharmacySelection
-// 역할: 채팅에 공유할 약국과 사용자의 전화 확인 여부를 함께 반환한다.
-// 주요 책임:
-// - 선택한 약국과 사용자의 전화 확인 여부를 하나의 화면 반환값으로 보존한다.
-// - 채팅 공유 호출자가 약국 정보와 확인 상태를 함께 받게 한다.
-// 속성:
-// - pharmacy (NearbyPharmacy): 표시하거나 전화·길찾기·공유할 약국.
-// - phoneVerified (bool): 사용자가 전화로 운영 여부를 확인했는지 여부.
-class NearbyPharmacySelection {
-  final NearbyPharmacy pharmacy;
-  final bool phoneVerified;
-  final DateTime? scheduleDate;
-
-  // 함수이름: NearbyPharmacySelection
-  // 함수역할: 채팅 공유 호출자에게 돌려줄 약국과 전화 확인 여부를 변경 불가능한 결과 객체에 담는다.
-  // 매개변수:
-  // - pharmacy (NearbyPharmacy): 표시하거나 전화·길찾기·공유할 약국.
-  // - phoneVerified (bool): 사용자가 전화로 운영 여부를 확인했는지 여부.
-  // 반환값: 입력 설정이 반영된 NearbyPharmacySelection 인스턴스.
-  const NearbyPharmacySelection({
-    required this.pharmacy,
-    required this.phoneVerified,
-    this.scheduleDate,
-  });
-}
-
 // 타입명: NearbyPharmacyMapBuilder
 // 역할: 지도 구현을 화면의 목록·필터 로직과 분리하고 테스트 대체 지점을 제공한다.
 // 함수이름: NearbyPharmacyMapBuilder
 // 함수역할: 약국 목록·선택 상태·지도 동작과 오류 문구를 전달받아 대체 지도를 구성하는 콜백 계약이다.
 // 매개변수:
-// - pharmacies (List<NearbyPharmacy>): 지도 또는 목록에 배치할 약국 검색 결과.
+// - pharmacies (List<NearbyCarePlace>): 지도 또는 목록에 배치할 약국 검색 결과.
 // - selectedPharmacyId (String?): 공유하거나 지도에서 선택한 약국 ID.
-// - onPharmacySelected (ValueChanged<NearbyPharmacy>): 목록·마커에서 선택한 약국을 전달할 콜백.
+// - onPharmacySelected (ValueChanged<NearbyCarePlace>): 목록·마커에서 선택한 약국을 전달할 콜백.
 // - onAttributionRequested (VoidCallback): 지도 데이터의 출처·저작권 안내를 여는 콜백.
 // - statusText (String?): 현재 작업 결과·오류·상태에 대한 표시 문구.
 // - selectMarkerHint (String): 아이콘의 동작을 설명할 도움말·접근성 문구.
@@ -115,14 +89,15 @@ class NearbyPharmacySelection {
 // 반환값: 위치·운영시간별 약국 검색과 전화·길찾기·채팅 공유에 쓰는 위젯 트리.
 typedef NearbyPharmacyMapBuilder =
     Widget Function({
-      required PharmacySearchArea searchArea,
+      required NearbyCareSearchArea searchArea,
       required int centerRevision,
       required bool isSearching,
-      required Future<bool> Function(PharmacySearchArea) onSearchAreaRequested,
+      required Future<bool> Function(NearbyCareSearchArea)
+      onSearchAreaRequested,
       required VoidCallback onCurrentLocationRequested,
-      required List<NearbyPharmacy> pharmacies,
+      required List<NearbyCarePlace> pharmacies,
       required String? selectedPharmacyId,
-      required ValueChanged<NearbyPharmacy> onPharmacySelected,
+      required ValueChanged<NearbyCarePlace> onPharmacySelected,
       required VoidCallback onAttributionRequested,
       required String? statusText,
       required String selectMarkerHint,
@@ -209,14 +184,14 @@ class CheckNearbyPharmacyUI extends StatefulWidget {
 // 속성:
 // - _control (CheckNearbyPharmacy): 화면의 조회·변경 요청을 처리할 컨트롤러.
 // - _favoriteService (PharmacyFavoriteService): 사용자별 약국 즐겨찾기 저장소.
-// - _pharmacies (List<NearbyPharmacy>): 지도 또는 목록에 배치할 약국 검색 결과.
+// - _pharmacies (List<NearbyCarePlace>): 지도 또는 목록에 배치할 약국 검색 결과.
 // - _isLoading (bool): 진행 중 표시를 보여줄지 여부.
 class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     with WidgetsBindingObserver {
   late final CheckNearbyCare _control;
   late final bool _ownsControl;
   late final PharmacyFavoriteService _favoriteService;
-  List<NearbyPharmacy> _pharmacies = const [];
+  List<NearbyCarePlace> _pharmacies = const [];
   Set<String> _favoritePharmacyIds = const {};
   bool _favoritesLoaded = false;
   bool _isSavingFavorite = false;
@@ -245,7 +220,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   String _holidayScheduleStatus = 'not_applicable';
   DateTime? _lastRefreshedAt;
   bool _selectedPhoneVerified = false;
-  PharmacySearchArea? _searchArea;
+  NearbyCareSearchArea? _searchArea;
   int _searchGeneration = 0;
   int _centerRevision = 0;
   bool _wasBackgrounded = false;
@@ -363,7 +338,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   // - searchArea: 지도에서 선택한 지역. locate: 기존 지역 대신 기기 위치를 다시 확인할지 여부.
   // 반환값: 검색 성공 여부. 실패 시 기존 검색 지역을 유지한다.
   Future<bool> _loadPharmacies({
-    PharmacySearchArea? searchArea,
+    NearbyCareSearchArea? searchArea,
     bool locate = false,
   }) async {
     if (!mounted || _awaitingHospitalDepartment) {
@@ -413,7 +388,15 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
       setState(() {
         _searchArea =
-            result.searchArea ?? requestedArea ?? PharmacySearchArea.hongik;
+            result.searchArea ??
+            requestedArea ??
+            NearbyCareSearchArea(
+              center: NearbyCareSearchArea.fallbackCenter,
+              radiusKm: widget.hospitals
+                  ? CheckNearbyHospital.defaultRadiusKm
+                  : 20,
+              isFallback: true,
+            );
         _updateMapDistanceGuide();
         if (!_searchArea!.isFallback && !_searchArea!.isMapArea) {
           _deviceLocation = _searchArea!.center;
@@ -432,11 +415,11 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
         _holidayScheduleStatus = result.holidayScheduleStatus;
         final selectedStillExists = result.data.any(
           // 함수이름: _loadPharmacies.any callback
-          // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도에 대해 `pharmacy.pharmacyId == _selectedPharmacyId` 조건으로 컬렉션 항목을 판별한다.
+          // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도에 대해 `pharmacy.placeId == _selectedPharmacyId` 조건으로 컬렉션 항목을 판별한다.
           // 매개변수:
           // - pharmacy (콜백 계약에서 추론): 표시하거나 전화·길찾기·공유할 약국.
           // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
-          (pharmacy) => pharmacy.pharmacyId == _selectedPharmacyId,
+          (pharmacy) => pharmacy.placeId == _selectedPharmacyId,
         );
         if (!selectedStillExists) {
           _selectedPharmacyId = null;
@@ -603,7 +586,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
 
   // 함수이름: _searchMapArea
   // 함수역할: 지도 중심·반경을 현재 영업 조건으로 조회한다. 매개변수: area. 반환값: 갱신 성공 여부.
-  Future<bool> _searchMapArea(PharmacySearchArea area) async {
+  Future<bool> _searchMapArea(NearbyCareSearchArea area) async {
     if (_isLoading) return false;
     return _loadPharmacies(searchArea: area);
   }
@@ -649,9 +632,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   // 함수역할: 영업 중·심야 운영·즐겨찾기·거리 순으로 약국 사본을 정렬한다.
   // 매개변수:
   // - 없음.
-  // 반환값: List<NearbyPharmacy>: 조회 또는 좌표 조건을 반영한 지도·목록용 약국 목록.
-  List<NearbyPharmacy> get _visiblePharmacies {
-    final visiblePharmacies = List<NearbyPharmacy>.of(_pharmacies);
+  // 반환값: List<NearbyCarePlace>: 조회 또는 좌표 조건을 반영한 지도·목록용 약국 목록.
+  List<NearbyCarePlace> get _visiblePharmacies {
+    final visiblePharmacies = List<NearbyCarePlace>.of(_pharmacies);
     // 함수이름: _visiblePharmacies.sort callback
     // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도의 정렬 비교값을 `leftOpenRank.compareTo(rightOpenRank); leftLateRank.compareTo(rightLateRank); leftFavorite ? -1 : 1` 규칙으로 계산한다.
     // 매개변수:
@@ -669,8 +652,8 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       if (leftLateRank != rightLateRank) {
         return leftLateRank.compareTo(rightLateRank);
       }
-      final leftFavorite = _favoritePharmacyIds.contains(left.pharmacyId);
-      final rightFavorite = _favoritePharmacyIds.contains(right.pharmacyId);
+      final leftFavorite = _favoritePharmacyIds.contains(left.placeId);
+      final rightFavorite = _favoritePharmacyIds.contains(right.placeId);
       if (leftFavorite != rightFavorite) {
         return leftFavorite ? -1 : 1;
       }
@@ -682,9 +665,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   // 함수이름: _operatesLate
   // 함수역할: 24시간 운영·늦은 영업·공식 심야 지정 중 하나라도 해당하는지 확인한다.
   // 매개변수:
-  // - pharmacy (NearbyPharmacy): 표시하거나 전화·길찾기·공유할 약국.
+  // - pharmacy (NearbyCarePlace): 표시하거나 전화·길찾기·공유할 약국.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
-  bool _operatesLate(NearbyPharmacy pharmacy) {
+  bool _operatesLate(NearbyCarePlace pharmacy) {
     return pharmacy.is24Hours ||
         pharmacy.isOpenLate ||
         (!widget.hospitals && pharmacy.isOfficialLateNight);
@@ -712,15 +695,15 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   // 함수이름: _toggleFavorite
   // 함수역할: 저장을 한 번씩 처리하고 거절·예외 시 이전 즐겨찾기를 복원해 안내한다.
   // 매개변수:
-  // - pharmacy (NearbyPharmacy): 표시하거나 전화·길찾기·공유할 약국.
+  // - pharmacy (NearbyCarePlace): 표시하거나 전화·길찾기·공유할 약국.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
-  Future<void> _toggleFavorite(NearbyPharmacy pharmacy) async {
+  Future<void> _toggleFavorite(NearbyCarePlace pharmacy) async {
     if (!_favoritesLoaded || _isSavingFavorite) return;
     final previousIds = _favoritePharmacyIds;
     final updatedIds = Set<String>.of(_favoritePharmacyIds);
-    final isFavorite = updatedIds.remove(pharmacy.pharmacyId);
+    final isFavorite = updatedIds.remove(pharmacy.placeId);
     if (!isFavorite) {
-      updatedIds.add(pharmacy.pharmacyId);
+      updatedIds.add(pharmacy.placeId);
     }
     setState(() {
       _favoritePharmacyIds = updatedIds;
@@ -749,13 +732,13 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   // Description: Maps the visible operating-hours filter to the pharmacy controller's search mode.
   // Parameters:
   // - filter (_PharmacyFilter): Pharmacy operating-hours filter to apply.
-  // Returns: PharmacySearchMode: Controller search mode corresponding to the visible filter.
-  PharmacySearchMode _searchModeForFilter(_PharmacyFilter filter) {
+  // Returns: NearbyCareSearchMode: Controller search mode corresponding to the visible filter.
+  NearbyCareSearchMode _searchModeForFilter(_PharmacyFilter filter) {
     return switch (filter) {
-      _PharmacyFilter.openNow => PharmacySearchMode.openAtTime,
-      _PharmacyFilter.lateHours => PharmacySearchMode.lateHours,
-      _PharmacyFilter.weekendHoliday => PharmacySearchMode.weekendHoliday,
-      _PharmacyFilter.all => PharmacySearchMode.all,
+      _PharmacyFilter.openNow => NearbyCareSearchMode.openAtTime,
+      _PharmacyFilter.lateHours => NearbyCareSearchMode.lateHours,
+      _PharmacyFilter.weekendHoliday => NearbyCareSearchMode.weekendHoliday,
+      _PharmacyFilter.all => NearbyCareSearchMode.all,
     };
   }
 
@@ -1190,7 +1173,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                       if (showDetails)
                         _PharmacyDetailsSheet(
                           key: ValueKey(
-                            'pharmacy-sheet-${selected.pharmacyId}-$_centerRevision',
+                            'pharmacy-sheet-${selected.placeId}-$_centerRevision',
                           ),
                           isEnglish: english,
                           hospitals: widget.hospitals,
@@ -1208,7 +1191,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                                     _filter != _PharmacyFilter.openNow,
                                 isSelected: true,
                                 isFavorite: _favoritePharmacyIds.contains(
-                                  selected.pharmacyId,
+                                  selected.placeId,
                                 ),
                                 embedded: true,
                                 compact: compact,
@@ -1517,10 +1500,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                           pharmacy: pharmacy,
                           text: text,
                           usesSelectedTime: _filter != _PharmacyFilter.openNow,
-                          isSelected:
-                              pharmacy.pharmacyId == _selectedPharmacyId,
+                          isSelected: pharmacy.placeId == _selectedPharmacyId,
                           isFavorite: _favoritePharmacyIds.contains(
-                            pharmacy.pharmacyId,
+                            pharmacy.placeId,
                           ),
                           // 함수이름: _buildBody.onSelected callback
                           // 함수역할: 지도에 표시할 약국을 선택하고 다른 약국으로 바뀌면 전화 확인 상태를 지운다.
@@ -1571,11 +1553,11 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   // 함수이름: _buildSelectionFooter
   // 함수역할: 선택한 약국의 전화 확인 체크와 채팅 공유 확정 버튼을 표시한다.
   // 매개변수:
-  // - visiblePharmacies (List<NearbyPharmacy>): 지도 또는 목록에 배치할 약국 검색 결과.
+  // - visiblePharmacies (List<NearbyCarePlace>): 지도 또는 목록에 배치할 약국 검색 결과.
   // - embedded (bool): 상세창에서는 이름을 반복하지 않고 기존 동작 버튼에 이어 표시한다.
   // 반환값: 위치 권한·조회 조건에 따른 약국 목록과 지도에 쓰는 위젯 트리.
   Widget _buildSelectionFooter(
-    List<NearbyPharmacy> visiblePharmacies, {
+    List<NearbyCarePlace> visiblePharmacies, {
     bool embedded = false,
   }) {
     final selectedPharmacy = _findSelectedPharmacy(visiblePharmacies);
@@ -1632,15 +1614,15 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                 width: double.infinity,
                 child: FilledButton.icon(
                   // 함수이름: _buildSelectionFooter.onPressed callback
-                  // 함수역할: `Navigator.pop(context, NearbyPharmacySelection(pharmacy: selectedPharmacy, phoneVerified: _selectedPhoneVerified))`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
+                  // 함수역할: `Navigator.pop(context, NearbyCareSelection(place: selectedPharmacy, phoneVerified: _selectedPhoneVerified))`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
                   // 매개변수:
                   // - 없음.
                   // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
                   onPressed: () {
                     Navigator.pop(
                       context,
-                      NearbyPharmacySelection(
-                        pharmacy: selectedPharmacy,
+                      NearbyCareSelection(
+                        place: selectedPharmacy,
                         phoneVerified: _selectedPhoneVerified,
                         scheduleDate: _targetDateTime,
                       ),
@@ -1660,10 +1642,10 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   // 함수이름: _buildPharmacyMap
   // 함수역할: 주입된 지도 빌더 또는 기본 네이버 지도를 약국 목록·선택 상태에 연결한다.
   // 매개변수:
-  // - pharmacies (List<NearbyPharmacy>): 지도 또는 목록에 배치할 약국 검색 결과.
+  // - pharmacies (List<NearbyCarePlace>): 지도 또는 목록에 배치할 약국 검색 결과.
   // 반환값: 위치 권한·조회 조건에 따른 약국 목록과 지도에 쓰는 위젯 트리.
   Widget _buildPharmacyMap(
-    List<NearbyPharmacy> pharmacies, {
+    List<NearbyCarePlace> pharmacies, {
     double bottomInset = 0,
     bool showControls = true,
   }) {
@@ -1726,16 +1708,16 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   // 함수이름: _selectMapPharmacy
   // 함수역할: 마커 선택을 목록과 같은 지도 상세 보기 동작으로 연결한다.
   // 매개변수: pharmacy: 선택한 약국. 반환값: 없음.
-  void _selectMapPharmacy(NearbyPharmacy pharmacy) {
+  void _selectMapPharmacy(NearbyCarePlace pharmacy) {
     _selectPharmacy(pharmacy);
   }
 
   // 함수이름: _findSelectedPharmacy
   // 함수역할: 현재 선택 ID에 해당하는 약국을 찾는다.
   // 매개변수: pharmacies: 검색 결과. 반환값: 선택한 약국 또는 null.
-  NearbyPharmacy? _findSelectedPharmacy(List<NearbyPharmacy> pharmacies) {
+  NearbyCarePlace? _findSelectedPharmacy(List<NearbyCarePlace> pharmacies) {
     for (final pharmacy in pharmacies) {
-      if (pharmacy.pharmacyId == _selectedPharmacyId) {
+      if (pharmacy.placeId == _selectedPharmacyId) {
         return pharmacy;
       }
     }
@@ -1745,19 +1727,19 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   // 함수이름: _selectPharmacy
   // 함수역할: 선택한 약국 위치로 지도를 이동하고 상세창을 펼치며 다른 약국이면 전화 확인을 지운다.
   // 매개변수:
-  // - pharmacy (NearbyPharmacy): 표시하거나 전화·길찾기·공유할 약국.
+  // - pharmacy (NearbyCarePlace): 표시하거나 전화·길찾기·공유할 약국.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
-  void _selectPharmacy(NearbyPharmacy pharmacy) {
+  void _selectPharmacy(NearbyCarePlace pharmacy) {
     // 함수이름: _selectPharmacy.setState callback
     // 함수역할: 약국 선택과 지도 이동 요청을 함께 반영하고 목록 대신 상세창을 연다.
     // 매개변수:
     // - 없음.
     // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
     setState(() {
-      if (_selectedPharmacyId != pharmacy.pharmacyId) {
+      if (_selectedPharmacyId != pharmacy.placeId) {
         _selectedPhoneVerified = false;
       }
-      _selectedPharmacyId = pharmacy.pharmacyId;
+      _selectedPharmacyId = pharmacy.placeId;
       _listExpanded = false;
       _detailExtent = _PharmacyDetailsSheet.initialExtent;
       _centerRevision++;
@@ -1827,9 +1809,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   // 함수이름: _requestPhoneCall
   // 함수역할: 약국 전화번호로 전화 앱을 열고 실패 시 안내한다.
   // 매개변수:
-  // - pharmacy (NearbyPharmacy): 표시하거나 전화·길찾기·공유할 약국.
+  // - pharmacy (NearbyCarePlace): 표시하거나 전화·길찾기·공유할 약국.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
-  Future<void> _requestPhoneCall(NearbyPharmacy pharmacy) async {
+  Future<void> _requestPhoneCall(NearbyCarePlace pharmacy) async {
     if (!await _control.requestPhoneCall(pharmacy.telephone) && mounted) {
       _showActionFailure(_text.phoneAppFailed);
     }
@@ -1838,9 +1820,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   // 함수이름: _requestDirections
   // 함수역할: 지도 앱 선택을 처리하고 실행 불가 시 Google 지도와 주소 복사로 대체한다.
   // 매개변수:
-  // - pharmacy (NearbyPharmacy): 표시하거나 전화·길찾기·공유할 약국.
+  // - pharmacy (NearbyCarePlace): 표시하거나 전화·길찾기·공유할 약국.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
-  Future<void> _requestDirections(NearbyPharmacy pharmacy) async {
+  Future<void> _requestDirections(NearbyCarePlace pharmacy) async {
     ModalRoute<dynamic>? directionsRoute;
     var didSelect = false;
     final choice = await showModalBottomSheet<_PharmacyDirectionsChoice>(
@@ -1902,11 +1884,11 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   // 함수이름: _copyPharmacyAddress
   // 함수역할: 약국 주소 또는 주소가 없을 때 이름·좌표를 복사하고 대체 동작 여부에 맞게 안내한다.
   // 매개변수:
-  // - pharmacy (NearbyPharmacy): 표시하거나 전화·길찾기·공유할 약국.
+  // - pharmacy (NearbyCarePlace): 표시하거나 전화·길찾기·공유할 약국.
   // - copiedAsFallback (bool): 지도 앱 실행 실패의 대체 동작으로 주소를 복사했는지 여부.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _copyPharmacyAddress(
-    NearbyPharmacy pharmacy, {
+    NearbyCarePlace pharmacy, {
     required bool copiedAsFallback,
   }) async {
     final address = pharmacy.address.trim();
@@ -1967,17 +1949,17 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
 // 주요 책임:
 // - 부모가 전달한 표시값과 동작을 반영해 약국 이름과 지도 앱·주소 복사 선택지 위젯을 구성한다.
 // 속성:
-// - pharmacy (NearbyPharmacy): 표시하거나 전화·길찾기·공유할 약국.
+// - pharmacy (NearbyCarePlace): 표시하거나 전화·길찾기·공유할 약국.
 // - onSelected (ValueChanged<_PharmacyDirectionsChoice>): 변경된 값 또는 선택 상태를 소유 화면에 전달할 콜백.
 class _PharmacyDirectionsSheet extends StatelessWidget {
-  final NearbyPharmacy pharmacy;
+  final NearbyCarePlace pharmacy;
   final _NearbyPharmacyText text;
   final ValueChanged<_PharmacyDirectionsChoice> onSelected;
 
   // 함수이름: _PharmacyDirectionsSheet
   // 함수역할: 약국 이름과 지도 앱·주소 복사 선택지에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
-  // - pharmacy (NearbyPharmacy): 표시하거나 전화·길찾기·공유할 약국.
+  // - pharmacy (NearbyCarePlace): 표시하거나 전화·길찾기·공유할 약국.
   // - text (_NearbyPharmacyText): 해당 화면 구역의 언어별 표시 문구.
   // - onSelected (ValueChanged<_PharmacyDirectionsChoice>): 변경된 값 또는 선택 상태를 소유 화면에 전달할 콜백.
   // 반환값: 입력 설정이 반영된 _PharmacyDirectionsSheet 인스턴스.
@@ -2275,12 +2257,12 @@ class _PharmacyMessageState extends StatelessWidget {
 // 주요 책임:
 // - 부모가 전달한 표시값과 동작을 반영해 약국 운영시간·주소·즐겨찾기와 전화·길찾기 명령 위젯을 구성한다.
 // 속성:
-// - pharmacy (NearbyPharmacy): 표시하거나 전화·길찾기·공유할 약국.
+// - pharmacy (NearbyCarePlace): 표시하거나 전화·길찾기·공유할 약국.
 // - isSelected (bool): 현재 선택 집합에 포함되는지 여부.
 // - isFavorite (bool): 현재 사용자의 약국 즐겨찾기에 포함되는지 여부.
 // - onSelected (VoidCallback): 변경된 값 또는 선택 상태를 소유 화면에 전달할 콜백.
 class _PharmacyCard extends StatelessWidget {
-  final NearbyPharmacy pharmacy;
+  final NearbyCarePlace pharmacy;
   final _NearbyPharmacyText text;
   final bool usesSelectedTime;
   final bool isSelected;
@@ -2297,7 +2279,7 @@ class _PharmacyCard extends StatelessWidget {
   // 함수이름: _PharmacyCard
   // 함수역할: 약국 운영시간·주소·즐겨찾기와 전화·길찾기 명령에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
-  // - pharmacy (NearbyPharmacy): 표시하거나 전화·길찾기·공유할 약국.
+  // - pharmacy (NearbyCarePlace): 표시하거나 전화·길찾기·공유할 약국.
   // - text (_NearbyPharmacyText): 해당 화면 구역의 언어별 표시 문구.
   // - isSelected (bool): 현재 선택 집합에 포함되는지 여부.
   // - isFavorite (bool): 현재 사용자의 약국 즐겨찾기에 포함되는지 여부.
@@ -2369,7 +2351,7 @@ class _PharmacyCard extends StatelessWidget {
       hint: embedded ? null : text.showOnMap,
       child: Material(
         key: ValueKey(
-          '${embedded ? 'pharmacy-detail' : 'pharmacy-card'}-${pharmacy.pharmacyId}',
+          '${embedded ? 'pharmacy-detail' : 'pharmacy-card'}-${pharmacy.placeId}',
         ),
         color: !embedded && isSelected
             ? MedBuddyColors.successSurface
@@ -2558,7 +2540,7 @@ class _PharmacyCard extends StatelessWidget {
                     Expanded(
                       child: FilledButton.icon(
                         key: ValueKey(
-                          'pharmacy-directions-${pharmacy.pharmacyId}',
+                          'pharmacy-directions-${pharmacy.placeId}',
                         ),
                         onPressed: onDirectionsRequested,
                         icon: const Icon(Icons.directions_outlined),
@@ -3083,9 +3065,9 @@ class _NearbyPharmacyText {
   // 함수이름: todayHours
   // 함수역할: 현재 언어와 입력값에 맞춰 "24시간 운영" 문구를 제공한다.
   // 매개변수:
-  // - pharmacy (NearbyPharmacy): 표시하거나 전화·길찾기·공유할 약국.
+  // - pharmacy (NearbyCarePlace): 표시하거나 전화·길찾기·공유할 약국.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String todayHours(NearbyPharmacy pharmacy, {bool usesSelectedTime = false}) {
+  String todayHours(NearbyCarePlace pharmacy, {bool usesSelectedTime = false}) {
     if (pharmacy.is24Hours) {
       return isEnglish ? 'Open 24 hours' : '24시간 운영';
     }
@@ -3103,9 +3085,9 @@ class _NearbyPharmacyText {
   // 함수이름: scheduleTags
   // 함수역할: 현재 언어와 입력값에 맞춰 "늦게까지 영업" 문구를 제공한다.
   // 매개변수:
-  // - pharmacy (NearbyPharmacy): 표시하거나 전화·길찾기·공유할 약국.
+  // - pharmacy (NearbyCarePlace): 표시하거나 전화·길찾기·공유할 약국.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String scheduleTags(NearbyPharmacy pharmacy) {
+  String scheduleTags(NearbyCarePlace pharmacy) {
     final labels = <String>[];
     if (pharmacy.isOfficialLateNight || pharmacy.isOpenLate) {
       labels.add(isEnglish ? 'Open late' : '늦게까지 영업');
@@ -3281,9 +3263,9 @@ class _NearbyPharmacyText {
   // 함수이름: operatingStatusDetail
   // 함수역할: 현재 언어와 입력값에 맞춰 "$remainingMinutes분 후 영업 종료" 문구를 제공한다.
   // 매개변수:
-  // - pharmacy (NearbyPharmacy): 표시하거나 전화·길찾기·공유할 약국.
+  // - pharmacy (NearbyCarePlace): 표시하거나 전화·길찾기·공유할 약국.
   // 반환값: 검증·상태 안내 문구. 안내가 필요하지 않으면 null.
-  String? operatingStatusDetail(NearbyPharmacy pharmacy) {
+  String? operatingStatusDetail(NearbyCarePlace pharmacy) {
     final remainingMinutes = pharmacy.minutesUntilClose;
     if (pharmacy.isOpenNow == true &&
         remainingMinutes != null &&
@@ -3534,7 +3516,7 @@ class _NearbyHospitalText extends _NearbyPharmacyText {
 
   // 조회 날짜별 진료시간과 확인이 필요한 상태를 표시한다.
   @override
-  String todayHours(NearbyPharmacy pharmacy, {bool usesSelectedTime = false}) {
+  String todayHours(NearbyCarePlace pharmacy, {bool usesSelectedTime = false}) {
     if (pharmacy.is24Hours) {
       return isEnglish ? '24-hour consultation schedule' : '24시간 진료 일정';
     }
@@ -3550,14 +3532,14 @@ class _NearbyHospitalText extends _NearbyPharmacyText {
 
   // 병원 태그에는 약국 공공심야 지정 정보를 사용하지 않는다.
   @override
-  String scheduleTags(NearbyPharmacy pharmacy) => [
+  String scheduleTags(NearbyCarePlace pharmacy) => [
     if (pharmacy.isOpenLate) lateHours,
     if (pharmacy.hasWeekendOrHolidayHours) weekendHoliday,
   ].join(' · ');
 
   // 시간 계산은 공통 구현을 사용하고 진료 용어만 바꾼다.
   @override
-  String? operatingStatusDetail(NearbyPharmacy pharmacy) {
+  String? operatingStatusDetail(NearbyCarePlace pharmacy) {
     final detail = super.operatingStatusDetail(pharmacy);
     return isEnglish ? detail : detail?.replaceAll('영업', '진료');
   }

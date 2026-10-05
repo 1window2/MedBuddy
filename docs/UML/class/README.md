@@ -118,3 +118,12 @@ under `CheckNearbyCare`, and generic GPS values live outside the pharmacy module
 Chat history/recovery/read state belongs to `LinkedChatHistoryViewModel`, while
 conversation-scoped presentation retains composer, navigation and adapter ownership.
 The changed class and sequence PNGs are regenerated together with their sources.
+
+The 2026-10-05 continuation gives outgoing chat requests a separate
+`LinkedChatComposerViewModel` and immutable `ChatMessageDraft`; screen text fields
+and navigation remain presentation-owned. Shared nearby-care display/search and
+selection values use neutral entities with explicit radii, while provider wire
+fields and favorite-storage namespaces remain unchanged. Prescription verification
+captures an Engine-bound worker factory before async work; Connection-bound request
+transactions are never passed to catalog workers. The seven affected class/sequence
+sources and matching PNGs are synchronized locally.
