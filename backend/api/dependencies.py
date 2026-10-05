@@ -10,7 +10,6 @@ from threading import Lock
 
 from fastapi import Depends, Header, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -55,6 +54,7 @@ from boundaries.push_notification_boundary import (
 )
 from core.config import settings
 from core.account_operation_locks import AccountOperationLocks
+from core.account_database_lock import lock_account_operations
 from core.database import get_db
 from core.request_database_work import run_request_database_work
 from core.request_rate_limits import (
@@ -115,6 +115,19 @@ _push_notification_boundary: PushNotificationBoundary | None = None
 _sqlite_account_lock_registry = AccountOperationLocks()
 _SQLITE_ACCOUNT_LOCK_WAIT_SECONDS = 5.0
 _bearer_scheme = HTTPBearer(auto_error=False)
+
+# 공개 정보 조회만 조기에 연결을 반환한다. 사용자 데이터 변경 경로는 포함하지 않는다.
+# 건강 추천은 별도로 읽기·저장 양쪽에서 계정 삭제와 연동 변경을 재검증한다.
+_DETACHED_LOOKUP_ROUTES = frozenset({
+    ("POST", "/api/v1/medication/identify"),
+    ("POST", "/api/v1/medication/analyze-prescription-text"),
+    ("POST", "/api/v1/medication/pill-identification/candidates"),
+    ("POST", "/api/v1/medication/pill-identification/multiple-candidates"),
+    ("POST", "/api/v1/medication/voice-guide"),
+    ("GET", "/api/v1/pharmacy/nearby"),
+    ("GET", "/api/v1/hospitals/nearby"),
+    ("GET", "/api/v1/medication/health/recommendation"),
+})
 
 
 # Function Name: get_oidc_token_verifier
@@ -296,26 +309,7 @@ def get_recently_authenticated_principal(
 def _lock_account_operation(db: Session, user_hash: str) -> None:
     if db.in_transaction():
         return
-    dialect_name = db.get_bind().dialect.name
-    if dialect_name == "postgresql":
-        db.execute(
-            text("SELECT set_config('lock_timeout', :timeout, true)"),
-            {"timeout": "5s"},
-        )
-        db.execute(
-            text(
-                "SELECT pg_advisory_xact_lock("
-                "hashtextextended(:user_hash, 0))"
-            ),
-            {"user_hash": user_hash},
-        )
-        return
-    if dialect_name == "sqlite":
-        db.connection().exec_driver_sql("BEGIN IMMEDIATE")
-        return
-    raise RuntimeError(
-        "Authenticated account-operation locking requires PostgreSQL or SQLite."
-    )
+    lock_account_operations(db, [user_hash])
 
 
 # 함수이름: _register_account_scope
@@ -338,6 +332,19 @@ def _register_account_scope(db: Session, user_hash: str) -> None:
         db.commit()
 
 
+# 외부 조회 등록과 연결 반환을 한 작업으로 묶어 중간에 연결을 빌린 채 대기하지 않는다.
+# 함수이름: _register_detached_lookup_scope
+# 함수역할: 인증 계정 등록을 commit하고 실패·취소 시 rollback한다.
+# 매개변수: db: 요청 세션, user_hash: 인증된 계정 식별자. 반환값: 없음.
+def _register_detached_lookup_scope(db: Session, user_hash: str) -> None:
+    try:
+        _register_account_scope(db, user_hash)
+        db.commit()
+    except BaseException:
+        db.rollback()
+        raise
+
+
 # Function Name: get_registered_principal
 # Description:
 # - Enforces per-user request quotas and account registration, holding the SQLite account lock through endpoint execution and allowing deletion retries.
@@ -354,6 +361,7 @@ async def get_registered_principal(
 ) -> AsyncGenerator[AuthenticatedPrincipal, None]:
     route = request.scope.get("route")
     route_path = str(getattr(route, "path", request.url.path))
+    detach_registration = (request.method.upper(), route_path) in _DETACHED_LOOKUP_ROUTES
     resolved_rule = resolve_rate_limit_rule(
         request.method,
         route_path,
@@ -381,7 +389,8 @@ async def get_registered_principal(
             )
     # Step 1: Hold SQLite ownership through registration and endpoint teardown.
     async with AsyncExitStack() as account_scope:
-        if db.get_bind().dialect.name == "sqlite":
+        # 공개 조회와 재검증형 추천은 DB 단계만 잠그고 외부 응답 대기에는 계정을 붙잡지 않는다.
+        if db.get_bind().dialect.name == "sqlite" and not detach_registration:
             try:
                 await account_scope.enter_async_context(
                     _sqlite_account_lock_registry.hold(
@@ -398,14 +407,24 @@ async def get_registered_principal(
 
         # Step 2: Keep PostgreSQL registration off-loop and map account failures.
         try:
-            if db.get_bind().dialect.name == "postgresql":
+            register_scope = (
+                _register_detached_lookup_scope if detach_registration else _register_account_scope
+            )
+            # 외부 조회의 짧은 등록도 잠금 대기 때문에 이벤트 루프를 막지 않게 한다.
+            bind = db.get_bind()
+            # 연결마다 DB가 분리되는 인메모리 SQLite의 기존 실행 스레드는 유지한다.
+            file_backed_sqlite = (
+                bind.dialect.name == "sqlite"
+                and bind.engine.url.database not in {None, "", ":memory:"}
+            )
+            if bind.dialect.name == "postgresql" or (detach_registration and file_backed_sqlite):
                 await run_request_database_work(
-                    _register_account_scope,
+                    register_scope,
                     db,
                     principal.user_hash,
                 )
             else:
-                _register_account_scope(db, principal.user_hash)
+                register_scope(db, principal.user_hash)
         except AccountDeletionPendingError as exc:
             is_account_deletion_retry = (
                 request.method.upper() == "DELETE"

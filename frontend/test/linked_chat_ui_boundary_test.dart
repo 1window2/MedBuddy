@@ -675,6 +675,71 @@ ChatMessage _deletionMessage({
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  // 함수이름: 입력 갱신 회귀 테스트
+  // 함수역할: 입력 시 기존 목록·말풍선은 유지되고 전송 가능 여부만 바뀌는지 검사한다.
+  // 매개변수: tester: 위젯 테스트 도구. 반환값: 검증 완료.
+  testWidgets('입력만 바뀌면 메시지 목록을 다시 그리지 않는다', (tester) async {
+    final control = _RetryChatControl(
+      historyMessages: [
+        for (var id = 1; id <= 35; id++) _deletionMessage(id: id),
+      ],
+    );
+    final realtime = _FakeRealtimeService();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkedChatUI(
+          linkId: 17,
+          currentUserHash: 'patient-a',
+          patientHash: 'patient-a',
+          control: control,
+          realtimeService: realtime,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final existing = tester.allElements.toSet();
+    expect(
+      existing.where(
+        (element) => element.widget.runtimeType.toString() == '_MessageBubble',
+      ),
+      isNotEmpty,
+    );
+    final rebuilt = <String>[];
+    final previousCallback = debugOnRebuildDirtyWidget;
+    addTearDown(() => debugOnRebuildDirtyWidget = previousCallback);
+    debugOnRebuildDirtyWidget = (element, builtOnce) {
+      if (existing.contains(element)) {
+        rebuilt.add(element.widget.runtimeType.toString());
+      }
+    };
+    final input = tester.widget<TextField>(find.byType(TextField));
+    input.controller!.text = 'test';
+    input.onChanged!('test');
+    await tester.pump();
+    debugOnRebuildDirtyWidget = previousCallback;
+    expect(rebuilt, isNot(contains('_LinkedChatSessionUI')));
+    expect(rebuilt, isNot(contains('_MessageBubble')));
+    expect(rebuilt, isNot(contains('ListView')));
+    expect(
+      tester
+          .widget<IconButton>(find.byKey(const ValueKey('chatSendButton')))
+          .onPressed,
+      isNotNull,
+    );
+    input.controller!.clear();
+    input.onChanged!('');
+    await tester.pump();
+    expect(
+      tester
+          .widget<IconButton>(find.byKey(const ValueKey('chatSendButton')))
+          .onPressed,
+      isNull,
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+    await realtime.dispose();
+    control.dispose();
+  });
+
   // 발신 말풍선의 1은 상대 읽음 범위만큼 사라지고 오래된 조회가 복원하지 않는다.
   testWidgets('outgoing unread receipt clears on peer read and stays cleared', (
     tester,

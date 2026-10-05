@@ -99,6 +99,13 @@ class _NotificationControlStub:
 # 속성:
 # - requested_patient_hashes (list[str]): 일정 조회에 전달된 환자 범위 기록.
 class _TodayMedicationControlStub:
+    # 일괄 조회 경계에서도 기존 환자별 시험 응답을 그대로 제공한다.
+    # 함수이름: requestTodayMedicationInfoForPatients
+    # 함수역할: 일괄 조회 호출을 기존 테스트 응답으로 변환한다.
+    # 매개변수: patient_hashes: 시험 환자 목록. 반환값: 환자별 fixture 응답.
+    def requestTodayMedicationInfoForPatients(self, patient_hashes: list[str]) -> dict[str, dict[str, object]]:
+        return {owner: self.requestTodayMedicationInfo(owner) for owner in patient_hashes}
+
     # 함수이름: __init__
     # 함수역할:
     # - 환자별 오늘 일정 조회 이력을 빈 목록으로 준비한다.

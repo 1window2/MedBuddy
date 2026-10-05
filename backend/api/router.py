@@ -882,16 +882,29 @@ async def get_health_recommendation(
         get_check_health_recommendation
     ),
 ) -> dict[str, object]:
+    # 권한 조회도 같은 작업 안에서 연결을 반환해 다음 작업의 실행 자리를 기다리지 않는다.
+    # 함수이름: resolve_recommendation_owner
+    # 함수역할: 현재 요청의 환자 범위를 확인한 후 읽기 transaction을 끝낸다.
+    # 매개변수: 없음. 반환값: 허가된 환자 식별자, 권한 실패 시 HTTPException.
+    def resolve_recommendation_owner() -> str:
+        try:
+            return authorization.resolvePatientScope(
+                principal, patient_hash, allow_caregiver=True,
+            )
+        finally:
+            if authorization.db is not None:
+                authorization.db.rollback()
+
     try:
         authorized_patient_hash = await run_request_database_work(
-            authorization.resolvePatientScope,
-            principal,
-            patient_hash,
-            allow_caregiver=True,
+            resolve_recommendation_owner,
         )
         return await check_health_recommendation.requestHealthRecommendation(
             authorized_patient_hash,
             language,
+            validate_access=lambda: authorization.validateRecommendationScope(
+                principal, authorized_patient_hash,
+            ),
         )
     except HTTPException:
         raise

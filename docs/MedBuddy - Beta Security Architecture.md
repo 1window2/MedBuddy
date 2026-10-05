@@ -54,7 +54,8 @@ responsibilities without improving MedBuddy's medication domain.
 | Backend runtime service | `ChatConnectionManager` | Own in-process WebSocket memberships and broadcast only to connections authorized for the same active link. |
 | Backend composition root | `api.dependencies` | Construct the principal and inject authorized controls. |
 | Backend dependency policy | `get_recently_authenticated_principal` | Require a recent `auth_time` for irreversible credential-backed account deletion; anonymous guests have an explicit exception. |
-| Backend dependency policy | `_lock_account_operation` | Serialize every authenticated account request with deletion using a transaction-scoped PostgreSQL advisory lock or a local SQLite write transaction. |
+| Backend dependency policy | `_lock_account_operation` | Serialize ordinary account operations with deletion. Explicit public lookup routes release registration transactions before external work; user-data mutations retain their existing lock policy. |
+| Backend authorization policy | `validateRecommendationScope` | Lock caller/patient scopes in sorted order and recheck account existence, deletion and active links in each health-recommendation database phase. No connection is held during the external AI wait; changed active-medication inputs reject the generated result. |
 | Backend external boundary | `FirebaseIdentityDeletionBoundary` | Delete only the verified Firebase subject through Admin SDK and treat already-absent identities as idempotent success. |
 | Backend control | `ManageAccount` | Persist deletion tombstones, purge account-owned data, and complete retryable external identity deletion. |
 

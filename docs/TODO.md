@@ -14,6 +14,19 @@ Code cleanup is not release acceptance. Physical-device tests and Google Play
 enrollment remain deferred by the owner; all related unchecked gates stay open.
 Unimplemented enhancements below are explicitly outside this candidate.
 
+### Current stabilization acceptance follow-up
+
+- [ ] Reproduce and diagnose the first health-recommendation request failure
+      observed in the [October 5 contributor emulator checks](qa/v0.2.0-2026-10-05-refactor-validation.md).
+      Later generation/cache/retry success does not establish the original cause
+      or close this finding. Preserve sanitized failure evidence before changing
+      existing behavior; do not add product functionality as part of this triage.
+- [ ] Validate native map-marker recovery after a partially successful platform
+      addition followed by a failed call and then empty/changed search results.
+      The incremental cache records additions only after the whole call succeeds;
+      pure-diff tests do not establish native failure recovery. This is a
+      review-identified conditional risk, not an observed device failure.
+
 Current implementation, verification evidence, and remaining work are summarized
 in [the September 21 architecture and roadmap review](qa/v0.2.0-2026-09-21-architecture-review.md).
 The subsequent offline-dose date-boundary correction and SDK/lockfile follow-up

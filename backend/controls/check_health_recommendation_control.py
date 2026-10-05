@@ -5,6 +5,7 @@ import json
 import logging
 import hashlib
 from datetime import date
+from collections.abc import Callable
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -71,6 +72,8 @@ class CheckHealthRecommendation:
         self,
         patient_hash: str | None = None,
         language: str = "ko",
+        *,
+        validate_access: Callable[[], None] | None = None,
     ) -> dict[str, object]:
         normalized_patient_hash = normalize_patient_hash(patient_hash)
         (
@@ -78,10 +81,11 @@ class CheckHealthRecommendation:
             recommendation_key,
             cached_recommendation,
         ) = await run_request_database_work(
-            self._read_recommendation_snapshot,
+            self._read_scoped_snapshot if validate_access else self._read_recommendation_snapshot,
             normalized_patient_hash,
             application_today(),
             language,
+            **({"validate_access": validate_access} if validate_access else {}),
         )
         if cached_recommendation is not None:
             return self._build_response(
@@ -94,6 +98,18 @@ class CheckHealthRecommendation:
             medication_summaries,
             language,
         )
+        # 재검증 콜백이 있는 API 경로는 외부 대기 중 연결을 보유하지 않는다.
+        # 콜백 없는 기존 호출자는 위에 문서화된 호출자 트랜잭션 계약을 유지한다.
+        if validate_access is not None:
+            response = self._build_response(
+                recommendation, medication_summaries, "Health recommendation generated.",
+            )
+            await run_request_database_work(
+                self._save_revalidated_recommendation,
+                normalized_patient_hash, language, recommendation_key,
+                recommendation, validate_access,
+            )
+            return response
         await run_request_database_work(
             self._save_cached_recommendation,
             normalized_patient_hash,
@@ -105,6 +121,46 @@ class CheckHealthRecommendation:
             medication_summaries,
             "Health recommendation generated.",
         )
+
+    # 최초 권한 조회의 읽기 트랜잭션을 끝내고, 잠금 아래 만든 값만 외부로 넘긴다.
+    # 함수이름: _read_scoped_snapshot
+    # 함수역할: 접근 권한을 확인하고 추천 입력과 cache를 읽은 뒤 연결을 반환한다.
+    # 매개변수: patient_hash: 환자, today: 기준일, language: 언어, validate_access: 잠금·권한 검증.
+    # 반환값: 약 요약·cache key·cache payload. 검증 오류는 호출자에게 전달한다.
+    def _read_scoped_snapshot(
+        self, patient_hash: str, today: date, language: str,
+        *, validate_access: Callable[[], None],
+    ) -> tuple[list[dict[str, str]], str, dict[str, object] | None]:
+        self.db.rollback()
+        try:
+            validate_access()
+            snapshot = self._read_recommendation_snapshot(patient_hash, today, language)
+            self.db.commit()
+            return snapshot
+        finally:
+            self.db.rollback()
+
+    # 삭제·연동 해제·복약 변경 중에 생성된 응답은 반환하거나 캐시에 되살리지 않는다.
+    # 함수이름: _save_revalidated_recommendation
+    # 함수역할: 현재 권한·복약 입력을 다시 확인한 후 유효한 추천만 저장한다.
+    # 매개변수: patient_hash: 환자, language: 언어, recommendation_key: 원래 입력 key,
+    # - recommendation: 생성 결과, validate_access: 잠금·권한 검증.
+    # 반환값: 없음. 입력 변경 시 409, 그 밖의 검증 오류는 그대로 전달한다.
+    def _save_revalidated_recommendation(
+        self, patient_hash: str, language: str, recommendation_key: str,
+        recommendation: dict[str, object], validate_access: Callable[[], None],
+    ) -> None:
+        try:
+            validate_access()
+            _, current_key, cached = self._read_recommendation_snapshot(
+                patient_hash, application_today(), language,
+            )
+            if current_key != recommendation_key:
+                raise HTTPException(409, "복약 정보가 변경되었습니다. 다시 조회해주세요.")
+            if cached is None:
+                self._save_cached_recommendation(patient_hash, recommendation_key, recommendation)
+        finally:
+            self.db.rollback()
 
     # Function Name: _read_recommendation_snapshot
     # Description:

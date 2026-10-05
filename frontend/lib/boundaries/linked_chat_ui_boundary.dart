@@ -1959,99 +1959,102 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
                 ),
               ),
             ],
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                IconButton.outlined(
-                  key: const ValueKey('chatMedicationSelector'),
-                  tooltip: _medicationContexts.isEmpty
-                      ? _text.noActiveMedication
-                      : _text.selectMedication,
-                  onPressed: _medicationContexts.isEmpty || _isSending
-                      ? null
-                      : _showMedicationSelector,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 48,
-                    height: 48,
-                  ),
-                  icon: const Icon(Icons.medication_outlined),
-                ),
-                if (_requestableScheduleContexts.isNotEmpty) ...[
-                  const SizedBox(width: 6),
+            // 입력 중에는 이 행만 갱신해 메시지 목록과 읽음 위치를 유지한다.
+            StatefulBuilder(
+              builder: (context, setState) => Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
                   IconButton.outlined(
-                    key: const ValueKey('chatScheduleSelector'),
-                    tooltip: _text.selectScheduleSlot,
-                    onPressed: _isSending ? null : _showScheduleSelector,
+                    key: const ValueKey('chatMedicationSelector'),
+                    tooltip: _medicationContexts.isEmpty
+                        ? _text.noActiveMedication
+                        : _text.selectMedication,
+                    onPressed: _medicationContexts.isEmpty || _isSending
+                        ? null
+                        : _showMedicationSelector,
                     constraints: const BoxConstraints.tightFor(
                       width: 48,
                       height: 48,
                     ),
-                    icon: const Icon(Icons.schedule_rounded),
+                    icon: const Icon(Icons.medication_outlined),
                   ),
-                ],
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: _messageController,
-                    enabled: !_isSending,
-                    minLines: 1,
-                    maxLines: 4,
-                    maxLength: 500,
-                    textInputAction: TextInputAction.newline,
-                    // 함수이름: _buildComposer.setState callback
-                    // 함수역할: 캡처된 값을 변경하지 않는다. 호출자가 화면 갱신을 요청하거나 해당 상호작용을 비활성화한다.
-                    // 매개변수:
-                    // - 없음.
-                    // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                    // 함수이름: _buildComposer.onChanged callback
-                    // 함수역할: 연동 사용자 메시지와 복약 관련 첨부에서 캡처된 작업 `setState(() {})`을 실행한다.
-                    // 매개변수:
-                    // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
-                    // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                    onChanged: (_) => setState(() {}),
-                    decoration: InputDecoration(
-                      hintText: _selectedMedicationContexts.isEmpty
-                          ? null
-                          : _text.exampleMessage(
-                              _suggestedMessage(_selectedMedicationContexts),
-                            ),
-                      counterText: '',
-                      filled: true,
-                      fillColor: MedBuddyColors.surfaceSubtle,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
+                  if (_requestableScheduleContexts.isNotEmpty) ...[
+                    const SizedBox(width: 6),
+                    IconButton.outlined(
+                      key: const ValueKey('chatScheduleSelector'),
+                      tooltip: _text.selectScheduleSlot,
+                      onPressed: _isSending ? null : _showScheduleSelector,
+                      constraints: const BoxConstraints.tightFor(
+                        width: 48,
+                        height: 48,
                       ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        borderSide: BorderSide.none,
+                      icon: const Icon(Icons.schedule_rounded),
+                    ),
+                  ],
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: _messageController,
+                      enabled: !_isSending,
+                      minLines: 1,
+                      maxLines: 4,
+                      maxLength: 500,
+                      textInputAction: TextInputAction.newline,
+                      // 함수이름: _buildComposer.setState callback
+                      // 함수역할: 캡처된 값을 변경하지 않는다. 호출자가 화면 갱신을 요청하거나 해당 상호작용을 비활성화한다.
+                      // 매개변수:
+                      // - 없음.
+                      // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                      // 함수이름: _buildComposer.onChanged callback
+                      // 함수역할: 연동 사용자 메시지와 복약 관련 첨부에서 캡처된 작업 `setState(() {})`을 실행한다.
+                      // 매개변수:
+                      // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
+                      // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                      onChanged: (_) => setState(() {}),
+                      decoration: InputDecoration(
+                        hintText: _selectedMedicationContexts.isEmpty
+                            ? null
+                            : _text.exampleMessage(
+                                _suggestedMessage(_selectedMedicationContexts),
+                              ),
+                        counterText: '',
+                        filled: true,
+                        fillColor: MedBuddyColors.surfaceSubtle,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                IconButton.filled(
-                  key: const ValueKey('chatSendButton'),
-                  tooltip: _text.sendMessage,
-                  onPressed:
-                      !_isSending && _messageController.text.trim().isNotEmpty
-                      ? _sendMessage
-                      : null,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 48,
-                    height: 48,
+                  const SizedBox(width: 8),
+                  IconButton.filled(
+                    key: const ValueKey('chatSendButton'),
+                    tooltip: _text.sendMessage,
+                    onPressed:
+                        !_isSending && _messageController.text.trim().isNotEmpty
+                        ? _sendMessage
+                        : null,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 48,
+                      height: 48,
+                    ),
+                    icon: _isSending
+                        ? const SizedBox.square(
+                            dimension: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.send_rounded),
                   ),
-                  icon: _isSending
-                      ? const SizedBox.square(
-                          dimension: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.send_rounded),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),

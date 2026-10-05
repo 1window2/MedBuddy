@@ -82,11 +82,22 @@ class CheckCaregiverMonitoring:
             )
         )
 
+        schedule_owners = [
+            owner for owner in patient_hashes
+            if include_all_schedules or any(
+                setting.get("notification_type") != CAREGIVER_NOTIFICATION_MODE_DISABLED
+                for setting in settings_by_patient.get(owner, [])
+            )
+        ]
+        today_by_patient = self.today_medication_control.requestTodayMedicationInfoForPatients(
+            schedule_owners
+        )
         patients = [
             self._build_patient_snapshot(
                 link,
                 settings_by_patient.get(str(link.patient_hash), []),
                 include_all_schedules=include_all_schedules,
+                today_response=today_by_patient.get(str(link.patient_hash)),
             )
             for link in links
         ]
@@ -114,6 +125,7 @@ class CheckCaregiverMonitoring:
         notification_settings: list[dict[str, object]],
         *,
         include_all_schedules: bool = False,
+        today_response: dict[str, object] | None = None,
     ) -> dict[str, object]:
         patient_hash = str(link.patient_hash)
         has_active_setting = any(
@@ -127,9 +139,7 @@ class CheckCaregiverMonitoring:
         }
         # 홈에서는 알림을 꺼 둔 환자의 일정도 필요하다. 약 상세 정보는 읽지 않는다.
         if include_all_schedules or has_active_setting:
-            response = self.today_medication_control.requestTodayMedicationInfo(
-                patient_hash
-            )
+            response = today_response or {}
             raw_data = response.get("data")
             if isinstance(raw_data, dict):
                 today_medication_info = raw_data

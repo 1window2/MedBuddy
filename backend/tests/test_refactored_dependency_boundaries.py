@@ -155,7 +155,7 @@ def test_medication_name_matching_stays_runtime_independent() -> None:
 # - None; helpers must remain public collaborators rather than be embedded again.
 def test_medication_detail_control_contains_only_orchestration_class() -> None:
     source = ROOT / "backend/controls/check_medication_detail_control.py"
-    classes = [node.name for node in ast.parse(source.read_text()).body if isinstance(node, ast.ClassDef)]
+    classes = [node.name for node in ast.parse(source.read_text(encoding="utf-8")).body if isinstance(node, ast.ClassDef)]
     assert classes == ["CheckMedicationDetail"]
 
 
@@ -178,7 +178,7 @@ def test_catalog_workers_never_consult_borrowed_request_sessions() -> None:
             "_save_approval_summary_with_isolated_session",
         }),
     ):
-        tree = ast.parse((ROOT / "backend" / relative_path).read_text())
+        tree = ast.parse((ROOT / "backend" / relative_path).read_text(encoding="utf-8"))
         methods = {
             node.name: node
             for node in ast.walk(tree)
