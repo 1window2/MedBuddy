@@ -4,7 +4,7 @@
 
 from datetime import date
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from entities.saved_medication_entity import _SavedMedication
 
@@ -41,6 +41,32 @@ class SavedMedicationRepository:
         return (
             self.db.query(_SavedMedication)
             .filter(_SavedMedication.patient_hash == patient_hash)
+            .order_by(_SavedMedication.id.asc())
+            .all()
+        )
+
+    # 일정 응답에 필요한 열만 읽고, 사용하지 않는 상세 안내의 지연 조회도 막는다.
+    # 함수이름: list_schedule_medications_for_patients
+    # 함수역할: 지정한 환자들의 일정 필드만 일괄 조회한다.
+    # 매개변수: patient_hashes: 호출자가 검증한 환자 범위. 반환값: 약 ID 순서의 ORM 행.
+    def list_schedule_medications_for_patients(
+        self, patient_hashes: list[str],
+    ) -> list[_SavedMedication]:
+        if not patient_hashes:
+            return []
+        return (
+            self.db.query(_SavedMedication)
+            .options(load_only(
+                _SavedMedication.id, _SavedMedication.patient_hash,
+                _SavedMedication.item_name, _SavedMedication.dosage_per_time,
+                _SavedMedication.daily_frequency, _SavedMedication.total_days,
+                _SavedMedication.schedule_slot_keys, _SavedMedication.created_date,
+                _SavedMedication.prescription_date, _SavedMedication.medication_status,
+                _SavedMedication.medication_status_date, _SavedMedication.image_url,
+                _SavedMedication.efficacy, _SavedMedication.use_method,
+                _SavedMedication.warning_message, raiseload=True,
+            ))
+            .filter(_SavedMedication.patient_hash.in_(patient_hashes))
             .order_by(_SavedMedication.id.asc())
             .all()
         )

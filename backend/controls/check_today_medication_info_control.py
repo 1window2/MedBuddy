@@ -51,6 +51,25 @@ class CheckTodayMedicationInfo:
             resolved_patient_hash,
         )
         schedules = self._read_schedule_items(schedule_response.get("data"))
+        return self._summarize(resolved_patient_hash, schedules)
+
+    # 환자별 반복 조회 없이 동일한 일정·진행률 응답을 구성한다.
+    # 함수이름: requestTodayMedicationInfoForPatients
+    # 함수역할: 허가된 여러 환자의 오늘 일정을 일괄 조회하고 요약한다.
+    # 매개변수: patient_hashes: 접근을 검증한 환자 목록. 반환값: 환자별 요약 응답.
+    def requestTodayMedicationInfoForPatients(
+        self, patient_hashes: list[str],
+    ) -> dict[str, dict[str, object]]:
+        schedules = self.check_schedule.requestTodayMedicationSchedulesForPatients(patient_hashes)
+        return {owner: self._summarize(owner, items) for owner, items in schedules.items()}
+
+    # 단일 조회와 일괄 조회가 완료 횟수와 남은 횟수를 같은 규칙으로 계산한다.
+    # 함수이름: _summarize
+    # 함수역할: 조회 없이 주어진 일정의 완료·남은 횟수를 계산한다.
+    # 매개변수: resolved_patient_hash: 환자, schedules: 일정 DTO 목록. 반환값: 요약 응답.
+    def _summarize(
+        self, resolved_patient_hash: str, schedules: list[dict[str, Any]],
+    ) -> dict[str, object]:
         total_dose_count = sum(self._dose_count(schedule) for schedule in schedules)
         completed_dose_count = sum(
             self._completed_dose_count(schedule) for schedule in schedules

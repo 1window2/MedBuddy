@@ -112,6 +112,43 @@ class CheckSchedule:
             "data": active_schedules,
         }
 
+    # 연동으로 허가된 환자들의 일정을 두 번의 조회로 묶되 기존 일정 변환 규칙을 재사용한다.
+    # 함수이름: requestTodayMedicationSchedulesForPatients
+    # 함수역할: 허가된 환자 400명씩 일정과 오늘 완료 기록을 묶어 읽는다.
+    # 매개변수: patient_hashes: 상위 control에서 접근을 검증한 환자 목록.
+    # 반환값: 환자별 기존 일정 DTO 목록. 빈 입력은 빈 사전.
+    def requestTodayMedicationSchedulesForPatients(
+        self, patient_hashes: list[str],
+    ) -> dict[str, list[dict[str, object]]]:
+        owners = list(dict.fromkeys(normalize_patient_hash(value) for value in patient_hashes))
+        schedules: dict[str, list[dict[str, object]]] = {owner: [] for owner in owners}
+        today = application_today()
+        # 많은 연동에서도 DB의 매개변수 수 제한을 넘지 않도록 묶음을 제한한다.
+        for start in range(0, len(owners), 400):
+            batch = owners[start:start + 400]
+            medications = self.medication_repository.list_schedule_medications_for_patients(batch)
+            active = [med for med in medications if self._is_active_today(med, today)]
+            if not active:
+                continue
+            rows = (
+                self.db.query(_MedicationCompletion)
+                .join(_SavedMedication, _SavedMedication.id == _MedicationCompletion.saved_medication_id)
+                .filter(
+                    _SavedMedication.patient_hash.in_(batch),
+                    _MedicationCompletion.patient_hash == _SavedMedication.patient_hash,
+                    _MedicationCompletion.schedule_date == today,
+                )
+                .all()
+            )
+            completions: dict[int, list[_MedicationCompletion]] = {}
+            for row in rows:
+                completions.setdefault(int(row.saved_medication_id), []).append(row)
+            for medication in active:
+                schedules[str(medication.patient_hash)].append(self._to_schedule_dict(
+                    medication, today, completions.get(int(medication.id), []),
+                ))
+        return schedules
+
     # Function Name: requestMedicationScheduleWindow
     # Description:
     # - Reads medication courses that overlap a bounded rolling date window.
