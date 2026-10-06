@@ -18,6 +18,12 @@ Full physical acceptance remains incomplete. Google Play enrollment remains
 deferred and two-device checks remain unperformed.
 Unimplemented enhancements below are explicitly outside this candidate.
 
+October 6 cleanup consolidates existing pill-upload transport and settings draft
+handling and removes a map callback wrapper; see [the cleanup evidence](qa/v0.2.0-architecture-gates.md#latest-cleanup-evidence--2026-10-06).
+It reduces production source by 69 lines without changing dependencies or public
+contracts. The phone's `866db67` build predates this cleanup; remote CI and signed
+artifact evidence must be refreshed before accepting a final candidate.
+
 ### Current stabilization acceptance follow-up
 
 - [ ] Diagnose the observed notification unread-state difference across the

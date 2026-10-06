@@ -201,63 +201,20 @@ class IdentifyPill {
       if (backImage != null) {
         _validateImageBytes(backImage);
       }
-      final abortTrigger = Completer<void>();
-      _abortTriggers.add(abortTrigger);
-      final request =
-          http.AbortableMultipartRequest(
-              'POST',
-              Uri.parse('$baseUrl/pill-identification/candidates'),
-              abortTrigger: abortTrigger.future,
-            )
-            ..files.add(
-              http.MultipartFile.fromBytes(
-                'front',
-                frontImage,
-                filename: 'pill-front.jpg',
-              ),
-            );
-      if (backImage != null) {
-        request.files.add(
+      final response = await _requestCandidates('candidates', [
+        http.MultipartFile.fromBytes(
+          'front',
+          frontImage,
+          filename: 'pill-front.jpg',
+        ),
+        if (backImage != null)
           http.MultipartFile.fromBytes(
             'back',
             backImage,
             filename: 'pill-back.jpg',
           ),
-        );
-      }
-
-      late final http.Response response;
-      try {
-        response = await _client
-            .send(request)
-            .then(http.Response.fromStream)
-            .timeout(
-              requestTimeout,
-              onTimeout: /* Function Name: onTimeout callback
-               * Description: Signals request abortion once and reports the pill-identification timeout.
-               * Parameters:
-               * - None.
-               * Returns:
-               * - Never returns normally; throws the timed-out identification exception.
-               */ () {
-                if (!abortTrigger.isCompleted) {
-                  abortTrigger.complete();
-                }
-                throw const PillIdentificationException(
-                  PillIdentificationFailure.timedOut,
-                );
-              },
-            );
-      } finally {
-        _abortTriggers.remove(abortTrigger);
-      }
-      if (response.statusCode != 200) {
-        throw _exceptionForResponse(response);
-      }
-      final responseBody = ApiResponseParser.decodeBody(response);
-      return PillIdentificationResult.fromJson(
-        ApiResponseParser.decodeMap(responseBody),
-      );
+      ]);
+      return PillIdentificationResult.fromJson(response);
     } on PillIdentificationException {
       rethrow;
     } on FormatException catch (error) {
@@ -298,53 +255,14 @@ class IdentifyPill {
   }) async {
     try {
       _validateImageBytes(image);
-      final abortTrigger = Completer<void>();
-      _abortTriggers.add(abortTrigger);
-      final request =
-          http.AbortableMultipartRequest(
-              'POST',
-              Uri.parse('$baseUrl/pill-identification/multiple-candidates'),
-              abortTrigger: abortTrigger.future,
-            )
-            ..files.add(
-              http.MultipartFile.fromBytes(
-                'image',
-                image,
-                filename: 'multiple-pills.jpg',
-              ),
-            );
-      late final http.Response response;
-      try {
-        response = await _client
-            .send(request)
-            .then(http.Response.fromStream)
-            .timeout(
-              requestTimeout,
-              onTimeout: /* Function Name: onTimeout callback
-               * Description: Aborts the pending batch-identification request once and reports a timeout.
-               * Parameters:
-               * - None.
-               * Returns:
-               * - Never returns normally; throws the timed-out identification exception.
-               */ () {
-                if (!abortTrigger.isCompleted) {
-                  abortTrigger.complete();
-                }
-                throw const PillIdentificationException(
-                  PillIdentificationFailure.timedOut,
-                );
-              },
-            );
-      } finally {
-        _abortTriggers.remove(abortTrigger);
-      }
-      if (response.statusCode != 200) {
-        throw _exceptionForResponse(response);
-      }
-      final responseBody = ApiResponseParser.decodeBody(response);
-      return MultiplePillIdentificationResult.fromJson(
-        ApiResponseParser.decodeMap(responseBody),
-      );
+      final response = await _requestCandidates('multiple-candidates', [
+        http.MultipartFile.fromBytes(
+          'image',
+          image,
+          filename: 'multiple-pills.jpg',
+        ),
+      ]);
+      return MultiplePillIdentificationResult.fromJson(response);
     } on PillIdentificationException {
       rethrow;
     } on FormatException catch (error) {
@@ -364,6 +282,45 @@ class IdentifyPill {
         PillIdentificationFailure.serviceUnavailable,
       );
     }
+  }
+
+  // Function Name: _requestCandidates
+  // Description: Owns multipart cancellation, timeout, HTTP validation and JSON decoding for both identification routes.
+  // Parameters: route: Existing candidate endpoint suffix; files: Validated image parts in wire order.
+  // Returns: Decoded response object; callers retain their result-specific failure classification.
+  Future<Map<String, dynamic>> _requestCandidates(
+    String route,
+    List<http.MultipartFile> files,
+  ) async {
+    final abortTrigger = Completer<void>();
+    final request = http.AbortableMultipartRequest(
+      'POST',
+      Uri.parse('$baseUrl/pill-identification/$route'),
+      abortTrigger: abortTrigger.future,
+    )..files.addAll(files);
+    _abortTriggers.add(abortTrigger);
+    late final http.Response response;
+    try {
+      response = await _client
+          .send(request)
+          .then(http.Response.fromStream)
+          .timeout(
+            requestTimeout,
+            // Function Name: onTimeout callback
+            // Description: Aborts only this upload and reports its deadline failure.
+            // Parameters: None. Returns: Throws the typed timeout exception.
+            onTimeout: () {
+              if (!abortTrigger.isCompleted) abortTrigger.complete();
+              throw const PillIdentificationException(
+                PillIdentificationFailure.timedOut,
+              );
+            },
+          );
+    } finally {
+      _abortTriggers.remove(abortTrigger);
+    }
+    if (response.statusCode != 200) throw _exceptionForResponse(response);
+    return ApiResponseParser.decodeMap(ApiResponseParser.decodeBody(response));
   }
 
   // Function Name: _readBoundedImage

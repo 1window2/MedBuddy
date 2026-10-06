@@ -18,6 +18,9 @@ import 'package:medbuddy_frontend/entities/pill_identification_entity.dart';
 // - wasAborted (bool): Whether the HTTP abort signal was observed.
 class _AbortAwareClient extends http.BaseClient {
   bool wasAborted = false;
+  int abortedCount = 0;
+  bool wasClosed = false;
+  final requests = <http.AbortableMultipartRequest>[];
 
   // Function Name: send
   // Description:
@@ -29,10 +32,18 @@ class _AbortAwareClient extends http.BaseClient {
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     final abortableRequest = request as http.AbortableMultipartRequest;
+    requests.add(abortableRequest);
     await abortableRequest.abortTrigger;
     wasAborted = true;
+    abortedCount++;
     return http.StreamedResponse(const Stream<List<int>>.empty(), 499);
   }
+
+  // Function Name: close
+  // Description: Records whether the control closes this caller-owned transport.
+  // Parameters: None. Returns: No value.
+  @override
+  void close() => wasClosed = true;
 }
 
 // Function Name: main
@@ -713,61 +724,88 @@ void main() {
 
   // Function Name: test callback
   // Description:
-  // - Expected behavior: requestPillIdentification aborts the upload after timeout.
+  // - Both identification routes abort their upload after timeout.
   // Parameters:
   // - None.
   // Returns:
   // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
-  test('requestPillIdentification aborts the upload after timeout', () async {
-    final client = _AbortAwareClient();
-    final control = IdentifyPill(
-      baseUrl: 'http://localhost',
-      client: client,
-      requestTimeout: const Duration(milliseconds: 10),
-    );
+  for (final multiple in [false, true]) {
+    test('identification aborts after timeout (multiple: $multiple)', () async {
+      final client = _AbortAwareClient();
+      final control = IdentifyPill(
+        baseUrl: 'http://localhost',
+        client: client,
+        requestTimeout: const Duration(milliseconds: 10),
+      );
 
-    await expectLater(
-      control.requestPillIdentification(
-        frontImage: Uint8List.fromList([1, 2, 3]),
-      ),
-      throwsA(
-        isA<PillIdentificationException>().having(
-          // Function Name: having callback
-          // Description:
-          // - Select the typed failure reason for a focused matcher assertion.
-          // Parameters:
-          // - error (Object): Typed exception inspected by the matcher.
-          // Returns:
-          // - The exception's failure value.
-          (error) => error.failure,
-          'failure',
-          PillIdentificationFailure.timedOut,
+      await expectLater(
+        multiple
+            ? control.requestMultiplePillIdentification(
+                image: Uint8List.fromList([1, 2, 3]),
+              )
+            : control.requestPillIdentification(
+                frontImage: Uint8List.fromList([1, 2, 3]),
+              ),
+        throwsA(
+          isA<PillIdentificationException>().having(
+            // Function Name: having callback
+            // Description:
+            // - Select the typed failure reason for a focused matcher assertion.
+            // Parameters:
+            // - error (Object): Typed exception inspected by the matcher.
+            // Returns:
+            // - The exception's failure value.
+            (error) => error.failure,
+            'failure',
+            PillIdentificationFailure.timedOut,
+          ),
         ),
-      ),
-    );
-    await Future<void>.delayed(Duration.zero);
+      );
+      await Future<void>.delayed(Duration.zero);
 
-    expect(client.wasAborted, isTrue);
-  });
+      expect(client.wasAborted, isTrue);
+    });
+  }
 
   // Function Name: test callback
   // Description:
-  // - Expected behavior: dispose aborts an in-flight upload.
+  // - Dispose aborts both concurrent routes, preserves multipart parts and leaves the caller-owned client open.
   // Parameters:
   // - None.
   // Returns:
   // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
-  test('dispose aborts an in-flight upload', () async {
+  test('dispose aborts concurrent single and multiple uploads', () async {
     final client = _AbortAwareClient();
     final control = IdentifyPill(baseUrl: 'http://localhost', client: client);
 
     final request = control.requestPillIdentification(
       frontImage: Uint8List.fromList([1, 2, 3]),
+      backImage: Uint8List.fromList([4, 5, 6]),
     );
+    final multipleRequest = control.requestMultiplePillIdentification(
+      image: Uint8List.fromList([7, 8, 9]),
+    );
+    expect(client.requests.map((request) => request.url.path), [
+      '/pill-identification/candidates',
+      '/pill-identification/multiple-candidates',
+    ]);
+    expect(
+      client.requests.first.files.map((file) => (file.field, file.filename)),
+      [('front', 'pill-front.jpg'), ('back', 'pill-back.jpg')],
+    );
+    expect(
+      client.requests.last.files.map((file) => (file.field, file.filename)),
+      [('image', 'multiple-pills.jpg')],
+    );
+    final completion = Future.wait([
+      expectLater(request, throwsA(isA<PillIdentificationException>())),
+      expectLater(multipleRequest, throwsA(isA<PillIdentificationException>())),
+    ]);
     control.dispose();
 
-    await expectLater(request, throwsA(isA<PillIdentificationException>()));
+    await completion;
     await Future<void>.delayed(Duration.zero);
-    expect(client.wasAborted, isTrue);
+    expect(client.abortedCount, 2);
+    expect(client.wasClosed, isFalse);
   });
 }

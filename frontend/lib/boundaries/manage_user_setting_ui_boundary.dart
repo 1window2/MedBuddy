@@ -173,22 +173,8 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       _selectedSection = _SettingSection.displayAndVoice;
     }
     _savedSetting = widget.initialSetting;
-    _fontSize = widget.initialSetting.fontSizeOption;
-    _readingSpeed = widget.initialSetting.readingSpeedOption;
+    _restoreDraft(_savedSetting);
     _language = widget.initialSetting.language == 'en' ? 'en' : 'ko';
-    _languageMode = widget.initialSetting.languageMode;
-    _timeFormat = widget.initialSetting.timeFormat;
-    _homeScheduleSource = widget.initialSetting.homeScheduleSource;
-    _medicationNotificationsEnabled =
-        widget.initialSetting.medicationNotificationsEnabled;
-    _caregiverNotificationsEnabled =
-        widget.initialSetting.caregiverNotificationsEnabled;
-    _chatNotificationsEnabled = widget.initialSetting.chatNotificationsEnabled;
-    _notificationDetailMode = widget.initialSetting.notificationDetailMode;
-    _defaultMorningTime = widget.initialSetting.defaultMorningTime;
-    _defaultLunchTime = widget.initialSetting.defaultLunchTime;
-    _defaultEveningTime = widget.initialSetting.defaultEveningTime;
-    _defaultBedtime = widget.initialSetting.defaultBedtime;
     _savedSetting = _draftSetting;
     if (widget.previewSpeaker == null) {
       _ownedTtsService = TTSService();
@@ -217,22 +203,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   @override
   Widget build(BuildContext context) {
     final text = _SettingText(_language);
-    final draftSetting = widget.initialSetting.copyWith(
-      fontSize: UserSetting.fontSizeFromOption(_fontSize),
-      readingSpeed: UserSetting.readingSpeedFromOption(_readingSpeed),
-      language: _language,
-      languageMode: _languageMode,
-      timeFormat: _timeFormat,
-      homeScheduleSource: _homeScheduleSource,
-      medicationNotificationsEnabled: _medicationNotificationsEnabled,
-      caregiverNotificationsEnabled: _caregiverNotificationsEnabled,
-      chatNotificationsEnabled: _chatNotificationsEnabled,
-      notificationDetailMode: _notificationDetailMode,
-      defaultMorningTime: _defaultMorningTime,
-      defaultLunchTime: _defaultLunchTime,
-      defaultEveningTime: _defaultEveningTime,
-      defaultBedtime: _defaultBedtime,
-    );
+    final draftSetting = _copyDraftTo(widget.initialSetting);
     final platformMediaQuery = MediaQueryData.fromView(View.of(context));
     final systemTextScale = platformMediaQuery.textScaler.scale(16) / 16;
     final selectedTextScale = draftSetting.resolveTextScale(systemTextScale);
@@ -976,22 +947,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     if (!mounted) return false;
     if (choice == 'discard') {
       setState(() {
-        _fontSize = _savedSetting.fontSizeOption;
-        _readingSpeed = _savedSetting.readingSpeedOption;
-        _language = _savedSetting.language;
-        _languageMode = _savedSetting.languageMode;
-        _timeFormat = _savedSetting.timeFormat;
-        _homeScheduleSource = _savedSetting.homeScheduleSource;
-        _medicationNotificationsEnabled =
-            _savedSetting.medicationNotificationsEnabled;
-        _caregiverNotificationsEnabled =
-            _savedSetting.caregiverNotificationsEnabled;
-        _chatNotificationsEnabled = _savedSetting.chatNotificationsEnabled;
-        _notificationDetailMode = _savedSetting.notificationDetailMode;
-        _defaultMorningTime = _savedSetting.defaultMorningTime;
-        _defaultLunchTime = _savedSetting.defaultLunchTime;
-        _defaultEveningTime = _savedSetting.defaultEveningTime;
-        _defaultBedtime = _savedSetting.defaultBedtime;
+        _restoreDraft(_savedSetting);
       });
     } else if (choice == 'save') {
       await _handleSaveRequested();
@@ -1023,7 +979,32 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   // 매개변수:
   // - 없음.
   // 반환값: UserSetting: 현재 편집 중인 설정 사본.
-  UserSetting get _draftSetting => _savedSetting.copyWith(
+  UserSetting get _draftSetting => _copyDraftTo(_savedSetting);
+
+  // Function Name: _restoreDraft
+  // Description: Restores every editable field on initial load or explicit discard; the caller owns notification of UI changes.
+  // Parameters: setting: Saved settings to restore. Returns: No value.
+  void _restoreDraft(UserSetting setting) {
+    _fontSize = setting.fontSizeOption;
+    _readingSpeed = setting.readingSpeedOption;
+    _language = setting.language;
+    _languageMode = setting.languageMode;
+    _timeFormat = setting.timeFormat;
+    _homeScheduleSource = setting.homeScheduleSource;
+    _medicationNotificationsEnabled = setting.medicationNotificationsEnabled;
+    _caregiverNotificationsEnabled = setting.caregiverNotificationsEnabled;
+    _chatNotificationsEnabled = setting.chatNotificationsEnabled;
+    _notificationDetailMode = setting.notificationDetailMode;
+    _defaultMorningTime = setting.defaultMorningTime;
+    _defaultLunchTime = setting.defaultLunchTime;
+    _defaultEveningTime = setting.defaultEveningTime;
+    _defaultBedtime = setting.defaultBedtime;
+  }
+
+  // Function Name: _copyDraftTo
+  // Description: Applies editable fields while retaining the caller's original or last-saved account baseline.
+  // Parameters: baseline: Settings whose unedited fields are preserved. Returns: Current draft values.
+  UserSetting _copyDraftTo(UserSetting baseline) => baseline.copyWith(
     fontSize: UserSetting.fontSizeFromOption(_fontSize),
     readingSpeed: UserSetting.readingSpeedFromOption(_readingSpeed),
     language: _language,

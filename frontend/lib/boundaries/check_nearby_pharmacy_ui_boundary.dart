@@ -1666,7 +1666,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
         onCurrentLocationRequested: _searchCurrentLocation,
         pharmacies: pharmacies,
         selectedPharmacyId: _selectedPharmacyId,
-        onPharmacySelected: _selectMapPharmacy,
+        onPharmacySelected: _selectPharmacy,
         onAttributionRequested: _requestMapAttribution,
         statusText: statusText,
         selectMarkerHint: text.selectMarkerHint,
@@ -1694,7 +1694,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
           : '현재 위치를 확인할 수 없습니다. 위치 권한과 GPS 설정을 확인해 주세요.',
       pharmacies: pharmacies,
       selectedPharmacyId: _selectedPharmacyId,
-      onPharmacySelected: _selectMapPharmacy,
+      onPharmacySelected: _selectPharmacy,
       onAttributionRequested: _requestMapAttribution,
       statusText: statusText,
       selectMarkerHint: text.selectMarkerHint,
@@ -1703,13 +1703,6 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       configurationUnavailableText: text.mapConfigurationUnavailable,
       unavailableText: text.mapUnavailable,
     );
-  }
-
-  // 함수이름: _selectMapPharmacy
-  // 함수역할: 마커 선택을 목록과 같은 지도 상세 보기 동작으로 연결한다.
-  // 매개변수: pharmacy: 선택한 약국. 반환값: 없음.
-  void _selectMapPharmacy(NearbyCarePlace pharmacy) {
-    _selectPharmacy(pharmacy);
   }
 
   // 함수이름: _findSelectedPharmacy
