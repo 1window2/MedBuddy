@@ -151,14 +151,8 @@ class _SetNotificationUIState extends State<SetNotificationUI> {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF344054), width: 1.6),
-            boxShadow: const [
-              BoxShadow(
-                color: Color.fromRGBO(0, 0, 0, 0.18),
-                blurRadius: 16,
-                offset: Offset(0, 8),
-              ),
-            ],
+            border: Border.all(color: MedBuddyColors.textBody, width: 1.6),
+            boxShadow: MedBuddyShadows.card,
           ),
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),

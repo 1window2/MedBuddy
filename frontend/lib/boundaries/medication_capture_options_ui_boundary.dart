@@ -293,7 +293,7 @@ class _MedicationCaptureOption extends StatelessWidget {
     final scale = userSetting.contentTextScale;
 
     return Material(
-      color: const Color(0xFFF4FFF4),
+      color: MedBuddyColors.successSurface,
       borderRadius: MedBuddyRadii.card,
       child: InkWell(
         borderRadius: MedBuddyRadii.card,

@@ -429,14 +429,8 @@ class InputPrescriptionUI extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: MedBuddyColors.outline, width: 2),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color.fromRGBO(0, 0, 0, 0.15),
-                  blurRadius: 22,
-                  offset: Offset(0, 16),
-                ),
-              ],
+              border: Border.all(color: MedBuddyColors.cardBorder),
+              boxShadow: MedBuddyShadows.card,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -683,7 +677,6 @@ class _HomeActionCard extends StatelessWidget {
               : const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
           decoration: BoxDecoration(
             borderRadius: MedBuddyRadii.largeCard,
-            boxShadow: MedBuddyShadows.soft,
             border: Border.all(
               color: tone == _HomeActionTone.primary
                   ? MedBuddyColors.primary

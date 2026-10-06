@@ -572,14 +572,14 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
         width: double.infinity,
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFF1F2),
+          color: MedBuddyColors.dangerSurface,
           borderRadius: MedBuddyRadii.card,
-          border: Border.all(color: const Color(0xFFFDA4AF)),
+          border: Border.all(color: MedBuddyColors.dangerBorder),
         ),
         child: Text(
           _errorMessage,
           style: const TextStyle(
-            color: Color(0xFFBE123C),
+            color: MedBuddyColors.danger,
             height: 1.4,
             fontWeight: FontWeight.w700,
           ),

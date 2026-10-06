@@ -92,7 +92,7 @@ class PrescriptionAnalysisSuccessUI extends StatelessWidget {
                           width: 168,
                           height: 168,
                           decoration: const BoxDecoration(
-                            color: Color(0xFFF0FDF4),
+                            color: MedBuddyColors.successSurface,
                             shape: BoxShape.circle,
                           ),
                           child: Center(
@@ -314,7 +314,7 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                       width: 96,
                       height: 96,
                       decoration: const BoxDecoration(
-                        color: Color(0xFFFF1F2D),
+                        color: MedBuddyColors.danger,
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
@@ -605,7 +605,7 @@ class _FailureReasonPanel extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF1F2),
+        color: MedBuddyColors.dangerSurface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -662,7 +662,7 @@ class _FailureReasonItem extends StatelessWidget {
       children: [
         const Text(
           '•',
-          style: TextStyle(color: Color(0xFFFF1F2D), fontSize: 16),
+          style: TextStyle(color: MedBuddyColors.danger, fontSize: 16),
         ),
         const SizedBox(width: 8),
         Expanded(

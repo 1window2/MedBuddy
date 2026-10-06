@@ -79,7 +79,7 @@ class _NearbyCareOption extends StatelessWidget {
               ? 'Find nearby pharmacies and check opening hours.'
               : '주변 약국의 위치와 영업시간을 확인합니다.');
     return Material(
-      color: const Color(0xFFF4FFF4),
+      color: MedBuddyColors.successSurface,
       borderRadius: MedBuddyRadii.card,
       child: InkWell(
         key: ValueKey('nearby-care-${destination.name}'),

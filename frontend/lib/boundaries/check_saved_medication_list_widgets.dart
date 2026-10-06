@@ -203,7 +203,7 @@ class _MedicationNameButton extends StatelessWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: const Color(0xFF0A0A0A),
+                  color: MedBuddyColors.textStrong,
                   fontSize: 16 * scale,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0,
@@ -427,7 +427,7 @@ class _MedicationDetailButton extends StatelessWidget {
         minimumSize: const Size(58, 36),
         padding: EdgeInsets.zero,
         foregroundColor: MedBuddyColors.primaryDark,
-        backgroundColor: const Color(0xFFEFFDF6),
+        backgroundColor: MedBuddyColors.successSurface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         textStyle: TextStyle(
           fontSize: 11 * scale,

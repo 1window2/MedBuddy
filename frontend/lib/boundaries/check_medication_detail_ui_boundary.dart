@@ -313,7 +313,7 @@ class _MedicationHeroCard extends StatelessWidget {
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: const Color(0xFF0A0A0A),
+                    color: MedBuddyColors.textStrong,
                     fontSize: 18 * scale,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0,
@@ -401,13 +401,7 @@ class _MedicationImageBox extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(18),
-            boxShadow: const [
-              BoxShadow(
-                color: Color.fromRGBO(0, 0, 0, 0.16),
-                blurRadius: 10,
-                offset: Offset(0, 4),
-              ),
-            ],
+            boxShadow: MedBuddyShadows.card,
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(14),
@@ -515,7 +509,7 @@ class _DetailQuestionSection extends StatelessWidget {
         Text(
           title,
           style: TextStyle(
-            color: const Color(0xFF0A0A0A),
+            color: MedBuddyColors.textStrong,
             fontSize: 16 * scale,
             fontWeight: FontWeight.w700,
             letterSpacing: 0,
@@ -801,7 +795,7 @@ class _DetailListCard extends StatelessWidget {
           Text(
             title,
             style: TextStyle(
-              color: const Color(0xFF0A0A0A),
+              color: MedBuddyColors.textStrong,
               fontSize: 16 * scale,
               fontWeight: FontWeight.w700,
               letterSpacing: 0,

@@ -1081,7 +1081,7 @@ class _LinkActionButton extends StatelessWidget {
         onPressed: onPressed,
         style: OutlinedButton.styleFrom(
           minimumSize: const Size.fromHeight(92),
-          foregroundColor: const Color(0xFF0A0A0A),
+          foregroundColor: MedBuddyColors.textStrong,
           backgroundColor: Colors.white,
           side: const BorderSide(color: MedBuddyColors.outline, width: 1.5),
           shape: RoundedRectangleBorder(
@@ -1289,7 +1289,7 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
                         widget.text.registerPatient,
                         textAlign: TextAlign.center,
                         style: const TextStyle(
-                          color: Color(0xFF0A0A0A),
+                          color: MedBuddyColors.textStrong,
                           fontSize: 22,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 0,
@@ -1562,7 +1562,7 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                       onPressed: () => Navigator.pop(context),
                       icon: const Icon(
                         Icons.close,
-                        color: Color(0xFF344054),
+                        color: MedBuddyColors.textBody,
                         size: 22,
                       ),
                     ),
@@ -1571,7 +1571,7 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                         widget.text.patientCodeDialogTitle,
                         textAlign: TextAlign.center,
                         style: const TextStyle(
-                          color: Color(0xFF0A0A0A),
+                          color: MedBuddyColors.textStrong,
                           fontSize: 22,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 0,
@@ -1654,8 +1654,8 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                 ),
                 const SizedBox(height: 15),
                 _PatientCodeNotice(
-                  backgroundColor: Color(0xFFFEF2F2),
-                  foregroundColor: Color(0xFFE7000B),
+                  backgroundColor: MedBuddyColors.dangerSurface,
+                  foregroundColor: MedBuddyColors.danger,
                   fontWeight: FontWeight.w700,
                   text: widget.text.codeWarning,
                 ),
@@ -1973,7 +1973,7 @@ class _LinkedUserTile extends StatelessWidget {
                 child: Text(
                   _peerLabel,
                   style: const TextStyle(
-                    color: Color(0xFF0A0A0A),
+                    color: MedBuddyColors.textStrong,
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0,
@@ -2154,7 +2154,7 @@ class _LinkedIdentityField extends StatelessWidget {
             // 펼침 상태와 텍스트 내부 스크롤 위치가 같은 저장 키를 공유하지 않도록 분리한다.
             key: PageStorageKey('link-identity-$label-$value'),
             style: const TextStyle(
-              color: Color(0xFF0A0A0A),
+              color: MedBuddyColors.textStrong,
               fontSize: 15,
               fontWeight: FontWeight.w500,
               letterSpacing: 0,

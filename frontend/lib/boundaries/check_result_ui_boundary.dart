@@ -227,7 +227,7 @@ class CheckResultUI extends StatelessWidget {
         content: Text(statusMessageProvider()),
         backgroundColor: success
             ? const Color(0xFF059669)
-            : const Color(0xFFDC2626),
+            : MedBuddyColors.danger,
         duration: const Duration(seconds: 2),
       ),
     );
@@ -513,13 +513,7 @@ class _AnalysisSummary extends StatelessWidget {
         color: Colors.white,
         borderRadius: MedBuddyRadii.card,
         border: Border.all(color: MedBuddyColors.successBorder, width: 2),
-        boxShadow: const [
-          BoxShadow(
-            color: Color.fromRGBO(0, 0, 0, 0.08),
-            blurRadius: 8,
-            offset: Offset(0, 2),
-          ),
-        ],
+        boxShadow: MedBuddyShadows.card,
       ),
       child: Row(
         children: [
@@ -653,7 +647,7 @@ class _BulkSaveButton extends StatelessWidget {
           style: FilledButton.styleFrom(
             backgroundColor: MedBuddyColors.primary,
             foregroundColor: Colors.white,
-            disabledBackgroundColor: const Color(0xFF9CA3AF),
+            disabledBackgroundColor: MedBuddyColors.textLight,
             disabledForegroundColor: Colors.white,
             minimumSize: const Size.fromHeight(66),
             shape: RoundedRectangleBorder(

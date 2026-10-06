@@ -86,16 +86,16 @@ class _RecognitionNoticeBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFAEB),
+        color: MedBuddyColors.warningSurface,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFF5D565)),
+        border: Border.all(color: MedBuddyColors.warningBorder),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
             Icons.info_outline,
-            color: const Color(0xFFB7791F),
+            color: MedBuddyColors.reminderAccent,
             size: 16 * scale,
           ),
           const SizedBox(width: 8),
@@ -550,7 +550,7 @@ class _RecognizedImageCanvasState extends State<_RecognizedImageCanvas> {
           child: DecoratedBox(
             key: Key('${widget.keyPrefix}-sensitive-region-$index'),
             decoration: BoxDecoration(
-              color: const Color(0xFF9CA3AF),
+              color: MedBuddyColors.textLight,
               border: Border.all(color: const Color(0xFF4B5563), width: 1),
               borderRadius: BorderRadius.circular(3),
             ),

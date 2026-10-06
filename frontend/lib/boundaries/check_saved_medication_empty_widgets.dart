@@ -280,7 +280,7 @@ class _SavedMedicationDateCard extends StatelessWidget {
                   child: Text(
                     group.displayDate,
                     style: TextStyle(
-                      color: const Color(0xFF0A0A0A),
+                      color: MedBuddyColors.textStrong,
                       fontSize: 18 * scale,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 0,
@@ -331,7 +331,7 @@ class _SavedMedicationDateCard extends StatelessWidget {
             TextButton(
               style: TextButton.styleFrom(
                 minimumSize: const Size.fromHeight(54),
-                foregroundColor: const Color(0xFFFF1F2D),
+                foregroundColor: MedBuddyColors.danger,
                 textStyle: TextStyle(
                   fontSize: 16 * scale,
                   fontWeight: FontWeight.w700,

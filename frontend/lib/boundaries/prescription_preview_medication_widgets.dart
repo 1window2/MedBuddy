@@ -173,7 +173,7 @@ class _PreviewMedicationTable extends StatelessWidget {
   // 반환값: TableRow: 복약 표의 열 제목 또는 편집 가능한 약품 한 행.
   TableRow _buildHeaderRow(double scale) {
     return TableRow(
-      decoration: const BoxDecoration(color: Color(0xFFEAF8F3)),
+      decoration: const BoxDecoration(color: MedBuddyColors.successSurface),
       children: [
         _TableHeaderCell(label: previewText.medicationName, scale: scale),
         _TableHeaderCell(label: previewText.dosage, scale: scale),
@@ -200,7 +200,7 @@ class _PreviewMedicationTable extends StatelessWidget {
     final isVerified = verifiedScheduleIndexes.contains(scheduleIndex);
     return TableRow(
       decoration: isVerified
-          ? const BoxDecoration(color: Color(0xFFF3F5F4))
+          ? const BoxDecoration(color: MedBuddyColors.surfaceSubtle)
           : null,
       children: [
         _EditableMedicationCell(
@@ -638,14 +638,14 @@ class _CorrectionBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
-        color: isWarning ? const Color(0xFFFFF4D6) : const Color(0xFFE6F7F1),
+        color: isWarning ? MedBuddyColors.warningSurface : MedBuddyColors.successSurface,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         label,
         style: TextStyle(
           color: isWarning
-              ? const Color(0xFF9A6700)
+              ? MedBuddyColors.reminderAccent
               : MedBuddyColors.primaryDark,
           fontSize: 10 * scale,
           fontWeight: FontWeight.w700,

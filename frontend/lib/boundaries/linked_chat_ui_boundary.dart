@@ -1566,7 +1566,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
                   horizontal: 18,
                   vertical: 10,
                 ),
-                color: const Color(0xFFEAFBF4),
+                color: MedBuddyColors.successSurface,
                 child: Text(
                   _text.medicationContextGuide,
                   textAlign: TextAlign.center,
@@ -2318,7 +2318,7 @@ class _MessageScheduleContext extends StatelessWidget {
           decoration: BoxDecoration(
             color: isMine
                 ? Colors.white.withValues(alpha: 0.16)
-                : const Color(0xFFEAFBF4),
+                : MedBuddyColors.successSurface,
             borderRadius: BorderRadius.circular(10),
           ),
           child: _ScheduleSummaryContent(
@@ -2555,7 +2555,7 @@ class _MedicationSafetyGuidance extends StatelessWidget {
       decoration: BoxDecoration(
         color: isMine
             ? Colors.white.withValues(alpha: 0.15)
-            : const Color(0xFFFFF4E8),
+            : MedBuddyColors.warningSurface,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -2634,7 +2634,7 @@ class _MessagePharmacyContext extends StatelessWidget {
       decoration: BoxDecoration(
         color: isMine
             ? Colors.white.withValues(alpha: 0.16)
-            : const Color(0xFFEAFBF4),
+            : MedBuddyColors.successSurface,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
@@ -2801,9 +2801,9 @@ class _SelectedMedicationContext extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(10, 8, 6, 8),
       decoration: BoxDecoration(
-        color: const Color(0xFFEAFBF4),
+        color: MedBuddyColors.successSurface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFB8F0D8)),
+        border: Border.all(color: MedBuddyColors.successBorder),
       ),
       child: Row(
         children: [
@@ -2939,7 +2939,7 @@ class _MessageMedicationContext extends StatelessWidget {
           decoration: BoxDecoration(
             color: isMine
                 ? Colors.white.withValues(alpha: 0.16)
-                : const Color(0xFFEAFBF4),
+                : MedBuddyColors.successSurface,
             borderRadius: BorderRadius.circular(10),
           ),
           child: Row(
@@ -3026,7 +3026,7 @@ class _MedicationThumbnail extends StatelessWidget {
       height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: const Color(0xFFF3F4F6),
+        color: MedBuddyColors.surfaceSubtle,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Icon(
@@ -3224,7 +3224,7 @@ class _MessageBubble extends StatelessWidget {
           Text(
             message.body,
             style: TextStyle(
-              color: isMine ? Colors.white : const Color(0xFF111827),
+              color: isMine ? Colors.white : MedBuddyColors.textStrong,
               fontSize: 15,
               height: 1.4,
               fontWeight: FontWeight.w500,

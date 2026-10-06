@@ -213,7 +213,7 @@ class _DeleteConfirmationDialog extends StatelessWidget {
                   child: OutlinedButton(
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size.fromHeight(56),
-                      foregroundColor: const Color(0xFFFF1F2D),
+                      foregroundColor: MedBuddyColors.danger,
                       side: const BorderSide(color: MedBuddyColors.outline),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
