@@ -118,7 +118,8 @@ void main() {
     expect(result, hasLength(1));
     expect(result.single.name, '메드버디약국');
     expect(result.single.distanceLabel, '420m');
-    expect(result.single.todayHoursLabel, '오늘 09:00 - 24:00');
+    expect(result.single.todayOpenTime, '09:00');
+    expect(result.single.todayCloseTime, '24:00');
     expect(result.single.minutesUntilClose, 35);
     expect(result.single.sourceUpdatedAt, DateTime.utc(2026, 8, 23, 1));
   });

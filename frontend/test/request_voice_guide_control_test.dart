@@ -38,14 +38,17 @@ void main() {
 
       expect(medicationDetail.aiGuide, 'Drink enough water.');
       expect(
-        medicationDetail.voiceGuideText,
+        medicationDetail.voiceGuideTextForLanguage('ko'),
         'Saved tablet\n'
         '복용 방법. Take after meals\n'
         '주의사항. May cause drowsiness',
       );
-      expect(medicationDetail.voiceGuideText, isNot(contains('Pain relief')));
       expect(
-        medicationDetail.voiceGuideText,
+        medicationDetail.voiceGuideTextForLanguage('ko'),
+        isNot(contains('Pain relief')),
+      );
+      expect(
+        medicationDetail.voiceGuideTextForLanguage('ko'),
         isNot(contains('Drink enough water.')),
       );
     },
@@ -53,12 +56,12 @@ void main() {
 
   // 함수이름: test 콜백
   // 함수역할:
-  // - 하루 세 번 복용 문구에서 상세 복용량 안내 세 줄을 만들고 기본 음성 안내에서는 복용량을 제외하는지 검증한다.
+  // - 구조화된 복용량이 있어도 기본 음성 안내에서는 복용량을 제외하는지 검증한다.
   // 매개변수:
   // - 없음.
   // 반환값:
   // - 없음; 기대 조건 불일치 시 테스트가 실패한다.
-  test('MedicationDetail derives dosage guide lines from frequency labels', () {
+  test('MedicationDetail voice guide excludes structured dosage', () {
     const medicationDetail = MedicationDetail(
       itemName: 'Saved tablet',
       efficacy: 'Pain relief',
@@ -70,19 +73,9 @@ void main() {
     );
 
     expect(
-      medicationDetail.detailedDosageGuideLines.where(
-        // 함수이름: where 콜백
-        // 함수역할:
-        // - 명시적 한 알 복용량을 포함한 상세 복용 안내 문장을 선택한다.
-        // 매개변수:
-        // - line (String): 한 번 복용량을 검사할 상세 복용 안내 문장.
-        // 반환값:
-        // - 해당 문장에 한 알 복용량이 포함되는지 여부.
-        (line) => line.contains('1 tablet'),
-      ),
-      hasLength(3),
+      medicationDetail.voiceGuideTextForLanguage('ko'),
+      isNot(contains('1 tablet')),
     );
-    expect(medicationDetail.voiceGuideText, isNot(contains('1 tablet')));
   });
 
   // 함수이름: test 콜백

@@ -457,12 +457,6 @@ class _SavedMedicationText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get select => isEnglish ? 'Select' : '선택';
-  // 함수이름: done
-  // 함수역할: 현재 언어와 입력값에 맞춰 "Done" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get done => isEnglish ? 'Done' : '완료';
   // 함수이름: sortByRegisteredDate
   // 함수역할: 현재 언어와 입력값에 맞춰 "등록일자순" 문구를 제공한다.
   // 매개변수:
@@ -475,31 +469,6 @@ class _SavedMedicationText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get sortByMedicationDate => isEnglish ? 'Medication date' : '복용날짜순';
-  // 함수이름: sortSettings
-  // 함수역할: 현재 언어와 입력값에 맞춰 "정렬 기준 설정" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get sortSettings => isEnglish ? 'Sort settings' : '정렬 기준 설정';
-  // 함수이름: ascendingOrder
-  // 함수역할: 현재 언어와 입력값에 맞춰 "오름차순" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get ascendingOrder => isEnglish ? 'Oldest first' : '오름차순';
-  // 함수이름: descendingOrder
-  // 함수역할: 현재 언어와 입력값에 맞춰 "내림차순" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get descendingOrder => isEnglish ? 'Newest first' : '내림차순';
-  // 함수이름: changeSortDirection
-  // 함수역할: 현재 언어와 입력값에 맞춰 "정렬 방향 변경" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get changeSortDirection =>
-      isEnglish ? 'Change sort direction' : '정렬 방향 변경';
   // 함수이름: activeMedication
   // 함수역할: 현재 언어와 입력값에 맞춰 "복용 중" 문구를 제공한다.
   // 매개변수:
@@ -557,20 +526,6 @@ class _SavedMedicationText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get emptyMessage =>
       isEnglish ? 'No saved medication information.' : '저장된 복약정보가 없습니다.';
-  // 함수이름: scanPrescription
-  // 함수역할: 현재 언어와 입력값에 맞춰 "처방전 촬영하기" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get scanPrescription => isEnglish ? 'Scan Prescription' : '처방전 촬영하기';
-  // 함수이름: scanSubtitle
-  // 함수역할: 현재 언어와 입력값에 맞춰 "처방전 분석 또는 낱알약 식별을 선택해주세요" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get scanSubtitle => isEnglish
-      ? 'Choose prescription analysis or loose-pill identification'
-      : '처방전 분석 또는 낱알약 식별을 선택해주세요';
   // 함수이름: noInformation
   // 함수역할: 현재 언어와 입력값에 맞춰 "정보 없음" 문구를 제공한다.
   // 매개변수:
@@ -589,12 +544,6 @@ class _SavedMedicationText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get medicationPeriod => isEnglish ? 'Medication period' : '복용기간';
-  // 함수이름: photo
-  // 함수역할: 현재 언어와 입력값에 맞춰 "Photo" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get photo => isEnglish ? 'Photo' : '사진';
   // 함수이름: noImage
   // 함수역할: 현재 언어와 입력값에 맞춰 "제공된 약 사진이 없습니다." 문구를 제공한다.
   // 매개변수:
@@ -616,24 +565,6 @@ class _SavedMedicationText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get guide => isEnglish ? 'Guide' : '가이드';
-  // 함수이름: efficacy
-  // 함수역할: 현재 언어와 입력값에 맞춰 "Effect" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get efficacy => isEnglish ? 'Effect' : '효능';
-  // 함수이름: usageMethod
-  // 함수역할: 현재 언어와 입력값에 맞춰 "복용 방법" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get usageMethod => isEnglish ? 'How to take' : '복용 방법';
-  // 함수이름: warning
-  // 함수역할: 현재 언어와 입력값에 맞춰 "주의사항" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get warning => isEnglish ? 'Warnings' : '주의사항';
   // 함수이름: delete
   // 함수역할: 현재 언어와 입력값에 맞춰 "삭제하기" 문구를 제공한다.
   // 매개변수:

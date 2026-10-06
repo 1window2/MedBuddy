@@ -2801,27 +2801,6 @@ class _PillIdentificationText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get addAnotherPill => isEnglish ? 'Add another pill' : '알약 한 개 더 추가';
-  // 함수이름: addMultipleFromGallery
-  // 함수역할: 현재 언어와 입력값에 맞춰 "갤러리에서 여러 알약 사진 추가" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get addMultipleFromGallery =>
-      isEnglish ? 'Add multiple pill photos from gallery' : '갤러리에서 여러 알약 사진 추가';
-  // Function Name: identifyMultipleFromOnePhoto
-  // Description: Provides localized wording for "Find every pill in one photo" using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
-  String get identifyMultipleFromOnePhoto =>
-      isEnglish ? 'Find every pill in one photo' : '한 장에서 모든 알약 찾기';
-  // Function Name: retakeMultiplePillPhoto
-  // Description: Provides localized wording for "Retake the group photo" using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
-  String get retakeMultiplePillPhoto =>
-      isEnglish ? 'Retake the group photo' : '여러 알약 사진 다시 촬영';
   // Function Name: retryMultiplePillPhoto
   // Description: Provides localized wording for "Analyze this photo again" using the current language and message inputs.
   // Parameters:
@@ -2837,22 +2816,6 @@ class _PillIdentificationText {
   String get multiplePhotoPreviewDescription => isEnglish
       ? 'Detected pills are numbered on the photo. Review the candidate list for every number before saving.'
       : '사진에서 찾은 알약에 번호를 표시했습니다. 저장하기 전에 각 번호의 후보를 모두 확인해주세요.';
-  // 함수이름: batchLimitNotice
-  // 함수역할: 현재 언어와 입력값에 맞춰 "한 번에 최대 $limit개까지 가능하며, 알약마다 앞면 사진이 한 장씩 필요합니다." 문구를 제공한다.
-  // 매개변수:
-  // - limit (int): 허용할 최대 항목 수 또는 문자열 길이.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String batchLimitNotice(int limit) => isEnglish
-      ? 'Up to $limit pills per batch. Use one front photo for each pill.'
-      : '한 번에 최대 $limit개까지 가능하며, 알약마다 앞면 사진이 한 장씩 필요합니다.';
-  // 함수이름: batchLimitReached
-  // 함수역할: 현재 언어와 입력값에 맞춰 "알약은 한 번에 최대 $limit개까지 비교할 수 있습니다." 문구를 제공한다.
-  // 매개변수:
-  // - limit (int): 허용할 최대 항목 수 또는 문자열 길이.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String batchLimitReached(int limit) => isEnglish
-      ? 'You can compare up to $limit pills at once.'
-      : '알약은 한 번에 최대 $limit개까지 비교할 수 있습니다.';
   // 함수이름: frontPhotoRequiredForEveryPill
   // 함수역할: 현재 언어와 입력값에 맞춰 "비교를 시작하려면 모든 알약에 앞면 사진을 추가해주세요." 문구를 제공한다.
   // 매개변수:
@@ -2910,18 +2873,6 @@ class _PillIdentificationText {
         : '알약 $normalizedCount개 후보 찾기';
   }
 
-  // 함수이름: analyzingPills
-  // 함수역할: 현재 언어와 입력값에 맞춰 "Comparing $normalizedCount pill${normalizedCount == 1 ?" 문구를 제공한다.
-  // 매개변수:
-  // - count (int): 문구나 목록에 표시할 항목 수 또는 일련번호.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String analyzingPills(int count) {
-    final normalizedCount = count < 1 ? 1 : count;
-    return isEnglish
-        ? 'Comparing $normalizedCount pill${normalizedCount == 1 ? '' : 's'}...'
-        : '알약 $normalizedCount개 비교 중...';
-  }
-
   // 함수이름: analysisProgress
   // 함수역할: 현재 언어와 입력값에 맞춰 "자동 재시도 대기 중 · $completedCount/$safeTotal 완료" 문구를 제공한다.
   // 매개변수:
@@ -2962,13 +2913,6 @@ class _PillIdentificationText {
         : '최대 $seconds초 뒤 실패 항목만 자동으로 다시 시도합니다.';
   }
 
-  // Function Name: candidateTitle
-  // Description: Provides localized wording for "$count possible matches" using the current language and message inputs.
-  // Parameters:
-  // - count (int): Item count or ordinal number used in wording or a list.
-  // Returns: The formatted display text or identifier described above.
-  String candidateTitle(int count) =>
-      isEnglish ? '$count possible matches' : '가능성이 있는 후보 $count개';
   // 함수이름: candidateTitleForPill
   // 함수역할: 현재 언어와 입력값에 맞춰 "알약 $pillNumber · 가능한 후보 $count개" 문구를 제공한다.
   // 매개변수:
@@ -3009,12 +2953,6 @@ class _PillIdentificationText {
   String get lowConfidenceNotice => isEnglish
       ? 'These matches are uncertain or the photo needs extra care. Compare both sides and every imprint before confirming.'
       : '후보 일치도가 낮거나 사진 품질에 주의가 필요합니다. 앞뒷면과 각인 정보를 직접 비교한 뒤 선택하세요.';
-  // Function Name: similarity
-  // Description: Provides localized wording for "Attribute match" using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
-  String get similarity => isEnglish ? 'Attribute match' : '속성 일치도';
   // Function Name: selected
   // Description: Provides localized wording for "Selected" using the current language and message inputs.
   // Parameters:

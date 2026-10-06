@@ -79,7 +79,6 @@ class IdentifyPill {
   }
 
   static const int maxImageBytes = 10 * 1024 * 1024;
-  static const int maxBatchImageCount = 10;
 
   final String baseUrl;
   final ImagePicker _imagePicker;
@@ -130,48 +129,6 @@ class IdentifyPill {
         requestFullMetadata: false,
       );
       return image == null ? null : await _readBoundedImage(image);
-    } on PillIdentificationException {
-      rethrow;
-    } on FileSystemException catch (error) {
-      developer.log(
-        'Pill image file access failed: ${error.runtimeType}.',
-        name: 'IdentifyPill',
-      );
-      throw const PillIdentificationException(
-        PillIdentificationFailure.fileUnreadable,
-      );
-    }
-  }
-
-  // 함수이름: requestMultiplePillImagesFromGallery
-  // 함수역할: 서로 다른 알약을 한 장씩 촬영한 사진을 갤러리에서 여러 장 선택해 순서대로 읽는다.
-  // 매개변수:
-  // - limit (int): 한 번에 선택하거나 조회할 최대 항목 수
-  // 반환값:
-  // - Future<List<Uint8List>>: 서로 다른 알약을 한 장씩 촬영한 사진을 갤러리에서 여러 장 선택해 순서대로 읽는다.
-  Future<List<Uint8List>> requestMultiplePillImagesFromGallery({
-    int limit = maxBatchImageCount,
-  }) async {
-    if (limit < 1 || limit > maxBatchImageCount) {
-      throw ArgumentError.value(
-        limit,
-        'limit',
-        'must be between 1 and $maxBatchImageCount',
-      );
-    }
-    try {
-      final images = await _imagePicker.pickMultiImage(
-        imageQuality: 88,
-        maxWidth: 1600,
-        maxHeight: 1600,
-        limit: limit,
-        requestFullMetadata: false,
-      );
-      final imageBytes = <Uint8List>[];
-      for (final image in images) {
-        imageBytes.add(await _readBoundedImage(image));
-      }
-      return List<Uint8List>.unmodifiable(imageBytes);
     } on PillIdentificationException {
       rethrow;
     } on FileSystemException catch (error) {

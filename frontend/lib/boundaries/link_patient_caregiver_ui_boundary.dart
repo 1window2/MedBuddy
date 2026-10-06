@@ -2492,12 +2492,6 @@ class _LinkPatientCaregiverText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get remainingTime => isEnglish ? 'Time left: ' : '남은 시간: ';
-  // 함수이름: linkInformation
-  // 함수역할: 현재 언어와 입력값에 맞춰 "연동 정보" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get linkInformation => isEnglish ? 'Linked account' : '연동 정보';
   // 함수이름: chatUnavailable
   // 함수역할: 현재 언어와 입력값에 맞춰 "현재 복용 중인 약이 없어 채팅을 시작할 수 없습니다." 문구를 제공한다.
   // 매개변수:

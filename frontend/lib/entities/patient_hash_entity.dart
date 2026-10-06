@@ -12,7 +12,6 @@
 // - patientHash (String): 조회·저장·알림 대상 환자의 소유권 해시
 class PatientHash {
   static const String defaultPatientHash = 'local_patient';
-  static const int maxPatientHashLength = 128;
   static const int patientLinkCodeLength = 8;
 
   final String patientHash;

@@ -315,63 +315,6 @@ class MedicationDetail {
         !normalizedReference.isAfter(endDate);
   }
 
-  // 함수이름: detailedDosageGuideLines
-  // 함수역할: 한국어 기본 표시용으로 시간대별 복용량과 투약 기간을 상세 안내 목록으로 구성한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - List<String>: 한국어 기본 표시용으로 시간대별 복용량과 투약 기간을 상세 안내 목록으로 구성한다.
-  List<String> get detailedDosageGuideLines {
-    return detailedDosageGuideLinesForLanguage('ko');
-  }
-
-  // 함수이름: detailedDosageGuideLinesForLanguage
-  // 함수역할: OCR 복용 정보를 앱 언어에 맞는 시간대와 기간 문구로 조합한다.
-  // 매개변수:
-  // - language (String): 표시·음성 안내에 사용할 언어 코드
-  // 반환값:
-  // - List<String>: OCR 복용 정보를 앱 언어에 맞는 시간대와 기간 문구로 조합한다.
-  List<String> detailedDosageGuideLinesForLanguage(String language) {
-    final isEnglish = _isEnglish(language);
-    final dosage = dosagePerTime.trim().isEmpty
-        ? (isEnglish ? 'Dose unavailable' : '복용량 정보 없음')
-        : _localizedDosageValue(dosagePerTime, language);
-    final slotLabels = _slotLabelsFromFrequency(dailyFrequency, language);
-    final lines = slotLabels.map(/* Function Name: map callback
-     * Description: Combines each medication slot label with the per-dose quantity.
-     * Parameters:
-     * - slot (String): Medication time-slot label to display.
-     * Returns:
-     * - A slot-and-dosage display segment.
-     */(slot) => '$slot: $dosage').toList();
-
-    final period = totalDays.trim();
-    if (period.isNotEmpty) {
-      final localizedPeriod = _localizedDurationValue(period, language);
-      lines.add(
-        isEnglish ? 'Take for $localizedPeriod.' : '$localizedPeriod 복용하세요.',
-      );
-    }
-    if (lines.isEmpty) {
-      lines.add(
-        isEnglish
-            ? 'No detailed dosage information was extracted.'
-            : '처방전에서 추출된 상세 복용 정보가 없습니다.',
-      );
-    }
-    return lines;
-  }
-
-  // 함수이름: compactDosageGuideLines
-  // 함수역할: 기존 호출부 호환을 위해 한국어 기준의 간단한 복용 정보를 반환한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - List<String>: 기존 호출부 호환을 위해 한국어 기준의 간단한 복용 정보를 반환한다.
-  List<String> get compactDosageGuideLines {
-    return compactDosageGuideLinesForLanguage('ko');
-  }
-
   // 함수이름: compactDosageGuideLinesForLanguage
   // 함수역할: 약 상세 카드의 복용량, 횟수, 기간, 시점을 앱 언어에 맞게 구성한다.
   // 매개변수:
@@ -410,16 +353,6 @@ class MedicationDetail {
     return [isEnglish ? 'No dosage information' : '복용 정보 없음'];
   }
 
-  // 함수이름: voiceGuideText
-  // 함수역할: 서버 안내를 사용할 수 없을 때 쓸 한국어 기본 복용법·주의사항 음성 안내문을 구성한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - String: 서버 안내를 사용할 수 없을 때 쓸 한국어 기본 복용법·주의사항 음성 안내문을 구성한다.
-  String get voiceGuideText {
-    return voiceGuideTextForLanguage('ko');
-  }
-
   // 함수이름: voiceGuideTextForLanguage
   // 함수역할: 서버 음성 안내를 사용할 수 없을 때 재생할 최소 안내를 앱 언어로 만든다.
   // 매개변수:
@@ -451,38 +384,6 @@ class MedicationDetail {
   static String _normalizeOrFallback(String value, String fallback) {
     final normalizedValue = value.trim();
     return normalizedValue.isEmpty ? fallback : normalizedValue;
-  }
-
-  // 함수이름: _slotLabelsFromFrequency
-  // 함수역할: 1일 복용 횟수를 언어별 아침·점심·저녁·취침 전 시간대 이름으로 바꾸고 해석 불가 횟수는 빈 목록으로 처리한다.
-  // 매개변수:
-  // - dailyFrequency (String): 처방에 기록된 하루 복용 횟수 문자열
-  // - language (String): 표시·음성 안내에 사용할 언어 코드
-  // 반환값:
-  // - List<String>: 1일 복용 횟수를 언어별 아침·점심·저녁·취침 전 시간대 이름으로 바꾸고 해석 불가 횟수는 빈 목록으로 처리한다.
-  static List<String> _slotLabelsFromFrequency(
-    String dailyFrequency,
-    String language,
-  ) {
-    final isEnglish = _isEnglish(language);
-    final frequencyCount = _readInt(dailyFrequency) ?? 0;
-    if (frequencyCount >= 4) {
-      return isEnglish
-          ? const ['Morning', 'Lunch', 'Evening', 'Bedtime']
-          : const ['아침', '점심', '저녁', '취침 전'];
-    }
-    if (frequencyCount == 3) {
-      return isEnglish
-          ? const ['Morning', 'Lunch', 'Evening']
-          : const ['아침', '점심', '저녁'];
-    }
-    if (frequencyCount == 2) {
-      return isEnglish ? const ['Morning', 'Evening'] : const ['아침', '저녁'];
-    }
-    if (frequencyCount == 1) {
-      return isEnglish ? const ['Morning'] : const ['아침'];
-    }
-    return const [];
   }
 
   // 함수이름: _localizedDosageValue
