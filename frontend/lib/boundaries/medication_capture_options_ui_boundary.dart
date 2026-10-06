@@ -4,7 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'medication_photo_source_sheet.dart';
 
 import '../entities/user_setting_entity.dart';
-import '../theme/medbuddy_theme.dart';
+import '../widgets/medbuddy_option_sheet.dart';
 
 // 파일명: medication_capture_options_ui_boundary.dart
 // 역할: 약 정보 분석 작업과 처방전 이미지 출처 선택을 제공한다.
@@ -46,10 +46,6 @@ Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
   return showModalBottomSheet<MedicationCaptureTask>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: Colors.white,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-    ),
     // 함수이름: showMedicationCaptureTaskOptions.builder callback
     // 함수역할: 약 정보 분석 작업과 처방전 이미지 출처 선택에 SizedBox을 적용해 현재 배치를 구성한다.
     // 매개변수:
@@ -68,7 +64,7 @@ Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
               setSheetState(() => choosingPillMode = false);
             }
           },
-          child: _MedicationCaptureOptionSheet(
+          child: MedBuddyOptionSheet(
             key: ValueKey(choosingPillMode),
             children: [
               if (choosingPillMode) ...[
@@ -95,7 +91,7 @@ Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
                   ],
                 ),
                 const SizedBox(height: 12),
-                _MedicationCaptureOption(
+                MedBuddyOptionTile(
                   icon: Icons.center_focus_strong_outlined,
                   title: text.isEnglish
                       ? 'Find pills in one photo'
@@ -103,14 +99,14 @@ Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
                   subtitle: text.isEnglish
                       ? 'Compare pills placed together in one photo.'
                       : '한 사진 속 여러 알약을 구분해 후보를 확인해요.',
-                  userSetting: userSetting,
+                  scale: userSetting.contentTextScale,
                   onTap: () => Navigator.pop(
                     sheetContext,
                     MedicationCaptureTask.multiplePills,
                   ),
                 ),
                 const SizedBox(height: 10),
-                _MedicationCaptureOption(
+                MedBuddyOptionTile(
                   icon: Icons.medication_outlined,
                   title: text.isEnglish
                       ? 'Find pills individually'
@@ -118,18 +114,18 @@ Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
                   subtitle: text.isEnglish
                       ? 'Compare front and back photos of each pill.'
                       : '알약의 앞·뒷면을 촬영해 후보를 확인해요.',
-                  userSetting: userSetting,
+                  scale: userSetting.contentTextScale,
                   onTap: () => Navigator.pop(
                     sheetContext,
                     MedicationCaptureTask.individualPills,
                   ),
                 ),
               ] else ...[
-                _MedicationCaptureOption(
+                MedBuddyOptionTile(
                   icon: Icons.photo_camera_outlined,
                   title: text.prescriptionTask,
                   subtitle: text.prescriptionTaskSubtitle,
-                  userSetting: userSetting,
+                  scale: userSetting.contentTextScale,
                   // 함수이름: showMedicationCaptureTaskOptions.onTap callback
                   // 함수역할: `Navigator.pop(sheetContext, MedicationCaptureTask.prescription)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
                   // 매개변수:
@@ -143,11 +139,11 @@ Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
                   },
                 ),
                 const SizedBox(height: 10),
-                _MedicationCaptureOption(
+                MedBuddyOptionTile(
                   icon: Icons.medication_outlined,
                   title: text.pillTask,
                   subtitle: text.pillTaskSubtitle,
-                  userSetting: userSetting,
+                  scale: userSetting.contentTextScale,
                   // 함수이름: showMedicationCaptureTaskOptions.onTap callback
                   // 함수역할: 시트를 겹치지 않고 알약 촬영 방식 두 가지를 표시한다.
                   // 매개변수:
@@ -158,11 +154,11 @@ Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
                   },
                 ),
                 const SizedBox(height: 10),
-                _MedicationCaptureOption(
+                MedBuddyOptionTile(
                   icon: Icons.edit_note_rounded,
                   title: text.manualTask,
                   subtitle: text.manualTaskSubtitle,
-                  userSetting: userSetting,
+                  scale: userSetting.contentTextScale,
                   // 함수이름: showMedicationCaptureTaskOptions.onTap callback
                   // 함수역할: `Navigator.pop(sheetContext, MedicationCaptureTask.manual)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
                   // 매개변수:
@@ -200,153 +196,6 @@ Future<PrescriptionImageSource?> showPrescriptionImageSourceOptions({
     ImageSource.gallery => PrescriptionImageSource.gallery,
     null => null,
   };
-}
-
-// 클래스명: _MedicationCaptureOptionSheet
-// 역할: 큰 글씨에서도 스크롤 가능한 입력 선택 시트를 담당한다.
-// 주요 책임:
-// - 공통 상단 핸들과 선택지 여백을 제공한다.
-// - 큰 글자 설정에서도 선택지가 화면 아래로 넘치지 않게 한다.
-// 속성:
-// - children (List<Widget>): 순서대로 배치할 콘텐츠 위젯 목록.
-class _MedicationCaptureOptionSheet extends StatelessWidget {
-  final List<Widget> children;
-
-  // 함수이름: _MedicationCaptureOptionSheet
-  // 함수역할: 큰 글씨에서도 스크롤 가능한 입력 선택 시트에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - children (List<Widget>): 순서대로 배치할 콘텐츠 위젯 목록.
-  // 반환값: 입력 설정이 반영된 _MedicationCaptureOptionSheet 인스턴스.
-  const _MedicationCaptureOptionSheet({super.key, required this.children});
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 큰 글씨에서도 스크롤 가능한 입력 선택 시트 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 큰 글씨에서도 스크롤 가능한 입력 선택 시트에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(22, 18, 22, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 42,
-              height: 4,
-              decoration: BoxDecoration(
-                color: MedBuddyColors.outline,
-                borderRadius: MedBuddyRadii.pill,
-              ),
-            ),
-            const SizedBox(height: 18),
-            ...children,
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// 클래스명: _MedicationCaptureOption
-// 역할: 분석 작업 또는 사진 출처의 선택 행을 담당한다.
-// 주요 책임:
-// - 아이콘, 제목, 설명을 사용자 글자 크기에 맞춰 표시한다.
-// - 선택 시 호출자가 전달한 동작을 실행한다.
-// 속성:
-// - icon (IconData): 기본 또는 선택 상태에서 표시할 아이콘.
-// - title (String): 화면·구역·항목에 표시할 제목.
-// - subtitle (String): 주 표시 아래에 제공할 설명 또는 계정 상세.
-// - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-class _MedicationCaptureOption extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final UserSetting userSetting;
-  final VoidCallback onTap;
-
-  // 함수이름: _MedicationCaptureOption
-  // 함수역할: 분석 작업 또는 사진 출처의 선택 행에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - icon (IconData): 기본 또는 선택 상태에서 표시할 아이콘.
-  // - title (String): 화면·구역·항목에 표시할 제목.
-  // - subtitle (String): 주 표시 아래에 제공할 설명 또는 계정 상세.
-  // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-  // - onTap (VoidCallback): 해당 항목의 명시된 주 동작을 실행할 콜백.
-  // 반환값: 입력 설정이 반영된 _MedicationCaptureOption 인스턴스.
-  const _MedicationCaptureOption({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.userSetting,
-    required this.onTap,
-  });
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 분석 작업 또는 사진 출처의 선택 행 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 분석 작업 또는 사진 출처의 선택 행에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
-    final scale = userSetting.contentTextScale;
-
-    return Material(
-      color: MedBuddyColors.successSurface,
-      borderRadius: MedBuddyRadii.card,
-      child: InkWell(
-        borderRadius: MedBuddyRadii.card,
-        onTap: onTap,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-          decoration: BoxDecoration(
-            borderRadius: MedBuddyRadii.card,
-            border: Border.all(color: MedBuddyColors.mint, width: 1.6),
-          ),
-          child: Row(
-            children: [
-              Icon(icon, color: MedBuddyColors.primary, size: 30),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        color: MedBuddyColors.textStrong,
-                        fontSize: 17 * scale,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        color: MedBuddyColors.textMuted,
-                        fontSize: 13 * scale,
-                        height: 1.25,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(
-                Icons.chevron_right,
-                color: MedBuddyColors.primary,
-                size: 24,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 // 클래스명: _MedicationCaptureText
