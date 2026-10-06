@@ -27,7 +27,6 @@ from api.router import get_health_recommendation  # noqa: E402
 from core.database import Base  # noqa: E402
 from entities.saved_medication_entity import (  # noqa: E402
     _SavedMedication,
-    ensure_saved_medication_schema,
 )
 
 
@@ -108,7 +107,6 @@ class CheckHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
             poolclass=StaticPool,
         )
         Base.metadata.create_all(bind=self.engine)
-        ensure_saved_medication_schema(self.engine)
         session_factory = sessionmaker(
             autocommit=False,
             autoflush=False,
@@ -493,7 +491,6 @@ class CheckHealthRecommendationContractTest(unittest.IsolatedAsyncioTestCase):
             poolclass=StaticPool,
         )
         Base.metadata.create_all(bind=engine)
-        ensure_saved_medication_schema(engine)
         session_factory = sessionmaker(
             autocommit=False,
             autoflush=False,

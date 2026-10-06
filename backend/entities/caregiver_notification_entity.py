@@ -14,11 +14,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
-    inspect,
-    text,
 )
-from sqlalchemy.engine import Engine
-
 from core.database import Base
 from entities.user_account_entity import _UserAccount  # noqa: F401
 
@@ -195,20 +191,6 @@ def alert_option_from_enabled(enabled: bool) -> str:
     )
 
 
-# 함수이름: enabled_from_alert_option
-# 함수역할:
-# - 문자열 알림 옵션을 정규화해 비활성 모드인지 확인한다.
-# 매개변수:
-# - alert_option (str): 기존 활성 플래그보다 우선하는 선택적 알림 모드.
-# 반환값:
-# - 정규화한 모드가 disabled가 아니면 True.
-def enabled_from_alert_option(alert_option: str) -> bool:
-    return (
-        normalize_notification_mode(alert_option)
-        != CAREGIVER_NOTIFICATION_MODE_DISABLED
-    )
-
-
 # 함수이름: normalize_notification_mode
 # 함수역할:
 # - 기존 불리언·문자열 별칭을 완료·미복용 마감·비활성 알림 모드로 통일한다.
@@ -313,130 +295,3 @@ def decode_slot_settings(raw_settings: str | None) -> dict[str, dict[str, object
 def encode_slot_settings(settings: dict[str, dict[str, object]]) -> str:
     return json.dumps(settings, ensure_ascii=False, separators=(",", ":"))
 
-
-# 함수이름: ensure_caregiver_notification_schema
-# 함수역할:
-# - 기존 SQLite DB를 보존하면서 보호자 알림 설정 스키마를 확장한다.
-# 매개변수:
-# - db_engine (Engine): 애플리케이션 DB에 연결된 SQLAlchemy 엔진
-# 반환값:
-# - 없음.
-def ensure_caregiver_notification_schema(db_engine: Engine) -> None:
-    inspector = inspect(db_engine)
-    if not inspector.has_table(_CaregiverNotification.__tablename__):
-        Base.metadata.create_all(
-            bind=db_engine,
-            tables=[_CaregiverNotification.__table__],
-        )
-
-    inspector = inspect(db_engine)
-    existing_columns = {
-        column["name"]
-        for column in inspector.get_columns(_CaregiverNotification.__tablename__)
-    }
-    optional_columns = {
-        "guardian_hash": "VARCHAR DEFAULT ''",
-        "patient_hash": "VARCHAR DEFAULT ''",
-        "enabled": "BOOLEAN DEFAULT 0",
-        "alert_option": (
-            f"VARCHAR DEFAULT '{CAREGIVER_NOTIFICATION_MODE_DISABLED}'"
-        ),
-        "deadline_hour": "INTEGER",
-        "deadline_minute": "INTEGER",
-        "slot_settings": "TEXT DEFAULT '{}'",
-        "created_at": "DATETIME",
-        "updated_at": "DATETIME",
-    }
-
-    with db_engine.begin() as connection:
-        for column_name, column_type in optional_columns.items():
-            if column_name not in existing_columns:
-                connection.execute(
-                    text(
-                        f"ALTER TABLE {_CaregiverNotification.__tablename__} "
-                        f"ADD COLUMN {column_name} {column_type}"
-                    )
-                )
-
-        connection.execute(
-            text(
-                f"UPDATE {_CaregiverNotification.__tablename__} "
-                "SET guardian_hash = '' WHERE guardian_hash IS NULL"
-            )
-        )
-        connection.execute(
-            text(
-                f"UPDATE {_CaregiverNotification.__tablename__} "
-                "SET patient_hash = '' WHERE patient_hash IS NULL"
-            )
-        )
-        connection.execute(
-            text(
-                f"UPDATE {_CaregiverNotification.__tablename__} "
-                "SET enabled = CASE "
-                "WHEN LOWER(alert_option) IN ('enable', 'enabled', 'on', 'true', '1') "
-                "THEN 1 ELSE 0 END "
-                "WHERE enabled IS NULL"
-            )
-        )
-        connection.execute(
-            text(
-                f"UPDATE {_CaregiverNotification.__tablename__} "
-                "SET enabled = 0 WHERE enabled IS NULL"
-            )
-        )
-        connection.execute(
-            text(
-                f"UPDATE {_CaregiverNotification.__tablename__} "
-                "SET slot_settings = '{}' "
-                "WHERE slot_settings IS NULL OR TRIM(slot_settings) = ''"
-            )
-        )
-        connection.execute(
-            text(
-                f"UPDATE {_CaregiverNotification.__tablename__} "
-                "SET alert_option = CASE "
-                f"WHEN enabled = 1 THEN '{CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED}' "
-                f"ELSE '{CAREGIVER_NOTIFICATION_MODE_DISABLED}' END "
-                "WHERE alert_option IS NULL "
-                "OR LOWER(alert_option) NOT IN "
-                "('disabled', 'dose_completed', 'missed_deadline')"
-            )
-        )
-        connection.execute(
-            text(
-                f"UPDATE {_CaregiverNotification.__tablename__} "
-                "SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL"
-            )
-        )
-        connection.execute(
-            text(
-                f"UPDATE {_CaregiverNotification.__tablename__} "
-                "SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL"
-            )
-        )
-        connection.execute(
-            text(
-                f"DELETE FROM {_CaregiverNotification.__tablename__} "
-                "WHERE id NOT IN ("
-                f"SELECT MAX(id) FROM {_CaregiverNotification.__tablename__} "
-                "GROUP BY guardian_hash, patient_hash"
-                ")"
-            )
-        )
-        connection.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS "
-                f"ix_{_CaregiverNotification.__tablename__}_scope "
-                f"ON {_CaregiverNotification.__tablename__} "
-                "(guardian_hash, patient_hash)"
-            )
-        )
-        connection.execute(
-            text(
-                "CREATE UNIQUE INDEX IF NOT EXISTS "
-                f"uq_{_CaregiverNotification.__tablename__}_scope "
-                f"ON {_CaregiverNotification.__tablename__} "
-                "(guardian_hash, patient_hash)"
-            )
-        )

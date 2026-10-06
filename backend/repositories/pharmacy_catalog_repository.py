@@ -23,6 +23,35 @@ from entities.pharmacy_catalog_entity import (
 _SEARCH_CACHE_MAX_AGE = timedelta(hours=24)
 
 
+# Function Name: match_official_designation
+# Description:
+# - Finds the late-night designation for a pharmacy by normalized telephone digits.
+# - Rejects a telephone match whose alphanumeric, case-folded name differs.
+# Parameters:
+# - telephone (str | None): Pharmacy telephone number in any punctuation format.
+# - name (str): Pharmacy name stored in the catalog.
+# - designations_by_phone (dict[str, dict[str, object]]): Official designations keyed by telephone digits.
+# Returns:
+# - The matching designation mapping, or None when the telephone or name does not match.
+def match_official_designation(
+    telephone: str | None,
+    name: str,
+    designations_by_phone: dict[str, dict[str, object]],
+) -> dict[str, object] | None:
+    normalized_phone = "".join(
+        character for character in (telephone or "") if character.isdigit()
+    )
+    designation = designations_by_phone.get(normalized_phone)
+    if designation is None:
+        return None
+    expected_name = "".join(
+        character for character in str(designation.get("name", ""))
+        if character.isalnum()
+    ).casefold()
+    actual_name = "".join(character for character in name if character.isalnum())
+    return designation if expected_name == actual_name.casefold() else None
+
+
 # 클래스명: PharmacyCatalogRepository
 # 역할:
 # - 전국 약국 카탈로그와 날짜별 영업·공휴일 캐시의 DB 접근을 맡는다.
@@ -138,9 +167,7 @@ class PharmacyCatalogRepository:
     def is_fresh(self, *, minimum_rows: int, max_age: timedelta) -> bool:
         if self.count() < minimum_rows:
             return False
-        newest_update = self.db.query(
-            func.max(PharmacyCatalogRecord.source_updated_at)
-        ).scalar()
+        newest_update = self.latest_source_updated_at()
         if newest_update is None:
             return False
         cutoff = datetime.now(UTC).replace(tzinfo=None) - max_age
@@ -252,22 +279,9 @@ class PharmacyCatalogRepository:
         mappings: list[dict[str, object]] = []
         try:
             for row in self.db.query(PharmacyCatalogRecord).all():
-                normalized_phone = "".join(
-                    character for character in (row.telephone or "")
-                    if character.isdigit()
+                designation = match_official_designation(
+                    row.telephone, row.name, designations_by_phone
                 )
-                designation = designations_by_phone.get(normalized_phone)
-                if designation is not None:
-                    expected_name = "".join(
-                        character
-                        for character in str(designation.get("name", ""))
-                        if character.isalnum()
-                    ).casefold()
-                    actual_name = "".join(
-                        character for character in row.name if character.isalnum()
-                    ).casefold()
-                    if expected_name != actual_name:
-                        designation = None
                 next_value = (
                     {"public_late_night": designation}
                     if designation is not None

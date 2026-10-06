@@ -12,11 +12,7 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
-    inspect,
-    text,
 )
-from sqlalchemy.engine import Engine
-
 from core.database import Base
 from entities.medication_schedule_entity import (
     DEFAULT_MEDICATION_SCHEDULE_SLOT_KEY,
@@ -159,103 +155,3 @@ def default_alarm_hour(slot_key: str) -> int:
 def valid_alarm_slot_keys() -> tuple[str, ...]:
     return MEDICATION_SCHEDULE_SLOT_KEYS
 
-
-# Function Name: ensure_medication_alarm_schema
-# Description:
-# - Creates or upgrades the medication alarm storage table for existing SQLite DBs.
-# - SQLAlchemy create_all creates missing tables but does not alter existing tables.
-# Parameters:
-# - db_engine (Engine): SQLAlchemy engine bound to the application database.
-# Returns:
-# - None.
-def ensure_medication_alarm_schema(db_engine: Engine) -> None:
-    inspector = inspect(db_engine)
-    if not inspector.has_table(_MedicationAlarm.__tablename__):
-        Base.metadata.create_all(
-            bind=db_engine,
-            tables=[_MedicationAlarm.__table__],
-        )
-
-    inspector = inspect(db_engine)
-    existing_columns = {
-        column["name"]
-        for column in inspector.get_columns(_MedicationAlarm.__tablename__)
-    }
-    optional_columns = {
-        "patient_hash": f"VARCHAR DEFAULT '{DEFAULT_PATIENT_HASH}'",
-        "slot_key": f"VARCHAR DEFAULT '{DEFAULT_MEDICATION_SCHEDULE_SLOT_KEY}'",
-        "hour": "INTEGER DEFAULT 8",
-        "minute": "INTEGER DEFAULT 0",
-        "enabled": "BOOLEAN DEFAULT 0",
-        "updated_at": "DATETIME",
-    }
-
-    with db_engine.begin() as connection:
-        for column_name, column_type in optional_columns.items():
-            if column_name not in existing_columns:
-                connection.execute(
-                    text(
-                        f"ALTER TABLE {_MedicationAlarm.__tablename__} "
-                        f"ADD COLUMN {column_name} {column_type}"
-                    )
-                )
-
-        connection.execute(
-            text(
-                f"UPDATE {_MedicationAlarm.__tablename__} "
-                "SET patient_hash = :default_patient_hash "
-                "WHERE patient_hash IS NULL OR patient_hash = ''"
-            ),
-            {"default_patient_hash": DEFAULT_PATIENT_HASH},
-        )
-        connection.execute(
-            text(
-                f"UPDATE {_MedicationAlarm.__tablename__} "
-                "SET slot_key = :default_slot_key "
-                "WHERE slot_key IS NULL OR slot_key = ''"
-            ),
-            {"default_slot_key": DEFAULT_MEDICATION_SCHEDULE_SLOT_KEY},
-        )
-        connection.execute(
-            text(
-                f"UPDATE {_MedicationAlarm.__tablename__} "
-                "SET hour = 8 WHERE hour IS NULL"
-            )
-        )
-        connection.execute(
-            text(
-                f"UPDATE {_MedicationAlarm.__tablename__} "
-                "SET minute = 0 WHERE minute IS NULL"
-            )
-        )
-        connection.execute(
-            text(
-                f"UPDATE {_MedicationAlarm.__tablename__} "
-                "SET enabled = 0 WHERE enabled IS NULL"
-            )
-        )
-        connection.execute(
-            text(
-                f"DELETE FROM {_MedicationAlarm.__tablename__} "
-                "WHERE id NOT IN ("
-                f"SELECT MAX(id) FROM {_MedicationAlarm.__tablename__} "
-                "GROUP BY patient_hash, slot_key"
-                ")"
-            )
-        )
-        connection.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS "
-                f"ix_{_MedicationAlarm.__tablename__}_scope "
-                f"ON {_MedicationAlarm.__tablename__} "
-                "(patient_hash, slot_key)"
-            )
-        )
-        connection.execute(
-            text(
-                "CREATE UNIQUE INDEX IF NOT EXISTS "
-                f"uq_{_MedicationAlarm.__tablename__}_scope_slot "
-                f"ON {_MedicationAlarm.__tablename__} "
-                "(patient_hash, slot_key)"
-            )
-        )

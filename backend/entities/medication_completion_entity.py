@@ -12,10 +12,7 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
-    inspect,
-    text,
 )
-from sqlalchemy.engine import Engine
 from pydantic import BaseModel
 
 from core.application_clock import application_today
@@ -179,108 +176,3 @@ class MedicationCompletion(BaseModel):
             completed_at=self.completed_at,
         )
 
-
-# Function Name: ensure_medication_completion_schema
-# Description:
-# - Creates the per-slot completion table and supporting index for existing SQLite DBs.
-# Parameters:
-# - db_engine (Engine): SQLAlchemy engine bound to the application database.
-# Returns:
-# - None.
-def ensure_medication_completion_schema(db_engine: Engine) -> None:
-    inspector = inspect(db_engine)
-    if not inspector.has_table(_MedicationCompletion.__tablename__):
-        Base.metadata.create_all(
-            bind=db_engine,
-            tables=[_MedicationCompletion.__table__],
-        )
-
-    inspector = inspect(db_engine)
-    existing_columns = {
-        column["name"]
-        for column in inspector.get_columns(_MedicationCompletion.__tablename__)
-    }
-    optional_columns = {
-        "saved_medication_id": "INTEGER DEFAULT 0",
-        "patient_hash": f"VARCHAR DEFAULT '{DEFAULT_PATIENT_HASH}'",
-        "schedule_date": "DATE",
-        "slot_key": f"VARCHAR DEFAULT '{DEFAULT_MEDICATION_SCHEDULE_SLOT_KEY}'",
-        "completed": "BOOLEAN DEFAULT 1",
-        "completed_at": "DATETIME",
-    }
-
-    with db_engine.begin() as connection:
-        for column_name, column_type in optional_columns.items():
-            if column_name not in existing_columns:
-                connection.execute(
-                    text(
-                        f"ALTER TABLE {_MedicationCompletion.__tablename__} "
-                        f"ADD COLUMN {column_name} {column_type}"
-                    )
-                )
-
-        connection.execute(
-            text(
-                f"UPDATE {_MedicationCompletion.__tablename__} "
-                "SET saved_medication_id = 0 WHERE saved_medication_id IS NULL"
-            )
-        )
-        connection.execute(
-            text(
-                f"UPDATE {_MedicationCompletion.__tablename__} "
-                "SET patient_hash = :default_patient_hash "
-                "WHERE patient_hash IS NULL OR patient_hash = ''"
-            ),
-            {"default_patient_hash": DEFAULT_PATIENT_HASH},
-        )
-        connection.execute(
-            text(
-                f"UPDATE {_MedicationCompletion.__tablename__} "
-                "SET schedule_date = CURRENT_DATE WHERE schedule_date IS NULL"
-            )
-        )
-        connection.execute(
-            text(
-                f"UPDATE {_MedicationCompletion.__tablename__} "
-                "SET slot_key = :default_slot_key "
-                "WHERE slot_key IS NULL OR slot_key = ''"
-            ),
-            {"default_slot_key": DEFAULT_MEDICATION_SCHEDULE_SLOT_KEY},
-        )
-        connection.execute(
-            text(
-                f"UPDATE {_MedicationCompletion.__tablename__} "
-                "SET completed = 1 WHERE completed IS NULL"
-            )
-        )
-        connection.execute(
-            text(
-                f"UPDATE {_MedicationCompletion.__tablename__} "
-                "SET completed_at = CURRENT_TIMESTAMP WHERE completed_at IS NULL"
-            )
-        )
-        connection.execute(
-            text(
-                f"DELETE FROM {_MedicationCompletion.__tablename__} "
-                "WHERE id NOT IN ("
-                f"SELECT MAX(id) FROM {_MedicationCompletion.__tablename__} "
-                "GROUP BY saved_medication_id, patient_hash, schedule_date, slot_key"
-                ")"
-            )
-        )
-        connection.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS "
-                f"ix_{_MedicationCompletion.__tablename__}_scope "
-                f"ON {_MedicationCompletion.__tablename__} "
-                "(patient_hash, schedule_date, saved_medication_id)"
-            )
-        )
-        connection.execute(
-            text(
-                "CREATE UNIQUE INDEX IF NOT EXISTS "
-                f"uq_{_MedicationCompletion.__tablename__}_scope_slot "
-                f"ON {_MedicationCompletion.__tablename__} "
-                "(saved_medication_id, patient_hash, schedule_date, slot_key)"
-            )
-        )

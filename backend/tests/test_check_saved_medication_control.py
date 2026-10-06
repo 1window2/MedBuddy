@@ -9,7 +9,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from fastapi import HTTPException
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -20,13 +20,11 @@ from controls.check_saved_medication_control import CheckSavedMedication  # noqa
 from core.database import Base  # noqa: E402
 from entities.medication_completion_entity import (  # noqa: E402
     _MedicationCompletion,
-    ensure_medication_completion_schema,
 )
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH  # noqa: E402
 from entities.saved_medication_entity import (  # noqa: E402
     _SavedMedication,
     build_saved_medication_deduplication_key,
-    ensure_saved_medication_schema,
 )
 from schemas.medication import SavedMedicationCreate  # noqa: E402
 
@@ -60,8 +58,6 @@ class CheckSavedMedicationTest(unittest.TestCase):
             connect_args={"check_same_thread": False},
         )
         Base.metadata.create_all(bind=self.engine)
-        ensure_saved_medication_schema(self.engine)
-        ensure_medication_completion_schema(self.engine)
         session_factory = sessionmaker(
             autocommit=False,
             autoflush=False,
@@ -187,76 +183,6 @@ class CheckSavedMedicationTest(unittest.TestCase):
             ["morning", "bedtime"],
         )
 
-    # Function Name: test_schema_upgrade_adds_saved_metadata_to_legacy_table
-    # Description:
-    # - Upgrades a legacy medication table with product, batch, schedule, AI-guide, and
-    #   safety fields and verifies new metadata can be saved.
-    # Parameters:
-    # - None.
-    # Returns:
-    # - None.
-    def test_schema_upgrade_adds_saved_metadata_to_legacy_table(self) -> None:
-        engine = create_engine(
-            "sqlite:///:memory:",
-            connect_args={"check_same_thread": False},
-        )
-        with engine.begin() as connection:
-            connection.execute(
-                text(
-                    """
-                    CREATE TABLE saved_medications (
-                        id INTEGER PRIMARY KEY,
-                        patient_hash VARCHAR DEFAULT 'local_patient',
-                        created_date DATE,
-                        prescription_date DATE,
-                        item_name VARCHAR,
-                        efficacy VARCHAR,
-                        use_method VARCHAR,
-                        warning_message VARCHAR,
-                        dosage_per_time VARCHAR,
-                        daily_frequency VARCHAR,
-                        total_days VARCHAR,
-                        image_url VARCHAR,
-                        medication_status BOOLEAN DEFAULT 0,
-                        medication_status_date DATE
-                    )
-                    """
-                )
-            )
-
-        ensure_saved_medication_schema(engine)
-
-        existing_columns = {
-            column["name"] for column in inspect(engine).get_columns("saved_medications")
-        }
-        self.assertIn("ai_guide", existing_columns)
-        self.assertIn("item_seq", existing_columns)
-        self.assertIn("schedule_slot_keys", existing_columns)
-        self.assertIn("prescription_batch_id", existing_columns)
-        self.assertIn("interaction", existing_columns)
-        self.assertIn("side_effect", existing_columns)
-        self.assertIn("storage_method", existing_columns)
-
-        session_factory = sessionmaker(
-            autocommit=False,
-            autoflush=False,
-            bind=engine,
-        )
-        db = session_factory()
-        try:
-            response = CheckSavedMedication(db).saveMedicationDetail(
-                self._saved_medication(patient_hash="patient-a", item_name="legacy")
-            )
-            saved_row = db.get(_SavedMedication, response["id"])
-            self.assertIsNotNone(saved_row)
-            self.assertEqual(saved_row.ai_guide, "guide")
-            self.assertEqual(saved_row.item_seq, "200000001")
-            self.assertEqual(saved_row.interaction, "avoid anticoagulants")
-            self.assertEqual(saved_row.side_effect, "drowsiness")
-            self.assertEqual(saved_row.storage_method, "store below 25 C")
-        finally:
-            db.close()
-            engine.dispose()
 
     # Function Name: test_save_rejects_same_day_duplicate_medication
     # Description:

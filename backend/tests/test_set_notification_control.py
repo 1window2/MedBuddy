@@ -8,7 +8,6 @@ from pathlib import Path
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine
-from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -20,7 +19,6 @@ from entities.user_setting_entity import _UserSetting  # noqa: E402
 from core.database import Base  # noqa: E402
 from entities.medication_alarm_entity import (  # noqa: E402
     _MedicationAlarm,
-    ensure_medication_alarm_schema,
 )
 
 
@@ -92,7 +90,6 @@ class SetNotificationTest(unittest.TestCase):
             connect_args={"check_same_thread": False},
         )
         Base.metadata.create_all(bind=self.engine)
-        ensure_medication_alarm_schema(self.engine)
         session_factory = sessionmaker(
             autocommit=False,
             autoflush=False,
@@ -197,72 +194,6 @@ class SetNotificationTest(unittest.TestCase):
         with self.assertRaises(HTTPException) as minute_context:
             self.control.saveNotificationSetting("patient-a", "morning", 8, 60)
         self.assertEqual(minute_context.exception.status_code, 400)
-
-    # Function Name: test_schema_upgrade_adds_missing_columns_and_deduplicates_rows
-    # Description:
-    # - Adds missing alarm columns, deduplicates legacy rows, and initializes the remaining
-    #   row to a disabled 08:00 alarm.
-    # Parameters:
-    # - None.
-    # Returns:
-    # - None.
-    def test_schema_upgrade_adds_missing_columns_and_deduplicates_rows(
-        self,
-    ) -> None:
-        legacy_engine = create_engine(
-            "sqlite:///:memory:",
-            connect_args={"check_same_thread": False},
-        )
-        try:
-            with legacy_engine.begin() as connection:
-                connection.execute(
-                    text(
-                        "CREATE TABLE notification_settings ("
-                        "id INTEGER PRIMARY KEY, "
-                        "patient_hash VARCHAR, "
-                        "slot_key VARCHAR"
-                        ")"
-                    )
-                )
-                connection.execute(
-                    text(
-                        "INSERT INTO notification_settings "
-                        "(id, patient_hash, slot_key) "
-                        "VALUES "
-                        "(1, 'patient-a', 'morning'), "
-                        "(2, 'patient-a', 'morning')"
-                    )
-                )
-
-            ensure_medication_alarm_schema(legacy_engine)
-
-            with legacy_engine.connect() as connection:
-                columns = {
-                    row[1]
-                    for row in connection.execute(
-                        text("PRAGMA table_info(notification_settings)")
-                    )
-                }
-                self.assertIn("hour", columns)
-                self.assertIn("minute", columns)
-                self.assertIn("enabled", columns)
-                row_count = connection.execute(
-                    text("SELECT COUNT(*) FROM notification_settings")
-                ).scalar_one()
-                self.assertEqual(row_count, 1)
-                migrated_row = connection.execute(
-                    text(
-                        "SELECT hour, minute, enabled "
-                        "FROM notification_settings "
-                        "WHERE patient_hash = 'patient-a' "
-                        "AND slot_key = 'morning'"
-                    )
-                ).first()
-                self.assertEqual(migrated_row[0], 8)
-                self.assertEqual(migrated_row[1], 0)
-                self.assertEqual(migrated_row[2], 0)
-        finally:
-            legacy_engine.dispose()
 
 
 if __name__ == "__main__":

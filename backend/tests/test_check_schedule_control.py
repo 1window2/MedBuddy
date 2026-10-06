@@ -10,8 +10,7 @@ from pathlib import Path
 from threading import Barrier, Lock, Thread
 
 from fastapi import HTTPException
-from sqlalchemy import create_engine, event, inspect, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -24,7 +23,6 @@ from core.database import Base  # noqa: E402
 from entities.medication_completion_entity import (  # noqa: E402
     MedicationCompletion,
     _MedicationCompletion,
-    ensure_medication_completion_schema,
 )
 from entities.caregiver_alert_outbox_entity import (  # noqa: E402
     CAREGIVER_ALERT_STATUS_PENDING,
@@ -33,7 +31,6 @@ from entities.caregiver_alert_outbox_entity import (  # noqa: E402
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH  # noqa: E402
 from entities.saved_medication_entity import (  # noqa: E402
     _SavedMedication,
-    ensure_saved_medication_schema,
 )
 
 
@@ -105,8 +102,6 @@ class CheckScheduleTest(unittest.TestCase):
             connect_args={"check_same_thread": False},
         )
         Base.metadata.create_all(bind=self.engine)
-        ensure_saved_medication_schema(self.engine)
-        ensure_medication_completion_schema(self.engine)
         session_factory = sessionmaker(
             autocommit=False,
             autoflush=False,
@@ -954,81 +949,6 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertTrue(response["success"])
         self.assertEqual(response["data"][0]["medication_id"], str(medication.id))
 
-    # Function Name: test_completion_schema_upgrade_hardens_legacy_table
-    # Description:
-    # - Adds required completion fields, deduplicates legacy rows with default ownership and
-    #   slot values, and rejects a duplicate completion key.
-    # Parameters:
-    # - None.
-    # Returns:
-    # - None.
-    def test_completion_schema_upgrade_hardens_legacy_table(self) -> None:
-        legacy_engine = create_engine(
-            "sqlite:///:memory:",
-            connect_args={"check_same_thread": False},
-        )
-        try:
-            with legacy_engine.begin() as connection:
-                connection.execute(
-                    text(
-                        "CREATE TABLE medication_completions ("
-                        "id INTEGER PRIMARY KEY, "
-                        "saved_medication_id INTEGER"
-                        ")"
-                    )
-                )
-                connection.execute(
-                    text(
-                        "INSERT INTO medication_completions "
-                        "(id, saved_medication_id) "
-                        "VALUES (1, 10), (2, 10)"
-                    )
-                )
-
-            ensure_medication_completion_schema(legacy_engine)
-
-            existing_columns = {
-                column["name"]
-                for column in inspect(legacy_engine).get_columns(
-                    "medication_completions"
-                )
-            }
-            self.assertIn("patient_hash", existing_columns)
-            self.assertIn("schedule_date", existing_columns)
-            self.assertIn("slot_key", existing_columns)
-            self.assertIn("completed", existing_columns)
-            self.assertIn("completed_at", existing_columns)
-
-            with legacy_engine.connect() as connection:
-                rows = connection.execute(
-                    text(
-                        "SELECT saved_medication_id, patient_hash, schedule_date, "
-                        "slot_key, completed, completed_at "
-                        "FROM medication_completions"
-                    )
-                ).all()
-                self.assertEqual(len(rows), 1)
-                self.assertEqual(rows[0][0], 10)
-                self.assertEqual(rows[0][1], DEFAULT_PATIENT_HASH)
-                self.assertIsNotNone(rows[0][2])
-                self.assertEqual(rows[0][3], "morning")
-                self.assertEqual(rows[0][4], 1)
-                self.assertIsNotNone(rows[0][5])
-                with self.assertRaises(IntegrityError):
-                    connection.execute(
-                        text(
-                            "INSERT INTO medication_completions "
-                            "(saved_medication_id, patient_hash, schedule_date, "
-                            "slot_key, completed) "
-                            "VALUES (10, :patient_hash, :schedule_date, 'morning', 1)"
-                        ),
-                        {
-                            "patient_hash": DEFAULT_PATIENT_HASH,
-                            "schedule_date": rows[0][2],
-                        },
-                    )
-        finally:
-            legacy_engine.dispose()
 
 if __name__ == "__main__":
     unittest.main()
