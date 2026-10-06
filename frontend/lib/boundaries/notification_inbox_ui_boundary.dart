@@ -551,7 +551,7 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
                           ? null
                           : () => _delete(selected),
                       style: FilledButton.styleFrom(
-                        backgroundColor: MedBuddyColors.primary,
+                        backgroundColor: MedBuddyColors.danger,
                         foregroundColor: MedBuddyColors.surface,
                         disabledBackgroundColor: MedBuddyColors.divider,
                         disabledForegroundColor: MedBuddyColors.textMuted,
