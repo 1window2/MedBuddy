@@ -226,7 +226,7 @@ class CheckResultUI extends StatelessWidget {
       SnackBar(
         content: Text(statusMessageProvider()),
         backgroundColor: success
-            ? const Color(0xFF059669)
+            ? MedBuddyColors.primary
             : MedBuddyColors.danger,
         duration: const Duration(seconds: 2),
       ),

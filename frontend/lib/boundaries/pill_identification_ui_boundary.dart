@@ -428,7 +428,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                           text.retryWaitNotice(_retryAfter),
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: const Color(0xFF8A6200),
+                            color: MedBuddyColors.reminderAccent,
                             fontSize: 12 * textScale,
                             fontWeight: FontWeight.w700,
                             height: 1.35,
@@ -2389,7 +2389,7 @@ class _PillCandidateCard extends StatelessWidget {
                           child: Text(
                             text.sameMedicinePhotoCount(duplicateCount),
                             style: TextStyle(
-                              color: const Color(0xFF8A5A00),
+                              color: MedBuddyColors.reminderAccent,
                               fontSize: 11 * textScale,
                               fontWeight: FontWeight.w700,
                             ),
