@@ -2201,7 +2201,7 @@ class _ScheduleContextSelector extends StatelessWidget {
                 style: const TextStyle(
                   color: MedBuddyColors.textStrong,
                   fontSize: 22,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                   letterSpacing: 0,
                 ),
               ),
@@ -2390,7 +2390,7 @@ class _ScheduleSummaryContent extends StatelessWidget {
                 style: TextStyle(
                   color: foreground,
                   fontSize: 15,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                   letterSpacing: 0,
                 ),
               ),
@@ -2400,7 +2400,7 @@ class _ScheduleSummaryContent extends StatelessWidget {
               style: TextStyle(
                 color: foreground,
                 fontSize: 13,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
                 letterSpacing: 0,
               ),
             ),
@@ -2658,7 +2658,7 @@ class _MessagePharmacyContext extends StatelessWidget {
                   style: TextStyle(
                     color: foreground,
                     fontSize: 15,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                     letterSpacing: 0,
                   ),
                 ),
@@ -2711,7 +2711,7 @@ class _MessagePharmacyContext extends StatelessWidget {
               style: TextStyle(
                 color: foreground,
                 fontSize: 11,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
                 letterSpacing: 0,
               ),
             ),
@@ -2832,7 +2832,7 @@ class _SelectedMedicationContext extends StatelessWidget {
                               color: MedBuddyColors.textStrong,
                               fontSize: 14,
                               height: 1.4,
-                              fontWeight: FontWeight.w800,
+                              fontWeight: FontWeight.w700,
                               letterSpacing: 0,
                             ),
                           ),
@@ -2957,7 +2957,7 @@ class _MessageMedicationContext extends StatelessWidget {
                       style: TextStyle(
                         color: foreground,
                         fontSize: 13,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                         letterSpacing: 0,
                       ),
                     ),

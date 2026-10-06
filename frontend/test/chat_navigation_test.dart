@@ -705,7 +705,7 @@ void main() {
             findsOneWidget,
           );
           expect(title.style?.fontSize, 21);
-          expect(title.style?.fontWeight, FontWeight.w800);
+          expect(title.style?.fontWeight, FontWeight.w700);
           expect(title.style?.color, Colors.white);
           final titleRect = tester.getRect(titleFinder);
           final toolbarRect = tester.getRect(find.byType(MedBuddyPageHeader));

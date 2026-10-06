@@ -203,7 +203,7 @@ class _MedicationLoadingTipState extends State<MedicationLoadingTip>
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 16,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                   color: MedBuddyColors.primaryDark,
                 ),
               ),

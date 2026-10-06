@@ -53,7 +53,7 @@ class DoseSyncStatus extends StatelessWidget {
                           isEnglish ? 'Dose sync' : '복용 기록 전송',
                           style: const TextStyle(
                             fontSize: 22,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                         trailing: IconButton(

@@ -274,7 +274,7 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: MedBuddyColors.textStrong,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],
@@ -477,7 +477,7 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
             ),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 8),
-              child: Text('~', style: TextStyle(fontWeight: FontWeight.w800)),
+              child: Text('~', style: TextStyle(fontWeight: FontWeight.w700)),
             ),
             Expanded(
               child: _DateButton(
@@ -622,7 +622,7 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
             : const Icon(Icons.save_outlined),
         label: Text(
           _isSaving ? _text.saving : _text.save,
-          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
         ),
       ),
     );
@@ -836,7 +836,7 @@ class _SectionTitle extends StatelessWidget {
             style: const TextStyle(
               color: MedBuddyColors.textStrong,
               fontSize: 17,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ),
@@ -911,7 +911,7 @@ class _DateButton extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
         ],
       ),
     );

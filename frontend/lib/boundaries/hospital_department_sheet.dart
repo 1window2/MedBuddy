@@ -107,7 +107,7 @@ class _HospitalDepartmentSheetState extends State<_HospitalDepartmentSheet> {
                         : (widget.english ? 'Specialty' : '진료과목'),
                     style: const TextStyle(
                       fontSize: 22,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                       letterSpacing: 0,
                     ),
                   ),
@@ -187,7 +187,7 @@ class _HospitalDepartmentSheetState extends State<_HospitalDepartmentSheet> {
                                       style: TextStyle(
                                         color: MedBuddyColors.primary,
                                         fontWeight: _activeIndex == initial
-                                            ? FontWeight.w900
+                                            ? FontWeight.w700
                                             : FontWeight.w600,
                                       ),
                                     ),

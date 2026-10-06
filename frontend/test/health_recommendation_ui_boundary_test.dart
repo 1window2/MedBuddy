@@ -311,7 +311,7 @@ void main() {
         expect(header.prominent, isFalse);
         final title = tester.widget<Text>(find.text(header.title));
         expect(title.style!.fontSize, 21);
-        expect(title.style!.fontWeight, FontWeight.w800);
+        expect(title.style!.fontWeight, FontWeight.w700);
         expect(title.style!.color, Colors.white);
         final semantics = tester.ensureSemantics();
         try {

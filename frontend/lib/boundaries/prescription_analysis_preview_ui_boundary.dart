@@ -189,13 +189,7 @@ class _PrescriptionAnalysisPreviewUIState
         top: false,
         child: Container(
           width: double.infinity,
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [MedBuddyColors.analysisBackground, Colors.white],
-            ),
-          ),
+          color: MedBuddyColors.pageBackground,
           child: Column(
             children: [
               _TopBackButton(
@@ -225,7 +219,7 @@ class _PrescriptionAnalysisPreviewUIState
                           style: TextStyle(
                             color: MedBuddyColors.textStrong,
                             fontSize: 26 * scale,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w700,
                             letterSpacing: 0,
                           ),
                         ),

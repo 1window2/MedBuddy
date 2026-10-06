@@ -48,7 +48,7 @@ void main() {
     final title = tester.widget<Text>(find.text('저장된 복약 정보'));
     expect(title.style!.fontSize, 21);
     expect(title.style!.color, Colors.white);
-    expect(title.style!.fontWeight, FontWeight.w800);
+    expect(title.style!.fontWeight, FontWeight.w700);
     await tester.tap(find.byTooltip('뒤로가기'));
     expect(backs, 1);
   });
@@ -89,13 +89,10 @@ void main() {
           .first,
     );
     final decoration = container.decoration! as BoxDecoration;
-    expect((decoration.gradient! as LinearGradient).colors, [
-      const Color(0xFF249B62),
-      MedBuddyColors.topBar,
-    ]);
+    expect(decoration.color, MedBuddyColors.topBar);
     expect(
       decoration.borderRadius,
-      const BorderRadius.vertical(bottom: Radius.circular(28)),
+      const BorderRadius.vertical(bottom: Radius.circular(24)),
     );
     final title = tester.getRect(find.text('내 정보'));
     expect(title.left, 32);

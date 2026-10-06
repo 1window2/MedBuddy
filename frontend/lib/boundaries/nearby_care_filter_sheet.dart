@@ -54,7 +54,7 @@ class _NearbyCareFilterSheetState extends State<_NearbyCareFilterSheet> {
       label,
       style: const TextStyle(
         fontSize: 16,
-        fontWeight: FontWeight.w800,
+        fontWeight: FontWeight.w700,
         letterSpacing: 0,
       ),
     ),
@@ -80,7 +80,7 @@ class _NearbyCareFilterSheetState extends State<_NearbyCareFilterSheet> {
                       style: const TextStyle(
                         color: MedBuddyColors.textStrong,
                         fontSize: 22,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                         letterSpacing: 0,
                       ),
                     ),
@@ -206,7 +206,7 @@ class _NearbyCareFilterSheetState extends State<_NearbyCareFilterSheet> {
                         style: const TextStyle(
                           color: MedBuddyColors.textStrong,
                           fontSize: 17,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w700,
                           letterSpacing: 0,
                         ),
                       ),

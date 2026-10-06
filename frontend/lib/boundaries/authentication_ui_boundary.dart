@@ -240,7 +240,7 @@ class _AuthenticationUIState extends State<AuthenticationUI>
                           style: TextStyle(
                             color: MedBuddyColors.primary,
                             fontSize: 38,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -878,7 +878,7 @@ class _AuthenticationScaffold extends StatelessWidget {
                 header: true,
                 child: const Text(
                   '언어 / Language',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                 ),
               ),
               const SizedBox(height: 16),

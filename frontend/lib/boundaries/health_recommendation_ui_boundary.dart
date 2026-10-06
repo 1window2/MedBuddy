@@ -224,7 +224,7 @@ class _HealthRecommendationLoading extends StatelessWidget {
                 style: const TextStyle(
                   color: MedBuddyColors.textStrong,
                   fontSize: 24,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
               const SizedBox(height: 34),
@@ -386,7 +386,7 @@ class _RecommendationCard extends StatelessWidget {
                       style: const TextStyle(
                         color: MedBuddyColors.textStrong,
                         fontSize: 18,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),
@@ -481,7 +481,7 @@ class _CautionCard extends StatelessWidget {
                     style: const TextStyle(
                       color: MedBuddyColors.textStrong,
                       fontSize: 18,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
@@ -620,7 +620,7 @@ class _HealthRecommendationError extends StatelessWidget {
                     style: const TextStyle(
                       color: MedBuddyColors.textStrong,
                       fontSize: 20,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                       height: 1.35,
                       letterSpacing: 0,
                     ),
@@ -657,7 +657,7 @@ class _HealthRecommendationError extends StatelessWidget {
                       ),
                       textStyle: const TextStyle(
                         fontSize: 17,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                         height: 1.35,
                         letterSpacing: 0,
                       ),
@@ -697,7 +697,7 @@ class _HealthRecommendationError extends StatelessWidget {
                       text.retry,
                       style: const TextStyle(
                         fontSize: 17,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),

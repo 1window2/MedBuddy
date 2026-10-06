@@ -282,7 +282,7 @@ class _SavedMedicationDateCard extends StatelessWidget {
                     style: TextStyle(
                       color: const Color(0xFF0A0A0A),
                       fontSize: 18 * scale,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                       letterSpacing: 0,
                     ),
                   ),
@@ -334,7 +334,7 @@ class _SavedMedicationDateCard extends StatelessWidget {
                 foregroundColor: const Color(0xFFFF1F2D),
                 textStyle: TextStyle(
                   fontSize: 16 * scale,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                   letterSpacing: 0,
                 ),
               ),

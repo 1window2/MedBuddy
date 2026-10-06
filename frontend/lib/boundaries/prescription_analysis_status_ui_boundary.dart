@@ -54,13 +54,7 @@ class PrescriptionAnalysisSuccessUI extends StatelessWidget {
         top: false,
         child: Container(
           width: double.infinity,
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [MedBuddyColors.analysisBackground, Colors.white],
-            ),
-          ),
+          color: MedBuddyColors.pageBackground,
           child: LayoutBuilder(
             builder: (context, constraints) => SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
@@ -89,7 +83,7 @@ class PrescriptionAnalysisSuccessUI extends StatelessWidget {
                           style: TextStyle(
                             color: MedBuddyColors.textStrong,
                             fontSize: 28 * scale,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w700,
                             letterSpacing: 0,
                           ),
                         ),
@@ -124,7 +118,7 @@ class PrescriptionAnalysisSuccessUI extends StatelessWidget {
                           style: TextStyle(
                             color: MedBuddyColors.textStrong,
                             fontSize: 18 * scale,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w700,
                             letterSpacing: 0,
                           ),
                         ),
@@ -184,7 +178,7 @@ class PrescriptionAnalysisSuccessUI extends StatelessWidget {
                               ),
                               textStyle: TextStyle(
                                 fontSize: 18 * scale,
-                                fontWeight: FontWeight.w800,
+                                fontWeight: FontWeight.w700,
                                 letterSpacing: 0,
                               ),
                             ),
@@ -290,13 +284,7 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
         top: false,
         child: Container(
           width: double.infinity,
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0xFFFFF1F2), Colors.white],
-            ),
-          ),
+          color: MedBuddyColors.pageBackground,
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
             child: Center(
@@ -317,7 +305,7 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                       style: TextStyle(
                         color: MedBuddyColors.textStrong,
                         fontSize: 28 * scale,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                         letterSpacing: 0,
                       ),
                     ),
@@ -342,7 +330,7 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                       style: TextStyle(
                         color: MedBuddyColors.textStrong,
                         fontSize: 18 * scale,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                         letterSpacing: 0,
                       ),
                     ),
@@ -423,7 +411,7 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                           ),
                           textStyle: TextStyle(
                             fontSize: 17 * scale,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w700,
                             letterSpacing: 0,
                           ),
                         ),
@@ -462,7 +450,7 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
     final shape = RoundedRectangleBorder(borderRadius: MedBuddyRadii.card);
     final textStyle = TextStyle(
       fontSize: 17 * scale,
-      fontWeight: FontWeight.w800,
+      fontWeight: FontWeight.w700,
       letterSpacing: 0,
     );
 
@@ -567,7 +555,7 @@ class _SuccessMetric extends StatelessWidget {
             style: TextStyle(
               color: MedBuddyColors.primary,
               fontSize: 26 * scale,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
               letterSpacing: 0,
             ),
           ),
@@ -628,7 +616,7 @@ class _FailureReasonPanel extends StatelessWidget {
             style: TextStyle(
               color: MedBuddyColors.textStrong,
               fontSize: 14 * scale,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
               letterSpacing: 0,
             ),
           ),

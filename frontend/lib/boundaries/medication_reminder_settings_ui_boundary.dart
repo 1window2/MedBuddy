@@ -159,7 +159,7 @@ class _MedicationReminderSettingsUIState
                             color: MedBuddyColors.textStrong,
                             fontSize: 24,
                             height: 1.2,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ),
@@ -464,7 +464,7 @@ class _ReminderSlotCard extends StatelessWidget {
                       style: const TextStyle(
                         color: MedBuddyColors.textStrong,
                         fontSize: 17,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 5),
@@ -592,7 +592,7 @@ class _ReminderScheduleLoadError extends StatelessWidget {
                 style: const TextStyle(
                   color: MedBuddyColors.textStrong,
                   fontSize: 18,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
               const SizedBox(height: 20),

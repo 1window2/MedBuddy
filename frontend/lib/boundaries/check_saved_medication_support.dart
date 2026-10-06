@@ -67,7 +67,7 @@ class _MedicationImageDialog extends StatelessWidget {
                       style: TextStyle(
                         color: MedBuddyColors.textStrong,
                         fontSize: 17 * scale,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                         letterSpacing: 0,
                       ),
                     ),
@@ -220,7 +220,7 @@ class _DeleteConfirmationDialog extends StatelessWidget {
                       ),
                       textStyle: const TextStyle(
                         fontSize: 15,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                         letterSpacing: 0,
                       ),
                     ),

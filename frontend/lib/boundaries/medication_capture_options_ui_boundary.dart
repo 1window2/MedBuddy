@@ -88,7 +88,7 @@ Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
                         text.pillTask,
                         style: TextStyle(
                           fontSize: 18 * userSetting.contentTextScale,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
@@ -318,7 +318,7 @@ class _MedicationCaptureOption extends StatelessWidget {
                       style: TextStyle(
                         color: MedBuddyColors.textStrong,
                         fontSize: 17 * scale,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                         letterSpacing: 0,
                       ),
                     ),

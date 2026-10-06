@@ -92,7 +92,7 @@ class HomeMedicationPreview extends StatelessWidget {
             color: MedBuddyColors.textStrong,
             fontSize: compact ? 16 : 17,
             height: 1.3,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w700,
           ),
         ),
       ),
@@ -171,7 +171,7 @@ class HomeMedicationPreview extends StatelessWidget {
                       style: const TextStyle(
                         color: MedBuddyColors.textStrong,
                         fontSize: 14,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),
@@ -181,7 +181,7 @@ class HomeMedicationPreview extends StatelessWidget {
                     style: const TextStyle(
                       color: MedBuddyColors.primaryDark,
                       fontSize: 14,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ],
@@ -291,7 +291,7 @@ class HomeMedicationSummary extends StatelessWidget {
                 style: TextStyle(
                   color: MedBuddyColors.textStrong,
                   fontSize: compact ? 13 : 14,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
               SizedBox(height: compact ? 2 : 3),

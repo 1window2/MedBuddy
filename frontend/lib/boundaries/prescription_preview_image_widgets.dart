@@ -807,7 +807,7 @@ class _AnalysisBottomBar extends StatelessWidget {
                 shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.card),
                 textStyle: TextStyle(
                   fontSize: 19 * scale,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                   letterSpacing: 0,
                 ),
               ),

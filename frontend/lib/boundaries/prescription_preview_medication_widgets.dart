@@ -391,7 +391,7 @@ class _TableHeaderCell extends StatelessWidget {
         style: TextStyle(
           color: MedBuddyColors.textStrong,
           fontSize: 13 * scale,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w700,
           letterSpacing: 0,
         ),
       ),
@@ -648,7 +648,7 @@ class _CorrectionBadge extends StatelessWidget {
               ? const Color(0xFF9A6700)
               : MedBuddyColors.primaryDark,
           fontSize: 10 * scale,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w700,
           letterSpacing: 0,
         ),
       ),
@@ -780,7 +780,7 @@ class _MedicationScheduleEditDialogState
         style: TextStyle(
           color: MedBuddyColors.textStrong,
           fontSize: 21 * scale,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w700,
           letterSpacing: 0,
         ),
       ),

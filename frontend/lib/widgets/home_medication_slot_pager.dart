@@ -214,7 +214,7 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
                     : (widget.isEnglish ? 'Taken' : '복용했어요'),
                 style: const TextStyle(
                   fontSize: 16,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
               style: FilledButton.styleFrom(

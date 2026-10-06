@@ -192,7 +192,7 @@ class _MedicationScheduleReviewSheetState
                     style: TextStyle(
                       color: MedBuddyColors.textStrong,
                       fontSize: 22 * scale,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                       letterSpacing: 0,
                     ),
                   ),
@@ -266,7 +266,7 @@ class _MedicationScheduleReviewSheetState
                 isPillSave ? text.confirmAndSave : text.confirmAndAnalyze,
                 style: TextStyle(
                   fontSize: 17 * scale,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                   letterSpacing: 0,
                 ),
               ),
@@ -404,7 +404,7 @@ class _MedicationScheduleReviewCard extends StatelessWidget {
                   style: TextStyle(
                     color: MedBuddyColors.textStrong,
                     fontSize: 17 * scale,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                     height: 1.3,
                     letterSpacing: 0,
                   ),
@@ -750,7 +750,7 @@ class _MedicationScheduleEditorDialogState
         style: TextStyle(
           color: MedBuddyColors.textStrong,
           fontSize: 21 * scale,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w700,
           letterSpacing: 0,
         ),
       ),

@@ -307,7 +307,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                       style: TextStyle(
                         color: MedBuddyColors.textStrong,
                         fontSize: 18 * textScale,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                         letterSpacing: 0,
                       ),
                     ),
@@ -413,7 +413,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 17 * textScale,
-                              fontWeight: FontWeight.w800,
+                              fontWeight: FontWeight.w700,
                               letterSpacing: 0,
                             ),
                           ),
@@ -488,7 +488,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                 style: TextStyle(
                   color: MedBuddyColors.textStrong,
                   fontSize: 15 * textScale,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                   letterSpacing: 0,
                 ),
               ),
@@ -764,7 +764,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 16 * textScale,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                         letterSpacing: 0,
                       ),
                     ),
@@ -990,7 +990,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
             style: TextStyle(
               color: MedBuddyColors.textStrong,
               fontSize: 19 * textScale,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
               letterSpacing: 0,
             ),
           ),
@@ -2041,7 +2041,7 @@ class _MultiplePillBoxPainter extends CustomPainter {
           style: const TextStyle(
             color: Colors.white,
             fontSize: 13,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w700,
           ),
         ),
         textDirection: TextDirection.ltr,
@@ -2370,7 +2370,7 @@ class _PillCandidateCard extends StatelessWidget {
                         style: TextStyle(
                           color: MedBuddyColors.textStrong,
                           fontSize: 15 * textScale,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w700,
                           letterSpacing: 0,
                         ),
                       ),
@@ -2391,7 +2391,7 @@ class _PillCandidateCard extends StatelessWidget {
                             style: TextStyle(
                               color: const Color(0xFF8A5A00),
                               fontSize: 11 * textScale,
-                              fontWeight: FontWeight.w800,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                         ),

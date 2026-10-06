@@ -8,45 +8,49 @@ import 'package:flutter/material.dart';
 // Responsibilities:
 // - Keep text contrast, statuses, schedule slots, surfaces, and accents consistent across features.
 class MedBuddyColors {
-  // MedBuddy's established green remains the primary action and brand color.
-  static const Color primary = Color(0xFF009966);
-  static const Color primaryDark = Color(0xFF007A55);
-  static const Color topBar = Color(0xFF198C54);
-  static const Color progressTrack = Color(0xFF006045);
-  static const Color mint = Color(0xFFD0FAE5);
-  static const Color successBorder = Color(0xFFA4F4CF);
-  static const Color successSurface = Color(0xFFECFDF5);
-  static const Color analysisBackground = Color(0xFFEEFDF6);
-  static const Color pageBackground = Color(0xFFF8FBF9);
+  // A deeper pharmacy green keeps white labels above WCAG AA contrast.
+  static const Color primary = Color(0xFF0E7C5A);
+  static const Color primaryDark = Color(0xFF0A6347);
+  static const Color topBar = Color(0xFF0E7C5A);
+  static const Color onPrimaryMuted = Color(0xFFD9EEE4);
+  static const Color progressTrack = Color(0xFF0A5A40);
+  static const Color mint = Color(0xFFD6EEE3);
+  static const Color successBorder = Color(0xFFB9DCCB);
+  static const Color successSurface = Color(0xFFEAF5EF);
+  static const Color analysisBackground = Color(0xFFEFF6F2);
+  // Neutrals share the green hue so text and lines sit quietly beside the brand.
+  static const Color pageBackground = Color(0xFFF4F6F5);
   static const Color surface = Colors.white;
-  static const Color surfaceSubtle = Color(0xFFF4F8F6);
-  static const Color cardBorder = Color(0xFFE1EBE6);
-  static const Color divider = Color(0xFFE2EBE6);
-  static const Color outline = Color(0xFFC8D8D0);
-  static const Color imageAccent = Color(0xFFE4E7F5);
-  static const Color textStrong = Color(0xFF25252B);
-  static const Color textMuted = Color(0xFF5E5D67);
-  static const Color textBody = Color(0xFF46454E);
-  static const Color textSubtle = Color(0xFF797782);
-  static const Color textLight = Color(0xFFA3A1AA);
-  static const Color infoBlue = Color(0xFF1C398E);
-  static const Color reminderAccent = Color(0xFF8B6A00);
-  static const Color danger = Color(0xFFD92D20);
-  static const Color slotMorning = Color(0xFF168872);
-  static const Color slotLunch = Color(0xFF247C6D);
-  static const Color slotEvening = Color(0xFF356B63);
-  static const Color slotBedtime = Color(0xFF405F66);
-  static const Color lavenderSurface = Color(0xFFF0F1FA);
-  static const Color butterSurface = Color(0xFFF8F1D9);
+  static const Color surfaceSubtle = Color(0xFFEEF2F0);
+  static const Color cardBorder = Color(0xFFE0E6E3);
+  static const Color divider = Color(0xFFE5EAE7);
+  static const Color outline = Color(0xFFC8D2CD);
+  static const Color imageAccent = Color(0xFFE6EAF0);
+  static const Color textStrong = Color(0xFF1C2420);
+  static const Color textMuted = Color(0xFF58615C);
+  static const Color textBody = Color(0xFF3D4641);
+  static const Color textSubtle = Color(0xFF6A726E);
+  static const Color textLight = Color(0xFF9AA19D);
+  static const Color infoBlue = Color(0xFF2F4A8A);
+  static const Color reminderAccent = Color(0xFF8A5A00);
+  static const Color danger = Color(0xFFC0352B);
+  // Each dose time keeps a distinct, AA-contrast identity for white labels.
+  static const Color slotMorning = Color(0xFF9A5B00);
+  static const Color slotLunch = Color(0xFF0F7B6C);
+  static const Color slotEvening = Color(0xFF4C5FA8);
+  static const Color slotBedtime = Color(0xFF3E4C63);
+  static const Color lavenderSurface = Color(0xFFEEF0F8);
+  static const Color butterSurface = Color(0xFFF8F0DC);
 }
 
 // 클래스명: MedBuddyRadii
-// 역할: 카드·큰 카드·pill 버튼의 공통 모서리 반경을 제공한다.
+// 역할: 입력·버튼, 카드·큰 카드·pill 버튼의 공통 모서리 반경을 제공한다.
 // 주요 책임:
 // - 화면별 반복 도형의 라운딩 값을 한곳에서 공유한다.
 class MedBuddyRadii {
+  static BorderRadius control = BorderRadius.circular(12);
   static BorderRadius card = BorderRadius.circular(16);
-  static BorderRadius largeCard = BorderRadius.circular(22);
+  static BorderRadius largeCard = BorderRadius.circular(20);
   static BorderRadius pill = BorderRadius.circular(999);
 }
 
@@ -68,17 +72,17 @@ class MedBuddySpacing {
 class MedBuddyShadows {
   static const List<BoxShadow> soft = [
     BoxShadow(
-      color: Color.fromRGBO(12, 47, 40, 0.06),
-      blurRadius: 14,
-      offset: Offset(0, 5),
+      color: Color.fromRGBO(16, 40, 30, 0.05),
+      blurRadius: 12,
+      offset: Offset(0, 3),
     ),
   ];
 
   static const List<BoxShadow> card = [
     BoxShadow(
-      color: Color.fromRGBO(12, 47, 40, 0.09),
-      blurRadius: 20,
-      offset: Offset(0, 8),
+      color: Color.fromRGBO(16, 40, 30, 0.07),
+      blurRadius: 18,
+      offset: Offset(0, 6),
     ),
   ];
 }
@@ -91,8 +95,23 @@ class MedBuddyTheme {
         .copyWith(
           primary: MedBuddyColors.primary,
           onPrimary: Colors.white,
+          secondary: MedBuddyColors.primaryDark,
+          onSecondary: Colors.white,
+          secondaryContainer: MedBuddyColors.mint,
+          onSecondaryContainer: MedBuddyColors.primaryDark,
+          tertiary: MedBuddyColors.slotEvening,
+          primaryContainer: MedBuddyColors.successSurface,
+          onPrimaryContainer: MedBuddyColors.primaryDark,
           surface: MedBuddyColors.pageBackground,
           onSurface: MedBuddyColors.textStrong,
+          onSurfaceVariant: MedBuddyColors.textMuted,
+          surfaceContainerLowest: MedBuddyColors.surface,
+          surfaceContainerLow: MedBuddyColors.surface,
+          surfaceContainer: MedBuddyColors.surface,
+          surfaceContainerHigh: MedBuddyColors.surface,
+          surfaceContainerHighest: MedBuddyColors.surfaceSubtle,
+          outline: MedBuddyColors.outline,
+          outlineVariant: MedBuddyColors.divider,
           error: MedBuddyColors.danger,
         );
     const label = TextStyle(
@@ -102,13 +121,11 @@ class MedBuddyTheme {
     );
     const title = TextStyle(
       fontSize: 22,
-      fontWeight: FontWeight.w800,
+      fontWeight: FontWeight.w700,
       height: 1.25,
       letterSpacing: 0,
     );
-    final shape = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(10),
-    );
+    final shape = RoundedRectangleBorder(borderRadius: MedBuddyRadii.control);
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
@@ -119,7 +136,7 @@ class MedBuddyTheme {
         titleLarge: title,
         headlineMedium: TextStyle(
           fontSize: 28,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w700,
           height: 1.25,
           letterSpacing: 0,
         ),
@@ -139,10 +156,14 @@ class MedBuddyTheme {
       ),
       dialogTheme: const DialogThemeData(
         backgroundColor: MedBuddyColors.surface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(20)),
+        ),
         titleTextStyle: TextStyle(
           color: MedBuddyColors.textStrong,
           fontSize: 20,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w700,
           height: 1.35,
           letterSpacing: 0,
         ),
@@ -164,10 +185,74 @@ class MedBuddyTheme {
         titleTextStyle: TextStyle(
           color: MedBuddyColors.textStrong,
           fontSize: 22,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w700,
           height: 1.25,
           letterSpacing: 0,
         ),
+      ),
+      cardTheme: CardThemeData(
+        color: MedBuddyColors.surface,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(
+          borderRadius: MedBuddyRadii.card,
+          side: const BorderSide(color: MedBuddyColors.cardBorder),
+        ),
+      ),
+      dividerTheme: const DividerThemeData(
+        color: MedBuddyColors.divider,
+        thickness: 1,
+        space: 1,
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: MedBuddyColors.surface,
+        hintStyle: const TextStyle(color: MedBuddyColors.textLight),
+        border: OutlineInputBorder(
+          borderRadius: MedBuddyRadii.control,
+          borderSide: const BorderSide(color: MedBuddyColors.outline),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: MedBuddyRadii.control,
+          borderSide: const BorderSide(color: MedBuddyColors.outline),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: MedBuddyRadii.control,
+          borderSide: const BorderSide(
+            color: MedBuddyColors.primary,
+            width: 2,
+          ),
+        ),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: MedBuddyColors.surface,
+        selectedColor: MedBuddyColors.successSurface,
+        side: const BorderSide(color: MedBuddyColors.outline),
+        shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.pill),
+        labelStyle: const TextStyle(
+          color: MedBuddyColors.textBody,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: MedBuddyColors.surface,
+        surfaceTintColor: Colors.transparent,
+        showDragHandle: false,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+      ),
+      snackBarTheme: const SnackBarThemeData(
+        backgroundColor: MedBuddyColors.textStrong,
+      ),
+      progressIndicatorTheme: const ProgressIndicatorThemeData(
+        color: MedBuddyColors.primary,
+        linearTrackColor: MedBuddyColors.mint,
+      ),
+      listTileTheme: const ListTileThemeData(
+        iconColor: MedBuddyColors.textMuted,
+        textColor: MedBuddyColors.textStrong,
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(

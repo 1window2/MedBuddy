@@ -12,13 +12,13 @@ class MedBuddyPageHeader extends StatelessWidget {
   static const titleStyle = TextStyle(
     color: Colors.white,
     fontSize: 21,
-    fontWeight: FontWeight.w800,
+    fontWeight: FontWeight.w700,
     height: 1.3,
     letterSpacing: 0,
   );
   static const titleStrutStyle = StrutStyle(
     fontSize: 21,
-    fontWeight: FontWeight.w800,
+    fontWeight: FontWeight.w700,
     height: 1.3,
     leadingDistribution: TextLeadingDistribution.even,
     forceStrutHeight: true,
@@ -65,12 +65,8 @@ class MedBuddyPageHeader extends StatelessWidget {
     return Container(
       width: double.infinity,
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF249B62), MedBuddyColors.topBar],
-        ),
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
+        color: MedBuddyColors.topBar,
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
       ),
       child: SafeArea(
         bottom: false,
@@ -162,7 +158,7 @@ class MedBuddyPageHeader extends StatelessWidget {
                                         ? null
                                         : TextOverflow.ellipsis,
                                     style: const TextStyle(
-                                      color: Color(0xFFD6F2E3),
+                                      color: MedBuddyColors.onPrimaryMuted,
                                       fontSize: 13,
                                       fontWeight: FontWeight.w500,
                                       height: 1.3,
