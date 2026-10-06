@@ -10,14 +10,13 @@
 > 검증은 계속 진행한다. 이 보류는 v0.1.1 배포를 막지 않으며, 실기기를
 > 확보하면 배포된 후보 커밋을 기준으로 검증을 재개한다.
 
-> Update (2026-10-05): The owner now authorizes testing one physical Android
-> phone using a dedicated synthetic profile. Secure pairing and startup succeeded
-> on Samsung SM-N976N / Android 12 (API 31). Its installed APK hash matches the
-> historical September 14 signed build; see [the baseline record](v0.2.0-map-direct-filter-device-validation.md#baseline-reconnection--2026-10-05).
-> The latest candidate is not installed or physically accepted; checklist items
-> remain unchecked. Verify candidate provenance and matching signer before any
-> replace-only update; never uninstall or clear app data. API 34+, two-device and
-> Play/App Check acceptance remain open.
+> Update (2026-10-06): The owner-authorized signed candidate `866db67` is now
+> installed on Samsung SM-N976N / Android 12 (API 31), using a synthetic profile.
+> Artifact checksum, installed bytes and matching signer were verified for the
+> replace-only update; see [the candidate record](v0.2.0-map-direct-filter-device-validation.md#signed-candidate-update--2026-10-05).
+> Startup and bounded nearby-search checks do not complete the broad checklist
+> items below, which remain unchecked. The notification unread-state difference
+> needs diagnosis. API 34+, two-device and Play/App Check acceptance remain open.
 
 ## 자동 검증 범위
 

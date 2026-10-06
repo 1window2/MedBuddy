@@ -10,17 +10,20 @@ history rewrite or automatic merge/tag/publication. See the
 [candidate boundary and release gates](releases/v0.2.0-beta.md) and
 [latest refactoring evidence](qa/v0.2.0-architecture-gates.md).
 
-Code cleanup is not release acceptance. On October 5, the owner authorized testing
-one physical Android phone with a dedicated synthetic profile. Secure pairing and
-existing-installation startup succeeded; its APK matches the historical September
-14 signed build. See [the older-build baseline](qa/v0.2.0-map-direct-filter-device-validation.md#baseline-reconnection--2026-10-05).
-The latest candidate is not installed or physically accepted; all candidate
-checklist items remain open. Google Play enrollment remains deferred and
-two-device checks remain unperformed.
+Code cleanup is not release acceptance. The owner-authorized signed candidate
+`866db67` was installed as a verified matching-signer update on the synthetic
+Android 12 phone on October 5. Startup and bounded physical checks are recorded
+in [the candidate evidence](qa/v0.2.0-map-direct-filter-device-validation.md#signed-candidate-update--2026-10-05).
+Full physical acceptance remains incomplete. Google Play enrollment remains
+deferred and two-device checks remain unperformed.
 Unimplemented enhancements below are explicitly outside this candidate.
 
 ### Current stabilization acceptance follow-up
 
+- [ ] Diagnose the observed notification unread-state difference across the
+      signed update: the baseline home badge showed four, while the candidate
+      showed none and retained four historical inbox rows. Do not equate preserved
+      rows with preserved read flags or infer data loss without reproduction.
 - [ ] Reproduce and diagnose the first health-recommendation request failure
       observed in the [October 5 contributor emulator checks](qa/v0.2.0-2026-10-05-refactor-validation.md).
       Later generation/cache/retry success does not establish the original cause
