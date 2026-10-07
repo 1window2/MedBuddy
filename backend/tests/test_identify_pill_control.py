@@ -695,3 +695,24 @@ def test_result_rejects_invalid_candidate_truncation_contract() -> None:
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+
+# Function Name: test_short_contained_imprint_does_not_score_as_a_near_match
+# Description:
+# - Verifies that containment earns the high imprint score only for a substantial shared
+#   imprint, so a one-character catalog imprint cannot outrank the real product.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+def test_short_contained_imprint_does_not_score_as_a_near_match() -> None:
+    similarity = IdentifyPill._text_similarity
+
+    assert similarity("DW500", "DW500") == 1.0
+    assert similarity("DW50", "DW500") == 0.9
+    assert similarity("DW500", "DW") < 0.9
+    assert similarity("DW50O", "D") < 0.5
+    assert similarity("DW50O", "5") < 0.5
+    # A one-character misread of the true imprint still ranks above the short imprints.
+    assert similarity("DW50O", "DW500") > similarity("DW50O", "D")

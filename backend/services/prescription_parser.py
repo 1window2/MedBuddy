@@ -16,7 +16,8 @@ INFO_UNAVAILABLE = "\uc815\ubcf4 \uc5c6\uc74c"
 MAX_MEDICATION_NAME_LENGTH = 200
 
 DATE_PATTERN = re.compile(r"(\d{4})[./-](\d{1,2})[./-](\d{1,2})")
-LEADING_MARKER_PATTERN = re.compile(r"^\s*(?:[-*]|\d+[.)])\s*")
+# A list number such as "1." or "2)" is a marker; a leading decimal such as "0.9%" is part of the name.
+LEADING_MARKER_PATTERN = re.compile(r"^\s*(?:[-*]|\d+[.)](?!\d))\s*")
 
 UNKNOWN_TEXTS = {
     "",

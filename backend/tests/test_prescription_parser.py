@@ -33,6 +33,23 @@ from entities.prescription_analysis_entity import (  # noqa: E402
 #   medication label.
 # - Rejects a non-object analysis response with ValueError.
 class PrescriptionParserTest(unittest.TestCase):
+    # Function Name: test_leading_decimal_strength_is_not_stripped_as_a_list_marker
+    # Description:
+    # - Keeps a name that starts with a decimal strength intact while still removing list
+    #   numbers and bullets in front of a name.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_leading_decimal_strength_is_not_stripped_as_a_list_marker(self) -> None:
+        from services.prescription_parser import _clean_medication_name
+
+        self.assertEqual(_clean_medication_name("0.9% 생리식염주사액"), "0.9% 생리식염주사액")
+        self.assertEqual(_clean_medication_name("2.5밀리그램 암로디핀정"), "2.5밀리그램 암로디핀정")
+        self.assertEqual(_clean_medication_name("1. 타이레놀정"), "타이레놀정")
+        self.assertEqual(_clean_medication_name("2) 아스피린정"), "아스피린정")
+        self.assertEqual(_clean_medication_name("- 게보린정"), "게보린정")
+
     # Function Name: test_normalize_date_rejects_invalid_calendar_values
     # Description:
     # - Rejects impossible calendar dates and uses the missing-information value for an

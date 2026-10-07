@@ -138,6 +138,43 @@ class DrugCatalogSyncTest(unittest.TestCase):
         self.assertEqual([row.item_seq for row in rows], ["SEQ-A", "SEQ-B"])
         self.assertEqual([row.efficacy for row in rows], ["effect-a", "effect-b"])
 
+    # Function Name: test_approval_sync_clears_summaries_only_when_documents_change
+    # Description:
+    # - Keeps a stored AI summary when a refresh brings identical approval documents and
+    #   clears it when the efficacy, usage or warning document was revised.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_approval_sync_clears_summaries_only_when_documents_change(self) -> None:
+        item = {
+            "ITEM_SEQ": "SEQ-SUMMARY",
+            "ITEM_NAME": "summary-tablet",
+            "EE_DOC_DATA": "effect",
+            "UD_DOC_DATA": "use",
+            "NB_DOC_DATA": "warning",
+        }
+        self.store.upsert_approval_items([item])
+        row = self.db.query(_DrugApprovalInfo).one()
+        row.summary_efficacy = "summary effect"
+        row.summary_use_method = "summary use"
+        row.summary_warning_message = "summary warning"
+        row.ai_guide = "guide"
+        self.db.commit()
+
+        self.store.upsert_approval_items([dict(item)])
+        row = self.db.query(_DrugApprovalInfo).one()
+        self.assertEqual(row.summary_warning_message, "summary warning")
+        self.assertEqual(row.ai_guide, "guide")
+
+        self.store.upsert_approval_items([{**item, "NB_DOC_DATA": "revised warning"}])
+        row = self.db.query(_DrugApprovalInfo).one()
+        self.assertEqual(row.warning_doc, "revised warning")
+        self.assertIsNone(row.summary_efficacy)
+        self.assertIsNone(row.summary_use_method)
+        self.assertIsNone(row.summary_warning_message)
+        self.assertIsNone(row.ai_guide)
+
     # Function Name: test_approval_sync_keeps_same_name_rows_with_distinct_item_seq
     # Description:
     # - Preserves distinct approval records and document text when product names match but

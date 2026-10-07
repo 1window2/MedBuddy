@@ -619,14 +619,18 @@ class IdentifyPill:
     # - left (str): First normalized string in the similarity comparison.
     # - right (str): Second normalized string in the similarity comparison.
     # Returns:
-    # - Similarity from 0.0 to 1.0; containment receives 0.9.
+    # - Similarity from 0.0 to 1.0; containment of a substantial imprint receives 0.9.
     @staticmethod
     def _text_similarity(left: str, right: str) -> float:
         if not left or not right:
             return 0.0
         if left == right:
             return 1.0
-        if left in right or right in left:
+        shorter, longer = sorted((left, right), key=len)
+        # A one-character imprint such as "D" is contained in almost any longer imprint, so
+        # containment counts only when the shorter text is at least two characters and at
+        # least half of the longer one; otherwise the ordinary ratio decides.
+        if shorter in longer and len(shorter) >= 2 and len(shorter) * 2 >= len(longer):
             return 0.9
         return SequenceMatcher(None, left[:64], right[:64], autojunk=False).ratio()
 

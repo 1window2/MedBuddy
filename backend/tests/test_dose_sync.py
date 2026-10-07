@@ -148,6 +148,20 @@ def test_chat_and_historical_dose_share_one_idempotent_transaction(fixture):
     assert db.query(_ChatMessage).one().context_payload["schedule_context"]["schedule_date"] == yesterday.isoformat()
 
 
+# 함수이름: test_dose_queued_with_a_removed_link_is_still_recorded
+# 함수역할: 연동이 해제된 뒤 도착한 채팅 연동 복용 요청을 거부하지 않고 채팅 없이 일반 복용 기록으로 저장하는지 검증한다.
+# 매개변수: fixture: 격리 DB와 약 식별자. 반환값: 없음; 불일치 시 단언 실패.
+def test_dose_queued_with_a_removed_link_is_still_recorded(fixture):
+    db, med_id = fixture
+    events, message = SyncDose(db).apply("offline-patient", operation(med_id, link_id=987654))
+    assert message is None
+    assert db.query(_ChatMessage).count() == 0
+    assert db.query(_DoseSyncOperation).count() == 1
+    assert db.query(_MedicationCompletion).count() == 1
+    schedule = CheckSchedule(db).requestTodayMedicationSchedule("offline-patient")["data"]
+    assert schedule[0]["slot_statuses"]["morning"] is True
+
+
 # 함수이름: test_chat_failure_rolls_back_the_dose_and_receipt
 # 함수역할: 채팅 저장 실패 시 복용 기록과 처리 이력도 함께 취소되어 재시도가 가능한지 검증한다.
 # 매개변수: fixture: 격리 DB와 약 식별자. 반환값: 없음; 불일치 시 단언 실패.

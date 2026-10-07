@@ -103,6 +103,21 @@ class SavedMedicationCreate(BaseModel):
         max_length=_MAX_DETAIL_TEXT_LENGTH,
     )
 
+    # 함수이름: validate_item_name
+    # 함수역할:
+    # - 약 이름의 앞뒤 공백을 정리하고 공백만 있는 이름은 거부한다.
+    # 매개변수:
+    # - value (str): 저장 요청에 포함된 약 이름.
+    # 반환값:
+    # - 공백을 정리한 약 이름; 비어 있으면 ValueError.
+    @field_validator("item_name")
+    @classmethod
+    def validate_item_name(cls, value: str) -> str:
+        normalized_name = value.strip()
+        if not normalized_name:
+            raise ValueError("A medication name is required.")
+        return normalized_name
+
     # 함수이름: validate_schedule_slot_keys
     # 함수역할:
     # - 시간대 목록을 지원 순서로 정리하고 값이 있지만 유효한 시간대가 하나도 없으면 거부한다.

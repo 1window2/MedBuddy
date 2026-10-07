@@ -39,9 +39,22 @@ class SyncDose:
             self.db.add(_DoseSyncOperation(patient_hash=patient_hash, operation_id=request.operation_id, payload=payload))
             self.db.flush()
             chat_result = None
-            if request.link_id is not None:
+            link_id = request.link_id
+            if link_id is not None:
+                # A dose confirmed offline must not be lost because the caregiver unlinked
+                # before the phone synchronized: without an active link it is recorded as an
+                # ordinary dose with no chat message.
+                try:
+                    ManageLinkedChat(self.db).require_active_link(
+                        link_id=link_id, user_hash=patient_hash,
+                    )
+                except HTTPException as exc:
+                    if exc.status_code != 404:
+                        raise
+                    link_id = None
+            if link_id is not None:
                 chat_result, events = ManageLinkedChat(self.db).record_medication_taken(
-                    link_id=request.link_id, sender_hash=patient_hash,
+                    link_id=link_id, sender_hash=patient_hash,
                     client_message_id=request.operation_id,
                     schedule_date=request.schedule_date, slot_key=request.slot_key,
                     medication_ids=request.medication_ids, commit=False, allow_historical=True,

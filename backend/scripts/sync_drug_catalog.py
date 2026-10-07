@@ -253,6 +253,11 @@ class _DrugCatalogStore:
             )
             is_new_item = target_item is None
             target_item = target_item or _DrugApprovalInfo()
+            previous_documents = (
+                target_item.efficacy_doc,
+                target_item.use_method_doc,
+                target_item.warning_doc,
+            )
 
             target_item.item_seq = item_seq or None
             target_item.item_name = item_name
@@ -279,6 +284,17 @@ class _DrugCatalogStore:
             ) or None
             target_item.raw_json = self._dump_raw_json(item)
             target_item.catalog_sync_token = sync_token
+            if not is_new_item and previous_documents != (
+                target_item.efficacy_doc,
+                target_item.use_method_doc,
+                target_item.warning_doc,
+            ):
+                # A stored AI summary describes the previous approval text and is served
+                # before anything else, so a revised document clears it for regeneration.
+                target_item.summary_efficacy = None
+                target_item.summary_use_method = None
+                target_item.summary_warning_message = None
+                target_item.ai_guide = None
 
             if is_new_item:
                 self.db.add(target_item)
