@@ -17,6 +17,7 @@ import '../viewmodels/medbuddy_view_model.dart';
 import '../viewmodels/medbuddy_feature_updates.dart';
 import '../widgets/medbuddy_page_header.dart';
 import '../widgets/dose_sync_status.dart';
+import '../widgets/medication_thumbnail.dart';
 import 'medication_image_viewer_boundary.dart';
 
 // 파일명: check_schedule_ui_boundary.dart
@@ -1795,129 +1796,32 @@ class _MedicationScheduleRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          _MedicationThumbnail(
-            schedule: schedule,
-            displayName: schedule.displayNameForLanguage(text.language),
-            language: text.language,
-          ),
+          _thumbnail(context),
         ],
       ),
     );
   }
-}
 
-// 클래스명: _MedicationThumbnail
-// 역할: 약품 사진과 사진 부재·불러오기 실패 대체 표시를 담당한다.
-// 주요 책임:
-// - 일정 API가 제공한 네트워크 이미지 URL을 고정 크기로 표시한다.
-// - URL이 없거나 이미지 로딩에 실패하면 이미지 없음 아이콘을 표시한다.
-// 속성:
-// - schedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-// - displayName (String): 사용자에게 표시할 약품 또는 계정 이름.
-// - language (String): 화면 문구를 선택할 언어 코드.
-class _MedicationThumbnail extends StatelessWidget {
-  final MedicationSchedule schedule;
-  final String displayName;
-  final String language;
-
-  // 함수이름: _MedicationThumbnail
-  // 함수역할: 약품 사진과 사진 부재·불러오기 실패 대체 표시에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - schedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-  // - displayName (String): 사용자에게 표시할 약품 또는 계정 이름.
-  // - language (String): 화면 문구를 선택할 언어 코드.
-  // 반환값: 입력 설정이 반영된 _MedicationThumbnail 인스턴스.
-  const _MedicationThumbnail({
-    required this.schedule,
-    required this.displayName,
-    required this.language,
-  });
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 약품 사진과 사진 부재·불러오기 실패 대체 표시 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 약품 사진과 사진 부재·불러오기 실패 대체 표시에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
+  // Function Name: _thumbnail
+  // Description: Shows the medication photo, opening the full-size viewer when one exists.
+  // Parameters:
+  // - context (BuildContext): Widget tree location used to open the viewer.
+  // Returns: The shared medication thumbnail for this row.
+  Widget _thumbnail(BuildContext context) {
+    final displayName = schedule.displayNameForLanguage(text.language);
+    final id = schedule.medicationID.trim();
     final imageUrl = safeMedicationImageUrl(schedule.imageUrl);
-    final hasNetworkImage = imageUrl.isNotEmpty;
-    final thumbnailKey = schedule.medicationID.trim().isNotEmpty
-        ? schedule.medicationID.trim()
-        : displayName;
-
-    return Tooltip(
-      message: displayName,
-      child: InkWell(
-        borderRadius: MedBuddyRadii.control,
-        onTap: hasNetworkImage
-            // 함수이름: build.onTap callback
-            // 함수역할: 약품 사진과 사진 부재·불러오기 실패 대체 표시에서 캡처된 작업 `MedicationImageViewer.show(context, medicationName: displayName, imageUrl: imageUrl, language: language)`을 실행한다.
-            // 매개변수:
-            // - 없음.
-            // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-            ? () => MedicationImageViewer.show(
-                context,
-                medicationName: displayName,
-                imageUrl: imageUrl,
-                language: language,
-              )
-            : null,
-        child: Container(
-          key: Key('schedule-medication-thumbnail-$thumbnailKey'),
-          width: 54,
-          height: 54,
-          decoration: BoxDecoration(
-            color: MedBuddyColors.surfaceSubtle,
-            borderRadius: MedBuddyRadii.control,
-            border: Border.all(color: MedBuddyColors.outline),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: hasNetworkImage
-              ? Image.network(
-                  imageUrl,
-                  fit: BoxFit.contain,
-                  cacheWidth: 216,
-                  // 함수이름: build.errorBuilder callback
-                  // 함수역할: errorBuilder에서 사진을 표시할 수 없는 약품의 대체 아이콘 위젯을 구성한다.
-                  // 매개변수:
-                  // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
-                  // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
-                  // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
-                  // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-                  errorBuilder: (_, _, _) => const _MissingMedicationImage(),
-                )
-              : const _MissingMedicationImage(),
-        ),
+    return MedicationThumbnail(
+      key: Key(
+        'schedule-medication-thumbnail-${id.isNotEmpty ? id : displayName}',
       ),
-    );
-  }
-}
-
-// 클래스명: _MissingMedicationImage
-// 역할: 사진을 표시할 수 없는 약품의 대체 아이콘을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 사진을 표시할 수 없는 약품의 대체 아이콘 위젯을 구성한다.
-class _MissingMedicationImage extends StatelessWidget {
-  // 함수이름: _MissingMedicationImage
-  // 함수역할: 사진을 표시할 수 없는 약품의 대체 아이콘에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 입력 설정이 반영된 _MissingMedicationImage 인스턴스.
-  const _MissingMedicationImage();
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 사진을 표시할 수 없는 약품의 대체 아이콘 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 사진을 표시할 수 없는 약품의 대체 아이콘에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: Icon(
-        Icons.image_not_supported_outlined,
-        color: MedBuddyColors.textLight,
-        size: 25,
+      imageUrl: imageUrl,
+      tooltip: displayName,
+      onTap: () => MedicationImageViewer.show(
+        context,
+        medicationName: displayName,
+        imageUrl: imageUrl,
+        language: text.language,
       ),
     );
   }

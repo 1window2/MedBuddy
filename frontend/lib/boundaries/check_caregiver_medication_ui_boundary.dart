@@ -10,13 +10,13 @@ import '../controls/manage_caregiver_patient_local_state_control.dart';
 import '../controls/set_caregiver_notification_control.dart';
 import '../entities/caregiver_notification_entity.dart';
 import '../entities/medication_detail_entity.dart';
-import '../entities/medication_image_url_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../services/user_facing_error_message.dart';
 import 'check_medication_detail_ui_boundary.dart';
 import 'set_caregiver_notification_ui_boundary.dart';
+import '../widgets/medication_thumbnail.dart';
 
 // 파일명: check_caregiver_medication_ui_boundary.dart
 // 역할: 연동 환자의 오늘 복약 일정과 시간대별 보호자 알림을 제공한다.
@@ -1189,7 +1189,7 @@ class _CaregiverMedicationRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 10),
-            _MedicationThumbnail(schedule: schedule),
+            MedicationThumbnail(imageUrl: schedule.imageUrl),
           ],
         ),
       ),
@@ -1204,64 +1204,6 @@ class _CaregiverMedicationRow extends StatelessWidget {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   static String _dosageLabel(MedicationSchedule schedule, bool isEnglish) {
     return schedule.dosageLabelForLanguage(isEnglish ? 'en' : 'ko');
-  }
-}
-
-// Class Name: _MedicationThumbnail
-// Role: Represents a medication thumbnail with missing-image and loading-failure fallbacks.
-// Responsibilities:
-// - Composes a medication thumbnail with missing-image and loading-failure fallbacks using the display values and actions supplied by its parent.
-// Attributes:
-// - schedule (MedicationSchedule): Medication schedule containing name, dosage, days, slots, and completion state.
-class _MedicationThumbnail extends StatelessWidget {
-  final MedicationSchedule schedule;
-
-  // 함수이름: _MedicationThumbnail
-  // 함수역할: 약품 사진과 사진 부재·불러오기 실패 대체 표시에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - schedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-  // 반환값: 입력 설정이 반영된 _MedicationThumbnail 인스턴스.
-  const _MedicationThumbnail({required this.schedule});
-
-  // Function Name: build
-  // Description: Renders a medication thumbnail with missing-image and loading-failure fallbacks from the current configuration and state.
-  // Parameters:
-  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-  // Returns: Widget tree for a medication thumbnail with missing-image and loading-failure fallbacks.
-  @override
-  Widget build(BuildContext context) {
-    final imageUrl = safeMedicationImageUrl(schedule.imageUrl);
-    return Container(
-      width: 48,
-      height: 48,
-      decoration: BoxDecoration(
-        color: MedBuddyColors.surfaceSubtle,
-        borderRadius: MedBuddyRadii.small,
-        border: Border.all(color: MedBuddyColors.imageAccent, width: 3),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: imageUrl.isEmpty
-          ? const Icon(
-              Icons.image_not_supported_outlined,
-              color: MedBuddyColors.textLight,
-            )
-          : Image.network(
-              imageUrl,
-              fit: BoxFit.contain,
-              cacheWidth: 192,
-              // 함수이름: build.errorBuilder callback
-              // 함수역할: 이미지를 해석하거나 불러올 수 없으면 사진 없음 대체 표시를 구성한다.
-              // 매개변수:
-              // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
-              // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
-              // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
-              // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-              errorBuilder: (_, _, _) => const Icon(
-                Icons.image_not_supported_outlined,
-                color: MedBuddyColors.textLight,
-              ),
-            ),
-    );
   }
 }
 
