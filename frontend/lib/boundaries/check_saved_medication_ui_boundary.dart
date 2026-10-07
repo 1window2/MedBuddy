@@ -21,6 +21,7 @@ import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 import '../viewmodels/medbuddy_feature_updates.dart';
 import '../widgets/medbuddy_page_header.dart';
+import '../widgets/medication_thumbnail.dart';
 
 part 'check_saved_medication_empty_widgets.dart';
 part 'check_saved_medication_filter_widgets.dart';

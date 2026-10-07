@@ -17,6 +17,7 @@ import 'package:medbuddy_frontend/controls/manage_user_setting_control.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/widgets/medbuddy_page_header.dart';
+import 'package:medbuddy_frontend/widgets/medication_thumbnail.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:provider/provider.dart';
@@ -100,9 +101,16 @@ void main() {
   });
 
   // 함수역할: 검색 결과 부재와 사진 없음이 삭제 동작으로 오해되지 않는지 확인한다.
-  testWidgets('사진 없는 약은 이미지 없음 아이콘이며 빈 검색은 전체 보기로 복구한다', (tester) async {
+  testWidgets('사진 없는 약은 약 아이콘 자리표시이며 빈 검색은 전체 보기로 복구한다', (tester) async {
     await _pumpSelectionApp(tester);
-    expect(find.byIcon(Icons.image_not_supported_outlined), findsWidgets);
+    expect(
+      find.descendant(
+        of: find.byType(MedicationThumbnail),
+        matching: find.byIcon(Icons.medication_outlined),
+      ),
+      findsWidgets,
+    );
+    expect(find.byIcon(Icons.image_not_supported_outlined), findsNothing);
     expect(find.byIcon(Icons.close_rounded), findsNothing);
     expect(find.textContaining('등록일자:'), findsNothing);
     await tester.enterText(

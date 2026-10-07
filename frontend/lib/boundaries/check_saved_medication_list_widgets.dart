@@ -4,14 +4,21 @@ part of 'check_saved_medication_ui_boundary.dart';
 // 역할: 저장 약품 정렬, 날짜·복용기간 표시 및 상세·사진 진입을 제공한다.
 
 // 클래스명: _SavedMedicationNameRow
-// 역할: 약품명·처방일·복용기간과 선택·가이드·사진 동작을 담당한다.
+// 역할: 약 사진·약품명·등록일·복용기간을 한 줄 목록 항목으로 보여 주고 선택·가이드·사진 동작을 연결한다.
 // 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 약품명·처방일·복용기간과 선택·가이드·사진 동작 위젯을 구성한다.
+// - 일반 모드에서는 항목 전체를 눌러 복약 가이드를 열고 사진은 따로 확대한다.
+// - 선택 모드에서는 체크박스로만 선택을 바꾸고 가이드·사진 동작을 막는다.
 // 속성:
+// - showRegisteredDate (bool): 등록일 줄을 함께 표시할지 여부.
 // - medication (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
+// - text (_SavedMedicationText): 해당 화면 구역의 언어별 표시 문구.
 // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
 // - isSelectionMode (bool): 일반 조작 대신 첨부·삭제 선택 모드를 사용할지 여부.
+// - enabled (bool): 삭제 중이 아니어서 조작할 수 있는지 여부.
 // - isSelected (bool): 현재 선택 집합에 포함되는지 여부.
+// - onSelectionChanged (void Function(bool selected)): 선택 상태 변경을 소유 화면에 전달할 콜백.
+// - onGuideRequested (VoidCallback): 복약 가이드를 여는 콜백.
+// - onImageRequested (VoidCallback): 약품 사진을 확대해 표시할 콜백.
 class _SavedMedicationNameRow extends StatelessWidget {
   final bool showRegisteredDate;
   final MedicationDetail medication;
@@ -25,17 +32,8 @@ class _SavedMedicationNameRow extends StatelessWidget {
   final VoidCallback onImageRequested;
 
   // 함수이름: _SavedMedicationNameRow
-  // 함수역할: 약품명·처방일·복용기간과 선택·가이드·사진 동작에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - medication (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
-  // - text (_SavedMedicationText): 해당 화면 구역의 언어별 표시 문구.
-  // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-  // - isSelectionMode (bool): 일반 조작 대신 삭제 선택 모드를 사용할지 여부.
-  // - enabled (bool): 삭제 중에는 선택과 상세 이동을 막는다.
-  // - isSelected (bool): 현재 선택 집합에 포함되는지 여부.
-  // - onSelectionChanged (void Function(bool selected)): 변경된 값 또는 선택 상태를 소유 화면에 전달할 콜백.
-  // - onGuideRequested (VoidCallback): 대상 약품의 상세 정보 또는 복용 가이드를 여는 콜백.
-  // - onImageRequested (VoidCallback): 약품 사진을 확대해 표시할 콜백.
+  // 함수역할: 목록 항목 표시와 동작에 필요한 입력값을 보관한다.
+  // 매개변수: 클래스 속성 설명과 같다.
   // 반환값: 입력 설정이 반영된 _SavedMedicationNameRow 인스턴스.
   const _SavedMedicationNameRow({
     required this.showRegisteredDate,
@@ -51,139 +49,14 @@ class _SavedMedicationNameRow extends StatelessWidget {
   });
 
   // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 약품명·처방일·복용기간과 선택·가이드·사진 동작 화면을 구성한다.
+  // 함수역할: 사진·이름·날짜와 이동 표시를 가로로 배치한 목록 항목을 구성한다.
   // 매개변수:
   // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 약품명·처방일·복용기간과 선택·가이드·사진 동작에 쓰는 위젯 트리.
+  // 반환값: 저장 약 한 건의 목록 항목 위젯 트리.
   @override
   Widget build(BuildContext context) {
     final scale = userSetting.contentTextScale;
-    // 선택 체크박스와 무관하게 날짜는 행 전체 너비를 사용한다.
-    const dateLineLeftPadding = 0.0;
-
-    return ConstrainedBox(
-      constraints: BoxConstraints(minHeight: showRegisteredDate ? 124 : 100),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (isSelectionMode) ...[
-                  Checkbox(
-                    key: ValueKey('saved-medication-checkbox-${medication.id}'),
-                    semanticLabel: medication.itemName,
-                    value: isSelected,
-                    activeColor: MedBuddyColors.primary,
-                    onChanged: !enabled || (medication.id ?? 0) <= 0
-                        ? null
-                        // 함수이름: build.onChanged callback
-                        // 함수역할: 약품명·처방일·복용기간과 선택·가이드·사진 동작에서 캡처된 작업 `onSelectionChanged(value ?? false)`을 실행한다.
-                        // 매개변수:
-                        // - value (콜백 계약에서 추론): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-                        // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                        : (value) => onSelectionChanged(value ?? false),
-                  ),
-                  const SizedBox(width: 4),
-                ],
-                Expanded(
-                  child: _MedicationNameButton(
-                    medication: medication,
-                    text: text,
-                    scale: scale,
-                    isEnabled: enabled && !isSelectionMode,
-                    onPressed: onGuideRequested,
-                  ),
-                ),
-                if (!isSelectionMode) ...[
-                  const SizedBox(width: 12),
-                  ExcludeFocus(
-                    excluding: !enabled,
-                    child: AbsorbPointer(
-                      absorbing: !enabled,
-                      child: _MedicationRowActions(
-                        medication: medication,
-                        text: text,
-                        userSetting: userSetting,
-                        onGuideRequested: onGuideRequested,
-                        onImageRequested: onImageRequested,
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            const SizedBox(height: 7),
-            if (showRegisteredDate)
-              Padding(
-                padding: EdgeInsets.only(left: dateLineLeftPadding),
-                child: _MedicationDateLine(
-                  label: text.registeredDate,
-                  value: _formatMedicationDate(medication.createdDate),
-                  fallback: text.noInformation,
-                  scale: scale,
-                ),
-              ),
-            if (showRegisteredDate) const SizedBox(height: 4),
-            Padding(
-              padding: EdgeInsets.only(left: dateLineLeftPadding),
-              child: _MedicationDateLine(
-                label: text.medicationPeriod,
-                value: _formatMedicationPeriod(medication),
-                fallback: text.noInformation,
-                scale: scale,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// 클래스명: _MedicationNameButton
-// 역할: 두 줄 약품명과 선택 삭제 중 비활성화되는 가이드 진입을 담당한다.
-// 주요 책임:
-// - 약품명을 두 줄까지 보여주고 길면 말줄임 처리한다.
-// - 선택 삭제 모드가 아닐 때 약품명 탭으로 가이드 팝업을 연다.
-// 속성:
-// - medication (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
-// - isEnabled (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
-// - onPressed (VoidCallback): 해당 항목의 명시된 주 동작을 실행할 콜백.
-class _MedicationNameButton extends StatelessWidget {
-  final MedicationDetail medication;
-  final _SavedMedicationText text;
-  final double scale;
-  final bool isEnabled;
-  final VoidCallback onPressed;
-
-  // 함수이름: _MedicationNameButton
-  // 함수역할: 두 줄 약품명과 선택 삭제 중 비활성화되는 가이드 진입에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - medication (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
-  // - text (_SavedMedicationText): 해당 화면 구역의 언어별 표시 문구.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
-  // - isEnabled (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
-  // - onPressed (VoidCallback): 해당 항목의 명시된 주 동작을 실행할 콜백.
-  // 반환값: 입력 설정이 반영된 _MedicationNameButton 인스턴스.
-  const _MedicationNameButton({
-    required this.medication,
-    required this.text,
-    required this.scale,
-    required this.isEnabled,
-    required this.onPressed,
-  });
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 두 줄 약품명과 선택 삭제 중 비활성화되는 가이드 진입 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 두 줄 약품명과 선택 삭제 중 비활성화되는 가이드 진입에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
+    final interactive = enabled && !isSelectionMode;
     final displayName = medication.itemName.trim().isEmpty
         ? text.noInformation
         : medication.itemName.trim();
@@ -191,24 +64,74 @@ class _MedicationNameButton extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: MedBuddyRadii.small,
-        onTap: isEnabled ? onPressed : null,
+        onTap: interactive ? onGuideRequested : null,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          padding: EdgeInsets.fromLTRB(isSelectionMode ? 6 : 16, 14, 8, 14),
+          child: Row(
             children: [
-              Text(
-                displayName,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: MedBuddyColors.textStrong,
-                  fontSize: 16 * scale,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0,
+              if (isSelectionMode)
+                Checkbox(
+                  key: ValueKey('saved-medication-checkbox-${medication.id}'),
+                  semanticLabel: medication.itemName,
+                  value: isSelected,
+                  activeColor: MedBuddyColors.primary,
+                  onChanged: !enabled || (medication.id ?? 0) <= 0
+                      ? null
+                      : (value) => onSelectionChanged(value ?? false),
+                ),
+              MedicationThumbnail(
+                imageUrl: medication.imageUrl,
+                localImagePath: medication.localImagePath,
+                onTap: interactive ? onImageRequested : null,
+                tapKey: ValueKey('savedMedicationImage-${medication.id}'),
+                missingImageTooltip: text.noImage,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      displayName,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: MedBuddyColors.textStrong,
+                        fontSize: 16 * scale,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                    if (showRegisteredDate) ...[
+                      const SizedBox(height: 4),
+                      _MedicationDateLine(
+                        label: text.registeredDate,
+                        value: _formatMedicationDate(medication.createdDate),
+                        fallback: text.noInformation,
+                        scale: scale,
+                      ),
+                    ],
+                    const SizedBox(height: 4),
+                    _MedicationDateLine(
+                      label: text.medicationPeriod,
+                      value: _formatMedicationPeriod(medication),
+                      fallback: text.noInformation,
+                      scale: scale,
+                    ),
+                  ],
                 ),
               ),
+              if (!isSelectionMode)
+                Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: Icon(
+                    Icons.chevron_right_rounded,
+                    color: interactive
+                        ? MedBuddyColors.textSubtle
+                        : MedBuddyColors.textLight,
+                    size: 24 * scale,
+                  ),
+                ),
             ],
           ),
         ),
@@ -282,7 +205,7 @@ String _formatMedicationDate(DateTime? value) {
 }
 
 // 함수이름: _formatMedicationPeriod
-// 함수역할: 처방일부터 투약일수-1일까지의 기간을 표시하며 하루 이하는 시작일만 표시한다.
+// 함수역할: 처방일부터 투약일수-1일까지의 기간을 표시하며 하루 이하는 시작일만, 같은 해에 끝나면 끝 날짜의 연도를 생략한다.
 // 매개변수:
 // - medication (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
 // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
@@ -298,7 +221,11 @@ String _formatMedicationPeriod(MedicationDetail medication) {
   }
 
   final endDate = startDate.add(Duration(days: totalDays - 1));
-  return '${_formatMedicationDate(startDate)} ~ ${_formatMedicationDate(endDate)}';
+  // 같은 해에 끝나면 끝 날짜의 연도를 생략해 한 줄에 들어가게 한다.
+  final endText = endDate.year == startDate.year
+      ? '${_formatTwoDigits(endDate.month)}/${_formatTwoDigits(endDate.day)}'
+      : _formatMedicationDate(endDate);
+  return '${_formatMedicationDate(startDate)} ~ $endText';
 }
 
 // 함수이름: _readTotalDays
@@ -321,235 +248,4 @@ int _readTotalDays(String totalDays) {
 // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
 String _formatTwoDigits(int value) {
   return value.toString().padLeft(2, '0');
-}
-
-// 클래스명: _MedicationRowActions
-// 역할: 저장 약품의 가이드와 사진 명령을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 저장 약품의 가이드와 사진 명령 위젯을 구성한다.
-// 속성:
-// - medication (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
-// - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-// - onGuideRequested (VoidCallback): 대상 약품의 상세 정보 또는 복용 가이드를 여는 콜백.
-// - onImageRequested (VoidCallback): 약품 사진을 확대해 표시할 콜백.
-class _MedicationRowActions extends StatelessWidget {
-  final MedicationDetail medication;
-  final _SavedMedicationText text;
-  final UserSetting userSetting;
-  final VoidCallback onGuideRequested;
-  final VoidCallback onImageRequested;
-
-  // 함수이름: _MedicationRowActions
-  // 함수역할: 저장 약품의 가이드와 사진 명령에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - medication (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
-  // - text (_SavedMedicationText): 해당 화면 구역의 언어별 표시 문구.
-  // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-  // - onGuideRequested (VoidCallback): 대상 약품의 상세 정보 또는 복용 가이드를 여는 콜백.
-  // - onImageRequested (VoidCallback): 약품 사진을 확대해 표시할 콜백.
-  // 반환값: 입력 설정이 반영된 _MedicationRowActions 인스턴스.
-  const _MedicationRowActions({
-    required this.medication,
-    required this.text,
-    required this.userSetting,
-    required this.onGuideRequested,
-    required this.onImageRequested,
-  });
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 저장 약품의 가이드와 사진 명령 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 저장 약품의 가이드와 사진 명령에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
-    final scale = userSetting.contentTextScale;
-
-    return SizedBox(
-      width: 112,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          _MedicationDetailButton(
-            label: text.guide,
-            scale: scale,
-            onPressed: onGuideRequested,
-          ),
-          const SizedBox(width: 6),
-          _MedicationImageButton(
-            medication: medication,
-            text: text,
-            scale: scale,
-            onPressed: onImageRequested,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// 클래스명: _MedicationDetailButton
-// 역할: 저장 약의 복용 가이드 열기를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 저장 약의 복용 가이드 열기 위젯을 구성한다.
-// 속성:
-// - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
-// - onPressed (VoidCallback): 해당 항목의 명시된 주 동작을 실행할 콜백.
-class _MedicationDetailButton extends StatelessWidget {
-  final String label;
-  final double scale;
-  final VoidCallback onPressed;
-
-  // 함수이름: _MedicationDetailButton
-  // 함수역할: 저장 약의 복용 가이드 열기에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
-  // - onPressed (VoidCallback): 해당 항목의 명시된 주 동작을 실행할 콜백.
-  // 반환값: 입력 설정이 반영된 _MedicationDetailButton 인스턴스.
-  const _MedicationDetailButton({
-    required this.label,
-    required this.scale,
-    required this.onPressed,
-  });
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 저장 약의 복용 가이드 열기 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 저장 약의 복용 가이드 열기에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
-    return TextButton(
-      style: TextButton.styleFrom(
-        fixedSize: const Size(58, 36),
-        minimumSize: const Size(58, 36),
-        padding: EdgeInsets.zero,
-        foregroundColor: MedBuddyColors.primaryDark,
-        backgroundColor: MedBuddyColors.successSurface,
-        shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.small),
-        textStyle: TextStyle(
-          fontSize: 11 * scale,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0,
-        ),
-      ),
-      onPressed: onPressed,
-      child: Text(label),
-    );
-  }
-}
-
-// 클래스명: _MedicationImageButton
-// 역할: 저장 약 이미지 썸네일과 사진 없음 표시를 담당한다.
-// 주요 책임:
-// - 이미지 URL이 있으면 약 사진 팝업을 열 수 있는 썸네일을 표시한다.
-// - 이미지 URL이 없으면 텍스트 대신 X 아이콘으로 비어 있음을 표현한다.
-// 속성:
-// - medication (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
-// - onPressed (VoidCallback): 해당 항목의 명시된 주 동작을 실행할 콜백.
-class _MedicationImageButton extends StatelessWidget {
-  final MedicationDetail medication;
-  final _SavedMedicationText text;
-  final double scale;
-  final VoidCallback onPressed;
-
-  // 함수이름: _MedicationImageButton
-  // 함수역할: 저장 약 이미지 썸네일과 사진 없음 표시에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - medication (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
-  // - text (_SavedMedicationText): 해당 화면 구역의 언어별 표시 문구.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
-  // - onPressed (VoidCallback): 해당 항목의 명시된 주 동작을 실행할 콜백.
-  // 반환값: 입력 설정이 반영된 _MedicationImageButton 인스턴스.
-  const _MedicationImageButton({
-    required this.medication,
-    required this.text,
-    required this.scale,
-    required this.onPressed,
-  });
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 저장 약 이미지 썸네일과 사진 없음 표시 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 저장 약 이미지 썸네일과 사진 없음 표시에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
-    final imageUrl = safeMedicationImageUrl(medication.imageUrl);
-    final localImageFile = medication.localImagePath.trim().isEmpty
-        ? null
-        : File(medication.localImagePath.trim());
-    final hasLocalImage = localImageFile?.existsSync() ?? false;
-    if (!hasLocalImage && imageUrl.isEmpty) {
-      return Tooltip(
-        message: text.noImage,
-        child: Container(
-          width: 48,
-          height: 36,
-          decoration: BoxDecoration(
-            color: MedBuddyColors.cardBorder,
-            borderRadius: MedBuddyRadii.small,
-          ),
-          child: const Icon(
-            Icons.image_not_supported_outlined,
-            color: MedBuddyColors.textLight,
-            size: 22,
-          ),
-        ),
-      );
-    }
-
-    return InkWell(
-      key: ValueKey('savedMedicationImage-${medication.id}'),
-      onTap: onPressed,
-      borderRadius: MedBuddyRadii.control,
-      child: Container(
-        width: 48,
-        height: 48,
-        padding: const EdgeInsets.all(3),
-        decoration: BoxDecoration(
-          border: Border.all(color: MedBuddyColors.imageAccent, width: 5),
-          borderRadius: MedBuddyRadii.control,
-        ),
-        child: ClipRRect(
-          borderRadius: MedBuddyRadii.small,
-          child: hasLocalImage
-              ? Image.file(
-                  localImageFile!,
-                  cacheWidth: 192,
-                  fit: BoxFit.cover,
-                  errorBuilder: _buildMedicationImageError,
-                )
-              : Image.network(
-                  imageUrl,
-                  cacheWidth: 192,
-                  fit: BoxFit.cover,
-                  errorBuilder: _buildMedicationImageError,
-                ),
-        ),
-      ),
-    );
-  }
-
-  // 함수이름: _buildMedicationImageError
-  // 함수역할: 썸네일 로드 오류를 사진 없음 아이콘으로 표시한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // - error (Object): 사용자 안내 또는 복구 분기에 사용할 실패 정보.
-  // - stackTrace (StackTrace?): 이미지 로드 실패 지점의 선택적 호출 스택; 표시에는 사용하지 않음.
-  // 반환값: 저장 약 이미지 썸네일과 사진 없음 표시에 쓰는 위젯 트리.
-  Widget _buildMedicationImageError(
-    BuildContext context,
-    Object error,
-    StackTrace? stackTrace,
-  ) {
-    return const Icon(
-      Icons.image_not_supported_outlined,
-      color: MedBuddyColors.textLight,
-      size: 22,
-    );
-  }
 }

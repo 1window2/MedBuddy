@@ -198,7 +198,7 @@ class _SelectionDeleteBar extends StatelessWidget {
 // 클래스명: _SavedMedicationDateCard
 // 역할: 같은 날짜의 저장 약 목록과 그룹 삭제를 담당한다.
 // 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 같은 날짜의 저장 약 목록과 그룹 삭제 위젯을 구성한다.
+// - 날짜·약 개수·묶음 삭제를 한 줄 머리글에 두고 그 아래에 같은 날짜의 저장 약 목록을 구성한다.
 // 속성:
 // - group (_SavedMedicationGroup): 같은 날짜의 저장 약품 묶음.
 // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
@@ -267,21 +267,59 @@ class _SavedMedicationDateCard extends StatelessWidget {
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    group.displayDate,
-                    style: TextStyle(
-                      color: MedBuddyColors.textStrong,
-                      fontSize: 18 * scale,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0,
+            padding: EdgeInsets.fromLTRB(16, 8, isSelectionMode ? 16 : 6, 8),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 2,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          group.displayDate,
+                          style: TextStyle(
+                            color: MedBuddyColors.textStrong,
+                            fontSize: 17 * scale,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0,
+                          ),
+                        ),
+                        Text(
+                          text.medicationCount(group.medications.length),
+                          style: TextStyle(
+                            color: MedBuddyColors.textSubtle,
+                            fontSize: 13 * scale,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-              ],
+                  if (!isSelectionMode)
+                    TextButton.icon(
+                      style: TextButton.styleFrom(
+                        foregroundColor: MedBuddyColors.danger,
+                        minimumSize: const Size(48, 48),
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        textStyle: TextStyle(
+                          fontSize: 14 * scale,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                      onPressed: enabled ? onDeleteRequested : null,
+                      icon: Icon(
+                        Icons.delete_outline_rounded,
+                        size: 20 * scale,
+                      ),
+                      label: Text(text.delete),
+                    ),
+                ],
+              ),
             ),
           ),
           const Divider(height: 1, color: MedBuddyColors.divider),
@@ -319,22 +357,6 @@ class _SavedMedicationDateCard extends StatelessWidget {
             ),
             if (medication != group.medications.last)
               const Divider(height: 1, color: MedBuddyColors.divider),
-          ],
-          if (!isSelectionMode) ...[
-            const Divider(height: 1, color: MedBuddyColors.divider),
-            TextButton(
-              style: TextButton.styleFrom(
-                minimumSize: const Size.fromHeight(54),
-                foregroundColor: MedBuddyColors.danger,
-                textStyle: TextStyle(
-                  fontSize: 16 * scale,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0,
-                ),
-              ),
-              onPressed: enabled ? onDeleteRequested : null,
-              child: Text(text.delete),
-            ),
           ],
         ],
       ),

@@ -553,18 +553,19 @@ class _SavedMedicationText {
   String get imageLoadFailed => isEnglish
       ? 'The medication image could not be loaded.'
       : '약 사진을 불러올 수 없습니다.';
-  // 함수이름: guide
-  // 함수역할: 현재 언어와 입력값에 맞춰 "가이드" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get guide => isEnglish ? 'Guide' : '가이드';
   // 함수이름: delete
-  // 함수역할: 현재 언어와 입력값에 맞춰 "삭제하기" 문구를 제공한다.
+  // 함수역할: 현재 언어와 입력값에 맞춰 날짜 묶음 머리글의 "삭제" 문구를 제공한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get delete => isEnglish ? 'Delete' : '삭제하기';
+  String get delete => isEnglish ? 'Delete' : '삭제';
+  // 함수이름: medicationCount
+  // 함수역할: 날짜 묶음에 포함된 약 개수를 언어에 맞춰 표기한다.
+  // 매개변수:
+  // - count (int): 묶음의 약 개수.
+  // 반환값: "2개" 또는 "2 items" 형식의 문구.
+  String medicationCount(int count) =>
+      isEnglish ? '$count ${count == 1 ? 'item' : 'items'}' : '$count개';
   // 함수이름: deleteSelected
   // 함수역할: 현재 언어와 입력값에 맞춰 "선택 삭제" 문구를 제공한다.
   // 매개변수:
