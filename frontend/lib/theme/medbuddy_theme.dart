@@ -318,6 +318,8 @@ class MedBuddyTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
+          backgroundColor: MedBuddyColors.primary,
+          foregroundColor: Colors.white,
           textStyle: label,
           shape: shape,
           elevation: 0,

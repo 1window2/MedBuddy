@@ -256,7 +256,17 @@ void main() {
         r'''^\s*(?:import|export|part)\s+['"]([^'"]+)['"]''',
         multiLine: true,
       ).allMatches(source).map((match) => match.group(1)).toList();
-      expect(imports, ['device_coordinate_entity.dart']);
+      expect(imports, [
+        'device_coordinate_entity.dart',
+        'json_value_reader.dart',
+      ]);
+      // The shared JSON reader must stay a dependency-free value helper.
+      expect(
+        File('lib/entities/json_value_reader.dart').readAsStringSync(),
+        isNot(
+          contains(RegExp(r'^\s*(?:import|export|part)\s', multiLine: true)),
+        ),
+      );
       expect(source, contains('required this.radiusKm'));
       expect(source, isNot(contains('this.radiusKm =')));
       expect(source, isNot(contains('static const hongik')));

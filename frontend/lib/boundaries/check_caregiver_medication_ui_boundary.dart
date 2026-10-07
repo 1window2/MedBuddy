@@ -86,22 +86,10 @@ class _CheckCaregiverMedicationUIState
   static const ManageCaregiverPatientLocalState _localStateControl =
       ManageCaregiverPatientLocalState();
   static const List<_CaregiverScheduleSlot> _slots = [
-    _CaregiverScheduleSlot(
-      key: 'morning',
-      hour: 8,
-    ),
-    _CaregiverScheduleSlot(
-      key: 'lunch',
-      hour: 12,
-    ),
-    _CaregiverScheduleSlot(
-      key: 'evening',
-      hour: 18,
-    ),
-    _CaregiverScheduleSlot(
-      key: 'bedtime',
-      hour: 22,
-    ),
+    _CaregiverScheduleSlot(key: 'morning', hour: 8),
+    _CaregiverScheduleSlot(key: 'lunch', hour: 12),
+    _CaregiverScheduleSlot(key: 'evening', hour: 18),
+    _CaregiverScheduleSlot(key: 'bedtime', hour: 22),
   ];
 
   late final CheckCaregiverMedication _control;
@@ -1060,8 +1048,8 @@ class _CaregiverTimeSlotCard extends StatelessWidget {
                 SizedBox.square(
                   dimension: 42,
                   child: isNotificationLoading
-                      ? const Padding(
-                          padding: EdgeInsets.all(10),
+                      ? Padding(
+                          padding: const EdgeInsets.all(10),
                           child: CircularProgressIndicator(
                             strokeWidth: 2.5,
                             color: style.color,

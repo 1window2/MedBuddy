@@ -100,26 +100,10 @@ class CheckScheduleUI extends StatefulWidget {
 class _CheckScheduleUIState extends State<CheckScheduleUI> {
   static const Duration _completionSnackBarDuration = Duration(seconds: 5);
   static const List<_ScheduleSlotDefinition> _slotDefinitions = [
-    _ScheduleSlotDefinition(
-      key: 'morning',
-      title: '아침',
-      hour: 8,
-    ),
-    _ScheduleSlotDefinition(
-      key: 'lunch',
-      title: '점심',
-      hour: 12,
-    ),
-    _ScheduleSlotDefinition(
-      key: 'evening',
-      title: '저녁',
-      hour: 18,
-    ),
-    _ScheduleSlotDefinition(
-      key: 'bedtime',
-      title: '취침 전',
-      hour: 22,
-    ),
+    _ScheduleSlotDefinition(key: 'morning', title: '아침', hour: 8),
+    _ScheduleSlotDefinition(key: 'lunch', title: '점심', hour: 12),
+    _ScheduleSlotDefinition(key: 'evening', title: '저녁', hour: 18),
+    _ScheduleSlotDefinition(key: 'bedtime', title: '취침 전', hour: 22),
   ];
 
   final Map<String, GlobalKey> _slotKeys = {
@@ -2080,7 +2064,7 @@ class _SlotCompletionToggleButton extends StatelessWidget {
               height: 44,
               child: Center(
                 child: isUpdating
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(

@@ -116,16 +116,16 @@ class ChatMedicationContext {
   // 반환값:
   // - ChatMedicationContext: 필드 검증과 기본값 처리를 거쳐 복원한 레코드.
   factory ChatMedicationContext.fromJson(Map<String, dynamic> json) {
-    final medicationId = ChatMessage.readJsonInt(json['medication_id']);
-    final medicationName = ChatMessage.readJsonText(json['medication_name']);
+    final medicationId = readJsonInt(json['medication_id']);
+    final medicationName = readJsonText(json['medication_name']);
     if (medicationId == null || medicationName.isEmpty) {
       throw const FormatException('채팅 약 정보에 필수 값이 없습니다.');
     }
     return ChatMedicationContext(
       medicationId: medicationId,
       medicationName: medicationName,
-      imageUrl: ChatMessage.readJsonText(json['image_url']),
-      dosagePerTime: ChatMessage.readJsonText(json['dosage_per_time']),
+      imageUrl: readJsonText(json['image_url']),
+      dosagePerTime: readJsonText(json['dosage_per_time']),
       scheduleSlotKeys: _readScheduleSlotKeys(json['schedule_slot_keys']),
     );
   }
@@ -210,19 +210,19 @@ class ChatScheduleContext {
   // 반환값:
   // - ChatScheduleContext: 필드 검증과 기본값 처리를 거쳐 복원한 레코드.
   factory ChatScheduleContext.fromJson(Map<String, dynamic> json) {
-    final slotKey = ChatMessage.readJsonText(json['slot_key']).toLowerCase();
+    final slotKey = readJsonText(json['slot_key']).toLowerCase();
     const supportedKeys = {'morning', 'lunch', 'evening', 'bedtime'};
     if (!supportedKeys.contains(slotKey)) {
       throw const FormatException('채팅 복약 시간대 정보가 올바르지 않습니다.');
     }
     final rawMedications = json['medications'];
     return ChatScheduleContext(
-      scheduleDate: ChatMessage.readJsonText(json['schedule_date']),
+      scheduleDate: readJsonText(json['schedule_date']),
       slotKey: slotKey,
-      alarmTime: ChatMessage.readJsonText(json['alarm_time']),
+      alarmTime: readJsonText(json['alarm_time']),
       alarmEnabled: json['alarm_enabled'] == true,
-      completedCount: ChatMessage.readJsonInt(json['completed_count']) ?? 0,
-      totalCount: ChatMessage.readJsonInt(json['total_count']) ?? 0,
+      completedCount: readJsonInt(json['completed_count']) ?? 0,
+      totalCount: readJsonInt(json['total_count']) ?? 0,
       canRequestCheck: json['can_request_check'] == true,
       medications: rawMedications is List
           ? rawMedications
@@ -312,21 +312,21 @@ class ChatPharmacyContext extends ChatPlaceContext {
   // 반환값:
   // - ChatPharmacyContext: 필드 검증과 기본값 처리를 거쳐 복원한 레코드.
   factory ChatPharmacyContext.fromJson(Map<String, dynamic> json) {
-    final pharmacyId = ChatMessage.readJsonText(json['pharmacy_id']);
-    final name = ChatMessage.readJsonText(json['name']);
+    final pharmacyId = readJsonText(json['pharmacy_id']);
+    final name = readJsonText(json['name']);
     if (pharmacyId.isEmpty || name.isEmpty) {
       throw const FormatException('채팅 약국 정보에 필수 값이 없습니다.');
     }
     return ChatPharmacyContext(
       pharmacyId: pharmacyId,
       name: name,
-      address: ChatMessage.readJsonText(json['address']),
-      telephone: ChatMessage.readJsonText(json['telephone']),
-      todayHours: ChatMessage.readJsonText(json['today_hours']),
+      address: readJsonText(json['address']),
+      telephone: readJsonText(json['telephone']),
+      todayHours: readJsonText(json['today_hours']),
       latitude: ChatMessage._readDouble(json['latitude']),
       longitude: ChatMessage._readDouble(json['longitude']),
       sourceUpdatedAt: DateTime.tryParse(
-        ChatMessage.readJsonText(json['source_updated_at']),
+        readJsonText(json['source_updated_at']),
       ),
     );
   }
@@ -356,9 +356,7 @@ class ChatHospitalContext extends ChatPlaceContext {
       ...json,
       'pharmacy_id': json['hospital_id'],
     });
-    final date = DateTime.tryParse(
-      ChatMessage.readJsonText(json['schedule_date']),
-    );
+    final date = DateTime.tryParse(readJsonText(json['schedule_date']));
     if (date == null) throw const FormatException('병원 조회 날짜가 없습니다.');
     return ChatHospitalContext(
       hospitalId: base.pharmacyId,
@@ -542,7 +540,9 @@ class ChatMessage {
             )
           : null,
       remainingDays: readJsonInt(context['remaining_days']),
-      courseEndDate: DateTime.tryParse(readJsonText(context['course_end_date'])),
+      courseEndDate: DateTime.tryParse(
+        readJsonText(context['course_end_date']),
+      ),
       showSafetyGuidance: context['show_safety_guidance'] == true,
       readAt: readAtText.isEmpty ? null : DateTime.tryParse(readAtText),
       hiddenForMe: json['hidden_for_me'] == true,

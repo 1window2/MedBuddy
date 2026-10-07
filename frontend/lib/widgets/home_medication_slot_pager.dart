@@ -219,7 +219,7 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
               ),
               style: FilledButton.styleFrom(
                 backgroundColor: hasPending
-                    ? MedBuddySlotStyle.of(slot ?? '').color
+                    ? MedBuddySlotStyle.of(slot).color
                     : MedBuddyColors.surface,
                 foregroundColor: hasPending
                     ? Colors.white
