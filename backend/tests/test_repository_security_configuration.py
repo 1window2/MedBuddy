@@ -258,3 +258,29 @@ def test_self_hosted_backend_prepares_secret_then_drops_privileges() -> None:
     assert "--bounding-set=-all" in entrypoint_source
     assert "--no-new-privs" in entrypoint_source
     assert '"$@"' in entrypoint_source
+
+
+# Function Name: test_backend_trusts_forwarded_headers_only_from_private_proxies
+# Description:
+# - Verifies that uvicorn accepts X-Forwarded-For only from the tunnel on a private
+#   address, so the per-IP quota uses the address Cloudflare appended instead of a
+#   value the caller supplied.
+# Parameters:
+# - None.
+# Returns:
+# - None; pytest reports a failure when the proxy trust list is widened.
+def test_backend_trusts_forwarded_headers_only_from_private_proxies() -> None:
+    from uvicorn.middleware.proxy_headers import _TrustedHosts
+
+    trusted = "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7"
+    for relative_path in ("compose.self-hosted.yml", "backend/Dockerfile"):
+        source = (_REPOSITORY_ROOT / relative_path).read_text(encoding="utf-8")
+        assert "--forwarded-allow-ips=*" not in source
+        assert f"--forwarded-allow-ips={trusted}" in source
+
+    hosts = _TrustedHosts(trusted)
+    assert "172.18.0.5" in hosts
+    assert "203.0.113.9" not in hosts
+    # Cloudflare appends the connecting address after any caller-supplied value.
+    assert hosts.get_trusted_client_address("1.2.3.4, 203.0.113.9")[0] == "203.0.113.9"
+    assert hosts.get_trusted_client_address("10.9.9.9, 203.0.113.9")[0] == "203.0.113.9"

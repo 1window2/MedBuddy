@@ -36,6 +36,12 @@ The production ingress is Cloudflare Tunnel only.
 - Caddy direct-public ingress is not used.
 - PostgreSQL and Redis remain on the private Docker network.
 - FastAPI port `8000` is bound only to host loopback for local diagnostics.
+- uvicorn accepts `X-Forwarded-For` only from loopback and private addresses
+  (`--forwarded-allow-ips`), which covers `cloudflared` on the Docker network.
+  Cloudflare appends the connecting address after any value the caller sent, so
+  the backend's per-IP quota uses that last public entry rather than a
+  caller-chosen one. Do not widen this list to `*`. The change takes effect when
+  the backend container is rebuilt and restarted.
 
 Cloudflare uses a deny-by-default custom rule named
 `MedBuddy API route allowlist`. Keep the rule active and add every intentionally

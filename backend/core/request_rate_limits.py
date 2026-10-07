@@ -438,7 +438,9 @@ class RequestRateLimitMiddleware:
 
     # Function Name: _request_ip_identity
     # Description:
-    # - Derive a quota identity from the ASGI peer address without trusting forwarded headers.
+    # - Derive a quota identity from the ASGI client address. This code reads no forwarded
+    #   header itself; uvicorn resolves the address and is started so that only the tunnel
+    #   on a private address may supply X-Forwarded-For.
     # Parameters:
     # - scope (Scope): ASGI connection metadata, including request path and headers.
     # Returns:
