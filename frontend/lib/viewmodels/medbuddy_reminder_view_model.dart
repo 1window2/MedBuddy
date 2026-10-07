@@ -487,10 +487,23 @@ class MedBuddyReminderViewModel {
     );
     await _cancelLegacyMedicationReminder(setting);
     final now = DateTime.now();
-    final activeDates = MedicationReminderRefreshService.activeReminderDates(
-      schedules,
-      now: now,
-    );
+    // 이 시간대의 약을 오늘 모두 복용했다면 오늘 알림은 다시 예약하지 않는다.
+    final slotCompletedToday =
+        schedules.isNotEmpty &&
+        schedules.every(
+          (schedule) => schedule.isSlotCompleted(setting.slotKey),
+        );
+    final activeDates = [
+      for (final date in MedicationReminderRefreshService.activeReminderDates(
+        schedules,
+        now: now,
+      ))
+        if (!(slotCompletedToday &&
+            date.year == now.year &&
+            date.month == now.month &&
+            date.day == now.day))
+          date,
+    ];
     await setNotification.registerNotification(
       id: setting.notificationId,
       slotKey: setting.slotKey,

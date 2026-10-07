@@ -783,6 +783,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       isTodayScheduleLoading:
           viewModel.isTodayScheduleLoading &&
           viewModel.todayMedicationScheduleList.isEmpty,
+      // 일정을 불러오지 못해 목록이 비어 있을 때 "약 없음"으로 보이지 않게 한다.
+      hasTodayScheduleLoadError:
+          viewModel.hasTodayScheduleLoadError &&
+          viewModel.todayMedicationScheduleList.isEmpty,
       // 함수이름: _buildHomeInput.onPrescriptionScanRequested callback
       // 함수역할: 처방 분석 단계와 앱 탐색 목적지별 활성 화면에서 캡처된 작업 `_requestGuidedPrescriptionImage(context, viewModel)`을 실행한다.
       // 매개변수:

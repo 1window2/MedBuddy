@@ -295,6 +295,9 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   // Returns:
   // - Future<void>: asynchronous completion without a result payload.
   Future<void> _prepareSessionEnd() async {
+    // 서버 요청이 필요한 푸시 토큰 해제만 실패할 수 있다. 이를 먼저 해서, 오프라인 등으로
+    // 로그아웃이 중단되어도 복용 기록 대기열과 복약 알림이 지워진 채 남지 않게 한다.
+    await _pushNotificationService?.stop(requireServerUnregistration: true);
     await DoseSyncBackgroundScheduler.suspend();
     await DoseHomeWidget.clear();
     final reminderCleanup = widget.sessionReminderCleanup;
@@ -304,11 +307,6 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
       await MedicationReminderBackgroundScheduler.cancel();
       await NotificationService.instance.cancelAllMedicationReminders();
     }
-    final pushService = _pushNotificationService;
-    if (pushService == null) {
-      return;
-    }
-    await pushService.stop(requireServerUnregistration: true);
   }
 
   // Function Name: _registerNotificationSelectionHandler
@@ -377,7 +375,13 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
       return;
     }
     _pendingNotificationSelection = null;
-    _navigateForNotificationWhenReady(pendingSelection);
+    // 로그인 직후에는 새 계정의 화면 상태가 아직 트리에 없으므로, 보류한 알림 동작은 다음 프레임에 전달한다.
+    final session = _authenticationControl.session;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && identical(session, _authenticationControl.session)) {
+        _navigateForNotificationWhenReady(pendingSelection);
+      }
+    });
   }
 
   // 인증 화면이 사라져도 성공 안내가 보이도록 새 홈 화면이 그려진 뒤 한 번만 표시한다.

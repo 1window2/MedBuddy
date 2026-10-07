@@ -90,6 +90,11 @@ class MedBuddyScheduleViewModel {
     required bool hasCurrentDayCache,
   }) {
     if (_disposed) return;
+    if (!hasCurrentDayCache && _activeTodayScheduleLoadEpoch != null) {
+      // A projection without today's snapshot has nothing to show. Let the server read that
+      // is already in flight finish; its result is projected over pending doses anyway.
+      return;
+    }
     _todayScheduleEpoch++;
     _activeTodayScheduleLoadEpoch = null;
     _isTodayScheduleLoading = false;

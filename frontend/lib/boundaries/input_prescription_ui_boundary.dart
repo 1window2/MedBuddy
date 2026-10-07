@@ -30,6 +30,7 @@ class InputPrescriptionUI extends StatelessWidget {
   final int todayMedicationCompletedCount;
   final int todayMedicationTotalCount;
   final bool isTodayScheduleLoading;
+  final bool hasTodayScheduleLoadError;
   // 본인 복용약이 없는 보호자에게만 전달하는 가족 복약 현황이다.
   final Widget? caregiverSummary;
   final Widget? caregiverScheduleHint;
@@ -58,6 +59,7 @@ class InputPrescriptionUI extends StatelessWidget {
   // - todayMedicationCompletedCount (int): Number of completed doses.
   // - todayMedicationTotalCount (int): Total scheduled doses or operation items.
   // - isTodayScheduleLoading (bool): Whether to show the in-progress state.
+  // - hasTodayScheduleLoadError (bool): Whether today's schedule failed to load, so an empty list is unknown rather than "no medication".
   // - nowProvider (DateTime Function()?): Clock function; the device's current time is used when omitted.
   // - onPrescriptionScanRequested (VoidCallback?): Callback requesting prescription capture or recapture through the guided camera.
   // - onPrescriptionGalleryRequested (VoidCallback?): Callback selecting a prescription photo from the gallery.
@@ -78,6 +80,7 @@ class InputPrescriptionUI extends StatelessWidget {
     this.todayMedicationCompletedCount = 0,
     this.todayMedicationTotalCount = 0,
     this.isTodayScheduleLoading = false,
+    this.hasTodayScheduleLoadError = false,
     this.caregiverSummary,
     this.caregiverScheduleHint,
     this.nowProvider,
@@ -155,6 +158,7 @@ class InputPrescriptionUI extends StatelessWidget {
                                   completedCount: todayMedicationCompletedCount,
                                   totalCount: todayMedicationTotalCount,
                                   isLoading: isTodayScheduleLoading,
+                                  hasError: hasTodayScheduleLoadError,
                                   nowProvider: nowProvider,
                                   compact: useCompactDashboard,
                                   onTap: onTodayScheduleRequested,
@@ -872,6 +876,7 @@ class _HomeEncouragementPanel extends StatelessWidget {
   final int completedCount;
   final int totalCount;
   final bool isLoading;
+  final bool hasError;
   final bool compact;
   final DateTime Function()? nowProvider;
   final VoidCallback? onTap;
@@ -888,6 +893,7 @@ class _HomeEncouragementPanel extends StatelessWidget {
   // - completedCount (int): Number of completed doses.
   // - totalCount (int): Total scheduled doses or operation items.
   // - isLoading (bool): Whether to show the in-progress state.
+  // - hasError (bool): Whether the schedule could not be loaded and the status is unknown.
   // - compact (bool): Whether compact card or header layout is used.
   // - nowProvider (DateTime Function()?): Clock function; the device's current time is used when omitted.
   // - onTap (VoidCallback?): Callback executing the item's documented primary action.
@@ -901,6 +907,7 @@ class _HomeEncouragementPanel extends StatelessWidget {
     required this.completedCount,
     required this.totalCount,
     required this.isLoading,
+    this.hasError = false,
     this.compact = false,
     this.nowProvider,
     this.onTap,
@@ -943,6 +950,7 @@ class _HomeEncouragementPanel extends StatelessWidget {
         reminderSettings: reminderSettings,
         isEnglish: isEnglish,
         isLoading: isLoading,
+        hasError: hasError,
         initialSlotKey: dashboard.nextSlotKey,
         compact: compact,
         onStatusUpdateRequested: onStatusUpdateRequested,

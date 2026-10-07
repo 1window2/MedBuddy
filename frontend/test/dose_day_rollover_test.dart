@@ -80,6 +80,27 @@ void main() {
           200,
         );
       }
+      if (request.method == 'POST' &&
+          path.endsWith('/schedule/completion-operations')) {
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'operation_id': (jsonDecode(request.body) as Map)['operation_id'],
+            'schedule_date': doseScheduleDay(current),
+            'data': [
+              {
+                'medication_id': 91,
+                'drug_name': 'synthetic',
+                'daily_frequency': '1',
+                'schedule_slot_keys': ['morning'],
+                'slot_statuses': {'morning': true},
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      }
       if (request.method == 'PATCH' && path.endsWith('/disable')) {
         disableCalls.add(path);
         return http.Response(
@@ -179,4 +200,37 @@ void main() {
       viewModel.dispose();
     },
   );
+
+  // 함수이름: 날짜 변경 직후 복용 기록 테스트
+  // 함수역할: 전날부터 살아 있던 앱에서 알림의 "복용했어요"가 재개와 겹쳐도 복용 기록이 저장되는지 검증한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  for (final resumeFirst in [false, true]) {
+    test(
+      'a dose taken on the first resume of a new day is recorded (resumeFirst=$resumeFirst)',
+      () async {
+        final viewModel = await signedInViewModelAfterDayOne();
+        current = current.add(const Duration(days: 1));
+
+        if (resumeFirst) {
+          viewModel.doseSync!.didChangeAppLifecycleState(
+            AppLifecycleState.resumed,
+          );
+        }
+        final action = viewModel.requestMedicationSlotStatusUpdate(
+          'morning',
+          true,
+        );
+        if (!resumeFirst) {
+          viewModel.doseSync!.didChangeAppLifecycleState(
+            AppLifecycleState.resumed,
+          );
+        }
+
+        expect(await action, isTrue);
+        await viewModel.doseSync!.drain();
+        expect(disableCalls, isEmpty);
+        viewModel.dispose();
+      },
+    );
+  }
 }

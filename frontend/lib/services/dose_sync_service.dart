@@ -40,6 +40,7 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   final Future<void> Function()? onStateChanged;
   DoseOutboxStore? _store;
   Future<void>? _initializing;
+  bool _activationRequested = false;
   Future<void>? _draining;
   bool _publishing = false;
   bool _publishAgain = false;
@@ -70,12 +71,17 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   List<MedicationSchedule> get schedules =>
       project(hasCache ? _confirmed : const []);
 
-  Future<void> initialize({bool activate = false}) => _initializing ??=
-      _initialize(activate).catchError((Object error, StackTrace stackTrace) {
-        // 일시적인 저장소 오류 뒤에도 다음 요청에서 다시 열 수 있게 한다.
-        _initializing = null;
-        Error.throwWithStackTrace(error, stackTrace);
-      });
+  Future<void> initialize({bool activate = false}) {
+    // 첫 열기가 실패한 뒤의 재시도도 처음 요청한 계정 활성화를 수행해야 한다.
+    _activationRequested = _activationRequested || activate;
+    return _initializing ??= _initialize(
+      _activationRequested,
+    ).catchError((Object error, StackTrace stackTrace) {
+      // 일시적인 저장소 오류 뒤에도 다음 요청에서 다시 열 수 있게 한다.
+      _initializing = null;
+      Error.throwWithStackTrace(error, stackTrace);
+    });
+  }
 
   Future<void> _initialize(bool activate) async {
     _store = await openStore();
