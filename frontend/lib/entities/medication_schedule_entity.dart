@@ -2,6 +2,7 @@
 // Role: Defines prescription-analysis and saved-schedule records, slot status, and localized dosage display values.
 
 import 'medication_image_url_entity.dart';
+import 'json_value_reader.dart';
 
 const List<String> medicationScheduleSlotKeys = [
   'morning',
@@ -152,22 +153,22 @@ class MedicationSchedule {
   // - MedicationSchedule: the initialized instance.
   factory MedicationSchedule.fromAnalysisJson(Map<String, dynamic> json) {
     return MedicationSchedule(
-      medicationName: _readString(json['drug_name']),
-      prescriptionDate: _readDate(json['prescription_date']),
-      prescriptionBatchId: _readString(json['prescription_batch_id']),
-      dosage: _readString(json['dosage_per_time']),
-      intakeTime: _readString(json['daily_frequency']),
+      medicationName: readJsonText(json['drug_name']),
+      prescriptionDate: readJsonDate(json['prescription_date']),
+      prescriptionBatchId: readJsonText(json['prescription_batch_id']),
+      dosage: readJsonText(json['dosage_per_time']),
+      intakeTime: readJsonText(json['daily_frequency']),
       medicationTime: _readInt(json['total_days']),
       scheduleSlotKeys: _readScheduleSlotKeys(
         json['schedule_slot_keys'] ?? json['scheduleSlotKeys'],
       ),
-      efficacy: _readString(json['efficacy']),
-      usageMethod: _readString(json['use_method'] ?? json['usage_method']),
-      warning: _readString(json['warning_message'] ?? json['warning']),
+      efficacy: readJsonText(json['efficacy']),
+      usageMethod: readJsonText(json['use_method'] ?? json['usage_method']),
+      warning: readJsonText(json['warning_message'] ?? json['warning']),
       imageUrl: safeMedicationImageUrl(
         json['image_url'] ?? json['imageUrl'] ?? json['itemImage'],
       ),
-      rawMedicationName: _readString(
+      rawMedicationName: readJsonText(
         json['raw_drug_name'] ??
             json['rawDrugName'] ??
             json['rawMedicationName'],
@@ -175,7 +176,7 @@ class MedicationSchedule {
       nameConfidence: _readDouble(
         json['name_confidence'] ?? json['nameConfidence'],
       ),
-      nameCorrectionSource: _readString(
+      nameCorrectionSource: readJsonText(
         json['name_correction_source'] ?? json['nameCorrectionSource'],
       ),
     );
@@ -189,25 +190,25 @@ class MedicationSchedule {
   // - MedicationSchedule: the initialized instance.
   factory MedicationSchedule.fromScheduleJson(Map<String, dynamic> json) {
     return MedicationSchedule(
-      maskedPrescriptionText: _readString(
+      maskedPrescriptionText: readJsonText(
         json['maskedPrescriptionText'] ?? json['masked_prescription_text'],
       ),
-      createdDate: _readDate(json['created_date'] ?? json['createdDate']),
-      prescriptionDate: _readDate(
+      createdDate: readJsonDate(json['created_date'] ?? json['createdDate']),
+      prescriptionDate: readJsonDate(
         json['prescription_date'] ?? json['prescriptionDate'],
       ),
-      prescriptionBatchId: _readString(
+      prescriptionBatchId: readJsonText(
         json['prescription_batch_id'] ?? json['prescriptionBatchId'],
       ),
-      medicationID: _readString(
+      medicationID: readJsonText(
         json['medication_id'] ?? json['medicationID'] ?? json['id'],
       ),
-      medicationName: _readString(
+      medicationName: readJsonText(
         json['drug_name'] ?? json['medication_name'] ?? json['item_name'],
       ),
-      dosage: _readString(json['dosage_per_time'] ?? json['dosage']),
-      intakeTime: _readString(json['daily_frequency'] ?? json['intake_time']),
-      medicationStatus: _readBool(
+      dosage: readJsonText(json['dosage_per_time'] ?? json['dosage']),
+      intakeTime: readJsonText(json['daily_frequency'] ?? json['intake_time']),
+      medicationStatus: readJsonBool(
         json['medication_status'] ??
             json['medicationStatus'] ??
             json['medcationStatus'] ??
@@ -220,17 +221,17 @@ class MedicationSchedule {
       scheduleSlotKeys: _readScheduleSlotKeys(
         json['schedule_slot_keys'] ?? json['scheduleSlotKeys'],
       ),
-      patientID: _readString(
+      patientID: readJsonText(
         json['patient_hash'] ?? json['patient_id'] ?? json['patientID'],
       ),
       medicationTime: _readInt(json['total_days'] ?? json['medication_time']),
-      efficacy: _readString(json['efficacy']),
-      usageMethod: _readString(json['use_method'] ?? json['usage_method']),
-      warning: _readString(json['warning_message'] ?? json['warning']),
+      efficacy: readJsonText(json['efficacy']),
+      usageMethod: readJsonText(json['use_method'] ?? json['usage_method']),
+      warning: readJsonText(json['warning_message'] ?? json['warning']),
       imageUrl: safeMedicationImageUrl(
         json['image_url'] ?? json['imageUrl'] ?? json['itemImage'],
       ),
-      rawMedicationName: _readString(
+      rawMedicationName: readJsonText(
         json['raw_drug_name'] ??
             json['rawDrugName'] ??
             json['rawMedicationName'],
@@ -238,7 +239,7 @@ class MedicationSchedule {
       nameConfidence: _readDouble(
         json['name_confidence'] ?? json['nameConfidence'],
       ),
-      nameCorrectionSource: _readString(
+      nameCorrectionSource: readJsonText(
         json['name_correction_source'] ?? json['nameCorrectionSource'],
       ),
     );
@@ -500,8 +501,8 @@ class MedicationSchedule {
           .toList(growable: false),
       'schedule_slot_keys': slotKeys,
       'patient_id': patientID,
-      'created_date': _formatDate(createdDate),
-      'prescription_date': _formatDate(prescriptionDate),
+      'created_date': formatJsonDate(createdDate),
+      'prescription_date': formatJsonDate(prescriptionDate),
       'prescription_batch_id': prescriptionBatchId,
       'total_days': medicationTimeLabel,
       'efficacy': efficacy ?? '',
@@ -599,19 +600,6 @@ class MedicationSchedule {
     return slotStatuses[slotKey.trim().toLowerCase()] ?? false;
   }
 
-  // Function Name: _readString
-  // Description: Converts a nullable field to trimmed text, representing a missing value as an empty string.
-  // Parameters:
-  // - value (dynamic): Raw response field to decode into the documented return type.
-  // Returns:
-  // - String: trimmed field text, or an empty string for null.
-  static String _readString(dynamic value) {
-    if (value == null) {
-      return '';
-    }
-    return value.toString().trim();
-  }
-
   // Function Name: _readInt
   // Description: Extracts an integer count from schedule text through the shared last-digit-group parser.
   // Parameters:
@@ -645,25 +633,7 @@ class MedicationSchedule {
     if (value is int) {
       return value.toDouble();
     }
-    return double.tryParse(_readString(value)) ?? 0;
-  }
-
-  // Function Name: _readBool
-  // Description: Preserves booleans, treats nonzero numbers as true, and accepts true, 1, or yes text as enabled.
-  // Parameters:
-  // - value (dynamic): Raw response field to decode into the documented return type.
-  // Returns:
-  // - bool: Preserves booleans, treats nonzero numbers as true, and accepts true, 1, or yes text as enabled.
-  static bool _readBool(dynamic value) {
-    if (value is bool) {
-      return value;
-    }
-    if (value is num) {
-      return value != 0;
-    }
-
-    final text = _readString(value).toLowerCase();
-    return text == 'true' || text == '1' || text == 'yes';
+    return double.tryParse(readJsonText(value)) ?? 0;
   }
 
   // Function Name: _readSlotStatuses
@@ -687,16 +657,16 @@ class MedicationSchedule {
        * Returns:
        * - No return value.
        */(key, value) {
-        final slotKey = _readString(key).toLowerCase();
+        final slotKey = readJsonText(key).toLowerCase();
         if (slotKey.isNotEmpty) {
-          statuses[slotKey] = _readBool(value);
+          statuses[slotKey] = readJsonBool(value);
         }
       });
     }
 
     if (rawCompletedSlotKeys is List) {
       for (final rawSlotKey in rawCompletedSlotKeys) {
-        final slotKey = _readString(rawSlotKey).toLowerCase();
+        final slotKey = readJsonText(rawSlotKey).toLowerCase();
         if (slotKey.isNotEmpty) {
           statuses[slotKey] = true;
         }
@@ -716,7 +686,7 @@ class MedicationSchedule {
       return const [];
     }
     final requestedSlotKeys = value
-        .map(_readString)
+        .map(readJsonText)
         .map(/* 함수이름: map 콜백
          * 함수역할: 복약 시간대 키를 소문자로 통일한다.
          * 매개변수:
@@ -731,32 +701,4 @@ class MedicationSchedule {
         .toList(growable: false);
   }
 
-  // 함수이름: _readDate
-  // 함수역할: 날짜 텍스트를 DateTime으로 해석하고 빈 값이나 올바르지 않은 날짜는 null로 처리한다.
-  // 매개변수:
-  // - value (dynamic): 반환 타입의 값으로 해석할 변환 전 응답 필드
-  // 반환값:
-  // - DateTime?: 날짜 텍스트를 DateTime으로 해석하고 빈 값이나 올바르지 않은 날짜는 null로 처리한다.
-  static DateTime? _readDate(dynamic value) {
-    final text = _readString(value);
-    if (text.isEmpty || text == '정보 없음') {
-      return null;
-    }
-    return DateTime.tryParse(text);
-  }
-
-  // 함수이름: _formatDate
-  // 함수역할: 달력 날짜를 YYYY-MM-DD 형식으로 맞추고 날짜가 없으면 null을 유지한다.
-  // 매개변수:
-  // - value (DateTime?): 직렬화할 선택적 달력 날짜
-  // 반환값:
-  // - String?: YYYY-MM-DD 형식의 날짜; 입력 날짜가 없으면 null.
-  static String? _formatDate(DateTime? value) {
-    if (value == null) {
-      return null;
-    }
-    return '${value.year.toString().padLeft(4, '0')}-'
-        '${value.month.toString().padLeft(2, '0')}-'
-        '${value.day.toString().padLeft(2, '0')}';
-  }
 }

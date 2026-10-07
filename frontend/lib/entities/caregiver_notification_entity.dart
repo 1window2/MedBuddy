@@ -1,6 +1,8 @@
 // 파일명: caregiver_notification_entity.dart
 // 역할: 보호자별 환자 복약 시간대의 알림 조건과 마감 시각을 표현한다.
 
+import 'json_value_reader.dart';
+
 const List<String> caregiverNotificationSlotKeys = [
   'morning',
   'lunch',
@@ -150,7 +152,7 @@ class CaregiverNotification {
             json['setting_id'] ??
             json['id'],
       ),
-      caregiverHash: _readString(
+      caregiverHash: readJsonText(
         json['caregiver_hash'] ??
             json['guardian_hash'] ??
             json['caregiver_id'] ??
@@ -158,12 +160,12 @@ class CaregiverNotification {
             json['guardian_id'] ??
             json['guardianID'],
       ),
-      patientHash: _readString(
+      patientHash: readJsonText(
         json['patient_hash'] ?? json['patient_id'] ?? json['patientID'],
       ),
-      slotKey: _readString(json['slot_key'] ?? json['slotKey']).isEmpty
+      slotKey: readJsonText(json['slot_key'] ?? json['slotKey']).isEmpty
           ? 'morning'
-          : _readString(json['slot_key'] ?? json['slotKey']),
+          : readJsonText(json['slot_key'] ?? json['slotKey']),
       mode: mode,
       deadlineHour: _readInt(json['deadline_hour'] ?? json['deadlineHour']),
       deadlineMinute: _readInt(
@@ -247,16 +249,6 @@ class CaregiverNotification {
           ? null
           : deadlineMinute ?? this.deadlineMinute,
     );
-  }
-
-  // 함수이름: _readString
-  // 함수역할: 선택적 필드를 공백 정리한 문자열로 바꾸고 없는 값은 빈 문자열로 처리한다.
-  // 매개변수:
-  // - value (dynamic): 반환 타입의 값으로 해석할 변환 전 응답 필드
-  // 반환값:
-  // - String: 공백 정리한 필드 문자열; null이면 빈 문자열.
-  static String _readString(dynamic value) {
-    return value?.toString().trim() ?? '';
   }
 
   // Function Name: _readInt
