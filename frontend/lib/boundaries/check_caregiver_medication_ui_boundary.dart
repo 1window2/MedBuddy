@@ -89,26 +89,18 @@ class _CheckCaregiverMedicationUIState
     _CaregiverScheduleSlot(
       key: 'morning',
       hour: 8,
-      color: MedBuddyColors.slotMorning,
-      icon: Icons.wb_sunny_outlined,
     ),
     _CaregiverScheduleSlot(
       key: 'lunch',
       hour: 12,
-      color: MedBuddyColors.slotLunch,
-      icon: Icons.local_cafe_outlined,
     ),
     _CaregiverScheduleSlot(
       key: 'evening',
       hour: 18,
-      color: MedBuddyColors.slotEvening,
-      icon: Icons.wb_twilight_outlined,
     ),
     _CaregiverScheduleSlot(
       key: 'bedtime',
       hour: 22,
-      color: MedBuddyColors.slotBedtime,
-      icon: Icons.nightlight_round,
     ),
   ];
 
@@ -1013,27 +1005,32 @@ class _CaregiverTimeSlotCard extends StatelessWidget {
   // 반환값: 시간대별 환자 약 목록과 보호자 알림 설정에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
+    final style = slot.style;
     return Material(
-      color: Colors.white,
-      borderRadius: MedBuddyRadii.control,
-      elevation: 3,
-      shadowColor: Colors.black.withValues(alpha: 0.18),
+      color: MedBuddyColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: MedBuddyRadii.card,
+        side: const BorderSide(color: MedBuddyColors.cardBorder),
+      ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
           Container(
-            color: slot.color,
-            padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+            decoration: BoxDecoration(
+              color: style.tint,
+              border: Border(left: BorderSide(color: style.color, width: 5)),
+            ),
+            padding: const EdgeInsets.fromLTRB(13, 14, 14, 14),
             child: Row(
               children: [
                 Container(
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.22),
+                    color: style.color,
                     borderRadius: MedBuddyRadii.control,
                   ),
-                  child: Icon(slot.icon, color: Colors.white, size: 26),
+                  child: Icon(style.icon, color: Colors.white, size: 26),
                 ),
                 const SizedBox(width: 11),
                 Expanded(
@@ -1043,7 +1040,7 @@ class _CaregiverTimeSlotCard extends StatelessWidget {
                       Text(
                         slot.title(isEnglish),
                         style: const TextStyle(
-                          color: Colors.white,
+                          color: MedBuddyColors.textStrong,
                           fontSize: 20,
                           fontWeight: FontWeight.w700,
                         ),
@@ -1051,8 +1048,8 @@ class _CaregiverTimeSlotCard extends StatelessWidget {
                       Text(
                         _alertTimingLabel,
                         key: ValueKey('caregiver-alert-time-${slot.key}'),
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: style.color,
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
                         ),
@@ -1067,7 +1064,7 @@ class _CaregiverTimeSlotCard extends StatelessWidget {
                           padding: EdgeInsets.all(10),
                           child: CircularProgressIndicator(
                             strokeWidth: 2.5,
-                            color: Colors.white,
+                            color: style.color,
                           ),
                         )
                       : IconButton(
@@ -1090,7 +1087,7 @@ class _CaregiverTimeSlotCard extends StatelessWidget {
                             color:
                                 notificationSetting?.notificationEnabled == true
                                 ? MedBuddyColors.primaryDark
-                                : Colors.white,
+                                : MedBuddyColors.textSubtle,
                           ),
                         ),
                 ),
@@ -1288,28 +1285,21 @@ class _MedicationThumbnail extends StatelessWidget {
 // 속성:
 // - key (String): 복약 시간대를 구분하는 식별 문자열.
 // - hour (int): 24시간제 시 값.
-// - color (Color): 문자·아이콘·상태 가이드에 적용할 전경 또는 강조 색상.
-// - icon (IconData): 기본 또는 선택 상태에서 표시할 아이콘.
 class _CaregiverScheduleSlot {
   final String key;
   final int hour;
-  final Color color;
-  final IconData icon;
 
   // 함수이름: _CaregiverScheduleSlot
-  // 함수역할: 복약 시간대 키·기본 시각·색상·아이콘 관련 값을 _CaregiverScheduleSlot 인스턴스에 담는다.
+  // 함수역할: 복약 시간대 키·기본 시각을 _CaregiverScheduleSlot 인스턴스에 담는다.
   // 매개변수:
   // - key (String): 복약 시간대를 구분하는 식별 문자열.
-  // - hour (int): 24시간제 시 값.
-  // - color (Color): 문자·아이콘·상태 가이드에 적용할 전경 또는 강조 색상.
-  // - icon (IconData): 기본 또는 선택 상태에서 표시할 아이콘.
   // 반환값: 입력 설정이 반영된 _CaregiverScheduleSlot 인스턴스.
-  const _CaregiverScheduleSlot({
-    required this.key,
-    required this.hour,
-    required this.color,
-    required this.icon,
-  });
+  const _CaregiverScheduleSlot({required this.key, required this.hour});
+
+  // 함수이름: style
+  // 함수역할: 시간대 키에 맞는 공통 색상·옅은 배경·아이콘을 반환한다.
+  // 매개변수: 없음. 반환값: MedBuddySlotStyle.
+  MedBuddySlotStyle get style => MedBuddySlotStyle.of(key);
 
   // 함수이름: title
   // 함수역할: 시간대 키를 언어별 이름으로 변환하고 알 수 없는 키에는 일정 제목을 사용한다.
