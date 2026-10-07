@@ -1799,7 +1799,7 @@ class _MedicationScheduleRow extends StatelessWidget {
                       text.dosageLabel(schedule),
                       softWrap: true,
                       style: const TextStyle(
-                        color: Color(0xFF667085),
+                        color: MedBuddyColors.textSubtle,
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                       ),

@@ -2549,7 +2549,7 @@ class _MedicationSafetyGuidance extends StatelessWidget {
   // 반환값: 복약 대화의 안전 안내 문구에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-    final foreground = isMine ? Colors.white : const Color(0xFF8A3B12);
+    final foreground = isMine ? Colors.white : MedBuddyColors.reminderAccent;
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(

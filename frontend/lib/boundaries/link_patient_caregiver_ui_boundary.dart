@@ -1618,7 +1618,7 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                color: Color(0xFF1E2939),
+                                color: MedBuddyColors.textStrong,
                                 fontSize: 16,
                                 letterSpacing: 0,
                                 fontWeight: FontWeight.w500,
@@ -1628,7 +1628,7 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                           const SizedBox(width: 10),
                           const Icon(
                             Icons.copy_outlined,
-                            color: Color(0xFF99A1AF),
+                            color: MedBuddyColors.textLight,
                             size: 22,
                           ),
                         ],

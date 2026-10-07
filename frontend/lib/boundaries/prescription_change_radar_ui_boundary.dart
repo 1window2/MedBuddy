@@ -167,7 +167,7 @@ class PrescriptionChangeRadarUI extends StatelessWidget {
                 child: Text(
                   text.safetyNotice,
                   style: TextStyle(
-                    color: const Color(0xFF7C5A13),
+                    color: MedBuddyColors.reminderAccent,
                     fontSize: 12.5 * scale,
                     height: 1.4,
                     fontWeight: FontWeight.w600,

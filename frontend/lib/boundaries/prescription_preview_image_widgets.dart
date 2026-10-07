@@ -103,7 +103,7 @@ class _RecognitionNoticeBanner extends StatelessWidget {
             child: Text(
               message,
               style: TextStyle(
-                color: const Color(0xFF8A5A12),
+                color: MedBuddyColors.reminderAccent,
                 fontSize: 12 * scale,
                 fontWeight: FontWeight.w700,
                 height: 1.25,
@@ -551,7 +551,7 @@ class _RecognizedImageCanvasState extends State<_RecognizedImageCanvas> {
             key: Key('${widget.keyPrefix}-sensitive-region-$index'),
             decoration: BoxDecoration(
               color: MedBuddyColors.textLight,
-              border: Border.all(color: const Color(0xFF4B5563), width: 1),
+              border: Border.all(color: MedBuddyColors.textMuted, width: 1),
               borderRadius: BorderRadius.circular(3),
             ),
           ),

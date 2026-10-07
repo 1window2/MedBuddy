@@ -100,7 +100,7 @@ class PrescriptionAnalysisSuccessUI extends StatelessWidget {
                               width: 98,
                               height: 98,
                               decoration: const BoxDecoration(
-                                color: Color(0xFF00B875),
+                                color: MedBuddyColors.primary,
                                 shape: BoxShape.circle,
                               ),
                               child: const Icon(
