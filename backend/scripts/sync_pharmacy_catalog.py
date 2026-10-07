@@ -24,6 +24,7 @@ from core.database import SessionLocal  # noqa: E402
 from entities.pharmacy_catalog_entity import PharmacyCatalogEntry  # noqa: E402
 from repositories.pharmacy_catalog_repository import (  # noqa: E402
     PharmacyCatalogRepository,
+    match_official_designation,
 )
 
 
@@ -84,21 +85,9 @@ def _apply_designations(
     matched = 0
     enriched: list[PharmacyCatalogEntry] = []
     for entry in entries:
-        normalized_phone = "".join(
-            character for character in entry.telephone if character.isdigit()
+        designation = match_official_designation(
+            entry.telephone, entry.name, designations_by_phone
         )
-        designation = designations_by_phone.get(normalized_phone)
-        if designation is not None:
-            expected_name = "".join(
-                character
-                for character in str(designation.get("name", ""))
-                if character.isalnum()
-            ).casefold()
-            actual_name = "".join(
-                character for character in entry.name if character.isalnum()
-            ).casefold()
-            if expected_name != actual_name:
-                designation = None
         if designation is None:
             enriched.append(entry)
             continue

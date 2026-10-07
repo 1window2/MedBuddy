@@ -11,11 +11,7 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
-    inspect,
-    text,
 )
-
-from sqlalchemy.engine import Engine
 
 from core.database import Base
 from entities.user_account_entity import _UserAccount  # noqa: F401
@@ -89,61 +85,3 @@ class _CaregiverAlertOutbox(Base):
     sent_at = Column(DateTime, nullable=True)
     last_error = Column(String(500), nullable=True)
 
-
-# 함수이름: ensure_caregiver_alert_outbox_schema
-# 함수역할: 기존 SQLite 아웃박스에 일반 보호자 이벤트 열과 인덱스를 보완한다.
-# 매개변수:
-# - db_engine (Engine): 검사하고 필요한 경우 보완할 SQLite 엔진.
-# 반환값:
-# - 없음.
-def ensure_caregiver_alert_outbox_schema(db_engine: Engine) -> None:
-    inspector = inspect(db_engine)
-    if not inspector.has_table(_CaregiverAlertOutbox.__tablename__):
-        Base.metadata.create_all(
-            bind=db_engine,
-            tables=[_CaregiverAlertOutbox.__table__],
-        )
-        return
-
-    existing_columns = {
-        column["name"]
-        for column in inspector.get_columns(_CaregiverAlertOutbox.__tablename__)
-    }
-    optional_columns = {
-        "caregiver_hash": "VARCHAR",
-        "event_type": (
-            "VARCHAR(32) DEFAULT "
-            f"'{CAREGIVER_ALERT_EVENT_DOSE_COMPLETED}'"
-        ),
-        "schedule_date": "DATE",
-    }
-    with db_engine.begin() as connection:
-        for column_name, column_type in optional_columns.items():
-            if column_name not in existing_columns:
-                connection.execute(
-                    text(
-                        f"ALTER TABLE {_CaregiverAlertOutbox.__tablename__} "
-                        f"ADD COLUMN {column_name} {column_type}"
-                    )
-                )
-        connection.execute(
-            text(
-                f"UPDATE {_CaregiverAlertOutbox.__tablename__} "
-                f"SET event_type = '{CAREGIVER_ALERT_EVENT_DOSE_COMPLETED}' "
-                "WHERE event_type IS NULL OR TRIM(event_type) = ''"
-            )
-        )
-        connection.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS "
-                "ix_caregiver_alert_outbox_caregiver_hash "
-                f"ON {_CaregiverAlertOutbox.__tablename__} (caregiver_hash)"
-            )
-        )
-        connection.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS "
-                "ix_caregiver_alert_outbox_schedule_date "
-                f"ON {_CaregiverAlertOutbox.__tablename__} (schedule_date)"
-            )
-        )

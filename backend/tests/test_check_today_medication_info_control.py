@@ -20,11 +20,9 @@ from core.application_clock import application_today  # noqa: E402
 from core.database import Base  # noqa: E402
 from entities.medication_completion_entity import (  # noqa: E402
     _MedicationCompletion,
-    ensure_medication_completion_schema,
 )
 from entities.saved_medication_entity import (  # noqa: E402
     _SavedMedication,
-    ensure_saved_medication_schema,
 )
 
 
@@ -57,8 +55,6 @@ class CheckTodayMedicationInfoTest(unittest.TestCase):
             connect_args={"check_same_thread": False},
         )
         Base.metadata.create_all(bind=self.engine)
-        ensure_saved_medication_schema(self.engine)
-        ensure_medication_completion_schema(self.engine)
         session_factory = sessionmaker(
             autocommit=False,
             autoflush=False,

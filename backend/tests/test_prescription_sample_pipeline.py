@@ -27,12 +27,7 @@ from controls.check_today_medication_info_control import (  # noqa: E402
 from controls.input_prescription_control import InputPrescription  # noqa: E402
 from controls.set_notification_control import SetNotification  # noqa: E402
 from core.database import Base  # noqa: E402
-from entities.medication_alarm_entity import ensure_medication_alarm_schema  # noqa: E402
-from entities.medication_completion_entity import (  # noqa: E402
-    ensure_medication_completion_schema,
-)
 from entities.medication_detail_entity import _DrugBasicInfo  # noqa: E402
-from entities.saved_medication_entity import ensure_saved_medication_schema  # noqa: E402
 from schemas.medication import SavedMedicationCreate  # noqa: E402
 
 
@@ -200,9 +195,6 @@ class PrescriptionSamplePipelineTest(unittest.TestCase):
             connect_args={"check_same_thread": False},
         )
         Base.metadata.create_all(bind=self.engine)
-        ensure_saved_medication_schema(self.engine)
-        ensure_medication_completion_schema(self.engine)
-        ensure_medication_alarm_schema(self.engine)
         session_factory = sessionmaker(
             autocommit=False,
             autoflush=False,

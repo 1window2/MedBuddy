@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from fastapi import HTTPException
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -21,7 +21,6 @@ from controls.set_caregiver_notification_control import (  # noqa: E402
 from core.database import Base  # noqa: E402
 from entities.caregiver_notification_entity import (  # noqa: E402
     _CaregiverNotification,
-    ensure_caregiver_notification_schema,
 )
 
 
@@ -51,7 +50,6 @@ class SetCaregiverNotificationTest(unittest.TestCase):
             connect_args={"check_same_thread": False},
         )
         Base.metadata.create_all(bind=self.engine)
-        ensure_caregiver_notification_schema(self.engine)
         session_factory = sessionmaker(
             autocommit=False,
             autoflush=False,
@@ -299,77 +297,6 @@ class SetCaregiverNotificationTest(unittest.TestCase):
             )
 
         self.assertEqual(context.exception.status_code, 400)
-
-    # 함수이름: test_schema_upgrade_adds_missing_columns_and_deduplicates_rows
-    # 함수역할:
-    # - 구형 보호자 알림 테이블에 활성·유형·마감·시간대 컬럼과 기본값을 추가하고 중복 행을 하나로 정리하는지 검증한다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - 없음 (None).
-    def test_schema_upgrade_adds_missing_columns_and_deduplicates_rows(self) -> None:
-        legacy_engine = create_engine(
-            "sqlite:///:memory:",
-            connect_args={"check_same_thread": False},
-        )
-        try:
-            with legacy_engine.begin() as connection:
-                connection.execute(
-                    text(
-                        "CREATE TABLE guardian_alert_settings ("
-                        "id INTEGER PRIMARY KEY, "
-                        "guardian_hash VARCHAR, "
-                        "patient_hash VARCHAR"
-                        ")"
-                    )
-                )
-                connection.execute(
-                    text(
-                        "INSERT INTO guardian_alert_settings "
-                        "(id, guardian_hash, patient_hash) "
-                        "VALUES "
-                        "(1, 'guardian-a', 'patient-a'), "
-                        "(2, 'guardian-a', 'patient-a'), "
-                        "(3, NULL, NULL)"
-                    )
-                )
-
-            ensure_caregiver_notification_schema(legacy_engine)
-
-            with legacy_engine.connect() as connection:
-                columns = {
-                    row[1]
-                    for row in connection.execute(
-                        text("PRAGMA table_info(guardian_alert_settings)")
-                    )
-                }
-                self.assertIn("enabled", columns)
-                self.assertIn("alert_option", columns)
-                self.assertIn("deadline_hour", columns)
-                self.assertIn("deadline_minute", columns)
-                self.assertIn("slot_settings", columns)
-                row_count = connection.execute(
-                    text(
-                        "SELECT COUNT(*) FROM guardian_alert_settings "
-                        "WHERE guardian_hash = 'guardian-a' "
-                        "AND patient_hash = 'patient-a'"
-                    )
-                ).scalar_one()
-                self.assertEqual(row_count, 1)
-                migrated_row = connection.execute(
-                    text(
-                        "SELECT enabled, alert_option, created_at, updated_at "
-                        "FROM guardian_alert_settings "
-                        "WHERE guardian_hash = 'guardian-a' "
-                        "AND patient_hash = 'patient-a'"
-                    )
-                ).first()
-                self.assertEqual(migrated_row[0], 0)
-                self.assertEqual(migrated_row[1], "disabled")
-                self.assertIsNotNone(migrated_row[2])
-                self.assertIsNotNone(migrated_row[3])
-        finally:
-            legacy_engine.dispose()
 
 
 if __name__ == "__main__":

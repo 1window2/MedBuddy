@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from fastapi import HTTPException
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -16,7 +16,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 from controls.manage_user_setting_control import ManageUserSetting  # noqa: E402
 from core.database import Base  # noqa: E402
-from entities.user_setting_entity import _UserSetting, ensure_user_setting_schema  # noqa: E402
+from entities.user_setting_entity import _UserSetting  # noqa: E402
 
 
 # 클래스명: ManageUserSettingTest
@@ -60,7 +60,6 @@ class ManageUserSettingTest(unittest.TestCase):
             connect_args={"check_same_thread": False},
         )
         Base.metadata.create_all(bind=self.engine)
-        ensure_user_setting_schema(self.engine)
         session_factory = sessionmaker(
             autocommit=False,
             autoflush=False,
@@ -230,81 +229,6 @@ class ManageUserSettingTest(unittest.TestCase):
                 default_morning_time="25:00",
             )
         self.assertEqual(default_time_context.exception.status_code, 400)
-
-    # 함수이름: test_schema_upgrade_adds_missing_columns_and_deduplicates_rows
-    # 함수역할:
-    # - 구형 설정 테이블에 누락 컬럼과 기본값을 채우고 동일 사용자 중복 행을 하나로 정리하는지 검증한다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - 없음 (None).
-    def test_schema_upgrade_adds_missing_columns_and_deduplicates_rows(self) -> None:
-        legacy_engine = create_engine(
-            "sqlite:///:memory:",
-            connect_args={"check_same_thread": False},
-        )
-        try:
-            with legacy_engine.begin() as connection:
-                connection.execute(
-                    text(
-                        "CREATE TABLE user_settings ("
-                        "id INTEGER PRIMARY KEY, "
-                        "user_hash VARCHAR"
-                        ")"
-                    )
-                )
-                connection.execute(
-                    text(
-                        "INSERT INTO user_settings "
-                        "(id, user_hash) "
-                        "VALUES "
-                        "(1, 'user-a'), "
-                        "(2, 'user-a')"
-                    )
-                )
-
-            ensure_user_setting_schema(legacy_engine)
-
-            with legacy_engine.connect() as connection:
-                columns = {
-                    row[1]
-                    for row in connection.execute(text("PRAGMA table_info(user_settings)"))
-                }
-                self.assertIn("font_size", columns)
-                self.assertIn("reading_speed", columns)
-                self.assertIn("language", columns)
-                self.assertTrue(
-                    {
-                        "language_mode",
-                        "time_format",
-                        "medication_notifications_enabled",
-                        "caregiver_notifications_enabled",
-                        "chat_notifications_enabled",
-                        "notification_detail_mode",
-                        "default_morning_time",
-                        "default_lunch_time",
-                        "default_evening_time",
-                        "default_bedtime",
-                    }.issubset(columns)
-                )
-                row_count = connection.execute(
-                    text(
-                        "SELECT COUNT(*) FROM user_settings "
-                        "WHERE user_hash = 'user-a'"
-                    )
-                ).scalar_one()
-                self.assertEqual(row_count, 1)
-                migrated_row = connection.execute(
-                    text(
-                        "SELECT font_size, reading_speed, language "
-                        "FROM user_settings WHERE user_hash = 'user-a'"
-                    )
-                ).first()
-                self.assertEqual(migrated_row[0], 16)
-                self.assertEqual(migrated_row[1], 1.0)
-                self.assertEqual(migrated_row[2], "ko")
-        finally:
-            legacy_engine.dispose()
 
 
 if __name__ == "__main__":
