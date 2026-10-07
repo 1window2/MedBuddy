@@ -2,7 +2,7 @@
 # Role: Manages expiring patient codes, caregiver registration, patient aliases and link revocation.
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -20,6 +20,7 @@ from entities.patient_hash_entity import (
     PatientHash,
     normalize_patient_hash,
 )
+from entities.user_account_entity import utc_now
 from repositories.patient_caregiver_link_repository import (
     PatientCaregiverLinkRepository,
 )
@@ -28,17 +29,6 @@ _PATIENT_CODE_TTL_MINUTES = 15
 _MAX_CODE_GENERATION_ATTEMPTS = 10
 _MAX_PATIENT_ALIAS_LENGTH = 20
 logger = logging.getLogger(__name__)
-
-
-# Function Name: _utc_now
-# Description:
-# - Produces the naive UTC timestamp used by persisted link-code expiration checks.
-# Parameters:
-# - None.
-# Returns:
-# - Current UTC datetime without timezone metadata.
-def _utc_now() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
 
 
 # 클래스명: LinkPatientCaregiver
@@ -100,7 +90,7 @@ class LinkPatientCaregiver:
         patient_hash: str = DEFAULT_PATIENT_HASH,
     ) -> dict[str, object]:
         normalized_patient_hash = normalize_patient_hash(patient_hash)
-        expires_at = _utc_now() + timedelta(minutes=_PATIENT_CODE_TTL_MINUTES)
+        expires_at = utc_now() + timedelta(minutes=_PATIENT_CODE_TTL_MINUTES)
 
         try:
             patient_code = self._generate_unique_patient_code(normalized_patient_hash)
@@ -178,7 +168,7 @@ class LinkPatientCaregiver:
                     detail="Patient code was already used.",
                 )
 
-            link = self._get_existing_pair(
+            link = self.link_repository.find_pair(
                 link_code.patient_hash,
                 normalized_caregiver_hash,
             )
@@ -495,27 +485,12 @@ class LinkPatientCaregiver:
             patient_hash=link_code.patient_hash,
             expires_at=link_code.expires_at,
         )
-        if patient_link_code.isExpired(_utc_now()):
+        if patient_link_code.isExpired(utc_now()):
             raise HTTPException(
                 status_code=404,
                 detail="Patient code was not found or has expired.",
             )
         return link_code
-
-    # 함수이름: _get_existing_pair
-    # 함수역할:
-    # - 환자와 보호자 식별자로 기존 연동 쌍을 조회한다.
-    # 매개변수:
-    # - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
-    # - caregiver_hash (str): 환자와 연동된 보호자 계정 식별자.
-    # 반환값:
-    # - 기존 연동 행 또는 없을 때 None.
-    def _get_existing_pair(
-        self,
-        patient_hash: str,
-        caregiver_hash: str,
-    ) -> _PatientCaregiverLink | None:
-        return self.link_repository.find_pair(patient_hash, caregiver_hash)
 
     # 함수이름: toResponseDict
     # 함수역할:

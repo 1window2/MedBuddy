@@ -1,8 +1,6 @@
 # 파일명: user_setting_entity.py
 # 역할: 사용자 접근성·언어·알림·기본 복약 시각의 저장 구조와 로컬 스키마 호환 갱신을 정의한다.
 
-from datetime import UTC, datetime
-
 from pydantic import BaseModel
 from sqlalchemy import (
     Boolean,
@@ -15,18 +13,7 @@ from sqlalchemy import (
 )
 from core.database import Base
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
-from entities.user_account_entity import _UserAccount  # noqa: F401
-
-
-# Function Name: utc_now
-# Description:
-# - Returns naive UTC for database timestamps.
-# Parameters:
-# - None.
-# Returns:
-# - Current UTC datetime without timezone metadata.
-def utc_now() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
+from entities.user_account_entity import _UserAccount, utc_now  # noqa: F401
 
 
 # 클래스명: _UserSetting

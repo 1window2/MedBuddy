@@ -1,17 +1,10 @@
 # File Name: chat_notification_job_entity.py
 # Role: Persist a single notification job per newly committed user chat message.
 
-from datetime import UTC, datetime
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Index
 from core.database import Base
 from entities.chat_message_entity import _ChatMessage  # noqa: F401
-
-
-# Function Name: utc_now
-# Description: Use the naive UTC convention shared by persisted notification timestamps.
-# Parameters: None. Returns: Current UTC timestamp without timezone metadata.
-def utc_now() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
+from entities.user_account_entity import utc_now
 
 
 # Class Name: ChatNotificationJob

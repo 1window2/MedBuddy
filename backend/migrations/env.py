@@ -8,6 +8,7 @@ from sqlalchemy import engine_from_config, pool
 
 from core.config import settings
 from core.database import Base
+from entities import caregiver_alert_outbox_entity  # noqa: F401
 from entities import caregiver_notification_entity  # noqa: F401
 from entities import chat_message_entity  # noqa: F401
 from entities import chat_notification_job_entity  # noqa: F401

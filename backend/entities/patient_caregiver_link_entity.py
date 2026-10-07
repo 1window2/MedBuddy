@@ -15,18 +15,7 @@ from sqlalchemy import (
 )
 
 from core.database import Base
-from entities.user_account_entity import _UserAccount  # noqa: F401
-
-
-# Function Name: utc_now
-# Description:
-# - Returns naive UTC for database timestamps.
-# Parameters:
-# - None.
-# Returns:
-# - Current UTC datetime without timezone metadata.
-def utc_now() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
+from entities.user_account_entity import _UserAccount, utc_now  # noqa: F401
 
 
 # Function Name: _as_naive_utc

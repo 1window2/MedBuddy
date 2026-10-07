@@ -13,6 +13,7 @@ from controls.manage_caregiver_alert_control import ManageCaregiverAlert
 
 from core.application_clock import application_today
 from controls.check_schedule_control import CheckSchedule
+from controls.dispatch_caregiver_alert_control import _SLOT_NAMES
 from entities.chat_notification_job_entity import ChatNotificationJob
 from entities.chat_message_entity import (
     CHAT_MESSAGE_KIND_HOSPITAL_SHARE,
@@ -37,6 +38,7 @@ from entities.medication_schedule_entity import (
 )
 from entities.patient_caregiver_link_entity import _PatientCaregiverLink
 from entities.saved_medication_entity import _SavedMedication
+from entities.user_account_entity import utc_now
 from repositories.chat_message_repository import ChatMessageRepository
 from repositories.patient_caregiver_link_repository import (
     PatientCaregiverLinkRepository,
@@ -44,18 +46,6 @@ from repositories.patient_caregiver_link_repository import (
 from repositories.pharmacy_catalog_repository import PharmacyCatalogRepository
 from repositories.saved_medication_repository import SavedMedicationRepository
 from services.medication_course_policy import MedicationCoursePolicy
-
-
-# 함수이름: utc_now
-# 함수역할:
-# - 데이터베이스에 기록할 시간대 정보 없는 UTC 현재 시각을 만든다.
-# 매개변수:
-# - 없음.
-# 반환값:
-# - 시간대 정보가 없는 현재 UTC datetime.
-def utc_now() -> datetime:
-    """DB에 기록할 시간대 정보 없는 UTC 현재 시각을 반환한다."""
-    return datetime.now(UTC).replace(tzinfo=None)
 
 
 # 함수이름: utc_iso
@@ -534,7 +524,7 @@ class ManageLinkedChat:
                 item for item in slot_context["medications"]
                 if item["medication_id"] in confirmation["medication_ids"]
             ]
-            slot_name = {"morning": "아침", "lunch": "점심", "evening": "저녁", "bedtime": "취침 전"}[slot_key]
+            slot_name = _SLOT_NAMES[slot_key]
             names = ", ".join(item["medication_name"] for item in medications)
             row = _ChatMessage(
                 link_id=link_id, sender_hash=sender_hash,
@@ -595,12 +585,6 @@ class ManageLinkedChat:
         """기존 알림 아웃박스와 같은 완료 사건을 채팅에도 멱등하게 기록한다."""
         if slot_key not in MEDICATION_SCHEDULE_SLOT_KEYS:
             return 0
-        slot_labels = {
-            "morning": "아침",
-            "lunch": "점심",
-            "evening": "저녁",
-            "bedtime": "취침 전",
-        }
         today = application_today()
         created_count = 0
         for link in self.link_repository.list_active_for_patient(patient_hash):
@@ -626,7 +610,7 @@ class ManageLinkedChat:
                 client_message_id=(
                     f"slot_complete_{today.strftime('%Y%m%d')}_{slot_key}"
                 ),
-                body=f"{slot_labels[slot_key]} 약 복용을 모두 완료했습니다.",
+                body=f"{_SLOT_NAMES[slot_key]} 약 복용을 모두 완료했습니다.",
                 message_kind=CHAT_MESSAGE_KIND_SLOT_COMPLETION,
                 slot_key=slot_key,
                 allow_internal=True,

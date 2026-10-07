@@ -1,8 +1,6 @@
 # 파일명: device_push_token_entity.py
 # 역할: Firebase Cloud Messaging 기기 토큰의 사용자 소유권과 활성 상태를 저장한다.
 
-from datetime import UTC, datetime
-
 from sqlalchemy import (
     Boolean,
     Column,
@@ -14,18 +12,7 @@ from sqlalchemy import (
 )
 
 from core.database import Base
-from entities.user_account_entity import _UserAccount  # noqa: F401
-
-
-# 함수이름: utc_now
-# 함수역할:
-# - DB에 저장할 시간대 정보 없는 UTC 현재 시각을 반환한다.
-# 매개변수:
-# - 없음.
-# 반환값:
-# - 시간대 정보가 없는 현재 UTC datetime.
-def utc_now() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
+from entities.user_account_entity import _UserAccount, utc_now  # noqa: F401
 
 
 # 클래스명: _DevicePushToken

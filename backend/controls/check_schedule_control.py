@@ -89,7 +89,7 @@ class CheckSchedule:
         active_medications = [
             medication
             for medication in medications
-            if self._is_active_today(medication, today)
+            if self.course_policy.is_active_on(medication, today)
         ]
         completion_rows_by_medication_id = self._completion_rows_by_medication_id(
             active_medications,
@@ -125,7 +125,7 @@ class CheckSchedule:
         for start in range(0, len(owners), 400):
             batch = owners[start:start + 400]
             medications = self.medication_repository.list_schedule_medications_for_patients(batch)
-            active = [med for med in medications if self._is_active_today(med, today)]
+            active = [med for med in medications if self.course_policy.is_active_on(med, today)]
             if not active:
                 continue
             rows = (
@@ -166,11 +166,8 @@ class CheckSchedule:
         normalized_patient_hash = normalize_patient_hash(patient_hash)
         window_start = application_today()
         window_end = window_start + timedelta(days=days - 1)
-        medications = (
-            self.db.query(_SavedMedication)
-            .filter(_SavedMedication.patient_hash == normalized_patient_hash)
-            .order_by(_SavedMedication.id.asc())
-            .all()
+        medications = self.medication_repository.list_by_patient(
+            normalized_patient_hash
         )
         window_medications = [
             medication
@@ -340,7 +337,7 @@ class CheckSchedule:
             for medication in self.medication_repository.list_by_patient(
                 normalized_patient_hash
             )
-            if self._is_active_today(medication, today)
+            if self.course_policy.is_active_on(medication, today)
             and normalized_slot_key in self._slot_keys_for_medication(medication)
         ]
         if not medications:
@@ -637,7 +634,7 @@ class CheckSchedule:
             normalized_patient_hash
         )
         has_active_slot = any(
-            self._is_active_today(medication, schedule_date)
+            self.course_policy.is_active_on(medication, schedule_date)
             and normalized_slot_key in self._slot_keys_for_medication(medication)
             for medication in medications
         )
@@ -682,7 +679,7 @@ class CheckSchedule:
         active_medications = [
             medication
             for medication in medications
-            if self._is_active_today(medication, schedule_date)
+            if self.course_policy.is_active_on(medication, schedule_date)
         ]
         completion_rows_by_medication_id = self._completion_rows_by_medication_id(
             active_medications,
@@ -1064,17 +1061,6 @@ class CheckSchedule:
             and status_date is not None
             and status_date == schedule_date
         )
-
-    # Function Name: _is_active_today
-    # Description:
-    # - Checks whether a saved medication is active for today's schedule window.
-    # Parameters:
-    # - medication (_SavedMedication): Saved medication row.
-    # - today (date): Date used for deterministic evaluation.
-    # Returns:
-    # - True when the medication should be shown in today's schedule.
-    def _is_active_today(self, medication: _SavedMedication, today: date) -> bool:
-        return self.course_policy.is_active_on(medication, today)
 
     # Function Name: _read_status_date
     # Description:

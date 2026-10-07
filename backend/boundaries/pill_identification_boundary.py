@@ -1842,7 +1842,7 @@ class MFDSPillAPI:
             item_seq=item_seq,
             item_name=item_name,
             entp_name=cls._read_text(item, "ENTP_NAME", max_length=256),
-            image_url=cls._safe_image_url(cls._read_text(item, "ITEM_IMAGE")),
+            image_url=safe_medication_image_url(cls._read_text(item, "ITEM_IMAGE")),
             shape=cls._read_text(item, "DRUG_SHAPE", max_length=128),
             color_primary=cls._read_text(item, "COLOR_CLASS1", max_length=128),
             color_secondary=cls._read_text(item, "COLOR_CLASS2", max_length=128),
@@ -1874,17 +1874,6 @@ class MFDSPillAPI:
         if not isinstance(value, str):
             return ""
         return value.strip()[:max_length]
-
-    # Function Name: _safe_image_url
-    # Description:
-    # - Apply the shared medication-image URL safety policy to an MFDS image link.
-    # Parameters:
-    # - value (str): Unvalidated catalog image URL.
-    # Returns:
-    # - Permitted image URL, or an empty string when the link is unsafe or absent.
-    @staticmethod
-    def _safe_image_url(value: str) -> str:
-        return safe_medication_image_url(value)
 
 
 # Class Name: MFDSPillCatalogBoundary

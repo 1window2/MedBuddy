@@ -1,8 +1,6 @@
 # File Name: medication_alarm_entity.py
 # Role: Defines medication-alarm persistence, domain activation operations and local schema compatibility helpers.
 
-from datetime import UTC, datetime
-
 from pydantic import BaseModel, Field
 from sqlalchemy import (
     Boolean,
@@ -19,18 +17,7 @@ from entities.medication_schedule_entity import (
     MEDICATION_SCHEDULE_SLOT_KEYS,
 )
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
-from entities.user_account_entity import _UserAccount  # noqa: F401
-
-
-# Function Name: utc_now
-# Description:
-# - Returns a naive UTC timestamp for SQLite DateTime compatibility.
-# Parameters:
-# - None.
-# Returns:
-# - Current UTC datetime without tzinfo.
-def utc_now() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
+from entities.user_account_entity import _UserAccount, utc_now  # noqa: F401
 
 
 # 클래스명: _MedicationAlarm

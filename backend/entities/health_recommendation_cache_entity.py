@@ -1,24 +1,11 @@
 # 파일명: health_recommendation_cache_entity.py
 # 역할: 약 조합 기반 건강 관리 추천 결과를 로컬 DB에 캐시한다.
 
-from datetime import UTC, datetime
-
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
 
 from core.database import Base
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
-from entities.user_account_entity import _UserAccount  # noqa: F401
-
-
-# Function Name: utc_now
-# Description:
-# - Returns naive UTC for database timestamps.
-# Parameters:
-# - None.
-# Returns:
-# - Current UTC datetime without timezone metadata.
-def utc_now() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
+from entities.user_account_entity import _UserAccount, utc_now  # noqa: F401
 
 
 # 클래스명: _HealthRecommendationCache

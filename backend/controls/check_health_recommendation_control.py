@@ -344,7 +344,7 @@ class CheckHealthRecommendation:
         return [
             medication
             for medication in medications
-            if self._is_active_today(medication, today)
+            if self.course_policy.is_active_on(medication, today)
         ]
 
     # Function Name: _to_medication_summary
@@ -367,14 +367,3 @@ class CheckHealthRecommendation:
             "daily_frequency": medication.daily_frequency or "",
             "total_days": medication.total_days or "",
         }
-
-    # Function Name: _is_active_today
-    # Description:
-    # - Applies the shared medication-course policy to the requested day.
-    # Parameters:
-    # - medication (_SavedMedication): Persisted patient-owned medication snapshot and course fields.
-    # - today (date): Application-local date used to evaluate the medication course.
-    # Returns:
-    # - True when the medication course includes that day.
-    def _is_active_today(self, medication: _SavedMedication, today: date) -> bool:
-        return self.course_policy.is_active_on(medication, today)

@@ -143,36 +143,6 @@ class PharmacyCatalogRepository:
             self.db.rollback()
             raise
 
-    # 함수이름: latest_source_updated_at
-    # 함수역할:
-    # - 현재 카탈로그 행의 공공데이터 갱신 시각 중 최댓값을 조회한다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - 가장 최근 갱신 시각 또는 카탈로그가 비어 있으면 None.
-    def latest_source_updated_at(self) -> datetime | None:
-        """현재 카탈로그에서 가장 최근의 공공데이터 갱신 시각을 반환한다."""
-        return self.db.query(
-            func.max(PharmacyCatalogRecord.source_updated_at)
-        ).scalar()
-
-    # Function Name: is_fresh
-    # Description:
-    # - Require the minimum catalog size and compare the newest source timestamp with the allowed age.
-    # Parameters:
-    # - minimum_rows (int): Minimum row count required for a usable nationwide snapshot.
-    # - max_age (timedelta): Maximum permitted age of the cached snapshot.
-    # Returns:
-    # - True when enough rows exist and the newest source timestamp meets the cutoff.
-    def is_fresh(self, *, minimum_rows: int, max_age: timedelta) -> bool:
-        if self.count() < minimum_rows:
-            return False
-        newest_update = self.latest_source_updated_at()
-        if newest_update is None:
-            return False
-        cutoff = datetime.now(UTC).replace(tzinfo=None) - max_age
-        return newest_update >= cutoff
-
     # Function Name: latest_updated_at
     # Description:
     # - Read the maximum source-update timestamp without materializing pharmacy entries.

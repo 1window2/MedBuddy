@@ -20,7 +20,7 @@ from sqlalchemy import (
 from core.database import Base
 from entities.medication_image_url_entity import safe_medication_image_url
 from entities.patient_caregiver_link_entity import _PatientCaregiverLink  # noqa: F401
-from entities.user_account_entity import _UserAccount  # noqa: F401
+from entities.user_account_entity import _UserAccount, utc_now  # noqa: F401
 
 
 CHAT_MESSAGE_KIND_TEXT = "text"
@@ -42,18 +42,6 @@ CHAT_MESSAGE_KINDS = (
     CHAT_MESSAGE_KIND_PHARMACY_PHONE_VERIFIED,
     CHAT_MESSAGE_KIND_HOSPITAL_SHARE,
 )
-
-
-# 함수이름: utc_now
-# 함수역할:
-# - 데이터베이스에 저장할 시간대 정보 없는 UTC 현재 시각을 만든다.
-# 매개변수:
-# - 없음.
-# 반환값:
-# - 시간대 정보가 없는 현재 UTC datetime.
-def utc_now() -> datetime:
-    """DB에 저장할 시간대 정보 없는 UTC 현재 시각을 반환한다."""
-    return datetime.now(UTC).replace(tzinfo=None)
 
 
 # 클래스명: _ChatMessage

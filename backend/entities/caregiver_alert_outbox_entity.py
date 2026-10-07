@@ -1,8 +1,6 @@
 # 파일명: caregiver_alert_outbox_entity.py
 # 역할: 보호자 푸시 알림 전송 요청을 트랜잭션 아웃박스로 영속화한다.
 
-from datetime import UTC, datetime
-
 from sqlalchemy import (
     Column,
     Date,
@@ -14,7 +12,7 @@ from sqlalchemy import (
 )
 
 from core.database import Base
-from entities.user_account_entity import _UserAccount  # noqa: F401
+from entities.user_account_entity import _UserAccount, utc_now  # noqa: F401
 
 
 CAREGIVER_ALERT_STATUS_PENDING = "pending"
@@ -24,17 +22,6 @@ CAREGIVER_ALERT_STATUS_FAILED = "failed"
 CAREGIVER_ALERT_STATUS_DEAD_LETTER = "dead_letter"
 CAREGIVER_ALERT_EVENT_DOSE_COMPLETED = "dose_completed"
 CAREGIVER_ALERT_EVENT_MISSED_DEADLINE = "missed_deadline"
-
-
-# 함수이름: utc_now
-# 함수역할:
-# - DB에 저장할 시간대 정보 없는 UTC 현재 시각을 반환한다.
-# 매개변수:
-# - 없음.
-# 반환값:
-# - 시간대 정보가 없는 현재 UTC datetime.
-def utc_now() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
 
 
 # 클래스명: _CaregiverAlertOutbox

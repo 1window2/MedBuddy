@@ -2,7 +2,6 @@
 # Role: Persists and retrieves patient-owned medication snapshots with deduplication and retention rules.
 
 import logging
-from datetime import date
 
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
@@ -77,10 +76,10 @@ class CheckSavedMedication:
             self.retention_policy.cleanup_expired_medications(self.db, patient_hash)
             registration_date = application_today()
             deduplication_key = self._build_deduplication_key(medication)
-            duplicate_medication = self._find_today_duplicate(
-                patient_hash,
-                registration_date,
-                deduplication_key,
+            duplicate_medication = self.medication_repository.find_daily_duplicate(
+                patient_hash=patient_hash,
+                registration_date=registration_date,
+                deduplication_key=deduplication_key,
             )
             if duplicate_medication is not None:
                 return {
@@ -118,10 +117,10 @@ class CheckSavedMedication:
                 self.db.commit()
             except IntegrityError:
                 self.db.rollback()
-                duplicate_medication = self._find_today_duplicate(
-                    patient_hash,
-                    registration_date,
-                    deduplication_key,
+                duplicate_medication = self.medication_repository.find_daily_duplicate(
+                    patient_hash=patient_hash,
+                    registration_date=registration_date,
+                    deduplication_key=deduplication_key,
                 )
                 if duplicate_medication is None:
                     raise
@@ -317,29 +316,6 @@ class CheckSavedMedication:
                 medication.patient_hash or DEFAULT_PATIENT_HASH
             ),
         ).delete(synchronize_session=False)
-
-    # 함수이름: _find_today_duplicate
-    # 함수역할:
-    # - 같은 환자와 오늘 날짜에 이미 저장된 동일 복약 정보를 확인한다.
-    # - 약 이름이 같아도 조제일자나 실제 복용기간이 다르면 별도 정보로 취급한다.
-    # 매개변수:
-    # - patient_hash (str): 저장 범위를 구분하는 환자 해시
-    # - registration_date (date): 등록일자
-    # - deduplication_key (str): 처방 핵심값을 정규화한 중복 키
-    # 반환값:
-    # - 중복 row가 있으면 _SavedMedication
-    # - 중복이 없으면 None
-    def _find_today_duplicate(
-        self,
-        patient_hash: str,
-        registration_date: date,
-        deduplication_key: str,
-    ) -> _SavedMedication | None:
-        return self.medication_repository.find_daily_duplicate(
-            patient_hash=patient_hash,
-            registration_date=registration_date,
-            deduplication_key=deduplication_key,
-        )
 
     # Function Name: _build_deduplication_key
     # Description:

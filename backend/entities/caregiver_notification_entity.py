@@ -2,7 +2,6 @@
 # Role: Defines caregiver notification persistence, per-slot domain settings and legacy option normalization.
 
 import json
-from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
 from sqlalchemy import (
@@ -16,7 +15,7 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from core.database import Base
-from entities.user_account_entity import _UserAccount  # noqa: F401
+from entities.user_account_entity import _UserAccount, utc_now  # noqa: F401
 
 CAREGIVER_NOTIFICATION_MODE_DISABLED = "disabled"
 CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED = "dose_completed"
@@ -27,17 +26,6 @@ CAREGIVER_NOTIFICATION_SLOT_KEYS = (
     "evening",
     "bedtime",
 )
-
-
-# Function Name: utc_now
-# Description:
-# - Returns naive UTC for database timestamps.
-# Parameters:
-# - None.
-# Returns:
-# - Current UTC datetime without timezone metadata.
-def utc_now() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
 
 
 # 클래스명: _CaregiverNotification

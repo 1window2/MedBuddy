@@ -1,7 +1,7 @@
 # File Name: medication_completion_entity.py
 # Role: Defines per-dose completion persistence and UML-compatible completion data accessors.
 
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     Boolean,
@@ -19,18 +19,7 @@ from core.application_clock import application_today
 from core.database import Base
 from entities.medication_schedule_entity import DEFAULT_MEDICATION_SCHEDULE_SLOT_KEY
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
-from entities.user_account_entity import _UserAccount  # noqa: F401
-
-
-# Function Name: utc_now
-# Description:
-# - Returns a timezone-aware UTC timestamp converted to a naive DB value.
-# Parameters:
-# - None.
-# Returns:
-# - Current UTC datetime without tzinfo for SQLite DateTime compatibility.
-def utc_now() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
+from entities.user_account_entity import _UserAccount, utc_now  # noqa: F401
 
 
 # 클래스명: _MedicationCompletion
