@@ -349,6 +349,17 @@ else
   printf 'fake-aab' > build/app/outputs/bundle/release/app-release.aab
 fi
 ''')
+    # Lists two native libraries per ABI for 'lib/*' and one engine library per ABI otherwise,
+    # except for the ABI named by TEST_APK_ENGINELESS_ABI.
+    _fake_tool(tools / "unzip", '''
+test -f "$2"
+for abi in ${TEST_APK_ABIS:-arm64-v8a armeabi-v7a}; do
+  case "$3" in
+    'lib/*') printf 'lib/%s/libflutter.so\nlib/%s/libnavermap.so\n' "$abi" "$abi" ;;
+    *) [[ "$abi" == "${TEST_APK_ENGINELESS_ABI:-}" ]] || printf 'lib/%s/libflutter.so\n' "$abi" ;;
+  esac
+done
+''')
     _fake_tool(tools / "sha256sum", 'test -f "$1"\nprintf "%s  %s\\n" "$EXPECTED_SIGNING_CERT_SHA256" "$1"\n')
     _fake_tool(tools / "jarsigner", '''
 test -f "$2"
@@ -375,6 +386,7 @@ exit "${TEST_APK_VERIFY_STATUS:-0}"
     recorded = calls.read_text().splitlines()
     bundle_call = next(line for line in recorded if line.startswith("build appbundle"))
     assert "MEDBUDDY_FIREBASE_APP_CHECK_REQUIRED=true" in bundle_call
+    assert "--target-platform" not in bundle_call
     assert ("apksigner" in recorded) is (build_apk == "true")
     failures = [
         {"TEST_AAB_CERT": PLAY}, {"TEST_AAB_CERT": "malformed"},
@@ -382,7 +394,11 @@ exit "${TEST_APK_VERIFY_STATUS:-0}"
         {"TEST_JAR_VERIFIED": "false"},
     ]
     if build_apk == "true":
-        failures.extend([{"TEST_APK_CERT": PLAY}, {"TEST_APK_VERIFY_STATUS": "1"}])
+        failures.extend([
+            {"TEST_APK_CERT": PLAY}, {"TEST_APK_VERIFY_STATUS": "1"},
+            {"TEST_APK_ABIS": "arm64-v8a armeabi-v7a x86_64"}, {"TEST_APK_ABIS": "arm64-v8a"},
+            {"TEST_APK_ABIS": "arm64-v8a armeabi-v7a x86_64", "TEST_APK_ENGINELESS_ABI": "x86_64"},
+        ])
     for failure in failures:
         rejected = subprocess.run(
             ["bash", "-c", _workflow_bash("Verify signed release artifacts")],
@@ -392,6 +408,7 @@ exit "${TEST_APK_VERIFY_STATUS:-0}"
     if build_apk == "true":
         apk_call = next(line for line in recorded if line.startswith("build apk"))
         assert f"MEDBUDDY_FIREBASE_APP_CHECK_REQUIRED={policy}" in apk_call
+        assert "--target-platform android-arm,android-arm64" in apk_call
         apk.unlink()
         missing_apk = subprocess.run(["bash", "-c", _workflow_bash("Verify signed release artifacts")], cwd=frontend, env=environment, capture_output=True)
         assert missing_apk.returncode != 0

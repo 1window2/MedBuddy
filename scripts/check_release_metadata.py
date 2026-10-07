@@ -63,6 +63,7 @@ def main() -> int:
         "mandatory release signing": "MEDBUDDY_REQUIRE_RELEASE_SIGNING: 'true'",
         "APK build": "flutter build apk --release --no-pub",
         "app bundle build": "flutter build appbundle --release --no-pub",
+        "direct APK ABI set": "--target-platform android-arm,android-arm64",
         "public feature ingress": "python3 ../scripts/check_release_ingress.py",
         "live App Check preflight": "python3 ../scripts/check_release_app_check.py",
     }

@@ -17,11 +17,13 @@ from urllib.parse import urlsplit
 
 
 BACKEND_PROBE_FILES = ("backend-health.json", "backend-ready.json", "backend-catalogs.json")
+# The only ref that may build without Firebase App Check (temporary off-Play beta exception).
+OFF_PLAY_EXCEPTION_REF = "refs/heads/beta/v0.2.1"
 
 
 # Class Name: AndroidReleasePolicy
 # Role: Preserve the reviewed attestation, distribution and artifact invariants.
-# Responsibilities: Normalize protected settings and prohibit unprotected main releases.
+# Responsibilities: Normalize protected settings and prohibit unprotected releases outside the beta branch.
 # Attributes: app_check_required: Attestation flag; distribution: Play-only or dual-channel output.
 @dataclass(frozen=True)
 class AndroidReleasePolicy:
@@ -41,7 +43,8 @@ class AndroidReleasePolicy:
     # Function Name: from_environment
     # Description: Normalize the exact-ref workflow settings before producing an artifact plan.
     # Parameters: environment: Workflow environment without any credential reads.
-    # Returns: Validated policy; raises ValueError for unsupported values or main exceptions.
+    # Returns: Validated policy; raises ValueError for unsupported values or for an App Check
+    #   exception requested on any ref other than the single off-Play beta branch.
     @classmethod
     def from_environment(cls, environment: Mapping[str, str]) -> AndroidReleasePolicy:
         value = environment.get("FIREBASE_APP_CHECK_REQUIRED", "").strip().lower()
@@ -51,9 +54,9 @@ class AndroidReleasePolicy:
         distribution = (
             environment.get("APP_CHECK_RELEASE_DISTRIBUTION", "").strip().lower() or "play"
         )
-        if environment["GITHUB_REF"] == "refs/heads/main" and not required:
+        if environment["GITHUB_REF"] != OFF_PLAY_EXCEPTION_REF and not required:
             raise ValueError(
-                "Main release builds require Firebase App Check. "
+                "Release builds require Firebase App Check. "
                 "The off-Play exception is restricted to beta/v0.2.1."
             )
         return cls(required, distribution)

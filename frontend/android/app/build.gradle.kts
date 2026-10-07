@@ -30,6 +30,22 @@ if (requireReleaseSigning && !hasReleaseSigning) {
     throw GradleException("MedBuddy release signing environment is incomplete.")
 }
 
+// Flutter의 `--target-platform` 값을 ABI 이름으로 바꾼다. 속성이 없거나 알 수 없는 값이
+// 섞여 있으면 null이며, 이때는 Flutter 플러그인의 기본 ABI 구성을 그대로 둔다.
+val flutterTargetAbis: List<String>? =
+    (project.findProperty("target-platform") as String?)
+        ?.split(",")
+        ?.map {
+            when (it.trim()) {
+                "android-arm" -> "armeabi-v7a"
+                "android-arm64" -> "arm64-v8a"
+                "android-x64" -> "x86_64"
+                else -> ""
+            }
+        }
+        ?.takeIf { abis -> abis.isNotEmpty() && abis.none { it.isEmpty() } }
+val splitPerAbi = (project.findProperty("split-per-abi") as String?)?.toBoolean() == true
+
 android {
     namespace = "com.example.medbuddy_frontend"
     compileSdk = flutter.compileSdkVersion
@@ -74,6 +90,22 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+        }
+    }
+
+    // `--target-platform`은 Flutter 엔진과 앱 코드만 줄이고 플러그인의 네이티브 라이브러리는
+    // 모든 기본 ABI로 남긴다. 엔진이 없는 ABI 폴더가 APK에 남지 않도록 같은 목록으로 제한한다.
+    // Flutter 플러그인은 버전에 따라 빌드 유형 또는 기본 구성에 필터를 쓰므로 두 곳을 모두 바꾼다.
+    if (flutterTargetAbis != null && !splitPerAbi) {
+        defaultConfig.ndk {
+            abiFilters.clear()
+            abiFilters.addAll(flutterTargetAbis)
+        }
+        buildTypes.configureEach {
+            ndk {
+                abiFilters.clear()
+                abiFilters.addAll(flutterTargetAbis)
+            }
         }
     }
 }
