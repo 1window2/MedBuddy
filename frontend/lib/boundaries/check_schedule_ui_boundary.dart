@@ -1593,14 +1593,18 @@ class _TimeSlotCard extends StatelessWidget {
               ),
             ),
             if (slot.medications.isEmpty)
+              // 빈 시간대는 머리글의 알림 설정은 유지하고 본문을 한 줄로 줄인다.
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 28),
-                child: Text(
-                  text.emptySlot,
-                  style: const TextStyle(
-                    color: MedBuddyColors.textLight,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
+                padding: const EdgeInsets.fromLTRB(20, 13, 16, 14),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    text.emptySlot,
+                    style: const TextStyle(
+                      color: MedBuddyColors.textSubtle,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               )
@@ -1905,7 +1909,7 @@ class _ReminderIconButton extends StatelessWidget {
 // Role: Represents the atomic whole-slot medication completion or uncheck action.
 // Responsibilities:
 // - Presents a distinct whole-slot action beside the reminder control.
-// - Communicates the next action through its icon, tooltip, and semantics.
+// - Shows completion by filling the circle; the tooltip and semantics name the next action.
 // - Prevents duplicate requests while the atomic update is running.
 // Attributes:
 // - slotKey (String): Key identifying morning, lunch, evening, or bedtime.
@@ -1956,9 +1960,12 @@ class _SlotCompletionToggleButton extends StatelessWidget {
         button: true,
         label: tooltip,
         enabled: !isUpdating && onPressed != null,
+        // 같은 아이콘을 두고 채움 여부로 완료 상태를 보여 주는 토글이다.
         child: Material(
-          color: isCompleted ? accent : Colors.white.withValues(alpha: 0.0),
-          shape: const CircleBorder(),
+          color: isCompleted ? accent : Colors.transparent,
+          shape: CircleBorder(
+            side: BorderSide(color: accent, width: isCompleted ? 0 : 1.5),
+          ),
           child: InkWell(
             key: ValueKey('schedule-entire-slot-toggle-$slotKey'),
             customBorder: const CircleBorder(),
@@ -1977,11 +1984,9 @@ class _SlotCompletionToggleButton extends StatelessWidget {
                         ),
                       )
                     : Icon(
-                        isCompleted
-                            ? Icons.remove_done_rounded
-                            : Icons.done_all_rounded,
+                        Icons.done_all_rounded,
                         color: isCompleted ? Colors.white : accent,
-                        size: 27,
+                        size: 24,
                       ),
               ),
             ),

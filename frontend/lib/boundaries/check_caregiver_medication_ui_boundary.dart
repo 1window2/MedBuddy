@@ -1083,13 +1083,21 @@ class _CaregiverTimeSlotCard extends StatelessWidget {
             ),
           ),
           if (medications.isEmpty)
+            // 환자 일정 화면과 같은 한 줄 빈 시간대 표시를 사용한다.
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 26),
-              child: Text(
-                isEnglish
-                    ? 'No medication for this time'
-                    : '이 시간에 복용할 약이 없습니다.',
-                style: const TextStyle(color: MedBuddyColors.textLight),
+              padding: const EdgeInsets.fromLTRB(20, 13, 16, 14),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  isEnglish
+                      ? 'No medication for this time'
+                      : '이 시간에 복용할 약이 없습니다.',
+                  style: const TextStyle(
+                    color: MedBuddyColors.textSubtle,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             )
           else
