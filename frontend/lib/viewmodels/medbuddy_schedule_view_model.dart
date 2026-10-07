@@ -82,13 +82,25 @@ class MedBuddyScheduleViewModel {
 
   // Function Name: applyDoseProjection
   // Description: Applies durable queue state without treating it as a fresh server read.
-  // Parameters: schedules: Projected courses. Returns: None.
-  void applyDoseProjection(List<MedicationSchedule> schedules) {
+  // Parameters: schedules: Projected courses; hasCurrentDayCache: Whether the
+  //   projection is backed by a server snapshot of the current application day.
+  // Returns: None.
+  void applyDoseProjection(
+    List<MedicationSchedule> schedules, {
+    required bool hasCurrentDayCache,
+  }) {
     if (_disposed) return;
     _todayScheduleEpoch++;
     _activeTodayScheduleLoadEpoch = null;
     _isTodayScheduleLoading = false;
     _todayMedicationScheduleList = schedules;
+    if (!hasCurrentDayCache) {
+      // A projection without today's snapshot (first open of a new day) is
+      // unknown, not empty: it must not pass as a successful read, or reminder
+      // reconciliation would disable every enabled slot. Flag it for recovery.
+      _lastTodayScheduleLoadSucceeded = false;
+      _hasTodayScheduleLoadError = true;
+    }
     _notifyViewModelListeners(MedBuddyFeature.schedule);
   }
 

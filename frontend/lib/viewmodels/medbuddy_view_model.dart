@@ -734,7 +734,10 @@ class MedBuddyViewModel extends ChangeNotifier {
   void _onDoseSyncChanged() {
     final sync = doseSync;
     if (_isDisposed || sync == null) return;
-    _schedules.applyDoseProjection(sync.schedules);
+    _schedules.applyDoseProjection(
+      sync.schedules,
+      hasCurrentDayCache: sync.hasCache,
+    );
   }
 
   // 함수이름: _notifyViewModelListeners
