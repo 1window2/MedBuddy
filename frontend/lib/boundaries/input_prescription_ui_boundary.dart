@@ -975,21 +975,6 @@ class _HomeText {
   String get healthRecommendationSubtitle => isEnglish
       ? 'Review food and activity guidance for your medications'
       : '복용 중인 약에 맞는 식사와 활동 팁을 확인해요';
-  // Function Name: medicationReminder
-  // Description: Provides localized wording for "Medication Reminders" using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
-  String get medicationReminder =>
-      isEnglish ? 'Medication Reminders' : '복약 알림 설정';
-  // Function Name: medicationReminderSubtitle
-  // Description: Provides localized wording for "Adjust reminder times to fit your routine" using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
-  String get medicationReminderSubtitle => isEnglish
-      ? 'Adjust reminder times to fit your routine'
-      : '복약 알림 시간을 내 생활에 맞게 조정해요';
   // 함수이름: nearbyPharmacy
   // 함수역할: 병원·약국을 함께 찾는 홈 진입점의 제목을 제공한다.
   // 매개변수:

@@ -21,7 +21,6 @@ class CheckCaregiverHome extends ChangeNotifier {
   bool hasError = false;
   bool _disposed = false;
   int _generation = 0;
-  DateTime? updatedAt;
   String? snapshotDay;
 
   // 현재 연동만 위젯에 전달하며 자정을 지난 응답은 오늘 일정으로 바꾸지 않는다.
@@ -78,7 +77,6 @@ class CheckCaregiverHome extends ChangeNotifier {
     if (!setEquals(oldKeys, nextKeys)) {
       _generation++;
       _snapshots = {};
-      updatedAt = null;
     }
     _links = next;
     notifyListeners();
@@ -112,13 +110,11 @@ class CheckCaregiverHome extends ChangeNotifier {
               ))
             snapshot.link.linkId!: snapshot,
       };
-      updatedAt = DateTime.now();
       snapshotDay = day;
     } catch (_) {
       if (_disposed || generation != _generation) return;
       hasError = true;
       _snapshots = {};
-      updatedAt = null;
     } finally {
       isLoading = false;
       if (!_disposed) notifyListeners();

@@ -2503,12 +2503,6 @@ class _ScheduleText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get selectMedication => isEnglish ? 'Select medication' : '약 선택';
-  // 함수이름: close
-  // 함수역할: 현재 언어와 입력값에 맞춰 "Close" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get close => isEnglish ? 'Close' : '닫기';
   // 함수이름: statusUpdateFailed
   // 함수역할: 현재 언어와 입력값에 맞춰 "복약 상태를 변경하지 못했습니다." 문구를 제공한다.
   // 매개변수:

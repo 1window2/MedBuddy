@@ -853,7 +853,7 @@ void main() {
       expect(find.text(medicationDetail.usageMethod), findsOneWidget);
       expect(find.text(medicationDetail.warning), findsOneWidget);
       expect(
-        medicationDetail.voiceGuideText,
+        medicationDetail.voiceGuideTextForLanguage('ko'),
         contains(medicationDetail.usageMethod),
       );
       expect(tester.takeException(), isNull);

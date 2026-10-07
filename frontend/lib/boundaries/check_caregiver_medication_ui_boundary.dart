@@ -1308,13 +1308,6 @@ class _CaregiverScheduleSlot {
     required this.icon,
   });
 
-  // 함수이름: timeLabel
-  // 함수역할: 시간대 기본 시각을 두 자리 시와 분으로 표시한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get timeLabel => '${hour.toString().padLeft(2, '0')}:00';
-
   // 함수이름: title
   // 함수역할: 시간대 키를 언어별 이름으로 변환하고 알 수 없는 키에는 일정 제목을 사용한다.
   // 매개변수:

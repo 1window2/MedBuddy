@@ -2752,30 +2752,6 @@ class _SettingText {
   String get previewSentence => isEnglish
       ? 'Take aspirin 100mg three times daily after meals.'
       : '아스피린 100mg을 하루 3회 식후 30분에 복용하세요.';
-  // 함수이름: readingSpeedLabel
-  // 함수역할: 현재 언어와 입력값에 맞춰 "읽기 속도" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get readingSpeedLabel => isEnglish ? 'Reading speed' : '읽기 속도';
-  // 함수이름: slowLabel
-  // 함수역할: 현재 언어와 입력값에 맞춰 "Slow" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get slowLabel => isEnglish ? 'Slow' : '느림';
-  // 함수이름: normalLabel
-  // 함수역할: 현재 언어와 입력값에 맞춰 "Normal" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get normalLabel => isEnglish ? 'Normal' : '보통';
-  // 함수이름: fastLabel
-  // 함수역할: 현재 언어와 입력값에 맞춰 "Fast" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get fastLabel => isEnglish ? 'Fast' : '빠름';
   // 함수이름: listenPreview
   // 함수역할: 현재 언어와 입력값에 맞춰 "음성으로 들어보기" 문구를 제공한다.
   // 매개변수:

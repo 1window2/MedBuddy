@@ -416,30 +416,4 @@ class _MedicationCaptureText {
   String get manualTaskSubtitle => isEnglish
       ? 'Enter a medication name and schedule without a photo.'
       : '사진이 없어도 약 이름과 복용 일정을 직접 입력합니다.';
-  // 함수이름: cameraOption
-  // 함수역할: 현재 언어와 입력값에 맞춰 "카메라로 촬영" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get cameraOption => isEnglish ? 'Take Photo' : '카메라로 촬영';
-  // 함수이름: cameraOptionSubtitle
-  // 함수역할: 현재 언어와 입력값에 맞춰 "처방전을 바로 촬영합니다." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get cameraOptionSubtitle =>
-      isEnglish ? 'Take a prescription photo now.' : '처방전을 바로 촬영합니다.';
-  // 함수이름: galleryOption
-  // 함수역할: 현재 언어와 입력값에 맞춰 "갤러리에서 선택" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get galleryOption => isEnglish ? 'Choose From Gallery' : '갤러리에서 선택';
-  // 함수이름: galleryOptionSubtitle
-  // 함수역할: 현재 언어와 입력값에 맞춰 "저장된 처방전 이미지를 불러옵니다." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get galleryOptionSubtitle =>
-      isEnglish ? 'Load a saved prescription image.' : '저장된 처방전 이미지를 불러옵니다.';
 }

@@ -218,22 +218,6 @@ class NearbyCarePlace {
     return '${distanceKm.toStringAsFixed(distanceKm < 10 ? 1 : 0)}km';
   }
 
-  // 함수이름: todayHoursLabel
-  // 함수역할: 24시간 운영, 당일 영업시간 미확인, 시작·종료 시각을 구분해 한국어 표시문을 만든다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - String: 24시간 운영, 당일 영업시간 미확인, 시작·종료 시각을 구분해 한국어 표시문을 만든다.
-  String get todayHoursLabel {
-    if (is24Hours) {
-      return '24시간 운영';
-    }
-    if (todayOpenTime == null || todayCloseTime == null) {
-      return '오늘 영업시간 확인 필요';
-    }
-    return '오늘 $todayOpenTime - $todayCloseTime';
-  }
-
   // 함수이름: _readString
   // 함수역할: 선택적 필드를 공백 정리한 문자열로 바꾸고 없는 값은 빈 문자열로 처리한다.
   // 매개변수:

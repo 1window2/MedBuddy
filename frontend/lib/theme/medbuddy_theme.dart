@@ -38,7 +38,6 @@ class MedBuddyColors {
   static const Color slotBedtime = Color(0xFF405F66);
   static const Color lavenderSurface = Color(0xFFF0F1FA);
   static const Color butterSurface = Color(0xFFF8F1D9);
-  static const Color roseSurface = Color(0xFFFBEAEC);
 }
 
 // 클래스명: MedBuddyRadii

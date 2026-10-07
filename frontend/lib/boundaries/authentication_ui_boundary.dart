@@ -771,12 +771,6 @@ class _AuthenticationText {
   // Returns: The formatted display text or identifier described above.
   String get continueAsGuest =>
       _isEnglish ? 'Continue as guest' : '회원가입 없이 계속하기';
-  // Function Name: changeLanguage
-  // Description: Provides localized wording for "Change language" using the current language and message inputs.
-  // Parameters:
-  // - None.
-  // Returns: The formatted display text or identifier described above.
-  String get changeLanguage => _isEnglish ? 'Change language' : '언어 변경';
   // Function Name: processing
   // Description: Provides localized wording for "Please wait…" using the current language and message inputs.
   // Parameters:
