@@ -180,7 +180,7 @@ class InputPrescriptionUI extends StatelessWidget {
                     key: const ValueKey('homeDashboardScrollView'),
                     padding: EdgeInsets.fromLTRB(
                       20,
-                      useCompactDashboard ? 12 : 24,
+                      useCompactDashboard ? 10 : 16,
                       20,
                       useCompactDashboard ? 12 : 32,
                     ),
@@ -514,15 +514,12 @@ class _HomeHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      decoration: const BoxDecoration(
-        color: MedBuddyColors.surface,
-        border: Border(bottom: BorderSide(color: MedBuddyColors.divider)),
-      ),
+      color: MedBuddyColors.pageBackground,
       padding: EdgeInsets.fromLTRB(
-        28,
-        MediaQuery.of(context).padding.top + 16,
-        28,
-        16,
+        22,
+        MediaQuery.of(context).padding.top + 18,
+        20,
+        4,
       ),
       child: Center(
         child: ConstrainedBox(

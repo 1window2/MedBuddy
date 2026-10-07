@@ -83,24 +83,38 @@ class ManageUserHubUI extends StatelessWidget {
                             : text.signedInDescription,
                       ),
                       const SizedBox(height: 16),
-                      _UserHubActionCard(
-                        key: const ValueKey('userHubCaregiverLinkAction'),
-                        icon: Icons.people_alt_outlined,
-                        title: text.patientCaregiver,
-                        subtitle: text.patientCaregiverDescription,
-                        backgroundColor: MedBuddyColors.mint,
-                        iconColor: MedBuddyColors.primaryDark,
-                        onTap: onPatientCaregiverLinkRequested,
-                      ),
-                      const SizedBox(height: 12),
-                      _UserHubActionCard(
-                        key: const ValueKey('userHubSettingsAction'),
-                        icon: Icons.settings_outlined,
-                        title: text.settings,
-                        subtitle: text.settingsDescription,
-                        backgroundColor: MedBuddyColors.surface,
-                        iconColor: MedBuddyColors.textStrong,
-                        onTap: onUserSettingRequested,
+                      Material(
+                        color: MedBuddyColors.surface,
+                        clipBehavior: Clip.antiAlias,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: MedBuddyRadii.largeCard,
+                          side: const BorderSide(
+                            color: MedBuddyColors.cardBorder,
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            _UserHubActionCard(
+                              key: const ValueKey('userHubCaregiverLinkAction'),
+                              icon: Icons.people_alt_outlined,
+                              title: text.patientCaregiver,
+                              subtitle: text.patientCaregiverDescription,
+                              backgroundColor: MedBuddyColors.mint,
+                              iconColor: MedBuddyColors.primaryDark,
+                              onTap: onPatientCaregiverLinkRequested,
+                            ),
+                            const Divider(indent: 82),
+                            _UserHubActionCard(
+                              key: const ValueKey('userHubSettingsAction'),
+                              icon: Icons.settings_outlined,
+                              title: text.settings,
+                              subtitle: text.settingsDescription,
+                              backgroundColor: MedBuddyColors.surfaceSubtle,
+                              iconColor: MedBuddyColors.textStrong,
+                              onTap: onUserSettingRequested,
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -146,22 +160,22 @@ class _AccountSummaryCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: MedBuddyColors.primary,
+        color: MedBuddyColors.surface,
         borderRadius: MedBuddyRadii.largeCard,
-        boxShadow: MedBuddyShadows.card,
+        border: Border.all(color: MedBuddyColors.cardBorder),
       ),
       child: Row(
         children: [
           Container(
             width: 56,
             height: 56,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.18),
-              borderRadius: MedBuddyRadii.card,
+            decoration: const BoxDecoration(
+              color: MedBuddyColors.mint,
+              shape: BoxShape.circle,
             ),
             child: const Icon(
               Icons.person_rounded,
-              color: Colors.white,
+              color: MedBuddyColors.primaryDark,
               size: 30,
             ),
           ),
@@ -175,7 +189,7 @@ class _AccountSummaryCard extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: MedBuddyColors.textStrong,
                     fontSize: 17,
                     height: 1.25,
                     fontWeight: FontWeight.w700,
@@ -184,8 +198,8 @@ class _AccountSummaryCard extends StatelessWidget {
                 const SizedBox(height: 5),
                 Text(
                   accountType,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.88),
+                  style: const TextStyle(
+                    color: MedBuddyColors.textMuted,
                     fontSize: 13,
                     height: 1.35,
                     fontWeight: FontWeight.w600,
@@ -201,14 +215,14 @@ class _AccountSummaryCard extends StatelessWidget {
 }
 
 // Class Name: _UserHubActionCard
-// Role: Represents a link-management or settings action in My Info.
+// Role: Represents one link-management or settings row inside the My Info action group.
 // Responsibilities:
 // - Composes a link-management or settings action in My Info using the display values and actions supplied by its parent.
 // Attributes:
 // - icon (IconData): Icon shown in normal or selected state.
 // - title (String): Heading shown for the screen, section, or item.
 // - subtitle (String): Supporting explanation or account detail below the primary label.
-// - backgroundColor (Color): Background color for the item.
+// - backgroundColor (Color): Tint behind the row icon.
 class _UserHubActionCard extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -224,7 +238,7 @@ class _UserHubActionCard extends StatelessWidget {
   // - icon (IconData): Icon shown in normal or selected state.
   // - title (String): Heading shown for the screen, section, or item.
   // - subtitle (String): Supporting explanation or account detail below the primary label.
-  // - backgroundColor (Color): Background color for the item.
+  // - backgroundColor (Color): Tint behind the row icon.
   // - iconColor (Color): Foreground or accent color applied to text, icons, or state guidance.
   // - onTap (VoidCallback): Callback executing the item's documented primary action.
   // Returns: Initialized _UserHubActionCard instance.
@@ -245,27 +259,19 @@ class _UserHubActionCard extends StatelessWidget {
   // Returns: Widget tree for a link-management or settings action in My Info.
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: backgroundColor,
-      borderRadius: MedBuddyRadii.largeCard,
-      child: InkWell(
-        borderRadius: MedBuddyRadii.largeCard,
-        onTap: onTap,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 104),
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+          constraints: const BoxConstraints(minHeight: 88),
           padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            borderRadius: MedBuddyRadii.largeCard,
-            border: Border.all(color: MedBuddyColors.cardBorder),
-          ),
           child: Row(
             children: [
               Container(
-                width: 50,
-                height: 50,
+                width: 46,
+                height: 46,
                 decoration: BoxDecoration(
-                  color: MedBuddyColors.surface.withValues(alpha: 0.78),
-                  borderRadius: MedBuddyRadii.card,
+                  color: backgroundColor,
+                  borderRadius: MedBuddyRadii.control,
                 ),
                 child: Icon(icon, color: iconColor, size: 27),
               ),
@@ -304,7 +310,6 @@ class _UserHubActionCard extends StatelessWidget {
               ),
             ],
           ),
-        ),
       ),
     );
   }
