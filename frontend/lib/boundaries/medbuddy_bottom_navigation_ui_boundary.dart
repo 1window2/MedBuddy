@@ -193,10 +193,10 @@ class _BottomNavigationButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: Material(
           color: selected ? MedBuddyColors.mint : Colors.transparent,
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: MedBuddyRadii.largeCard,
           child: InkWell(
             key: ValueKey('bottomNavigation-${item.destination.name}'),
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: MedBuddyRadii.largeCard,
             onTap: onPressed,
             child: ConstrainedBox(
               constraints: const BoxConstraints(minHeight: 56),

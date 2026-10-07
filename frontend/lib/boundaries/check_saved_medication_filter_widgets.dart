@@ -38,7 +38,7 @@ class _SavedMedicationFilterControl extends StatelessWidget {
       alignment: Alignment.centerLeft,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       side: const BorderSide(color: MedBuddyColors.outline),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.small),
     ),
     child: Row(
       children: [
@@ -296,7 +296,7 @@ class _SavedMedicationFilterControl extends StatelessWidget {
       selected: selected,
       selectedColor: MedBuddyColors.primaryDark,
       selectedTileColor: MedBuddyColors.successSurface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.small),
     ),
   );
 }
@@ -362,7 +362,7 @@ class _SavedMedicationFilteredEmptyState extends StatelessWidget {
               minimumSize: const Size.fromHeight(48),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: MedBuddyRadii.small,
               ),
             ),
             child: Text(text.showAll, textAlign: TextAlign.center),
@@ -381,7 +381,7 @@ class _SavedMedicationFilteredEmptyState extends StatelessWidget {
                 backgroundColor: MedBuddyColors.primary,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: MedBuddyRadii.small,
                 ),
               ),
               icon: const Icon(Icons.add),

@@ -866,7 +866,7 @@ class _GuideMessage extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: MedBuddyRadii.small,
         border: Border.all(color: color.withValues(alpha: 0.8)),
       ),
       child: Padding(

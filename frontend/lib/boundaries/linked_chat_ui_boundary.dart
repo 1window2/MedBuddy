@@ -2025,7 +2025,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
                           vertical: 12,
                         ),
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: MedBuddyRadii.largeCard,
                           borderSide: BorderSide.none,
                         ),
                       ),
@@ -2237,7 +2237,7 @@ class _ScheduleContextSelector extends StatelessWidget {
                   itemBuilder: (context, index) {
                     final schedule = contexts[index];
                     return InkWell(
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: MedBuddyRadii.small,
                       // 함수이름: build.onTap callback
                       // 함수역할: `Navigator.pop(context, schedule)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
                       // 매개변수:
@@ -2248,7 +2248,7 @@ class _ScheduleContextSelector extends StatelessWidget {
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
                           color: MedBuddyColors.surfaceSubtle,
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: MedBuddyRadii.small,
                           border: Border.all(color: MedBuddyColors.outline),
                         ),
                         child: _ScheduleSummaryContent(
@@ -2310,7 +2310,7 @@ class _MessageScheduleContext extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: MedBuddyRadii.control,
         onTap: onPressed,
         child: Container(
           width: double.infinity,
@@ -2319,7 +2319,7 @@ class _MessageScheduleContext extends StatelessWidget {
             color: isMine
                 ? Colors.white.withValues(alpha: 0.16)
                 : MedBuddyColors.successSurface,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: MedBuddyRadii.control,
           ),
           child: _ScheduleSummaryContent(
             schedule: schedule,
@@ -2556,7 +2556,7 @@ class _MedicationSafetyGuidance extends StatelessWidget {
         color: isMine
             ? Colors.white.withValues(alpha: 0.15)
             : MedBuddyColors.warningSurface,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: MedBuddyRadii.small,
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2635,7 +2635,7 @@ class _MessagePharmacyContext extends StatelessWidget {
         color: isMine
             ? Colors.white.withValues(alpha: 0.16)
             : MedBuddyColors.successSurface,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: MedBuddyRadii.control,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2802,14 +2802,14 @@ class _SelectedMedicationContext extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(10, 8, 6, 8),
       decoration: BoxDecoration(
         color: MedBuddyColors.successSurface,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: MedBuddyRadii.control,
         border: Border.all(color: MedBuddyColors.successBorder),
       ),
       child: Row(
         children: [
           Expanded(
             child: InkWell(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: MedBuddyRadii.control,
               onTap: onOpenRequested,
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
@@ -2931,7 +2931,7 @@ class _MessageMedicationContext extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: MedBuddyRadii.control,
         onTap: onPressed,
         child: Container(
           width: double.infinity,
@@ -2940,7 +2940,7 @@ class _MessageMedicationContext extends StatelessWidget {
             color: isMine
                 ? Colors.white.withValues(alpha: 0.16)
                 : MedBuddyColors.successSurface,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: MedBuddyRadii.control,
           ),
           child: Row(
             children: [
@@ -3027,7 +3027,7 @@ class _MedicationThumbnail extends StatelessWidget {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: MedBuddyColors.surfaceSubtle,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: MedBuddyRadii.control,
       ),
       child: Icon(
         Icons.medication_outlined,
@@ -3039,7 +3039,7 @@ class _MedicationThumbnail extends StatelessWidget {
       return fallback;
     }
     return ClipRRect(
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: MedBuddyRadii.control,
       child: Image.network(
         imageUrl,
         width: size,
@@ -3125,7 +3125,7 @@ class _MessageBubble extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
       decoration: BoxDecoration(
         color: isMine ? MedBuddyColors.primary : Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: MedBuddyRadii.card,
         border: isMine
             ? null
             : Border.all(color: MedBuddyColors.outline, width: 1),

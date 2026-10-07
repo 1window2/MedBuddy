@@ -16,6 +16,7 @@ import '../entities/medication_image_url_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/pill_identification_entity.dart';
 import '../entities/user_setting_entity.dart';
+import '../widgets/medbuddy_notice.dart';
 import '../theme/medbuddy_theme.dart';
 import 'medication_schedule_review_ui_boundary.dart';
 import 'medication_capture_options_ui_boundary.dart';
@@ -385,7 +386,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                             backgroundColor: MedBuddyColors.primary,
                             disabledBackgroundColor: MedBuddyColors.outline,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: MedBuddyRadii.control,
                             ),
                           ),
                           icon: _isAnalyzing
@@ -742,7 +743,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                   vertical: 10,
                 ),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: MedBuddyRadii.control,
                 ),
               ),
               child: Row(
@@ -1948,7 +1949,7 @@ class _MultiplePillObservationPreview extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ClipRRect(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: MedBuddyRadii.control,
             child: Stack(
               children: [
                 Image.memory(
@@ -2088,33 +2089,10 @@ class _SafetyNotice extends StatelessWidget {
   // Returns: Widget tree for the safety limitations of identifying pills from appearance.
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
+    return MedBuddyNotice(
+      message: text.safetyNotice,
+      scale: textScale,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: MedBuddyColors.warningSurface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: MedBuddyColors.warningBorder),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.info_outline, color: MedBuddyColors.reminderAccent, size: 22),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              text.safetyNotice,
-              style: TextStyle(
-                color: MedBuddyColors.reminderAccent,
-                fontSize: 13 * textScale,
-                height: 1.45,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -2172,15 +2150,15 @@ class _PillImageSlot extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: MedBuddyRadii.small,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: MedBuddyRadii.small,
         child: Container(
           height: 174,
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: MedBuddyRadii.small,
             border: Border.all(
               color: imageBytes == null
                   ? MedBuddyColors.outline
@@ -2237,7 +2215,7 @@ class _PillImageSlot extends StatelessWidget {
               const SizedBox(height: 8),
               Expanded(
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: MedBuddyRadii.small,
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
@@ -2341,14 +2319,14 @@ class _PillCandidateCard extends StatelessWidget {
       selected: selected,
       child: Material(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: MedBuddyRadii.small,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: MedBuddyRadii.small,
           child: Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: MedBuddyRadii.small,
               border: Border.all(
                 color: selected
                     ? MedBuddyColors.primary
@@ -2384,7 +2362,7 @@ class _PillCandidateCard extends StatelessWidget {
                           ),
                           decoration: BoxDecoration(
                             color: MedBuddyColors.warningSurface,
-                            borderRadius: BorderRadius.circular(6),
+                            borderRadius: MedBuddyRadii.small,
                           ),
                           child: Text(
                             text.sameMedicinePhotoCount(duplicateCount),
@@ -2472,7 +2450,7 @@ class _CandidateImage extends StatelessWidget {
       ),
     );
     return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: MedBuddyRadii.small,
       child: SizedBox.square(
         dimension: 76,
         child: normalizedUrl.isEmpty
@@ -2531,17 +2509,10 @@ class _ErrorNotice extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       liveRegion: true,
-      child: Container(
-        width: double.infinity,
+      child: MedBuddyNotice(
+        icon: Icons.warning_amber_rounded,
+        message: message,
         padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: MedBuddyColors.dangerSurface,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(
-          message,
-          style: const TextStyle(color: MedBuddyColors.danger, height: 1.4),
-        ),
       ),
     );
   }
@@ -2578,7 +2549,7 @@ class _ConfidenceNotice extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: MedBuddyColors.warningSurface,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: MedBuddyRadii.small,
           border: Border.all(color: MedBuddyColors.warningBorder),
         ),
         child: Row(

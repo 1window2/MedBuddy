@@ -1085,7 +1085,7 @@ class _LinkActionButton extends StatelessWidget {
           backgroundColor: Colors.white,
           side: const BorderSide(color: MedBuddyColors.outline, width: 1.5),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: MedBuddyRadii.largeCard,
           ),
           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 10),
         ),
@@ -1157,9 +1157,9 @@ class _StatusCard extends StatelessWidget {
       alignment: Alignment.center,
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
       decoration: BoxDecoration(
-        color: MedBuddyColors.surfaceSubtle,
+        color: MedBuddyColors.surface,
         borderRadius: MedBuddyRadii.card,
-        border: Border.all(color: MedBuddyColors.outline, width: 1.5),
+        border: Border.all(color: MedBuddyColors.cardBorder),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1336,7 +1336,7 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
                       backgroundColor: MedBuddyColors.primary,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: MedBuddyRadii.control,
                       ),
                       textStyle: const TextStyle(
                         fontSize: 16,
@@ -1584,9 +1584,9 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                 const SizedBox(height: 20),
                 Material(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(13),
+                  borderRadius: MedBuddyRadii.control,
                   child: InkWell(
-                    borderRadius: BorderRadius.circular(13),
+                    borderRadius: MedBuddyRadii.control,
                     // 함수이름: build.onTap callback
                     // 함수역할: 환자 코드와 만료 시간·재발급·복사 명령에서 캡처된 작업 `Clipboard.setData(ClipboardData(text: widget.patientCode.code)); ClipboardData(text: widget.patientCode.code)`을 실행한다.
                     // 매개변수:
@@ -1604,11 +1604,8 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                       height: 57,
                       padding: const EdgeInsets.fromLTRB(18, 0, 14, 0),
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(13),
-                        border: Border.all(
-                          color: MedBuddyColors.outline,
-                          width: 2,
-                        ),
+                        borderRadius: MedBuddyRadii.control,
+                        border: Border.all(color: MedBuddyColors.outline),
                       ),
                       child: Row(
                         children: [
@@ -1961,9 +1958,9 @@ class _LinkedUserTile extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
       decoration: BoxDecoration(
-        color: MedBuddyColors.surfaceSubtle,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: MedBuddyColors.outline, width: 1.5),
+        color: MedBuddyColors.surface,
+        borderRadius: MedBuddyRadii.card,
+        border: Border.all(color: MedBuddyColors.cardBorder),
       ),
       child: Column(
         children: [
@@ -2179,11 +2176,11 @@ InputDecoration _inputDecoration(String labelText, String hintText) {
     filled: true,
     fillColor: MedBuddyColors.surfaceSubtle,
     border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: MedBuddyRadii.control,
       borderSide: const BorderSide(color: MedBuddyColors.divider),
     ),
     focusedBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: MedBuddyRadii.control,
       borderSide: const BorderSide(color: MedBuddyColors.primary, width: 2),
     ),
   );

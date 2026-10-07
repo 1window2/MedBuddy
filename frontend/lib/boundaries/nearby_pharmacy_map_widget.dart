@@ -223,7 +223,7 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: MedBuddyColors.surfaceSubtle,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: MedBuddyRadii.small,
           border: Border.all(color: MedBuddyColors.outline),
         ),
         child: Stack(
@@ -305,7 +305,7 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.92),
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: MedBuddyRadii.small,
                       boxShadow: MedBuddyShadows.soft,
                     ),
                     child: Padding(
@@ -776,7 +776,7 @@ class _MapUnavailableState extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: MedBuddyColors.surfaceSubtle,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: MedBuddyRadii.small,
         border: Border.all(color: MedBuddyColors.outline),
       ),
       child: Column(

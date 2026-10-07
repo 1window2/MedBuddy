@@ -191,7 +191,7 @@ class _MedicationNameButton extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: MedBuddyRadii.small,
         onTap: isEnabled ? onPressed : null,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 6),
@@ -428,7 +428,7 @@ class _MedicationDetailButton extends StatelessWidget {
         padding: EdgeInsets.zero,
         foregroundColor: MedBuddyColors.primaryDark,
         backgroundColor: MedBuddyColors.successSurface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.small),
         textStyle: TextStyle(
           fontSize: 11 * scale,
           fontWeight: FontWeight.w700,
@@ -491,7 +491,7 @@ class _MedicationImageButton extends StatelessWidget {
           height: 36,
           decoration: BoxDecoration(
             color: MedBuddyColors.cardBorder,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: MedBuddyRadii.small,
           ),
           child: const Icon(
             Icons.image_not_supported_outlined,
@@ -505,17 +505,17 @@ class _MedicationImageButton extends StatelessWidget {
     return InkWell(
       key: ValueKey('savedMedicationImage-${medication.id}'),
       onTap: onPressed,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: MedBuddyRadii.control,
       child: Container(
         width: 48,
         height: 48,
         padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(
           border: Border.all(color: MedBuddyColors.imageAccent, width: 5),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: MedBuddyRadii.control,
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(7),
+          borderRadius: MedBuddyRadii.small,
           child: hasLocalImage
               ? Image.file(
                   localImageFile!,

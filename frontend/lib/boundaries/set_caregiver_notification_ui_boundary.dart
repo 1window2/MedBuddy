@@ -86,7 +86,7 @@ class SetCaregiverNotificationUI {
             return Dialog(
               insetPadding: const EdgeInsets.symmetric(horizontal: 28),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: MedBuddyRadii.control,
               ),
               child: ConstrainedBox(
                 constraints: BoxConstraints(
@@ -289,7 +289,7 @@ class _NotificationModeOption extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: MedBuddyRadii.small,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
         child: Row(

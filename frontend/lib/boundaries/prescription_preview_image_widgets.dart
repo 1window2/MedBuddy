@@ -82,37 +82,10 @@ class _RecognitionNoticeBanner extends StatelessWidget {
   // 반환값: OCR 인식 결과의 검토 안내에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
+    return MedBuddyNotice(
+      message: message,
+      scale: scale,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: MedBuddyColors.warningSurface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: MedBuddyColors.warningBorder),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.info_outline,
-            color: MedBuddyColors.reminderAccent,
-            size: 16 * scale,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              message,
-              style: TextStyle(
-                color: MedBuddyColors.reminderAccent,
-                fontSize: 12 * scale,
-                fontWeight: FontWeight.w700,
-                height: 1.25,
-                letterSpacing: 0,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -187,7 +160,7 @@ class _RecognizedTextRegionPreview extends StatelessWidget {
             label: previewText.openImagePreview,
             child: InkWell(
               key: const Key('ocr-preview-image'),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: MedBuddyRadii.small,
               // 함수이름: build.onTap callback
               // 함수역할: OCR 사용 영역과 개인정보 마스킹을 표시한 사진에서 캡처된 작업 `_showExpandedPreview(context)`을 실행한다.
               // 매개변수:
@@ -370,7 +343,7 @@ class _RecognizedImageCanvasState extends State<_RecognizedImageCanvas> {
   Widget build(BuildContext context) {
     return ClipRRect(
       key: Key('${widget.keyPrefix}-image-canvas'),
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: MedBuddyRadii.small,
       child: AspectRatio(
         aspectRatio: _aspectRatio,
         child: Stack(
@@ -720,7 +693,7 @@ class _PrivacyNoticeBanner extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
       decoration: BoxDecoration(
         color: MedBuddyColors.successSurface,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: MedBuddyRadii.small,
         border: Border.all(color: MedBuddyColors.successBorder),
       ),
       child: Row(

@@ -12,6 +12,7 @@ import '../entities/medication_match_review_entity.dart';
 import 'medication_candidate_dialog.dart';
 import '../entities/recognized_text_region_entity.dart';
 import '../entities/user_setting_entity.dart';
+import '../widgets/medbuddy_notice.dart';
 import '../theme/medbuddy_theme.dart';
 
 part 'prescription_preview_image_widgets.dart';
@@ -203,11 +204,8 @@ class _PrescriptionAnalysisPreviewUIState
                     padding: const EdgeInsets.fromLTRB(31, 32, 31, 30),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: MedBuddyColors.outline,
-                        width: 2,
-                      ),
+                      borderRadius: MedBuddyRadii.largeCard,
+                      border: Border.all(color: MedBuddyColors.outline),
                       boxShadow: MedBuddyShadows.card,
                     ),
                     child: Column(
@@ -554,37 +552,10 @@ class _MedicationLookupReviewBanner extends StatelessWidget {
   // 반환값: 상세조회 미확인 약의 수정·재조회 안내에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return MedBuddyNotice(
       key: const Key('medication-lookup-review-banner'),
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: MedBuddyColors.warningSurface,
-        border: Border.all(color: MedBuddyColors.warningBorder),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.info_outline_rounded,
-            color: MedBuddyColors.reminderAccent,
-            size: 21 * scale,
-          ),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Text(
-              message,
-              style: TextStyle(
-                color: MedBuddyColors.textStrong,
-                fontSize: 12 * scale,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0,
-              ),
-            ),
-          ),
-        ],
-      ),
+      message: message,
+      scale: scale,
     );
   }
 }

@@ -72,7 +72,7 @@ class PrescriptionAnalysisSuccessUI extends StatelessWidget {
                     padding: const EdgeInsets.fromLTRB(24, 34, 24, 32),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: MedBuddyRadii.card,
                       boxShadow: MedBuddyShadows.card,
                     ),
                     child: Column(
@@ -294,7 +294,7 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: MedBuddyRadii.card,
                   boxShadow: MedBuddyShadows.card,
                 ),
                 child: Column(
@@ -544,7 +544,7 @@ class _SuccessMetric extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 17),
       decoration: BoxDecoration(
         color: MedBuddyColors.successSurface,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: MedBuddyRadii.control,
       ),
       child: Column(
         children: [
@@ -606,7 +606,7 @@ class _FailureReasonPanel extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
       decoration: BoxDecoration(
         color: MedBuddyColors.dangerSurface,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: MedBuddyRadii.control,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

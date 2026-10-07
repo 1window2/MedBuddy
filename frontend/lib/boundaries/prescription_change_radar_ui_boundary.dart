@@ -49,7 +49,7 @@ class PrescriptionChangeRadarUI extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: MedBuddyRadii.largeCard,
-        border: Border.all(color: MedBuddyColors.successBorder, width: 2),
+        border: Border.all(color: MedBuddyColors.successBorder),
         boxShadow: MedBuddyShadows.card,
       ),
       child: Column(
@@ -219,7 +219,7 @@ class PrescriptionChangeRadarLoadingUI extends StatelessWidget {
       decoration: BoxDecoration(
         color: MedBuddyColors.successSurface,
         borderRadius: MedBuddyRadii.largeCard,
-        border: Border.all(color: MedBuddyColors.successBorder, width: 2),
+        border: Border.all(color: MedBuddyColors.successBorder),
       ),
       child: Row(
         children: [
@@ -288,7 +288,7 @@ class _RadarHeader extends StatelessWidget {
         color: MedBuddyColors.successSurface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
         border: Border(
-          bottom: BorderSide(color: MedBuddyColors.successBorder, width: 1.5),
+          bottom: BorderSide(color: MedBuddyColors.successBorder),
         ),
       ),
       child: Row(

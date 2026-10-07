@@ -1097,7 +1097,7 @@ class _HealthRecommendationFooter extends StatelessWidget {
           minimumSize: const Size.fromHeight(64),
           side: const BorderSide(color: MedBuddyColors.primary, width: 2),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: MedBuddyRadii.control,
           ),
           foregroundColor: MedBuddyColors.primaryDark,
           backgroundColor: Colors.white,
@@ -1201,7 +1201,7 @@ class _ScheduleHeader extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.12),
               border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: MedBuddyRadii.control,
             ),
             child: Column(
               children: [
@@ -1229,7 +1229,7 @@ class _ScheduleHeader extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: MedBuddyRadii.pill,
                   child: LinearProgressIndicator(
                     value: progress,
                     minHeight: 7,
@@ -1544,7 +1544,7 @@ class _TimeSlotCard extends StatelessWidget {
                     height: 38,
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.22),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: MedBuddyRadii.control,
                     ),
                     child: Icon(slot.icon, color: Colors.white, size: 23),
                   ),
@@ -1773,7 +1773,7 @@ class _MedicationScheduleRow extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: InkWell(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: MedBuddyRadii.small,
               onTap: isSelectionMode ? onSelectionRequested : onGuideRequested,
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
@@ -1864,7 +1864,7 @@ class _MedicationThumbnail extends StatelessWidget {
     return Tooltip(
       message: displayName,
       child: InkWell(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: MedBuddyRadii.control,
         onTap: hasNetworkImage
             // 함수이름: build.onTap callback
             // 함수역할: 약품 사진과 사진 부재·불러오기 실패 대체 표시에서 캡처된 작업 `MedicationImageViewer.show(context, medicationName: displayName, imageUrl: imageUrl, language: language)`을 실행한다.
@@ -1884,7 +1884,7 @@ class _MedicationThumbnail extends StatelessWidget {
           height: 54,
           decoration: BoxDecoration(
             color: MedBuddyColors.surfaceSubtle,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: MedBuddyRadii.control,
             border: Border.all(color: MedBuddyColors.outline),
           ),
           clipBehavior: Clip.antiAlias,

@@ -150,7 +150,7 @@ class _SetNotificationUIState extends State<SetNotificationUI> {
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: MedBuddyRadii.control,
             border: Border.all(color: MedBuddyColors.textBody, width: 1.6),
             boxShadow: MedBuddyShadows.card,
           ),
@@ -246,7 +246,7 @@ class _SetNotificationUIState extends State<SetNotificationUI> {
               margin: const EdgeInsets.symmetric(horizontal: 24),
               decoration: BoxDecoration(
                 color: MedBuddyColors.surfaceSubtle,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: MedBuddyRadii.control,
               ),
             ),
           ),
