@@ -38,11 +38,11 @@ class MedBuddyColors {
   static const Color dangerBorder = Color(0xFFF2C4C0);
   static const Color warningSurface = Color(0xFFFFF6E3);
   static const Color warningBorder = Color(0xFFEED39A);
-  // Each dose time keeps a distinct, AA-contrast identity for white labels.
-  static const Color slotMorning = Color(0xFF9A5B00);
+  // Dose times move from morning sky to night navy; each passes AA with white labels.
+  static const Color slotMorning = Color(0xFF2B6F8A);
   static const Color slotLunch = Color(0xFF0F7B6C);
-  static const Color slotEvening = Color(0xFF4C5FA8);
-  static const Color slotBedtime = Color(0xFF3E4C63);
+  static const Color slotEvening = Color(0xFF5A55A0);
+  static const Color slotBedtime = Color(0xFF33435C);
   static const Color lavenderSurface = Color(0xFFEEF0F8);
   static const Color butterSurface = Color(0xFFF8F0DC);
 }

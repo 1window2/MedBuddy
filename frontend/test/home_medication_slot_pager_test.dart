@@ -423,7 +423,7 @@ void main() {
                 .shape!
             as RoundedRectangleBorder;
     final detailsSize = tester.getSize(details);
-    expect(detailsShape.borderRadius, BorderRadius.circular(10));
+    expect(detailsShape.borderRadius, MedBuddyRadii.control);
 
     for (final slot in ['morning', 'evening', 'empty']) {
       await _show(
