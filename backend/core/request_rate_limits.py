@@ -240,10 +240,16 @@ class RequestRateLimitStore:
                 retry_after = rule.window_seconds - (
                     int(time.time()) % rule.window_seconds
                 )
+                # A later outage must be logged again after Redis has recovered.
+                self._redis_warning_logged = False
                 return count <= rule.max_requests, retry_after
             except Exception as exc:
                 self._redis_available = False
-                self._redis_retry_at = time.monotonic() + 30.0
+                # When Redis is required every request fails closed during the backoff, so a
+                # single dropped command must not turn into a half-minute outage.
+                self._redis_retry_at = time.monotonic() + (
+                    2.0 if self.require_redis else 30.0
+                )
                 if not self._redis_warning_logged:
                     logger.warning(
                         "Redis rate limiter unavailable: %s",

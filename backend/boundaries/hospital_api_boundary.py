@@ -233,7 +233,7 @@ class NationalEmergencyMedicalCenterHospitalAPI:
             raise HospitalApiResponseError("Hospital response contains unsupported XML.")
         try:
             root = ET.fromstring(payload)
-        except ET.ParseError:
+        except (ET.ParseError, ValueError, LookupError):
             raise HospitalApiResponseError("Invalid hospital response XML.") from None
         code = root.findtext(".//resultCode", "").strip()
         if root.find(".//cmmMsgHeader") is not None or code not in {"00", "0000", "03"}:

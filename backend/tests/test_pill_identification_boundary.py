@@ -340,7 +340,7 @@ def test_image_preprocessing_rejects_oversized_dimensions_before_decode(
     monkeypatch.setattr(
         boundary_module.Image,
         "open",
-        lambda _stream: _OversizedMetadata(),
+        lambda _stream, **_options: _OversizedMetadata(),
     )
 
     # Function Name: fail_decode
@@ -1271,6 +1271,44 @@ async def test_mfds_api_requires_every_advertised_raw_row() -> None:
 
     with pytest.raises(RuntimeError, match="incomplete"):
         await api.requestCatalogSnapshot()
+
+
+# Function Name: test_mfds_api_failure_does_not_expose_the_service_key
+# Description:
+# - Verifies that a provider HTTP failure is reported without the request URL, so the service
+#   key in the query string cannot reach a log or traceback through the chained cause.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_mfds_api_failure_does_not_expose_the_service_key() -> None:
+    import traceback
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="provider failure")
+
+    def client_factory(**kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            transport=httpx.MockTransport(handler),
+            timeout=kwargs["timeout"],
+            limits=kwargs["limits"],
+        )
+
+    api = MFDSPillAPI(
+        api_key="secret-service-key-value",
+        page_size=10,
+        minimum_catalog_rows=1,
+        client_factory=client_factory,
+    )
+
+    with pytest.raises(RuntimeError) as context:
+        await api.requestCatalogSnapshot()
+
+    rendered = "".join(traceback.format_exception(context.value))
+    assert "secret-service-key-value" not in rendered
+    assert "serviceKey" not in rendered
+    assert "500" in rendered
 
 
 # Function Name: test_mfds_api_rejects_oversized_chunked_page_response

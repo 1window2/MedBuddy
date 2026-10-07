@@ -139,7 +139,7 @@ class KoreanHolidayAPI:
             )
             response.raise_for_status()
             root = ElementTree.fromstring(response.content)
-        except (httpx.HTTPError, OSError, ElementTree.ParseError) as exc:
+        except (httpx.HTTPError, OSError, ElementTree.ParseError, ValueError, LookupError) as exc:
             logger.warning("Korean holiday lookup failed: %s", type(exc).__name__)
             raise PharmacyApiUnavailableError(
                 "The Korean holiday data service is temporarily unavailable."

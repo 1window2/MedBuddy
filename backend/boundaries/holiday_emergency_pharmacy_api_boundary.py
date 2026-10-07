@@ -148,7 +148,7 @@ class HolidayEmergencyPharmacyAPI:
             )
             response.raise_for_status()
             root = ElementTree.fromstring(response.content)
-        except (httpx.HTTPError, OSError, ElementTree.ParseError) as exc:
+        except (httpx.HTTPError, OSError, ElementTree.ParseError, ValueError, LookupError) as exc:
             logger.warning(
                 "Holiday emergency pharmacy lookup failed: %s",
                 type(exc).__name__,
@@ -158,7 +158,8 @@ class HolidayEmergencyPharmacyAPI:
             ) from exc
 
         result_code = (root.findtext(".//resultCode") or "").strip()
-        if result_code not in {"", "00", "0000"}:
+        # A gateway error envelope must not be stored as an empty holiday roster.
+        if root.find(".//cmmMsgHeader") is not None or result_code not in {"", "00", "0000"}:
             raise PharmacyApiUnavailableError(
                 "The NEMC holiday pharmacy roster rejected the request."
             )

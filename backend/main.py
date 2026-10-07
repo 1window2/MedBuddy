@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 
 from alembic.util.exc import CommandError
 from fastapi import FastAPI, HTTPException
+from google.auth.exceptions import GoogleAuthError
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 from sqlalchemy import text
@@ -66,6 +67,7 @@ from services.chat_connection_manager import ChatConnectionManager
 
 _READINESS_CACHE_TTL_SECONDS = 5.0
 _READINESS_EXCEPTIONS = (
+    GoogleAuthError,
     SQLAlchemyError,
     CommandError,
     RedisError,

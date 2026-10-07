@@ -262,13 +262,15 @@ class NationalEmergencyMedicalCenterPharmacyAPI:
     def _parse_records(cls, payload: bytes) -> list[PharmacyLocationRecord]:
         try:
             root = ElementTree.fromstring(payload)
-        except ElementTree.ParseError as exc:
+        except (ElementTree.ParseError, ValueError, LookupError) as exc:
             raise PharmacyApiResponseError(
                 "The pharmacy data service returned invalid XML."
             ) from exc
 
         result_code = cls._read_text(root.find(".//resultCode"))
-        if result_code not in {"", "00", "0000"}:
+        # A gateway error (quota, unapproved key) arrives as HTTP 200 with cmmMsgHeader and no
+        # result code; it must not be read as an empty successful result.
+        if root.find(".//cmmMsgHeader") is not None or result_code not in {"", "00", "0000"}:
             raise PharmacyApiUnavailableError(
                 "The pharmacy data service rejected the request."
             )
@@ -310,13 +312,13 @@ class NationalEmergencyMedicalCenterPharmacyAPI:
     ) -> tuple[list[PharmacyCatalogEntry], int]:
         try:
             root = ElementTree.fromstring(payload)
-        except ElementTree.ParseError as exc:
+        except (ElementTree.ParseError, ValueError, LookupError) as exc:
             raise PharmacyApiResponseError(
                 "The pharmacy catalogue service returned invalid XML."
             ) from exc
 
         result_code = cls._read_text(root.find(".//resultCode"))
-        if result_code not in {"", "00", "0000"}:
+        if root.find(".//cmmMsgHeader") is not None or result_code not in {"", "00", "0000"}:
             raise PharmacyApiUnavailableError(
                 "The pharmacy catalogue service rejected the request."
             )

@@ -209,7 +209,9 @@ class PillImageProcessingBoundary:
         if len(image) > MAX_PILL_IMAGE_BYTES:
             raise PillImageQualityError("The pill image must be 10 MB or smaller.")
         try:
-            with Image.open(BytesIO(image)) as source:
+            # Only the formats the app can upload are decoded; other decoders are not exercised
+            # with untrusted input.
+            with Image.open(BytesIO(image), formats=("JPEG", "PNG", "WEBP")) as source:
                 width, height = source.size
                 if min(height, width) < self._MIN_IMAGE_DIMENSION:
                     raise PillImageQualityError(
@@ -1741,7 +1743,13 @@ class MFDSPillAPI:
                 last_error = exc
                 if attempt == 0:
                     await asyncio.sleep(0.25)
-        raise RuntimeError("MFDS pill catalog page request failed.") from last_error
+        cause = last_error
+        if isinstance(cause, httpx.HTTPError):
+            # httpx error text carries the request URL with the service key; chain only the
+            # error type and status so the key cannot reach logs or tracebacks.
+            status = getattr(getattr(cause, "response", None), "status_code", "")
+            cause = RuntimeError(f"{type(cause).__name__} {status}".strip())
+        raise RuntimeError("MFDS pill catalog page request failed.") from cause
 
     # Function Name: _read_bounded_json
     # Description:

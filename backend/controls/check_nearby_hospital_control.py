@@ -84,10 +84,13 @@ class CheckNearbyHospital:
             raise ValueError("Unsupported hospital department code.")
         search_mode = HospitalSearchMode(search_mode)
         target = target_datetime or self._clock()
-        target = (
-            target.replace(tzinfo=self._timezone)
-            if target.tzinfo is None else target.astimezone(self._timezone)
-        )
+        try:
+            target = (
+                target.replace(tzinfo=self._timezone)
+                if target.tzinfo is None else target.astimezone(self._timezone)
+            )
+        except OverflowError:
+            raise ValueError("Invalid hospital search date.") from None
         if target.year <= 1 or target.year >= 9999:
             raise ValueError("Invalid hospital search date.")
         # 라우터의 전체 제한 전에 부분 결과를 반환할 시간을 남긴다.

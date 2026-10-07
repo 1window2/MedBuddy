@@ -93,6 +93,32 @@ def test_parse_records_rejects_public_api_error_header() -> None:
         NationalEmergencyMedicalCenterPharmacyAPI._parse_records(payload)
 
 
+# Function Name: test_gateway_error_envelope_is_not_an_empty_result
+# Description:
+# - Rejects the public-data gateway's HTTP 200 error envelope and an undecodable XML
+#   declaration instead of reading them as zero pharmacies or leaking a parser error.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+def test_gateway_error_envelope_is_not_an_empty_result() -> None:
+    envelope = (
+        b"<OpenAPI_ServiceResponse><cmmMsgHeader>"
+        b"<errMsg>SERVICE ERROR</errMsg>"
+        b"<returnAuthMsg>LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR</returnAuthMsg>"
+        b"<returnReasonCode>22</returnReasonCode>"
+        b"</cmmMsgHeader></OpenAPI_ServiceResponse>"
+    )
+    with pytest.raises(PharmacyApiUnavailableError):
+        NationalEmergencyMedicalCenterPharmacyAPI._parse_records(envelope)
+    with pytest.raises(PharmacyApiUnavailableError):
+        NationalEmergencyMedicalCenterPharmacyAPI._parse_catalog_page(envelope)
+
+    unknown_encoding = b"<?xml version='1.0' encoding='x-unknown-charset'?><response/>"
+    with pytest.raises(PharmacyApiResponseError):
+        NationalEmergencyMedicalCenterPharmacyAPI._parse_records(unknown_encoding)
+
+
 # 함수이름: test_parse_records_rejects_invalid_xml
 # 함수역할:
 # - 잘못된 XML을 약국 응답 형식 오류로 구분하는지 검증한다.

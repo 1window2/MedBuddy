@@ -532,11 +532,15 @@ class CheckNearbyPharmacy:
         current = self._now_provider().astimezone(timezone)
         if value is None:
             return current
-        normalized = (
-            value.replace(tzinfo=timezone)
-            if value.tzinfo is None
-            else value.astimezone(timezone)
-        )
+        try:
+            normalized = (
+                value.replace(tzinfo=timezone)
+                if value.tzinfo is None
+                else value.astimezone(timezone)
+            )
+        except OverflowError:
+            # A date at the edge of the calendar cannot be shifted into the application zone.
+            raise ValueError("Target date is out of range.") from None
         if normalized < current - timedelta(days=7):
             raise ValueError("Target date cannot be more than 7 days in the past.")
         if normalized > current + timedelta(days=366):
