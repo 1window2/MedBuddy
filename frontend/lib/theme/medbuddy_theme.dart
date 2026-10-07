@@ -224,10 +224,7 @@ class MedBuddyTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: MedBuddyRadii.control,
-          borderSide: const BorderSide(
-            color: MedBuddyColors.primary,
-            width: 2,
-          ),
+          borderSide: const BorderSide(color: MedBuddyColors.primary, width: 2),
         ),
       ),
       chipTheme: ChipThemeData(

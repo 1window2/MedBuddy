@@ -730,9 +730,7 @@ class _MedicationResultCard extends StatelessWidget {
             decoration: const BoxDecoration(
               color: MedBuddyColors.successSurface,
               borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
-              border: Border(
-                bottom: BorderSide(color: MedBuddyColors.mint),
-              ),
+              border: Border(bottom: BorderSide(color: MedBuddyColors.mint)),
             ),
             child: Row(
               children: [

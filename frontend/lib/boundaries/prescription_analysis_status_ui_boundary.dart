@@ -60,10 +60,9 @@ class PrescriptionAnalysisSuccessUI extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
               child: ConstrainedBox(
                 constraints: BoxConstraints(
-                  minHeight: (constraints.maxHeight - 48).clamp(
-                    0.0,
-                    double.infinity,
-                  ).toDouble(),
+                  minHeight: (constraints.maxHeight - 48)
+                      .clamp(0.0, double.infinity)
+                      .toDouble(),
                 ),
                 child: Center(
                   child: Container(

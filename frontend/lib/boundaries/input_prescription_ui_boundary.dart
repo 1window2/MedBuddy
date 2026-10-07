@@ -344,7 +344,9 @@ class InputPrescriptionUI extends StatelessWidget {
                                           : 14,
                                       // Reserve room for two-line titles and descriptions in narrow cards.
                                       childAspectRatio: useCompactDashboard
-                                          ? ((constraints.maxWidth - 10) / 2 / 144)
+                                          ? ((constraints.maxWidth - 10) /
+                                                    2 /
+                                                    144)
                                                 .clamp(1.0, 1.25)
                                           : 1,
                                       children: homeActions,

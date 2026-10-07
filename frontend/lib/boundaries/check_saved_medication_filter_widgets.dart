@@ -361,9 +361,7 @@ class _SavedMedicationFilteredEmptyState extends StatelessWidget {
             style: OutlinedButton.styleFrom(
               minimumSize: const Size.fromHeight(48),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              shape: RoundedRectangleBorder(
-                borderRadius: MedBuddyRadii.small,
-              ),
+              shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.small),
             ),
             child: Text(text.showAll, textAlign: TextAlign.center),
           ),

@@ -1084,9 +1084,7 @@ class _LinkActionButton extends StatelessWidget {
           foregroundColor: MedBuddyColors.textStrong,
           backgroundColor: Colors.white,
           side: const BorderSide(color: MedBuddyColors.outline, width: 1.5),
-          shape: RoundedRectangleBorder(
-            borderRadius: MedBuddyRadii.largeCard,
-          ),
+          shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.largeCard),
           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 10),
         ),
         child: Column(
