@@ -477,6 +477,34 @@ void main() {
 
   // 함수이름: 알림 선택 스타일 테스트
   // 함수역할: 공통 글꼴 굵기·자간과 선택 색상·개수 안내를 검증한다. 매개변수: tester. 반환값: 검증 완료.
+  // 함수이름: 보호자 미복용 알림 가리기 테스트
+  // 함수역할: 두 가지 보호자 알림 이동 경로 모두 유형만 표시 설정에서 제목과 내용을 가리는지 확인한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  test('type-only mode masks both caregiver payload formats', () async {
+    final control = ManageNotificationInbox(store: store);
+    addTearDown(control.dispose);
+    for (final payload in const ['caregiver:patient', 'caregiver-v1:%7B%7D']) {
+      final entry = NotificationInboxEntry(
+        id: payload,
+        title: '점심 복약 미확인',
+        body: '숨겨야 하는 환자 복약 내용',
+        payload: payload,
+        category: NotificationInboxCategory.medication,
+        occurredAt: now,
+      );
+      expect(
+        control.titleFor(entry, isEnglish: false, showSensitiveDetails: false),
+        '복약 상태 알림',
+      );
+      expect(
+        control.bodyFor(entry, isEnglish: false, showSensitiveDetails: false),
+        '연동된 환자의 복약 상태를 확인해 주세요.',
+      );
+      expect(control.titleFor(entry, isEnglish: false), '점심 복약 미확인');
+      expect(control.bodyFor(entry, isEnglish: false), '숨겨야 하는 환자 복약 내용');
+    }
+  });
+
   testWidgets('selection uses app typography and a clear selection count', (
     tester,
   ) async {

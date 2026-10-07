@@ -724,7 +724,10 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     required _SavedMedicationText text,
     required UserSetting userSetting,
   }) {
-    if (safeMedicationImageUrl(medication.imageUrl).isEmpty) {
+    final localImagePath = medication.localImagePath.trim();
+    final hasLocalImage =
+        localImagePath.isNotEmpty && File(localImagePath).existsSync();
+    if (!hasLocalImage && safeMedicationImageUrl(medication.imageUrl).isEmpty) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(text.noImage)));

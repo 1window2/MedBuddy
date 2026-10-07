@@ -261,6 +261,55 @@ void main() {
     expect(savedMedicationRequested, isTrue);
   });
 
+  // 함수이름: 개별 저장 완료 안내 테스트
+  // 함수역할:
+  // - 마지막 남은 약을 카드의 개별 저장 버튼으로 저장해도 전체 저장과 같은 완료 선택지가 열리는지 확인한다.
+  // 매개변수:
+  // - tester (WidgetTester): 위젯 렌더링과 사용자 입력을 수행하는 테스트 도구.
+  // 반환값:
+  // - Future<void>; 검증을 마치면 완료된다.
+  testWidgets('마지막 약을 개별 저장해도 저장 완료 선택지를 제공한다', (tester) async {
+    const analyzedMedication = AnalyzedMedication(
+      schedule: MedicationSchedule(
+        medicationName: '테스트정',
+        dosage: '1정',
+        intakeTime: '1일 1회',
+        medicationTime: 3,
+      ),
+      detail: MedicationDetail(
+        itemName: '테스트정',
+        efficacy: '',
+        usageMethod: '',
+        warning: '',
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CheckResultUI(
+          analyzedMedicationList: const [analyzedMedication],
+          userSetting: const UserSetting(),
+          statusMessageProvider: () => '',
+          savingMedicationIndex: null,
+          // 화면이 받은 완료 집합은 저장 전 사본이므로 방금 저장한 약이 들어 있지 않다.
+          completedMedicationSaveIndexes: const {},
+          isAllMedicationSaving: false,
+          onCloseRequested: () {},
+          onTodayScheduleRequested: () {},
+          onSavedMedicationRequested: () {},
+          onHomeRequested: () {},
+          onAllMedicationSaveRequested: () async => true,
+          onMedicationSaveRequested: (_, _) async => true,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byIcon(Icons.save_outlined));
+    await tester.pumpAndSettle();
+    expect(find.text('오늘 일정 확인'), findsOneWidget);
+    expect(find.text('저장된 정보 보기'), findsOneWidget);
+  });
+
   // 함수이름: test 콜백
   // 함수역할:
   // - 기대 동작: 복용 종료일과 현재 복용 여부를 조제일자와 투약일로 계산한다.

@@ -165,8 +165,12 @@ class CheckResultUI extends StatelessWidget {
                           if (!context.mounted) {
                             return;
                           }
+                          // 이 클로저의 완료 집합은 저장 전 사본이므로 방금 저장한 약을 더해 판단한다.
                           final allSaved =
-                              completedMedicationSaveIndexes.length >=
+                              {
+                                ...completedMedicationSaveIndexes,
+                                medicationIndex,
+                              }.length >=
                               analyzedMedicationList.length;
                           if (success && allSaved) {
                             await _showSaveCompletedSheet(context, text);

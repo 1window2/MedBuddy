@@ -111,7 +111,8 @@ class ManageNotificationInbox extends ChangeNotifier {
   // 매개변수: entry는 검사할 알림. 반환값: 보호자 복약 알림 여부.
   bool _isCaregiverEntry(NotificationInboxEntry entry) =>
       entry.category == NotificationInboxCategory.medication &&
-      entry.payload.startsWith('caregiver:');
+      (entry.payload.startsWith('caregiver:') ||
+          entry.payload.startsWith('caregiver-v1:'));
 
   // 함수이름: _onPeerNamesChanged
   // 함수역할: 별칭 변경·연동 해제를 기존 알림 제목에도 반영한다. 매개변수: 없음. 반환값: 없음.

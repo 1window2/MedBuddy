@@ -14,6 +14,7 @@ import 'nearby_care_options_sheet.dart';
 import '../controls/manage_linked_chat_control.dart';
 import '../entities/chat_message_entity.dart';
 import '../entities/chat_message_draft_entity.dart';
+import '../entities/medication_image_url_entity.dart';
 import '../entities/nearby_care_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/user_setting_entity.dart';
@@ -3035,13 +3036,15 @@ class _MedicationThumbnail extends StatelessWidget {
         size: size * 0.52,
       ),
     );
-    if (imageUrl.trim().isEmpty) {
+    // 다른 약 사진 화면과 같이 허용된 HTTPS 출처의 주소만 불러온다.
+    final safeImageUrl = safeMedicationImageUrl(imageUrl);
+    if (safeImageUrl.isEmpty) {
       return fallback;
     }
     return ClipRRect(
       borderRadius: MedBuddyRadii.control,
       child: Image.network(
-        imageUrl,
+        safeImageUrl,
         width: size,
         height: size,
         fit: BoxFit.contain,

@@ -20,7 +20,14 @@ class DoseOutboxStore {
   DoseOutboxStore(this.db, this.key);
 
   static Future<DoseOutboxStore>? _opening;
-  static Future<DoseOutboxStore> open() => _opening ??= _open();
+  static Future<DoseOutboxStore> open() => _opening ??= _open().catchError((
+    Object error,
+    StackTrace stackTrace,
+  ) {
+    // A transient storage failure must not block dose records until restart.
+    _opening = null;
+    Error.throwWithStackTrace(error, stackTrace);
+  });
 
   static Future<DoseOutboxStore> _open() async {
     const secure = FlutterSecureStorage();

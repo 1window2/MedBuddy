@@ -483,6 +483,30 @@ void main() {
     },
   );
 
+  // 함수이름: 저장소 열기 재시도 테스트
+  // 함수역할: 저장소를 한 번 열지 못해도 다음 요청에서 다시 열어 복용 기록을 받을 수 있는지 검증한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  test('a failed store open is retried on the next request', () async {
+    var attempts = 0;
+    final client = MockClient((_) async => http.Response('{}', 500));
+    addTearDown(client.close);
+    final sync = DoseSyncService(
+      owner: 'patient-a',
+      client: client,
+      openStore: () async {
+        if (attempts++ == 0) throw StateError('storage unavailable');
+        return store;
+      },
+      clock: () => now,
+    );
+    addTearDown(sync.dispose);
+    await expectLater(sync.initialize(), throwsStateError);
+    await sync.initialize();
+    expect(attempts, 2);
+    await sync.cacheSchedules([medication], scheduleDate: doseScheduleDay(now));
+    expect(sync.hasCache, isTrue);
+  });
+
   // 함수이름: 계정별 대기 기록 삭제 테스트
   // 함수역할: 한 계정의 기록을 지워도 다른 계정의 전송 대기 기록이 유지되는지 검증한다.
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.

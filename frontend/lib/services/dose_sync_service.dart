@@ -70,8 +70,12 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   List<MedicationSchedule> get schedules =>
       project(hasCache ? _confirmed : const []);
 
-  Future<void> initialize({bool activate = false}) =>
-      _initializing ??= _initialize(activate);
+  Future<void> initialize({bool activate = false}) => _initializing ??=
+      _initialize(activate).catchError((Object error, StackTrace stackTrace) {
+        // 일시적인 저장소 오류 뒤에도 다음 요청에서 다시 열 수 있게 한다.
+        _initializing = null;
+        Error.throwWithStackTrace(error, stackTrace);
+      });
 
   Future<void> _initialize(bool activate) async {
     _store = await openStore();

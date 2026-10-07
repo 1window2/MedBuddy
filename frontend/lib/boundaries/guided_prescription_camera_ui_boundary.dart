@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -371,6 +372,13 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
       );
       if (mounted) {
         Navigator.pop(context, croppedImage);
+      } else {
+        // 자르는 동안 화면을 떠났다면 결과를 받을 곳이 없으므로 처방전 사진을 남기지 않는다.
+        try {
+          await File(croppedImage.path).delete();
+        } catch (_) {
+          // 이미 지워졌거나 접근할 수 없는 임시 파일은 그대로 둔다.
+        }
       }
     } catch (_) {
       await _recoverFromCaptureFailure(controller);
