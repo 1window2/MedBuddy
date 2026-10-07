@@ -184,6 +184,60 @@ def test_route_rejects_a_previous_accounts_queued_request(fixture):
     assert db.query(_DoseSyncOperation).count() == 0
 
 
+# 함수이름: test_route_accepts_a_linked_dose_and_broadcasts_its_chat_receipt
+# 함수역할: 채팅 연동 복용 요청이 API에서 200으로 끝나고 저장된 복용 메시지를 실시간 연결에 한 번 전달하는지 검증한다.
+# 매개변수: 없음. 반환값: 없음; 불일치 시 단언 실패.
+def test_route_accepts_a_linked_dose_and_broadcasts_its_chat_receipt():
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from fastapi import BackgroundTasks
+    from sqlalchemy.pool import StaticPool
+    from api import chat_router
+    from api.router import sync_dose_operation
+    from controls.authorization_control import AuthorizationControl
+    from entities.authenticated_principal_entity import AuthenticatedPrincipal
+    from services.chat_connection_manager import ChatConnectionManager
+    # The route runs its database work on a worker thread, so share one connection.
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False},
+                           poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    try:
+        with Session(engine) as db:
+            db.add(_UserAccount(user_hash="offline-patient"))
+            db.add(_UserAccount(user_hash="other-patient"))
+            med = _SavedMedication(patient_hash="offline-patient", item_name="offline fixture",
+                created_date=application_today()-timedelta(days=3), total_days="30",
+                daily_frequency="1", dosage_per_time="1", schedule_slot_keys='["morning"]')
+            db.add(med)
+            db.commit()
+            links = LinkPatientCaregiver(db)
+            code = links.generatePatientHash("offline-patient")["data"]["patient_code"]
+            link_id = links.requestPatientCaregiverLink("other-patient", code)["data"]["id"]
+            manager = ChatConnectionManager()
+            manager.broadcast = AsyncMock()
+            request = SimpleNamespace(
+                app=SimpleNamespace(state=SimpleNamespace(chat_connection_manager=manager)),
+            )
+            with patch.object(chat_router, "_enforce_chat_daily_quota", AsyncMock()):
+                response = asyncio.run(sync_dose_operation(
+                    payload=operation(med.id, link_id=link_id), request=request,
+                    background_tasks=BackgroundTasks(), patient_hash=None,
+                    principal=AuthenticatedPrincipal(
+                        subject="patient", issuer="test", user_hash="offline-patient"),
+                    authorization=AuthorizationControl(db), check_schedule=CheckSchedule(db),
+                ))
+            assert response["success"] is True
+            assert response["operation_id"] == "offline_dose_0001"
+            assert response["data"][0]["slot_statuses"]["morning"] is True
+            manager.broadcast.assert_awaited_once()
+            assert manager.broadcast.await_args.kwargs["link_id"] == link_id
+            assert db.query(_ChatMessage).count() == 1
+            assert db.query(_DoseSyncOperation).count() == 1
+    finally:
+        engine.dispose()
+
+
 # 함수이름: test_migration_accepts_demo_metadata_initialization
 # 함수역할: 데모 초기화로 테이블이 이미 있는 DB에서도 마이그레이션을 반복 실행할 수 있는지 검증한다.
 # 매개변수: fixture: 테이블이 생성된 격리 DB와 약 식별자. 반환값: 없음; 실행 오류 시 실패.

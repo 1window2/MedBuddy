@@ -618,17 +618,24 @@ async def sync_dose_operation(
     if payload.link_id is not None:
         from api.chat_router import _enforce_chat_daily_quota
         await _enforce_chat_daily_quota(request=request, user_hash=owner)
-    events, chat_result = SyncDose(check_schedule.db).apply(owner, payload)
+    # Keep the single API process responsive while the receipt insert or the
+    # schedule read waits on the database, as the chat routes already do.
+    events, chat_result = await run_request_database_work(
+        SyncDose(check_schedule.db).apply, owner, payload,
+    )
     for event in events:
         background_tasks.add_task(_process_caregiver_completion_alert, int(event["outbox_id"]))
     if chat_result is not None:
         from api.chat_router import _publish_saved_message
-        await _publish_saved_message(payload.link_id, chat_result, request, background_tasks)
+        await _publish_saved_message(payload.link_id, chat_result, request)
+    schedule_response = await run_request_database_work(
+        check_schedule.requestTodayMedicationSchedule, owner,
+    )
     return {
         "success": True,
         "operation_id": payload.operation_id,
         "schedule_date": application_today().isoformat(),
-        "data": check_schedule.requestTodayMedicationSchedule(owner)["data"],
+        "data": schedule_response["data"],
     }
 
 
