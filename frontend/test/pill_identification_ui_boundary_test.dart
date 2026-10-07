@@ -1135,6 +1135,93 @@ void main() {
     expect(find.text('저장 2개, 기존 정보 0개, 실패 0개입니다.'), findsOneWidget);
   });
 
+  // 함수이름: 저장한 알약 재제출 방지 테스트
+  // 함수역할: 두 알약을 저장한 뒤 한 개를 더 추가해 확인하면 새 알약만 검토·저장 대상이 되는지 검증한다.
+  // 매개변수: tester: 위젯 렌더링과 사용자 입력을 수행하는 테스트 도구. 반환값: 비동기 검증 완료.
+  testWidgets('저장한 알약은 추가 알약을 확인할 때 다시 저장하지 않는다', (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final savedBatches = <List<IdentifiedPillSaveRequest>>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PillIdentificationUI(
+          userSetting: const UserSetting(language: 'ko'),
+          control: _MultipleIdentifyPill(),
+          onBatchSaveRequested: (requests) async {
+            savedBatches.add(requests);
+            return [
+              for (var index = 0; index < requests.length; index += 1)
+                const MedicationSaveResult(
+                  status: MedicationSaveStatus.saved,
+                  message: 'saved',
+                ),
+            ];
+          },
+        ),
+      ),
+    );
+
+    await _tapVisible(tester, find.byKey(const Key('pill-front-image-slot')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('카메라로 촬영'));
+    await tester.pumpAndSettle();
+    await _tapVisible(
+      tester,
+      find.byKey(const Key('add-pill-photo-set-button')),
+    );
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.byKey(const Key('pill-front-image-slot-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('카메라로 촬영'));
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.byKey(const Key('identify-pill-button')));
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.text('다중 알약 1'));
+    await _tapVisible(tester, find.text('다중 알약 2'));
+    await _tapVisible(
+      tester,
+      find.byKey(const Key('confirm-pill-candidate-button')),
+    );
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.byKey(const Key('schedule-review-confirm')));
+    await tester.pumpAndSettle();
+    expect(savedBatches.single, hasLength(2));
+    // 저장 결과 안내가 사라진 뒤 다음 알약을 추가한다.
+    ScaffoldMessenger.of(
+      tester.element(find.byType(PillIdentificationUI)),
+    ).hideCurrentSnackBar();
+    await tester.pumpAndSettle();
+
+    await _tapVisible(
+      tester,
+      find.byKey(const Key('add-pill-photo-set-button')),
+    );
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.byKey(const Key('pill-front-image-slot-2')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('카메라로 촬영'));
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.byKey(const Key('identify-pill-button')));
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.text('다중 알약 3'));
+    await _tapVisible(
+      tester,
+      find.byKey(const Key('confirm-pill-candidate-button')),
+    );
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.byKey(const Key('schedule-review-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(savedBatches, hasLength(2));
+    expect(
+      savedBatches.last.map((request) => request.candidate.itemSeq).toList(),
+      ['multi-pill-3'],
+    );
+  });
+
   // 함수이름: testWidgets 콜백
   // 함수역할:
   // - 기대 동작: 같은 품목 사진은 알리고 같은 일정만 선택적으로 묶는다.

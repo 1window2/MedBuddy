@@ -112,6 +112,9 @@ class _PillPhotoDraft {
   PillBoundingBox? sourceRegion;
   Uint8List? croppedFrontImage;
   int visibleCandidateCount = 5;
+  // 일정 검토에서 확인한 값과 저장 여부. 다시 확인할 때 입력을 되살리고 이미 저장한 약은 제외한다.
+  MedicationSchedule? reviewedSchedule;
+  bool isSaved = false;
 
   // 함수이름: hasFrontImage
   // 함수역할: 필수 앞면 사진 바이트가 있는지 확인한다.
@@ -137,6 +140,8 @@ class _PillPhotoDraft {
     selectedItemSeq = null;
     errorMessage = '';
     visibleCandidateCount = 5;
+    reviewedSchedule = null;
+    isSaved = false;
   }
 }
 
@@ -753,7 +758,9 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                     child: Text(
                       _isBatchSaved
                           ? text.savedComplete
-                          : text.confirmSelections(_drafts.length),
+                          : text.confirmSelections(
+                              _drafts.where((draft) => !draft.isSaved).length,
+                            ),
                       maxLines: 2,
                       textAlign: TextAlign.center,
                       overflow: TextOverflow.ellipsis,
@@ -1045,6 +1052,11 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                   // - 없음.
                   // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
                   ? () => setState(() {
+                      if (draft.selectedItemSeq != candidate.itemSeq) {
+                        // 다른 약을 고르면 이전 약의 검토값과 저장 표시는 더 이상 맞지 않는다.
+                        draft.reviewedSchedule = null;
+                        draft.isSaved = false;
+                      }
                       draft.selectedItemSeq = candidate.itemSeq;
                       _isBatchSaved = false;
                     })
@@ -1548,12 +1560,18 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   // - text (_PillIdentificationText): 해당 화면 구역의 언어별 표시 문구.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _confirmCandidates(_PillIdentificationText text) async {
+    final pendingDrafts = <_PillPhotoDraft>[];
     final candidates = <PillIdentificationCandidate>[];
     for (final draft in _drafts) {
       final candidate = _selectedCandidate(draft);
       if (candidate == null) {
         return;
       }
+      // 이미 저장한 약은 다시 검토하거나 저장하지 않는다.
+      if (draft.isSaved) {
+        continue;
+      }
+      pendingDrafts.add(draft);
       candidates.add(candidate);
     }
     if (candidates.isEmpty) {
@@ -1579,6 +1597,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     final onBatchSaveRequested = widget.onBatchSaveRequested;
     if (onSaveRequested != null || onBatchSaveRequested != null) {
       await _reviewAndSaveCandidates(
+        drafts: pendingDrafts,
         candidates: candidates,
         onSaveRequested: onSaveRequested,
         onBatchSaveRequested: onBatchSaveRequested,
@@ -1706,6 +1725,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   // 함수이름: _reviewAndSaveCandidates
   // 함수역할: 선택한 모든 후보에 안전한 임시 복약 기본값을 채워 한 화면에서 검토하게 한다. 확인된 일정들을 일괄 저장 콜백으로 전달하고 성공·중복·실패 건수를 안내한다.
   // 매개변수:
+  // - drafts (List<_PillPhotoDraft>): candidates와 같은 순서의 아직 저장하지 않은 사진 초안.
   // - candidates (List<PillIdentificationCandidate>): 선택·검토·저장할 식별 후보 약품 목록.
   // - onSaveRequested (IdentifiedPillSaveCallback?): 검증한 약품과 복약 정보를 저장할 콜백.
   // - onBatchSaveRequested (IdentifiedPillBatchSaveCallback?): 선택한 약품 또는 분석 결과를 일괄 저장할 콜백.
@@ -1713,6 +1733,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   // - text (_PillIdentificationText): 해당 화면 구역의 언어별 표시 문구.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _reviewAndSaveCandidates({
+    required List<_PillPhotoDraft> drafts,
     required List<PillIdentificationCandidate> candidates,
     required IdentifiedPillSaveCallback? onSaveRequested,
     required IdentifiedPillBatchSaveCallback? onBatchSaveRequested,
@@ -1722,18 +1743,20 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     final reviewedSchedules = await showMedicationScheduleReview(
       context: context,
       initialSchedules: [
-        for (final candidate in candidates)
-          MedicationSchedule(
-            medicationName: candidate.itemName,
-            prescriptionDate: DateTime.now(),
-            dosage: '1정',
-            intakeTime: '1회',
-            medicationTime: 1,
-            scheduleSlotKeys: const [defaultMedicationScheduleSlotKey],
-            imageUrl: candidate.imageUrl,
-            nameConfidence: candidate.matchScore,
-            nameCorrectionSource: 'pill_identification',
-          ),
+        for (var index = 0; index < candidates.length; index += 1)
+          // 저장에 실패해 다시 확인할 때는 앞서 검토한 값을 그대로 보여 준다.
+          drafts[index].reviewedSchedule ??
+              MedicationSchedule(
+                medicationName: candidates[index].itemName,
+                prescriptionDate: DateTime.now(),
+                dosage: '1정',
+                intakeTime: '1회',
+                medicationTime: 1,
+                scheduleSlotKeys: const [defaultMedicationScheduleSlotKey],
+                imageUrl: candidates[index].imageUrl,
+                nameConfidence: candidates[index].matchScore,
+                nameCorrectionSource: 'pill_identification',
+              ),
       ],
       userSetting: widget.userSetting,
       purpose: MedicationScheduleReviewPurpose.pillSave,
@@ -1744,6 +1767,9 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     if (reviewedSchedules.length != candidates.length) {
       _showSnackBar(text.medicationSaveFailed);
       return;
+    }
+    for (var index = 0; index < drafts.length; index += 1) {
+      drafts[index].reviewedSchedule = reviewedSchedules[index];
     }
 
     final reviewedRequests = [
@@ -1843,6 +1869,17 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
     // - 없음.
     // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
     setState(() {
+      if (failedCount == 0) {
+        for (final draft in drafts) {
+          draft.isSaved = true;
+        }
+      } else if (mergedCount == 0) {
+        // 병합 없이 저장했다면 결과 순서가 사진 순서와 같으므로 실패하지 않은 약만 저장됨으로 표시한다.
+        for (var index = 0; index < drafts.length; index += 1) {
+          drafts[index].isSaved =
+              normalizedResults[index].status != MedicationSaveStatus.failed;
+        }
+      }
       _isBatchSaved = failedCount == 0;
     });
 
