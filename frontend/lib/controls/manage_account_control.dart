@@ -71,8 +71,10 @@ class ManageAccount {
       for (final slot in const ['morning', 'lunch', 'evening', 'bedtime']) ...{
         'medbuddy_medication_reminder_patient_${normalizedUserHash}_$slot',
         'medbuddy_medication_reminder_patient_${normalizedUserHash}_${normalizedUserHash}_$slot',
+        'medbuddy_reminder_plan_${normalizedUserHash}_$slot',
       },
       'medbuddy.favorite_pharmacy_ids.$normalizedUserHash',
+      'medbuddy.favorite_hospital_ids.$normalizedUserHash',
       'caregiver_linked_patients.$normalizedUserHash',
     };
     // Only the namespace owner counts; a patient/message reference in another
@@ -82,6 +84,12 @@ class ManageAccount {
       'caregiver_alert.$normalizedUserHash.',
       'notification_inbox_v1.${Uri.encodeComponent(normalizedUserHash)}.',
     ];
+    // Delivery markers end in a 64-hex event ID; match the whole key so a
+    // hash that merely extends this one keeps its own markers.
+    final deliveryMarker = RegExp(
+      '^${RegExp.escape('caregiver_delivery_${normalizedUserHash}_')}'
+      r'[a-f0-9]{64}$',
+    );
     final userScopedKeys = preferences
         .getKeys()
         .where(
@@ -91,8 +99,11 @@ class ManageAccount {
          * - key (String): Persisted preference key.
          * Returns:
          * - Whether the key belongs to the account's cleanup set.
-         */ (key) =>
-              exactKeys.contains(key) || scopedPrefixes.any(key.startsWith),
+         */
+          (key) =>
+              exactKeys.contains(key) ||
+              scopedPrefixes.any(key.startsWith) ||
+              deliveryMarker.hasMatch(key),
         )
         .toList(growable: false);
     for (final key in userScopedKeys) {

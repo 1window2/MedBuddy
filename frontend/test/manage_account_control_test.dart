@@ -123,8 +123,11 @@ void main() {
     for (final slot in const ['morning', 'lunch', 'evening', 'bedtime']) ...{
       'medbuddy_medication_reminder_patient_${owner}_$slot': 'legacy',
       'medbuddy_medication_reminder_patient_${owner}_${owner}_$slot': 'current',
+      'medbuddy_reminder_plan_${owner}_$slot': '{}',
     },
     'medbuddy.favorite_pharmacy_ids.$owner': <String>['pharmacy-1'],
+    'medbuddy.favorite_hospital_ids.$owner': <String>['hospital-1'],
+    'caregiver_delivery_${owner}_${'a' * 64}': true,
     'caregiver_linked_patients.$owner': <String>['patient-1'],
     'caregiver_patient_label.$owner.patient-1': 'Family',
     'caregiver_alert.$owner.patient-1.morning.snapshot_data': '{}',

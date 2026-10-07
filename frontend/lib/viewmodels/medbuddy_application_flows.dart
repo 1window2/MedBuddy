@@ -89,8 +89,29 @@ extension MedBuddyApplicationFlows on MedBuddyViewModel {
   Future<void> requestAccountDataDeletion() async {
     await MedicationReminderBackgroundScheduler.cancel();
     await notificationService.cancelAllMedicationReminders();
-    await manageAccount.deleteAccountData();
+    try {
+      await manageAccount.deleteAccountData();
+    } catch (_) {
+      // The account still exists: restore the worker and reminders that were
+      // canceled above instead of leaving it without alarms until a restart.
+      unawaited(
+        MedicationReminderBackgroundScheduler.register(
+          patientHash,
+        ).catchError((Object _) {}),
+      );
+      unawaited(refreshMedicationSchedule().catchError((Object _) {}));
+      rethrow;
+    }
     await doseSync?.deleteAccountData();
+    try {
+      // On-device medication photos belong to the deleted account as well.
+      await manualMedicationImageStore.removeOrphanImages(
+        patientHash: patientHash,
+        activeMedicationIds: const {},
+      );
+    } catch (_) {
+      // A file-system failure must not block the remaining local cleanup.
+    }
     clearAnalysisResult();
     _savedMedications.clear();
     _schedules.clear();
