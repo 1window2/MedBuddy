@@ -943,9 +943,6 @@ class _TtsButton extends StatelessWidget {
       label: Text(isSpeaking ? text.stopReading : text.readAloud),
       style: FilledButton.styleFrom(
         minimumSize: const Size.fromHeight(60),
-        backgroundColor: MedBuddyColors.primary,
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.control),
         textStyle: const TextStyle(
           fontSize: 17,
           fontWeight: FontWeight.w700,

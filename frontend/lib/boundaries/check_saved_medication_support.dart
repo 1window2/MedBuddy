@@ -215,9 +215,6 @@ class _DeleteConfirmationDialog extends StatelessWidget {
                       minimumSize: const Size.fromHeight(56),
                       foregroundColor: MedBuddyColors.danger,
                       side: const BorderSide(color: MedBuddyColors.outline),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: MedBuddyRadii.control,
-                      ),
                       textStyle: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
@@ -240,9 +237,6 @@ class _DeleteConfirmationDialog extends StatelessWidget {
                       minimumSize: const Size.fromHeight(56),
                       foregroundColor: MedBuddyColors.textMuted,
                       side: const BorderSide(color: MedBuddyColors.outline),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: MedBuddyRadii.control,
-                      ),
                       textStyle: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,

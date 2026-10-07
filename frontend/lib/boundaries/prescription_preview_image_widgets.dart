@@ -775,9 +775,6 @@ class _AnalysisBottomBar extends StatelessWidget {
             child: FilledButton(
               key: const Key('prescription-analyze-button'),
               style: FilledButton.styleFrom(
-                backgroundColor: MedBuddyColors.primary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.card),
                 textStyle: TextStyle(
                   fontSize: 19 * scale,
                   fontWeight: FontWeight.w700,

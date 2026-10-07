@@ -2042,10 +2042,7 @@ class _SettingSaveFooter extends StatelessWidget {
           child: ExcludeSemantics(
             child: FilledButton(
               style: FilledButton.styleFrom(
-                backgroundColor: MedBuddyColors.primary,
-                foregroundColor: Colors.white,
                 disabledBackgroundColor: MedBuddyColors.primary.withAlpha(150),
-                shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.card),
                 textStyle: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,

@@ -166,14 +166,9 @@ class PrescriptionAnalysisSuccessUI extends StatelessWidget {
                               'prescription-analysis-result-button',
                             ),
                             style: FilledButton.styleFrom(
-                              backgroundColor: MedBuddyColors.primary,
-                              foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 20,
                                 vertical: 14,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: MedBuddyRadii.card,
                               ),
                               textStyle: TextStyle(
                                 fontSize: 18 * scale,
@@ -405,9 +400,6 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                           ),
                           foregroundColor: MedBuddyColors.textStrong,
                           side: const BorderSide(color: MedBuddyColors.outline),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: MedBuddyRadii.card,
-                          ),
                           textStyle: TextStyle(
                             fontSize: 17 * scale,
                             fontWeight: FontWeight.w700,
@@ -472,8 +464,6 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
           ? FilledButton(
               key: key,
               style: FilledButton.styleFrom(
-                backgroundColor: MedBuddyColors.primary,
-                foregroundColor: Colors.white,
                 shape: shape,
                 textStyle: textStyle,
                 padding: const EdgeInsets.symmetric(

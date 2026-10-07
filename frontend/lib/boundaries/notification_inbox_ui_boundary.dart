@@ -561,9 +561,6 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
                           fontWeight: FontWeight.w700,
                           letterSpacing: 0,
                         ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: MedBuddyRadii.pill,
-                        ),
                         minimumSize: const Size.fromHeight(56),
                         padding: const EdgeInsets.symmetric(
                           horizontal: 16,

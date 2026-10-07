@@ -607,7 +607,6 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
         style: FilledButton.styleFrom(
           minimumSize: const Size.fromHeight(56),
           backgroundColor: MedBuddyColors.primary,
-          shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.control),
         ),
         icon: _isSaving
             ? const SizedBox.square(
@@ -896,7 +895,6 @@ class _DateButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         foregroundColor: MedBuddyColors.textStrong,
         side: const BorderSide(color: MedBuddyColors.outline, width: 1.5),
-        shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.control),
       ),
       child: Column(
         children: [
