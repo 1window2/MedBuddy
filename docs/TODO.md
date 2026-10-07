@@ -1,81 +1,69 @@
 # MedBuddy Release TODO
 
-## v0.2.0 feature freeze and stabilization
+## v0.2.1 maintenance line
 
-As of October 5, finish the existing candidate without new features or implementation
-paths. Cleanup may reorganize existing responsibilities, remove proven dead code and
-reduce duplication, but must preserve behavior, API/storage contracts, dependencies
-and safety/release gates. Use bounded reviewed commits on `beta/v0.2.0`; no shared
-history rewrite or automatic merge/tag/publication. See the
-[candidate boundary and release gates](releases/v0.2.0-beta.md) and
-[latest refactoring evidence](qa/v0.2.0-architecture-gates.md).
+`v0.2.0-beta` was published on October 8 as a limited GitHub pre-release for
+direct-install testers; its notes are on the
+[releases page](https://github.com/1window2/MedBuddy/releases/tag/v0.2.0-beta).
+Work for 0.2.1 continues on `beta/v0.2.1` and is limited to corrections and
+small improvements. See the [v0.2.1 notes](releases/v0.2.1-beta.md).
 
-Code cleanup is not release acceptance. The owner-authorized signed candidate
-`866db67` was installed as a verified matching-signer update on the synthetic
-Android 12 phone on October 5. Startup and bounded physical checks are recorded
-in [the candidate evidence](qa/v0.2.0-map-direct-filter-device-validation.md#signed-candidate-update--2026-10-05).
-Full physical acceptance remains incomplete. Google Play enrollment remains
-deferred and two-device checks remain unperformed.
-On October 8 the owner chose to merge and publish `v0.2.0-beta` as a limited
-GitHub pre-release with those gates open; see
-[the decision](releases/v0.2.0-beta.md#limited-pre-release-decision--2026-10-08).
-Unimplemented enhancements below are explicitly outside this candidate.
+### Carried over from v0.2.0
 
-October 6 cleanup consolidates existing pill-upload transport and settings draft
-handling and removes a map callback wrapper; see [the cleanup evidence](qa/v0.2.0-architecture-gates.md#cleanup-evidence--2026-10-06).
-October 7 cleanup removes unreferenced frontend members and the test-only
-pre-Alembic schema patchers, shares the home choice-sheet widgets and tidies the
-visual tokens (AA brand green, distinct dose-time colors, flat headers); see
-[the latest evidence](qa/v0.2.0-architecture-gates.md#latest-cleanup-evidence--2026-10-07).
-Neither changes dependencies or public contracts. The signed build of `2d85e6e`
-replaced the phone's `866db67` build on October 7 with exact-source CI, preserved
-account data and a physical large-text pass; see
-[the signed update evidence](qa/v0.2.0-map-direct-filter-device-validation.md#signed-candidate-update--2026-10-07).
-A pre-merge audit then corrected reminder, account-deletion, chat dose-record
-and proxy-trust defects; the signed build of `e328bab` is the installed
-candidate. See [the audit record](qa/v0.2.0-architecture-gates.md#pre-merge-audit-and-corrections--2026-10-07).
-The backend corrections were deployed on October 7; see
-[the backend update](qa/v0.2.0-2026-09-30-production-rollout.md#backend-update--2026-10-07).
-A test medication then exercised the dose-time cards and whole-slot toggle.
-Caregiver screens were not exercised on the device because the test account
-has no linked caregiver.
+Physical acceptance that was not performed for v0.2.0:
 
-### Current stabilization acceptance follow-up
+- [ ] Two-device checks: caregiver linking, chat, push delivery and missed-dose
+      alerts between a patient and a caregiver phone.
+- [ ] A notification "taken" or snooze action from a cold start, and the first
+      launch after the application day changes. Both were corrected in v0.2.0
+      and are covered by automated tests only.
+- [ ] Prescription capture with the on-device privacy filter, and saving
+      several identified pills, on a physical device.
+- [ ] Devices other than Android 12, including Android 16 background work.
+- [ ] Native map-marker recovery after a partially failed marker addition.
 
-- [ ] Diagnose the observed notification unread-state difference across the
-      signed update: the baseline home badge showed four, while the candidate
-      showed none and retained four historical inbox rows. Do not equate preserved
-      rows with preserved read flags or infer data loss without reproduction.
-- [ ] Reproduce and diagnose the first health-recommendation request failure
-      observed in the [October 5 contributor emulator checks](qa/v0.2.0-2026-10-05-refactor-validation.md).
-      Later generation/cache/retry success does not establish the original cause
-      or close this finding. Preserve sanitized failure evidence before changing
-      existing behavior; do not add product functionality as part of this triage.
-- [ ] Physically confirm corrected native map-marker recovery after a partially
-      successful addition, failed call and then empty/changed results. The queue
-      now clears uncertain marker state before the next diff; synthetic platform
-      regressions cover empty/same results, failed clearing and controller
-      replacement. This is not yet physical-device acceptance.
+Defects and limits recorded during the v0.2.0 audits and not changed:
 
-Current implementation, verification evidence, and remaining work are summarized
-in [the September 21 architecture and roadmap review](qa/v0.2.0-2026-09-21-architecture-review.md).
-The subsequent offline-dose date-boundary correction and SDK/lockfile follow-up
-are recorded in [the September 22 review](qa/v0.2.0-2026-09-22-dose-midnight-review.md).
-The latest contributor work, Home guidance follow-up, and new pharmacy-cache
-migration prerequisite are summarized in
-[the September 25 follow-up](qa/v0.2.0-2026-09-25-contributor-followup.md).
-The migration data-preservation CI gate and rollout/rollback guidance are recorded
-in [the September 26 follow-up](qa/v0.2.0-2026-09-26-migration-release-gate.md).
-The event-loop blocking correction and exact-commit signing gate are recorded in
-[the P1 architecture follow-up](qa/v0.2.0-2026-09-26-p1-architecture-fixes.md).
-Ordinary chat push now has a transactional queue; migration and acceptance
-requirements are in [the durable delivery design](MedBuddy%20-%20Durable%20Chat%20Delivery.md).
-The September 30 production backup, isolated restore and migration rehearsal,
-deployment, and public ingress checks are recorded in
-[the rollout evidence](qa/v0.2.0-2026-09-30-production-rollout.md).
-Individual physical checks below remain open unless their exact scope has evidence;
-the September 13 slot-specific cancellation pass does not close global-toggle or
-account-cleanup acceptance.
+- [ ] Non-daily directions ("주 1회", "격일", "8시간마다") are stored as a daily
+      count, and week or month durations are read as days. Needs a product
+      decision.
+- [ ] A caregiver missed-dose deadline is accepted without comparing it with
+      the slot's reminder time; the dialog default (21:00) precedes the default
+      bedtime reminder (22:00).
+- [ ] The weekly catalog refresh sleeps a full interval after every container
+      start, so deployments spaced under a week postpone it indefinitely.
+- [ ] The strength guard reads one number from combination names
+      ("5/50밀리그램"), and an ambiguous name prefix can fall through to a vowel
+      variant; both can pre-fill a wrong suggestion on the review screen.
+- [ ] The chat socket is authenticated once and not re-validated when the
+      token expires; a binary frame raises an unhandled error.
+- [ ] Reminder reconciliation trusts the plugin's pending list after a
+      force-stop, a changed reminder time leaves old inbox entries, and a
+      course with unknown duration is scheduled one day at a time.
+- [ ] A transient failure while re-synchronizing the session after a token
+      refresh drops the signed-in session until it is restored.
+- [ ] "Use device language" is resolved once and does not follow a later
+      device change; caregivers using English see a Korean default patient
+      label.
+- [ ] The release gate does not compare the client's API contract default with
+      `backend/API_CONTRACT_VERSION`.
+- [ ] Tests do not cover weekly or interval frequencies, combination
+      strengths, fuzzy candidate recall on a realistic catalog, a PostgreSQL
+      run of the migrations, or route wiring for many endpoints.
+
+Unexplained observations from v0.2.0, analysed without a confirmed cause:
+
+- The home unread badge differed across one signed update on October 5. A
+  controlled check on October 7 showed that an in-place update preserves
+  unread state, so the update itself is not the cause.
+- The first health-recommendation request failed once on an emulator with a
+  local backend. The server makes a single generation attempt and maps any
+  failure to HTTP 500; production generation measured about two seconds.
+
+Firebase console items for the owner: one registered SHA-256 fingerprint that
+is not the release certificate could not be attributed, and the phone sign-in
+provider is enabled although the app and backend disable phone
+authentication.
 
 ## Hospital provider access: restored on October 1
 
@@ -85,7 +73,6 @@ confirmed an approved hospital-service development account, valid through
 October 1, 2028, with 1,000 calls per day per operation. Bounded browser requests
 using the portal credential returned `00 / NORMAL SERVICE` and nonempty results
 for location, hospital details, and specialty-filtered list operations.
-See [the provider approval evidence](qa/v0.2.0-2026-10-01-hospital-provider-approval.md).
 
 The deployed backend at `16191b2` now passes bounded location, detail and
 specialty-list checks with its existing `PUBLIC_DATA_API_KEY` fallback. No

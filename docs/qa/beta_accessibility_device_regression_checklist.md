@@ -13,7 +13,7 @@
 > Update (2026-10-06): The owner-authorized signed candidate `866db67` is now
 > installed on Samsung SM-N976N / Android 12 (API 31), using a synthetic profile.
 > Artifact checksum, installed bytes and matching signer were verified for the
-> replace-only update; see [the candidate record](v0.2.0-map-direct-filter-device-validation.md#signed-candidate-update--2026-10-05).
+> replace-only update.
 > Startup and bounded nearby-search checks do not complete the broad checklist
 > items below, which remain unchecked. The notification unread-state difference
 > needs diagnosis. API 34+, two-device and Play/App Check acceptance remain open.

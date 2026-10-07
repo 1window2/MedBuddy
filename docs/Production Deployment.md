@@ -90,9 +90,7 @@ parser using its existing shared key. Its search control and calendar dependency
 also passed one-result specialty and open-at-time searches. No secret replacement,
 application deployment or restart was needed. This closes the upstream
 credential/parser blocker; authenticated client acceptance and outage/quota
-checks remain open. See [the provider follow-up](qa/v0.2.0-2026-10-01-hospital-provider-approval.md)
-and remaining gates in [the release TODO](TODO.md).
-See [the production rollout evidence](qa/v0.2.0-2026-09-30-production-rollout.md).
+checks remain open. See the remaining gates in [the release TODO](TODO.md).
 
 ## Local Production Configuration
 
@@ -234,7 +232,7 @@ Owner prerequisites, to configure when enrollment resumes:
   and [App Check IAM reference](https://docs.cloud.google.com/iam/docs/roles-permissions/firebaseappcheck).
 - Configure Workload Identity Federation for the exact repository identity,
   `beta-android` environment and `release-android.yml` workflow, restricted to
-  `main` and `beta/v0.2.0` refs. Grant the scoped federated principal
+  `main` and `beta/v0.2.1` refs. Grant the scoped federated principal
   `roles/iam.workloadIdentityUser` on that service account, not a general
   repository-wide deployment grant. Set protected variables
   `GCP_APP_CHECK_WORKLOAD_IDENTITY_PROVIDER` and `GCP_APP_CHECK_SERVICE_ACCOUNT`.

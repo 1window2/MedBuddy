@@ -35,7 +35,7 @@ record.
 - The production app now persists chat intake and schedule completion/undo in an
   encrypted device outbox. Stable operation IDs survive chat dismissal and app
   restart. Receipts do not reapply later-undone doses; pending status is distinct
-  from server-confirmed state. See the [offline recovery contract](qa/v0.2.0-reboot-offline-recovery.md).
+  from server-confirmed state.
 - Full-slot transitions reuse the existing caregiver outbox. The initiating
   conversation does not receive a second automatic full-slot message; other
   linked caregivers retain their existing notification flow.
@@ -50,7 +50,7 @@ record.
   작은 높이에서도 날짜, 시간대 이동, 저장 상태와 핵심 버튼을 유지하며 복용 권한은 바꾸지 않는다.
   Android 15 Pixel 8의 4열 5행 환경에서 3 x 5로 늘어나는 현상을 재현하고 새 배치의
   4 x 3 표시를 확인했다. 기존 위젯의 저장된 크기가 자동으로 바뀌거나 모든 런처에서
-  같은 칸 수가 된다는 보장은 아니다. [크기 검증 기록](qa/v0.2.0-2026-09-23-widget-sizing.md)을 참고한다.
+  같은 칸 수가 된다는 보장은 아니다.
 - 연결된 환자가 여러 명이면 앱 홈은 별칭 양옆 화살표로 한 명씩 전환한다.
   홈 미리보기의 슬라이드는 아침·점심·저녁·취침 전 요약만 바꾼다.
   위젯은 상단 환자 별칭 옆 화살표로 환자를 전환하고,

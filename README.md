@@ -30,7 +30,6 @@
 
 - Compare front and optional reverse-side photos against the MFDS pill-identification catalog using visible attributes and deterministic ranking.
 - Treat results as candidates requiring explicit user confirmation, with guidance to verify packaging or consult a pharmacist.
-- See [`docs/MedBuddy - v0.0.9 Pill Identification Extension.md`](docs/MedBuddy%20-%20v0.0.9%20Pill%20Identification%20Extension.md) for the detailed pipeline.
 
 ### Direct Medication Entry
 
@@ -79,7 +78,7 @@
 
 ## Roadmap
 
-1. **v0.2.0 beta verification:** Finish physical reboot/offline recovery, two-device caregiver/chat checks, and measured prescription/pill recognition validation. Direct entry, multi-pill review, pharmacy navigation, and chat are implemented; see the [current roadmap assessment](docs/qa/v0.2.0-2026-09-21-architecture-review.md) for evidence and remaining gates.
+1. **v0.2.0 beta verification:** Finish physical reboot/offline recovery, two-device caregiver/chat checks, and measured prescription/pill recognition validation. Direct entry, multi-pill review, pharmacy navigation, and chat are implemented; see the [release TODO](docs/TODO.md) for the remaining gates.
 2. **Android production verification:** Validate the dedicated
    FastAPI/PostgreSQL/Redis production host behind Cloudflare Tunnel, complete
    backup and restore rehearsal, and finish authenticated two-device, Wi-Fi,

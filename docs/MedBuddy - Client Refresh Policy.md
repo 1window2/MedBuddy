@@ -117,7 +117,4 @@ successful updates remain incremental; no automatic network retry is introduced.
 없다. 기존 API는 유지하지만 새 앱을 이전 백엔드에 연결하면 보호자 홈 조회가
 실패하므로 백엔드를 먼저 갱신한다.
 
-[기능 상태 소유권](MedBuddy%20-%20Frontend%20Feature%20State.md)과
-[검증 기록](qa/v0.2.0-2026-09-28-client-refresh.md)을 함께 참고한다.
-DB 연결·일괄 조회·입력 행·마커 갱신의 후속 검증은
-[2026-10-05 검증 기록](qa/v0.2.0-2026-10-05-refactor-validation.md)에 정리한다.
+[기능 상태 소유권](MedBuddy%20-%20Frontend%20Feature%20State.md)을 함께 참고한다.

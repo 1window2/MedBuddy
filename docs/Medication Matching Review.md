@@ -70,4 +70,3 @@ OCR 오타를 찾는 유사 검색은 유지하되 이름이 비슷하다는 이
 - [자연어 UC-02](UML/usecase/UseCaseDescription.md)
 - [처방 분석 클래스](UML/class/02_PrescriptionAnalysis.puml)
 - [전체 시퀀스](UML/sequence/OverallSystemSequenceDiagram.puml)
-- [2026-10-02 검증 기록](qa/v0.2.0-2026-10-02-medication-matching-widget.md)
