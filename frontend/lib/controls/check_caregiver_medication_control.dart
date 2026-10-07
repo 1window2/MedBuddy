@@ -12,6 +12,7 @@ import '../entities/patient_caregiver_link_entity.dart';
 import '../services/api_config.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
+import '../entities/json_value_reader.dart';
 
 // Function Name: CaregiverMedicationInfo
 // Description: Bundles a caregiver and patient scope with saved medication details and today's schedule list as one read-only response record.
@@ -219,10 +220,10 @@ class CheckCaregiverMedication {
           ? todayMedicationInfo['schedules']
           : todayMedicationInfo;
       return (
-        caregiverHash: _readString(
+        caregiverHash: readJsonText(
           data['caregiver_hash'] ?? data['guardian_hash'],
         ),
-        patientHash: _readString(data['patient_hash']),
+        patientHash: readJsonText(data['patient_hash']),
         savedMedications: _readSavedMedications(data['saved_medications']),
         todayMedicationScheduleList: MedicationSchedule.fromScheduleJsonList(
           rawTodaySchedules,
@@ -263,16 +264,6 @@ class CheckCaregiverMedication {
           (item) => MedicationDetail.fromJson(Map<String, dynamic>.from(item)),
         )
         .toList(growable: false);
-  }
-
-  // Function Name: _readString
-  // Description: Converts a nullable API field into trimmed text, using an empty string for null.
-  // Parameters:
-  // - value (dynamic): Raw response field to decode into the documented return type.
-  // Returns:
-  // - String: trimmed field text, or an empty string for null.
-  static String _readString(dynamic value) {
-    return value?.toString().trim() ?? '';
   }
 
   // Function Name: dispose

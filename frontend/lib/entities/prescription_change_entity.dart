@@ -1,6 +1,8 @@
 // 파일명: prescription_change_entity.dart
 // 역할: 이전 처방과 현재 처방의 비교 결과를 표현한다.
 
+import 'json_value_reader.dart';
+
 // 클래스명: PrescriptionChangeType
 // 역할: 약 추가·미확인·일정 변경·알 수 없음 유형을 구분한다.
 // 주요 책임:
@@ -48,9 +50,9 @@ class PrescriptionScheduleSnapshot {
   // - 변환된 PrescriptionScheduleSnapshot
   factory PrescriptionScheduleSnapshot.fromJson(Map<String, dynamic> json) {
     return PrescriptionScheduleSnapshot(
-      dosagePerTime: _readString(json['dosage_per_time']),
-      dailyFrequency: _readString(json['daily_frequency']),
-      totalDays: _readString(json['total_days']),
+      dosagePerTime: readJsonText(json['dosage_per_time']),
+      dailyFrequency: readJsonText(json['daily_frequency']),
+      totalDays: readJsonText(json['total_days']),
     );
   }
 
@@ -114,7 +116,7 @@ class PrescriptionMedicationChange {
   factory PrescriptionMedicationChange.fromJson(Map<String, dynamic> json) {
     return PrescriptionMedicationChange(
       type: _readChangeType(json['change_type']),
-      itemName: _readString(json['item_name']),
+      itemName: readJsonText(json['item_name']),
       changedFields: _readStringList(json['changed_fields']),
       previous: _readSnapshot(json['previous']),
       current: _readSnapshot(json['current']),
@@ -247,7 +249,7 @@ class PrescriptionChangeRadar {
           ? 90
           : _readInt(json['comparison_window_days']),
       similarityScore: _readDouble(json['similarity_score']),
-      matchBasis: _readString(json['match_basis']),
+      matchBasis: readJsonText(json['match_basis']),
       previousPrescriptionDate: _readDate(json['previous_prescription_date']),
       currentPrescriptionDate: _readDate(json['current_prescription_date']),
       summary: rawSummary is Map
@@ -294,7 +296,7 @@ PrescriptionComparisonStatus _readComparisonStatus(
   dynamic value, {
   required bool hasPreviousPrescription,
 }) {
-  return switch (_readString(value)) {
+  return switch (readJsonText(value)) {
     'comparable' => PrescriptionComparisonStatus.comparable,
     'expired' => PrescriptionComparisonStatus.expired,
     'unrelated' => PrescriptionComparisonStatus.unrelated,
@@ -313,7 +315,7 @@ PrescriptionComparisonStatus _readComparisonStatus(
 // 반환값:
 // - 화면에서 사용할 PrescriptionChangeType
 PrescriptionChangeType _readChangeType(dynamic value) {
-  return switch (_readString(value)) {
+  return switch (readJsonText(value)) {
     'added' => PrescriptionChangeType.added,
     'missing' => PrescriptionChangeType.missing,
     'schedule_changed' => PrescriptionChangeType.scheduleChanged,
@@ -347,7 +349,7 @@ List<String> _readStringList(dynamic value) {
     return const [];
   }
   return value
-      .map(_readString)
+      .map(readJsonText)
       .where(/* 함수이름: where 콜백
        * 함수역할: 공백 정리 후 내용이 남은 변경 설명만 유지한다.
        * 매개변수:
@@ -357,14 +359,6 @@ List<String> _readStringList(dynamic value) {
        */(item) => item.isNotEmpty)
       .toList(growable: false);
 }
-
-// 함수이름: _readString
-// 함수역할: 선택적 JSON 값을 앞뒤 공백이 제거된 문자열로 변환한다.
-// 매개변수:
-// - value (dynamic): 문자열로 변환할 값
-// 반환값:
-// - 정리된 문자열 또는 값이 없으면 빈 문자열
-String _readString(dynamic value) => value?.toString().trim() ?? '';
 
 // 함수이름: _readInt
 // 함수역할: 선택적 JSON 값을 정수로 변환한다.
@@ -376,7 +370,7 @@ int _readInt(dynamic value) {
   if (value is int) {
     return value;
   }
-  return int.tryParse(_readString(value)) ?? 0;
+  return int.tryParse(readJsonText(value)) ?? 0;
 }
 
 // 함수이름: _readDouble
@@ -389,7 +383,7 @@ double? _readDouble(dynamic value) {
   if (value is num) {
     return value.toDouble();
   }
-  return double.tryParse(_readString(value));
+  return double.tryParse(readJsonText(value));
 }
 
 // 함수이름: _readDate
@@ -399,6 +393,6 @@ double? _readDouble(dynamic value) {
 // 반환값:
 // - 변환된 DateTime 또는 값이 올바르지 않으면 null
 DateTime? _readDate(dynamic value) {
-  final text = _readString(value);
+  final text = readJsonText(value);
   return text.isEmpty ? null : DateTime.tryParse(text);
 }

@@ -1,6 +1,8 @@
 // File Name: patient_caregiver_link_entity.dart
 // Role: Defines expiring patient link codes and immutable patient-caregiver relationships.
 
+import 'json_value_reader.dart';
+
 // Class Name: PatientLinkCode
 // Role: Holds a temporary patient registration code and its expiry.
 // Responsibilities:
@@ -35,12 +37,12 @@ class PatientLinkCode {
   // Returns:
   // - PatientLinkCode: the decoded record after field validation and default handling.
   factory PatientLinkCode.fromJson(Map<String, dynamic> json) {
-    final code = _readString(json['patient_code'] ?? json['code']);
-    final patientHash = _readString(
+    final code = readJsonText(json['patient_code'] ?? json['code']);
+    final patientHash = readJsonText(
       json['patient_hash'] ?? json['patientHash'],
     );
     final expiresAt = DateTime.tryParse(
-      _readString(json['expires_at'] ?? json['expiresAt']),
+      readJsonText(json['expires_at'] ?? json['expiresAt']),
     );
     if (code.isEmpty || patientHash.isEmpty || expiresAt == null) {
       throw const FormatException(
@@ -75,15 +77,6 @@ class PatientLinkCode {
     return duration.isNegative ? Duration.zero : duration;
   }
 
-  // Function Name: _readString
-  // Description: Converts a nullable field to trimmed text, representing a missing value as an empty string.
-  // Parameters:
-  // - value (dynamic): Raw response field to decode into the documented return type.
-  // Returns:
-  // - String: trimmed field text, or an empty string for null.
-  static String _readString(dynamic value) {
-    return value?.toString().trim() ?? '';
-  }
 }
 
 // 클래스명: PatientCaregiverLink
@@ -144,15 +137,15 @@ class PatientCaregiverLink {
   // - PatientCaregiverLink 인스턴스
   factory PatientCaregiverLink.fromJson(Map<String, dynamic> json) {
     return PatientCaregiverLink(
-      linkId: _readInt(json['link_id'] ?? json['id'] ?? json['linkID']),
-      patientId: _readString(json['patient_id'] ?? json['patientID']),
-      caregiverId: _readString(
+      linkId: readJsonInt(json['link_id'] ?? json['id'] ?? json['linkID']),
+      patientId: readJsonText(json['patient_id'] ?? json['patientID']),
+      caregiverId: readJsonText(
         json['caregiver_id'] ?? json['caregiverID'] ?? json['guardian_id'],
       ),
-      patientHash: _readString(
+      patientHash: readJsonText(
         json['patient_hash'] ?? json['patient_id'] ?? json['patientID'],
       ),
-      caregiverHash: _readString(
+      caregiverHash: readJsonText(
         json['caregiver_hash'] ??
             json['caregiver_id'] ??
             json['caregiverID'] ??
@@ -167,7 +160,7 @@ class PatientCaregiverLink {
                   : json['caregiverAlias'])
               ?.toString()
               .trim(),
-      linkStatus: _readBool(
+      linkStatus: readJsonBool(
         json['link_status'] ?? json['linkStatus'] ?? json['linked'],
       ),
       linkedAt: _readDate(
@@ -267,19 +260,6 @@ class PatientCaregiverLink {
     );
   }
 
-  // Function Name: _readString
-  // Description: Converts a nullable field to trimmed text, representing a missing value as an empty string.
-  // Parameters:
-  // - value (dynamic): Raw response field to decode into the documented return type.
-  // Returns:
-  // - String: trimmed field text, or an empty string for null.
-  static String _readString(dynamic value) {
-    if (value == null) {
-      return '';
-    }
-    return value.toString().trim();
-  }
-
   // 함수이름: _readPatientAlias
   // 함수역할: 서버에 아직 별칭이 없는 NULL과 사용자가 지운 빈 문자열을 구분한다. 과거 서버가 별칭 필드를 생략한 응답도 NULL로 처리한다.
   // 매개변수:
@@ -293,39 +273,9 @@ class PatientCaregiverLink {
         continue;
       }
       final rawAlias = json[key];
-      return rawAlias == null ? null : _readString(rawAlias);
+      return rawAlias == null ? null : readJsonText(rawAlias);
     }
     return null;
-  }
-
-  // Function Name: _readInt
-  // Description: Reads an integer or numeric string, and uses null when parsing fails.
-  // Parameters:
-  // - value (dynamic): Raw response field to decode into the documented return type.
-  // Returns:
-  // - int?: Reads an integer or numeric string, and uses null when parsing fails.
-  static int? _readInt(dynamic value) {
-    if (value is int) {
-      return value;
-    }
-    return int.tryParse(_readString(value));
-  }
-
-  // Function Name: _readBool
-  // Description: Preserves booleans, treats nonzero numbers as true, and accepts true, 1, or yes text as enabled.
-  // Parameters:
-  // - value (dynamic): Raw response field to decode into the documented return type.
-  // Returns:
-  // - bool: Preserves booleans, treats nonzero numbers as true, and accepts true, 1, or yes text as enabled.
-  static bool _readBool(dynamic value) {
-    if (value is bool) {
-      return value;
-    }
-    if (value is num) {
-      return value != 0;
-    }
-    final text = _readString(value).toLowerCase();
-    return text == 'true' || text == '1' || text == 'yes';
   }
 
   // Function Name: _readDate
@@ -335,7 +285,7 @@ class PatientCaregiverLink {
   // Returns:
   // - DateTime?: Parses nonempty date text and returns null for absent or malformed dates.
   static DateTime? _readDate(dynamic value) {
-    final text = _readString(value);
+    final text = readJsonText(value);
     if (text.isEmpty) {
       return null;
     }

@@ -1,6 +1,8 @@
 // 파일명: chat_message_entity.dart
 // 역할: 환자·보호자 채팅 메시지와 읽음 상태를 표현한다.
 
+import 'json_value_reader.dart';
+
 // 클래스명: ChatMessageKind
 // 역할: 일반 대화와 복약·약국 맥락 메시지의 유형을 구분한다.
 // 주요 책임:
@@ -114,16 +116,16 @@ class ChatMedicationContext {
   // 반환값:
   // - ChatMedicationContext: 필드 검증과 기본값 처리를 거쳐 복원한 레코드.
   factory ChatMedicationContext.fromJson(Map<String, dynamic> json) {
-    final medicationId = ChatMessage._readInt(json['medication_id']);
-    final medicationName = ChatMessage._readString(json['medication_name']);
+    final medicationId = ChatMessage.readJsonInt(json['medication_id']);
+    final medicationName = ChatMessage.readJsonText(json['medication_name']);
     if (medicationId == null || medicationName.isEmpty) {
       throw const FormatException('채팅 약 정보에 필수 값이 없습니다.');
     }
     return ChatMedicationContext(
       medicationId: medicationId,
       medicationName: medicationName,
-      imageUrl: ChatMessage._readString(json['image_url']),
-      dosagePerTime: ChatMessage._readString(json['dosage_per_time']),
+      imageUrl: ChatMessage.readJsonText(json['image_url']),
+      dosagePerTime: ChatMessage.readJsonText(json['dosage_per_time']),
       scheduleSlotKeys: _readScheduleSlotKeys(json['schedule_slot_keys']),
     );
   }
@@ -208,19 +210,19 @@ class ChatScheduleContext {
   // 반환값:
   // - ChatScheduleContext: 필드 검증과 기본값 처리를 거쳐 복원한 레코드.
   factory ChatScheduleContext.fromJson(Map<String, dynamic> json) {
-    final slotKey = ChatMessage._readString(json['slot_key']).toLowerCase();
+    final slotKey = ChatMessage.readJsonText(json['slot_key']).toLowerCase();
     const supportedKeys = {'morning', 'lunch', 'evening', 'bedtime'};
     if (!supportedKeys.contains(slotKey)) {
       throw const FormatException('채팅 복약 시간대 정보가 올바르지 않습니다.');
     }
     final rawMedications = json['medications'];
     return ChatScheduleContext(
-      scheduleDate: ChatMessage._readString(json['schedule_date']),
+      scheduleDate: ChatMessage.readJsonText(json['schedule_date']),
       slotKey: slotKey,
-      alarmTime: ChatMessage._readString(json['alarm_time']),
+      alarmTime: ChatMessage.readJsonText(json['alarm_time']),
       alarmEnabled: json['alarm_enabled'] == true,
-      completedCount: ChatMessage._readInt(json['completed_count']) ?? 0,
-      totalCount: ChatMessage._readInt(json['total_count']) ?? 0,
+      completedCount: ChatMessage.readJsonInt(json['completed_count']) ?? 0,
+      totalCount: ChatMessage.readJsonInt(json['total_count']) ?? 0,
       canRequestCheck: json['can_request_check'] == true,
       medications: rawMedications is List
           ? rawMedications
@@ -310,21 +312,21 @@ class ChatPharmacyContext extends ChatPlaceContext {
   // 반환값:
   // - ChatPharmacyContext: 필드 검증과 기본값 처리를 거쳐 복원한 레코드.
   factory ChatPharmacyContext.fromJson(Map<String, dynamic> json) {
-    final pharmacyId = ChatMessage._readString(json['pharmacy_id']);
-    final name = ChatMessage._readString(json['name']);
+    final pharmacyId = ChatMessage.readJsonText(json['pharmacy_id']);
+    final name = ChatMessage.readJsonText(json['name']);
     if (pharmacyId.isEmpty || name.isEmpty) {
       throw const FormatException('채팅 약국 정보에 필수 값이 없습니다.');
     }
     return ChatPharmacyContext(
       pharmacyId: pharmacyId,
       name: name,
-      address: ChatMessage._readString(json['address']),
-      telephone: ChatMessage._readString(json['telephone']),
-      todayHours: ChatMessage._readString(json['today_hours']),
+      address: ChatMessage.readJsonText(json['address']),
+      telephone: ChatMessage.readJsonText(json['telephone']),
+      todayHours: ChatMessage.readJsonText(json['today_hours']),
       latitude: ChatMessage._readDouble(json['latitude']),
       longitude: ChatMessage._readDouble(json['longitude']),
       sourceUpdatedAt: DateTime.tryParse(
-        ChatMessage._readString(json['source_updated_at']),
+        ChatMessage.readJsonText(json['source_updated_at']),
       ),
     );
   }
@@ -355,7 +357,7 @@ class ChatHospitalContext extends ChatPlaceContext {
       'pharmacy_id': json['hospital_id'],
     });
     final date = DateTime.tryParse(
-      ChatMessage._readString(json['schedule_date']),
+      ChatMessage.readJsonText(json['schedule_date']),
     );
     if (date == null) throw const FormatException('병원 조회 날짜가 없습니다.');
     return ChatHospitalContext(
@@ -473,12 +475,12 @@ class ChatMessage {
   // 반환값:
   // - ChatMessage: 필드 검증과 기본값 처리를 거쳐 복원한 레코드.
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
-    final messageId = _readInt(json['message_id']);
-    final linkId = _readInt(json['link_id']);
-    final senderHash = _readString(json['sender_hash']);
-    final clientMessageId = _readString(json['client_message_id']);
-    final body = _readString(json['body']);
-    final createdAt = DateTime.tryParse(_readString(json['created_at']));
+    final messageId = readJsonInt(json['message_id']);
+    final linkId = readJsonInt(json['link_id']);
+    final senderHash = readJsonText(json['sender_hash']);
+    final clientMessageId = readJsonText(json['client_message_id']);
+    final body = readJsonText(json['body']);
+    final createdAt = DateTime.tryParse(readJsonText(json['created_at']));
     if (messageId == null ||
         linkId == null ||
         senderHash.isEmpty ||
@@ -489,7 +491,7 @@ class ChatMessage {
         createdAt == null) {
       throw const FormatException('채팅 메시지 응답에 필수 정보가 없습니다.');
     }
-    final readAtText = _readString(json['read_at']);
+    final readAtText = readJsonText(json['read_at']);
     final rawMedicationContext = json['medication_context'];
     final rawMedicationContexts = json['medication_contexts'];
     final rawContext = json['context'];
@@ -539,8 +541,8 @@ class ChatMessage {
               Map<String, dynamic>.from(rawHospitalContext),
             )
           : null,
-      remainingDays: _readInt(context['remaining_days']),
-      courseEndDate: DateTime.tryParse(_readString(context['course_end_date'])),
+      remainingDays: readJsonInt(context['remaining_days']),
+      courseEndDate: DateTime.tryParse(readJsonText(context['course_end_date'])),
       showSafetyGuidance: context['show_safety_guidance'] == true,
       readAt: readAtText.isEmpty ? null : DateTime.tryParse(readAtText),
       hiddenForMe: json['hidden_for_me'] == true,
@@ -602,27 +604,6 @@ class ChatMessage {
     );
   }
 
-  // 함수이름: _readString
-  // 함수역할: 선택적 필드를 공백 정리한 문자열로 바꾸고 없는 값은 빈 문자열로 처리한다.
-  // 매개변수:
-  // - value (dynamic): 반환 타입의 값으로 해석할 변환 전 응답 필드
-  // 반환값:
-  // - String: 공백 정리한 필드 문자열; null이면 빈 문자열.
-  static String _readString(dynamic value) => value?.toString().trim() ?? '';
-
-  // 함수이름: _readInt
-  // 함수역할: 정수 또는 숫자 문자열을 읽고 변환할 수 없으면 null을 사용한다.
-  // 매개변수:
-  // - value (dynamic): 반환 타입의 값으로 해석할 변환 전 응답 필드
-  // 반환값:
-  // - int?: 정수 또는 숫자 문자열을 읽고 변환할 수 없으면 null을 사용한다.
-  static int? _readInt(dynamic value) {
-    if (value is int) {
-      return value;
-    }
-    return int.tryParse(_readString(value));
-  }
-
   // 함수이름: _readDouble
   // 함수역할: 숫자 또는 숫자 문자열을 실수로 변환하고 실패하면 0을 사용한다.
   // 매개변수:
@@ -633,7 +614,7 @@ class ChatMessage {
     if (value is num) {
       return value.toDouble();
     }
-    return double.tryParse(_readString(value)) ?? 0;
+    return double.tryParse(readJsonText(value)) ?? 0;
   }
 
   // 함수이름: attachedMedicationContexts

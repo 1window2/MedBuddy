@@ -2,6 +2,7 @@
 // Role: Defines provider-neutral nearby-care search, display and selection contracts.
 
 import 'device_coordinate_entity.dart';
+import 'json_value_reader.dart';
 
 // Class Name: NearbyCareSearchArea
 // Role: Preserves an explicit search radius and the provenance of its center.
@@ -150,16 +151,16 @@ class NearbyCarePlace {
   // Note: Legacy pharmacy_id precedence is retained if both identifiers are supplied.
   factory NearbyCarePlace.fromJson(Map<String, dynamic> json) {
     return NearbyCarePlace(
-      placeId: _readString(json['pharmacy_id'] ?? json['hospital_id']),
+      placeId: readJsonText(json['pharmacy_id'] ?? json['hospital_id']),
       departments: json['departments'] is List
           ? List<String>.unmodifiable(
               (json['departments'] as List).whereType<String>(),
             )
           : const [],
       institutionType: _readNullableString(json['institution_type']),
-      name: _readString(json['name']),
-      address: _readString(json['address']),
-      telephone: _readString(json['telephone']),
+      name: readJsonText(json['name']),
+      address: readJsonText(json['address']),
+      telephone: readJsonText(json['telephone']),
       latitude: _readDouble(json['latitude']),
       longitude: _readDouble(json['longitude']),
       distanceKm: _readDouble(json['distance_km']),
@@ -188,20 +189,20 @@ class NearbyCarePlace {
           json['designation_is_stale'] is bool &&
           json['designation_is_stale'] as bool,
       scheduleDate: _readDate(json['schedule_date']),
-      scheduleSource: _readString(json['schedule_source']).isEmpty
+      scheduleSource: readJsonText(json['schedule_source']).isEmpty
           ? 'nemc_weekly_report'
-          : _readString(json['schedule_source']),
+          : readJsonText(json['schedule_source']),
       scheduleIsDateSpecific:
           json['schedule_is_date_specific'] is bool &&
           json['schedule_is_date_specific'] as bool,
       minutesUntilClose: _readNullableInt(json['minutes_until_close']),
-      nextOpenAt: DateTime.tryParse(_readString(json['next_open_at'])),
+      nextOpenAt: DateTime.tryParse(readJsonText(json['next_open_at'])),
       sourceUpdatedAt: DateTime.tryParse(
-        _readString(json['source_updated_at']),
+        readJsonText(json['source_updated_at']),
       ),
-      sourceName: _readString(json['source_name']).isEmpty
+      sourceName: readJsonText(json['source_name']).isEmpty
           ? 'National Emergency Medical Center'
-          : _readString(json['source_name']),
+          : readJsonText(json['source_name']),
     );
   }
 
@@ -218,14 +219,6 @@ class NearbyCarePlace {
     return '${distanceKm.toStringAsFixed(distanceKm < 10 ? 1 : 0)}km';
   }
 
-  // 함수이름: _readString
-  // 함수역할: 선택적 필드를 공백 정리한 문자열로 바꾸고 없는 값은 빈 문자열로 처리한다.
-  // 매개변수:
-  // - value (dynamic): 반환 타입의 값으로 해석할 변환 전 응답 필드
-  // 반환값:
-  // - String: 공백 정리한 필드 문자열; null이면 빈 문자열.
-  static String _readString(dynamic value) => value?.toString().trim() ?? '';
-
   // 함수이름: _readNullableString
   // 함수역할: 입력의 공백을 정리하고 없거나 비어 있으면 null로 처리한다.
   // 매개변수:
@@ -233,7 +226,7 @@ class NearbyCarePlace {
   // 반환값:
   // - String?: 공백 정리한 문자열; 없거나 비어 있으면 null.
   static String? _readNullableString(dynamic value) {
-    final normalized = _readString(value);
+    final normalized = readJsonText(value);
     return normalized.isEmpty ? null : normalized;
   }
 
@@ -257,7 +250,7 @@ class NearbyCarePlace {
   // Returns:
   // - DateTime?: Parses nonempty date text and returns null for absent or malformed dates.
   static DateTime? _readDate(dynamic value) {
-    final normalized = _readString(value);
+    final normalized = readJsonText(value);
     return normalized.isEmpty ? null : DateTime.tryParse(normalized);
   }
 
@@ -271,7 +264,7 @@ class NearbyCarePlace {
     if (value is int) {
       return value;
     }
-    return int.tryParse(_readString(value));
+    return int.tryParse(readJsonText(value));
   }
 }
 

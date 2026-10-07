@@ -3,6 +3,7 @@
 
 import 'medication_image_url_entity.dart';
 import 'medication_schedule_entity.dart';
+import 'json_value_reader.dart';
 
 // Class Name: MedicationDetail
 // Role: Holds public-catalog and saved-medication detail fields for display and persistence.
@@ -106,27 +107,27 @@ class MedicationDetail {
   factory MedicationDetail.fromJson(Map<String, dynamic> json) {
     return MedicationDetail(
       id: _readInt(json['id']),
-      patientHash: _readString(json['patient_hash']),
-      itemSeq: _readString(json['item_seq'] ?? json['itemSeq']),
-      createdDate: _readDate(json['created_date'] ?? json['createdDate']),
-      prescriptionDate: _readDate(
+      patientHash: readJsonText(json['patient_hash']),
+      itemSeq: readJsonText(json['item_seq'] ?? json['itemSeq']),
+      createdDate: readJsonDate(json['created_date'] ?? json['createdDate']),
+      prescriptionDate: readJsonDate(
         json['prescription_date'] ?? json['prescriptionDate'],
       ),
-      itemName: _readString(json['item_name']),
-      manufacturer: _readString(json['manufacturer']),
-      efficacy: _readString(json['efficacy']),
-      usageMethod: _readString(json['usage_method'] ?? json['use_method']),
-      warning: _readString(json['warning'] ?? json['warning_message']),
-      precaution: _readString(json['precaution']),
-      interaction: _readString(json['interaction']),
-      sideEffect: _readString(json['side_effect']),
-      storageMethod: _readString(json['storage_method']),
-      dosagePerTime: _readString(json['dosage_per_time']),
-      dailyFrequency: _readString(json['daily_frequency']),
-      totalDays: _readString(json['total_days']),
+      itemName: readJsonText(json['item_name']),
+      manufacturer: readJsonText(json['manufacturer']),
+      efficacy: readJsonText(json['efficacy']),
+      usageMethod: readJsonText(json['usage_method'] ?? json['use_method']),
+      warning: readJsonText(json['warning'] ?? json['warning_message']),
+      precaution: readJsonText(json['precaution']),
+      interaction: readJsonText(json['interaction']),
+      sideEffect: readJsonText(json['side_effect']),
+      storageMethod: readJsonText(json['storage_method']),
+      dosagePerTime: readJsonText(json['dosage_per_time']),
+      dailyFrequency: readJsonText(json['daily_frequency']),
+      totalDays: readJsonText(json['total_days']),
       imageUrl: safeMedicationImageUrl(json['image_url'] ?? json['itemImage']),
       localImagePath: '',
-      aiGuide: _readString(json['ai_guide']),
+      aiGuide: readJsonText(json['ai_guide']),
     );
   }
 
@@ -228,7 +229,7 @@ class MedicationDetail {
   Map<String, dynamic> toSaveJson() {
     return {
       'patient_hash': patientHash,
-      'prescription_date': _formatDate(prescriptionDate),
+      'prescription_date': formatJsonDate(prescriptionDate),
       'item_seq': itemSeq,
       'item_name': itemName,
       'efficacy': efficacy,
@@ -510,19 +511,6 @@ class MedicationDetail {
     return null;
   }
 
-  // Function Name: _readString
-  // Description: Converts a nullable field to trimmed text, representing a missing value as an empty string.
-  // Parameters:
-  // - value (dynamic): Raw response field to decode into the documented return type.
-  // Returns:
-  // - String: trimmed field text, or an empty string for null.
-  static String _readString(dynamic value) {
-    if (value == null) {
-      return '';
-    }
-    return value.toString().trim();
-  }
-
   // Function Name: _readInt
   // Description: Extracts the final numeric medication count from text, treating a zero or absent count as unavailable.
   // Parameters:
@@ -534,32 +522,4 @@ class MedicationDetail {
     return count == 0 ? null : count;
   }
 
-  // 함수이름: _readDate
-  // 함수역할: 날짜 텍스트를 DateTime으로 해석하고 빈 값이나 올바르지 않은 날짜는 null로 처리한다.
-  // 매개변수:
-  // - value (dynamic): 반환 타입의 값으로 해석할 변환 전 응답 필드
-  // 반환값:
-  // - DateTime?: 날짜 텍스트를 DateTime으로 해석하고 빈 값이나 올바르지 않은 날짜는 null로 처리한다.
-  static DateTime? _readDate(dynamic value) {
-    final text = _readString(value);
-    if (text.isEmpty || text == '정보 없음') {
-      return null;
-    }
-    return DateTime.tryParse(text);
-  }
-
-  // 함수이름: _formatDate
-  // 함수역할: 달력 날짜를 YYYY-MM-DD 형식으로 맞추고 날짜가 없으면 null을 유지한다.
-  // 매개변수:
-  // - value (DateTime?): 직렬화할 선택적 달력 날짜
-  // 반환값:
-  // - String?: YYYY-MM-DD 형식의 날짜; 입력 날짜가 없으면 null.
-  static String? _formatDate(DateTime? value) {
-    if (value == null) {
-      return null;
-    }
-    return '${value.year.toString().padLeft(4, '0')}-'
-        '${value.month.toString().padLeft(2, '0')}-'
-        '${value.day.toString().padLeft(2, '0')}';
-  }
 }

@@ -1,6 +1,8 @@
 // 파일명: user_setting_entity.dart
 // 역할: 사용자 접근성/언어 설정 값을 표현하는 모델을 정의한다.
 
+import 'json_value_reader.dart';
+
 // 클래스명: UserSetting
 // 역할: 글씨 크기, 읽기 속도, 언어 설정을 앱 전체에서 동일한 형식으로 사용하게 한다.
 // 주요 책임:
@@ -88,22 +90,22 @@ class UserSetting {
   // 반환값:
   // - UserSetting: 필드 검증과 기본값 처리를 거쳐 복원한 레코드.
   factory UserSetting.fromJson(Map<String, dynamic> json) {
-    final language = _readString(json['language']);
+    final language = readJsonText(json['language']);
     return UserSetting(
-      userHash: _readString(json['user_hash'] ?? json['userHash']),
+      userHash: readJsonText(json['user_hash'] ?? json['userHash']),
       fontSize: _readInt(json['font_size'] ?? json['fontSize']) ?? 16,
       readingSpeed:
           _readDouble(json['reading_speed'] ?? json['readingSpeed']) ?? 1.0,
       language: language.isEmpty ? 'ko' : language,
       languageMode: _normalizedLanguageMode(
-        _readString(json['language_mode'] ?? json['languageMode']),
+        readJsonText(json['language_mode'] ?? json['languageMode']),
         fallbackLanguage: language,
       ),
       timeFormat: _normalizedTimeFormat(
-        _readString(json['time_format'] ?? json['timeFormat']),
+        readJsonText(json['time_format'] ?? json['timeFormat']),
       ),
       homeScheduleSource: _normalizedHomeScheduleSource(
-        _readString(json['home_schedule_source'] ?? json['homeScheduleSource']),
+        readJsonText(json['home_schedule_source'] ?? json['homeScheduleSource']),
       ),
       medicationNotificationsEnabled: _readBool(
         json['medication_notifications_enabled'] ??
@@ -120,24 +122,24 @@ class UserSetting {
         fallback: true,
       ),
       notificationDetailMode: _normalizedNotificationDetailMode(
-        _readString(
+        readJsonText(
           json['notification_detail_mode'] ?? json['notificationDetailMode'],
         ),
       ),
       defaultMorningTime: _normalizedTime(
-        _readString(json['default_morning_time'] ?? json['defaultMorningTime']),
+        readJsonText(json['default_morning_time'] ?? json['defaultMorningTime']),
         fallback: '08:00',
       ),
       defaultLunchTime: _normalizedTime(
-        _readString(json['default_lunch_time'] ?? json['defaultLunchTime']),
+        readJsonText(json['default_lunch_time'] ?? json['defaultLunchTime']),
         fallback: '12:00',
       ),
       defaultEveningTime: _normalizedTime(
-        _readString(json['default_evening_time'] ?? json['defaultEveningTime']),
+        readJsonText(json['default_evening_time'] ?? json['defaultEveningTime']),
         fallback: '18:00',
       ),
       defaultBedtime: _normalizedTime(
-        _readString(json['default_bedtime'] ?? json['defaultBedtime']),
+        readJsonText(json['default_bedtime'] ?? json['defaultBedtime']),
         fallback: '22:00',
       ),
     );
@@ -425,19 +427,6 @@ class UserSetting {
       'fast' => 1.2,
       _ => 1.0,
     };
-  }
-
-  // Function Name: _readString
-  // Description: Converts a nullable field to trimmed text, representing a missing value as an empty string.
-  // Parameters:
-  // - value (dynamic): Raw response field to decode into the documented return type.
-  // Returns:
-  // - String: trimmed field text, or an empty string for null.
-  static String _readString(dynamic value) {
-    if (value == null) {
-      return '';
-    }
-    return value.toString().trim();
   }
 
   // Function Name: _readInt
