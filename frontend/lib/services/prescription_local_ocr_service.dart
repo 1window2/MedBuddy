@@ -88,33 +88,32 @@ class PrescriptionLocalOcrService implements PrescriptionLocalOcrBoundary {
     final imageSize = await _readImageSize(imagePath);
     final safeLines = <String>[];
     final regions = <RecognizedTextRegion>[];
-    var maskFollowingLine = false;
+    final lines = [
+      for (final block in recognizedText.blocks)
+        for (final line in block.lines)
+          if (line.text.trim().isNotEmpty) line,
+    ];
+    final sensitiveFlags = _privacyFilter.sensitiveLineFlags([
+      for (final line in lines) line.text.trim(),
+    ]);
 
-    for (final block in recognizedText.blocks) {
-      for (final line in block.lines) {
-        final text = line.text.trim();
-        if (text.isEmpty) {
-          continue;
-        }
-        final sensitive =
-            maskFollowingLine ||
-            _privacyFilter.containsSensitiveInformation(text);
-        maskFollowingLine =
-            !maskFollowingLine && _privacyFilter.shouldMaskFollowingLine(text);
-        final region = _toRegion(
-          text: sensitive ? '' : _privacyFilter.maskInlineIdentifiers(text),
-          bounds: line.boundingBox,
-          imageSize: imageSize,
-          category: sensitive ? 'sensitive_info' : _categoryForSafeText(text),
-        );
-        if (region != null && regions.length < _maximumPreviewRegions) {
-          regions.add(region);
-        }
-        if (!sensitive) {
-          final maskedLine = _privacyFilter.maskInlineIdentifiers(text).trim();
-          if (maskedLine.isNotEmpty) {
-            safeLines.add(maskedLine);
-          }
+    for (var index = 0; index < lines.length; index += 1) {
+      final line = lines[index];
+      final text = line.text.trim();
+      final sensitive = sensitiveFlags[index];
+      final region = _toRegion(
+        text: sensitive ? '' : _privacyFilter.maskInlineIdentifiers(text),
+        bounds: line.boundingBox,
+        imageSize: imageSize,
+        category: sensitive ? 'sensitive_info' : _categoryForSafeText(text),
+      );
+      if (region != null && regions.length < _maximumPreviewRegions) {
+        regions.add(region);
+      }
+      if (!sensitive) {
+        final maskedLine = _privacyFilter.maskInlineIdentifiers(text).trim();
+        if (maskedLine.isNotEmpty) {
+          safeLines.add(maskedLine);
         }
       }
     }
@@ -212,7 +211,8 @@ class PrescriptionLocalOcrService implements PrescriptionLocalOcrBoundary {
 // - 안전한 복약 문구에 섞인 직접 식별자만 대체 문구로 치환한다.
 class PrescriptionPrivacyFilter {
   static final RegExp _sensitiveLabelPattern = RegExp(
-    r'(환자\s*(명|성명|이름|번호|정보)|성\s*명|주민\s*(등록)?\s*번호|'
+    // "성 명"은 앞 글자가 한글이 아닐 때만 라벨로 본다. "서방성 명…" 같은 약 문구를 지우지 않기 위해서다.
+    r'(환자\s*(명|성명|이름|번호|정보)|(?<![가-힣])성\s*명|주민\s*(등록)?\s*번호|'
     r'생년\s*월일|주소|전화\s*번호|연락처|휴대폰|보험\s*번호|'
     r'차트\s*번호|의무\s*기록\s*번호)',
     caseSensitive: false,
@@ -223,11 +223,14 @@ class PrescriptionPrivacyFilter {
     r'차트\s*번호|의무\s*기록\s*번호)\s*[:：]?\s*$',
     caseSensitive: false,
   );
+  // 나이·성별은 "75세/남", "75세(남)", "(남/75세)", "여 68세"처럼 어느 순서로 인쇄되어도 찾는다.
   static final RegExp _ageGenderPattern = RegExp(
-    r'(?<!\d)(?:만\s*)?\d{1,3}\s*세\s*[/·,\s-]?\s*(?:남|여)(?:성)?(?![가-힣])',
+    r'(?<!\d)(?:만\s*)?\d{1,3}\s*세\s*[/·,\s(-]?\s*(?:남|여)(?:성)?(?![가-힣])'
+    r'|(?<![가-힣])(?:남|여)(?:성)?\s*[/·,\s(-]?\s*(?:만\s*)?\d{1,3}\s*세',
   );
+  // 뒷자리가 별표로 가려졌거나 긴 줄표로 이어진 주민등록번호도 포함한다.
   static final RegExp _residentNumberPattern = RegExp(
-    r'(?<!\d)\d{6}\s*[- ]?\s*[1-8]\d{6}(?!\d)',
+    r'(?<!\d)\d{6}\s*[-–—~ ]?\s*[1-8][\d*]{6}(?![\d*])',
   );
   static final RegExp _phonePattern = RegExp(
     r'(?<!\d)(?:01[016789]|0[2-6][1-5]?)\s*[-.) ]?\s*'
@@ -271,6 +274,24 @@ class PrescriptionPrivacyFilter {
   // - 다음 줄까지 제거해야 하면 true
   bool shouldMaskFollowingLine(String text) {
     return _standaloneSensitiveLabelPattern.hasMatch(text);
+  }
+
+  // 함수이름: sensitiveLineFlags
+  // 함수역할: 인식한 줄 순서대로 개인정보 여부를 판정한다. 값 없이 라벨만 있는 줄이 이어지면 그 수만큼 뒤따르는 줄도 값으로 보고 가린다.
+  // 매개변수: lines: 공백을 정리한 OCR 줄 목록. 반환값: 각 줄을 가려야 하는지 나타내는 같은 길이의 목록.
+  List<bool> sensitiveLineFlags(List<String> lines) {
+    final flags = <bool>[];
+    var pendingValueLines = 0;
+    for (final text in lines) {
+      flags.add(pendingValueLines > 0 || containsSensitiveInformation(text));
+      if (shouldMaskFollowingLine(text)) {
+        // 라벨이 세로로 나열된 표에서는 라벨 수만큼 값이 뒤따른다.
+        pendingValueLines += 1;
+      } else if (pendingValueLines > 0) {
+        pendingValueLines -= 1;
+      }
+    }
+    return flags;
   }
 
   // 함수이름: maskInlineIdentifiers

@@ -13,22 +13,46 @@ const List<String> medicationScheduleSlotKeys = [
 const String defaultMedicationScheduleSlotKey = 'morning';
 
 // Function Name: medicationScheduleCountFromText
-// Description: Preserves integer input or extracts the last digit group from schedule text, returning zero when no numeric count can be read.
+// Description: Preserves integer input or reads the daily dose count from frequency text the way the server does: the number attached to a count unit (회, 번, times, x) wins, otherwise the last digit group; zero when no count can be read.
 // Parameters:
 // - value (dynamic): Number or frequency text from which to extract the dose count.
 // Returns:
-// - int: Preserves integer input or extracts the last digit group from schedule text, returning zero when no numeric count can be read.
+// - int: The daily dose count, or zero when no numeric count can be read.
 int medicationScheduleCountFromText(dynamic value) {
   if (value is int) {
     return value;
   }
 
   final text = value?.toString().trim() ?? '';
+  // "1일 3회 식후 30분" must read 3, not the trailing 30 minutes.
+  final counted = RegExp(
+    r'(?<!\d)(\d+)\s*(?:회|번|times?|x)',
+    caseSensitive: false,
+  ).firstMatch(text);
+  if (counted != null) {
+    return int.tryParse(counted.group(1) ?? '') ?? 0;
+  }
   final matches = RegExp(r'\d+').allMatches(text).toList(growable: false);
   if (matches.isEmpty) {
     return 0;
   }
   return int.tryParse(matches.last.group(0) ?? '') ?? 0;
+}
+
+// Function Name: medicationDayCountFromText
+// Description: Preserves integer input or reads the course length from duration text the way the server does: the first digit group, so "7일분 (1주)" is seven days; zero when no number can be read.
+// Parameters:
+// - value (dynamic): Number or duration text from which to extract the day count.
+// Returns:
+// - int: The number of medication days, or zero when no numeric count can be read.
+int medicationDayCountFromText(dynamic value) {
+  if (value is int) {
+    return value;
+  }
+
+  final text = value?.toString().trim() ?? '';
+  final match = RegExp(r'\d+').firstMatch(text);
+  return int.tryParse(match?.group(0) ?? '') ?? 0;
 }
 
 // 함수이름: medicationScheduleSlotKeysForFrequency
@@ -158,7 +182,7 @@ class MedicationSchedule {
       prescriptionBatchId: readJsonText(json['prescription_batch_id']),
       dosage: readJsonText(json['dosage_per_time']),
       intakeTime: readJsonText(json['daily_frequency']),
-      medicationTime: _readInt(json['total_days']),
+      medicationTime: medicationDayCountFromText(json['total_days']),
       scheduleSlotKeys: _readScheduleSlotKeys(
         json['schedule_slot_keys'] ?? json['scheduleSlotKeys'],
       ),
@@ -224,7 +248,9 @@ class MedicationSchedule {
       patientID: readJsonText(
         json['patient_hash'] ?? json['patient_id'] ?? json['patientID'],
       ),
-      medicationTime: _readInt(json['total_days'] ?? json['medication_time']),
+      medicationTime: medicationDayCountFromText(
+        json['total_days'] ?? json['medication_time'],
+      ),
       efficacy: readJsonText(json['efficacy']),
       usageMethod: readJsonText(json['use_method'] ?? json['usage_method']),
       warning: readJsonText(json['warning_message'] ?? json['warning']),
@@ -340,11 +366,11 @@ class MedicationSchedule {
   }
 
   // 함수이름: dailyFrequencyCount
-  // 함수역할: 하루 복용 횟수 텍스트에서 마지막 숫자 묶음을 정수로 읽는다.
+  // 함수역할: 하루 복용 횟수 텍스트에서 횟수 단위가 붙은 숫자를, 없으면 마지막 숫자 묶음을 정수로 읽는다.
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - int: 하루 복용 횟수 텍스트에서 마지막 숫자 묶음을 정수로 읽는다.
+  // - int: 하루 복용 횟수. 읽을 수 없으면 0.
   int get dailyFrequencyCount {
     return _readInt(intakeTime);
   }
@@ -601,11 +627,11 @@ class MedicationSchedule {
   }
 
   // Function Name: _readInt
-  // Description: Extracts an integer count from schedule text through the shared last-digit-group parser.
+  // Description: Extracts the daily dose count from frequency text through the shared frequency parser.
   // Parameters:
   // - value (dynamic): Raw response field to decode into the documented return type.
   // Returns:
-  // - int: Extracts an integer count from schedule text through the shared last-digit-group parser.
+  // - int: The daily dose count, or zero when none can be read.
   static int _readInt(dynamic value) {
     return medicationScheduleCountFromText(value);
   }

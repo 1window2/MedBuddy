@@ -52,6 +52,54 @@ void main() {
   // - 없음.
   // 반환값:
   // - 없음; 기대 조건 불일치 시 테스트가 실패한다.
+  // 함수이름: 세로로 나열된 개인정보 라벨 가리기 테스트
+  // 함수역할: 라벨만 있는 줄이 연속되면 그 수만큼 뒤따르는 값 줄을 모두 가리고, 그 뒤의 약 정보는 남기는지 검증한다.
+  // 매개변수: 없음. 반환값: 없음; 불일치 시 테스트 실패.
+  test('라벨이 세로로 나열되면 뒤따르는 값 줄을 모두 가린다', () {
+    const filter = PrescriptionPrivacyFilter();
+    expect(
+      filter.sensitiveLineFlags([
+        '환자명',
+        '주소',
+        '홍길동',
+        '서울시 마포구 와우산로 94',
+        '타이레놀정 500mg 1정 1일 3회',
+      ]),
+      [true, true, true, true, false],
+    );
+    expect(
+      filter.sensitiveLineFlags(['환자명', '홍길동', '아스피린 100mg']),
+      [true, true, false],
+    );
+  });
+
+  // 함수이름: 인쇄 형식별 나이·성별·주민번호 판별 테스트
+  // 함수역할: 순서와 구분 기호가 다른 나이·성별 표기와 가려진 주민등록번호를 민감정보로 보고, 약 이름의 "서방성 명…"은 지우지 않는지 검증한다.
+  // 매개변수: 없음. 반환값: 없음; 불일치 시 테스트 실패.
+  test('순서가 다른 나이·성별과 가려진 주민번호도 민감정보로 판별한다', () {
+    const filter = PrescriptionPrivacyFilter();
+    for (final text in const [
+      '홍길동 (남/75세)',
+      '75세(남)',
+      '김영희 여 68세',
+      '900101-1******',
+      '900101–1234567',
+    ]) {
+      expect(filter.containsSensitiveInformation(text), isTrue, reason: text);
+    }
+    for (final text in const [
+      '메트포르민 서방성 명일 복용',
+      '아세트아미노펜 500mg 1일 3회 5일분',
+      '남은 약은 냉장 보관',
+    ]) {
+      expect(filter.containsSensitiveInformation(text), isFalse, reason: text);
+    }
+    expect(
+      filter.maskInlineIdentifiers('보호자 900101-1****** 확인'),
+      '보호자 [주민번호 제거] 확인',
+    );
+  });
+
   test('복약 문구에 섞인 직접 식별자는 원문을 남기지 않는다', () {
     final masked = filter.maskInlineIdentifiers(
       '문의 010-1234-5678, user@example.com, 900101-1234567',

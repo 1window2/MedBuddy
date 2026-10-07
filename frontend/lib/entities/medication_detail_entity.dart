@@ -279,7 +279,7 @@ class MedicationDetail {
   // - DateTime?: 조제일과 양수 투약일을 기준으로 시작일을 포함한 복용 종료일을 계산하고 기간이 부족하면 null을 제공한다.
   DateTime? get medicationEndDate {
     final startDate = prescriptionDate;
-    final dayCount = medicationScheduleCountFromText(totalDays);
+    final dayCount = medicationDayCountFromText(totalDays);
     if (startDate == null || dayCount <= 0) {
       return null;
     }
@@ -448,8 +448,8 @@ class MedicationDetail {
     if (!_isEnglish(language)) {
       return normalizedValue;
     }
-    final days = _readInt(normalizedValue);
-    if (days == null) {
+    final days = medicationDayCountFromText(normalizedValue);
+    if (days == 0) {
       return normalizedValue;
     }
     return days == 1 ? '1 day' : '$days days';
