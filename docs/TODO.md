@@ -24,9 +24,13 @@ October 7 cleanup removes unreferenced frontend members and the test-only
 pre-Alembic schema patchers, shares the home choice-sheet widgets and tidies the
 visual tokens (AA brand green, distinct dose-time colors, flat headers); see
 [the latest evidence](qa/v0.2.0-architecture-gates.md#latest-cleanup-evidence--2026-10-07).
-Neither changes dependencies or public contracts. The phone's `866db67` build
-predates both; remote CI and signed artifact evidence must be refreshed, and the
-visual change needs a physical large-text pass, before accepting a final candidate.
+Neither changes dependencies or public contracts. The signed build of `2d85e6e`
+replaced the phone's `866db67` build on October 7 with exact-source CI, preserved
+account data and a physical large-text pass; see
+[the signed update evidence](qa/v0.2.0-map-direct-filter-device-validation.md#signed-candidate-update--2026-10-07).
+Dose-time cards with medications, the whole-slot toggle and caregiver screens
+were not exercised on the device because the test account has no active
+medication or linked caregiver.
 
 ### Current stabilization acceptance follow-up
 
