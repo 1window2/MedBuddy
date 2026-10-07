@@ -11,6 +11,7 @@ from entities.caregiver_notification_entity import _CaregiverNotification
 from entities.caregiver_alert_outbox_entity import _CaregiverAlertOutbox
 from entities.chat_message_entity import _ChatMessage
 from entities.device_push_token_entity import _DevicePushToken
+from entities.dose_sync_operation_entity import _DoseSyncOperation
 from entities.health_recommendation_cache_entity import _HealthRecommendationCache
 from entities.medication_alarm_entity import _MedicationAlarm
 from entities.medication_completion_entity import _MedicationCompletion
@@ -299,6 +300,13 @@ class ManageAccount:
         deleted_counts["medication_completions"] = self._delete(
             _MedicationCompletion,
             _MedicationCompletion.patient_hash == normalized_user_hash,
+        )
+        # Offline dose receipts hold dates, slots and medication IDs. The
+        # production tombstone keeps the account row, so no cascade removes
+        # them; the response shape stays unchanged.
+        self._delete(
+            _DoseSyncOperation,
+            _DoseSyncOperation.patient_hash == normalized_user_hash,
         )
         deleted_counts["saved_medications"] = self._delete(
             _SavedMedication,

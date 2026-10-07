@@ -73,6 +73,9 @@ class OIDCTokenVerifier:
             auth.InvalidIdTokenError,
             auth.RevokedIdTokenError,
             auth.UserDisabledError,
+            # A revocation check on a deleted account is a rejected token, not
+            # an outage; the client must end the session instead of retrying.
+            auth.UserNotFoundError,
             ValueError,
         ) as exc:
             raise TokenVerificationError("Bearer token is invalid.") from exc

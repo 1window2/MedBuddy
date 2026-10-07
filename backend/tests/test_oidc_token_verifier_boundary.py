@@ -46,6 +46,7 @@ def _verifier_without_firebase_initialization() -> OIDCTokenVerifier:
         auth.ExpiredIdTokenError("expired", RuntimeError("expired")),
         auth.RevokedIdTokenError("revoked"),
         auth.UserDisabledError("disabled"),
+        auth.UserNotFoundError("deleted"),
     ],
 )
 def test_invalid_or_revoked_token_is_classified_as_untrusted(

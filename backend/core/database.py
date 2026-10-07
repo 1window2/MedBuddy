@@ -12,7 +12,9 @@ SQLALCHEMY_DATABASE_URL = settings.DATABASE_URL
 # 변수이름: engine
 # 변수역할:
 # - 로컬 SQLite와 운영 PostgreSQL에서 공통으로 사용할 연결 엔진
-_engine_options: dict[str, object] = {"pool_pre_ping": True}
+# hide_parameters keeps bound values such as chat bodies and coordinates out
+# of database error text that reaches the application log.
+_engine_options: dict[str, object] = {"pool_pre_ping": True, "hide_parameters": True}
 if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
     _engine_options["connect_args"] = {
         "check_same_thread": False,

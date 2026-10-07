@@ -22,6 +22,7 @@ from core.request_rate_limits import (
     RequestRateLimitStore,
     resolve_rate_limit_rule,
 )
+from entities.dose_sync_operation_entity import _DoseSyncOperation
 from entities.health_recommendation_cache_entity import _HealthRecommendationCache
 from entities.chat_message_entity import _ChatMessage
 from entities.medication_completion_entity import _MedicationCompletion
@@ -206,6 +207,13 @@ def test_firebase_account_deletion_tombstone_allows_safe_retry(db_session) -> No
             payload="{}",
         )
     )
+    db_session.add(
+        _DoseSyncOperation(
+            patient_hash=user_hash,
+            operation_id="offline_dose_0001",
+            payload={"slot_key": "morning"},
+        )
+    )
     db_session.commit()
 
     with pytest.raises(IdentityDeletionUnavailableError):
@@ -216,6 +224,8 @@ def test_firebase_account_deletion_tombstone_allows_safe_retry(db_session) -> No
     assert tombstone.deletion_requested_at is not None
     assert tombstone.identity_deleted_at is None
     assert db_session.query(_HealthRecommendationCache).count() == 0
+    # The tombstone keeps the account row, so receipts need an explicit purge.
+    assert db_session.query(_DoseSyncOperation).count() == 0
     with pytest.raises(AccountDeletionPendingError):
         control.ensureAccount(user_hash)
 
