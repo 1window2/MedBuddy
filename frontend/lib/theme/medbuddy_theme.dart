@@ -47,6 +47,58 @@ class MedBuddyColors {
   static const Color butterSurface = Color(0xFFF8F0DC);
 }
 
+// Class Name: MedBuddySlotStyle
+// Role: Gives each dose time one shared color, light tint and icon.
+// Responsibilities:
+// - Keeps home, schedule and caregiver slot visuals identical.
+// Attributes:
+// - color (Color): AA-contrast slot color for icons, accents and white labels.
+// - tint (Color): Light surface behind slot headers and summaries.
+// - icon (IconData): Time-of-day symbol.
+class MedBuddySlotStyle {
+  final Color color;
+  final Color tint;
+  final IconData icon;
+
+  // Function Name: MedBuddySlotStyle._
+  // Description: Stores one dose time's color, tint and icon.
+  // Parameters: color, tint, icon: Slot visuals. Returns: A slot style.
+  const MedBuddySlotStyle._(this.color, this.tint, this.icon);
+
+  static const morning = MedBuddySlotStyle._(
+    MedBuddyColors.slotMorning,
+    Color(0xFFE7F0F4),
+    Icons.wb_sunny_outlined,
+  );
+  static const lunch = MedBuddySlotStyle._(
+    MedBuddyColors.slotLunch,
+    Color(0xFFE5F2EF),
+    Icons.local_cafe_outlined,
+  );
+  static const evening = MedBuddySlotStyle._(
+    MedBuddyColors.slotEvening,
+    Color(0xFFEEEDF7),
+    Icons.wb_twilight_outlined,
+  );
+  static const bedtime = MedBuddySlotStyle._(
+    MedBuddyColors.slotBedtime,
+    Color(0xFFE9ECF1),
+    Icons.nightlight_round,
+  );
+
+  // Function Name: of
+  // Description: Selects the style for a dose-time key; unknown keys use bedtime.
+  // Parameters:
+  // - slotKey (String): morning, lunch, evening or bedtime.
+  // Returns: The matching slot style.
+  static MedBuddySlotStyle of(String slotKey) => switch (slotKey) {
+    'morning' => morning,
+    'lunch' => lunch,
+    'evening' => evening,
+    _ => bedtime,
+  };
+}
+
 // 클래스명: MedBuddyRadii
 // 역할: 배지·입력·버튼, 카드·큰 카드·pill 버튼의 공통 모서리 반경을 제공한다.
 // 주요 책임:

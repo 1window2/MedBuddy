@@ -219,7 +219,7 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
               ),
               style: FilledButton.styleFrom(
                 backgroundColor: hasPending
-                    ? MedBuddyColors.primary
+                    ? MedBuddySlotStyle.of(slot ?? '').color
                     : MedBuddyColors.surface,
                 foregroundColor: hasPending
                     ? Colors.white
@@ -298,6 +298,7 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
       compact: widget.compact,
       showDetailsArrow: widget.onDetailsRequested != null,
       descriptionMaxLines: 2,
+      slotKey: slot,
       pageIndicator: slot != null && _slotKeys.length > 1
           ? _pageIndicator(slot)
           : null,

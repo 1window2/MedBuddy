@@ -227,11 +227,13 @@ class HomeMedicationSummary extends StatelessWidget {
   final bool showDetailsArrow;
   final int? descriptionMaxLines;
   final Widget? pageIndicator;
+  final String? slotKey;
 
   // 함수이름: HomeMedicationSummary
   // 함수역할: 요약 내용과 표시 옵션을 받아 공통 배치를 구성한다.
   // 매개변수: title/description: 문구, hasPendingMedication: 미복용 여부,
-  //   compact/showDetailsArrow/descriptionMaxLines: 배치 옵션, pageIndicator: 시간대 위치 표시, key: 식별자.
+  //   compact/showDetailsArrow/descriptionMaxLines: 배치 옵션, pageIndicator: 시간대 위치 표시, key: 식별자,
+  //   slotKey: 시간대 색·아이콘을 적용할 복약 시간대(없으면 중립 표시).
   // 반환값: 불변 요약 위젯.
   const HomeMedicationSummary({
     super.key,
@@ -242,13 +244,16 @@ class HomeMedicationSummary extends StatelessWidget {
     this.showDetailsArrow = false,
     this.descriptionMaxLines,
     this.pageIndicator,
+    this.slotKey,
   });
 
   // 함수이름: build
   // 함수역할: 글 바로 아래에 선택적 점 표시를 붙이고 기존 요약 여백 안에 배치한다.
   // 매개변수: context: 화면 구성 환경. 반환값: 요약 박스.
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) {
+    final style = slotKey == null ? null : MedBuddySlotStyle.of(slotKey!);
+    return Container(
     width: double.infinity,
     // 점 표시에는 기존 위아래 여백을 일부 사용해 요약 박스 높이를 유지한다.
     padding: EdgeInsets.symmetric(
@@ -256,7 +261,7 @@ class HomeMedicationSummary extends StatelessWidget {
       vertical: (compact ? 10.0 : 16.0) - (pageIndicator == null ? 0 : 4),
     ),
     decoration: BoxDecoration(
-      color: MedBuddyColors.surfaceSubtle,
+      color: style?.tint ?? MedBuddyColors.surfaceSubtle,
       borderRadius: MedBuddyRadii.card,
     ),
     child: Row(
@@ -265,16 +270,19 @@ class HomeMedicationSummary extends StatelessWidget {
           width: compact ? 34 : 38,
           height: compact ? 34 : 38,
           decoration: BoxDecoration(
-            color: hasPendingMedication
-                ? MedBuddyColors.mint
-                : MedBuddyColors.lavenderSurface,
-            borderRadius: BorderRadius.circular(compact ? 11 : 13),
+            color:
+                style?.color ??
+                (hasPendingMedication
+                    ? MedBuddyColors.mint
+                    : MedBuddyColors.lavenderSurface),
+            borderRadius: MedBuddyRadii.control,
           ),
           child: Icon(
-            hasPendingMedication
-                ? Icons.alarm_outlined
-                : Icons.event_available_outlined,
-            color: MedBuddyColors.primaryDark,
+            style?.icon ??
+                (hasPendingMedication
+                    ? Icons.alarm_outlined
+                    : Icons.event_available_outlined),
+            color: style == null ? MedBuddyColors.primaryDark : Colors.white,
             size: compact ? 19 : 21,
           ),
         ),
@@ -325,4 +333,5 @@ class HomeMedicationSummary extends StatelessWidget {
       ],
     ),
   );
+  }
 }

@@ -104,29 +104,21 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       key: 'morning',
       title: '아침',
       hour: 8,
-      color: MedBuddyColors.slotMorning,
-      icon: Icons.wb_sunny_outlined,
     ),
     _ScheduleSlotDefinition(
       key: 'lunch',
       title: '점심',
       hour: 12,
-      color: MedBuddyColors.slotLunch,
-      icon: Icons.local_cafe_outlined,
     ),
     _ScheduleSlotDefinition(
       key: 'evening',
       title: '저녁',
       hour: 18,
-      color: MedBuddyColors.slotEvening,
-      icon: Icons.wb_twilight_outlined,
     ),
     _ScheduleSlotDefinition(
       key: 'bedtime',
       title: '취침 전',
       hour: 22,
-      color: MedBuddyColors.slotBedtime,
-      icon: Icons.nightlight_round,
     ),
   ];
 
@@ -1522,9 +1514,10 @@ class _TimeSlotCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final slotTitle = text.slotTitle(slot.key);
+    final style = slot.style;
 
     return Material(
-      color: MedBuddyColors.lavenderSurface,
+      color: MedBuddyColors.surface,
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: MedBuddyRadii.card,
@@ -1535,18 +1528,21 @@ class _TimeSlotCard extends StatelessWidget {
         child: Column(
           children: [
             Container(
-              color: slot.color,
-              padding: const EdgeInsets.fromLTRB(16, 13, 14, 13),
+              decoration: BoxDecoration(
+                color: style.tint,
+                border: Border(left: BorderSide(color: style.color, width: 5)),
+              ),
+              padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
               child: Row(
                 children: [
                   Container(
-                    width: 38,
-                    height: 38,
+                    width: 40,
+                    height: 40,
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.22),
+                      color: style.color,
                       borderRadius: MedBuddyRadii.control,
                     ),
-                    child: Icon(slot.icon, color: Colors.white, size: 23),
+                    child: Icon(style.icon, color: Colors.white, size: 23),
                   ),
                   const SizedBox(width: 11),
                   Expanded(
@@ -1556,7 +1552,7 @@ class _TimeSlotCard extends StatelessWidget {
                         Text(
                           slotTitle,
                           style: const TextStyle(
-                            color: Colors.white,
+                            color: MedBuddyColors.textStrong,
                             fontSize: 18,
                             fontWeight: FontWeight.w700,
                           ),
@@ -1570,8 +1566,8 @@ class _TimeSlotCard extends StatelessWidget {
                                       ? 'Reminder off'
                                       : '복약 알림 꺼짐'),
                             key: ValueKey('patient-alert-time-${slot.key}'),
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: style.color,
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                             ),
@@ -1591,6 +1587,7 @@ class _TimeSlotCard extends StatelessWidget {
                       _SlotCompletionToggleButton(
                         text: text,
                         slotKey: slot.key,
+                        accent: style.color,
                         slotTitle: slotTitle,
                         isCompleted: isEntireSlotCompleted,
                         isUpdating: isEntireSlotUpdating,
@@ -1978,7 +1975,9 @@ class _ReminderIconButton extends StatelessWidget {
   // 반환값: 알림 설정 여부를 나타내는 시간대별 명령에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-    final iconColor = isEnabled ? const Color(0xFFFF1744) : Colors.white;
+    final iconColor = isEnabled
+        ? const Color(0xFFFF1744)
+        : MedBuddyColors.textSubtle;
     final backgroundColor = isEnabled
         ? Colors.white
         : Colors.white.withValues(alpha: 0.0);
@@ -2032,6 +2031,7 @@ class _SlotCompletionToggleButton extends StatelessWidget {
   final bool isCompleted;
   final bool isUpdating;
   final VoidCallback? onPressed;
+  final Color accent;
 
   // Function Name: _SlotCompletionToggleButton
   // Description: Initializes the atomic whole-slot medication completion or uncheck action with the supplied configuration.
@@ -2042,10 +2042,12 @@ class _SlotCompletionToggleButton extends StatelessWidget {
   // - isCompleted (bool): Completion state of the dose or save operation.
   // - isUpdating (bool): Whether the associated save, analysis, or medication update is in progress.
   // - onPressed (VoidCallback?): Callback executing the item's documented primary action.
+  // - accent (Color): Dose-time color for the icon and the completed fill.
   // Returns: Initialized _SlotCompletionToggleButton instance.
   const _SlotCompletionToggleButton({
     required this.text,
     required this.slotKey,
+    required this.accent,
     required this.slotTitle,
     required this.isCompleted,
     required this.isUpdating,
@@ -2067,9 +2069,7 @@ class _SlotCompletionToggleButton extends StatelessWidget {
         label: tooltip,
         enabled: !isUpdating && onPressed != null,
         child: Material(
-          color: isCompleted
-              ? Colors.white
-              : Colors.white.withValues(alpha: 0.0),
+          color: isCompleted ? accent : Colors.white.withValues(alpha: 0.0),
           shape: const CircleBorder(),
           child: InkWell(
             key: ValueKey('schedule-entire-slot-toggle-$slotKey'),
@@ -2085,16 +2085,14 @@ class _SlotCompletionToggleButton extends StatelessWidget {
                         height: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2.5,
-                          color: Colors.white,
+                          color: accent,
                         ),
                       )
                     : Icon(
                         isCompleted
                             ? Icons.remove_done_rounded
                             : Icons.done_all_rounded,
-                        color: isCompleted
-                            ? MedBuddyColors.primaryDark
-                            : Colors.white,
+                        color: isCompleted ? Colors.white : accent,
                         size: 27,
                       ),
               ),
@@ -2282,34 +2280,26 @@ class _ScheduleLoadErrorState extends StatelessWidget {
 // 클래스명: _ScheduleSlotDefinition
 // 역할: 시간대별 색상·아이콘·기본 알림 시각을 담당한다.
 // 주요 책임:
-// - 시간대별 색상·아이콘·기본 알림 시각 관련 필드 값을 하나의 객체로 묶어 전달한다.
+// - 시간대 키·제목·기본 알림 시각을 하나의 객체로 묶어 전달한다.
 // 속성:
 // - key (String): 복약 시간대를 구분하는 식별 문자열.
 // - title (String): 화면·구역·항목에 표시할 제목.
 // - hour (int): 24시간제 시 값.
-// - color (Color): 문자·아이콘·상태 가이드에 적용할 전경 또는 강조 색상.
 class _ScheduleSlotDefinition {
   final String key;
   final String title;
   final int hour;
-  final Color color;
-  final IconData icon;
 
   // 함수이름: _ScheduleSlotDefinition
-  // 함수역할: 시간대별 색상·아이콘·기본 알림 시각 관련 값을 _ScheduleSlotDefinition 인스턴스에 담는다.
+  // 함수역할: 시간대 키·제목·기본 알림 시각을 _ScheduleSlotDefinition 인스턴스에 담는다.
   // 매개변수:
   // - key (String): 복약 시간대를 구분하는 식별 문자열.
   // - title (String): 화면·구역·항목에 표시할 제목.
-  // - hour (int): 24시간제 시 값.
-  // - color (Color): 문자·아이콘·상태 가이드에 적용할 전경 또는 강조 색상.
-  // - icon (IconData): 기본 또는 선택 상태에서 표시할 아이콘.
   // 반환값: 입력 설정이 반영된 _ScheduleSlotDefinition 인스턴스.
   const _ScheduleSlotDefinition({
     required this.key,
     required this.title,
     required this.hour,
-    required this.color,
-    required this.icon,
   });
 }
 
@@ -2350,18 +2340,10 @@ class _ScheduleSlot {
   // - 없음.
   // 반환값: int: 공통 시간대 정의에 지정된 기본 알림 시.
   int get hour => definition.hour;
-  // 함수이름: color
-  // 함수역할: 공통 시간대 정의의 시간대 강조 색상을 반환한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: Color: 공통 시간대 정의의 강조 색상.
-  Color get color => definition.color;
-  // 함수이름: icon
-  // 함수역할: 공통 시간대 정의의 시간대 아이콘을 반환한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: IconData: 현재 시간대·빠른 답장 종류에 대응하는 아이콘.
-  IconData get icon => definition.icon;
+  // 함수이름: style
+  // 함수역할: 시간대 키에 맞는 공통 색상·옅은 배경·아이콘을 반환한다.
+  // 매개변수: 없음. 반환값: MedBuddySlotStyle.
+  MedBuddySlotStyle get style => MedBuddySlotStyle.of(definition.key);
   // 함수이름: timeLabel
   // 함수역할: 시간대 기본 시각을 두 자리 시와 분으로 표시한다.
   // 매개변수:
