@@ -163,7 +163,7 @@ class PatientCaregiverLink {
       linkStatus: readJsonBool(
         json['link_status'] ?? json['linkStatus'] ?? json['linked'],
       ),
-      linkedAt: _readDate(
+      linkedAt: readJsonDate(
         json['linked_at'] ?? json['linkedAt'] ?? json['created_at'],
       ),
     );
@@ -276,19 +276,5 @@ class PatientCaregiverLink {
       return rawAlias == null ? null : readJsonText(rawAlias);
     }
     return null;
-  }
-
-  // Function Name: _readDate
-  // Description: Parses nonempty date text and returns null for absent or malformed dates.
-  // Parameters:
-  // - value (dynamic): Raw response field to decode into the documented return type.
-  // Returns:
-  // - DateTime?: Parses nonempty date text and returns null for absent or malformed dates.
-  static DateTime? _readDate(dynamic value) {
-    final text = readJsonText(value);
-    if (text.isEmpty) {
-      return null;
-    }
-    return DateTime.tryParse(text);
   }
 }

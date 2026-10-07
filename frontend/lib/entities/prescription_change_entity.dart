@@ -163,10 +163,10 @@ class PrescriptionChangeSummary {
   // - 변환된 PrescriptionChangeSummary
   factory PrescriptionChangeSummary.fromJson(Map<String, dynamic> json) {
     return PrescriptionChangeSummary(
-      addedCount: _readInt(json['added_count']),
-      missingCount: _readInt(json['missing_count']),
-      scheduleChangedCount: _readInt(json['schedule_changed_count']),
-      unchangedCount: _readInt(json['unchanged_count']),
+      addedCount: readJsonInt(json['added_count']) ?? 0,
+      missingCount: readJsonInt(json['missing_count']) ?? 0,
+      scheduleChangedCount: readJsonInt(json['schedule_changed_count']) ?? 0,
+      unchangedCount: readJsonInt(json['unchanged_count']) ?? 0,
     );
   }
 
@@ -245,13 +245,16 @@ class PrescriptionChangeRadar {
         json['comparison_status'],
         hasPreviousPrescription: json['has_previous_prescription'] == true,
       ),
-      comparisonWindowDays: _readInt(json['comparison_window_days']) == 0
+      comparisonWindowDays:
+          (readJsonInt(json['comparison_window_days']) ?? 0) == 0
           ? 90
-          : _readInt(json['comparison_window_days']),
+          : readJsonInt(json['comparison_window_days']) ?? 0,
       similarityScore: _readDouble(json['similarity_score']),
       matchBasis: readJsonText(json['match_basis']),
-      previousPrescriptionDate: _readDate(json['previous_prescription_date']),
-      currentPrescriptionDate: _readDate(json['current_prescription_date']),
+      previousPrescriptionDate: readJsonDate(
+        json['previous_prescription_date'],
+      ),
+      currentPrescriptionDate: readJsonDate(json['current_prescription_date']),
       summary: rawSummary is Map
           ? PrescriptionChangeSummary.fromJson(
               Map<String, dynamic>.from(rawSummary),
@@ -360,19 +363,6 @@ List<String> _readStringList(dynamic value) {
       .toList(growable: false);
 }
 
-// 함수이름: _readInt
-// 함수역할: 선택적 JSON 값을 정수로 변환한다.
-// 매개변수:
-// - value (dynamic): 정수로 변환할 값
-// 반환값:
-// - 변환된 정수 또는 변환할 수 없으면 0
-int _readInt(dynamic value) {
-  if (value is int) {
-    return value;
-  }
-  return int.tryParse(readJsonText(value)) ?? 0;
-}
-
 // 함수이름: _readDouble
 // 함수역할: 선택적 JSON 값을 실수로 변환한다.
 // 매개변수:
@@ -384,15 +374,4 @@ double? _readDouble(dynamic value) {
     return value.toDouble();
   }
   return double.tryParse(readJsonText(value));
-}
-
-// 함수이름: _readDate
-// 함수역할: ISO 날짜 문자열을 DateTime으로 변환한다.
-// 매개변수:
-// - value (dynamic): 날짜로 변환할 JSON 값
-// 반환값:
-// - 변환된 DateTime 또는 값이 올바르지 않으면 null
-DateTime? _readDate(dynamic value) {
-  final text = readJsonText(value);
-  return text.isEmpty ? null : DateTime.tryParse(text);
 }

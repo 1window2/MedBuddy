@@ -145,7 +145,6 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   String? _selectedMedicationScheduleDate;
   String? _sendErrorMessage;
   bool _isRecordingTaken = false;
-  bool _isChoosingTaken = false;
   final Map<String, String> _pendingTakenRequests = {};
   bool _isSelectingMessages = false;
   bool _isDeletingMessages = false;
@@ -659,7 +658,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _sendQuickReply(_ChatQuickReply reply) async {
     final medications = _selectedMedicationContexts;
-    if (medications.isEmpty || _isSending || _isChoosingTaken) {
+    if (medications.isEmpty || _isSending) {
       return;
     }
     if (_isPatient && reply == _ChatQuickReply.taken) {
@@ -704,7 +703,6 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     final viewModel = context.read<MedBuddyViewModel?>();
     final selectedDate = _selectedMedicationScheduleDate;
     setState(() {
-      _isChoosingTaken = true;
       _isRecordingTaken = true;
       _sendErrorMessage = null;
     });
@@ -836,7 +834,6 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       if (mounted) {
         setState(() {
           _isRecordingTaken = false;
-          _isChoosingTaken = false;
         });
       }
     }

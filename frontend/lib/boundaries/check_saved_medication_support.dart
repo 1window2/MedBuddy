@@ -445,12 +445,6 @@ class _SavedMedicationText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get close => isEnglish ? 'Close' : '닫기';
-  // 함수이름: select
-  // 함수역할: 현재 언어와 입력값에 맞춰 "Select" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get select => isEnglish ? 'Select' : '선택';
   // 함수이름: sortByRegisteredDate
   // 함수역할: 현재 언어와 입력값에 맞춰 "등록일자순" 문구를 제공한다.
   // 매개변수:

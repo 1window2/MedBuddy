@@ -101,10 +101,10 @@ class CheckScheduleUI extends StatefulWidget {
 class _CheckScheduleUIState extends State<CheckScheduleUI> {
   static const Duration _completionSnackBarDuration = Duration(seconds: 5);
   static const List<_ScheduleSlotDefinition> _slotDefinitions = [
-    _ScheduleSlotDefinition(key: 'morning', title: '아침', hour: 8),
-    _ScheduleSlotDefinition(key: 'lunch', title: '점심', hour: 12),
-    _ScheduleSlotDefinition(key: 'evening', title: '저녁', hour: 18),
-    _ScheduleSlotDefinition(key: 'bedtime', title: '취침 전', hour: 22),
+    _ScheduleSlotDefinition(key: 'morning'),
+    _ScheduleSlotDefinition(key: 'lunch'),
+    _ScheduleSlotDefinition(key: 'evening'),
+    _ScheduleSlotDefinition(key: 'bedtime'),
   ];
 
   final Map<String, GlobalKey> _slotKeys = {
@@ -1789,7 +1789,7 @@ class _MedicationScheduleRow extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      text.dosageLabel(schedule),
+                      schedule.dosageLabelForLanguage(text.language),
                       softWrap: true,
                       style: const TextStyle(
                         color: MedBuddyColors.textSubtle,
@@ -2174,37 +2174,28 @@ class _ScheduleLoadErrorState extends StatelessWidget {
 }
 
 // 클래스명: _ScheduleSlotDefinition
-// 역할: 시간대별 색상·아이콘·기본 알림 시각을 담당한다.
+// 역할: 복약 시간대의 식별 키를 담당한다.
 // 주요 책임:
-// - 시간대 키·제목·기본 알림 시각을 하나의 객체로 묶어 전달한다.
+// - 시간대 키를 하나의 객체로 전달한다.
 // 속성:
 // - key (String): 복약 시간대를 구분하는 식별 문자열.
-// - title (String): 화면·구역·항목에 표시할 제목.
-// - hour (int): 24시간제 시 값.
 class _ScheduleSlotDefinition {
   final String key;
-  final String title;
-  final int hour;
 
   // 함수이름: _ScheduleSlotDefinition
-  // 함수역할: 시간대 키·제목·기본 알림 시각을 _ScheduleSlotDefinition 인스턴스에 담는다.
+  // 함수역할: 시간대 키를 _ScheduleSlotDefinition 인스턴스에 담는다.
   // 매개변수:
   // - key (String): 복약 시간대를 구분하는 식별 문자열.
-  // - title (String): 화면·구역·항목에 표시할 제목.
   // 반환값: 입력 설정이 반영된 _ScheduleSlotDefinition 인스턴스.
-  const _ScheduleSlotDefinition({
-    required this.key,
-    required this.title,
-    required this.hour,
-  });
+  const _ScheduleSlotDefinition({required this.key});
 }
 
 // 클래스명: _ScheduleSlot
 // 역할: 시간대에 배치된 약품과 표시 정보를 담당한다.
 // 주요 책임:
-// - 시간대 기본 시각을 두 자리 시와 분으로 표시한다.
+// - 시간대 키와 공통 표시 스타일을 제공한다.
 // 속성:
-// - definition (_ScheduleSlotDefinition): 복약 시간대의 식별·시각·표시 정보.
+// - definition (_ScheduleSlotDefinition): 복약 시간대의 식별 정보.
 // - medications (List<MedicationSchedule>): 조회·선택·정렬·표시에 사용할 약품 목록.
 class _ScheduleSlot {
   final _ScheduleSlotDefinition definition;
@@ -2213,7 +2204,7 @@ class _ScheduleSlot {
   // 함수이름: _ScheduleSlot
   // 함수역할: 시간대에 배치된 약품과 표시 정보 관련 값을 _ScheduleSlot 인스턴스에 담는다.
   // 매개변수:
-  // - definition (_ScheduleSlotDefinition): 복약 시간대의 식별·시각·표시 정보.
+  // - definition (_ScheduleSlotDefinition): 복약 시간대의 식별 정보.
   // - medications (List<MedicationSchedule>): 조회·선택·정렬·표시에 사용할 약품 목록.
   // 반환값: 입력 설정이 반영된 _ScheduleSlot 인스턴스.
   const _ScheduleSlot({required this.definition, required this.medications});
@@ -2224,28 +2215,10 @@ class _ScheduleSlot {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get key => definition.key;
-  // 함수이름: title
-  // 함수역할: 공통 시간대 정의의 시간대 제목을 반환한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get title => definition.title;
-  // 함수이름: hour
-  // 함수역할: 공통 시간대 정의의 기본 알림 시를 반환한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: int: 공통 시간대 정의에 지정된 기본 알림 시.
-  int get hour => definition.hour;
   // 함수이름: style
   // 함수역할: 시간대 키에 맞는 공통 색상·옅은 배경·아이콘을 반환한다.
   // 매개변수: 없음. 반환값: MedBuddySlotStyle.
   MedBuddySlotStyle get style => MedBuddySlotStyle.of(definition.key);
-  // 함수이름: timeLabel
-  // 함수역할: 시간대 기본 시각을 두 자리 시와 분으로 표시한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get timeLabel => '${hour.toString().padLeft(2, '0')}:00';
 }
 
 // Class Name: _ScheduleText
@@ -2467,15 +2440,6 @@ class _ScheduleText {
     return isEnglish
         ? 'All $slotTitle medication completions were undone.'
         : '$slotTitle 복약 완료를 모두 해제했습니다.';
-  }
-
-  // 함수이름: dosageLabel
-  // 함수역할: OCR 투약량이 숫자로만 제공되면 약 이름의 제형에 맞는 단위를 보완한다. 이미 단위가 포함된 투약량은 원문을 그대로 유지한다.
-  // 매개변수:
-  // - schedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String dosageLabel(MedicationSchedule schedule) {
-    return schedule.dosageLabelForLanguage(language);
   }
 
   // 함수이름: reminderTooltip

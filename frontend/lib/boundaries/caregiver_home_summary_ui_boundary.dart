@@ -3,7 +3,6 @@
 import 'package:flutter/material.dart';
 
 import '../controls/check_caregiver_home_control.dart';
-import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_caregiver_link_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/home_medication_preview.dart';
@@ -212,9 +211,6 @@ class _CaregiverHomeSummaryUIState extends State<CaregiverHomeSummaryUI> {
         : (isEnglish
               ? '$completed of $total doses taken'
               : '$total회 중 $completed회 복용');
-    final pendingDescription = _pendingDescription(
-      snapshot?.schedules ?? const [],
-    );
     return HomeMedicationPreview(
       key: ValueKey('caregiver-home-patient-${link.linkId}'),
       title: patientLabel(link),
@@ -226,20 +222,9 @@ class _CaregiverHomeSummaryUIState extends State<CaregiverHomeSummaryUI> {
           ? 0
           : completed / total,
       progressSemanticsLabel: status,
-      scheduleTitle: snapshot == null
-          ? status
-          : pendingDescription != null
-          ? (isEnglish ? 'Remaining medication' : '남은 복약 일정')
-          : total == 0
-          ? (isEnglish ? 'No doses scheduled today' : '오늘 복약 일정이 없습니다')
-          : (isEnglish ? 'All doses completed today' : '오늘의 복약을 모두 완료했어요'),
-      scheduleDescription: snapshot == null
-          ? (isEnglish
-                ? 'Check the patient\'s medication status.'
-                : '환자의 복약 상태를 확인해주세요.')
-          : pendingDescription ??
-                (isEnglish ? 'No remaining doses.' : '남은 복약 일정이 없습니다.'),
-      hasPendingMedication: pendingDescription != null,
+      scheduleTitle: '',
+      scheduleDescription: '',
+      hasPendingMedication: false,
       compact: MediaQuery.sizeOf(context).width >= 350,
       headerAction: showRefresh ? _refreshButton() : null,
       titleLeading: control.links.length > 1
@@ -270,35 +255,4 @@ class _CaregiverHomeSummaryUIState extends State<CaregiverHomeSummaryUI> {
         : (onRefreshRequested ?? control.refresh),
     icon: const Icon(Icons.refresh, color: MedBuddyColors.primaryDark),
   );
-
-  // 함수역할: 미완료 시간대와 약 이름을 요약한다. 완료 기록만 조회하므로 알림 시각은 추정하지 않는다.
-  String? _pendingDescription(List<MedicationSchedule> schedules) {
-    for (final slot in medicationScheduleSlotKeys) {
-      final pending = schedules
-          .where(
-            (schedule) =>
-                schedule.slotKeys.contains(slot) &&
-                !schedule.isSlotCompleted(slot),
-          )
-          .toList(growable: false);
-      if (pending.isEmpty) continue;
-      final slotLabel = switch (slot) {
-        'morning' => isEnglish ? 'Morning' : '아침',
-        'lunch' => isEnglish ? 'Lunch' : '점심',
-        'evening' => isEnglish ? 'Evening' : '저녁',
-        _ => isEnglish ? 'Bedtime' : '취침 전',
-      };
-      final name = pending.first.displayNameForLanguage(
-        isEnglish ? 'en' : 'ko',
-      );
-      final additional = pending.length - 1;
-      final medications = additional == 0
-          ? name
-          : isEnglish
-          ? '$name and $additional more'
-          : '$name 외 $additional개';
-      return '$slotLabel · $medications';
-    }
-    return null;
-  }
 }

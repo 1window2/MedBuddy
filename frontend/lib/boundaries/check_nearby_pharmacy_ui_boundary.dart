@@ -604,11 +604,11 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   // Returns: Future<void> completing when the requested interaction or refresh finishes.
   Future<void> _requestRefresh() async {
     if (_isLoading) {
-      _showActionFailure(_text.loadingAction);
+      _showActionMessage(_text.loadingAction);
       return;
     }
     if (_isRefreshCoolingDown) {
-      _showActionFailure(_text.refreshLimited);
+      _showActionMessage(_text.refreshLimited);
       return;
     }
 
@@ -688,7 +688,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
         });
       }
     } catch (_) {
-      if (mounted) _showActionFailure(_text.favoriteLoadFailed);
+      if (mounted) _showActionMessage(_text.favoriteLoadFailed);
     }
   }
 
@@ -720,7 +720,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       if (!saved) _favoritePharmacyIds = previousIds;
       _isSavingFavorite = false;
     });
-    if (!saved) _showActionFailure(_text.favoriteSaveFailed);
+    if (!saved) _showActionMessage(_text.favoriteSaveFailed);
   }
 
   // 함수이름: _canChangeFavorite
@@ -1799,7 +1799,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _requestPhoneCall(NearbyCarePlace pharmacy) async {
     if (!await _control.requestPhoneCall(pharmacy.telephone) && mounted) {
-      _showActionFailure(_text.phoneAppFailed);
+      _showActionMessage(_text.phoneAppFailed);
     }
   }
 
@@ -1888,7 +1888,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       return;
     }
     if (!copied) {
-      _showActionFailure(_text.mapAppFailed);
+      _showActionMessage(_text.mapAppFailed);
       return;
     }
     _showActionMessage(
@@ -1905,17 +1905,8 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _requestMapAttribution() async {
     if (!await _control.requestMapAttribution() && mounted) {
-      _showActionFailure(_text.mapAttributionFailed);
+      _showActionMessage(_text.mapAttributionFailed);
     }
-  }
-
-  // 함수이름: _showActionFailure
-  // 함수역할: 약국 관련 명령 실패 문구를 공통 Snackbar 경로로 전달한다.
-  // 매개변수:
-  // - message (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
-  void _showActionFailure(String message) {
-    _showActionMessage(message);
   }
 
   // 함수이름: _showActionMessage
@@ -2754,12 +2745,6 @@ class _NearbyPharmacyText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get weekendHoliday =>
       isEnglish ? 'Open on weekends / holidays' : '주말·공휴일 영업';
-  // 함수이름: all
-  // 함수역할: 현재 언어와 입력값에 맞춰 "All" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get all => isEnglish ? 'All' : '전체';
   // 함수이름: allPharmacies
   // 함수역할: 현재 언어와 입력값에 맞춰 "전체 약국" 문구를 제공한다.
   // 매개변수:

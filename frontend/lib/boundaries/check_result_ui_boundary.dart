@@ -810,17 +810,12 @@ class _MedicationResultCard extends StatelessWidget {
   }
 
   // 함수이름: _displayValue
-  // 함수역할: 빈 값을 정보 없음 문구로 대체하고 지정된 최대 길이를 넘으면 말줄임한다.
+  // 함수역할: 빈 값을 정보 없음 문구로 대체한다.
   // 매개변수:
   // - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-  // - maxLength (int?): 허용할 최대 항목 수 또는 문자열 길이.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String _displayValue(String value, {int? maxLength}) {
-    final textValue = value.trim().isEmpty ? text.noInformation : value.trim();
-    if (maxLength == null || textValue.length <= maxLength) {
-      return textValue;
-    }
-    return '${textValue.substring(0, maxLength)}...';
+  String _displayValue(String value) {
+    return value.trim().isEmpty ? text.noInformation : value.trim();
   }
 }
 

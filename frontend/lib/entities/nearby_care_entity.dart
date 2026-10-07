@@ -184,18 +184,18 @@ class NearbyCarePlace {
         json['designation_source_name'],
       ),
       designationSourceUrl: _readNullableString(json['designation_source_url']),
-      designationVerifiedAt: _readDate(json['designation_verified_at']),
+      designationVerifiedAt: readJsonDate(json['designation_verified_at']),
       designationIsStale:
           json['designation_is_stale'] is bool &&
           json['designation_is_stale'] as bool,
-      scheduleDate: _readDate(json['schedule_date']),
+      scheduleDate: readJsonDate(json['schedule_date']),
       scheduleSource: readJsonText(json['schedule_source']).isEmpty
           ? 'nemc_weekly_report'
           : readJsonText(json['schedule_source']),
       scheduleIsDateSpecific:
           json['schedule_is_date_specific'] is bool &&
           json['schedule_is_date_specific'] as bool,
-      minutesUntilClose: _readNullableInt(json['minutes_until_close']),
+      minutesUntilClose: readJsonInt(json['minutes_until_close']),
       nextOpenAt: DateTime.tryParse(readJsonText(json['next_open_at'])),
       sourceUpdatedAt: DateTime.tryParse(
         readJsonText(json['source_updated_at']),
@@ -241,30 +241,6 @@ class NearbyCarePlace {
       return value.toDouble();
     }
     return double.tryParse(value?.toString() ?? '') ?? 0;
-  }
-
-  // Function Name: _readDate
-  // Description: Parses nonempty date text and returns null for absent or malformed dates.
-  // Parameters:
-  // - value (dynamic): Raw response field to decode into the documented return type.
-  // Returns:
-  // - DateTime?: Parses nonempty date text and returns null for absent or malformed dates.
-  static DateTime? _readDate(dynamic value) {
-    final normalized = readJsonText(value);
-    return normalized.isEmpty ? null : DateTime.tryParse(normalized);
-  }
-
-  // 함수이름: _readNullableInt
-  // 함수역할: 정수 또는 숫자 문자열을 읽고 변환할 수 없으면 null을 사용한다.
-  // 매개변수:
-  // - value (dynamic): 반환 타입의 값으로 해석할 변환 전 응답 필드
-  // 반환값:
-  // - int?: 정수 또는 숫자 문자열을 읽고 변환할 수 없으면 null을 사용한다.
-  static int? _readNullableInt(dynamic value) {
-    if (value is int) {
-      return value;
-    }
-    return int.tryParse(readJsonText(value));
   }
 }
 

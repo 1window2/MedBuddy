@@ -79,7 +79,6 @@ List<String> medicationScheduleSlotKeysForFrequency(int frequencyCount) {
 // Responsibilities:
 // - Decode OCR and saved-schedule payloads, preserve correction provenance, and derive supported slots and localized display values.
 // Attributes:
-// - maskedPrescriptionText (String): Prescription OCR text after personal-data redaction.
 // - createdDate (DateTime?): Creation date of the saved medication or course.
 // - prescriptionDate (DateTime?): Dispensing or prescription date used as the course start.
 // - prescriptionBatchId (String): Identifier grouping medications from the same prescription analysis.
@@ -100,7 +99,6 @@ List<String> medicationScheduleSlotKeysForFrequency(int frequencyCount) {
 // - nameConfidence (double): Confidence assigned to the recognized medication name.
 // - nameCorrectionSource (String): Provenance of medication-name correction or review.
 class MedicationSchedule {
-  final String maskedPrescriptionText;
   final DateTime? createdDate;
   final DateTime? prescriptionDate;
   final String prescriptionBatchId;
@@ -124,7 +122,6 @@ class MedicationSchedule {
   // Function Name: MedicationSchedule
   // Description: Captures a medication course and its OCR provenance, patient ownership, optional catalog details, and per-slot completion state.
   // Parameters:
-  // - maskedPrescriptionText (String): Prescription OCR text after personal-data redaction.
   // - createdDate (DateTime?): Creation date of the saved medication or course.
   // - prescriptionDate (DateTime?): Dispensing or prescription date used as the course start.
   // - prescriptionBatchId (String): Identifier grouping medications from the same prescription analysis.
@@ -147,7 +144,6 @@ class MedicationSchedule {
   // Returns:
   // - MedicationSchedule: the initialized instance.
   const MedicationSchedule({
-    this.maskedPrescriptionText = '',
     this.createdDate,
     this.prescriptionDate,
     this.prescriptionBatchId = '',
@@ -214,9 +210,6 @@ class MedicationSchedule {
   // - MedicationSchedule: the initialized instance.
   factory MedicationSchedule.fromScheduleJson(Map<String, dynamic> json) {
     return MedicationSchedule(
-      maskedPrescriptionText: readJsonText(
-        json['maskedPrescriptionText'] ?? json['masked_prescription_text'],
-      ),
       createdDate: readJsonDate(json['created_date'] ?? json['createdDate']),
       prescriptionDate: readJsonDate(
         json['prescription_date'] ?? json['prescriptionDate'],
@@ -544,7 +537,6 @@ class MedicationSchedule {
   // Function Name: copyWith
   // Description: Creates a medication course with explicitly supplied changes while preserving unspecified schedule, catalog, and OCR correction fields.
   // Parameters:
-  // - maskedPrescriptionText (String?): Prescription OCR text after personal-data redaction.
   // - createdDate (DateTime?): Creation date of the saved medication or course.
   // - prescriptionDate (DateTime?): Dispensing or prescription date used as the course start.
   // - prescriptionBatchId (String?): Identifier grouping medications from the same prescription analysis.
@@ -567,7 +559,6 @@ class MedicationSchedule {
   // Returns:
   // - MedicationSchedule: a copy with supplied replacements and all other fields preserved.
   MedicationSchedule copyWith({
-    String? maskedPrescriptionText,
     DateTime? createdDate,
     DateTime? prescriptionDate,
     String? prescriptionBatchId,
@@ -589,8 +580,6 @@ class MedicationSchedule {
     String? nameCorrectionSource,
   }) {
     return MedicationSchedule(
-      maskedPrescriptionText:
-          maskedPrescriptionText ?? this.maskedPrescriptionText,
       createdDate: createdDate ?? this.createdDate,
       prescriptionDate: prescriptionDate ?? this.prescriptionDate,
       prescriptionBatchId: prescriptionBatchId ?? this.prescriptionBatchId,

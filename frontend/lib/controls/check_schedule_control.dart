@@ -66,7 +66,7 @@ class CheckSchedule {
       if (decodedData['success'] != true || decodedData['data'] is! List) {
         throw StateError('Schedule response could not be verified.');
       }
-      return _decodeMedicationScheduleList(decodedData['data']);
+      return MedicationSchedule.fromScheduleJsonList(decodedData['data']);
     } on StateError {
       rethrow;
     } catch (error, stackTrace) {
@@ -108,7 +108,7 @@ class CheckSchedule {
       if (decodedData['success'] != true || decodedData['data'] is! List) {
         throw StateError('Schedule window response could not be verified.');
       }
-      return _decodeMedicationScheduleList(decodedData['data']);
+      return MedicationSchedule.fromScheduleJsonList(decodedData['data']);
     } on StateError {
       rethrow;
     } catch (error, stackTrace) {
@@ -213,7 +213,7 @@ class CheckSchedule {
         );
       }
       final decodedData = ApiResponseParser.decodeMap(responseBody);
-      return _decodeMedicationScheduleList(decodedData['data']);
+      return MedicationSchedule.fromScheduleJsonList(decodedData['data']);
     } on ArgumentError {
       rethrow;
     } on StateError {
@@ -227,16 +227,6 @@ class CheckSchedule {
       );
       throw StateError('Slot status update failed.');
     }
-  }
-
-  // Function Name: _decodeMedicationScheduleList
-  // Description: Delegates schedule-list decoding and normalization to the shared MedicationSchedule entity parser.
-  // Parameters:
-  // - rawItems (dynamic): Raw server item or list before model conversion.
-  // Returns:
-  // - List<MedicationSchedule>: Delegates schedule-list decoding and normalization to the shared MedicationSchedule entity parser.
-  List<MedicationSchedule> _decodeMedicationScheduleList(dynamic rawItems) {
-    return MedicationSchedule.fromScheduleJsonList(rawItems);
   }
 
   // Function Name: _buildScheduleUri

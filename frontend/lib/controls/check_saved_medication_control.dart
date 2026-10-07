@@ -6,6 +6,7 @@ import 'dart:developer' as developer;
 
 import 'package:http/http.dart' as http;
 
+import '../entities/json_value_reader.dart';
 import '../entities/medication_detail_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
@@ -182,7 +183,7 @@ class CheckSavedMedication {
     if (preferredScheduleMedicationName.isNotEmpty) {
       savePayload['item_name'] = preferredScheduleMedicationName;
     }
-    savePayload['prescription_date'] = _formatDate(prescriptionDate);
+    savePayload['prescription_date'] = formatJsonDate(prescriptionDate);
     final prescriptionBatchId =
         medicationSchedule?.prescriptionBatchId.trim() ?? '';
     if (prescriptionBatchId.isNotEmpty) {
@@ -203,21 +204,6 @@ class CheckSavedMedication {
     savePayload['schedule_slot_keys'] =
         medicationSchedule?.slotKeys ?? const <String>[];
     return savePayload;
-  }
-
-  // 함수이름: _formatDate
-  // 함수역할: 날짜를 백엔드가 받을 수 있는 YYYY-MM-DD 문자열로 바꾼다.
-  // 매개변수:
-  // - value (DateTime?): 직렬화할 선택적 달력 날짜
-  // 반환값:
-  // - 날짜 문자열 또는 null
-  String? _formatDate(DateTime? value) {
-    if (value == null) {
-      return null;
-    }
-    return '${value.year.toString().padLeft(4, '0')}-'
-        '${value.month.toString().padLeft(2, '0')}-'
-        '${value.day.toString().padLeft(2, '0')}';
   }
 
   // Function Name: _readScheduleValue

@@ -1084,7 +1084,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   }
 
   // Function Name: _selectImage
-  // Description: Replaces the target front or back photo from the chosen source and invalidates prior multi-photo and analysis state.
+  // Description: Replaces the target front or back photo from the chosen source and invalidates prior analysis state.
   // Parameters:
   // - draftIndex (int): Zero-based position of the target medication, photo, or row.
   // - isFront (bool): Whether the required front photo rather than the back photo is targeted.
@@ -1127,12 +1127,6 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
       // - None.
       // Returns: No payload; applies the captured state changes.
       setState(() {
-        if (_multiplePillSourceImage != null) {
-          _drafts
-            ..clear()
-            ..add(_PillPhotoDraft());
-        }
-        _clearMultiplePillPhoto();
         final draft = _drafts[draftIndex];
         if (isFront) {
           draft.frontImage = imageBytes;
@@ -1461,16 +1455,6 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
         setState(() => _isAnalyzing = false);
       }
     }
-  }
-
-  // Function Name: _clearMultiplePillPhoto
-  // Description: Clears the multi-pill source photo and detected observations.
-  // Parameters:
-  // - None.
-  // Returns: None; updates state or performs the documented action.
-  void _clearMultiplePillPhoto() {
-    _multiplePillSourceImage = null;
-    _multiplePillObservations = const [];
   }
 
   // 함수이름: _removeImage

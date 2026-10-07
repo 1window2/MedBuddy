@@ -86,10 +86,10 @@ class _CheckCaregiverMedicationUIState
   static const ManageCaregiverPatientLocalState _localStateControl =
       ManageCaregiverPatientLocalState();
   static const List<_CaregiverScheduleSlot> _slots = [
-    _CaregiverScheduleSlot(key: 'morning', hour: 8),
-    _CaregiverScheduleSlot(key: 'lunch', hour: 12),
-    _CaregiverScheduleSlot(key: 'evening', hour: 18),
-    _CaregiverScheduleSlot(key: 'bedtime', hour: 22),
+    _CaregiverScheduleSlot(key: 'morning'),
+    _CaregiverScheduleSlot(key: 'lunch'),
+    _CaregiverScheduleSlot(key: 'evening'),
+    _CaregiverScheduleSlot(key: 'bedtime'),
   ];
 
   late final CheckCaregiverMedication _control;
@@ -1187,7 +1187,7 @@ class _CaregiverMedicationRow extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    _dosageLabel(schedule, isEnglish),
+                    schedule.dosageLabelForLanguage(isEnglish ? 'en' : 'ko'),
                     style: const TextStyle(
                       color: MedBuddyColors.textMuted,
                       fontSize: 13,
@@ -1203,36 +1203,23 @@ class _CaregiverMedicationRow extends StatelessWidget {
       ),
     );
   }
-
-  // 함수이름: _dosageLabel
-  // 함수역할: 일정 모델이 제공하는 언어별 1회 복용량 표기를 사용한다.
-  // 매개변수:
-  // - schedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-  // - isEnglish (bool): 영어 문구를 선택할지 여부; false이면 한국어.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  static String _dosageLabel(MedicationSchedule schedule, bool isEnglish) {
-    return schedule.dosageLabelForLanguage(isEnglish ? 'en' : 'ko');
-  }
 }
 
 // 클래스명: _CaregiverScheduleSlot
-// 역할: 복약 시간대 키·기본 시각·색상·아이콘을 담당한다.
+// 역할: 복약 시간대 키·색상·아이콘을 담당한다.
 // 주요 책임:
-// - 시간대 기본 시각을 두 자리 시와 분으로 표시한다.
 // - 시간대 키를 언어별 이름으로 변환하고 알 수 없는 키에는 일정 제목을 사용한다.
 // 속성:
 // - key (String): 복약 시간대를 구분하는 식별 문자열.
-// - hour (int): 24시간제 시 값.
 class _CaregiverScheduleSlot {
   final String key;
-  final int hour;
 
   // 함수이름: _CaregiverScheduleSlot
-  // 함수역할: 복약 시간대 키·기본 시각을 _CaregiverScheduleSlot 인스턴스에 담는다.
+  // 함수역할: 복약 시간대 키를 _CaregiverScheduleSlot 인스턴스에 담는다.
   // 매개변수:
   // - key (String): 복약 시간대를 구분하는 식별 문자열.
   // 반환값: 입력 설정이 반영된 _CaregiverScheduleSlot 인스턴스.
-  const _CaregiverScheduleSlot({required this.key, required this.hour});
+  const _CaregiverScheduleSlot({required this.key});
 
   // 함수이름: style
   // 함수역할: 시간대 키에 맞는 공통 색상·옅은 배경·아이콘을 반환한다.

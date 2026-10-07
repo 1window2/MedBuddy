@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../entities/analyzed_medication_entity.dart';
+import '../entities/json_value_reader.dart';
 import '../entities/patient_hash_entity.dart';
 import '../entities/prescription_change_entity.dart';
 import '../services/api_config.dart';
@@ -61,7 +62,7 @@ class CheckPrescriptionChange {
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
             'patient_hash': patientHash,
-            'prescription_date': _formatDate(
+            'prescription_date': formatJsonDate(
               medications
                   .map(/* 함수이름: map 콜백
                    * 함수역할: 비교 대상 약의 일정에서 처방 날짜를 추출한다.
@@ -105,22 +106,6 @@ class CheckPrescriptionChange {
     return PrescriptionChangeRadar.fromJson(
       ApiResponseParser.decodeMap(responseBody),
     );
-  }
-
-  // 함수이름: _formatDate
-  // 함수역할: 조제일자를 백엔드 요청 형식인 YYYY-MM-DD 문자열로 변환한다.
-  // 매개변수:
-  // - value (DateTime?): 현재 처방의 조제일자
-  // 반환값:
-  // - 변환된 날짜 문자열 또는 날짜가 없으면 null
-  String? _formatDate(DateTime? value) {
-    if (value == null) {
-      return null;
-    }
-    final year = value.year.toString().padLeft(4, '0');
-    final month = value.month.toString().padLeft(2, '0');
-    final day = value.day.toString().padLeft(2, '0');
-    return '$year-$month-$day';
   }
 
   // 함수이름: dispose

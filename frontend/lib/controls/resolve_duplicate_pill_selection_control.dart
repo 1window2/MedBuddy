@@ -1,4 +1,5 @@
 import '../entities/identified_pill_save_request_entity.dart';
+import '../entities/json_value_reader.dart';
 import '../entities/pill_identification_entity.dart';
 
 // 파일명: resolve_duplicate_pill_selection_control.dart
@@ -151,12 +152,7 @@ class ResolveDuplicatePillSelectionControl {
   // - String: 품목·약명·시작일·복용량·횟수·기간·정렬된 시간대를 결합해 일정까지 같은 저장 요청의 중복 키를 만든다.
   String _requestKey(IdentifiedPillSaveRequest request) {
     final schedule = request.medicationSchedule;
-    final date = schedule.prescriptionDate;
-    final dateKey = date == null
-        ? ''
-        : '${date.year.toString().padLeft(4, '0')}-'
-              '${date.month.toString().padLeft(2, '0')}-'
-              '${date.day.toString().padLeft(2, '0')}';
+    final dateKey = formatJsonDate(schedule.prescriptionDate) ?? '';
     final slotKeys = [...schedule.slotKeys]..sort();
     return [
       _candidateKey(request.candidate),

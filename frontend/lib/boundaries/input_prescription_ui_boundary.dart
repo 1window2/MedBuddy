@@ -933,9 +933,9 @@ class _HomeEncouragementPanel extends StatelessWidget {
       progressTitle: isEnglish ? 'Today\'s progress' : '오늘의 복약 진행률',
       progressLabel: dashboard.progressLabel,
       progress: dashboard.progress,
-      scheduleTitle: dashboard.nextMedicationLabel,
-      scheduleDescription: dashboard.nextMedicationGuide,
-      hasPendingMedication: dashboard.hasNextMedication,
+      scheduleTitle: '',
+      scheduleDescription: '',
+      hasPendingMedication: dashboard.nextSlotKey != null,
       compact: compact,
       onTap: onTap,
       scheduleContent: HomeMedicationSlotPager(
@@ -956,22 +956,19 @@ class _HomeEncouragementPanel extends StatelessWidget {
 // Class Name: _HomeDashboardSummary
 // Role: Represents home summary text, the next dose slot, and batch completion state.
 // Responsibilities:
-// - Maps a dose-slot key to its Korean or English name, preserving unknown keys.
+// - Clamps completed doses to the total and selects the next upcoming slot or latest overdue slot.
 // Attributes:
 // - progress (double): Completion fraction from zero to one.
 // - progressLabel (String): Text showing completed and total counts.
 // - statusMessage (String): Visible wording for the current result, error, or state.
-// - hasNextMedication (bool): Whether the summary requires user attention or dose action.
+// - nextSlotKey (String?): Key identifying morning, lunch, evening, or bedtime.
 class _HomeDashboardSummary {
   static const _slotOrder = ['morning', 'lunch', 'evening', 'bedtime'];
 
   final double progress;
   final String progressLabel;
   final String statusMessage;
-  final bool hasNextMedication;
   final String? nextSlotKey;
-  final String nextMedicationLabel;
-  final String nextMedicationGuide;
 
   // Function Name: _HomeDashboardSummary
   // Description: Combines the supplied values for home summary text, the next dose slot, and batch completion state in a _HomeDashboardSummary instance.
@@ -979,19 +976,13 @@ class _HomeDashboardSummary {
   // - progress (double): Completion fraction from zero to one.
   // - progressLabel (String): Text showing completed and total counts.
   // - statusMessage (String): Visible wording for the current result, error, or state.
-  // - hasNextMedication (bool): Whether the summary requires user attention or dose action.
   // - nextSlotKey (String?): Key identifying morning, lunch, evening, or bedtime.
-  // - nextMedicationLabel (String): Heading for the next-dose or missed-dose state.
-  // - nextMedicationGuide (String): Medication, time, and safety guidance for the next dose.
   // Returns: Initialized _HomeDashboardSummary instance.
   const _HomeDashboardSummary({
     required this.progress,
     required this.progressLabel,
     required this.statusMessage,
-    required this.hasNextMedication,
     required this.nextSlotKey,
-    required this.nextMedicationLabel,
-    required this.nextMedicationGuide,
   });
 
   // Function Name: _HomeDashboardSummary.from
@@ -1021,12 +1012,7 @@ class _HomeDashboardSummary {
         statusMessage: isEnglish
             ? 'Preparing your medication plan'
             : '복약 일정을 준비하고 있어요',
-        hasNextMedication: false,
         nextSlotKey: null,
-        nextMedicationLabel: isEnglish ? 'Next medication' : '다음 복약',
-        nextMedicationGuide: isEnglish
-            ? 'Please wait a moment.'
-            : '잠시만 기다려주세요.',
       );
     }
 
@@ -1042,19 +1028,17 @@ class _HomeDashboardSummary {
     final pendingSlots = <_DashboardPendingSlot>[];
 
     for (final slotKey in _slotOrder) {
-      final pendingSchedules = schedules
-          .where(
-            // 함수이름: initializer.where callback
-            // 함수역할: 홈 요약 문구·다음 시간대·일괄 완료 상태에 대해 `schedule.slotKeys.contains(slotKey) && !schedule.isSlotCompleted(slotKey)` 조건으로 컬렉션 항목을 판별한다.
-            // 매개변수:
-            // - schedule (콜백 계약에서 추론): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-            // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
-            (schedule) =>
-                schedule.slotKeys.contains(slotKey) &&
-                !schedule.isSlotCompleted(slotKey),
-          )
-          .toList(growable: false);
-      if (pendingSchedules.isEmpty) {
+      final hasPendingSchedule = schedules.any(
+        // 함수이름: initializer.any callback
+        // 함수역할: 홈 요약 문구·다음 시간대·일괄 완료 상태에 대해 `schedule.slotKeys.contains(slotKey) && !schedule.isSlotCompleted(slotKey)` 조건으로 컬렉션 항목을 판별한다.
+        // 매개변수:
+        // - schedule (콜백 계약에서 추론): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
+        // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
+        (schedule) =>
+            schedule.slotKeys.contains(slotKey) &&
+            !schedule.isSlotCompleted(slotKey),
+      );
+      if (!hasPendingSchedule) {
         continue;
       }
       final alarm =
@@ -1069,8 +1053,6 @@ class _HomeDashboardSummary {
             alarm.hour,
             alarm.minute,
           ),
-          alarm: alarm,
-          medications: pendingSchedules,
         ),
       );
     }
@@ -1086,14 +1068,7 @@ class _HomeDashboardSummary {
             : (isEnglish
                   ? 'You have completed today\'s medication'
                   : '오늘의 복약을 모두 완료했어요'),
-        hasNextMedication: false,
         nextSlotKey: null,
-        nextMedicationLabel: isEnglish
-            ? 'No upcoming medication'
-            : '다음 복약 일정이 없어요',
-        nextMedicationGuide: isEnglish
-            ? 'Take time to rest and recharge.'
-            : '남은 시간도 편안하게 보내세요.',
       );
     }
 
@@ -1118,17 +1093,6 @@ class _HomeDashboardSummary {
         ? upcomingSlots.first
         : pendingSlots.last;
     final isPastDue = nextSlot.scheduledAt.isBefore(now);
-    final timeLabel =
-        '${nextSlot.scheduledAt.hour.toString().padLeft(2, '0')}:${nextSlot.scheduledAt.minute.toString().padLeft(2, '0')}';
-    final medicationName = nextSlot.medications.first.displayNameForLanguage(
-      isEnglish ? 'en' : 'ko',
-    );
-    final additionalMedicationCount = nextSlot.medications.length - 1;
-    final medicationSummary = additionalMedicationCount == 0
-        ? medicationName
-        : isEnglish
-        ? '$medicationName and $additionalMedicationCount more'
-        : '$medicationName 외 $additionalMedicationCount개';
     final statusMessage = isPastDue
         ? (isEnglish
               ? 'You have a missed medication to check'
@@ -1136,80 +1100,35 @@ class _HomeDashboardSummary {
         : (isEnglish
               ? 'You are keeping up with your medication'
               : '오늘도 복약을 꾸준히 이어가고 있어요');
-    final nextMedicationLabel = isPastDue
-        ? (isEnglish ? 'Missed dose check' : '미복용 확인')
-        : isEnglish
-        ? (nextSlot.alarm.isEnabled
-              ? 'Next medication alert'
-              : 'Next medication')
-        : (nextSlot.alarm.isEnabled ? '다음 복약 알림' : '다음 복약 일정');
 
     return _HomeDashboardSummary(
       progress: progress,
       progressLabel: progressLabel,
       statusMessage: statusMessage,
-      hasNextMedication: true,
       nextSlotKey: nextSlot.slotKey,
-      nextMedicationLabel: nextMedicationLabel,
-      nextMedicationGuide: isEnglish
-          ? '${_slotLabel(nextSlot.slotKey, isEnglish: true)} $timeLabel · $medicationSummary\n${isPastDue ? 'Check your prescription guidance before taking a missed dose.' : 'Take it on time.'}'
-          : '${_slotLabel(nextSlot.slotKey, isEnglish: false)} $timeLabel · $medicationSummary\n${isPastDue ? '놓친 복약은 임의로 추가 복용하지 말고 처방·복약지도를 확인하세요.' : '시간에 맞춰 챙겨드세요.'}',
     );
-  }
-
-  // Function Name: _slotLabel
-  // Description: Maps a dose-slot key to its Korean or English name, preserving unknown keys.
-  // Parameters:
-  // - slotKey (String): Key identifying morning, lunch, evening, or bedtime.
-  // - isEnglish (bool): Whether English wording is selected; false selects Korean.
-  // Returns: The formatted display text or identifier described above.
-  static String _slotLabel(String slotKey, {required bool isEnglish}) {
-    if (isEnglish) {
-      return switch (slotKey) {
-        'morning' => 'Morning',
-        'lunch' => 'Lunch',
-        'evening' => 'Evening',
-        'bedtime' => 'Bedtime',
-        _ => slotKey,
-      };
-    }
-    return switch (slotKey) {
-      'morning' => '아침',
-      'lunch' => '점심',
-      'evening' => '저녁',
-      'bedtime' => '취침 전',
-      _ => slotKey,
-    };
   }
 }
 
 // Class Name: _DashboardPendingSlot
-// Role: Represents a pending dashboard slot and its medication count.
+// Role: Represents a pending dashboard slot and its scheduled time.
 // Responsibilities:
-// - Groups the supplied field values for a pending dashboard slot and its medication count in a single object.
+// - Groups the supplied field values for a pending dashboard slot and its scheduled time in a single object.
 // Attributes:
 // - slotKey (String): Key identifying morning, lunch, evening, or bedtime.
 // - scheduledAt (DateTime): Scheduled date and time for the dose slot.
-// - alarm (MedicationAlarm): The dose-slot reminder configuration being displayed or edited.
-// - medications (List<MedicationSchedule>): Medication list used for retrieval, selection, ordering, or display.
 class _DashboardPendingSlot {
   final String slotKey;
   final DateTime scheduledAt;
-  final MedicationAlarm alarm;
-  final List<MedicationSchedule> medications;
 
   // Function Name: _DashboardPendingSlot
-  // Description: Combines the supplied values for a pending dashboard slot and its medication count in a _DashboardPendingSlot instance.
+  // Description: Combines the supplied values for a pending dashboard slot and its scheduled time in a _DashboardPendingSlot instance.
   // Parameters:
   // - slotKey (String): Key identifying morning, lunch, evening, or bedtime.
   // - scheduledAt (DateTime): Scheduled date and time for the dose slot.
-  // - alarm (MedicationAlarm): The dose-slot reminder configuration being displayed or edited.
-  // - medications (List<MedicationSchedule>): Medication list used for retrieval, selection, ordering, or display.
   // Returns: Initialized _DashboardPendingSlot instance.
   const _DashboardPendingSlot({
     required this.slotKey,
     required this.scheduledAt,
-    required this.alarm,
-    required this.medications,
   });
 }

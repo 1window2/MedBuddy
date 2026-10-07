@@ -1242,12 +1242,6 @@ class _PreviewText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get back => isEnglish ? 'Back' : '뒤로가기';
-  // 함수이름: analyze
-  // 함수역할: 현재 언어와 입력값에 맞춰 "분석하기" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get analyze => isEnglish ? 'Analyze' : '분석하기';
   // 함수이름: reviewBeforeAnalyze
   // 함수역할: 현재 언어와 입력값에 맞춰 "검토 후 분석하기" 문구를 제공한다.
   // 매개변수:
@@ -1292,12 +1286,6 @@ class _PreviewText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get verified => isEnglish ? 'Verified' : '확인됨';
-  // 함수이름: edit
-  // 함수역할: 현재 언어와 입력값에 맞춰 "OCR 인식 결과 수정" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get edit => isEnglish ? 'Edit OCR result' : 'OCR 인식 결과 수정';
   // 함수이름: editTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "OCR 인식 결과 수정" 문구를 제공한다.
   // 매개변수:

@@ -17,7 +17,6 @@ class MedBuddyColors {
   static const Color mint = Color(0xFFD6EEE3);
   static const Color successBorder = Color(0xFFB9DCCB);
   static const Color successSurface = Color(0xFFEAF5EF);
-  static const Color analysisBackground = Color(0xFFEFF6F2);
   // Neutrals share the green hue so text and lines sit quietly beside the brand.
   static const Color pageBackground = Color(0xFFF4F6F5);
   static const Color surface = Colors.white;
