@@ -513,7 +513,7 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
       child: Scaffold(
-        backgroundColor: const Color(0xFF111827),
+        backgroundColor: MedBuddyColors.textStrong,
         body: SafeArea(
           child: LayoutBuilder(
             // 함수이름: build.builder callback

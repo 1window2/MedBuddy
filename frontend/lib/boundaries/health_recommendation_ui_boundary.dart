@@ -301,8 +301,8 @@ class _HealthRecommendationContent extends StatelessWidget {
           title: text.diet,
           body: recommendation.dietRecommendation,
           icon: Icons.local_dining_outlined,
-          iconColor: const Color(0xFFEC003F),
-          headerColor: const Color(0xFFFFF1F2),
+          iconColor: MedBuddyColors.danger,
+          headerColor: MedBuddyColors.dangerSurface,
         ),
         const SizedBox(height: 16),
         _RecommendationCard(
@@ -453,9 +453,9 @@ class _CautionCard extends StatelessWidget {
     return Container(
       key: const ValueKey('healthRecommendationCautionCard'),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFBEB),
+        color: MedBuddyColors.warningSurface,
         borderRadius: MedBuddyRadii.card,
-        border: Border.all(color: const Color(0xFFFEE685), width: 1.5),
+        border: Border.all(color: MedBuddyColors.warningBorder, width: 1.5),
         boxShadow: MedBuddyShadows.soft,
       ),
       child: Column(
@@ -465,13 +465,13 @@ class _CautionCard extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(18, 15, 18, 15),
             decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: Color(0xFFFEE685))),
+              border: Border(bottom: BorderSide(color: MedBuddyColors.warningBorder)),
             ),
             child: Row(
               children: [
                 const Icon(
                   Icons.error_outline,
-                  color: Color(0xFFE17100),
+                  color: MedBuddyColors.reminderAccent,
                   size: 27,
                 ),
                 const SizedBox(width: 10),

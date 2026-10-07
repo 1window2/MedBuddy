@@ -523,7 +523,7 @@ class _ScheduleSummaryRow extends StatelessWidget {
               displayValue,
               style: TextStyle(
                 color: value.trim().isEmpty
-                    ? const Color(0xFF9A6700)
+                    ? MedBuddyColors.reminderAccent
                     : MedBuddyColors.textStrong,
                 fontSize: 13 * scale,
                 fontWeight: FontWeight.w700,
@@ -567,20 +567,20 @@ class _PillScheduleSafetyNotice extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF8E7),
-        border: Border.all(color: const Color(0xFFF0C36A)),
+        color: MedBuddyColors.warningSurface,
+        border: Border.all(color: MedBuddyColors.warningBorder),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.warning_amber_rounded, color: Color(0xFF9A6700)),
+          const Icon(Icons.warning_amber_rounded, color: MedBuddyColors.reminderAccent),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               text.pillSafetyNotice,
               style: TextStyle(
-                color: const Color(0xFF6B4B00),
+                color: MedBuddyColors.reminderAccent,
                 fontSize: 13 * scale,
                 fontWeight: FontWeight.w600,
                 height: 1.4,
@@ -624,13 +624,13 @@ class _ScheduleValidationNotice extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF1F2),
+        color: MedBuddyColors.dangerSurface,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
         message,
         style: TextStyle(
-          color: const Color(0xFFB42318),
+          color: MedBuddyColors.danger,
           fontSize: 13 * scale,
           fontWeight: FontWeight.w700,
           height: 1.4,

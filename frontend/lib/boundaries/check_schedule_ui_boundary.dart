@@ -1233,7 +1233,7 @@ class _ScheduleHeader extends StatelessWidget {
                   child: LinearProgressIndicator(
                     value: progress,
                     minHeight: 7,
-                    color: Color(0xFFE7FFF1),
+                    color: MedBuddyColors.successSurface,
                     backgroundColor: Colors.white.withValues(alpha: 0.18),
                   ),
                 ),
@@ -1719,7 +1719,7 @@ class _MedicationScheduleRow extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
       decoration: BoxDecoration(
         color: isSelectionMode && isSelected
-            ? const Color(0xFFEAFBF4)
+            ? MedBuddyColors.successSurface
             : Colors.white,
         border: const Border(bottom: BorderSide(color: MedBuddyColors.divider)),
       ),
@@ -1883,7 +1883,7 @@ class _MedicationThumbnail extends StatelessWidget {
           width: 54,
           height: 54,
           decoration: BoxDecoration(
-            color: const Color(0xFFF2F4F7),
+            color: MedBuddyColors.surfaceSubtle,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: MedBuddyColors.outline),
           ),

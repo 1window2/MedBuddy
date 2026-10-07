@@ -153,7 +153,6 @@ class HomeMedicationPreview extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: MedBuddyRadii.largeCard,
           border: Border.all(color: MedBuddyColors.cardBorder),
-          boxShadow: MedBuddyShadows.soft,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

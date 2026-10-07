@@ -49,7 +49,7 @@ class PrescriptionChangeRadarUI extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: MedBuddyRadii.largeCard,
-        border: Border.all(color: const Color(0xFFB7E4D3), width: 2),
+        border: Border.all(color: MedBuddyColors.successBorder, width: 2),
         boxShadow: MedBuddyShadows.card,
       ),
       child: Column(
@@ -151,7 +151,7 @@ class PrescriptionChangeRadarUI extends StatelessWidget {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
           decoration: BoxDecoration(
-            color: const Color(0xFFFFF8E1),
+            color: MedBuddyColors.warningSurface,
             borderRadius: MedBuddyRadii.card,
           ),
           child: Row(
@@ -159,7 +159,7 @@ class PrescriptionChangeRadarUI extends StatelessWidget {
             children: [
               const Icon(
                 Icons.info_outline,
-                color: Color(0xFFB7791F),
+                color: MedBuddyColors.reminderAccent,
                 size: 19,
               ),
               const SizedBox(width: 8),
@@ -217,9 +217,9 @@ class PrescriptionChangeRadarLoadingUI extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 18),
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
       decoration: BoxDecoration(
-        color: const Color(0xFFEAFBF4),
+        color: MedBuddyColors.successSurface,
         borderRadius: MedBuddyRadii.largeCard,
-        border: Border.all(color: const Color(0xFFB7E4D3), width: 2),
+        border: Border.all(color: MedBuddyColors.successBorder, width: 2),
       ),
       child: Row(
         children: [
@@ -285,10 +285,10 @@ class _RadarHeader extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(18, 15, 18, 14),
       decoration: const BoxDecoration(
-        color: Color(0xFFEAFBF4),
+        color: MedBuddyColors.successSurface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
         border: Border(
-          bottom: BorderSide(color: Color(0xFFB7E4D3), width: 1.5),
+          bottom: BorderSide(color: MedBuddyColors.successBorder, width: 1.5),
         ),
       ),
       child: Row(
@@ -372,22 +372,22 @@ class _ChangeSummary extends StatelessWidget {
         if (summary.addedCount > 0)
           _SummaryChip(
             label: text.addedCount(summary.addedCount),
-            foreground: const Color(0xFF047857),
-            background: const Color(0xFFDFF7EC),
+            foreground: MedBuddyColors.primaryDark,
+            background: MedBuddyColors.successSurface,
             scale: scale,
           ),
         if (summary.scheduleChangedCount > 0)
           _SummaryChip(
             label: text.changedCount(summary.scheduleChangedCount),
-            foreground: const Color(0xFF9A6700),
-            background: const Color(0xFFFFF2C7),
+            foreground: MedBuddyColors.reminderAccent,
+            background: MedBuddyColors.warningSurface,
             scale: scale,
           ),
         if (summary.missingCount > 0)
           _SummaryChip(
             label: text.missingCount(summary.missingCount),
-            foreground: const Color(0xFFB42318),
-            background: const Color(0xFFFFE4E2),
+            foreground: MedBuddyColors.danger,
+            background: MedBuddyColors.dangerSurface,
             scale: scale,
           ),
       ],
@@ -643,17 +643,17 @@ class _ChangePresentation {
     return switch (type) {
       PrescriptionChangeType.added => _ChangePresentation(
         icon: Icons.add_circle_outline,
-        color: const Color(0xFF047857),
+        color: MedBuddyColors.primaryDark,
         label: text.added,
       ),
       PrescriptionChangeType.missing => _ChangePresentation(
         icon: Icons.remove_circle_outline,
-        color: const Color(0xFFB42318),
+        color: MedBuddyColors.danger,
         label: text.missing,
       ),
       PrescriptionChangeType.scheduleChanged => _ChangePresentation(
         icon: Icons.tune,
-        color: const Color(0xFF9A6700),
+        color: MedBuddyColors.reminderAccent,
         label: text.scheduleChanged,
       ),
       PrescriptionChangeType.unknown => _ChangePresentation(

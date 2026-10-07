@@ -34,6 +34,10 @@ class MedBuddyColors {
   static const Color infoBlue = Color(0xFF2F4A8A);
   static const Color reminderAccent = Color(0xFF8A5A00);
   static const Color danger = Color(0xFFC0352B);
+  static const Color dangerSurface = Color(0xFFFDEEEE);
+  static const Color dangerBorder = Color(0xFFF2C4C0);
+  static const Color warningSurface = Color(0xFFFFF6E3);
+  static const Color warningBorder = Color(0xFFEED39A);
   // Each dose time keeps a distinct, AA-contrast identity for white labels.
   static const Color slotMorning = Color(0xFF9A5B00);
   static const Color slotLunch = Color(0xFF0F7B6C);
@@ -72,17 +76,17 @@ class MedBuddySpacing {
 class MedBuddyShadows {
   static const List<BoxShadow> soft = [
     BoxShadow(
-      color: Color.fromRGBO(16, 40, 30, 0.05),
-      blurRadius: 12,
-      offset: Offset(0, 3),
+      color: Color.fromRGBO(16, 40, 30, 0.04),
+      blurRadius: 6,
+      offset: Offset(0, 1),
     ),
   ];
 
   static const List<BoxShadow> card = [
     BoxShadow(
-      color: Color.fromRGBO(16, 40, 30, 0.07),
-      blurRadius: 18,
-      offset: Offset(0, 6),
+      color: Color.fromRGBO(16, 40, 30, 0.06),
+      blurRadius: 10,
+      offset: Offset(0, 2),
     ),
   ];
 }

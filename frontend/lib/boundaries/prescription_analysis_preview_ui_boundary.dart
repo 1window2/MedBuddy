@@ -559,8 +559,8 @@ class _MedicationLookupReviewBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF8E5),
-        border: Border.all(color: const Color(0xFFF0CC69)),
+        color: MedBuddyColors.warningSurface,
+        border: Border.all(color: MedBuddyColors.warningBorder),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -568,7 +568,7 @@ class _MedicationLookupReviewBanner extends StatelessWidget {
         children: [
           Icon(
             Icons.info_outline_rounded,
-            color: const Color(0xFF9A6700),
+            color: MedBuddyColors.reminderAccent,
             size: 21 * scale,
           ),
           const SizedBox(width: 9),

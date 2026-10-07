@@ -698,10 +698,10 @@ class _CaregiverSynchronizationBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDelayed = hasSynchronizationError && lastSynchronizedAt != null;
     final color = isDelayed
-        ? const Color(0xFF9A6700)
+        ? MedBuddyColors.reminderAccent
         : MedBuddyColors.primaryDark;
     final backgroundColor = isDelayed
-        ? const Color(0xFFFFF4D6)
+        ? MedBuddyColors.warningSurface
         : MedBuddyColors.successSurface;
 
     return Container(

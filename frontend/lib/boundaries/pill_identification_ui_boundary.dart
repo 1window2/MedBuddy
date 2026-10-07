@@ -355,7 +355,7 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                         child: Text(
                           text.frontPhotoRequiredForEveryPill,
                           style: TextStyle(
-                            color: const Color(0xFF9A6700),
+                            color: MedBuddyColors.reminderAccent,
                             fontSize: 12 * textScale,
                             fontWeight: FontWeight.w600,
                             height: 1.35,
@@ -2092,20 +2092,20 @@ class _SafetyNotice extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF8E7),
+        color: MedBuddyColors.warningSurface,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFF0C36A)),
+        border: Border.all(color: MedBuddyColors.warningBorder),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.info_outline, color: Color(0xFF9A6700), size: 22),
+          const Icon(Icons.info_outline, color: MedBuddyColors.reminderAccent, size: 22),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               text.safetyNotice,
               style: TextStyle(
-                color: const Color(0xFF6B4B00),
+                color: MedBuddyColors.reminderAccent,
                 fontSize: 13 * textScale,
                 height: 1.45,
                 fontWeight: FontWeight.w600,
@@ -2383,7 +2383,7 @@ class _PillCandidateCard extends StatelessWidget {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFFF3D6),
+                            color: MedBuddyColors.warningSurface,
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
@@ -2535,12 +2535,12 @@ class _ErrorNotice extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFF0F1),
+          color: MedBuddyColors.dangerSurface,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text(
           message,
-          style: const TextStyle(color: Color(0xFFB42318), height: 1.4),
+          style: const TextStyle(color: MedBuddyColors.danger, height: 1.4),
         ),
       ),
     );
@@ -2577,16 +2577,16 @@ class _ConfidenceNotice extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFF8E7),
+          color: MedBuddyColors.warningSurface,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: const Color(0xFFF0C36A)),
+          border: Border.all(color: MedBuddyColors.warningBorder),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Icon(
               Icons.warning_amber_rounded,
-              color: Color(0xFF9A6700),
+              color: MedBuddyColors.reminderAccent,
               size: 21,
             ),
             const SizedBox(width: 9),
@@ -2594,7 +2594,7 @@ class _ConfidenceNotice extends StatelessWidget {
               child: Text(
                 message,
                 style: const TextStyle(
-                  color: Color(0xFF6B4B00),
+                  color: MedBuddyColors.reminderAccent,
                   height: 1.4,
                   fontWeight: FontWeight.w600,
                 ),
