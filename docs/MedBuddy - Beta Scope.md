@@ -3,9 +3,9 @@
 ## Status
 
 - Scope review: 2026-09-30
-- Stable functional baseline: `v0.1.1-beta`
-- Active development branch: `beta/v0.2.0`
-- Target release tag: `v0.2.0-beta`
+- Stable functional baseline: `v0.2.0-beta`
+- Active development branch: `beta/v0.2.1`
+- Target release tag: `v0.2.1-beta`
 - Target platform: Android
 - iOS: deferred until after the Android public-release decision, no earlier than
   October 2026
@@ -55,7 +55,7 @@ The following implemented flows are in v0.2.0 verification:
    per-pill partial failure, and schedule review before save. One-photo detection
    supports tie-aware candidate expansion, per-pill original-region reanalysis,
    user-paired back photos, and explicit uncertainty instead of probability-like
-   percentages. See [pill identification review](MedBuddy%20-%20Pill%20Identification%20Review.md).
+   percentages.
 9. Direct medication entry with optional app-owned local image, dose and unit,
    start/end dates, and schedule slots using the shared saved-medication model.
 10. Nearby-pharmacy lookup using foreground location, backend-held
@@ -115,8 +115,7 @@ Historical Google Cloud workflows are disabled.
 The September 30 review found public HTML 403 responses for hospital search and
 `/ready/catalogs` despite healthy core readiness. The corrected ingress rule and
 credential-free signing probes are in source; applying the rule and obtaining
-successful public probes remain deployment gates. See the
-[launch readiness review](qa/v0.2.0-2026-09-30-launch-readiness.md).
+successful public probes remain deployment gates.
 
 ### P0: Identity and Transport Security
 
@@ -220,6 +219,5 @@ The v0.2.0 beta may be published only when all of the following are true:
 - README, SECURITY, UML, API contracts, and release notes describe the same
   behavior as the shipped artifact.
 
-The completed v0.1.1 baseline is recorded in
-[`docs/releases/v0.1.1-beta.md`](releases/v0.1.1-beta.md); v0.2.0 release-candidate
-changes and verification evidence must be recorded before publication.
+Published releases and their verification notes are on the
+[GitHub releases page](https://github.com/1window2/MedBuddy/releases).

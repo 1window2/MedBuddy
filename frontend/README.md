@@ -2,8 +2,8 @@
 
 Flutter client for the MedBuddy Android beta source and local demo.
 
-Current app version: **0.2.0+21**. Active development line:
-**`beta/v0.2.0`**.
+Current app version: **0.2.1+22**. Active development line:
+**`beta/v0.2.1`**.
 
 ## Role
 

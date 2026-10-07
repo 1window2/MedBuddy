@@ -54,7 +54,7 @@ class AndroidReleasePolicy:
         if environment["GITHUB_REF"] == "refs/heads/main" and not required:
             raise ValueError(
                 "Main release builds require Firebase App Check. "
-                "The off-Play exception is restricted to beta/v0.2.0."
+                "The off-Play exception is restricted to beta/v0.2.1."
             )
         return cls(required, distribution)
 

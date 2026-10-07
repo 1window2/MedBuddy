@@ -11,9 +11,9 @@ complete.
 
 | Version | Status | Security Handling |
 | --- | --- | --- |
-| `v0.2.0-beta` source | In development | Security fixes are applied before the v0.2.0 beta is published. |
-| `v0.1.1-beta` | Current baseline | Critical fixes are evaluated for the supported release line and merged forward into v0.2.0. |
-| `v0.1.0-beta` | Superseded beta | Receives no routine backports. |
+| `v0.2.1-beta` source | In development | Security fixes are applied before the v0.2.1 beta is published. |
+| `v0.2.0-beta` | Current baseline | Critical fixes are evaluated for the supported release line and merged forward into v0.2.1. |
+| `v0.1.1-beta` and `v0.1.0-beta` | Superseded betas | Receive no routine backports. |
 | `v0.0.9-alpha` and earlier | Published alpha demos | Superseded demos receive no routine backports. |
 
 The release tag and default branch must include all applicable security fixes.

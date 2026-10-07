@@ -25,9 +25,9 @@ SPEC.loader.exec_module(gate)
     ("refs/heads/main", "", "true"),
     ("refs/heads/main", " TRUE ", "true"),
     ("refs/heads/main", "false", None),
-    ("refs/heads/beta/v0.2.0", "false", "false"),
-    ("refs/heads/beta/v0.2.0", "", "true"),
-    ("refs/heads/beta/v0.2.0", "invalid", None),
+    ("refs/heads/beta/v0.2.1", "false", "false"),
+    ("refs/heads/beta/v0.2.1", "", "true"),
+    ("refs/heads/beta/v0.2.1", "invalid", None),
 ])
 def test_signed_workflow_requires_attestation_on_main(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
@@ -64,7 +64,7 @@ def test_signed_workflow_normalizes_one_shared_artifact_plan(
     policy: str, channel: str, expected: str | None,
 ) -> None:
     output = tmp_path / "github-env"
-    monkeypatch.setenv("GITHUB_REF", "refs/heads/beta/v0.2.0")
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/beta/v0.2.1")
     monkeypatch.setenv("FIREBASE_APP_CHECK_REQUIRED", policy)
     monkeypatch.setenv("APP_CHECK_RELEASE_DISTRIBUTION", channel)
     monkeypatch.setenv("GITHUB_ENV", str(output))
