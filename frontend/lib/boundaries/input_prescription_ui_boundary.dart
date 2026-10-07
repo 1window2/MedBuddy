@@ -711,7 +711,7 @@ class _HomeActionCard extends StatelessWidget {
           children: [
             _ActionIcon(icon: icon, tone: tone, color: accent, size: 40),
             const Spacer(),
-            _ActionArrow(tone: tone, color: accent),
+            _ActionArrow(color: accent),
           ],
         ),
         const SizedBox(height: 7),
@@ -797,7 +797,7 @@ class _HomeActionCard extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 10),
-        _ActionArrow(tone: tone, color: accent),
+        _ActionArrow(color: accent),
       ],
     );
   }
@@ -858,41 +858,33 @@ class _ActionIcon extends StatelessWidget {
 }
 
 // Class Name: _ActionArrow
-// Role: Represents the navigation arrow on a home quick action.
-// Responsibilities:
-// - Composes the navigation arrow on a home quick action using the display values and actions supplied by its parent.
+// Role: Marks a home action card as tappable with a light forward arrow.
 // Attributes:
-// - tone (_HomeActionTone): Primary fill or icon tint for the home action.
-// - color (Color): Foreground or accent color applied to text, icons, or state guidance.
+// - color (Color): Arrow color matching the card's accent.
 class _ActionArrow extends StatelessWidget {
-  final _HomeActionTone tone;
   final Color color;
 
   // Function Name: _ActionArrow
-  // Description: Initializes the navigation arrow on a home quick action with the supplied configuration.
+  // Description: Stores the arrow color.
   // Parameters:
-  // - tone (_HomeActionTone): Primary fill or icon tint for the home action.
-  // - color (Color): Foreground or accent color applied to text, icons, or state guidance.
+  // - color (Color): Arrow color matching the card's accent.
   // Returns: Initialized _ActionArrow instance.
-  const _ActionArrow({required this.tone, required this.color});
+  const _ActionArrow({required this.color});
 
   // Function Name: build
-  // Description: Renders the navigation arrow on a home quick action from the current configuration and state.
+  // Description: Draws the arrow without a background so it reads as a hint, not a second button.
   // Parameters:
-  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-  // Returns: Widget tree for the navigation arrow on a home quick action.
+  // - context (BuildContext): Widget-tree location.
+  // Returns: A 30dp box holding the arrow icon.
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 30,
-      height: 30,
-      decoration: BoxDecoration(
-        color: tone == _HomeActionTone.primary
-            ? Colors.white.withValues(alpha: 0.16)
-            : MedBuddyColors.surfaceSubtle,
-        shape: BoxShape.circle,
+    return SizedBox.square(
+      dimension: 30,
+      child: Icon(
+        Icons.arrow_forward_rounded,
+        color: color.withValues(alpha: 0.75),
+        size: 20,
       ),
-      child: Icon(Icons.arrow_forward_rounded, color: color, size: 18),
     );
   }
 }
