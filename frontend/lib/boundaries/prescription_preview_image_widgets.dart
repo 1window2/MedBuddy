@@ -469,12 +469,12 @@ class _RecognizedImageCanvasState extends State<_RecognizedImageCanvas> {
       // - 없음.
       // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
       setState(() => _aspectRatio = nextAspectRatio);
-    // 함수이름: _resolveAspectRatio.onError callback
-    // 함수역할: 캡처된 값을 변경하지 않는다. 호출자가 화면 갱신을 요청하거나 해당 상호작용을 비활성화한다.
-    // 매개변수:
-    // - error (콜백 계약에서 추론): 사용자 안내 또는 복구 분기에 사용할 실패 정보.
-    // - stackTrace (콜백 계약에서 추론): 이미지 로드 실패 지점의 선택적 호출 스택; 표시에는 사용하지 않음.
-    // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+      // 함수이름: _resolveAspectRatio.onError callback
+      // 함수역할: 캡처된 값을 변경하지 않는다. 호출자가 화면 갱신을 요청하거나 해당 상호작용을 비활성화한다.
+      // 매개변수:
+      // - error (콜백 계약에서 추론): 사용자 안내 또는 복구 분기에 사용할 실패 정보.
+      // - stackTrace (콜백 계약에서 추론): 이미지 로드 실패 지점의 선택적 호출 스택; 표시에는 사용하지 않음.
+      // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
     }, onError: (error, stackTrace) {});
     _imageStream = imageStream;
     _imageStreamListener = listener;

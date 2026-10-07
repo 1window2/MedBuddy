@@ -966,7 +966,10 @@ class _CaregiverTimeSlotCard extends StatelessWidget {
         if (!setting.hasValidDeadline) {
           return isEnglish ? 'Alert time unavailable' : '알림 시각 확인 필요';
         }
-        final time = userSetting.formatTime(setting.deadlineHour!, setting.deadlineMinute!);
+        final time = userSetting.formatTime(
+          setting.deadlineHour!,
+          setting.deadlineMinute!,
+        );
         return isEnglish ? 'Missed-dose alert $time' : '미복용 알림 $time';
     }
   }

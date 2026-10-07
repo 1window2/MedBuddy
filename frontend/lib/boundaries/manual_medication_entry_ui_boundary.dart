@@ -607,9 +607,7 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
         style: FilledButton.styleFrom(
           minimumSize: const Size.fromHeight(56),
           backgroundColor: MedBuddyColors.primary,
-          shape: RoundedRectangleBorder(
-            borderRadius: MedBuddyRadii.control,
-          ),
+          shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.control),
         ),
         icon: _isSaving
             ? const SizedBox.square(

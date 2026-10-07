@@ -638,7 +638,9 @@ class _CorrectionBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
-        color: isWarning ? MedBuddyColors.warningSurface : MedBuddyColors.successSurface,
+        color: isWarning
+            ? MedBuddyColors.warningSurface
+            : MedBuddyColors.successSurface,
         borderRadius: MedBuddyRadii.pill,
       ),
       child: Text(

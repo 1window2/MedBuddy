@@ -287,9 +287,7 @@ class _RadarHeader extends StatelessWidget {
       decoration: const BoxDecoration(
         color: MedBuddyColors.successSurface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
-        border: Border(
-          bottom: BorderSide(color: MedBuddyColors.successBorder),
-        ),
+        border: Border(bottom: BorderSide(color: MedBuddyColors.successBorder)),
       ),
       child: Row(
         children: [

@@ -907,7 +907,10 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     if (!mounted) {
       return;
     }
-    _showReminderResultMessage(viewModel.reminderStatusMessage, success: success);
+    _showReminderResultMessage(
+      viewModel.reminderStatusMessage,
+      success: success,
+    );
   }
 
   // 함수이름: _showReminderConfiguration
@@ -1096,9 +1099,7 @@ class _HealthRecommendationFooter extends StatelessWidget {
         style: OutlinedButton.styleFrom(
           minimumSize: const Size.fromHeight(64),
           side: const BorderSide(color: MedBuddyColors.primary, width: 2),
-          shape: RoundedRectangleBorder(
-            borderRadius: MedBuddyRadii.control,
-          ),
+          shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.control),
           foregroundColor: MedBuddyColors.primaryDark,
           backgroundColor: Colors.white,
         ),
@@ -1561,17 +1562,21 @@ class _TimeSlotCard extends StatelessWidget {
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                        if (!isSelectionMode) Text(
-                          reminderSetting.isEnabled && userSetting.medicationNotificationsEnabled
-                              ? '${text.isEnglish ? 'Reminder' : '복약 알림'} ${userSetting.formatTime(reminderSetting.hour, reminderSetting.minute)}'
-                              : (text.isEnglish ? 'Reminder off' : '복약 알림 꺼짐'),
-                          key: ValueKey('patient-alert-time-${slot.key}'),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
+                        if (!isSelectionMode)
+                          Text(
+                            reminderSetting.isEnabled &&
+                                    userSetting.medicationNotificationsEnabled
+                                ? '${text.isEnglish ? 'Reminder' : '복약 알림'} ${userSetting.formatTime(reminderSetting.hour, reminderSetting.minute)}'
+                                : (text.isEnglish
+                                      ? 'Reminder off'
+                                      : '복약 알림 꺼짐'),
+                            key: ValueKey('patient-alert-time-${slot.key}'),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                        ),
                       ],
                     ),
                   ),

@@ -465,7 +465,9 @@ class _CautionCard extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(18, 15, 18, 15),
             decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: MedBuddyColors.warningBorder)),
+              border: Border(
+                bottom: BorderSide(color: MedBuddyColors.warningBorder),
+              ),
             ),
             child: Row(
               children: [

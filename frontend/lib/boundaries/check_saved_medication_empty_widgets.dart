@@ -57,9 +57,7 @@ class _SavedMedicationEmptyState extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               backgroundColor: MedBuddyColors.primary,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: MedBuddyRadii.small,
-              ),
+              shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.small),
               textStyle: TextStyle(
                 fontSize: 16 * userSetting.contentTextScale,
                 fontWeight: FontWeight.w700,
