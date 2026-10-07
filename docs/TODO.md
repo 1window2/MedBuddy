@@ -31,7 +31,8 @@ account data and a physical large-text pass; see
 A pre-merge audit then corrected reminder, account-deletion, chat dose-record
 and proxy-trust defects; the signed build of `e328bab` is the installed
 candidate. See [the audit record](qa/v0.2.0-architecture-gates.md#pre-merge-audit-and-corrections--2026-10-07).
-The backend corrections still need a deployment.
+The backend corrections were deployed on October 7; see
+[the backend update](qa/v0.2.0-2026-09-30-production-rollout.md#backend-update--2026-10-07).
 A test medication then exercised the dose-time cards and whole-slot toggle.
 Caregiver screens were not exercised on the device because the test account
 has no linked caregiver.
