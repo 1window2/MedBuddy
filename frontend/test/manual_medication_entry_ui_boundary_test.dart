@@ -107,7 +107,7 @@ void main() {
         find.text(language == 'ko' ? '약 직접 등록' : 'Add Medication'),
       );
       expect(title.style!.fontSize, 21);
-      expect(title.style!.fontWeight, FontWeight.w800);
+      expect(title.style!.fontWeight, FontWeight.w700);
       await tester.ensureVisible(photo);
       await tester.pumpAndSettle();
       expect(photo.hitTestable(), findsOneWidget);

@@ -870,7 +870,7 @@ class _CaregiverScheduleHeader extends StatelessWidget {
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 21,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     Text(
@@ -912,7 +912,7 @@ class _CaregiverScheduleHeader extends StatelessWidget {
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 20,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ],
@@ -1042,7 +1042,7 @@ class _CaregiverTimeSlotCard extends StatelessWidget {
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 20,
-                          fontWeight: FontWeight.w900,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                       Text(
@@ -1183,7 +1183,7 @@ class _CaregiverMedicationRow extends StatelessWidget {
                           ? MedBuddyColors.textLight
                           : MedBuddyColors.textStrong,
                       fontSize: 16,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                       decoration: isCompleted
                           ? TextDecoration.lineThrough
                           : null,

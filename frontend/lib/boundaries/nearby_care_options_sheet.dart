@@ -111,7 +111,7 @@ class _NearbyCareOption extends StatelessWidget {
                       style: TextStyle(
                         color: MedBuddyColors.textStrong,
                         fontSize: 17 * scale,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                         letterSpacing: 0,
                       ),
                     ),

@@ -15,6 +15,7 @@ import 'package:medbuddy_frontend/entities/health_recommendation_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/services/notification_service.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
+import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 import 'package:medbuddy_frontend/widgets/medbuddy_page_header.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1359,10 +1360,10 @@ void main() {
               (widget) =>
                   widget is Container &&
                   widget.decoration is BoxDecoration &&
-                  (widget.decoration! as BoxDecoration).gradient
-                      is LinearGradient &&
+                  (widget.decoration! as BoxDecoration).color ==
+                      MedBuddyColors.topBar &&
                   (widget.decoration! as BoxDecoration).borderRadius ==
-                      const BorderRadius.vertical(bottom: Radius.circular(28)),
+                      const BorderRadius.vertical(bottom: Radius.circular(24)),
             ),
           ),
           findsOneWidget,

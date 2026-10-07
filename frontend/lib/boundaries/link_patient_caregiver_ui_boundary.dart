@@ -1101,7 +1101,7 @@ class _LinkActionButton extends StatelessWidget {
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontSize: 14,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
                 letterSpacing: 0,
               ),
             ),
@@ -1291,7 +1291,7 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
                         style: const TextStyle(
                           color: Color(0xFF0A0A0A),
                           fontSize: 22,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w700,
                           letterSpacing: 0,
                         ),
                       ),
@@ -1340,7 +1340,7 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
                       ),
                       textStyle: const TextStyle(
                         fontSize: 16,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                         letterSpacing: 0,
                       ),
                     ),
@@ -1573,7 +1573,7 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                         style: const TextStyle(
                           color: Color(0xFF0A0A0A),
                           fontSize: 22,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w700,
                           letterSpacing: 0,
                         ),
                       ),
@@ -1669,7 +1669,7 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                         style: const TextStyle(
                           color: MedBuddyColors.primary,
                           fontSize: 16,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ],
@@ -1975,7 +1975,7 @@ class _LinkedUserTile extends StatelessWidget {
                   style: const TextStyle(
                     color: Color(0xFF0A0A0A),
                     fontSize: 18,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                     letterSpacing: 0,
                   ),
                 ),
@@ -2066,7 +2066,7 @@ class _LinkedUserTile extends StatelessWidget {
                   minimumSize: const Size.fromHeight(48),
                   textStyle: const TextStyle(
                     fontSize: 15,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                     letterSpacing: 0,
                   ),
                 ),

@@ -216,7 +216,7 @@ class _SetNotificationUIState extends State<SetNotificationUI> {
             style: const TextStyle(
               color: MedBuddyColors.textStrong,
               fontSize: 20,
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w700,
               letterSpacing: 0,
             ),
           ),
@@ -288,7 +288,7 @@ class _SetNotificationUIState extends State<SetNotificationUI> {
                   style: TextStyle(
                     color: MedBuddyColors.textStrong,
                     fontSize: 24,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                     letterSpacing: 0,
                   ),
                 ),
@@ -374,7 +374,7 @@ class _SetNotificationUIState extends State<SetNotificationUI> {
                     ? MedBuddyColors.textStrong
                     : MedBuddyColors.textMuted,
                 fontSize: isSelected ? 24 : 20,
-                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                 letterSpacing: 0,
               ),
             ),
@@ -468,7 +468,7 @@ class _SetNotificationUIState extends State<SetNotificationUI> {
                     : (_isEnglish ? 'Enter minute' : '분 입력'),
                 style: const TextStyle(
                   color: MedBuddyColors.textStrong,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                   letterSpacing: 0,
                 ),
               ),

@@ -1585,7 +1585,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                   style: const TextStyle(
                     color: MedBuddyColors.textStrong,
                     fontSize: 15,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                     letterSpacing: 0,
                   ),
                 ),
@@ -1980,7 +1980,7 @@ class _PharmacyDirectionsSheet extends StatelessWidget {
             style: const TextStyle(
               color: MedBuddyColors.textStrong,
               fontSize: 22,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
               letterSpacing: 0,
             ),
           ),
@@ -2217,7 +2217,7 @@ class _PharmacyMessageState extends StatelessWidget {
               style: const TextStyle(
                 color: MedBuddyColors.textStrong,
                 fontSize: 21,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
                 letterSpacing: 0,
               ),
             ),
@@ -2330,7 +2330,7 @@ class _PharmacyCard extends StatelessWidget {
         style: TextStyle(
           color: statusColor,
           fontSize: 13,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w700,
           letterSpacing: 0,
         ),
       ),
@@ -2403,7 +2403,7 @@ class _PharmacyCard extends StatelessWidget {
                                   color: MedBuddyColors.textStrong,
                                   fontSize: 20,
                                   height: 1.25,
-                                  fontWeight: FontWeight.w800,
+                                  fontWeight: FontWeight.w700,
                                   letterSpacing: 0,
                                 ),
                               ),

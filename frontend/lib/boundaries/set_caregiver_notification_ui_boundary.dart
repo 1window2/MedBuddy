@@ -123,7 +123,7 @@ class SetCaregiverNotificationUI {
                               style: const TextStyle(
                                 color: MedBuddyColors.textStrong,
                                 fontSize: 20,
-                                fontWeight: FontWeight.w800,
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
                           ),
@@ -313,7 +313,7 @@ class _NotificationModeOption extends StatelessWidget {
                     style: const TextStyle(
                       color: MedBuddyColors.textStrong,
                       fontSize: 15,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 3),

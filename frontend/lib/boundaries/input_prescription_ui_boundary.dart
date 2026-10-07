@@ -421,13 +421,7 @@ class InputPrescriptionUI extends StatelessWidget {
     return Scaffold(
       body: Container(
         width: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [MedBuddyColors.analysisBackground, Colors.white],
-          ),
-        ),
+        color: MedBuddyColors.pageBackground,
         child: Center(
           child: Container(
             width: 328,
@@ -555,7 +549,7 @@ class _HomeHeader extends StatelessWidget {
                         color: MedBuddyColors.textStrong,
                         fontSize: 26,
                         height: 1.1,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                         letterSpacing: 0,
                       ),
                     ),
@@ -606,9 +600,9 @@ class _HomeHeader extends StatelessWidget {
 }
 
 // Class Name: _HomeActionTone
-// Role: Represents background and icon color combinations for home quick actions.
+// Role: Represents the filled primary action and the icon tints of white home quick actions.
 // Responsibilities:
-// - Enumerates and distinguishes the supported options for background and icon color combinations for home quick actions: primary, mint, lavender, butter.
+// - Distinguishes the green primary card from mint, lavender and butter icon tints.
 enum _HomeActionTone { primary, mint, lavender, butter }
 
 // Class Name: _HomeActionCard
@@ -657,12 +651,9 @@ class _HomeActionCard extends StatelessWidget {
   // 반환값: 제목·설명·아이콘·이동 화살표를 포함한 기능 카드.
   @override
   Widget build(BuildContext context) {
-    final background = switch (tone) {
-      _HomeActionTone.primary => MedBuddyColors.primary,
-      _HomeActionTone.mint => MedBuddyColors.successSurface,
-      _HomeActionTone.lavender => MedBuddyColors.lavenderSurface,
-      _HomeActionTone.butter => MedBuddyColors.butterSurface,
-    };
+    final background = tone == _HomeActionTone.primary
+        ? MedBuddyColors.primary
+        : MedBuddyColors.surface;
     final foreground = tone == _HomeActionTone.primary
         ? Colors.white
         : MedBuddyColors.textStrong;
@@ -742,7 +733,7 @@ class _HomeActionCard extends StatelessWidget {
             color: foreground,
             fontSize: 14 * scale,
             height: 1.15,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w700,
           ),
         ),
         const SizedBox(height: 4),
@@ -793,7 +784,7 @@ class _HomeActionCard extends StatelessWidget {
                 style: TextStyle(
                   color: foreground,
                   fontSize: 17 * scale,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
               const SizedBox(height: 4),
@@ -826,7 +817,7 @@ class _HomeActionCard extends StatelessWidget {
 // - Composes the color-coded icon for a home quick action using the display values and actions supplied by its parent.
 // Attributes:
 // - icon (IconData): Icon shown in normal or selected state.
-// - tone (_HomeActionTone): Accent and background palette for the home action.
+// - tone (_HomeActionTone): Primary fill or icon tint for the home action.
 // - color (Color): Foreground or accent color applied to text, icons, or state guidance.
 // - size (double): Display dimensions of the widget or canvas.
 class _ActionIcon extends StatelessWidget {
@@ -839,7 +830,7 @@ class _ActionIcon extends StatelessWidget {
   // Description: Initializes the color-coded icon for a home quick action with the supplied configuration.
   // Parameters:
   // - icon (IconData): Icon shown in normal or selected state.
-  // - tone (_HomeActionTone): Accent and background palette for the home action.
+  // - tone (_HomeActionTone): Primary fill or icon tint for the home action.
   // - color (Color): Foreground or accent color applied to text, icons, or state guidance.
   // - size (double): Display dimensions of the widget or canvas.
   // Returns: Initialized _ActionIcon instance.
@@ -861,9 +852,12 @@ class _ActionIcon extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: tone == _HomeActionTone.primary
-            ? Colors.white.withValues(alpha: 0.16)
-            : Colors.white.withValues(alpha: 0.8),
+        color: switch (tone) {
+          _HomeActionTone.primary => Colors.white.withValues(alpha: 0.16),
+          _HomeActionTone.mint => MedBuddyColors.successSurface,
+          _HomeActionTone.lavender => MedBuddyColors.lavenderSurface,
+          _HomeActionTone.butter => MedBuddyColors.butterSurface,
+        },
         borderRadius: BorderRadius.circular(size * 0.32),
       ),
       child: Icon(icon, color: color, size: size * 0.6),
@@ -876,7 +870,7 @@ class _ActionIcon extends StatelessWidget {
 // Responsibilities:
 // - Composes the navigation arrow on a home quick action using the display values and actions supplied by its parent.
 // Attributes:
-// - tone (_HomeActionTone): Accent and background palette for the home action.
+// - tone (_HomeActionTone): Primary fill or icon tint for the home action.
 // - color (Color): Foreground or accent color applied to text, icons, or state guidance.
 class _ActionArrow extends StatelessWidget {
   final _HomeActionTone tone;
@@ -885,7 +879,7 @@ class _ActionArrow extends StatelessWidget {
   // Function Name: _ActionArrow
   // Description: Initializes the navigation arrow on a home quick action with the supplied configuration.
   // Parameters:
-  // - tone (_HomeActionTone): Accent and background palette for the home action.
+  // - tone (_HomeActionTone): Primary fill or icon tint for the home action.
   // - color (Color): Foreground or accent color applied to text, icons, or state guidance.
   // Returns: Initialized _ActionArrow instance.
   const _ActionArrow({required this.tone, required this.color});
@@ -903,7 +897,7 @@ class _ActionArrow extends StatelessWidget {
       decoration: BoxDecoration(
         color: tone == _HomeActionTone.primary
             ? Colors.white.withValues(alpha: 0.16)
-            : Colors.white.withValues(alpha: 0.82),
+            : MedBuddyColors.surfaceSubtle,
         shape: BoxShape.circle,
       ),
       child: Icon(Icons.arrow_forward_rounded, color: color, size: 18),

@@ -51,13 +51,7 @@ class PrescriptionAnalysisProgressUI extends StatelessWidget {
         top: false,
         child: Container(
           width: double.infinity,
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [MedBuddyColors.analysisBackground, Colors.white],
-            ),
-          ),
+          color: MedBuddyColors.pageBackground,
           child: Column(
             children: [
               Padding(
@@ -120,7 +114,7 @@ class PrescriptionAnalysisProgressUI extends StatelessWidget {
                                         style: TextStyle(
                                           color: MedBuddyColors.textStrong,
                                           fontSize: 28 * scale,
-                                          fontWeight: FontWeight.w800,
+                                          fontWeight: FontWeight.w700,
                                           letterSpacing: 0,
                                         ),
                                       ),
@@ -246,7 +240,7 @@ class _ProgressStepLabel extends StatelessWidget {
       style: TextStyle(
         color: active ? MedBuddyColors.primary : MedBuddyColors.textLight,
         fontSize: 16 * scale,
-        fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+        fontWeight: active ? FontWeight.w700 : FontWeight.w600,
         letterSpacing: 0,
       ),
     );

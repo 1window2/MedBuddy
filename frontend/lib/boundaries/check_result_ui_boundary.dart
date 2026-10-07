@@ -353,7 +353,7 @@ class _SaveCompletedSheet extends StatelessWidget {
             style: TextStyle(
               color: MedBuddyColors.textStrong,
               fontSize: 22 * scale,
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 8),
@@ -459,7 +459,7 @@ class _ResultHeader extends StatelessWidget {
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 22,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
                 letterSpacing: 0,
               ),
             ),
@@ -546,7 +546,7 @@ class _AnalysisSummary extends StatelessWidget {
                   style: TextStyle(
                     color: MedBuddyColors.primaryDark,
                     fontSize: 18 * scale,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                     letterSpacing: 0,
                   ),
                 ),
@@ -661,7 +661,7 @@ class _BulkSaveButton extends StatelessWidget {
             ),
             textStyle: TextStyle(
               fontSize: 22 * scale,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
               letterSpacing: 0,
             ),
           ),
@@ -764,7 +764,7 @@ class _MedicationResultCard extends StatelessWidget {
                     style: TextStyle(
                       color: MedBuddyColors.textStrong,
                       fontSize: 22 * scale,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                       letterSpacing: 0,
                     ),
                   ),
@@ -982,7 +982,7 @@ class _DoseInfoRow extends StatelessWidget {
               style: TextStyle(
                 color: MedBuddyColors.primaryDark,
                 fontSize: 15 * scale,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
                 letterSpacing: 0,
               ),
             ),

@@ -140,7 +140,7 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
         backgroundColor: MedBuddyColors.surface,
         titleTextStyle: const TextStyle(
           fontSize: 20,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w700,
           height: 1.35,
           letterSpacing: 0,
           color: MedBuddyColors.textStrong,
@@ -470,7 +470,7 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
                                                       MedBuddyColors.textStrong,
                                                   fontWeight: entry.isRead
                                                       ? FontWeight.w700
-                                                      : FontWeight.w800,
+                                                      : FontWeight.w700,
                                                 ),
                                               ),
                                               const SizedBox(height: 6),

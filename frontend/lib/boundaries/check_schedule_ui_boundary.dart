@@ -1107,7 +1107,7 @@ class _HealthRecommendationFooter extends StatelessWidget {
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
         ),
       ),
     );
@@ -1155,12 +1155,8 @@ class _ScheduleHeader extends StatelessWidget {
     return Container(
       width: double.infinity,
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF249B62), MedBuddyColors.topBar],
-        ),
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
+        color: MedBuddyColors.topBar,
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
       ),
       padding: EdgeInsets.fromLTRB(
         20,
@@ -1215,7 +1211,7 @@ class _ScheduleHeader extends StatelessWidget {
                       child: Text(
                         text.progress,
                         style: const TextStyle(
-                          color: Color(0xFFD6F2E3),
+                          color: MedBuddyColors.onPrimaryMuted,
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
                         ),
@@ -1226,7 +1222,7 @@ class _ScheduleHeader extends StatelessWidget {
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 18,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ],
@@ -1562,7 +1558,7 @@ class _TimeSlotCard extends StatelessWidget {
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 18,
-                            fontWeight: FontWeight.w900,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                         if (!isSelectionMode) Text(
@@ -1795,7 +1791,7 @@ class _MedicationScheduleRow extends StatelessWidget {
                             ? TextDecoration.lineThrough
                             : null,
                         fontSize: 16,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -2194,7 +2190,7 @@ class _ScheduleEmptyState extends StatelessWidget {
               style: const TextStyle(
                 color: MedBuddyColors.textStrong,
                 fontSize: 20,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ],
@@ -2262,7 +2258,7 @@ class _ScheduleLoadErrorState extends StatelessWidget {
               style: const TextStyle(
                 color: MedBuddyColors.textStrong,
                 fontSize: 18,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: 20),

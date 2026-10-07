@@ -606,7 +606,7 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
               style: TextStyle(
                 color: Colors.white,
                 fontSize: isCompact ? 18 : 22,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ),

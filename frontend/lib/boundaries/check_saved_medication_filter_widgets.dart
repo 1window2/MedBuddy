@@ -120,7 +120,7 @@ class _SavedMedicationFilterControl extends StatelessWidget {
                           text.filterTitle,
                           style: const TextStyle(
                             fontSize: 22,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w700,
                             color: MedBuddyColors.textStrong,
                             letterSpacing: 0,
                           ),
@@ -246,7 +246,7 @@ class _SavedMedicationFilterControl extends StatelessWidget {
                   title,
                   style: const TextStyle(
                     fontSize: 18,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 16),

@@ -312,7 +312,7 @@ class _RadarHeader extends StatelessWidget {
                   style: TextStyle(
                     color: MedBuddyColors.textStrong,
                     fontSize: 18 * scale,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                     letterSpacing: 0,
                   ),
                 ),
@@ -443,7 +443,7 @@ class _SummaryChip extends StatelessWidget {
         style: TextStyle(
           color: foreground,
           fontSize: 12.5 * scale,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w700,
           letterSpacing: 0,
         ),
       ),
@@ -508,7 +508,7 @@ class _MedicationChangeRow extends StatelessWidget {
                   style: TextStyle(
                     color: MedBuddyColors.textStrong,
                     fontSize: 15 * scale,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                     letterSpacing: 0,
                   ),
                 ),

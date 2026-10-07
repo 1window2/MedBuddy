@@ -286,12 +286,8 @@ class _MedicationHeroCard extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: 226),
       padding: const EdgeInsets.fromLTRB(22, 28, 22, 25),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFEAF4FF), Color(0xFFDFECFE)],
-        ),
-        borderRadius: BorderRadius.circular(17),
+        color: MedBuddyColors.surfaceSubtle,
+        borderRadius: MedBuddyRadii.largeCard,
       ),
       child: Column(
         children: [
@@ -319,7 +315,7 @@ class _MedicationHeroCard extends StatelessWidget {
                   style: TextStyle(
                     color: const Color(0xFF0A0A0A),
                     fontSize: 18 * scale,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                     letterSpacing: 0,
                   ),
                 ),
@@ -521,7 +517,7 @@ class _DetailQuestionSection extends StatelessWidget {
           style: TextStyle(
             color: const Color(0xFF0A0A0A),
             fontSize: 16 * scale,
-            fontWeight: FontWeight.w900,
+            fontWeight: FontWeight.w700,
             letterSpacing: 0,
           ),
         ),
@@ -807,7 +803,7 @@ class _DetailListCard extends StatelessWidget {
             style: TextStyle(
               color: const Color(0xFF0A0A0A),
               fontSize: 16 * scale,
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w700,
               letterSpacing: 0,
             ),
           ),
@@ -958,7 +954,7 @@ class _TtsButton extends StatelessWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         textStyle: const TextStyle(
           fontSize: 17,
-          fontWeight: FontWeight.w900,
+          fontWeight: FontWeight.w700,
           letterSpacing: 0,
         ),
       ),

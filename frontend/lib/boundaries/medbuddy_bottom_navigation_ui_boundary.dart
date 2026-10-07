@@ -137,7 +137,7 @@ class MedBuddyBottomNavigationUI extends StatelessWidget {
           style: const TextStyle(
             fontSize: 11,
             height: 1.1,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w700,
           ),
         ),
         textDirection: Directionality.of(context),
@@ -219,7 +219,7 @@ class _BottomNavigationButton extends StatelessWidget {
                         fontSize: 11,
                         height: 1.1,
                         fontWeight: selected
-                            ? FontWeight.w800
+                            ? FontWeight.w700
                             : FontWeight.w600,
                       ),
                     ),
