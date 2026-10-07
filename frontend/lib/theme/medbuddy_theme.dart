@@ -48,14 +48,15 @@ class MedBuddyColors {
 }
 
 // 클래스명: MedBuddyRadii
-// 역할: 입력·버튼, 카드·큰 카드·pill 버튼의 공통 모서리 반경을 제공한다.
+// 역할: 배지·입력·버튼, 카드·큰 카드·pill 버튼의 공통 모서리 반경을 제공한다.
 // 주요 책임:
 // - 화면별 반복 도형의 라운딩 값을 한곳에서 공유한다.
 class MedBuddyRadii {
-  static BorderRadius control = BorderRadius.circular(12);
-  static BorderRadius card = BorderRadius.circular(16);
-  static BorderRadius largeCard = BorderRadius.circular(20);
-  static BorderRadius pill = BorderRadius.circular(999);
+  static const BorderRadius small = BorderRadius.all(Radius.circular(8));
+  static const BorderRadius control = BorderRadius.all(Radius.circular(12));
+  static const BorderRadius card = BorderRadius.all(Radius.circular(16));
+  static const BorderRadius largeCard = BorderRadius.all(Radius.circular(20));
+  static const BorderRadius pill = BorderRadius.all(Radius.circular(999));
 }
 
 // 클래스명: MedBuddySpacing

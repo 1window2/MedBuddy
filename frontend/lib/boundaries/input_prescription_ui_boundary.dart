@@ -428,7 +428,7 @@ class InputPrescriptionUI extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 44),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(22),
+              borderRadius: MedBuddyRadii.largeCard,
               border: Border.all(color: MedBuddyColors.cardBorder),
               boxShadow: MedBuddyShadows.card,
             ),

@@ -109,7 +109,7 @@ class _NearbyCareFilterSheetState extends State<_NearbyCareFilterSheet> {
                         alignment: Alignment.centerLeft,
                         minimumSize: const Size(0, 48),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: MedBuddyRadii.small,
                         ),
                       ),
                       icon: const Icon(Icons.event_outlined),
@@ -143,7 +143,7 @@ class _NearbyCareFilterSheetState extends State<_NearbyCareFilterSheet> {
                   style: FilledButton.styleFrom(
                     minimumSize: const Size(0, 48),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: MedBuddyRadii.small,
                     ),
                   ),
                   onPressed: () => Navigator.pop(context, (
@@ -170,7 +170,7 @@ class _NearbyCareFilterSheetState extends State<_NearbyCareFilterSheet> {
       child: Material(
         color: selected ? MedBuddyColors.successSurface : Colors.white,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: MedBuddyRadii.small,
           side: BorderSide(
             color: selected ? MedBuddyColors.primary : MedBuddyColors.outline,
             width: selected ? 2 : 1,
@@ -178,7 +178,7 @@ class _NearbyCareFilterSheetState extends State<_NearbyCareFilterSheet> {
         ),
         child: InkWell(
           key: ValueKey('pharmacy-filter-option-${filter.name}'),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: MedBuddyRadii.small,
           onTap: () => setState(() {
             _filter = filter;
             if (filter == _PharmacyFilter.openNow) _date = null;

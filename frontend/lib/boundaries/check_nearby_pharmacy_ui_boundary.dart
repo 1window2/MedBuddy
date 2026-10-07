@@ -879,7 +879,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
         style: OutlinedButton.styleFrom(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
           minimumSize: const Size(0, 48),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.small),
         ),
         child: largeText
             ? Column(
@@ -1251,7 +1251,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                       horizontal: 16,
                     ),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: MedBuddyRadii.small,
                     ),
                   ),
                   onPressed: _isLoading
@@ -1389,7 +1389,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                       ),
                       side: const BorderSide(color: MedBuddyColors.outline),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: MedBuddyRadii.small,
                       ),
                     ),
                     child: Row(

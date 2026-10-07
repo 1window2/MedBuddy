@@ -455,7 +455,7 @@ class _CautionCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: MedBuddyColors.warningSurface,
         borderRadius: MedBuddyRadii.card,
-        border: Border.all(color: MedBuddyColors.warningBorder, width: 1.5),
+        border: Border.all(color: MedBuddyColors.warningBorder),
         boxShadow: MedBuddyShadows.soft,
       ),
       child: Column(
@@ -662,7 +662,7 @@ class _HealthRecommendationError extends StatelessWidget {
                         letterSpacing: 0,
                       ),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: MedBuddyRadii.control,
                       ),
                     ),
                   ),
@@ -690,7 +690,7 @@ class _HealthRecommendationError extends StatelessWidget {
                       foregroundColor: Colors.white,
                       minimumSize: const Size.fromHeight(52),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: MedBuddyRadii.control,
                       ),
                     ),
                     child: Text(

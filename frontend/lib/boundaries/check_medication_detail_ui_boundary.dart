@@ -379,7 +379,7 @@ class _MedicationImageBox extends StatelessWidget {
           : null,
       child: InkWell(
         key: const Key('medication-detail-image-button'),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: MedBuddyRadii.card,
         onTap: hasImage
             // 함수이름: build.onTap callback
             // 함수역할: 확대 가능한 로컬·네트워크 약 사진과 실패 대체 표시에서 캡처된 작업 `MedicationImageViewer.show(context, medicationName: displayName, imageUrl: normalizedImageUrl, localImagePath: medicationDetail.localImagePath...`을 실행한다.
@@ -400,11 +400,11 @@ class _MedicationImageBox extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: MedBuddyRadii.card,
             boxShadow: MedBuddyShadows.card,
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: MedBuddyRadii.control,
             child: !hasLocalImage && normalizedImageUrl.isEmpty
                 ? const ColoredBox(
                     color: MedBuddyColors.divider,
@@ -572,8 +572,8 @@ class _DetailValueTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
         color: MedBuddyColors.surfaceSubtle,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: MedBuddyColors.divider, width: 1.5),
+        borderRadius: MedBuddyRadii.control,
+        border: Border.all(color: MedBuddyColors.divider),
       ),
       child: Text(
         value,
@@ -787,7 +787,7 @@ class _DetailListCard extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(22, 22, 22, 24),
       decoration: BoxDecoration(
         color: MedBuddyColors.surfaceSubtle,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: MedBuddyRadii.card,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -808,7 +808,7 @@ class _DetailListCard extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: MedBuddyRadii.control,
               ),
               child: itemList,
             )
@@ -945,7 +945,7 @@ class _TtsButton extends StatelessWidget {
         minimumSize: const Size.fromHeight(60),
         backgroundColor: MedBuddyColors.primary,
         foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.control),
         textStyle: const TextStyle(
           fontSize: 17,
           fontWeight: FontWeight.w700,

@@ -58,7 +58,7 @@ class _SavedMedicationEmptyState extends StatelessWidget {
               backgroundColor: MedBuddyColors.primary,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: MedBuddyRadii.small,
               ),
               textStyle: TextStyle(
                 fontSize: 16 * userSetting.contentTextScale,
@@ -185,7 +185,7 @@ class _SelectionDeleteBar extends StatelessWidget {
         foregroundColor: Colors.white,
         minimumSize: const Size.fromHeight(48),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.small),
         textStyle: TextStyle(
           fontSize: 16 * userSetting.contentTextScale,
           fontWeight: FontWeight.w700,

@@ -46,7 +46,7 @@ class _MedicationImageDialog extends StatelessWidget {
     return Dialog(
       key: const Key('medication-image-dialog'),
       insetPadding: const EdgeInsets.all(28),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.card),
       child: ConstrainedBox(
         constraints: BoxConstraints(
           maxWidth: 520,
@@ -87,7 +87,7 @@ class _MedicationImageDialog extends StatelessWidget {
               const SizedBox(height: 12),
               Flexible(
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: MedBuddyRadii.control,
                   child: InteractiveViewer(
                     key: const Key('medication-image-viewer'),
                     minScale: 1,
@@ -175,7 +175,7 @@ class _DeleteConfirmationDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 42),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.control),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(22, 20, 22, 22),
         child: Column(
@@ -216,7 +216,7 @@ class _DeleteConfirmationDialog extends StatelessWidget {
                       foregroundColor: MedBuddyColors.danger,
                       side: const BorderSide(color: MedBuddyColors.outline),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: MedBuddyRadii.control,
                       ),
                       textStyle: const TextStyle(
                         fontSize: 15,
@@ -241,7 +241,7 @@ class _DeleteConfirmationDialog extends StatelessWidget {
                       foregroundColor: MedBuddyColors.textMuted,
                       side: const BorderSide(color: MedBuddyColors.outline),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: MedBuddyRadii.control,
                       ),
                       textStyle: const TextStyle(
                         fontSize: 15,

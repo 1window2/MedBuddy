@@ -109,7 +109,7 @@ class MedBuddyOptionTile extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
           decoration: BoxDecoration(
             borderRadius: MedBuddyRadii.card,
-            border: Border.all(color: MedBuddyColors.mint, width: 1.6),
+            border: Border.all(color: MedBuddyColors.successBorder),
           ),
           child: Row(
             children: [

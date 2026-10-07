@@ -580,7 +580,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                           activeColor: MedBuddyColors.primary,
                           selectedTileColor: MedBuddyColors.successSurface,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: MedBuddyRadii.small,
                           ),
                           title: Text(
                             option.label,
@@ -2243,7 +2243,7 @@ class _PreviewPanel extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: MedBuddyColors.surface,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: MedBuddyRadii.small,
         border: Border.all(color: MedBuddyColors.divider),
       ),
       child: Column(

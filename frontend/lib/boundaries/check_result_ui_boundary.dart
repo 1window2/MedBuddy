@@ -512,7 +512,7 @@ class _AnalysisSummary extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: MedBuddyRadii.card,
-        border: Border.all(color: MedBuddyColors.successBorder, width: 2),
+        border: Border.all(color: MedBuddyColors.successBorder),
         boxShadow: MedBuddyShadows.card,
       ),
       child: Row(
@@ -719,7 +719,7 @@ class _MedicationResultCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: MedBuddyRadii.largeCard,
-        border: Border.all(color: MedBuddyColors.cardBorder, width: 2),
+        border: Border.all(color: MedBuddyColors.cardBorder),
         boxShadow: MedBuddyShadows.card,
       ),
       child: Column(
@@ -731,7 +731,7 @@ class _MedicationResultCard extends StatelessWidget {
               color: MedBuddyColors.successSurface,
               borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
               border: Border(
-                bottom: BorderSide(color: MedBuddyColors.mint, width: 2),
+                bottom: BorderSide(color: MedBuddyColors.mint),
               ),
             ),
             child: Row(
@@ -741,7 +741,7 @@ class _MedicationResultCard extends StatelessWidget {
                   height: 36,
                   decoration: BoxDecoration(
                     color: MedBuddyColors.primary,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: MedBuddyRadii.control,
                   ),
                   child: const Icon(
                     Icons.medication_outlined,

@@ -898,7 +898,7 @@ class _AuthenticationScaffold extends StatelessWidget {
                         activeColor: MedBuddyColors.primary,
                         selectedTileColor: MedBuddyColors.successSurface,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: MedBuddyRadii.small,
                         ),
                         title: Text(
                           option.value,

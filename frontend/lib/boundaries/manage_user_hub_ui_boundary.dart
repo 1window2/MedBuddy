@@ -157,7 +157,7 @@ class _AccountSummaryCard extends StatelessWidget {
             height: 56,
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.18),
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: MedBuddyRadii.card,
             ),
             child: const Icon(
               Icons.person_rounded,
@@ -265,7 +265,7 @@ class _UserHubActionCard extends StatelessWidget {
                 height: 50,
                 decoration: BoxDecoration(
                   color: MedBuddyColors.surface.withValues(alpha: 0.78),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: MedBuddyRadii.card,
                 ),
                 child: Icon(icon, color: iconColor, size: 27),
               ),

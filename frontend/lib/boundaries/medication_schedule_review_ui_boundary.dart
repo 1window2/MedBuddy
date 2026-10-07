@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../entities/medication_schedule_entity.dart';
 import '../entities/user_setting_entity.dart';
+import '../widgets/medbuddy_notice.dart';
 import '../theme/medbuddy_theme.dart';
 
 // 파일명: medication_schedule_review_ui_boundary.dart
@@ -259,7 +260,7 @@ class _MedicationScheduleReviewSheetState
                 minimumSize: const Size.fromHeight(54),
                 backgroundColor: MedBuddyColors.primary,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: MedBuddyRadii.small,
                 ),
               ),
               child: Text(
@@ -388,7 +389,7 @@ class _MedicationScheduleReviewCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: MedBuddyColors.outline),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: MedBuddyRadii.small,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -563,33 +564,10 @@ class _PillScheduleSafetyNotice extends StatelessWidget {
   // 반환값: 알약 사진만으로 복약 일정을 확정할 수 없다는 안내에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: MedBuddyColors.warningSurface,
-        border: Border.all(color: MedBuddyColors.warningBorder),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.warning_amber_rounded, color: MedBuddyColors.reminderAccent),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              text.pillSafetyNotice,
-              style: TextStyle(
-                color: MedBuddyColors.reminderAccent,
-                fontSize: 13 * scale,
-                fontWeight: FontWeight.w600,
-                height: 1.4,
-                letterSpacing: 0,
-              ),
-            ),
-          ),
-        ],
-      ),
+    return MedBuddyNotice(
+      icon: Icons.warning_amber_rounded,
+      message: text.pillSafetyNotice,
+      scale: scale,
     );
   }
 }
@@ -625,7 +603,7 @@ class _ScheduleValidationNotice extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: MedBuddyColors.dangerSurface,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: MedBuddyRadii.small,
       ),
       child: Text(
         message,

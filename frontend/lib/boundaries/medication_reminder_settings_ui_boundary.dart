@@ -443,7 +443,7 @@ class _ReminderSlotCard extends StatelessWidget {
                   color: isAvailable
                       ? MedBuddyColors.mint
                       : MedBuddyColors.surfaceSubtle,
-                  borderRadius: BorderRadius.circular(17),
+                  borderRadius: MedBuddyRadii.card,
                 ),
                 child: Icon(
                   slot.icon,

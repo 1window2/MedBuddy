@@ -110,10 +110,10 @@ class _PreviewMedicationTable extends StatelessWidget {
         DecoratedBox(
           decoration: BoxDecoration(
             border: Border.all(color: MedBuddyColors.outline),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: MedBuddyRadii.small,
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(7),
+            borderRadius: MedBuddyRadii.small,
             child: Scrollbar(
               controller: scrollController,
               thumbVisibility: true,
@@ -639,7 +639,7 @@ class _CorrectionBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
         color: isWarning ? MedBuddyColors.warningSurface : MedBuddyColors.successSurface,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: MedBuddyRadii.pill,
       ),
       child: Text(
         label,

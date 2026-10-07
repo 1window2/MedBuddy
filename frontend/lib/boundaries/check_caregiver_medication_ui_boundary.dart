@@ -892,7 +892,7 @@ class _CaregiverScheduleHeader extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(18, 13, 18, 14),
             decoration: BoxDecoration(
               color: MedBuddyColors.primaryDark,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: MedBuddyRadii.control,
             ),
             child: Column(
               children: [
@@ -921,7 +921,7 @@ class _CaregiverScheduleHeader extends StatelessWidget {
                 LinearProgressIndicator(
                   value: progress,
                   minHeight: 10,
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: MedBuddyRadii.pill,
                   color: Colors.white,
                   backgroundColor: MedBuddyColors.progressTrack,
                 ),
@@ -1012,7 +1012,7 @@ class _CaregiverTimeSlotCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: MedBuddyRadii.control,
       elevation: 3,
       shadowColor: Colors.black.withValues(alpha: 0.18),
       clipBehavior: Clip.antiAlias,
@@ -1028,7 +1028,7 @@ class _CaregiverTimeSlotCard extends StatelessWidget {
                   height: 44,
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.22),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: MedBuddyRadii.control,
                   ),
                   child: Icon(slot.icon, color: Colors.white, size: 26),
                 ),
@@ -1248,7 +1248,7 @@ class _MedicationThumbnail extends StatelessWidget {
       height: 48,
       decoration: BoxDecoration(
         color: MedBuddyColors.surfaceSubtle,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: MedBuddyRadii.small,
         border: Border.all(color: MedBuddyColors.imageAccent, width: 3),
       ),
       clipBehavior: Clip.antiAlias,
