@@ -12,7 +12,6 @@ import 'package:medbuddy_frontend/boundaries/health_recommendation_ui_boundary.d
 import 'package:medbuddy_frontend/boundaries/input_prescription_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/manage_user_setting_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/medication_capture_options_ui_boundary.dart';
-import 'package:medbuddy_frontend/boundaries/medication_reminder_settings_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/prescription_analysis_preview_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/set_caregiver_notification_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/authentication_control.dart';
@@ -378,14 +377,6 @@ void main() {
                 // Returns:
                 // - No value; the action is intentionally inert.
                 onHealthRecommendationRequested: () {},
-                // Function Name: onMedicationReminderRequested callback
-                // Description:
-                // - Keep reminder-settings navigation available in the fixture without performing the action.
-                // Parameters:
-                // - None.
-                // Returns:
-                // - No value; the action is intentionally inert.
-                onMedicationReminderRequested: () {},
                 // 함수이름: onUserSettingRequested 콜백
                 // 함수역할:
                 // - 사용자 설정 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
@@ -498,14 +489,6 @@ void main() {
               // Returns:
               // - No value; the action is intentionally inert.
               onHealthRecommendationRequested: () {},
-              // Function Name: onMedicationReminderRequested callback
-              // Description:
-              // - Keep reminder-settings navigation available in the fixture without performing the action.
-              // Parameters:
-              // - None.
-              // Returns:
-              // - No value; the action is intentionally inert.
-              onMedicationReminderRequested: () {},
               // 함수이름: onUserSettingRequested 콜백
               // 함수역할:
               // - 사용자 설정 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
@@ -657,43 +640,6 @@ void main() {
       expect(paragraph.size.height, greaterThan(60));
       await tester.drag(find.byType(ListView), const Offset(0, -240));
       await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
-    });
-
-    // Function Name: testWidgets callback
-    // Description:
-    // - Verify that quick reminder settings expose every dose slot on a small screen with enlarged text.
-    // Parameters:
-    // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
-    // Returns:
-    // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
-    testWidgets('복약 알림 빠른 설정은 작은 화면과 큰 글씨에서도 모든 시간대를 제공한다', (tester) async {
-      await _setViewport(tester, const Size(320, 568));
-      SharedPreferences.setMockInitialValues({});
-      final viewModel = MedBuddyViewModel(
-        checkSchedule: _AccessibilityScheduleControl(),
-        setNotification: _EmptyNotificationControl(),
-      );
-      addTearDown(viewModel.dispose);
-
-      await tester.pumpWidget(
-        ChangeNotifierProvider<MedBuddyViewModel>.value(
-          value: viewModel,
-          child: _scaledMaterialApp(
-            textScale: 1.6,
-            home: const MedicationReminderSettingsUI(),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.text('복약 알림 설정'), findsOneWidget);
-      expect(find.text('아침'), findsOneWidget);
-      expect(find.text('점심'), findsOneWidget);
-      await tester.drag(find.byType(ListView).last, const Offset(0, -400));
-      await tester.pumpAndSettle();
-      expect(find.text('저녁'), findsOneWidget);
-      expect(find.text('취침 전'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 

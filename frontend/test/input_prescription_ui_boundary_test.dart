@@ -652,14 +652,6 @@ void main() {
           // Returns:
           // - No value; the action is intentionally inert.
           onHealthRecommendationRequested: () {},
-          // Function Name: onMedicationReminderRequested callback
-          // Description:
-          // - Keep reminder-settings navigation available in the fixture without performing the action.
-          // Parameters:
-          // - None.
-          // Returns:
-          // - No value; the action is intentionally inert.
-          onMedicationReminderRequested: () {},
           // Function Name: onUserSettingRequested callback
           // Description:
           // - Keep user-settings navigation available in the fixture without performing the action.
@@ -1057,14 +1049,6 @@ void main() {
           // Returns:
           // - No value; the action is intentionally inert.
           onHealthRecommendationRequested: () {},
-          // Function Name: onMedicationReminderRequested callback
-          // Description:
-          // - Keep reminder-settings navigation available in the fixture without performing the action.
-          // Parameters:
-          // - None.
-          // Returns:
-          // - No value; the action is intentionally inert.
-          onMedicationReminderRequested: () {},
           // Function Name: onUserSettingRequested callback
           // Description:
           // - Keep user-settings navigation available in the fixture without performing the action.
@@ -1149,14 +1133,6 @@ void main() {
           // Returns:
           // - No value; the action is intentionally inert.
           onHealthRecommendationRequested: () {},
-          // Function Name: onMedicationReminderRequested callback
-          // Description:
-          // - Keep reminder-settings navigation available in the fixture without performing the action.
-          // Parameters:
-          // - None.
-          // Returns:
-          // - No value; the action is intentionally inert.
-          onMedicationReminderRequested: () {},
           // Function Name: onUserSettingRequested callback
           // Description:
           // - Keep user-settings navigation available in the fixture without performing the action.
@@ -1246,14 +1222,6 @@ void main() {
           // Returns:
           // - No value; the action is intentionally inert.
           onHealthRecommendationRequested: () {},
-          // Function Name: onMedicationReminderRequested callback
-          // Description:
-          // - Keep reminder-settings navigation available in the fixture without performing the action.
-          // Parameters:
-          // - None.
-          // Returns:
-          // - No value; the action is intentionally inert.
-          onMedicationReminderRequested: () {},
           // Function Name: onUserSettingRequested callback
           // Description:
           // - Keep user-settings navigation available in the fixture without performing the action.
@@ -1938,14 +1906,6 @@ InputPrescriptionUI _home({
     // Returns:
     // - No value; the action is intentionally inert.
     onHealthRecommendationRequested: () {},
-    // Function Name: onMedicationReminderRequested callback
-    // Description:
-    // - Keep reminder-settings navigation available in the fixture without performing the action.
-    // Parameters:
-    // - None.
-    // Returns:
-    // - No value; the action is intentionally inert.
-    onMedicationReminderRequested: () {},
     // Function Name: onUserSettingRequested callback
     // Description:
     // - Keep user-settings navigation available in the fixture without performing the action.

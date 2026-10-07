@@ -107,10 +107,6 @@ package "Flutter Frontend" {
             + createState(): State
         }
 
-        class "MedicationReminderSettingsUI" as MedicationReminderSettingsUI <<UI: 복약 알림 통합 설정>> {
-            + createState(): State
-        }
-
         class "PillIdentificationUI" as PillIdentificationUI <<UI: 낱알 식별>> {
             + userSetting: UserSetting
             + control: IdentifyPill?
@@ -2022,7 +2018,6 @@ ManageChatList ..> FManageLinkedChat : 최근 메시지 조회
 ManageChatList ..> FPatientCaregiverLink
 HomeScreen ..> ManageUserSettingUI
 HomeScreen ..> ManageUserHubUI
-HomeScreen ..> MedicationReminderSettingsUI
 HomeScreen ..> AppLanguageControl
 
 CheckScheduleUI ..> MedBuddyViewModel
@@ -2031,7 +2026,6 @@ HealthRecommendationUI ..> MedBuddyViewModel
 HealthRecommendationUI ..> ManualMedicationEntryUI : empty state registration
 HealthRecommendationUI ..> PillIdentificationUI : empty state identification
 HealthRecommendationUI ..> GuidedPrescriptionCameraUI : prescription shortcut
-MedicationReminderSettingsUI ..> MedBuddyViewModel
 CheckMedicationDetailUI ..> FRequestVoiceGuide
 PillIdentificationUI o-- FIdentifyPill
 PillIdentificationUI o-- FIdentifyPillBatch

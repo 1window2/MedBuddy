@@ -23,7 +23,6 @@ import '../boundaries/link_patient_caregiver_ui_boundary.dart';
 import '../boundaries/manual_medication_entry_ui_boundary.dart';
 import '../boundaries/manage_user_hub_ui_boundary.dart';
 import '../boundaries/medbuddy_bottom_navigation_ui_boundary.dart';
-import '../boundaries/medication_reminder_settings_ui_boundary.dart';
 import '../boundaries/pill_identification_ui_boundary.dart';
 import '../boundaries/manage_user_setting_ui_boundary.dart';
 import '../boundaries/prescription_analysis_preview_ui_boundary.dart';
@@ -870,24 +869,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
             // Returns: Widget subtree for the described layout or fallback.
             builder: (context) => const HealthRecommendationUI(),
-          ),
-        );
-      },
-      // Function Name: _buildHomeInput.onMedicationReminderRequested callback
-      // Description: Connects the active screen selected by prescription flow and navigation destination to the captured operation `Navigator.push(context, MaterialPageRoute(builder: (context) => const MedicationReminderSettingsUI())); MaterialPageRoute(builder: (context) => const MedicationReminderSettingsUI())`.
-      // Parameters:
-      // - None.
-      // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
-      onMedicationReminderRequested: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            // Function Name: _buildHomeInput.builder callback
-            // Description: Builds current per-slot reminder state, configuration, and disabling for this builder callback.
-            // Parameters:
-            // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-            // Returns: Widget subtree for the described layout or fallback.
-            builder: (context) => const MedicationReminderSettingsUI(),
           ),
         );
       },

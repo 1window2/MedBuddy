@@ -802,7 +802,6 @@ void main() {
                 onHealthRecommendationRequested: _noop,
                 // 함수이름: 알림 설정 진입 콜백
                 // 함수역할: 선택 횟수를 센다. 매개변수: 없음. 반환값: 없음.
-                onMedicationReminderRequested: _noop,
                 // 함수이름: 약국 진입 콜백
                 // 함수역할: 선택 횟수를 센다. 매개변수: 없음. 반환값: 없음.
                 onNearbyPharmacyRequested: () {

@@ -47,7 +47,6 @@ class InputPrescriptionUI extends StatelessWidget {
   final bool isNextMedicationCompletionLoading;
   final VoidCallback? onNearbyPharmacyRequested;
   final VoidCallback? onHealthRecommendationRequested;
-  final VoidCallback? onMedicationReminderRequested;
   final VoidCallback? onUserSettingRequested;
   final VoidCallback? onNotificationsRequested;
   final int unreadNotificationCount;
@@ -74,7 +73,6 @@ class InputPrescriptionUI extends StatelessWidget {
   // - isNextMedicationCompletionLoading (bool): Whether the associated save, analysis, or medication update is in progress.
   // - onNearbyPharmacyRequested (VoidCallback?): Callback opening the nearby hospital/pharmacy chooser.
   // - onHealthRecommendationRequested (VoidCallback?): Callback opening health recommendations.
-  // - onMedicationReminderRequested (VoidCallback?): Callback opening the associated slot's reminder settings.
   // - onUserSettingRequested (VoidCallback?): Callback opening user settings.
   // Returns: Initialized InputPrescriptionUI instance.
   const InputPrescriptionUI({
@@ -98,7 +96,6 @@ class InputPrescriptionUI extends StatelessWidget {
     this.isNextMedicationCompletionLoading = false,
     this.onNearbyPharmacyRequested,
     required this.onHealthRecommendationRequested,
-    required this.onMedicationReminderRequested,
     required this.onUserSettingRequested,
     this.onNotificationsRequested,
     this.unreadNotificationCount = 0,
@@ -129,7 +126,6 @@ class InputPrescriptionUI extends StatelessWidget {
       isNextMedicationCompletionLoading = false,
       onNearbyPharmacyRequested = null,
       onHealthRecommendationRequested = null,
-      onMedicationReminderRequested = null,
       onUserSettingRequested = null,
       onNotificationsRequested = null,
       unreadNotificationCount = 0,
