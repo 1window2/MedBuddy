@@ -843,7 +843,7 @@ List<String> _summaryValues(String value, String noInformation) {
       .where((item) => item.isNotEmpty)
       .toList(growable: false);
   final fallback = _compactIndicationLabel(normalizedValue);
-  return values.isEmpty ? [fallback.isEmpty ? '정보 없음' : fallback] : values;
+  return values.isEmpty ? [fallback.isEmpty ? noInformation : fallback] : values;
 }
 
 // Function Name: _compactIndicationLabel

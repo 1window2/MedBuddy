@@ -519,13 +519,14 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
           if (_isPatient && sync != null && sync.hasCache) {
             _medicationContexts = [
               for (final s in sync.schedules)
-                ChatMedicationContext(
-                  medicationId: int.parse(s.medicationID),
-                  medicationName: s.medicationName,
-                  dosagePerTime: s.dosage,
-                  scheduleSlotKeys: s.slotKeys,
-                  imageUrl: s.imageUrl ?? '',
-                ),
+                if (int.tryParse(s.medicationID) case final medicationId?)
+                  ChatMedicationContext(
+                    medicationId: medicationId,
+                    medicationName: s.medicationName,
+                    dosagePerTime: s.dosage,
+                    scheduleSlotKeys: s.slotKeys,
+                    imageUrl: s.imageUrl ?? '',
+                  ),
             ];
           } else {
             _sendErrorMessage = _text.medicationLoadFailed;
@@ -725,11 +726,12 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
                     for (final s in sync.schedules.where(
                       (s) => s.slotKeys.contains(slot),
                     ))
-                      ChatMedicationContext(
-                        medicationId: int.parse(s.medicationID),
-                        medicationName: s.medicationName,
-                        dosagePerTime: s.dosage,
-                      ),
+                      if (int.tryParse(s.medicationID) case final medicationId?)
+                        ChatMedicationContext(
+                          medicationId: medicationId,
+                          medicationName: s.medicationName,
+                          dosagePerTime: s.dosage,
+                        ),
                   ],
                 ),
             ]

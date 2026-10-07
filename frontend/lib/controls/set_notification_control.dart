@@ -103,7 +103,8 @@ class SetNotification {
       final decodedData = ApiResponseParser.decodeMap(responseBody);
       final rawSettings = decodedData['data'];
       if (rawSettings is! List) {
-        return const [];
+        // 형식이 다른 응답을 "알림 없음"으로 읽으면 모든 시간대가 꺼진 것으로 저장된다.
+        throw StateError('Medication alarms response is not a list.');
       }
       return rawSettings
           .whereType<Map>()

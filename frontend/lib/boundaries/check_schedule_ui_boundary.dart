@@ -1564,7 +1564,10 @@ class _TimeSlotCard extends StatelessWidget {
                     _ReminderIconButton(
                       text: text,
                       slotTitle: slotTitle,
-                      isEnabled: reminderSetting.isEnabled,
+                      // 전체 복약 알림이 꺼져 있으면 옆 문구와 같이 꺼진 상태로 표시한다.
+                      isEnabled:
+                          reminderSetting.isEnabled &&
+                          userSetting.medicationNotificationsEnabled,
                       onPressed: onReminderRequested,
                     ),
                     if (slot.medications.isNotEmpty) ...[

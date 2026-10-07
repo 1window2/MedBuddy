@@ -684,7 +684,11 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
         : _startDate.add(const Duration(days: 3649));
     final selectedDate = await showDatePicker(
       context: context,
-      initialDate: currentDate.isBefore(firstDate) ? firstDate : currentDate,
+      initialDate: currentDate.isBefore(firstDate)
+          ? firstDate
+          : currentDate.isAfter(lastDate)
+          ? lastDate
+          : currentDate,
       firstDate: firstDate,
       lastDate: lastDate,
     );
@@ -701,6 +705,11 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
         _startDate = _dateOnly(selectedDate);
         if (_endDate.isBefore(_startDate)) {
           _endDate = _startDate;
+        }
+        // 서버는 3650일을 넘는 복용 기간을 받지 않으므로 종료일을 그 안으로 맞춘다.
+        final latestEndDate = _startDate.add(const Duration(days: 3649));
+        if (_endDate.isAfter(latestEndDate)) {
+          _endDate = latestEndDate;
         }
       } else {
         _endDate = _dateOnly(selectedDate);

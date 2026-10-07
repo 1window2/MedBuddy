@@ -1396,7 +1396,10 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
       return;
     }
     if (success) {
-      Navigator.pop(context);
+      // 요청 중에 대화상자가 이미 닫혔다면 아래의 연동 화면까지 닫지 않는다.
+      if (ModalRoute.of(context)?.isCurrent ?? false) {
+        Navigator.pop(context);
+      }
       return;
     }
     // Function Name: _handleRegisterRequested.setState callback

@@ -370,7 +370,9 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
         sourceImage: image,
         normalizedGuideRect: _normalizedGuideRect,
       );
-      if (mounted) {
+      // 닫히는 전환 중에도 mounted는 참이므로, 이 화면이 맨 위일 때만 결과와 함께 닫는다.
+      // 그렇지 않으면 아래 화면까지 닫혀 버린다.
+      if (mounted && (ModalRoute.of(context)?.isCurrent ?? false)) {
         Navigator.pop(context, croppedImage);
       } else {
         // 자르는 동안 화면을 떠났다면 결과를 받을 곳이 없으므로 처방전 사진을 남기지 않는다.

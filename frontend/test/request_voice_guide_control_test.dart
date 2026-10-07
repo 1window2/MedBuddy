@@ -1,6 +1,7 @@
 // File Name: request_voice_guide_control_test.dart
 // Role: Regression coverage for remote and local medication voice guides and language consistency.
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -18,6 +19,56 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  // 함수이름: 문구 조회 중 중지 테스트
+  // 함수역할: 안내 문구를 받아오는 동안 중지하면 응답이 도착한 뒤에도 읽기를 시작하지 않고, 다음 요청은 정상적으로 읽는지 검증한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  test('a voice guide stopped while its text is loading is not spoken', () async {
+    final pendingResponses = <Completer<http.Response>>[];
+    final spoken = <String>[];
+    final client = MockClient((request) {
+      final response = Completer<http.Response>();
+      pendingResponses.add(response);
+      return response.future;
+    });
+    addTearDown(client.close);
+    final control = RequestVoiceGuide(
+      baseUrl: 'http://localhost',
+      client: client,
+      speaker: (text, userSetting, {onComplete}) async => spoken.add(text),
+    );
+    const detail = MedicationDetail(
+      itemName: 'Saved tablet',
+      efficacy: '',
+      usageMethod: 'Take after meals',
+      warning: '',
+    );
+    http.Response guide(String text) => http.Response(
+      jsonEncode({
+        'data': {'voice_guide_text': text},
+      }),
+      200,
+    );
+
+    final stopped = control.requestVoiceGuide(
+      medicationDetail: detail,
+      userSetting: const UserSetting(),
+    );
+    await Future<void>.delayed(Duration.zero);
+    await control.stop();
+    pendingResponses.single.complete(guide('late guide'));
+    await stopped;
+    expect(spoken, isEmpty);
+
+    final played = control.requestVoiceGuide(
+      medicationDetail: detail,
+      userSetting: const UserSetting(),
+    );
+    await Future<void>.delayed(Duration.zero);
+    pendingResponses.last.complete(guide('current guide'));
+    await played;
+    expect(spoken, ['current guide']);
+  });
+
   // 함수이름: test 콜백
   // 함수역할:
   // - 로컬 복약 음성 안내에 약명·복용법·주의사항만 포함하고 효능과 추가 안내를 제외하는지 검증한다.

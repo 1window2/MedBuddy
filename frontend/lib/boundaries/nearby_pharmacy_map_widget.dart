@@ -135,6 +135,19 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   // 함수역할: 일반·선택·즐겨찾기 마커와 현재 위치 이미지를 한 번 생성한다.
   // 매개변수: 없음. 반환값: 이미지 준비 완료.
   Future<void> _loadSymbols() => _symbolLoading ??= () async {
+    try {
+      await _createSymbols();
+    } catch (_) {
+      // 실패한 결과를 붙잡아 두면 화면을 다시 열 때까지 마커를 그릴 수 없으므로 다음 호출에서 다시 만든다.
+      _symbolLoading = null;
+      rethrow;
+    }
+  }();
+
+  // 함수이름: _createSymbols
+  // 함수역할: 지도 마커와 현재 위치 표시에 쓸 이미지를 만든다.
+  // 매개변수: 없음. 반환값: 이미지 생성 완료.
+  Future<void> _createSymbols() async {
     // 지도 SDK의 임시 이미지 폴더 초기화가 동시에 실행되지 않게 첫 이미지는 기다린다.
     _pinIcon = await NOverlayImage.fromWidget(
       widget: const PharmacyMapPin(),
@@ -162,7 +175,7 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     _selectedPinIcon = icons[0];
     _locationIcon = icons[1];
     _favoritePinIcon = icons[2];
-  }();
+  }
 
   // 함수이름: _mappablePharmacies
   // 함수역할: 유효한 위도·경도를 가진 약국만 지도 표시 목록으로 선택한다.

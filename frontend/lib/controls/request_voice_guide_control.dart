@@ -47,6 +47,8 @@ class RequestVoiceGuide {
   final VoiceGuideSpeaker? _speaker;
   final http.Client _client;
   final bool _ownsClient;
+  // 안내 문구를 받아오는 동안 중지·화면 종료가 일어났는지 구분하는 요청 번호.
+  int _requestGeneration = 0;
 
   // Function Name: RequestVoiceGuide
   // Description: Connects voice-guide requests to HTTP and selects an injected speaker or TTS service while tracking ownership of a created client.
@@ -80,11 +82,16 @@ class RequestVoiceGuide {
     required UserSetting userSetting,
     void Function()? onComplete,
   }) async {
+    final generation = ++_requestGeneration;
     final voiceGuideText = await _getVoiceGuideText(
       medicationDetail: medicationDetail,
       language: userSetting.language,
     );
     final normalizedVoiceGuideText = voiceGuideText.trim();
+    if (generation != _requestGeneration) {
+      // 문구를 기다리는 사이 중지했거나 화면을 떠났으면 뒤늦게 읽기 시작하지 않는다.
+      return normalizedVoiceGuideText;
+    }
     await requestTTS(
       voiceGuideText: normalizedVoiceGuideText,
       userSetting: userSetting,
@@ -194,6 +201,7 @@ class RequestVoiceGuide {
   // Returns:
   // - Future<void>: asynchronous completion without a result payload.
   Future<void> stop() async {
+    _requestGeneration += 1;
     await _ttsService?.stop();
   }
 
@@ -204,6 +212,7 @@ class RequestVoiceGuide {
   // Returns:
   // - No return value.
   void dispose() {
+    _requestGeneration += 1;
     if (_ownsClient) {
       _client.close();
     }
