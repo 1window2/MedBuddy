@@ -28,7 +28,7 @@ dependencies:
   google_sign_in: 7.2.0
   home_widget: ^0.10.0
   http: ^1.2.0
-  image: ^4.8.0
+  image: ^4.10.1
   image_picker: ^1.2.3
   path_provider: ^2.1.5
   provider: ^6.1.2
@@ -36,7 +36,7 @@ dependencies:
   sqflite: ^2.4.2
   timezone: ^0.11.1
   url_launcher: ^6.3.2
-  workmanager: ^0.10.9
+  workmanager: ^0.10.10
   flutter_naver_map: 1.4.4
 
 dev_dependencies:
