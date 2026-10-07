@@ -59,7 +59,6 @@ package "Flutter Frontend" {
         }
 
         class "InputPrescriptionUI" as InputPrescriptionUI <<Component: 홈 콘텐츠>> {
-            + statusMessage: String
             + userSetting: UserSetting
             + todayMedicationScheduleList: List<MedicationSchedule>
             + build(context): Widget

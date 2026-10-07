@@ -308,7 +308,6 @@ void main() {
             _scaledMaterialApp(
               textScale: 1,
               home: InputPrescriptionUI(
-                statusMessage: '',
                 userSetting: const UserSetting(),
                 todayMedicationScheduleList: const [
                   MedicationSchedule(
@@ -447,7 +446,6 @@ void main() {
           _scaledMaterialApp(
             textScale: viewportCase.textScale,
             home: InputPrescriptionUI(
-              statusMessage: '',
               userSetting: const UserSetting(fontSize: 20),
               // 함수이름: onPrescriptionScanRequested 콜백
               // 함수역할:

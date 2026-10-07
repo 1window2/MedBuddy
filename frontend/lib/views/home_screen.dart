@@ -774,7 +774,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             )
           : null,
-      statusMessage: viewModel.prescriptionStatusMessage,
       userSetting: viewModel.userSetting,
       todayMedicationScheduleList: viewModel.todayMedicationScheduleList,
       medicationReminderSettings: viewModel.medicationReminderSettings,

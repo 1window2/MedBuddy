@@ -598,7 +598,6 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: InputPrescriptionUI(
-          statusMessage: '',
           userSetting: const UserSetting(language: 'ko'),
           // Function Name: onPrescriptionScanRequested callback
           // Description:
@@ -1007,7 +1006,6 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: InputPrescriptionUI(
-          statusMessage: '',
           userSetting: const UserSetting(language: 'ko'),
           // Function Name: onPrescriptionScanRequested callback
           // Description:
@@ -1090,7 +1088,6 @@ void main() {
     Widget buildHome({VoidCallback? onNearbyPharmacyRequested}) {
       return MaterialApp(
         home: InputPrescriptionUI(
-          statusMessage: '',
           userSetting: const UserSetting(language: 'ko'),
           // Function Name: onPrescriptionScanRequested callback
           // Description:
@@ -1180,7 +1177,6 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: InputPrescriptionUI(
-          statusMessage: '',
           userSetting: const UserSetting(language: 'en'),
           // Function Name: onPrescriptionScanRequested callback
           // Description:
@@ -1857,7 +1853,6 @@ InputPrescriptionUI _home({
   onMedicationSlotStatusRequested,
 }) {
   return InputPrescriptionUI(
-    statusMessage: '',
     userSetting: userSetting,
     caregiverScheduleHint: caregiverScheduleHint,
     todayMedicationScheduleList: schedules,

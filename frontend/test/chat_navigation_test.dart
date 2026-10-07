@@ -788,7 +788,6 @@ void main() {
                 textScaler: TextScaler.linear(scale),
               ),
               child: InputPrescriptionUI(
-                statusMessage: '',
                 userSetting: UserSetting(language: language),
                 onPrescriptionScanRequested: _noop,
                 onPrescriptionGalleryRequested: _noop,

@@ -19,14 +19,11 @@ import '../widgets/home_medication_slot_pager.dart';
 // Responsibilities:
 // - Applies the user's home wording and text size.
 // - Offers camera and gallery prescription input.
-// - Replaces input with progress while OCR is running.
 // Attributes:
-// - statusMessage (String): Visible wording for the current result, error, or state.
 // - userSetting (UserSetting): User settings for language, accessibility, medication reminders, and persistence.
 // - todayMedicationScheduleList (List<MedicationSchedule>): Medication schedules for review, display, or slot grouping.
 // - medicationReminderSettings (Map<String, MedicationAlarm>): Reminder settings indexed by dose-slot key.
 class InputPrescriptionUI extends StatelessWidget {
-  final String statusMessage;
   final UserSetting userSetting;
   final List<MedicationSchedule> todayMedicationScheduleList;
   final Map<String, MedicationAlarm> medicationReminderSettings;
@@ -50,13 +47,11 @@ class InputPrescriptionUI extends StatelessWidget {
   final VoidCallback? onUserSettingRequested;
   final VoidCallback? onNotificationsRequested;
   final int unreadNotificationCount;
-  final bool isAnalyzing;
 
   // Function Name: InputPrescriptionUI
   // Description: Initializes medication status and quick medication input or lookup actions with the supplied configuration.
   // Parameters:
   // - key (Key?): Widget identity used to distinguish elements and preserve state.
-  // - statusMessage (String): Visible wording for the current result, error, or state.
   // - userSetting (UserSetting): User settings for language, accessibility, medication reminders, and persistence.
   // - todayMedicationScheduleList (List<MedicationSchedule>): Medication schedules for review, display, or slot grouping.
   // - medicationReminderSettings (Map<String, MedicationAlarm>): Reminder settings indexed by dose-slot key.
@@ -77,7 +72,6 @@ class InputPrescriptionUI extends StatelessWidget {
   // Returns: Initialized InputPrescriptionUI instance.
   const InputPrescriptionUI({
     super.key,
-    required this.statusMessage,
     required this.userSetting,
     this.todayMedicationScheduleList = const [],
     this.medicationReminderSettings = const {},
@@ -99,37 +93,7 @@ class InputPrescriptionUI extends StatelessWidget {
     required this.onUserSettingRequested,
     this.onNotificationsRequested,
     this.unreadNotificationCount = 0,
-  }) : isAnalyzing = false;
-
-  // Function Name: InputPrescriptionUI.analyzing
-  // Description: Initializes medication status and quick medication input or lookup actions with the supplied configuration.
-  // Parameters:
-  // - key (Key?): Widget identity used to distinguish elements and preserve state.
-  // - statusMessage (String): Visible wording for the current result, error, or state.
-  // Returns: Initialized InputPrescriptionUI instance.
-  const InputPrescriptionUI.analyzing({super.key, required this.statusMessage})
-    : userSetting = const UserSetting(),
-      todayMedicationScheduleList = const [],
-      medicationReminderSettings = const {},
-      todayMedicationCompletedCount = 0,
-      todayMedicationTotalCount = 0,
-      isTodayScheduleLoading = false,
-      caregiverSummary = null,
-      caregiverScheduleHint = null,
-      nowProvider = null,
-      onPrescriptionScanRequested = null,
-      onPrescriptionGalleryRequested = null,
-      onPillIdentificationRequested = null,
-      onManualMedicationRequested = null,
-      onTodayScheduleRequested = null,
-      onMedicationSlotStatusRequested = null,
-      isNextMedicationCompletionLoading = false,
-      onNearbyPharmacyRequested = null,
-      onHealthRecommendationRequested = null,
-      onUserSettingRequested = null,
-      onNotificationsRequested = null,
-      unreadNotificationCount = 0,
-      isAnalyzing = true;
+  });
 
   // 함수이름: build
   // 함수역할: 복약 현황과 빠른 기능을 표시하고, 큰 글씨에서는 설명 길이에 맞춰 카드 높이를 정한다.
@@ -139,10 +103,6 @@ class InputPrescriptionUI extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = _HomeText(userSetting.language);
-
-    if (isAnalyzing) {
-      return _buildAnalyzingScreen(text);
-    }
 
     return Scaffold(
       backgroundColor: MedBuddyColors.pageBackground,
@@ -408,76 +368,6 @@ class InputPrescriptionUI extends StatelessWidget {
       return;
     }
     onPrescriptionGalleryRequested?.call();
-  }
-
-  // Function Name: _buildAnalyzingScreen
-  // Description: Replaces home input with OCR progress guidance and indicators.
-  // Parameters:
-  // - text (_HomeText): Localized labels used by this section.
-  // Returns: Widget tree for medication status and quick medication input or lookup actions.
-  Widget _buildAnalyzingScreen(_HomeText text) {
-    return Scaffold(
-      body: Container(
-        width: double.infinity,
-        color: MedBuddyColors.pageBackground,
-        child: Center(
-          child: Container(
-            width: 328,
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 44),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: MedBuddyRadii.largeCard,
-              border: Border.all(color: MedBuddyColors.cardBorder),
-              boxShadow: MedBuddyShadows.card,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(
-                  width: 86,
-                  height: 86,
-                  child: CircularProgressIndicator(
-                    color: MedBuddyColors.primary,
-                    strokeWidth: 7,
-                  ),
-                ),
-                const SizedBox(height: 36),
-                Text(
-                  text.analyzingTitle,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: MedBuddyColors.textStrong,
-                    fontSize: 19,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  statusMessage,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: MedBuddyColors.textSubtle,
-                    fontSize: 15,
-                    height: 1.45,
-                    letterSpacing: 0,
-                  ),
-                ),
-                const SizedBox(height: 26),
-                ClipRRect(
-                  borderRadius: MedBuddyRadii.pill,
-                  child: const LinearProgressIndicator(
-                    minHeight: 10,
-                    color: MedBuddyColors.primary,
-                    backgroundColor: MedBuddyColors.divider,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
 
@@ -964,13 +854,6 @@ class _HomeText {
   String get nearbyPharmacySubtitle => isEnglish
       ? 'Check nearby hospital and pharmacy hours'
       : '가까운 병원·약국의 운영시간을 확인해요';
-  // 함수이름: analyzingTitle
-  // 함수역할: 현재 언어와 입력값에 맞춰 "처방전 인식 중..." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get analyzingTitle =>
-      isEnglish ? 'Analyzing prescription...' : '처방전 인식 중...';
 }
 
 // Class Name: _HomeEncouragementPanel
