@@ -49,7 +49,6 @@ class RateLimitRule:
 # - method (str): HTTP 메서드
 # - path (str): 실제 또는 FastAPI 정규 경로
 # - rules (Mapping[tuple[str, str], RateLimitRule] | None): 우선 적용할 경로별 제한 규칙
-# - include_api_default (bool): /api/v1 경로에 기본 제한을 적용할지 여부
 # - collapse_default_scope (bool): 기본 제한 카운터를 메서드별 공통 범위로 묶을지 여부
 # 반환값:
 # - 적용 규칙과 카운터를 공유할 정규 경로 또는 None
@@ -58,7 +57,6 @@ def resolve_rate_limit_rule(
     path: str,
     *,
     rules: Mapping[tuple[str, str], RateLimitRule] | None = None,
-    include_api_default: bool = True,
     collapse_default_scope: bool = False,
 ) -> tuple[RateLimitRule, str] | None:
     """요청에 적용할 가장 구체적인 호출 제한 규칙을 반환한다."""
@@ -76,7 +74,7 @@ def resolve_rate_limit_rule(
         if _path_matches_template(normalized_path, rule_path):
             return rule, rule_path
 
-    if not include_api_default or not normalized_path.startswith(_API_PATH_PREFIX):
+    if not normalized_path.startswith(_API_PATH_PREFIX):
         return None
     default_rule = DEFAULT_AUTHENTICATED_API_RULES.get(normalized_method)
     if default_rule is None:

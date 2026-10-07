@@ -32,7 +32,6 @@ from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient
 from entities.saved_medication_entity import _SavedMedication
 from repositories.saved_medication_repository import SavedMedicationRepository
 from services.medication_course_policy import MedicationCoursePolicy
-from services.saved_medication_retention import SavedMedicationRetentionPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +67,6 @@ class CheckSchedule:
             medication_repository or SavedMedicationRepository(db)
         )
         self.course_policy = course_policy or MedicationCoursePolicy()
-        self.retention_policy = SavedMedicationRetentionPolicy(self.course_policy)
         self.completion_event_boundary = completion_event_boundary
         self._pending_completion_events: list[dict[str, str | int]] = []
 

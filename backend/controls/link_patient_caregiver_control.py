@@ -540,14 +540,3 @@ class LinkPatientCaregiver:
             "created_at": link.created_at.isoformat() if link.created_at else "",
             "linked_at": link.created_at.isoformat() if link.created_at else "",
         }
-
-    # 함수이름: _to_response_dict
-    # 함수역할:
-    # - 이전 내부 호출과 테스트를 위한 호환 별칭이다.
-    # 매개변수:
-    # - link (_PatientCaregiverLink): 저장된 환자·보호자 연동과 참여자 식별자.
-    # 반환값:
-    # - 공통 직렬화 규칙을 적용한 연동 정보 사전.
-    def _to_response_dict(self, link: _PatientCaregiverLink) -> dict[str, object]:
-        """이전 내부 호출과 테스트를 위한 호환 별칭이다."""
-        return self.toResponseDict(link)
