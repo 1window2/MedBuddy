@@ -2,7 +2,9 @@
 // Role: Verifies authenticated device-token cleanup during session teardown.
 
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -50,6 +52,37 @@ void main() {
   // - None.
   // Returns:
   // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  // Function Name: token registration platform test
+  // Description: Verifies that only Android registers the caregiver action capability, because
+  //   the notification action buttons exist only there.
+  // Parameters: None. Returns: Future<void>; completes when the assertions pass.
+  test('only Android registers the caregiver action capability', () async {
+    final bodies = <Map<String, dynamic>>[];
+    final client = MockClient((request) async {
+      bodies.add(Map<String, dynamic>.from(jsonDecode(request.body) as Map));
+      return http.Response('{}', 200);
+    });
+    addTearDown(client.close);
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    await PushNotificationService(
+      userHash: 'push-android-user',
+      client: client,
+    ).registerTokenForTesting('android-token');
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    await PushNotificationService(
+      userHash: 'push-ios-user',
+      client: client,
+    ).registerTokenForTesting('ios-token');
+    debugDefaultTargetPlatformOverride = null;
+
+    expect(bodies[0]['platform'], 'android');
+    expect(bodies[0]['supports_caregiver_actions'], isTrue);
+    expect(bodies[1]['platform'], 'ios');
+    expect(bodies[1]['supports_caregiver_actions'], isFalse);
+  });
+
   test('strict stop retries a push token after server rejection', () async {
     var requestCount = 0;
     // Function Name: MockClient callback

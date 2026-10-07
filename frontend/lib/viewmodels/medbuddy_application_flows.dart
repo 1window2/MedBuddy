@@ -102,7 +102,13 @@ extension MedBuddyApplicationFlows on MedBuddyViewModel {
       unawaited(refreshMedicationSchedule().catchError((Object _) {}));
       rethrow;
     }
-    await doseSync?.deleteAccountData();
+    // The server data and identity are already gone, so device cleanup is
+    // best-effort: a storage failure must not stop sign-out finalization.
+    try {
+      await doseSync?.deleteAccountData();
+    } catch (_) {
+      // Pending dose records stay encrypted under the deleted account's key.
+    }
     try {
       // On-device medication photos belong to the deleted account as well.
       await manualMedicationImageStore.removeOrphanImages(

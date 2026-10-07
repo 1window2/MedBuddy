@@ -227,6 +227,15 @@ class PushNotificationService {
   Future<void> _start() async {
     _started = true;
     try {
+      // 포그라운드 수신을 구독하기 전에, 이 기기에 저장된 계정 설정이 내용 숨김이면 먼저 적용한다.
+      // 설정 조회가 끝나기 전에 도착한 보호자 알림이 세부 내용을 다시 만들지 않게 한다.
+      final preferences = await SharedPreferences.getInstance();
+      if (preferences.getString(
+            'user_setting_${userHash.trim()}_notification_detail_mode',
+          ) ==
+          'type_only') {
+        NotificationService.instance.setShowSensitiveDetails(false);
+      }
       final messaging = _resolvedMessaging;
       FirebaseMessaging.onBackgroundMessage(medBuddyPushBackgroundHandler);
       await messaging.requestPermission(alert: true, badge: true, sound: true);
@@ -305,7 +314,7 @@ class PushNotificationService {
             .delete(
               Uri.parse(ApiConfig.pushTokenUrl),
               headers: const {'Content-Type': 'application/json'},
-              body: jsonEncode({'token': token, 'platform': 'android'}),
+              body: jsonEncode({'token': token, 'platform': _platformName}),
             )
             .timeout(_requestTimeout);
         if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -403,6 +412,14 @@ class PushNotificationService {
     }
   }
 
+  // 함수이름: _isAndroid
+  // 함수역할: 현재 실행 대상이 Android인지 확인한다. 매개변수: 없음. 반환값: Android 여부.
+  bool get _isAndroid => defaultTargetPlatform == TargetPlatform.android;
+
+  // 함수이름: _platformName
+  // 함수역할: 서버에 등록할 기기 플랫폼 이름을 만든다. 매개변수: 없음. 반환값: android 또는 ios.
+  String get _platformName => _isAndroid ? 'android' : 'ios';
+
   // 함수이름: _registerToken
   // 함수역할: 새 FCM 토큰을 현재 인증 사용자의 기기 토큰으로 서버에 등록한다.
   // 매개변수:
@@ -418,8 +435,9 @@ class PushNotificationService {
         .post(
           Uri.parse(ApiConfig.pushTokenUrl),
           headers: const {'Content-Type': 'application/json'},
-          body: jsonEncode({'token': normalizedToken, 'platform': 'android',
-            'supports_caregiver_actions': true}),
+          // 알림 동작 버튼은 Android에만 정의되어 있으므로 그 기기만 동작 지원으로 등록한다.
+          body: jsonEncode({'token': normalizedToken, 'platform': _platformName,
+            'supports_caregiver_actions': _isAndroid}),
         )
         .timeout(_requestTimeout);
     if (response.statusCode < 200 || response.statusCode >= 300) {

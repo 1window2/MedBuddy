@@ -17,6 +17,7 @@ import 'package:medbuddy_frontend/controls/set_notification_control.dart';
 import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/patient_hash_entity.dart';
+import 'package:medbuddy_frontend/services/dose_sync_service.dart';
 import 'package:medbuddy_frontend/services/notification_service.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_feature_updates.dart';
@@ -1369,6 +1370,40 @@ void main() {
     await viewModel.requestAccountDataDeletion();
 
     expect(notificationService.canceledAllMedicationReminders, isTrue);
+  });
+
+  // Function Name: account deletion local cleanup failure test
+  // Description:
+  // - Verify that a failing on-device dose store does not stop account deletion after the server accepted it,
+  //   so the caller can still finish sign-out.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  test('기기 복용 기록 정리가 실패해도 계정 삭제 흐름을 끝낸다', () async {
+    SharedPreferences.setMockInitialValues({});
+    var deleteRequests = 0;
+    final client = MockClient((request) async {
+      if (request.method == 'DELETE') deleteRequests += 1;
+      return http.Response('{"success":true}', 200);
+    });
+    addTearDown(client.close);
+    final viewModel = MedBuddyViewModel(
+      manageAccount: ManageAccount(userHash: 'patient-a', client: client),
+      notificationService: _FakeNotificationService(),
+    );
+    addTearDown(viewModel.dispose);
+    viewModel.attachDoseSync(
+      DoseSyncService(
+        owner: 'patient-a',
+        client: client,
+        openStore: () async => throw StateError('storage unavailable'),
+      ),
+    );
+
+    await viewModel.requestAccountDataDeletion();
+
+    expect(deleteRequests, 1);
   });
 }
 
