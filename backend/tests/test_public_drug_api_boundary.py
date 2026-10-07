@@ -1,3 +1,6 @@
+# File Name: test_public_drug_api_boundary.py
+# Role: Regression coverage for basic/approval drug API contracts and catalog retry isolation
+#   from interactive failure caching.
 import os
 import sys
 from pathlib import Path
@@ -19,6 +22,15 @@ from boundaries.public_drug_api_boundary import (  # noqa: E402
 from core.config import settings  # noqa: E402
 
 
+# Function Name: test_small_api_search_medication_uses_basic_catalog_contract
+# Description:
+# - Uses the basic-drug endpoint's itemName parameter and three-row limit and returns its
+#   matching medication payload.
+# Parameters:
+# - monkeypatch (pytest.MonkeyPatch): Pytest replacement fixture restoring patched collaborators
+#   afterward.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_small_api_search_medication_uses_basic_catalog_contract(
     monkeypatch: pytest.MonkeyPatch,
@@ -26,6 +38,17 @@ async def test_small_api_search_medication_uses_basic_catalog_contract(
     transport = _PublicDrugTransport()
     api = PublicDrugSmallAPI(transport=transport)
 
+    # Function Name: fake_request_items
+    # Description:
+    # - Checks the basic endpoint and search parameters before supplying one matching
+    #   medication.
+    # Parameters:
+    # - url (str): Public API endpoint requested by the boundary.
+    # - params (dict[str, object]): Public API query parameters checked by the transport
+    #   double.
+    # Returns:
+    # - tuple[list[dict[str, object]], int]: Configured drug rows and the advertised total
+    #   count.
     async def fake_request_items(
         url: str,
         params: dict[str, object],
@@ -42,6 +65,14 @@ async def test_small_api_search_medication_uses_basic_catalog_contract(
     ]
 
 
+# Function Name: test_small_api_search_medication_degrades_to_empty_result
+# Description:
+# - Degrades an unavailable interactive basic-drug search to an empty result.
+# Parameters:
+# - monkeypatch (pytest.MonkeyPatch): Pytest replacement fixture restoring patched collaborators
+#   afterward.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_small_api_search_medication_degrades_to_empty_result(
     monkeypatch: pytest.MonkeyPatch,
@@ -49,6 +80,15 @@ async def test_small_api_search_medication_degrades_to_empty_result(
     transport = _PublicDrugTransport()
     api = PublicDrugSmallAPI(transport=transport)
 
+    # Function Name: failing_request_items
+    # Description:
+    # - Raises an upstream availability error to exercise interactive search fallback.
+    # Parameters:
+    # - url (str): Public API endpoint requested by the boundary.
+    # - params (dict[str, object]): Public API query parameters checked by the transport
+    #   double.
+    # Returns:
+    # - No normal result; raises the configured failure described above.
     async def failing_request_items(
         url: str,
         params: dict[str, object],
@@ -60,6 +100,13 @@ async def test_small_api_search_medication_degrades_to_empty_result(
     assert await api.searchMedication("sample tablet") == []
 
 
+# 함수이름: test_large_api_search_medication_uses_approval_catalog_contract
+# 함수역할:
+# - 허가 약 검색이 고급 API의 item_name 인자와 5건 상한을 사용하고 대문자 필드 응답을 유지하는지 검증한다.
+# 매개변수:
+# - monkeypatch (pytest.MonkeyPatch): 교체한 의존성을 종료 시 복구하는 pytest fixture.
+# 반환값:
+# - 없음 (None).
 @pytest.mark.anyio
 async def test_large_api_search_medication_uses_approval_catalog_contract(
     monkeypatch: pytest.MonkeyPatch,
@@ -67,6 +114,14 @@ async def test_large_api_search_medication_uses_approval_catalog_contract(
     transport = _PublicDrugTransport()
     api = PublicDrugLargeAPI(transport=transport)
 
+    # 함수이름: fake_request_items
+    # 함수역할:
+    # - 고급 API 주소와 약명·결과 상한을 확인한 뒤 허가 약 단일 결과를 제공한다.
+    # 매개변수:
+    # - url (str): 경계가 요청한 공공 API 주소.
+    # - params (dict[str, object]): 통신 대체 객체에서 확인할 공공 API 쿼리 인자.
+    # 반환값:
+    # - tuple[list[dict[str, object]], int]: 설정된 약 레코드 목록과 공시된 전체 건수.
     async def fake_request_items(
         url: str,
         params: dict[str, object],
@@ -83,6 +138,15 @@ async def test_large_api_search_medication_uses_approval_catalog_contract(
     ]
 
 
+# Function Name: test_catalog_page_fetches_stay_owned_by_their_api_boundaries
+# Description:
+# - Keeps basic and approval page retrieval on their respective endpoints and bypasses
+#   interactive failure caching.
+# Parameters:
+# - monkeypatch (pytest.MonkeyPatch): Pytest replacement fixture restoring patched collaborators
+#   afterward.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_catalog_page_fetches_stay_owned_by_their_api_boundaries(
     monkeypatch: pytest.MonkeyPatch,
@@ -92,6 +156,19 @@ async def test_catalog_page_fetches_stay_owned_by_their_api_boundaries(
     large_api = PublicDrugLargeAPI(transport=transport)
     requested_urls: list[str] = []
 
+    # Function Name: fake_request_items
+    # Description:
+    # - Records the selected endpoint and checks page two, fifty rows, and explicit
+    #   failure-cache bypass.
+    # Parameters:
+    # - url (str): Public API endpoint requested by the boundary.
+    # - params (dict[str, object]): Public API query parameters checked by the transport
+    #   double.
+    # - bypass_failure_cache (bool): Whether catalog refresh must bypass interactive failure
+    #   backoff.
+    # Returns:
+    # - tuple[list[dict[str, object]], int]: Configured drug rows and the advertised total
+    #   count.
     async def fake_request_items(
         url: str,
         params: dict[str, object],
@@ -115,6 +192,15 @@ async def test_catalog_page_fetches_stay_owned_by_their_api_boundaries(
     ]
 
 
+# Function Name: test_catalog_retry_bypasses_interactive_failure_cache
+# Description:
+# - Suppresses repeated interactive failures but permits a catalog retry to bypass the failure
+#   cache and recover valid items.
+# Parameters:
+# - monkeypatch (pytest.MonkeyPatch): Pytest replacement fixture restoring patched collaborators
+#   afterward.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_catalog_retry_bypasses_interactive_failure_cache(
     monkeypatch: pytest.MonkeyPatch,
@@ -122,14 +208,56 @@ async def test_catalog_retry_bypasses_interactive_failure_cache(
     transport = _PublicDrugTransport()
     request_count = 0
 
+    # Class Name: _Response
+    # Role: HTTP response double carrying a selected status and fixed public-drug result
+    #   payload.
+    # Responsibilities:
+    # - Returns one sample medication and its advertised total in public API response
+    #   format.
+    # Attributes:
+    # - status_code (int): HTTP status returned by the simulated response.
     class _Response:
+        # Function Name: __init__
+        # Description:
+        # - Stores the HTTP status used to distinguish the failed first request from the
+        #   successful retry.
+        # Parameters:
+        # - status_code (int): HTTP response status supplied by the transport double.
+        # Returns:
+        # - None.
         def __init__(self, status_code: int) -> None:
             self.status_code = status_code
 
+        # Function Name: json
+        # Description:
+        # - Returns one sample medication and its advertised total in public API
+        #   response format.
+        # Parameters:
+        # - None.
+        # Returns:
+        # - dict[str, object]: Public API body containing one sample item and
+        #   totalCount=1.
         def json(self) -> dict[str, object]:
             return {"body": {"items": [{"itemName": "sample"}], "totalCount": 1}}
 
+    # Class Name: _Client
+    # Role: HTTP client double that fails its first page request and succeeds on the next
+    #   actual request.
+    # Responsibilities:
+    # - Checks the first-page request, counts attempts, and returns 503 once followed by
+    #   200.
     class _Client:
+        # Function Name: get
+        # Description:
+        # - Checks the first-page request, counts attempts, and returns 503 once
+        #   followed by 200.
+        # Parameters:
+        # - _url (str): Public API endpoint requested by the boundary. Unused by this
+        #   double.
+        # - params (dict[str, object]): Public API query parameters checked by the
+        #   transport double.
+        # Returns:
+        # - _Response: 503 response for the first actual request, then a 200 response.
         async def get(
             self,
             _url: str,
@@ -141,6 +269,13 @@ async def test_catalog_retry_bypasses_interactive_failure_cache(
             assert params["pageNo"] == 1
             return _Response(503 if request_count == 1 else 200)
 
+    # Function Name: fake_get_client
+    # Description:
+    # - Supplies the deterministic retry client without constructing a network client.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - _Client: Client double with deterministic failure-then-success behavior.
     async def fake_get_client() -> _Client:
         return _Client()
 

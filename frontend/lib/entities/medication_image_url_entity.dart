@@ -4,13 +4,9 @@
 const Set<String> _trustedMedicationImageHosts = {'nedrug.mfds.go.kr'};
 
 // Function Name: safeMedicationImageUrl
-// Description:
-// - Returns a medication image URL only when it uses HTTPS and an approved
-//   public-data host.
-// - Rejects credentials, alternate ports, local endpoints, and arbitrary
-//   third-party tracking hosts before Flutter can open a network connection.
+// Description: Returns a medication image URL only when it uses HTTPS and an approved public-data host. Rejects credentials, alternate ports, local endpoints, and arbitrary third-party tracking hosts before Flutter can open a network connection.
 // Parameters:
-// - value: The untrusted URL value received from an API or persisted record.
+// - value (dynamic): The untrusted URL value received from an API or persisted record.
 // Returns:
 // - The trimmed trusted URL, or an empty string when validation fails.
 String safeMedicationImageUrl(dynamic value) {

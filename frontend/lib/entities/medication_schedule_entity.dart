@@ -1,7 +1,8 @@
-// 파일명: medication_schedule_entity.dart
-// 역할: 처방전 OCR 결과와 저장된 오늘 복약 일정 정보를 표현하는 모델을 정의한다.
+// File Name: medication_schedule_entity.dart
+// Role: Defines prescription-analysis and saved-schedule records, slot status, and localized dosage display values.
 
 import 'medication_image_url_entity.dart';
+import 'json_value_reader.dart';
 
 const List<String> medicationScheduleSlotKeys = [
   'morning',
@@ -11,12 +12,26 @@ const List<String> medicationScheduleSlotKeys = [
 ];
 const String defaultMedicationScheduleSlotKey = 'morning';
 
+// Function Name: medicationScheduleCountFromText
+// Description: Preserves integer input or reads the daily dose count from frequency text the way the server does: the number attached to a count unit (회, 번, times, x) wins, otherwise the last digit group; zero when no count can be read.
+// Parameters:
+// - value (dynamic): Number or frequency text from which to extract the dose count.
+// Returns:
+// - int: The daily dose count, or zero when no numeric count can be read.
 int medicationScheduleCountFromText(dynamic value) {
   if (value is int) {
     return value;
   }
 
   final text = value?.toString().trim() ?? '';
+  // "1일 3회 식후 30분" must read 3, not the trailing 30 minutes.
+  final counted = RegExp(
+    r'(?<!\d)(\d+)\s*(?:회|번|times?|x)',
+    caseSensitive: false,
+  ).firstMatch(text);
+  if (counted != null) {
+    return int.tryParse(counted.group(1) ?? '') ?? 0;
+  }
   final matches = RegExp(r'\d+').allMatches(text).toList(growable: false);
   if (matches.isEmpty) {
     return 0;
@@ -24,11 +39,26 @@ int medicationScheduleCountFromText(dynamic value) {
   return int.tryParse(matches.last.group(0) ?? '') ?? 0;
 }
 
-// 함수명: medicationScheduleSlotKeysForFrequency
-// 함수역할:
-// - 1일 복용 횟수를 오늘의 복약 일정 시간대 키 목록으로 변환한다.
+// Function Name: medicationDayCountFromText
+// Description: Preserves integer input or reads the course length from duration text the way the server does: the first digit group, so "7일분 (1주)" is seven days; zero when no number can be read.
+// Parameters:
+// - value (dynamic): Number or duration text from which to extract the day count.
+// Returns:
+// - int: The number of medication days, or zero when no numeric count can be read.
+int medicationDayCountFromText(dynamic value) {
+  if (value is int) {
+    return value;
+  }
+
+  final text = value?.toString().trim() ?? '';
+  final match = RegExp(r'\d+').firstMatch(text);
+  return int.tryParse(match?.group(0) ?? '') ?? 0;
+}
+
+// 함수이름: medicationScheduleSlotKeysForFrequency
+// 함수역할: 1일 복용 횟수를 오늘의 복약 일정 시간대 키 목록으로 변환한다.
 // 매개변수:
-// - frequencyCount: 1일 복용 횟수
+// - frequencyCount (int): 1일 복용 횟수
 // 반환값:
 // - 화면과 알림 설정에서 공유하는 시간대 키 목록
 List<String> medicationScheduleSlotKeysForFrequency(int frequencyCount) {
@@ -44,14 +74,31 @@ List<String> medicationScheduleSlotKeysForFrequency(int frequencyCount) {
   return const [defaultMedicationScheduleSlotKey];
 }
 
-// 클래스명: MedicationSchedule
-// 역할: 약 이름, 조제일자, 1회 투약량, 1일 횟수, 총 투약일, 복약 상태를 보관한다.
-// 주요 책임:
-// - 처방전 분석 API 응답을 화면 모델로 변환한다.
-// - 오늘 복약 일정 API 응답을 화면 모델로 변환한다.
-// - 일정 계산과 화면 표시에서 공통으로 쓰는 파생 값을 제공한다.
+// Class Name: MedicationSchedule
+// Role: Holds prescription dates, drug names, doses, course duration, ownership, and completion status.
+// Responsibilities:
+// - Decode OCR and saved-schedule payloads, preserve correction provenance, and derive supported slots and localized display values.
+// Attributes:
+// - createdDate (DateTime?): Creation date of the saved medication or course.
+// - prescriptionDate (DateTime?): Dispensing or prescription date used as the course start.
+// - prescriptionBatchId (String): Identifier grouping medications from the same prescription analysis.
+// - medicationID (String): Identifier of the targeted saved medication.
+// - medicationName (String): Medication name used for display and persistence.
+// - dosage (String): Dose per intake including its unit.
+// - intakeTime (String): Daily intake-frequency text from the prescription.
+// - medicationStatus (bool): Completion state to apply or retain.
+// - slotStatuses (Map<String, bool>): Completion flags keyed by medication slot.
+// - scheduleSlotKeys (List<String>): Explicitly selected medication schedule slot keys.
+// - patientID (String): Patient identifier retained for legacy response compatibility.
+// - medicationTime (int): Total course length in days.
+// - efficacy (String?): Public-catalog medication efficacy description.
+// - usageMethod (String?): Original medication usage and intake-timing instructions.
+// - warning (String?): Important medication warning text.
+// - imageUrl (String?): Remote image URL associated with medication details or a candidate.
+// - rawMedicationName (String): Original OCR medication name before correction.
+// - nameConfidence (double): Confidence assigned to the recognized medication name.
+// - nameCorrectionSource (String): Provenance of medication-name correction or review.
 class MedicationSchedule {
-  final String maskedPrescriptionText;
   final DateTime? createdDate;
   final DateTime? prescriptionDate;
   final String prescriptionBatchId;
@@ -72,8 +119,31 @@ class MedicationSchedule {
   final double nameConfidence;
   final String nameCorrectionSource;
 
+  // Function Name: MedicationSchedule
+  // Description: Captures a medication course and its OCR provenance, patient ownership, optional catalog details, and per-slot completion state.
+  // Parameters:
+  // - createdDate (DateTime?): Creation date of the saved medication or course.
+  // - prescriptionDate (DateTime?): Dispensing or prescription date used as the course start.
+  // - prescriptionBatchId (String): Identifier grouping medications from the same prescription analysis.
+  // - medicationID (String): Identifier of the targeted saved medication.
+  // - medicationName (String): Medication name used for display and persistence.
+  // - dosage (String): Dose per intake including its unit.
+  // - intakeTime (String): Daily intake-frequency text from the prescription.
+  // - medicationStatus (bool): Completion state to apply or retain.
+  // - slotStatuses (Map<String, bool>): Completion flags keyed by medication slot.
+  // - scheduleSlotKeys (List<String>): Explicitly selected medication schedule slot keys.
+  // - patientID (String): Patient identifier retained for legacy response compatibility.
+  // - medicationTime (int): Total course length in days.
+  // - efficacy (String?): Public-catalog medication efficacy description.
+  // - usageMethod (String?): Original medication usage and intake-timing instructions.
+  // - warning (String?): Important medication warning text.
+  // - imageUrl (String?): Remote image URL associated with medication details or a candidate.
+  // - rawMedicationName (String): Original OCR medication name before correction.
+  // - nameConfidence (double): Confidence assigned to the recognized medication name.
+  // - nameCorrectionSource (String): Provenance of medication-name correction or review.
+  // Returns:
+  // - MedicationSchedule: the initialized instance.
   const MedicationSchedule({
-    this.maskedPrescriptionText = '',
     this.createdDate,
     this.prescriptionDate,
     this.prescriptionBatchId = '',
@@ -95,31 +165,30 @@ class MedicationSchedule {
     this.nameCorrectionSource = '',
   });
 
-  // 함수명: fromAnalysisJson
-  // 함수역할:
-  // - 처방전 OCR 분석 API 응답을 복약 일정 모델로 변환한다.
-  // 매개변수:
-  // - json: 처방전 분석 API의 약별 JSON
-  // 반환값:
-  // - MedicationSchedule 인스턴스
+  // Function Name: MedicationSchedule.fromAnalysisJson
+  // Description: Converts OCR-analysis drug fields into a medication course while preserving prescription batch, raw name, confidence, and correction source.
+  // Parameters:
+  // - json (Map<String, dynamic>): Backend response or stored JSON object for this model.
+  // Returns:
+  // - MedicationSchedule: the initialized instance.
   factory MedicationSchedule.fromAnalysisJson(Map<String, dynamic> json) {
     return MedicationSchedule(
-      medicationName: _readString(json['drug_name']),
-      prescriptionDate: _readDate(json['prescription_date']),
-      prescriptionBatchId: _readString(json['prescription_batch_id']),
-      dosage: _readString(json['dosage_per_time']),
-      intakeTime: _readString(json['daily_frequency']),
-      medicationTime: _readInt(json['total_days']),
+      medicationName: readJsonText(json['drug_name']),
+      prescriptionDate: readJsonDate(json['prescription_date']),
+      prescriptionBatchId: readJsonText(json['prescription_batch_id']),
+      dosage: readJsonText(json['dosage_per_time']),
+      intakeTime: readJsonText(json['daily_frequency']),
+      medicationTime: medicationDayCountFromText(json['total_days']),
       scheduleSlotKeys: _readScheduleSlotKeys(
         json['schedule_slot_keys'] ?? json['scheduleSlotKeys'],
       ),
-      efficacy: _readString(json['efficacy']),
-      usageMethod: _readString(json['use_method'] ?? json['usage_method']),
-      warning: _readString(json['warning_message'] ?? json['warning']),
+      efficacy: readJsonText(json['efficacy']),
+      usageMethod: readJsonText(json['use_method'] ?? json['usage_method']),
+      warning: readJsonText(json['warning_message'] ?? json['warning']),
       imageUrl: safeMedicationImageUrl(
         json['image_url'] ?? json['imageUrl'] ?? json['itemImage'],
       ),
-      rawMedicationName: _readString(
+      rawMedicationName: readJsonText(
         json['raw_drug_name'] ??
             json['rawDrugName'] ??
             json['rawMedicationName'],
@@ -127,41 +196,36 @@ class MedicationSchedule {
       nameConfidence: _readDouble(
         json['name_confidence'] ?? json['nameConfidence'],
       ),
-      nameCorrectionSource: _readString(
+      nameCorrectionSource: readJsonText(
         json['name_correction_source'] ?? json['nameCorrectionSource'],
       ),
     );
   }
 
-  // 함수명: fromScheduleJson
-  // 함수역할:
-  // - 저장된 오늘 복약 일정 API 응답을 화면 모델로 변환한다.
-  // - 과거 필드명도 함께 읽어 기존 응답과의 호환성을 유지한다.
-  // 매개변수:
-  // - json: 복약 일정 API 응답 JSON
-  // 반환값:
-  // - MedicationSchedule 인스턴스
+  // Function Name: MedicationSchedule.fromScheduleJson
+  // Description: Decodes a saved medication schedule using current and legacy field spellings, including per-slot status and OCR correction provenance.
+  // Parameters:
+  // - json (Map<String, dynamic>): Backend response or stored JSON object for this model.
+  // Returns:
+  // - MedicationSchedule: the initialized instance.
   factory MedicationSchedule.fromScheduleJson(Map<String, dynamic> json) {
     return MedicationSchedule(
-      maskedPrescriptionText: _readString(
-        json['maskedPrescriptionText'] ?? json['masked_prescription_text'],
-      ),
-      createdDate: _readDate(json['created_date'] ?? json['createdDate']),
-      prescriptionDate: _readDate(
+      createdDate: readJsonDate(json['created_date'] ?? json['createdDate']),
+      prescriptionDate: readJsonDate(
         json['prescription_date'] ?? json['prescriptionDate'],
       ),
-      prescriptionBatchId: _readString(
+      prescriptionBatchId: readJsonText(
         json['prescription_batch_id'] ?? json['prescriptionBatchId'],
       ),
-      medicationID: _readString(
+      medicationID: readJsonText(
         json['medication_id'] ?? json['medicationID'] ?? json['id'],
       ),
-      medicationName: _readString(
+      medicationName: readJsonText(
         json['drug_name'] ?? json['medication_name'] ?? json['item_name'],
       ),
-      dosage: _readString(json['dosage_per_time'] ?? json['dosage']),
-      intakeTime: _readString(json['daily_frequency'] ?? json['intake_time']),
-      medicationStatus: _readBool(
+      dosage: readJsonText(json['dosage_per_time'] ?? json['dosage']),
+      intakeTime: readJsonText(json['daily_frequency'] ?? json['intake_time']),
+      medicationStatus: readJsonBool(
         json['medication_status'] ??
             json['medicationStatus'] ??
             json['medcationStatus'] ??
@@ -174,17 +238,19 @@ class MedicationSchedule {
       scheduleSlotKeys: _readScheduleSlotKeys(
         json['schedule_slot_keys'] ?? json['scheduleSlotKeys'],
       ),
-      patientID: _readString(
+      patientID: readJsonText(
         json['patient_hash'] ?? json['patient_id'] ?? json['patientID'],
       ),
-      medicationTime: _readInt(json['total_days'] ?? json['medication_time']),
-      efficacy: _readString(json['efficacy']),
-      usageMethod: _readString(json['use_method'] ?? json['usage_method']),
-      warning: _readString(json['warning_message'] ?? json['warning']),
+      medicationTime: medicationDayCountFromText(
+        json['total_days'] ?? json['medication_time'],
+      ),
+      efficacy: readJsonText(json['efficacy']),
+      usageMethod: readJsonText(json['use_method'] ?? json['usage_method']),
+      warning: readJsonText(json['warning_message'] ?? json['warning']),
       imageUrl: safeMedicationImageUrl(
         json['image_url'] ?? json['imageUrl'] ?? json['itemImage'],
       ),
-      rawMedicationName: _readString(
+      rawMedicationName: readJsonText(
         json['raw_drug_name'] ??
             json['rawDrugName'] ??
             json['rawMedicationName'],
@@ -192,12 +258,18 @@ class MedicationSchedule {
       nameConfidence: _readDouble(
         json['name_confidence'] ?? json['nameConfidence'],
       ),
-      nameCorrectionSource: _readString(
+      nameCorrectionSource: readJsonText(
         json['name_correction_source'] ?? json['nameCorrectionSource'],
       ),
     );
   }
 
+  // Function Name: fromScheduleJsonList
+  // Description: Accepts a schedule list or a wrapper under schedules or schedule and decodes map entries, returning an empty list for other payload shapes.
+  // Parameters:
+  // - rawItems (dynamic): Raw server item or list before model conversion.
+  // Returns:
+  // - List<MedicationSchedule>: Accepts a schedule list or a wrapper under schedules or schedule and decodes map entries, returning an empty list for other payload shapes.
   static List<MedicationSchedule> fromScheduleJsonList(dynamic rawItems) {
     final scheduleItems = rawItems is Map
         ? rawItems['schedules'] ?? rawItems['schedule']
@@ -209,6 +281,12 @@ class MedicationSchedule {
     return scheduleItems
         .whereType<Map>()
         .map(
+          // Function Name: map callback
+          // Description: Parses a daily schedule response item into a medication schedule.
+          // Parameters:
+          // - item (Map): Current response or collection entry being transformed or checked.
+          // Returns:
+          // - The parsed medication schedule.
           (item) => MedicationSchedule.fromScheduleJson(
             Map<String, dynamic>.from(item),
           ),
@@ -216,14 +294,22 @@ class MedicationSchedule {
         .toList(growable: false);
   }
 
+  // 함수이름: displayName
+  // 함수역할: 약명이 비어 있으면 기존 한국어 확인 문구를 사용하고 값이 있으면 원래 약명을 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - String: 약명이 비어 있으면 기존 한국어 확인 문구를 사용하고 값이 있으면 원래 약명을 제공한다.
   String get displayName {
     return medicationName.isEmpty ? '약품명 확인 필요' : medicationName;
   }
 
-  // 함수명: displayNameForLanguage
-  // 함수역할:
-  // - 약품명이 비어 있을 때 현재 언어에 맞는 대체 문구를 반환한다.
-  // - 공공데이터나 OCR에서 받은 실제 약품명은 번역하지 않고 그대로 유지한다.
+  // 함수이름: displayNameForLanguage
+  // 함수역할: 약품명이 비어 있을 때 현재 언어에 맞는 대체 문구를 반환한다. 공공데이터나 OCR에서 받은 실제 약품명은 번역하지 않고 그대로 유지한다.
+  // 매개변수:
+  // - language (String): 표시·음성 안내에 사용할 언어 코드
+  // 반환값:
+  // - String: 약품명이 비어 있을 때 현재 언어에 맞는 대체 문구를 반환한다. 공공데이터나 OCR에서 받은 실제 약품명은 번역하지 않고 그대로 유지한다.
   String displayNameForLanguage(String language) {
     if (medicationName.trim().isNotEmpty) {
       return medicationName.trim();
@@ -233,6 +319,12 @@ class MedicationSchedule {
         : '약품명 확인 필요';
   }
 
+  // Function Name: hasNameCorrection
+  // Description: Reports a changed raw OCR name only when a nonempty correction source other than unverified records the correction.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - bool: Reports a changed raw OCR name only when a nonempty correction source other than unverified records the correction.
   bool get hasNameCorrection {
     final rawName = rawMedicationName.trim();
     if (rawName.isEmpty || rawName == medicationName.trim()) {
@@ -243,21 +335,45 @@ class MedicationSchedule {
     return correctionSource.isNotEmpty && correctionSource != 'unverified';
   }
 
+  // 함수이름: isNameReviewRequired
+  // 함수역할: 이름 출처가 unverified이거나 양수 신뢰도가 0.75 미만이면 사용자 확인이 필요한 항목으로 판정한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - bool: 이름 출처가 unverified이거나 양수 신뢰도가 0.75 미만이면 사용자 확인이 필요한 항목으로 판정한다.
   bool get isNameReviewRequired {
     final source = nameCorrectionSource.trim();
     return source == 'unverified' ||
         (nameConfidence > 0 && nameConfidence < 0.75);
   }
 
+  // 함수이름: isNameConfirmed
+  // 함수역할: 사용자가 직접 수정하거나 검토 완료한 출처의 약명인지 판정한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - bool: 사용자가 직접 수정하거나 검토 완료한 출처의 약명인지 판정한다.
   bool get isNameConfirmed {
     final source = nameCorrectionSource.trim();
     return source == 'user_edit' || source == 'user_review';
   }
 
+  // 함수이름: dailyFrequencyCount
+  // 함수역할: 하루 복용 횟수 텍스트에서 횟수 단위가 붙은 숫자를, 없으면 마지막 숫자 묶음을 정수로 읽는다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - int: 하루 복용 횟수. 읽을 수 없으면 0.
   int get dailyFrequencyCount {
     return _readInt(intakeTime);
   }
 
+  // 함수이름: slotKeys
+  // 함수역할: 명시된 복약 시간대가 있으면 읽기 전용으로 제공하고 없으면 하루 복용 횟수에서 기본 시간대를 유도한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - List<String>: 명시된 복약 시간대가 있으면 읽기 전용으로 제공하고 없으면 하루 복용 횟수에서 기본 시간대를 유도한다.
   List<String> get slotKeys {
     if (scheduleSlotKeys.isNotEmpty) {
       return List.unmodifiable(scheduleSlotKeys);
@@ -265,6 +381,12 @@ class MedicationSchedule {
     return medicationScheduleSlotKeysForFrequency(dailyFrequencyCount);
   }
 
+  // 함수이름: medicationTimeLabel
+  // 함수역할: 양수 투약 기간을 한국어 일수 문자열로 표시하고 기간이 없으면 빈 문자열을 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - String: 양수 투약 기간을 한국어 일수 문자열로 표시하고 기간이 없으면 빈 문자열을 제공한다.
   String get medicationTimeLabel {
     if (medicationTime <= 0) {
       return '';
@@ -272,14 +394,22 @@ class MedicationSchedule {
     return '$medicationTime일';
   }
 
+  // 함수이름: dosageLabel
+  // 함수역할: 공백을 정리한 복용량을 제공하고 비어 있으면 기존 한국어 용량 없음 문구를 사용한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - String: 공백을 정리한 복용량을 제공하고 비어 있으면 기존 한국어 용량 없음 문구를 사용한다.
   String get dosageLabel {
     return dosage.trim().isEmpty ? '용량 정보 없음' : dosage.trim();
   }
 
-  // 함수명: dosageLabelForLanguage
-  // 함수역할:
-  // - OCR에서 받은 투약량의 구조화 단위를 현재 언어에 맞게 표시한다.
-  // - 해석할 수 없는 원문이나 mg, mL 같은 국제 단위는 그대로 유지한다.
+  // Function Name: dosageLabelForLanguage
+  // Description: Localizes recognized Korean dose units for English display while retaining unparsed text, fractions, and international units such as mg and mL.
+  // Parameters:
+  // - language (String): Language code used for display or speech guidance.
+  // Returns:
+  // - String: Localizes recognized Korean dose units for English display while retaining unparsed text, fractions, and international units such as mg and mL.
   String dosageLabelForLanguage(String language) {
     final value = dosage.trim();
     final isEnglish = _isEnglishLanguage(language);
@@ -311,8 +441,12 @@ class MedicationSchedule {
     return '$amount $unit';
   }
 
-  // 함수명: dailyFrequencyLabelForLanguage
+  // 함수이름: dailyFrequencyLabelForLanguage
   // 함수역할: 1일 복용 횟수를 현재 언어의 문장형 표시값으로 변환한다.
+  // 매개변수:
+  // - language (String): 표시·음성 안내에 사용할 언어 코드
+  // 반환값:
+  // - String: 1일 복용 횟수를 현재 언어의 문장형 표시값으로 변환한다.
   String dailyFrequencyLabelForLanguage(String language) {
     final value = intakeTime.trim();
     if (value.isEmpty) {
@@ -336,8 +470,12 @@ class MedicationSchedule {
     return count == 1 ? 'once daily' : '$count times daily';
   }
 
-  // 함수명: durationLabelForLanguage
+  // 함수이름: durationLabelForLanguage
   // 함수역할: 총 복용 일수를 현재 언어에 맞는 표시값으로 변환한다.
+  // 매개변수:
+  // - language (String): 표시·음성 안내에 사용할 언어 코드
+  // 반환값:
+  // - String: 총 복용 일수를 현재 언어에 맞는 표시값으로 변환한다.
   String durationLabelForLanguage(String language) {
     if (medicationTime <= 0) {
       return _isEnglishLanguage(language)
@@ -350,11 +488,12 @@ class MedicationSchedule {
     return medicationTime == 1 ? '1 day' : '$medicationTime days';
   }
 
-  // 함수명: toJson
-  // 함수역할:
-  // - 테스트와 저장 흐름에서 사용할 수 있도록 복약 일정을 JSON으로 변환한다.
-  // 반환값:
-  // - API 필드명을 기준으로 한 JSON Map
+  // Function Name: toJson
+  // Description: Serializes schedule and correction metadata using API keys, derives completed slots, formats dates, and validates the remote image URL.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Map<String, dynamic>: Serializes schedule and correction metadata using API keys, derives completed slots, formats dates, and validates the remote image URL.
   Map<String, dynamic> toJson() {
     return {
       'medication_id': medicationID,
@@ -364,13 +503,25 @@ class MedicationSchedule {
       'medication_status': medicationStatus,
       'slot_statuses': slotStatuses,
       'completed_slot_keys': slotStatuses.entries
-          .where((entry) => entry.value)
-          .map((entry) => entry.key)
+          .where(/* Function Name: where callback
+           * Description: Selects slot-status entries marked completed.
+           * Parameters:
+           * - entry (MapEntry<String, bool>): Current key-value entry in the map.
+           * Returns:
+           * - Whether this slot is completed.
+           */(entry) => entry.value)
+          .map(/* Function Name: map callback
+           * Description: Extracts the slot key from a completed status entry.
+           * Parameters:
+           * - entry (MapEntry<String, bool>): Current key-value entry in the map.
+           * Returns:
+           * - The completed slot's key.
+           */(entry) => entry.key)
           .toList(growable: false),
       'schedule_slot_keys': slotKeys,
       'patient_id': patientID,
-      'created_date': _formatDate(createdDate),
-      'prescription_date': _formatDate(prescriptionDate),
+      'created_date': formatJsonDate(createdDate),
+      'prescription_date': formatJsonDate(prescriptionDate),
       'prescription_batch_id': prescriptionBatchId,
       'total_days': medicationTimeLabel,
       'efficacy': efficacy ?? '',
@@ -383,13 +534,31 @@ class MedicationSchedule {
     };
   }
 
-  // 함수명: copyWith
-  // 함수역할:
-  // - 기존 복약 일정 값을 유지하면서 일부 필드만 바꾼 새 객체를 만든다.
-  // 반환값:
-  // - 변경값이 반영된 MedicationSchedule 인스턴스
+  // Function Name: copyWith
+  // Description: Creates a medication course with explicitly supplied changes while preserving unspecified schedule, catalog, and OCR correction fields.
+  // Parameters:
+  // - createdDate (DateTime?): Creation date of the saved medication or course.
+  // - prescriptionDate (DateTime?): Dispensing or prescription date used as the course start.
+  // - prescriptionBatchId (String?): Identifier grouping medications from the same prescription analysis.
+  // - medicationID (String?): Identifier of the targeted saved medication.
+  // - medicationName (String?): Medication name used for display and persistence.
+  // - dosage (String?): Dose per intake including its unit.
+  // - intakeTime (String?): Daily intake-frequency text from the prescription.
+  // - medicationStatus (bool?): Completion state to apply or retain.
+  // - slotStatuses (Map<String, bool>?): Completion flags keyed by medication slot.
+  // - scheduleSlotKeys (List<String>?): Explicitly selected medication schedule slot keys.
+  // - patientID (String?): Patient identifier retained for legacy response compatibility.
+  // - medicationTime (int?): Total course length in days.
+  // - efficacy (String?): Public-catalog medication efficacy description.
+  // - usageMethod (String?): Original medication usage and intake-timing instructions.
+  // - warning (String?): Important medication warning text.
+  // - imageUrl (String?): Remote image URL associated with medication details or a candidate.
+  // - rawMedicationName (String?): Original OCR medication name before correction.
+  // - nameConfidence (double?): Confidence assigned to the recognized medication name.
+  // - nameCorrectionSource (String?): Provenance of medication-name correction or review.
+  // Returns:
+  // - MedicationSchedule: a copy with supplied replacements and all other fields preserved.
   MedicationSchedule copyWith({
-    String? maskedPrescriptionText,
     DateTime? createdDate,
     DateTime? prescriptionDate,
     String? prescriptionBatchId,
@@ -411,8 +580,6 @@ class MedicationSchedule {
     String? nameCorrectionSource,
   }) {
     return MedicationSchedule(
-      maskedPrescriptionText:
-          maskedPrescriptionText ?? this.maskedPrescriptionText,
       createdDate: createdDate ?? this.createdDate,
       prescriptionDate: prescriptionDate ?? this.prescriptionDate,
       prescriptionBatchId: prescriptionBatchId ?? this.prescriptionBatchId,
@@ -435,6 +602,12 @@ class MedicationSchedule {
     );
   }
 
+  // Function Name: isSlotCompleted
+  // Description: Reads the normalized slot's completion flag, falling back to the legacy medication-wide status only when no slot statuses exist.
+  // Parameters:
+  // - slotKey (String): Medication slot key: morning, lunch, evening, or bedtime.
+  // Returns:
+  // - bool: Reads the normalized slot's completion flag, falling back to the legacy medication-wide status only when no slot statuses exist.
   bool isSlotCompleted(String slotKey) {
     if (slotStatuses.isEmpty) {
       return medicationStatus;
@@ -442,21 +615,32 @@ class MedicationSchedule {
     return slotStatuses[slotKey.trim().toLowerCase()] ?? false;
   }
 
-  static String _readString(dynamic value) {
-    if (value == null) {
-      return '';
-    }
-    return value.toString().trim();
-  }
-
+  // Function Name: _readInt
+  // Description: Extracts the daily dose count from frequency text through the shared frequency parser.
+  // Parameters:
+  // - value (dynamic): Raw response field to decode into the documented return type.
+  // Returns:
+  // - int: The daily dose count, or zero when none can be read.
   static int _readInt(dynamic value) {
     return medicationScheduleCountFromText(value);
   }
 
+  // 함수이름: _isEnglishLanguage
+  // 함수역할: 언어 코드의 공백과 대소문자를 정리한 뒤 en 접두사로 영어 계열을 판정한다.
+  // 매개변수:
+  // - language (String): 표시·음성 안내에 사용할 언어 코드
+  // 반환값:
+  // - bool: 언어 코드의 공백과 대소문자를 정리한 뒤 en 접두사로 영어 계열을 판정한다.
   static bool _isEnglishLanguage(String language) {
     return language.trim().toLowerCase().startsWith('en');
   }
 
+  // Function Name: _readDouble
+  // Description: Converts numeric input or a numeric string to a double, using zero when conversion fails.
+  // Parameters:
+  // - value (dynamic): Raw response field to decode into the documented return type.
+  // Returns:
+  // - double: Converts numeric input or a numeric string to a double, using zero when conversion fails.
   static double _readDouble(dynamic value) {
     if (value is double) {
       return value;
@@ -464,38 +648,40 @@ class MedicationSchedule {
     if (value is int) {
       return value.toDouble();
     }
-    return double.tryParse(_readString(value)) ?? 0;
+    return double.tryParse(readJsonText(value)) ?? 0;
   }
 
-  static bool _readBool(dynamic value) {
-    if (value is bool) {
-      return value;
-    }
-    if (value is num) {
-      return value != 0;
-    }
-
-    final text = _readString(value).toLowerCase();
-    return text == 'true' || text == '1' || text == 'yes';
-  }
-
+  // Function Name: _readSlotStatuses
+  // Description: Combines explicit slot flags with legacy completed-slot keys and returns an immutable map with normalized nonblank keys.
+  // Parameters:
+  // - rawStatuses (dynamic): Raw server object containing per-slot completion flags.
+  // - rawCompletedSlotKeys (dynamic): Completed-slot list from legacy payloads.
+  // Returns:
+  // - Map<String, bool>: Combines explicit slot flags with legacy completed-slot keys and returns an immutable map with normalized nonblank keys.
   static Map<String, bool> _readSlotStatuses(
     dynamic rawStatuses,
     dynamic rawCompletedSlotKeys,
   ) {
     final statuses = <String, bool>{};
     if (rawStatuses is Map) {
-      rawStatuses.forEach((key, value) {
-        final slotKey = _readString(key).toLowerCase();
+      rawStatuses.forEach(/* Function Name: forEach callback
+       * Description: Normalizes nonempty slot keys and parses their completion flags into the status map.
+       * Parameters:
+       * - key (dynamic): Flutter widget identity key.
+       * - value (dynamic): Raw completion flag for this time slot.
+       * Returns:
+       * - No return value.
+       */(key, value) {
+        final slotKey = readJsonText(key).toLowerCase();
         if (slotKey.isNotEmpty) {
-          statuses[slotKey] = _readBool(value);
+          statuses[slotKey] = readJsonBool(value);
         }
       });
     }
 
     if (rawCompletedSlotKeys is List) {
       for (final rawSlotKey in rawCompletedSlotKeys) {
-        final slotKey = _readString(rawSlotKey).toLowerCase();
+        final slotKey = readJsonText(rawSlotKey).toLowerCase();
         if (slotKey.isNotEmpty) {
           statuses[slotKey] = true;
         }
@@ -504,16 +690,25 @@ class MedicationSchedule {
     return Map.unmodifiable(statuses);
   }
 
-  // 함수명: _readScheduleSlotKeys
-  // 역할:
-  // - 서버 또는 사용자 수정값에서 지원하는 복약 시간대만 정해진 순서로 읽는다.
+  // 함수이름: _readScheduleSlotKeys
+  // 함수역할: 서버 또는 사용자 수정값에서 지원하는 복약 시간대만 정해진 순서로 읽는다.
+  // 매개변수:
+  // - value (dynamic): 반환 타입의 값으로 해석할 변환 전 응답 필드
+  // 반환값:
+  // - List<String>: 서버 또는 사용자 수정값에서 지원하는 복약 시간대만 정해진 순서로 읽는다.
   static List<String> _readScheduleSlotKeys(dynamic value) {
     if (value is! List) {
       return const [];
     }
     final requestedSlotKeys = value
-        .map(_readString)
-        .map((slotKey) => slotKey.toLowerCase())
+        .map(readJsonText)
+        .map(/* 함수이름: map 콜백
+         * 함수역할: 복약 시간대 키를 소문자로 통일한다.
+         * 매개변수:
+         * - slotKey (String): morning·lunch·evening·bedtime 복약 시간대 키
+         * 반환값:
+         * - 소문자로 정규화한 시간대 키.
+         */(slotKey) => slotKey.toLowerCase())
         .where(medicationScheduleSlotKeys.contains)
         .toSet();
     return medicationScheduleSlotKeys
@@ -521,20 +716,4 @@ class MedicationSchedule {
         .toList(growable: false);
   }
 
-  static DateTime? _readDate(dynamic value) {
-    final text = _readString(value);
-    if (text.isEmpty || text == '정보 없음') {
-      return null;
-    }
-    return DateTime.tryParse(text);
-  }
-
-  static String? _formatDate(DateTime? value) {
-    if (value == null) {
-      return null;
-    }
-    return '${value.year.toString().padLeft(4, '0')}-'
-        '${value.month.toString().padLeft(2, '0')}-'
-        '${value.day.toString().padLeft(2, '0')}';
-  }
 }

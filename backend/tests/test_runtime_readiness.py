@@ -1,3 +1,6 @@
+# File Name: test_runtime_readiness.py
+# Role: Regression coverage for liveness, cached readiness checks, and production dependency
+#   requirements.
 """Tests for process liveness and production dependency readiness."""
 
 from unittest.mock import AsyncMock, patch
@@ -9,6 +12,14 @@ from sqlalchemy.exc import OperationalError
 from main import app
 
 
+# Function Name: test_liveness_does_not_depend_on_external_services
+# Description:
+# - Returns a successful liveness and API-contract response without depending on external
+#   services.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_liveness_does_not_depend_on_external_services() -> None:
     with TestClient(app) as client:
         response = client.get("/health")
@@ -20,6 +31,14 @@ def test_liveness_does_not_depend_on_external_services() -> None:
     }
 
 
+# Function Name: test_readiness_checks_database_connectivity
+# Description:
+# - Checks database connectivity and returns the expected development runtime and authentication
+#   readiness metadata.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_readiness_checks_database_connectivity() -> None:
     with TestClient(app) as client:
         response = client.get("/ready")
@@ -36,6 +55,14 @@ def test_readiness_checks_database_connectivity() -> None:
     }
 
 
+# Function Name: test_readiness_coalesces_repeated_public_dependency_checks
+# Description:
+# - Coalesces repeated readiness calls into one database dependency check while returning
+#   success to both callers.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_readiness_coalesces_repeated_public_dependency_checks() -> None:
     with (
         patch("main._verify_database_dependencies") as verify_database,
@@ -49,6 +76,14 @@ def test_readiness_coalesces_repeated_public_dependency_checks() -> None:
     verify_database.assert_called_once_with()
 
 
+# Function Name: test_readiness_fails_when_database_is_unavailable
+# Description:
+# - Returns HTTP 503 with a generic dependency-not-ready message when the database is
+#   unavailable.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_readiness_fails_when_database_is_unavailable() -> None:
     database_error = OperationalError(
         "SELECT 1",
@@ -68,6 +103,14 @@ def test_readiness_fails_when_database_is_unavailable() -> None:
     }
 
 
+# Function Name: test_production_readiness_checks_schema_firebase_and_redis
+# Description:
+# - Checks production schema, Firebase credentials/verifiers, and Redis independently of catalogs while
+#   returning the configured production readiness metadata.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_production_readiness_checks_schema_firebase_and_redis() -> None:
     with (
         patch("main.settings.APP_ENV", "production"),
@@ -94,13 +137,60 @@ def test_production_readiness_checks_schema_firebase_and_redis() -> None:
     assert response.json()["firebase_project_id"] == "medbuddy-test"
     assert response.json()["app_check_required"] is True
     verify_revision.assert_called_once()
-    verify_catalog_seed.assert_called_once()
+    verify_catalog_seed.assert_not_called()
     verify_firebase_credentials.assert_called_once_with("medbuddy-test")
     get_oidc.assert_called_once_with()
     get_app_check.assert_called_once_with()
     ping_redis.assert_awaited_once_with()
 
 
+# Function Name: test_catalog_failure_does_not_poison_core_readiness
+# Description:
+# - Keeps core readiness available and separately caches a failed catalog probe.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+def test_catalog_failure_does_not_poison_core_readiness() -> None:
+    with (
+        patch("main._verify_catalog_seed", side_effect=RuntimeError("empty catalog")) as seed,
+        TestClient(app) as client,
+    ):
+        assert client.get("/ready/catalogs").status_code == 503
+        assert client.get("/ready").status_code == 200
+        assert client.get("/ready/catalogs").json() == {
+            "detail": "MedBuddy catalogs are not ready."
+        }
+        seed.assert_called_once()
+
+
+# Function Name: test_catalog_readiness_recovers_after_cache_expiration
+# Description:
+# - Rechecks catalog readiness after expiration without resetting the core probe.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+def test_catalog_readiness_recovers_after_cache_expiration() -> None:
+    with (
+        patch("main._verify_catalog_seed", side_effect=[RuntimeError("empty"), None]) as seed,
+        TestClient(app) as client,
+    ):
+        assert client.get("/ready/catalogs").status_code == 503
+        app.state.catalog_readiness_probe_cache.reset()
+        response = client.get("/ready/catalogs")
+        assert response.status_code == 200
+        assert response.json() == {"status": "ready", "api_contract": "medbuddy-api-v1"}
+        assert seed.call_count == 2
+
+
+# Function Name: test_readiness_fails_when_schema_revision_is_stale
+# Description:
+# - Returns HTTP 503 when the database schema revision is stale.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_readiness_fails_when_schema_revision_is_stale() -> None:
     with (
         patch("main.settings.APP_ENV", "production"),
@@ -115,6 +205,13 @@ def test_readiness_fails_when_schema_revision_is_stale() -> None:
     assert response.status_code == 503
 
 
+# Function Name: test_readiness_fails_when_required_redis_is_unavailable
+# Description:
+# - Returns HTTP 503 when mandatory Redis storage is unavailable.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 def test_readiness_fails_when_required_redis_is_unavailable() -> None:
     with (
         patch("main.settings.RATE_LIMIT_REQUIRE_REDIS", True),

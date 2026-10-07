@@ -1,3 +1,6 @@
+# File Name: test_prescription_parser.py
+# Role: Regression coverage for prescription aliases, noise filtering, Unicode-safe
+#   normalization, and UML entity contracts.
 import sys
 import unittest
 from pathlib import Path
@@ -20,7 +23,41 @@ from entities.prescription_analysis_entity import (  # noqa: E402
 )
 
 
+# Class Name: PrescriptionParserTest
+# Role: Parser tests covering malformed dates, bounded names, numeric aliases, and prescription
+#   candidate entities.
+# Responsibilities:
+# - Rejects impossible calendar dates and uses the missing-information value for an invalid
+#   prescription date.
+# - Preserves a dotted-I prefix whose casefold expands while removing the following ASCII
+#   medication label.
+# - Rejects a non-object analysis response with ValueError.
 class PrescriptionParserTest(unittest.TestCase):
+    # Function Name: test_leading_decimal_strength_is_not_stripped_as_a_list_marker
+    # Description:
+    # - Keeps a name that starts with a decimal strength intact while still removing list
+    #   numbers and bullets in front of a name.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_leading_decimal_strength_is_not_stripped_as_a_list_marker(self) -> None:
+        from services.prescription_parser import _clean_medication_name
+
+        self.assertEqual(_clean_medication_name("0.9% 생리식염주사액"), "0.9% 생리식염주사액")
+        self.assertEqual(_clean_medication_name("2.5밀리그램 암로디핀정"), "2.5밀리그램 암로디핀정")
+        self.assertEqual(_clean_medication_name("1. 타이레놀정"), "타이레놀정")
+        self.assertEqual(_clean_medication_name("2) 아스피린정"), "아스피린정")
+        self.assertEqual(_clean_medication_name("- 게보린정"), "게보린정")
+
+    # Function Name: test_normalize_date_rejects_invalid_calendar_values
+    # Description:
+    # - Rejects impossible calendar dates and uses the missing-information value for an
+    #   invalid prescription date.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_normalize_date_rejects_invalid_calendar_values(self) -> None:
         self.assertIsNone(normalize_date("처방일자 2026-02-30"))
         self.assertIsNone(normalize_date("처방일자 2026-13-01"))
@@ -30,6 +67,14 @@ class PrescriptionParserTest(unittest.TestCase):
         )
         self.assertEqual(normalized_date, "정보 없음")
 
+    # Function Name: test_normalize_prescription_candidates_accepts_aliases_and_filters_noise
+    # Description:
+    # - Normalizes institution/date/medication aliases, counts all raw items, and retains
+    #   only the valid medication candidate.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_normalize_prescription_candidates_accepts_aliases_and_filters_noise(
         self,
     ) -> None:
@@ -79,6 +124,13 @@ class PrescriptionParserTest(unittest.TestCase):
         self.assertEqual(raw_count, 4)
         self.assertEqual(len(candidates.candidates), 1)
 
+    # Function Name: test_fixed_labels_are_removed_in_linear_literal_passes
+    # Description:
+    # - Removes fixed labels and noisy candidates while retaining the safe medication name.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_fixed_labels_are_removed_in_linear_literal_passes(self) -> None:
         repeated_labels = ("medication name " * 5000) + "safe tablet"
 
@@ -100,6 +152,14 @@ class PrescriptionParserTest(unittest.TestCase):
             ["safe tablet"],
         )
 
+    # Function Name: test_medication_label_removal_preserves_unicode_before_ascii_label
+    # Description:
+    # - Removes the ASCII medication label without corrupting preceding Unicode text
+    #   containing a sharp S.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_medication_label_removal_preserves_unicode_before_ascii_label(
         self,
     ) -> None:
@@ -108,6 +168,14 @@ class PrescriptionParserTest(unittest.TestCase):
             "Straße Patient Safe Tablet",
         )
 
+    # Function Name: test_medication_label_removal_preserves_expanding_casefold_prefix
+    # Description:
+    # - Preserves a dotted-I prefix whose casefold expands while removing the following
+    #   ASCII medication label.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_medication_label_removal_preserves_expanding_casefold_prefix(
         self,
     ) -> None:
@@ -116,6 +184,13 @@ class PrescriptionParserTest(unittest.TestCase):
             "İ Safe Tablet",
         )
 
+    # Function Name: test_parser_rejects_unbounded_medication_names
+    # Description:
+    # - Rejects unbounded medication names rather than retaining an oversized candidate.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_parser_rejects_unbounded_medication_names(self) -> None:
         oversized_name = "a" * (MAX_MEDICATION_NAME_LENGTH + 1)
 
@@ -134,6 +209,14 @@ class PrescriptionParserTest(unittest.TestCase):
 
         self.assertTrue(candidates.isEmpty())
 
+    # Function Name: test_normalize_prescription_candidates_skips_non_finite_numeric_aliases
+    # Description:
+    # - Skips non-finite numeric aliases and preserves valid dose, frequency, and duration
+    #   values.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_normalize_prescription_candidates_skips_non_finite_numeric_aliases(
         self,
     ) -> None:
@@ -165,6 +248,14 @@ class PrescriptionParserTest(unittest.TestCase):
             ],
         )
 
+    # Function Name: test_prescription_analysis_entities_preserve_diagram_operations
+    # Description:
+    # - Preserves UML candidate/list operations, camelCase attributes, identifier masking,
+    #   and nonnegative skipped-item counts.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_prescription_analysis_entities_preserve_diagram_operations(
         self,
     ) -> None:
@@ -204,6 +295,13 @@ class PrescriptionParserTest(unittest.TestCase):
             0,
         )
 
+    # Function Name: test_normalize_prescription_candidates_rejects_non_object_response
+    # Description:
+    # - Rejects a non-object analysis response with ValueError.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_normalize_prescription_candidates_rejects_non_object_response(self) -> None:
         with self.assertRaises(ValueError):
             normalize_prescription_candidates(["not", "an", "object"])

@@ -1,0 +1,64 @@
+@startuml
+scale max 1920 width
+skinparam backgroundColor white
+skinparam shadowing false
+title Chat Notification Entry, Unread Boundary and Receipts
+actor User
+participant "NotificationService" as Notification
+participant "LinkedChatEntryUI" as Entry
+participant "LinkPatientCaregiver" as Link
+participant "LinkedChatUI" as UI
+participant "LinkedChatHistoryViewModel" as History
+participant "ManageLinkedChat" as Control
+participant "Chat API / Repository" as API
+participant "Other participant" as Peer
+
+User -> Notification : Tap chat notification / inbox entry
+Notification -> Notification : validate recipient and destination type
+alt Same linked conversation already open
+  Notification -> UI : request latest position; keep draft
+else New conversation route
+  Notification -> Entry : account, link ID and pending action
+  Entry -> Link : load active links
+  Link --> Entry : current patient/caregiver role and peer
+  Entry -> UI : verified role, patient hash and current settings
+end
+UI -> History : initialize / coalesced refresh
+History -> Control : recent history + unread summary
+Control -> API : GET messages / unread-count
+API --> History : recent page + count + first_unread_message_id
+History -> History : fix unread boundary for this visit
+History --> UI : immutable reconciled history
+UI --> User : latest message (reverse-list offset 0)
+
+alt Foreground + current route + latest position
+  UI -> History : visible/latest-position predicates
+  History -> Control : markRead(latest incoming ID)
+  Control -> API : POST read; deduplicate acknowledged range
+  API --> Peer : read event
+  Peer -> Peer : remove outgoing unread 1
+else Older history / covered route / background
+  UI -> UI : preserve scroll; defer read request
+end
+
+User -> UI : Scroll toward older messages
+UI -> History : loadOlderMessages()
+History -> Control : request previous page (before_id, limit 50)
+Control -> API : authorized visible history
+API --> History : older page; preserve first-unread divider
+Peer --> History : incoming message or read event
+History -> History : merge by ID; never roll back read/deletion evidence
+History --> UI : read-only snapshot; presentation keeps draft/scroll
+note over UI,History
+  Account/link/patient changes replace the identity-keyed session.
+  Disposal invalidates history and composer responses, timers and subscriptions.
+  Same-conversation settings/notification re-entry preserves its draft.
+  Borrowed authenticated adapters stay owned by presentation.
+  LinkedChatComposerViewModel owns sends/retry IDs; UI keeps text fields.
+end note
+note over UI,API
+  Message-list counts and local notification-inbox counts are distinct.
+  Hidden/deleted/own messages do not count as incoming unread messages.
+  Active chat-list refresh is bounded polling, not a global realtime badge.
+end note
+@enduml

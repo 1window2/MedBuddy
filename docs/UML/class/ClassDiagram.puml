@@ -1,8 +1,9 @@
 @startuml
+!pragma layout elk
 scale max 4096*4096
 left to right direction
 
-title main 핵심 Class Diagram
+title beta/v0.2.0 핵심 Class Diagram
 
 skinparam classAttributeIconSize 0
 skinparam linetype ortho
@@ -46,17 +47,18 @@ package "Flutter Frontend" {
             home
             schedule
             medicationCabinet
+            chat
             profile
         }
 
         class "MedBuddyBottomNavigationUI" as MedBuddyBottomNavigationUI <<Boundary: 최상위 탐색>> {
             + selectedDestination: MedBuddyDestination
+            + showChat: bool
             + language: String
             + build(context): Widget
         }
 
         class "InputPrescriptionUI" as InputPrescriptionUI <<Component: 홈 콘텐츠>> {
-            + statusMessage: String
             + userSetting: UserSetting
             + todayMedicationScheduleList: List<MedicationSchedule>
             + build(context): Widget
@@ -81,6 +83,8 @@ package "Flutter Frontend" {
         }
 
         class "CheckScheduleUI" as CheckScheduleUI <<UI: 오늘 복약 일정>> {
+            + selection(schedules, language, selectedMedicationIds): CheckScheduleUI
+            + isSelectionMode: bool
             + createState(): State
         }
 
@@ -94,11 +98,11 @@ package "Flutter Frontend" {
             + createState(): State
         }
 
-        class "HealthRecommendationUI" as HealthRecommendationUI <<UI: 건강 추천>> {
-            + createState(): State
+        class "MedicationImageViewer" as MedicationImageViewer <<Boundary: 약 사진 확대>> {
+            + {static} show(context, medicationName, imageUrl, localImagePath, language): Future<bool>
         }
 
-        class "MedicationReminderSettingsUI" as MedicationReminderSettingsUI <<UI: 복약 알림 통합 설정>> {
+        class "HealthRecommendationUI" as HealthRecommendationUI <<UI: 건강 추천>> {
             + createState(): State
         }
 
@@ -106,6 +110,79 @@ package "Flutter Frontend" {
             + userSetting: UserSetting
             + control: IdentifyPill?
             + createState(): State
+        }
+
+        class "ManualMedicationEntryUI" as ManualMedicationEntryUI <<UI: 복약정보 직접 등록>> {
+            + userSetting: UserSetting
+            + onSaveRequested: Future<MedicationSaveResult> Function(ManualMedicationEntry)
+            + createState(): State
+        }
+
+        note "module-level functions\nmedication_schedule_review_ui_boundary.dart\nshowMedicationScheduleReview()\nshowMedicationScheduleEditor()" as MedicationScheduleReviewBoundary
+
+        class "CheckNearbyPharmacyUI" as CheckNearbyPharmacyUI <<UI: 공통 병원·약국 검색>> {
+            + userSetting: UserSetting
+            + control: CheckNearbyCare
+            + createState(): State
+        }
+
+        class "NearbyPharmacyMap" as NearbyPharmacyMap <<UI: 지도 지역 검색>> {
+            + searchArea: NearbyCareSearchArea
+            + selectedPharmacyId: String?
+            + favoritePharmacyIds: Set<String>
+            + bottomInset: double
+            + onPharmacySelected(pharmacy): void
+            + onSearchAreaRequested(area): Future<bool>
+            + onCurrentLocationRequested(): void
+        }
+
+        class "_PharmacyDetailsSheet" as PharmacyDetailsSheet <<UI: 내부 약국 정보창>> {
+            + contentBuilder(context, compact): Widget
+            + onExtentChanged(extent): void
+            + createState(): State
+        }
+
+        class "_PharmacyListPanel" as PharmacyListPanel <<UI: 지도 위 약국 목록>> {
+            + header: Widget
+            + child: Widget
+            + onDismissed(): void
+            + createState(): State
+        }
+
+        class "ChatListUI" as ChatListUI <<UI: 연동 대화 목록>> {
+            + control: ManageChatList
+            + userSetting: UserSetting
+            + build(context): Widget
+        }
+
+        class "LinkedChatUI" as LinkedChatUI <<UI: 복약 맥락 채팅>> {
+            + link: PatientCaregiverLink
+            + userSetting: UserSetting
+            + chatControl: ManageLinkedChat
+            + build(context): Widget
+        }
+
+        class LinkedChatHistoryViewModel <<ViewModel: scoped conversation history>> {
+            + linkId: int
+            + userHash: String
+            + messages: List<ChatMessage> {readOnly}
+            + initialize(): Future<void>
+            + refresh(showLoading, catchUp): Future<void>
+            + loadOlderMessages(): Future<void>
+            + markLatestIncomingRead(): Future<void>
+            + setForeground(foreground): void
+            + dispose(): void
+        }
+
+        class LinkedChatComposerViewModel <<ViewModel: scoped outgoing requests>> {
+            + linkId: int
+            + isSending: bool {readOnly}
+            + sendFailed: bool {readOnly}
+            + pendingRequestId: String? {readOnly}
+            + send(draft, requestId): Future<ChatMessage?>
+            + resetRetry(): void
+            + createClientMessageId(): String
+            + dispose(): void
         }
 
         class "LinkPatientCaregiverUI" as LinkPatientCaregiverUI <<UI: 환자-보호자 연결>> {
@@ -122,10 +199,29 @@ package "Flutter Frontend" {
             + createState(): State
         }
 
+        class "NotificationInboxUI" as NotificationInboxUI <<UI: 계정별 기기 알림함>> {
+            + createState(): State
+        }
+
         class "ManageUserSettingUI" as ManageUserSettingUI <<UI: 사용자 설정>> {
             + initialSetting: UserSetting
             + authenticationControl: AuthenticationControl
             + createState(): State
+        }
+
+        class "CaregiverHomeSummaryUI" as CaregiverHomeSummaryUI <<UI: 보호자 홈 현황>> {
+            + control: CheckCaregiverHome
+            + patientLabel(link): String
+            + onPatientRequested(link): void
+            + build(context): Widget
+        }
+
+        class "HomeMedicationPreview" as HomeMedicationPreview <<UI: 공통 홈 복약 미리보기>> {
+            + progress: double?
+            + scheduleTitle: String
+            + scheduleDescription: String
+            + action: Widget?
+            + build(context): Widget
         }
 
         class "ManageUserHubUI" as ManageUserHubUI <<UI: 내 정보 허브>> {
@@ -170,11 +266,39 @@ package "Flutter Frontend" {
             + checkMedicationDetail: CheckMedicationDetail
             + checkSavedMedication: CheckSavedMedication
             + checkSchedule: CheckSchedule
-            + requestPrescriptionAnalysis(): Future<void> {extension}
-            + fetchTodayMedicationSchedule(): Future<void> {extension}
-            + requestMedicationDoseStatusUpdate(): Future<bool> {extension}
-            + requestAllAnalyzedMedicationSave(): Future<bool> {extension}
+            + requestPrescriptionAnalysis(): Future<void>
+            + fetchTodayMedicationSchedule(): Future<void>
+            + requestMedicationDoseStatusUpdate(): Future<bool>
+            + requestMedicationSlotStatusUpdate(): Future<bool>
+            + requestAllAnalyzedMedicationSave(): Future<bool>
         }
+
+        class "MedBuddyPrescriptionViewModel" as MedBuddyPrescriptionViewModel <<ViewModel: 처방 인식·검토·분석 상태>> {
+            + requestPrescriptionAnalysis(): Future<void>
+            + medicationMatchReviews: Map<int, MedicationMatchReview>
+            + confirmMedicationCandidate(index, detail): void
+        }
+        class "MedBuddySavedMedicationViewModel" as MedBuddySavedMedicationViewModel <<ViewModel: 저장 약 상태>> {
+            + fetchSavedMedicationInfo(): Future<void>
+        }
+        class "MedBuddyScheduleViewModel" as MedBuddyScheduleViewModel <<ViewModel: 일정 조회·복약 상태>> {
+            + fetchTodayMedicationSchedule(): Future<void>
+        }
+        class "MedBuddyReminderViewModel" as MedBuddyReminderViewModel <<ViewModel: 알림 계획 상태>> {
+            + loadMedicationReminderSettings(): Future<void>
+        }
+        class "MedBuddyUserSettingViewModel" as MedBuddyUserSettingViewModel <<ViewModel: 설정 저장 상태>> {
+            + loadUserSetting(): Future<void>
+        }
+        class "MedBuddyHealthRecommendationViewModel" as MedBuddyHealthRecommendationViewModel <<ViewModel: 건강 추천 상태>> {
+            + fetch(language): Future<void>
+        }
+
+        note right of MedBuddyViewModel
+            기존 화면 API를 유지하는 조립·위임 경계이다.
+            기능별 상태·진행 요청을 분리하고 종료되거나
+            오래된 응답이 다른 기능 상태를 덮어쓰지 않게 한다.
+        end note
 
         class "MedBuddyFeatureUpdates" as MedBuddyFeatureUpdates <<Notifier: 기능별 화면 갱신>> {
             + revision: int
@@ -194,8 +318,17 @@ package "Flutter Frontend" {
 
         class "CheckMedicationDetail" as FCheckMedicationDetail <<Controller: 약 상세 요청>> {
             + baseUrl: String
-            + requestMedicationDetail(schedule): Future<MedicationDetail>
+            + requestMedicationDetail(schedule): Future<MedicationDetail?>
             + dispose(): void
+        }
+
+        class "MedicationCandidateDialog" as MedicationCandidateDialog <<UI: 약명 후보 확인>>
+        class "MedicationMatchReview" as MedicationMatchReview <<Entity: 확인 전용 후보>> {
+            + candidates: List<MedicationDetail>
+            + reason: String
+        }
+        class "MedicationLookupBusy" as MedicationLookupBusy <<Exception: 계정 잠금 대기>> {
+            + retryAt: DateTime
         }
 
         class "CheckSavedMedication" as FCheckSavedMedication <<Controller: 저장 약 관리>> {
@@ -212,6 +345,7 @@ package "Flutter Frontend" {
             + requestTodayMedicationSchedule(): Future<List<MedicationSchedule>>
             + requestMedicationScheduleWindow(days): Future<List<MedicationSchedule>>
             + updateMedicationStatus(id, status): Future<MedicationSchedule>
+            + updateMedicationSlotStatus(slotKey, status): Future<List<MedicationSchedule>>
         }
 
         class "CheckPrescriptionChange" as FCheckPrescriptionChange <<Controller: 처방 변경 요청>> {
@@ -230,7 +364,63 @@ package "Flutter Frontend" {
             + baseUrl: String
             + requestPillImage(source): Future<Uint8List?>
             + requestPillIdentification(front, back): Future<PillIdentificationResult>
+            + requestMultiplePillIdentification(image): Future<MultiplePillIdentificationResult>
             + dispose(): void
+        }
+
+        class "IdentifyPillBatch" as FIdentifyPillBatch <<Controller: 다중 낱알 일괄 식별>> {
+            + {static} maxBatchSize: int
+            + maxConcurrentRequests: int
+            + requestBatchIdentification(inputs): Future<List<PillIdentificationBatchOutcome>>
+        }
+
+        class "ResolveDuplicatePillSelectionControl" as FResolveDuplicatePillSelection <<Controller: 중복 낱알 일정 검토>> {
+            + countEquivalentCandidates(candidates, target): int
+            + findDuplicateGroups(candidates): List<DuplicatePillSelectionGroup>
+            + mergeEquivalentRequests(requests): List<IdentifiedPillSaveRequest>
+        }
+
+        abstract class "CheckNearbyCare" as FCheckNearbyCare <<Controller: shared nearby-care operations>> {
+            + requestNearbyCareSearch(searchArea): Future<NearbyCareSearchResult>
+            + requestSearchArea(): Future<NearbyCareSearchArea>
+            + requestPhoneCall(telephone): Future<bool>
+            + requestDirections(pharmacy): Future<bool>
+            + openApplicationSettings(): Future<bool>
+            + openDeviceLocationSettings(): Future<bool>
+            + dispose(): void
+        }
+
+        class "CheckNearbyPharmacy" as FCheckNearbyPharmacy <<Controller: 근처 약국 조회>> {
+            + requestNearbyPharmacies(): Future<List<NearbyCarePlace>>
+            + nearbySearchUrl: String
+        }
+
+        class "CheckNearbyHospital" as FCheckNearbyHospital <<Controller: 병원 검색 확장>> {
+            + department: String?
+            + nearbySearchUrl: String
+            + requestNearbyCareSearch(maxDistanceKm=0.3): Future<NearbyCareSearchResult>
+            + requestSearchArea(radiusKm=0.3): Future<NearbyCareSearchArea>
+        }
+        class "LinkedChatEntryUI" as LinkedChatEntryUI <<UI: 알림의 활성 연결·역할 확인>>
+
+        class "ManageLinkedChat" as FManageLinkedChat <<Controller: 연결 사용자 채팅>> {
+            + userHash: String
+            + requestHistory(linkId, beforeId): Future<List<ChatMessage>>
+            + deleteMessages(linkId, messageIds, scope): Future<void>
+            + requestMedicationContexts(linkId): Future<List<ChatMedicationContext>>
+            + requestMedicationDetail(linkId, medicationId): Future<MedicationDetail>
+            + sendMessage(linkId, body, clientMessageId, medicationIds?): Future<ChatMessage>
+            + markRead(linkId, throughMessageId): Future<void>
+            + requestUnreadSummary(linkId): Future<ChatUnreadSummary>
+        }
+
+        class "ManageChatList" as ManageChatList <<Controller: 계정별 대화 목록>> {
+            + userHash: String
+            + links: List<PatientCaregiverLink>
+            + refresh(includeMessages): Future<void>
+            + latestMessage(linkId): ChatMessage
+            + peerName(link, isEnglish): String
+            + unreadCount(linkId): int?
         }
 
         class "LinkPatientCaregiver" as FLinkPatientCaregiver <<Controller: 연결 관리>> {
@@ -240,6 +430,8 @@ package "Flutter Frontend" {
             + generatePatientHash(): Future<PatientLinkCode>
             + requestPatientCaregiverLink(code): Future<PatientCaregiverLink>
             + requestUnlink(linkId): Future<PatientCaregiverLink>
+            + savePatientAlias(linkId, patientAlias): Future<PatientCaregiverLink>
+            + saveCaregiverAlias(linkId, caregiverAlias): Future<PatientCaregiverLink>
         }
 
         class "ManageCaregiverPatientLocalState" as ManageCaregiverPatientLocalState <<Controller: 보호자 환자 local state>> {
@@ -254,6 +446,24 @@ package "Flutter Frontend" {
             + baseUrl: String
             + caregiverHash: String
             + requestPatientMedicationInfo(patientHash): Future<CaregiverMedicationInfo>
+            + requestMonitoringSnapshot(): Future<List<CaregiverMonitoringSnapshot>>
+            + requestScheduleSnapshot(links?): Future<List<CaregiverMonitoringSnapshot>>
+        }
+
+        class "CaregiverAlertActionControl" as CaregiverAlertActionControl <<Controller: 보호자 미복약 알림 동작>> {
+            + userHash: String
+            + execute(context, action, language): Future<void>
+            + requestLocalDeliveries(): Future<List<CaregiverAlertContext>>
+        }
+
+        class "CheckCaregiverHome" as CheckCaregiverHome <<Controller: 보호자 홈 조회>> {
+            + userHash: String
+            + isLoading: bool
+            + hasError: bool
+            + updateLinks(links): void
+            + refresh(): Future<void>
+            + snapshotFor(linkId): CaregiverMonitoringSnapshot?
+            + dispose(): void
         }
 
         class "SetNotification" as FSetNotification <<Controller: 환자 알림 관리>> {
@@ -276,6 +486,13 @@ package "Flutter Frontend" {
             + userHash: String
             + requestUserSetting(): Future<UserSetting>
             + saveUserSetting(fontSize, speed, language): Future<UserSettingSaveResult>
+        }
+
+        class "ManageNotificationInbox" as ManageNotificationInbox <<Controller: 알림함 조회·읽음·삭제>> {
+            + unreadCount: int
+            + refresh(): Future<void>
+            + markRead(entry?): Future<void>
+            + removeEntries(selected): Future<void>
         }
 
         class "ManageAccount" as FManageAccount <<Controller: 계정 데이터 삭제>> {
@@ -306,11 +523,26 @@ package "Flutter Frontend" {
             + {static} initialize(): Future<void>
         }
 
+        note right of FirebaseRuntimeService
+            Firebase 인증과 App Check 적용 조건은 별개다.
+            명시적인 off-Play beta는 ID Token 인증을 유지하며
+            App Check만 생략한다. Phone/SMS는 dormant 상태다.
+        end note
+
+        class "ForegroundRecoveryService" as ForegroundRecoveryService <<Service: 전경 조회·Session 복구>> {
+            + recover: Future<bool> Function()
+            + start(): void
+            + stop(): void
+            + dispose(): void
+        }
+
         class "AuthenticatedApiClient" as AuthenticatedApiClient <<API Client: 인증 HTTP>> {
             - _inner: http.Client
             - _tokenProvider: IdTokenProvider
             - _appCheckTokenProvider: AppCheckTokenProvider
             - _trustedBaseUri: Uri
+            - _appCheckRequired: bool
+            + buildAuthenticationHeaders(uri): Future<Map<String, String>>
             + send(request): Future<StreamedResponse>
             + close(): void
         }
@@ -336,7 +568,13 @@ package "Flutter Frontend" {
             + analyze(luminanceBytes, width, height): PrescriptionCameraGuideResult
         }
 
-        class "PrescriptionCameraLayoutService" as PrescriptionCameraLayoutService <<Service: 촬영 가이드 좌표>> {
+        class "CameraLifecycleCoordinator" as CameraLifecycleCoordinator <<Service: camera lifecycle serialization>> {
+            - _tail: Future<void>
+            + schedule(transition): Future<void>
+        }
+
+        class "PrescriptionGuideLayout" as PrescriptionGuideLayout <<Service: 촬영 가이드 좌표>> {
+            + {static} prescriptionAspectRatio: double
             + {static} guideRect(viewportSize): Rect
             + {static} normalizedSourceRect(viewportSize, displayedImageSize, guideRect): Rect
         }
@@ -346,13 +584,60 @@ package "Flutter Frontend" {
             + restorePortrait(): Future<void>
         }
 
-        class "PrescriptionImageCropService" as PrescriptionImageCropService <<Service: 촬영 이미지 자르기>> {
+        class "PrescriptionImageCropService" as PrescriptionImageCropService <<Service: 가이드 영역 자르기>> {
             + cropToGuide(sourceImage, normalizedGuideRect): Future<XFile>
         }
 
-        class "CameraLifecycleCoordinator" as CameraLifecycleCoordinator <<Service: camera lifecycle serialization>> {
-            - _tail: Future<void>
-            + schedule(transition): Future<void>
+        interface "DeviceLocationBoundary" as DeviceLocationBoundary {
+            + requestCurrentCoordinate(): Future<DeviceCoordinate>
+            + openApplicationSettings(): Future<bool>
+            + openDeviceLocationSettings(): Future<bool>
+        }
+
+        class "GeolocatorDeviceLocationService" as GeolocatorDeviceLocationService <<Service: 기기 위치 조회>> {
+            + requestCurrentCoordinate(): Future<DeviceCoordinate>
+            + openApplicationSettings(): Future<bool>
+            + openDeviceLocationSettings(): Future<bool>
+        }
+
+        class "PharmacyFavoriteService" as PharmacyFavoriteService <<Service: 사용자별 약국 즐겨찾기>> {
+            + loadFavoriteIds(userHash): Future<Set<String>>
+            + saveFavoriteIds(userHash, pharmacyIds): Future<bool>
+        }
+
+        class "PharmacyExternalActionService" as PharmacyExternalActionService <<Service: 약국 외부 동작 검증>> {
+            + requestPhoneCall(telephone): Future<bool>
+            + requestDirections(name, address, latitude, longitude): Future<bool>
+            + requestGoogleMapDirections(name, address, latitude, longitude): Future<bool>
+            + requestMapAttribution(): Future<bool>
+        }
+
+        class "ManualMedicationImageStore" as ManualMedicationImageStore <<Service: 직접 입력 이미지 저장>> {
+            + saveImage(patientHash, medicationId, sourcePath): Future<String>
+            + findImagePath(patientHash, medicationId): Future<String>
+            + deleteImage(patientHash, medicationId): Future<void>
+            + removeOrphanImages(patientHash, activeIds): Future<void>
+        }
+
+        interface "LinkedChatEventSource" as LinkedChatEventSource {
+            + events: Stream<Map<String, dynamic>>
+            + start(): Future<void>
+            + dispose(): Future<void>
+        }
+
+        interface LinkedChatSessionTransport {
+            + states: Stream<LinkedChatConnectionState>
+            + stop(): Future<void>
+        }
+
+        class "LinkedChatRealtimeService" as LinkedChatRealtimeService <<Service: WebSocket 채팅 동기화>> {
+            + linkId: int
+            + userHash: String
+            + events: Stream<Map<String, dynamic>>
+            + states: Stream<LinkedChatConnectionState>
+            + start(): Future<void>
+            + stop(): Future<void>
+            + dispose(): Future<void>
         }
 
         class "NotificationService" as NotificationService <<Service: Local Notification>> {
@@ -361,9 +646,55 @@ package "Flutter Frontend" {
             + requestPermission(): Future<bool>
             + registerNotification(setting, medications): Future<void>
             + cancelReminder(id): Future<void>
+            + cancelReminderForDate(owner, slotKey, date): Future<void>
             + cancelAllMedicationReminders(): Future<void>
             + showCaregiverAlert(): Future<void>
         }
+
+        class "MedicationNotificationPayloadCodec" as MedicationNotificationPayloadCodec <<Service: Notification protocol>> {
+            + {static} decode(payload, actionId, notificationId): MedicationNotificationSelection?
+            + {static} isSessionPayload(payload): bool
+        }
+        class "MedicationNotificationSelection" as MedicationNotificationSelection <<Entity: Notification destination/action>> {
+            + destination: MedicationNotificationDestination
+            + action: MedicationNotificationAction
+            + scheduleDate: DateTime?
+            + isForDate(date): bool
+        }
+
+        class "CaregiverAlertDeliveryService" as CaregiverAlertDeliveryService <<Service: 계정·전달별 알림 표시>> {
+            + {static} display(data): Future<bool>
+        }
+        class "DoseSyncService" as DoseSyncService <<Service: 복약 기록 동기화>> {
+            + record(): Future<bool>
+            + drain(): Future<void>
+        }
+        class "DoseOutboxStore" as DoseOutboxStore <<Service: 계정별 암호화 SQLite 큐·캐시>>
+        class "DoseHomeWidget" as DoseHomeWidget <<Service: Android 위젯 상태 발행>> {
+            + {static} publish(): Future<DoseWidgetState?>
+            + {static} refreshInBackground(): Future<void>
+        }
+        note right of DoseHomeWidget
+            본인 기록과 연결 환자 읽기 전용 조회를 분리한다.
+            계정·날짜·불투명 action token을 검증한다.
+            기기에 저장된 오늘 본인 완료 시간대의 재알림만 취소한다.
+            Android provider·배치·background 동기화 관계는
+            06_DoseSyncAndWidget.puml에서 상세히 표현한다.
+        end note
+
+        class "NotificationInboxStore" as NotificationInboxStore <<Service: SharedPreferences 알림 기록>> {
+            + userHash: String
+            + record(entry): Future<void>
+            + load(): Future<List<NotificationInboxEntry>>
+            + markRead(ids): Future<void>
+            + remove(ids): Future<void>
+        }
+
+        note right of NotificationInboxStore
+            계정별 기기 기록이며 서버 알림함이 아니다.
+            예약 기록은 실제 전달 확인을 뜻하지 않는다.
+            읽음·삭제는 채팅·복약 원본을 변경하지 않는다.
+        end note
 
         class "MedicationReminderRefreshService" as MedicationReminderRefreshService <<Service: rolling reminder sync>> {
             + maximumReminderDatesPerSlot: int
@@ -392,13 +723,19 @@ package "Flutter Frontend" {
             + stop(requireServerUnregistration): Future<void>
         }
 
-        class "CaregiverNotificationMonitorService" as CaregiverNotificationMonitorService <<Service: 미복약 감지>> {
+        class "CaregiverNotificationMonitorService" as CaregiverNotificationMonitorService <<Service: 보호자 현황 감시>> {
             + caregiverHash: String
             + pollingInterval: Duration
             + start(): Future<void>
             + checkNow(): Future<bool>
             + dispose(): void
         }
+
+        note right of CaregiverNotificationMonitorService
+            Firebase 인증 mode에서는 현황을 갱신한다.
+            개발 mode의 완료 전환 감시는 유지하되 미복약은
+            서버 처리 결과를 조회해 기기 알림으로 표시한다.
+        end note
 
         class "CaregiverPatientLocalStateService" as CaregiverPatientLocalStateService <<Service: 보호자 환자별 local state>> {
             + {static} maximumLabelLength: int
@@ -417,9 +754,31 @@ package "Flutter Frontend" {
             + {static} register(caregiverHash): Future<void>
             + {static} cancel(): Future<void>
         }
+
+        class "LinkedChatNotificationMonitorService" as LinkedChatNotificationMonitorService <<Service: 로컬 채팅 알림 감시>> {
+            + currentUserHash: String
+            + linkRefreshInterval: Duration
+            + start(): Future<void>
+            + refreshNow(): Future<bool>
+            + dispose(): Future<void>
+        }
+
+        class "LinkedChatNotificationMonitorFactory" as LinkedChatNotificationMonitorFactory <<Composition: 채팅 알림 감시 조립>> {
+            + {static} create(userHash, client): LinkedChatNotificationMonitorService
+        }
     }
 
     package "Data Layer" {
+
+        class "CaregiverAlertContext" as CaregiverAlertContext <<Entity: 검증할 미복약 알림 문맥>> {
+            + alertId: int
+            + sourceAlertId: int
+            + linkId: int
+            + recipientHash: String
+            + patientHash: String
+            + slotKey: String
+            + scheduleDate: String
+        }
 
         class "AuthSession" as FAuthSession <<Entity: 인증 Session>> {
             + userHash: String
@@ -447,6 +806,7 @@ package "Flutter Frontend" {
             + patientHash: String
             + itemSeq: String
             + itemName: String
+            + manufacturer: String
             + efficacy: String
             + usageMethod: String
             + warning: String
@@ -476,8 +836,19 @@ package "Flutter Frontend" {
             + linkId: int
             + patientHash: String
             + caregiverHash: String
+            + patientAlias: String?
+            + caregiverAlias: String?
             + linkStatus: bool
             + fromJson(json): PatientCaregiverLink
+        }
+
+        class "CaregiverMonitoringSnapshot" as FCaregiverMonitoringSnapshot <<Entity: 보호자 통합 감시 자료>> {
+            + link: PatientCaregiverLink
+            + notificationSettings: Map<String, CaregiverNotification>
+            + schedules: List<MedicationSchedule>
+            + patientHash: String
+            + patientAlias: String?
+            + fromJson(json): CaregiverMonitoringSnapshot
         }
 
         class "PatientLinkCode" as FPatientLinkCode <<Entity: 연결 코드>> {
@@ -505,11 +876,25 @@ package "Flutter Frontend" {
             + deadlineMinute: int
         }
 
+        class "NotificationInboxEntry" as NotificationInboxEntry <<Entity: 기기 알림 항목>> {
+            + id: String
+            + payload: String
+            + occurredAt: DateTime
+            + isRead: bool
+        }
+
         class "UserSetting" as FUserSetting <<Entity: 사용자 설정>> {
             + userHash: String
+            + homeScheduleSource: String
             + fontSize: int
             + readingSpeed: double
             + language: String
+            + languageMode: String
+            + timeFormat: String
+            + medicationNotificationsEnabled: bool
+            + caregiverNotificationsEnabled: bool
+            + chatNotificationsEnabled: bool
+            + notificationDetailMode: String
             + fromJson(json): UserSetting
             + toJson(): Map
         }
@@ -520,6 +905,134 @@ package "Flutter Frontend" {
             + observedFeatures: PillVisualFeatures
             + candidates: List<PillIdentificationCandidate>
             + fromJson(json): PillIdentificationResult
+        }
+
+        class "MultiplePillIdentificationResult" as FMultiplePillIdentificationResult <<Entity: 한 장 다중 낱알 결과>> {
+            + observations: List<MultiplePillObservation>
+            + requiresConfirmation: bool
+            + fromJson(json): MultiplePillIdentificationResult
+        }
+
+        class "ManualMedicationEntry" as FManualMedicationEntry <<Entity: 직접 입력 복약정보>> {
+            + medicationName: String
+            + dosageAmount: String
+            + dosageUnit: String
+            + startDate: DateTime
+            + endDate: DateTime
+            + scheduleSlotKeys: List<String>
+            + localImagePath: String
+            + totalDays: int
+            + dosage: String
+        }
+
+        class DeviceCoordinate <<Entity: provider-neutral WGS84>> {
+            + latitude: double
+            + longitude: double
+        }
+
+        class NearbyCareSearchArea <<Entity: explicit provider-neutral search area>> {
+            + center: DeviceCoordinate
+            + radiusKm: double
+            + isFallback: bool
+            + isMapArea: bool
+        }
+
+        class NearbyCarePlace <<Entity: hospital or pharmacy display record>> {
+            + placeId: String
+            + name: String
+            + address: String
+            + telephone: String
+            + latitude: double
+            + longitude: double
+            + distanceKm: double
+            + isOpenNow: bool?
+            + is24Hours: bool
+            + minutesUntilClose: int?
+            + nextOpenAt: DateTime?
+            + sourceUpdatedAt: DateTime?
+        }
+
+        enum NearbyCareSearchMode {
+            + apiValue: String
+        }
+
+        class NearbyCareSearchResult <<Entity: provider-neutral search snapshot>> {
+            + data: List<NearbyCarePlace>
+            + searchArea: NearbyCareSearchArea?
+            + searchMode: NearbyCareSearchMode
+            + targetDateTime: DateTime
+            + holidayScheduleStatus: String
+            + searchTruncated: bool
+            + regionScopeUncertain: bool
+        }
+
+        class NearbyCareSelection <<Entity: confirmed place selection>> {
+            + place: NearbyCarePlace
+            + phoneVerified: bool
+            + scheduleDate: DateTime?
+        }
+
+        class "ChatMedicationContext" as FChatMedicationContext <<Entity: 채팅 약 문맥>> {
+            + medicationId: int
+            + medicationName: String
+            + imageUrl: String
+            + dosagePerTime: String
+        }
+
+        class ChatMessageDraft <<Entity: immutable outgoing payload>> {
+            + body: String
+            + medicationIds: List<int> {readOnly}
+            + primaryMedicationId: int?
+            + messageKind: ChatMessageKind
+            + slotKey: String?
+            + pharmacyId: String?
+            + hospitalId: String?
+            + hospitalScheduleDate: String?
+            + matchesRetryOf(other): bool
+        }
+
+        class "ChatScheduleContext" as FChatScheduleContext <<Entity: 채팅 복용 시간대 문맥>> {
+            + slotKey: String
+            + slotLabel: String
+            + scheduledTime: String
+            + medicationCount: int
+            + completedCount: int
+        }
+
+        abstract class "ChatPlaceContext" as FChatPlaceContext <<Entity: 공유 장소 계약>>
+        class "ChatHospitalContext" as FChatHospitalContext <<Entity: 채팅 병원 문맥>>
+        class "ChatUnreadSummary" as FChatUnreadSummary <<Entity: 미확인 요약>> {
+            + count: int
+            + firstMessageId: int?
+        }
+        class "ChatPharmacyContext" as FChatPharmacyContext <<Entity: 채팅 약국 문맥>> {
+            + pharmacyId: String
+            + name: String
+            + address: String
+            + telephone: String
+            + latitude: double
+            + longitude: double
+        }
+
+        class "ChatMessage" as FChatMessage <<Entity: 연결 채팅 메시지>> {
+            + messageId: int
+            + linkId: int
+            + senderHash: String
+            + clientMessageId: String
+            + body: String
+            + createdAt: DateTime
+            + messageKind: String
+            + medicationContext: ChatMedicationContext?
+            + medicationContexts: List<ChatMedicationContext>
+            + scheduleContext: ChatScheduleContext?
+            + pharmacyContext: ChatPharmacyContext?
+            + hospitalContext: ChatHospitalContext?
+            + remainingDays: int?
+            + courseEndDate: DateTime?
+            + showSafetyGuidance: bool
+            + readAt: DateTime?
+            + hiddenForMe: bool
+            + deletedForEveryone: bool
         }
 
         class "HealthRecommendation" as FHealthRecommendation <<Entity: 건강 추천>> {
@@ -542,28 +1055,61 @@ package "FastAPI Backend" {
             + maskSensitiveInfo(rawText): str
         }
 
-        class "_PrescriptionMedicationNameVerifier" as MedicationNameVerifier <<Service: 약명 검증>> {
+        class "PrescriptionMedicationNameVerifier" as MedicationNameVerifier <<Service: 약명 검증>> {
             + verify_many(raw_names): list
-            + verify(raw_name): _MedicationNameVerification
+            + verify(raw_name): MedicationNameVerification
         }
+        note right of MedicationNameVerifier
+            Engine-only worker factory captured at composition.
+            No borrowed Session/Connection access from worker threads.
+            Connection-local in-memory SQLite stays on the caller thread.
+        end note
 
         class "CheckMedicationDetail" as BCheckMedicationDetail <<Control: 약 상세 조회>> {
-            + requestMedicationDetail(raw_text): MedicationResponse
+            + requestMedicationDetail(raw_text, original_text): MedicationResponse
         }
 
-        class "_MedicationDetailCache" as MedicationDetailCache <<Service: Redis Cache>> {
+        class "medication_match_safety" as MedicationMatchSafety <<Module: 원문 함량·제형 검증>> {
+            + match_conflict(original, candidate): str?
+            + can_auto_match(original, candidate): bool
+        }
+        note right of MedicationMatchSafety
+            자동 교정·캐시·공공 API 결과도 원문 기준으로 검사한다.
+            정규화한 단일 제품명만 자동 확인한다.
+            유사 후보는 requires_confirmation=true, data=[]로 반환한다.
+            치료상 대체 가능성을 판단하지 않는다.
+        end note
+
+        class "MedicationResponse" as MedicationResponse <<Entity: 조회 결과>> {
+            + success: bool
+            + data: list<MedicationDetail>
+            + candidates: list<MedicationDetail>
+            + requires_confirmation: bool
+            + review_reason: str
+        }
+
+        class "MedicationDetailCache" as MedicationDetailCache <<Boundary: Redis Cache>> {
             - redis_client: Redis
             + get(drug_name): list<MedicationDetail>
             + set(drug_name, details): void
             + close(): void
         }
 
-        class "_LocalMedicationCatalog" as LocalMedicationCatalog <<Service: Local 약품 Catalog>> {
+        class "LocalMedicationCatalog" as LocalMedicationCatalog <<Service: Local 약품 Catalog>> {
             - db: Session
             + fetch_drug_info(drug_name): list<MedicationDetail>
         }
 
-        class "_MedicationSummaryGenerator" as MedicationSummaryGenerator <<Service: 허가정보 요약>> {
+        class MedicationTextNormalizer <<Service: pure search variants>> {
+            + normalize_raw_text(raw_text): str
+            + build_search_keywords(raw_text): list<str>
+        }
+
+        class MedicationNameMatcher <<Service: pure candidate ranking>> {
+            + rank_candidates(reference, candidates, name_reader, limit): list
+        }
+
+        class "MedicationSummaryGenerator" as MedicationSummaryGenerator <<Boundary: 허가정보 요약>> {
             + model_name: str
             + summarize_advanced_item(item): MedicationDetail
         }
@@ -578,13 +1124,17 @@ package "FastAPI Backend" {
         class "CheckSchedule" as BCheckSchedule <<Control: 복약 일정 및 완료>> {
             - db: Session
             + requestTodayMedicationSchedule(patient_hash): dict
+            + requestTodayMedicationSchedulesForPatients(patient_hashes): dict
             + requestMedicationScheduleWindow(patient_hash, days): dict
             + updateMedicationStatus(patient_hash, medication_id, status): dict
+            + updateMedicationSlotStatus(patient_hash, slot_key, status): dict
+            + is_medication_slot_complete(patient_hash, schedule_date, slot_key): bool
         }
 
         class "CheckTodayMedicationInfo" as BCheckTodayMedicationInfo <<Control: 오늘 복약 요약>> {
             - db: Session
             + requestTodayMedicationInfo(patient_hash): dict
+            + requestTodayMedicationInfoForPatients(patient_hashes): dict
         }
 
         class "CheckPrescriptionChange" as BCheckPrescriptionChange <<Control: 처방 변경 비교>> {
@@ -594,12 +1144,72 @@ package "FastAPI Backend" {
 
         class "CheckHealthRecommendation" as BCheckHealthRecommendation <<Control: 건강 추천>> {
             - db: Session
-            + requestHealthRecommendation(patient_hash, language): dict
+            + requestHealthRecommendation(patient_hash, language, validate_access): dict
         }
+
+        note bottom of BCheckHealthRecommendation
+            Authorization and database phases use run_request_database_work().
+            Blocking work stays off-loop, sequentially using the request session.
+            Cancellation drains workers before session or account-lock cleanup.
+            API 호출은 조회·저장 단계마다 계정 삭제와 보호자 연동을 재검증한다.
+            AI 대기 중에는 transaction과 DB 연결을 반환한다.
+            저장 전 복약 조합이 달라지면 409로 재조회를 요청한다.
+            검증 callback 없는 직접 호출은 기존 호출자 transaction 계약을 유지한다.
+        end note
 
         class "IdentifyPill" as BIdentifyPill <<Control: 낱알 후보 순위화>> {
             + candidate_limit: int
             + requestPillIdentification(front, back): PillIdentificationResult
+        }
+
+        class "CheckNearbyPharmacy" as BCheckNearbyPharmacy <<Control: 근처 약국 정규화·정렬>> {
+            + requestNearbyPharmacies(latitude, longitude, radius_km, current_time): list<NearbyPharmacy>
+        }
+
+        class "CheckNearbyHospital" as BCheckNearbyHospital <<Control: 병원 필터·공유 검증>> {
+            + requestNearbyHospitalSearch(...): dict
+            + requestShareContext(hospital_id, schedule_date): dict
+        }
+        class "NationalEmergencyMedicalCenterHospitalAPI" as NEMCHospitalAPI <<Wrapper: 병원 위치·상세 API>> {
+            + fetchNearbyPage(...): HospitalLocationPage
+            + fetchDetails(hospital_id): HospitalDetails
+            + hasCachedDetails(hospital_id): bool
+        }
+        class "HospitalRouter" as HospitalRouter <<Boundary: 인증된 병원 조회>>
+
+        class "PharmacyCatalogRepository" as PharmacyCatalogRepository <<Repository: 전국 약국 일정 검색>> {
+            + count(): int
+            + search_nearby_candidates(latitude, longitude, max_distance_km): list<PharmacyCatalogEntry>
+            + find_by_id(pharmacy_id): PharmacyCatalogEntry?
+            + cache_search_results(pharmacies): void
+            + replace_all(entries): void
+        }
+        class "AsyncPharmacyCatalog" as AsyncPharmacyCatalog <<Repository: 작업별 비동기 약국 조회>> {
+            + count(): awaitable<int>
+            + search_nearby_candidates(latitude, longitude, max_distance_km): awaitable<list<PharmacyCatalogEntry>>
+            + get_cached_holiday_schedules(date, max_age): awaitable<dict?>
+            + replace_holiday_schedules(date, schedules): awaitable<void>
+            + cache_search_results(pharmacies): awaitable<void>
+        }
+
+        class "ManageLinkedChat" as BManageLinkedChat <<Control: 연결 채팅 권한·메시지 관리>> {
+            - db: Session
+            + request_history(user_hash, link_id, before_id): list<ChatMessage>
+            + delete_messages(link_id, user_hash, message_ids, scope): dict
+            + request_medication_contexts(user_hash, link_id): list<dict>
+            + request_schedule_contexts(user_hash, link_id): list<dict>
+            + request_medication_detail(user_hash, link_id, medication_id): dict
+            + send_message(user_hash, link_id, body, client_message_id, message_kind, medication_ids?, context_id?): ChatSendResult
+            + publish_slot_completion(patient_hash, slot_key): int
+            + mark_read(user_hash, link_id, through_message_id): int
+            + request_unread_count(user_hash, link_id): dict
+            + require_active_link(user_hash, link_id): _PatientCaregiverLink
+        }
+
+        class "DispatchChatMessageAlert" as DispatchChatMessageAlert <<Control: 채팅 Push 알림>> {
+            - db: Session
+            - push_boundary: PushNotificationBoundary
+            + notify_new_message(recipient_hash, link_id, message_body): PushDeliveryResult
         }
 
         class "LinkPatientCaregiver" as BLinkPatientCaregiver <<Control: 연결 권한 관리>> {
@@ -609,11 +1219,25 @@ package "FastAPI Backend" {
             + requestPatientCaregiverLink(caregiver_hash, code): dict
             + requestUnlink(user_hash, link_id): dict
             + getLinkedPatientHash(caregiver_hash, patient_hash): str
+            + updatePatientAlias(link_id, caregiver_hash, patient_alias): dict
+            + update_caregiver_alias(link_id, patient_hash, caregiver_alias): dict
         }
 
         class "CheckCaregiverMedication" as BCheckCaregiverMedication <<Control: 보호자 읽기 전용 조회>> {
             + requestPatientMedicationInfo(caregiver_hash, patient_hash): dict
         }
+
+        class "CheckCaregiverMonitoring" as BCheckCaregiverMonitoring <<Control: 보호자 통합 감시 조회>> {
+            + requestMonitoringSnapshot(caregiver_hash, include_all_schedules): dict
+        }
+
+        note right of BCheckCaregiverMonitoring
+            /caregiver/schedules는 알림 OFF 환자도 포함한다.
+            /caregiver/monitoring은 활성 알림 정책으로 제한한다.
+            홈·위젯 조회에 약 상세는 포함하지 않는다.
+            환자 400명 단위로 일정 필드와 오늘 완료 기록을 일괄 조회한다.
+            400명 이하는 연결·설정·일정·완료 기록을 최대 4회 조회한다.
+        end note
 
         class "SetNotification" as BSetNotification <<Control: 환자 알림 저장>> {
             - db: Session
@@ -657,6 +1281,7 @@ package "FastAPI Backend" {
             + resolveOwnUserHash(principal, requested_hash): str
             + resolvePatientScope(principal, patient_hash): str
             + requireLinkedPatient(caregiver_hash, patient_hash): str
+            + validateRecommendationScope(principal, patient_hash): void
         }
 
         class "AuthenticatedPrincipal" as BAuthenticatedPrincipal <<Entity: verified request identity>> {
@@ -668,6 +1293,10 @@ package "FastAPI Backend" {
         }
 
         note "api/dependencies.py module functions\nverify_app_check_token()\nget_authenticated_principal()\nget_recently_authenticated_principal()\n_lock_account_operation()\nget_registered_principal()" as BAccountDependencies
+        class "AccountOperationLocks" as AccountOperationLocks <<Service: SQLite request ownership>> {
+            + active_scope_count: int
+            + hold(user_hash, timeout): AsyncContextManager
+        }
 
         class "TrustedHostMiddleware" as BTrustedHostMiddleware <<Framework Middleware: production Host allowlist>> {
             + allowed_hosts: list<str>
@@ -682,9 +1311,33 @@ package "FastAPI Backend" {
             + notifySlotCompleted(patient_hash, slot_key): object
         }
 
-        class "DispatchCaregiverAlert" as DispatchCaregiverAlert <<Control: 보호자 완료 알림>> {
+        note "module-level route functions\napi/chat_router.py\nHTTP 저장·이력·삭제 / WebSocket 연결\n저장 후 실시간 방송, Push는 별도 영속 작업" as ChatRouter
+
+        class "ManageCaregiverAlert" as ManageCaregiverAlert <<Control: 미복약 action 권한·멱등성>> {
+            + requireSource(alert_id, caregiver_hash): tuple
+            + requireActionable(row): None
+            + snooze(alert_id, caregiver_hash): dict
+            + localDeliveries(caregiver_hash): list<dict>
+        }
+        class "ProcessChatNotifications" as ProcessChatNotifications <<Control: 일반 채팅 알림 선점·재시도>> {
+            + claim(): Claim?
+            + deliver(claim): None
+            + run_once(limit): int
+        }
+        class "SyncDose" as SyncDose <<Control: 복약 기록 멱등 동기화>> {
+            + apply(patient_hash, request): tuple<list, ChatSendResult?>
+        }
+
+        class "QueueMissedDoseAlerts" as QueueMissedDoseAlerts <<Control: 서버 미복약 요청 생성>> {
+            - db: Session
+            - check_schedule: CheckSchedule
+            + queueDue(now, limit): int
+        }
+
+        class "DispatchCaregiverAlert" as DispatchCaregiverAlert <<Control: 보호자 완료·미복약 알림>> {
             - db: Session
             + notifySlotCompleted(patient_hash, slot_key): PushDeliveryResult
+            + notifySlotMissed(caregiver_hash, patient_hash, slot_key, schedule_date): PushDeliveryResult
         }
 
         class "ProcessCaregiverAlertOutbox" as ProcessCaregiverAlertOutbox <<Control: 보호자 알림 재시도>> {
@@ -714,6 +1367,11 @@ package "FastAPI Backend" {
             + is_expired(medication, today): bool
         }
 
+        class "ChatMessageRetentionPolicy" as ChatMessageRetentionPolicy <<Service: 채팅 보존기간 정리>> {
+            + retention_days: int
+            + cleanup_expired_messages(db, now, commit): int
+        }
+
         class "DataMaintenanceService" as DataMaintenanceService <<Service: 만료 Data 정리>> {
             + runOnce(db): dict
         }
@@ -728,6 +1386,7 @@ package "FastAPI Backend" {
         class "PillIdentificationCatalogRepository" as PillCatalogRepository <<Repository: 낱알 Catalog 저장>> {
             - db: Session
             + list_all(): list<PillCatalogEntry>
+            + list_item_sequences(): set<str>
             + is_fresh(minimum_rows, max_age): bool
             + replace_all(entries, commit): void
         }
@@ -747,6 +1406,7 @@ package "FastAPI Backend" {
             - public_drug_large_api: PublicDrugLargeAPI
             - pill_catalog_api: MFDSPillAPI
             - _is_complete_dataset_sync: bool
+            + last_pill_reconciliation_report: PillCatalogReconciliationReport?
             + sync_basic(): int
             + sync_approval(): int
             + sync_pill_identification(): int
@@ -756,6 +1416,7 @@ package "FastAPI Backend" {
         class "SavedMedicationRepository" as SavedMedicationRepository <<Repository: 저장 복약정보 조회>> {
             - db: Session
             + list_by_patient(patient_hash): list
+            + list_schedule_medications_for_patients(patient_hashes): list
             + list_all(): list
             + list_recent_by_patient(patient_hash): list
             + find_owned_by_id(medication_id, patient_hash): _SavedMedication?
@@ -767,17 +1428,54 @@ package "FastAPI Backend" {
             + list_active_for_user(user_hash): list
             + list_for_user(user_hash): list
             + list_active_for_patient(patient_hash): list
+            + list_active_for_caregiver(caregiver_hash): list
             + find_active_for_user_by_id(link_id, user_hash): _PatientCaregiverLink?
+            + find_active_for_caregiver_by_id(link_id, caregiver_hash): _PatientCaregiverLink?
+            + find_active_for_patient_by_id(link_id, patient_hash): _PatientCaregiverLink?
             + find_pair(patient_hash, caregiver_hash): _PatientCaregiverLink?
             + find_active_for_caregiver(caregiver_hash, patient_hash): _PatientCaregiverLink?
             + has_active_pair(caregiver_hash, patient_hash): bool
         }
+
+        class "ChatMessageRepository" as ChatMessageRepository <<Repository: 연결 채팅 저장·읽음 관리>> {
+            - db: Session
+            + list_recent(link_id, before_id, limit): list<_ChatMessage>
+            + find_selected_for_update(link_id, message_ids): list<_ChatMessage>
+            + find_client_request(link_id, sender_hash, client_message_id): _ChatMessage?
+            + add(message): void
+            + mark_incoming_read(link_id, reader_hash, through_message_id): int
+            + unread_count(link_id, reader_hash): int
+            + unread_summary(link_id, reader_hash): tuple<int, int?>
+        }
+
+        class "ChatConnectionManager" as ChatConnectionManager <<Service: WebSocket 연결 Registry>> {
+            + connect(link_id, user_hash, socket): void
+            + disconnect(link_id, user_hash, socket): void
+            + is_user_connected(link_id, user_hash): bool
+            + broadcast(link_id, event, recipient_hash?): void
+        }
+
+        note right of ChatConnectionManager
+            연결 Registry와 방송 대상은 프로세스 메모리에 있다.
+            Redis는 Cache·요청 제한 공유 Counter이며
+            채팅 DB나 WebSocket broker가 아니다.
+            Broadcasts use independent bounded writes.
+            Failed sockets are removed before push fallback.
+        end note
 
         class "CaregiverAlertOutboxWorker" as CaregiverAlertOutboxWorker <<Service: 알림 아웃박스 작업자>> {
             - session_factory: sessionmaker
             - interval_seconds: int
             + start(): void
             + stop(): None
+        }
+        class "ChatNotificationWorker" as ChatNotificationWorker <<Service: 영속 채팅 알림 작업자>> {
+            + start(): None
+            + stop(): None
+        }
+        class "SessionScopedKoreanHolidayCache" as SessionScopedKoreanHolidayCache <<Repository: 작업별 공휴일 DB Session>> {
+            + get_cached_korean_holidays(year, month, max_age): frozenset<date>?
+            + replace_korean_holidays(year, month, holidays): None
         }
     }
 
@@ -837,6 +1535,7 @@ package "FastAPI Backend" {
         class "PillVisionBoundary" as PillVisionBoundary <<Wrapper: 낱알 Vision 조정>> {
             + model_name: str
             + extractVisualFeatures(front_image, back_image): PillVisualFeatures
+            + extractMultipleVisualFeatures(image): tuple
             + close(): void
         }
 
@@ -844,11 +1543,65 @@ package "FastAPI Backend" {
             + base_url: str
             + page_size: int
             + requestCatalog(): list<PillCatalogEntry>
+            + requestCatalogSnapshot(): PillCatalogSnapshot
+        }
+
+        class "PillCatalogDownloadReport" as PillCatalogDownloadReport <<Entity: Catalog Download Evidence>> {
+            + advertised_rows: int
+            + fetched_rows: int
+            + valid_rows: int
+            + accepted_unique_rows: int
+            + rejected_rows: int
+            + duplicate_rows: int
+        }
+
+        class "PillCatalogSnapshot" as PillCatalogSnapshot <<Entity: Catalog Generation>> {
+            + entries: tuple<PillCatalogEntry>
+            + report: PillCatalogDownloadReport
+        }
+
+        class "PillCatalogReconciliationReport" as PillCatalogReconciliationReport <<Entity: Publication Evidence>> {
+            + source: PillCatalogDownloadReport
+            + kpic_product_floor: int
+            + persisted_rows: int
+            + missing_persisted_rows: int
+            + unexpected_persisted_rows: int
+            + is_publishable: bool
         }
 
         class "MFDSPillCatalogBoundary" as MFDSPillCatalogBoundary <<Wrapper: 낱알 Catalog Cache>> {
             + getCatalog(): tuple<PillCatalogEntry>
             + invalidateMemoryCache(): void
+        }
+
+        interface "PharmacyLookupBoundary" as PharmacyLookupBoundary {
+            + searchNearby(latitude, longitude, radius_km): list<PharmacyLocationRecord>
+            + close(): void
+        }
+
+        class "NationalEmergencyMedicalCenterPharmacyAPI" as NEMCPharmacyAPI <<Wrapper: 응급의료기관 약국 API>> {
+            + base_url: str
+            + searchNearby(latitude, longitude, radius_km): list<PharmacyLocationRecord>
+            + fetchCatalogPage(page_no, page_size): tuple<list<PharmacyCatalogEntry>, int>
+            + close(): void
+        }
+
+        class "KoreanHolidayAPI" as KoreanHolidayAPI <<Wrapper: 법정공휴일 API>> {
+            + isHoliday(date): bool
+            + close(): void
+        }
+
+        class "PersistentKoreanHolidayLookup" as PersistentKoreanHolidayLookup <<Wrapper: 공휴일 영속 Cache 조회>> {
+            + isHoliday(value): bool
+        }
+        interface "HolidayLookupBoundary" as HolidayLookupBoundary {
+            + isHoliday(value): bool
+        }
+        note "module-level 순수 계산 함수\nservices/nearby_care_policy.py\n운영 시간·거리 판정 (DB/API 의존 없음)" as NearbyCarePolicy
+
+        class "HolidayEmergencyPharmacyAPI" as HolidayEmergencyPharmacyAPI <<Wrapper: 공휴일 약국 운영 자료>> {
+            + fetchSchedules(value): list<PharmacyHolidaySchedule>
+            + close(): void
         }
 
         interface "PushNotificationBoundary" as PushNotificationBoundary {
@@ -873,6 +1626,7 @@ package "FastAPI Backend" {
         class "MedicationDetail" as BMedicationDetail <<Entity: 약 상세 DTO>> {
             + item_seq: str
             + item_name: str
+            + manufacturer: str
             + efficacy: str
             + usage_method: str
             + warning: str
@@ -913,6 +1667,63 @@ package "FastAPI Backend" {
             + candidates: tuple
             + is_confident: bool
             + requires_confirmation: bool
+        }
+
+        class "MultiplePillIdentificationResult" as BMultiplePillIdentificationResult <<Entity: 한 장 다중 낱알 결과>> {
+            + observations: tuple<MultiplePillObservation>
+            + requires_confirmation: bool
+        }
+
+        class "PharmacyLocationRecord" as BPharmacyLocationRecord <<Entity: 외부 약국 위치 Record>> {
+            + pharmacy_id: str
+            + name: str
+            + address: str
+            + telephone: str
+            + latitude: float
+            + longitude: float
+            + weekday_hours: dict
+        }
+
+        class "NearbyPharmacy" as BNearbyPharmacy <<Entity: 거리·영업상태 약국 DTO>> {
+            + pharmacy_id: str
+            + name: str
+            + address: str
+            + telephone: str
+            + latitude: float
+            + longitude: float
+            + distance_km: float
+            + is_open_now: bool?
+            + is_24_hours: bool
+            + is_open_late: bool
+            + has_weekend_or_holiday_hours: bool
+            + is_public_holiday: bool
+            + minutes_until_close: int?
+            + next_open_at: datetime?
+            + source_updated_at: datetime?
+        }
+
+        class "PharmacyCatalogEntry" as BPharmacyCatalogEntry <<Entity: 전국 약국 주간·공휴일 일정>> {
+            + pharmacy_id: str
+            + latitude: float
+            + longitude: float
+            + weekly_hours: dict
+        }
+
+        class "ChatMessage" as BChatMessage <<Entity: 연결 채팅 DTO>> {
+            + message_id: int
+            + link_id: int
+            + sender_hash: str
+            + client_message_id: str
+            + body: str
+            + message_kind: str
+            + medication_id: int?
+            + medication_name: str?
+            + context_payload: dict?
+            + medication_contexts: list<dict>
+            + created_at: datetime
+            + read_at: datetime?
+            + hidden_for_me: bool
+            + deleted_for_everyone: bool
         }
     }
 
@@ -962,6 +1773,8 @@ package "FastAPI Backend" {
             + id: Integer
             + patient_hash: String
             + caregiver_hash: String
+            + patient_alias: String?
+            + caregiver_alias: String?
             + linked: Boolean
             + created_at: DateTime
         }
@@ -986,11 +1799,23 @@ package "FastAPI Backend" {
 
         class "_UserSetting" as DBUserSetting <<ORM: user_settings>> {
             + id: Integer
+            + home_schedule_source: String
             + user_hash: String
             + font_size: Integer
             + reading_speed: Float
             + language: String
+            + language_mode: String
+            + time_format: String
+            + medication_notifications_enabled: Boolean
+            + caregiver_notifications_enabled: Boolean
+            + chat_notifications_enabled: Boolean
+            + notification_detail_mode: String
         }
+
+        note right of DBUserSetting
+            신규 일정의 기본 시각도 사용자 설정에 저장한다.
+            기존 복약 일정의 시각을 일괄 변경하지 않는다.
+        end note
 
         class "_DevicePushToken" as DBDevicePushToken <<ORM: device_push_tokens>> {
             + id: Integer
@@ -998,12 +1823,30 @@ package "FastAPI Backend" {
             + token: String
             + platform: String
             + enabled: Boolean
+            + supports_caregiver_actions: Boolean
+        }
+
+        class "_DoseSyncOperation" as DBDoseSyncOperation <<ORM: dose_sync_operations>> {
+            + patient_hash: String
+            + operation_id: String
+            + payload: JSON
+        }
+        class "ChatNotificationJob" as DBChatNotificationJob <<ORM: chat_notification_jobs>> {
+            + message_id: Integer
+            + recipient_hash: String
+            + status: String
+            + attempts: Integer
+            + available_at: DateTime
+            + last_error: String?
         }
 
         class "_CaregiverAlertOutbox" as DBCaregiverAlertOutbox <<ORM: caregiver_alert_outbox>> {
             + id: Integer
             + event_key: String
             + patient_hash: String
+            + caregiver_hash: String?
+            + event_type: String
+            + schedule_date: Date?
             + slot_key: String
             + status: String
             + attempt_count: Integer
@@ -1054,6 +1897,69 @@ package "FastAPI Backend" {
             + print_back: String
             + updated_at: DateTime
         }
+
+        class "_ChatMessage" as DBChatMessage <<ORM: chat_messages>> {
+            + id: Integer
+            + link_id: Integer
+            + sender_hash: String
+            + client_message_id: String
+            + body: Text
+            + message_kind: String
+            + context_payload: JSON?
+            + medication_id: Integer?
+            + medication_name: String?
+            + medication_image_url: Text?
+            + medication_dosage: String?
+            + created_at: DateTime
+            + read_at: DateTime?
+            + patient_deleted_at: DateTime?
+            + caregiver_deleted_at: DateTime?
+            + deleted_for_everyone_at: DateTime?
+        }
+
+        class "PharmacyCatalogRecord" as DBPharmacyCatalog <<ORM: pharmacy_catalog_records>> {
+            + pharmacy_id: String
+            + weekly_hours: JSON
+            + source_updated_at: DateTime
+        }
+
+        class "PharmacySearchCacheRecord" as DBPharmacySearchCache <<ORM: pharmacy_search_cache>> {
+            + pharmacy_id: String
+            + name, address, telephone: String
+            + latitude, longitude: Float
+            + fetched_at: DateTime
+        }
+        note right of DBPharmacySearchCache
+            공공 API 보완 검색 결과만 24시간 재사용한다.
+            전국 카탈로그의 개수·최신성 판단과 분리하며
+            한 날짜 운영시간을 주간 시간표로 추정하지 않는다.
+        end note
+
+        class "PharmacyHolidayScheduleRecord" as DBPharmacyHolidaySchedule <<ORM: pharmacy_holiday_schedules>> {
+            + schedule_date: Date
+            + pharmacy_id: String
+            + fetched_at: DateTime
+        }
+
+        class "PharmacyHolidayFetchRecord" as DBPharmacyHolidayFetch <<ORM: pharmacy_holiday_fetches>> {
+            + schedule_date: Date
+            + row_count: Integer
+        }
+
+        class "KoreanHolidayRecord" as DBKoreanHoliday <<ORM: korean_holidays>> {
+            + holiday_date: Date
+            + fetched_at: DateTime
+        }
+
+        class "KoreanHolidayMonthFetchRecord" as DBKoreanHolidayMonthFetch <<ORM: korean_holiday_month_fetches>> {
+            + month_key: String
+            + row_count: Integer
+        }
+
+        note right of DBPharmacyCatalog
+            약국·공휴일 자료와 Pill Catalog는
+            같은 Application Database를 사용한다.
+        end note
     }
 }
 
@@ -1067,12 +1973,22 @@ MedBuddyApp ..> MedicationReminderBackgroundScheduler
 MedBuddyApp ..> PushNotificationService
 MedBuddyApp --> FAuthenticationControl : injects pre-sign-out notification cleanup
 AuthenticationUI --> FAuthenticationControl
+AuthenticationUI *-- ForegroundRecoveryService : 일시적 Session 복구 callback
 AuthenticationUI --> AppLanguageControl
 AuthenticationGate --> AuthenticationGateState
 AuthenticationGate ..> AuthenticationUI
 AuthenticationGate ..> HomeScreen
 HomeScreen ..> MedBuddyViewModel
+HomeScreen *-- ForegroundRecoveryService : 조회 복구, 변경 요청 재실행 없음
 HomeScreen ..> InputPrescriptionUI
+HomeScreen *-- CheckCaregiverHome
+HomeScreen ..> CaregiverHomeSummaryUI
+HomeScreen ..> CheckCaregiverMedicationUI : 활성 환자 상세
+CaregiverHomeSummaryUI --> CheckCaregiverHome
+InputPrescriptionUI ..> HomeMedicationPreview : 본인 일정 + 복용 처리
+CaregiverHomeSummaryUI ..> HomeMedicationPreview : 환자별 읽기 전용 요약
+CheckCaregiverHome ..> FCheckCaregiverMedication : 통합 현황 재사용
+CheckCaregiverHome ..> FCaregiverMonitoringSnapshot
 HomeScreen *-- MedBuddyBottomNavigationUI
 HomeScreen ..> MedBuddyDestination
 HomeScreen ..> GuidedPrescriptionCameraUI
@@ -1081,28 +1997,78 @@ HomeScreen ..> CheckResultUI
 HomeScreen ..> CheckScheduleUI
 HomeScreen ..> CheckSavedMedicationUI
 HomeScreen ..> PillIdentificationUI
+HomeScreen ..> ManualMedicationEntryUI
+HomeScreen ..> CheckNearbyPharmacyUI
 HomeScreen ..> LinkPatientCaregiverUI
+HomeScreen *-- ManageChatList : 계정별 활성 연동 조회
+HomeScreen ..> ChatListUI : 활성 연동이 있을 때 채팅 탭
+HomeScreen ..> NotificationInboxUI
+HomeScreen *-- ManageNotificationInbox
+NotificationInboxUI ..> ManageNotificationInbox
+NotificationInboxUI ..> NotificationService : 기존 알림 이동 처리
+ManageNotificationInbox ..> NotificationInboxStore
+ManageNotificationInbox ..> ManageChatList : 현재 상대 표시 이름
+NotificationInboxStore ..> NotificationInboxEntry
+ChatListUI ..> ManageChatList
+ChatListUI ..> LinkedChatUI : 선택한 상대와 대화
+ManageChatList ..> FLinkPatientCaregiver
+ManageChatList ..> ManageCaregiverPatientLocalState
+ManageChatList ..> FManageLinkedChat : 최근 메시지 조회
+ManageChatList ..> FPatientCaregiverLink
 HomeScreen ..> ManageUserSettingUI
 HomeScreen ..> ManageUserHubUI
-HomeScreen ..> MedicationReminderSettingsUI
 HomeScreen ..> AppLanguageControl
 
 CheckScheduleUI ..> MedBuddyViewModel
 CheckSavedMedicationUI ..> MedBuddyViewModel
 HealthRecommendationUI ..> MedBuddyViewModel
-MedicationReminderSettingsUI ..> MedBuddyViewModel
+HealthRecommendationUI ..> ManualMedicationEntryUI : empty state registration
+HealthRecommendationUI ..> PillIdentificationUI : empty state identification
+HealthRecommendationUI ..> GuidedPrescriptionCameraUI : prescription shortcut
 CheckMedicationDetailUI ..> FRequestVoiceGuide
 PillIdentificationUI o-- FIdentifyPill
+PillIdentificationUI o-- FIdentifyPillBatch
+PillIdentificationUI o-- FResolveDuplicatePillSelection
+PillIdentificationUI ..> MedicationScheduleReviewBoundary
+ManualMedicationEntryUI ..> FManualMedicationEntry
+PrescriptionAnalysisPreviewUI ..> MedicationScheduleReviewBoundary
+PrescriptionAnalysisPreviewUI ..> MedicationCandidateDialog
+PrescriptionAnalysisPreviewUI ..> MedicationMatchReview
+MedicationCandidateDialog --> FMedicationDetail : 제품명·제조사 비교; 명시적 선택
+CheckNearbyPharmacyUI o-- FCheckNearbyCare
+CheckNearbyPharmacyUI *-- NearbyPharmacyMap
+CheckNearbyPharmacyUI *-- PharmacyDetailsSheet : 선택 약국의 접힘·펼침 정보
+CheckNearbyPharmacyUI *-- PharmacyListPanel : 상단 드래그·탭으로 지도 복귀
+NearbyPharmacyMap ..> NearbyCareSearchArea
+class NearbyCareMarkerDiff <<Service: 순수 마커 변경 계산>> {
+    + between(previous, next): NearbyCareMarkerDiff
+    + remove: Set<String>
+    + add: Set<String>
+}
+NearbyPharmacyMap --> NearbyCareMarkerDiff
+note right of NearbyCareMarkerDiff
+    이름·좌표·선택·즐겨찾기가 바뀐 마커만 교체한다.
+    플랫폼 작업을 직렬화하고 오래된 대기 요청은 건너뛴다.
+    유지한 마커도 클릭 시 최신 상세 정보를 전달한다.
+end note
+CheckNearbyPharmacyUI o-- PharmacyFavoriteService
+CheckNearbyPharmacyUI o-- PharmacyExternalActionService
 LinkPatientCaregiverUI ..> FLinkPatientCaregiver
 LinkPatientCaregiverUI ..> ManageCaregiverPatientLocalState
 CheckCaregiverMedicationUI o-- FCheckCaregiverMedication
 CheckCaregiverMedicationUI o-- FSetCaregiverNotification
+CheckCaregiverMedicationUI ..> LinkedChatUI
+LinkedChatUI o-- FManageLinkedChat
+LinkedChatUI o-- LinkedChatRealtimeService
+LinkedChatUI o-- PharmacyExternalActionService
+LinkedChatUI ..> CheckScheduleUI : 개별·전체 선택 후 첨부 목록 반환\n복용 기록 변경 없음
+LinkedChatUI ..> CheckMedicationDetailUI : 권한 검증 후 상세 열기
 CheckCaregiverMedicationUI ..> ManageCaregiverPatientLocalState
 ManageUserSettingUI --> FAuthenticationControl
 ManageUserHubUI --> FAuthenticationControl
 GuidedPrescriptionCameraUI ..> PrescriptionFrameAnalyzer
 GuidedPrescriptionCameraUI *-- CameraLifecycleCoordinator
-GuidedPrescriptionCameraUI ..> PrescriptionCameraLayoutService
+GuidedPrescriptionCameraUI ..> PrescriptionGuideLayout
 GuidedPrescriptionCameraUI *-- PrescriptionCameraOrientationService
 GuidedPrescriptionCameraUI *-- PrescriptionImageCropService
 
@@ -1110,6 +2076,8 @@ PrescriptionAnalysisPreviewUI --> "0..*" FMedicationSchedule
 CheckResultUI --> "0..*" FAnalyzedMedication
 CheckResultUI --> "0..1" FPrescriptionChangeRadar
 CheckMedicationDetailUI --> FMedicationDetail
+CheckMedicationDetailUI ..> MedicationImageViewer : 사진 확대
+CheckScheduleUI ..> MedicationImageViewer : 사진 확대
 
 FAuthenticationControl *-- AuthenticatedApiClient
 FAuthenticationControl --> "0..1" FAuthSession
@@ -1126,7 +2094,44 @@ MedBuddyViewModel *-- FSetNotification
 MedBuddyViewModel *-- FManageUserSetting
 MedBuddyViewModel *-- FManageAccount
 MedBuddyViewModel o-- NotificationService
+MedBuddyViewModel o-- ManualMedicationImageStore : 서버 저장 ID에 기기 사진 연결
 MedBuddyViewModel *-- MedBuddyFeatureUpdates
+MedBuddyViewModel *-- MedBuddyPrescriptionViewModel
+MedBuddyViewModel *-- MedBuddySavedMedicationViewModel
+MedBuddyViewModel *-- MedBuddyScheduleViewModel
+MedBuddyViewModel *-- MedBuddyReminderViewModel
+MedBuddyViewModel *-- MedBuddyUserSettingViewModel
+MedBuddyViewModel *-- MedBuddyHealthRecommendationViewModel
+MedBuddyPrescriptionViewModel --> FInputPrescription
+MedBuddyPrescriptionViewModel --> FCheckMedicationDetail
+MedBuddyPrescriptionViewModel --> MedicationMatchReview : 행별 후보 보존; 확인만으로 저장하지 않음
+MedBuddyPrescriptionViewModel ..> MedicationLookupBusy : 묶음 완료 후 해당 요청만 순차 재시도 1회
+MedBuddyPrescriptionViewModel --> FCheckPrescriptionChange
+MedBuddyPrescriptionViewModel --> MedBuddySavedMedicationViewModel
+MedBuddySavedMedicationViewModel --> FCheckSavedMedication
+MedBuddyScheduleViewModel --> FCheckSchedule
+MedBuddyScheduleViewModel --> DoseSyncService
+MedBuddyReminderViewModel --> FSetNotification
+MedBuddyReminderViewModel --> NotificationService
+MedBuddyUserSettingViewModel --> FManageUserSetting
+MedBuddyHealthRecommendationViewModel --> FCheckHealthRecommendation
+DoseSyncService --> DoseOutboxStore
+DoseSyncService ..> SyncDose : 인증 API / completion-operations
+MedBuddyViewModel ..> DoseHomeWidget
+DoseHomeWidget --> DoseOutboxStore
+DoseHomeWidget --> NotificationService : 기기 완료 후 날짜별 예약·재알림 취소
+DoseHomeWidget --> FCheckCaregiverMedication : background 일괄 조회
+LinkedChatUI ..> DoseSyncService : 선택 약·시간대 기록
+
+MedBuddyApp ..> CaregiverAlertActionControl
+CaregiverAlertActionControl ..> AuthenticatedApiClient
+CaregiverAlertActionControl ..> FManageLinkedChat : 원본별 slot_check_request
+CaregiverAlertActionControl ..> CaregiverAlertContext
+CaregiverAlertDeliveryService ..> CaregiverAlertContext
+CaregiverAlertDeliveryService ..> NotificationService
+PushNotificationService ..> CaregiverAlertDeliveryService
+CaregiverNotificationMonitorFactory ..> CaregiverAlertActionControl : 개발용 서버 전달 조회
+CaregiverNotificationMonitorFactory ..> CaregiverAlertDeliveryService
 
 FInputPrescription o-- PrescriptionLocalOcrBoundary
 PrescriptionLocalOcrService ..|> PrescriptionLocalOcrBoundary
@@ -1139,6 +2144,26 @@ FCheckSchedule ..> AuthenticatedApiClient
 FCheckPrescriptionChange ..> AuthenticatedApiClient
 FCheckHealthRecommendation ..> AuthenticatedApiClient
 FIdentifyPill ..> AuthenticatedApiClient
+FIdentifyPillBatch *-- FIdentifyPill
+FCheckNearbyCare ..> AuthenticatedApiClient
+FCheckNearbyCare o-- DeviceLocationBoundary
+DeviceLocationBoundary --> DeviceCoordinate
+GeolocatorDeviceLocationService ..|> DeviceLocationBoundary
+FManageLinkedChat ..> AuthenticatedApiClient
+LinkedChatSessionTransport --|> LinkedChatEventSource
+LinkedChatRealtimeService ..|> LinkedChatSessionTransport
+LinkedChatRealtimeService ..> AuthenticatedApiClient
+LinkedChatUI *-- LinkedChatHistoryViewModel : identity-keyed account/link/patient session
+LinkedChatUI *-- LinkedChatComposerViewModel : outgoing request owner
+note right of LinkedChatUI
+    입력 중에는 StatefulBuilder의 입력 행만 갱신한다.
+    대화 목록·말풍선은 입력 한 글자마다 재구성하지 않는다.
+    초안 controller와 전송·읽음 상태의 소유권은 유지한다.
+end note
+LinkedChatComposerViewModel --> FManageLinkedChat : borrowed send adapter
+LinkedChatComposerViewModel --> ChatMessageDraft : payload and retry identity
+LinkedChatHistoryViewModel --> FManageLinkedChat : history / receipt / recovery
+LinkedChatHistoryViewModel --> LinkedChatSessionTransport : borrowed transport contract
 FLinkPatientCaregiver ..> AuthenticatedApiClient
 FCheckCaregiverMedication ..> AuthenticatedApiClient
 FSetNotification ..> AuthenticatedApiClient
@@ -1155,21 +2180,33 @@ MedicationReminderRefreshService ..> NotificationService
 MedicationReminderBackgroundScheduler ..> MedicationReminderRefreshService
 FRequestVoiceGuide o-- TTSService
 PushNotificationService ..> NotificationService
+PushNotificationService ..> NotificationInboxStore : 수신자 범위 Push 기록
+NotificationService ..> NotificationInboxStore : local 알림·예약 기록
+NotificationService ..> MedicationNotificationPayloadCodec : shared payload validation
+MedicationNotificationPayloadCodec --> MedicationNotificationSelection
 CaregiverNotificationMonitorService ..> NotificationService
 CaregiverNotificationMonitorService ..> FLinkPatientCaregiver
 CaregiverNotificationMonitorService ..> FCheckCaregiverMedication
 CaregiverNotificationMonitorService ..> FSetCaregiverNotification
 CaregiverNotificationMonitorService ..> CaregiverPatientLocalStateService
 ManageCaregiverPatientLocalState ..> CaregiverPatientLocalStateService
+ManageCaregiverPatientLocalState ..> FPatientCaregiverLink : 서버 별칭을 cache에 반영
 CaregiverNotificationMonitorFactory ..> CaregiverNotificationMonitorService
 CaregiverNotificationMonitorFactory ..> FLinkPatientCaregiver
 CaregiverNotificationMonitorFactory ..> FCheckCaregiverMedication
 CaregiverNotificationMonitorFactory ..> FSetCaregiverNotification
 CaregiverNotificationMonitorFactory ..> NotificationService
 CaregiverNotificationBackgroundScheduler ..> CaregiverNotificationMonitorFactory
+LinkedChatNotificationMonitorService ..> LinkedChatRealtimeService
+LinkedChatNotificationMonitorService ..> NotificationService : 120자 이내 미리보기
+LinkedChatNotificationMonitorFactory ..> LinkedChatNotificationMonitorService
+LinkedChatNotificationMonitorFactory ..> FLinkPatientCaregiver
+LinkedChatNotificationMonitorFactory ..> FManageUserSetting
 
 FInputPrescription ..> FMedicationSchedule
 FCheckMedicationDetail ..> FMedicationDetail
+FCheckMedicationDetail ..> MedicationMatchReview
+FCheckMedicationDetail ..> MedicationLookupBusy
 FCheckSavedMedication ..> FMedicationDetail
 FCheckSchedule ..> FMedicationSchedule
 FMedicationDetail ..> MedicationImageUrlPolicy : sanitize
@@ -1183,8 +2220,31 @@ PillIdentificationUI ..> MedicationImageUrlPolicy : fetch guard
 FCheckPrescriptionChange ..> FPrescriptionChangeRadar
 FCheckHealthRecommendation ..> FHealthRecommendation
 FIdentifyPill ..> FPillIdentificationResult
+FIdentifyPill ..> FMultiplePillIdentificationResult
+FIdentifyPillBatch ..> FPillIdentificationResult
+FCheckNearbyCare ..> NearbyCarePlace
+FCheckNearbyCare ..> NearbyCareSearchArea : fallback coordinates with provider radius
+FCheckNearbyCare ..> NearbyCareSearchMode
+FCheckNearbyCare ..> NearbyCareSearchResult
+NearbyCareSearchArea --> DeviceCoordinate
+NearbyCareSearchResult o-- NearbyCarePlace
+NearbyCareSearchResult --> NearbyCareSearchArea
+NearbyCareSelection --> NearbyCarePlace
+CheckNearbyPharmacyUI --> NearbyCareSelection
+LinkedChatUI --> NearbyCareSelection
+FManageLinkedChat ..> FChatMessage
+FManageLinkedChat ..> FChatMedicationContext
+FManageLinkedChat ..> FChatScheduleContext
+FManageLinkedChat ..> FChatPharmacyContext
+FChatMessage o-- "0..*" FChatMedicationContext
+FChatMessage o-- "0..1" FChatScheduleContext
+FChatMessage o-- "0..1" FChatPharmacyContext
 FLinkPatientCaregiver ..> FPatientCaregiverLink
 FLinkPatientCaregiver ..> FPatientLinkCode
+FCheckCaregiverMedication ..> FCaregiverMonitoringSnapshot
+FCaregiverMonitoringSnapshot *-- FPatientCaregiverLink
+FCaregiverMonitoringSnapshot o-- FCaregiverNotification
+FCaregiverMonitoringSnapshot o-- FMedicationSchedule
 FSetNotification ..> FMedicationAlarm
 FSetCaregiverNotification ..> FCaregiverNotification
 FManageUserSetting ..> FUserSetting
@@ -1198,7 +2258,15 @@ BInputPrescription *-- MedicationNameVerifier
 BInputPrescription ..> BMedicationSchedule
 
 BCheckMedicationDetail o-- MedicationDetailCache
+BCheckMedicationDetail ..> MedicationMatchSafety
+BCheckMedicationDetail --> MedicationResponse
+MedicationNameVerifier ..> MedicationMatchSafety
 BCheckMedicationDetail o-- LocalMedicationCatalog
+BCheckMedicationDetail o-- MedicationTextNormalizer
+BCheckMedicationDetail o-- MedicationNameMatcher
+LocalMedicationCatalog --> MedicationNameMatcher
+LocalMedicationCatalog --> MedicationSummaryGenerator
+MedicationNameMatcher --> MedicationTextNormalizer
 BCheckMedicationDetail o-- MedicationSummaryGenerator
 BCheckMedicationDetail o-- PublicDrugSmallAPI
 BCheckMedicationDetail o-- PublicDrugLargeAPI
@@ -1237,6 +2305,7 @@ BCheckHealthRecommendation ..> BHealthRecommendation
 BIdentifyPill o-- PillVisionBoundary
 BIdentifyPill o-- MFDSPillCatalogBoundary
 BIdentifyPill ..> BPillIdentificationResult
+BIdentifyPill ..> BMultiplePillIdentificationResult
 
 PillVisionBoundary *-- GeminiPillVisionAPI
 PillVisionBoundary ..> BPillVisualFeatures
@@ -1245,10 +2314,63 @@ MFDSPillCatalogBoundary ..> PillCatalogRepository
 MFDSPillCatalogBoundary ..> BPillCatalogEntry
 PillCatalogRepository --> DBPillIdentificationReference
 
+BCheckNearbyPharmacy o-- AsyncPharmacyCatalog
+AsyncPharmacyCatalog ..> PharmacyCatalogRepository : worker thread; independent session per operation
+BCheckNearbyPharmacy o-- PersistentKoreanHolidayLookup
+BCheckNearbyPharmacy o-- HolidayEmergencyPharmacyAPI
+BCheckNearbyPharmacy o-- PharmacyLookupBoundary
+PersistentKoreanHolidayLookup o-- KoreanHolidayAPI
+PersistentKoreanHolidayLookup o-- SessionScopedKoreanHolidayCache
+SessionScopedKoreanHolidayCache ..> PharmacyCatalogRepository
+PersistentKoreanHolidayLookup ..|> HolidayLookupBoundary : 구조적 Protocol 충족
+BCheckNearbyPharmacy ..> NearbyCarePolicy
+BCheckNearbyHospital ..> NearbyCarePolicy
+BCheckNearbyPharmacy ..> BPharmacyLocationRecord
+BCheckNearbyPharmacy ..> BNearbyPharmacy
+NEMCPharmacyAPI ..|> PharmacyLookupBoundary
+NEMCPharmacyAPI ..> BPharmacyCatalogEntry
+PharmacyCatalogRepository ..> BPharmacyCatalogEntry
+PharmacyCatalogRepository --> DBPharmacyCatalog
+PharmacyCatalogRepository --> DBPharmacySearchCache
+PharmacyCatalogRepository --> DBPharmacyHolidaySchedule
+PharmacyCatalogRepository --> DBPharmacyHolidayFetch
+PharmacyCatalogRepository --> DBKoreanHoliday
+PharmacyCatalogRepository --> DBKoreanHolidayMonthFetch
+
+BManageLinkedChat *-- ChatMessageRepository
+BManageLinkedChat *-- MedicationCoursePolicy
+BManageLinkedChat o-- PatientCaregiverLinkRepository
+BManageLinkedChat o-- PharmacyCatalogRepository
+BManageLinkedChat --> DBSavedMedication
+BManageLinkedChat --> DBChatMessage
+BManageLinkedChat ..> BChatMessage
+DispatchChatMessageAlert o-- PushNotificationBoundary
+DispatchChatMessageAlert --> DBDevicePushToken
+ChatRouter ..> ChatConnectionManager : 실시간 연결 수신자 확인
+ChatRouter ..> BManageLinkedChat : 검증·저장·삭제
+ChatNotificationWorker *-- ProcessChatNotifications
+ProcessChatNotifications --> DBChatNotificationJob : 선점·임대 복구·재시도
+ProcessChatNotifications ..> ChatConnectionManager : 현재 접속 여부
+ProcessChatNotifications ..> DispatchChatMessageAlert : 전송 직전 권한·읽음 재검증
+BManageLinkedChat --> DBChatNotificationJob : 사용자 메시지와 함께 commit
+BManageLinkedChat ..> ManageCaregiverAlert : 원본 미복약의 확인 요청 검증
+ManageCaregiverAlert --> DBCaregiverAlertOutbox : 전달 건별 재알림 child
+ManageCaregiverAlert --> DBPatientCaregiverLink
+ManageCaregiverAlert ..> DispatchCaregiverAlert : 현재 미복약 유효성
+SyncDose --> DBDoseSyncOperation : 처리 영수증
+SyncDose ..> BCheckSchedule
+SyncDose ..> BManageLinkedChat
+ChatRouter ..> BAccountDependencies : HTTP 인증 / WebSocket 별도 검증
+ChatMessageRepository --> DBChatMessage
+ChatConnectionManager ..> BChatMessage
+
 BLinkPatientCaregiver --> DBPatientCaregiverLink
 BLinkPatientCaregiver --> DBPatientLinkCode
 BLinkPatientCaregiver --> DBCaregiverNotification
 BLinkPatientCaregiver o-- PatientCaregiverLinkRepository
+BCheckCaregiverMonitoring o-- PatientCaregiverLinkRepository
+BCheckCaregiverMonitoring *-- BCheckTodayMedicationInfo
+BCheckCaregiverMonitoring *-- BSetCaregiverNotification
 
 BCheckCaregiverMedication *-- BCheckSavedMedication
 BCheckCaregiverMedication *-- BCheckTodayMedicationInfo
@@ -1263,6 +2385,7 @@ BManageAccount --> DBUserAccount
 BManageAccount --> DBSavedMedication
 BManageAccount --> DBMedicationCompletion
 BManageAccount --> DBPatientCaregiverLink
+BManageAccount --> DBChatMessage
 BManageAccount --> DBUserSetting
 BManageAccount o-- IdentityDeletionBoundary
 FirebaseIdentityDeletionBoundary ..|> IdentityDeletionBoundary
@@ -1271,24 +2394,51 @@ BAccountDependencies ..> AppCheckTokenVerifier : App Check Token 검증
 BAccountDependencies --> BAuthenticatedPrincipal : identity 생성 및 freshness policy
 BAccountDependencies ..> BManageAccount : tombstone registration
 BAccountDependencies --> DBUserAccount : transaction lock scope
+BAccountDependencies --> AccountOperationLocks : SQLite holder/waiter lifecycle
 
 DispatchCaregiverAlert --|> MedicationCompletionEventBoundary
 DispatchCaregiverAlert o-- PushNotificationBoundary
 DispatchCaregiverAlert o-- PatientCaregiverLinkRepository
 DispatchCaregiverAlert --> DBCaregiverNotification
 DispatchCaregiverAlert --> DBDevicePushToken
+DispatchCaregiverAlert --> DBUserSetting : 알림 허용·표시 정책
+DispatchCaregiverAlert ..> BCheckSchedule : 전송 전 현재 미완료 재검증
 ProcessCaregiverAlertOutbox --> DBCaregiverAlertOutbox
+ProcessCaregiverAlertOutbox ..> BCheckSchedule : recheck dated completion before delivery
 ProcessCaregiverAlertOutbox *-- DispatchCaregiverAlert
+ProcessCaregiverAlertOutbox ..> BManageLinkedChat : 완료 이벤트의 자동 chat record 저장, 방송 없음
 CaregiverAlertOutboxWorker *-- ProcessCaregiverAlertOutbox
+CaregiverAlertOutboxWorker ..> QueueMissedDoseAlerts : due 처리 전 미복약 생성
+QueueMissedDoseAlerts o-- BCheckSchedule
+QueueMissedDoseAlerts --> DBCaregiverNotification
+QueueMissedDoseAlerts --> DBPatientCaregiverLink
+QueueMissedDoseAlerts --> DBCaregiverAlertOutbox : missed_deadline 멱등 저장
+
+note right of ProcessCaregiverAlertOutbox
+    완료·미복약 이벤트를 구분해 처리한다.
+    commit 이후 선점·전송하며 실패는 재시도한다.
+    한도 도달 시 dead_letter를 보존한다.
+end note
 
 FirebasePushNotificationBoundary ..> PushNotificationBoundary : 구조적 Protocol 충족
 
 BAuthorizationControl --> DBUserAccount
 BAuthorizationControl --> DBPatientCaregiverLink
+note "core/account_database_lock.py\nlock_account_operations(db, user_hashes)\n정렬·중복 제거한 계정별 PostgreSQL advisory transaction lock\nSQLite BEGIN IMMEDIATE; 새 transaction에서만 사용" as AccountDatabaseLock
+BAuthorizationControl ..> AccountDatabaseLock : 추천 조회·저장 단계
+BAccountDependencies ..> AccountDatabaseLock : 계정 등록·기존 mutation 보호
+BCheckHealthRecommendation ..> BAuthorizationControl : Router가 주입한 validate_access callback
+note bottom of BAccountDependencies
+    명시한 외부 조회 API만 계정 등록 commit 후 연결을 반환한다.
+    약 저장·채팅·계정 삭제 등 mutation의 요청 잠금은 유지한다.
+    건강 추천은 DB 단계마다 계정·연동을 다시 검사한다.
+end note
 SavedMedicationRetentionPolicy *-- MedicationCoursePolicy
 SavedMedicationRetentionPolicy --> DBSavedMedication
 SavedMedicationRetentionPolicy --> DBMedicationCompletion
 DataMaintenanceService *-- SavedMedicationRetentionPolicy
+DataMaintenanceService *-- ChatMessageRetentionPolicy
+ChatMessageRetentionPolicy --> DBChatMessage
 DataMaintenanceService --> DBPatientLinkCode
 DataMaintenanceService --> DBHealthRecommendationCache
 DataMaintenanceService --> DBCaregiverAlertOutbox
@@ -1299,6 +2449,9 @@ DrugCatalogSyncJob o-- PublicDrugSmallAPI
 DrugCatalogSyncJob o-- PublicDrugLargeAPI
 DrugCatalogSyncJob o-- MFDSPillAPI
 DrugCatalogSyncJob ..> PillCatalogRepository
+MFDSPillAPI ..> PillCatalogSnapshot
+PillCatalogSnapshot *-- PillCatalogDownloadReport
+DrugCatalogSyncJob ..> PillCatalogReconciliationReport
 DrugCatalogStore --> DBDrugBasicInfo
 DrugCatalogStore --> DBDrugApprovalInfo
 DrugCatalogStore --> DBPillIdentificationReference
@@ -1313,9 +2466,30 @@ DBUserAccount "1" -- "0..*" DBHealthRecommendationCache : {FK, CASCADE}
 
 DBUserAccount "1" -- "0..*" DBPatientCaregiverLink : patient {FK, CASCADE}
 DBUserAccount "1" -- "0..*" DBPatientCaregiverLink : caregiver {FK, CASCADE}
+DBPatientCaregiverLink "1" -- "0..*" DBChatMessage : {FK, CASCADE}
+DBUserAccount "1" -- "0..*" DBChatMessage : sender {FK, CASCADE}
+DBChatMessage "1" -- "0..1" DBChatNotificationJob : {FK, CASCADE}
+DBUserAccount "1" -- "0..*" DBChatNotificationJob : recipient {FK, CASCADE}
+DBUserAccount "1" -- "0..*" DBDoseSyncOperation : {FK, CASCADE}
 DBUserAccount "1" -- "0..*" DBPatientLinkCode : patient {FK, CASCADE}
 DBUserAccount "0..1" -- "0..*" DBPatientLinkCode : caregiver {FK, SET NULL}
 DBUserAccount "1" -- "0..*" DBCaregiverNotification : patient {FK, CASCADE}
 DBUserAccount "1" -- "0..*" DBCaregiverNotification : caregiver {FK, CASCADE}
+
+FCheckNearbyHospital --|> FCheckNearbyCare
+FCheckNearbyPharmacy --|> FCheckNearbyCare
+FCheckNearbyHospital --> HospitalRouter
+HospitalRouter --> BCheckNearbyHospital
+BCheckNearbyHospital --> NEMCHospitalAPI
+BCheckNearbyHospital --> HolidayLookupBoundary
+ChatRouter --> BCheckNearbyHospital : 서버가 병원 공유 내용 검증
+FChatHospitalContext --|> FChatPlaceContext
+FChatPharmacyContext --|> FChatPlaceContext
+FChatMessage --> FChatHospitalContext
+FManageLinkedChat --> FChatUnreadSummary
+ManageChatList --> FManageLinkedChat : 미확인 개수
+NotificationService --> LinkedChatEntryUI
+LinkedChatEntryUI --> FLinkPatientCaregiver : 현재 계정의 활성 연결·역할
+LinkedChatEntryUI --> LinkedChatUI : 최신 위치 또는 기존 초안 유지
 
 @enduml

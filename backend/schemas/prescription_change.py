@@ -13,10 +13,17 @@ from entities.patient_hash_entity import (
 
 
 # 클래스명: PrescriptionChangeMedication
-# 역할: 현재 처방에서 비교에 필요한 약품과 복약 일정 정보를 표현한다.
+# 역할:
+# - 현재 처방에서 비교에 필요한 약품과 복약 일정 정보를 표현한다.
 # 주요 책임:
-#   - 공공데이터 품목 식별자, 약품명과 효능 정보를 보관한다.
-#   - 용량, 횟수, 기간 비교에 필요한 값을 보관한다.
+# - 공공데이터 품목 식별자, 약품명과 효능 정보를 보관한다.
+# - 용량, 횟수, 기간 비교에 필요한 값을 보관한다.
+# 속성:
+# - item_seq (str): 식약처의 표준 품목 식별자.
+# - item_name (str): 공공 약품 품목명.
+# - dosage_per_time (str): 처방에 표시된 1회 복용량.
+# - daily_frequency (str): 하루 복용 횟수 또는 그 설명.
+# - total_days (str): 처방된 총 복용 기간.
 class PrescriptionChangeMedication(BaseModel):
     item_seq: str = Field(default="", max_length=64)
     item_name: str = Field(min_length=1, max_length=500)
@@ -27,10 +34,14 @@ class PrescriptionChangeMedication(BaseModel):
 
 
 # 클래스명: PrescriptionChangeRequest
-# 역할: 현재 처방과 환자 범위를 처방 변화 비교 Control에 전달한다.
+# 역할:
+# - 현재 처방과 환자 범위를 처방 변화 비교 Control에 전달한다.
 # 주요 책임:
-#   - 비교 대상 환자와 현재 조제일자를 지정한다.
-#   - 한 번에 비교할 현재 처방 약품 목록을 제한한다.
+# - 비교 대상 환자와 현재 조제일자를 지정한다.
+# - 한 번에 비교할 현재 처방 약품 목록을 제한한다.
+# 속성:
+# - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
+# - prescription_date (date | None): 확인된 경우 처방 조제일자.
 class PrescriptionChangeRequest(BaseModel):
     patient_hash: str = Field(
         default=DEFAULT_PATIENT_HASH,
@@ -45,7 +56,14 @@ class PrescriptionChangeRequest(BaseModel):
 
 
 # 클래스명: PrescriptionScheduleSnapshot
-# 역할: 처방 변화 전후의 복약 일정 값을 표현한다.
+# 역할:
+# - 처방 변화 전후의 복약 일정 값을 표현한다.
+# 주요 책임:
+# - 전후 용량·횟수·복용 기간 값을 같은 형식으로 보관한다.
+# 속성:
+# - dosage_per_time (str): 처방에 표시된 1회 복용량.
+# - daily_frequency (str): 하루 복용 횟수 또는 그 설명.
+# - total_days (str): 처방된 총 복용 기간.
 class PrescriptionScheduleSnapshot(BaseModel):
     dosage_per_time: str = ""
     daily_frequency: str = ""
@@ -53,7 +71,12 @@ class PrescriptionScheduleSnapshot(BaseModel):
 
 
 # 클래스명: PrescriptionMedicationChange
-# 역할: 약품 한 건의 추가, 미확인, 일정 변경 결과를 표현한다.
+# 역할:
+# - 약품 한 건의 추가, 미확인, 일정 변경 결과를 표현한다.
+# 주요 책임:
+# - 약품 식별값·변화 유형과 전후 일정 스냅샷을 함께 전달한다.
+# 속성:
+# - item_name (str): 공공 약품 품목명.
 class PrescriptionMedicationChange(BaseModel):
     change_type: str
     item_name: str
@@ -63,7 +86,10 @@ class PrescriptionMedicationChange(BaseModel):
 
 
 # 클래스명: PrescriptionChangeSummary
-# 역할: 처방 변화 유형별 개수를 요약한다.
+# 역할:
+# - 처방 변화 유형별 개수를 요약한다.
+# 주요 책임:
+# - 추가·미확인·일정 변경 유형별 수를 일관된 기본값으로 제공한다.
 class PrescriptionChangeSummary(BaseModel):
     added_count: int = 0
     missing_count: int = 0
@@ -72,7 +98,10 @@ class PrescriptionChangeSummary(BaseModel):
 
 
 # 클래스명: PrescriptionChangeResponse
-# 역할: 관련성 판정 상태, 이전 처방 기준일과 처방 변화 결과를 반환한다.
+# 역할:
+# - 관련성 판정 상태, 이전 처방 기준일과 처방 변화 결과를 반환한다.
+# 주요 책임:
+# - 관련 처방 여부, 이전 비교 날짜와 약품별 변화·요약을 함께 직렬화한다.
 class PrescriptionChangeResponse(BaseModel):
     has_previous_prescription: bool
     comparison_status: Literal[

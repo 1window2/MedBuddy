@@ -1,3 +1,6 @@
+# File Name: compose.self-hosted.yml
+# Role: Connects the self-hosted API, databases, catalog jobs and runtime secret mounts.
+
 name: medbuddy-beta
 
 services:
@@ -37,10 +40,35 @@ services:
       retries: 10
     networks: [backend]
 
-  catalog-bootstrap:
+  database-migrate:
     build:
       context: ./backend
     restart: "no"
+    env_file:
+      - ${MEDBUDDY_BACKEND_ENV_FILE:-./deploy/backend.env}
+    environment:
+      APP_ENV: production
+      RUNTIME_ROLE: migration
+      DATABASE_HOST: postgres
+      DATABASE_PORT: "5432"
+      DATABASE_NAME: medbuddy
+      DATABASE_USER: medbuddy
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      AUTO_CREATE_SCHEMA: "false"
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        python -m alembic upgrade head
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [backend]
+
+  catalog-bootstrap:
+    build:
+      context: ./backend
+    restart: on-failure
     env_file:
       - ${MEDBUDDY_BACKEND_ENV_FILE:-./deploy/backend.env}
     environment:
@@ -56,11 +84,11 @@ services:
       - /bin/sh
       - -ec
       - |
-        python -m alembic upgrade head
         python scripts/sync_drug_catalog.py --dataset all --page-size 500 --max-retries 5 --only-if-empty
+        python scripts/sync_pharmacy_catalog.py --page-size 1000 --max-retries 5 --only-if-empty
     depends_on:
-      postgres:
-        condition: service_healthy
+      database-migrate:
+        condition: service_completed_successfully
     networks: [backend]
 
   catalog-refresh:
@@ -87,7 +115,12 @@ services:
         sleep "$${CATALOG_REFRESH_INTERVAL_SECONDS}"
         while true; do
           if python scripts/sync_drug_catalog.py --dataset all --page-size 500 --max-retries 5; then
-            sleep "$${CATALOG_REFRESH_INTERVAL_SECONDS}"
+            if python scripts/sync_pharmacy_catalog.py --page-size 1000 --max-retries 5; then
+              sleep "$${CATALOG_REFRESH_INTERVAL_SECONDS}"
+            else
+              echo "Pharmacy catalog refresh failed; retrying after the configured backoff." >&2
+              sleep "$${CATALOG_REFRESH_RETRY_SECONDS}"
+            fi
           else
             echo "Catalog refresh failed; retrying after the configured backoff." >&2
             sleep "$${CATALOG_REFRESH_RETRY_SECONDS}"
@@ -133,9 +166,9 @@ services:
       - /bin/sh
       - -ec
       - |
-        exec python -m uvicorn main:app --host 0.0.0.0 --port 8080 --proxy-headers --forwarded-allow-ips=*
+        exec python -m uvicorn main:app --host 0.0.0.0 --port 8080 --proxy-headers --forwarded-allow-ips=127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
     depends_on:
-      catalog-bootstrap:
+      database-migrate:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy

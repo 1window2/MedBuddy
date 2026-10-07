@@ -1,3 +1,5 @@
+# 파일명: d74a8e52f1c0_add_device_push_tokens.py
+# 역할: 인증 사용자별 FCM 기기 토큰을 저장할 테이블과 인덱스를 추가한다.
 """FCM 기기 토큰 저장 테이블을 추가한다.
 
 Revision ID: d74a8e52f1c0
@@ -19,6 +21,8 @@ depends_on: str | Sequence[str] | None = None
 # 함수이름: upgrade
 # 함수역할:
 # - 인증 사용자별 FCM 기기 토큰을 저장할 테이블과 인덱스를 추가한다.
+# 매개변수:
+# - 없음.
 # 반환값:
 # - 없음
 def upgrade() -> None:
@@ -61,6 +65,8 @@ def upgrade() -> None:
 # 함수이름: downgrade
 # 함수역할:
 # - FCM 기기 토큰 테이블과 인덱스를 제거한다.
+# 매개변수:
+# - 없음.
 # 반환값:
 # - 없음
 def downgrade() -> None:

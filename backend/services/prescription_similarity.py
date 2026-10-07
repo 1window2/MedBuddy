@@ -11,12 +11,15 @@ PRESCRIPTION_COMPARISON_WINDOW_DAYS = 90
 
 
 # 클래스명: PrescriptionSimilarityMedication
-# 역할: 처방 관련성 판정에 필요한 최소 약품 정보를 표현한다.
+# 역할:
+# - 처방 관련성 판정에 필요한 최소 약품 정보를 표현한다.
+# 주요 책임:
+# - 품목·성분 겹침과 치료 맥락 계산에 필요한 데이터만 불변 값으로 전달한다.
 # 속성:
-#   - item_seq: 공공데이터 품목 식별자
-#   - item_name: 약품명
-#   - efficacy: 치료 맥락 추출에 사용할 효능 문구
-#   - main_ingredient: 로컬 허가정보에서 조회한 주성분
+# - item_seq: 공공데이터 품목 식별자
+# - item_name: 약품명
+# - efficacy: 치료 맥락 추출에 사용할 효능 문구
+# - main_ingredient: 로컬 허가정보에서 조회한 주성분
 @dataclass(frozen=True)
 class PrescriptionSimilarityMedication:
     item_seq: str = ""
@@ -26,11 +29,14 @@ class PrescriptionSimilarityMedication:
 
 
 # 클래스명: PrescriptionSimilarityResult
-# 역할: 두 처방의 관련 여부와 판정 근거를 표현한다.
+# 역할:
+# - 두 처방의 관련 여부와 판정 근거를 표현한다.
+# 주요 책임:
+# - 관련성 판정과 후보 정렬용 점수 및 가장 강한 근거를 하나의 불변 결과로 전달한다.
 # 속성:
-#   - is_related: 비교 가능한 관련 처방인지 여부
-#   - score: 후보 선택에 사용할 유사도 점수
-#   - match_basis: 가장 강한 관련성 판정 근거
+# - is_related: 비교 가능한 관련 처방인지 여부
+# - score: 후보 선택에 사용할 유사도 점수
+# - match_basis: 가장 강한 관련성 판정 근거
 @dataclass(frozen=True)
 class PrescriptionSimilarityResult:
     is_related: bool
@@ -39,11 +45,12 @@ class PrescriptionSimilarityResult:
 
 
 # 클래스명: PrescriptionSimilarityService
-# 역할: 외부 API 호출 없이 저장된 약품 정보만으로 처방 관련성을 판정한다.
+# 역할:
+# - 외부 API 호출 없이 저장된 약품 정보만으로 처방 관련성을 판정한다.
 # 주요 책임:
-#   - 동일 품목과 동일 성분의 처방 간 겹침을 계산한다.
-#   - 효능 문구를 치료 맥락으로 변환해 완전히 교체된 처방을 보조 판정한다.
-#   - 보수적인 임계값을 사용해 무관한 처방의 잘못된 비교를 방지한다.
+# - 동일 품목과 동일 성분의 처방 간 겹침을 계산한다.
+# - 효능 문구를 치료 맥락으로 변환해 완전히 교체된 처방을 보조 판정한다.
+# - 보수적인 임계값을 사용해 무관한 처방의 잘못된 비교를 방지한다.
 class PrescriptionSimilarityService:
     _NON_KEY_PATTERN = re.compile(r"[^0-9a-z가-힣]")
     _DOSAGE_PATTERN = re.compile(
@@ -151,8 +158,8 @@ class PrescriptionSimilarityService:
     # 함수역할:
     # - 동일 품목, 동일 성분, 치료 맥락 순서로 두 처방의 관련성을 계산한다.
     # 매개변수:
-    # - previous: 비교 후보인 이전 처방 약품 목록
-    # - current: 현재 분석한 처방 약품 목록
+    # - previous (list[PrescriptionSimilarityMedication]): 비교 후보인 이전 처방 약품 목록
+    # - current (list[PrescriptionSimilarityMedication]): 현재 분석한 처방 약품 목록
     # 반환값:
     # - 관련 여부, 유사도 점수, 가장 강한 판정 근거
     def compare(
@@ -177,6 +184,13 @@ class PrescriptionSimilarityService:
         }
         match_basis, score = max(
             weighted_scores.items(),
+            # 함수이름: 최강 관련성 근거 선택 람다
+            # 함수역할:
+            # - 관련성 근거와 가중 점수 쌍에서 점수를 선택하여 가장 강한 근거를 찾게 한다.
+            # 매개변수:
+            # - item (tuple[str, float]): 관련성 근거와 해당 가중 점수.
+            # 반환값:
+            # - 최댓값 비교에 사용할 가중 점수.
             key=lambda item: item[1],
         )
         is_related = (
@@ -194,7 +208,7 @@ class PrescriptionSimilarityService:
     # 함수역할:
     # - 품목 식별자와 정규화한 약품명으로 동일 약품 비교 키를 만든다.
     # 매개변수:
-    # - medications: 비교 키를 생성할 처방 약품 목록
+    # - medications (list[PrescriptionSimilarityMedication]): 비교 키를 생성할 처방 약품 목록
     # 반환값:
     # - 품목 식별자와 약품명 키 집합
     def _product_keys(
@@ -215,7 +229,7 @@ class PrescriptionSimilarityService:
     # 함수역할:
     # - 허가정보 주성분과 약품명 괄호의 성분명으로 비교 키를 만든다.
     # 매개변수:
-    # - medications: 성분 비교 키를 생성할 처방 약품 목록
+    # - medications (list[PrescriptionSimilarityMedication]): 성분 비교 키를 생성할 처방 약품 목록
     # 반환값:
     # - 정규화된 성분 키 집합
     def _ingredient_keys(
@@ -234,7 +248,7 @@ class PrescriptionSimilarityService:
     # 함수역할:
     # - 복합 주성분 문자열을 용량이 제거된 개별 성분 키로 나눈다.
     # 매개변수:
-    # - value: 허가정보에서 읽은 주성분 문자열
+    # - value (str): 허가정보에서 읽은 주성분 문자열
     # 반환값:
     # - 개별 성분 비교 키 집합
     def _split_ingredient_keys(self, value: str) -> set[str]:
@@ -249,7 +263,7 @@ class PrescriptionSimilarityService:
     # 함수역할:
     # - 약품명 괄호 안에 표기된 성분명을 보조 비교 키로 추출한다.
     # 매개변수:
-    # - item_name: 원본 약품명
+    # - item_name (str): 원본 약품명
     # 반환값:
     # - 괄호에서 추출한 성분 키 집합
     def _parenthetical_ingredient_keys(self, item_name: str) -> set[str]:
@@ -263,8 +277,8 @@ class PrescriptionSimilarityService:
     # 함수역할:
     # - 두 처방의 치료 맥락 빈도 벡터 간 코사인 유사도를 계산한다.
     # 매개변수:
-    # - previous: 이전 처방 약품 목록
-    # - current: 현재 처방 약품 목록
+    # - previous (list[PrescriptionSimilarityMedication]): 이전 처방 약품 목록
+    # - current (list[PrescriptionSimilarityMedication]): 현재 처방 약품 목록
     # 반환값:
     # - 0부터 1 사이의 치료 맥락 유사도
     def _context_cosine(
@@ -291,7 +305,7 @@ class PrescriptionSimilarityService:
     # 함수역할:
     # - 약품명과 효능 문구에서 치료 맥락별 출현 횟수를 집계한다.
     # 매개변수:
-    # - medications: 치료 맥락을 읽을 처방 약품 목록
+    # - medications (list[PrescriptionSimilarityMedication]): 치료 맥락을 읽을 처방 약품 목록
     # 반환값:
     # - 치료 맥락별 출현 횟수
     def _context_counts(
@@ -313,8 +327,8 @@ class PrescriptionSimilarityService:
     # 함수역할:
     # - 두 키 집합의 겹침 정도를 다이스 유사도로 계산한다.
     # 매개변수:
-    # - left: 첫 번째 비교 키 집합
-    # - right: 두 번째 비교 키 집합
+    # - left (set[str]): 첫 번째 비교 키 집합
+    # - right (set[str]): 두 번째 비교 키 집합
     # 반환값:
     # - 0부터 1 사이의 집합 유사도
     @staticmethod
@@ -327,7 +341,7 @@ class PrescriptionSimilarityService:
     # 함수역할:
     # - 비교 문자열에서 공백과 구두점을 제거해 소문자 키로 변환한다.
     # 매개변수:
-    # - value: 정규화할 원본 문자열
+    # - value (str): 정규화할 원본 문자열
     # 반환값:
     # - 약품과 성분 비교에 사용할 문자열 키
     def _normalize_key(self, value: str) -> str:

@@ -1,14 +1,32 @@
+// File Name: auth_config.dart
+// Role: Reads build-time Firebase authentication settings and enforces secure release configuration.
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
+// Class Name: AuthenticationMode
+// Role: Selects explicit local development identity or Firebase-backed authentication.
+// Responsibilities:
+// - Keep disabled authentication distinguishable from the secure mode required by release and profile builds.
 enum AuthenticationMode { disabled, firebase }
 
+// Class Name: AuthConfig
+// Role: Holds authentication, emulator, App Check, and Firebase build configuration.
+// Responsibilities:
+// - Reject unsupported modes or missing Firebase identifiers and expose validated FirebaseOptions.
+// Attributes:
+// - appCheckRequired (bool): Whether requests require App Check attestation.
 class AuthConfig {
   static const String _modeValue = String.fromEnvironment(
     'MEDBUDDY_AUTH_MODE',
     defaultValue: 'disabled',
   );
 
+  // Function Name: mode
+  // Description: Parses the configured authentication mode case-insensitively and rejects values other than disabled or firebase.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - AuthenticationMode: Parses the configured authentication mode case-insensitively and rejects values other than disabled or firebase.
   static AuthenticationMode get mode => switch (_modeValue.toLowerCase()) {
     'disabled' => AuthenticationMode.disabled,
     'firebase' => AuthenticationMode.firebase,
@@ -46,6 +64,12 @@ class AuthConfig {
     defaultValue: true,
   );
 
+  // Function Name: validate
+  // Description: Requires Firebase mode for release and profile builds and checks the four required Firebase identifiers whenever secure authentication is enabled.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No return value.
   static void validate() {
     if ((kReleaseMode || kProfileMode) && mode != AuthenticationMode.firebase) {
       throw StateError(
@@ -63,6 +87,12 @@ class AuthConfig {
     }
   }
 
+  // Function Name: firebaseOptions
+  // Description: Validates authentication configuration before constructing the Firebase application options from build-time values.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - FirebaseOptions: Validates authentication configuration before constructing the Firebase application options from build-time values.
   static FirebaseOptions get firebaseOptions {
     validate();
     return const FirebaseOptions(

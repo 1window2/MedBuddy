@@ -1,3 +1,6 @@
+# File Name: backend-ci.yml
+# Role: Checks backend behavior and PostgreSQL migration compatibility on branch updates.
+
 name: FastAPI CI
 
 on:
@@ -95,4 +98,4 @@ jobs:
         python -m alembic -c alembic.ini downgrade base
         python -m alembic -c alembic.ini upgrade head
         python -m alembic -c alembic.ini current
-        python -m pytest -p no:cacheprovider tests/test_postgres_catalog_sync.py
+        python -m pytest -p no:cacheprovider tests/test_postgres_catalog_sync.py tests/test_pharmacy_cache_migration.py

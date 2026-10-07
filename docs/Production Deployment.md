@@ -7,7 +7,7 @@ MedBuddy production runs on a dedicated Ubuntu mini PC.
 ```text
 Android client
     |
-    | HTTPS
+    | HTTPS / WSS
     v
 api.medbuddy.pp.ua
     |
@@ -36,6 +36,63 @@ The production ingress is Cloudflare Tunnel only.
 - Caddy direct-public ingress is not used.
 - PostgreSQL and Redis remain on the private Docker network.
 - FastAPI port `8000` is bound only to host loopback for local diagnostics.
+- uvicorn accepts `X-Forwarded-For` only from loopback and private addresses
+  (`--forwarded-allow-ips`), which covers `cloudflared` on the Docker network.
+  Cloudflare appends the connecting address after any value the caller sent, so
+  the backend's per-IP quota uses that last public entry rather than a
+  caller-chosen one. Do not widen this list to `*`. The change takes effect when
+  the backend container is rebuilt and restarted.
+
+Cloudflare uses a deny-by-default custom rule named
+`MedBuddy API route allowlist`. Keep the rule active and add every intentionally
+public backend prefix before enabling a new client feature. The v0.2.0 rule is:
+
+```text
+(http.host eq "api.medbuddy.pp.ua" and not (
+  starts_with(http.request.uri.path, "/api/v1/medication/") or
+  starts_with(http.request.uri.path, "/api/v1/auth/") or
+  starts_with(http.request.uri.path, "/api/v1/pharmacy/") or
+  starts_with(http.request.uri.path, "/api/v1/hospitals/") or
+  starts_with(http.request.uri.path, "/api/v1/chat/") or
+  http.request.uri.path eq "/health" or
+  http.request.uri.path eq "/ready" or
+  http.request.uri.path eq "/ready/catalogs" or
+  starts_with(http.request.uri.path, "/cdn-cgi/")
+))
+```
+
+Its action is `Block`, so paths outside that list stop at Cloudflare. Adding a
+prefix here only permits routing to FastAPI; Firebase Authentication, optional
+App Check enforcement, active-link authorization, validation, and rate limits
+still apply at the backend.
+
+Before signing v0.2.0, verify that the hospital prefix and exact
+`/ready/catalogs` exception remain in the live rule. The repository rule is a
+deployment instruction; editing it does not update Cloudflare. Verify
+`/ready/catalogs` returns ready JSON, and run
+`python3 scripts/check_release_ingress.py --origin https://api.medbuddy.pp.ua`.
+Its unauthenticated feature probes must reach FastAPI's JSON authentication
+denial before the release workflow can proceed. It performs no authenticated
+search or chat write.
+
+Operational status on September 30: the live Cloudflare rule includes both
+exceptions and remains active with the `Block` action. The reviewed v0.2.0
+backend at `16191b2` was deployed after a database backup and isolated
+restore/migration rehearsal. The live database is at `b3a7d9e2f601`;
+pharmacy, hospital, and chat probes reach FastAPI authentication, public
+`/ready/catalogs` returns JSON HTTP 200, and an unknown API path still receives
+Cloudflare HTML HTTP 403. This closes the ingress/backend-version gate, not
+App Check, upstream hospital access, catalog freshness, or physical-device
+acceptance. The September 30 hospital probe returned HTTP 403/reason code `30`.
+On October 1, hospital-service approval was verified in the portal, then bounded
+location, detail and specialty-list checks passed through the deployed backend's
+parser using its existing shared key. Its search control and calendar dependency
+also passed one-result specialty and open-at-time searches. No secret replacement,
+application deployment or restart was needed. This closes the upstream
+credential/parser blocker; authenticated client acceptance and outage/quota
+checks remain open. See [the provider follow-up](qa/v0.2.0-2026-10-01-hospital-provider-approval.md)
+and remaining gates in [the release TODO](TODO.md).
+See [the production rollout evidence](qa/v0.2.0-2026-09-30-production-rollout.md).
 
 ## Local Production Configuration
 
@@ -63,6 +120,74 @@ deploy/backend.env.example
 Never commit the real `.env` files, Firebase Admin credential, Cloudflare Tunnel
 token, API keys, database passwords, or Android signing material.
 
+### Cloudflare token file permissions
+
+The pinned `cloudflared` image runs as UID/GID `65532:65532`. Compose mounts
+the token as a read-only host file; a host-owner-only `0600` token is not
+readable by that container user. On this Linux deployment, grant a file ACL
+to the container UID without granting access to the host group or everyone:
+
+```bash
+setfacl -m u:65532:r-- /absolute/path/to/cloudflare-tunnel-token
+getfacl /absolute/path/to/cloudflare-tunnel-token
+docker compose --env-file deploy/.env -f compose.self-hosted.yml restart cloudflared
+```
+
+Resolve the actual path from your private deployment configuration; never
+print the token. Recheck the ACL after replacing the file, restoring a backup,
+or changing its permissions: `chmod 600` disables the ACL's effective read
+permission. Recheck the image's user before changing the pinned image. Keep
+the secret directory private and do not use `chmod 644` or run the tunnel as
+root to bypass the problem.
+
+After a restart, verify both container health and public `/health` and `/ready`.
+A healthy local backend alone cannot detect a disconnected tunnel. The
+2026-09-10 check found public HTTP 530 while the tunnel repeatedly reported
+`Failed to read token file ... permission denied`; restoring the restricted
+ACL is required before continuing device tests.
+
+The backend environment must include one public-data credential authorized for
+the configured medication services and the National Emergency Medical Center
+pharmacy services. Public Data Portal approval is service-specific: nationwide
+weekly pharmacy data and the separate
+[NEMC holiday emergency institution service](https://www.data.go.kr/data/15000480/openapi.do)
+must both list the deployed key as approved. A key authorized only for the
+weekly catalog produces `SERVICE_KEY_IS_NOT_REGISTERED_ERROR` for exact-date
+holiday rosters; MedBuddy then labels and uses the bounded weekly-schedule
+fallback. Keep every public-data credential on the backend only:
+
+```text
+PUBLIC_DATA_API_KEY=...
+PHARMACY_API_BASE_URL=https://apis.data.go.kr/B552657/ErmctInsttInfoInqireService
+PHARMACY_API_TIMEOUT_SECONDS=12
+```
+
+The hospital feature additionally needs approval for the
+[NEMC hospital lookup service](https://www.data.go.kr/data/15000736/openapi.do).
+It uses `HOSPITAL_API_KEY` when set, otherwise `PUBLIC_DATA_API_KEY`.
+Both nearby features use `PUBLIC_DATA_API_KEY` for the
+[KASI holiday calendar](https://www.data.go.kr/data/15012690/openapi.do), so approve
+that service separately even when the hospital-specific key works.
+Copy placeholders from `deploy/backend.env.example` and fill the ignored
+`deploy/backend.env` locally; never publish the populated file.
+
+Do not place the public-data key in Flutter compile-time values. The client
+sends search coordinates and filters to the authenticated `/api/v1/pharmacy`
+or `/api/v1/hospitals` boundary after the user chooses nearby care from Home.
+The hospital provider budget defaults to 800 calls per process per day and
+resets on restart. Multiple workers have independent counters; this is not a
+shared production quota. Keep worker counts and portal quotas consistent, and
+monitor provider failures without logging keys or credential-bearing URLs.
+
+The nearby endpoint accepts `search_mode` (`open_at_time`, `late_hours`,
+`official_late_night`, `weekend_holiday`, or `all`) and an ISO-8601
+`target_datetime`. Filtering happens before the response limit. Legal-holiday
+months and exact-date NEMC holiday pharmacy rosters are cached in PostgreSQL;
+the response reports catalog staleness and any bounded fallback. The versioned
+Seoul public late-night designation overlay records its official source and
+verification date and is refreshed during both bootstrap and periodic catalog
+synchronization.
+
 Set `POSTGRES_PASSWORD` once in `deploy/.env` as the raw PostgreSQL password.
 The backend receives structured host/user/password fields and lets SQLAlchemy
 encode the connection URL, so passwords containing URL-reserved characters
@@ -79,7 +204,108 @@ the directly installable APK; its Google Play AAB is always built with App
 Check enabled. The temporary exception and the mandatory v0.2.0 restoration
 checklist are tracked in [TODO.md](TODO.md).
 
+### Protected Android App Check preflight
+
+Account enrollment is owner-managed and deferred as of October 2. Keep the
+existing off-Play exception unchanged until an eligible client and the rollout
+evidence are ready. Do not enable backend enforcement merely because Firebase
+Console shows a registered provider.
+
+Every signed build whose normalized App Check policy is `true` now reads the
+live Firebase Android app and Play Integrity configuration before restoring
+Firebase configuration or keystore secrets. Missing identity configuration,
+denied reads, redirects, unavailable APIs, certificate mismatches and
+unreviewed verdict settings block the build. The temporary `false` beta APK
+path skips this preflight; `main` cannot use that exception. An AAB generated
+under the beta exception still requires full Play acceptance before publication.
+
+Owner prerequisites, to configure when enrollment resumes:
+
+- In Play Console, obtain the **app signing** SHA-256 fingerprint, not just the
+  upload-key fingerprint. Register the delivered Play certificate in the
+  intended Firebase Android app. The protected environment's `ANDROID_SIGNING_CERT_SHA256` continues to
+  verify the locally signed APK/AAB upload artifacts;
+  `ANDROID_PLAY_SIGNING_CERT_SHA256` identifies the Play-delivered certificate.
+- Enable Firebase Management and Firebase App Check APIs in the same project.
+  Create a dedicated service account with a project-level custom role containing
+  only `firebase.clients.get` and `firebaseappcheck.playIntegrityConfig.get`.
+  Do not reuse a backend Admin credential or deployment identity. These read
+  permissions are listed in the official [Firebase IAM reference](https://docs.cloud.google.com/iam/docs/roles-permissions/firebase)
+  and [App Check IAM reference](https://docs.cloud.google.com/iam/docs/roles-permissions/firebaseappcheck).
+- Configure Workload Identity Federation for the exact repository identity,
+  `beta-android` environment and `release-android.yml` workflow, restricted to
+  `main` and `beta/v0.2.0` refs. Grant the scoped federated principal
+  `roles/iam.workloadIdentityUser` on that service account, not a general
+  repository-wide deployment grant. Set protected variables
+  `GCP_APP_CHECK_WORKLOAD_IDENTITY_PROVIDER` and `GCP_APP_CHECK_SERVICE_ACCOUNT`.
+  The [Google authentication action](https://github.com/google-github-actions/auth)
+  generates a five-minute OAuth token with no credential file or SDK credential
+  export. Its API-required `cloud-platform` scope does not override the service
+  account's read-only IAM permissions.
+- Set `APP_CHECK_RELEASE_DISTRIBUTION` to `play` (default, Play-only licensing
+  required) or `both` (Play and recognized direct installs). Protected `play`
+  builds produce and verify only an AAB. `both` additionally builds an APK, but
+  its upload/APK certificate must equal the Play app-signing certificate:
+  [Play recognition checks the delivered app and certificate](https://developer.android.com/google/play/integrity/verdicts#application-integrity-field).
+  Registering a different upload certificate in Firebase cannot make that APK
+  Play-recognized. Matching certificates still do not prove that this version
+  is published or eligible. Set
+  `APP_CHECK_RELEASE_DEVICE_INTEGRITY` to the reviewed `NO_INTEGRITY` default or
+  `MEETS_DEVICE_INTEGRITY`. The preflight requires `PLAY_RECOGNIZED` in either
+  channel policy, checks licensing and the exact device level, and rejects
+  optional basic/strong levels until their separate opt-in/acceptance is
+  addressed. Review [Firebase's channel recommendations](https://firebase.google.com/docs/app-check/android/play-integrity-provider)
+  before choosing these values; the script never changes the provider policy.
+
+The `medbuddy-android-<commit>` artifact contains the AAB and its checksum.
+The separate `medbuddy-android-apk-<commit>` artifact is uploaded only when the
+normalized policy permits a direct APK. This prevents an old or unverified APK
+from being included in a Play-only artifact. Off-Play beta builds keep the APK
+with App Check disabled and the AAB with App Check enabled; their AAB is not
+publication-ready merely because compilation succeeds.
+
+`scripts/check_release_app_check.py` can also run manually with a short-lived
+OAuth token supplied only through `GOOGLE_ACCESS_TOKEN` and its documented
+`--help` arguments. Never put the token in command-line arguments, Git, issue
+comments or logs. The check compares the active Android app's project, package,
+app ID and live SHA-256 registrations, then verifies the corresponding
+[Play Integrity configuration](https://firebase.google.com/docs/reference/appcheck/rest/v1beta/projects.apps.playIntegrityConfig).
+Passing it does **not** prove the Play-to-Cloud project link, runtime token
+issuance, quota headroom, or physical-device acceptance. Those gates stay open.
+
 ## Start or Update Production
+
+### Durable chat rollout (`b3a7d9e2f601`)
+
+The chat-delivery worker requires this migration after `6d4f8a2c9301`.
+Back up before migration and stop old workers during the coordinated update.
+The new table starts empty: existing chat history does not generate old pushes.
+Rollback discards pending delivery jobs, so do not downgrade while the new
+worker is running. See [durable chat delivery](MedBuddy%20-%20Durable%20Chat%20Delivery.md)
+for retry, suppression and duplicate-delivery semantics.
+
+### Pharmacy-cache rollout (`6d4f8a2c9301`)
+
+The September 24 pharmacy-sharing changes require this migration before the
+updated API starts. Back up the database before deployment and retain the prior
+application revision. Do not bypass the revision check with `alembic stamp head`.
+The `database-migrate` dependency runs migrations before backend startup;
+verify its successful exit and then check `/ready`.
+
+The automated rehearsal in `backend/tests/test_pharmacy_cache_migration.py`
+covers upgrade, repeat upgrade, rollback/re-upgrade, preservation of existing
+catalog/chat/dose records, and adoption of an already-created cache table with
+or without its expiry index. CI runs it against PostgreSQL 16 as well as SQLite.
+This is synthetic-data evidence, not a production backup/restore rehearsal.
+
+Rolling back only this migration to `f8a2c6d901be` intentionally discards the
+temporary pharmacy-search cache, but preserves already-sent pharmacy snapshots
+in chat and the national catalog. Stop the updated backend before rollback and
+pair the older schema with the older backend; do not leave the new API serving
+against a downgraded schema. A full database restore has separate data-loss
+implications and is not equivalent to this schema rollback.
+
+### Deployment command
 
 From the repository root:
 
@@ -98,19 +324,63 @@ The five long-running production services must remain running or healthy:
 - `backend`
 - `cloudflared`
 
-Before those services start, the one-shot `catalog-bootstrap` service applies
-the Alembic migrations and seeds any empty shared medication catalog. A
-successful deployment therefore shows `catalog-bootstrap` as exited with code
-0; it is not expected to remain running.
+The one-shot `database-migrate` service applies Alembic migrations before the
+API or catalog jobs start. It must exit with code 0; migration failure still
+blocks startup. The independent `catalog-bootstrap` service seeds empty
+medication and pharmacy catalogs and retries failures. Its successful exit
+enables the periodic refresh worker, but does not gate the API or tunnel.
+
+`/ready` checks core database/schema, authentication and required Redis readiness.
+`/ready/catalogs` separately checks that all four shared catalogs contain rows;
+it returns 503 until seeded and caches results independently for five seconds.
+This is a seed-presence check, not a completeness or freshness certificate.
+Signed Android releases require both readiness endpoints. Catalog-dependent
+features may remain unavailable during initial import; pill identification
+reports unavailable reference data explicitly. Existing atomic replacement and
+external-provider fallback policies are unchanged.
+
+If initial catalog provisioning is unavailable, the full-stack `--wait` command
+may not complete successfully. Start only `backend cloudflared` with the same
+Compose options to recover core services without waiting for catalogs, then
+start `catalog-bootstrap catalog-refresh` separately and monitor their logs.
+Do not treat core readiness alone as approval for a new release.
 
 The separate `catalog-refresh` service performs a full atomic synchronization
 every seven days by default. Each successful complete refresh removes basic,
-approval, and pill records no longer returned by MFDS while preserving local AI
-summaries for retained product identifiers. A failed full refresh keeps the
-last committed catalog, and a deliberately page-limited maintenance job
+approval, pill, and pharmacy records no longer returned by their government
+sources while preserving local AI summaries for retained product identifiers.
+Each catalog replacement is atomic. A failed full refresh keeps the last
+committed catalog, and a deliberately page-limited maintenance job
 never prunes unvisited rows. Production retries a failed full refresh after one
 hour. Configure the two intervals in `deploy/.env`; do not add
 `--only-if-empty` to this periodic service.
+
+The pill catalog additionally requires complete upstream row accounting and an
+exact persisted `item_seq` reconciliation. Keep
+`PILL_IDENTIFICATION_KPIC_PRODUCT_FLOOR` aligned with the dated product count on
+the public KPIC status dashboard before each release. A higher MFDS catalog
+count is acceptable; a lower unique count fails closed and preserves the prior
+generation.
+
+The backend maintenance runner also removes linked-chat messages after the
+configured retention period. The tracked production template uses 90 days:
+
+```text
+CHAT_MESSAGE_RETENTION_DAYS=90
+```
+
+The same runner scans explicit caregiver missed-dose deadlines and queues
+durable delivery events. `CAREGIVER_ALERT_OUTBOX_POLL_SECONDS` controls the
+scan/retry interval, and `CAREGIVER_ALERT_OUTBOX_RETENTION_DAYS` controls how
+long terminal rows remain. Keep the worker enabled in exactly one backend
+runtime per deployment unless the outbox processor is deliberately separated;
+the database uniqueness key still prevents duplicate events across concurrent
+scans. Delivery rechecks the active relationship, consent settings, deadline,
+and current schedule state before contacting FCM.
+
+Self-hosted production keeps Redis on the private Docker network and requires
+it for shared request quotas. This makes API and chat limits consistent across
+all backend workers instead of maintaining a separate counter per process.
 
 ## Verify
 
@@ -131,16 +401,50 @@ report `app_env` as `production`, `runtime_role` as `api`, and `auth_mode` as
 `firebase`. Its `firebase_project_id` must match the Android client, and its
 `app_check_required` value must match the APK being distributed.
 
-Verify that the pill-identification catalog was populated:
+Verify the Cloudflare route boundary separately. An allowed protected route
+without credentials must reach FastAPI and return JSON HTTP 401, while an
+unknown route must remain blocked by Cloudflare with HTTP 403:
+
+```bash
+curl -i 'https://api.medbuddy.pp.ua/api/v1/pharmacy/nearby?latitude=37.5665&longitude=126.9780'
+curl -i https://api.medbuddy.pp.ua/api/v1/chat/links/test/messages
+curl -i https://api.medbuddy.pp.ua/api/v1/not-allowed
+```
+
+Verify that the database reached the latest migration, including pharmacy
+schedule provenance and structured linked-chat contexts:
+
+```bash
+docker compose --env-file deploy/.env -f compose.self-hosted.yml \
+  exec -T backend alembic current
+```
+
+The reported head must be `b3a7d9e2f601` for this source revision. The
+v0.2.0 tail adds the shared pharmacy catalog (`8f2c6d4a1b90`), pharmacy schedule provenance and holiday
+cache (`b6d14f8c2a70`), and structured chat message/context columns
+(`b4e7c2d9a160`), then merges the catalog/chat migration branches
+(`9c4e7b2a6d10`), adds linked-chat deletion markers (`c2e4a6b8d901`), and
+generalizes the caregiver alert outbox (`c2a7e4d9f610`), then adds dose-sync
+operations (`a6e2d903bc71`), merges the caregiver-action branch
+(`f8a2c6d901be`), adds the pharmacy search cache (`6d4f8a2c9301`), and adds
+durable chat notification jobs (`b3a7d9e2f601`). Cloudflare Tunnel must
+also permit WebSocket upgrades for
+`/api/v1/chat/links/*/stream`; no separate public port or second backend is
+required.
+
+Verify that the pill-identification and pharmacy catalogs were populated:
 
 ```bash
 docker compose --env-file deploy/.env -f compose.self-hosted.yml \
   exec -T postgres psql -U medbuddy -d medbuddy -tAc \
-  "SELECT COUNT(*) FROM pill_identification_references;"
+  "SELECT 'pill_identification_references', COUNT(*) FROM pill_identification_references
+   UNION ALL
+   SELECT 'pharmacy_catalog_records', COUNT(*) FROM pharmacy_catalog_records;"
 ```
 
-The result must be greater than zero before physical-device pill
-identification is considered ready.
+The pill result must also be at least `PILL_IDENTIFICATION_KPIC_PRODUCT_FLOOR`;
+the pharmacy result must be greater than zero before physical-device pill
+identification and nearby-pharmacy testing are considered ready.
 
 Verify that periodic refresh is running and inspect its last synchronization:
 
@@ -151,12 +455,21 @@ docker compose --env-file deploy/.env -f compose.self-hosted.yml \
   logs --tail=100 catalog-refresh
 ```
 
+The drug refresh log must contain `pill catalog reconciliation` with equal
+`advertised_rows`/`fetched_rows` and `accepted_unique_rows`/`persisted_rows`,
+zero missing or unexpected persisted rows, and a unique count at or above the
+configured KPIC floor. Rejected and duplicate counts describe upstream data and
+must be reviewed when they change materially.
+
 To request an immediate, atomic refresh without waiting for the next interval:
 
 ```bash
 docker compose --env-file deploy/.env -f compose.self-hosted.yml \
   run --rm catalog-bootstrap \
   python scripts/sync_drug_catalog.py --dataset all --page-size 500 --max-retries 5
+docker compose --env-file deploy/.env -f compose.self-hosted.yml \
+  run --rm catalog-bootstrap \
+  python scripts/sync_pharmacy_catalog.py --page-size 1000 --max-retries 5
 ```
 
 ## Android API Endpoint
@@ -166,6 +479,18 @@ The production Android API base URL is:
 ```text
 https://api.medbuddy.pp.ua/api/v1/medication
 ```
+
+Flutter derives sibling authenticated endpoints from that trusted origin:
+
+```text
+https://api.medbuddy.pp.ua/api/v1/pharmacy
+https://api.medbuddy.pp.ua/api/v1/chat
+wss://api.medbuddy.pp.ua/api/v1/chat
+```
+
+Nearby-pharmacy and linked medication chat are disabled by default in user
+settings. Enabling the UI does not weaken backend authentication, active-link
+authorization, location minimization, or chat medication-context validation.
 
 ADB, Flutter hot reload, breakpoints, and physical-device debugging do not
 require the backend to run on the development laptop or on the same LAN.

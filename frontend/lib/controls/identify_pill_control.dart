@@ -1,3 +1,6 @@
+// File Name: identify_pill_control.dart
+// Role: Selects bounded pill images and submits abortable single-pill or multi-pill identification requests.
+
 import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:io';
@@ -10,24 +13,71 @@ import '../entities/pill_identification_entity.dart';
 import '../services/api_config.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
+import '../services/pill_image_crop_service.dart';
 
+// 클래스명: PillIdentificationFailure
+// 역할: 알약 사진 선택·검증·식별 중 발생할 수 있는 실패 원인을 구분한다.
+// 주요 책임:
+// - 화면 안내와 재시도 여부가 파일 오류, 호출 제한, 시간 초과와 서버 오류를 구별하게 한다.
 enum PillIdentificationFailure {
   emptyImage,
   oversizedImage,
   timedOut,
   invalidPhoto,
+  rateLimited,
   serviceUnavailable,
   invalidResponse,
   fileUnreadable,
 }
 
+// 클래스명: PillIdentificationException
+// 역할: 알약 식별 실패 종류와 서버의 선택적 재시도 지연을 전달한다.
+// 주요 책임:
+// - 오류 메시지와 일괄 처리 재시도 정책에서 필요한 실패 정보를 보존한다.
+// 속성:
+// - failure (PillIdentificationFailure): 화면 복구 안내를 선택할 실패 분류
+// - retryAfter (Duration?): 호출 제한 뒤 서버가 제안하거나 제한한 대기시간
 class PillIdentificationException implements Exception {
   final PillIdentificationFailure failure;
+  final Duration? retryAfter;
 
-  const PillIdentificationException(this.failure);
+  // 함수이름: PillIdentificationException
+  // 함수역할: 사진·서버 실패 종류와 선택적인 Retry-After 지연을 함께 보존한다.
+  // 매개변수:
+  // - failure (PillIdentificationFailure): 화면 복구 안내를 선택할 실패 분류
+  // - retryAfter (Duration?): 호출 제한 뒤 서버가 제안하거나 제한한 대기시간
+  // 반환값:
+  // - PillIdentificationException: 초기화된 인스턴스.
+  const PillIdentificationException(this.failure, {this.retryAfter});
 }
 
+// Class Name: IdentifyPill
+// Role: Owns image selection and bounded multipart requests for pill identification.
+// Responsibilities:
+// - Validate image size, cancel timed-out requests, decode candidates, and preserve rate-limit retry information.
+// Attributes:
+// - baseUrl (String): Base URL of the medication API.
+// - _imagePicker (ImagePicker): Camera and gallery image-selection boundary.
+// - _client (http.Client): HTTP transport; constructor documentation specifies ownership for injected clients.
+// - requestTimeout (Duration): Maximum wait for an identification or analysis request.
 class IdentifyPill {
+  // 함수이름: cropPillImage
+  // 함수역할: 원본의 해당 알약 영역만 추출하고 잘못된 사진 오류를 UI 계약으로 변환한다.
+  // 매개변수: image는 원본 바이트, region은 감지된 정규화 영역이다.
+  // 반환값: 잘린 사진 바이트 또는 invalidPhoto 오류.
+  Future<Uint8List> cropPillImage(
+    Uint8List image,
+    PillBoundingBox region,
+  ) async {
+    try {
+      return await const PillImageCropService().cropRegion(image, region);
+    } catch (_) {
+      throw const PillIdentificationException(
+        PillIdentificationFailure.invalidPhoto,
+      );
+    }
+  }
+
   static const int maxImageBytes = 10 * 1024 * 1024;
 
   final String baseUrl;
@@ -37,6 +87,15 @@ class IdentifyPill {
   final Duration requestTimeout;
   final Set<Completer<void>> _abortTriggers = <Completer<void>>{};
 
+  // Function Name: IdentifyPill
+  // Description: Binds the picker and HTTP client, records client ownership, and rejects a nonpositive identification timeout.
+  // Parameters:
+  // - baseUrl (String): Base URL of the medication API.
+  // - imagePicker (ImagePicker?): Camera and gallery image-selection boundary.
+  // - client (http.Client?): HTTP transport; constructor documentation specifies ownership for injected clients.
+  // - requestTimeout (Duration): Maximum wait for an identification or analysis request.
+  // Returns:
+  // - IdentifyPill: the initialized instance.
   IdentifyPill({
     this.baseUrl = ApiConfig.baseUrl,
     ImagePicker? imagePicker,
@@ -54,6 +113,12 @@ class IdentifyPill {
     }
   }
 
+  // Function Name: requestPillImage
+  // Description: Selects a camera or gallery image with bounded dimensions and reads validated bytes, returning null when selection is canceled.
+  // Parameters:
+  // - source (ImageSource): Camera or gallery source for image selection.
+  // Returns:
+  // - Future<Uint8List?>: Selects a camera or gallery image with bounded dimensions and reads validated bytes, returning null when selection is canceled.
   Future<Uint8List?> requestPillImage(ImageSource source) async {
     try {
       final image = await _imagePicker.pickImage(
@@ -77,6 +142,13 @@ class IdentifyPill {
     }
   }
 
+  // Function Name: requestPillIdentification
+  // Description: Validates front and optional back images, sends an abortable multipart request, and decodes candidates while classifying timeout, response, and service failures.
+  // Parameters:
+  // - frontImage (Uint8List): Required image bytes of the pill's front side.
+  // - backImage (Uint8List?): Optional image bytes of the same pill's back side.
+  // Returns:
+  // - Future<PillIdentificationResult>: Validates front and optional back images, sends an abortable multipart request, and decodes candidates while classifying timeout, response, and service failures.
   Future<PillIdentificationResult> requestPillIdentification({
     required Uint8List frontImage,
     Uint8List? backImage,
@@ -86,59 +158,20 @@ class IdentifyPill {
       if (backImage != null) {
         _validateImageBytes(backImage);
       }
-      final abortTrigger = Completer<void>();
-      _abortTriggers.add(abortTrigger);
-      final request =
-          http.AbortableMultipartRequest(
-              'POST',
-              Uri.parse('$baseUrl/pill-identification/candidates'),
-              abortTrigger: abortTrigger.future,
-            )
-            ..files.add(
-              http.MultipartFile.fromBytes(
-                'front',
-                frontImage,
-                filename: 'pill-front.jpg',
-              ),
-            );
-      if (backImage != null) {
-        request.files.add(
+      final response = await _requestCandidates('candidates', [
+        http.MultipartFile.fromBytes(
+          'front',
+          frontImage,
+          filename: 'pill-front.jpg',
+        ),
+        if (backImage != null)
           http.MultipartFile.fromBytes(
             'back',
             backImage,
             filename: 'pill-back.jpg',
           ),
-        );
-      }
-
-      late final http.Response response;
-      try {
-        response = await _client
-            .send(request)
-            .then(http.Response.fromStream)
-            .timeout(
-              requestTimeout,
-              onTimeout: () {
-                if (!abortTrigger.isCompleted) {
-                  abortTrigger.complete();
-                }
-                throw const PillIdentificationException(
-                  PillIdentificationFailure.timedOut,
-                );
-              },
-            );
-      } finally {
-        _abortTriggers.remove(abortTrigger);
-      }
-      if (response.statusCode != 200) {
-        throw PillIdentificationException(
-          _failureForStatus(response.statusCode),
-        );
-      }
-      final responseBody = ApiResponseParser.decodeBody(response);
-      return PillIdentificationResult.fromJson(
-        ApiResponseParser.decodeMap(responseBody),
-      );
+      ]);
+      return PillIdentificationResult.fromJson(response);
     } on PillIdentificationException {
       rethrow;
     } on FormatException catch (error) {
@@ -168,6 +201,91 @@ class IdentifyPill {
     }
   }
 
+  // Function Name: requestMultiplePillIdentification
+  // Description: Uploads one validated photo and decodes spatially separated pill groups, aborting the request on timeout and translating malformed or unavailable responses.
+  // Parameters:
+  // - image (Uint8List): Encoded bytes of the pill image to identify.
+  // Returns:
+  // - Future<MultiplePillIdentificationResult>: Uploads one validated photo and decodes spatially separated pill groups, aborting the request on timeout and translating malformed or unavailable responses.
+  Future<MultiplePillIdentificationResult> requestMultiplePillIdentification({
+    required Uint8List image,
+  }) async {
+    try {
+      _validateImageBytes(image);
+      final response = await _requestCandidates('multiple-candidates', [
+        http.MultipartFile.fromBytes(
+          'image',
+          image,
+          filename: 'multiple-pills.jpg',
+        ),
+      ]);
+      return MultiplePillIdentificationResult.fromJson(response);
+    } on PillIdentificationException {
+      rethrow;
+    } on FormatException catch (error) {
+      developer.log(
+        'Multiple-pill response parsing failed: ${error.runtimeType}.',
+        name: 'IdentifyPill',
+      );
+      throw const PillIdentificationException(
+        PillIdentificationFailure.invalidResponse,
+      );
+    } catch (error) {
+      developer.log(
+        'Multiple-pill request failed: ${error.runtimeType}.',
+        name: 'IdentifyPill',
+      );
+      throw const PillIdentificationException(
+        PillIdentificationFailure.serviceUnavailable,
+      );
+    }
+  }
+
+  // Function Name: _requestCandidates
+  // Description: Owns multipart cancellation, timeout, HTTP validation and JSON decoding for both identification routes.
+  // Parameters: route: Existing candidate endpoint suffix; files: Validated image parts in wire order.
+  // Returns: Decoded response object; callers retain their result-specific failure classification.
+  Future<Map<String, dynamic>> _requestCandidates(
+    String route,
+    List<http.MultipartFile> files,
+  ) async {
+    final abortTrigger = Completer<void>();
+    final request = http.AbortableMultipartRequest(
+      'POST',
+      Uri.parse('$baseUrl/pill-identification/$route'),
+      abortTrigger: abortTrigger.future,
+    )..files.addAll(files);
+    _abortTriggers.add(abortTrigger);
+    late final http.Response response;
+    try {
+      response = await _client
+          .send(request)
+          .then(http.Response.fromStream)
+          .timeout(
+            requestTimeout,
+            // Function Name: onTimeout callback
+            // Description: Aborts only this upload and reports its deadline failure.
+            // Parameters: None. Returns: Throws the typed timeout exception.
+            onTimeout: () {
+              if (!abortTrigger.isCompleted) abortTrigger.complete();
+              throw const PillIdentificationException(
+                PillIdentificationFailure.timedOut,
+              );
+            },
+          );
+    } finally {
+      _abortTriggers.remove(abortTrigger);
+    }
+    if (response.statusCode != 200) throw _exceptionForResponse(response);
+    return ApiResponseParser.decodeMap(ApiResponseParser.decodeBody(response));
+  }
+
+  // Function Name: _readBoundedImage
+  // Description: Checks file length before reading and validates the loaded bytes so empty or oversized images never reach the identification API.
+  // Parameters:
+  // - image (XFile): Local image file selected or captured by the user.
+  // Returns:
+  // - Future<Uint8List>: Checks file length before reading and validates the loaded bytes so empty or oversized images never reach the identification API.
   Future<Uint8List> _readBoundedImage(XFile image) async {
     final imageLength = await image.length();
     if (imageLength == 0) {
@@ -185,6 +303,12 @@ class IdentifyPill {
     return bytes;
   }
 
+  // Function Name: _validateImageBytes
+  // Description: Rejects empty image data and payloads larger than the 10 MiB upload limit.
+  // Parameters:
+  // - bytes (Uint8List): Image bytes to inspect or validate.
+  // Returns:
+  // - No return value.
   void _validateImageBytes(Uint8List bytes) {
     if (bytes.isEmpty) {
       throw const PillIdentificationException(
@@ -198,22 +322,79 @@ class IdentifyPill {
     }
   }
 
-  static PillIdentificationFailure _failureForStatus(int statusCode) {
+  // 함수이름: _exceptionForResponse
+  // 함수역할: HTTP 오류와 서버가 안내한 재시도 대기시간을 손실 없이 변환한다.
+  // 매개변수:
+  // - response (http.Response): 상태 코드와 본문을 해석할 HTTP 응답
+  // 반환값:
+  // - PillIdentificationException: HTTP 오류와 서버가 안내한 재시도 대기시간을 손실 없이 변환한다.
+  static PillIdentificationException _exceptionForResponse(
+    http.Response response,
+  ) {
+    final statusCode = response.statusCode;
     if (statusCode == 413) {
-      return PillIdentificationFailure.oversizedImage;
+      return const PillIdentificationException(
+        PillIdentificationFailure.oversizedImage,
+      );
     }
     if (statusCode == 422) {
-      return PillIdentificationFailure.invalidPhoto;
+      return const PillIdentificationException(
+        PillIdentificationFailure.invalidPhoto,
+      );
     }
     if (statusCode == 408 || statusCode == 504) {
-      return PillIdentificationFailure.timedOut;
+      return const PillIdentificationException(
+        PillIdentificationFailure.timedOut,
+      );
+    }
+    if (statusCode == 429) {
+      return PillIdentificationException(
+        PillIdentificationFailure.rateLimited,
+        retryAfter: _parseRetryAfter(response.headers['retry-after']),
+      );
     }
     if (statusCode >= 500 && statusCode < 600) {
-      return PillIdentificationFailure.serviceUnavailable;
+      return const PillIdentificationException(
+        PillIdentificationFailure.serviceUnavailable,
+      );
     }
-    return PillIdentificationFailure.invalidResponse;
+    return const PillIdentificationException(
+      PillIdentificationFailure.invalidResponse,
+    );
   }
 
+  // 함수이름: _parseRetryAfter
+  // 함수역할: 초 단위 또는 HTTP 날짜 형식의 Retry-After 값을 안전한 대기시간으로 변환한다.
+  // 매개변수:
+  // - rawValue (String?): 서버 Retry-After 헤더 원문
+  // 반환값:
+  // - Duration?: 초 단위 또는 HTTP 날짜 형식의 Retry-After 값을 안전한 대기시간으로 변환한다.
+  static Duration? _parseRetryAfter(String? rawValue) {
+    final value = rawValue?.trim();
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    final seconds = int.tryParse(value);
+    if (seconds != null) {
+      return Duration(seconds: seconds < 1 ? 1 : seconds);
+    }
+    try {
+      final retryAt = HttpDate.parse(value).toUtc();
+      final difference = retryAt.difference(DateTime.now().toUtc());
+      return difference > Duration.zero
+          ? difference
+          : const Duration(seconds: 1);
+    } on FormatException {
+      return null;
+    }
+  }
+
+  // Function Name: dispose
+  // Description: Aborts every outstanding identification request and closes the HTTP client only when this control created it.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No return value.
   void dispose() {
     for (final abortTrigger in _abortTriggers) {
       if (!abortTrigger.isCompleted) {

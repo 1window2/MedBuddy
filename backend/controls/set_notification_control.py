@@ -1,5 +1,5 @@
 # File Name: set_notification_control.py
-# Role: Control class for patient medication alarm settings.
+# Role: Reads and persists patient medication alarms with slot defaults and concurrent-create recovery.
 
 import logging
 
@@ -14,19 +14,28 @@ from entities.medication_alarm_entity import (
     valid_alarm_slot_keys,
 )
 from entities.patient_hash_entity import normalize_patient_hash
+from entities.user_setting_entity import _UserSetting
 
 logger = logging.getLogger(__name__)
 
 
 # Class Name: SetNotification
-# Role: Coordinates patient medication alarms.
+# Role:
+# - Coordinates patient medication alarms.
 # Responsibilities:
-#   - Read medication alarm state by patient and schedule slot.
-#   - Persist enabled medication alarms with selected local times.
-#   - Disable medication alarms while preserving the last selected time.
+# - Read medication alarm state by patient and schedule slot.
+# - Persist enabled medication alarms with selected local times.
+# - Disable medication alarms while preserving the last selected time.
 # Attributes:
-#   - db: SQLAlchemy session used for persistence operations.
+# - db (Session): SQLAlchemy session used for persistence operations.
 class SetNotification:
+    # Function Name: __init__
+    # Description:
+    # - Binds patient medication-alarm settings to the supplied database session.
+    # Parameters:
+    # - db (Session): SQLAlchemy session for this unit of work.
+    # Returns:
+    # - None.
     def __init__(self, db: Session) -> None:
         self.db = db
 
@@ -34,7 +43,7 @@ class SetNotification:
     # Description:
     # - Reads all slot alarm settings for one patient scope.
     # Parameters:
-    # - patient_hash: Patient ownership key used to scope alarm settings.
+    # - patient_hash (str | None): Patient ownership key used to scope alarm settings.
     # Returns:
     # - API-compatible medication alarm list dictionary.
     def requestMedicationAlarm(
@@ -66,8 +75,8 @@ class SetNotification:
     # Description:
     # - Reads one slot alarm status before a UI toggle decision.
     # Parameters:
-    # - patient_hash: Patient ownership key used to scope alarm settings.
-    # - slot_key: Medication schedule time slot.
+    # - patient_hash (str | None): Patient ownership key used to scope alarm settings.
+    # - slot_key (str): Medication schedule time slot.
     # Returns:
     # - API-compatible medication alarm dictionary.
     def requestAlarmToggle(
@@ -94,10 +103,10 @@ class SetNotification:
     # Description:
     # - Creates or updates one enabled slot alarm.
     # Parameters:
-    # - patient_hash: Patient ownership key used to scope alarm settings.
-    # - slot_key: Medication schedule time slot.
-    # - hour: 24-hour local alarm hour.
-    # - minute: Local alarm minute.
+    # - patient_hash (str | None): Patient ownership key used to scope alarm settings.
+    # - slot_key (str): Medication schedule time slot.
+    # - hour (int): 24-hour local alarm hour.
+    # - minute (int): Local alarm minute.
     # Returns:
     # - API-compatible enabled medication alarm dictionary.
     def saveNotificationSetting(
@@ -155,8 +164,8 @@ class SetNotification:
     # Description:
     # - Disables one slot alarm while preserving its selected time.
     # Parameters:
-    # - patient_hash: Patient ownership key used to scope alarm settings.
-    # - slot_key: Medication schedule time slot.
+    # - patient_hash (str | None): Patient ownership key used to scope alarm settings.
+    # - slot_key (str): Medication schedule time slot.
     # Returns:
     # - API-compatible disabled medication alarm dictionary.
     def disableAlarmSetting(
@@ -170,11 +179,12 @@ class SetNotification:
         try:
             setting = self._find_setting(normalized_patient_hash, normalized_slot_key)
             if setting is None:
+                default = self._default_setting_row(normalized_patient_hash, normalized_slot_key)
                 setting = _MedicationAlarm(
                     patient_hash=normalized_patient_hash,
                     slot_key=normalized_slot_key,
-                    hour=default_alarm_hour(normalized_slot_key),
-                    minute=0,
+                    hour=default.hour,
+                    minute=default.minute,
                     enabled=False,
                 )
                 self.db.add(setting)
@@ -203,6 +213,14 @@ class SetNotification:
                 detail="Medication alarm could not be disabled.",
             ) from exc
 
+    # Function Name: _find_setting
+    # Description:
+    # - Finds a medication alarm by both patient ownership and schedule slot.
+    # Parameters:
+    # - patient_hash (str): Patient ownership scope for the operation.
+    # - slot_key (str): Medication time-slot key: morning, lunch, evening or bedtime.
+    # Returns:
+    # - Alarm row, or None when the slot has no saved alarm.
     def _find_setting(
         self,
         patient_hash: str,
@@ -217,6 +235,13 @@ class SetNotification:
             .first()
         )
 
+    # Function Name: _normalize_slot_key
+    # Description:
+    # - Trims and lowercases the slot and rejects unsupported medication-alarm keys.
+    # Parameters:
+    # - slot_key (str): Medication time-slot key: morning, lunch, evening or bedtime.
+    # Returns:
+    # - Supported slot key, or HTTP 400.
     def _normalize_slot_key(self, slot_key: str) -> str:
         normalized_slot_key = (slot_key or "").strip().lower()
         if normalized_slot_key not in valid_alarm_slot_keys():
@@ -226,12 +251,30 @@ class SetNotification:
             )
         return normalized_slot_key
 
+    # Function Name: _validate_alarm_time
+    # Description:
+    # - Requires a 24-hour clock hour and a minute from 0 through 59.
+    # Parameters:
+    # - hour (int): Local alarm hour on a 24-hour clock.
+    # - minute (int): Local alarm minute.
+    # Returns:
+    # - None.
     def _validate_alarm_time(self, hour: int, minute: int) -> None:
         if hour < 0 or hour > 23:
             raise HTTPException(status_code=400, detail="Alarm hour is invalid.")
         if minute < 0 or minute > 59:
             raise HTTPException(status_code=400, detail="Alarm minute is invalid.")
 
+    # Function Name: _update_existing_alarm_after_conflict
+    # Description:
+    # - Reloads a concurrently created alarm and applies the requested enabled time.
+    # Parameters:
+    # - patient_hash (str): Patient ownership scope for the operation.
+    # - slot_key (str): Medication time-slot key: morning, lunch, evening or bedtime.
+    # - hour (int): Local alarm hour on a 24-hour clock.
+    # - minute (int): Local alarm minute.
+    # Returns:
+    # - Saved alarm response, or HTTP 409/500 when recovery cannot complete.
     def _update_existing_alarm_after_conflict(
         self,
         patient_hash: str,
@@ -270,6 +313,14 @@ class SetNotification:
                 detail="Medication alarm could not be saved.",
             ) from exc
 
+    # Function Name: _disable_existing_alarm_after_conflict
+    # Description:
+    # - Reloads a concurrently created alarm and commits its disabled state.
+    # Parameters:
+    # - patient_hash (str): Patient ownership scope for the operation.
+    # - slot_key (str): Medication time-slot key: morning, lunch, evening or bedtime.
+    # Returns:
+    # - Disabled alarm response, or HTTP 409/500 when recovery fails.
     def _disable_existing_alarm_after_conflict(
         self,
         patient_hash: str,
@@ -301,19 +352,50 @@ class SetNotification:
                 detail="Medication alarm could not be disabled.",
             ) from exc
 
+    # Function Name: _default_setting_row
+    # Description:
+    # - Constructs a disabled alarm from patient preferences, falling back to product defaults.
+    # - Reads do not persist synthetic defaults or overwrite explicit saved alarm times.
+    # Parameters:
+    # - patient_hash (str): Patient ownership scope for the operation.
+    # - slot_key (str): Medication time-slot key: morning, lunch, evening or bedtime.
+    # Returns:
+    # - Default MedicationAlarm for the patient and slot.
     def _default_setting_row(
         self,
         patient_hash: str,
         slot_key: str,
     ) -> MedicationAlarm:
+        preferences = self.db.query(_UserSetting).filter_by(user_hash=patient_hash).first()
+        field = {
+            "morning": "default_morning_time",
+            "lunch": "default_lunch_time",
+            "evening": "default_evening_time",
+            "bedtime": "default_bedtime",
+        }[slot_key]
+        time = getattr(preferences, field, None)
+        hour, minute = (
+            (int(part) for part in time.split(":"))
+            if time else (default_alarm_hour(slot_key), 0)
+        )
         return MedicationAlarm(
             patient_hash=patient_hash,
             slot_key=slot_key,
-            hour=default_alarm_hour(slot_key),
-            minute=0,
+            hour=hour,
+            minute=minute,
             enabled=False,
         )
 
+    # Function Name: _apply_alarm_state
+    # Description:
+    # - Updates the row through an alarm entity, preserving its hour or minute when no replacement is supplied.
+    # Parameters:
+    # - setting (_MedicationAlarm): Persisted patient/slot alarm activation and local time.
+    # - enabled (bool): Requested notification activation state.
+    # - hour (int | None): Local alarm hour on a 24-hour clock.
+    # - minute (int | None): Local alarm minute.
+    # Returns:
+    # - None.
     def _apply_alarm_state(
         self,
         setting: _MedicationAlarm,
@@ -334,6 +416,13 @@ class SetNotification:
         setting.minute = alarm.minute
         setting.enabled = alarm.enabled
 
+    # Function Name: _to_entity
+    # Description:
+    # - Converts stored alarms to domain state with default time values; existing entities are returned unchanged.
+    # Parameters:
+    # - setting (_MedicationAlarm | MedicationAlarm): Persisted patient/slot alarm activation and local time.
+    # Returns:
+    # - MedicationAlarm with normalized missing time fields.
     def _to_entity(
         self,
         setting: _MedicationAlarm | MedicationAlarm,
@@ -353,6 +442,13 @@ class SetNotification:
             enabled=bool(setting.enabled),
         )
 
+    # Function Name: _to_response_dict
+    # Description:
+    # - Uses the alarm entity's response adapter for consistent patient/slot serialization.
+    # Parameters:
+    # - setting (_MedicationAlarm | MedicationAlarm): Persisted patient/slot alarm activation and local time.
+    # Returns:
+    # - Serialized medication alarm settings.
     def _to_response_dict(
         self,
         setting: _MedicationAlarm | MedicationAlarm,
