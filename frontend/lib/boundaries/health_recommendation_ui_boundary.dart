@@ -650,8 +650,6 @@ class _HealthRecommendationError extends StatelessWidget {
                       textAlign: TextAlign.center,
                     ),
                     style: FilledButton.styleFrom(
-                      backgroundColor: MedBuddyColors.primary,
-                      foregroundColor: Colors.white,
                       minimumSize: const Size.fromHeight(52),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 16,
@@ -662,9 +660,6 @@ class _HealthRecommendationError extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                         height: 1.35,
                         letterSpacing: 0,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: MedBuddyRadii.control,
                       ),
                     ),
                   ),
@@ -688,12 +683,7 @@ class _HealthRecommendationError extends StatelessWidget {
                   ElevatedButton(
                     onPressed: onRetryRequested,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: MedBuddyColors.primary,
-                      foregroundColor: Colors.white,
                       minimumSize: const Size.fromHeight(52),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: MedBuddyRadii.control,
-                      ),
                     ),
                     child: Text(
                       text.retry,

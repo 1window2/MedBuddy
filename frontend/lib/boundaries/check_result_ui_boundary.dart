@@ -645,14 +645,9 @@ class _BulkSaveButton extends StatelessWidget {
                 : text.saveAll,
           ),
           style: FilledButton.styleFrom(
-            backgroundColor: MedBuddyColors.primary,
-            foregroundColor: Colors.white,
             disabledBackgroundColor: MedBuddyColors.textLight,
             disabledForegroundColor: Colors.white,
             minimumSize: const Size.fromHeight(66),
-            shape: RoundedRectangleBorder(
-              borderRadius: MedBuddyRadii.largeCard,
-            ),
             textStyle: TextStyle(
               fontSize: 22 * scale,
               fontWeight: FontWeight.w700,

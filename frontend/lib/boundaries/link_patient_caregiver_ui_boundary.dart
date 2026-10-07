@@ -1084,7 +1084,6 @@ class _LinkActionButton extends StatelessWidget {
           foregroundColor: MedBuddyColors.textStrong,
           backgroundColor: Colors.white,
           side: const BorderSide(color: MedBuddyColors.outline, width: 1.5),
-          shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.largeCard),
           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 10),
         ),
         child: Column(
@@ -1331,11 +1330,6 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
                   child: FilledButton(
                     onPressed: _isRegistering ? null : _handleRegisterRequested,
                     style: FilledButton.styleFrom(
-                      backgroundColor: MedBuddyColors.primary,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: MedBuddyRadii.control,
-                      ),
                       textStyle: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,

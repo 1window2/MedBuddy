@@ -1099,7 +1099,6 @@ class _HealthRecommendationFooter extends StatelessWidget {
         style: OutlinedButton.styleFrom(
           minimumSize: const Size.fromHeight(64),
           side: const BorderSide(color: MedBuddyColors.primary, width: 2),
-          shape: RoundedRectangleBorder(borderRadius: MedBuddyRadii.control),
           foregroundColor: MedBuddyColors.primaryDark,
           backgroundColor: Colors.white,
         ),

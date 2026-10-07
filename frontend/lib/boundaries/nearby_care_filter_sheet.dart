@@ -108,9 +108,6 @@ class _NearbyCareFilterSheetState extends State<_NearbyCareFilterSheet> {
                       style: OutlinedButton.styleFrom(
                         alignment: Alignment.centerLeft,
                         minimumSize: const Size(0, 48),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: MedBuddyRadii.small,
-                        ),
                       ),
                       icon: const Icon(Icons.event_outlined),
                       label: Text(
@@ -142,9 +139,6 @@ class _NearbyCareFilterSheetState extends State<_NearbyCareFilterSheet> {
                   key: const Key('care-filter-apply'),
                   style: FilledButton.styleFrom(
                     minimumSize: const Size(0, 48),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: MedBuddyRadii.small,
-                    ),
                   ),
                   onPressed: () => Navigator.pop(context, (
                     filter: _filter,

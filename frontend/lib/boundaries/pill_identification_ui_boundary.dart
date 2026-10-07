@@ -385,9 +385,6 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                             ),
                             backgroundColor: MedBuddyColors.primary,
                             disabledBackgroundColor: MedBuddyColors.outline,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: MedBuddyRadii.control,
-                            ),
                           ),
                           icon: _isAnalyzing
                               ? const SizedBox.square(
@@ -741,9 +738,6 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,
                   vertical: 10,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: MedBuddyRadii.control,
                 ),
               ),
               child: Row(

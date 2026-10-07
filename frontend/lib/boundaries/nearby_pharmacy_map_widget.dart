@@ -281,8 +281,6 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
                       textAlign: TextAlign.center,
                     ),
                     style: FilledButton.styleFrom(
-                      backgroundColor: MedBuddyColors.primary,
-                      foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 18,
                         vertical: 12,

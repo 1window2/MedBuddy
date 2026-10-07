@@ -259,9 +259,6 @@ class _MedicationScheduleReviewSheetState
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(54),
                 backgroundColor: MedBuddyColors.primary,
-                shape: RoundedRectangleBorder(
-                  borderRadius: MedBuddyRadii.small,
-                ),
               ),
               child: Text(
                 isPillSave ? text.confirmAndSave : text.confirmAndAnalyze,
