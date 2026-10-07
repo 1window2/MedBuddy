@@ -16,6 +16,9 @@ Android 12 phone on October 5. Startup and bounded physical checks are recorded
 in [the candidate evidence](qa/v0.2.0-map-direct-filter-device-validation.md#signed-candidate-update--2026-10-05).
 Full physical acceptance remains incomplete. Google Play enrollment remains
 deferred and two-device checks remain unperformed.
+On October 8 the owner chose to merge and publish `v0.2.0-beta` as a limited
+GitHub pre-release with those gates open; see
+[the decision](releases/v0.2.0-beta.md#limited-pre-release-decision--2026-10-08).
 Unimplemented enhancements below are explicitly outside this candidate.
 
 October 6 cleanup consolidates existing pill-upload transport and settings draft
