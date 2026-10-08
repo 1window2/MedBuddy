@@ -109,4 +109,3 @@ class NearbyPharmacySearchResult:
 # - 제공자 경계와 달력 캐시 저장소가 함께 쓰므로 두 계층 아래인 엔티티에 둔다.
 class PharmacyApiUnavailableError(RuntimeError):
     """약국 공공데이터 서비스에 일시적으로 접근할 수 없을 때 발생한다."""
-
