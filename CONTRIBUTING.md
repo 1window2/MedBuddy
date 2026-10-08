@@ -36,7 +36,7 @@ MedBuddy follows a Boundary-Control-Entity style structure rooted in the project
 When adding or changing code:
 
 - Prefer extending the existing class skeletons and UML-aligned flow instead of adding ad hoc shortcuts between unrelated layers.
-- Check the class, sequence, communication, and use-case diagrams before introducing new classes, functions, or cross-layer dependencies.
+- Check the class, sequence, and use-case diagrams before introducing new classes, functions, or cross-layer dependencies.
 - Keep patient/guardian authorization scope in control-layer logic rather than duplicating it inside UI widgets or low-level entity classes.
 - If implementation must differ from the current UML for a practical reason, make the reason explicit in the pull request and update the related diagram or design note when that documentation change is in scope.
 
@@ -229,7 +229,7 @@ Before tagging a release candidate, also verify the distributable path:
 
 ```powershell
 cd frontend
-flutter build apk --release --no-pub
+flutter build apk --release --no-pub --target-platform android-arm,android-arm64
 ```
 
 Before committing, also check:

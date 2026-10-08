@@ -66,7 +66,7 @@ prefix here only permits routing to FastAPI; Firebase Authentication, optional
 App Check enforcement, active-link authorization, validation, and rate limits
 still apply at the backend.
 
-Before signing v0.2.0, verify that the hospital prefix and exact
+Before signing a release, verify that the hospital prefix and exact
 `/ready/catalogs` exception remain in the live rule. The repository rule is a
 deployment instruction; editing it does not update Cloudflare. Verify
 `/ready/catalogs` returns ready JSON, and run
@@ -199,7 +199,7 @@ respectively, but the signed Android workflow must use the same App Check
 setting reported by `/ready`. Firebase Authentication remains mandatory in
 production in either mode. The workflow applies the selected policy only to
 the directly installable APK; its Google Play AAB is always built with App
-Check enabled. The temporary exception and the mandatory v0.2.0 restoration
+Check enabled. The temporary exception and the mandatory App Check restoration
 checklist are tracked in [TODO.md](TODO.md).
 
 ### Protected Android App Check preflight
@@ -367,11 +367,12 @@ configured retention period. The tracked production template uses 90 days:
 CHAT_MESSAGE_RETENTION_DAYS=90
 ```
 
-The same runner scans explicit caregiver missed-dose deadlines and queues
-durable delivery events. `CAREGIVER_ALERT_OUTBOX_POLL_SECONDS` controls the
-scan/retry interval, and `CAREGIVER_ALERT_OUTBOX_RETENTION_DAYS` controls how
-long terminal rows remain. Keep the worker enabled in exactly one backend
-runtime per deployment unless the outbox processor is deliberately separated;
+A separate outbox worker, started with every API process, scans explicit
+caregiver missed-dose deadlines and queues durable delivery events.
+`CAREGIVER_ALERT_OUTBOX_POLL_SECONDS` controls the scan/retry interval, and
+`CAREGIVER_ALERT_OUTBOX_RETENTION_DAYS` controls how long terminal rows remain.
+Run exactly one API process per deployment unless the outbox processor is
+deliberately separated;
 the database uniqueness key still prevents duplicate events across concurrent
 scans. Delivery rechecks the active relationship, consent settings, deadline,
 and current schedule state before contacting FCM.
@@ -482,13 +483,16 @@ Flutter derives sibling authenticated endpoints from that trusted origin:
 
 ```text
 https://api.medbuddy.pp.ua/api/v1/pharmacy
+https://api.medbuddy.pp.ua/api/v1/hospitals
+https://api.medbuddy.pp.ua/api/v1/auth
 https://api.medbuddy.pp.ua/api/v1/chat
 wss://api.medbuddy.pp.ua/api/v1/chat
 ```
 
-Nearby-pharmacy and linked medication chat are disabled by default in user
-settings. Enabling the UI does not weaken backend authentication, active-link
-authorization, location minimization, or chat medication-context validation.
+Nearby care and linked medication chat need no user setting; chat appears when
+an active link exists. UI availability does not weaken backend authentication,
+active-link authorization, location minimization, or chat medication-context
+validation.
 
 ADB, Flutter hot reload, breakpoints, and physical-device debugging do not
 require the backend to run on the development laptop or on the same LAN.

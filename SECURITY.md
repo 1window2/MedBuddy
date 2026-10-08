@@ -2,10 +2,10 @@
 
 ## Project Status
 
-MedBuddy has completed the Android v0.1.1 beta and is developing v0.2.0 on that
-stable baseline. Laboratory pharmacy and linked-chat features are not
-production-ready until the v0.2.0 privacy and two-device release checks are
-complete.
+MedBuddy published the Android `v0.2.0-beta` as a limited off-Play pre-release
+and is developing the v0.2.1 maintenance line on that baseline. Two-device
+acceptance and Play Integrity enforcement remain open; see
+[the release TODO](docs/TODO.md).
 
 ## Supported Versions
 
@@ -112,7 +112,7 @@ as untrusted input:
 
 ## Linked Medication Chat
 
-Medication-context chat is an experimental linked-care feature, not a general
+Medication-context chat is a linked-care feature, not a general
 messenger. Every history, send, read, unread-count, and WebSocket operation must
 verify the authenticated principal, the active patient-caregiver link, and the
 requested link identifier on the server. Every selected medication identifier
@@ -122,8 +122,7 @@ must deduplicate and bound the selection before rebuilding display snapshots.
 Chat text and medication contexts are stored medical-adjacent communication
 data. Apply bounded message length, normalize client-generated message IDs,
 enforce idempotent retries, and never log message bodies. Revoking a link must
-immediately deny REST and WebSocket access. The laboratory setting controls UI
-visibility only; it is not an authorization mechanism.
+immediately deny REST and WebSocket access.
 
 Chat notifications may show a whitespace-normalized message preview capped at
 120 characters so the recipient can understand the conversation without
@@ -146,9 +145,10 @@ Caregiver notification titles, bodies, and routing data can reveal medication
 context. Treat them as sensitive delivery data: minimize the payload, never log
 tokens or full notification bodies, and require an active caregiver link and
 per-slot preference before dispatch. Firebase mode sends newly completed-dose
-events through FCM. Missed-deadline checks currently run through the
-authenticated Android background monitor; local demo mode polls for both event
-types and displays local notifications without remote push delivery.
+events and server-scheduled missed-deadline events through FCM; the backend
+outbox worker decides missed deadlines. Local demo mode polls the backend for
+completion transitions and server-decided missed-dose deliveries and displays
+local notifications without remote push delivery.
 
 Linked-chat notifications follow the same token lifecycle but use a separate
 event category. After rechecking the active link, the backend sends the bounded
@@ -166,15 +166,19 @@ notification, settings, and link operations derive ownership from that
 principal. A requested patient hash is accepted only as a selector after an
 active caregiver link has been verified.
 
-Production configuration fails closed unless Firebase authentication and App
-Check, a Firebase project, a durable non-SQLite database, external schema
-migrations, and Redis-backed distributed quotas are configured. The
-unauthenticated `/health` route returns only process liveness, while `/ready`
-returns only binary database-revision, Firebase-verifier, App Check, and Redis
-readiness. Public readiness checks are IP-rate-limited and coalesced through a
-short-lived process-local cache so repeated probes do not repeatedly consume
-database and verifier resources. App Check and rate limiting are defense in
-depth; neither replaces user authentication or authorization.
+Production configuration fails closed unless Firebase authentication, App
+Check (or the explicit `FIREBASE_OFF_PLAY_BETA_MODE=true` acknowledgement with
+App Check disabled), a Firebase project, a durable non-SQLite database, external
+schema migrations, and Redis-backed distributed quotas are configured. The
+unauthenticated `/health` route returns process liveness and the API contract
+version. `/ready` answers 200 or 503 for database-revision, Firebase-verifier,
+App Check, and Redis readiness and, when ready, returns the non-secret runtime
+identity the release gate compares (`api_contract`, `app_env`, `runtime_role`,
+`auth_mode`, `firebase_project_id`, `app_check_required`). Public readiness
+checks are IP-rate-limited and coalesced through a short-lived process-local
+cache so repeated probes do not repeatedly consume database and verifier
+resources. App Check and rate limiting are defense in depth; neither replaces
+user authentication or authorization.
 
 Medication image URLs are treated as untrusted at both API and client
 boundaries. Only HTTPS URLs on the documented `nedrug.mfds.go.kr` host, without
@@ -189,8 +193,7 @@ schedule-slot, and pharmacy context identifiers are revalidated and rebuilt as
 server snapshots instead of accepting client-supplied medical or location
 details. Slot-completion events are idempotent and cannot be used by a caregiver
 to modify the patient's completion record. Nearby-pharmacy favorites remain a
-device-local preference and never grant access. Laboratory toggles never grant
-data access by themselves.
+device-local preference and never grant access.
 
 The approved migration boundary and delivery order are documented in
 [`docs/MedBuddy - Beta Security Architecture.md`](docs/MedBuddy%20-%20Beta%20Security%20Architecture.md).

@@ -114,8 +114,9 @@ Historical Google Cloud workflows are disabled.
 
 The September 30 review found public HTML 403 responses for hospital search and
 `/ready/catalogs` despite healthy core readiness. The corrected ingress rule and
-credential-free signing probes are in source; applying the rule and obtaining
-successful public probes remain deployment gates.
+credential-free signing probes are in source. The corrected ingress rule was
+applied and the public probes passed on September 30; see
+[Production Deployment](Production%20Deployment.md).
 
 ### P0: Identity and Transport Security
 
@@ -169,8 +170,8 @@ successful public probes remain deployment gates.
   schedule review, multi-pill partial failure, camera-guide layout/cropping,
   pharmacy permission, cooldown, favorite, freshness, and external-action
   states; the explained pharmacy filter selector; linked-chat multi-medication
-  context, role-specific replies, schedule navigation, and lifecycle; laboratory
-  feature visibility; and health-recommendation bottom reachability.
+  context, role-specific replies, schedule navigation, and lifecycle; absence of
+  the retired laboratory menu; and health-recommendation bottom reachability.
 - Compile an Android release APK on every pull request.
 - Add authenticated API integration tests for patient ownership, caregiver
   access, revoked links, expired tokens, and cross-user denial.
@@ -197,7 +198,8 @@ successful public probes remain deployment gates.
 - Embedded turn-by-turn navigation, pharmacy inventory guarantees, or automatic
   claims that a pharmacy is open without user confirmation.
 - General-purpose social messaging, group chat, attachments, or unlinked chat;
-  v0.2.0 chat is limited to an active link and active medication context.
+  v0.2.0 chat is limited to an active link, and medication context is validated
+  whenever a message attaches it.
 - Any feature that bypasses the BCE control layer or introduces a second API
   path around the medication, pharmacy, or chat routers and shared dependencies.
 

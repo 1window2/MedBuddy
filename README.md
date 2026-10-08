@@ -10,7 +10,7 @@
 
 ### Home and Notification Inbox
 
-- Keep a 2x2 home menu: medication registration and identification, health recommendations, nearby operating pharmacies, and settings. Reminder settings remain available from Schedule and Settings.
+- Keep a 2x2 home menu: medication registration and identification, health recommendations, nearby hospitals and pharmacies, and settings. Reminder settings remain available from Schedule and Settings.
 - Open one latest-first notification list from the header bell, with an unread badge, received chat previews, read actions, and notification-only deletion.
 - History is stored per account on the current device, not in a server mailbox. Chat previews respect content-visibility settings; reminder entries reflect scheduled events rather than proof of delivery or medication intake.
 - See [the notification inbox design note](docs/MedBuddy%20-%20Notification%20Inbox.md) for storage and lifecycle boundaries.
@@ -39,9 +39,9 @@
 
 ### Nearby Operating Pharmacies
 
-- Open pharmacy search directly from the four-shortcut home menu.
+- Open pharmacy search from the home menu's nearby hospitals-and-pharmacies shortcut.
 
-- Pharmacy search is a standard v0.2.0 feature, available without enabling a laboratory switch. Existing laboratory choices do not restrict access.
+- Pharmacy search is a standard feature and needs no setting; choices made in the retired laboratory menu do not restrict access.
 - Users can request nearby pharmacies after granting foreground location permission. Location is requested only while this feature is in use.
 - The Flutter client sends coordinates to the authenticated MedBuddy API. The backend keeps the public-data credential private and adapts the National Emergency Medical Center pharmacy response into the app contract.
 - Results are filtered on the server before the 30-result limit is applied. The default view shows pharmacies that are open now without asking the user to enter a time. One filter button offers open-now, late-hours, exact-date weekend/holiday, and all-nearby views; the late-hours view combines officially designated public late-night pharmacies with pharmacies whose reported schedules run late. Date-based views ask only for a date. A Naver Map view appears above the filter; selecting either a pharmacy card or marker synchronizes the selection and centers the map on that pharmacy. Open pharmacies are ranked before closed pharmacies and late-hours pharmacies are prioritized next, followed by user-scoped favorites and distance within the same operating group.
@@ -78,7 +78,7 @@
 
 ## Roadmap
 
-1. **v0.2.0 beta verification:** Finish physical reboot/offline recovery, two-device caregiver/chat checks, and measured prescription/pill recognition validation. Direct entry, multi-pill review, pharmacy navigation, and chat are implemented; see the [release TODO](docs/TODO.md) for the remaining gates.
+1. **v0.2.1 maintenance and carried-over verification:** v0.2.0-beta is published as a limited off-Play pre-release. Remaining physical reboot/offline recovery, two-device caregiver/chat checks, and measured recognition validation are tracked in the [release TODO](docs/TODO.md).
 2. **Android production verification:** Validate the dedicated
    FastAPI/PostgreSQL/Redis production host behind Cloudflare Tunnel, complete
    backup and restore rehearsal, and finish authenticated two-device, Wi-Fi,

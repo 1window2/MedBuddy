@@ -97,6 +97,6 @@ expiry/retry limits, privacy/consent changes, cleanup, and outer dose-sync
 transactions. The migration preservation rehearsal runs in SQLite and in the
 PostgreSQL 16 CI job. Real FCM and two-device acceptance remain deferred.
 
-Local verification: **675 backend tests passed, 2 PostgreSQL-specific tests
-skipped**, with 21 passing subtests; `git diff --check` passed. The 19 new durable
+Local verification on September 26, 2026: **675 backend tests passed, 2
+PostgreSQL-specific tests skipped**, with 21 passing subtests; `git diff --check` passed. The 19 new durable
 delivery cases use synthetic data and injected push boundaries, not real FCM.

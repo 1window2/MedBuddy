@@ -1154,7 +1154,7 @@ package "FastAPI Backend" {
             API 호출은 조회·저장 단계마다 계정 삭제와 보호자 연동을 재검증한다.
             AI 대기 중에는 transaction과 DB 연결을 반환한다.
             저장 전 복약 조합이 달라지면 409로 재조회를 요청한다.
-            검증 callback 없는 직접 호출은 기존 호출자 transaction 계약을 유지한다.
+            검증 callback이 없으면 접근 검증만 생략하고 같은 조회·재검증 저장 경로를 쓴다.
         end note
 
         class "IdentifyPill" as BIdentifyPill <<Control: 낱알 후보 순위화>> {

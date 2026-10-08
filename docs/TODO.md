@@ -22,6 +22,79 @@ Physical acceptance that was not performed for v0.2.0:
 - [ ] Devices other than Android 12, including Android 16 background work.
 - [ ] Native map-marker recovery after a partially failed marker addition.
 
+Introduced in v0.2.1 and not yet checked on a device:
+
+- [ ] Choosing a medication photo from the gallery and a widget "taken" tap,
+      after the unused storage permissions, map-app query and widget broadcast
+      receiver were removed from the Android manifest.
+- [ ] Device-to-device transfer: the new extraction rules exclude all app data
+      so the encrypted dose store cannot arrive without its device-bound key.
+      This needs two phones.
+- [ ] The direct APK is built for `arm64-v8a` and `armeabi-v7a` only and
+      measured 112.8 MB in CI, which asserts the ABI set of every release
+      build. Confirm the installed size on a device.
+
+Changed in v0.2.1 without a device check (automated tests only):
+
+- [ ] Dose recording from the schedule, the widget and chat while offline and
+      after reconnecting; a tap right after midnight; the widget refresh
+      button; no duplicate upload from the periodic worker.
+- [ ] Reminders: a slot taken early is not re-armed by the 12-hour worker,
+      untaken slots still fire after a reboot, and a reminder is cancelled
+      after a widget "taken" and again after undo and retake.
+- [ ] Push: registration after a cold start without network, the permission
+      prompt appearing once, and caregiver alerts arriving without the
+      periodic monitoring request.
+- [ ] Session: a network loss during a token refresh keeps the session; a
+      401 in chat signs out; ending the session with a pushed screen open.
+- [ ] Privacy filter on a real prescription (the label rules are judgments
+      and the OCR line order is unverified); cleanup of picked photo copies.
+- [ ] Voice guide stop and error handling; nearby-care sheet drag and marker
+      retry on the native map; recovery of the dose store on a real Keystore.
+- [ ] Two devices: one confirmation per dose taken from chat, unlink while a
+      chat is open, more than three sessions on one link, and whether a
+      background push uses the intended notification channel (every push is
+      sent on the caregiver-updates channel).
+
+Reviewed for v0.2.1 and deferred:
+
+- [ ] Ranking fuzzy catalogue candidates by matched fragments raised recall on
+      a synthetic catalogue from 5 to 189 of 200, but every name it moves from
+      `unverified` to `llm_catalog_candidate` (0.86–0.89) stops requiring user
+      review, because the client flags only `unverified` or a confidence below
+      0.75. Needs a check on the production catalogue and a decision on
+      review flagging. The same ranking on the local catalogue window turned
+      correct automatic matches into review lists without the true product
+      and must not be applied as is.
+- [ ] Accepting the chat WebSocket before closing it would deliver the close
+      code, but no client reads close codes and the released client resets its
+      reconnect delay on connect, so it would reconnect every second. Ship a
+      client that backs off and reads the codes first.
+- [ ] Rate-limit values that took effect in v0.2.1 (including 120 per minute
+      for per-item deletes), retention of dose-sync and tombstone rows, and
+      HTTP 403 wording and retry behaviour before App Check is enabled. Owner
+      decisions.
+- [ ] Database: 31 of 64 secondary indexes have no query that uses them, a
+      stored course-end column and `pg_trgm` would need migrations.
+- [ ] A partial AI summary is stored with "정보 없음" in the missing fields and
+      stays until the source document changes.
+- [ ] Sign-out does not upload doses recorded offline before suspending the
+      worker; they wait until the same account signs in again on the device.
+- [ ] With the medication box in selection mode, one back press ends the
+      selection and also returns to Home.
+- [ ] Home screen: lifecycle work still runs inside `build`, the shell
+      rebuilds on every inbox or chat notification, the link list is polled
+      every 15 seconds under a pushed screen, and the facade status message
+      has no reader. The legacy three-field settings saver parameter is
+      unused and still declared.
+- [ ] Test runs through the application still use the default Redis URL, so
+      a developer's local Redis receives rate-limit keys.
+- [ ] Class diagrams: ten members and nine relationship endpoints do not
+      match the code, one router is drawn as a class, five static markers are
+      missing, diagram titles still name `beta/v0.2.0`, and the operations and
+      classes added in v0.2.1 are not drawn. The rendered images need a font
+      with Korean glyphs.
+
 Defects and limits recorded during the v0.2.0 audits and not changed:
 
 - [ ] Non-daily directions ("주 1회", "격일", "8시간마다") are stored as a daily
@@ -32,24 +105,55 @@ Defects and limits recorded during the v0.2.0 audits and not changed:
       bedtime reminder (22:00).
 - [ ] The weekly catalog refresh sleeps a full interval after every container
       start, so deployments spaced under a week postpone it indefinitely.
-- [ ] The strength guard reads one number from combination names
-      ("5/50밀리그램"), and an ambiguous name prefix can fall through to a vowel
-      variant; both can pre-fill a wrong suggestion on the review screen.
 - [ ] The chat socket is authenticated once and not re-validated when the
-      token expires; a binary frame raises an unhandled error.
+      token expires.
 - [ ] Reminder reconciliation trusts the plugin's pending list after a
-      force-stop, a changed reminder time leaves old inbox entries, and a
-      course with unknown duration is scheduled one day at a time.
-- [ ] A transient failure while re-synchronizing the session after a token
-      refresh drops the signed-in session until it is restored.
-- [ ] "Use device language" is resolved once and does not follow a later
-      device change; caregivers using English see a Korean default patient
-      label.
+      force-stop, and a course with unknown duration is scheduled one day at a
+      time. A reminder time moved to earlier than now leaves today's alarm at
+      the old time, and the reminder worker does not see a dose recorded
+      offline that has not been uploaded yet.
+- [ ] "Use device language" follows the device after a restart, but a device
+      language change while the app is running is not written back to the
+      server setting (`synchronizeDeviceLanguage` exists and is not wired).
 - [ ] The release gate does not compare the client's API contract default with
       `backend/API_CONTRACT_VERSION`.
-- [ ] Tests do not cover weekly or interval frequencies, combination
-      strengths, fuzzy candidate recall on a realistic catalog, a PostgreSQL
-      run of the migrations, or route wiring for many endpoints.
+- [ ] Tests do not cover weekly or interval frequencies, fuzzy candidate
+      recall on a realistic catalog, or a PostgreSQL run of the full test suite
+      (CI runs only the migration round trip and two integration files on
+      PostgreSQL 16). Nothing ties the entities to the migrations, and the
+      server strings the client matches are not pinned by a test.
+
+Platform and pipeline items reviewed for v0.2.1 and deferred:
+
+- [ ] The two disabled scheduled workflows (`data-maintenance.yml`,
+      `sync-drug-catalog.yml`) still create a skipped run on every schedule
+      tick.
+- [ ] Both CI workflows report a job named `build`. Making the names unique
+      changes the required-check names and needs a branch-protection change by
+      the owner.
+- [ ] `subosito/flutter-action` and `google-github-actions/auth` are referenced
+      by major-version tag, not by commit SHA. Owner decision.
+- [ ] `check_release_ingress.py` does not require the
+      `X-MedBuddy-Api-Contract` response header; this must be checked against
+      the live edge first, because a false rejection blocks a release.
+- [ ] Dependabot does not watch the `gradle` and `docker` ecosystems. Owner
+      decision on pull-request volume.
+- [ ] Exact alarms on Android 14 and later: `SCHEDULE_EXACT_ALARM` is denied by
+      default and nothing requests it, so reminders fall back to inexact
+      delivery. Needs an owner decision (settings prompt or `USE_EXACT_ALARM`)
+      and an Android 14+ device.
+- [ ] The merged manifest still carries `RECORD_AUDIO` from the camera plugin
+      although capture disables audio. Removal needs a capture check on a
+      device.
+- [ ] Further APK size reduction (arm64 only, compressed native libraries, or
+      per-ABI splits) changes device support or update mechanics. Owner
+      decision.
+- [ ] The Android instrumented tests run in no workflow; that needs an emulator
+      job. A text-level contract test covers the widget names and keys instead.
+- [ ] This file and the beta scope still describe the open App Check and
+      acceptance gates as v0.2.0 release conditions although v0.2.0-beta was
+      published with them open. Owner decision: retitle them as Google Play
+      release criteria or record the exception.
 
 Unexplained observations from v0.2.0, analysed without a confirmed cause:
 
@@ -199,10 +303,10 @@ silently inferred from weak evidence.
       layout, TalkBack labels, and one-handed reachability for the medication,
       caregiver, and chat flows.
 
-### Post-v0.2.0 product backlog — not release-blocking implementation work
+### Product backlog — outside the v0.2.1 maintenance scope
 
-These ideas remain recorded, but feature freeze defers their implementation until
-after v0.2.0. Existing-flow acceptance tests above remain release requirements.
+These ideas remain recorded but are outside the v0.2.1 maintenance scope.
+Existing-flow acceptance tests above remain release requirements.
 
 - [ ] Add caregiver escalation levels with explicit consent, quiet hours,
       cooldowns, acknowledgement, and deduplication. Do not implement literal

@@ -134,7 +134,7 @@ single-pill contract.
 Implementation status: the separate authenticated API, composition-preserving
 image boundary, model-assisted normalized boxes, strict geometry validation,
 independent deterministic ranking, numbered Flutter overlay, and confirmation
-workflow are implemented on `beta/v0.2.0`. Release readiness still requires the
+workflow are implemented (v0.2.0). Release readiness still requires the
 licensed physical-device corpus and measured acceptance evidence below.
 
 1. Detect a bounded number of pill objects in one image and return a normalized

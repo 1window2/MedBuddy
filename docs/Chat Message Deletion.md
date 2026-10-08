@@ -2,7 +2,7 @@
 
 ## Deletion policy
 
-- Applies to the experimental medication-context chat on `beta/v0.2.0`.
+- Applies to the medication-context chat.
 - Select messages and confirm the deletion scope before deleting them.
 - **Delete for me:** available for incoming and outgoing messages at any age.
   The selection disappears only for this participant, across their devices.
