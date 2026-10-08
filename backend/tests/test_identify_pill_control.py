@@ -520,6 +520,43 @@ async def test_one_character_imprint_is_never_confident() -> None:
     assert result.is_confident is False
 
 
+# Function Name: test_lone_candidate_below_the_score_floor_is_not_confident
+# Description:
+# - A candidate without any rival is confident only when its own match score reaches 0.84: one
+#   misread character keeps it above the floor, a misread character on each side drops it below,
+#   and the lead over a missing runner-up cannot make up for that.
+# Parameters:
+# - front_imprint (str): Imprint read from the front photo; the catalog entry has "YH".
+# - back_imprint (str): Imprint read from the back photo; the catalog entry has "LT".
+# - confident (bool): Expected confidence of the single candidate.
+# Returns:
+# - None.
+@pytest.mark.parametrize(
+    "front_imprint,back_imprint,confident",
+    [("YH", "LT", True), ("YB", "LT", True), ("Y8", "L7", False)],
+)
+@pytest.mark.anyio
+async def test_lone_candidate_below_the_score_floor_is_not_confident(
+    front_imprint: str,
+    back_imprint: str,
+    confident: bool,
+) -> None:
+    features = PillVisualFeatures(
+        shape="round",
+        colors=("yellow",),
+        front_imprint=front_imprint,
+        back_imprint=back_imprint,
+        quality="good",
+    )
+    control = _control(features, (_entry("200808877", "페라트라정"),))
+
+    result = await control.requestPillIdentification(b"front", b"back")
+
+    assert [candidate.item_seq for candidate in result.candidates] == ["200808877"]
+    assert (result.candidates[0].match_score >= 0.84) is confident
+    assert result.is_confident is confident
+
+
 # Function Name: test_single_result_limit_still_checks_tied_runner_up
 # Description:
 # - Checks a tied runner-up before truncating to one result so the visible candidate remains

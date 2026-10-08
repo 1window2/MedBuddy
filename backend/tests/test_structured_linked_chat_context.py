@@ -20,6 +20,7 @@ if str(BACKEND_DIR) not in sys.path:
 from controls.link_patient_caregiver_control import LinkPatientCaregiver  # noqa: E402
 from controls.manage_linked_chat_control import ManageLinkedChat  # noqa: E402
 from controls.check_schedule_control import CheckSchedule  # noqa: E402
+from controls.set_notification_control import SetNotification  # noqa: E402
 from core.application_clock import application_today  # noqa: E402
 from core.database import Base  # noqa: E402
 from entities.chat_message_entity import (  # noqa: E402
@@ -30,10 +31,12 @@ from entities.chat_message_entity import (  # noqa: E402
     CHAT_MESSAGE_KIND_SLOT_COMPLETION,
     _ChatMessage,
 )
+from entities.medication_alarm_entity import _MedicationAlarm  # noqa: E402
 from entities.medication_completion_entity import _MedicationCompletion  # noqa: E402
 from entities.caregiver_alert_outbox_entity import _CaregiverAlertOutbox  # noqa: E402
 from entities.pharmacy_catalog_entity import PharmacyCatalogRecord  # noqa: E402
 from entities.saved_medication_entity import _SavedMedication  # noqa: E402
+from entities.user_setting_entity import _UserSetting  # noqa: E402
 
 
 # 클래스명: StructuredLinkedChatContextTest
@@ -127,6 +130,58 @@ class StructuredLinkedChatContextTest(unittest.TestCase):
         self.assertEqual(patient_morning["total_count"], 1)
         self.assertFalse(patient_morning["can_request_check"])
         self.assertTrue(caregiver_morning["can_request_check"])
+
+    # 함수이름: test_schedule_context_shows_the_same_alarm_time_as_the_alarm_screen
+    # 함수역할:
+    # - 저장된 알람이 없는 시간대는 환자의 기본 복약 시각을, 있는 시간대는 저장된 알람을 보여 주어
+    #   채팅 일정 카드와 알림 설정 화면의 시각이 같아지는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
+    def test_schedule_context_shows_the_same_alarm_time_as_the_alarm_screen(
+        self,
+    ) -> None:
+        """기본 시각을 바꾼 환자의 채팅 카드가 제품 기본값 08:00이 아닌 07:30을 보여 준다."""
+        self.db.add_all(
+            [
+                _UserSetting(user_hash="patient-a", default_morning_time="07:30"),
+                _MedicationAlarm(
+                    patient_hash="patient-a",
+                    slot_key="lunch",
+                    hour=13,
+                    minute=15,
+                    enabled=True,
+                ),
+            ]
+        )
+        self.db.commit()
+
+        contexts = self.chat.request_schedule_contexts(
+            link_id=self.link_id,
+            user_hash="caregiver-a",
+        )["data"]
+        alarms = {
+            alarm["slot_key"]: alarm
+            for alarm in SetNotification(self.db).requestMedicationAlarm("patient-a")[
+                "data"
+            ]
+        }
+
+        self.assertEqual(
+            [(item["slot_key"], item["alarm_time"], item["alarm_enabled"]) for item in contexts],
+            [
+                ("morning", "07:30", False),
+                ("lunch", "13:15", True),
+                ("evening", "18:00", False),
+            ],
+        )
+        for item in contexts:
+            alarm = alarms[item["slot_key"]]
+            self.assertEqual(
+                item["alarm_time"],
+                f"{alarm['hour']:02d}:{alarm['minute']:02d}",
+            )
 
     # 함수이름: test_only_caregiver_can_send_slot_check_request
     # 함수역할:

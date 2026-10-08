@@ -4,7 +4,6 @@
 """환자·보호자 연동별 채팅 REST 및 WebSocket API를 제공한다."""
 
 import asyncio
-import logging
 import time
 
 from fastapi import (
@@ -26,14 +25,18 @@ from api.dependencies import (
     get_authorization_control,
     get_manage_linked_chat,
     get_check_nearby_hospital,
-    get_push_notification_boundary,
-    get_request_rate_limit_store,
     verify_app_check_token,
 )
+from api.route_support import (
+    enforce_chat_daily_quota,
+    get_chat_connection_manager,
+    publish_saved_message,
+    queue_completion_alerts,
+)
 from controls.authorization_control import AuthorizationControl
+from controls.check_nearby_hospital_control import CheckNearbyHospital
 from controls.check_schedule_control import CheckSchedule
-from controls.manage_linked_chat_control import ChatSendResult, ManageLinkedChat
-from controls.process_caregiver_alert_outbox_control import ProcessCaregiverAlertOutbox
+from controls.manage_linked_chat_control import ManageLinkedChat
 from core.config import settings
 from core.database import SessionLocal
 from core.request_database_work import run_request_database_work
@@ -46,28 +49,12 @@ from schemas.chat import ChatMedicationTaken, ChatMessageCreate, ChatMessageDele
 from services.chat_connection_manager import ChatConnectionManager
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
 
 # Async routes await each blocking operation sequentially using the bounded
 # AnyIO worker pool. Cancellation drains each database operation before request
 # cleanup; sessions must never be shared with parallel tasks. FastAPI's get_db
 # dependency retains responsibility for REST cleanup.
 # WebSocket sessions are closed by the handshake, not retained by idle sockets.
-
-
-# 함수이름: get_chat_connection_manager
-# 함수역할:
-# - 애플리케이션에 등록된 채팅 실시간 연결 관리자를 반환한다.
-# 매개변수:
-# - request (Request): 현재 FastAPI 요청
-# 반환값:
-# - 초기화된 ChatConnectionManager
-def get_chat_connection_manager(request: Request) -> ChatConnectionManager:
-    """애플리케이션 단위 실시간 연결 관리자를 반환한다."""
-    manager = getattr(request.app.state, "chat_connection_manager", None)
-    if not isinstance(manager, ChatConnectionManager):
-        raise RuntimeError("Chat connection manager is not initialized.")
-    return manager
 
 
 # 함수이름: get_chat_messages
@@ -237,6 +224,7 @@ def get_chat_medication_detail(
 # - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
 # - authorization (AuthorizationControl): 환자·보호자 데이터 접근 범위 판정 Control.
 # - chat (ManageLinkedChat): 활성 연동 채팅과 문맥 접근을 관리하는 Control.
+# - hospital (CheckNearbyHospital): 병원 공유 메시지의 병원 정보를 서버에서 확인하는 Control.
 # 반환값:
 # - 생성 여부와 저장된 메시지
 @router.post("/links/{link_id}/messages")
@@ -248,12 +236,13 @@ async def post_chat_message(
     principal: AuthenticatedPrincipal = Depends(get_authenticated_app_principal),
     authorization: AuthorizationControl = Depends(get_authorization_control),
     chat: ManageLinkedChat = Depends(get_manage_linked_chat),
+    hospital: CheckNearbyHospital = Depends(get_check_nearby_hospital),
 ) -> dict[str, object]:
     """Persist message and notification job atomically, then broadcast live state."""
     authorized_user_hash = await run_request_database_work(
         authorization.resolveOwnUserHash, principal, user_hash,
     )
-    await _enforce_chat_daily_quota(
+    await enforce_chat_daily_quota(
         request=request,
         user_hash=authorized_user_hash,
     )
@@ -264,8 +253,7 @@ async def post_chat_message(
             client_message_id=payload.client_message_id,
         )
         if existing is not None:
-            return await _publish_saved_message(link_id, existing, request)
-        hospital = get_check_nearby_hospital(db=chat.db)
+            return await publish_saved_message(link_id, existing, request)
         try:
             async with asyncio.timeout(settings.HOSPITAL_SEARCH_TIMEOUT_SECONDS):
                 hospital_arguments["hospital_context"] = await hospital.requestShareContext(
@@ -290,7 +278,7 @@ async def post_chat_message(
         source_alert_id=payload.source_alert_id,
         **hospital_arguments,
     )
-    return await _publish_saved_message(link_id, result, request)
+    return await publish_saved_message(link_id, result, request)
 
 
 @router.post("/links/{link_id}/medication-taken")
@@ -308,7 +296,7 @@ async def record_chat_medication_taken(
     authorized_user_hash = await run_request_database_work(
         authorization.resolveOwnUserHash, principal, user_hash,
     )
-    await _enforce_chat_daily_quota(request=request, user_hash=authorized_user_hash)
+    await enforce_chat_daily_quota(request=request, user_hash=authorized_user_hash)
     result, completion_events = await run_request_database_work(
         chat.record_medication_taken,
         link_id=link_id, sender_hash=authorized_user_hash,
@@ -316,47 +304,19 @@ async def record_chat_medication_taken(
         schedule_date=payload.schedule_date, slot_key=payload.slot_key,
         medication_ids=payload.medication_ids,
     )
-    for event in completion_events:
-        background_tasks.add_task(_process_completion_alert, int(event["outbox_id"]))
     # Return current state on retries too, rather than the historical message's
     # snapshot, so a later correction is never visually changed back to taken.
     schedule_response = await run_request_database_work(
         CheckSchedule(chat.db).requestTodayMedicationSchedule, authorized_user_hash,
     )
     schedules = schedule_response["data"]
-    response = await _publish_saved_message(link_id, result, request)
+    response = await publish_saved_message(link_id, result, request)
+    # Last database step: the reads above left a read transaction open, and the
+    # request session stays open until the queued push has finished.
+    await run_request_database_work(
+        queue_completion_alerts, background_tasks, completion_events, chat.db,
+    )
     return {**response, "schedules": schedules}
-
-
-def _process_completion_alert(outbox_id: int) -> None:
-    """Dispatch a committed completion; the durable worker retries failures."""
-    with SessionLocal() as db:
-        try:
-            ProcessCaregiverAlertOutbox(
-                db=db, push_boundary=get_push_notification_boundary(),
-            ).processOne(outbox_id)
-        except Exception as exc:
-            logger.warning("Chat completion dispatch failed: %s", type(exc).__name__)
-
-
-async def _publish_saved_message(
-    link_id: int, result: ChatSendResult, request: Request,
-) -> dict[str, object]:
-    """Share the same post-commit delivery path for text and dose receipts."""
-    response_message = result.message.to_response_dict()
-    if result.created:
-        manager = get_chat_connection_manager(request)
-        await manager.broadcast(
-            link_id=link_id,
-            event={"type": "chat_message", "message": response_message},
-        )
-        # Notification delivery was queued atomically with the message. It must
-        # not depend on this response, the broadcast, or an in-process task.
-    return {
-        "success": True,
-        "created": result.created,
-        "data": response_message,
-    }
 
 
 # 함수이름: mark_chat_read
@@ -507,6 +467,10 @@ async def stream_chat_events(
             except TimeoutError:
                 await websocket.close(code=4408)
                 return
+            except KeyError:
+                # A binary frame carries no text; this stream accepts text pings only.
+                await websocket.close(code=1003)
+                return
             if len(message.encode("utf-8")) > settings.CHAT_WEBSOCKET_MAX_FRAME_BYTES:
                 await websocket.close(code=1009)
                 return
@@ -532,46 +496,6 @@ async def stream_chat_events(
                 user_hash=authorized_user_hash,
                 websocket=websocket,
             )
-
-
-# 함수이름: _enforce_chat_daily_quota
-# 함수역할:
-# - 한도 검사에 도달한 사용자의 채팅 전송 시도 횟수를 일일 한도로 제한한다. 중복 전송과 이후 검증·저장에 실패한 시도도 한도를 소비한다.
-# 매개변수:
-# - request (Request): 애플리케이션 공유 상태에 접근할 FastAPI 요청.
-# - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
-# 반환값:
-# - 없음. 제한 초과 시 HTTP 오류를 발생시킨다.
-async def _enforce_chat_daily_quota(
-    *,
-    request: Request,
-    user_hash: str,
-) -> None:
-    if not settings.RATE_LIMIT_ENABLED:
-        return
-    try:
-        allowed, retry_after = await get_request_rate_limit_store(request).consume(
-            identity=f"user:{user_hash}",
-            request_scope="POST:/api/v1/chat/messages:daily",
-            rule=RateLimitRule(
-                settings.CHAT_MESSAGE_DAILY_LIMIT,
-                86_400,
-            ),
-        )
-    except RuntimeError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail="Request quota storage is temporarily unavailable.",
-            headers={"Retry-After": "5"},
-        ) from exc
-    if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail="오늘 보낼 수 있는 채팅 메시지 수를 초과했습니다.",
-            headers={"Retry-After": str(max(1, retry_after))},
-        )
-
-
 
 
 # 함수이름: _reserve_websocket_connection

@@ -1112,28 +1112,19 @@ class PillVisionBoundary:
 
     # 함수이름: _preprocess_one_image
     # 함수역할:
-    # - 개수 판정 전처리 API를 우선 사용하고 지원하지 않는 기존 구현·테스트 대역에는 이미지 전용 API를 사용한다.
+    # - 개수 판정을 포함한 전처리 API로 한쪽 면을 정규화한다. 주입되는 전처리 경계는 이 API를 반드시 제공해야 한다.
     # 매개변수:
     # - image (bytes): 전처리할 한쪽 면의 원본 이미지 바이트.
     # 반환값:
-    # - 정규화 이미지와 판정 개수; 이전 API 경로는 개수 None.
+    # - 정규화 이미지와 판정 개수; 개수를 확정할 수 없으면 None.
     def _preprocess_one_image(
         self,
         image: bytes,
     ) -> tuple[bytes, int | None]:
-        """신규 개수 판정 API가 없는 테스트 대역과 기존 구현도 계속 지원한다."""
-
-        processor = self.image_processing_boundary
-        assessment_method = getattr(
-            processor,
-            "preprocessPillImageWithAssessment",
-            None,
+        assessment = self.image_processing_boundary.preprocessPillImageWithAssessment(
+            image
         )
-        if callable(assessment_method):
-            assessment = assessment_method(image)
-            if isinstance(assessment, PillImagePreprocessingResult):
-                return assessment.image, assessment.detected_pill_count
-        return processor.preprocessPillImage(image), None
+        return assessment.image, assessment.detected_pill_count
 
     # 함수이름: _preprocess_images_with_capacity
     # 함수역할:

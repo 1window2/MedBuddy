@@ -23,7 +23,9 @@ os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
 from core.database import Base  # noqa: E402
 from entities.medication_detail_entity import _DrugApprovalInfo, _DrugBasicInfo  # noqa: E402
 from entities.pill_identification_entity import (  # noqa: E402
+    PillCatalogDownloadReport,
     PillCatalogEntry,
+    PillCatalogSnapshot,
     PillIdentificationReference,
 )
 from scripts.sync_drug_catalog import (  # noqa: E402
@@ -34,6 +36,88 @@ from scripts.sync_drug_catalog import (  # noqa: E402
     _configure_logging,
     _exclusive_catalog_sync_lock,
 )
+
+
+# Function Name: _pill_snapshot
+# Description:
+# - Builds the snapshot MFDSPillAPI.requestCatalogSnapshot returns: the accepted entries and a
+#   download report whose row accounting is consistent with them. By default the download is
+#   complete (every advertised row fetched, nothing rejected or duplicated).
+# Parameters:
+# - entries (list[PillCatalogEntry]): Accepted catalog entries of the generation.
+# - advertised_rows (int | None): Row count announced by the API; None means all were fetched.
+# - rejected_rows (int): Fetched rows that failed validation.
+# - duplicate_rows (int): Valid rows dropped because their identifier was already accepted.
+# Returns:
+# - PillCatalogSnapshot: Validated snapshot with a real download report.
+def _pill_snapshot(
+    entries: list[PillCatalogEntry],
+    *,
+    advertised_rows: int | None = None,
+    rejected_rows: int = 0,
+    duplicate_rows: int = 0,
+) -> PillCatalogSnapshot:
+    valid_rows = len(entries) + duplicate_rows
+    fetched_rows = valid_rows + rejected_rows
+    return PillCatalogSnapshot(
+        entries=tuple(entries),
+        report=PillCatalogDownloadReport(
+            advertised_rows=fetched_rows if advertised_rows is None else advertised_rows,
+            fetched_rows=fetched_rows,
+            valid_rows=valid_rows,
+            accepted_unique_rows=len(entries),
+            rejected_rows=rejected_rows,
+            duplicate_rows=duplicate_rows,
+            page_count=1,
+            response_bytes=256 * fetched_rows,
+        ),
+    )
+
+
+# Class Name: _FakePillCatalogAPI
+# Role: MFDSPillAPI double for the synchronization job. It offers exactly what the job uses,
+#   requestCatalogSnapshot and minimum_catalog_rows, so the tests run the production call path.
+# Responsibilities:
+# - Return the configured snapshot, or raise the configured upstream failure.
+# - Count snapshot requests.
+# Attributes:
+# - minimum_catalog_rows (int): Product-count floor a publishable generation must reach.
+# - snapshot_requests (int): Number of requestCatalogSnapshot calls received.
+class _FakePillCatalogAPI:
+    # Function Name: __init__
+    # Description:
+    # - Stores the outcome of the download and the product floor.
+    # Parameters:
+    # - snapshot (PillCatalogSnapshot | None): Snapshot to return; unused when error is set.
+    # - minimum_catalog_rows (int): Product-count floor reported to the job.
+    # - error (Exception | None): Upstream failure raised instead of returning a snapshot.
+    # Returns:
+    # - None.
+    def __init__(
+        self,
+        snapshot: PillCatalogSnapshot | None = None,
+        *,
+        minimum_catalog_rows: int = 1,
+        error: Exception | None = None,
+    ) -> None:
+        self._snapshot = snapshot
+        self._error = error
+        self.minimum_catalog_rows = minimum_catalog_rows
+        self.snapshot_requests = 0
+
+    # Function Name: requestCatalogSnapshot
+    # Description:
+    # - Counts the request and returns the configured snapshot or raises the configured error.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - PillCatalogSnapshot: Configured catalog generation with its download report.
+    async def requestCatalogSnapshot(self) -> PillCatalogSnapshot:
+        self.snapshot_requests += 1
+        if self._error is not None:
+            raise self._error
+        assert self._snapshot is not None
+        return self._snapshot
 
 
 # Class Name: DrugCatalogSyncTest
@@ -254,42 +338,32 @@ class DrugCatalogSyncTest(unittest.TestCase):
     # Returns:
     # - None.
     def test_pill_sync_replaces_shared_reference_catalog(self) -> None:
-        # Class Name: _PillCatalogAPI
-        # Role: Pill API double supplying one complete reference entry for a successful
-        #   refresh.
-        # Responsibilities:
-        # - Returns one PILL-1 reference for successful catalog reconciliation.
-        class _PillCatalogAPI:
-            # Function Name: requestCatalog
-            # Description:
-            # - Returns one PILL-1 reference for successful catalog reconciliation.
-            # Parameters:
-            # - None.
-            # Returns:
-            # - list[PillCatalogEntry]: Configured replacement pill entries; empty
-            #   or delayed in the corresponding failure scenarios.
-            async def requestCatalog(self) -> list[PillCatalogEntry]:
-                return [
-                    PillCatalogEntry(
-                        item_seq="PILL-1",
-                        item_name="sample tablet",
-                    )
-                ]
-
+        # One accepted product out of three fetched rows: one row was rejected and one was a
+        # duplicate, as a real download reports them.
+        snapshot = _pill_snapshot(
+            [PillCatalogEntry(item_seq="PILL-1", item_name="sample tablet")],
+            rejected_rows=1,
+            duplicate_rows=1,
+        )
+        pill_catalog_api = _FakePillCatalogAPI(snapshot)
         sync_job = DrugCatalogSyncJob(
             store=self.store,
             public_drug_small_api=object(),  # type: ignore[arg-type]
             public_drug_large_api=object(),  # type: ignore[arg-type]
-            pill_catalog_api=_PillCatalogAPI(),  # type: ignore[arg-type]
+            pill_catalog_api=pill_catalog_api,  # type: ignore[arg-type]
             page_size=100,
         )
 
         synchronized_count = asyncio.run(sync_job.sync_pill_identification())
 
         self.assertEqual(synchronized_count, 1)
+        self.assertEqual(pill_catalog_api.snapshot_requests, 1)
         self.assertIsNotNone(sync_job.last_pill_reconciliation_report)
         assert sync_job.last_pill_reconciliation_report is not None
         self.assertTrue(sync_job.last_pill_reconciliation_report.is_publishable)
+        # The published evidence is the download's own report, not a reconstructed one.
+        self.assertIs(sync_job.last_pill_reconciliation_report.source, snapshot.report)
+        self.assertEqual(sync_job.last_pill_reconciliation_report.kpic_product_floor, 1)
         self.assertEqual(
             sync_job.last_pill_reconciliation_report.persisted_rows,
             1,
@@ -354,35 +428,15 @@ class DrugCatalogSyncTest(unittest.TestCase):
     # Returns:
     # - None.
     def test_pill_sync_rejects_catalog_below_kpic_product_floor(self) -> None:
-        # Class Name: _BelowFloorPillCatalogAPI
-        # Role: Pill API double whose one-row result is below its advertised product
-        #   floor.
-        # Responsibilities:
-        # - Returns the undersized pill dataset used to trigger identifier-set
-        #   reconciliation failure.
-        # Attributes:
-        # - minimum_catalog_rows (int): Minimum catalog size advertised to the refresh
-        #   completeness guard.
-        class _BelowFloorPillCatalogAPI:
-            minimum_catalog_rows = 2
-
-            # Function Name: requestCatalog
-            # Description:
-            # - Returns the undersized pill dataset used to trigger identifier-set
-            #   reconciliation failure.
-            # Parameters:
-            # - None.
-            # Returns:
-            # - list[PillCatalogEntry]: Configured replacement pill entries; empty
-            #   or delayed in the corresponding failure scenarios.
-            async def requestCatalog(self) -> list[PillCatalogEntry]:
-                return [PillCatalogEntry(item_seq="PILL-1", item_name="pill")]
-
+        # A complete one-row download while the API's product floor is two.
         sync_job = DrugCatalogSyncJob(
             store=self.store,
             public_drug_small_api=object(),  # type: ignore[arg-type]
             public_drug_large_api=object(),  # type: ignore[arg-type]
-            pill_catalog_api=_BelowFloorPillCatalogAPI(),  # type: ignore[arg-type]
+            pill_catalog_api=_FakePillCatalogAPI(  # type: ignore[arg-type]
+                _pill_snapshot([PillCatalogEntry(item_seq="PILL-1", item_name="pill")]),
+                minimum_catalog_rows=2,
+            ),
             page_size=100,
         )
 
@@ -394,6 +448,55 @@ class DrugCatalogSyncTest(unittest.TestCase):
 
         self.assertEqual(self.db.query(PillIdentificationReference).count(), 0)
         self.assertIsNone(sync_job.last_pill_reconciliation_report)
+
+    # Function Name: test_pill_sync_rejects_download_report_with_unfetched_rows
+    # Description:
+    # - Rejects a snapshot whose own download report says that advertised rows were not
+    #   fetched: the existing catalog stays untouched and no reconciliation report is
+    #   published, although the delivered entries persist and reconcile exactly.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_pill_sync_rejects_download_report_with_unfetched_rows(self) -> None:
+        self.db.add(
+            PillIdentificationReference(
+                item_seq="EXISTING",
+                item_name="existing tablet",
+            )
+        )
+        self.db.commit()
+        entries = [
+            PillCatalogEntry(item_seq="EXISTING", item_name="existing tablet"),
+            PillCatalogEntry(item_seq="PILL-2", item_name="second tablet"),
+        ]
+        sync_job = DrugCatalogSyncJob(
+            store=self.store,
+            public_drug_small_api=object(),  # type: ignore[arg-type]
+            public_drug_large_api=object(),  # type: ignore[arg-type]
+            pill_catalog_api=_FakePillCatalogAPI(  # type: ignore[arg-type]
+                _pill_snapshot(entries, advertised_rows=3),
+            ),
+            page_size=100,
+        )
+
+        with self.assertRaisesRegex(
+            CatalogSyncIncompleteError,
+            "identifier-set reconciliation",
+        ):
+            asyncio.run(sync_job.sync_pill_identification())
+
+        self.db.expire_all()
+        rows = self.db.query(PillIdentificationReference).all()
+        self.assertEqual([row.item_seq for row in rows], ["EXISTING"])
+        self.assertIsNone(sync_job.last_pill_reconciliation_report)
+
+        # The same entries with a complete report are published.
+        sync_job.pill_catalog_api = _FakePillCatalogAPI(  # type: ignore[assignment]
+            _pill_snapshot(entries),
+        )
+        self.assertEqual(asyncio.run(sync_job.sync_pill_identification()), 2)
+        self.assertEqual(self.db.query(PillIdentificationReference).count(), 2)
 
     # Function Name: test_all_sync_rolls_back_earlier_datasets_after_late_failure
     # Description:
@@ -508,29 +611,14 @@ class DrugCatalogSyncTest(unittest.TestCase):
                     1,
                 )
 
-        # Class Name: _FailingPillAPI
-        # Role: Pill API double that fails after other catalog datasets have been
-        #   updated.
-        # Responsibilities:
-        # - Raises a pill-catalog availability error to trigger the shared transaction
-        #   rollback.
-        class _FailingPillAPI:
-            # Function Name: requestCatalog
-            # Description:
-            # - Raises a pill-catalog availability error to trigger the shared
-            #   transaction rollback.
-            # Parameters:
-            # - None.
-            # Returns:
-            # - No normal result; raises the configured failure described above.
-            async def requestCatalog(self) -> list[PillCatalogEntry]:
-                raise RuntimeError("pill catalog unavailable")
-
+        # The pill download fails after the other catalog datasets have been updated.
         sync_job = DrugCatalogSyncJob(
             store=self.store,
             public_drug_small_api=_BasicAPI(),  # type: ignore[arg-type]
             public_drug_large_api=_ApprovalAPI(),  # type: ignore[arg-type]
-            pill_catalog_api=_FailingPillAPI(),  # type: ignore[arg-type]
+            pill_catalog_api=_FakePillCatalogAPI(  # type: ignore[arg-type]
+                error=RuntimeError("pill catalog unavailable"),
+            ),
             page_size=100,
         )
 
@@ -629,29 +717,13 @@ class DrugCatalogSyncTest(unittest.TestCase):
                     1,
                 )
 
-        # Class Name: _PillAPI
-        # Role: Pill API double supplying the successful all-dataset transaction's pill
-        #   reference.
-        # Responsibilities:
-        # - Returns the PILL-1 entry used by the successful shared catalog transaction.
-        class _PillAPI:
-            # Function Name: requestCatalog
-            # Description:
-            # - Returns the PILL-1 entry used by the successful shared catalog
-            #   transaction.
-            # Parameters:
-            # - None.
-            # Returns:
-            # - list[PillCatalogEntry]: Configured replacement pill entries; empty
-            #   or delayed in the corresponding failure scenarios.
-            async def requestCatalog(self) -> list[PillCatalogEntry]:
-                return [PillCatalogEntry(item_seq="PILL-1", item_name="pill")]
-
         sync_job = DrugCatalogSyncJob(
             store=self.store,
             public_drug_small_api=_BasicAPI(),  # type: ignore[arg-type]
             public_drug_large_api=_ApprovalAPI(),  # type: ignore[arg-type]
-            pill_catalog_api=_PillAPI(),  # type: ignore[arg-type]
+            pill_catalog_api=_FakePillCatalogAPI(  # type: ignore[arg-type]
+                _pill_snapshot([PillCatalogEntry(item_seq="PILL-1", item_name="pill")]),
+            ),
             page_size=100,
         )
 
@@ -994,38 +1066,26 @@ class DrugCatalogSyncTest(unittest.TestCase):
         )
         self.db.commit()
 
-        # Class Name: _PartialPillCatalogAPI
-        # Role: Pill API double providing a drastic one-row replacement for an
-        #   established catalog.
-        # Responsibilities:
-        # - Returns one new pill reference to exercise the mass-replacement guard.
-        class _PartialPillCatalogAPI:
-            # Function Name: requestCatalog
-            # Description:
-            # - Returns one new pill reference to exercise the mass-replacement
-            #   guard.
-            # Parameters:
-            # - None.
-            # Returns:
-            # - list[PillCatalogEntry]: Configured replacement pill entries; empty
-            #   or delayed in the corresponding failure scenarios.
-            async def requestCatalog(self) -> list[PillCatalogEntry]:
-                return [
-                    PillCatalogEntry(
-                        item_seq="REPLACEMENT",
-                        item_name="replacement tablet",
-                    )
-                ]
-
+        # A complete, internally consistent download of one new product: every snapshot and
+        # reconciliation check passes, so only the refresh-volume guard can stop it.
         sync_job = DrugCatalogSyncJob(
             store=self.store,
             public_drug_small_api=object(),  # type: ignore[arg-type]
             public_drug_large_api=object(),  # type: ignore[arg-type]
-            pill_catalog_api=_PartialPillCatalogAPI(),  # type: ignore[arg-type]
+            pill_catalog_api=_FakePillCatalogAPI(  # type: ignore[arg-type]
+                _pill_snapshot(
+                    [
+                        PillCatalogEntry(
+                            item_seq="REPLACEMENT",
+                            item_name="replacement tablet",
+                        )
+                    ]
+                ),
+            ),
             page_size=100,
         )
 
-        with self.assertRaises(CatalogSyncIncompleteError):
+        with self.assertRaisesRegex(CatalogSyncIncompleteError, "알약 식별정보"):
             asyncio.run(sync_job.sync_pill_identification())
 
         self.db.expire_all()
@@ -1056,32 +1116,16 @@ class DrugCatalogSyncTest(unittest.TestCase):
         )
         self.db.commit()
 
-        # Class Name: _EmptyPillCatalogAPI
-        # Role: Pill API double that produces an empty replacement catalog.
-        # Responsibilities:
-        # - Returns no pill entries to exercise the empty-catalog publication guard.
-        class _EmptyPillCatalogAPI:
-            # Function Name: requestCatalog
-            # Description:
-            # - Returns no pill entries to exercise the empty-catalog publication
-            #   guard.
-            # Parameters:
-            # - None.
-            # Returns:
-            # - list[PillCatalogEntry]: Configured replacement pill entries; empty
-            #   or delayed in the corresponding failure scenarios.
-            async def requestCatalog(self) -> list[PillCatalogEntry]:
-                return []
-
+        # A snapshot without entries, to exercise the empty-catalog publication guard.
         sync_job = DrugCatalogSyncJob(
             store=self.store,
             public_drug_small_api=object(),  # type: ignore[arg-type]
             public_drug_large_api=object(),  # type: ignore[arg-type]
-            pill_catalog_api=_EmptyPillCatalogAPI(),  # type: ignore[arg-type]
+            pill_catalog_api=_FakePillCatalogAPI(_pill_snapshot([])),  # type: ignore[arg-type]
             page_size=100,
         )
 
-        with self.assertRaises(CatalogSyncIncompleteError):
+        with self.assertRaisesRegex(CatalogSyncIncompleteError, "returned no rows"):
             asyncio.run(sync_job.sync_pill_identification())
 
         rows = self.db.query(PillIdentificationReference).all()
@@ -1104,33 +1148,20 @@ class DrugCatalogSyncTest(unittest.TestCase):
         )
         self.db.commit()
 
-        # Class Name: _DuplicatePillCatalogAPI
-        # Role: Pill API double that supplies conflicting records with one duplicate
-        #   product identifier.
-        # Responsibilities:
-        # - Returns two differently named entries sharing the same code to force an
-        #   integrity error.
-        class _DuplicatePillCatalogAPI:
-            # Function Name: requestCatalog
-            # Description:
-            # - Returns two differently named entries sharing the same code to force
-            #   an integrity error.
-            # Parameters:
-            # - None.
-            # Returns:
-            # - list[PillCatalogEntry]: Configured replacement pill entries; empty
-            #   or delayed in the corresponding failure scenarios.
-            async def requestCatalog(self) -> list[PillCatalogEntry]:
-                return [
-                    PillCatalogEntry(item_seq="DUPLICATE", item_name="first"),
-                    PillCatalogEntry(item_seq="DUPLICATE", item_name="second"),
-                ]
-
+        # Two differently named entries share one product identifier; the snapshot counts
+        # them as two accepted rows, so only the database constraint can catch the conflict.
         sync_job = DrugCatalogSyncJob(
             store=self.store,
             public_drug_small_api=object(),  # type: ignore[arg-type]
             public_drug_large_api=object(),  # type: ignore[arg-type]
-            pill_catalog_api=_DuplicatePillCatalogAPI(),  # type: ignore[arg-type]
+            pill_catalog_api=_FakePillCatalogAPI(  # type: ignore[arg-type]
+                _pill_snapshot(
+                    [
+                        PillCatalogEntry(item_seq="DUPLICATE", item_name="first"),
+                        PillCatalogEntry(item_seq="DUPLICATE", item_name="second"),
+                    ]
+                ),
+            ),
             page_size=100,
         )
 

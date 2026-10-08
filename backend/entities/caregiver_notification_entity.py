@@ -268,6 +268,37 @@ def decode_slot_settings(raw_settings: str | None) -> dict[str, dict[str, object
     return result
 
 
+# 함수이름: effective_slot_settings
+# 함수역할:
+# - 저장된 시간대 JSON을 읽고 누락된 시간대는 기존 단일 알림 설정 열로 채운다.
+# - 설정 화면과 알림 큐·전송 작업이 같은 규칙으로 실제 적용 설정을 읽게 한다.
+# 매개변수:
+# - setting (_CaregiverNotification): 기존 호환 열과 시간대별 값을 포함한 보호자·환자 알림 설정 행.
+# 반환값:
+# - 모든 지원 시간대를 포함한 알림 설정 사전; 행은 변경하지 않는다.
+def effective_slot_settings(
+    setting: _CaregiverNotification,
+) -> dict[str, dict[str, object]]:
+    slot_settings = decode_slot_settings(setting.slot_settings)
+    try:
+        legacy_mode = normalize_notification_mode(
+            setting.alert_option
+            or alert_option_from_enabled(bool(setting.enabled))
+        )
+    except ValueError:
+        legacy_mode = alert_option_from_enabled(bool(setting.enabled))
+    for slot_key in CAREGIVER_NOTIFICATION_SLOT_KEYS:
+        slot_settings.setdefault(
+            slot_key,
+            {
+                "notification_type": legacy_mode,
+                "deadline_hour": setting.deadline_hour,
+                "deadline_minute": setting.deadline_minute,
+            },
+        )
+    return slot_settings
+
+
 # 함수이름: encode_slot_settings
 # 함수역할:
 # - 시간대별 알림 설정을 비ASCII 문자를 보존한 JSON으로 저장한다.

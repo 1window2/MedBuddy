@@ -11,12 +11,17 @@ from google import genai
 
 from boundaries.public_drug_api_boundary import (
     read_public_image_url,
+    read_public_item_name,
     read_public_item_sequence,
 )
 from core.config import settings
 from entities.medication_detail_entity import MedicationDetail
 
 logger = logging.getLogger(__name__)
+
+# Text earlier versions wrote into a summary field the AI had not returned. The generator no
+# longer writes it; the detail cache treats a stored snapshot that still holds it as a miss.
+FAILED_SUMMARY_TEXT = "요약 실패"
 
 
 # 함수이름: read_medication_detail_text
@@ -75,17 +80,20 @@ class MedicationSummaryGenerator:
     # Function Name: summarize_advanced_item
     # Description:
     # - Converts advanced approval API raw documents into patient-facing MedicationDetail.
+    # - An answer that is not a JSON object or has none of the three summaries is a failed
+    #   request, never a result; when only one or two are missing, those read "정보 없음".
     # Parameters:
-    # - drug_name (str): Original search keyword.
+    # - drug_name (str): Original search keyword; names the product only when the item has no name.
     # - advanced_item (dict[str, Any]): Raw item from the advanced public API or local approval DB.
     # Returns:
-    # - MedicationDetail generated from Gemini summary output.
+    # - MedicationDetail generated from Gemini summary output; raises RuntimeError for a timeout,
+    #   a failed request or an unusable answer.
     async def summarize_advanced_item(
         self,
         drug_name: str,
         advanced_item: dict[str, Any],
     ) -> MedicationDetail:
-        actual_item_name = read_medication_detail_text(advanced_item.get("ITEM_NAME"), drug_name)
+        actual_item_name = read_public_item_name(advanced_item) or drug_name
         raw_efficacy = read_medication_detail_text(advanced_item.get("EE_DOC_DATA"))[:2000]
         raw_usage = read_medication_detail_text(advanced_item.get("UD_DOC_DATA"))[:2000]
         raw_warning = read_medication_detail_text(advanced_item.get("NB_DOC_DATA"))[:2000]
@@ -120,6 +128,13 @@ class MedicationSummaryGenerator:
                 timeout=self.timeout_seconds,
             )
             summary_data = json.loads(ai_response.text)
+            if not isinstance(summary_data, dict):
+                raise ValueError("Medication summary is not a JSON object.")
+            efficacy = read_medication_detail_text(summary_data.get("efficacy"), "")
+            usage_method = read_medication_detail_text(summary_data.get("use_method"), "")
+            warning = read_medication_detail_text(summary_data.get("warning_message"), "")
+            if not (efficacy or usage_method or warning):
+                raise ValueError("Medication summary has no summary text.")
         except TimeoutError as exc:
             logger.warning("Gemini medication summary timed out.")
             raise RuntimeError("Medication summary generation timed out.") from exc
@@ -131,9 +146,9 @@ class MedicationSummaryGenerator:
             item_seq=read_public_item_sequence(advanced_item),
             item_name=actual_item_name,
             manufacturer=read_medication_detail_text(advanced_item.get("ENTP_NAME") or advanced_item.get("entpName")),
-            efficacy=read_medication_detail_text(summary_data.get("efficacy"), "요약 실패"),
-            usage_method=read_medication_detail_text(summary_data.get("use_method"), "요약 실패"),
-            warning=read_medication_detail_text(summary_data.get("warning_message"), "요약 실패"),
+            efficacy=read_medication_detail_text(efficacy),
+            usage_method=read_medication_detail_text(usage_method),
+            warning=read_medication_detail_text(warning),
             image_url=read_public_image_url(advanced_item),
             source="Advanced (허가정보) + AI 요약",
             ai_guide="",

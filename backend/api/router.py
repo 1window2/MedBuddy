@@ -31,6 +31,7 @@ from api.dependencies import (
     get_check_caregiver_monitoring,
     get_manage_user_setting,
     get_manage_account,
+    get_manage_caregiver_alert,
     get_manage_push_token,
     get_identify_pill,
     get_link_patient_caregiver_control,
@@ -39,7 +40,12 @@ from api.dependencies import (
     get_request_voice_guide,
     get_set_caregiver_notification,
     get_set_notification,
-    get_push_notification_boundary,
+    get_sync_dose,
+)
+from api.route_support import (
+    enforce_chat_daily_quota,
+    publish_saved_message,
+    queue_completion_alerts,
 )
 from boundaries.firebase_identity_boundary import (
     IdentityDeletionUnavailableError,
@@ -71,20 +77,14 @@ from controls.manage_account_control import ManageAccount
 from controls.manage_push_token_control import ManagePushToken
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
 from controls.check_health_recommendation_control import CheckHealthRecommendation
-from controls.process_caregiver_alert_outbox_control import (
-    ProcessCaregiverAlertOutbox,
-)
 from controls.request_voice_guide_control import RequestVoiceGuide
 from controls.set_caregiver_notification_control import SetCaregiverNotification
 from controls.set_notification_control import SetNotification
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
-from core.database import SessionLocal
 from core.application_clock import application_today
 from core.request_database_work import run_request_database_work
-from core.database import get_db
 from core.config import settings
-from sqlalchemy.orm import Session
 from controls.manage_caregiver_alert_control import ManageCaregiverAlert
 from schemas.medication import (
     MedicationRequest,
@@ -231,11 +231,11 @@ def snooze_caregiver_alert(
     alert_id: int, user_hash: str | None = None,
     principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
     authorization: AuthorizationControl = Depends(get_authorization_control),
-    db: Session = Depends(get_db),
+    manage_caregiver_alert: ManageCaregiverAlert = Depends(get_manage_caregiver_alert),
 ) -> dict[str, object]:
     """Schedule one follow-up under the authenticated recipient's authority."""
     caregiver = authorization.resolveOwnUserHash(principal, user_hash)
-    return ManageCaregiverAlert(db).snooze(alert_id, caregiver)
+    return manage_caregiver_alert.snooze(alert_id, caregiver)
 
 
 @router.get("/caregiver-alerts/local-deliveries")
@@ -243,13 +243,13 @@ def local_caregiver_alert_deliveries(
     user_hash: str | None = None,
     principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
     authorization: AuthorizationControl = Depends(get_authorization_control),
-    db: Session = Depends(get_db),
+    manage_caregiver_alert: ManageCaregiverAlert = Depends(get_manage_caregiver_alert),
 ) -> dict[str, object]:
     """Read server-released deliveries without pretending local tests use FCM."""
     if settings.AUTH_MODE != "disabled" or settings.APP_ENV == "production":
         raise HTTPException(404, "Not found.")
     caregiver = authorization.resolveOwnUserHash(principal, user_hash)
-    return {"success": True, "data": ManageCaregiverAlert(db).localDeliveries(caregiver)}
+    return {"success": True, "data": manage_caregiver_alert.localDeliveries(caregiver)}
 
 
 # 함수이름: unregister_push_token
@@ -296,8 +296,6 @@ async def identify_medication(
             request.extracted_text,
             **({'original_text': request.original_text} if request.original_text else {}),
         )
-    except HTTPException:
-        raise
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -337,8 +335,6 @@ def check_prescription_change(
         )
     except HTTPException:
         raise
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         logger.error(
             "Prescription change comparison failed: %s",
@@ -533,32 +529,6 @@ def get_today_medication_info(
         ) from exc
 
 
-# 함수이름: _process_caregiver_completion_alert
-# 함수역할:
-# - 복약 체크와 함께 저장된 아웃박스 요청을 별도 DB 세션에서 즉시 처리한다.
-# - 실패한 요청은 아웃박스 작업자가 다시 처리하므로 여기서는 예외를 격리한다.
-# 매개변수:
-# - outbox_id (int): 보호자 알림 아웃박스의 영속 기록 식별자.
-# 반환값:
-# - 없음.
-def _process_caregiver_completion_alert(
-    outbox_id: int,
-) -> None:
-    db = SessionLocal()
-    try:
-        ProcessCaregiverAlertOutbox(
-            db=db,
-            push_boundary=get_push_notification_boundary(),
-        ).processOne(outbox_id)
-    except Exception as exc:
-        logger.warning(
-            "Caregiver push background dispatch failed: %s",
-            type(exc).__name__,
-        )
-    finally:
-        db.close()
-
-
 # Function Name: update_medication_slot_status
 # Description:
 # - Atomically checks or unchecks every active medication in one time slot.
@@ -593,11 +563,11 @@ def update_medication_slot_status(
         authorized_patient_hash,
         expected_schedule_date=request.expected_schedule_date,
     )
-    for completion_event in check_schedule.consumeCompletionEvents():
-        background_tasks.add_task(
-            _process_caregiver_completion_alert,
-            int(completion_event["outbox_id"]),
-        )
+    queue_completion_alerts(
+        background_tasks,
+        check_schedule.consumeCompletionEvents(),
+        check_schedule.db,
+    )
     return response
 
 
@@ -610,33 +580,36 @@ async def sync_dose_operation(
     principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
     authorization: AuthorizationControl = Depends(get_authorization_control),
     check_schedule: CheckSchedule = Depends(get_check_schedule),
+    sync_dose: SyncDose = Depends(get_sync_dose),
 ) -> dict[str, object]:
     """Accept explicit offline intake changes only for the signed-in owner."""
     owner = authorization.resolvePatientScope(principal, patient_hash, allow_caregiver=False)
     if not principal.authentication_disabled and patient_hash and patient_hash != owner:
         raise HTTPException(status_code=403, detail="The queued dose belongs to another account.")
     if payload.link_id is not None:
-        from api.chat_router import _enforce_chat_daily_quota
-        await _enforce_chat_daily_quota(request=request, user_hash=owner)
+        await enforce_chat_daily_quota(request=request, user_hash=owner)
     # Keep the single API process responsive while the receipt insert or the
     # schedule read waits on the database, as the chat routes already do.
     events, chat_result = await run_request_database_work(
-        SyncDose(check_schedule.db).apply, owner, payload,
+        sync_dose.apply, owner, payload,
     )
-    for event in events:
-        background_tasks.add_task(_process_caregiver_completion_alert, int(event["outbox_id"]))
     if chat_result is not None:
-        from api.chat_router import _publish_saved_message
-        await _publish_saved_message(payload.link_id, chat_result, request)
+        await publish_saved_message(payload.link_id, chat_result, request)
     schedule_response = await run_request_database_work(
         check_schedule.requestTodayMedicationSchedule, owner,
     )
-    return {
+    response = {
         "success": True,
         "operation_id": payload.operation_id,
         "schedule_date": application_today().isoformat(),
         "data": schedule_response["data"],
     }
+    # Last database step: the schedule read above reopened a read transaction,
+    # and the request session stays open until the queued push has finished.
+    await run_request_database_work(
+        queue_completion_alerts, background_tasks, events, sync_dose.db,
+    )
+    return response
 
 
 # 함수이름: update_medication_status
@@ -671,12 +644,13 @@ def update_medication_status(
         request.medication_status,
         authorized_patient_hash,
         request.slot_key,
+        expected_schedule_date=request.expected_schedule_date,
     )
-    for completion_event in check_schedule.consumeCompletionEvents():
-        background_tasks.add_task(
-            _process_caregiver_completion_alert,
-            int(completion_event["outbox_id"]),
-        )
+    queue_completion_alerts(
+        background_tasks,
+        check_schedule.consumeCompletionEvents(),
+        check_schedule.db,
+    )
     return response
 
 
@@ -1414,9 +1388,17 @@ async def identify_loose_pill(
     except PillImageQualityError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except PillCatalogUnavailableError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+            headers={"Retry-After": "5"},
+        ) from exc
     except PillVisionUnavailableError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+            headers={"Retry-After": "5"},
+        ) from exc
     except PillVisionResponseError as exc:
         raise HTTPException(
             status_code=502,
@@ -1470,9 +1452,17 @@ async def identify_multiple_loose_pills(
     except PillImageQualityError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except PillCatalogUnavailableError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+            headers={"Retry-After": "5"},
+        ) from exc
     except PillVisionUnavailableError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+            headers={"Retry-After": "5"},
+        ) from exc
     except PillVisionResponseError as exc:
         raise HTTPException(
             status_code=502,

@@ -4,6 +4,7 @@ import asyncio
 from datetime import datetime
 from pathlib import Path
 import sys
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -75,7 +76,9 @@ async def test_department_before_detail_and_all_pages_before_distance_limit(monk
     """마지막 페이지의 가까운 병원이 앞 페이지의 먼 병원·타 과목에 밀리지 않는다."""
     monkeypatch.setattr(settings, "HOSPITAL_DETAIL_REQUEST_BUDGET", 1)
     boundary = Boundary()
-    result = await CheckNearbyHospital(boundary).requestNearbyHospitalSearch(
+    # 조회일 허용 범위가 실제 오늘이 아닌 고정 기준일로 계산되도록 시계를 함께 고정한다.
+    monday = datetime(2026, 9, 28, 10, tzinfo=ZoneInfo("Asia/Seoul"))
+    result = await CheckNearbyHospital(boundary, clock=lambda: monday).requestNearbyHospitalSearch(
         latitude=37.55, longitude=126.92, max_distance_km=1, department="D001", limit=1,
         target_datetime=datetime(2026, 9, 28, 10),
     )

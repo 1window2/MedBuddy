@@ -132,6 +132,42 @@ def default_alarm_hour(slot_key: str) -> int:
     }.get(slot_key, 8)
 
 
+_DEFAULT_ALARM_TIME_FIELD_BY_SLOT = {
+    "morning": "default_morning_time",
+    "lunch": "default_lunch_time",
+    "evening": "default_evening_time",
+    "bedtime": "default_bedtime",
+}
+
+
+# Function Name: default_alarm_time
+# Description:
+# - Single owner of the reminder time shown for a slot that has no saved alarm.
+# - Prefers the patient's own "HH:MM" default for the slot and falls back to the product default hour.
+# Parameters:
+# - slot_key (str): Schedule time slot key.
+# - user_setting (object | None): Patient preferences row or entity exposing default_*_time fields; None when absent.
+# Returns:
+# - (hour, minute) on a 24-hour clock; the product default when the preference is missing or not a valid time.
+def default_alarm_time(
+    slot_key: str,
+    user_setting: object | None,
+) -> tuple[int, int]:
+    product_default = (default_alarm_hour(slot_key), 0)
+    field = _DEFAULT_ALARM_TIME_FIELD_BY_SLOT.get(slot_key)
+    raw_time = getattr(user_setting, field, None) if field else None
+    if not isinstance(raw_time, str):
+        return product_default
+    try:
+        hour_text, minute_text = raw_time.split(":")
+        hour, minute = int(hour_text), int(minute_text)
+    except ValueError:
+        return product_default
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return product_default
+    return hour, minute
+
+
 # Function Name: valid_alarm_slot_keys
 # Description:
 # - Returns all supported medication reminder slot keys.

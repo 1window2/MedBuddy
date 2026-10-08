@@ -14,7 +14,9 @@ from core.application_clock import application_today
 from entities.caregiver_alert_outbox_entity import (
     _CaregiverAlertOutbox, CAREGIVER_ALERT_EVENT_MISSED_DEADLINE, utc_now,
 )
-from entities.patient_caregiver_link_entity import _PatientCaregiverLink
+from repositories.patient_caregiver_link_repository import (
+    PatientCaregiverLinkRepository,
+)
 
 
 class ManageCaregiverAlert:
@@ -22,6 +24,7 @@ class ManageCaregiverAlert:
 
     def __init__(self, db: Session) -> None:
         self.db = db
+        self.link_repository = PatientCaregiverLinkRepository(db)
 
     def requireSource(self, alert_id: int, caregiver_hash: str):
         """Resolve an owned delivery and its original event under an active link."""
@@ -29,15 +32,15 @@ class ManageCaregiverAlert:
         if (row is None or row.event_type != CAREGIVER_ALERT_EVENT_MISSED_DEADLINE
                 or row.caregiver_hash != caregiver_hash or row.schedule_date is None):
             raise HTTPException(404, "Caregiver alert was not found.")
-        link = self.db.query(_PatientCaregiverLink).filter(
-            _PatientCaregiverLink.caregiver_hash == caregiver_hash,
-            _PatientCaregiverLink.patient_hash == row.patient_hash,
-            _PatientCaregiverLink.linked.is_(True),
-        ).first()
+        link = self.link_repository.find_active_for_caregiver(
+            caregiver_hash, str(row.patient_hash),
+        )
         if link is None:
             raise HTTPException(404, "Active caregiver link was not found.")
         root_key = missed_event_key(caregiver_hash, str(row.patient_hash), row.schedule_date, str(row.slot_key))
-        root = self.db.query(_CaregiverAlertOutbox).filter_by(event_key=root_key).first()
+        # event_key is unique, so a first delivery is its own original event; only snoozes look it up.
+        root = (row if row.event_key == root_key
+                else self.db.query(_CaregiverAlertOutbox).filter_by(event_key=root_key).first())
         if root is None:
             raise HTTPException(410, "The original caregiver alert has expired.")
         return row, root, link

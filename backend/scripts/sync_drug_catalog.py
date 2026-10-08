@@ -32,9 +32,7 @@ from core.database import SessionLocal
 from entities import medication_detail_entity  # noqa: F401
 from entities.medication_detail_entity import _DrugApprovalInfo, _DrugBasicInfo
 from entities.pill_identification_entity import (
-    PillCatalogDownloadReport,
     PillCatalogReconciliationReport,
-    PillCatalogSnapshot,
     PillIdentificationReference,
 )
 from repositories.pill_identification_catalog_repository import (
@@ -728,29 +726,9 @@ class DrugCatalogSyncJob:
     async def sync_pill_identification(self, *, commit: bool = True) -> int:
         previous_count = self.store.count_pill_identification()
         try:
-            request_snapshot = getattr(
-                self.pill_catalog_api,
-                "requestCatalogSnapshot",
-                None,
-            )
-            if callable(request_snapshot):
-                snapshot = await request_snapshot()
-                catalog = list(snapshot.entries)
-            else:
-                catalog = await self.pill_catalog_api.requestCatalog()
-                snapshot = PillCatalogSnapshot(
-                    entries=tuple(catalog),
-                    report=PillCatalogDownloadReport(
-                        advertised_rows=len(catalog),
-                        fetched_rows=len(catalog),
-                        valid_rows=len(catalog),
-                        accepted_unique_rows=len(catalog),
-                        rejected_rows=0,
-                        duplicate_rows=0,
-                        page_count=1,
-                        response_bytes=0,
-                    ),
-                )
+            # The download report of the snapshot is the publication evidence checked below.
+            snapshot = await self.pill_catalog_api.requestCatalogSnapshot()
+            catalog = list(snapshot.entries)
             if not catalog:
                 raise CatalogSyncIncompleteError(
                     "The pill-identification catalog returned no rows."
@@ -770,11 +748,7 @@ class DrugCatalogSyncJob:
             )
             reconciliation_report = PillCatalogReconciliationReport(
                 source=snapshot.report,
-                kpic_product_floor=getattr(
-                    self.pill_catalog_api,
-                    "minimum_catalog_rows",
-                    len(catalog),
-                ),
+                kpic_product_floor=self.pill_catalog_api.minimum_catalog_rows,
                 persisted_rows=len(persisted_item_sequences),
                 missing_persisted_rows=len(missing_item_sequences),
                 unexpected_persisted_rows=len(unexpected_item_sequences),

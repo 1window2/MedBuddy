@@ -272,15 +272,8 @@ class ManageAccount:
     ) -> dict[str, int]:
         deleted_counts: dict[str, int] = {}
         linked_ids = [
-            int(row.id)
-            for row in self.db.query(_PatientCaregiverLink.id)
-            .filter(
-                or_(
-                    _PatientCaregiverLink.patient_hash == normalized_user_hash,
-                    _PatientCaregiverLink.caregiver_hash == normalized_user_hash,
-                )
-            )
-            .all()
+            int(link.id)
+            for link in self.link_repository.list_for_user(normalized_user_hash)
         ]
         deleted_counts["chat_messages"] = (
             self._delete(

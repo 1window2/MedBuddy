@@ -2,8 +2,9 @@
 # Role: Direct regression coverage for shared nearby-care calculations and dependency direction.
 
 import ast
-from datetime import datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -12,8 +13,11 @@ from services.nearby_care_policy import (
     haversine_distance,
     is_open_now,
     minutes_until_close,
+    normalize_target_datetime,
     parse_minutes,
 )
+
+KST = ZoneInfo("Asia/Seoul")
 
 
 # Function Name: test_time_parsing_preserves_provider_compatibility
@@ -42,6 +46,8 @@ def test_time_parsing_preserves_provider_compatibility(
     (23, 30, 1320, 120, (None, None), True, 150),
     (1, 0, 1320, 120, (None, None), False, None),
     (1, 0, None, None, (1320, 120), True, 60),
+    (1, 0, 540, 1080, (1320, 120), True, 60),
+    (2, 0, 540, 1080, (1320, 120), False, None),
     (2, 0, None, None, (1320, 120), None, None),
     (12, 0, None, None, (None, None), None, None),
     (12, 0, 0, 0, (None, None), True, None),
@@ -60,6 +66,60 @@ def test_open_interval_boundaries_and_unknown_hours(
     )
     assert is_open_now(**arguments) is opened
     assert minutes_until_close(is_open_now=opened, **arguments) == remaining
+
+
+# Function Name: test_target_date_window_is_counted_in_calendar_days
+# Description: The first and last day the client date picker offers (today - 7, today + 366, sent
+#   at 12:00) are accepted whatever the current time of day is; the days just outside are not.
+# Parameters: hour: Current hour of "now"; offset_days: Requested day relative to today;
+#   request_hour: Requested time of day; error: Expected rejection text or None when accepted.
+# Returns: None.
+@pytest.mark.parametrize("hour", [9, 14])
+@pytest.mark.parametrize("offset_days,request_hour,error", [
+    (-7, 12, None), (-7, 0, None), (366, 12, None), (366, 23, None), (0, 12, None),
+    (-8, 23, "Target date cannot be more than 7 days in the past."),
+    (367, 0, "Target date cannot be more than 366 days in the future."),
+])
+def test_target_date_window_is_counted_in_calendar_days(
+    hour: int, offset_days: int, request_hour: int, error: str | None,
+) -> None:
+    now = datetime(2026, 10, 8, hour, 0, tzinfo=KST)
+    requested = datetime.combine(
+        date(2026, 10, 8) + timedelta(days=offset_days), datetime.min.time(),
+    ).replace(hour=request_hour)
+    if error is None:
+        normalized = normalize_target_datetime(requested, now=now, timezone=KST)
+        assert normalized == requested.replace(tzinfo=KST)
+    else:
+        with pytest.raises(ValueError, match=f"^{error}$"):
+            normalize_target_datetime(requested, now=now, timezone=KST)
+
+
+# Function Name: test_target_datetime_uses_the_application_zone
+# Description: A missing value is the caller's current time in the application zone, an aware
+#   value is converted before its date is judged, and a value that cannot be shifted is rejected.
+# Parameters: None.
+# Returns: None.
+def test_target_datetime_uses_the_application_zone() -> None:
+    now = datetime(2026, 10, 8, 0, 30, tzinfo=KST)
+    current = normalize_target_datetime(None, now=now.astimezone(UTC), timezone=KST)
+    assert current == now and current.utcoffset() == timedelta(hours=9)
+
+    # 2026-09-30 16:00 UTC is 2026-10-01 01:00 in Seoul, the first day inside the window.
+    edge = normalize_target_datetime(
+        datetime(2026, 9, 30, 16, 0, tzinfo=UTC), now=now, timezone=KST,
+    )
+    assert edge.date() == date(2026, 10, 1) and edge.hour == 1
+    with pytest.raises(ValueError, match="7 days in the past"):
+        normalize_target_datetime(
+            datetime(2026, 9, 30, 14, 0, tzinfo=UTC), now=now, timezone=KST,
+        )
+    with pytest.raises(ValueError, match="^Target date is out of range.$"):
+        normalize_target_datetime(
+            datetime.max.replace(tzinfo=UTC), now=now, timezone=KST,
+        )
+    with pytest.raises(ValueError, match="7 days in the past"):
+        normalize_target_datetime(datetime(1990, 5, 5, 12), now=now, timezone=KST)
 
 
 # Function Name: test_display_and_distance_are_feature_independent

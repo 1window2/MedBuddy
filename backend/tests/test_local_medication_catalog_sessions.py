@@ -1,5 +1,6 @@
 # File Name: test_local_medication_catalog_sessions.py
-# Role: Verifies detached approval-summary persistence, source identity and worker/session isolation.
+# Role: Verifies detached approval-summary persistence, source identity and worker/session isolation,
+#   the bounded lock wait of the summary write and the handling of failed summaries.
 
 import asyncio
 import json
@@ -10,10 +11,11 @@ from collections.abc import Generator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 from sqlalchemy import create_engine, event, inspect
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
@@ -26,7 +28,10 @@ from entities.medication_detail_entity import (
     _DrugApprovalInfo,
     _DrugBasicInfo,
 )
-from services.local_medication_catalog import LocalMedicationCatalog
+from services.local_medication_catalog import (
+    SUMMARY_FAILURE_PLACEHOLDER,
+    LocalMedicationCatalog,
+)
 
 
 PRODUCT_NAME = "테스트정100mg"
@@ -436,3 +441,150 @@ def test_connection_local_memory_catalog_never_commits_request_session(
             forbidden_commit.assert_not_called()
     finally:
         engine.dispose()
+
+
+# Function Name: test_summary_write_sets_no_lock_timeout_on_sqlite
+# Description:
+# - Persists a summary on SQLite without the PostgreSQL-only lock_timeout statement.
+# Parameters:
+# - catalog_engine (Engine): File-backed synthetic catalog.
+# Returns:
+# - None; the UPDATE is issued and no set_config statement reaches SQLite.
+def test_summary_write_sets_no_lock_timeout_on_sqlite(catalog_engine: Engine) -> None:
+    statements: list[str] = []
+
+    # Function Name: record_statement
+    # Description: Collects every SQL statement the catalog sends to the engine.
+    # Parameters: conn, cursor, statement, parameters, context, executemany: SQLAlchemy execution event inputs.
+    # Returns: None.
+    def record_statement(
+        conn: Any, cursor: Any, statement: str, parameters: Any, context: Any, executemany: bool,
+    ) -> None:
+        statements.append(statement)
+
+    event.listen(catalog_engine, "before_cursor_execute", record_statement)
+    try:
+        generator = SimpleNamespace(summarize_advanced_item=AsyncMock(side_effect=_summarize))
+        with Session(catalog_engine) as request_db:
+            asyncio.run(LocalMedicationCatalog(request_db, generator).fetch_drug_info(PRODUCT_NAME))
+    finally:
+        event.remove(catalog_engine, "before_cursor_execute", record_statement)
+    assert any(statement.lstrip().upper().startswith("UPDATE") for statement in statements)
+    assert not any("set_config" in statement for statement in statements)
+
+
+# Function Name: test_summary_write_bounds_lock_wait_on_postgresql
+# Description:
+# - Runs the summary write against a recording session that reports the PostgreSQL dialect and
+#   checks that a transaction-local lock_timeout is set before the UPDATE.
+# Parameters:
+# - None.
+# Returns:
+# - None; fails if the timeout statement is missing, different or issued after the UPDATE.
+def test_summary_write_bounds_lock_wait_on_postgresql() -> None:
+    worker_db = MagicMock()
+    worker_db.get_bind.return_value.dialect.name = "postgresql"
+    worker_session_factory = MagicMock()
+    worker_session_factory.begin.return_value.__enter__.return_value = worker_db
+    worker_session_factory.begin.return_value.__exit__.return_value = False
+    catalog = LocalMedicationCatalog(None, SimpleNamespace())
+    catalog._worker_session_factory = worker_session_factory
+
+    catalog._save_approval_summary_with_isolated_session(
+        {"id": 1, "item_seq": PRODUCT_CODE},
+        {"summary_efficacy": "generated effect"},
+    )
+
+    operations = [call[0] for call in worker_db.mock_calls if call[0] in {"execute", "query"}]
+    assert operations == ["execute", "query"]
+    (statement,), _ = worker_db.execute.call_args
+    assert str(statement.compile(dialect=postgresql.dialect())) == (
+        "SELECT set_config('lock_timeout', '2s', true)"
+    )
+    worker_db.query.return_value.filter_by.return_value.update.assert_called_once_with(
+        {"summary_efficacy": "generated effect"}, synchronize_session=False,
+    )
+
+
+# Function Name: test_failed_summary_is_returned_but_not_persisted
+# Description:
+# - Returns the generated guidance of this request but stores nothing when a summary field is
+#   blank or holds the failure placeholder, so the next lookup asks for a summary again.
+# Parameters:
+# - catalog_engine (Engine): File-backed synthetic catalog.
+# - failed_field (str): MedicationDetail field the generator could not fill.
+# - failed_text (str): Text returned for that field.
+# Returns:
+# - None; the stored summary columns stay empty and the generator is called for each lookup.
+@pytest.mark.parametrize("failed_field", ["efficacy", "usage_method", "warning"])
+@pytest.mark.parametrize("failed_text", [SUMMARY_FAILURE_PLACEHOLDER, "", "  "])
+def test_failed_summary_is_returned_but_not_persisted(
+    catalog_engine: Engine,
+    failed_field: str,
+    failed_text: str,
+) -> None:
+    # Function Name: summarize_with_failed_field
+    # Description: Returns guidance whose selected field is blank or the failure placeholder.
+    # Parameters: drug_name (str), raw_item (dict[str, Any]): Synthetic summary inputs.
+    # Returns: Partly failed guidance for the exact catalog product.
+    async def summarize_with_failed_field(drug_name: str, raw_item: dict[str, Any]) -> MedicationDetail:
+        complete = await _summarize(drug_name, raw_item)
+        return complete.model_copy(update={failed_field: failed_text})
+
+    generator = SimpleNamespace(
+        summarize_advanced_item=AsyncMock(side_effect=summarize_with_failed_field),
+    )
+    with Session(catalog_engine) as request_db:
+        catalog = LocalMedicationCatalog(request_db, generator)
+        first = asyncio.run(catalog.fetch_drug_info(PRODUCT_NAME))
+        second = asyncio.run(catalog.fetch_drug_info(PRODUCT_NAME))
+    assert getattr(first[0], failed_field) == failed_text
+    assert "저장된 AI 요약" not in second[0].source
+    assert generator.summarize_advanced_item.await_count == 2
+    with Session(catalog_engine) as reader:
+        stored = reader.query(_DrugApprovalInfo).one()
+        assert (
+            stored.summary_efficacy, stored.summary_use_method,
+            stored.summary_warning_message, stored.ai_guide,
+        ) == (None, None, None, None)
+
+
+# Function Name: test_stored_failure_placeholder_is_regenerated
+# Description:
+# - Treats a row that already stores the failure placeholder as having no summary: the lookup
+#   generates guidance again and replaces the stored fields.
+# Parameters:
+# - catalog_engine (Engine): File-backed synthetic catalog.
+# - stored_field (str): Summary column holding the placeholder from an earlier failed answer.
+# Returns:
+# - None; fails if the placeholder is served as a stored summary or stays in the row.
+@pytest.mark.parametrize("stored_field", [
+    "summary_efficacy", "summary_use_method", "summary_warning_message",
+])
+def test_stored_failure_placeholder_is_regenerated(
+    catalog_engine: Engine,
+    stored_field: str,
+) -> None:
+    stored_summary = {
+        "summary_efficacy": "stored effect",
+        "summary_use_method": "stored usage",
+        "summary_warning_message": "stored warning",
+    }
+    stored_summary[stored_field] = SUMMARY_FAILURE_PLACEHOLDER
+    with Session(catalog_engine) as writer:
+        writer.query(_DrugApprovalInfo).update(stored_summary)
+        writer.commit()
+
+    generator = SimpleNamespace(summarize_advanced_item=AsyncMock(side_effect=_summarize))
+    with Session(catalog_engine) as request_db:
+        details = asyncio.run(LocalMedicationCatalog(request_db, generator).fetch_drug_info(PRODUCT_NAME))
+    generator.summarize_advanced_item.assert_awaited_once()
+    assert (details[0].efficacy, details[0].usage_method, details[0].warning) == (
+        "generated effect", "generated usage", "generated warning",
+    )
+    assert "저장된 AI 요약" not in details[0].source
+    with Session(catalog_engine) as reader:
+        stored = reader.query(_DrugApprovalInfo).one()
+        assert (stored.summary_efficacy, stored.summary_use_method, stored.summary_warning_message) == (
+            "generated effect", "generated usage", "generated warning",
+        )

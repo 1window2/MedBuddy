@@ -5,6 +5,7 @@
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine
@@ -15,13 +16,23 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from controls.link_patient_caregiver_control import LinkPatientCaregiver  # noqa: E402
+from controls.queue_missed_dose_alerts_control import (  # noqa: E402
+    QueueMissedDoseAlerts,
+)
 from controls.set_caregiver_notification_control import (  # noqa: E402
     SetCaregiverNotification,
 )
+from core.application_clock import application_now  # noqa: E402
 from core.database import Base  # noqa: E402
+from entities.caregiver_alert_outbox_entity import (  # noqa: E402
+    CAREGIVER_ALERT_EVENT_MISSED_DEADLINE,
+    _CaregiverAlertOutbox,
+)
 from entities.caregiver_notification_entity import (  # noqa: E402
     _CaregiverNotification,
+    effective_slot_settings,
 )
+from entities.saved_medication_entity import _SavedMedication  # noqa: E402
 
 
 # 클래스명: SetCaregiverNotificationTest
@@ -297,6 +308,200 @@ class SetCaregiverNotificationTest(unittest.TestCase):
             )
 
         self.assertEqual(context.exception.status_code, 400)
+
+    # 함수이름: test_legacy_row_shows_the_settings_the_workers_apply
+    # 함수역할:
+    # - 시간대 JSON이 비어 있는 기존 행에서 설정 화면 응답과 알림 작업이 읽는 effective_slot_settings가
+    #   네 시간대 모두 같은 값이고, 일부 시간대만 저장된 행은 누락 시간대만 기존 열로 채우며 읽기만으로는
+    #   행을 바꾸지 않는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
+    def test_legacy_row_shows_the_settings_the_workers_apply(self) -> None:
+        self._link_caregiver()
+        legacy_rows = {
+            "completion flag only": (
+                {"enabled": True, "alert_option": "enable", "slot_settings": "{}"},
+                {
+                    slot_key: ("dose_completed", None, None)
+                    for slot_key in ("morning", "lunch", "evening", "bedtime")
+                },
+            ),
+            "single deadline with one saved slot": (
+                {
+                    "enabled": True,
+                    "alert_option": "missed_deadline",
+                    "deadline_hour": 21,
+                    "deadline_minute": 10,
+                    "slot_settings": '{"lunch":{"notification_type":"disabled"}}',
+                },
+                {
+                    "morning": ("missed_deadline", 21, 10),
+                    "lunch": ("disabled", None, None),
+                    "evening": ("missed_deadline", 21, 10),
+                    "bedtime": ("missed_deadline", 21, 10),
+                },
+            ),
+        }
+
+        for name, (columns, expected) in legacy_rows.items():
+            with self.subTest(row=name):
+                self.db.query(_CaregiverNotification).delete()
+                row = _CaregiverNotification(
+                    caregiver_hash="caregiver-a",
+                    patient_hash="patient-a",
+                    **columns,
+                )
+                self.db.add(row)
+                self.db.commit()
+
+                shown = self.control.requestCaregiverNotificationSettings(
+                    "caregiver-a",
+                    "patient-a",
+                )["data"]
+                applied = effective_slot_settings(row)
+
+                self.assertEqual(
+                    {
+                        setting["slot_key"]: (
+                            setting["notification_type"],
+                            setting["deadline_hour"],
+                            setting["deadline_minute"],
+                        )
+                        for setting in shown
+                    },
+                    expected,
+                )
+                self.assertEqual(
+                    {
+                        slot_key: (
+                            setting["notification_type"],
+                            setting["deadline_hour"],
+                            setting["deadline_minute"],
+                        )
+                        for slot_key, setting in applied.items()
+                    },
+                    expected,
+                )
+                self.db.refresh(row)
+                self.assertEqual(row.slot_settings, columns["slot_settings"])
+
+    # 함수이름: test_legacy_missed_deadline_row_is_queued_like_the_screen_shows
+    # 함수역할:
+    # - 시간대 JSON 없이 기존 미복약 마감 열만 가진 행도 설정 화면에 보이는 마감 시각이 지나면
+    #   미복약 알림 큐에 들어가고, 마감 전에는 들어가지 않는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
+    def test_legacy_missed_deadline_row_is_queued_like_the_screen_shows(self) -> None:
+        self._link_caregiver()
+        due_time = application_now().replace(hour=9, minute=5, second=0, microsecond=0)
+        self.db.add(
+            _CaregiverNotification(
+                caregiver_hash="caregiver-a",
+                patient_hash="patient-a",
+                enabled=True,
+                alert_option="missed_deadline",
+                deadline_hour=9,
+                deadline_minute=0,
+                slot_settings="{}",
+            )
+        )
+        self.db.add(
+            _SavedMedication(
+                patient_hash="patient-a",
+                created_date=due_time.date(),
+                item_name="morning-tablet",
+                daily_frequency="1 time",
+                total_days="7 days",
+                schedule_slot_keys='["morning"]',
+            )
+        )
+        self.db.commit()
+        shown = self.control.requestCaregiverNotificationSetting(
+            "caregiver-a",
+            "patient-a",
+            "morning",
+        )["data"]
+        queue = QueueMissedDoseAlerts(self.db)
+
+        self.assertEqual(
+            (shown["alert_option"], shown["deadline_hour"], shown["deadline_minute"]),
+            ("missed_deadline", 9, 0),
+        )
+        self.assertEqual(queue.queueDue(now=due_time.replace(hour=8, minute=55)), 0)
+        self.assertEqual(queue.queueDue(now=due_time), 1)
+        event = self.db.query(_CaregiverAlertOutbox).one()
+        self.assertEqual(event.event_type, CAREGIVER_ALERT_EVENT_MISSED_DEADLINE)
+        self.assertEqual(
+            (event.caregiver_hash, event.patient_hash, event.slot_key),
+            ("caregiver-a", "patient-a", "morning"),
+        )
+
+    # 함수이름: test_concurrent_create_conflict_updates_the_existing_row
+    # 함수역할:
+    # - 첫 조회가 행을 보지 못해 새 행 삽입이 고유 제약에 걸려도 롤백 후 기존 행에 요청한 시간대
+    #   설정을 적용하고, 이미 저장된 다른 시간대 설정과 단일 행을 유지하는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
+    def test_concurrent_create_conflict_updates_the_existing_row(self) -> None:
+        self._link_caregiver()
+        self.control.saveCaregiverNotificationSetting(
+            "caregiver-a",
+            "patient-a",
+            alert_option="missed_deadline",
+            deadline_hour=20,
+            deadline_minute=30,
+            slot_key="morning",
+        )
+        find_setting = self.control._find_setting
+        lookups: list[object] = []
+
+        # 함수이름: miss_first_lookup
+        # 함수역할:
+        # - 다른 요청이 같은 순간 행을 만든 상황처럼 첫 조회만 행이 없다고 답하고 이후 조회는 실제 행을 돌려준다.
+        # 매개변수:
+        # - caregiver_hash (str): 조회할 보호자 계정 식별자.
+        # - patient_hash (str): 조회할 환자 식별자.
+        # 반환값:
+        # - 첫 호출은 None, 이후 호출은 저장된 알림 설정 행.
+        def miss_first_lookup(
+            caregiver_hash: str,
+            patient_hash: str,
+        ) -> _CaregiverNotification | None:
+            lookups.append((caregiver_hash, patient_hash))
+            if len(lookups) == 1:
+                return None
+            return find_setting(caregiver_hash, patient_hash)
+
+        with patch.object(self.control, "_find_setting", side_effect=miss_first_lookup):
+            response = self.control.saveCaregiverNotificationSetting(
+                "caregiver-a",
+                "patient-a",
+                alert_option="dose_completed",
+                slot_key="evening",
+            )
+
+        self.assertEqual(len(lookups), 2)
+        self.assertTrue(response["success"])
+        self.assertEqual(response["data"]["slot_key"], "evening")
+        self.assertEqual(response["data"]["alert_option"], "dose_completed")
+        settings = {
+            setting["slot_key"]: setting
+            for setting in self.control.requestCaregiverNotificationSettings(
+                "caregiver-a",
+                "patient-a",
+            )["data"]
+        }
+        self.assertEqual(settings["evening"]["alert_option"], "dose_completed")
+        self.assertEqual(settings["morning"]["alert_option"], "missed_deadline")
+        self.assertEqual(settings["morning"]["deadline_hour"], 20)
+        self.assertEqual(settings["morning"]["deadline_minute"], 30)
+        self.assertEqual(self.db.query(_CaregiverNotification).count(), 1)
 
 
 if __name__ == "__main__":

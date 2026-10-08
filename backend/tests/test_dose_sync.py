@@ -193,6 +193,7 @@ def test_route_rejects_a_previous_accounts_queued_request(fixture):
             background_tasks=BackgroundTasks(), patient_hash="offline-patient",
             principal=AuthenticatedPrincipal(subject="other", issuer="test", user_hash="other-patient"),
             authorization=AuthorizationControl(db), check_schedule=CheckSchedule(db),
+            sync_dose=SyncDose(db),
         ))
     assert error.value.status_code == 403
     assert db.query(_DoseSyncOperation).count() == 0
@@ -200,6 +201,7 @@ def test_route_rejects_a_previous_accounts_queued_request(fixture):
 
 # 함수이름: test_route_accepts_a_linked_dose_and_broadcasts_its_chat_receipt
 # 함수역할: 채팅 연동 복용 요청이 API에서 200으로 끝나고 저장된 복용 메시지를 실시간 연결에 한 번 전달하는지 검증한다.
+#   일일 채팅 한도를 한 번 확인하고, 완료 알림을 예약한 뒤에는 요청 세션의 트랜잭션을 끝내는지도 확인한다.
 # 매개변수: 없음. 반환값: 없음; 불일치 시 단언 실패.
 def test_route_accepts_a_linked_dose_and_broadcasts_its_chat_receipt():
     import asyncio
@@ -207,7 +209,7 @@ def test_route_accepts_a_linked_dose_and_broadcasts_its_chat_receipt():
     from unittest.mock import AsyncMock
     from fastapi import BackgroundTasks
     from sqlalchemy.pool import StaticPool
-    from api import chat_router
+    from api import router as medication_router
     from api.router import sync_dose_operation
     from controls.authorization_control import AuthorizationControl
     from entities.authenticated_principal_entity import AuthenticatedPrincipal
@@ -233,14 +235,21 @@ def test_route_accepts_a_linked_dose_and_broadcasts_its_chat_receipt():
             request = SimpleNamespace(
                 app=SimpleNamespace(state=SimpleNamespace(chat_connection_manager=manager)),
             )
-            with patch.object(chat_router, "_enforce_chat_daily_quota", AsyncMock()):
+            quota = AsyncMock()
+            background_tasks = BackgroundTasks()
+            with patch.object(medication_router, "enforce_chat_daily_quota", quota):
                 response = asyncio.run(sync_dose_operation(
                     payload=operation(med.id, link_id=link_id), request=request,
-                    background_tasks=BackgroundTasks(), patient_hash=None,
+                    background_tasks=background_tasks, patient_hash=None,
                     principal=AuthenticatedPrincipal(
                         subject="patient", issuer="test", user_hash="offline-patient"),
                     authorization=AuthorizationControl(db), check_schedule=CheckSchedule(db),
+                    sync_dose=SyncDose(db),
                 ))
+            quota.assert_awaited_once()
+            assert quota.await_args.kwargs["user_hash"] == "offline-patient"
+            assert len(background_tasks.tasks) == 1
+            assert not db.in_transaction()
             assert response["success"] is True
             assert response["operation_id"] == "offline_dose_0001"
             assert response["data"][0]["slot_statuses"]["morning"] is True
@@ -248,6 +257,224 @@ def test_route_accepts_a_linked_dose_and_broadcasts_its_chat_receipt():
             assert manager.broadcast.await_args.kwargs["link_id"] == link_id
             assert db.query(_ChatMessage).count() == 1
             assert db.query(_DoseSyncOperation).count() == 1
+    finally:
+        engine.dispose()
+
+
+# 함수이름: _run_dose_route
+# 함수역할: 지정한 복약 완료 라우트 핸들러를 실제 Control과 요청 세션으로 직접 호출하고, 응답 뒤에 실행될 작업을 요청 세션이 열린 채로 실행한다.
+# 매개변수: route: 호출할 라우트 이름, db: 요청 세션, medication_id: 약 식별자, link_id: 채팅 연동 식별자.
+# 반환값: 라우트 응답 사전.
+def _run_dose_route(route, db, medication_id, link_id):
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from fastapi import BackgroundTasks
+    from api import chat_router, router as medication_router
+    from controls.authorization_control import AuthorizationControl
+    from controls.manage_linked_chat_control import ManageLinkedChat
+    from entities.authenticated_principal_entity import AuthenticatedPrincipal
+    from schemas.chat import ChatMedicationTaken
+    from schemas.medication import MedicationStatusUpdate
+    from services.chat_connection_manager import ChatConnectionManager
+
+    manager = ChatConnectionManager()
+    manager.broadcast = AsyncMock()
+    request = SimpleNamespace(
+        app=SimpleNamespace(state=SimpleNamespace(chat_connection_manager=manager)),
+    )
+    principal = AuthenticatedPrincipal(subject="patient", issuer="test", user_hash="patient-a")
+    authorization = AuthorizationControl(db)
+    background_tasks = BackgroundTasks()
+    today = application_today()
+
+    # 함수이름: exercise
+    # 함수역할: 핸들러를 호출한 뒤 FastAPI가 응답 이후에 하듯 예약된 작업을 실행한다.
+    # 매개변수: 없음. 반환값: 라우트 응답 사전.
+    async def exercise():
+        if route == "slot_status":
+            response = medication_router.update_medication_slot_status(
+                slot_key="morning", request=MedicationStatusUpdate(medication_status=True),
+                background_tasks=background_tasks, patient_hash=None, principal=principal,
+                authorization=authorization, check_schedule=CheckSchedule(db),
+            )
+        elif route == "medication_status":
+            response = medication_router.update_medication_status(
+                medication_id=medication_id,
+                request=MedicationStatusUpdate(medication_status=True, slot_key="morning"),
+                background_tasks=background_tasks, patient_hash=None, principal=principal,
+                authorization=authorization, check_schedule=CheckSchedule(db),
+            )
+        elif route in ("dose_sync", "dose_sync_with_chat"):
+            payload = DoseSyncRequest(
+                operation_id="offline_dose_0001", schedule_date=today, slot_key="morning",
+                medication_ids=[medication_id], completed=True,
+                link_id=link_id if route == "dose_sync_with_chat" else None,
+            )
+            response = await medication_router.sync_dose_operation(
+                payload=payload, request=request, background_tasks=background_tasks,
+                patient_hash=None, principal=principal, authorization=authorization,
+                check_schedule=CheckSchedule(db), sync_dose=SyncDose(db),
+            )
+        else:
+            response = await chat_router.record_chat_medication_taken(
+                link_id=link_id,
+                payload=ChatMedicationTaken(
+                    client_message_id="chat_dose_0001", schedule_date=today,
+                    slot_key="morning", medication_ids=[medication_id],
+                ),
+                request=request, background_tasks=background_tasks, user_hash="patient-a",
+                principal=principal, authorization=authorization, chat=ManageLinkedChat(db),
+            )
+        assert len(background_tasks.tasks) == 1
+        await background_tasks()
+        return response
+
+    return asyncio.run(exercise())
+
+
+# 함수이름: _seed_completion_push
+# 함수역할: 환자의 아침 약 한 건과, 아침 복용 완료 알림을 켜고 푸시 토큰을 등록한 연동 보호자를 만든다.
+# 매개변수: factory: 시험 DB의 세션 팩토리. 반환값: 연동 식별자와 약 식별자.
+def _seed_completion_push(factory):
+    from entities.caregiver_notification_entity import (
+        CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED,
+        _CaregiverNotification,
+        encode_slot_settings,
+    )
+    from entities.device_push_token_entity import _DevicePushToken
+    from entities.patient_caregiver_link_entity import _PatientCaregiverLink
+    from support.db import seed_account, seed_medication
+
+    with factory() as db:
+        seed_account(db, "patient-a", "caregiver-a")
+        link = _PatientCaregiverLink(
+            patient_hash="patient-a", caregiver_hash="caregiver-a", linked=True)
+        db.add_all([
+            link,
+            _CaregiverNotification(
+                patient_hash="patient-a", caregiver_hash="caregiver-a", enabled=True,
+                alert_option=CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED,
+                slot_settings=encode_slot_settings({"morning": {
+                    "notification_type": CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED,
+                    "deadline_hour": None, "deadline_minute": None,
+                }}),
+            ),
+            _DevicePushToken(user_hash="caregiver-a", token="caregiver-completion-token-12345",
+                             platform="android", enabled=True),
+        ])
+        db.commit()
+        medication = seed_medication(
+            db, patient_hash="patient-a", daily_frequency="1", schedule_slot_keys='["morning"]')
+        return link.id, medication.id
+
+
+# 함수이름: test_completion_push_is_sent_without_an_open_request_transaction
+# 함수역할: 시간대 완료를 만든 모든 라우트에서 응답 본문을 만든 뒤 요청 세션의 트랜잭션이 끝나 있고,
+#   응답 이후 보호자 푸시가 전송되는 시점에도 요청 세션이 연결을 잡고 있지 않은지 검증한다.
+# 매개변수: tmp_path: 연결을 세션별로 분리할 파일 DB 위치, route: 검증할 라우트 이름.
+# 반환값: 없음; 불일치 시 단언 실패.
+@pytest.mark.parametrize("route", [
+    "slot_status", "medication_status", "dose_sync", "dose_sync_with_chat", "chat_medication_taken",
+])
+def test_completion_push_is_sent_without_an_open_request_transaction(tmp_path, route):
+    from unittest.mock import AsyncMock
+    from fastapi.encoders import jsonable_encoder
+    from api import chat_router, route_support, router as medication_router
+    from support.db import make_engine, make_session_factory
+    from support.fakes import RecordingPushBoundary
+
+    engine = make_engine(tmp_path)
+    factory = make_session_factory(engine)
+    try:
+        link_id, medication_id = _seed_completion_push(factory)
+
+        with factory() as request_db:
+            open_at_send: list[bool] = []
+            push = RecordingPushBoundary(
+                on_send=lambda _call: open_at_send.append(request_db.in_transaction()))
+            with patch.object(route_support, "SessionLocal", factory), \
+                 patch.object(route_support, "get_push_notification_boundary", return_value=push), \
+                 patch.object(medication_router, "enforce_chat_daily_quota", AsyncMock()), \
+                 patch.object(chat_router, "enforce_chat_daily_quota", AsyncMock()):
+                response = _run_dose_route(route, request_db, medication_id, link_id)
+
+            # 응답은 요청 세션을 다시 읽지 않고도 직렬화할 수 있는 값으로만 이루어져야 한다.
+            jsonable_encoder(response)
+            schedules = response["schedules"] if route == "chat_medication_taken" else response["data"]
+            schedule = schedules[0] if isinstance(schedules, list) else schedules
+            assert schedule["slot_statuses"]["morning"] is True
+            assert not request_db.in_transaction()
+            assert len(push.calls) == 1, push.calls
+            assert push.calls[0]["data"]["type"] == "caregiver_slot_completed"
+            assert open_at_send == [False]
+    finally:
+        engine.dispose()
+
+
+# 함수이름: test_dose_sync_over_http_uses_one_request_session_released_before_the_push
+# 함수역할: 실제 라우터와 의존성으로 복용 동기화를 요청해, 요청 하나가 세션 하나만 쓰고(동기화 Control과
+#   일정 Control이 같은 세션을 공유), 응답 이후 푸시가 나가는 동안 그 세션이 트랜잭션 없이 열려 있다가
+#   푸시가 끝난 뒤에 닫히는지 검증한다.
+# 매개변수: tmp_path: 연결을 세션별로 분리할 파일 DB 위치. 반환값: 없음; 불일치 시 단언 실패.
+def test_dose_sync_over_http_uses_one_request_session_released_before_the_push(tmp_path):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from api import route_support
+    from api.dependencies import get_authenticated_principal, get_registered_principal
+    from api.router import router
+    from core.database import get_db
+    from entities.authenticated_principal_entity import AuthenticatedPrincipal
+    from support.db import make_engine, make_session_factory
+    from support.fakes import RecordingPushBoundary
+
+    engine = make_engine(tmp_path)
+    factory = make_session_factory(engine)
+    try:
+        _, medication_id = _seed_completion_push(factory)
+        request_sessions = []
+        timeline = []
+
+        # 함수이름: request_db
+        # 함수역할: get_db처럼 요청 세션을 제공하고, 세션을 연 시점과 닫는 시점을 기록한다.
+        # 매개변수: 없음. 반환값: 요청 세션을 내주는 제너레이터.
+        def request_db():
+            db = factory()
+            request_sessions.append(db)
+            try:
+                yield db
+            finally:
+                timeline.append("request session closed")
+                db.close()
+
+        # 함수이름: record_send
+        # 함수역할: 푸시 전송 시점에 요청 세션이 트랜잭션을 잡고 있는지 기록한다.
+        # 매개변수: _call: 기록된 푸시 요청. 반환값: 없음.
+        def record_send(_call):
+            timeline.append(
+                "push sent with open transaction" if request_sessions[0].in_transaction()
+                else "push sent")
+
+        push = RecordingPushBoundary(on_send=record_send)
+        app = FastAPI()
+        app.include_router(router, prefix="/api/v1/medication")
+        app.dependency_overrides[get_db] = request_db
+        app.dependency_overrides[get_registered_principal] = lambda: None
+        app.dependency_overrides[get_authenticated_principal] = lambda: AuthenticatedPrincipal(
+            subject="patient", issuer="test", user_hash="patient-a")
+        body = {
+            "operation_id": "offline_dose_0001", "schedule_date": application_today().isoformat(),
+            "slot_key": "morning", "medication_ids": [medication_id], "completed": True,
+        }
+        with patch.object(route_support, "SessionLocal", factory), \
+             patch.object(route_support, "get_push_notification_boundary", return_value=push), \
+             TestClient(app) as client:
+            response = client.post("/api/v1/medication/schedule/completion-operations", json=body)
+
+        assert response.status_code == 200, response.text
+        assert response.json()["data"][0]["slot_statuses"]["morning"] is True
+        assert len(request_sessions) == 1
+        assert timeline == ["push sent", "request session closed"]
     finally:
         engine.dispose()
 

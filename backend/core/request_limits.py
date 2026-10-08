@@ -91,6 +91,8 @@ class RequestBodyLimitMiddleware:
             return
 
         received_bytes = 0
+        exceeded = False
+        response_started = False
 
         # Function Name: limited_receive
         # Description:
@@ -100,17 +102,42 @@ class RequestBodyLimitMiddleware:
         # Returns:
         # - The received message; raises _RequestBodyTooLarge once the enclosing request's limit is exceeded.
         async def limited_receive() -> Message:
-            nonlocal received_bytes
+            nonlocal received_bytes, exceeded
             message = await receive()
             if message["type"] == "http.request":
                 received_bytes += len(message.get("body", b""))
                 if received_bytes > limit:
+                    exceeded = True
                     raise _RequestBodyTooLarge
             return message
 
+        # Function Name: limited_send
+        # Description:
+        # - Forward response messages, except the response the downstream application builds
+        #   after the limit was exceeded: its body parser turns the raised signal into its own
+        #   error answer (HTTP 400), which must not replace the HTTP 413 sent below.
+        # Parameters:
+        # - message (Message): Outbound ASGI response message from the downstream application.
+        # Returns:
+        # - None; messages are dropped only while the limit is exceeded and no response has started.
+        async def limited_send(message: Message) -> None:
+            nonlocal response_started
+            if exceeded and not response_started:
+                return
+            if message["type"] == "http.response.start":
+                response_started = True
+            await send(message)
+
         try:
-            await self.app(scope, limited_receive, send)
+            await self.app(scope, limited_receive, limited_send)
         except _RequestBodyTooLarge:
+            pass
+        except Exception:
+            # A failure raised after the limit was exceeded is a consequence of the aborted
+            # body read; it is answered with HTTP 413 like the signal itself.
+            if not exceeded or response_started:
+                raise
+        if exceeded and not response_started:
             await self._send_rejection(scope, receive, send)
 
     # Function Name: _content_length

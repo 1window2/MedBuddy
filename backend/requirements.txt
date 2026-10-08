@@ -1,6 +1,7 @@
 # 1. Core Web Framework & Server
 fastapi==0.141.1
 uvicorn==0.52.4
+websockets==16.1.1
 pydantic==2.13.5
 pydantic-settings==2.15.0
 

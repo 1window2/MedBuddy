@@ -13,6 +13,8 @@ from enum import StrEnum
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
+from starlette.concurrency import run_in_threadpool
+
 from boundaries.holiday_lookup_boundary import HolidayLookupBoundary
 from boundaries.pharmacy_api_boundary import (
     PharmacyApiResponseError,
@@ -34,6 +36,7 @@ from services.nearby_care_policy import (
     haversine_distance,
     is_open_now as schedule_is_open_now,
     minutes_until_close as schedule_minutes_until_close,
+    normalize_target_datetime,
     parse_minutes,
 )
 
@@ -64,15 +67,6 @@ class PharmacySearchMode(StrEnum):
 # Responsibilities:
 # - Supply geographic candidates and catalog timestamps and manage dated holiday-roster replacement and cache age.
 class PharmacyCatalogLookup(Protocol):
-    # Function Name: count
-    # Description:
-    # - Reports whether the persisted pharmacy catalog has usable seed rows.
-    # Parameters:
-    # - None.
-    # Returns:
-    # - Number of catalog entries.
-    async def count(self) -> int: ...
-
     # Function Name: search_nearby_candidates
     # Description:
     # - Selects catalog entries near the search coordinates for exact distance and hours filtering.
@@ -81,7 +75,8 @@ class PharmacyCatalogLookup(Protocol):
     # - longitude (float): Search-origin longitude in degrees.
     # - max_distance_km (float): Maximum accepted search radius in kilometers.
     # Returns:
-    # - Candidate pharmacy catalog entries within the repository's geographic search bounds.
+    # - Candidate pharmacy catalog entries within the repository's geographic search bounds;
+    #   an empty list when the catalog is empty or has nothing nearby.
     async def search_nearby_candidates(
         self,
         *,
@@ -256,7 +251,11 @@ class CheckNearbyPharmacy:
             limit=limit,
             max_distance_km=max_distance_km,
         )
-        now = self._normalize_target_datetime(target_datetime)
+        now = normalize_target_datetime(
+            target_datetime,
+            now=self._now_provider(),
+            timezone=ZoneInfo(settings.APPLICATION_TIME_ZONE),
+        )
         is_public_holiday, was_public_holiday = await asyncio.gather(
             self._lookup_holiday(now.date()),
             self._lookup_holiday(now.date() - timedelta(days=1)),
@@ -270,17 +269,15 @@ class CheckNearbyPharmacy:
         catalog_entries: list[PharmacyCatalogEntry] = []
         if repository is not None:
             try:
-                latest_updated_at = getattr(repository, "latest_updated_at", None)
-                catalog_updated_at = (
-                    await latest_updated_at() if callable(latest_updated_at) else None
-                )
+                catalog_updated_at = await repository.latest_updated_at()
                 catalog_is_stale = self._is_catalog_stale(catalog_updated_at)
-                if await repository.count() > 0:
-                    catalog_entries = await repository.search_nearby_candidates(
-                        latitude=latitude,
-                        longitude=longitude,
-                        max_distance_km=max_distance_km,
-                    )
+                # An empty catalog and an area without catalog rows both return no candidates
+                # and take the live fallback below, so no separate row count is needed.
+                catalog_entries = await repository.search_nearby_candidates(
+                    latitude=latitude,
+                    longitude=longitude,
+                    max_distance_km=max_distance_km,
+                )
             except Exception:
                 if self._pharmacy_boundary is None:
                     raise
@@ -289,6 +286,9 @@ class CheckNearbyPharmacy:
                     "Pharmacy catalogue lookup failed; using the live API fallback."
                 )
 
+        holiday_schedules: dict[str, PharmacyHolidaySchedule] = {}
+        previous_holiday_schedules: dict[str, PharmacyHolidaySchedule] = {}
+        live_records: list[PharmacyLocationRecord] = []
         if catalog_entries:
             holiday_schedules, holiday_schedule_status = (
                 await self._resolve_holiday_schedules(
@@ -307,8 +307,96 @@ class CheckNearbyPharmacy:
                     holiday_schedule_status,
                     previous_status,
                 )
+        elif self._pharmacy_boundary is not None:
+            # 로컬 카탈로그가 준비되지 않았거나 주변 결과가 없으면
+            # 위치 조회 API로 보완해 데모와 초기 배포 환경의 공백을 막는다.
+            fetch_limit = min(_MAX_RESULT_LIMIT, max(limit * 2, limit))
+            live_records = await self._pharmacy_boundary.searchNearby(
+                latitude=latitude,
+                longitude=longitude,
+                limit=fetch_limit,
+            )
+        else:
+            raise PharmacyApiUnavailableError(
+                "No pharmacy data source has usable nearby records."
+            )
+
+        # A wide radius in a city yields thousands of candidates; scoring them is pure CPU work
+        # and runs in a worker thread so other requests keep being served meanwhile.
+        selected = await run_in_threadpool(
+            self._select_pharmacies,
+            catalog_entries=catalog_entries,
+            holiday_schedules=holiday_schedules,
+            previous_holiday_schedules=previous_holiday_schedules,
+            live_records=live_records,
+            latitude=latitude,
+            longitude=longitude,
+            now=now,
+            is_public_holiday=is_public_holiday,
+            was_public_holiday=was_public_holiday,
+            search_mode=search_mode,
+            max_distance_km=max_distance_km,
+            limit=limit,
+        )
+        if not catalog_entries and repository is not None:
+            try:
+                await repository.cache_search_results(selected)
+            except Exception:
+                # 캐시 쓰기 실패는 사용 가능한 공공 검색 결과까지 숨기지 않는다.
+                logger.exception("Pharmacy share cache could not be updated.")
+        return NearbyPharmacySearchResult(
+            data=selected,
+            search_mode=search_mode.value,
+            target_datetime=now,
+            catalog_updated_at=catalog_updated_at,
+            catalog_is_stale=catalog_is_stale,
+            holiday_schedule_status="unknown" if calendar_unknown else holiday_schedule_status,
+        )
+
+    # Function Name: _select_pharmacies
+    # Description:
+    # - Turns the candidates of one search into the ranked result: applies the holiday rosters to
+    #   catalog entries, computes distance and opening state, drops candidates outside the radius
+    #   or the search mode, and orders the rest.
+    # - Order: open at the reference time first, then late-hours, 24-hour or officially designated
+    #   pharmacies, then ascending distance, then name.
+    # - Synchronous and free of I/O; requestNearbyPharmacySearch runs it in a worker thread.
+    # Parameters:
+    # - catalog_entries (list[PharmacyCatalogEntry]): Catalog candidates; empty on the live path.
+    # - holiday_schedules (dict[str, PharmacyHolidaySchedule]): Roster of the target date by pharmacy ID.
+    # - previous_holiday_schedules (dict[str, PharmacyHolidaySchedule]): Roster of the day before.
+    # - live_records (list[PharmacyLocationRecord]): Location-API records used without catalog candidates.
+    # - latitude (float): Search-origin latitude in degrees.
+    # - longitude (float): Search-origin longitude in degrees.
+    # - now (datetime): Reference time of the search in the application zone.
+    # - is_public_holiday (bool | None): Holiday status of the target date; None when unverified.
+    # - was_public_holiday (bool | None): Holiday status of the day before; None when unverified.
+    # - search_mode (PharmacySearchMode): Requested opening-hours or designation filter.
+    # - max_distance_km (float): Maximum accepted search radius in kilometers.
+    # - limit (int): Maximum number of results to return.
+    # Returns:
+    # - At most limit pharmacies in result order.
+    @classmethod
+    def _select_pharmacies(
+        cls,
+        *,
+        catalog_entries: list[PharmacyCatalogEntry],
+        holiday_schedules: dict[str, PharmacyHolidaySchedule],
+        previous_holiday_schedules: dict[str, PharmacyHolidaySchedule],
+        live_records: list[PharmacyLocationRecord],
+        latitude: float,
+        longitude: float,
+        now: datetime,
+        is_public_holiday: bool | None,
+        was_public_holiday: bool | None,
+        search_mode: PharmacySearchMode,
+        max_distance_km: float,
+        limit: int,
+    ) -> list[NearbyPharmacy]:
+        calendar_unknown = is_public_holiday is None or was_public_holiday is None
+        if catalog_entries:
             records = [
-                self._catalog_entry_to_location_record(
+                cls._catalog_entry_to_location_record(
                     entry,
                     day_of_week=now.isoweekday(),
                     is_public_holiday=is_public_holiday is True,
@@ -326,20 +414,9 @@ class CheckNearbyPharmacy:
                 for entry in catalog_entries
                 if entry.has_weekend_or_holiday_hours
             }
-        elif self._pharmacy_boundary is not None:
-            # 로컬 카탈로그가 준비되지 않았거나 주변 결과가 없으면
-            # 위치 조회 API로 보완해 데모와 초기 배포 환경의 공백을 막는다.
-            fetch_limit = min(_MAX_RESULT_LIMIT, max(limit * 2, limit))
-            records = await self._pharmacy_boundary.searchNearby(
-                latitude=latitude,
-                longitude=longitude,
-                limit=fetch_limit,
-            )
-            weekend_or_holiday_ids = set()
         else:
-            raise PharmacyApiUnavailableError(
-                "No pharmacy data source has usable nearby records."
-            )
+            records = live_records
+            weekend_or_holiday_ids = set()
 
         pharmacies: list[NearbyPharmacy] = []
         seen_ids: set[str] = set()
@@ -362,7 +439,7 @@ class CheckNearbyPharmacy:
                     weekly_hours=None,
                     schedule_source="unknown" if is_public_holiday is None else record.schedule_source,
                 )
-            pharmacy = self._to_nearby_pharmacy(
+            pharmacy = cls._to_nearby_pharmacy(
                 record,
                 latitude=latitude,
                 longitude=longitude,
@@ -376,7 +453,7 @@ class CheckNearbyPharmacy:
                 pharmacy = replace(pharmacy, is_open_now=None, minutes_until_close=None)
             if pharmacy.distance_km > max_distance_km:
                 continue
-            if not self._matches_search_mode(
+            if not cls._matches_search_mode(
                 pharmacy,
                 search_mode=search_mode,
                 target_datetime=now,
@@ -396,22 +473,7 @@ class CheckNearbyPharmacy:
                 item.name,
             )
         )
-        selected = pharmacies[:limit]
-        cache_results = getattr(repository, "cache_search_results", None)
-        if not catalog_entries and callable(cache_results):
-            try:
-                await cache_results(selected)
-            except Exception:
-                # 캐시 쓰기 실패는 사용 가능한 공공 검색 결과까지 숨기지 않는다.
-                logger.exception("Pharmacy share cache could not be updated.")
-        return NearbyPharmacySearchResult(
-            data=selected,
-            search_mode=search_mode.value,
-            target_datetime=now,
-            catalog_updated_at=catalog_updated_at,
-            catalog_is_stale=catalog_is_stale,
-            holiday_schedule_status="unknown" if calendar_unknown else holiday_schedule_status,
-        )
+        return pharmacies[:limit]
 
     # Function Name: _lookup_holiday
     # Description: Preserve unknown calendar status after errors or a bounded lookup timeout.
@@ -519,33 +581,6 @@ class CheckNearbyPharmacy:
             raise ValueError(
                 "Maximum distance must be between 0.1 and 50 kilometers."
             )
-
-    # Function Name: _normalize_target_datetime
-    # Description:
-    # - Applies the application time zone and rejects dates outside the seven-day past and 366-day future window.
-    # Parameters:
-    # - value (datetime | None): Requested search time; naive values use APPLICATION_TIME_ZONE, and None selects the current application time.
-    # Returns:
-    # - Aware target datetime, or the current application time when omitted.
-    def _normalize_target_datetime(self, value: datetime | None) -> datetime:
-        timezone = ZoneInfo(settings.APPLICATION_TIME_ZONE)
-        current = self._now_provider().astimezone(timezone)
-        if value is None:
-            return current
-        try:
-            normalized = (
-                value.replace(tzinfo=timezone)
-                if value.tzinfo is None
-                else value.astimezone(timezone)
-            )
-        except OverflowError:
-            # A date at the edge of the calendar cannot be shifted into the application zone.
-            raise ValueError("Target date is out of range.") from None
-        if normalized < current - timedelta(days=7):
-            raise ValueError("Target date cannot be more than 7 days in the past.")
-        if normalized > current + timedelta(days=366):
-            raise ValueError("Target date cannot be more than 366 days in the future.")
-        return normalized
 
     # Function Name: _resolve_holiday_schedules
     # Description:
@@ -719,7 +754,7 @@ class CheckNearbyPharmacy:
         is_official_late_night = bool(designation) and (
             not isinstance(operating_days, list)
             or not operating_days
-            or now.isoweekday() in operating_days
+            or cls._designated_shift_weekday(designation, now) in operating_days
         )
         raw_verified_at = designation.get("verified_at")
         try:
@@ -786,6 +821,34 @@ class CheckNearbyPharmacy:
                 target_timezone=now.tzinfo,
             ),
         )
+
+    # Function Name: _designated_shift_weekday
+    # Description:
+    # - Picks the ISO weekday whose designated shift covers the reference time. A designation
+    #   that crosses midnight (for example 22:00-01:00) is still the previous day's shift until
+    #   its end time, so before that time the previous weekday is tested.
+    # - Reading operating_days as the days a shift STARTS is a judgment: the source list names
+    #   the evenings a pharmacy serves, and it does not say how the hours after midnight count.
+    # Parameters:
+    # - designation (dict[str, object]): Stored public late-night designation of one pharmacy.
+    # - now (datetime): Reference time of the search.
+    # Returns:
+    # - ISO weekday, Monday 1 through Sunday 7, to look up in operating_days.
+    @staticmethod
+    def _designated_shift_weekday(designation: dict[str, object], now: datetime) -> int:
+        start_minutes = parse_minutes(str(designation.get("start_time") or ""))
+        end_minutes = parse_minutes(
+            str(designation.get("end_time") or ""),
+            allow_24=True,
+        )
+        if (
+            start_minutes is not None
+            and end_minutes is not None
+            and end_minutes < start_minutes
+            and now.hour * 60 + now.minute < end_minutes
+        ):
+            return (now.date() - timedelta(days=1)).isoweekday()
+        return now.isoweekday()
 
     # 함수이름: _next_open_at
     # 함수역할:

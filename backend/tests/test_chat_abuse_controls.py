@@ -8,10 +8,8 @@ from unittest.mock import patch
 import pytest
 from fastapi import FastAPI, HTTPException, Request, WebSocket
 
-from api.chat_router import (
-    _enforce_chat_daily_quota,
-    _reserve_websocket_connection,
-)
+from api.chat_router import _reserve_websocket_connection
+from api.route_support import enforce_chat_daily_quota
 from core.config import settings
 from controls.process_chat_notifications_control import reserve_chat_push
 from core.request_rate_limits import RequestRateLimitStore
@@ -68,10 +66,10 @@ async def test_chat_daily_quota_rejects_messages_above_limit() -> None:
     request = _request_with_store(store)
     try:
         with patch.object(settings, "CHAT_MESSAGE_DAILY_LIMIT", 2):
-            await _enforce_chat_daily_quota(request=request, user_hash="patient-a")
-            await _enforce_chat_daily_quota(request=request, user_hash="patient-a")
+            await enforce_chat_daily_quota(request=request, user_hash="patient-a")
+            await enforce_chat_daily_quota(request=request, user_hash="patient-a")
             with pytest.raises(HTTPException) as context:
-                await _enforce_chat_daily_quota(
+                await enforce_chat_daily_quota(
                     request=request,
                     user_hash="patient-a",
                 )

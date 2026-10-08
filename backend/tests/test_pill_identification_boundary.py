@@ -26,31 +26,55 @@ os.environ.setdefault("PUBLIC_DATA_API_KEY", "test-public-data-key")
 
 import boundaries.pill_identification_boundary as boundary_module
 from boundaries.pill_identification_boundary import (
+    GeminiPillVisionAPI,
     MFDSPillCatalogBoundary,
     MFDSPillAPI,
+    PillImagePreprocessingResult,
     PillImageProcessingBoundary,
     PillImageQualityError,
     PillVisionResponseError,
     PillVisionUnavailableError,
     PillVisionBoundary,
 )
+from support.fakes import FakeGeminiClient
 
 
 # Class Name: _PassthroughImageProcessingBoundary
 # Role: Image processor double that preserves input bytes for isolated vision-response tests.
+#   It implements the assessment API production calls, so the tests run the real call path.
 # Responsibilities:
-# - Returns image bytes unchanged so vision parsing can be exercised without preprocessing.
+# - Returns image bytes unchanged, with a configurable local pill count, so vision parsing can be
+#   exercised without preprocessing.
+# Attributes:
+# - detected_pill_count (int | None): Local count reported for every image; None means the
+#   count could not be determined, as for an ambiguous frame.
 class _PassthroughImageProcessingBoundary:
-    # Function Name: preprocessPillImage
+    # Function Name: __init__
     # Description:
-    # - Returns image bytes unchanged so vision parsing can be exercised without
-    #   preprocessing.
+    # - Stores the local pill count to report.
+    # Parameters:
+    # - detected_pill_count (int | None): Count attached to every preprocessing result.
+    # Returns:
+    # - None.
+    def __init__(self, detected_pill_count: int | None = None) -> None:
+        self.detected_pill_count = detected_pill_count
+
+    # Function Name: preprocessPillImageWithAssessment
+    # Description:
+    # - Returns image bytes unchanged with the configured count so vision parsing can be
+    #   exercised without preprocessing.
     # Parameters:
     # - image (bytes): Encoded pill photograph passed through the test boundary.
     # Returns:
-    # - bytes: Input image bytes unchanged by the processing double.
-    def preprocessPillImage(self, image: bytes) -> bytes:
-        return image
+    # - PillImagePreprocessingResult: Input image bytes and the configured local count.
+    def preprocessPillImageWithAssessment(
+        self,
+        image: bytes,
+    ) -> PillImagePreprocessingResult:
+        return PillImagePreprocessingResult(
+            image=image,
+            detected_pill_count=self.detected_pill_count,
+        )
 
 
 # 클래스명: _FakeVisionAPI
@@ -115,19 +139,22 @@ class _FailingVisionAPI:
 # - Blocks briefly before returning the image unchanged so preprocessing exceeds a short
 #   deadline.
 class _SlowImageProcessingBoundary:
-    # Function Name: preprocessPillImage
+    # Function Name: preprocessPillImageWithAssessment
     # Description:
     # - Blocks briefly before returning the image unchanged so preprocessing exceeds a short
     #   deadline.
     # Parameters:
     # - image (bytes): Encoded pill photograph passed through the test boundary.
     # Returns:
-    # - bytes: Input image bytes unchanged by the processing double.
-    def preprocessPillImage(self, image: bytes) -> bytes:
+    # - PillImagePreprocessingResult: Input image bytes with an undetermined local count.
+    def preprocessPillImageWithAssessment(
+        self,
+        image: bytes,
+    ) -> PillImagePreprocessingResult:
         import time
 
         time.sleep(0.05)
-        return image
+        return PillImagePreprocessingResult(image=image, detected_pill_count=None)
 
 
 # Class Name: _ConcurrencyTrackingImageProcessingBoundary
@@ -156,15 +183,18 @@ class _ConcurrencyTrackingImageProcessingBoundary:
         self.maximum_active_workers = 0
         self.delay_seconds = 0.08
 
-    # Function Name: preprocessPillImage
+    # Function Name: preprocessPillImageWithAssessment
     # Description:
     # - Tracks peak preprocessing concurrency and always releases its active-worker count
     #   after delayed work.
     # Parameters:
     # - image (bytes): Encoded pill photograph passed through the test boundary.
     # Returns:
-    # - bytes: Input image bytes unchanged by the processing double.
-    def preprocessPillImage(self, image: bytes) -> bytes:
+    # - PillImagePreprocessingResult: Input image bytes with an undetermined local count.
+    def preprocessPillImageWithAssessment(
+        self,
+        image: bytes,
+    ) -> PillImagePreprocessingResult:
         with self._lock:
             self.active_workers += 1
             self.maximum_active_workers = max(
@@ -173,7 +203,7 @@ class _ConcurrencyTrackingImageProcessingBoundary:
             )
         try:
             time.sleep(self.delay_seconds)
-            return image
+            return PillImagePreprocessingResult(image=image, detected_pill_count=None)
         finally:
             with self._lock:
                 self.active_workers -= 1
@@ -593,6 +623,40 @@ async def test_visual_boundary_rejects_multiple_local_contours_before_ai() -> No
     assert vision_api.request_count == 0
 
 
+# Function Name: test_visual_boundary_uses_the_local_pill_count_of_each_side
+# Description:
+# - The count reported by the image processing boundary decides before any AI request: two
+#   pills on either side are refused without calling the vision API, while one confirmed pill
+#   per side and an undetermined count both go on to the vision API.
+# Parameters:
+# - local_count (int | None): Count the processing boundary reports for each image.
+# - accepted (bool): Whether the photos may reach the vision API.
+# Returns:
+# - None.
+@pytest.mark.parametrize("local_count,accepted", [(1, True), (None, True), (2, False)])
+@pytest.mark.anyio
+async def test_visual_boundary_uses_the_local_pill_count_of_each_side(
+    local_count: int | None,
+    accepted: bool,
+) -> None:
+    vision_api = _FakeVisionAPI(_valid_visual_payload())
+    boundary = PillVisionBoundary(
+        client=object(),  # type: ignore[arg-type]
+        image_processing_boundary=_PassthroughImageProcessingBoundary(local_count),
+        vision_api=vision_api,  # type: ignore[arg-type]
+        timeout_seconds=1,
+    )
+
+    if accepted:
+        features = await boundary.extractVisualFeatures(b"front", b"back")
+        assert features.front_imprint == "YH"
+        assert vision_api.request_count == 1
+    else:
+        with pytest.raises(PillImageQualityError, match="Multiple pills"):
+            await boundary.extractVisualFeatures(b"front", b"back")
+        assert vision_api.request_count == 0
+
+
 # 함수이름: test_visual_boundary_rejects_ai_multiple_pill_count
 # 함수역할:
 # - AI가 여러 알약을 감지한 응답을 재촬영이 필요한 품질 오류로 거절하는지 검증한다.
@@ -865,6 +929,130 @@ async def test_visual_timeout_keeps_preprocessing_capacity_until_worker_exits() 
 
     assert recovered.front_imprint == "YH"
     assert image_processing.maximum_active_workers == 1
+
+
+# Function Name: _inline_image_bytes
+# Description:
+# - Collects the image bytes of a Gemini request in the order they were sent, skipping the
+#   leading text prompt.
+# Parameters:
+# - contents (list[Any]): `contents` argument recorded by the fake Gemini client.
+# Returns:
+# - list[bytes]: Inline JPEG payloads of the request parts.
+def _inline_image_bytes(contents: list[Any]) -> list[bytes]:
+    return [part.inline_data.data for part in contents if not isinstance(part, str)]
+
+
+# Function Name: test_gemini_vision_request_sends_front_and_optional_back_image
+# Description:
+# - The single-pill request carries the prompt and the front JPEG, adds the back JPEG only when
+#   one was supplied, tells the model which case applies, and asks for schema-constrained JSON
+#   at temperature 0 with the configured model.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_gemini_vision_request_sends_front_and_optional_back_image() -> None:
+    schema = {"type": "OBJECT"}
+    client = FakeGeminiClient(_valid_visual_payload())
+    vision_api = GeminiPillVisionAPI()
+
+    front_only = await vision_api.requestVisualFeatures(
+        client=client,  # type: ignore[arg-type]
+        model_name="pill-model",
+        front_image=b"front-jpeg",
+        back_image=None,
+        response_schema=schema,
+    )
+    both_sides = await vision_api.requestVisualFeatures(
+        client=client,  # type: ignore[arg-type]
+        model_name="pill-model",
+        front_image=b"front-jpeg",
+        back_image=b"back-jpeg",
+        response_schema=schema,
+    )
+
+    assert json.loads(front_only) == _valid_visual_payload()
+    assert json.loads(both_sides) == _valid_visual_payload()
+    first, second = client.calls
+    assert first["model"] == second["model"] == "pill-model"
+    assert _inline_image_bytes(first["contents"]) == [b"front-jpeg"]
+    assert _inline_image_bytes(second["contents"]) == [b"front-jpeg", b"back-jpeg"]
+    assert all(
+        part.inline_data.mime_type == "image/jpeg"
+        for part in second["contents"][1:]
+    )
+    assert "No reverse-side image was supplied" in first["contents"][0]
+    assert "A second image was supplied" in second["contents"][0]
+    for call in client.calls:
+        assert "Do not identify or guess a medicine or product name." in call["contents"][0]
+        config = call["config"]
+        assert config.response_mime_type == "application/json"
+        assert config.response_schema == schema
+        assert config.temperature == 0.0
+        assert config.max_output_tokens == 512
+
+
+# Function Name: test_gemini_multiple_pill_request_sends_one_uncropped_image
+# Description:
+# - The multiple-pill request carries its own prompt and exactly one JPEG, with the larger
+#   output budget that ten observations need.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_gemini_multiple_pill_request_sends_one_uncropped_image() -> None:
+    schema = {"type": "OBJECT"}
+    client = FakeGeminiClient({"pills": []})
+
+    response_text = await GeminiPillVisionAPI().requestMultipleVisualFeatures(
+        client=client,  # type: ignore[arg-type]
+        model_name="pill-model",
+        image=b"scene-jpeg",
+        response_schema=schema,
+    )
+
+    assert json.loads(response_text) == {"pills": []}
+    (call,) = client.calls
+    assert call["model"] == "pill-model"
+    assert _inline_image_bytes(call["contents"]) == [b"scene-jpeg"]
+    assert "Return at most 10 pills" in call["contents"][0]
+    assert call["config"].response_schema == schema
+    assert call["config"].max_output_tokens == 4096
+
+
+# Function Name: test_gemini_vision_rejects_blank_model_output
+# Description:
+# - A missing or whitespace-only model answer is an invalid response for both request kinds,
+#   never an empty feature set.
+# Parameters:
+# - blank (str | None): Text returned by the model.
+# Returns:
+# - None.
+@pytest.mark.parametrize("blank", [None, "", "  \n"])
+@pytest.mark.anyio
+async def test_gemini_vision_rejects_blank_model_output(blank: str | None) -> None:
+    client = FakeGeminiClient(blank)
+    vision_api = GeminiPillVisionAPI()
+
+    with pytest.raises(PillVisionResponseError, match="invalid response"):
+        await vision_api.requestVisualFeatures(
+            client=client,  # type: ignore[arg-type]
+            model_name="pill-model",
+            front_image=b"front-jpeg",
+            back_image=None,
+            response_schema={},
+        )
+    with pytest.raises(PillVisionResponseError, match="invalid response"):
+        await vision_api.requestMultipleVisualFeatures(
+            client=client,  # type: ignore[arg-type]
+            model_name="pill-model",
+            image=b"scene-jpeg",
+            response_schema={},
+        )
+    assert client.call_count == 2
 
 
 # Function Name: test_visual_boundary_rejects_empty_model_name

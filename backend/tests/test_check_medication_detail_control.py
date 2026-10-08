@@ -1,6 +1,6 @@
 # File Name: test_check_medication_detail_control.py
-# Role: Regression coverage for medication-name matching, image lookup, summary timeouts, and
-#   cache failures.
+# Role: Regression coverage for medication-name matching, image lookup, summary timeouts and
+#   failed summaries, and the Redis detail cache including its recovery after an outage.
 import asyncio
 import os
 import sys
@@ -24,6 +24,7 @@ from boundaries.public_drug_api_boundary import (
 from core.config import settings
 from boundaries.medication_detail_cache_boundary import MedicationDetailCache
 from boundaries.medication_summary_boundary import (
+    FAILED_SUMMARY_TEXT,
     MedicationSummaryGenerator,
     read_medication_detail_text,
 )
@@ -33,6 +34,7 @@ from services.medication_name_matching import (
     MedicationTextNormalizer,
 )
 from entities.medication_detail_entity import MedicationDetail
+from support.fakes import FakeGeminiClient, FakeRedis
 
 
 # Class Name: _FailingRedisClient
@@ -873,21 +875,460 @@ async def test_medication_summary_timeout_is_stable_and_cancels_request() -> Non
     assert models.cancelled is True
 
 
-# 함수이름: test_medication_cache_disables_after_lookup_failure
-# 함수역할:
-# - 첫 Redis 조회 실패 뒤 캐시가 비활성화되어 반복 조회는 서버에 재접근하지 않고 None을 반환하는지 검증한다.
-# 매개변수:
-# - 없음.
-# 반환값:
-# - 없음 (None).
+# Function Name: _advanced_item
+# Description:
+# - Builds one advanced approval row with a product code, a name and the three source documents.
+# Parameters:
+# - **overrides (object): Row fields that replace or extend the defaults.
+# Returns:
+# - dict[str, object]: Raw approval item accepted by the summary generator.
+def _advanced_item(**overrides: object) -> dict[str, object]:
+    return {
+        "ITEM_SEQ": "200000001",
+        "ITEM_NAME": "가나다정",
+        "ENTP_NAME": "테스트제약",
+        "EE_DOC_DATA": "effect document",
+        "UD_DOC_DATA": "usage document",
+        "NB_DOC_DATA": "warning document",
+        **overrides,
+    }
+
+
+# Function Name: test_medication_summary_rejects_answer_without_summary_fields
+# Description:
+# - Requires an AI answer with no usable summary (empty object, blank fields, a JSON list or a
+#   bare string) to raise the stable summary error instead of returning placeholder guidance.
+# Parameters:
+# - answer (object): Scripted Gemini answer without any usable summary field.
+# Returns:
+# - None.
 @pytest.mark.anyio
-async def test_medication_cache_disables_after_lookup_failure() -> None:
-    redis_client = _FailingRedisClient()
+@pytest.mark.parametrize(
+    "answer",
+    [
+        {},
+        [],
+        '"plain text"',
+        {"efficacy": "  ", "use_method": "", "warning_message": None},
+    ],
+)
+async def test_medication_summary_rejects_answer_without_summary_fields(
+    answer: object,
+) -> None:
+    generator = MedicationSummaryGenerator(ai_client=FakeGeminiClient(answer))
+
+    with pytest.raises(RuntimeError) as exc_info:
+        await generator.summarize_advanced_item("가나다정", _advanced_item())
+
+    assert str(exc_info.value) == "AI 요약 처리 중 오류가 발생했습니다."
+
+
+# Function Name: test_medication_summary_marks_only_the_missing_fields
+# Description:
+# - Requires a partial AI answer to keep the returned summary and to show the neutral
+#   "정보 없음" text, never the failure text, for the fields the answer left out.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_medication_summary_marks_only_the_missing_fields() -> None:
+    generator = MedicationSummaryGenerator(
+        ai_client=FakeGeminiClient({"efficacy": "열을 내립니다.", "use_method": " "}),
+    )
+
+    detail = await generator.summarize_advanced_item("가나다정", _advanced_item())
+
+    assert detail.efficacy == "열을 내립니다."
+    assert detail.usage_method == "정보 없음"
+    assert detail.warning == "정보 없음"
+    assert FAILED_SUMMARY_TEXT not in (detail.efficacy, detail.usage_method, detail.warning)
+
+
+# Function Name: test_medication_summary_names_the_product_from_the_public_item
+# Description:
+# - Requires the summarized detail to carry the public item's own name under any documented
+#   alias, and the search keyword only when the item has no name.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_medication_summary_names_the_product_from_the_public_item() -> None:
+    generator = MedicationSummaryGenerator(
+        ai_client=FakeGeminiClient(
+            {"efficacy": "effect", "use_method": "usage", "warning_message": "warning"},
+        ),
+    )
+    aliased_item = _advanced_item(itemName="가나다정500밀리그램")
+    del aliased_item["ITEM_NAME"]
+    unnamed_item = _advanced_item(ITEM_NAME="  ")
+
+    aliased = await generator.summarize_advanced_item("가나다", aliased_item)
+    unnamed = await generator.summarize_advanced_item("가나다", unnamed_item)
+
+    assert aliased.item_name == "가나다정500밀리그램"
+    assert unnamed.item_name == "가나다"
+
+
+# Class Name: _ManualClock
+# Role: Monotonic clock double that a test advances by hand to cross the cache cool-down.
+# Attributes:
+# - now (float): Current clock value in seconds.
+class _ManualClock:
+    # Function Name: __init__
+    # Description:
+    # - Starts the clock at an arbitrary positive value.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    # Function Name: __call__
+    # Description:
+    # - Reads the clock like time.monotonic.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - float: Current clock value.
+    def __call__(self) -> float:
+        return self.now
+
+
+# Function Name: _detail
+# Description:
+# - Builds one complete medication detail for cache round trips.
+# Parameters:
+# - **overrides (object): MedicationDetail fields that replace the defaults.
+# Returns:
+# - MedicationDetail: Detail with every required guidance field populated.
+def _detail(**overrides: object) -> MedicationDetail:
+    values: dict[str, object] = {
+        "item_seq": "200000001",
+        "item_name": "가나다정",
+        "efficacy": "effect",
+        "usage_method": "usage",
+        "warning": "warning",
+        "source": "Basic (e약은요)",
+        **overrides,
+    }
+    return MedicationDetail(**values)
+
+
+# Function Name: test_medication_cache_round_trip_through_redis
+# Description:
+# - Requires a saved detail list to come back from the real cache class with the seven-day
+#   expiry, the drug_info key namespace and the cache marker on its source.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_medication_cache_round_trip_through_redis() -> None:
+    redis_client = FakeRedis()
     cache = MedicationDetailCache(redis_client=redis_client)
+
+    await cache.set("가나다정", [_detail()])
+    cached = await cache.get("가나다정")
+
+    assert redis_client.ttl_seconds == {"drug_info:가나다정": 604800}
+    assert cached is not None and len(cached) == 1
+    assert cached[0].item_seq == "200000001"
+    assert cached[0].usage_method == "usage"
+    assert cached[0].source == "[Cache] Basic (e약은요)"
+    assert await cache.get("없는약") is None
+
+
+# Function Name: test_medication_cache_retries_redis_after_cooldown
+# Description:
+# - Requires a Redis failure to switch the cache off without raising, to keep Redis untouched
+#   during the cool-down, and to use Redis again by itself once the cool-down has passed.
+# - A second outage after the recovery starts a new cool-down.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_medication_cache_retries_redis_after_cooldown() -> None:
+    redis_client = FakeRedis(fail_with=ConnectionError("redis unavailable"))
+    clock = _ManualClock()
+    cache = MedicationDetailCache(redis_client=redis_client, clock=clock)
 
     assert await cache.get("엘타인캡슐") is None
     assert await cache.get("엘타인캡슐") is None
-    assert redis_client.get_calls == 1
+    await cache.set("엘타인캡슐", [_detail()])
+    assert redis_client.calls["get"] == 1
+    assert redis_client.calls["setex"] == 0
+
+    # Redis is healthy again, but the cache must wait for the cool-down before it looks.
+    redis_client.fail_with = None
+    clock.now += MedicationDetailCache.RETRY_COOLDOWN_SECONDS - 1
+    assert await cache.get("엘타인캡슐") is None
+    assert redis_client.calls["get"] == 1
+
+    clock.now += 1
+    await cache.set("엘타인캡슐", [_detail()])
+    cached = await cache.get("엘타인캡슐")
+    assert cached is not None and cached[0].item_name == "가나다정"
+    assert redis_client.calls["setex"] == 1
+
+    redis_client.fail_with = TimeoutError("redis timed out")
+    assert await cache.get("엘타인캡슐") is None
+    assert await cache.get("엘타인캡슐") is None
+    assert redis_client.calls["get"] == 3
+
+
+# Function Name: test_medication_cache_save_failure_starts_cooldown_without_raising
+# Description:
+# - Requires a failed save to be swallowed and to pause both reads and writes for the cool-down,
+#   after which a save succeeds again.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_medication_cache_save_failure_starts_cooldown_without_raising() -> None:
+    redis_client = FakeRedis()
+    clock = _ManualClock()
+    cache = MedicationDetailCache(redis_client=redis_client, clock=clock)
+
+    redis_client.fail_with = OSError("connection reset")
+    await cache.set("가나다정", [_detail()])
+    redis_client.fail_with = None
+    assert await cache.get("가나다정") is None
+    assert redis_client.calls["setex"] == 1
+    assert redis_client.calls["get"] == 0
+
+    clock.now += MedicationDetailCache.RETRY_COOLDOWN_SECONDS
+    await cache.set("가나다정", [_detail()])
+    assert await cache.get("가나다정") is not None
+
+
+# Function Name: test_medication_cache_treats_unreadable_entry_as_miss_for_that_key
+# Description:
+# - Requires an entry that is not JSON, is not a list or lacks required fields to be a miss for
+#   its own key only: Redis stays in use and a well-formed key is still served.
+# Parameters:
+# - stored_value (str): Raw Redis value that cannot be turned into medication details.
+# Returns:
+# - None.
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "stored_value",
+    [
+        "not json",
+        '{"item_name": "가나다정"}',
+        '[{"item_name": "가나다정"}]',
+    ],
+)
+async def test_medication_cache_treats_unreadable_entry_as_miss_for_that_key(
+    stored_value: str,
+) -> None:
+    redis_client = FakeRedis()
+    cache = MedicationDetailCache(redis_client=redis_client)
+    await cache.set("good", [_detail()])
+    redis_client.values["drug_info:bad"] = stored_value
+
+    assert await cache.get("bad") is None
+    assert await cache.get("good") is not None
+    assert redis_client.calls["get"] == 2
+
+    # The lookup that follows a miss overwrites the unreadable entry.
+    await cache.set("bad", [_detail()])
+    assert await cache.get("bad") is not None
+
+
+# Function Name: test_medication_cache_ignores_stored_failed_summary
+# Description:
+# - Requires a snapshot saved before failed summaries were rejected to be a miss, so the
+#   failure text is not served again from Redis until the entry expires.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_medication_cache_ignores_stored_failed_summary() -> None:
+    redis_client = FakeRedis()
+    cache = MedicationDetailCache(redis_client=redis_client)
+    await cache.set(
+        "가나다정",
+        [_detail(warning=FAILED_SUMMARY_TEXT, source="Advanced (허가정보) + AI 요약")],
+    )
+
+    assert redis_client.calls["setex"] == 1
+    assert await cache.get("가나다정") is None
+
+
+# Function Name: test_medication_cache_default_client_has_socket_timeouts
+# Description:
+# - Requires the Redis client the cache builds for itself to bound both the connect and the
+#   response wait, so an unreachable Redis cannot hold a medication lookup.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_medication_cache_default_client_has_socket_timeouts() -> None:
+    cache = MedicationDetailCache()
+    try:
+        connection_options = cache.redis_client.connection_pool.connection_kwargs
+        assert connection_options["socket_connect_timeout"] == 0.3
+        assert connection_options["socket_timeout"] == 0.3
+    finally:
+        await cache.close()
+
+
+# Class Name: _StubDrugSource
+# Role: Stands in for the local catalogue, both public drug APIs and the image API in
+#   control-level tests; returns fixed rows and no image.
+# Attributes:
+# - items (list[dict[str, object]]): Rows returned by every public search.
+# - search_calls (list[str]): Keywords the control searched for, in order.
+class _StubDrugSource:
+    # Function Name: __init__
+    # Description:
+    # - Stores the rows to return and starts with an empty search ledger.
+    # Parameters:
+    # - items (list[dict[str, object]] | None): Rows returned by searchMedication.
+    # Returns:
+    # - None.
+    def __init__(self, items: list[dict[str, object]] | None = None) -> None:
+        self.items = items or []
+        self.search_calls: list[str] = []
+
+    # Function Name: fetch_drug_info
+    # Description:
+    # - Answers the local catalogue lookup with no local product.
+    # Parameters:
+    # - drug_name (str): Search keyword.
+    # Returns:
+    # - list[MedicationDetail]: Always empty.
+    async def fetch_drug_info(self, drug_name: str) -> list[MedicationDetail]:
+        return []
+
+    # Function Name: searchMedication
+    # Description:
+    # - Records the keyword and returns copies of the configured public rows.
+    # Parameters:
+    # - drug_name (str): Search keyword.
+    # Returns:
+    # - list[dict[str, object]]: Configured rows.
+    async def searchMedication(self, drug_name: str) -> list[dict[str, object]]:
+        self.search_calls.append(drug_name)
+        return [dict(item) for item in self.items]
+
+    # Function Name: searchMedicationImage
+    # Description:
+    # - Answers the optional image lookup with no image.
+    # Parameters:
+    # - item_name (str): Product name.
+    # - item_seq (str): Product code.
+    # Returns:
+    # - str: Always empty.
+    async def searchMedicationImage(self, item_name: str, item_seq: str = "") -> str:
+        return ""
+
+
+# Function Name: _detail_control
+# Description:
+# - Wires the real control, cache class and summary generator to in-memory doubles.
+# Parameters:
+# - redis_client (FakeRedis): Redis double behind the real cache class.
+# - gemini_client (FakeGeminiClient): Scripted AI client behind the real summary generator.
+# - basic_items (list[dict[str, object]] | None): Rows of the basic public API.
+# - advanced_items (list[dict[str, object]] | None): Rows of the advanced approval API.
+# Returns:
+# - CheckMedicationDetail: Control with no local catalogue hit and no image lookup result.
+def _detail_control(
+    redis_client: FakeRedis,
+    gemini_client: FakeGeminiClient,
+    *,
+    basic_items: list[dict[str, object]] | None = None,
+    advanced_items: list[dict[str, object]] | None = None,
+) -> CheckMedicationDetail:
+    return CheckMedicationDetail(
+        db=None,
+        medication_cache=MedicationDetailCache(redis_client=redis_client),
+        public_drug_small_api=_StubDrugSource(basic_items),
+        public_drug_large_api=_StubDrugSource(advanced_items),
+        pill_image_api=_StubDrugSource(),
+        summary_generator=MedicationSummaryGenerator(ai_client=gemini_client),
+        local_medication_catalog=_StubDrugSource(),
+    )
+
+
+# Function Name: test_failed_summary_is_not_cached_and_the_next_request_retries
+# Description:
+# - Requires a lookup whose AI summary fails to end in the summary error with nothing written
+#   to Redis, and the next identical lookup to ask the AI again and cache the real summary.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_failed_summary_is_not_cached_and_the_next_request_retries() -> None:
+    redis_client = FakeRedis()
+    gemini_client = FakeGeminiClient(
+        {},
+        {"efficacy": "effect", "use_method": "usage", "warning_message": "warning"},
+    )
+    control = _detail_control(
+        redis_client, gemini_client, advanced_items=[_advanced_item()],
+    )
+
+    with pytest.raises(RuntimeError):
+        await control.requestMedicationDetail("가나다정")
+
+    assert redis_client.calls["setex"] == 0
+    assert redis_client.values == {}
+
+    response = await control.requestMedicationDetail("가나다정")
+
+    assert gemini_client.call_count == 2
+    assert response.success is True
+    assert [item.efficacy for item in response.data] == ["effect"]
+    assert redis_client.calls["setex"] == 1
+
+    cached_response = await control.requestMedicationDetail("가나다정")
+
+    assert gemini_client.call_count == 2
+    assert cached_response.data[0].source.startswith("[Cache] ")
+
+
+# Function Name: test_medication_lookup_succeeds_while_redis_is_down
+# Description:
+# - Requires a Redis outage on both the read and the write side to leave the lookup result
+#   untouched, and later lookups to skip Redis instead of failing on it again.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_medication_lookup_succeeds_while_redis_is_down() -> None:
+    redis_client = FakeRedis(fail_with=ConnectionError("redis unavailable"))
+    control = _detail_control(
+        redis_client,
+        FakeGeminiClient(),
+        basic_items=[
+            {
+                "itemSeq": "200000001",
+                "itemName": "가나다정",
+                "efcyQesitm": "effect",
+                "useMethodQesitm": "usage",
+                "atpnWarnQesitm": "warning",
+            }
+        ],
+    )
+
+    first = await control.requestMedicationDetail("가나다정")
+    second = await control.requestMedicationDetail("가나다정")
+
+    assert first.success is True and second.success is True
+    assert second.data[0].item_name == "가나다정"
+    assert redis_client.calls["get"] == 1
+    assert redis_client.calls["setex"] == 0
 
 
 # Function Name: test_medication_cache_closes_its_redis_client

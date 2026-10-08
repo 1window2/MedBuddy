@@ -7,20 +7,29 @@ import sys
 import unittest
 from pathlib import Path
 
+import pytest
 from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+from support.db import make_engine, make_session_factory, seed_account  # noqa: E402
+from support.fakes import RecordingPushBoundary  # noqa: E402
+
 from boundaries.push_notification_boundary import PushDeliveryResult  # noqa: E402
 from controls.dispatch_chat_message_alert_control import (  # noqa: E402
     DispatchChatMessageAlert,
 )
 from core.database import Base  # noqa: E402
+from entities.chat_message_entity import _ChatMessage  # noqa: E402
 from entities.device_push_token_entity import _DevicePushToken  # noqa: E402
-from entities.user_account_entity import _UserAccount  # noqa: E402
+from entities.patient_caregiver_link_entity import (  # noqa: E402
+    _PatientCaregiverLink,
+)
+from entities.user_account_entity import _UserAccount, utc_now  # noqa: E402
 from entities.user_setting_entity import _UserSetting  # noqa: E402
 
 
@@ -341,6 +350,352 @@ class DispatchChatMessageAlertTest(unittest.TestCase):
             "연동된 가족에게 새 메시지가 도착했습니다.",
         )
         self.assertEqual(boundary.calls[0]["data"]["message_preview"], "")
+
+
+_PATIENT = "patient-a"
+_CAREGIVER = "caregiver-a"
+_OUTSIDER = "outsider-a"
+_ACTIVE_TOKEN = "caregiver-a-active-chat-token-12345"
+_DISABLED_TOKEN = "caregiver-a-disabled-chat-token-123"
+_PATIENT_TOKEN = "patient-a-active-chat-token-1234567"
+_MESSAGE_BODY = "저녁 약을 복용했어요."
+
+# (user_settings 값 또는 행 없음, 기대 언어, 메시지 미리보기 노출 여부)
+_RECIPIENT_PREFERENCE_CASES = (
+    (None, "ko", True),
+    ({"language": "en"}, "en", True),
+    ({"language": " EN "}, "en", True),
+    ({"language": "fr"}, "ko", True),
+    ({"notification_detail_mode": "type_only"}, "ko", False),
+    ({"language": "en", "notification_detail_mode": "type_only"}, "en", False),
+)
+_CHAT_TITLE = {"ko": "새 가족 메시지", "en": "New family message"}
+_CHAT_FALLBACK_BODY = {
+    "ko": "연동된 가족에게 새 메시지가 도착했습니다.",
+    "en": "You received a new message from a linked family member.",
+}
+
+
+# 함수이름: _seed_chat_scene
+# 함수역할:
+# - 환자·보호자 연동과 환자가 보낸 읽지 않은 메시지, 두 참여자의 기기 토큰을 저장한다.
+# - 보호자에게는 활성·비활성 토큰을 하나씩 두어 수신 대상 선택을 검증할 수 있게 한다.
+# 매개변수:
+# - db (Session): 외래 키가 적용된 테스트 세션.
+# - user_setting (dict[str, object] | None): 보호자 user_settings 값; None이면 행을 만들지 않는다.
+# 반환값:
+# - (연동 ID, 메시지 ID).
+def _seed_chat_scene(
+    db, user_setting: dict[str, object] | None = None,
+) -> tuple[int, int]:
+    seed_account(db, _PATIENT, _CAREGIVER, _OUTSIDER)
+    link = _PatientCaregiverLink(
+        patient_hash=_PATIENT, caregiver_hash=_CAREGIVER, linked=True,
+    )
+    db.add(link)
+    db.flush()
+    message = _ChatMessage(
+        link_id=link.id,
+        sender_hash=_PATIENT,
+        client_message_id="chat-scene-message-1",
+        body=_MESSAGE_BODY,
+    )
+    db.add_all(
+        [
+            message,
+            _DevicePushToken(user_hash=_CAREGIVER, token=_ACTIVE_TOKEN),
+            _DevicePushToken(
+                user_hash=_CAREGIVER, token=_DISABLED_TOKEN, enabled=False,
+            ),
+            _DevicePushToken(user_hash=_PATIENT, token=_PATIENT_TOKEN),
+        ]
+    )
+    if user_setting is not None:
+        db.add(_UserSetting(user_hash=_CAREGIVER, **user_setting))
+    db.commit()
+    return int(link.id), int(message.id)
+
+
+# 함수이름: test_chat_alert_follows_recipient_language_and_detail_mode
+# 함수역할:
+# - 채팅 알림의 제목·본문·데이터가 수신자의 언어와 종류만 표시 설정을 따르고 수신자의 활성 토큰만 쓰는지 검증한다.
+# 매개변수:
+# - fk_db (Session): 외래 키가 적용된 테스트 세션.
+# - user_setting (dict[str, object] | None): 수신자 설정 값 또는 행 없음.
+# - language (str): 기대하는 알림 언어 코드.
+# - show_details (bool): 메시지 미리보기 노출을 기대하는지 여부.
+# 반환값:
+# - 없음 (None).
+@pytest.mark.parametrize(
+    ("user_setting", "language", "show_details"), _RECIPIENT_PREFERENCE_CASES,
+)
+def test_chat_alert_follows_recipient_language_and_detail_mode(
+    fk_db, user_setting, language, show_details,
+) -> None:
+    link_id, message_id = _seed_chat_scene(fk_db, user_setting)
+    boundary = RecordingPushBoundary()
+
+    result = DispatchChatMessageAlert(fk_db, boundary).notify_new_message(
+        recipient_hash=_CAREGIVER,
+        link_id=link_id,
+        message_body="",
+        message_id=message_id,
+        slot_key="evening",
+    )
+
+    assert result.success_count == 1
+    assert boundary.calls == [
+        {
+            "tokens": [_ACTIVE_TOKEN],
+            "title": _CHAT_TITLE[language],
+            "body": _MESSAGE_BODY if show_details else _CHAT_FALLBACK_BODY[language],
+            "data": {
+                "type": "linked_chat_message",
+                "recipient_hash": _CAREGIVER,
+                "language": language,
+                "event_id": f"chat:{link_id}:{message_id}",
+                "link_id": str(link_id),
+                "message_preview": _MESSAGE_BODY if show_details else "",
+                "message_kind": "text",
+                "slot_key": "evening",
+            },
+        }
+    ]
+
+
+# 함수이름: test_chat_switch_blocks_chat_alert_but_caregiver_switch_does_not
+# 함수역할:
+# - 채팅 알림 설정을 끄면 전송하지 않고, 보호자 알림 전역 설정은 채팅 알림에 영향을 주지 않는지 검증한다.
+# 매개변수:
+# - fk_db (Session): 외래 키가 적용된 테스트 세션.
+# 반환값:
+# - 없음 (None).
+def test_chat_switch_blocks_chat_alert_but_caregiver_switch_does_not(fk_db) -> None:
+    link_id, message_id = _seed_chat_scene(
+        fk_db,
+        {"chat_notifications_enabled": False, "caregiver_notifications_enabled": True},
+    )
+
+    # 함수이름: send
+    # 함수역할: 저장된 메시지의 채팅 알림을 보호자에게 한 번 전송한다.
+    # 매개변수: 없음.
+    # 반환값: 전송 요청을 기록한 푸시 대체 경계.
+    def send() -> RecordingPushBoundary:
+        boundary = RecordingPushBoundary()
+        DispatchChatMessageAlert(fk_db, boundary).notify_new_message(
+            recipient_hash=_CAREGIVER, link_id=link_id, message_body="",
+            message_id=message_id,
+        )
+        return boundary
+
+    assert send().calls == []
+
+    setting = fk_db.query(_UserSetting).filter_by(user_hash=_CAREGIVER).one()
+    setting.chat_notifications_enabled = True
+    setting.caregiver_notifications_enabled = False
+    fk_db.commit()
+
+    assert len(send().calls) == 1
+
+
+# 함수이름: test_queued_chat_alert_is_dropped_when_it_is_no_longer_deliverable
+# 함수역할:
+# - 저장된 메시지 알림을 전송 직전에 다시 확인해 연동 해제, 비참여자, 다른 연동, 숨김·삭제·읽음 상태에서는 보내지 않는지 검증한다.
+# 매개변수:
+# - fk_db (Session): 외래 키가 적용된 테스트 세션.
+# - change (str): 전송 전에 적용할 상태 변경 이름.
+# 반환값:
+# - 없음 (None).
+@pytest.mark.parametrize(
+    "change",
+    (
+        "unlinked",
+        "outsider",
+        "other_link",
+        "missing_message",
+        "hidden_for_recipient",
+        "deleted_for_everyone",
+        "read",
+    ),
+)
+def test_queued_chat_alert_is_dropped_when_it_is_no_longer_deliverable(
+    fk_db, change,
+) -> None:
+    link_id, message_id = _seed_chat_scene(fk_db)
+    recipient_hash = _CAREGIVER
+    requested_link_id = link_id
+    requested_message_id = message_id
+    link = fk_db.get(_PatientCaregiverLink, link_id)
+    message = fk_db.get(_ChatMessage, message_id)
+    if change == "unlinked":
+        link.linked = False
+    elif change == "outsider":
+        fk_db.add(_DevicePushToken(user_hash=_OUTSIDER, token="outsider-chat-token-12345"))
+        recipient_hash = _OUTSIDER
+    elif change == "other_link":
+        other_link = _PatientCaregiverLink(
+            patient_hash=_OUTSIDER, caregiver_hash=_CAREGIVER, linked=True,
+        )
+        fk_db.add(other_link)
+        fk_db.flush()
+        requested_link_id = int(other_link.id)
+    elif change == "missing_message":
+        requested_message_id = message_id + 1000
+    elif change == "hidden_for_recipient":
+        message.caregiver_deleted_at = utc_now()
+    elif change == "deleted_for_everyone":
+        message.deleted_for_everyone_at = utc_now()
+    elif change == "read":
+        message.read_at = utc_now()
+    fk_db.commit()
+    boundary = RecordingPushBoundary()
+
+    result = DispatchChatMessageAlert(fk_db, boundary).notify_new_message(
+        recipient_hash=recipient_hash,
+        link_id=requested_link_id,
+        message_body="",
+        message_id=requested_message_id,
+    )
+
+    assert result.success_count == 0
+    assert boundary.calls == []
+
+
+# 함수이름: test_message_hidden_only_for_the_sender_is_still_delivered
+# 함수역할:
+# - 보낸 사람만 자기 화면에서 숨긴 메시지는 상대에게 계속 알리는지 검증한다.
+# 매개변수:
+# - fk_db (Session): 외래 키가 적용된 테스트 세션.
+# 반환값:
+# - 없음 (None).
+def test_message_hidden_only_for_the_sender_is_still_delivered(fk_db) -> None:
+    link_id, message_id = _seed_chat_scene(fk_db)
+    fk_db.get(_ChatMessage, message_id).patient_deleted_at = utc_now()
+    fk_db.commit()
+    boundary = RecordingPushBoundary()
+
+    DispatchChatMessageAlert(fk_db, boundary).notify_new_message(
+        recipient_hash=_CAREGIVER, link_id=link_id, message_body="",
+        message_id=message_id,
+    )
+
+    assert len(boundary.calls) == 1
+
+
+# 함수이름: test_chat_push_is_sent_after_the_session_released_its_connection
+# 함수역할:
+# - 채팅 알림을 보내는 시점에 세션이 트랜잭션도 풀 연결도 잡고 있지 않은지 검증한다.
+# 매개변수:
+# - tmp_path (Path): 풀 연결 수를 셀 수 있는 파일 엔진을 만들 임시 디렉터리.
+# 반환값:
+# - 없음 (None).
+def test_chat_push_is_sent_after_the_session_released_its_connection(tmp_path) -> None:
+    engine = make_engine(tmp_path)
+    db = make_session_factory(engine)()
+    try:
+        link_id, message_id = _seed_chat_scene(db)
+        seen_at_send: list[tuple[int, bool]] = []
+        boundary = RecordingPushBoundary(
+            on_send=lambda call: seen_at_send.append(
+                (engine.pool.checkedout(), db.in_transaction())
+            ),
+        )
+
+        result = DispatchChatMessageAlert(db, boundary).notify_new_message(
+            recipient_hash=_CAREGIVER, link_id=link_id, message_body="",
+            message_id=message_id,
+        )
+
+        assert result.success_count == 1
+        assert seen_at_send == [(0, False)]
+    finally:
+        db.close()
+        engine.dispose()
+
+
+# 함수이름: test_rejected_chat_token_is_disabled_in_a_committed_transaction
+# 함수역할:
+# - Firebase가 거부한 채팅 수신 토큰만 비활성화하고 그 변경이 다른 연결에서 보이도록 커밋되는지 검증한다.
+# 매개변수:
+# - tmp_path (Path): 세션마다 다른 연결을 쓰는 파일 엔진을 만들 임시 디렉터리.
+# 반환값:
+# - 없음 (None).
+def test_rejected_chat_token_is_disabled_in_a_committed_transaction(tmp_path) -> None:
+    engine = make_engine(tmp_path)
+    sessions = make_session_factory(engine)
+    db = sessions()
+    observer = sessions()
+    try:
+        link_id, message_id = _seed_chat_scene(db)
+        boundary = RecordingPushBoundary(invalid_tokens=(_ACTIVE_TOKEN,))
+
+        result = DispatchChatMessageAlert(db, boundary).notify_new_message(
+            recipient_hash=_CAREGIVER, link_id=link_id, message_body="",
+            message_id=message_id,
+        )
+
+        assert result.invalid_tokens == (_ACTIVE_TOKEN,)
+        enabled_by_token = {
+            str(row.token): bool(row.enabled)
+            for row in observer.query(_DevicePushToken).all()
+        }
+        assert enabled_by_token == {
+            _ACTIVE_TOKEN: False,
+            _DISABLED_TOKEN: False,
+            _PATIENT_TOKEN: True,
+        }
+        assert not db.in_transaction()
+    finally:
+        observer.close()
+        db.close()
+        engine.dispose()
+
+
+# 함수이름: test_sent_chat_push_is_reported_even_when_token_cleanup_fails
+# 함수역할:
+# - 전송 뒤 무효 토큰 정리가 DB 장애로 실패해도 전송 결과를 그대로 돌려주고 세션을 계속 쓸 수 있는지 검증한다.
+# - 예외가 올라가면 호출한 작업이 같은 메시지를 다시 보내게 된다.
+# 매개변수:
+# - fk_db (Session): 외래 키가 적용된 테스트 세션.
+# 반환값:
+# - 없음 (None).
+def test_sent_chat_push_is_reported_even_when_token_cleanup_fails(fk_db) -> None:
+    link_id, message_id = _seed_chat_scene(fk_db)
+    # 거부되는 토큰 외에 정상 기기 하나를 더 두어 전달된 푸시가 실제로 있도록 한다.
+    fk_db.add(_DevicePushToken(user_hash=_CAREGIVER, token="caregiver-a-second-chat-token-12"))
+    fk_db.commit()
+    original_commit = fk_db.commit
+
+    # 함수이름: fail_cleanup_commit
+    # 함수역할: 전송 직후의 커밋 한 번을 DB 장애처럼 실패시키고 원래 커밋으로 되돌린다.
+    # 매개변수: 없음.
+    # 반환값: 없음 (None).
+    def fail_cleanup_commit() -> None:
+        fk_db.commit = original_commit
+        raise OperationalError("COMMIT", None, Exception("database is unavailable"))
+
+    # 함수이름: arm_failure
+    # 함수역할: 전송 시점에 다음 커밋 실패를 예약한다.
+    # 매개변수: call (dict[str, object]): 기록된 전송 요청.
+    # 반환값: 없음 (None).
+    def arm_failure(call: dict[str, object]) -> None:
+        fk_db.commit = fail_cleanup_commit
+
+    boundary = RecordingPushBoundary(
+        invalid_tokens=(_ACTIVE_TOKEN,), on_send=arm_failure,
+    )
+
+    result = DispatchChatMessageAlert(fk_db, boundary).notify_new_message(
+        recipient_hash=_CAREGIVER, link_id=link_id, message_body="",
+        message_id=message_id,
+    )
+
+    assert result.success_count == 1
+    assert result.invalid_tokens == (_ACTIVE_TOKEN,)
+    assert result.all_valid_targets_succeeded
+    assert len(boundary.calls) == 1
+    # 정리 트랜잭션은 되돌려졌고 세션은 다음 작업에 그대로 쓸 수 있다.
+    assert fk_db.query(_DevicePushToken).filter_by(token=_ACTIVE_TOKEN).one().enabled
 
 
 if __name__ == "__main__":

@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 # - 처리 가능한 보호자 알림 요청을 백그라운드에서 반복 조회한다.
 # 주요 책임:
 # - 전송 대상 알림을 독립 세션에서 주기적으로 처리하고 종료 신호 및 실패 시 롤백을 관리한다.
+# - 한 주기의 어떤 실패도 반복 작업을 끝내지 못하게 하고, 미복용 큐 적재 실패가 전송을 막지 않게 한다.
 # 속성:
 # - session_factory (sessionmaker[Session]): 주기별 DB 세션 생성기.
 # - push_boundary_factory (Callable): 푸시 전송 경계 생성기.
@@ -75,13 +76,20 @@ class CaregiverAlertOutboxWorker:
     # 함수이름: _run_loop
     # 함수역할:
     # - 동기 아웃박스 처리를 별도 스레드에 맡긴 뒤 설정된 간격 또는 종료 신호까지 대기한다.
+    # - 세션 생성·롤백·종료까지 실패한 주기도 기록만 하고 같은 간격으로 다음 주기를 이어간다.
     # 매개변수:
     # - 없음.
     # 반환값:
     # - 없음; 종료 이벤트가 설정되면 반복을 마친다.
     async def _run_loop(self) -> None:
         while not self._stop_event.is_set():
-            await asyncio.to_thread(self._run_once)
+            try:
+                await asyncio.to_thread(self._run_once)
+            except Exception as exc:
+                logger.error(
+                    "Caregiver alert outbox worker cycle failed: %s",
+                    type(exc).__name__,
+                )
             try:
                 await asyncio.wait_for(
                     self._stop_event.wait(),
@@ -93,6 +101,7 @@ class CaregiverAlertOutboxWorker:
     # 함수이름: _run_once
     # 함수역할:
     # - 새 세션에서 전송 시점이 된 알림을 처리하고 실패 시 롤백하며 항상 세션을 닫는다.
+    # - 미복용 알림 적재와 전송을 따로 보호해 적재가 실패한 주기에도 이미 쌓인 알림은 전송한다.
     # 매개변수:
     # - 없음.
     # 반환값:
@@ -100,19 +109,26 @@ class CaregiverAlertOutboxWorker:
     def _run_once(self) -> None:
         db = self.session_factory()
         try:
-            queued_count = QueueMissedDoseAlerts(db).queueDue()
-            result = ProcessCaregiverAlertOutbox(
-                db=db,
-                push_boundary=self.push_boundary_factory(),
-            ).processDue()
+            queued_count = 0
+            try:
+                queued_count = QueueMissedDoseAlerts(db).queueDue()
+            except Exception:
+                db.rollback()
+                logger.exception("Caregiver alert outbox worker could not queue alerts.")
+            result = {"sent": 0, "failed": 0, "skipped": 0}
+            try:
+                result = ProcessCaregiverAlertOutbox(
+                    db=db,
+                    push_boundary=self.push_boundary_factory(),
+                ).processDue()
+            except Exception:
+                db.rollback()
+                logger.exception("Caregiver alert outbox worker failed.")
             if queued_count or result["sent"] or result["failed"]:
                 logger.info(
                     "Caregiver alert outbox processed: queued=%s result=%s",
                     queued_count,
                     result,
                 )
-        except Exception:
-            db.rollback()
-            logger.exception("Caregiver alert outbox worker failed.")
         finally:
             db.close()

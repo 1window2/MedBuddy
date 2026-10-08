@@ -87,6 +87,32 @@ def resolve_rate_limit_rule(
     return default_rule, canonical_path
 
 
+# 함수이름: mounted_route_template
+# 함수역할:
+# - include_router(prefix=...)로 붙인 라우터의 route.path는 접두사가 빠진 상대 템플릿이므로,
+#   실제 요청 경로의 앞쪽 조각(접두사)과 템플릿을 이어 전체 경로 템플릿을 만든다.
+# - 템플릿이 차지하는 뒤쪽 조각은 실제 값이 아닌 {이름} 그대로 남기므로, 호출자가 고른
+#   경로 값이 사용자별 카운터 키나 정책 조회에 들어가지 않는다.
+# - 접두사 자체에 경로 매개변수가 있거나 템플릿에 여러 조각을 받는 {이름:path}가 있으면
+#   그 조각은 실제 값으로 남는다. 현재 라우터에는 두 경우 모두 없다.
+# 매개변수:
+# - route_template (str | None): 일치한 route의 경로 템플릿; 접두사가 없을 수 있다.
+# - concrete_path (str): 접두사를 포함한 실제 요청 URL 경로.
+# 반환값:
+# - 접두사를 포함한 전체 경로 템플릿. 템플릿이 없거나 실제 경로보다 조각이 많으면
+#   실제 경로를 그대로 반환한다.
+def mounted_route_template(route_template: str | None, concrete_path: str) -> str:
+    """상대 route 템플릿에 실제 경로의 마운트 접두사를 붙여 반환한다."""
+    if not route_template:
+        return concrete_path
+    template_segments = route_template.lstrip("/").split("/")
+    concrete_segments = concrete_path.lstrip("/").split("/")
+    if len(template_segments) > len(concrete_segments):
+        return concrete_path
+    prefix_segments = concrete_segments[: len(concrete_segments) - len(template_segments)]
+    return "/" + "/".join(prefix_segments + template_segments)
+
+
 # 함수이름: _path_matches_template
 # 함수역할:
 # - 중괄호 매개변수는 한 경로 조각에만 대응시키고 나머지 조각은 정확히 비교한다.
@@ -497,6 +523,9 @@ DEFAULT_RATE_LIMIT_RULES: dict[tuple[str, str], RateLimitRule] = {
     ("GET", "/api/v1/hospitals/nearby"): RateLimitRule(30, 60),
     ("POST", "/api/v1/medication/link/code"): RateLimitRule(10, 3_600),
     ("POST", "/api/v1/medication/link/register"): RateLimitRule(5, 300),
+    # 약통의 선택 삭제는 항목마다 DELETE를 병렬로 보내므로 기본 DELETE 한도(분당 30회)보다
+    # 넉넉하게 둔다.
+    ("DELETE", "/api/v1/medication/delete/{drug_id}"): RateLimitRule(120, 60),
     ("GET", "/api/v1/chat/links/{link_id}/messages"): RateLimitRule(60, 60),
     ("GET", "/api/v1/chat/links/{link_id}/medications"): RateLimitRule(60, 60),
     ("GET", "/api/v1/chat/links/{link_id}/schedule-contexts"): RateLimitRule(

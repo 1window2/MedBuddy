@@ -3,6 +3,7 @@
 
 import logging
 from datetime import date, datetime, time
+from typing import NamedTuple
 
 from sqlalchemy.orm import Session
 
@@ -19,13 +20,12 @@ from entities.caregiver_notification_entity import (
     CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED,
     CAREGIVER_NOTIFICATION_MODE_MISSED_DEADLINE,
     _CaregiverNotification,
-    decode_slot_settings,
+    effective_slot_settings,
 )
-from entities.device_push_token_entity import _DevicePushToken
-from entities.user_setting_entity import _UserSetting
 from repositories.patient_caregiver_link_repository import (
     PatientCaregiverLinkRepository,
 )
+from services.push_recipient_resolver import PushRecipientResolver
 
 logger = logging.getLogger(__name__)
 
@@ -43,12 +43,30 @@ _ENGLISH_SLOT_NAMES = {
 }
 
 
+# 클래스명: _PreparedPush
+# 역할:
+# - DB 세션을 반환하기 전에 완성해 둔 한 번의 푸시 전송 요청을 담는다.
+# 주요 책임:
+# - 전송 중 세션을 다시 읽지 않도록 ORM 행이 아닌 일반 값만 보관한다.
+# 속성:
+# - tokens (tuple[str, ...]): 알림을 보낼 기기 토큰.
+# - title (str): 알림 제목.
+# - body (str): 알림 본문.
+# - data (dict[str, str]): 화면 이동용 문자열 데이터.
+class _PreparedPush(NamedTuple):
+    tokens: tuple[str, ...]
+    title: str
+    body: str
+    data: dict[str, str]
+
+
 # 클래스명: DispatchCaregiverAlert
 # 역할:
 # - 복약 상태 변경을 보호자 설정에 맞는 원격 알림으로 전달한다.
 # 주요 책임:
 # - 활성 환자·보호자 연결과 시간대별 알림 설정을 확인한다.
 # - 알림을 원하는 보호자의 활성 FCM 토큰만 선택한다.
+# - 전송에 필요한 값을 모두 읽은 뒤 DB 연결을 반환하고 나서 Firebase를 호출한다.
 # - Firebase가 거부한 만료 토큰을 비활성화한다.
 # 속성:
 # - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
@@ -79,6 +97,7 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
     # 함수이름: notifySlotCompleted
     # 함수역할:
     # - 모든 약이 새로 완료된 복약 시간대를 구독한 보호자 기기에 알린다.
+    # - 수신자와 문구를 모두 읽은 뒤 세션의 읽기 트랜잭션을 끝내고 전송한다. 호출자는 자신의 변경을 먼저 커밋해야 한다.
     # 매개변수:
     # - patient_hash (str): 복약을 완료한 환자의 식별 hash
     # - slot_key (str): 완료된 복약 시간대
@@ -90,79 +109,55 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
         patient_hash: str,
         slot_key: str,
     ) -> PushDeliveryResult:
+        resolver = PushRecipientResolver(self.db)
         caregiver_hashes = self._caregivers_for_completed_slot(
             patient_hash,
             slot_key,
         )
         slot_name = _SLOT_NAMES.get(slot_key, "복약")
-        success_count = 0
-        invalid_tokens: list[str] = []
-        retryable_failure_count = 0
+        prepared_pushes: list[_PreparedPush] = []
         for caregiver_hash in caregiver_hashes:
-            user_setting = self._user_setting(caregiver_hash)
-            if user_setting is not None and not bool(
-                user_setting.caregiver_notifications_enabled
-            ):
+            if not resolver.caregiver_alerts_enabled(caregiver_hash):
                 continue
-            token_rows = (
-                self.db.query(_DevicePushToken)
-                .filter(
-                    _DevicePushToken.user_hash == caregiver_hash,
-                    _DevicePushToken.enabled.is_(True),
-                )
-                .all()
-            )
-            if not token_rows:
+            recipient = resolver.resolve(caregiver_hash)
+            if not recipient.tokens:
                 continue
-            is_english = (
-                user_setting is not None
-                and str(user_setting.language or "").strip().lower() == "en"
-            )
-            show_details = (
-                user_setting is None
-                or user_setting.notification_detail_mode != "type_only"
-            )
+            is_english = recipient.language == "en"
             if is_english:
                 title = "Medication completed"
                 body = (
                     f"The patient completed all {_ENGLISH_SLOT_NAMES.get(slot_key, 'scheduled')} medications."
-                    if show_details
+                    if recipient.show_details
                     else "A linked patient's medication status was updated."
                 )
             else:
                 title = "환자 복약 완료"
                 body = (
                     f"환자가 {slot_name}에 복용할 약을 모두 복용했습니다."
-                    if show_details
+                    if recipient.show_details
                     else "연동된 환자의 복약 상태가 변경되었습니다."
                 )
-            result = self.push_boundary.send_notification(
-                tokens=[str(row.token) for row in token_rows],
-                title=title,
-                body=body,
-                data={
-                    "type": "caregiver_slot_completed",
-                    "recipient_hash": caregiver_hash,
-                    "language": "en" if is_english else "ko",
-                    "patient_hash": patient_hash,
-                    "slot_key": slot_key,
-                },
+            prepared_pushes.append(
+                _PreparedPush(
+                    tokens=recipient.tokens,
+                    title=title,
+                    body=body,
+                    data={
+                        "type": "caregiver_slot_completed",
+                        "recipient_hash": caregiver_hash,
+                        "language": recipient.language,
+                        "patient_hash": patient_hash,
+                        "slot_key": slot_key,
+                    },
+                )
             )
-            success_count += result.success_count
-            invalid_tokens.extend(result.invalid_tokens)
-            retryable_failure_count += result.retryable_failure_count
-            if result.invalid_tokens:
-                self._disable_invalid_tokens(result.invalid_tokens)
-        return PushDeliveryResult(
-            success_count=success_count,
-            invalid_tokens=tuple(dict.fromkeys(invalid_tokens)),
-            retryable_failure_count=retryable_failure_count,
-        )
+        return self._send_prepared_pushes(prepared_pushes, resolver)
 
     # 함수이름: notifySlotMissed
     # 함수역할:
     # - 보호자가 명시적으로 선택한 마감 시각 이후에도 미완료인 복약 시간대를 알린다.
     # - 전송 직전에 연결, 설정, 날짜와 실제 완료 상태를 다시 확인해 오래된 알림을 막는다.
+    # - 수신자와 문구를 모두 읽은 뒤 세션의 읽기 트랜잭션을 끝내고 전송한다. 호출자는 자신의 변경을 먼저 커밋해야 한다.
     # 매개변수:
     # - caregiver_hash (str): 알림 수신 보호자 식별자.
     # - patient_hash (str): 확인할 연결 환자 식별자.
@@ -179,12 +174,15 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
         schedule_date: date,
         alert_context: dict[str, str] | None = None,
     ) -> PushDeliveryResult:
-        if not self.isMissedSlotActionable(
+        resolver = PushRecipientResolver(self.db)
+        if not self._missed_slot_is_actionable(
+            resolver,
             caregiver_hash=caregiver_hash, patient_hash=patient_hash,
             slot_key=slot_key, schedule_date=schedule_date,
         ):
             return PushDeliveryResult(success_count=0)
         return self._send_missed_notification(
+            resolver,
             caregiver_hash=caregiver_hash, patient_hash=patient_hash,
             slot_key=slot_key, alert_context=alert_context,
         )
@@ -193,6 +191,17 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
         self, *, caregiver_hash: str, patient_hash: str, slot_key: str, schedule_date: date,
     ) -> bool:
         """Share date, link, preference and completion checks with notification actions."""
+        return self._missed_slot_is_actionable(
+            PushRecipientResolver(self.db),
+            caregiver_hash=caregiver_hash, patient_hash=patient_hash,
+            slot_key=slot_key, schedule_date=schedule_date,
+        )
+
+    def _missed_slot_is_actionable(
+        self, resolver: PushRecipientResolver, *, caregiver_hash: str,
+        patient_hash: str, slot_key: str, schedule_date: date,
+    ) -> bool:
+        """Run the checks with the caller's resolver so one event reads the recipient once."""
         current_time = application_now()
         if schedule_date != current_time.date():
             return False
@@ -209,7 +218,8 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
         )
         if setting is None:
             return False
-        slot_setting = decode_slot_settings(setting.slot_settings).get(slot_key)
+        # 시간대 JSON이 없는 기존 행도 설정 화면과 같은 규칙으로 읽는다.
+        slot_setting = effective_slot_settings(setting).get(slot_key)
         if (
             slot_setting is None
             or slot_setting.get("notification_type")
@@ -224,44 +234,24 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
         ):
             return False
 
-        user_setting = self._user_setting(caregiver_hash)
-        if user_setting is not None and not bool(
-            user_setting.caregiver_notifications_enabled
-        ):
-            return False
-        return True
+        return resolver.caregiver_alerts_enabled(caregiver_hash)
 
     def _send_missed_notification(
-        self, *, caregiver_hash: str, patient_hash: str, slot_key: str,
-        alert_context: dict[str, str] | None,
+        self, resolver: PushRecipientResolver, *, caregiver_hash: str,
+        patient_hash: str, slot_key: str, alert_context: dict[str, str] | None,
     ) -> PushDeliveryResult:
         """Keep old devices on OS notifications; opt-in devices render action data."""
-        user_setting = self._user_setting(caregiver_hash)
-        token_rows = (
-            self.db.query(_DevicePushToken)
-            .filter(
-                _DevicePushToken.user_hash == caregiver_hash,
-                _DevicePushToken.enabled.is_(True),
-            )
-            .all()
-        )
-        if not token_rows:
+        recipient = resolver.resolve(caregiver_hash)
+        if not recipient.tokens:
             return PushDeliveryResult(success_count=0)
-        is_english = (
-            user_setting is not None
-            and str(user_setting.language or "").strip().lower() == "en"
-        )
-        show_details = (
-            user_setting is None
-            or user_setting.notification_detail_mode != "type_only"
-        )
+        is_english = recipient.language == "en"
         slot_name = (
             _ENGLISH_SLOT_NAMES.get(slot_key, "scheduled")
             if is_english
             else _SLOT_NAMES.get(slot_key, "복약")
         )
         title = "Medication not checked" if is_english else "미복용 일정 확인"
-        if show_details:
+        if recipient.show_details:
             body = (
                 f"The linked patient's {slot_name} medication is not checked yet. Please contact them if needed."
                 if is_english
@@ -276,28 +266,62 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
         base_data = {
                 "type": "caregiver_slot_missed",
                 "recipient_hash": caregiver_hash,
-                "language": "en" if is_english else "ko",
+                "language": recipient.language,
                 "patient_hash": patient_hash,
                 "slot_key": slot_key,
         }
-        results = []
+        prepared_pushes: list[_PreparedPush] = []
         for supports_actions in (False, True):
-            tokens = [str(row.token) for row in token_rows
-                      if bool(row.supports_caregiver_actions and alert_context) == supports_actions]
+            tokens = tuple(
+                token for token in recipient.tokens
+                if bool(token in recipient.action_tokens and alert_context) == supports_actions
+            )
             if not tokens:
                 continue
             data = dict(base_data)
             if supports_actions:
                 data.update(alert_context or {})
                 data.update(action_version="1", title=title, body=body)
-            result = self.push_boundary.send_notification(tokens=tokens, title=title, body=body, data=data)
-            results.append(result)
+            prepared_pushes.append(_PreparedPush(tokens=tokens, title=title, body=body, data=data))
+        return self._send_prepared_pushes(prepared_pushes, resolver)
+
+    # 함수이름: _send_prepared_pushes
+    # 함수역할:
+    # - 준비된 전송 요청을 DB 연결 없이 Firebase로 보내고 결과를 하나로 집계한다.
+    # - Firebase 호출이 느려도 풀 연결과 읽기 트랜잭션을 잡고 있지 않도록 전송 전에 세션을 반환한다.
+    # - 거부된 토큰은 전송 직후 짧은 별도 트랜잭션으로 비활성화한다.
+    # 매개변수:
+    # - prepared_pushes (list[_PreparedPush]): 세션에서 이미 읽어 완성한 전송 요청 목록.
+    # - resolver (PushRecipientResolver): 이번 전송에서 수신자를 읽은 해석기.
+    # 반환값:
+    # - 전체 요청의 성공 수, 중복을 제거한 무효 토큰과 재시도 가능한 실패 수.
+    def _send_prepared_pushes(
+        self,
+        prepared_pushes: list[_PreparedPush],
+        resolver: PushRecipientResolver,
+    ) -> PushDeliveryResult:
+        if not prepared_pushes:
+            return PushDeliveryResult(success_count=0)
+        self.db.rollback()
+        success_count = 0
+        invalid_tokens: list[str] = []
+        retryable_failure_count = 0
+        for prepared_push in prepared_pushes:
+            result = self.push_boundary.send_notification(
+                tokens=list(prepared_push.tokens),
+                title=prepared_push.title,
+                body=prepared_push.body,
+                data=prepared_push.data,
+            )
+            success_count += result.success_count
+            invalid_tokens.extend(result.invalid_tokens)
+            retryable_failure_count += result.retryable_failure_count
             if result.invalid_tokens:
-                self._disable_invalid_tokens(result.invalid_tokens)
+                resolver.disable_invalid(result.invalid_tokens)
         return PushDeliveryResult(
-            success_count=sum(result.success_count for result in results),
-            invalid_tokens=tuple(token for result in results for token in result.invalid_tokens),
-            retryable_failure_count=sum(result.retryable_failure_count for result in results),
+            success_count=success_count,
+            invalid_tokens=tuple(dict.fromkeys(invalid_tokens)),
+            retryable_failure_count=retryable_failure_count,
         )
 
     # 함수이름: _deadline_has_passed
@@ -352,7 +376,8 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
             )
             if setting is None:
                 continue
-            slot_setting = decode_slot_settings(setting.slot_settings).get(slot_key)
+            # 시간대 JSON이 없는 기존 행도 설정 화면과 같은 규칙으로 읽는다.
+            slot_setting = effective_slot_settings(setting).get(slot_key)
             if (
                 slot_setting is not None
                 and slot_setting.get("notification_type")
@@ -360,30 +385,3 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
             ):
                 caregiver_hashes.append(str(link.caregiver_hash))
         return caregiver_hashes
-
-    # 함수이름: _user_setting
-    # 함수역할:
-    # - 보호자의 전역 알림 및 잠금 화면 개인정보 설정을 조회한다.
-    # 매개변수:
-    # - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
-    # 반환값:
-    # - 저장된 사용자 알림 설정 행 또는 설정이 없을 때 None.
-    def _user_setting(self, user_hash: str) -> _UserSetting | None:
-        return (
-            self.db.query(_UserSetting)
-            .filter(_UserSetting.user_hash == user_hash)
-            .first()
-        )
-
-    # 함수이름: _disable_invalid_tokens
-    # 함수역할:
-    # - Firebase가 만료 또는 불일치로 거부한 토큰을 재사용하지 않도록 비활성화한다.
-    # 매개변수:
-    # - invalid_tokens (tuple[str, ...]): Firebase가 거부한 토큰 목록
-    # 반환값:
-    # - 없음
-    def _disable_invalid_tokens(self, invalid_tokens: tuple[str, ...]) -> None:
-        self.db.query(_DevicePushToken).filter(
-            _DevicePushToken.token.in_(invalid_tokens)
-        ).update({"enabled": False}, synchronize_session=False)
-        self.db.commit()

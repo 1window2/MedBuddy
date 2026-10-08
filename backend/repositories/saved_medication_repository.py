@@ -71,6 +71,19 @@ class SavedMedicationRepository:
             .all()
         )
 
+    # 함수이름: list_schedule_medications_by_patient
+    # 함수역할:
+    # - 한 환자의 저장 약을 일정 계산에 필요한 열만 읽어 ID 오름차순으로 조회한다.
+    # - 모든 열이 필요한 저장·삭제·보존 처리는 list_by_patient를 사용한다.
+    # 매개변수:
+    # - patient_hash (str): 저장 기록의 소유 범위를 제한할 환자 해시.
+    # 반환값:
+    # - 일정 필드만 적재된 해당 환자의 저장 약 목록.
+    def list_schedule_medications_by_patient(
+        self, patient_hash: str,
+    ) -> list[_SavedMedication]:
+        return self.list_schedule_medications_for_patients([patient_hash])
+
     # 함수이름: list_all
     # 함수역할:
     # - 전체 환자의 저장 약을 ID 순서로 조회하여 전역 보존 정책 처리를 지원한다.

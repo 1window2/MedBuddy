@@ -66,7 +66,7 @@ class _FakeGeminiResponse:
 class _FakeGeminiModels:
     # Function Name: __init__
     # Description:
-    # - Stores the response text and initializes request tracking for fallback-cache
+    # - Stores the response text and initializes request tracking for fallback-call
     #   assertions.
     # Parameters:
     # - response_text (str): Deterministic text/JSON output returned by the AI double.
@@ -188,7 +188,8 @@ class _TimedOutOCRServiceBoundary:
 # Responsibilities:
 # - Corrects a Hangul OCR vowel variant from the local catalog while preserving the raw name and
 #   high-confidence correction provenance.
-# - Does not cache a malformed fallback object, allowing later valid analysis to recover.
+# - Leaves a name unverified after a failed or malformed fallback answer and keeps no AI choice
+#   between calls or verifier instances.
 # - Removes all whitespace and lowercases a catalog name for normalized test lookup keys.
 # Attributes:
 # - engine (Engine): Isolated in-memory SQLite engine.
@@ -519,15 +520,15 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
         )
         self.assertEqual(config.max_output_tokens, 1024)
 
-    # Function Name: test_llm_fallback_cache_does_not_cross_verifier_instances
+    # Function Name: test_llm_fallback_keeps_no_state_across_verifier_instances
     # Description:
-    # - Keeps successful fallback decisions within one verifier instance so another verifier
-    #   evaluates its own response.
+    # - Shares no fallback decision between verifier instances: a second verifier asks the AI
+    #   itself and applies only its own answer.
     # Parameters:
     # - None.
     # Returns:
     # - None.
-    def test_llm_fallback_cache_does_not_cross_verifier_instances(self) -> None:
+    def test_llm_fallback_keeps_no_state_across_verifier_instances(self) -> None:
         canonical_name = "\ud504\ub8e8\ucf54\ud504\uc815"
         ocr_name = "\ube0c\ub8e8\ucf54\ud504\uc815"
         self._save_basic_drug(canonical_name)
@@ -562,15 +563,15 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
         self.assertEqual(first_client.models.call_count, 1)
         self.assertEqual(second_client.models.call_count, 1)
 
-    # Function Name: test_llm_fallback_cache_reuses_result_within_one_verifier
+    # Function Name: test_llm_fallback_is_not_remembered_within_one_verifier
     # Description:
-    # - Reuses a successful fallback correction within one verifier and avoids a second
-    #   Gemini call.
+    # - Asks the AI again when one verifier sees the same OCR name twice, so an earlier
+    #   choice is never replayed for a later prescription.
     # Parameters:
     # - None.
     # Returns:
     # - None.
-    def test_llm_fallback_cache_reuses_result_within_one_verifier(self) -> None:
+    def test_llm_fallback_is_not_remembered_within_one_verifier(self) -> None:
         canonical_name = "\ud504\ub8e8\ucf54\ud504\uc815"
         ocr_name = "\ube0c\ub8e8\ucf54\ud504\uc815"
         self._save_basic_drug(canonical_name)
@@ -590,16 +591,19 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
         )
         self.control = InputPrescription(client=client, db=self.db)
 
-        first_schedule, _ = self._verify_medication_item(
+        first_schedule, first_verification = self._verify_medication_item(
             self._medication_item(ocr_name)
         )
-        second_schedule, _ = self._verify_medication_item(
+        client.models.response_text = json.dumps({"corrections": []})
+        second_schedule, second_verification = self._verify_medication_item(
             self._medication_item(ocr_name)
         )
 
         self.assertEqual(first_schedule.medication_name, canonical_name)
-        self.assertEqual(second_schedule.medication_name, canonical_name)
-        self.assertEqual(client.models.call_count, 1)
+        self.assertEqual(first_verification.source, "llm_catalog_candidate")
+        self.assertEqual(second_schedule.medication_name, ocr_name)
+        self.assertEqual(second_verification.source, "unverified")
+        self.assertEqual(client.models.call_count, 2)
 
     # Function Name: test_prefix_match_checks_distinct_names_before_limiting_rows
     # Description:
@@ -635,58 +639,52 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
         )
         self.db.commit()
 
-        self.assertIsNone(verifier._find_unique_catalog_prefix_match("alpha"))
+        self.assertEqual(verifier._find_catalog_prefix_names("alpha"), {"A", "B"})
+        self.assertEqual(verifier._find_catalog_prefix_names("alpha-3"), {"B"})
+        self.assertEqual(verifier._find_catalog_prefix_names("beta"), set())
 
-    # Function Name: test_llm_fallback_cache_is_separated_by_model_name
+    # Function Name: test_ambiguous_prefix_does_not_fall_through_to_vowel_variant
     # Description:
-    # - Separates fallback results by model name so a different model does not inherit a
-    #   prior correction.
+    # - Leaves a name unverified when it starts more than one product, although one of its
+    #   OCR vowel variants is the unique prefix of another product.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None; fails if a later, less trusted variant decides an ambiguous name.
+    def test_ambiguous_prefix_does_not_fall_through_to_vowel_variant(self) -> None:
+        ocr_name = "\ub178\ubc14\uc2a4\ud06c\uc815"
+        for item_name in (
+            "\ub178\ubc14\uc2a4\ud06c\uc8155\ubc00\ub9ac\uadf8\ub7a8",
+            "\ub178\ubc14\uc2a4\ud06c\uc81510\ubc00\ub9ac\uadf8\ub7a8",
+            "\ub204\ubc14\uc2a4\ud06c\uc8152\ubc00\ub9ac\uadf8\ub7a8",
+        ):
+            self._save_approval_drug(item_name)
+
+        verification = PrescriptionMedicationNameVerifier(self.db).verify(ocr_name)
+
+        self.assertEqual(verification.source, "unverified")
+        self.assertEqual(verification.canonical_name, ocr_name)
+        self.assertEqual(verification.confidence, 0.0)
+
+    # Function Name: test_absent_prefix_still_lets_a_vowel_variant_match
+    # Description:
+    # - Keeps the vowel-variant prefix match when no product starts with the OCR name itself,
+    #   so only an ambiguous prefix ends the search.
     # Parameters:
     # - None.
     # Returns:
     # - None.
-    def test_llm_fallback_cache_is_separated_by_model_name(self) -> None:
-        canonical_name = "\ud504\ub8e8\ucf54\ud504\uc815"
-        ocr_name = "\ube0c\ub8e8\ucf54\ud504\uc815"
-        self._save_basic_drug(canonical_name)
-        first_client = _FakeGeminiClient(
-            json.dumps(
-                {
-                    "corrections": [
-                        {
-                            "index": 0,
-                            "corrected_name": canonical_name,
-                            "confidence": 0.94,
-                        }
-                    ]
-                },
-                ensure_ascii=False,
-            )
-        )
-        self.control = InputPrescription(
-            client=first_client,
-            model_name="gemini-test-a",
-            db=self.db,
-        )
-        _, first_verification = self._verify_medication_item(
-            self._medication_item(ocr_name)
+    def test_absent_prefix_still_lets_a_vowel_variant_match(self) -> None:
+        canonical_name = "\ub204\ubc14\uc2a4\ud06c\uc8152\ubc00\ub9ac\uadf8\ub7a8"
+        self._save_approval_drug(canonical_name)
+
+        verification = PrescriptionMedicationNameVerifier(self.db).verify(
+            "\ub178\ubc14\uc2a4\ud06c\uc815"
         )
 
-        second_client = _FakeGeminiClient(json.dumps({"corrections": []}))
-        self.control = InputPrescription(
-            client=second_client,
-            model_name="gemini-test-b",
-            db=self.db,
-        )
-        medication_schedule, second_verification = self._verify_medication_item(
-            self._medication_item(ocr_name)
-        )
-
-        self.assertEqual(first_verification.source, "llm_catalog_candidate")
-        self.assertEqual(medication_schedule.medication_name, ocr_name)
-        self.assertEqual(second_verification.source, "unverified")
-        self.assertEqual(first_client.models.call_count, 1)
-        self.assertEqual(second_client.models.call_count, 1)
+        self.assertEqual(verification.canonical_name, canonical_name)
+        self.assertEqual(verification.source, "local_catalog_ocr_vowel_variant")
+        self.assertEqual(verification.confidence, 0.92)
 
     # Function Name: test_rejects_low_confidence_llm_fallback
     # Description:
@@ -822,58 +820,37 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
         self.assertEqual(low_confidence_client.models.call_count, 1)
         self.assertEqual(high_confidence_client.models.call_count, 1)
 
-    # Function Name: test_does_not_cache_failed_llm_fallback_request
+    # Function Name: test_failed_llm_fallback_request_leaves_name_unverified
     # Description:
-    # - Does not cache a failed fallback request, allowing a subsequent valid response to
-    #   correct the name.
+    # - Keeps the OCR name unverified when the fallback answer is not JSON.
     # Parameters:
     # - None.
     # Returns:
     # - None.
-    def test_does_not_cache_failed_llm_fallback_request(self) -> None:
+    def test_failed_llm_fallback_request_leaves_name_unverified(self) -> None:
         canonical_name = "\ud504\ub8e8\ucf54\ud504\uc815"
         ocr_name = "\ube0c\ub8e8\ucf54\ud504\uc815"
         self._save_basic_drug(canonical_name)
         malformed_client = _FakeGeminiClient("not-json")
         self.control = InputPrescription(client=malformed_client, db=self.db)
-        _, first_verification = self._verify_medication_item(
+
+        medication_schedule, verification = self._verify_medication_item(
             self._medication_item(ocr_name)
         )
 
-        valid_client = _FakeGeminiClient(
-            json.dumps(
-                {
-                    "corrections": [
-                        {
-                            "index": 0,
-                            "corrected_name": canonical_name,
-                            "confidence": 0.95,
-                        }
-                    ]
-                },
-                ensure_ascii=False,
-            )
-        )
-        self.control = InputPrescription(client=valid_client, db=self.db)
-        medication_schedule, second_verification = self._verify_medication_item(
-            self._medication_item(ocr_name)
-        )
-
-        self.assertEqual(first_verification.source, "unverified")
-        self.assertEqual(medication_schedule.medication_name, canonical_name)
-        self.assertEqual(second_verification.source, "llm_catalog_candidate")
+        self.assertEqual(medication_schedule.medication_name, ocr_name)
+        self.assertEqual(verification.source, "unverified")
+        self.assertEqual(verification.confidence, 0.0)
         self.assertEqual(malformed_client.models.call_count, 1)
-        self.assertEqual(valid_client.models.call_count, 1)
 
-    # Function Name: test_does_not_cache_malformed_llm_fallback_object
+    # Function Name: test_malformed_llm_fallback_object_leaves_name_unverified
     # Description:
-    # - Does not cache a malformed fallback object, allowing later valid analysis to
-    #   recover.
+    # - Keeps the OCR name unverified when the fallback JSON has no corrections list.
     # Parameters:
     # - None.
     # Returns:
     # - None.
-    def test_does_not_cache_malformed_llm_fallback_object(self) -> None:
+    def test_malformed_llm_fallback_object_leaves_name_unverified(self) -> None:
         canonical_name = "\ud504\ub8e8\ucf54\ud504\uc815"
         ocr_name = "\ube0c\ub8e8\ucf54\ud504\uc815"
         self._save_basic_drug(canonical_name)
@@ -881,34 +858,15 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
             json.dumps({"unexpected": []}, ensure_ascii=False)
         )
         self.control = InputPrescription(client=malformed_client, db=self.db)
-        _, first_verification = self._verify_medication_item(
+
+        medication_schedule, verification = self._verify_medication_item(
             self._medication_item(ocr_name)
         )
 
-        valid_client = _FakeGeminiClient(
-            json.dumps(
-                {
-                    "corrections": [
-                        {
-                            "index": 0,
-                            "corrected_name": canonical_name,
-                            "confidence": 0.95,
-                        }
-                    ]
-                },
-                ensure_ascii=False,
-            )
-        )
-        self.control = InputPrescription(client=valid_client, db=self.db)
-        medication_schedule, second_verification = self._verify_medication_item(
-            self._medication_item(ocr_name)
-        )
-
-        self.assertEqual(first_verification.source, "unverified")
-        self.assertEqual(medication_schedule.medication_name, canonical_name)
-        self.assertEqual(second_verification.source, "llm_catalog_candidate")
+        self.assertEqual(medication_schedule.medication_name, ocr_name)
+        self.assertEqual(verification.source, "unverified")
+        self.assertEqual(verification.confidence, 0.0)
         self.assertEqual(malformed_client.models.call_count, 1)
-        self.assertEqual(valid_client.models.call_count, 1)
 
     # Function Name: test_rejects_llm_fallback_name_outside_candidate_set
     # Description:

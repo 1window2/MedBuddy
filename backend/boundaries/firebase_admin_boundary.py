@@ -9,6 +9,9 @@ from firebase_admin import App
 
 
 _FIREBASE_APP_NAME = "medbuddy-backend"
+# The Admin SDK waits 120 seconds by default. This bound applies to every HTTP call made
+# through the shared app: ID-token certificate fetches, FCM sends and identity deletion.
+_FIREBASE_HTTP_TIMEOUT_SECONDS = 10
 _firebase_app_lock = Lock()
 
 
@@ -30,7 +33,10 @@ def get_firebase_admin_app(project_id: str) -> App:
             app = firebase_admin.get_app(_FIREBASE_APP_NAME)
         except ValueError:
             return firebase_admin.initialize_app(
-                options={"projectId": normalized_project_id},
+                options={
+                    "projectId": normalized_project_id,
+                    "httpTimeout": _FIREBASE_HTTP_TIMEOUT_SECONDS,
+                },
                 name=_FIREBASE_APP_NAME,
             )
 

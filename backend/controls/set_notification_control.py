@@ -11,6 +11,7 @@ from entities.medication_alarm_entity import (
     MedicationAlarm,
     _MedicationAlarm,
     default_alarm_hour,
+    default_alarm_time,
     valid_alarm_slot_keys,
 )
 from entities.patient_hash_entity import normalize_patient_hash
@@ -59,13 +60,23 @@ class SetNotification:
                 .all()
             )
         }
+        # Preferences are read once, and only when at least one slot has no saved alarm.
+        preferences = (
+            self._find_preferences(normalized_patient_hash)
+            if any(slot_key not in rows for slot_key in valid_alarm_slot_keys())
+            else None
+        )
         return {
             "success": True,
             "message": "Medication alarms lookup succeeded.",
             "data": [
                 self._to_response_dict(
                     rows.get(slot_key)
-                    or self._default_setting_row(normalized_patient_hash, slot_key)
+                    or self._default_setting_row(
+                        normalized_patient_hash,
+                        slot_key,
+                        preferences,
+                    )
                 )
                 for slot_key in valid_alarm_slot_keys()
             ],
@@ -95,6 +106,7 @@ class SetNotification:
                 or self._default_setting_row(
                     normalized_patient_hash,
                     normalized_slot_key,
+                    self._find_preferences(normalized_patient_hash),
                 )
             ),
         }
@@ -179,7 +191,11 @@ class SetNotification:
         try:
             setting = self._find_setting(normalized_patient_hash, normalized_slot_key)
             if setting is None:
-                default = self._default_setting_row(normalized_patient_hash, normalized_slot_key)
+                default = self._default_setting_row(
+                    normalized_patient_hash,
+                    normalized_slot_key,
+                    self._find_preferences(normalized_patient_hash),
+                )
                 setting = _MedicationAlarm(
                     patient_hash=normalized_patient_hash,
                     slot_key=normalized_slot_key,
@@ -352,6 +368,16 @@ class SetNotification:
                 detail="Medication alarm could not be disabled.",
             ) from exc
 
+    # Function Name: _find_preferences
+    # Description:
+    # - Reads the patient's preference row that carries the per-slot default alarm times.
+    # Parameters:
+    # - patient_hash (str): Patient ownership scope for the operation.
+    # Returns:
+    # - Preference row, or None when the patient never saved preferences.
+    def _find_preferences(self, patient_hash: str) -> _UserSetting | None:
+        return self.db.query(_UserSetting).filter_by(user_hash=patient_hash).first()
+
     # Function Name: _default_setting_row
     # Description:
     # - Constructs a disabled alarm from patient preferences, falling back to product defaults.
@@ -359,25 +385,16 @@ class SetNotification:
     # Parameters:
     # - patient_hash (str): Patient ownership scope for the operation.
     # - slot_key (str): Medication time-slot key: morning, lunch, evening or bedtime.
+    # - preferences (_UserSetting | None): Preference row the caller loaded once; None when absent.
     # Returns:
     # - Default MedicationAlarm for the patient and slot.
     def _default_setting_row(
         self,
         patient_hash: str,
         slot_key: str,
+        preferences: _UserSetting | None,
     ) -> MedicationAlarm:
-        preferences = self.db.query(_UserSetting).filter_by(user_hash=patient_hash).first()
-        field = {
-            "morning": "default_morning_time",
-            "lunch": "default_lunch_time",
-            "evening": "default_evening_time",
-            "bedtime": "default_bedtime",
-        }[slot_key]
-        time = getattr(preferences, field, None)
-        hour, minute = (
-            (int(part) for part in time.split(":"))
-            if time else (default_alarm_hour(slot_key), 0)
-        )
+        hour, minute = default_alarm_time(slot_key, preferences)
         return MedicationAlarm(
             patient_hash=patient_hash,
             slot_key=slot_key,

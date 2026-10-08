@@ -16,6 +16,8 @@ from controls.check_schedule_control import CheckSchedule
 from controls.dispatch_caregiver_alert_control import _SLOT_NAMES
 from entities.chat_notification_job_entity import ChatNotificationJob
 from entities.chat_message_entity import (
+    CHAT_MEDICATION_DOSAGE_MAX_LENGTH,
+    CHAT_MEDICATION_NAME_MAX_LENGTH,
     CHAT_MESSAGE_KIND_HOSPITAL_SHARE,
     CHAT_MESSAGE_KIND_MEDICATION_DISCOMFORT,
     CHAT_MESSAGE_KIND_MEDICATION_SHORTAGE,
@@ -28,17 +30,14 @@ from entities.chat_message_entity import (
     ChatMessage,
     _ChatMessage,
 )
-from entities.medication_alarm_entity import _MedicationAlarm, default_alarm_hour
+from entities.medication_alarm_entity import _MedicationAlarm, default_alarm_time
 from entities.medication_completion_entity import _MedicationCompletion
 from entities.medication_image_url_entity import safe_medication_image_url
-from entities.medication_schedule_entity import (
-    MEDICATION_SCHEDULE_SLOT_KEYS,
-    decode_medication_schedule_slot_keys,
-    medication_schedule_slot_keys_for_frequency,
-)
+from entities.medication_schedule_entity import MEDICATION_SCHEDULE_SLOT_KEYS
 from entities.patient_caregiver_link_entity import _PatientCaregiverLink
 from entities.saved_medication_entity import _SavedMedication
 from entities.user_account_entity import utc_now
+from entities.user_setting_entity import _UserSetting
 from repositories.chat_message_repository import ChatMessageRepository
 from repositories.patient_caregiver_link_repository import (
     PatientCaregiverLinkRepository,
@@ -434,8 +433,11 @@ class ManageLinkedChat:
             message_kind=message_kind,
             context_payload=context_payload,
             medication_id=(int(medication.id) if medication is not None else None),
+            # 저장 약 이름·용량 한도가 메시지 열보다 길다. PostgreSQL은 초과 값을 거부하므로 열 길이로 자른다.
             medication_name=(
-                str(medication.item_name) if medication is not None else None
+                str(medication.item_name)[:CHAT_MEDICATION_NAME_MAX_LENGTH]
+                if medication is not None
+                else None
             ),
             medication_image_url=(
                 safe_medication_image_url(medication.image_url)
@@ -443,7 +445,9 @@ class ManageLinkedChat:
                 else None
             ),
             medication_dosage=(
-                (medication.dosage_per_time or "").strip()
+                (medication.dosage_per_time or "").strip()[
+                    :CHAT_MEDICATION_DOSAGE_MAX_LENGTH
+                ]
                 if medication is not None
                 else None
             ),
@@ -756,7 +760,11 @@ class ManageLinkedChat:
         """환자의 지정일 활성 약을 이름이 있는 항목으로 제한해 반환한다."""
         return [
             medication
-            for medication in self.medication_repository.list_by_patient(patient_hash)
+            for medication in (
+                self.medication_repository.list_schedule_medications_by_patient(
+                    patient_hash
+                )
+            )
             if self.course_policy.is_active_on(medication, target_date)
             and (medication.item_name or "").strip()
         ]
@@ -821,14 +829,29 @@ class ManageLinkedChat:
                 if is_completed:
                     completed_count[slot_key] += 1
 
+        # 저장된 알람이 없는 시간대는 알림 설정 화면과 같은 기본 시각을 보여야 한다.
+        # 그런 시간대가 있을 때만 환자의 기본 복약 시각 설정을 한 번 읽는다.
+        user_setting = (
+            self.db.query(_UserSetting)
+            .filter(_UserSetting.user_hash == patient_hash)
+            .first()
+            if any(
+                grouped[slot_key] and slot_key not in alarm_by_slot
+                for slot_key in MEDICATION_SCHEDULE_SLOT_KEYS
+            )
+            else None
+        )
         response: list[dict[str, object]] = []
         for slot_key in MEDICATION_SCHEDULE_SLOT_KEYS:
             slot_medications = grouped[slot_key]
             if not slot_medications:
                 continue
             alarm = alarm_by_slot.get(slot_key)
-            hour = int(alarm.hour) if alarm is not None else default_alarm_hour(slot_key)
-            minute = int(alarm.minute) if alarm is not None else 0
+            hour, minute = (
+                (int(alarm.hour), int(alarm.minute))
+                if alarm is not None
+                else default_alarm_time(slot_key, user_setting)
+            )
             response.append(
                 {
                     "slot_key": slot_key,
@@ -1013,11 +1036,9 @@ class ManageLinkedChat:
     ) -> dict[str, object]:
         """약 부족 메시지에서 사용할 남은 복용 기간을 계산한다."""
         today = application_today()
-        start_date = self.course_policy.read_start_date(medication, today)
-        total_days = self.course_policy.read_total_days(medication.total_days)
-        if total_days <= 0:
+        end_date = self.course_policy.read_end_date(medication, today)
+        if end_date is None:
             return {"remaining_days": None, "course_end_date": None}
-        end_date = start_date + timedelta(days=total_days - 1)
         return {
             "remaining_days": max((end_date - today).days + 1, 0),
             "course_end_date": end_date.isoformat(),
@@ -1035,16 +1056,12 @@ class ManageLinkedChat:
         medication: _SavedMedication,
     ) -> dict[str, object]:
         """복약 목록 행을 오늘 일정형 채팅 선택기에 필요한 정보로 변환한다."""
-        schedule_slot_keys = decode_medication_schedule_slot_keys(
-            medication.schedule_slot_keys
+        schedule_slot_keys = list(
+            self.course_policy.read_slot_keys(
+                medication.schedule_slot_keys,
+                medication.daily_frequency,
+            )
         )
-        if not schedule_slot_keys:
-            frequency_count = self.course_policy.read_frequency_count(
-                medication.daily_frequency
-            )
-            schedule_slot_keys = medication_schedule_slot_keys_for_frequency(
-                frequency_count
-            )
         return {
             "medication_id": int(medication.id),
             "medication_name": str(medication.item_name).strip(),

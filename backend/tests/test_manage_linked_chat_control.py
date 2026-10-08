@@ -20,7 +20,11 @@ from controls.link_patient_caregiver_control import LinkPatientCaregiver  # noqa
 from controls.manage_linked_chat_control import ManageLinkedChat  # noqa: E402
 from core.application_clock import application_today  # noqa: E402
 from core.database import Base  # noqa: E402
-from entities.chat_message_entity import _ChatMessage  # noqa: E402
+from entities.chat_message_entity import (  # noqa: E402
+    CHAT_MEDICATION_DOSAGE_MAX_LENGTH,
+    CHAT_MEDICATION_NAME_MAX_LENGTH,
+    _ChatMessage,
+)
 from entities.saved_medication_entity import _SavedMedication  # noqa: E402
 
 
@@ -346,6 +350,43 @@ class ManageLinkedChatTest(unittest.TestCase):
             context["image_url"],
             "https://nedrug.mfds.go.kr/pill.png",
         )
+
+    # 함수이름: test_long_medication_name_and_dosage_are_cut_to_the_message_columns
+    # 함수역할:
+    # - 저장 약의 이름·1회 용량이 메시지 열보다 길면 열 길이로 잘라 저장하는지 검증한다.
+    # - SQLite는 길이를 검사하지 않지만 PostgreSQL은 초과 값을 거부해 메시지 전송이 500으로 끝난다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
+    def test_long_medication_name_and_dosage_are_cut_to_the_message_columns(
+        self,
+    ) -> None:
+        """입력 한도(500자)까지 긴 약 이름도 메시지 스냅샷 열 길이 안에 저장된다."""
+        long_medication = self._save_medication(item_name="가" * 500)
+        long_medication.dosage_per_time = "  " + "1정" * 80 + "  "
+        self.db.commit()
+
+        sent = self.chat.send_message(
+            link_id=self.link_id,
+            sender_hash="patient-a",
+            client_message_id="message_request_long_name",
+            body="이 약을 복용했어요.",
+            medication_id=int(long_medication.id),
+        )
+
+        row = self.db.get(_ChatMessage, sent.message.message_id)
+        columns = _ChatMessage.__table__.c
+        self.assertEqual(
+            (columns.medication_name.type.length, columns.medication_dosage.type.length),
+            (300, 100),
+        )
+        self.assertEqual(
+            (CHAT_MEDICATION_NAME_MAX_LENGTH, CHAT_MEDICATION_DOSAGE_MAX_LENGTH),
+            (300, 100),
+        )
+        self.assertEqual(row.medication_name, "가" * 300)
+        self.assertEqual(row.medication_dosage, "1정" * 50)
 
     # 함수이름: test_sent_message_preserves_multiple_medication_snapshots
     # 함수역할:

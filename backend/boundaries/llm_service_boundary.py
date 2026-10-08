@@ -19,7 +19,8 @@ logger = logging.getLogger(__name__)
 # Role:
 # - Generates medication-aware diet, exercise and caution guidance.
 # Responsibilities:
-# - Bound generation time, enforce JSON responses and provide localized fallbacks for missing content.
+# - Bound generation time across at most two attempts and enforce JSON responses.
+# - Reject an answer without diet and exercise text; provide localized fallbacks for one missing field.
 # Attributes:
 # - ai_client (genai.Client): Gemini generation client.
 # - model_name (str): Selected model identifier.
@@ -58,6 +59,7 @@ class LLMService:
     # Function Name: requestHealthRecommendation
     # Description:
     # - Request JSON health guidance within the configured timeout and normalize the response for the requested language.
+    # - A failed or unusable answer is requested once more inside the same deadline; a timeout is never retried.
     # Parameters:
     # - medication_summaries (list[dict[str, str]]): Current medications and their summarized guidance fields.
     # - language (str): Requested output language; an en prefix selects English.
@@ -70,18 +72,39 @@ class LLMService:
     ) -> dict[str, object]:
         prompt = self._build_prompt(medication_summaries, language)
         try:
-            ai_response = await asyncio.wait_for(
-                self.ai_client.aio.models.generate_content(
-                    model=self.model_name,
-                    contents=prompt,
-                    config={"response_mime_type": "application/json"},
-                ),
-                timeout=self.timeout_seconds,
-            )
-            raw_data = json.loads(ai_response.text)
+            # One deadline covers both attempts, so the retry cannot extend the request.
+            async with asyncio.timeout(self.timeout_seconds):
+                try:
+                    return await self._request_recommendation_once(prompt, language)
+                except RuntimeError:
+                    logger.warning("Retrying Gemini health recommendation once.")
+                return await self._request_recommendation_once(prompt, language)
         except TimeoutError as exc:
             logger.warning("Gemini health recommendation timed out.")
             raise RuntimeError("Health recommendation generation timed out.") from exc
+
+    # Function Name: _request_recommendation_once
+    # Description:
+    # - Send one generation request and normalize its JSON answer; the caller owns the deadline and the retry.
+    # Parameters:
+    # - prompt (str): Localized prompt with the medication summaries embedded.
+    # - language (str): Requested output language; an en prefix selects English.
+    # Returns:
+    # - Normalized recommendation; raises RuntimeError for a failed or unusable answer and lets TimeoutError pass.
+    async def _request_recommendation_once(
+        self,
+        prompt: str,
+        language: str,
+    ) -> dict[str, object]:
+        try:
+            ai_response = await self.ai_client.aio.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config={"response_mime_type": "application/json"},
+            )
+            raw_data = json.loads(ai_response.text)
+        except TimeoutError:
+            raise
         except Exception as exc:
             logger.error(
                 "Gemini health recommendation failed: %s",
@@ -158,11 +181,12 @@ class LLMService:
     # Function Name: _normalize_response
     # Description:
     # - Validate the response object, retain up to five nonempty cautions and supply localized fallback guidance.
+    # - An answer with neither diet nor exercise text is rejected, so fallback text alone is never cached as a result.
     # Parameters:
     # - raw_data (Any): Decoded Gemini JSON response before shape validation.
     # - language (str): Requested output language; an en prefix selects English.
     # Returns:
-    # - Normalized diet recommendation, exercise recommendation and caution list.
+    # - Normalized diet recommendation, exercise recommendation and caution list; raises RuntimeError for an unusable answer.
     def _normalize_response(
         self,
         raw_data: Any,
@@ -170,6 +194,11 @@ class LLMService:
     ) -> dict[str, object]:
         if not isinstance(raw_data, dict):
             raise RuntimeError("The health recommendation response is invalid.")
+        if not (
+            self._read_text(raw_data.get("diet_recommendation"), "")
+            or self._read_text(raw_data.get("exercise_recommendation"), "")
+        ):
+            raise RuntimeError("The health recommendation response is empty.")
 
         caution_items = raw_data.get("caution_items")
         if not isinstance(caution_items, list):

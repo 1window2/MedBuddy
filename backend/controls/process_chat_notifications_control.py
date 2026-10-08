@@ -96,6 +96,8 @@ class ProcessChatNotifications:
 
     # Function Name: deliver
     # Description: Re-read current history and consent through the existing dispatcher before FCM.
+    #   The dispatcher ends this session's read transaction before the FCM call, so no pooled
+    #   connection is held while Firebase answers; the job state is written by finish() afterwards.
     # Parameters: claim - acquired delivery lease.
     # Returns: None; transient/partial failures raise for persisted retry.
     def deliver(self, claim: Claim) -> None:
@@ -118,6 +120,7 @@ class ProcessChatNotifications:
 
     # Function Name: run_once
     # Description: Process a bounded batch without blocking the event loop or retaining DB sessions.
+    #   A failure after the push has left never re-queues the job: only its completion write is retried.
     # Parameters: limit - maximum jobs per polling cycle.
     # Returns: Number of jobs handled, including deliberately suppressed and failed jobs.
     async def run_once(self, limit: int = 50) -> int:
@@ -127,6 +130,7 @@ class ProcessChatNotifications:
             if claim is None:
                 break
             count += 1
+            delivered = False
             try:
                 if claim.attempt > 8 or claim.created_at <= utc_now() - timedelta(hours=24):
                     status = "dead"
@@ -137,7 +141,13 @@ class ProcessChatNotifications:
                 else:
                     await run_in_threadpool(self.deliver, claim)
                     status = "completed"
+                    delivered = True
                 await run_in_threadpool(self.finish, claim, status)
             except Exception as exc:
-                await run_in_threadpool(self.finish, claim, "pending", type(exc).__name__)
+                if delivered:
+                    # Sent but not recorded: "pending" would send it twice. If this write fails
+                    # too, the lease stays and expires after five minutes.
+                    await run_in_threadpool(self.finish, claim, "completed")
+                else:
+                    await run_in_threadpool(self.finish, claim, "pending", type(exc).__name__)
         return count

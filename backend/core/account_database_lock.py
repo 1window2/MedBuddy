@@ -6,6 +6,10 @@ from collections.abc import Iterable
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+# 계정 잠금이나 DB 연결을 제때 얻지 못한 요청에 돌려주는 503 안내문이다. 클라이언트가
+# 이 문구로 재시도 여부를 판단하므로 모든 응답 지점이 이 상수 하나를 사용한다.
+ACCOUNT_BUSY_DETAIL = "This account is busy. Retry the request shortly."
+
 
 # 계정 삭제와 짧은 DB 작업을 직렬화한다. 여러 계정은 항상 같은 순서로 잠근다.
 # 함수이름: lock_account_operations

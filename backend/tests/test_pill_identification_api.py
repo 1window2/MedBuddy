@@ -8,7 +8,8 @@ from typing import Any
 
 import httpx
 import pytest
-from pydantic import ValidationError
+from fastapi import FastAPI
+from pydantic import BaseModel, ValidationError
 from starlette.types import Message, Receive, Scope, Send
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -243,6 +244,68 @@ async def test_request_body_limit_counts_streamed_chunks() -> None:
 
     assert sent[0]["type"] == "http.response.start"
     assert sent[0]["status"] == 413
+
+
+# Function Name: test_request_body_limit_answers_413_for_streamed_body_on_parsed_route
+# Description:
+# - Posts chunked JSON without Content-Length to a FastAPI route with a body model: a body
+#   above the limit gets HTTP 413 instead of the body parser's own 400, and a body within the
+#   limit still reaches the handler.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_request_body_limit_answers_413_for_streamed_body_on_parsed_route() -> None:
+    # Class Name: _Note
+    # Role: JSON body model that makes FastAPI read and parse the request stream.
+    # Attributes:
+    # - text (str): Arbitrary text payload.
+    class _Note(BaseModel):
+        text: str
+
+    app = FastAPI()
+    app.add_middleware(RequestBodyLimitMiddleware, limits={}, default_limit=64)
+
+    # Function Name: store_note
+    # Description:
+    # - Reports the parsed text length so the test can tell the handler was reached.
+    # Parameters:
+    # - note (_Note): Parsed JSON body.
+    # Returns:
+    # - dict[str, int]: Length of the received text.
+    @app.post("/notes")
+    async def store_note(note: _Note) -> dict[str, int]:
+        return {"length": len(note.text)}
+
+    # Function Name: chunks
+    # Description:
+    # - Streams a body in 16-byte pieces so the client sends it without Content-Length.
+    # Parameters:
+    # - body (bytes): Complete request body.
+    # Returns:
+    # - Async iterator over the pieces.
+    async def chunks(body: bytes):
+        for start in range(0, len(body), 16):
+            yield body[start:start + 16]
+
+    headers = {"content-type": "application/json"}
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        accepted = await client.post(
+            "/notes", content=chunks(b'{"text": "short"}'), headers=headers,
+        )
+        rejected = await client.post(
+            "/notes", content=chunks(b'{"text": "' + b"a" * 200 + b'"}'), headers=headers,
+        )
+
+    assert "content-length" not in rejected.request.headers
+    assert accepted.status_code == 200
+    assert accepted.json() == {"length": 5}
+    assert rejected.status_code == 413
+    assert rejected.json() == {"detail": "The uploaded request is too large."}
 
 
 # Function Name: test_request_body_limit_applies_default_to_json_routes

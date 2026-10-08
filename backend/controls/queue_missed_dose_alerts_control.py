@@ -2,7 +2,7 @@
 # Role: Queues bounded, idempotent caregiver alerts after configured dose deadlines.
 
 import hashlib
-from datetime import datetime, time
+from datetime import date, datetime, time
 
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -18,7 +18,7 @@ from entities.caregiver_alert_outbox_entity import (
 from entities.caregiver_notification_entity import (
     CAREGIVER_NOTIFICATION_MODE_MISSED_DEADLINE,
     _CaregiverNotification,
-    decode_slot_settings,
+    effective_slot_settings,
 )
 from entities.patient_caregiver_link_entity import _PatientCaregiverLink
 
@@ -51,6 +51,8 @@ class QueueMissedDoseAlerts:
     # Function Name: queueDue
     # Description:
     # - Scans active caregiver settings and queues overdue incomplete slots.
+    # - Reads today's already queued event keys once, so a slot that was handled on an
+    #   earlier scan costs neither a schedule lookup nor a conflicting insert.
     # Parameters:
     # - now: Optional application-time override for deterministic execution.
     # - limit: Maximum number of newly queued events for this scan.
@@ -83,12 +85,12 @@ class QueueMissedDoseAlerts:
         )
         queued_count = 0
         pending_by_patient_slot: dict[tuple[str, str], bool] = {}
+        queued_event_keys: set[str] | None = None
         for row in rows:
             caregiver_hash = str(row.caregiver_hash)
             patient_hash = str(row.patient_hash)
-            for slot_key, slot_setting in decode_slot_settings(
-                row.slot_settings
-            ).items():
+            # Legacy rows without per-slot JSON follow the same seeding as the settings screen.
+            for slot_key, slot_setting in effective_slot_settings(row).items():
                 if queued_count >= max(1, min(limit, 1_000)):
                     self.db.commit()
                     return queued_count
@@ -99,6 +101,13 @@ class QueueMissedDoseAlerts:
                     continue
                 deadline = self._deadline(current_time, slot_setting)
                 if deadline is None or current_time < deadline:
+                    continue
+                if queued_event_keys is None:
+                    queued_event_keys = self._queued_event_keys(schedule_date)
+                event_key = missed_event_key(
+                    caregiver_hash, patient_hash, schedule_date, slot_key,
+                )
+                if event_key in queued_event_keys:
                     continue
                 pending_key = (patient_hash, slot_key)
                 is_incomplete = pending_by_patient_slot.get(pending_key)
@@ -113,7 +122,7 @@ class QueueMissedDoseAlerts:
                     continue
                 if self._insert_event(
                     {
-                        "event_key": missed_event_key(caregiver_hash, patient_hash, schedule_date, slot_key),
+                        "event_key": event_key,
                         "event_type": CAREGIVER_ALERT_EVENT_MISSED_DEADLINE,
                         "caregiver_hash": caregiver_hash,
                         "patient_hash": patient_hash,
@@ -122,8 +131,28 @@ class QueueMissedDoseAlerts:
                     }
                 ):
                     queued_count += 1
+                # Inserted now or lost to a concurrent writer: either way the key exists.
+                queued_event_keys.add(event_key)
         self.db.commit()
         return queued_count
+
+    # Function Name: _queued_event_keys
+    # Description:
+    # - Loads the idempotency keys of the missed-dose events already queued for one day.
+    # - Read on every scan, so the unique event key stays the only source of truth.
+    # Parameters:
+    # - schedule_date: Application-local date whose events are checked.
+    # Returns:
+    # - Set of existing event keys for that date.
+    def _queued_event_keys(self, schedule_date: date) -> set[str]:
+        return {
+            str(event_key)
+            for (event_key,) in self.db.query(_CaregiverAlertOutbox.event_key).filter(
+                _CaregiverAlertOutbox.event_type
+                == CAREGIVER_ALERT_EVENT_MISSED_DEADLINE,
+                _CaregiverAlertOutbox.schedule_date == schedule_date,
+            )
+        }
 
     # Function Name: _deadline
     # Description: Combines a slot's configured hour and minute with today's date.

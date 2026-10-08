@@ -6,7 +6,7 @@ import unittest
 from datetime import date, timedelta
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -17,6 +17,7 @@ from controls.check_prescription_change_control import (  # noqa: E402
     CheckPrescriptionChange,
 )
 from core.database import Base  # noqa: E402
+from entities.medication_detail_entity import _DrugApprovalInfo  # noqa: E402
 from entities.saved_medication_entity import _SavedMedication  # noqa: E402
 from schemas.prescription_change import (  # noqa: E402
     PrescriptionChangeMedication,
@@ -399,6 +400,80 @@ class CheckPrescriptionChangeTest(unittest.TestCase):
 
         self.assertTrue(response.has_previous_prescription)
         self.assertEqual(response.match_basis, "same_ingredient")
+
+    # 함수이름: test_reads_only_main_ingredient_from_approval_catalog
+    # 함수역할:
+    # - 이름이 서로 다른 두 제품을 허가정보의 주성분으로 연결하고, 그 조회가 품목 식별자와
+    #   주성분 열만 읽으며 원문 문서와 raw_json을 읽지 않는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
+    def test_reads_only_main_ingredient_from_approval_catalog(self) -> None:
+        for item_seq, item_name in (("BRAND-A", "브랜드A정"), ("BRAND-B", "브랜드B정")):
+            self.db.add(
+                _DrugApprovalInfo(
+                    item_seq=item_seq,
+                    item_name=item_name,
+                    normalized_item_name=item_name.lower(),
+                    main_ingredient="아세트아미노펜",
+                    efficacy_doc="효능 원문",
+                    use_method_doc="용법 원문",
+                    warning_doc="주의 원문",
+                    raw_json="{}",
+                )
+            )
+        self.db.commit()
+        self._save_previous(item_seq="BRAND-A", item_name="브랜드A정")
+        catalog_statements: list[str] = []
+
+        # 함수이름: capture_catalog_statement
+        # 함수역할:
+        # - 허가정보 테이블을 읽는 SQL 문을 기록한다.
+        # 매개변수:
+        # - connection, cursor, statement, parameters, context, executemany: SQLAlchemy 실행 이벤트 입력.
+        # 반환값:
+        # - 없음 (None).
+        def capture_catalog_statement(
+            connection,
+            cursor,
+            statement,
+            parameters,
+            context,
+            executemany,
+        ) -> None:
+            if "drug_approval_infos" in statement:
+                catalog_statements.append(statement)
+
+        event.listen(self.engine, "before_cursor_execute", capture_catalog_statement)
+        try:
+            response = self.control.request_prescription_change(
+                PrescriptionChangeRequest(
+                    patient_hash="patient-a",
+                    prescription_date=self.current_date,
+                    medications=[
+                        PrescriptionChangeMedication(
+                            item_seq="BRAND-B",
+                            item_name="브랜드B정",
+                        )
+                    ],
+                )
+            )
+        finally:
+            event.remove(
+                self.engine,
+                "before_cursor_execute",
+                capture_catalog_statement,
+            )
+
+        self.assertTrue(response.has_previous_prescription)
+        self.assertEqual(response.match_basis, "same_ingredient")
+        self.assertEqual(len(catalog_statements), 1)
+        selected_columns = catalog_statements[0].split(" FROM ")[0]
+        self.assertIn("item_seq", selected_columns)
+        self.assertIn("main_ingredient", selected_columns)
+        for unread_column in ("raw_json", "efficacy_doc", "use_method_doc", "warning_doc"):
+            self.assertNotIn(unread_column, selected_columns)
 
     # 함수이름: test_does_not_compare_another_patients_medication
     # 함수역할:

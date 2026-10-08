@@ -270,8 +270,12 @@ class CheckPrescriptionChange:
         if not item_sequences:
             return {}
 
+        # 주성분만 필요하므로 원문 문서와 raw_json 열은 읽지 않는다.
         rows = (
-            self.db.query(_DrugApprovalInfo)
+            self.db.query(
+                _DrugApprovalInfo.item_seq,
+                _DrugApprovalInfo.main_ingredient,
+            )
             .filter(_DrugApprovalInfo.item_seq.in_(item_sequences))
             .all()
         )

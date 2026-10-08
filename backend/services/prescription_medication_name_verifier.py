@@ -6,7 +6,6 @@ import json
 import logging
 import math
 import re
-from collections import OrderedDict
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import Any
@@ -85,9 +84,6 @@ class _MedicationNameFallbackRequest:
     candidates: list[_CatalogMedicationName]
 
 
-_MedicationNameFallbackCacheKey = tuple[str, str, tuple[tuple[str, str], ...]]
-
-
 # 클래스명: PrescriptionMedicationNameVerifier
 # 역할:
 # - 로컬 카탈로그와 OCR 변형으로 약품명을 검증하고 제한된 후보 내에서만 AI 보정을 허용한다.
@@ -101,7 +97,6 @@ class PrescriptionMedicationNameVerifier:
     _WHITESPACE_PATTERN = re.compile(r"\s+")
     _MAX_CANDIDATES = 48
     _MAX_AI_CATALOG_CANDIDATES = 8
-    _MAX_AI_FALLBACK_CACHE_ENTRIES = 256
     _MAX_CANDIDATE_FRAGMENTS = 16
     _MAX_CATALOG_QUERY_ROWS = 96
     _MIN_FUZZY_SCORE = 0.45
@@ -133,7 +128,7 @@ class PrescriptionMedicationNameVerifier:
 
     # Function Name: __init__
     # Description:
-    # - Validates the AI fallback timeout and prepares a bounded least-recently-used correction cache.
+    # - Validates the AI fallback timeout; no AI choice is kept after the call that requested it.
     # - Captures an Engine-only worker factory before asynchronous OCR/database work or request cleanup.
     # Parameters:
     # - db (Session | None): SQLAlchemy session for this unit of work.
@@ -159,14 +154,11 @@ class PrescriptionMedicationNameVerifier:
             and engine.dialect.name == "sqlite"
             and engine.url.database in {None, "", ":memory:"}
         )
-        self._ai_fallback_cache: OrderedDict[
-            _MedicationNameFallbackCacheKey,
-            tuple[_CatalogMedicationName, float] | None,
-        ] = OrderedDict()
 
     # 함수이름: verify_many
     # 함수역할:
-    # - 로컬 검증 후 미확정 이름만 캐시·AI 후보 선택으로 보완하며 원래 항목 순서를 유지한다.
+    # - 로컬 검증 후 미확정 이름만 AI 후보 선택으로 보완하며 원래 항목 순서를 유지한다.
+    # - AI 선택 결과는 호출 사이에 보관하지 않으며, 적용 직전에 함량·제형 충돌을 다시 확인한다.
     # 매개변수:
     # - raw_names (list[str]): 처방 순서대로 나열한 원본 OCR 약품명.
     # - ai_client (genai.Client): 제한 시간 내 외부 텍스트 생성에 사용할 Gemini 클라이언트.
@@ -189,24 +181,11 @@ class PrescriptionMedicationNameVerifier:
         if not fallback_requests:
             return verifications
 
-        corrections, uncached_fallback_requests = self._resolve_cached_fallbacks(
+        corrections = await self._request_ai_catalog_choices(
             fallback_requests,
+            ai_client,
             model_name,
         )
-        if uncached_fallback_requests:
-            ai_corrections = await self._request_ai_catalog_choices(
-                uncached_fallback_requests,
-                ai_client,
-                model_name,
-            )
-            if ai_corrections is not None:
-                self._cache_ai_fallback_results(
-                    uncached_fallback_requests,
-                    ai_corrections,
-                    model_name,
-                )
-                corrections.update(ai_corrections)
-
         if not corrections:
             return verifications
 
@@ -284,85 +263,6 @@ class PrescriptionMedicationNameVerifier:
             return worker._prepare_verifications(raw_names)
         finally:
             worker_db.close()
-
-    # Function Name: _resolve_cached_fallbacks
-    # Description:
-    # - Reuses positive and negative AI choices and promotes accessed entries in the LRU cache.
-    # Parameters:
-    # - fallback_requests (list[_MedicationNameFallbackRequest]): Unresolved OCR rows with their allowed catalog choices.
-    # - model_name (str): Configured AI model identifier.
-    # Returns:
-    # - Cached corrections by row index and requests that still need AI lookup.
-    def _resolve_cached_fallbacks(
-        self,
-        fallback_requests: list[_MedicationNameFallbackRequest],
-        model_name: str,
-    ) -> tuple[
-        dict[int, tuple[_CatalogMedicationName, float]],
-        list[_MedicationNameFallbackRequest],
-    ]:
-        corrections: dict[int, tuple[_CatalogMedicationName, float]] = {}
-        uncached_fallback_requests: list[_MedicationNameFallbackRequest] = []
-        cache = self._ai_fallback_cache
-
-        for request in fallback_requests:
-            cache_key = self._ai_fallback_cache_key(request, model_name)
-            if cache_key not in cache:
-                uncached_fallback_requests.append(request)
-                continue
-
-            cached_correction = cache.pop(cache_key)
-            cache[cache_key] = cached_correction
-            if cached_correction is not None:
-                corrections[request.index] = cached_correction
-
-        return corrections, uncached_fallback_requests
-
-    # Function Name: _cache_ai_fallback_results
-    # Description:
-    # - Caches catalog corrections or negative choices and evicts the oldest entries beyond the configured bound.
-    # Parameters:
-    # - fallback_requests (list[_MedicationNameFallbackRequest]): Unresolved OCR rows with their allowed catalog choices.
-    # - corrections (dict[int, tuple[_CatalogMedicationName, float]]): Verified catalog choices and confidence keyed by OCR row index.
-    # - model_name (str): Configured AI model identifier.
-    # Returns:
-    # - None.
-    def _cache_ai_fallback_results(
-        self,
-        fallback_requests: list[_MedicationNameFallbackRequest],
-        corrections: dict[int, tuple[_CatalogMedicationName, float]],
-        model_name: str,
-    ) -> None:
-        cache = self._ai_fallback_cache
-        for request in fallback_requests:
-            cache_key = self._ai_fallback_cache_key(request, model_name)
-            cache[cache_key] = corrections.get(request.index)
-            cache.move_to_end(cache_key)
-
-        while len(cache) > self._MAX_AI_FALLBACK_CACHE_ENTRIES:
-            cache.popitem(last=False)
-
-    # Function Name: _ai_fallback_cache_key
-    # Description:
-    # - Includes model, normalized OCR name and ordered catalog choices in the fallback cache identity.
-    # Parameters:
-    # - request (_MedicationNameFallbackRequest): Unresolved OCR row and its permitted catalog choices.
-    # - model_name (str): Configured AI model identifier.
-    # Returns:
-    # - Immutable key that invalidates when either the model or candidate set changes.
-    def _ai_fallback_cache_key(
-        self,
-        request: _MedicationNameFallbackRequest,
-        model_name: str,
-    ) -> _MedicationNameFallbackCacheKey:
-        return (
-            model_name,
-            self._normalize_name(request.raw_name),
-            tuple(
-                (candidate.item_name, candidate.normalized_name)
-                for candidate in request.candidates
-            ),
-        )
 
     # Function Name: verify
     # Description:
@@ -592,6 +492,8 @@ class PrescriptionMedicationNameVerifier:
     # Function Name: _find_catalog_match
     # Description:
     # - Checks exact variants across basic and approval catalogs before considering a unique name prefix.
+    # - Variants are tried as prefixes in order of trust; the first one that starts more than one
+    #   product ends the search, so a later vowel or unit variant cannot decide an ambiguous name.
     # Parameters:
     # - candidates (list[_MedicationNameVariant]): Normalized OCR name variant with source and confidence.
     # Returns:
@@ -635,23 +537,29 @@ class PrescriptionMedicationNameVerifier:
                 return candidate, item_name
 
         for candidate in candidates:
-            item_name = self._find_unique_catalog_prefix_match(
+            prefix_item_names = self._find_catalog_prefix_names(
                 candidate.normalized_name
             )
-            if item_name:
-                return self._prefix_match_candidate(candidate), item_name
+            if len(prefix_item_names) > 1:
+                return None
+            if prefix_item_names:
+                return (
+                    self._prefix_match_candidate(candidate),
+                    next(iter(prefix_item_names)),
+                )
         return None
 
-    # Function Name: _find_unique_catalog_prefix_match
+    # Function Name: _find_catalog_prefix_names
     # Description:
-    # - Uses an indexed prefix range and rejects prefixes mapping to more than one distinct product name.
+    # - Uses an indexed prefix range to read the distinct product names that start with the given name,
+    #   stopping as soon as a second name shows the prefix is ambiguous.
     # Parameters:
     # - normalized_name (str): Whitespace-free lowercase catalog comparison key.
     # Returns:
-    # - Sole matching catalog name, or None when absent or ambiguous.
-    def _find_unique_catalog_prefix_match(self, normalized_name: str) -> str | None:
+    # - Empty set when no product starts with the name, one name for a unique prefix, more for an ambiguous one.
+    def _find_catalog_prefix_names(self, normalized_name: str) -> set[str]:
         if not normalized_name:
-            return None
+            return set()
 
         prefix_upper_bound = self._prefix_upper_bound(normalized_name)
         matching_item_names: set[str] = set()
@@ -670,11 +578,9 @@ class PrescriptionMedicationNameVerifier:
                 if row.item_name:
                     matching_item_names.add(row.item_name)
                 if len(matching_item_names) > 1:
-                    return None
+                    return matching_item_names
 
-        if len(matching_item_names) != 1:
-            return None
-        return next(iter(matching_item_names))
+        return matching_item_names
 
     # Function Name: _prefix_match_candidate
     # Description:

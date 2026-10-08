@@ -3,6 +3,7 @@
 #   stale persistence.
 """Tests for legal-holiday lookup and fail-closed behavior."""
 
+import asyncio
 import os
 import sys
 from datetime import date, timedelta
@@ -177,4 +178,154 @@ async def test_persistent_lookup_uses_bounded_stale_cache_during_outage() -> Non
     try:
         assert await lookup.isHoliday(date(2026, 8, 17)) is True
     finally:
+        await client.aclose()
+
+
+_AUGUST_HOLIDAY_XML = (
+    b"<response><header><resultCode>00</resultCode></header>"
+    b"<body><items><item><locdate>20260817</locdate></item>"
+    b"</items></body></response>"
+)
+
+
+# Function Name: test_slow_provider_fills_the_cache_after_the_caller_timed_out
+# Description:
+# - A provider that answers correctly but slower than the caller's budget must still populate
+#   the month: the first caller times out, the fill keeps running, and the next lookup is served
+#   from the cache without a second provider request.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_slow_provider_fills_the_cache_after_the_caller_timed_out() -> None:
+    request_count = 0
+
+    # Function Name: respond
+    # Description:
+    # - Counts the calendar request and answers correctly after 0.2 seconds, longer than the
+    #   first caller waits.
+    # Parameters:
+    # - _ (httpx.Request): Interface argument ignored by this fixed-response double.
+    # Returns:
+    # - httpx.Response: Synthetic HTTP 200 response containing the August 17 holiday.
+    async def respond(_: httpx.Request) -> httpx.Response:
+        nonlocal request_count
+        request_count += 1
+        await asyncio.sleep(0.2)
+        return httpx.Response(200, content=_AUGUST_HOLIDAY_XML)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    boundary = KoreanHolidayAPI(client=client)
+    try:
+        with pytest.raises(TimeoutError):
+            async with asyncio.timeout(0.05):
+                await boundary.isHoliday(date(2026, 8, 17))
+        assert (2026, 8) not in boundary._failures
+
+        await asyncio.sleep(0.3)
+        assert await boundary.isHoliday(date(2026, 8, 17)) is True
+        assert await boundary.isHoliday(date(2026, 8, 18)) is False
+    finally:
+        await boundary.close()
+        await client.aclose()
+
+    assert request_count == 1
+    assert not boundary._inflight
+
+
+# Function Name: test_concurrent_callers_share_one_fill_and_a_failed_fill_starts_the_cooldown
+# Description:
+# - Callers of the same month wait on one provider request. When that request fails after every
+#   caller has given up, the failure cool-down is still recorded, so the next lookup is refused
+#   without another provider request.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_concurrent_callers_share_one_fill_and_a_failed_fill_starts_the_cooldown() -> None:
+    request_count = 0
+
+    # Function Name: respond
+    # Description:
+    # - Counts the calendar request and fails after 0.1 seconds.
+    # Parameters:
+    # - _ (httpx.Request): Interface argument ignored by this fixed-response double.
+    # Returns:
+    # - httpx.Response: Synthetic HTTP 503 response.
+    async def respond(_: httpx.Request) -> httpx.Response:
+        nonlocal request_count
+        request_count += 1
+        await asyncio.sleep(0.1)
+        return httpx.Response(503)
+
+    # Function Name: impatient_lookup
+    # Description:
+    # - Looks one day up and gives up after 0.02 seconds, like a control with a short budget.
+    # Parameters:
+    # - day (int): Day of August 2026 to classify.
+    # Returns:
+    # - None; the timeout is expected.
+    async def impatient_lookup(day: int) -> None:
+        with pytest.raises(TimeoutError):
+            async with asyncio.timeout(0.02):
+                await boundary.isHoliday(date(2026, 8, day))
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    boundary = KoreanHolidayAPI(client=client)
+    try:
+        await asyncio.gather(impatient_lookup(17), impatient_lookup(18))
+        assert request_count == 1 and (2026, 8) in boundary._inflight
+
+        await asyncio.sleep(0.2)
+        assert not boundary._inflight and not boundary._cache
+        with pytest.raises(PharmacyApiUnavailableError):
+            await boundary.isHoliday(date(2026, 8, 17))
+    finally:
+        await boundary.close()
+        await client.aclose()
+
+    assert request_count == 1
+
+
+# Function Name: test_close_cancels_a_running_fill
+# Description:
+# - Shutdown must not leave a provider request running: close() cancels the in-flight fill and
+#   nothing is cached or marked as failed for that month.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_close_cancels_a_running_fill() -> None:
+    started = asyncio.Event()
+
+    # Function Name: respond
+    # Description:
+    # - Signals that the request started and then never answers.
+    # Parameters:
+    # - _ (httpx.Request): Interface argument ignored by this fixed-response double.
+    # Returns:
+    # - Never completes normally.
+    async def respond(_: httpx.Request) -> httpx.Response:
+        started.set()
+        await asyncio.Event().wait()
+        return httpx.Response(200, content=_AUGUST_HOLIDAY_XML)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    boundary = KoreanHolidayAPI(client=client)
+    lookup = asyncio.create_task(boundary.isHoliday(date(2026, 8, 17)))
+    try:
+        async with asyncio.timeout(1):
+            await started.wait()
+            fill = boundary._inflight[(2026, 8)]
+            await boundary.close()
+        assert fill.cancelled()
+        with pytest.raises(asyncio.CancelledError):
+            await lookup
+        assert not boundary._inflight
+        assert not boundary._cache and not boundary._failures
+    finally:
+        lookup.cancel()
         await client.aclose()

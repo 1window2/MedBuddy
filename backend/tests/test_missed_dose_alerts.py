@@ -503,14 +503,16 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
         link_id = self.db.query(_PatientCaregiverLink).one().id
         body = {"client_message_id": "arbitrary_client_id", "body": "Check lunch", "message_kind": "slot_check_request",
                 "slot_key": "lunch", "source_alert_id": self.root.id}
-        with patch("api.chat_router.get_chat_connection_manager", return_value=manager), \
-             patch("api.chat_router._enforce_chat_daily_quota", new=AsyncMock()), \
+        quota = AsyncMock()
+        with patch("api.route_support.get_chat_connection_manager", return_value=manager), \
+             patch("api.chat_router.enforce_chat_daily_quota", new=quota), \
              TestClient(app) as client:
             response = client.post(f"/api/v1/chat/links/{link_id}/messages", json=body)
             self.assertEqual(response.status_code, 200, response.text)
             self.assertTrue(response.json()["created"])
             self.assertFalse(client.post(f"/api/v1/chat/links/{link_id}/messages", json=body).json()["created"])
             self.assertEqual(manager.broadcast.await_count, 1)
+            self.assertEqual(quota.await_count, 2)
             from entities.chat_notification_job_entity import ChatNotificationJob
             jobs = self.db.query(ChatNotificationJob).all()
             self.assertEqual(len(jobs), 1)
