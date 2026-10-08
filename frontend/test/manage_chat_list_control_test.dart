@@ -269,6 +269,34 @@ void main() {
     expect(control.peerName(control.links.single, isEnglish: true), 'Patient NT-7');
   });
 
+  // A patient sees a caregiver without an alias by the last four characters of the account
+  // hash, as the link screen does, and never by the full internal identifier.
+  test('default caregiver names show only the end of the account hash', () async {
+    final links = _Links()
+      ..result = [
+        PatientCaregiverLink(
+          linkId: 9,
+          patientHash: 'usr_patient0000e5b0',
+          caregiverHash: 'usr_ad6f49ec1053a60874b9c485e73e1314',
+          linkStatus: true,
+        ),
+      ];
+    final control = ManageChatList(
+      userHash: 'usr_patient0000e5b0',
+      linkControl: links,
+      chatControl: _Previews(),
+      localState: _Labels(),
+    );
+    addTearDown(control.dispose);
+
+    await control.refresh();
+    expect(control.peerName(control.links.single, isEnglish: false), '보호자 1314');
+    expect(
+      control.peerName(control.links.single, isEnglish: true),
+      'Caregiver 1314',
+    );
+  });
+
   // G2: both default controls must send through the injected session client, so a 401 on
   // the link list or on a preview reaches the session's unauthorized handler.
   test('default controls use the injected client and report a 401 to its '

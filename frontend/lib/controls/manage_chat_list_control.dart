@@ -99,13 +99,18 @@ class ManageChatList extends ChangeNotifier {
       }
       final alias = _labels[link.patientHash];
       if (alias != null && alias.trim().isNotEmpty) return alias;
-      return '${isEnglish ? 'Patient' : '환자'} ${link.patientHash}';
+      return _localState.fallbackLabel(link.patientHash, isEnglish: isEnglish);
     }
     final caregiverAlias = link.caregiverAlias?.trim();
     if (caregiverAlias != null && caregiverAlias.isNotEmpty) {
       return caregiverAlias;
     }
-    return '${isEnglish ? 'Caregiver' : '보호자'} ${link.caregiverHash}';
+    // 계정 해시 전체를 화면에 노출하지 않고 연동 화면과 같은 끝 네 글자만 보여준다.
+    final caregiverHash = link.caregiverHash.trim();
+    final suffix = caregiverHash.length <= 4
+        ? caregiverHash
+        : caregiverHash.substring(caregiverHash.length - 4);
+    return '${isEnglish ? 'Caregiver' : '보호자'} ${suffix.toUpperCase()}';
   }
 
   // 함수이름: refresh

@@ -327,6 +327,7 @@ class NotificationService {
         onDidReceiveNotificationResponse: _handleNotificationResponse,
       );
       _isInitialized = true;
+      await _createAndroidNotificationChannels();
 
       if (launchDetails?.didNotificationLaunchApp ?? false) {
         final response = launchDetails?.notificationResponse;
@@ -339,6 +340,52 @@ class NotificationService {
     } catch (_) {
       _initializationFuture = null;
       rethrow;
+    }
+  }
+
+  // Function Name: _createAndroidNotificationChannels
+  // Description: Creates the three Android channels at start-up. The plugin otherwise creates a channel only when the app
+  //   first shows a local notification on it, so a server push that names a channel the app has not used yet would be
+  //   shown on the Firebase fallback channel without this app's importance and sound. Names follow the last shown language
+  //   once a local notification is displayed; a failure here must not block notification initialization.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: asynchronous completion without a result payload.
+  Future<void> _createAndroidNotificationChannels() async {
+    try {
+      final android = _plugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
+      if (android == null) {
+        return;
+      }
+      const channels = <AndroidNotificationChannel>[
+        AndroidNotificationChannel(
+          'medbuddy_medication_reminders',
+          '복약 알림',
+          description: 'MedBuddy 복약 시간 알림',
+          importance: Importance.high,
+        ),
+        AndroidNotificationChannel(
+          'medbuddy_caregiver_updates',
+          '보호자 복약 확인',
+          description: '연동된 환자의 복약 완료 및 미복용 상태 알림',
+          importance: Importance.high,
+        ),
+        AndroidNotificationChannel(
+          'medbuddy_linked_chat',
+          '가족 채팅',
+          description: '연동된 환자와 보호자의 새 채팅 메시지 알림',
+          importance: Importance.high,
+        ),
+      ];
+      for (final channel in channels) {
+        await android.createNotificationChannel(channel);
+      }
+    } catch (_) {
+      // Channels are still created lazily when a local notification is shown.
     }
   }
 

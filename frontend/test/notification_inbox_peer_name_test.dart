@@ -330,11 +330,11 @@ void main() {
         await patientChats.refresh();
         expect(
           patientInbox.titleFor(_entry('chat:1'), isEnglish: false),
-          '보호자 caregiver',
+          '보호자 IVER',
         );
         expect(
           patientInbox.titleFor(_entry('chat:1'), isEnglish: true),
-          'Caregiver caregiver',
+          'Caregiver IVER',
         );
         // 환자 별칭은 유지한 채 보호자 별칭만 바꾸면 채팅과 기존 알림이 함께 갱신된다.
         links.result = [_link(1, '엄마').copyWith(caregiverAlias: '우리 딸')];
@@ -361,7 +361,7 @@ void main() {
         await patientChats.refresh();
         expect(
           patientInbox.titleFor(_entry('chat:1'), isEnglish: false),
-          '보호자 caregiver',
+          '보호자 IVER',
         );
         expect(
           () => ManageNotificationInbox(

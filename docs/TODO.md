@@ -12,49 +12,86 @@ small improvements. See the [v0.2.1 notes](releases/v0.2.1-beta.md).
 
 Physical acceptance that was not performed for v0.2.0:
 
-- [ ] Two-device checks: caregiver linking, chat, push delivery and missed-dose
-      alerts between a patient and a caregiver phone.
+- [ ] Push delivery to the physical phone and missed-dose alerts between two
+      devices. Linking, chat in both directions, the caregiver's view of the
+      patient's schedule and the completion alert were checked on October 8
+      between the phone (patient) and an Android 14 emulator (guest
+      caregiver). No push reached the phone during that check because its
+      Google messaging connection was down (power saving with a VPN); FCM
+      reported its token as valid.
 - [ ] A notification "taken" or snooze action from a cold start, and the first
-      launch after the application day changes. Both were corrected in v0.2.0
-      and are covered by automated tests only.
+      launch after the application day changes. The "taken" action was checked
+      with the app in the background only.
 - [ ] Prescription capture with the on-device privacy filter, and saving
       several identified pills, on a physical device.
-- [ ] Devices other than Android 12, including Android 16 background work.
+- [ ] Android 16 background work. Android 14 was exercised on an emulator
+      only.
 - [ ] Native map-marker recovery after a partially failed marker addition.
 
 Introduced in v0.2.1 and not yet checked on a device:
 
-- [ ] Choosing a medication photo from the gallery and a widget "taken" tap,
-      after the unused storage permissions, map-app query and widget broadcast
-      receiver were removed from the Android manifest.
 - [ ] Device-to-device transfer: the new extraction rules exclude all app data
       so the encrypted dose store cannot arrive without its device-bound key.
       This needs two phones.
-- [ ] The direct APK is built for `arm64-v8a` and `armeabi-v7a` only and
-      measured 112.8 MB in CI, which asserts the ABI set of every release
-      build. Confirm the installed size on a device.
 
-Changed in v0.2.1 without a device check (automated tests only):
+Checked on October 8 with the signed build of `4b840ce` (Galaxy Note10+,
+Android 12, replace-only update from 0.2.0; backend `014aaf4`):
 
-- [ ] Dose recording from the schedule, the widget and chat while offline and
-      after reconnecting; a tap right after midnight; the widget refresh
-      button; no duplicate upload from the periodic worker.
-- [ ] Reminders: a slot taken early is not re-armed by the 12-hour worker,
-      untaken slots still fire after a reboot, and a reminder is cancelled
+- [x] Start without credential entry; saved medications and notification
+      history identical before and after the update.
+- [x] Manual registration with a photo from the system picker (no storage
+      permission), dose check, undo and re-check, whole-slot check, and the
+      notification "taken" action with the app in the background.
+- [x] A reminder scheduled as an exact alarm fired on the minute; a slot
+      already taken was not re-armed when its reminder was enabled again.
+- [x] Home-screen widget "taken" and undo. With background network blocked by
+      power saving the record stayed queued on the device and was uploaded
+      once when the app was opened.
+- [x] Language switching (English, device language, Korean), voice guide,
+      nearby pharmacy and hospital search, medication detail and health
+      recommendation.
+- [x] The direct APK (112.9 MB, `arm64-v8a` and `armeabi-v7a`) installs and
+      runs on the phone and on an arm64 emulator.
+- [x] Backend: per-user rate-limit counters exist for the prefixed routes, row
+      counts and the migration head are unchanged by the deployment.
+
+Changed in v0.2.1 and still without a device check (automated tests only):
+
+- [ ] A dose tapped right after midnight; the widget refresh button; an
+      immediate background upload from the widget with power saving off.
+- [ ] Reminders after a reboot and through the 12-hour worker; cancellation
       after a widget "taken" and again after undo and retake.
-- [ ] Push: registration after a cold start without network, the permission
-      prompt appearing once, and caregiver alerts arriving without the
-      periodic monitoring request.
+- [ ] Push registration after a cold start without network, and the
+      permission prompt appearing once on the phone.
 - [ ] Session: a network loss during a token refresh keeps the session; a
       401 in chat signs out; ending the session with a pushed screen open.
 - [ ] Privacy filter on a real prescription (the label rules are judgments
       and the OCR line order is unverified); cleanup of picked photo copies.
-- [ ] Voice guide stop and error handling; nearby-care sheet drag and marker
-      retry on the native map; recovery of the dose store on a real Keystore.
-- [ ] Two devices: one confirmation per dose taken from chat, unlink while a
-      chat is open, more than three sessions on one link, and whether a
-      background push uses the intended notification channel (every push is
-      sent on the caregiver-updates channel).
+- [ ] Marker retry on the native map and recovery of the dose store on a real
+      Keystore.
+- [ ] Two devices: a dose taken from chat, unlink while a chat is open, and
+      more than three sessions on one link.
+
+Found during the October 8 checks:
+
+- [ ] On Android 14 a reminder set for 13:19 was delivered at 13:21:10. Exact
+      alarms are denied by default there and the app falls back to an inexact
+      alarm. Owner decision: prompt for the permission or declare
+      `USE_EXACT_ALARM`.
+- [ ] The server sends every push, chat included, on the caregiver-updates
+      channel. The client now creates its channels at start-up, so a push no
+      longer lands on the Firebase fallback channel on a fresh install; moving
+      chat pushes to the chat channel must wait until clients older than 0.2.1
+      are gone.
+- [ ] Switching a reminder off and changing its time in the same save keeps
+      the old time.
+- [ ] A health recommendation is generated with specific advice for a
+      medication whose stored information is empty.
+- [ ] A completion alert is sent once per patient, slot and day. A slot first
+      completed before a caregiver was linked produces no alert when it is
+      undone and completed again after linking.
+- [ ] Push tokens that FCM reports as unregistered stay enabled until a send
+      to them fails; two such rows exist in production.
 
 Reviewed for v0.2.1 and deferred:
 
