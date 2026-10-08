@@ -203,19 +203,6 @@ class UserSetting {
   // - bool: language가 isEnglishLanguage 기준으로 영어이면 true.
   bool get isEnglish => isEnglishLanguage(language);
 
-  // 함수이름: contentTextScale
-  // 함수역할: 이미 앱 전역에서 적용된 글씨 확대를 콘텐츠에서 중복 적용하지 않도록 1.0 배율을 제공한다.
-  // 비고: 사용 중단 예정(deprecated). 항상 1.0이므로 새 코드는 읽지 않으며, 기존 화면의 읽기가 모두 없어지면 삭제한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - double: 이미 앱 전역에서 적용된 글씨 확대를 콘텐츠에서 중복 적용하지 않도록 1.0 배율을 제공한다.
-  double get contentTextScale {
-    // 사용자 글씨 크기는 앱 최상단 MediaQuery에서 한 번만 적용한다.
-    // 기존 화면의 개별 배율 코드는 1.0을 받아 이중 확대를 방지한다.
-    return 1.0;
-  }
-
   // 함수이름: use24HourTime
   // 함수역할: 사용자가 24시간제 시각 표시를 선택했는지 판정한다.
   // 매개변수:

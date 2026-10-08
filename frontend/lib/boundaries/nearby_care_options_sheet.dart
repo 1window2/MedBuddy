@@ -64,7 +64,6 @@ class _NearbyCareOption extends StatelessWidget {
       title: title,
       subtitle: subtitle,
       // 글씨 크기는 앱 전역 배율로만 조정하므로 선택지 자체에는 추가 배율을 주지 않는다.
-      scale: 1,
       onTap: onTap,
     );
   }

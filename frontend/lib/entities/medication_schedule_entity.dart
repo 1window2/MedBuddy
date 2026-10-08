@@ -403,16 +403,6 @@ class MedicationSchedule {
     return '$medicationTime일';
   }
 
-  // 함수이름: dosageLabel
-  // 함수역할: 공백을 정리한 복용량을 제공하고 비어 있으면 기존 한국어 용량 없음 문구를 사용한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - String: 공백을 정리한 복용량을 제공하고 비어 있으면 기존 한국어 용량 없음 문구를 사용한다.
-  String get dosageLabel {
-    return dosage.trim().isEmpty ? '용량 정보 없음' : dosage.trim();
-  }
-
   // Function Name: dosageLabelForLanguage
   // Description: Localizes recognized Korean dose units for English display while retaining unparsed text, fractions, and international units such as mg and mL.
   // Parameters:

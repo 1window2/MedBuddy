@@ -13,7 +13,6 @@ from controls.manage_caregiver_alert_control import ManageCaregiverAlert
 
 from core.application_clock import application_today
 from controls.check_schedule_control import CheckSchedule
-from controls.dispatch_caregiver_alert_control import _SLOT_NAMES
 from entities.chat_notification_job_entity import ChatNotificationJob
 from entities.chat_message_entity import (
     CHAT_MEDICATION_DOSAGE_MAX_LENGTH,
@@ -33,7 +32,10 @@ from entities.chat_message_entity import (
 from entities.medication_alarm_entity import _MedicationAlarm, default_alarm_time
 from entities.medication_completion_entity import _MedicationCompletion
 from entities.medication_image_url_entity import safe_medication_image_url
-from entities.medication_schedule_entity import MEDICATION_SCHEDULE_SLOT_KEYS
+from entities.medication_schedule_entity import (
+    MEDICATION_SCHEDULE_SLOT_KEYS,
+    MEDICATION_SLOT_KOREAN_NAMES,
+)
 from entities.patient_caregiver_link_entity import _PatientCaregiverLink
 from entities.saved_medication_entity import _SavedMedication
 from entities.user_account_entity import utc_now
@@ -528,7 +530,7 @@ class ManageLinkedChat:
                 item for item in slot_context["medications"]
                 if item["medication_id"] in confirmation["medication_ids"]
             ]
-            slot_name = _SLOT_NAMES[slot_key]
+            slot_name = MEDICATION_SLOT_KOREAN_NAMES[slot_key]
             names = ", ".join(item["medication_name"] for item in medications)
             row = _ChatMessage(
                 link_id=link_id, sender_hash=sender_hash,
@@ -614,7 +616,7 @@ class ManageLinkedChat:
                 client_message_id=(
                     f"slot_complete_{today.strftime('%Y%m%d')}_{slot_key}"
                 ),
-                body=f"{_SLOT_NAMES[slot_key]} 약 복용을 모두 완료했습니다.",
+                body=f"{MEDICATION_SLOT_KOREAN_NAMES[slot_key]} 약 복용을 모두 완료했습니다.",
                 message_kind=CHAT_MESSAGE_KIND_SLOT_COMPLETION,
                 slot_key=slot_key,
                 allow_internal=True,

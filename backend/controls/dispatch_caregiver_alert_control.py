@@ -25,22 +25,14 @@ from entities.caregiver_notification_entity import (
 from repositories.patient_caregiver_link_repository import (
     PatientCaregiverLinkRepository,
 )
+from entities.medication_schedule_entity import (
+    MEDICATION_SLOT_ENGLISH_NAMES,
+    MEDICATION_SLOT_KOREAN_NAMES,
+)
 from services.push_recipient_resolver import PushRecipientResolver
 
 logger = logging.getLogger(__name__)
 
-_SLOT_NAMES = {
-    "morning": "아침",
-    "lunch": "점심",
-    "evening": "저녁",
-    "bedtime": "취침 전",
-}
-_ENGLISH_SLOT_NAMES = {
-    "morning": "morning",
-    "lunch": "lunch",
-    "evening": "evening",
-    "bedtime": "bedtime",
-}
 
 
 # 클래스명: _PreparedPush
@@ -114,7 +106,7 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
             patient_hash,
             slot_key,
         )
-        slot_name = _SLOT_NAMES.get(slot_key, "복약")
+        slot_name = MEDICATION_SLOT_KOREAN_NAMES.get(slot_key, "복약")
         prepared_pushes: list[_PreparedPush] = []
         for caregiver_hash in caregiver_hashes:
             if not resolver.caregiver_alerts_enabled(caregiver_hash):
@@ -126,7 +118,7 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
             if is_english:
                 title = "Medication completed"
                 body = (
-                    f"The patient completed all {_ENGLISH_SLOT_NAMES.get(slot_key, 'scheduled')} medications."
+                    f"The patient completed all {MEDICATION_SLOT_ENGLISH_NAMES.get(slot_key, 'scheduled')} medications."
                     if recipient.show_details
                     else "A linked patient's medication status was updated."
                 )
@@ -246,9 +238,9 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
             return PushDeliveryResult(success_count=0)
         is_english = recipient.language == "en"
         slot_name = (
-            _ENGLISH_SLOT_NAMES.get(slot_key, "scheduled")
+            MEDICATION_SLOT_ENGLISH_NAMES.get(slot_key, "scheduled")
             if is_english
-            else _SLOT_NAMES.get(slot_key, "복약")
+            else MEDICATION_SLOT_KOREAN_NAMES.get(slot_key, "복약")
         )
         title = "Medication not checked" if is_english else "미복용 일정 확인"
         if recipient.show_details:

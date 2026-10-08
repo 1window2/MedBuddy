@@ -13,25 +13,22 @@ import '../theme/medbuddy_theme.dart';
 // Attributes:
 // - message (String): Guidance shown to the user.
 // - icon (IconData): Leading caution or information icon.
-// - scale (double): User content text scale.
 // - padding (EdgeInsetsGeometry): Inner spacing around the icon and message.
 class MedBuddyNotice extends StatelessWidget {
   final String message;
   final IconData icon;
-  final double scale;
   final EdgeInsetsGeometry padding;
 
   // Function Name: MedBuddyNotice
   // Description: Stores the notice content and layout options.
   // Parameters:
   // - key (Key?): Optional widget identity.
-  // - message, icon, scale, padding: Notice content and layout.
+  // - message, icon, padding: Notice content and layout.
   // Returns: A configured MedBuddyNotice.
   const MedBuddyNotice({
     super.key,
     required this.message,
     this.icon = Icons.info_outline_rounded,
-    this.scale = 1,
     this.padding = const EdgeInsets.all(14),
   });
 
@@ -53,14 +50,14 @@ class MedBuddyNotice extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: MedBuddyColors.reminderAccent, size: 20 * scale),
+          Icon(icon, color: MedBuddyColors.reminderAccent, size: 20),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               message,
               style: TextStyle(
                 color: MedBuddyColors.reminderAccent,
-                fontSize: 13 * scale,
+                fontSize: 13,
                 fontWeight: FontWeight.w600,
                 height: 1.4,
                 letterSpacing: 0,

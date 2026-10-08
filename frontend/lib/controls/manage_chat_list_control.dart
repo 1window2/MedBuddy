@@ -37,8 +37,11 @@ class ManageChatList extends ChangeNotifier {
   bool _requested = false;
   String? _publishedSignature;
   bool _disposed = false;
-  bool isLoading = false;
-  bool hasError = false;
+  bool _isLoading = false;
+  // 외부에서는 읽기만 하고 값은 이 객체만 바꾼다.
+  bool get isLoading => _isLoading;
+  bool _hasError = false;
+  bool get hasError => _hasError;
 
   // 함수이름: ManageChatList
   // 함수역할: 계정 범위와 조회 의존성을 고정한다. 주입받은 Control은 호출자가 해제한다.
@@ -125,8 +128,8 @@ class ManageChatList extends ChangeNotifier {
     if (_disposed) return Future.value();
     _includeMessages |= includeMessages;
     // 주기 조회는 진행 표시 없이 조용히 실행해 15초마다 화면이 흔들리지 않게 한다.
-    if ((showLoading || !_requested) && !isLoading) {
-      isLoading = true;
+    if ((showLoading || !_requested) && !_isLoading) {
+      _isLoading = true;
       notifyListeners();
     }
     _requested = true;
@@ -213,16 +216,16 @@ class ManageChatList extends ChangeNotifier {
           _latestMessages = latestMessages;
           _unreadCounts = unreadCounts;
           _previewErrors = previewErrors;
-          hasError = false;
+          _hasError = false;
         } catch (_) {
           if (_disposed) return;
-          hasError = true;
+          _hasError = true;
         }
       } while (_refreshAgain && !_disposed);
     } finally {
       _pending = null;
-      final wasLoading = isLoading;
-      isLoading = false;
+      final wasLoading = _isLoading;
+      _isLoading = false;
       if (!_disposed) {
         final signature = _stateSignature();
         if (wasLoading || signature != _publishedSignature) {
@@ -237,7 +240,7 @@ class ManageChatList extends ChangeNotifier {
   // 함수역할: 화면에 보이는 목록 순서·이름·미리보기·미확인 개수·오류 상태를 비교할 값으로 만든다.
   // 매개변수: 없음. 반환값: 표시 내용이 같으면 같은 문자열.
   String _stateSignature() => jsonEncode([
-    hasError,
+    _hasError,
     for (final link in _links)
       [
         link.toJson(),

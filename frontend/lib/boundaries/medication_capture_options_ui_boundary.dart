@@ -99,7 +99,6 @@ Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
                   subtitle: text.isEnglish
                       ? 'Compare pills placed together in one photo.'
                       : '한 사진 속 여러 알약을 구분해 후보를 확인해요.',
-                  scale: 1,
                   onTap: () => Navigator.pop(
                     sheetContext,
                     MedicationCaptureTask.multiplePills,
@@ -114,7 +113,6 @@ Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
                   subtitle: text.isEnglish
                       ? 'Compare front and back photos of each pill.'
                       : '알약의 앞·뒷면을 촬영해 후보를 확인해요.',
-                  scale: 1,
                   onTap: () => Navigator.pop(
                     sheetContext,
                     MedicationCaptureTask.individualPills,
@@ -125,7 +123,6 @@ Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
                   icon: Icons.photo_camera_outlined,
                   title: text.prescriptionTask,
                   subtitle: text.prescriptionTaskSubtitle,
-                  scale: 1,
                   // 함수이름: showMedicationCaptureTaskOptions.onTap callback
                   // 함수역할: `Navigator.pop(sheetContext, MedicationCaptureTask.prescription)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
                   // 매개변수:
@@ -143,7 +140,6 @@ Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
                   icon: Icons.medication_outlined,
                   title: text.pillTask,
                   subtitle: text.pillTaskSubtitle,
-                  scale: 1,
                   // 함수이름: showMedicationCaptureTaskOptions.onTap callback
                   // 함수역할: 시트를 겹치지 않고 알약 촬영 방식 두 가지를 표시한다.
                   // 매개변수:
@@ -158,7 +154,6 @@ Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
                   icon: Icons.edit_note_rounded,
                   title: text.manualTask,
                   subtitle: text.manualTaskSubtitle,
-                  scale: 1,
                   // 함수이름: showMedicationCaptureTaskOptions.onTap callback
                   // 함수역할: `Navigator.pop(sheetContext, MedicationCaptureTask.manual)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
                   // 매개변수:

@@ -119,6 +119,27 @@ Reviewed for v0.2.1 and deferred:
       worker; they wait until the same account signs in again on the device.
 - [ ] With the medication box in selection mode, one back press ends the
       selection and also returns to Home.
+- [ ] Structure, measured on October 8 (no import cycles in either code
+      base; backend layers have no upward import): the three Flutter
+      background entry points (`dose_home_widget_service`,
+      `medication_reminder_background_service`,
+      `caregiver_notification_background_service`) live in `services/` but
+      construct controls and one composition factory. They are composition
+      roots; moving them changes the stored callback handles of the widget and
+      WorkManager tasks, so background work would stop after an update until
+      the app is opened once. Do it only together with a migration of those
+      handles.
+- [ ] Operations drawn in the class diagrams that no production code calls:
+      `AppLanguageControl.toggleLanguage`,
+      `CheckNearbyPharmacy.requestNearbyPharmacies`,
+      `ResolveDuplicatePillSelectionControl.mergeEquivalentRequests` and
+      `PrescriptionPrivacyFilter.shouldMaskFollowingLine`. Removing them needs
+      a diagram change. Not drawn and used only by tests:
+      `SetCaregiverNotification.requestCaregiverNotificationSetting` and the
+      two link-status helpers on `PatientCaregiverLink`.
+- [ ] Backend controls import ORM models directly in about twenty places
+      instead of going through a repository, and the two background workers in
+      `services/` drive controls.
 - [ ] Home screen: lifecycle work still runs inside `build`, the shell
       rebuilds on every inbox or chat notification, the link list is polled
       every 15 seconds under a pushed screen, and the facade status message

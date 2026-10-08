@@ -160,7 +160,8 @@ class MedBuddyApp extends StatefulWidget {
 // - _navigatorKey (GlobalKey<NavigatorState>): Navigator key used by notification routing.
 // - _authenticationControl (AuthenticationControl): Authentication gate and session lifecycle control.
 // - _appLanguageControl (AppLanguageControl): Application language state shared before and after sign-in.
-class _MedBuddyAppState extends State<MedBuddyApp> {
+class _MedBuddyAppState extends State<MedBuddyApp>
+    with WidgetsBindingObserver {
   static const String _scheduleRouteName = '/schedule';
   static const String _caregiverScheduleRoutePrefix = '/caregiver-schedule/';
   static const String _linkedChatRoutePrefix = '/linked-chat/';
@@ -194,6 +195,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _navigatorKey = widget.navigatorKey ?? GlobalKey<NavigatorState>();
     _ownsAuthenticationControl = widget.authenticationControl == null;
     _authenticationControl =
@@ -216,6 +218,28 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
       unawaited(
         HomeWidget.initiallyLaunchedFromHomeWidget().then(_openHomeWidget),
       );
+    }
+  }
+
+  // Function Name: didChangeAppLifecycleState
+  // Description: On return to the foreground retries a push registration that has not completed and lets the caregiver
+  //   monitor check again; while the app is hidden the monitor does not poll.
+  // Parameters:
+  // - state (AppLifecycleState): New lifecycle state reported by the framework.
+  // Returns:
+  // - void: no value is returned.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.resumed:
+        unawaited(_pushNotificationService?.retryRegistration());
+        unawaited(_caregiverNotificationMonitor?.resume());
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+        _caregiverNotificationMonitor?.pause();
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.detached:
+        break;
     }
   }
 
@@ -272,6 +296,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   // - 없음.
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _notificationScheduleSlot.dispose();
     _notificationChatLatest.dispose();
     unawaited(_widgetClicks?.cancel());

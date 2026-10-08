@@ -11,7 +11,11 @@ from typing import Protocol
 import httpx
 
 from core.config import settings
-from entities.nearby_pharmacy_entity import PharmacyLocationRecord
+# PharmacyApiUnavailableError는 엔티티에 정의하며, 기존 호출자를 위해 이 경계에서도 같은 이름으로 내보낸다.
+from entities.nearby_pharmacy_entity import (
+    PharmacyApiUnavailableError,
+    PharmacyLocationRecord,
+)
 from entities.pharmacy_catalog_entity import PharmacyCatalogEntry
 
 logger = logging.getLogger(__name__)
@@ -19,15 +23,6 @@ logger = logging.getLogger(__name__)
 _LOCATION_SEARCH_PATH = "/getParmacyLcinfoInqire"
 _FULL_CATALOG_PATH = "/getParmacyFullDown"
 _MAX_RESPONSE_BYTES = 4 * 1024 * 1024
-
-
-# 클래스명: PharmacyApiUnavailableError
-# 역할:
-# - 약국 공공데이터 조회가 일시적으로 불가능함을 나타낸다.
-# 주요 책임:
-# - 네트워크 장애, 인증키 부재와 제공자 요청 거부를 응답 형식 오류와 구분한다.
-class PharmacyApiUnavailableError(RuntimeError):
-    """약국 공공데이터 서비스에 일시적으로 접근할 수 없을 때 발생한다."""
 
 
 # 클래스명: PharmacyApiResponseError

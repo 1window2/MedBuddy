@@ -12,9 +12,13 @@ import 'manage_chat_list_control.dart';
 class ManageNotificationInbox extends ChangeNotifier {
   final NotificationInboxStore store;
   final ManageChatList? _chatList;
-  List<NotificationInboxEntry> entries = const [];
-  bool isLoading = false;
-  bool hasError = false;
+  List<NotificationInboxEntry> _entries = const [];
+  // 외부에서는 읽기만 하고 값은 이 객체만 바꾼다.
+  List<NotificationInboxEntry> get entries => _entries;
+  bool _isLoading = false;
+  bool get isLoading => _isLoading;
+  bool _hasError = false;
+  bool get hasError => _hasError;
   bool _disposed = false;
   // 조회 진행 여부. isLoading은 화면에 불러오는 중 표시가 필요한 첫 조회 동안에만 참이다.
   bool _refreshing = false;
@@ -42,7 +46,7 @@ class ManageNotificationInbox extends ChangeNotifier {
 
   // 함수이름: unreadCount
   // 함수역할: 보이는 알림의 미확인 수를 반환한다. 매개변수: 없음. 반환값: 개수.
-  int get unreadCount => entries.where((entry) => !entry.isRead).length;
+  int get unreadCount => _entries.where((entry) => !entry.isRead).length;
 
   // 함수이름: titleFor
   // 함수역할: 채팅·보호자 알림에 현재 활성 연동의 별칭을 표시하며 저장 원본은 변경하지 않는다.
@@ -189,27 +193,27 @@ class ManageNotificationInbox extends ChangeNotifier {
     // 이미 불러온 목록(빈 목록 포함)은 그대로 보여 주므로 주기 갱신의 시작은 알리지 않는다.
     final announcedLoading = !_loadedOnce;
     if (announcedLoading) {
-      isLoading = true;
+      _isLoading = true;
       notifyListeners();
     }
-    final previousEntries = entries;
-    final previousError = hasError;
+    final previousEntries = _entries;
+    final previousError = _hasError;
     try {
       final loaded = await store.load();
       if (!_disposed) {
-        entries = loaded;
-        hasError = false;
+        _entries = loaded;
+        _hasError = false;
         _loadedOnce = true;
       }
     } catch (_) {
-      if (!_disposed) hasError = true;
+      if (!_disposed) _hasError = true;
     } finally {
       _refreshing = false;
-      isLoading = false;
+      _isLoading = false;
       if (!_disposed) {
         if (announcedLoading ||
-            hasError != previousError ||
-            !_sameVisibleEntries(previousEntries, entries)) {
+            _hasError != previousError ||
+            !_sameVisibleEntries(previousEntries, _entries)) {
           notifyListeners();
         }
         if (_refreshAgain) {
@@ -241,14 +245,14 @@ class ManageNotificationInbox extends ChangeNotifier {
   // 함수이름: markRead
   // 함수역할: 선택 항목 또는 현재 목록 전체를 읽음 처리한다. 매개변수: 선택적 entry. 반환값: 갱신 완료.
   Future<void> markRead([NotificationInboxEntry? entry]) async {
-    await store.markRead(entry == null ? entries.map((e) => e.id) : [entry.id]);
+    await store.markRead(entry == null ? _entries.map((e) => e.id) : [entry.id]);
     await refresh();
   }
 
   // 함수이름: remove
   // 함수역할: 알림 내역만 삭제하며 채팅·복약 기록에는 영향이 없다. 매개변수: 선택적 entry. 반환값: 갱신 완료.
   Future<void> remove([NotificationInboxEntry? entry]) async {
-    await removeEntries(entry == null ? entries : [entry]);
+    await removeEntries(entry == null ? _entries : [entry]);
   }
 
   // 함수이름: removeEntries

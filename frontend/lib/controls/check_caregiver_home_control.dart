@@ -17,21 +17,25 @@ class CheckCaregiverHome extends ChangeNotifier {
   final bool _ownsControl;
   List<PatientCaregiverLink> _links = const [];
   Map<int, CaregiverMonitoringSnapshot> _snapshots = const {};
-  bool isLoading = false;
-  bool hasError = false;
+  bool _isLoading = false;
+  // 외부에서는 읽기만 하고 값은 이 객체만 바꾼다.
+  bool get isLoading => _isLoading;
+  bool _hasError = false;
+  bool get hasError => _hasError;
   bool _disposed = false;
   int _generation = 0;
-  String? snapshotDay;
+  String? _snapshotDay;
+  String? get snapshotDay => _snapshotDay;
 
   // 현재 연동만 위젯에 전달하며 자정을 지난 응답은 오늘 일정으로 바꾸지 않는다.
   Map<String, dynamic> get widgetCache => {
     'date': doseWidgetDay(DateTime.now()),
-    'failed': hasError,
+    'failed': _hasError,
     'patients': [
       for (final link in _links)
         {
           'link': link.toJson(),
-          'schedules': snapshotDay == doseWidgetDay(DateTime.now())
+          'schedules': _snapshotDay == doseWidgetDay(DateTime.now())
               ? _snapshots[link.linkId]?.schedules
                     .map((s) => s.toJson())
                     .toList()
@@ -85,13 +89,13 @@ class CheckCaregiverHome extends ChangeNotifier {
   // 함수역할: 홈의 명시적 환자 일정 선택에 따라 허용된 환자의 현황을 조회한다.
   // 반환값: 갱신 완료. 실패와 일정 0개는 구분하며 중복 요청은 합친다.
   Future<void> refresh() async {
-    if (_disposed || isLoading || _links.isEmpty) return;
+    if (_disposed || _isLoading || _links.isEmpty) return;
     final generation = _generation;
     final day = doseWidgetDay(DateTime.now());
-    isLoading = true;
+    _isLoading = true;
     notifyListeners();
     try {
-      hasError = false;
+      _hasError = false;
       // 홈 전용 일괄 조회는 알림이 꺼진 환자도 포함하고 약 상세는 제외한다.
       final received = await _control.requestScheduleSnapshot(links: _links);
       if (_disposed ||
@@ -110,13 +114,13 @@ class CheckCaregiverHome extends ChangeNotifier {
               ))
             snapshot.link.linkId!: snapshot,
       };
-      snapshotDay = day;
+      _snapshotDay = day;
     } catch (_) {
       if (_disposed || generation != _generation) return;
-      hasError = true;
+      _hasError = true;
       _snapshots = {};
     } finally {
-      isLoading = false;
+      _isLoading = false;
       if (!_disposed) notifyListeners();
     }
   }
