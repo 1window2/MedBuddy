@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'medication_alarm_entity.dart';
 import 'medication_schedule_entity.dart';
+import 'user_setting_entity.dart';
 
 const doseWidgetUtcOffset = int.fromEnvironment(
   'APPLICATION_UTC_OFFSET_MINUTES',
@@ -82,7 +83,7 @@ class DoseWidgetState {
       return _patients(owner, previous, now, config);
     }
     final oldView = previous['view'] as Map? ?? {};
-    final english = config['language'] == 'en';
+    final english = isEnglishLanguage(config['language']?.toString());
     String tr(String ko, String en) => english ? en : ko;
     final day = doseWidgetDay(now);
     final local = doseWidgetLocalTime(now);
@@ -300,7 +301,7 @@ class DoseWidgetState {
       configuration: config,
       readOnly: true,
     );
-    final english = config['language'] == 'en';
+    final english = isEnglishLanguage(config['language']?.toString());
     String tr(String ko, String en) => english ? en : ko;
     final cache = previous['patient_cache'] as Map?;
     final current = cache?['date'] == doseWidgetDay(now);

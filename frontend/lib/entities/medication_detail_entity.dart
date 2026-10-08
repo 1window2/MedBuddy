@@ -4,6 +4,7 @@
 import 'medication_image_url_entity.dart';
 import 'medication_schedule_entity.dart';
 import 'json_value_reader.dart';
+import 'user_setting_entity.dart';
 
 // Class Name: MedicationDetail
 // Role: Holds public-catalog and saved-medication detail fields for display and persistence.
@@ -355,36 +356,24 @@ class MedicationDetail {
   }
 
   // 함수이름: voiceGuideTextForLanguage
-  // 함수역할: 서버 음성 안내를 사용할 수 없을 때 재생할 최소 안내를 앱 언어로 만든다.
+  // 함수역할: 서버 음성 안내를 사용할 수 없을 때 재생할 안내를 서버와 같은 형식으로 만든다. 약 이름·복용 방법·주의사항 중 내용이 있는 항목만 "항목명: 내용" 줄로 잇고, 세 항목이 모두 비어 서버가 안내를 만들지 못하는 경우에는 이름 확인 문구만 안내한다.
   // 매개변수:
   // - language (String): 표시·음성 안내에 사용할 언어 코드
   // 반환값:
-  // - String: 서버 음성 안내를 사용할 수 없을 때 재생할 최소 안내를 앱 언어로 만든다.
+  // - String: 줄바꿈으로 이은 음성 안내 문구.
   String voiceGuideTextForLanguage(String language) {
-    final isEnglish = _isEnglish(language);
+    final labels = _isEnglish(language)
+        ? const ['Medication', 'How to take', 'Warning']
+        : const ['약 이름', '복용 방법', '주의사항'];
+    final values = [itemName.trim(), usageMethod.trim(), warning.trim()];
     final sections = [
-      displayNameForLanguage(language),
-      if (usageMethod.trim().isNotEmpty)
-        isEnglish
-            ? 'How to take it. ${usageMethod.trim()}'
-            : '복용 방법. ${usageMethod.trim()}',
-      isEnglish
-          ? 'Warnings. ${_normalizeOrFallback(warning, 'No information')}'
-          : '주의사항. ${_normalizeOrFallback(warning, '정보 없음')}',
+      for (var index = 0; index < labels.length; index += 1)
+        if (values[index].isNotEmpty) '${labels[index]}: ${values[index]}',
     ];
+    if (sections.isEmpty) {
+      return '${labels.first}: ${displayNameForLanguage(language)}';
+    }
     return sections.join('\n');
-  }
-
-  // Function Name: _normalizeOrFallback
-  // Description: Trims a supplied detail string and uses the caller's fallback when no visible text remains.
-  // Parameters:
-  // - value (String): Medication text checked before substituting fallback guidance.
-  // - fallback (String): Fallback for absent or unparseable input.
-  // Returns:
-  // - String: Trims a supplied detail string and uses the caller's fallback when no visible text remains.
-  static String _normalizeOrFallback(String value, String fallback) {
-    final normalizedValue = value.trim();
-    return normalizedValue.isEmpty ? fallback : normalizedValue;
   }
 
   // 함수이름: _localizedDosageValue
@@ -478,13 +467,13 @@ class MedicationDetail {
   }
 
   // 함수이름: _isEnglish
-  // 함수역할: 언어 코드의 공백과 대소문자를 정리한 뒤 en과 정확히 같은지 확인한다.
+  // 함수역할: 언어 코드가 영어 표시 대상인지 앱 공통 기준으로 확인한다.
   // 매개변수:
   // - language (String): 표시·음성 안내에 사용할 언어 코드
   // 반환값:
-  // - bool: 언어 코드의 공백과 대소문자를 정리한 뒤 en과 정확히 같은지 확인한다.
+  // - bool: 앱 공통 기준으로 영어이면 true.
   static bool _isEnglish(String language) {
-    return language.trim().toLowerCase() == 'en';
+    return isEnglishLanguage(language);
   }
 
   // Function Name: _readDosageTiming

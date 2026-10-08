@@ -29,6 +29,7 @@ class _HospitalControl extends CheckNearbyHospital {
   bool empty = false;
   bool truncated = false;
   bool regionScopeUncertain = false;
+  bool radiusExpanded = false;
   NearbyCareSearchArea initialArea = NearbyCareSearchArea(
     center: NearbyCareSearchArea.fallbackCenter,
     radiusKm: .3,
@@ -82,6 +83,7 @@ class _HospitalControl extends CheckNearbyHospital {
       catalogIsStale: true,
       searchTruncated: truncated,
       regionScopeUncertain: regionScopeUncertain,
+      searchRadiusExpanded: radiusExpanded,
       holidayScheduleStatus: holidayStatus,
     );
   }
@@ -562,6 +564,25 @@ void main() {
   }
 
   // 하단 부분 조회 안내가 위치 실패나 채팅 공유의 검색 기준을 숨기지 않는다.
+  for (final expanded in [true, false]) {
+    // 넓은 반경 자체가 아니라 Control이 알린 자동 확대만 안내하고 지도를 다시 맞춘다.
+    testWidgets('automatic radius expansion notice follows the control: '
+        '$expanded', (tester) async {
+      final control = _HospitalControl()
+        ..radiusExpanded = expanded
+        ..initialArea = const NearbyCareSearchArea(
+          center: DeviceCoordinate(latitude: 37.5, longitude: 127),
+          radiusKm: 1,
+        );
+      await _pumpHospital(tester, control, _MapProbe());
+      expect(
+        find.text('반경 1km까지 넓혀 검색했어요.'),
+        expanded ? findsOneWidget : findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('fallback area survives persistent partial hospital guide', (
     tester,
   ) async {

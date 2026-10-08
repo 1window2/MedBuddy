@@ -88,6 +88,7 @@ class PrescriptionLocalOcrService implements PrescriptionLocalOcrBoundary {
     final imageSize = await _readImageSize(imagePath);
     final safeLines = <String>[];
     final regions = <RecognizedTextRegion>[];
+    var plainRegionCount = 0;
     final lines = [
       for (final block in recognizedText.blocks)
         for (final line in block.lines)
@@ -107,8 +108,14 @@ class PrescriptionLocalOcrService implements PrescriptionLocalOcrBoundary {
         imageSize: imageSize,
         category: sensitive ? 'sensitive_info' : _categoryForSafeText(text),
       );
-      if (region != null && regions.length < _maximumPreviewRegions) {
-        regions.add(region);
+      // 개인정보 영역은 항상 남겨 미리보기에서 가려지게 하고, 상한은 일반 영역에만 적용한다.
+      if (region != null) {
+        if (sensitive) {
+          regions.add(region);
+        } else if (plainRegionCount < _maximumPreviewRegions) {
+          regions.add(region);
+          plainRegionCount += 1;
+        }
       }
       if (!sensitive) {
         final maskedLine = _privacyFilter.maskInlineIdentifiers(text).trim();
@@ -207,22 +214,41 @@ class PrescriptionLocalOcrService implements PrescriptionLocalOcrBoundary {
 // 역할: 기기에서 인식한 처방전 문자열 중 외부 전송이 금지된 개인정보를 판별한다.
 // 주요 책임:
 // - 개인정보 라벨과 주민등록번호·연락처·이메일 패턴을 탐지한다.
-// - 개인정보 라벨과 값이 서로 다른 줄로 인식된 경우 다음 줄도 제거하도록 알려준다.
+// - 개인정보 라벨과 값이 서로 다른 줄로 인식된 경우 라벨 수만큼 뒤따르는 값 줄도 제거하도록 알려준다.
+// - 값 자리에 약 행이 온 경우에는 약 행을 값으로 보지 않아 약이 분석에서 빠지지 않게 한다.
 // - 안전한 복약 문구에 섞인 직접 식별자만 대체 문구로 치환한다.
 class PrescriptionPrivacyFilter {
   static final RegExp _sensitiveLabelPattern = RegExp(
     // "성 명"은 앞 글자가 한글이 아닐 때만 라벨로 본다. "서방성 명…" 같은 약 문구를 지우지 않기 위해서다.
-    r'(환자\s*(명|성명|이름|번호|정보)|(?<![가-힣])성\s*명|주민\s*(등록)?\s*번호|'
+    r'(환자\s*(명|성명|이름|번호|정보)|수진자(\s*(명|성명))?|(?<![가-힣])성\s*명|'
+    r'주민\s*(등록)?\s*번호|'
     r'생년\s*월일|주소|전화\s*번호|연락처|휴대폰|보험\s*번호|'
     r'차트\s*번호|의무\s*기록\s*번호)',
     caseSensitive: false,
   );
-  static final RegExp _standaloneSensitiveLabelPattern = RegExp(
-    r'^\s*(환자\s*(명|성명|이름|번호|정보)|성\s*명|주민\s*(등록)?\s*번호|'
-    r'생년\s*월일|주소|전화\s*번호|연락처|휴대폰|보험\s*번호|'
-    r'차트\s*번호|의무\s*기록\s*번호)\s*[:：]?\s*$',
+  // 나이·성별 라벨은 그 자체로는 개인정보가 아니지만, 개인정보 라벨과 함께 나열되면 값 줄 수를 세는 데 포함한다.
+  static final RegExp _neutralLabelPattern = RegExp(r'(연령|나이|성별)');
+  // 한 줄에 라벨이 여럿일 때 라벨 사이나 끝에 올 수 있는 구분 기호다.
+  static final RegExp _labelSeparatorPattern = RegExp(r'[\s/·ㆍ・:：|,()\[\]]+');
+  // 용량·횟수 단위가 붙은 숫자나 제형 이름이 있으면 약 행으로 본다. 이름·주소·번호 값에는 나오지 않는 표기만 쓴다.
+  static final RegExp _medicationRowPattern = RegExp(
+    r'\d\s*(?:mg|㎎|mcg|㎍|µg|μg|ml|㎖|g|iu)(?![a-z])'
+    r'|\d\s*(?:밀리그램|정|캡슐|캅셀|포|회|일분)(?:씩|(?![가-힣]))'
+    r'|(?:캡슐|캅셀|시럽|현탁액|점안액|연고|서방정|장용정)(?![가-힣])',
     caseSensitive: false,
   );
+  // 한 줄에 붙어 인식된 값 중 생년월일을 세기 위한 날짜 표기다.
+  static final RegExp _birthDateValuePattern = RegExp(
+    r'(?<!\d)(?:19|20)\d{2}\s*[.\-/년]\s*\d{1,2}\s*[.\-/월]\s*\d{1,2}\s*일?',
+  );
+  static final RegExp _genderValuePattern = RegExp(
+    r'^(?:남|여|남성|여성|남자|여자|m|f)$',
+    caseSensitive: false,
+  );
+  static final RegExp _ageValuePattern = RegExp(r'^\d{1,3}세$');
+  static final RegExp _bareNumberValuePattern = RegExp(r'^\d{1,3}$');
+  // 이름·주소처럼 한글로 적힌 값이다. "HP", "TEL" 같은 영문 표기는 값으로 세지 않는다.
+  static final RegExp _wordValuePattern = RegExp(r'[가-힣]{2,}');
   // 나이·성별은 "75세/남", "75세(남)", "(남/75세)", "여 68세"처럼 어느 순서로 인쇄되어도 찾는다.
   static final RegExp _ageGenderPattern = RegExp(
     r'(?<!\d)(?:만\s*)?\d{1,3}\s*세\s*[/·,\s(-]?\s*(?:남|여)(?:성)?(?![가-힣])'
@@ -267,31 +293,186 @@ class PrescriptionPrivacyFilter {
   }
 
   // 함수이름: shouldMaskFollowingLine
-  // 함수역할: 개인정보 라벨만 단독으로 인식돼 실제 값이 다음 줄에 있을 가능성을 판별한다.
+  // 함수역할: 개인정보 라벨만 인식돼(한 줄에 여럿이어도) 실제 값이 다음 줄에 있을 가능성을 판별한다.
   // 매개변수:
   // - text (String): 기기 OCR이 인식한 한 줄
   // 반환값:
   // - 다음 줄까지 제거해야 하면 true
   bool shouldMaskFollowingLine(String text) {
-    return _standaloneSensitiveLabelPattern.hasMatch(text);
+    return _sensitiveLabelCount(text) > 0 && _isLabelOnlyLine(text);
   }
 
   // 함수이름: sensitiveLineFlags
-  // 함수역할: 인식한 줄 순서대로 개인정보 여부를 판정한다. 값 없이 라벨만 있는 줄이 이어지면 그 수만큼 뒤따르는 줄도 값으로 보고 가린다.
+  // 함수역할: 인식한 줄 순서대로 개인정보 여부를 판정한다. 값 없이 라벨만 있는 줄이 이어지면 그 라벨 수만큼 뒤따르는 줄도 값으로 보고 가린다.
+  // - 라벨 줄 묶음에 개인정보 라벨이 하나라도 있으면 함께 나열된 나이·성별 라벨도 값 줄 수에 포함한다.
+  // - 값 줄 하나에 나이·성별 값이 함께 적혀 있으면 기다리던 나이·성별 라벨 수 안에서 그만큼 더 줄인다.
+  // - 한 줄에 라벨이 여럿인 머리행 바로 다음 줄은 값도 한 줄에 붙어 인식됐을 수 있으므로 그 줄에 담긴 값 수만큼 한꺼번에 줄인다.
+  // - 값 자리에 약 행이 오면 라벨과 값의 짝이 깨진 것이므로 남은 수를 버리고 약 행은 가리지 않는다.
   // 매개변수: lines: 공백을 정리한 OCR 줄 목록. 반환값: 각 줄을 가려야 하는지 나타내는 같은 길이의 목록.
   List<bool> sensitiveLineFlags(List<String> lines) {
     final flags = <bool>[];
     var pendingValueLines = 0;
-    for (final text in lines) {
-      flags.add(pendingValueLines > 0 || containsSensitiveInformation(text));
-      if (shouldMaskFollowingLine(text)) {
-        // 라벨이 세로로 나열된 표에서는 라벨 수만큼 값이 뒤따른다.
-        pendingValueLines += 1;
-      } else if (pendingValueLines > 0) {
-        pendingValueLines -= 1;
+    var pendingNeutralValues = 0;
+    var nextLineMayJoinValues = false;
+    var index = 0;
+    while (index < lines.length) {
+      if (_isLabelOnlyLine(lines[index])) {
+        // [1단계]: 연속된 라벨 줄을 한 묶음으로 모아 개인정보 라벨 수와 나이·성별 라벨 수를 센다.
+        var runEnd = index;
+        var sensitiveLabels = 0;
+        var neutralLabels = 0;
+        var lastLineLabels = 0;
+        while (runEnd < lines.length && _isLabelOnlyLine(lines[runEnd])) {
+          final sensitiveCount = _sensitiveLabelCount(lines[runEnd]);
+          final neutralCount = _neutralLabelPattern
+              .allMatches(lines[runEnd])
+              .length;
+          sensitiveLabels += sensitiveCount;
+          neutralLabels += neutralCount;
+          lastLineLabels = sensitiveCount + neutralCount;
+          runEnd += 1;
+        }
+        // [2단계]: 개인정보 라벨이 있거나 이미 값을 기다리는 중이면 묶음 전체를 가리고 라벨 수만큼 값 줄을 기다린다.
+        final arms = sensitiveLabels > 0 || pendingValueLines > 0;
+        for (; index < runEnd; index += 1) {
+          flags.add(arms);
+        }
+        if (arms) {
+          pendingValueLines += sensitiveLabels + neutralLabels;
+          pendingNeutralValues += neutralLabels;
+          nextLineMayJoinValues = lastLineLabels > 1;
+        }
+        continue;
       }
+
+      final text = lines[index];
+      index += 1;
+      if (pendingValueLines > 0 && _looksLikeMedicationRow(text)) {
+        pendingValueLines = 0;
+      }
+      flags.add(pendingValueLines > 0 || containsSensitiveInformation(text));
+      if (pendingValueLines > 0) {
+        // [3단계]: 이 값 줄이 채운 라벨 수만큼 기다리는 수를 줄인다.
+        final values = _valueCountsInLine(
+          text,
+          joinedRow: nextLineMayJoinValues,
+        );
+        final neutralValues = values.ageAndGender < pendingNeutralValues
+            ? values.ageAndGender
+            : pendingNeutralValues;
+        final consumed = neutralValues + values.others;
+        pendingNeutralValues -= neutralValues;
+        pendingValueLines -= consumed < 1 ? 1 : consumed;
+      }
+      if (pendingValueLines <= 0) {
+        pendingValueLines = 0;
+        pendingNeutralValues = 0;
+      }
+      nextLineMayJoinValues = false;
     }
     return flags;
+  }
+
+  // 함수이름: _sensitiveLabelCount
+  // 함수역할: 한 줄에 들어 있는 개인정보 라벨 수를 센다. "수진자 성명"처럼 이어 쓴 라벨은 하나로 센다.
+  // 매개변수:
+  // - text (String): 기기 OCR이 인식한 한 줄
+  // 반환값:
+  // - int: 개인정보 라벨 수.
+  int _sensitiveLabelCount(String text) {
+    return _sensitiveLabelPattern.allMatches(text).length;
+  }
+
+  // 함수이름: _isLabelOnlyLine
+  // 함수역할: 개인정보 라벨과 나이·성별 라벨, 구분 기호만으로 이루어져 값이 없는 줄인지 판별한다.
+  // 매개변수:
+  // - text (String): 기기 OCR이 인식한 한 줄
+  // 반환값:
+  // - bool: 라벨이 하나 이상 있고 라벨 외의 글자가 없으면 true.
+  bool _isLabelOnlyLine(String text) {
+    if (!_sensitiveLabelPattern.hasMatch(text) &&
+        !_neutralLabelPattern.hasMatch(text)) {
+      return false;
+    }
+    return text
+        .replaceAll(_sensitiveLabelPattern, ' ')
+        .replaceAll(_neutralLabelPattern, ' ')
+        .replaceAll(_labelSeparatorPattern, '')
+        .isEmpty;
+  }
+
+  // 함수이름: _looksLikeMedicationRow
+  // 함수역할: 용량·횟수 단위나 제형 표기가 있어 환자 정보 값이 아니라 약 행으로 볼 수 있는 줄인지 판별한다.
+  // 매개변수:
+  // - text (String): 기기 OCR이 인식한 한 줄
+  // 반환값:
+  // - bool: 약 행으로 보이면 true.
+  bool _looksLikeMedicationRow(String text) {
+    return _medicationRowPattern.hasMatch(text);
+  }
+
+  // 함수이름: _valueCountsInLine
+  // 함수역할: 값 줄 하나에 라벨 몇 개의 값이 들어 있는지를 나이·성별 값과 그 밖의 값으로 나눠 센다.
+  // - 성별 낱말과 "75세"는 나이·성별 값으로 센다. 단위 없는 1~3자리 숫자는 줄 전체가 그 숫자이거나, 성별·나이 값과 함께 있거나, 머리행 다음 줄에서 단어 하나 뒤에 붙은 경우에만 나이로 본다(주소의 번지 제외).
+  // - 보통은 그 밖의 값을 줄당 하나로 센다. 머리행 바로 다음 줄(joinedRow)에서는 주민등록번호·생년월일·연락처·이메일을 각각 하나로, 한글로 적힌 나머지(이름·주소)를 묶어 하나로 센다.
+  // - 확실한 값만 세므로 덜 셀 수는 있어도 더 세지는 않는다. 덜 세면 다음 줄을 더 가릴 뿐 개인정보가 남지 않는다.
+  // 매개변수:
+  // - text (String): 값이 들어 있는 OCR 한 줄
+  // - joinedRow (bool): 한 줄에 라벨이 여럿인 머리행 바로 다음 줄인지 여부
+  // 반환값:
+  // - ({int ageAndGender, int others}): 나이·성별 값 수와 그 밖의 값 수.
+  ({int ageAndGender, int others}) _valueCountsInLine(
+    String text, {
+    required bool joinedRow,
+  }) {
+    var identifiers = 0;
+    // 값 줄에 다시 적힌 라벨 낱말은 값으로 세지 않는다.
+    var remaining = text.replaceAll(_sensitiveLabelPattern, ' ');
+    // 날짜의 끝자리가 지역번호로 읽히지 않도록 생년월일을 연락처보다 먼저 센다.
+    for (final pattern in [
+      _residentNumberPattern,
+      _birthDateValuePattern,
+      _phonePattern,
+      _emailPattern,
+    ]) {
+      identifiers += pattern.allMatches(remaining).length;
+      remaining = remaining.replaceAll(pattern, ' ');
+    }
+    var ageAndGender = 0;
+    var bareNumbers = 0;
+    var words = 0;
+    var otherTokens = 0;
+    for (final token in remaining.split(_labelSeparatorPattern)) {
+      if (token.isEmpty) {
+        continue;
+      }
+      if (_genderValuePattern.hasMatch(token) ||
+          _ageValuePattern.hasMatch(token)) {
+        ageAndGender += 1;
+      } else if (_bareNumberValuePattern.hasMatch(token)) {
+        bareNumbers += 1;
+      } else if (_wordValuePattern.hasMatch(token)) {
+        words += 1;
+      } else {
+        otherTokens += 1;
+      }
+    }
+    final onlyOneNumber =
+        bareNumbers == 1 && identifiers + words + otherTokens == 0;
+    final nameWithNumber =
+        joinedRow && bareNumbers == 1 && words == 1 && otherTokens == 0;
+    if (bareNumbers == 1 &&
+        (ageAndGender > 0 || onlyOneNumber || nameWithNumber)) {
+      ageAndGender += 1;
+      bareNumbers = 0;
+    }
+    final hasOthers = identifiers + words + otherTokens + bareNumbers > 0;
+    return (
+      ageAndGender: ageAndGender,
+      others: joinedRow
+          ? identifiers + (words > 0 ? 1 : 0)
+          : (hasOthers ? 1 : 0),
+    );
   }
 
   // 함수이름: maskInlineIdentifiers

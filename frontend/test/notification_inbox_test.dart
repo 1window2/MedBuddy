@@ -315,6 +315,118 @@ void main() {
     expect(control.hasError, isFalse);
   });
 
+  // 함수이름: 묶음 저장 알림 테스트
+  // 함수역할: 여러 예약을 한 번에 저장하면 변경을 한 번만 알리고, 이미 있는 항목이나 지울 것이 없는 취소는
+  //   알리지 않는지 검증한다. 매개변수: 없음. 반환값: 검증 완료.
+  test(
+    'batched records and cancellations announce a change only when rows change',
+    () async {
+      final events = <String>[];
+      final subscription = NotificationInboxStore.changes.stream.listen(
+        events.add,
+      );
+      addTearDown(subscription.cancel);
+      NotificationInboxEntry reminder(int id, int day) =>
+          NotificationInboxEntry(
+            id: 'reminder:$id:$day',
+            title: '복약 시간',
+            body: '테스트 알림 내용',
+            payload: 'schedule:morning:$id:2026-09-${11 + day}',
+            category: NotificationInboxCategory.medication,
+            occurredAt: now.add(Duration(days: day)),
+          );
+
+      await store.recordAll([reminder(21, 1), reminder(22, 2), reminder(23, 3)]);
+      await pumpEventQueue();
+      expect(events, ['patient']);
+
+      events.clear();
+      await store.recordAll([reminder(21, 1), reminder(22, 2)]);
+      await store.record(reminder(23, 3));
+      await store.recordAll(const []);
+      await store.cancelFutureReminders(id: 99);
+      await store.cancelFutureReminders(slotKey: 'evening');
+      await pumpEventQueue();
+      expect(events, isEmpty);
+
+      await store.cancelFutureReminders(id: 22);
+      await pumpEventQueue();
+      expect(events, ['patient']);
+      now = now.add(const Duration(days: 4));
+      expect((await store.load()).map((entry) => entry.id), [
+        'reminder:23:3',
+        'reminder:21:1',
+      ]);
+    },
+  );
+
+  // 함수이름: 변경 없는 갱신 테스트
+  // 함수역할: 30초 주기 갱신처럼 목록이 그대로인 조회는 화면을 다시 그리게 하지 않고, 처음 불러올 때와
+  //   새 알림·읽음·삭제·오류처럼 보이는 내용이 바뀔 때만 알리는지 검증한다. 매개변수: 없음. 반환값: 검증 완료.
+  test('control notifies only when the visible inbox changes', () async {
+    var fails = false;
+    final control = ManageNotificationInbox(
+      store: NotificationInboxStore(
+        userHash: 'patient',
+        now: () => now,
+        loadPreferences: () async {
+          if (fails) throw StateError('unavailable');
+          return SharedPreferences.getInstance();
+        },
+      ),
+    );
+    addTearDown(control.dispose);
+    var notified = 0;
+    control.addListener(() => notified++);
+
+    // 첫 조회만 불러오는 중 표시를 켜고 끈다. 빈 목록을 다시 조회할 때는 알리지 않는다.
+    await control.refresh();
+    expect(notified, 2);
+    await control.refresh();
+    expect(notified, 2);
+
+    await store.record(
+      _entry('first', now.subtract(const Duration(minutes: 1))),
+    );
+    await pumpEventQueue();
+    expect(control.entries.single.id, 'first');
+
+    notified = 0;
+    await control.refresh();
+    await control.refresh();
+    expect(notified, 0);
+    expect(control.isLoading, isFalse);
+
+    await store.record(_entry('second', now));
+    await pumpEventQueue();
+    expect(notified, 1);
+    expect(control.entries.map((entry) => entry.id), ['second', 'first']);
+
+    notified = 0;
+    await control.markRead(control.entries.first);
+    await pumpEventQueue();
+    expect(notified, 1);
+    expect(control.unreadCount, 1);
+
+    notified = 0;
+    fails = true;
+    await control.refresh();
+    expect(notified, 1);
+    expect(control.hasError, isTrue);
+    await control.refresh();
+    expect(notified, 1);
+    fails = false;
+    await control.refresh();
+    expect(notified, 2);
+    expect(control.hasError, isFalse);
+
+    notified = 0;
+    await control.remove();
+    await pumpEventQueue();
+    expect(control.entries, isEmpty);
+    expect(notified, 1);
+  });
+
   // 함수이름: 알림함 상호작용 테스트
   // 함수역할: 최신순 통합 목록·읽음·이동·삭제 확인을 검증한다. 매개변수: tester. 반환값: 검증 완료.
   testWidgets('unified inbox opens, reads and confirms history deletion', (

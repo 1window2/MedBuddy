@@ -649,6 +649,79 @@ void main() {
     expect(find.text('2000-01-01부터 오늘 기준 1년 이내 날짜를 입력해주세요.'), findsOneWidget);
   });
 
+  for (final frequency in const ['8시간마다', '1일 3회 식후']) {
+    // 함수이름: 손대지 않은 횟수 통과 테스트
+    // 함수역할: OCR이 읽은 횟수가 1~4회 형식이 아니어도 약 이름만 고칠 수 있고 횟수는 그대로 전달되는지, 횟수를 고치면 다시 형식을 검사하는지 검증한다.
+    // 매개변수: tester (WidgetTester): 화면 시험 도구. 반환값: 비동기 검증 완료.
+    testWidgets('손대지 않은 횟수 "$frequency"는 약 이름 수정을 막지 않는다', (tester) async {
+      await _setViewport(tester, const Size(900, 1600));
+      MedicationSchedule? updatedSchedule;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PrescriptionAnalysisPreviewUI(
+            medicationScheduleList: [
+              MedicationSchedule(
+                medicationName: '타이래놀정',
+                dosage: '1정',
+                intakeTime: frequency,
+                medicationTime: 5,
+                prescriptionDate: DateTime(2026, 8, 1),
+                scheduleSlotKeys: const ['morning', 'lunch', 'evening'],
+              ),
+            ],
+            userSetting: const UserSetting(),
+            // 함수이름: onBackRequested 콜백
+            // 함수역할: 뒤로 가기 명령을 받되 동작하지 않는다.
+            // 매개변수: 없음. 반환값: 없음.
+            onBackRequested: () {},
+            // 함수이름: onAnalysisRequested 콜백
+            // 함수역할: 분석 명령을 받되 동작하지 않는다.
+            // 매개변수: 없음. 반환값: 없음.
+            onAnalysisRequested: () {},
+            // 함수이름: onMedicationScheduleChanged 콜백
+            // 함수역할: 수정한 일정을 기록한다.
+            // 매개변수: _ (int): 사용하지 않는 행 위치, schedule (MedicationSchedule): 수정한 일정. 반환값: 없음.
+            onMedicationScheduleChanged: (_, schedule) =>
+                updatedSchedule = schedule,
+          ),
+        ),
+      );
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('ocr-table-cell-0-name')));
+      await tester.pumpAndSettle();
+
+      final saveButton = find.byKey(const Key('ocr-edit-save'));
+      // 횟수를 다른 잘못된 값으로 고치면 여전히 막는다.
+      await tester.enterText(
+        find.byKey(const Key('ocr-edit-frequency')),
+        '12시간마다',
+      );
+      await tester.ensureVisible(saveButton);
+      await tester.tap(saveButton);
+      await tester.pumpAndSettle();
+      expect(updatedSchedule, isNull);
+      expect(find.text('1일 횟수를 1~4회로 입력해주세요.'), findsOneWidget);
+
+      // 처음 값으로 되돌리고 약 이름만 고치면 적용된다.
+      await tester.enterText(
+        find.byKey(const Key('ocr-edit-frequency')),
+        frequency,
+      );
+      await tester.enterText(find.byKey(const Key('ocr-edit-name')), '타이레놀정');
+      await tester.ensureVisible(saveButton);
+      await tester.tap(saveButton);
+      await tester.pumpAndSettle();
+
+      expect(updatedSchedule?.medicationName, '타이레놀정');
+      expect(updatedSchedule?.intakeTime, frequency);
+      expect(updatedSchedule?.scheduleSlotKeys, ['morning', 'lunch', 'evening']);
+      expect(find.byKey(const Key('ocr-edit-save')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   // Function Name: testWidgets callback
   // Description:
   // - Verify that a medication omitted by OCR can be added directly to the review table.

@@ -45,7 +45,6 @@ class PrescriptionAnalysisSuccessUI extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = _StatusText(userSetting.language);
-    final scale = userSetting.contentTextScale;
     final maxMedicationDays = _readMaxMedicationDays();
 
     return Scaffold(
@@ -81,7 +80,7 @@ class PrescriptionAnalysisSuccessUI extends StatelessWidget {
                           text.successTitle,
                           style: TextStyle(
                             color: MedBuddyColors.textStrong,
-                            fontSize: 28 * scale,
+                            fontSize: 28,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 0,
                           ),
@@ -116,7 +115,7 @@ class PrescriptionAnalysisSuccessUI extends StatelessWidget {
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: MedBuddyColors.textStrong,
-                            fontSize: 18 * scale,
+                            fontSize: 18,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 0,
                           ),
@@ -127,7 +126,7 @@ class PrescriptionAnalysisSuccessUI extends StatelessWidget {
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: MedBuddyColors.textLight,
-                            fontSize: 14 * scale,
+                            fontSize: 14,
                             height: 1.55,
                             fontWeight: FontWeight.w600,
                             letterSpacing: 0,
@@ -140,7 +139,6 @@ class PrescriptionAnalysisSuccessUI extends StatelessWidget {
                               child: _SuccessMetric(
                                 value: '${analyzedMedicationList.length}',
                                 label: text.recognizedMedication,
-                                scale: scale,
                               ),
                             ),
                             const SizedBox(width: 14),
@@ -150,7 +148,6 @@ class PrescriptionAnalysisSuccessUI extends StatelessWidget {
                                     ? '-'
                                     : text.days(maxMedicationDays),
                                 label: text.medicationPeriod,
-                                scale: scale,
                               ),
                             ),
                           ],
@@ -171,7 +168,7 @@ class PrescriptionAnalysisSuccessUI extends StatelessWidget {
                                 vertical: 14,
                               ),
                               textStyle: TextStyle(
-                                fontSize: 18 * scale,
+                                fontSize: 18,
                                 fontWeight: FontWeight.w700,
                                 letterSpacing: 0,
                               ),
@@ -267,7 +264,6 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = _StatusText(userSetting.language);
-    final scale = userSetting.contentTextScale;
     final isMedicationAnalysisFailure =
         failureStep != AnalysisProgressStep.prescriptionRecognition;
     final canRetryAnalysis = onAnalysisRetryRequested != null;
@@ -298,7 +294,7 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                       text.failureTitle,
                       style: TextStyle(
                         color: MedBuddyColors.textStrong,
-                        fontSize: 28 * scale,
+                        fontSize: 28,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0,
                       ),
@@ -323,7 +319,7 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: MedBuddyColors.textStrong,
-                        fontSize: 18 * scale,
+                        fontSize: 18,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0,
                       ),
@@ -336,7 +332,7 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: MedBuddyColors.textLight,
-                        fontSize: 14 * scale,
+                        fontSize: 14,
                         height: 1.45,
                         fontWeight: FontWeight.w600,
                         letterSpacing: 0,
@@ -344,7 +340,7 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                     ),
                     if (!isMedicationAnalysisFailure) ...[
                       const SizedBox(height: 28),
-                      _FailureReasonPanel(text: text, scale: scale),
+                      _FailureReasonPanel(text: text),
                     ],
                     const SizedBox(height: 28),
                     if (onAnalysisRetryRequested case final retryCallback?) ...[
@@ -354,7 +350,6 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                         onPressed: retryCallback,
                         icon: Icons.refresh,
                         label: text.analysisRetry,
-                        scale: scale,
                       ),
                       const SizedBox(height: 12),
                     ],
@@ -365,7 +360,6 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                         onPressed: reviewCallback,
                         icon: Icons.fact_check_outlined,
                         label: text.ocrReview,
-                        scale: scale,
                       ),
                       const SizedBox(height: 12),
                     ],
@@ -375,7 +369,6 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                       onPressed: onCameraRetryRequested,
                       icon: Icons.photo_camera_outlined,
                       label: text.cameraRetry,
-                      scale: scale,
                     ),
                     const SizedBox(height: 12),
                     _buildActionButton(
@@ -384,7 +377,6 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                       onPressed: onGalleryRetryRequested,
                       icon: Icons.photo_library_outlined,
                       label: text.galleryRetry,
-                      scale: scale,
                     ),
                     const SizedBox(height: 12),
                     ConstrainedBox(
@@ -401,7 +393,7 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
                           foregroundColor: MedBuddyColors.textStrong,
                           side: const BorderSide(color: MedBuddyColors.outline),
                           textStyle: TextStyle(
-                            fontSize: 17 * scale,
+                            fontSize: 17,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 0,
                           ),
@@ -428,7 +420,6 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
   // - onPressed (VoidCallback): 선택한 복구 동작.
   // - icon (IconData): 명령을 나타내는 아이콘.
   // - label (String): 생략 없이 표시할 명령 이름.
-  // - scale (double): 사용자 글씨 배율.
   // 반환값: 최소 터치 높이를 보장하는 복구 버튼.
   Widget _buildActionButton({
     required Key key,
@@ -436,11 +427,10 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
     required VoidCallback onPressed,
     required IconData icon,
     required String label,
-    required double scale,
   }) {
     final shape = RoundedRectangleBorder(borderRadius: MedBuddyRadii.card);
     final textStyle = TextStyle(
-      fontSize: 17 * scale,
+      fontSize: 17,
       fontWeight: FontWeight.w700,
       letterSpacing: 0,
     );
@@ -503,23 +493,19 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
 // Attributes:
 // - value (String): Input to validate, normalize, display, or pass through a selection callback.
 // - label (String): Wording identifying a field, choice, or action.
-// - scale (double): Content text scale reflecting user accessibility settings.
 class _SuccessMetric extends StatelessWidget {
   final String value;
   final String label;
-  final double scale;
 
   // 함수이름: _SuccessMetric
   // 함수역할: 분석 성공 요약의 수치와 라벨에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
   // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // 반환값: 입력 설정이 반영된 _SuccessMetric 인스턴스.
   const _SuccessMetric({
     required this.value,
     required this.label,
-    required this.scale,
   });
 
   // Function Name: build
@@ -543,7 +529,7 @@ class _SuccessMetric extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: MedBuddyColors.primary,
-              fontSize: 26 * scale,
+              fontSize: 26,
               fontWeight: FontWeight.w700,
               letterSpacing: 0,
             ),
@@ -554,7 +540,7 @@ class _SuccessMetric extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
               color: MedBuddyColors.textMuted,
-              fontSize: 13 * scale,
+              fontSize: 13,
               fontWeight: FontWeight.w600,
               letterSpacing: 0,
             ),
@@ -570,18 +556,16 @@ class _SuccessMetric extends StatelessWidget {
 // 주요 책임:
 // - 부모가 전달한 표시값과 동작을 반영해 처방 분석 실패의 가능한 원인 목록 위젯을 구성한다.
 // 속성:
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
+// - text (_StatusText): 해당 화면 구역의 언어별 표시 문구.
 class _FailureReasonPanel extends StatelessWidget {
   final _StatusText text;
-  final double scale;
 
   // 함수이름: _FailureReasonPanel
   // 함수역할: 처방 분석 실패의 가능한 원인 목록에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - text (_StatusText): 해당 화면 구역의 언어별 표시 문구.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // 반환값: 입력 설정이 반영된 _FailureReasonPanel 인스턴스.
-  const _FailureReasonPanel({required this.text, required this.scale});
+  const _FailureReasonPanel({required this.text});
 
   // 함수이름: build
   // 함수역할: 현재 입력값과 상태를 반영해 처방 분석 실패의 가능한 원인 목록 화면을 구성한다.
@@ -604,14 +588,14 @@ class _FailureReasonPanel extends StatelessWidget {
             text.failureReasons,
             style: TextStyle(
               color: MedBuddyColors.textStrong,
-              fontSize: 14 * scale,
+              fontSize: 14,
               fontWeight: FontWeight.w700,
               letterSpacing: 0,
             ),
           ),
           const SizedBox(height: 13),
           for (final reason in text.reasonItems) ...[
-            _FailureReasonItem(reason: reason, scale: scale),
+            _FailureReasonItem(reason: reason),
             if (reason != text.reasonItems.last) const SizedBox(height: 10),
           ],
         ],
@@ -626,18 +610,15 @@ class _FailureReasonPanel extends StatelessWidget {
 // - 부모가 전달한 표시값과 동작을 반영해 분석 실패 원인 한 항목 위젯을 구성한다.
 // 속성:
 // - reason (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 class _FailureReasonItem extends StatelessWidget {
   final String reason;
-  final double scale;
 
   // 함수이름: _FailureReasonItem
   // 함수역할: 분석 실패 원인 한 항목에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - reason (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // 반환값: 입력 설정이 반영된 _FailureReasonItem 인스턴스.
-  const _FailureReasonItem({required this.reason, required this.scale});
+  const _FailureReasonItem({required this.reason});
 
   // 함수이름: build
   // 함수역할: 현재 입력값과 상태를 반영해 분석 실패 원인 한 항목 화면을 구성한다.
@@ -659,7 +640,7 @@ class _FailureReasonItem extends StatelessWidget {
             reason,
             style: TextStyle(
               color: MedBuddyColors.textMuted,
-              fontSize: 12 * scale,
+              fontSize: 12,
               height: 1.35,
               fontWeight: FontWeight.w600,
               letterSpacing: 0,
@@ -688,11 +669,11 @@ class _StatusText {
   const _StatusText(this.language);
 
   // 함수이름: isEnglish
-  // 함수역할: 언어 코드가 en과 정확히 일치하는지 확인한다.
+  // 함수역할: 공통 언어 판별 규칙으로 언어 코드가 영어인지 확인한다.
   // 매개변수:
   // - 없음.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
-  bool get isEnglish => language == 'en';
+  bool get isEnglish => isEnglishLanguage(language);
 
   // 함수이름: successTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "분석 완료" 문구를 제공한다.

@@ -82,8 +82,8 @@ Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
                     Expanded(
                       child: Text(
                         text.pillTask,
-                        style: TextStyle(
-                          fontSize: 18 * userSetting.contentTextScale,
+                        style: const TextStyle(
+                          fontSize: 18,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -99,7 +99,7 @@ Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
                   subtitle: text.isEnglish
                       ? 'Compare pills placed together in one photo.'
                       : '한 사진 속 여러 알약을 구분해 후보를 확인해요.',
-                  scale: userSetting.contentTextScale,
+                  scale: 1,
                   onTap: () => Navigator.pop(
                     sheetContext,
                     MedicationCaptureTask.multiplePills,
@@ -114,7 +114,7 @@ Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
                   subtitle: text.isEnglish
                       ? 'Compare front and back photos of each pill.'
                       : '알약의 앞·뒷면을 촬영해 후보를 확인해요.',
-                  scale: userSetting.contentTextScale,
+                  scale: 1,
                   onTap: () => Navigator.pop(
                     sheetContext,
                     MedicationCaptureTask.individualPills,
@@ -125,7 +125,7 @@ Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
                   icon: Icons.photo_camera_outlined,
                   title: text.prescriptionTask,
                   subtitle: text.prescriptionTaskSubtitle,
-                  scale: userSetting.contentTextScale,
+                  scale: 1,
                   // 함수이름: showMedicationCaptureTaskOptions.onTap callback
                   // 함수역할: `Navigator.pop(sheetContext, MedicationCaptureTask.prescription)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
                   // 매개변수:
@@ -143,7 +143,7 @@ Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
                   icon: Icons.medication_outlined,
                   title: text.pillTask,
                   subtitle: text.pillTaskSubtitle,
-                  scale: userSetting.contentTextScale,
+                  scale: 1,
                   // 함수이름: showMedicationCaptureTaskOptions.onTap callback
                   // 함수역할: 시트를 겹치지 않고 알약 촬영 방식 두 가지를 표시한다.
                   // 매개변수:
@@ -158,7 +158,7 @@ Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
                   icon: Icons.edit_note_rounded,
                   title: text.manualTask,
                   subtitle: text.manualTaskSubtitle,
-                  scale: userSetting.contentTextScale,
+                  scale: 1,
                   // 함수이름: showMedicationCaptureTaskOptions.onTap callback
                   // 함수역할: `Navigator.pop(sheetContext, MedicationCaptureTask.manual)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
                   // 매개변수:
@@ -215,11 +215,11 @@ class _MedicationCaptureText {
   const _MedicationCaptureText(this.language);
 
   // 함수이름: isEnglish
-  // 함수역할: 언어 코드가 en과 정확히 일치하는지 확인한다.
+  // 함수역할: 공통 언어 판정으로 언어 코드가 영어인지 확인한다.
   // 매개변수:
   // - 없음.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
-  bool get isEnglish => language == 'en';
+  bool get isEnglish => isEnglishLanguage(language);
 
   // 함수이름: prescriptionTask
   // 함수역할: 현재 언어와 입력값에 맞춰 "처방전 분석" 문구를 제공한다.

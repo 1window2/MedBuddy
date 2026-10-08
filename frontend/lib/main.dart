@@ -26,6 +26,7 @@ import 'services/caregiver_notification_monitor_service.dart';
 import 'services/caregiver_notification_background_service.dart';
 import 'composition/caregiver_notification_monitor_factory.dart';
 import 'services/auth_config.dart';
+import 'services/authenticated_api_client.dart';
 import 'services/linked_chat_notification_monitor_service.dart';
 import 'services/medication_reminder_background_service.dart';
 import 'services/dose_sync_service.dart';
@@ -198,6 +199,10 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     _authenticationControl =
         widget.authenticationControl ?? AuthenticationControl.development();
     _authenticationControl.setBeforeSignOut(_prepareSessionEnd);
+    // Screen-owned API clients are built without a session callback; route their
+    // HTTP 401 responses to the same session cleanup as the shared client.
+    AuthenticatedApiClient.defaultOnUnauthorized =
+        _authenticationControl.handleUnauthorizedResponse;
     _ownsAppLanguageControl = widget.appLanguageControl == null;
     _appLanguageControl = widget.appLanguageControl ?? AppLanguageControl();
     _pendingEmailVerification = _authenticationControl.emailVerificationRequired
@@ -278,6 +283,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
     unawaited(CaregiverNotificationBackgroundScheduler.cancel());
     _registerNotificationSelectionHandler(null);
     _authenticationControl.setBeforeSignOut(null);
+    AuthenticatedApiClient.defaultOnUnauthorized = null;
     _authenticationControl.removeListener(_handleAuthenticationChange);
     if (_ownsAuthenticationControl) {
       _authenticationControl.dispose();
@@ -355,16 +361,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
       _isScheduleRouteOpen = false;
       _openCaregiverScheduleRouteName = null;
       _openLinkedChatRouteName = null;
-      _navigatorKey.currentState?.popUntil(
-        /* Function Name: popUntil callback
-       * Description: Stops account-transition navigation cleanup at the root route.
-       * Parameters:
-       * - route (Route<dynamic>): Route currently examined by the navigator.
-       * Returns:
-       * - Whether this route is the navigator's first route.
-       */
-        (route) => route.isFirst,
-      );
+      _removeRoutesAboveRoot();
       return;
     }
     final widgetUri = _pendingWidgetUri;
@@ -382,6 +379,32 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
         _navigateForNotificationWhenReady(pendingSelection);
       }
     });
+  }
+
+  // Function Name: _removeRoutesAboveRoot
+  // Description: Removes every route above the root without a transition when the session ends. A popped route keeps
+  //   building during its exit animation, after the signed-in providers are gone, and would throw a provider lookup error.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - void: no value is returned.
+  void _removeRoutesAboveRoot() {
+    final navigator = _navigatorKey.currentState;
+    if (navigator == null) {
+      return;
+    }
+    while (true) {
+      Route<dynamic>? top;
+      navigator.popUntil((route) {
+        top = route;
+        return true;
+      });
+      final route = top;
+      if (route == null || route.isFirst) {
+        return;
+      }
+      navigator.removeRoute(route);
+    }
   }
 
   // 인증 화면이 사라져도 성공 안내가 보이도록 새 홈 화면이 그려진 뒤 한 번만 표시한다.
@@ -1266,7 +1289,11 @@ class _MedBuddyAppState extends State<MedBuddyApp> {
   ) async {
     try {
       await viewModel.loadUserSetting();
-      await _appLanguageControl.setLanguage(viewModel.userSetting.language);
+      // Apply the stored mode, not the resolved language: writing the language
+      // back would replace "system" with a fixed language at every start.
+      await _appLanguageControl.setLanguageMode(
+        viewModel.userSetting.languageMode,
+      );
     } catch (error, stackTrace) {
       FlutterError.reportError(
         FlutterErrorDetails(

@@ -15,10 +15,16 @@ UML diagrams:
 - `lib/entities`: Flutter-side data contracts.
 - `lib/viewmodels`: app state coordination for the screens.
 - `lib/services`: local services such as notifications and TTS.
+- `lib/composition`: factories that assemble controls and services for background monitors.
+- `lib/theme`: the shared theme and text-scale policy.
+- `lib/views`: the home shell that hosts navigation between the screens.
+- `lib/widgets`: reusable presentation widgets shared by several boundaries.
 
-`MedBuddyViewModel` remains the screen-facing state facade, while its behavior
-is organized into feature-scoped parts for prescription analysis, saved
-medications, schedules, reminders, health recommendations, and user settings.
+`MedBuddyViewModel` remains the screen-facing state facade and delegates to six
+independent feature view models (prescription analysis, saved medications,
+schedules, reminders, health recommendations, user settings); only
+compatibility forwarding and application-level coordination remain `part`
+files.
 Large UI boundaries keep route and screen state ownership in their primary
 files and move repeated list, empty-state, image-preview, and medication-row
 widgets into companion parts. This preserves the existing public screen API
@@ -60,8 +66,8 @@ all-medication saves link directly to today's schedule or the saved list. Dose
 completion supports immediate undo, and reminder setup or cancellation reports
 its result at the bottom of the schedule screen. In Firebase mode the frontend
 uses authenticated APIs, manages the Android FCM token lifecycle, and displays
-completed-dose pushes. The authenticated background monitor checks missed-dose
-deadlines. Local demo mode uses hash-scoped data and polling-based local
+completed-dose pushes. Missed-dose deadlines are decided by the backend and
+delivered through FCM. Local demo mode uses hash-scoped data and polling-based local
 caregiver notifications instead of remote push delivery. Each polling cycle
 prefers one aggregate caregiver snapshot for all linked patients and falls back
 to bounded per-patient requests when connected to an older backend. Patient
@@ -83,7 +89,7 @@ same saved-medication contract used by analyzed medications, so schedules,
 reminders, caregiver views, and filtering do not branch into a second storage
 model.
 
-The nearby-pharmacy laboratory flow requests foreground location only when
+The nearby-pharmacy flow requests foreground location only when
 opened, calls the authenticated MedBuddy pharmacy endpoint, and defaults to
 pharmacies that are open now. One explained filter sheet offers open-now,
 late-hours, weekend/holiday, and all-result views. The late-hours view combines
@@ -105,8 +111,8 @@ state while retaining the pharmacy list and actions.
 The source notice distinguishes exact-date holiday schedules from stale or
 weekly fallback data and tells users to call before visiting.
 
-The linked medication chat laboratory flow is available only for an active
-patient-caregiver link with active patient medication. The screen combines
+The linked medication chat is available for an active patient-caregiver link.
+The screen combines
 authenticated REST history with a reconnecting WebSocket event source, lets a
 participant select and remove multiple medication contexts through the same
 time-slot layout as today's schedule, and opens the authorized medication-detail
@@ -133,7 +139,7 @@ validated public medication image can be tapped to inspect it with pan and zoom
 without duplicating image-loading policy in each screen.
 
 Settings starts from an account-aware hub that separates Medication &
-Notifications, Display & Voice, Labs, and Account actions. The account summary
+Notifications, Display & Voice, and Account actions. The account summary
 masks email or phone details, and moving between sections preserves unsaved
 choices. Users can independently control medication, caregiver, and chat
 notifications, open Android notification settings, set defaults for newly
@@ -149,7 +155,7 @@ action rather than a playback error.
 ## Common Commands
 
 ```powershell
-flutter pub get
+flutter pub get --enforce-lockfile
 flutter analyze --no-pub
 flutter test --no-pub
 ```
@@ -160,7 +166,7 @@ Automated widget tests cover compact viewports, large system text, accessibility
 labels, app pause/resume, network recovery, guided-camera layout and crop math,
 manual-entry validation, schedule review, multi-pill ordering and partial
 failure, pharmacy location states, linked-chat retry and lifecycle behavior,
-and laboratory feature visibility. They also verify the home
+and absence of the retired laboratory menu. They also verify the home
 schedule summary, OCR-review recovery, post-save navigation, medication-course
 filtering and sorting, dose-completion undo, and reminder result feedback.
 Android behaviors that require real devices, including TalkBack, reboot

@@ -13,6 +13,7 @@ import '../entities/pill_identification_entity.dart';
 import '../services/api_config.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
+import '../services/app_temp_file.dart';
 import '../services/pill_image_crop_service.dart';
 
 // 클래스명: PillIdentificationFailure
@@ -114,7 +115,7 @@ class IdentifyPill {
   }
 
   // Function Name: requestPillImage
-  // Description: Selects a camera or gallery image with bounded dimensions and reads validated bytes, returning null when selection is canceled.
+  // Description: Selects a camera or gallery image with bounded dimensions and reads validated bytes, returning null when selection is canceled. The picker's temporary copy is deleted once the bytes are read or rejected.
   // Parameters:
   // - source (ImageSource): Camera or gallery source for image selection.
   // Returns:
@@ -128,7 +129,15 @@ class IdentifyPill {
         maxHeight: 1600,
         requestFullMetadata: false,
       );
-      return image == null ? null : await _readBoundedImage(image);
+      if (image == null) {
+        return null;
+      }
+      try {
+        return await _readBoundedImage(image);
+      } finally {
+        // The screen keeps only the bytes; a file outside the app temp directory is never touched.
+        await deleteAppTempFile(image.path);
+      }
     } on PillIdentificationException {
       rethrow;
     } on FileSystemException catch (error) {
@@ -225,6 +234,14 @@ class IdentifyPill {
     } on FormatException catch (error) {
       developer.log(
         'Multiple-pill response parsing failed: ${error.runtimeType}.',
+        name: 'IdentifyPill',
+      );
+      throw const PillIdentificationException(
+        PillIdentificationFailure.invalidResponse,
+      );
+    } on StateError catch (error) {
+      developer.log(
+        'Multiple-pill response validation failed: ${error.runtimeType}.',
         name: 'IdentifyPill',
       );
       throw const PillIdentificationException(

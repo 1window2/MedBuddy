@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../controls/set_notification_control.dart';
 import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_schedule_entity.dart';
+import '../entities/medication_slot_label.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/notification_service.dart';
 import '../services/medication_reminder_background_service.dart';
@@ -57,8 +58,7 @@ class MedBuddyReminderViewModel {
   UserSetting get userSetting => _readUserSetting();
   // Function Name: _isEnglishSetting
   // Description: Resolves locale. Parameters: None. Returns: English selection.
-  bool get _isEnglishSetting =>
-      userSetting.language.trim().toLowerCase().startsWith('en');
+  bool get _isEnglishSetting => userSetting.isEnglish;
   // Function Name: lastLoadSucceeded
   // Description: Exposes reminder-read freshness. Parameters: None. Returns: Freshness.
   bool get lastLoadSucceeded => _lastReminderSettingsLoadSucceeded;
@@ -470,7 +470,7 @@ class MedBuddyReminderViewModel {
   }
 
   // 함수이름: _scheduleMedicationReminder
-  // 함수역할: 민감정보 표시 정책을 적용하고 구형 예약을 제거한 뒤 복용 기간 안의 날짜와 날짜별 약명으로 알림을 등록한다.
+  // 함수역할: 민감정보 표시 정책을 적용하고 구형 예약을 제거한 뒤 복용 기간 안의 날짜로 알림을 등록한다. 알림 문구는 약 이름을 쓰지 않으므로 날짜별 약명은 만들지 않는다.
   // 매개변수:
   // - setting (MedicationAlarm): 해당 복약 시간대의 알림 설정
   // - slotTitle (String): 현재 언어로 표시할 복약 시간대 이름
@@ -493,17 +493,11 @@ class MedBuddyReminderViewModel {
         schedules.every(
           (schedule) => schedule.isSlotCompleted(setting.slotKey),
         );
-    final activeDates = [
-      for (final date in MedicationReminderRefreshService.activeReminderDates(
-        schedules,
-        now: now,
-      ))
-        if (!(slotCompletedToday &&
-            date.year == now.year &&
-            date.month == now.month &&
-            date.day == now.day))
-          date,
-    ];
+    final activeDates = MedicationReminderRefreshService.activeReminderDates(
+      schedules,
+      now: now,
+      slotCompletedToday: slotCompletedToday,
+    );
     await setNotification.registerNotification(
       id: setting.notificationId,
       slotKey: setting.slotKey,
@@ -532,13 +526,6 @@ class MedBuddyReminderViewModel {
           )
           .toList(growable: false),
       activeDates: activeDates,
-      medicationNamesByDate:
-          MedicationReminderRefreshService.medicationNamesForDates(
-            schedules,
-            activeDates: activeDates,
-            now: now,
-            language: userSetting.language,
-          ),
       language: userSetting.language,
     );
   }
@@ -558,16 +545,25 @@ class MedBuddyReminderViewModel {
   }
 
   // 함수이름: _cancelLegacyMedicationReminder
-  // 함수역할: 현재 환자별 알림 ID와 다른 구형 시간대 고정 ID의 예약만 취소한다.
+  // 함수역할: 현재 환자별 알림 ID와 다른 구형 시간대 고정 ID의 예약만 취소한다. 이 설치에서 구형 예약을
+  //   이미 모두 지웠다고 기록되어 있으면 같은 취소를 반복하지 않는다.
   // 매개변수:
   // - setting (MedicationAlarm): 해당 복약 시간대의 알림 설정
   // 반환값:
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
   Future<void> _cancelLegacyMedicationReminder(MedicationAlarm setting) async {
     final legacyId = setting.legacyNotificationId;
-    if (legacyId != setting.notificationId) {
-      await notificationService.cancelReminder(legacyId);
+    if (legacyId == setting.notificationId) {
+      return;
     }
+    final preferences = await SharedPreferences.getInstance();
+    if (preferences.getBool(
+          NotificationService.legacyReminderIdsCancelledKey,
+        ) ==
+        true) {
+      return;
+    }
+    await notificationService.cancelReminder(legacyId);
   }
 
   // 함수이름: _schedulesForReminderSlot
@@ -598,13 +594,11 @@ class MedBuddyReminderViewModel {
   // - String: 현재 사용자 언어로 시간대 제목을 제공하고 알 수 없는 키에는 일반 일정 이름을 사용한다.
   String _reminderSlotTitle(String slotKey) {
     final isEnglish = _isEnglishSetting;
-    return switch (slotKey) {
-      'morning' => isEnglish ? 'Morning' : '아침',
-      'lunch' => isEnglish ? 'Lunch' : '점심',
-      'evening' => isEnglish ? 'Evening' : '저녁',
-      'bedtime' => isEnglish ? 'Bedtime' : '취침 전',
-      _ => isEnglish ? 'Schedule' : '일정',
-    };
+    return medicationSlotLabel(
+      slotKey,
+      isEnglish: isEnglish,
+      fallback: isEnglish ? 'Schedule' : '일정',
+    );
   }
 
   // 함수이름: _defaultMedicationAlarm

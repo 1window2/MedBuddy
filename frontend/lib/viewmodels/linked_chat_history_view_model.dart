@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 
 import '../controls/manage_linked_chat_control.dart';
 import '../entities/chat_message_entity.dart';
+import '../services/api_response_parser.dart';
 import '../services/linked_chat_realtime_service.dart';
 
 // Class Name: LinkedChatHistoryViewModel
@@ -14,6 +15,7 @@ import '../services/linked_chat_realtime_service.dart';
 // Responsibilities:
 // - Coalesce history reads and recover missed pages without losing receipt/deletion evidence.
 // - Poll only during transport/history failure and acknowledge only a visible latest position.
+// - Stop polling and reconnecting once the server answers that the link is gone or forbidden.
 // - Ignore disposed completions and events for another conversation.
 // Attributes:
 // - linkId/userHash: Immutable conversation and account scope.
@@ -38,6 +40,7 @@ class LinkedChatHistoryViewModel extends ChangeNotifier {
   Future<void>? _refresh;
   bool _refreshAgain = false;
   bool _needsRecovery = false;
+  bool _linkUnavailable = false;
   int? _recoveryBoundary;
   bool _boundaryCaptured = false;
   bool _disposed = false;
@@ -108,6 +111,11 @@ class LinkedChatHistoryViewModel extends ChangeNotifier {
   // Parameters: None. Returns: Current borrowed transport connection state.
   LinkedChatConnectionState get connectionState => _connectionState;
 
+  // Function Name: linkUnavailable
+  // Description: Reports the terminal state entered when the last history read was rejected with 403/404.
+  // Parameters: None. Returns: Whether periodic recovery is suspended until a resume or explicit refresh succeeds.
+  bool get linkUnavailable => _linkUnavailable;
+
   // Function Name: messages
   // Description: Exposes an immutable history snapshot ordered by message ID.
   // Parameters: None. Returns: Current visible messages with monotonic receipt/deletion evidence.
@@ -153,10 +161,11 @@ class LinkedChatHistoryViewModel extends ChangeNotifier {
 
   // Function Name: _updateFallback
   // Description: Preserves a running retry cadence rather than postponing it on every reconnect event.
-  // Parameters: None. Returns: None; owns at most one twelve-second timer.
+  // Parameters: None. Returns: None; owns at most one twelve-second timer, and none for an unavailable link.
   void _updateFallback() {
     if (_disposed ||
         !_foreground ||
+        _linkUnavailable ||
         (_connectionState == LinkedChatConnectionState.connected &&
             !_needsRecovery)) {
       _fallback?.cancel();
@@ -225,11 +234,14 @@ class LinkedChatHistoryViewModel extends ChangeNotifier {
       _recoveryBoundary ??= _messages.isEmpty ? null : _messages.last.messageId;
       final newestKnownId = _recoveryBoundary;
       var page = await control.requestHistory(linkId: linkId);
-      final initialPageIsFull = page.length == 50;
+      // A skipped unparseable row still counts as a server row for paging.
+      final initialPageIsFull = ChatHistoryPage.rowCountOf(page) == 50;
       final incoming = [...page];
       final unread = await unreadFuture;
       int? previousBoundary;
-      while (newestKnownId != null && page.length == 50) {
+      while (newestKnownId != null &&
+          page.isNotEmpty &&
+          ChatHistoryPage.rowCountOf(page) == 50) {
         final oldest = page
             .map((m) => m.messageId)
             .reduce((a, b) => a < b ? a : b);
@@ -251,6 +263,11 @@ class LinkedChatHistoryViewModel extends ChangeNotifier {
       if (_disposed) return;
       _recoveryBoundary = null;
       _needsRecovery = false;
+      if (_linkUnavailable) {
+        // An explicit retry or a resume reached the link again: resume realtime delivery.
+        _linkUnavailable = false;
+        if (_foreground) unawaited(realtime.start());
+      }
       _merge(incoming);
       if (!_boundaryCaptured) {
         _firstUnreadMessageId = unread?.firstMessageId;
@@ -274,11 +291,18 @@ class LinkedChatHistoryViewModel extends ChangeNotifier {
       _updateFallback();
       onScrollRequested(showLoading);
       await markLatestIncomingRead();
-    } catch (_) {
+    } catch (error) {
       if (_disposed) return;
       _needsRecovery = true;
       _isLoading = false;
       if (_messages.isEmpty) _historyFailed = true;
+      if (error is ApiRequestException &&
+          (error.statusCode == 403 || error.statusCode == 404)) {
+        // The link was removed or access was revoked: polling every 12 s and reconnecting
+        // every 10 s cannot recover it. A resume or an explicit refresh tries again.
+        _linkUnavailable = true;
+        unawaited(realtime.stop());
+      }
       notifyListeners();
       _updateFallback();
     }
@@ -306,7 +330,8 @@ class LinkedChatHistoryViewModel extends ChangeNotifier {
       if (_disposed) return;
       _merge(older);
       _hasOlderMessages =
-          older.length == 50 && older.any((m) => m.messageId < beforeId);
+          ChatHistoryPage.rowCountOf(older) == 50 &&
+          older.any((m) => m.messageId < beforeId);
     } catch (_) {
       if (!_disposed) _olderMessagesFailed = true;
     } finally {

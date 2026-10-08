@@ -52,7 +52,6 @@ class NearbyPharmacyMap extends StatefulWidget {
   final String configurationUnavailableText;
   final String unavailableText;
   final String myLocationTooltip;
-  final String locationFailureText;
 
   // 함수이름: NearbyPharmacyMap
   // 함수역할: 약국 마커·선택 강조·확대·출처 명령에 필요한 입력값과 표시 설정을 초기화한다.
@@ -94,7 +93,6 @@ class NearbyPharmacyMap extends StatefulWidget {
     required this.configurationUnavailableText,
     required this.unavailableText,
     this.myLocationTooltip = '현재 위치로 이동',
-    this.locationFailureText = '현재 위치를 확인할 수 없습니다. 위치 권한과 GPS 설정을 확인해 주세요.',
   });
 
   // 함수이름: createState
@@ -105,6 +103,11 @@ class NearbyPharmacyMap extends StatefulWidget {
   @override
   State<NearbyPharmacyMap> createState() => _NearbyPharmacyMapState();
 }
+
+// 정보창을 드래그하는 동안 지도 여백 변경을 플랫폼에 매 프레임 보내지 않도록 마지막 변경 뒤 기다리는 시간.
+const _contentPaddingSettleDelay = Duration(milliseconds: 100);
+// 일부만 추가된 마커 묶음을 화면 변경 없이 한 번 다시 맞추기 전에 기다리는 시간.
+const _markerRetryDelay = Duration(seconds: 1);
 
 // 클래스명: _NearbyPharmacyMapState
 // 역할: 약국 마커·선택 강조·확대·출처 명령의 화면 상태를 관리한다.
@@ -118,6 +121,9 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   int _overlayGeneration = 0;
   final _renderedMarkers = <String, NearbyCareMarkerStyle>{};
   bool _markerStateUncertain = false;
+  // 마커 추가 실패 뒤 자동 복구는 한 번만 예약하고, 마커 반영이 성공하면 다시 허용한다.
+  bool _markerRetryUsed = false;
+  Timer? _markerRetryTimer;
   Future<void> _overlayWork = Future.value();
   bool _pendingCameraMove = false;
   String? _pendingCameraSelection;
@@ -130,6 +136,19 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
   NOverlayImage? _selectedPinIcon;
   NOverlayImage? _favoritePinIcon;
   NOverlayImage? _locationIcon;
+  // 지도 콘텐츠 여백에 쓰는 값. 조작 버튼은 widget.bottomInset을 그대로 따라간다.
+  late double _paddingInset = widget.bottomInset;
+  Timer? _paddingSettleTimer;
+
+  // 함수이름: dispose
+  // 함수역할: 대기 중인 여백 반영과 마커 복구 타이머를 취소한다.
+  // 매개변수: 없음. 반환값: 없음.
+  @override
+  void dispose() {
+    _paddingSettleTimer?.cancel();
+    _markerRetryTimer?.cancel();
+    super.dispose();
+  }
 
   // 함수이름: _loadSymbols
   // 함수역할: 일반·선택·즐겨찾기 마커와 현재 위치 이미지를 한 번 생성한다.
@@ -193,14 +212,28 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     super.didUpdateWidget(oldWidget);
     final selectionChanged =
         oldWidget.selectedPharmacyId != widget.selectedPharmacyId;
+    // 같은 목록 인스턴스가 다시 전달되는 재빌드(정보창 드래그 등)에서는 비교 문자열을 만들지 않는다.
     final pharmaciesChanged =
+        !identical(oldWidget.pharmacies, widget.pharmacies) &&
         _coordinateSignature(oldWidget.pharmacies) !=
-        _coordinateSignature(widget.pharmacies);
+            _coordinateSignature(widget.pharmacies);
     final recenter = oldWidget.centerRevision != widget.centerRevision;
     if (recenter || (selectionChanged && widget.selectedPharmacyId != null)) {
       _cameraMoved = false;
       _pendingArea = null;
       _cameraGeneration++;
+    }
+    if (oldWidget.bottomInset != widget.bottomInset) {
+      _paddingSettleTimer?.cancel();
+      if (recenter || selectionChanged) {
+        // 선택·닫기·위치 이동처럼 카메라가 함께 움직이는 변경은 기존처럼 같은 프레임에 반영한다.
+        _paddingInset = widget.bottomInset;
+      } else {
+        _paddingSettleTimer = Timer(_contentPaddingSettleDelay, () {
+          if (!mounted || _paddingInset == widget.bottomInset) return;
+          setState(() => _paddingInset = widget.bottomInset);
+        });
+      }
     }
     if (selectionChanged ||
         pharmaciesChanged ||
@@ -258,9 +291,7 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
                 scaleBarEnable: false,
                 compassEnable: false,
                 logoClickEnable: true,
-                contentPadding: EdgeInsets.only(
-                  bottom: widget.bottomInset + 28,
-                ),
+                contentPadding: EdgeInsets.only(bottom: _paddingInset + 28),
               ),
               // Function Name: build.onMapReady callback
               // Description: Updates the local input or request state for pharmacy markers, selected highlighting, zoom, and attribution controls: `_mapController = controller`.
@@ -272,6 +303,8 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
                 if (!identical(_mapController, controller)) {
                   _renderedMarkers.clear();
                   _markerStateUncertain = false;
+                  _markerRetryTimer?.cancel();
+                  _markerRetryUsed = false;
                 }
                 setState(() => _mapController = controller);
                 unawaited(_synchronizeMap());
@@ -542,6 +575,7 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
       } catch (_) {
         if (mounted && identical(_mapController, controller)) {
           _markerStateUncertain = true;
+          _scheduleMarkerRetry();
         }
         rethrow;
       }
@@ -550,6 +584,9 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
         _renderedMarkers[id] = next[id]!;
       }
     }
+    // 마커가 최신 결과와 일치하므로 다음 실패에는 자동 복구를 다시 한 번 허용한다.
+    _markerRetryTimer?.cancel();
+    _markerRetryUsed = false;
     if (!mounted || generation != _overlayGeneration) {
       return;
     }
@@ -561,6 +598,18 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
         await _updateCamera(controller, pharmacies);
       }
     }
+  }
+
+  // 함수이름: _scheduleMarkerRetry
+  // 함수역할: 일부만 추가된 마커를 다음 화면 변경까지 두지 않도록 지도 동기화를 한 번만 다시 예약한다.
+  // 매개변수: 없음. 반환값: 없음. 이미 자동 복구를 쓴 뒤에는 성공할 때까지 다시 예약하지 않는다.
+  void _scheduleMarkerRetry() {
+    if (_markerRetryUsed) return;
+    _markerRetryUsed = true;
+    _markerRetryTimer = Timer(_markerRetryDelay, () {
+      // 그사이 다른 동기화가 복구를 마쳤다면 다시 지우고 그리지 않는다.
+      if (mounted && _markerStateUncertain) unawaited(_synchronizeMap());
+    });
   }
 
   // 함수이름: _buildMarker

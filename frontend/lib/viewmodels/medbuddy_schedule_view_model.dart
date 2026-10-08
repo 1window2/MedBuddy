@@ -307,14 +307,7 @@ class MedBuddyScheduleViewModel {
     String? expectedScheduleDate,
   }) async {
     if (doseSync != null) {
-      try {
-        // A notification can arrive before the home screen restores its cache.
-        await doseSync!.initialize();
-        if (!doseSync!.hasCache) await fetchTodayMedicationSchedule();
-        if (!doseSync!.hasCache) return false;
-      } catch (_) {
-        return false;
-      }
+      if (!(await _ensureCurrentDayCache()).ready) return false;
       return _queueDoseStatus(
         _todayMedicationScheduleList
             .where((s) => s.slotKeys.contains(slotKey))
@@ -382,13 +375,24 @@ class MedBuddyScheduleViewModel {
       return false;
     }
     if (doseSync != null) {
-      final slots = slotKey == null ? medicationSchedule.slotKeys : [slotKey];
+      var target = medicationSchedule;
+      if ((await _ensureCurrentDayCache()).refetched) {
+        // The tapped row was drawn from another day's list. Record against today's entry of
+        // the same medicine, and nothing when it is no longer scheduled for that slot.
+        final current = _todayMedicationScheduleList
+            .where((s) => s.medicationID == medicationSchedule.medicationID)
+            .firstOrNull;
+        if (current == null ||
+            (slotKey != null && !current.slotKeys.contains(slotKey))) {
+          _statusMessage = _reloadBeforeRecordingMessage;
+          _notifyViewModelListeners(MedBuddyFeature.schedule);
+          return false;
+        }
+        target = current;
+      }
+      final slots = slotKey == null ? target.slotKeys : [slotKey];
       for (final slot in slots) {
-        if (!await _queueDoseStatus(
-          [medicationSchedule],
-          slot,
-          medicationStatus,
-        )) {
+        if (!await _queueDoseStatus([target], slot, medicationStatus)) {
           return false;
         }
       }
@@ -433,6 +437,34 @@ class MedBuddyScheduleViewModel {
     }
   }
 
+  // Function Name: _ensureCurrentDayCache
+  // Description: Makes sure the queue holds today's schedule before a dose is recorded. A
+  //   notification can arrive before the home screen restores its cache, and the first tap after
+  //   midnight still shows yesterday's list; both refetch once instead of rejecting the tap.
+  // Parameters: None.
+  // Returns: ready - whether today's schedule is cached; refetched - whether the visible list
+  //   was replaced by a new server read. A storage or network failure gives ready == false.
+  Future<({bool ready, bool refetched})> _ensureCurrentDayCache() async {
+    var refetched = false;
+    try {
+      await doseSync!.initialize();
+      if (!doseSync!.hasCache) {
+        refetched = true;
+        await fetchTodayMedicationSchedule();
+      }
+      return (ready: doseSync!.hasCache, refetched: refetched);
+    } catch (_) {
+      return (ready: false, refetched: refetched);
+    }
+  }
+
+  // Function Name: _reloadBeforeRecordingMessage
+  // Description: Feedback for a dose that cannot be matched to today's schedule.
+  // Parameters: None. Returns: Localized guidance.
+  String get _reloadBeforeRecordingMessage => _isEnglishSetting
+      ? 'Please reload today\'s schedule before recording a dose.'
+      : '오늘의 복약 일정을 다시 불러온 뒤 기록해주세요.';
+
   Future<bool> _queueDoseStatus(
     List<MedicationSchedule> schedules,
     String slotKey,
@@ -456,9 +488,7 @@ class MedBuddyScheduleViewModel {
           ? (_isEnglishSetting
                 ? 'Saved on this device. Waiting to sync.'
                 : '기기에 기록했습니다. 서버 전송 대기 중입니다.')
-          : (_isEnglishSetting
-                ? 'Please reload today\'s schedule before recording a dose.'
-                : '오늘의 복약 일정을 다시 불러온 뒤 기록해주세요.');
+          : _reloadBeforeRecordingMessage;
       if (!saved) _notifyViewModelListeners(MedBuddyFeature.schedule);
       return saved;
     } catch (_) {

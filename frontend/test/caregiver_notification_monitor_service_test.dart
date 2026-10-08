@@ -851,6 +851,191 @@ void main() {
     expect(alerts, hasLength(1));
     expect(alerts.single.body, contains('1건'));
   });
+
+  // 그룹: 주기 확인
+  // 역할: 이 기기에서 만들 알림이 있을 때만 주기적으로 확인하고, 서버가 푸시로 모두 전달하는 구성에서는
+  //   연동 상태를 한 번 확인한 뒤 멈추는지, 그리고 멈춤·재개가 확인을 잃지 않는지 검증한다.
+  group('주기 확인', () {
+    // 함수이름: pollingMonitor
+    // 함수역할: 확인 횟수를 세고 실패를 재현할 수 있는 15초 주기 감시기를 만든다.
+    // 매개변수: monitorCompletionTransitions - 완료 변화 감시 여부, onCheck - 확인마다 호출되어 실패를
+    //   던질 수 있는 함수, statusChanges - 보호자 연동 유무 변경 기록, alerts - 가로챈 알림 기록.
+    // 반환값: 미복용 마감 감시가 꺼진 감시기.
+    CaregiverNotificationMonitorService pollingMonitor({
+      required bool monitorCompletionTransitions,
+      required void Function() onCheck,
+      List<bool>? statusChanges,
+      List<_AlertRecord>? alerts,
+      List<MedicationSchedule> Function()? schedules,
+    }) {
+      return CaregiverNotificationMonitorService(
+        caregiverHash: 'caregiver_test',
+        loadLinks: () async {
+          onCheck();
+          return const [
+            PatientCaregiverLink(
+              caregiverHash: 'caregiver_test',
+              patientHash: 'patient_test',
+              linkStatus: true,
+            ),
+          ];
+        },
+        loadSettings: (_) async => {
+          'morning': const CaregiverNotification(
+            caregiverHash: 'caregiver_test',
+            patientHash: 'patient_test',
+            slotKey: 'morning',
+            mode: CaregiverNotificationMode.doseCompleted,
+          ),
+        },
+        loadSchedules: (_) async =>
+            schedules?.call() ?? [_schedule(morningCompleted: false)],
+        sendAlert:
+            ({
+              required int id,
+              required String title,
+              required String body,
+              required String patientHash,
+            }) async {
+              alerts?.add((
+                id: id,
+                title: title,
+                body: body,
+                patientHash: patientHash,
+              ));
+            },
+        permissionRequester: () async => true,
+        pollingInterval: const Duration(seconds: 15),
+        idlePollingInterval: const Duration(seconds: 15),
+        monitorCompletionTransitions: monitorCompletionTransitions,
+        monitorMissedDeadlines: false,
+        onCaregiverStatusChanged: statusChanges?.add,
+      );
+    }
+
+    // 함수이름: 서버 전달 구성 테스트
+    // 함수역할: 완료·미복용 감시가 모두 꺼져 있으면 시작할 때 연동 상태를 한 번만 확인하고 타이머를 두지 않으며,
+    //   멈춤과 재개도 새 확인을 만들지 않는지 검증한다.
+    testWidgets('서버가 알림을 전달하는 구성은 연동 상태를 한 번 확인하고 주기 확인을 하지 않는다', (tester) async {
+      var checks = 0;
+      final statusChanges = <bool>[];
+      final alerts = <_AlertRecord>[];
+      var completed = false;
+      final monitor = pollingMonitor(
+        monitorCompletionTransitions: false,
+        onCheck: () => checks++,
+        statusChanges: statusChanges,
+        alerts: alerts,
+        schedules: () => [_schedule(morningCompleted: completed)],
+      );
+      addTearDown(monitor.dispose);
+
+      monitor.start();
+      await tester.pump();
+      expect(checks, 1);
+      expect(monitor.hasCaregiverLinks, isTrue);
+      expect(statusChanges, [true]);
+
+      completed = true;
+      await tester.pump(const Duration(hours: 2));
+      expect(checks, 1);
+
+      monitor.pause();
+      monitor.resume();
+      await tester.pump(const Duration(hours: 2));
+      expect(checks, 1);
+
+      // 직접 요청한 확인은 계속 동작하며 이 구성에서는 알림을 만들지 않는다.
+      monitor.checkNow();
+      await tester.pump();
+      expect(checks, 2);
+      expect(alerts, isEmpty);
+      // 여기서 dispose하지 않는다. 남은 타이머가 있으면 테스트 틀이 본문이 끝날 때 실패로 알린다.
+    });
+
+    // 함수이름: 첫 확인 실패 테스트
+    // 함수역할: 주기 확인이 필요 없는 구성이라도 연동 상태 확인이 성공할 때까지는 간격을 늘리며 다시 시도하고,
+    //   성공한 뒤에 멈추는지 검증한다.
+    testWidgets('연동 상태 확인이 실패하면 성공할 때까지만 다시 시도한다', (tester) async {
+      var checks = 0;
+      var failing = true;
+      final monitor = pollingMonitor(
+        monitorCompletionTransitions: false,
+        onCheck: () {
+          checks++;
+          if (failing) throw StateError('network unavailable');
+        },
+      );
+      addTearDown(monitor.dispose);
+
+      monitor.start();
+      await tester.pump();
+      expect(checks, 1);
+
+      // 첫 재시도는 15초의 두 배 뒤이다.
+      await tester.pump(const Duration(seconds: 29));
+      expect(checks, 1);
+      await tester.pump(const Duration(seconds: 1));
+      expect(checks, 2);
+
+      failing = false;
+      await tester.pump(const Duration(seconds: 60));
+      expect(checks, 3);
+      expect(monitor.hasCaregiverLinks, isTrue);
+
+      await tester.pump(const Duration(hours: 2));
+      expect(checks, 3);
+      // 여기서 dispose하지 않는다. 남은 타이머가 있으면 테스트 틀이 본문이 끝날 때 실패로 알린다.
+    });
+
+    // 함수이름: 멈춤과 재개 테스트
+    // 함수역할: 기기에서 완료 알림을 만드는 구성은 주기적으로 확인하고, 멈춘 동안에는 확인하지 않으며,
+    //   재개하면 바로 한 번 확인해 그동안의 완료를 알리고 주기를 이어 가는지 검증한다.
+    testWidgets('멈춘 동안에는 확인하지 않고 재개하면 바로 확인한 뒤 주기를 이어 간다', (tester) async {
+      var checks = 0;
+      var completed = false;
+      final alerts = <_AlertRecord>[];
+      final monitor = pollingMonitor(
+        monitorCompletionTransitions: true,
+        onCheck: () => checks++,
+        alerts: alerts,
+        schedules: () => [_schedule(morningCompleted: completed)],
+      );
+
+      // start 전의 재개는 감시를 시작하지 않는다.
+      monitor.resume();
+      await tester.pump();
+      expect(checks, 0);
+
+      monitor.start();
+      await tester.pump();
+      expect(checks, 1);
+      await tester.pump(const Duration(seconds: 30));
+      expect(checks, 3);
+
+      monitor.pause();
+      completed = true;
+      await tester.pump(const Duration(minutes: 10));
+      expect(checks, 3);
+      expect(alerts, isEmpty);
+
+      monitor.resume();
+      await tester.pump();
+      expect(checks, 4);
+      expect(alerts, hasLength(1));
+      // 멈춘 적이 없는 상태의 재개는 추가 확인을 만들지 않는다.
+      monitor.resume();
+      await tester.pump();
+      expect(checks, 4);
+
+      await tester.pump(const Duration(seconds: 15));
+      expect(checks, 5);
+
+      monitor.dispose();
+      await tester.pump(const Duration(minutes: 10));
+      expect(checks, 5);
+    });
+  });
 }
 
 // 함수이름: _buildMonitor

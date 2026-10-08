@@ -4,7 +4,6 @@
 import 'package:geolocator/geolocator.dart';
 
 import '../entities/device_coordinate_entity.dart';
-import 'recent_device_coordinate_cache.dart';
 
 // 클래스명: DeviceLocationFailure
 // 역할: 위치 서비스 꺼짐·권한 거절·영구 거절·조회 불가 원인을 구분한다.
@@ -70,10 +69,6 @@ abstract interface class DeviceLocationBoundary {
 // 주요 책임:
 // - 위치 서비스와 권한 상태를 검사하고 조회를 15초로 제한하며 실패를 공통 위치 오류로 변환한다.
 class GeolocatorDeviceLocationService implements DeviceLocationBoundary {
-  GeolocatorDeviceLocationService({this.reuseRecentFix = true});
-
-  final bool reuseRecentFix;
-  static final _recentFix = RecentDeviceCoordinateCache();
   // 함수이름: requestCurrentCoordinate
   // 함수역할: 위치 서비스·권한을 검사하고 필요한 권한을 요청한 뒤 최대 15초 동안 고정밀 좌표를 조회해 실패 원인을 공통 오류로 변환한다.
   // 매개변수:
@@ -83,7 +78,6 @@ class GeolocatorDeviceLocationService implements DeviceLocationBoundary {
   @override
   Future<DeviceCoordinate> requestCurrentCoordinate() async {
     if (!await Geolocator.isLocationServiceEnabled()) {
-      _recentFix.clear();
       throw const DeviceLocationException(
         DeviceLocationFailure.serviceDisabled,
       );
@@ -91,25 +85,18 @@ class GeolocatorDeviceLocationService implements DeviceLocationBoundary {
 
     var permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
-      _recentFix.clear();
       permission = await Geolocator.requestPermission();
     }
     if (permission == LocationPermission.denied) {
       throw const DeviceLocationException(DeviceLocationFailure.denied);
     }
     if (permission == LocationPermission.deniedForever) {
-      _recentFix.clear();
       throw const DeviceLocationException(DeviceLocationFailure.deniedForever);
     }
     if (permission != LocationPermission.whileInUse &&
         permission != LocationPermission.always) {
-      _recentFix.clear();
       throw const DeviceLocationException(DeviceLocationFailure.denied);
     }
-
-    // Recheck GPS and permission even when a recent coordinate is available.
-    final cached = reuseRecentFix ? _recentFix.read() : null;
-    if (cached != null) return cached;
 
     try {
       final position = await Geolocator.getCurrentPosition(
@@ -118,20 +105,11 @@ class GeolocatorDeviceLocationService implements DeviceLocationBoundary {
           timeLimit: Duration(seconds: 15),
         ),
       );
-      final coordinate = DeviceCoordinate(
+      return DeviceCoordinate(
         latitude: position.latitude,
         longitude: position.longitude,
       );
-      if (position.accuracy.isFinite &&
-          position.accuracy >= 0 &&
-          position.accuracy <= 100) {
-        _recentFix.store(coordinate);
-      } else {
-        _recentFix.clear();
-      }
-      return coordinate;
     } catch (_) {
-      _recentFix.clear();
       throw const DeviceLocationException(DeviceLocationFailure.unavailable);
     }
   }

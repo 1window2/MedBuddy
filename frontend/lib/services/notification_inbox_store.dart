@@ -48,15 +48,33 @@ class NotificationInboxStore {
 
   // 함수이름: record
   // 함수역할: 중복 전송은 기존 읽음·삭제 상태를 유지한다. 매개변수: entry. 반환값: 저장 완료.
-  Future<void> record(NotificationInboxEntry entry) async {
-    if (entry.occurredAt.isBefore(now().subtract(retention))) return;
+  Future<void> record(NotificationInboxEntry entry) => recordAll([entry]);
+
+  // 함수이름: recordAll
+  // 함수역할: 여러 알림을 저장소를 한 번만 다시 읽어 저장하고, 새로 저장한 항목이 있을 때만 변경을 한 번 알린다.
+  //   이미 있는 항목은 record와 같이 읽음·삭제 상태를 유지한 채 건너뛴다.
+  // 매개변수: entries - 저장할 알림들. 반환값: 저장 완료. 저장에 실패하면 StateError.
+  Future<void> recordAll(Iterable<NotificationInboxEntry> entries) async {
+    final oldest = now().subtract(retention);
+    final recent = [
+      for (final entry in entries)
+        if (!entry.occurredAt.isBefore(oldest)) entry,
+    ];
+    if (recent.isEmpty) return;
     final preferences = await _preferences();
-    final key = _key('entry', entry.id);
-    if (!preferences.containsKey(key)) {
-      if (!await preferences.setString(key, jsonEncode(entry.toJson()))) {
-        throw StateError('Notification history could not be saved.');
+    var saved = false;
+    try {
+      for (final entry in recent) {
+        final key = _key('entry', entry.id);
+        if (preferences.containsKey(key)) continue;
+        if (!await preferences.setString(key, jsonEncode(entry.toJson()))) {
+          throw StateError('Notification history could not be saved.');
+        }
+        saved = true;
       }
-      changes.add(userHash);
+    } finally {
+      // 중간에 실패해도 이미 저장한 항목은 화면에 반영되어야 한다.
+      if (saved) changes.add(userHash);
     }
   }
 
@@ -118,9 +136,11 @@ class NotificationInboxStore {
   }
 
   // 함수이름: cancelFutureReminders
-  // 함수역할: 아직 오지 않은 복약 예약만 취소하고 지난 기록은 유지한다. 매개변수: 선택적 slotKey, id. 반환값: 완료.
+  // 함수역할: 아직 오지 않은 복약 예약만 취소하고 지난 기록은 유지한다. 지운 항목이 있을 때만 변경을 알린다.
+  // 매개변수: 선택적 slotKey, id. 반환값: 완료.
   Future<void> cancelFutureReminders({String? slotKey, int? id}) async {
     final preferences = await _preferences();
+    var removed = false;
     for (final key in preferences.getKeys().where(
       (key) => key.startsWith('${prefix}entry.'),
     )) {
@@ -142,6 +162,7 @@ class NotificationInboxStore {
           continue;
         }
         await preferences.remove(key);
+        removed = true;
       } on FormatException {
         continue;
       } on TypeError {
@@ -150,6 +171,6 @@ class NotificationInboxStore {
         continue;
       }
     }
-    changes.add(userHash);
+    if (removed) changes.add(userHash);
   }
 }

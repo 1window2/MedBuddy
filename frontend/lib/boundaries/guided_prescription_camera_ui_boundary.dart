@@ -69,7 +69,6 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
       PrescriptionCameraGuideStatus.searching;
   DateTime? _lastAnalysisAt;
   String _cameraErrorMessage = '';
-  bool _isAnalyzingFrame = false;
   bool _isCapturing = false;
   bool _isTorchEnabled = false;
   int _cameraGeneration = 0;
@@ -82,8 +81,7 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
   // 매개변수:
   // - 없음.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
-  bool get _isEnglish =>
-      widget.userSetting.language.trim().toLowerCase().startsWith('en');
+  bool get _isEnglish => widget.userSetting.isEnglish;
 
   // 함수이름: _text
   // 함수역할: 현재 언어에 맞는 처방전 촬영 거리 안내와 카메라 생명주기 관리 문구 객체를 만든다.
@@ -93,7 +91,7 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
   _GuidedCameraText get _text => _GuidedCameraText(_isEnglish);
 
   // Function Name: initState
-  // Description: Observes app lifecycle, activates sensor orientation, and starts camera initialization.
+  // Description: Observes app lifecycle, activates sensor orientation, starts camera initialization, and removes guide crops an earlier flow left behind.
   // Parameters:
   // - None.
   // Returns: None; updates state or performs the documented action.
@@ -103,6 +101,7 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
     WidgetsBinding.instance.addObserver(this);
     _orientationActivation = _orientationService.enableSensorOrientation();
     unawaited(_initializeCamera());
+    unawaited(_imageCropService.deleteStaleGuideImages());
   }
 
   // 함수이름: didChangeAppLifecycleState
@@ -307,38 +306,32 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
   void _analyzeCameraImage(CameraImage image) {
     final now = DateTime.now();
     if (_isCapturing ||
-        _isAnalyzingFrame ||
         (_lastAnalysisAt != null &&
             now.difference(_lastAnalysisAt!) < _analysisInterval) ||
         image.planes.isEmpty) {
       return;
     }
 
-    _isAnalyzingFrame = true;
     _lastAnalysisAt = now;
-    try {
-      final luminancePlane = image.planes.first;
-      final result = _frameAnalyzer.analyze(
-        luminanceBytes: luminancePlane.bytes,
-        width: image.width,
-        height: image.height,
-        bytesPerRow: luminancePlane.bytesPerRow,
-        bytesPerPixel: luminancePlane.bytesPerPixel ?? 1,
-        normalizedRegion: _normalizedGuideRect,
-        rotationDegrees: _cameraRotationDegrees(_cameraController),
-      );
-      if (mounted && result.status != _guideStatus) {
-        // 함수이름: _analyzeCameraImage.setState callback
-        // 함수역할: 실시간 거리 가이드와 처방전 촬영 결과 반환의 입력·요청 상태를 `_guideStatus = result.status`로 갱신한다.
-        // 매개변수:
-        // - 없음.
-        // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-        setState(() {
-          _guideStatus = result.status;
-        });
-      }
-    } finally {
-      _isAnalyzingFrame = false;
+    final luminancePlane = image.planes.first;
+    final result = _frameAnalyzer.analyze(
+      luminanceBytes: luminancePlane.bytes,
+      width: image.width,
+      height: image.height,
+      bytesPerRow: luminancePlane.bytesPerRow,
+      bytesPerPixel: luminancePlane.bytesPerPixel ?? 1,
+      normalizedRegion: _normalizedGuideRect,
+      rotationDegrees: _cameraRotationDegrees(_cameraController),
+    );
+    if (mounted && result.status != _guideStatus) {
+      // 함수이름: _analyzeCameraImage.setState callback
+      // 함수역할: 실시간 거리 가이드와 처방전 촬영 결과 반환의 입력·요청 상태를 `_guideStatus = result.status`로 갱신한다.
+      // 매개변수:
+      // - 없음.
+      // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
+      setState(() {
+        _guideStatus = result.status;
+      });
     }
   }
 

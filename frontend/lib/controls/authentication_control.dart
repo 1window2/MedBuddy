@@ -2,10 +2,12 @@
 // Role: Coordinates Firebase identity, SMS challenges, and authenticated backend sessions.
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:http/http.dart' as http;
 
 import '../entities/auth_session_entity.dart';
 import '../entities/authentication_gate_state_entity.dart';
@@ -24,6 +26,284 @@ import 'app_language_control.dart';
 // - Select the credential completion path for an entered SMS code.
 enum SmsChallengePurpose { phoneSignIn, mfaSignIn, mfaEnrollment }
 
+// Class Name: AuthenticationErrorCode
+// Role: Identifies each authentication failure independently of the language it is shown in.
+// Responsibilities:
+// - Hold the English and Korean guidance for one failure so every screen resolves the same code to the same sentence.
+// Attributes:
+// - english (String): English guidance; also the text exposed by AuthenticationControl.errorMessage.
+// - korean (String): Korean guidance for the same failure.
+enum AuthenticationErrorCode {
+  configuration(
+    'MedBuddy authentication is not configured correctly.',
+    '로그인 설정에 문제가 있습니다. 관리자에게 문의해 주세요.',
+  ),
+  initialization(
+    'MedBuddy could not initialize its secure services. Check the network and retry.',
+    '로그인 서비스를 시작하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.',
+  ),
+  stateRefreshFailed(
+    'Authentication state could not be refreshed.',
+    '로그인 상태를 확인하지 못했습니다. 다시 시도해 주세요.',
+  ),
+  firebaseUnavailable(
+    'Firebase authentication is unavailable.',
+    '로그인 서비스를 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.',
+  ),
+  operationInProgress(
+    'Another authentication request is already running.',
+    '다른 인증 요청을 처리하고 있습니다. 잠시 후 다시 시도해 주세요.',
+  ),
+  requestFailed(
+    'Authentication request failed. Please try again.',
+    '인증 요청을 처리하지 못했습니다. 다시 시도해 주세요.',
+  ),
+  timeout(
+    'Authentication timed out. Check the network and try again.',
+    '연결 시간이 초과되었습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.',
+  ),
+  sessionExpired(
+    'Your secure session expired. Please sign in again.',
+    '로그인 정보가 만료되었습니다. 다시 로그인해 주세요.',
+  ),
+  retryRequiresSignIn(
+    'Sign in before retrying the secure session.',
+    '보안 세션을 다시 연결하려면 먼저 로그인해 주세요.',
+  ),
+  noSignedInUser(
+    'No signed-in user is available.',
+    '로그인 정보가 없습니다. 다시 로그인해 주세요.',
+  ),
+  invalidEmail('Enter a valid email address.', '올바른 이메일 주소를 입력해 주세요.'),
+  emailRequired('Enter your email address first.', '먼저 이메일 주소를 입력해 주세요.'),
+  wrongCredentials(
+    'The email or password is incorrect.',
+    '이메일 또는 비밀번호가 올바르지 않습니다.',
+  ),
+  emailAlreadyInUse(
+    'An account already uses this email address.',
+    '이미 가입된 이메일입니다. 로그인하거나 비밀번호를 재설정해 주세요.',
+  ),
+  credentialAlreadyInUse(
+    'This sign-in method belongs to another account. Sign out first to use it.',
+    '다른 계정에 연결된 로그인 방법입니다. 먼저 로그아웃해 주세요.',
+  ),
+  weakPassword(
+    'Use a stronger password with at least six characters.',
+    '비밀번호는 6자 이상으로 설정해 주세요.',
+  ),
+  tooManyRequests(
+    'Too many attempts. Please wait and try again.',
+    '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.',
+  ),
+  network(
+    'Check your network connection and try again.',
+    '인터넷 연결을 확인한 뒤 다시 시도해 주세요.',
+  ),
+  signInMethodDisabled(
+    'This sign-in method is not enabled yet.',
+    '아직 사용할 수 없는 로그인 방법입니다.',
+  ),
+  emailVerificationPending(
+    'Email verification is not complete yet. Open the link in your email, then try again.',
+    '아직 인증되지 않았어요. 메일의 인증 링크를 누른 뒤 다시 확인해 주세요.',
+  ),
+  googleSignInIncomplete(
+    'Google sign-in was not completed.',
+    'Google 로그인을 완료하지 못했습니다. 다시 시도해 주세요.',
+  ),
+  googleSignInCanceled('Google sign-in was canceled.', 'Google 로그인을 취소했습니다.'),
+  googleIdentityTokenMissing(
+    'Google did not return an identity token.',
+    'Google에서 로그인 정보를 받지 못했습니다. 다시 시도해 주세요.',
+  ),
+  phoneAuthenticationUnavailable(
+    'Phone authentication is unavailable in this beta build.',
+    '현재 버전에서는 문자 인증을 사용할 수 없습니다.',
+  ),
+  smsVerificationUnavailable(
+    'SMS verification is unavailable in this beta build.',
+    '현재 버전에서는 문자 인증을 사용할 수 없습니다.',
+  ),
+  internationalPhoneNumberRequired(
+    'Use an international phone number such as +821012345678.',
+    '국가번호를 포함한 올바른 전화번호를 입력해 주세요.',
+  ),
+  invalidPhoneNumber(
+    'Enter a valid international phone number.',
+    '국가번호를 포함한 올바른 전화번호를 입력해 주세요.',
+  ),
+  smsCodeNotRequested('Request a new SMS code first.', '먼저 문자 인증번호를 요청해 주세요.'),
+  smsCodeIncomplete(
+    'Enter the six-digit SMS code.',
+    '문자로 받은 6자리 인증번호를 입력해 주세요.',
+  ),
+  smsCodeIncorrect(
+    'The SMS verification code is incorrect.',
+    '문자 인증번호가 올바르지 않습니다.',
+  ),
+  smsQuotaExceeded(
+    'The SMS quota is exhausted. Try again later.',
+    '문자 발송 한도를 초과했습니다. 나중에 다시 시도해 주세요.',
+  ),
+  mfaRecentSignInRequired(
+    'Sign out and sign in again before changing MFA.',
+    '인증 설정을 바꾸려면 로그아웃한 뒤 다시 로그인해 주세요.',
+  ),
+  mfaVerifiedEmailRequired(
+    'Sign in with a verified email account before enabling MFA.',
+    '먼저 이메일 인증을 완료한 계정으로 로그인해 주세요.',
+  ),
+  mfaFactorUnsupported(
+    'No supported SMS second factor is available.',
+    '사용할 수 있는 추가 문자 인증 방법이 없습니다.',
+  ),
+  mfaSignInExpired(
+    'The MFA sign-in session has expired.',
+    '추가 인증 로그인 시간이 만료되었습니다. 다시 로그인해 주세요.',
+  ),
+  mfaEnrollmentExpired(
+    'The MFA enrollment session has expired.',
+    '추가 인증 등록 시간이 만료되었습니다. 다시 시도해 주세요.',
+  ),
+  deletionRequiresSignIn(
+    'Sign in before deleting this account.',
+    '계정을 삭제하려면 먼저 로그인해 주세요.',
+  ),
+  deletionRequiresRecentSignIn(
+    'For security, sign out and sign in again before deleting this account.',
+    '보안을 위해 로그아웃한 뒤 다시 로그인하고 계정을 삭제해 주세요.',
+  );
+
+  // Function Name: AuthenticationErrorCode
+  // Description: Binds one failure code to its English and Korean guidance.
+  // Parameters:
+  // - english (String): English guidance for the failure.
+  // - korean (String): Korean guidance for the failure.
+  // Returns:
+  // - AuthenticationErrorCode: the initialized constant.
+  const AuthenticationErrorCode(this.english, this.korean);
+
+  final String english;
+  final String korean;
+
+  // Function Name: messageFor
+  // Description: Selects the guidance for the language currently shown on screen.
+  // Parameters:
+  // - isEnglish (bool): Whether to choose the English display string.
+  // Returns:
+  // - String: English or Korean guidance for this failure.
+  String messageFor(bool isEnglish) => isEnglish ? english : korean;
+}
+
+// Class Name: AuthenticationStateError
+// Role: Carries an authentication failure code through callers that handle StateError.
+// Responsibilities:
+// - Keep the English sentence as the StateError message while letting a screen localize the failure by code.
+// Attributes:
+// - code (AuthenticationErrorCode): Language-independent identity of the failure.
+class AuthenticationStateError extends StateError {
+  final AuthenticationErrorCode code;
+
+  // Function Name: AuthenticationStateError
+  // Description: Creates a StateError whose message is the English guidance of the supplied code.
+  // Parameters:
+  // - code (AuthenticationErrorCode): Language-independent identity of the failure.
+  // Returns:
+  // - AuthenticationStateError: the initialized instance.
+  AuthenticationStateError(this.code) : super(code.english);
+
+  // Function Name: messageFor
+  // Description: Resolves this failure in the language currently shown on screen.
+  // Parameters:
+  // - isEnglish (bool): Whether to choose the English display string.
+  // Returns:
+  // - String: English or Korean guidance for this failure.
+  String messageFor(bool isEnglish) => code.messageFor(isEnglish);
+}
+
+// Class Name: _IdentityFailureKind
+// Role: Records what a failed Firebase identity call says about the account itself.
+// Responsibilities:
+// - Separate a rejected identity from a call that could not be completed and from a result that needs a second check.
+enum _IdentityFailureKind { rejected, unavailable, ambiguous }
+
+// Class Name: _SessionFailureKind
+// Role: Records how a failed backend session synchronization must be handled.
+// Responsibilities:
+// - rejected: the identity is no longer valid, so the provider session is signed out.
+// - refused: the server answered with a verdict that ends the MedBuddy session.
+// - inconclusive: no verdict was obtained, so an established session for the same identity is kept.
+enum _SessionFailureKind { rejected, refused, inconclusive }
+
+// Class Name: _IdTokenFailure
+// Role: Marks a synchronization that stopped because the Firebase ID token could not be read.
+// Responsibilities:
+// - Preserve the original SDK failure so it can be classified instead of being read as a generic outage.
+// Attributes:
+// - cause (Object): Failure raised by the Firebase SDK, or a timeout.
+class _IdTokenFailure implements Exception {
+  final Object cause;
+
+  // Function Name: _IdTokenFailure
+  // Description: Wraps the failure raised while reading the current user's ID token.
+  // Parameters:
+  // - cause (Object): Failure raised by the Firebase SDK, or a timeout.
+  // Returns:
+  // - _IdTokenFailure: the initialized instance.
+  const _IdTokenFailure(this.cause);
+}
+
+// Class Name: _PendingHandshake
+// Role: Describes the backend session request currently in flight.
+// Responsibilities:
+// - Let a second synchronization for the same identity and token reuse the request instead of sending another.
+// Attributes:
+// - subject (String): Firebase uid the request was sent for.
+// - token (String): ID token the request was sent with.
+// - result (Future<AuthSession>): Outcome shared by every synchronization that joins the request.
+class _PendingHandshake {
+  final String subject;
+  final String token;
+  final Future<AuthSession> result;
+
+  // Function Name: _PendingHandshake
+  // Description: Records the identity, token, and shared outcome of one backend session request.
+  // Parameters:
+  // - subject (String): Firebase uid the request was sent for.
+  // - token (String): ID token the request was sent with.
+  // - result (Future<AuthSession>): Outcome shared by every synchronization that joins the request.
+  // Returns:
+  // - _PendingHandshake: the initialized instance.
+  const _PendingHandshake(this.subject, this.token, this.result);
+}
+
+// Function Name: _classifyIdentityFailure
+// Description: Decides what a failed Firebase user call says about the account. Codes that mean the account or its refresh token is gone are rejected; network, quota, and timeout failures are unavailable; every other code is ambiguous because the Android plugin reports a rejected getIdToken call as `unknown`.
+// Parameters:
+// - error (Object): Failure raised by getIdToken or reload, or a timeout.
+// Returns:
+// - _IdentityFailureKind: rejected, unavailable, or ambiguous.
+_IdentityFailureKind _classifyIdentityFailure(Object error) {
+  if (error is TimeoutException) {
+    return _IdentityFailureKind.unavailable;
+  }
+  if (error is FirebaseAuthException) {
+    return switch (error.code) {
+      'user-token-expired' ||
+      'user-disabled' ||
+      'user-not-found' ||
+      'invalid-user-token' ||
+      'no-current-user' => _IdentityFailureKind.rejected,
+      'network-request-failed' ||
+      'too-many-requests' ||
+      'api-not-available' => _IdentityFailureKind.unavailable,
+      _ => _IdentityFailureKind.ambiguous,
+    };
+  }
+  return _IdentityFailureKind.ambiguous;
+}
+
 // 클래스명: AuthenticationControl
 // 역할: Firebase 신원과 백엔드 세션 교환을 조정해 인증 게이트 상태를 유지한다.
 // 주요 책임:
@@ -36,6 +316,17 @@ class AuthenticationControl extends ChangeNotifier
   static const Duration _backendSessionTimeout = Duration(seconds: 20);
   static const Duration _authenticationOperationTimeout = Duration(seconds: 30);
   static const Duration _mfaStatusTimeout = Duration(seconds: 10);
+  static const Duration _idTokenTimeout = Duration(seconds: 10);
+  static const Duration _identityProbeTimeout = Duration(seconds: 10);
+  // Same steps as the sign-in screen's foreground recovery; bounded so a long
+  // outage does not keep polling. The next token refresh starts a new series.
+  static const List<Duration> _sessionResyncDelays = [
+    Duration(seconds: 5),
+    Duration(seconds: 15),
+    Duration(seconds: 30),
+    Duration(seconds: 60),
+    Duration(seconds: 120),
+  ];
 
   FirebaseAuth? _firebaseAuth;
   StreamSubscription<User?>? _authSubscription;
@@ -43,6 +334,13 @@ class AuthenticationControl extends ChangeNotifier
   bool _googleSignInInitialized = false;
   late final AuthenticatedApiClient apiClient;
   int _sessionGeneration = 0;
+  Future<void>? _latestSynchronization;
+  int _latestSynchronizationGeneration = 0;
+  _PendingHandshake? _pendingHandshake;
+  // Firebase uid the current session was established for; null without one.
+  String? _sessionSubject;
+  Timer? _sessionResyncTimer;
+  int _sessionResyncAttempts = 0;
   String? _deletedFirebaseSubject;
   Future<void> Function()? _beforeSignOut;
   bool _isInvalidatingUnauthorizedSession = false;
@@ -134,6 +432,7 @@ class AuthenticationControl extends ChangeNotifier
   // Returns:
   // - String?: User-facing guidance for the failure state.
   String? get errorMessage => _errorMessage;
+  AuthenticationErrorCode? _errorCode;
   Object? _backendSessionError;
 
   // 함수이름: errorMessageForLanguage
@@ -147,62 +446,20 @@ class AuthenticationControl extends ChangeNotifier
       return null;
     }
     final backendSessionError = _backendSessionError;
-    if (backendSessionError == null) {
-      if (isEnglish) return _errorMessage;
-      return switch (_errorMessage) {
-        'Enter a valid email address.' => '올바른 이메일 주소를 입력해 주세요.',
-        'Enter your email address first.' => '먼저 이메일 주소를 입력해 주세요.',
-        'The email or password is incorrect.' => '이메일 또는 비밀번호가 올바르지 않습니다.',
-        'An account already uses this email address.' =>
-          '이미 가입된 이메일입니다. 로그인하거나 비밀번호를 재설정해 주세요.',
-        'Use a stronger password with at least six characters.' =>
-          '비밀번호는 6자 이상으로 설정해 주세요.',
-        'Too many attempts. Please wait and try again.' =>
-          '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.',
-        'Check your network connection and try again.' =>
-          '인터넷 연결을 확인한 뒤 다시 시도해 주세요.',
-        'Email verification is not complete yet. Open the link in your email, then try again.' =>
-          '아직 인증되지 않았어요. 메일의 인증 링크를 누른 뒤 다시 확인해 주세요.',
-        'No signed-in user is available.' => '로그인 정보가 없습니다. 다시 로그인해 주세요.',
-        'Your secure session expired. Please sign in again.' =>
-          '로그인 정보가 만료되었습니다. 다시 로그인해 주세요.',
-        'This sign-in method belongs to another account. Sign out first to use it.' =>
-          '다른 계정에 연결된 로그인 방법입니다. 먼저 로그아웃해 주세요.',
-        'This sign-in method is not enabled yet.' => '아직 사용할 수 없는 로그인 방법입니다.',
-        'Google sign-in was not completed.' =>
-          'Google 로그인을 완료하지 못했습니다. 다시 시도해 주세요.',
-        'Authentication timed out. Check the network and try again.' =>
-          '연결 시간이 초과되었습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.',
-        'Authentication state could not be refreshed.' =>
-          '로그인 상태를 확인하지 못했습니다. 다시 시도해 주세요.',
-        'MedBuddy authentication is not configured correctly.' =>
-          '로그인 설정에 문제가 있습니다. 관리자에게 문의해 주세요.',
-        'MedBuddy could not initialize its secure services. Check the network and retry.' =>
-          '로그인 서비스를 시작하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.',
-        'Phone authentication is unavailable in this beta build.' ||
-        'SMS verification is unavailable in this beta build.' =>
-          '현재 버전에서는 문자 인증을 사용할 수 없습니다.',
-        'Use an international phone number such as +821012345678.' ||
-        'Enter a valid international phone number.' =>
-          '국가번호를 포함한 올바른 전화번호를 입력해 주세요.',
-        'Request a new SMS code first.' => '먼저 문자 인증번호를 요청해 주세요.',
-        'Enter the six-digit SMS code.' => '문자로 받은 6자리 인증번호를 입력해 주세요.',
-        'The SMS verification code is incorrect.' => '문자 인증번호가 올바르지 않습니다.',
-        'The SMS quota is exhausted. Try again later.' =>
-          '문자 발송 한도를 초과했습니다. 나중에 다시 시도해 주세요.',
-        'Sign out and sign in again before changing MFA.' =>
-          '인증 설정을 바꾸려면 로그아웃한 뒤 다시 로그인해 주세요.',
-        'Sign in with a verified email account before enabling MFA.' =>
-          '먼저 이메일 인증을 완료한 계정으로 로그인해 주세요.',
-        'No supported SMS second factor is available.' =>
-          '사용할 수 있는 추가 문자 인증 방법이 없습니다.',
-        _ => '인증 요청을 처리하지 못했습니다. 다시 시도해 주세요.',
-      };
+    if (backendSessionError != null) {
+      return resolveBackendSessionError(
+        backendSessionError,
+        isEnglish: isEnglish,
+      );
     }
-    return resolveBackendSessionError(
-      backendSessionError,
-      isEnglish: isEnglish,
-    );
+    final errorCode = _errorCode;
+    if (errorCode != null) {
+      return errorCode.messageFor(isEnglish);
+    }
+    // 코드 없이 전달된 문구는 영어 원문만 알 수 있으므로 한국어 화면에는 일반 안내를 보여 준다.
+    return isEnglish
+        ? _errorMessage
+        : AuthenticationErrorCode.requestFailed.korean;
   }
 
   // 함수이름: resolveBackendSessionError
@@ -333,10 +590,15 @@ class AuthenticationControl extends ChangeNotifier
   // Description: Creates the authenticated API client with a live Firebase token provider and unauthorized-session cleanup callback.
   // Parameters:
   // - client (AuthenticatedApiClient?): Optional owned client for isolated tests.
+  // - httpClient (http.Client?): Optional transport for the control's own client, so tests exercise its token provider and unauthorized callback.
   // Returns:
   // - AuthenticationControl: the initialized instance.
-  AuthenticationControl._({AuthenticatedApiClient? client}) {
+  AuthenticationControl._({
+    AuthenticatedApiClient? client,
+    http.Client? httpClient,
+  }) {
     apiClient = client ?? AuthenticatedApiClient(
+      inner: httpClient,
       tokenProvider: /* Function Name: tokenProvider callback
        * Description: Fetches the current Firebase user's ID token for authenticated API requests.
        * Parameters:
@@ -362,14 +624,24 @@ class AuthenticationControl extends ChangeNotifier
   }
 
   // 실제 계정·메일·서버 요청 없이 인증 흐름을 검증한다. 주입 클라이언트도 dispose에서 닫는다.
+  // httpClient는 컨트롤이 직접 만든 클라이언트의 전송 계층만 바꾸고, observeIdTokenChanges는
+  // 앱 시작 때와 같은 토큰 변경 구독을 연결한다.
   @visibleForTesting
   factory AuthenticationControl.withFirebaseAuth(
     FirebaseAuth firebaseAuth, {
     AuthenticatedApiClient? apiClient,
+    http.Client? httpClient,
+    bool observeIdTokenChanges = false,
   }) {
-    final control = AuthenticationControl._(client: apiClient);
+    final control = AuthenticationControl._(
+      client: apiClient,
+      httpClient: httpClient,
+    );
     control._firebaseAuth = firebaseAuth;
     control._isInitializing = false;
+    if (observeIdTokenChanges) {
+      control._observeIdTokenChanges(firebaseAuth);
+    }
     return control;
   }
 
@@ -410,7 +682,8 @@ class AuthenticationControl extends ChangeNotifier
     } catch (_) {
       _configurationFailed = true;
       _backendSessionError = null;
-      _errorMessage = 'MedBuddy authentication is not configured correctly.';
+      _errorCode = AuthenticationErrorCode.configuration;
+      _errorMessage = AuthenticationErrorCode.configuration.english;
       _finishInitialization();
       return;
     }
@@ -432,29 +705,39 @@ class AuthenticationControl extends ChangeNotifier
             .timeout(_authenticationOperationTimeout);
       }
       await _authSubscription?.cancel();
-      _authSubscription = firebaseAuth.idTokenChanges().listen(
-        _synchronizeUser,
-        onError: /* Function Name: onError callback
-         * Description: Converts authentication-state stream failures into the control's refresh error state.
-         * Parameters:
-         * - error (Object): Original failure object to classify or record.
-         * - stackTrace (StackTrace): Call stack recorded alongside the error.
-         * Returns:
-         * - No return value.
-         */(Object error, StackTrace stackTrace) {
-          _setError('Authentication state could not be refreshed.');
-        },
-      );
+      _observeIdTokenChanges(firebaseAuth);
       await _synchronizeUser(firebaseAuth.currentUser);
     } catch (_) {
       _initializationFailed = true;
-      _session = null;
+      _clearSession();
       _backendSessionError = null;
-      _errorMessage =
-          'MedBuddy could not initialize its secure services. Check the network and retry.';
+      _errorCode = AuthenticationErrorCode.initialization;
+      _errorMessage = AuthenticationErrorCode.initialization.english;
     } finally {
       _finishInitialization();
     }
+  }
+
+  // Function Name: _observeIdTokenChanges
+  // Description: Subscribes to Firebase token changes so every sign-in, sign-out, and token refresh is reconciled with the backend session.
+  // Parameters:
+  // - firebaseAuth (FirebaseAuth): Initialized Firebase authentication instance to observe.
+  // Returns:
+  // - No return value.
+  void _observeIdTokenChanges(FirebaseAuth firebaseAuth) {
+    _authSubscription = firebaseAuth.idTokenChanges().listen(
+      _synchronizeUser,
+      onError: /* Function Name: onError callback
+       * Description: Converts authentication-state stream failures into the control's refresh error state.
+       * Parameters:
+       * - error (Object): Original failure object to classify or record.
+       * - stackTrace (StackTrace): Call stack recorded alongside the error.
+       * Returns:
+       * - No return value.
+       */(Object error, StackTrace stackTrace) {
+        _setErrorCode(AuthenticationErrorCode.stateRefreshFailed);
+      },
+    );
   }
 
   // Function Name: retryInitialization
@@ -489,7 +772,9 @@ class AuthenticationControl extends ChangeNotifier
      */() async {
       final user = _requireFirebaseAuth().currentUser;
       if (user == null) {
-        throw StateError('Sign in before retrying the secure session.');
+        throw AuthenticationStateError(
+          AuthenticationErrorCode.retryRequiresSignIn,
+        );
       }
       await _synchronizeUser(user);
     });
@@ -587,7 +872,9 @@ class AuthenticationControl extends ChangeNotifier
       final googleAuthentication = googleUser.authentication;
       final idToken = googleAuthentication.idToken;
       if (idToken == null || idToken.isEmpty) {
-        throw StateError('Google did not return an identity token.');
+        throw AuthenticationStateError(
+          AuthenticationErrorCode.googleIdentityTokenMissing,
+        );
       }
       final credential = GoogleAuthProvider.credential(idToken: idToken);
       final firebaseCredential = await _signInOrUpgradeAnonymousUser(
@@ -607,12 +894,12 @@ class AuthenticationControl extends ChangeNotifier
   // - Future<void>: asynchronous completion without a result payload.
   Future<void> startPhoneSignIn(String phoneNumber) async {
     if (!phoneAuthenticationEnabled) {
-      _setError('Phone authentication is unavailable in this beta build.');
+      _setErrorCode(AuthenticationErrorCode.phoneAuthenticationUnavailable);
       return;
     }
     final normalizedPhoneNumber = phoneNumber.trim();
     if (!normalizedPhoneNumber.startsWith('+')) {
-      _setError('Use an international phone number such as +821012345678.');
+      _setErrorCode(AuthenticationErrorCode.internationalPhoneNumberRequired);
       return;
     }
     _clearSmsChallenge(notify: false);
@@ -668,17 +955,17 @@ class AuthenticationControl extends ChangeNotifier
   // - Future<void>: asynchronous completion without a result payload.
   Future<void> startSmsMfaEnrollment(String phoneNumber) async {
     if (!phoneAuthenticationEnabled) {
-      _setError('SMS verification is unavailable in this beta build.');
+      _setErrorCode(AuthenticationErrorCode.smsVerificationUnavailable);
       return;
     }
     final user = _requireFirebaseAuth().currentUser;
     final normalizedPhoneNumber = phoneNumber.trim();
     if (user == null || !canEnrollSmsMfa) {
-      _setError('Sign in with a verified email account before enabling MFA.');
+      _setErrorCode(AuthenticationErrorCode.mfaVerifiedEmailRequired);
       return;
     }
     if (!normalizedPhoneNumber.startsWith('+')) {
-      _setError('Use an international phone number such as +821012345678.');
+      _setErrorCode(AuthenticationErrorCode.internationalPhoneNumberRequired);
       return;
     }
     _clearSmsChallenge(notify: false);
@@ -735,18 +1022,18 @@ class AuthenticationControl extends ChangeNotifier
   Future<void> submitSmsCode(String smsCode) async {
     if (!phoneAuthenticationEnabled) {
       _clearSmsChallenge(notify: false);
-      _setError('SMS verification is unavailable in this beta build.');
+      _setErrorCode(AuthenticationErrorCode.smsVerificationUnavailable);
       return;
     }
     final verificationId = _smsVerificationId;
     final purpose = _smsChallengePurpose;
     if (verificationId == null || purpose == null) {
-      _setError('Request a new SMS code first.');
+      _setErrorCode(AuthenticationErrorCode.smsCodeNotRequested);
       return;
     }
     final normalizedCode = smsCode.trim();
     if (normalizedCode.length < 6) {
-      _setError('Enter the six-digit SMS code.');
+      _setErrorCode(AuthenticationErrorCode.smsCodeIncomplete);
       return;
     }
     await _runAuthOperation(/* Function Name: _runAuthOperation callback
@@ -766,7 +1053,9 @@ class AuthenticationControl extends ChangeNotifier
         case SmsChallengePurpose.mfaSignIn:
           final resolver = _multiFactorResolver;
           if (resolver == null) {
-            throw StateError('The MFA sign-in session has expired.');
+            throw AuthenticationStateError(
+              AuthenticationErrorCode.mfaSignInExpired,
+            );
           }
           await resolver.resolveSignIn(
             PhoneMultiFactorGenerator.getAssertion(credential),
@@ -774,7 +1063,9 @@ class AuthenticationControl extends ChangeNotifier
         case SmsChallengePurpose.mfaEnrollment:
           final user = _requireFirebaseAuth().currentUser;
           if (user == null) {
-            throw StateError('The MFA enrollment session has expired.');
+            throw AuthenticationStateError(
+              AuthenticationErrorCode.mfaEnrollmentExpired,
+            );
           }
           await user.multiFactor.enroll(
             PhoneMultiFactorGenerator.getAssertion(credential),
@@ -850,7 +1141,7 @@ class AuthenticationControl extends ChangeNotifier
   Future<bool> sendPasswordReset(String email, {String language = 'ko'}) async {
     final normalizedEmail = email.trim();
     if (normalizedEmail.isEmpty) {
-      _setError('Enter your email address first.');
+      _setErrorCode(AuthenticationErrorCode.emailRequired);
       return false;
     }
     var sent = false;
@@ -888,7 +1179,7 @@ class AuthenticationControl extends ChangeNotifier
       final firebaseAuth = _requireFirebaseAuth();
       final user = firebaseAuth.currentUser;
       if (user == null) {
-        throw StateError('No signed-in user is available.');
+        throw AuthenticationStateError(AuthenticationErrorCode.noSignedInUser);
       }
       await firebaseAuth.setLanguageCode(
         AppLanguageControl.normalizeLanguage(language),
@@ -913,7 +1204,7 @@ class AuthenticationControl extends ChangeNotifier
      */() async {
       final user = _requireFirebaseAuth().currentUser;
       if (user == null) {
-        throw StateError('No signed-in user is available.');
+        throw AuthenticationStateError(AuthenticationErrorCode.noSignedInUser);
       }
       await user.reload();
       final refreshedUser = _requireFirebaseAuth().currentUser;
@@ -923,9 +1214,7 @@ class AuthenticationControl extends ChangeNotifier
       await _synchronizeUser(refreshedUser);
       // 미인증은 화면을 유지하되, 재확인 결과와 다음 행동을 분명히 안내한다.
       if (_emailVerificationRequired && showPendingMessage) {
-        _setError(
-          'Email verification is not complete yet. Open the link in your email, then try again.',
-        );
+        _setErrorCode(AuthenticationErrorCode.emailVerificationPending);
       }
     }, clearError: showPendingMessage);
   }
@@ -936,7 +1225,39 @@ class AuthenticationControl extends ChangeNotifier
   // - None.
   // Returns:
   // - Future<void>: asynchronous completion without a result payload.
-  Future<void> signOut() async {
+  Future<void> signOut() {
+    return _signOut(/* Function Name: _signOut callback
+     * Description: Signs out an initialized Google provider and then the Firebase identity.
+     * Parameters:
+     * - None.
+     * Returns:
+     * - Completion of provider sign-out.
+     */() async {
+      if (_googleSignInInitialized) {
+        await _googleSignIn.signOut();
+      }
+      await _requireFirebaseAuth().signOut();
+    });
+  }
+
+  // Function Name: signOutForTest
+  // Description: Runs the same strict sign-out sequence as signOut with an injected provider operation instead of a live Firebase session.
+  // Parameters:
+  // - providerSignOut (Future<void> Function()): Asynchronous provider sign-out boundary, injectable for testing.
+  // Returns:
+  // - Future<void>: asynchronous completion without a result payload.
+  @visibleForTesting
+  Future<void> signOutForTest(Future<void> Function() providerSignOut) {
+    return _signOut(providerSignOut);
+  }
+
+  // Function Name: _signOut
+  // Description: Runs pre-sign-out cleanup while the token is still usable, then the provider sign-out, and finally clears SMS and backend session state. A cleanup failure stops the sequence before the provider session is released.
+  // Parameters:
+  // - providerSignOut (Future<void> Function()): Provider sign-out operation; the live providers in production.
+  // Returns:
+  // - Future<void>: asynchronous completion without a result payload.
+  Future<void> _signOut(Future<void> Function() providerSignOut) async {
     await _runStrictAuthOperation(/* Function Name: _runStrictAuthOperation callback
      * Description: Runs pre-sign-out cleanup before signing out providers, clearing SMS state, and publishing an empty session.
      * Parameters:
@@ -945,32 +1266,9 @@ class AuthenticationControl extends ChangeNotifier
      * - Completion of cleanup and provider sign-out.
      */() async {
       await _beforeSignOut?.call();
-      if (_googleSignInInitialized) {
-        await _googleSignIn.signOut();
-      }
-      await _requireFirebaseAuth().signOut();
+      await providerSignOut();
       _clearSmsChallenge(notify: false);
       await _synchronizeUser(null);
-    });
-  }
-
-  // Function Name: signOutForTest
-  // Description: Exercises the strict sign-out cleanup order with an injected provider operation instead of a live Firebase session.
-  // Parameters:
-  // - providerSignOut (Future<void> Function()): Asynchronous provider sign-out boundary, injectable for testing.
-  // Returns:
-  // - Future<void>: asynchronous completion without a result payload.
-  @visibleForTesting
-  Future<void> signOutForTest(Future<void> Function() providerSignOut) async {
-    await _runStrictAuthOperation(/* Function Name: _runStrictAuthOperation callback
-     * Description: Runs shared pre-sign-out cleanup before the supplied provider sign-out operation.
-     * Parameters:
-     * - None.
-     * Returns:
-     * - Completion of cleanup and the provider-specific operation.
-     */() async {
-      await _beforeSignOut?.call();
-      await providerSignOut();
     });
   }
 
@@ -986,7 +1284,9 @@ class AuthenticationControl extends ChangeNotifier
     }
     final user = _requireFirebaseAuth().currentUser;
     if (user == null) {
-      throw StateError('Sign in before deleting this account.');
+      throw AuthenticationStateError(
+        AuthenticationErrorCode.deletionRequiresSignIn,
+      );
     }
     if (user.isAnonymous) {
       await user.getIdToken(true);
@@ -1013,8 +1313,8 @@ class AuthenticationControl extends ChangeNotifier
       (provider) => provider.providerId == GoogleAuthProvider.PROVIDER_ID,
     );
     if (!usesGoogle) {
-      throw StateError(
-        'For security, sign out and sign in again before deleting this account.',
+      throw AuthenticationStateError(
+        AuthenticationErrorCode.deletionRequiresRecentSignIn,
       );
     }
 
@@ -1032,7 +1332,9 @@ class AuthenticationControl extends ChangeNotifier
       final googleUser = await _googleSignIn.authenticate();
       final idToken = googleUser.authentication.idToken;
       if (idToken == null || idToken.isEmpty) {
-        throw StateError('Google did not return an identity token.');
+        throw AuthenticationStateError(
+          AuthenticationErrorCode.googleIdentityTokenMissing,
+        );
       }
       await user.reauthenticateWithCredential(
         GoogleAuthProvider.credential(idToken: idToken),
@@ -1094,13 +1396,13 @@ class AuthenticationControl extends ChangeNotifier
     _emailVerificationRequired = false;
     _hasEnrolledSmsMfa = false;
     _clearSmsChallenge(notify: false);
-    _session = null;
+    _clearSession();
     notifyListeners();
     await _runStrictAuthOperation(providerSignOut);
   }
 
   // Function Name: _runStrictAuthOperation
-  // Description: Serializes bounded authentication work and publishes translated failures while rethrowing them to cleanup callers.
+  // Description: Serializes bounded authentication work and publishes translated failures while rethrowing them to cleanup callers. A canceled Google prompt is rethrown without being published as an error.
   // Parameters:
   // - operation (Future<void> Function()): Authentication operation run inside serialization and error handling.
   // Returns:
@@ -1109,7 +1411,9 @@ class AuthenticationControl extends ChangeNotifier
     Future<void> Function() operation,
   ) async {
     if (_isBusy) {
-      throw StateError('Another authentication request is already running.');
+      throw AuthenticationStateError(
+        AuthenticationErrorCode.operationInProgress,
+      );
     }
     _isBusy = true;
     _errorMessage = null;
@@ -1117,25 +1421,28 @@ class AuthenticationControl extends ChangeNotifier
     try {
       await operation().timeout(_authenticationOperationTimeout);
     } on FirebaseAuthException catch (error) {
-      final message = _messageForFirebaseError(error.code);
-      _setError(message);
-      throw StateError(message);
+      final code = _codeForFirebaseError(error.code);
+      _setErrorCode(code);
+      throw AuthenticationStateError(code);
     } on GoogleSignInException catch (error) {
-      final message = error.description ?? 'Google sign-in was not completed.';
-      _setError(message);
-      throw StateError(message);
+      if (error.code == GoogleSignInExceptionCode.canceled) {
+        throw AuthenticationStateError(
+          AuthenticationErrorCode.googleSignInCanceled,
+        );
+      }
+      _setErrorCode(AuthenticationErrorCode.googleSignInIncomplete);
+      throw AuthenticationStateError(
+        AuthenticationErrorCode.googleSignInIncomplete,
+      );
     } on TimeoutException {
-      const message =
-          'Authentication timed out. Check the network and try again.';
-      _setError(message);
-      throw StateError(message);
+      _setErrorCode(AuthenticationErrorCode.timeout);
+      throw AuthenticationStateError(AuthenticationErrorCode.timeout);
     } on StateError catch (error) {
-      _setError(error.message);
+      _setStateError(error);
       rethrow;
     } catch (_) {
-      const message = 'Authentication request failed. Please try again.';
-      _setError(message);
-      throw StateError(message);
+      _setErrorCode(AuthenticationErrorCode.requestFailed);
+      throw AuthenticationStateError(AuthenticationErrorCode.requestFailed);
     } finally {
       _isBusy = false;
       notifyListeners();
@@ -1143,7 +1450,7 @@ class AuthenticationControl extends ChangeNotifier
   }
 
   // Function Name: _runAuthOperation
-  // Description: Serializes authentication work, handles MFA challenges and provider errors, and always releases the busy state; an optional null timeout permits interactive sign-in.
+  // Description: Serializes authentication work, handles MFA challenges and provider errors, and always releases the busy state; an optional null timeout permits interactive sign-in. Backing out of the Google account picker leaves no error.
   // Parameters:
   // - operation (Future<void> Function()): Authentication operation run inside serialization and error handling.
   // - timeout (Duration?): Authentication timeout; null waits without a time limit.
@@ -1171,32 +1478,77 @@ class AuthenticationControl extends ChangeNotifier
     } on FirebaseAuthMultiFactorException catch (error) {
       await _beginMfaSignIn(error.resolver);
     } on FirebaseAuthException catch (error) {
-      _setError(_messageForFirebaseError(error.code));
+      _setErrorCode(_codeForFirebaseError(error.code));
     } on GoogleSignInException catch (error) {
-      _setError(error.description ?? 'Google sign-in was not completed.');
+      // The plugin always supplies its own description, so the failure is
+      // identified by code; closing the account picker is not a failure.
+      if (error.code != GoogleSignInExceptionCode.canceled) {
+        _setErrorCode(AuthenticationErrorCode.googleSignInIncomplete);
+      }
     } on StateError catch (error) {
-      _setError(error.message);
+      _setStateError(error);
     } on TimeoutException {
-      _setError('Authentication timed out. Check the network and try again.');
+      _setErrorCode(AuthenticationErrorCode.timeout);
     } catch (_) {
-      _setError('Authentication request failed. Please try again.');
+      _setErrorCode(AuthenticationErrorCode.requestFailed);
     } finally {
       _isBusy = false;
       notifyListeners();
     }
   }
 
+  // Function Name: runAuthOperationForTest
+  // Description: Runs an injected operation through the same serialization and error translation as the sign-in commands, so provider failures can be exercised without a live provider.
+  // Parameters:
+  // - operation (Future<void> Function()): Operation standing in for a provider call.
+  // - strict (bool): Whether to use the rethrowing wrapper used by sign-out and account deletion.
+  // Returns:
+  // - Future<void>: asynchronous completion without a result payload.
+  @visibleForTesting
+  Future<void> runAuthOperationForTest(
+    Future<void> Function() operation, {
+    bool strict = false,
+  }) {
+    return strict
+        ? _runStrictAuthOperation(operation)
+        : _runAuthOperation(operation);
+  }
+
   // 함수이름: _synchronizeUser
-  // 함수역할: Firebase 신원을 이메일 검증·MFA 상태와 조정하고 삭제된 신원과 오래된 응답을 제외한 뒤 인증된 백엔드 교환 결과만 세션으로 채택한다.
+  // 함수역할: Firebase 신원을 이메일 검증·MFA 상태와 조정하고 삭제된 신원과 오래된 응답을 제외한 뒤 인증된 백엔드 교환 결과만 세션으로 채택한다. 더 새로운 동기화가 시작되면 그 결과가 정해질 때까지 기다린 뒤 반환한다.
   // 매개변수:
   // - user (User?): 현재 또는 새로 복원된 Firebase 사용자
+  // - scheduledRetry (bool): 유지된 세션을 확인하려고 예약한 재시도인지 여부
   // 반환값:
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
-  Future<void> _synchronizeUser(User? user) async {
+  Future<void> _synchronizeUser(User? user, {bool scheduledRetry = false}) {
     final generation = ++_sessionGeneration;
+    final synchronization = _runSynchronization(
+      user,
+      generation,
+      scheduledRetry: scheduledRetry,
+    );
+    _latestSynchronization = synchronization;
+    _latestSynchronizationGeneration = generation;
+    return synchronization;
+  }
+
+  // 함수이름: _runSynchronization
+  // 함수역할: 한 번의 세션 동기화를 수행한다. 로그아웃·이메일 미인증은 세션을 즉시 끝내고, 서버 교환이 실패하면 실패 원인을 분류해 세션을 끝낼지 유지할지 정한다.
+  // 매개변수:
+  // - user (User?): 현재 또는 새로 복원된 Firebase 사용자
+  // - generation (int): 이 동기화에 부여된 세대 번호. 더 큰 번호가 생기면 결과를 적용하지 않는다.
+  // - scheduledRetry (bool): 유지된 세션을 확인하려고 예약한 재시도인지 여부
+  // 반환값:
+  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  Future<void> _runSynchronization(
+    User? user,
+    int generation, {
+    required bool scheduledRetry,
+  }) async {
     final deletedSubject = _deletedFirebaseSubject;
     if (user != null && user.uid == deletedSubject) {
-      _session = null;
+      _clearSession();
       _signedInEmail = null;
       _emailVerificationRequired = false;
       notifyListeners();
@@ -1208,49 +1560,312 @@ class AuthenticationControl extends ChangeNotifier
     _signedInEmail = user?.email;
     _emailVerificationRequired = _requiresEmailVerification(user);
     await _refreshMfaEnrollment(user);
+    if (generation != _sessionGeneration) {
+      await _awaitNewerSynchronization(generation);
+      return;
+    }
     if (user == null || _emailVerificationRequired) {
-      _session = null;
+      _clearSession();
       notifyListeners();
       return;
     }
 
+    AuthSession? session;
+    Object? failure;
     try {
-      final response = await apiClient
-          .get(Uri.parse(ApiConfig.authSessionUrl))
-          .timeout(_backendSessionTimeout);
-      if (generation != _sessionGeneration) {
-        return;
-      }
-      if (response.statusCode != 200) {
-        throw BackendSessionHttpException(response.statusCode);
-      }
-      final payload = jsonDecode(utf8.decode(response.bodyBytes));
-      if (payload is! Map<String, dynamic>) {
-        throw const FormatException('Authentication session is malformed.');
-      }
-      final session = AuthSession.fromJson(payload);
-      if (!session.authenticated) {
-        throw const FormatException('Backend session is not authenticated.');
-      }
+      session = await _requestBackendSession(user);
+    } catch (error) {
+      failure = error;
+    }
+    if (generation != _sessionGeneration) {
+      await _awaitNewerSynchronization(generation);
+      return;
+    }
+    if (session != null) {
       _session = session;
+      _sessionSubject = user.uid;
+      _cancelSessionResync();
       _errorMessage = null;
       _backendSessionError = null;
-    } catch (error) {
-      if (generation == _sessionGeneration) {
-        // Fixed diagnostic codes are safe in signed builds; no tokens or bodies.
-        debugPrint('MedBuddy session failure: ${backendSessionFailureCode(error)}');
-        _session = null;
-        _setError(
-          resolveBackendSessionError(error, isEnglish: false),
-          cause: error,
-        );
-      }
+    } else {
+      await _resolveSessionFailure(
+        failure!,
+        user,
+        generation,
+        scheduledRetry: scheduledRetry,
+      );
+    }
+    if (generation == _sessionGeneration) {
+      notifyListeners();
+    }
+  }
+
+  // 함수이름: _awaitNewerSynchronization
+  // 함수역할: 대체된 동기화가 최신 동기화의 결과가 정해지기 전에 호출자에게 돌아가지 않게 한다. 시작·로그인 흐름이 세션 없이 먼저 끝나 로그인 화면이 잠깐 보이는 것을 막는다.
+  // 매개변수:
+  // - generation (int): 대체된 동기화의 세대 번호
+  // 반환값:
+  // - Future<void>: 더 새로운 동기화가 끝나면 완료된다. 계정 삭제·dispose처럼 새 동기화 없이 무효화된 경우에는 바로 완료된다.
+  Future<void> _awaitNewerSynchronization(int generation) async {
+    final newer = _latestSynchronization;
+    if (newer == null || _latestSynchronizationGeneration <= generation) {
+      return;
+    }
+    try {
+      await newer;
+    } catch (_) {
+      // 최신 동기화의 실패는 그 호출자가 직접 처리한다.
+    }
+  }
+
+  // 함수이름: _requestBackendSession
+  // 함수역할: 현재 ID 토큰을 읽고 백엔드 세션을 요청한다. 같은 사용자·같은 토큰의 요청이 이미 진행 중이면 새 요청을 보내지 않고 그 결과를 함께 사용한다.
+  // 매개변수:
+  // - user (User): 세션을 요청할 Firebase 사용자
+  // 반환값:
+  // - Future<AuthSession>: 서버가 인증한 세션. 토큰을 읽지 못하면 _IdTokenFailure, 서버 교환이 실패하면 그 원인을 던진다.
+  Future<AuthSession> _requestBackendSession(User user) async {
+    final token = await _readIdToken(user);
+    final pending = _pendingHandshake;
+    if (pending != null &&
+        pending.subject == user.uid &&
+        pending.token == token) {
+      return pending.result;
+    }
+    final handshake = _PendingHandshake(
+      user.uid,
+      token,
+      _fetchBackendSession(),
+    );
+    _pendingHandshake = handshake;
+    try {
+      return await handshake.result;
     } finally {
-      if (generation == _sessionGeneration) {
-        notifyListeners();
+      if (identical(_pendingHandshake, handshake)) {
+        _pendingHandshake = null;
       }
     }
   }
+
+  // 함수이름: _readIdToken
+  // 함수역할: 서버 교환 전에 Firebase ID 토큰을 직접 읽어, 토큰을 얻지 못한 원인을 일반적인 연결 실패와 구분할 수 있게 한다.
+  // 매개변수:
+  // - user (User): 토큰을 읽을 Firebase 사용자
+  // 반환값:
+  // - Future<String>: 비어 있지 않은 ID 토큰. 읽지 못하면 원래 실패를 담은 _IdTokenFailure를 던진다.
+  Future<String> _readIdToken(User user) async {
+    final String? token;
+    try {
+      token = await user.getIdToken().timeout(_idTokenTimeout);
+    } catch (error) {
+      throw _IdTokenFailure(error);
+    }
+    if (token == null || token.trim().isEmpty) {
+      throw _IdTokenFailure(StateError('Firebase returned no ID token.'));
+    }
+    return token;
+  }
+
+  // 함수이름: _fetchBackendSession
+  // 함수역할: 인증된 백엔드 세션을 한 번 요청하고 응답을 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<AuthSession>: 서버가 인증한 세션. 200이 아닌 응답·형식 오류·미인증 응답은 예외로 알린다.
+  Future<AuthSession> _fetchBackendSession() async {
+    final response = await apiClient
+        .get(Uri.parse(ApiConfig.authSessionUrl))
+        .timeout(_backendSessionTimeout);
+    if (response.statusCode != 200) {
+      throw BackendSessionHttpException(response.statusCode);
+    }
+    final payload = jsonDecode(utf8.decode(response.bodyBytes));
+    if (payload is! Map<String, dynamic>) {
+      throw const FormatException('Authentication session is malformed.');
+    }
+    final session = AuthSession.fromJson(payload);
+    if (!session.authenticated) {
+      throw const FormatException('Backend session is not authenticated.');
+    }
+    return session;
+  }
+
+  // 함수이름: _resolveSessionFailure
+  // 함수역할: 세션 동기화 실패를 분류해 처리한다. 신원이 거부되면 공급자까지 로그아웃하고, 서버가 거절하면 세션을 끝내며, 판정을 얻지 못한 실패는 같은 사용자의 기존 세션을 유지하고 재확인을 예약한다.
+  // 매개변수:
+  // - failure (Object): 토큰 읽기 또는 서버 교환에서 발생한 실패
+  // - user (User): 동기화 대상 Firebase 사용자
+  // - generation (int): 이 동기화의 세대 번호
+  // - scheduledRetry (bool): 유지된 세션을 확인하려고 예약한 재시도인지 여부
+  // 반환값:
+  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  Future<void> _resolveSessionFailure(
+    Object failure,
+    User user,
+    int generation, {
+    required bool scheduledRetry,
+  }) async {
+    final kind = await _classifySessionFailure(failure, user);
+    if (generation != _sessionGeneration) {
+      await _awaitNewerSynchronization(generation);
+      return;
+    }
+    // 토큰을 읽지 못한 실패는 기존과 같은 "신원 확인 불가" 원인으로 기록한다.
+    final Object reported = failure is _IdTokenFailure
+        ? const AuthenticationUnavailableException()
+        : failure;
+    final providerHoldsUser = _firebaseAuth?.currentUser?.uid == user.uid;
+    final keepsSession =
+        kind == _SessionFailureKind.inconclusive &&
+        _session != null &&
+        _sessionSubject == user.uid &&
+        providerHoldsUser;
+    // Fixed diagnostic codes are safe in signed builds; no tokens or bodies.
+    debugPrint(
+      'MedBuddy session failure: ${backendSessionFailureCode(reported)} '
+      '(${keepsSession ? 'session kept' : kind.name})',
+    );
+    if (keepsSession) {
+      if (!scheduledRetry) {
+        _sessionResyncAttempts = 0;
+      }
+      _scheduleSessionResync();
+      return;
+    }
+    if (kind == _SessionFailureKind.rejected) {
+      if (providerHoldsUser) {
+        try {
+          await _invalidateUnauthorizedSession();
+        } catch (_) {
+          // 공급자 로그아웃이 실패해도 아래에서 MedBuddy 세션은 반드시 끝낸다.
+        }
+      }
+      if (_session != null || _errorMessage == null) {
+        // 401 처리기가 이미 공급자를 로그아웃했거나 다른 무효화가 진행 중인 경우에도 세션을 남기지 않는다.
+        _clearSession();
+        _setErrorCode(AuthenticationErrorCode.sessionExpired);
+      }
+      return;
+    }
+    _clearSession();
+    _setError(
+      resolveBackendSessionError(reported, isEnglish: false),
+      cause: reported,
+    );
+  }
+
+  // 함수이름: _classifySessionFailure
+  // 함수역할: 세션 동기화 실패가 계정에 대한 판정인지 판정을 얻지 못한 것인지 구분한다.
+  // 매개변수:
+  // - failure (Object): 토큰 읽기 또는 서버 교환에서 발생한 실패
+  // - user (User): 동기화 대상 Firebase 사용자
+  // 반환값:
+  // - Future<_SessionFailureKind>: rejected(신원 거부·401), refused(403 등 서버 거절·계약 불일치·잘못된 응답), inconclusive(네트워크·TLS 연결 실패·시간 초과·408/429/5xx·토큰 발급 불가).
+  Future<_SessionFailureKind> _classifySessionFailure(
+    Object failure,
+    User user,
+  ) async {
+    if (failure is _IdTokenFailure) {
+      return switch (_classifyIdentityFailure(failure.cause)) {
+        _IdentityFailureKind.rejected => _SessionFailureKind.rejected,
+        _IdentityFailureKind.unavailable => _SessionFailureKind.inconclusive,
+        _IdentityFailureKind.ambiguous => await _probeIdentity(user),
+      };
+    }
+    if (failure is BackendSessionHttpException && failure.statusCode == 401) {
+      return _SessionFailureKind.rejected;
+    }
+    // package:http는 TLS 연결 실패를 ClientException으로 감싸지 않는다. 요청이 서버에 닿지 못했으므로 판정이 아니다.
+    if (failure is TlsException) {
+      return _SessionFailureKind.inconclusive;
+    }
+    return isTransientBackendSessionFailure(failure)
+        ? _SessionFailureKind.inconclusive
+        : _SessionFailureKind.refused;
+  }
+
+  // 함수이름: _probeIdentity
+  // 함수역할: 토큰 실패 코드만으로 판단할 수 없을 때 사용자 정보를 다시 읽어 계정 상태를 확인한다. Android 플러그인은 getIdToken의 거부 사유를 unknown으로 전달하지만 reload는 원래 코드를 전달한다.
+  // 매개변수:
+  // - user (User): 상태를 확인할 Firebase 사용자
+  // 반환값:
+  // - Future<_SessionFailureKind>: 계정·갱신 토큰이 거부되면 rejected, 그 밖의 결과는 inconclusive.
+  Future<_SessionFailureKind> _probeIdentity(User user) async {
+    try {
+      await user.reload().timeout(_identityProbeTimeout);
+    } catch (error) {
+      if (_classifyIdentityFailure(error) == _IdentityFailureKind.rejected) {
+        return _SessionFailureKind.rejected;
+      }
+    }
+    return _SessionFailureKind.inconclusive;
+  }
+
+  // 함수이름: _scheduleSessionResync
+  // 함수역할: 판정 없이 유지한 세션을 서버와 다시 확인하도록 다음 재시도를 예약한다. 정해진 횟수를 넘으면 다음 토큰 갱신까지 예약하지 않는다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음.
+  void _scheduleSessionResync() {
+    if (_sessionResyncTimer != null ||
+        _sessionResyncAttempts >= _sessionResyncDelays.length) {
+      return;
+    }
+    final delay = _sessionResyncDelays[_sessionResyncAttempts];
+    _sessionResyncAttempts += 1;
+    _sessionResyncTimer = Timer(delay, /* 함수이름: Timer 콜백
+     * 함수역할: 같은 사용자의 세션이 아직 유지되고 있을 때만 서버 세션을 다시 확인한다.
+     * 매개변수:
+     * - 없음.
+     * 반환값:
+     * - 없음.
+     */() {
+      _sessionResyncTimer = null;
+      final user = _firebaseAuth?.currentUser;
+      if (_session == null || user == null || user.uid != _sessionSubject) {
+        return;
+      }
+      unawaited(
+        _synchronizeUser(
+          user,
+          scheduledRetry: true,
+        ).catchError((Object _) {}),
+      );
+    });
+  }
+
+  // 함수이름: _cancelSessionResync
+  // 함수역할: 예약된 세션 재확인을 취소하고 재시도 횟수를 초기화한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음.
+  void _cancelSessionResync() {
+    _sessionResyncTimer?.cancel();
+    _sessionResyncTimer = null;
+    _sessionResyncAttempts = 0;
+  }
+
+  // 함수이름: _clearSession
+  // 함수역할: 세션과 그 세션이 속한 Firebase 사용자 기록을 함께 지우고 예약된 재확인을 취소한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음.
+  void _clearSession() {
+    _session = null;
+    _sessionSubject = null;
+    _cancelSessionResync();
+  }
+
+  // Function Name: handleUnauthorizedResponse
+  // Description: Lets API clients created outside this control report an HTTP 401, so the same cleanup and forced sign-out run as for the control's own client.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: completes after the session is invalidated, or immediately without Firebase or while an invalidation is already running.
+  Future<void> handleUnauthorizedResponse() => _invalidateUnauthorizedSession();
 
   // Function Name: _invalidateUnauthorizedSession
   // Description: Starts forced sign-out only when Firebase is available and no unauthorized-session cleanup is already running.
@@ -1290,8 +1905,8 @@ class AuthenticationControl extends ChangeNotifier
           );
         }
       }
-      _session = null;
-      _setError('Your secure session expired. Please sign in again.');
+      _clearSession();
+      _setErrorCode(AuthenticationErrorCode.sessionExpired);
       await providerSignOut();
     } finally {
       _isInvalidatingUnauthorizedSession = false;
@@ -1320,7 +1935,9 @@ class AuthenticationControl extends ChangeNotifier
   FirebaseAuth _requireFirebaseAuth() {
     final firebaseAuth = _firebaseAuth;
     if (firebaseAuth == null) {
-      throw StateError('Firebase authentication is unavailable.');
+      throw AuthenticationStateError(
+        AuthenticationErrorCode.firebaseUnavailable,
+      );
     }
     return firebaseAuth;
   }
@@ -1398,14 +2015,14 @@ class AuthenticationControl extends ChangeNotifier
   // - Future<void>: asynchronous completion without a result payload.
   Future<void> _beginMfaSignIn(MultiFactorResolver resolver) async {
     if (!phoneAuthenticationEnabled) {
-      _setError('SMS verification is unavailable in this beta build.');
+      _setErrorCode(AuthenticationErrorCode.smsVerificationUnavailable);
       return;
     }
     final phoneHint = resolver.hints
         .whereType<PhoneMultiFactorInfo>()
         .firstOrNull;
     if (phoneHint == null) {
-      _setError('No supported SMS second factor is available.');
+      _setErrorCode(AuthenticationErrorCode.mfaFactorUnsupported);
       return;
     }
     _multiFactorResolver = resolver;
@@ -1462,7 +2079,7 @@ class AuthenticationControl extends ChangeNotifier
         firebaseCredential.user ?? _requireFirebaseAuth().currentUser,
       );
     } on FirebaseAuthException catch (error) {
-      _setError(_messageForFirebaseError(error.code));
+      _setErrorCode(_codeForFirebaseError(error.code));
     }
   }
 
@@ -1474,7 +2091,7 @@ class AuthenticationControl extends ChangeNotifier
   // - No return value.
   void _handlePhoneVerificationFailure(FirebaseAuthException error) {
     _clearSmsChallenge(notify: false);
-    _setError(_messageForFirebaseError(error.code));
+    _setErrorCode(_codeForFirebaseError(error.code));
   }
 
   // Function Name: _setSmsChallenge
@@ -1514,7 +2131,7 @@ class AuthenticationControl extends ChangeNotifier
   }
 
   // 함수이름: _setError
-  // 함수역할: 사용자용 인증 안내와 선택적 백엔드 오류 원인을 저장하고 구독 화면에 변경을 알린다.
+  // 함수역할: 코드가 없는 사용자용 안내와 선택적 백엔드 오류 원인을 저장하고 구독 화면에 변경을 알린다.
   // 매개변수:
   // - message (String): 사용자에게 표시하거나 오류로 보존할 안내 문구
   // - cause (Object?): 언어별 안내에 사용할 원래 서버 세션 오류
@@ -1522,34 +2139,61 @@ class AuthenticationControl extends ChangeNotifier
   // - 없음.
   void _setError(String message, {Object? cause}) {
     _errorMessage = message;
+    _errorCode = null;
     _backendSessionError = cause;
     notifyListeners();
   }
 
-  // Function Name: _messageForFirebaseError
-  // Description: Maps Firebase error codes to actionable sign-in, phone-verification, or MFA guidance with a general fallback.
+  // 함수이름: _setErrorCode
+  // 함수역할: 인증 실패 코드를 저장해 화면이 현재 언어의 안내를 고를 수 있게 하고 구독 화면에 변경을 알린다.
+  // 매개변수:
+  // - code (AuthenticationErrorCode): 언어와 무관한 실패 식별자
+  // 반환값:
+  // - 없음.
+  void _setErrorCode(AuthenticationErrorCode code) {
+    _errorMessage = code.english;
+    _errorCode = code;
+    _backendSessionError = null;
+    notifyListeners();
+  }
+
+  // 함수이름: _setStateError
+  // 함수역할: 인증 코드가 담긴 StateError는 코드로, 그 밖의 StateError는 원래 문구로 저장한다.
+  // 매개변수:
+  // - error (StateError): 인증 작업 중 발생한 상태 오류
+  // 반환값:
+  // - 없음.
+  void _setStateError(StateError error) {
+    if (error is AuthenticationStateError) {
+      _setErrorCode(error.code);
+    } else {
+      _setError(error.message);
+    }
+  }
+
+  // Function Name: _codeForFirebaseError
+  // Description: Maps Firebase error codes to actionable sign-in, phone-verification, or MFA failure codes with a general fallback.
   // Parameters:
   // - code (String): Firebase authentication error code.
   // Returns:
-  // - String: Maps Firebase error codes to actionable sign-in, phone-verification, or MFA guidance with a general fallback.
-  String _messageForFirebaseError(String code) => switch (code) {
-    'invalid-email' => 'Enter a valid email address.',
+  // - AuthenticationErrorCode: Failure code whose guidance is shown in the current language.
+  AuthenticationErrorCode _codeForFirebaseError(String code) => switch (code) {
+    'invalid-email' => AuthenticationErrorCode.invalidEmail,
     'invalid-credential' ||
     'user-not-found' ||
-    'wrong-password' => 'The email or password is incorrect.',
-    'email-already-in-use' => 'An account already uses this email address.',
+    'wrong-password' => AuthenticationErrorCode.wrongCredentials,
+    'email-already-in-use' => AuthenticationErrorCode.emailAlreadyInUse,
     'credential-already-in-use' =>
-      'This sign-in method belongs to another account. Sign out first to use it.',
-    'weak-password' => 'Use a stronger password with at least six characters.',
-    'too-many-requests' => 'Too many attempts. Please wait and try again.',
-    'network-request-failed' => 'Check your network connection and try again.',
-    'invalid-phone-number' => 'Enter a valid international phone number.',
-    'invalid-verification-code' => 'The SMS verification code is incorrect.',
-    'quota-exceeded' => 'The SMS quota is exhausted. Try again later.',
-    'requires-recent-login' =>
-      'Sign out and sign in again before changing MFA.',
-    'operation-not-allowed' => 'This sign-in method is not enabled yet.',
-    _ => 'Authentication request failed. Please try again.',
+      AuthenticationErrorCode.credentialAlreadyInUse,
+    'weak-password' => AuthenticationErrorCode.weakPassword,
+    'too-many-requests' => AuthenticationErrorCode.tooManyRequests,
+    'network-request-failed' => AuthenticationErrorCode.network,
+    'invalid-phone-number' => AuthenticationErrorCode.invalidPhoneNumber,
+    'invalid-verification-code' => AuthenticationErrorCode.smsCodeIncorrect,
+    'quota-exceeded' => AuthenticationErrorCode.smsQuotaExceeded,
+    'requires-recent-login' => AuthenticationErrorCode.mfaRecentSignInRequired,
+    'operation-not-allowed' => AuthenticationErrorCode.signInMethodDisabled,
+    _ => AuthenticationErrorCode.requestFailed,
   };
 
   // Function Name: dispose
@@ -1561,6 +2205,7 @@ class AuthenticationControl extends ChangeNotifier
   @override
   void dispose() {
     _sessionGeneration += 1;
+    _cancelSessionResync();
     _authSubscription?.cancel();
     apiClient.close();
     super.dispose();

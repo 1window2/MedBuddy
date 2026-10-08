@@ -2,8 +2,8 @@
 // 역할: 일정 조회·알림 설정의 저장과 취소·기존 화면 배치·복약 완료를 검증한다.
 
 import 'package:flutter/material.dart';
-import 'package:medbuddy_frontend/entities/caregiver_alert_context_entity.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 import 'package:medbuddy_frontend/boundaries/check_schedule_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/health_recommendation_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_health_recommendation_control.dart';
@@ -13,12 +13,16 @@ import 'package:medbuddy_frontend/controls/set_notification_control.dart';
 import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
 import 'package:medbuddy_frontend/entities/health_recommendation_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
-import 'package:medbuddy_frontend/services/notification_service.dart';
+import 'package:medbuddy_frontend/services/dose_sync_service.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 import 'package:medbuddy_frontend/widgets/medbuddy_page_header.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'support/dose_sync_harness.dart';
+import 'support/fake_controls.dart';
+import 'support/fake_notification_service.dart';
 
 // Class Name: _FailOnceCheckSchedule
 // Role: Schedule stub that fails its first read and then permits a successful retry.
@@ -42,24 +46,6 @@ class _FailOnceCheckSchedule extends CheckSchedule {
     if (requestCount == 1) {
       throw StateError('Schedule lookup failed.');
     }
-    return const [];
-  }
-}
-
-// Class Name: _EmptyCheckSchedule
-// Role: Successful empty-schedule stub for distinguishing no data from errors.
-// Responsibilities:
-// - Model a valid schedule response with no due medications.
-class _EmptyCheckSchedule extends CheckSchedule {
-  // Function Name: requestTodayMedicationSchedule
-  // Description:
-  // - Model a valid schedule response with no due medications.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - An empty schedule list.
-  @override
-  Future<List<MedicationSchedule>> requestTodayMedicationSchedule() async {
     return const [];
   }
 }
@@ -121,42 +107,40 @@ class _ActiveCheckSchedule extends CheckSchedule {
   }
 }
 
-// Class Name: _CompletableCheckSchedule
-// Role: Stateful schedule stub for completion feedback, undo timing, and whole-slot toggles.
+// Class Name: _MorningDoseCheckSchedule
+// Role: Schedule stub with one pending morning dose for the dose-recording widget tests.
 // Responsibilities:
-// - Assert the morning scope, count whole-slot updates, and replace the fake completion state.
+// - Serve a single morning medication whose id is numeric, as saved medications are.
+// - Count direct status requests, which the outbox path used by the app must never issue.
 // Attributes:
-// - _completed (bool): Completion flag shared by the single morning schedule.
-// - wholeSlotUpdateCount (int): Number of whole-slot completion requests.
-class _CompletableCheckSchedule extends CheckSchedule {
-  bool _completed = false;
-  int wholeSlotUpdateCount = 0;
+// - directUpdateCount (int): Number of direct per-dose or whole-slot status requests.
+class _MorningDoseCheckSchedule extends CheckSchedule {
+  int directUpdateCount = 0;
 
   // 함수이름: _schedule
   // 함수역할:
-  // - 현재 완료 플래그를 아침 시간대와 전체 상태에 반영한 일정을 구성한다.
+  // - 서버에 아직 복용 기록이 없는 아침 약 일정을 구성한다.
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - 현재 완료 상태의 테스트 약 일정.
-  MedicationSchedule get _schedule => MedicationSchedule(
-    medicationID: 'completion-tablet',
+  // - 아침 미완료 상태의 테스트 약 일정.
+  MedicationSchedule get _schedule => const MedicationSchedule(
+    medicationID: '91',
     medicationName: '테스트정',
     dosage: '1',
     intakeTime: '1회',
     medicationTime: 1,
-    scheduleSlotKeys: const ['morning'],
-    slotStatuses: {'morning': _completed},
-    medicationStatus: _completed,
+    scheduleSlotKeys: ['morning'],
+    slotStatuses: {'morning': false},
   );
 
   // 함수이름: requestTodayMedicationSchedule
   // 함수역할:
-  // - 현재 완료 상태가 반영된 아침 일정을 조회 결과로 제공한다.
+  // - 서버가 아는 상태(아침 미완료)를 조회 결과로 제공한다. 기기에만 저장된 기록은 포함하지 않는다.
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - 상태 갱신 가능한 일정 한 건.
+  // - 아침 일정 한 건.
   @override
   Future<List<MedicationSchedule>> requestTodayMedicationSchedule() async {
     return [_schedule];
@@ -164,40 +148,38 @@ class _CompletableCheckSchedule extends CheckSchedule {
 
   // 함수이름: updateMedicationStatus
   // 함수역할:
-  // - 요청한 완료 여부를 저장해 다음 조회와 실행 취소에 반영한다.
+  // - 대기열을 거치지 않은 직접 상태 변경 요청을 센다.
   // 매개변수:
   // - medicationId (String): 선택한 저장 약 식별자. 이 대역에서는 직접 사용하지 않는다.
-  // - medicationStatus (bool): 요청한 복약 완료 또는 미완료 상태.
-  // - slotKey (String?): 아침·점심·저녁·취침 전 등을 구분하는 복약 시간대 키. 이 대역에서는 직접 사용하지 않는다.
+  // - medicationStatus (bool): 요청한 복약 완료 또는 미완료 상태. 이 대역에서는 직접 사용하지 않는다.
+  // - slotKey (String?): 복약 시간대 키. 이 대역에서는 직접 사용하지 않는다.
   // 반환값:
-  // - 변경된 완료 상태의 일정.
+  // - 변경하지 않은 일정.
   @override
   Future<MedicationSchedule> updateMedicationStatus(
     String medicationId,
     bool medicationStatus, {
     String? slotKey,
   }) async {
-    _completed = medicationStatus;
+    directUpdateCount += 1;
     return _schedule;
   }
 
   // Function Name: updateMedicationSlotStatus
   // Description:
-  // - Assert the morning scope, count whole-slot updates, and replace the fake completion state.
+  // - Count a direct whole-slot status request that bypassed the dose queue.
   // Parameters:
-  // - slotKey (String): Dose slot such as morning, lunch, evening, or bedtime.
-  // - medicationStatus (bool): Requested taken/untaken completion state.
+  // - slotKey (String): Dose slot such as morning, lunch, evening, or bedtime. Not used.
+  // - medicationStatus (bool): Requested taken/untaken completion state. Not used.
   // Returns:
-  // - The updated schedule as a one-item list.
+  // - The unchanged schedule as a one-item list.
   @override
   Future<List<MedicationSchedule>> updateMedicationSlotStatus(
     String slotKey,
     bool medicationStatus, {
     String? expectedScheduleDate,
   }) async {
-    expect(slotKey, 'morning');
-    wholeSlotUpdateCount += 1;
-    _completed = medicationStatus;
+    directUpdateCount += 1;
     return [_schedule];
   }
 }
@@ -226,24 +208,6 @@ class _VisualScheduleCheckSchedule extends CheckSchedule {
         imageUrl: 'https://nedrug.mfds.go.kr/tablet.png',
       ),
     ];
-  }
-}
-
-// Class Name: _EmptySetNotification
-// Role: Empty alarm lookup for schedule tests without enabled reminders.
-// Responsibilities:
-// - Model a successful alarm lookup with no stored reminder settings.
-class _EmptySetNotification extends SetNotification {
-  // Function Name: requestMedicationAlarm
-  // Description:
-  // - Model a successful alarm lookup with no stored reminder settings.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - An empty alarm list.
-  @override
-  Future<List<MedicationAlarm>> requestMedicationAlarm() async {
-    return const [];
   }
 }
 
@@ -372,410 +336,6 @@ class _MutableSetNotification extends SetNotification {
   }) async {}
 }
 
-// Class Name: _SuccessfulNotificationService
-// Role: Successful notification-platform substitute for schedule UI feedback tests.
-// Responsibilities:
-// - Skip real notification-plugin initialization while satisfying the platform interface.
-// - Grant notification permission in the fake without invoking an OS permission prompt.
-// - Accept reminder registration without creating a real device notification.
-class _SuccessfulNotificationService implements NotificationService {
-  // 함수이름: setHistoryUser
-  // 함수역할: 테스트에서는 계정별 플랫폼 저장을 생략한다. 매개변수: 계정과 저장 여부. 반환값: 없음.
-  @override
-  void setHistoryUser(String? userHash, {bool persistSession = true}) {}
-
-  // 함수이름: setShowSensitiveDetails
-  // 함수역할:
-  // - 플랫폼 알림을 표시하지 않는 대역이므로 잠금 화면 상세정보 설정을 외부에 적용하지 않는다.
-  // 매개변수:
-  // - showSensitiveDetails (bool): 잠금 화면 알림에 민감 상세정보를 표시할지 여부. 이 대역에서는 직접 사용하지 않는다.
-  // 반환값:
-  // - 없음; 플랫폼 상태를 변경하지 않는다.
-  @override
-  void setShowSensitiveDetails(bool showSensitiveDetails) {}
-
-  // 함수이름: openSystemNotificationSettings
-  // 함수역할:
-  // - 기기의 설정 앱을 열지 않고 시스템 알림 설정 이동을 성공 처리한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>; 플랫폼 호출 없이 완료된다.
-  @override
-  Future<void> openSystemNotificationSettings() async {}
-
-  // 함수이름: cancelAllScheduledMedicationReminders
-  // 함수역할:
-  // - 실제 기기 알림을 건드리지 않고 예약 복약 알림 정리를 성공 처리한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>; 플랫폼 호출 없이 완료된다.
-  @override
-  Future<void> cancelAllScheduledMedicationReminders() async {}
-
-  // 함수이름: showLinkedChatAlert
-  // 함수역할:
-  // - 복약 대화 알림을 실제로 표시하지 않고 테스트 흐름의 알림 요청을 완료한다.
-  // 매개변수:
-  // - id (int): 약·메시지·알림 대역의 식별자. 이 대역에서는 직접 사용하지 않는다.
-  // - linkId (int): 대화를 구분하는 환자·보호자 연결 식별자. 이 대역에서는 직접 사용하지 않는다.
-  // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
-  // - messageKind (String?): 일반 텍스트 또는 복약 문맥 메시지 유형. 이 대역에서는 직접 사용하지 않는다.
-  // - messagePreview (String?): 알림 인터페이스로 전달하는 선택적 채팅 미리보기. 이 대역에서는 직접 사용하지 않는다.
-  // - slotKey (String?): 아침·점심·저녁·취침 전 등을 구분하는 복약 시간대 키. 이 대역에서는 직접 사용하지 않는다.
-  // 반환값:
-  // - Future<void>; 플랫폼 호출 없이 완료된다.
-  @override
-  Future<void> showLinkedChatAlert({
-    String? historyUserHash,
-    bool recordHistory = true,
-    required int id,
-    required int linkId,
-    String language = 'ko',
-    String? messageKind,
-    String? messagePreview,
-    String? slotKey,
-  }) async {}
-
-  // Function Name: initialize
-  // Description:
-  // - Skip real notification-plugin initialization while satisfying the platform interface.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Future<void>; completes without a platform call.
-  @override
-  Future<void> initialize() async {}
-
-  // Function Name: requestPermission
-  // Description:
-  // - Grant notification permission in the fake without invoking an OS permission prompt.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Future<bool> resolving to true.
-  @override
-  Future<bool> requestPermission() async => true;
-
-  // Function Name: registerNotification
-  // Description:
-  // - Accept reminder registration without creating a real device notification.
-  // Parameters:
-  // - id (int): Identifier of the medication, message, or notification fixture. Accepted but not
-  //   consumed by this fixture.
-  // - slotKey (String): Dose slot such as morning, lunch, evening, or bedtime. Accepted but not consumed
-  //   by this fixture.
-  // - slotTitle (String): Localized user-visible name of the dose slot. Accepted but not consumed by
-  //   this fixture.
-  // - hour (int): Selected local alarm hour in 24-hour time. Accepted but not consumed by this fixture.
-  // - minute (int): Selected minute component of the local alarm time. Accepted but not consumed by this
-  //   fixture.
-  // - medicationNames (List<String>): Medication names eligible for this reminder. Accepted but not
-  //   consumed by this fixture.
-  // - activeDates (List<DateTime>): Dates on which this dose is active. Accepted but not consumed by
-  //   this fixture.
-  // - medicationNamesByDate (Map<String, List<String>>): Medication names active on each scheduled date.
-  //   Accepted but not consumed by this fixture.
-  // - language (String): Language code used for labels or notification content. Accepted but not
-  //   consumed by this fixture.
-  // Returns:
-  // - Future<void>; completes without a platform call.
-  @override
-  Future<void> registerNotification({
-    required int id,
-    required String slotKey,
-    required String slotTitle,
-    required int hour,
-    required int minute,
-    required List<String> medicationNames,
-    required List<DateTime> activeDates,
-    Map<String, List<String>> medicationNamesByDate = const {},
-    String language = 'ko',
-  }) async {}
-
-  // 함수이름: cancelReminder
-  // 함수역할:
-  // - 기기 예약을 변경하지 않고 개별 복약 알림 취소를 성공 처리한다.
-  // 매개변수:
-  // - id (int): 약·메시지·알림 대역의 식별자. 이 대역에서는 직접 사용하지 않는다.
-  // - slotKey (String?): 아침·점심·저녁·취침 전 등을 구분하는 복약 시간대 키. 이 대역에서는 직접 사용하지 않는다.
-  // 반환값:
-  // - Future<void>; 플랫폼 호출 없이 완료된다.
-  @override
-  Future<void> cancelReminder(int id, {String? slotKey}) async {}
-
-  @override
-  Future<void> cancelReminderForDate({
-    required String owner,
-    required String slotKey,
-    required DateTime date,
-  }) async {}
-
-  // Function Name: cancelAllMedicationReminders
-  // Description:
-  // - Acknowledge session reminder cleanup without calling the platform plugin.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Future<void>; completes without a platform call.
-  @override
-  Future<void> cancelAllMedicationReminders() async {}
-
-  // Function Name: snoozeMedicationReminder
-  // Description:
-  // - Accept the snooze action without scheduling a real delayed notification.
-  // Parameters:
-  // - id (int): Identifier of the medication, message, or notification fixture. Accepted but not
-  //   consumed by this fixture.
-  // - slotKey (String): Dose slot such as morning, lunch, evening, or bedtime. Accepted but not consumed
-  //   by this fixture.
-  // - slotTitle (String): Localized user-visible name of the dose slot. Accepted but not consumed by
-  //   this fixture.
-  // - language (String): Language code used for labels or notification content. Accepted but not
-  //   consumed by this fixture.
-  // - delay (Duration): Requested snooze interval or retry-wait callback. Accepted but not consumed by
-  //   this fixture.
-  // Returns:
-  // - Future<void>; completes without a platform call.
-  @override
-  Future<void> snoozeMedicationReminder({
-    required int id,
-    required String slotKey,
-    required String slotTitle,
-    String language = 'ko',
-    Duration delay = const Duration(minutes: 10),
-    DateTime? scheduleDate,
-  }) async {}
-
-  // 함수이름: showCaregiverAlert
-  // 함수역할:
-  // - 보호자 알림을 실제로 표시하지 않고 테스트 흐름의 알림 요청을 완료한다.
-  // 매개변수:
-  // - id (int): 약·메시지·알림 대역의 식별자. 이 대역에서는 직접 사용하지 않는다.
-  // - title (String): 가로챈 알림의 표시 제목. 이 대역에서는 직접 사용하지 않는다.
-  // - body (String): 호출자가 전달한 알림 또는 메시지 본문. 이 대역에서는 직접 사용하지 않는다.
-  // - patientHash (String?): 요청 데이터 범위를 제한하는 환자 식별자. 이 대역에서는 직접 사용하지 않는다.
-  // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
-  // 반환값:
-  // - Future<void>; 플랫폼 호출 없이 완료된다.
-  @override
-  Future<void> showCaregiverAlert({
-    CaregiverAlertContext? alertContext,
-    String? historyUserHash,
-    bool recordHistory = true,
-    required int id,
-    required String title,
-    required String body,
-    String? patientHash,
-    String language = 'ko',
-  }) async {}
-}
-
-// Class Name: _FailingNotificationService
-// Role: Notification-platform substitute that fails scheduling while permitting other operations.
-// Responsibilities:
-// - Skip real notification-plugin initialization while satisfying the platform interface.
-// - Grant notification permission in the fake without invoking an OS permission prompt.
-// - Reject local reminder registration so schedule loading can be checked independently of platform
-//   failure.
-class _FailingNotificationService implements NotificationService {
-  // 함수이름: setHistoryUser
-  // 함수역할: 테스트에서는 계정별 플랫폼 저장을 생략한다. 매개변수: 계정과 저장 여부. 반환값: 없음.
-  @override
-  void setHistoryUser(String? userHash, {bool persistSession = true}) {}
-
-  // 함수이름: setShowSensitiveDetails
-  // 함수역할:
-  // - 플랫폼 알림을 표시하지 않는 대역이므로 잠금 화면 상세정보 설정을 외부에 적용하지 않는다.
-  // 매개변수:
-  // - showSensitiveDetails (bool): 잠금 화면 알림에 민감 상세정보를 표시할지 여부. 이 대역에서는 직접 사용하지 않는다.
-  // 반환값:
-  // - 없음; 플랫폼 상태를 변경하지 않는다.
-  @override
-  void setShowSensitiveDetails(bool showSensitiveDetails) {}
-
-  // 함수이름: openSystemNotificationSettings
-  // 함수역할:
-  // - 기기의 설정 앱을 열지 않고 시스템 알림 설정 이동을 성공 처리한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>; 플랫폼 호출 없이 완료된다.
-  @override
-  Future<void> openSystemNotificationSettings() async {}
-
-  // 함수이름: cancelAllScheduledMedicationReminders
-  // 함수역할:
-  // - 실제 기기 알림을 건드리지 않고 예약 복약 알림 정리를 성공 처리한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>; 플랫폼 호출 없이 완료된다.
-  @override
-  Future<void> cancelAllScheduledMedicationReminders() async {}
-
-  // 함수이름: showLinkedChatAlert
-  // 함수역할:
-  // - 복약 대화 알림을 실제로 표시하지 않고 테스트 흐름의 알림 요청을 완료한다.
-  // 매개변수:
-  // - id (int): 약·메시지·알림 대역의 식별자. 이 대역에서는 직접 사용하지 않는다.
-  // - linkId (int): 대화를 구분하는 환자·보호자 연결 식별자. 이 대역에서는 직접 사용하지 않는다.
-  // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
-  // - messageKind (String?): 일반 텍스트 또는 복약 문맥 메시지 유형. 이 대역에서는 직접 사용하지 않는다.
-  // - messagePreview (String?): 알림 인터페이스로 전달하는 선택적 채팅 미리보기. 이 대역에서는 직접 사용하지 않는다.
-  // - slotKey (String?): 아침·점심·저녁·취침 전 등을 구분하는 복약 시간대 키. 이 대역에서는 직접 사용하지 않는다.
-  // 반환값:
-  // - Future<void>; 플랫폼 호출 없이 완료된다.
-  @override
-  Future<void> showLinkedChatAlert({
-    String? historyUserHash,
-    bool recordHistory = true,
-    required int id,
-    required int linkId,
-    String language = 'ko',
-    String? messageKind,
-    String? messagePreview,
-    String? slotKey,
-  }) async {}
-
-  // Function Name: initialize
-  // Description:
-  // - Skip real notification-plugin initialization while satisfying the platform interface.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Future<void>; completes without a platform call.
-  @override
-  Future<void> initialize() async {}
-
-  // Function Name: requestPermission
-  // Description:
-  // - Grant notification permission in the fake without invoking an OS permission prompt.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Future<bool> resolving to true.
-  @override
-  Future<bool> requestPermission() async => true;
-
-  // Function Name: registerNotification
-  // Description:
-  // - Reject local reminder registration so schedule loading can be checked independently of platform
-  //   failure.
-  // Parameters:
-  // - id (int): Identifier of the medication, message, or notification fixture. Accepted but not
-  //   consumed by this fixture.
-  // - slotKey (String): Dose slot such as morning, lunch, evening, or bedtime. Accepted but not consumed
-  //   by this fixture.
-  // - slotTitle (String): Localized user-visible name of the dose slot. Accepted but not consumed by
-  //   this fixture.
-  // - hour (int): Selected local alarm hour in 24-hour time. Accepted but not consumed by this fixture.
-  // - minute (int): Selected minute component of the local alarm time. Accepted but not consumed by this
-  //   fixture.
-  // - medicationNames (List<String>): Medication names eligible for this reminder. Accepted but not
-  //   consumed by this fixture.
-  // - activeDates (List<DateTime>): Dates on which this dose is active. Accepted but not consumed by
-  //   this fixture.
-  // - medicationNamesByDate (Map<String, List<String>>): Medication names active on each scheduled date.
-  //   Accepted but not consumed by this fixture.
-  // - language (String): Language code used for labels or notification content. Accepted but not
-  //   consumed by this fixture.
-  // Returns:
-  // - A Future that fails with StateError for every registration.
-  @override
-  Future<void> registerNotification({
-    required int id,
-    required String slotKey,
-    required String slotTitle,
-    required int hour,
-    required int minute,
-    required List<String> medicationNames,
-    required List<DateTime> activeDates,
-    Map<String, List<String>> medicationNamesByDate = const {},
-    String language = 'ko',
-  }) async {
-    throw StateError('Notification registration failed.');
-  }
-
-  // 함수이름: cancelReminder
-  // 함수역할:
-  // - 기기 예약을 변경하지 않고 개별 복약 알림 취소를 성공 처리한다.
-  // 매개변수:
-  // - id (int): 약·메시지·알림 대역의 식별자. 이 대역에서는 직접 사용하지 않는다.
-  // - slotKey (String?): 아침·점심·저녁·취침 전 등을 구분하는 복약 시간대 키. 이 대역에서는 직접 사용하지 않는다.
-  // 반환값:
-  // - Future<void>; 플랫폼 호출 없이 완료된다.
-  @override
-  Future<void> cancelReminder(int id, {String? slotKey}) async {}
-
-  @override
-  Future<void> cancelReminderForDate({
-    required String owner,
-    required String slotKey,
-    required DateTime date,
-  }) async {}
-
-  // Function Name: cancelAllMedicationReminders
-  // Description:
-  // - Acknowledge session reminder cleanup without calling the platform plugin.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Future<void>; completes without a platform call.
-  @override
-  Future<void> cancelAllMedicationReminders() async {}
-
-  // Function Name: snoozeMedicationReminder
-  // Description:
-  // - Accept the snooze action without scheduling a real delayed notification.
-  // Parameters:
-  // - id (int): Identifier of the medication, message, or notification fixture. Accepted but not
-  //   consumed by this fixture.
-  // - slotKey (String): Dose slot such as morning, lunch, evening, or bedtime. Accepted but not consumed
-  //   by this fixture.
-  // - slotTitle (String): Localized user-visible name of the dose slot. Accepted but not consumed by
-  //   this fixture.
-  // - language (String): Language code used for labels or notification content. Accepted but not
-  //   consumed by this fixture.
-  // - delay (Duration): Requested snooze interval or retry-wait callback. Accepted but not consumed by
-  //   this fixture.
-  // Returns:
-  // - Future<void>; completes without a platform call.
-  @override
-  Future<void> snoozeMedicationReminder({
-    required int id,
-    required String slotKey,
-    required String slotTitle,
-    String language = 'ko',
-    Duration delay = const Duration(minutes: 10),
-    DateTime? scheduleDate,
-  }) async {}
-
-  // 함수이름: showCaregiverAlert
-  // 함수역할:
-  // - 보호자 알림을 실제로 표시하지 않고 테스트 흐름의 알림 요청을 완료한다.
-  // 매개변수:
-  // - id (int): 약·메시지·알림 대역의 식별자. 이 대역에서는 직접 사용하지 않는다.
-  // - title (String): 가로챈 알림의 표시 제목. 이 대역에서는 직접 사용하지 않는다.
-  // - body (String): 호출자가 전달한 알림 또는 메시지 본문. 이 대역에서는 직접 사용하지 않는다.
-  // - patientHash (String?): 요청 데이터 범위를 제한하는 환자 식별자. 이 대역에서는 직접 사용하지 않는다.
-  // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
-  // 반환값:
-  // - Future<void>; 플랫폼 호출 없이 완료된다.
-  @override
-  Future<void> showCaregiverAlert({
-    CaregiverAlertContext? alertContext,
-    String? historyUserHash,
-    bool recordHistory = true,
-    required int id,
-    required String title,
-    required String body,
-    String? patientHash,
-    String language = 'ko',
-  }) async {}
-}
-
 // 클래스명: _ScheduleHealthRecommendation
 // 역할: 일정에서 건강 추천으로 이동할 때 서버 없이 정상 결과를 제공한다.
 // 주요 책임: 실제 추천 화면의 경로와 복귀를 검증할 데이터를 반환한다.
@@ -806,7 +366,7 @@ Future<MedBuddyViewModel> _pumpReminderSchedule(
   final viewModel = MedBuddyViewModel(
     checkSchedule: _ActiveCheckSchedule(),
     setNotification: notification,
-    notificationService: _SuccessfulNotificationService(),
+    notificationService: RecordingNotificationService(),
   );
   addTearDown(viewModel.dispose);
   await tester.pumpWidget(
@@ -845,6 +405,54 @@ Future<void> _editReminderHour(WidgetTester tester, String hour) async {
   await tester.pumpAndSettle();
 }
 
+// 함수이름: _pumpDoseSchedule
+// 함수역할: 운영 앱과 같이 복용 기록 대기열을 붙인 일정 화면을 tester에 표시한다.
+// 매개변수: tester, checkSchedule - 아침 약 일정 대역, showBackButton - 전송 상태 줄을 함께 표시할지,
+//   accessibleNavigation - 접근성 탐색 모드 여부.
+// 반환값: 대기열에 저장된 기록을 확인할 수 있는 하네스. 테스트 본문 끝에서 닫아야 한다.
+Future<DoseSyncHarness> _pumpDoseSchedule(
+  WidgetTester tester,
+  _MorningDoseCheckSchedule checkSchedule, {
+  bool showBackButton = false,
+  bool accessibleNavigation = false,
+}) async {
+  SharedPreferences.setMockInitialValues({});
+  final viewModel = MedBuddyViewModel(
+    checkSchedule: checkSchedule,
+    setNotification: EmptySetNotification(),
+    notificationService: RecordingNotificationService(),
+  );
+  final harness = await attachTestDoseSync(viewModel);
+  await tester.pumpWidget(
+    ChangeNotifierProvider<MedBuddyViewModel>.value(
+      value: viewModel,
+      child: MaterialApp(
+        // 함수역할: context의 child에 접근성 탐색 모드 설정을 적용한다. 반환값: 설정을 덮어쓴 화면 트리.
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(accessibleNavigation: accessibleNavigation),
+          child: child!,
+        ),
+        home: CheckScheduleUI(showBackButton: showBackButton),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return harness;
+}
+
+// 함수이름: _closeDoseSchedule
+// 함수역할: 화면을 내리고 하네스를 닫아 동기화 서비스의 재시도 타이머가 테스트 뒤에 남지 않게 한다.
+// 매개변수: tester, harness - 닫을 하네스. 반환값: 정리 완료 Future.
+Future<void> _closeDoseSchedule(
+  WidgetTester tester,
+  DoseSyncHarness harness,
+) async {
+  await tester.pumpWidget(const SizedBox.shrink());
+  await harness.close();
+}
+
 // 함수이름: main
 // 함수역할: 일정·알림·화면 배치·접근성 회귀 사례를 등록한다. 매개변수·반환값: 없음.
 void main() {
@@ -874,7 +482,7 @@ void main() {
     final checkSchedule = _FailOnceCheckSchedule();
     final viewModel = MedBuddyViewModel(
       checkSchedule: checkSchedule,
-      setNotification: _EmptySetNotification(),
+      setNotification: EmptySetNotification(),
     );
     addTearDown(viewModel.dispose);
 
@@ -909,8 +517,8 @@ void main() {
     tester,
   ) async {
     final viewModel = MedBuddyViewModel(
-      checkSchedule: _EmptyCheckSchedule(),
-      setNotification: _EmptySetNotification(),
+      checkSchedule: EmptyCheckSchedule(),
+      setNotification: EmptySetNotification(),
     );
     addTearDown(viewModel.dispose);
 
@@ -942,7 +550,7 @@ void main() {
   testWidgets('오늘 일정에 투약 단위와 약품 이미지 영역을 표시한다', (tester) async {
     final viewModel = MedBuddyViewModel(
       checkSchedule: _VisualScheduleCheckSchedule(),
-      setNotification: _EmptySetNotification(),
+      setNotification: EmptySetNotification(),
     );
     addTearDown(viewModel.dispose);
 
@@ -989,7 +597,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final viewModel = MedBuddyViewModel(
       checkSchedule: _VisualScheduleCheckSchedule(),
-      setNotification: _EmptySetNotification(),
+      setNotification: EmptySetNotification(),
       manageUserSetting: ManageUserSetting(useRemotePersistence: false),
     );
     addTearDown(viewModel.dispose);
@@ -1041,7 +649,7 @@ void main() {
     final viewModel = MedBuddyViewModel(
       checkSchedule: _ActiveCheckSchedule(),
       setNotification: _MutableSetNotification(),
-      notificationService: _SuccessfulNotificationService(),
+      notificationService: RecordingNotificationService(),
     );
     addTearDown(viewModel.dispose);
 
@@ -1322,8 +930,8 @@ void main() {
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
         final model = MedBuddyViewModel(
-          checkSchedule: _EmptyCheckSchedule(),
-          setNotification: _EmptySetNotification(),
+          checkSchedule: EmptyCheckSchedule(),
+          setNotification: EmptySetNotification(),
         );
         addTearDown(model.dispose);
         await tester.pumpWidget(
@@ -1409,7 +1017,7 @@ void main() {
   ) async {
     final model = MedBuddyViewModel(
       checkSchedule: _ActiveCheckSchedule(),
-      setNotification: _EmptySetNotification(),
+      setNotification: EmptySetNotification(),
       checkHealthRecommendation: _ScheduleHealthRecommendation(),
     );
     addTearDown(model.dispose);
@@ -1443,47 +1051,34 @@ void main() {
 
   // 함수이름: testWidgets 콜백
   // 함수역할:
-  // - 기대 동작: 복약 완료 안내는 화면 이동 후에도 접근성 모드에서 자동으로 닫힌다.
+  // - 기대 동작: 복용 체크는 기기 대기열에 저장된 뒤 완료로 표시되고, 완료 안내는 화면 이동 후에도
+  //   접근성 모드에서 자동으로 닫힌다.
   // 매개변수:
   // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
   // 반환값:
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   testWidgets('복약 완료 안내는 화면 이동 후에도 접근성 모드에서 자동으로 닫힌다', (tester) async {
-    final viewModel = MedBuddyViewModel(
-      checkSchedule: _CompletableCheckSchedule(),
-      setNotification: _EmptySetNotification(),
+    final checkSchedule = _MorningDoseCheckSchedule();
+    final harness = await _pumpDoseSchedule(
+      tester,
+      checkSchedule,
+      accessibleNavigation: true,
     );
-    addTearDown(viewModel.dispose);
-
-    await tester.pumpWidget(
-      ChangeNotifierProvider<MedBuddyViewModel>.value(
-        value: viewModel,
-        child: MaterialApp(
-          // 함수이름: builder 콜백
-          // 함수역할:
-          // - 기존 하위 화면을 유지하면서 접근성 탐색 모드를 활성화한다.
-          // 매개변수:
-          // - context (BuildContext): 상속된 설정 또는 화면 이동에 사용할 위젯 컨텍스트.
-          // - child (Widget?): 화면 설정을 덮어쓸 기존 하위 위젯.
-          // 반환값:
-          // - 접근성 설정을 덮어쓴 MediaQuery 하위 트리.
-          builder: (context, child) {
-            return MediaQuery(
-              data: MediaQuery.of(context).copyWith(accessibleNavigation: true),
-              child: child!,
-            );
-          },
-          home: const CheckScheduleUI(),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
 
     await tester.tap(find.byTooltip('복용 완료'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('아침 · 테스트정 복용을 완료했습니다.'), findsOneWidget);
+    // 서버 응답과 무관하게 기기 대기열의 기록으로 완료가 표시된다.
+    final queued = harness.queued.single;
+    expect(queued['medication_ids'], [91]);
+    expect(queued['slot_key'], 'morning');
+    expect(queued['schedule_date'], doseScheduleDay(DateTime.now()));
+    expect(queued['completed'], isTrue);
+    expect(queued['medication_names'], ['테스트정']);
+    expect(find.byTooltip('복용 완료 취소'), findsOneWidget);
+    expect(checkSchedule.directUpdateCount, 0);
 
     final navigator = tester.state<NavigatorState>(find.byType(Navigator));
     navigator.push(
@@ -1506,30 +1101,73 @@ void main() {
 
     expect(find.text('아침 · 테스트정 복용을 완료했습니다.'), findsNothing);
     expect(tester.takeException(), isNull);
+    await _closeDoseSchedule(tester, harness);
+  });
+
+  // 함수이름: 복용 실행 취소 테스트
+  // 함수역할: tester로 완료 안내의 실행 취소를 누르면 취소 기록이 완료 기록 뒤에 저장되고 화면이
+  //   미복용으로 돌아가는지 검증한다. 반환값: 검증 완료.
+  testWidgets('완료 안내의 실행 취소는 취소 기록을 이어서 저장한다', (tester) async {
+    final checkSchedule = _MorningDoseCheckSchedule();
+    final harness = await _pumpDoseSchedule(tester, checkSchedule);
+
+    await tester.tap(find.byTooltip('복용 완료'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byTooltip('복용 완료 취소'), findsOneWidget);
+
+    await tester.tap(find.text('실행 취소'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(harness.queued.map((op) => op['completed']), [true, false]);
+    expect(harness.queued.map((op) => op['medication_ids']), [
+      [91],
+      [91],
+    ]);
+    expect(harness.queued.map((op) => op['slot_key']).toSet(), {'morning'});
+    expect(find.byTooltip('복용 완료'), findsOneWidget);
+    expect(find.text('테스트정 복용 완료를 취소했습니다.'), findsOneWidget);
+    expect(checkSchedule.directUpdateCount, 0);
+    expect(tester.takeException(), isNull);
+    await _closeDoseSchedule(tester, harness);
+  });
+
+  // 함수이름: 기기 저장 실패 테스트
+  // 함수역할: tester로 기기 저장소에 기록하지 못한 복용 체크가 완료로 표시되지 않고 실패를 알리는지
+  //   검증한다. 반환값: 검증 완료.
+  testWidgets('기기에 저장하지 못한 복용 체크는 완료로 표시하지 않는다', (tester) async {
+    final checkSchedule = _MorningDoseCheckSchedule();
+    final harness = await _pumpDoseSchedule(tester, checkSchedule);
+    // 저장소가 닫혀 기록할 수 없는 상태를 만든다.
+    await harness.store.db.close();
+
+    await tester.tap(find.byTooltip('복용 완료'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('복약 상태를 변경하지 못했습니다.'), findsOneWidget);
+    expect(find.byTooltip('복용 완료'), findsOneWidget);
+    expect(find.byTooltip('복용 완료 취소'), findsNothing);
+    expect(harness.queued, isEmpty);
+    expect(checkSchedule.directUpdateCount, 0);
+    expect(tester.takeException(), isNull);
+    await _closeDoseSchedule(tester, harness);
   });
 
   // Function Name: testWidgets callback
   // Description:
-  // - Verify that the whole-slot button beside the alarm toggles all doses between taken and untaken.
+  // - Verify that the whole-slot button beside the alarm toggles all doses between taken and untaken,
+  //   storing each change as one queued operation for the slot.
   // Parameters:
   // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
   // Returns:
   // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
   testWidgets('시간대 전체 버튼은 알림 오른쪽에서 전부 체크와 해제를 반복한다', (tester) async {
-    final checkSchedule = _CompletableCheckSchedule();
-    final viewModel = MedBuddyViewModel(
-      checkSchedule: checkSchedule,
-      setNotification: _EmptySetNotification(),
-    );
-    addTearDown(viewModel.dispose);
-
-    await tester.pumpWidget(
-      ChangeNotifierProvider<MedBuddyViewModel>.value(
-        value: viewModel,
-        child: const MaterialApp(home: CheckScheduleUI()),
-      ),
-    );
-    await tester.pumpAndSettle();
+    final checkSchedule = _MorningDoseCheckSchedule();
+    final harness = await _pumpDoseSchedule(tester, checkSchedule);
+    final viewModel = harness.viewModel;
 
     final reminderButton = find.byTooltip('아침 알림 설정');
     final wholeSlotButton = find.byKey(
@@ -1546,9 +1184,17 @@ void main() {
     );
 
     await tester.tap(wholeSlotButton);
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
-    expect(checkSchedule.wholeSlotUpdateCount, 1);
+    expect(harness.queued, hasLength(1));
+    expect(harness.queued.single['slot_key'], 'morning');
+    expect(harness.queued.single['medication_ids'], [91]);
+    expect(harness.queued.single['completed'], isTrue);
+    expect(
+      harness.queued.single['schedule_date'],
+      doseScheduleDay(DateTime.now()),
+    );
     expect(find.text('아침 복약을 모두 완료했습니다.'), findsOneWidget);
     expect(find.byTooltip('아침 복약 전부 해제'), findsOneWidget);
     expect(
@@ -1560,9 +1206,11 @@ void main() {
     );
 
     await tester.tap(wholeSlotButton);
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
-    expect(checkSchedule.wholeSlotUpdateCount, 2);
+    expect(harness.queued.map((op) => op['completed']), [true, false]);
+    expect(harness.queued.last['medication_ids'], [91]);
     expect(find.text('아침 복약 완료를 모두 해제했습니다.'), findsOneWidget);
     expect(find.byTooltip('아침 복약 전부 체크'), findsOneWidget);
     expect(
@@ -1572,8 +1220,43 @@ void main() {
       ),
       isFalse,
     );
+    expect(checkSchedule.directUpdateCount, 0);
     expect(tester.takeException(), isNull);
+    await _closeDoseSchedule(tester, harness);
   });
+
+  for (final showBackButton in [true, false]) {
+    // 함수이름: 전송 확인 필요 표시 테스트
+    // 함수역할: tester로 서버가 거부한 복용 기록이 있을 때, 뒤로가기가 있는 일정 화면에만 전송 확인
+    //   줄이 표시되는지(홈에서 연 화면은 홈이 표시) 검증한다. 반환값: 검증 완료.
+    testWidgets('거부된 복용 기록은 전송 확인 필요로 표시된다 back=$showBackButton', (
+      tester,
+    ) async {
+      final harness = await _pumpDoseSchedule(
+        tester,
+        _MorningDoseCheckSchedule(),
+        showBackButton: showBackButton,
+      );
+      harness.respond = (_) async => http.Response('rejected', 409);
+
+      await tester.tap(find.byTooltip('복용 완료'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await harness.service.drain();
+      await tester.pump();
+
+      expect(harness.service.hasBlocked, isTrue);
+      expect(
+        find.text('복용 기록 전송 확인 필요'),
+        showBackButton ? findsOneWidget : findsNothing,
+      );
+      // 거부된 기록도 기기에는 남아 있고 사용자가 지울 때까지 화면의 완료 표시를 유지한다.
+      expect(await harness.pending(), hasLength(1));
+      expect(find.byTooltip('복용 완료 취소'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await _closeDoseSchedule(tester, harness);
+    });
+  }
 
   // Function Name: test callback
   // Description:
@@ -1608,7 +1291,7 @@ void main() {
     final viewModel = MedBuddyViewModel(
       checkSchedule: _ActiveCheckSchedule(),
       setNotification: _EnabledSetNotification(),
-      notificationService: _FailingNotificationService(),
+      notificationService: RecordingNotificationService(failRegistration: true),
     );
     addTearDown(viewModel.dispose);
 

@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
+import 'package:medbuddy_frontend/services/api_response_parser.dart';
 
 // Function Name: main
 // Description:
@@ -373,6 +374,75 @@ void main() {
       );
     },
   );
+
+  // Function Name: failure classification tests
+  // Description:
+  // - Expected behavior: every schedule request reports a rejected response with its status code
+  //   and server detail in the unchanged message, and a request that never got a usable response
+  //   keeps the original exception so the caller can show connection or timeout guidance.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  final requests =
+      <String, Future<Object?> Function(CheckSchedule control)>{
+        'Schedule lookup failed': (c) => c.requestTodayMedicationSchedule(),
+        'Schedule window lookup failed': (c) =>
+            c.requestMedicationScheduleWindow(),
+        'Status update failed': (c) => c.updateMedicationStatus('7', true),
+        'Slot status update failed': (c) =>
+            c.updateMedicationSlotStatus('morning', true),
+      };
+  for (final entry in requests.entries) {
+    test('${entry.key}: rejected response keeps status and detail', () async {
+      final control = CheckSchedule(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        client: MockClient(
+          (_) async => http.Response(
+            '{"detail":"An active patient-caregiver link is required."}',
+            403,
+            headers: {'content-type': 'application/json'},
+          ),
+        ),
+      );
+
+      await expectLater(
+        entry.value(control),
+        throwsA(
+          isA<ApiRequestException>()
+              .having((e) => e.statusCode, 'statusCode', 403)
+              .having((e) => e.cause, 'cause', isNull)
+              .having(
+                (e) => e.message,
+                'message',
+                '${entry.key} (403): '
+                    'An active patient-caregiver link is required.',
+              ),
+        ),
+      );
+    });
+
+    test('${entry.key}: transport failure keeps its cause', () async {
+      final control = CheckSchedule(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        client: MockClient(
+          (_) async => throw http.ClientException('Connection refused'),
+        ),
+      );
+
+      await expectLater(
+        entry.value(control),
+        throwsA(
+          isA<ApiRequestException>()
+              .having((e) => e.statusCode, 'statusCode', isNull)
+              .having((e) => e.cause, 'cause', isA<http.ClientException>())
+              .having((e) => e.message, 'message', '${entry.key}.'),
+        ),
+      );
+    });
+  }
 
   // Function Name: test callback
   // Description:

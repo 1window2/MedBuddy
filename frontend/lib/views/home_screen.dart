@@ -132,7 +132,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _syncChatControl(MedBuddyViewModel viewModel) {
     final userHash = viewModel.patientHash;
     final source = viewModel.userSetting.homeScheduleSource;
+    final isEnglish = viewModel.userSetting.isEnglish;
     if (_chatList?.userHash == userHash) {
+      // 별칭이 없는 환자의 기본 이름은 표시 언어를 따르므로 언어가 바뀌면 다음 조회부터 반영한다.
+      if (_chatList!.isEnglish != isEnglish) {
+        _chatList!.isEnglish = isEnglish;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) unawaited(_refreshChatList());
+        });
+      }
       if (_homeScheduleSource != source) {
         _homeScheduleSource = source;
         _widgetCacheSignature = null;
@@ -161,7 +169,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     final control =
         widget.chatListFactory?.call(userHash) ??
-        ManageChatList(userHash: userHash);
+        // 15초 주기 조회가 세션의 인증 클라이언트를 함께 써서 연결을 재사용하고 401을 세션 정리로 넘긴다.
+        ManageChatList(
+          userHash: userHash,
+          client: context.read<AuthenticationControl?>()?.apiClient,
+          isEnglish: isEnglish,
+        );
     _chatList = control;
     control.addListener(_onChatListChanged);
     WidgetsBinding.instance.addPostFrameCallback(
@@ -621,7 +634,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               // Parameters:
               // - None.
               // Returns: The value of `const CheckSavedMedicationUI(showCloseButton: false)`.
-              () => const CheckSavedMedicationUI(showCloseButton: false),
+              () => CheckSavedMedicationUI(
+                showCloseButton: false,
+                // 숨겨진 탭이 뒤로가기를 가로채지 않도록 보이는 동안에만 처리하게 한다.
+                isActive:
+                    _selectedDestination ==
+                    MedBuddyDestination.medicationCabinet,
+              ),
             ),
             if (showChat)
               _buildDestination(
@@ -887,7 +906,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               context,
               MaterialPageRoute(
                 builder: (context) => CheckNearbyPharmacyUI(
-                  userSetting: viewModel.userSetting,
+                  // 설정을 불러오기 전에는 userHash가 비어 즐겨찾기가 계정 구분 없는 키에 저장되므로 계정 해시를 채운다.
+                  userSetting: viewModel.userSetting.copyWith(
+                    userHash: viewModel.patientHash,
+                  ),
                   hospitals: destination == NearbyCareDestination.hospital,
                 ),
               ),
@@ -1187,27 +1209,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             );
             return result;
           },
-          onSettingSaveRequested:
-              // Function Name: _openUserSettings.onSettingSaveRequested callback
-              // Description: Connects the active screen selected by prescription flow and navigation destination to the captured operation `viewModel.requestUserSettingSave(fontSizeOption: fontSizeOption, readingSpeedOption: readingSpeedOption, language: language); appLanguageControl.setLanguage(result.setting.language)`.
-              // Parameters:
-              // - fontSizeOption (String): Text-size or speech-rate option to persist.
-              // - readingSpeedOption (String): Text-size or speech-rate option to persist.
-              // - language (String): Language code selecting visible wording.
-              // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
-              ({
-                required String fontSizeOption,
-                required String readingSpeedOption,
-                required String language,
-              }) async {
-                final result = await viewModel.requestUserSettingSave(
-                  fontSizeOption: fontSizeOption,
-                  readingSpeedOption: readingSpeedOption,
-                  language: language,
-                );
-                await appLanguageControl.setLanguage(result.setting.language);
-                return result;
-              },
           onSignOutRequested: authenticationControl.isAnonymous
               ? deleteCurrentAccount
               : authenticationControl.signOut,

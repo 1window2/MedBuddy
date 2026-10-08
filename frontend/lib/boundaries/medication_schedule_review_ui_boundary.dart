@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../entities/medication_schedule_entity.dart';
+import '../entities/medication_schedule_limits.dart';
+import '../entities/medication_slot_label.dart';
 import '../entities/user_setting_entity.dart';
 import '../widgets/medbuddy_notice.dart';
 import '../theme/medbuddy_theme.dart';
@@ -9,42 +11,24 @@ import '../theme/medbuddy_theme.dart';
 // 파일명: medication_schedule_review_ui_boundary.dart
 // 역할: 저장 전 여러 약의 복약 일정 비교·수정·검증을 제공한다.
 
-// 클래스명: MedicationScheduleReviewPurpose
-// 역할: 처방전·알약·직접 입력별 검토 목적을 담당한다.
-// 주요 책임:
-// - 처방전·알약·직접 입력별 검토 목적에서 지원하는 선택지를 열거하고 구분한다: prescriptionAnalysis, pillSave.
-enum MedicationScheduleReviewPurpose { prescriptionAnalysis, pillSave }
-
 // 함수이름: showMedicationScheduleReview
-// 함수역할: 인식된 하나 이상의 복약 일정을 한 화면에서 검토하게 한다. 사용자가 취소하면 null, 확인하면 정규화된 일정 목록을 반환한다.
+// 함수역할: 선택한 알약 후보의 복약 일정 하나 이상을 저장 전에 한 화면에서 검토하게 한다. 사용자가 취소하면 null, 확인하면 정규화된 일정 목록을 반환한다.
 // 매개변수:
 // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
 // - initialSchedules (List<MedicationSchedule>): 검토·표시·시간대 분류에 사용할 복약 일정 목록.
 // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-// - purpose (MedicationScheduleReviewPurpose): 처방전·알약·직접 입력별 일정 검토 목적.
 // 반환값: Future<List<MedicationSchedule>?>: 확정한 복약 일정 목록; 입력이 없거나 취소하면 null.
 Future<List<MedicationSchedule>?> showMedicationScheduleReview({
   required BuildContext context,
   required List<MedicationSchedule> initialSchedules,
   required UserSetting userSetting,
-  required MedicationScheduleReviewPurpose purpose,
 }) {
   if (initialSchedules.isEmpty) {
     return Future.value(null);
   }
 
   final normalizedSchedules = initialSchedules
-      .map(
-        // 함수이름: showMedicationScheduleReview.map callback
-        // 함수역할: 저장 전 여러 약의 복약 일정 비교·수정·검증의 변환값을 `_normalizeSchedule(schedule, usePillDefaults: purpose == MedicationScheduleReviewPurpose.pillSave)` 규칙으로 계산한다.
-        // 매개변수:
-        // - schedule (콜백 계약에서 추론): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-        // 반환값: 컬렉션 연산에 전달할 변환값.
-        (schedule) => _normalizeSchedule(
-          schedule,
-          usePillDefaults: purpose == MedicationScheduleReviewPurpose.pillSave,
-        ),
-      )
+      .map(_normalizeSchedule)
       .toList(growable: false);
 
   return showModalBottomSheet<List<MedicationSchedule>>(
@@ -65,7 +49,6 @@ Future<List<MedicationSchedule>?> showMedicationScheduleReview({
       child: _MedicationScheduleReviewSheet(
         initialSchedules: normalizedSchedules,
         userSetting: userSetting,
-        purpose: purpose,
       ),
     ),
   );
@@ -104,23 +87,19 @@ Future<MedicationSchedule?> showMedicationScheduleEditor({
 // 속성:
 // - initialSchedules (List<MedicationSchedule>): 검토·표시·시간대 분류에 사용할 복약 일정 목록.
 // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-// - purpose (MedicationScheduleReviewPurpose): 처방전·알약·직접 입력별 일정 검토 목적.
 class _MedicationScheduleReviewSheet extends StatefulWidget {
   final List<MedicationSchedule> initialSchedules;
   final UserSetting userSetting;
-  final MedicationScheduleReviewPurpose purpose;
 
   // 함수이름: _MedicationScheduleReviewSheet
   // 함수역할: 여러 약의 복용 일정 비교와 저장 전 확인에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - initialSchedules (List<MedicationSchedule>): 검토·표시·시간대 분류에 사용할 복약 일정 목록.
   // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-  // - purpose (MedicationScheduleReviewPurpose): 처방전·알약·직접 입력별 일정 검토 목적.
   // 반환값: 입력 설정이 반영된 _MedicationScheduleReviewSheet 인스턴스.
   const _MedicationScheduleReviewSheet({
     required this.initialSchedules,
     required this.userSetting,
-    required this.purpose,
   });
 
   // 함수이름: createState
@@ -163,9 +142,6 @@ class _MedicationScheduleReviewSheetState
   @override
   Widget build(BuildContext context) {
     final text = _MedicationScheduleReviewText(widget.userSetting.language);
-    final scale = widget.userSetting.contentTextScale;
-    final isPillSave =
-        widget.purpose == MedicationScheduleReviewPurpose.pillSave;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -190,9 +166,9 @@ class _MedicationScheduleReviewSheetState
                 Expanded(
                   child: Text(
                     text.reviewTitle,
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: MedBuddyColors.textStrong,
-                      fontSize: 22 * scale,
+                      fontSize: 22,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 0,
                     ),
@@ -207,26 +183,19 @@ class _MedicationScheduleReviewSheetState
               padding: const EdgeInsets.fromLTRB(20, 6, 20, 24),
               children: [
                 Text(
-                  isPillSave
-                      ? text.pillReviewDescription
-                      : text.prescriptionReviewDescription,
-                  style: TextStyle(
+                  text.pillReviewDescription,
+                  style: const TextStyle(
                     color: MedBuddyColors.textMuted,
-                    fontSize: 14 * scale,
+                    fontSize: 14,
                     height: 1.45,
                     letterSpacing: 0,
                   ),
                 ),
-                if (isPillSave) ...[
-                  const SizedBox(height: 14),
-                  _PillScheduleSafetyNotice(text: text, scale: scale),
-                ],
+                const SizedBox(height: 14),
+                _PillScheduleSafetyNotice(text: text),
                 if (_validationMessage.isNotEmpty) ...[
                   const SizedBox(height: 14),
-                  _ScheduleValidationNotice(
-                    message: _validationMessage,
-                    scale: scale,
-                  ),
+                  _ScheduleValidationNotice(message: _validationMessage),
                 ],
                 const SizedBox(height: 18),
                 for (var index = 0; index < _schedules.length; index++) ...[
@@ -261,9 +230,9 @@ class _MedicationScheduleReviewSheetState
                 backgroundColor: MedBuddyColors.primary,
               ),
               child: Text(
-                isPillSave ? text.confirmAndSave : text.confirmAndAnalyze,
-                style: TextStyle(
-                  fontSize: 17 * scale,
+                text.confirmAndSave,
+                style: const TextStyle(
+                  fontSize: 17,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0,
                 ),
@@ -374,7 +343,6 @@ class _MedicationScheduleReviewCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = _MedicationScheduleReviewText(userSetting.language);
-    final scale = userSetting.contentTextScale;
     final frequency = medicationSchedule.dailyFrequencyCount;
     final slotLabels = medicationSchedule.slotKeys
         .map(text.slotLabel)
@@ -399,9 +367,9 @@ class _MedicationScheduleReviewCard extends StatelessWidget {
                   medicationSchedule.displayNameForLanguage(
                     userSetting.language,
                   ),
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: MedBuddyColors.textStrong,
-                    fontSize: 17 * scale,
+                    fontSize: 17,
                     fontWeight: FontWeight.w700,
                     height: 1.3,
                     letterSpacing: 0,
@@ -422,7 +390,6 @@ class _MedicationScheduleReviewCard extends StatelessWidget {
             label: text.startDate,
             value: _formatDate(medicationSchedule.prescriptionDate),
             emptyValue: text.reviewNeeded,
-            scale: scale,
           ),
           _ScheduleSummaryRow(
             label: text.dosage,
@@ -432,13 +399,11 @@ class _MedicationScheduleReviewCard extends StatelessWidget {
                     userSetting.language,
                   ),
             emptyValue: text.reviewNeeded,
-            scale: scale,
           ),
           _ScheduleSummaryRow(
             label: text.dailyFrequency,
             value: frequency <= 0 ? '' : text.frequencyValue(frequency),
             emptyValue: text.reviewNeeded,
-            scale: scale,
           ),
           _ScheduleSummaryRow(
             label: text.duration,
@@ -446,13 +411,11 @@ class _MedicationScheduleReviewCard extends StatelessWidget {
                 ? ''
                 : text.durationValue(medicationSchedule.medicationTime),
             emptyValue: text.reviewNeeded,
-            scale: scale,
           ),
           _ScheduleSummaryRow(
             label: text.scheduleSlots,
             value: slotLabels,
             emptyValue: text.reviewNeeded,
-            scale: scale,
           ),
         ],
       ),
@@ -468,12 +431,10 @@ class _MedicationScheduleReviewCard extends StatelessWidget {
 // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
 // - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
 // - emptyValue (String): 값이나 약품 정보를 제공할 수 없을 때 사용할 대체 문구.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 class _ScheduleSummaryRow extends StatelessWidget {
   final String label;
   final String value;
   final String emptyValue;
-  final double scale;
 
   // 함수이름: _ScheduleSummaryRow
   // 함수역할: 검토용 복약 항목의 라벨과 요약 값에 필요한 입력값과 표시 설정을 초기화한다.
@@ -481,13 +442,11 @@ class _ScheduleSummaryRow extends StatelessWidget {
   // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
   // - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
   // - emptyValue (String): 값이나 약품 정보를 제공할 수 없을 때 사용할 대체 문구.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // 반환값: 입력 설정이 반영된 _ScheduleSummaryRow 인스턴스.
   const _ScheduleSummaryRow({
     required this.label,
     required this.value,
     required this.emptyValue,
-    required this.scale,
   });
 
   // 함수이름: build
@@ -507,9 +466,9 @@ class _ScheduleSummaryRow extends StatelessWidget {
             width: 82,
             child: Text(
               label,
-              style: TextStyle(
+              style: const TextStyle(
                 color: MedBuddyColors.textMuted,
-                fontSize: 13 * scale,
+                fontSize: 13,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 0,
               ),
@@ -523,7 +482,7 @@ class _ScheduleSummaryRow extends StatelessWidget {
                 color: value.trim().isEmpty
                     ? MedBuddyColors.reminderAccent
                     : MedBuddyColors.textStrong,
-                fontSize: 13 * scale,
+                fontSize: 13,
                 fontWeight: FontWeight.w700,
                 height: 1.35,
                 letterSpacing: 0,
@@ -541,18 +500,16 @@ class _ScheduleSummaryRow extends StatelessWidget {
 // 주요 책임:
 // - 부모가 전달한 표시값과 동작을 반영해 알약 사진만으로 복약 일정을 확정할 수 없다는 안내 위젯을 구성한다.
 // 속성:
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
+// - text (_MedicationScheduleReviewText): 해당 화면 구역의 언어별 표시 문구.
 class _PillScheduleSafetyNotice extends StatelessWidget {
   final _MedicationScheduleReviewText text;
-  final double scale;
 
   // 함수이름: _PillScheduleSafetyNotice
   // 함수역할: 알약 사진만으로 복약 일정을 확정할 수 없다는 안내에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - text (_MedicationScheduleReviewText): 해당 화면 구역의 언어별 표시 문구.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // 반환값: 입력 설정이 반영된 _PillScheduleSafetyNotice 인스턴스.
-  const _PillScheduleSafetyNotice({required this.text, required this.scale});
+  const _PillScheduleSafetyNotice({required this.text});
 
   // 함수이름: build
   // 함수역할: 현재 입력값과 상태를 반영해 알약 사진만으로 복약 일정을 확정할 수 없다는 안내 화면을 구성한다.
@@ -564,7 +521,6 @@ class _PillScheduleSafetyNotice extends StatelessWidget {
     return MedBuddyNotice(
       icon: Icons.warning_amber_rounded,
       message: text.pillSafetyNotice,
-      scale: scale,
     );
   }
 }
@@ -575,18 +531,15 @@ class _PillScheduleSafetyNotice extends StatelessWidget {
 // - 부모가 전달한 표시값과 동작을 반영해 저장 전 수정이 필요한 복약 정보 안내 위젯을 구성한다.
 // 속성:
 // - message (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 class _ScheduleValidationNotice extends StatelessWidget {
   final String message;
-  final double scale;
 
   // 함수이름: _ScheduleValidationNotice
   // 함수역할: 저장 전 수정이 필요한 복약 정보 안내에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - message (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // 반환값: 입력 설정이 반영된 _ScheduleValidationNotice 인스턴스.
-  const _ScheduleValidationNotice({required this.message, required this.scale});
+  const _ScheduleValidationNotice({required this.message});
 
   // 함수이름: build
   // 함수역할: 현재 입력값과 상태를 반영해 저장 전 수정이 필요한 복약 정보 안내 화면을 구성한다.
@@ -604,9 +557,9 @@ class _ScheduleValidationNotice extends StatelessWidget {
       ),
       child: Text(
         message,
-        style: TextStyle(
+        style: const TextStyle(
           color: MedBuddyColors.danger,
-          fontSize: 13 * scale,
+          fontSize: 13,
           fontWeight: FontWeight.w700,
           height: 1.4,
           letterSpacing: 0,
@@ -716,15 +669,14 @@ class _MedicationScheduleEditorDialogState
   @override
   Widget build(BuildContext context) {
     final text = _MedicationScheduleReviewText(widget.userSetting.language);
-    final scale = widget.userSetting.contentTextScale;
 
     return AlertDialog(
       scrollable: true,
       title: Text(
         text.editTitle,
-        style: TextStyle(
+        style: const TextStyle(
           color: MedBuddyColors.textStrong,
-          fontSize: 21 * scale,
+          fontSize: 21,
           fontWeight: FontWeight.w700,
           letterSpacing: 0,
         ),
@@ -779,9 +731,9 @@ class _MedicationScheduleEditorDialogState
             const SizedBox(height: 16),
             Text(
               text.dailyFrequency,
-              style: TextStyle(
+              style: const TextStyle(
                 color: MedBuddyColors.textStrong,
-                fontSize: 14 * scale,
+                fontSize: 14,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0,
               ),
@@ -821,9 +773,9 @@ class _MedicationScheduleEditorDialogState
             const SizedBox(height: 16),
             Text(
               text.scheduleSlots,
-              style: TextStyle(
+              style: const TextStyle(
                 color: MedBuddyColors.textStrong,
-                fontSize: 14 * scale,
+                fontSize: 14,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0,
               ),
@@ -853,7 +805,7 @@ class _MedicationScheduleEditorDialogState
                 text.scheduleSlotCountMismatch(_frequencyCount),
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.error,
-                  fontSize: 12 * scale,
+                  fontSize: 12,
                   letterSpacing: 0,
                 ),
               ),
@@ -928,8 +880,8 @@ class _MedicationScheduleEditorDialogState
   // - 없음.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _selectStartDate() async {
-    final standardFirstDate = DateTime(2000);
-    final standardLastDate = DateTime.now().add(const Duration(days: 365));
+    final standardFirstDate = earliestMedicationStartDate();
+    final standardLastDate = latestMedicationStartDate(DateTime.now());
     final firstDate = _startDate.isBefore(standardFirstDate)
         ? _startDate
         : standardFirstDate;
@@ -954,13 +906,13 @@ class _MedicationScheduleEditorDialogState
   }
 
   // 함수이름: _validateDuration
-  // 함수역할: 복용 기간이 1~3650일의 정수인지 검증한다.
+  // 함수역할: 복용 기간이 1일부터 공통 최대 복용 일수까지의 정수인지 검증한다.
   // 매개변수:
   // - value (String?): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
   // 반환값: 검증·상태 안내 문구. 안내가 필요하지 않으면 null.
   String? _validateDuration(String? value) {
     final days = int.tryParse(value?.trim() ?? '');
-    if (days == null || days <= 0 || days > 3650) {
+    if (!isValidMedicationCourseDays(days)) {
       return _MedicationScheduleReviewText(
         widget.userSetting.language,
       ).invalidDuration;
@@ -1008,24 +960,18 @@ class _MedicationScheduleEditorDialogState
 }
 
 // 함수이름: _normalizeSchedule
-// 함수역할: 빈 날짜·비양수 일수·횟수와 시간대 불일치를 보정하고 알약 입력의 빈 용량만 기본값으로 채운다.
+// 함수역할: 빈 날짜·비양수 일수·횟수와 시간대 불일치를 보정하고 빈 용량은 알약 기본값으로 채운다.
 // 매개변수:
 // - schedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-// - usePillDefaults (bool): 알약 식별 결과용 기본 일정 보정 규칙을 적용할지 여부.
 // 반환값: MedicationSchedule: 날짜·기간·복용 횟수·시간대를 정규화한 일정 사본.
-MedicationSchedule _normalizeSchedule(
-  MedicationSchedule schedule, {
-  required bool usePillDefaults,
-}) {
+MedicationSchedule _normalizeSchedule(MedicationSchedule schedule) {
   final frequency = schedule.dailyFrequencyCount.clamp(1, 4).toInt();
   final slots = schedule.slotKeys.length == frequency
       ? schedule.slotKeys
       : medicationScheduleSlotKeysForFrequency(frequency);
   return schedule.copyWith(
     prescriptionDate: schedule.prescriptionDate ?? DateTime.now(),
-    dosage: schedule.dosage.trim().isEmpty && usePillDefaults
-        ? '1정'
-        : schedule.dosage.trim(),
+    dosage: schedule.dosage.trim().isEmpty ? '1정' : schedule.dosage.trim(),
     intakeTime: '$frequency회',
     medicationTime: schedule.medicationTime <= 0 ? 1 : schedule.medicationTime,
     scheduleSlotKeys: slots,
@@ -1033,7 +979,7 @@ MedicationSchedule _normalizeSchedule(
 }
 
 // 함수이름: _isScheduleComplete
-// 함수역할: 약명·날짜·용량·1~4회 횟수·1~3650일 기간과 시간대 수의 일치를 확인한다.
+// 함수역할: 약명·날짜·용량·1~4회 횟수·허용 범위의 기간과 시간대 수의 일치를 확인한다.
 // 매개변수:
 // - schedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
 // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
@@ -1044,8 +990,7 @@ bool _isScheduleComplete(MedicationSchedule schedule) {
       schedule.dosage.trim().isNotEmpty &&
       frequency >= 1 &&
       frequency <= 4 &&
-      schedule.medicationTime >= 1 &&
-      schedule.medicationTime <= 3650 &&
+      isValidMedicationCourseDays(schedule.medicationTime) &&
       schedule.slotKeys.length == frequency;
 }
 
@@ -1080,25 +1025,17 @@ class _MedicationScheduleReviewText {
   const _MedicationScheduleReviewText(this.language);
 
   // 함수이름: isEnglish
-  // 함수역할: 언어 코드가 en과 정확히 일치하는지 확인한다.
+  // 함수역할: 공통 언어 판정으로 언어 코드가 영어인지 확인한다.
   // 매개변수:
   // - 없음.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
-  bool get isEnglish => language == 'en';
+  bool get isEnglish => isEnglishLanguage(language);
   // 함수이름: reviewTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "복약 정보 확인" 문구를 제공한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get reviewTitle => isEnglish ? 'Review medication plan' : '복약 정보 확인';
-  // 함수이름: prescriptionReviewDescription
-  // 함수역할: 현재 언어와 입력값에 맞춰 "약품 분석 전에 OCR로 인식한 값을 확인해주세요. 잘못된 항목만 수정하면 됩니다." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get prescriptionReviewDescription => isEnglish
-      ? 'Review the OCR values before medication analysis. Edit only the incorrect entries.'
-      : '약품 분석 전에 OCR로 인식한 값을 확인해주세요. 잘못된 항목만 수정하면 됩니다.';
   // 함수이름: pillReviewDescription
   // 함수역할: 현재 언어와 입력값에 맞춰 "선택한 알약 후보의 복용 일정을 설정해주세요." 문구를 제공한다.
   // 매개변수:
@@ -1183,8 +1120,8 @@ class _MedicationScheduleReviewText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get invalidDuration => isEnglish
-      ? 'Enter a duration between 1 and 3650 days.'
-      : '복용 기간은 1일부터 3650일 사이로 입력해주세요.';
+      ? 'Enter a duration between 1 and $maxMedicationCourseDays days.'
+      : '복용 기간은 1일부터 $maxMedicationCourseDays일 사이로 입력해주세요.';
   // 함수이름: cancel
   // 함수역할: 현재 언어와 입력값에 맞춰 "Cancel" 문구를 제공한다.
   // 매개변수:
@@ -1209,13 +1146,6 @@ class _MedicationScheduleReviewText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get reviewNeeded => isEnglish ? 'Review needed' : '확인 필요';
-  // 함수이름: confirmAndAnalyze
-  // 함수역할: 현재 언어와 입력값에 맞춰 "확인 후 분석하기" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get confirmAndAnalyze =>
-      isEnglish ? 'Confirm and analyze' : '확인 후 분석하기';
   // 함수이름: confirmAndSave
   // 함수역할: 현재 언어와 입력값에 맞춰 "확인하고 저장하기" 문구를 제공한다.
   // 매개변수:
@@ -1258,12 +1188,6 @@ class _MedicationScheduleReviewText {
   // - slotKey (String): 아침·점심·저녁·취침 전을 구분하는 시간대 키.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String slotLabel(String slotKey) {
-    return switch (slotKey) {
-      'morning' => isEnglish ? 'Morning' : '아침',
-      'lunch' => isEnglish ? 'Lunch' : '점심',
-      'evening' => isEnglish ? 'Evening' : '저녁',
-      'bedtime' => isEnglish ? 'Bedtime' : '취침 전',
-      _ => slotKey,
-    };
+    return medicationSlotLabel(slotKey, isEnglish: isEnglish);
   }
 }

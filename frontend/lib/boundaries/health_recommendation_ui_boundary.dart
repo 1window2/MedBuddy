@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../entities/health_recommendation_entity.dart';
+import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 import '../viewmodels/medbuddy_feature_updates.dart';
@@ -719,11 +720,11 @@ class _HealthRecommendationText {
   const _HealthRecommendationText(this.language);
 
   // 함수이름: isEnglish
-  // 함수역할: 언어 코드의 공백과 대소문자를 정리한 뒤 en 접두어로 영어 여부를 판별한다.
+  // 함수역할: 언어 코드가 영어 표시 대상인지 앱 공통 기준으로 판별한다.
   // 매개변수:
   // - 없음.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
-  bool get isEnglish => language.trim().toLowerCase().startsWith('en');
+  bool get isEnglish => isEnglishLanguage(language);
 
   // 함수이름: title
   // 함수역할: 현재 언어와 입력값에 맞춰 "건강 관리 추천" 문구를 제공한다.

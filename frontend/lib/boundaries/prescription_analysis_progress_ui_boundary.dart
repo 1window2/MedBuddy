@@ -4,6 +4,8 @@ import '../entities/prescription_flow_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/medication_loading_tip.dart';
+import 'prescription_analysis_preview_ui_boundary.dart'
+    show PrescriptionFlowBackButton;
 
 // 파일명: prescription_analysis_progress_ui_boundary.dart
 // 역할: OCR 및 약물 분석의 현재 진행 단계를 제공한다.
@@ -44,7 +46,6 @@ class PrescriptionAnalysisProgressUI extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = _ProgressText(userSetting.language);
-    final scale = userSetting.contentTextScale;
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
@@ -54,20 +55,9 @@ class PrescriptionAnalysisProgressUI extends StatelessWidget {
           color: MedBuddyColors.pageBackground,
           child: Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(31, 37, 31, 0),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: IconButton(
-                    tooltip: text.back,
-                    onPressed: onBackRequested,
-                    icon: const Icon(
-                      Icons.chevron_left,
-                      color: MedBuddyColors.textMuted,
-                      size: 31,
-                    ),
-                  ),
-                ),
+              PrescriptionFlowBackButton(
+                tooltip: text.back,
+                onBackRequested: onBackRequested,
               ),
               Expanded(
                 child: LayoutBuilder(
@@ -113,7 +103,7 @@ class PrescriptionAnalysisProgressUI extends StatelessWidget {
                                         textAlign: TextAlign.center,
                                         style: TextStyle(
                                           color: MedBuddyColors.textStrong,
-                                          fontSize: 28 * scale,
+                                          fontSize: 28,
                                           fontWeight: FontWeight.w700,
                                           letterSpacing: 0,
                                         ),
@@ -136,7 +126,6 @@ class PrescriptionAnalysisProgressUI extends StatelessWidget {
                                             activeStep ==
                                             AnalysisProgressStep
                                                 .prescriptionRecognition,
-                                        scale: scale,
                                       ),
                                       const SizedBox(height: 14),
                                       _ProgressStepLabel(
@@ -145,7 +134,6 @@ class PrescriptionAnalysisProgressUI extends StatelessWidget {
                                             activeStep ==
                                             AnalysisProgressStep
                                                 .medicationAnalysis,
-                                        scale: scale,
                                       ),
                                       const SizedBox(height: 24),
                                       ClipRRect(
@@ -164,7 +152,7 @@ class PrescriptionAnalysisProgressUI extends StatelessWidget {
                                         textAlign: TextAlign.center,
                                         style: TextStyle(
                                           color: MedBuddyColors.textMuted,
-                                          fontSize: 14 * scale,
+                                          fontSize: 14,
                                           fontWeight: FontWeight.w500,
                                           letterSpacing: 0,
                                         ),
@@ -208,23 +196,19 @@ class PrescriptionAnalysisProgressUI extends StatelessWidget {
 // 속성:
 // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
 // - active (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 class _ProgressStepLabel extends StatelessWidget {
   final String label;
   final bool active;
-  final double scale;
 
   // 함수이름: _ProgressStepLabel
   // 함수역할: 분석 단계 이름과 활성 강조에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
   // - active (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // 반환값: 입력 설정이 반영된 _ProgressStepLabel 인스턴스.
   const _ProgressStepLabel({
     required this.label,
     required this.active,
-    required this.scale,
   });
 
   // 함수이름: build
@@ -239,7 +223,7 @@ class _ProgressStepLabel extends StatelessWidget {
       textAlign: TextAlign.center,
       style: TextStyle(
         color: active ? MedBuddyColors.primary : MedBuddyColors.textLight,
-        fontSize: 16 * scale,
+        fontSize: 16,
         fontWeight: active ? FontWeight.w700 : FontWeight.w600,
         letterSpacing: 0,
       ),
@@ -264,11 +248,11 @@ class _ProgressText {
   const _ProgressText(this.language);
 
   // 함수이름: isEnglish
-  // 함수역할: 언어 코드가 en과 정확히 일치하는지 확인한다.
+  // 함수역할: 공통 언어 판별 규칙으로 언어 코드가 영어인지 확인한다.
   // 매개변수:
   // - 없음.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
-  bool get isEnglish => language == 'en';
+  bool get isEnglish => isEnglishLanguage(language);
 
   // 함수이름: back
   // 함수역할: 현재 언어와 입력값에 맞춰 "뒤로가기" 문구를 제공한다.

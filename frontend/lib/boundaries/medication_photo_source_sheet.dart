@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 
 // context와 language로 공통 사진 출처 메뉴를 열어 선택한 출처를 반환한다. 취소하면 null이다.
@@ -8,7 +9,7 @@ Future<ImageSource?> showMedicationPhotoSourceOptions({
   required BuildContext context,
   required String language,
 }) {
-  final isEnglish = language == 'en';
+  final isEnglish = isEnglishLanguage(language);
   return showModalBottomSheet<ImageSource>(
     context: context,
     isScrollControlled: true,

@@ -1,23 +1,21 @@
 part of 'check_saved_medication_ui_boundary.dart';
 
 // 파일명: check_saved_medication_empty_widgets.dart
-// 역할: 빈 목록의 등록 진입, 전체 선택과 삭제 버튼 및 날짜 묶음을 제공한다.
+// 역할: 빈 목록의 등록 진입, 조회 실패 안내, 전체 선택과 삭제 버튼 및 날짜 묶음을 제공한다.
 
 // 클래스명: _SavedMedicationEmptyState
 // 역할: 빈 복약함 안내와 보통 크기의 등록 버튼을 배치한다.
 // 주요 책임: 큰 글씨에서도 등록 버튼까지 스크롤되게 한다.
-// 속성: text는 문구, userSetting은 배율, onPrescriptionInputRequested는 등록 콜백이다.
+// 속성: text는 문구, onPrescriptionInputRequested는 등록 콜백이다.
 class _SavedMedicationEmptyState extends StatelessWidget {
   final _SavedMedicationText text;
-  final UserSetting userSetting;
   final VoidCallback? onPrescriptionInputRequested;
 
   // 함수이름: _SavedMedicationEmptyState
   // 함수역할: 빈 상태의 표시와 동작을 받는다.
-  // 매개변수: text, userSetting, onPrescriptionInputRequested. 반환값: 빈 상태 위젯.
+  // 매개변수: text, onPrescriptionInputRequested. 반환값: 빈 상태 위젯.
   const _SavedMedicationEmptyState({
     required this.text,
-    required this.userSetting,
     required this.onPrescriptionInputRequested,
   });
 
@@ -44,7 +42,7 @@ class _SavedMedicationEmptyState extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
               color: MedBuddyColors.textMuted,
-              fontSize: 16 * userSetting.contentTextScale,
+              fontSize: 16,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -56,13 +54,78 @@ class _SavedMedicationEmptyState extends StatelessWidget {
               minimumSize: const Size.fromHeight(48),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               textStyle: TextStyle(
-                fontSize: 16 * userSetting.contentTextScale,
+                fontSize: 16,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0,
               ),
             ),
             icon: const Icon(Icons.add),
             label: Text(text.registerMedication, textAlign: TextAlign.center),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+// 클래스명: _SavedMedicationLoadErrorState
+// 역할: 저장 목록 조회에 실패했음을 알리고 다시 시도 버튼을 배치한다.
+// 주요 책임: 조회 실패를 저장된 약이 없는 상태와 구분하고 큰 글씨에서도 버튼까지 스크롤되게 한다.
+// 속성: text는 문구, onRetryRequested는 다시 조회 콜백이다.
+class _SavedMedicationLoadErrorState extends StatelessWidget {
+  final _SavedMedicationText text;
+  final VoidCallback? onRetryRequested;
+
+  // 함수이름: _SavedMedicationLoadErrorState
+  // 함수역할: 조회 실패 상태의 표시와 동작을 받는다.
+  // 매개변수: text, onRetryRequested. 반환값: 조회 실패 상태 위젯.
+  const _SavedMedicationLoadErrorState({
+    required this.text,
+    required this.onRetryRequested,
+  });
+
+  // 함수이름: build
+  // 함수역할: 조회 실패 안내와 전체 너비 다시 시도 버튼을 구성한다.
+  // 매개변수: context는 화면 위치. 반환값: 스크롤 가능한 조회 실패 상태.
+  @override
+  Widget build(BuildContext context) => SliverFillRemaining(
+    hasScrollBody: false,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Icon(
+            Icons.cloud_off_outlined,
+            color: MedBuddyColors.textMuted,
+            size: 42,
+          ),
+          const SizedBox(height: 14),
+          Text(
+            text.loadFailedMessage,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: MedBuddyColors.textMuted,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 24),
+          FilledButton.icon(
+            key: const Key('saved-medication-retry'),
+            onPressed: onRetryRequested,
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              textStyle: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0,
+              ),
+            ),
+            icon: const Icon(Icons.refresh),
+            label: Text(text.retry, textAlign: TextAlign.center),
           ),
         ],
       ),
@@ -145,18 +208,16 @@ class _SavedMedicationSelectionControl extends StatelessWidget {
 // 속성: selectedCount는 유효 선택 수, isDeleting은 처리 상태이다.
 class _SelectionDeleteBar extends StatelessWidget {
   final _SavedMedicationText text;
-  final UserSetting userSetting;
   final int selectedCount;
   final bool isDeleting;
   final Future<void> Function() onDeleteRequested;
 
   // 함수이름: _SelectionDeleteBar
   // 함수역할: 삭제 상태와 요청 동작을 받는다.
-  // 매개변수: text, userSetting, selectedCount, isDeleting, onDeleteRequested.
+  // 매개변수: text, selectedCount, isDeleting, onDeleteRequested.
   // 반환값: 하단 삭제 위젯.
   const _SelectionDeleteBar({
     required this.text,
-    required this.userSetting,
     required this.selectedCount,
     required this.isDeleting,
     required this.onDeleteRequested,
@@ -181,7 +242,7 @@ class _SelectionDeleteBar extends StatelessWidget {
         minimumSize: const Size.fromHeight(48),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         textStyle: TextStyle(
-          fontSize: 16 * userSetting.contentTextScale,
+          fontSize: 16,
           fontWeight: FontWeight.w700,
           letterSpacing: 0,
         ),
@@ -201,7 +262,6 @@ class _SelectionDeleteBar extends StatelessWidget {
 // - 날짜·약 개수·묶음 삭제를 한 줄 머리글에 두고 그 아래에 같은 날짜의 저장 약 목록을 구성한다.
 // 속성:
 // - group (_SavedMedicationGroup): 같은 날짜의 저장 약품 묶음.
-// - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
 // - isSelectionMode (bool): 일반 조작 대신 삭제 선택 모드를 사용할지 여부.
 // - enabled (bool): 삭제 중이 아니어서 조작할 수 있는지 여부.
 // - selectedMedicationIds (Set<int>): 첨부 또는 삭제 대상으로 선택한 약품 ID 집합.
@@ -209,7 +269,6 @@ class _SavedMedicationDateCard extends StatelessWidget {
   final bool showRegisteredDate;
   final _SavedMedicationGroup group;
   final _SavedMedicationText text;
-  final UserSetting userSetting;
   final bool isSelectionMode;
   final bool enabled;
   final Set<int> selectedMedicationIds;
@@ -224,7 +283,6 @@ class _SavedMedicationDateCard extends StatelessWidget {
   // 매개변수:
   // - group (_SavedMedicationGroup): 같은 날짜의 저장 약품 묶음.
   // - text (_SavedMedicationText): 해당 화면 구역의 언어별 표시 문구.
-  // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
   // - isSelectionMode (bool): 일반 조작 대신 삭제 선택 모드를 사용할지 여부.
   // - enabled (bool): 삭제 중이 아니어서 조작할 수 있는지 여부.
   // - selectedMedicationIds (Set<int>): 첨부 또는 삭제 대상으로 선택한 약품 ID 집합.
@@ -237,7 +295,6 @@ class _SavedMedicationDateCard extends StatelessWidget {
     required this.showRegisteredDate,
     required this.group,
     required this.text,
-    required this.userSetting,
     required this.isSelectionMode,
     required this.enabled,
     required this.selectedMedicationIds,
@@ -254,7 +311,6 @@ class _SavedMedicationDateCard extends StatelessWidget {
   // 반환값: 같은 날짜의 저장 약 목록과 그룹 삭제에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-    final scale = userSetting.contentTextScale;
 
     return Container(
       width: double.infinity,
@@ -282,7 +338,7 @@ class _SavedMedicationDateCard extends StatelessWidget {
                           group.displayDate,
                           style: TextStyle(
                             color: MedBuddyColors.textStrong,
-                            fontSize: 17 * scale,
+                            fontSize: 17,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 0,
                           ),
@@ -291,7 +347,7 @@ class _SavedMedicationDateCard extends StatelessWidget {
                           text.medicationCount(group.medications.length),
                           style: TextStyle(
                             color: MedBuddyColors.textSubtle,
-                            fontSize: 13 * scale,
+                            fontSize: 13,
                             fontWeight: FontWeight.w600,
                             letterSpacing: 0,
                           ),
@@ -306,7 +362,7 @@ class _SavedMedicationDateCard extends StatelessWidget {
                         minimumSize: const Size(48, 48),
                         padding: const EdgeInsets.symmetric(horizontal: 10),
                         textStyle: TextStyle(
-                          fontSize: 14 * scale,
+                          fontSize: 14,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 0,
                         ),
@@ -314,7 +370,7 @@ class _SavedMedicationDateCard extends StatelessWidget {
                       onPressed: enabled ? onDeleteRequested : null,
                       icon: Icon(
                         Icons.delete_outline_rounded,
-                        size: 20 * scale,
+                        size: 20,
                       ),
                       label: Text(text.delete),
                     ),
@@ -328,7 +384,6 @@ class _SavedMedicationDateCard extends StatelessWidget {
               showRegisteredDate: showRegisteredDate,
               medication: medication,
               text: text,
-              userSetting: userSetting,
               isSelectionMode: isSelectionMode,
               enabled: enabled,
               isSelected:

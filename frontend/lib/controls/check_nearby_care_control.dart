@@ -20,6 +20,57 @@ import '../services/pharmacy_external_action_service.dart';
 // - PharmacyUriLauncher와 동일한 외부 URI 실행 콜백 타입.
 typedef ExternalUriLauncher = PharmacyUriLauncher;
 
+// Function Name: nearbyCarePlaceOperatesLate
+// Description: Tells whether a place counts as late-operating for list ordering: 24-hour, late hours, or an official late-night pharmacy.
+// Parameters: place: result to classify; hospitals: true for hospital results, where the pharmacy designation is ignored.
+// Returns: True when any applicable late-operation evidence is present.
+bool nearbyCarePlaceOperatesLate(
+  NearbyCarePlace place, {
+  required bool hospitals,
+}) {
+  return place.is24Hours ||
+      place.isOpenLate ||
+      (!hospitals && place.isOfficialLateNight);
+}
+
+// Function Name: sortNearbyCarePlaces
+// Description: Orders results for the map and list: open now, then late-operating, then favorites, then nearest first.
+// Parameters: places: search results, left unmodified; favoriteIds: the user's saved place IDs; hospitals: provider kind.
+// Returns: A new list in display order.
+List<NearbyCarePlace> sortNearbyCarePlaces(
+  Iterable<NearbyCarePlace> places, {
+  required Set<String> favoriteIds,
+  required bool hospitals,
+}) {
+  final sorted = List<NearbyCarePlace>.of(places);
+  // Function Name: sortNearbyCarePlaces.sort callback
+  // Description: Compares open state, late operation, favorite membership and distance, in that order.
+  // Parameters: left, right: the two places being ordered.
+  // Returns: A negative, zero or positive comparison value.
+  sorted.sort((left, right) {
+    final leftOpenRank = left.isOpenNow == true ? 0 : 1;
+    final rightOpenRank = right.isOpenNow == true ? 0 : 1;
+    if (leftOpenRank != rightOpenRank) {
+      return leftOpenRank.compareTo(rightOpenRank);
+    }
+    final leftLateRank = nearbyCarePlaceOperatesLate(left, hospitals: hospitals)
+        ? 0
+        : 1;
+    final rightLateRank =
+        nearbyCarePlaceOperatesLate(right, hospitals: hospitals) ? 0 : 1;
+    if (leftLateRank != rightLateRank) {
+      return leftLateRank.compareTo(rightLateRank);
+    }
+    final leftFavorite = favoriteIds.contains(left.placeId);
+    final rightFavorite = favoriteIds.contains(right.placeId);
+    if (leftFavorite != rightFavorite) {
+      return leftFavorite ? -1 : 1;
+    }
+    return left.distanceKm.compareTo(right.distanceKm);
+  });
+  return sorted;
+}
+
 // Class Name: CheckNearbyCare
 // Role: Owns shared hospital/pharmacy transport and device operations, not provider policy.
 // Responsibilities:
@@ -51,15 +102,14 @@ abstract class CheckNearbyCare {
   // Function Name: CheckNearbyCare
   // Description: Composes replaceable device/HTTP/action boundaries and owns only unprovided clients.
   // Parameters: locationBoundary, client, uriLauncher, clipboardWriter: optional adapters.
-  // Returns: Shared operations initialized with fresh-location, not cached-location, search policy.
+  // Returns: Shared operations that request a fresh device location for each located search.
   CheckNearbyCare({
     DeviceLocationBoundary? locationBoundary,
     http.Client? client,
     ExternalUriLauncher? uriLauncher,
     PharmacyClipboardWriter? clipboardWriter,
   }) : _locationBoundary =
-           locationBoundary ??
-           GeolocatorDeviceLocationService(reuseRecentFix: false),
+           locationBoundary ?? GeolocatorDeviceLocationService(),
        _client = client ?? AuthenticatedApiClient(),
        _externalActionService = PharmacyExternalActionService(
          uriLauncher: uriLauncher,
@@ -104,9 +154,10 @@ abstract class CheckNearbyCare {
           .timeout(const Duration(seconds: 25));
       final responseBody = ApiResponseParser.decodeBody(response);
       if (response.statusCode != 200) {
-        throw StateError(
-          'Nearby care request failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        throw ApiResponseParser.httpFailure(
+          'Nearby care request failed',
+          response,
+          responseBody,
         );
       }
       final decoded = ApiResponseParser.decodeMap(responseBody);
@@ -148,12 +199,11 @@ abstract class CheckNearbyCare {
         ),
         catalogIsStale: decoded['catalog_is_stale'] == true,
         holidayScheduleStatus:
-            decoded['holiday_schedule_status']?.toString() ?? 'not_applicable',
+            decoded['holiday_schedule_status']?.toString() ??
+            NearbyCareSearchResult.holidayScheduleNotApplicable,
         searchTruncated: decoded['search_truncated'] == true,
         regionScopeUncertain: decoded['region_scope_uncertain'] == true,
       );
-    } on DeviceLocationException {
-      rethrow;
     } on StateError {
       rethrow;
     } catch (error, stackTrace) {
@@ -163,7 +213,10 @@ abstract class CheckNearbyCare {
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Nearby care request failed.');
+      throw ApiResponseParser.transportFailure(
+        'Nearby care request failed',
+        error,
+      );
     }
   }
 

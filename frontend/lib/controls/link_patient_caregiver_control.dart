@@ -57,9 +57,10 @@ class LinkPatientCaregiver {
       final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
-        throw StateError(
-          'Link lookup failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        throw ApiResponseParser.httpFailure(
+          'Link lookup failed',
+          response,
+          responseBody,
         );
       }
 
@@ -74,7 +75,7 @@ class LinkPatientCaregiver {
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Link lookup failed.');
+      throw ApiResponseParser.transportFailure('Link lookup failed', error);
     }
   }
 
@@ -96,9 +97,10 @@ class LinkPatientCaregiver {
       final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
-        throw StateError(
-          'Patient code creation failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        throw ApiResponseParser.httpFailure(
+          'Patient code creation failed',
+          response,
+          responseBody,
         );
       }
 
@@ -117,7 +119,10 @@ class LinkPatientCaregiver {
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Patient code creation failed.');
+      throw ApiResponseParser.transportFailure(
+        'Patient code creation failed',
+        error,
+      );
     }
   }
 
@@ -144,9 +149,10 @@ class LinkPatientCaregiver {
       final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
-        throw StateError(
-          'Patient registration failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        throw ApiResponseParser.httpFailure(
+          'Patient registration failed',
+          response,
+          responseBody,
         );
       }
 
@@ -162,7 +168,10 @@ class LinkPatientCaregiver {
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Patient registration failed.');
+      throw ApiResponseParser.transportFailure(
+        'Patient registration failed',
+        error,
+      );
     }
   }
 
@@ -187,9 +196,10 @@ class LinkPatientCaregiver {
           .timeout(const Duration(seconds: 30));
       final responseBody = ApiResponseParser.decodeBody(response);
       if (response.statusCode != 200) {
-        throw StateError(
-          'Patient alias save failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        throw ApiResponseParser.httpFailure(
+          'Patient alias save failed',
+          response,
+          responseBody,
         );
       }
       return _decodeSingleLink(
@@ -204,7 +214,10 @@ class LinkPatientCaregiver {
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Patient alias save failed.');
+      throw ApiResponseParser.transportFailure(
+        'Patient alias save failed',
+        error,
+      );
     }
   }
 
@@ -226,9 +239,10 @@ class LinkPatientCaregiver {
           .timeout(const Duration(seconds: 30));
       final responseBody = ApiResponseParser.decodeBody(response);
       if (response.statusCode != 200) {
-        throw StateError(
-          'Caregiver alias save failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        throw ApiResponseParser.httpFailure(
+          'Caregiver alias save failed',
+          response,
+          responseBody,
         );
       }
       return _decodeSingleLink(
@@ -243,7 +257,10 @@ class LinkPatientCaregiver {
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Caregiver alias save failed.');
+      throw ApiResponseParser.transportFailure(
+        'Caregiver alias save failed',
+        error,
+      );
     }
   }
 
@@ -261,9 +278,10 @@ class LinkPatientCaregiver {
       final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
-        throw StateError(
-          'Unlink failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        throw ApiResponseParser.httpFailure(
+          'Unlink failed',
+          response,
+          responseBody,
         );
       }
 
@@ -279,7 +297,7 @@ class LinkPatientCaregiver {
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Unlink failed.');
+      throw ApiResponseParser.transportFailure('Unlink failed', error);
     }
   }
 

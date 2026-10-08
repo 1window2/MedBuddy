@@ -8,6 +8,7 @@ import '../controls/check_caregiver_medication_control.dart';
 import '../controls/link_patient_caregiver_control.dart';
 import '../controls/manage_user_setting_control.dart';
 import '../controls/set_caregiver_notification_control.dart';
+import '../entities/user_setting_entity.dart';
 import '../services/api_config.dart';
 import '../services/caregiver_notification_monitor_service.dart';
 import '../services/notification_service.dart';
@@ -17,6 +18,25 @@ import '../services/authenticated_api_client.dart';
 import '../services/caregiver_alert_delivery_service.dart';
 
 
+// 함수이름: deliverCaregiverAlert
+// 함수역할: 보호자 알림을 표시하기 직전에 사용자의 현재 설정을 확인한다. 보호자 알림을 꺼 두었으면 표시하지 않고,
+//   켜 두었으면 민감정보 표시 여부를 함께 넘겨 표시하게 한다.
+// 매개변수:
+// - loadSetting (Future<UserSetting> Function()): 알림 허용과 민감정보 표시 설정 조회
+// - notify (Future<void> Function(bool showSensitiveDetails)): 민감정보 표시 여부를 받아 실제 알림을 표시하는 경계
+// 반환값:
+// - Future<bool>: 알림을 표시했으면 true, 사용자가 보호자 알림을 꺼 두어 표시하지 않았으면 false.
+Future<bool> deliverCaregiverAlert({
+  required Future<UserSetting> Function() loadSetting,
+  required Future<void> Function(bool showSensitiveDetails) notify,
+}) async {
+  final userSetting = await loadSetting();
+  if (!userSetting.caregiverNotificationsEnabled) {
+    return false;
+  }
+  await notify(userSetting.showNotificationDetails);
+  return true;
+}
 
 // 클래스명: CaregiverNotificationMonitorFactory
 // 역할: 보호자 복약 감시의 의존성 조립 경계이다.
@@ -144,20 +164,21 @@ class CaregiverNotificationMonitorFactory {
             required String body,
             required String patientHash,
           }) async {
-            final userSetting = await userSettingControl.requestUserSetting();
-            if (!userSetting.caregiverNotificationsEnabled) {
-              return;
-            }
-            NotificationService.instance.setShowSensitiveDetails(
-              userSetting.showNotificationDetails,
-            );
-            return NotificationService.instance.showCaregiverAlert(
-              historyUserHash: caregiverHash,
-              id: id,
-              title: title,
-              body: body,
-              patientHash: patientHash,
-              language: languageProvider?.call() ?? 'ko',
+            await deliverCaregiverAlert(
+              loadSetting: userSettingControl.requestUserSetting,
+              notify: (showSensitiveDetails) {
+                NotificationService.instance.setShowSensitiveDetails(
+                  showSensitiveDetails,
+                );
+                return NotificationService.instance.showCaregiverAlert(
+                  historyUserHash: caregiverHash,
+                  id: id,
+                  title: title,
+                  body: body,
+                  patientHash: patientHash,
+                  language: languageProvider?.call() ?? 'ko',
+                );
+              },
             );
           },
       permissionRequester: NotificationService.instance.requestPermission,

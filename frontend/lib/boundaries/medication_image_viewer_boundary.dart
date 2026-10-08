@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../entities/medication_image_url_entity.dart';
+import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 
 // 클래스명: MedicationImageViewer
@@ -46,7 +47,7 @@ class MedicationImageViewer {
       return false;
     }
 
-    final isEnglish = language.trim().toLowerCase().startsWith('en');
+    final isEnglish = isEnglishLanguage(language);
     await showDialog<void>(
       context: context,
       useSafeArea: false,

@@ -11,6 +11,7 @@ import '../controls/set_caregiver_notification_control.dart';
 import '../entities/caregiver_notification_entity.dart';
 import '../entities/medication_detail_entity.dart';
 import '../entities/medication_schedule_entity.dart';
+import '../entities/medication_slot_label.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../services/user_facing_error_message.dart';
@@ -73,15 +74,16 @@ class CheckCaregiverMedicationUI extends StatefulWidget {
 // 역할: 환자별 복약 완료 상태와 시간대별 보호자 알림의 화면 상태를 관리한다.
 // 주요 책임:
 // - 초기 로딩·오류·일정 부재를 구분하고 시간대별 환자 약 목록을 표시한다.
-// - 진행 화면을 띄우지 않고 환자 복약 상태와 보호자 알림을 함께 갱신한다.
+// - 앱이 전면에 있고 이 화면이 현재 경로일 때만 15초마다 환자 복약 상태를 갱신하고, 다시 보이게 되면 즉시 갱신한다.
+// - 보호자 알림 설정은 처음 열 때와 앱 복귀 때 조회하고, 조회에 실패했으면 알림 버튼을 누를 때 다시 조회한다.
 // - 로컬에 저장된 환자 별칭을 읽고 표시 값이 달라진 경우 반영한다.
 // 속성:
 // - _slots (List<_CaregiverScheduleSlot>): 시간대별 약품과 표시 정의를 묶은 목록.
 // - _control (CheckCaregiverMedication): 화면의 조회·변경 요청을 처리할 컨트롤러.
 // - _notificationControl (SetCaregiverNotification): 보호자 알림 조회·저장을 처리할 컨트롤러.
 // - _lastSynchronizedAt (DateTime?): 마지막으로 환자 상태를 성공적으로 갱신한 시각.
-class _CheckCaregiverMedicationUIState
-    extends State<CheckCaregiverMedicationUI> {
+class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
+    with WidgetsBindingObserver {
   static const Duration _refreshInterval = Duration(seconds: 15);
   static const ManageCaregiverPatientLocalState _localStateControl =
       ManageCaregiverPatientLocalState();
@@ -104,31 +106,47 @@ class _CheckCaregiverMedicationUIState
   String? _notificationSavingSlotKey;
   bool _isLoading = true;
   bool _isRefreshInFlight = false;
+  // 조회 중에 화면이 다시 보이게 되어, 진행 중인 조회가 끝나면 한 번 더 읽어야 하는지 여부.
+  bool _refreshAgainAfterCurrent = false;
   bool _isNotificationLoading = true;
-  bool _isNotificationRefreshInFlight = false;
+  // 진행 중인 알림 설정 조회. 알림 버튼은 이 결과를 기다린 뒤 동작한다.
+  Future<bool>? _notificationSettingsRequest;
+  // 알림 설정 저장이 시작·완료될 때마다 증가해, 그 전에 시작한 조회 결과가 저장값을 덮어쓰지 않게 한다.
+  int _notificationSettingsRevision = 0;
+  bool _isAppResumed = true;
+  bool _isRouteCurrent = true;
+  // 마지막으로 반영한 화면 표시 여부. 첫 판정 전에는 null이다.
+  bool? _wasScreenVisible;
+  // 앱 복귀 뒤 화면이 보이게 되면 알림 설정을 다시 읽어야 하는지 여부.
+  bool _reloadNotificationSettingsWhenVisible = false;
   late String _patientLabel;
 
   // 함수이름: _isEnglish
-  // 함수역할: 언어 코드의 공백과 대소문자를 정리한 뒤 en 접두어로 영어 여부를 판별한다.
+  // 함수역할: 사용자 설정의 언어가 앱 공통 기준으로 영어인지 판별한다.
   // 매개변수:
   // - 없음.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
-  bool get _isEnglish {
-    return widget.userSetting.language.trim().toLowerCase().startsWith('en');
-  }
+  bool get _isEnglish => widget.userSetting.isEnglish;
 
   // 함수이름: initState
-  // 함수역할: 환자 별칭·조회 컨트롤러를 준비하고 복약·알림 초기 조회와 15초 주기 갱신을 시작한다.
+  // 함수역할: 환자 별칭·조회 컨트롤러를 준비하고 앱 생명주기 관찰과 복약·알림 초기 조회를 시작한다. 15초 주기 갱신은 화면 표시 여부가 정해지는 didChangeDependencies에서 시작한다.
   // 매개변수:
   // - 없음.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    final lifecycleState = WidgetsBinding.instance.lifecycleState;
+    _isAppResumed =
+        lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
     _ownsControl = widget.control == null;
     _patientLabel = widget.patientLabel?.trim().isNotEmpty == true
         ? widget.patientLabel!.trim()
-        : _localStateControl.fallbackLabel(widget.patientHash);
+        : _localStateControl.fallbackLabel(
+            widget.patientHash,
+            isEnglish: _isEnglish,
+          );
     _control =
         widget.control ??
         CheckCaregiverMedication(caregiverHash: widget.caregiverHash);
@@ -139,24 +157,86 @@ class _CheckCaregiverMedicationUIState
     _requestPatientMedicationInfo();
     _requestCaregiverNotificationSettings();
     unawaited(_loadPatientLabel());
+  }
+
+  // 함수이름: didChangeDependencies
+  // 함수역할: 이 화면이 현재 경로인지 다시 판정한다. 다른 화면·대화상자가 위에 열리거나 닫히면 경로 상태가 바뀌어 이 함수가 다시 호출된다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 경로 밖에서 단독으로 쓰이면 가려질 수 없으므로 현재 화면으로 본다.
+    _isRouteCurrent = ModalRoute.of(context)?.isCurrent ?? true;
+    _applyScreenVisibility();
+  }
+
+  // 함수이름: didChangeAppLifecycleState
+  // 함수역할: 앱이 전면을 벗어나면 주기 갱신을 멈추고, 전면으로 돌아오면 다시 시작하면서 알림 설정도 다시 읽게 한다.
+  // 매개변수:
+  // - state (AppLifecycleState): Flutter가 전달한 앱의 전경·배경 생명주기 상태.
+  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final isResumed = state == AppLifecycleState.resumed;
+    if (isResumed == _isAppResumed) {
+      return;
+    }
+    _isAppResumed = isResumed;
+    if (isResumed) {
+      _reloadNotificationSettingsWhenVisible = true;
+    }
+    _applyScreenVisibility();
+  }
+
+  // 함수이름: _applyScreenVisibility
+  // 함수역할: 앱이 전면에 있고 이 화면이 현재 경로일 때만 15초 주기 갱신을 유지한다. 가려졌던 화면이 다시 보이면 다음 주기를 기다리지 않고 즉시 환자 복약 상태를 읽는다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
+  void _applyScreenVisibility() {
+    final isVisible = _isAppResumed && _isRouteCurrent;
+    final wasVisible = _wasScreenVisible;
+    if (isVisible == wasVisible) {
+      return;
+    }
+    _wasScreenVisible = isVisible;
+    _refreshTimer?.cancel();
+    _refreshTimer = null;
+    if (!isVisible) {
+      return;
+    }
     _refreshTimer = Timer.periodic(
       _refreshInterval,
-      // 함수이름: initState.periodic callback
-      // 함수역할: 진행 화면을 띄우지 않고 환자 복약 상태와 보호자 알림을 함께 갱신한다.
+      // 함수이름: _applyScreenVisibility.periodic callback
+      // 함수역할: 화면이 보이는 동안 진행 화면을 띄우지 않고 환자 복약 상태를 갱신한다.
       // 매개변수:
       // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
-      // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-      (_) => unawaited(_refreshCaregiverData()),
+      // 반환값: 없음. 조회 결과는 연결된 작업에서 처리한다.
+      (_) => _refreshOnTimer(),
     );
+    if (wasVisible == null) {
+      // 처음 표시될 때는 initState의 초기 조회가 이미 진행 중이다.
+      return;
+    }
+    unawaited(
+      _requestPatientMedicationInfo(silent: true, repeatIfInFlight: true),
+    );
+    if (_reloadNotificationSettingsWhenVisible) {
+      _reloadNotificationSettingsWhenVisible = false;
+      unawaited(_requestCaregiverNotificationSettings(silent: true));
+    }
   }
 
   // 함수이름: dispose
-  // 함수역할: _refreshTimer, _control, _notificationControl 관련 자원을 정리하고 화면 수명 종료 처리를 수행한다.
+  // 함수역할: 생명주기 관찰과 _refreshTimer, _control, _notificationControl 관련 자원을 정리하고 화면 수명 종료 처리를 수행한다.
   // 매개변수:
   // - 없음.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _refreshTimer?.cancel();
     if (_ownsControl) {
       _control.dispose();
@@ -319,16 +399,19 @@ class _CheckCaregiverMedicationUIState
     );
   }
 
-  // 함수이름: _refreshCaregiverData
-  // 함수역할: 진행 화면을 띄우지 않고 환자 복약 상태와 보호자 알림을 함께 갱신한다.
+  // 함수이름: _refreshOnTimer
+  // 함수역할: 주기 갱신 시점에 화면이 여전히 보이는지 다시 확인하고 환자 복약 상태만 조회한다. 알림 설정은 보호자 본인만 바꾸므로 주기마다 읽지 않는다.
   // 매개변수:
   // - 없음.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
-  Future<void> _refreshCaregiverData() async {
-    await Future.wait([
-      _requestPatientMedicationInfo(silent: true),
-      _requestCaregiverNotificationSettings(silent: true),
-    ]);
+  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
+  void _refreshOnTimer() {
+    // 경로 변경 통지가 아직 반영되지 않았더라도 가려진 화면은 조회하지 않는다.
+    if (!mounted ||
+        !_isAppResumed ||
+        ModalRoute.of(context)?.isCurrent == false) {
+      return;
+    }
+    unawaited(_requestPatientMedicationInfo(silent: true));
   }
 
   // 함수이름: _loadPatientLabel
@@ -340,6 +423,7 @@ class _CheckCaregiverMedicationUIState
     final label = await _localStateControl.loadLabel(
       caregiverHash: widget.caregiverHash,
       patientHash: widget.patientHash,
+      isEnglish: _isEnglish,
     );
     if (!mounted || label == _patientLabel) {
       return;
@@ -356,9 +440,16 @@ class _CheckCaregiverMedicationUIState
   // 함수역할: 중복 조회를 막으며 환자의 오늘 일정·동기화 시각·오류 상태를 갱신한다.
   // 매개변수:
   // - silent (bool): 별도 로딩 표시 없이 배경 갱신할지 여부.
+  // - repeatIfInFlight (bool): 이미 조회 중이면 그 조회가 끝난 뒤 한 번 더 조회할지 여부. 화면이 가려지기 전에 시작한 조회의 결과는 복귀 시점보다 오래된 상태일 수 있다.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
-  Future<void> _requestPatientMedicationInfo({bool silent = false}) async {
+  Future<void> _requestPatientMedicationInfo({
+    bool silent = false,
+    bool repeatIfInFlight = false,
+  }) async {
     if (_isRefreshInFlight) {
+      if (repeatIfInFlight) {
+        _refreshAgainAfterCurrent = true;
+      }
       return;
     }
     _isRefreshInFlight = true;
@@ -413,11 +504,17 @@ class _CheckCaregiverMedicationUIState
         // Returns: No payload; applies the captured state changes.
         setState(() => _isLoading = false);
       }
+      if (_refreshAgainAfterCurrent) {
+        _refreshAgainAfterCurrent = false;
+        if (mounted && _wasScreenVisible == true) {
+          unawaited(_requestPatientMedicationInfo(silent: true));
+        }
+      }
     }
   }
 
   // 함수이름: _requestCaregiverNotificationSettings
-  // 함수역할: 중복 요청을 막고 환자별 알림 설정을 조회하며 요청 시 오류를 안내한다.
+  // 함수역할: 환자별 알림 설정 조회를 한 번에 하나만 실행한다. 이미 조회 중이면 그 결과를 함께 기다리고, 사용자가 요청한 조회는 진행 표시를 보여준 뒤 앞선 조회가 실패했으면 오류를 안내하도록 다시 조회한다.
   // 매개변수:
   // - showError (bool): 조회 실패를 사용자에게 바로 안내할지 여부.
   // - silent (bool): 별도 로딩 표시 없이 배경 갱신할지 여부.
@@ -426,12 +523,59 @@ class _CheckCaregiverMedicationUIState
     bool showError = false,
     bool silent = false,
   }) async {
-    if (_isNotificationRefreshInFlight) {
-      return false;
+    final requestInFlight = _notificationSettingsRequest;
+    if (requestInFlight != null) {
+      if (!showError) {
+        return requestInFlight;
+      }
+      if (mounted) {
+        // 함수이름: _requestCaregiverNotificationSettings.setState callback
+        // 함수역할: 환자별 복약 완료 상태와 시간대별 보호자 알림의 입력·요청 상태를 `_isNotificationLoading = true`로 갱신한다.
+        // 매개변수:
+        // - 없음.
+        // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
+        setState(() => _isNotificationLoading = true);
+      }
+      final loaded = await requestInFlight;
+      if (loaded || !mounted) {
+        if (mounted) {
+          // 함수이름: _requestCaregiverNotificationSettings.setState callback
+          // 함수역할: 환자별 복약 완료 상태와 시간대별 보호자 알림의 입력·요청 상태를 `_isNotificationLoading = false`로 갱신한다.
+          // 매개변수:
+          // - 없음.
+          // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
+          setState(() => _isNotificationLoading = false);
+        }
+        return loaded;
+      }
     }
-    _isNotificationRefreshInFlight = true;
+    final request = _loadCaregiverNotificationSettings(
+      showError: showError,
+      silent: silent,
+    );
+    _notificationSettingsRequest = request;
+    try {
+      return await request;
+    } finally {
+      if (identical(_notificationSettingsRequest, request)) {
+        _notificationSettingsRequest = null;
+      }
+    }
+  }
+
+  // 함수이름: _loadCaregiverNotificationSettings
+  // 함수역할: 환자별 알림 설정을 조회해 반영하고 요청 시 오류를 안내한다. 조회 중에 설정 저장이 시작되었거나 끝났으면 오래된 조회 결과를 버린다.
+  // 매개변수:
+  // - showError (bool): 조회 실패를 사용자에게 바로 안내할지 여부.
+  // - silent (bool): 별도 로딩 표시 없이 배경 갱신할지 여부.
+  // 반환값: 성공하면 true, 실패하면 false로 완료되는 Future.
+  Future<bool> _loadCaregiverNotificationSettings({
+    required bool showError,
+    required bool silent,
+  }) async {
+    final revision = _notificationSettingsRevision;
     if (mounted && !silent) {
-      // 함수이름: _requestCaregiverNotificationSettings.setState callback
+      // 함수이름: _loadCaregiverNotificationSettings.setState callback
       // 함수역할: 환자별 복약 완료 상태와 시간대별 보호자 알림의 입력·요청 상태를 `_isNotificationLoading = true`로 갱신한다.
       // 매개변수:
       // - 없음.
@@ -443,8 +587,8 @@ class _CheckCaregiverMedicationUIState
           .requestCaregiverNotificationSettings(
             patientHash: widget.patientHash,
           );
-      if (mounted) {
-        // 함수이름: _requestCaregiverNotificationSettings.setState callback
+      if (mounted && revision == _notificationSettingsRevision) {
+        // 함수이름: _loadCaregiverNotificationSettings.setState callback
         // 함수역할: 환자별 복약 완료 상태와 시간대별 보호자 알림의 입력·요청 상태를 `_notificationSettings = settings`로 갱신한다.
         // 매개변수:
         // - 없음.
@@ -460,9 +604,8 @@ class _CheckCaregiverMedicationUIState
       }
       return false;
     } finally {
-      _isNotificationRefreshInFlight = false;
       if (mounted && !silent) {
-        // Function Name: _requestCaregiverNotificationSettings.setState callback
+        // Function Name: _loadCaregiverNotificationSettings.setState callback
         // Description: Updates the local input or request state for a patient's dose completion and per-slot caregiver reminder controls: `_isNotificationLoading = false`.
         // Parameters:
         // - None.
@@ -521,7 +664,7 @@ class _CheckCaregiverMedicationUIState
   }
 
   // 함수이름: _saveCaregiverNotificationSetting
-  // 함수역할: 시간대별 알림 조건·마감 시각을 저장하고 진행·성공·실패 상태를 반영한다.
+  // 함수역할: 시간대별 알림 조건·마감 시각을 저장하고 진행·성공·실패 상태를 반영한다. 저장 전후로 설정 판 번호를 올려 그 사이의 조회 결과가 저장값을 덮어쓰지 않게 한다.
   // 매개변수:
   // - slot (_CaregiverScheduleSlot): 복약 시간대의 식별·시각·표시 정보.
   // - selectedSetting (CaregiverNotification): 표시하거나 편집할 복약 시간대의 알림 설정.
@@ -536,6 +679,7 @@ class _CheckCaregiverMedicationUIState
     // - 없음.
     // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
     setState(() => _notificationSavingSlotKey = slot.key);
+    _notificationSettingsRevision += 1;
     try {
       final savedSetting = await _notificationControl
           .saveCaregiverNotificationSetting(
@@ -545,6 +689,7 @@ class _CheckCaregiverMedicationUIState
             deadlineHour: selectedSetting.deadlineHour,
             deadlineMinute: selectedSetting.deadlineMinute,
           );
+      _notificationSettingsRevision += 1;
       if (mounted) {
         // 함수이름: _saveCaregiverNotificationSetting.setState callback
         // 함수역할: 환자별 복약 완료 상태와 시간대별 보호자 알림의 입력·요청 상태를 `_notificationSettings = {..._notificationSettings, slot.key : savedSetting}`로 갱신한다.
@@ -1232,12 +1377,10 @@ class _CaregiverScheduleSlot {
   // - isEnglish (bool): 영어 문구를 선택할지 여부; false이면 한국어.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String title(bool isEnglish) {
-    return switch (key) {
-      'morning' => isEnglish ? 'Morning' : '아침',
-      'lunch' => isEnglish ? 'Lunch' : '점심',
-      'evening' => isEnglish ? 'Evening' : '저녁',
-      'bedtime' => isEnglish ? 'Bedtime' : '취침 전',
-      _ => isEnglish ? 'Schedule' : '복약 일정',
-    };
+    return medicationSlotLabel(
+      key,
+      isEnglish: isEnglish,
+      fallback: isEnglish ? 'Schedule' : '복약 일정',
+    );
   }
 }

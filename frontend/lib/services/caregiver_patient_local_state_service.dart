@@ -20,9 +20,10 @@ class CaregiverPatientLocalStateService {
   // - CaregiverPatientLocalStateService: 초기화된 인스턴스.
   CaregiverPatientLocalStateService._();
 
-  static const String _labelPrefix = 'caregiver_patient_label';
-  static const String _linkedPatientsPrefix = 'caregiver_linked_patients';
-  static const String _alertPrefix = 'caregiver_alert';
+  // 보호자 기기 저장소의 키 접두어. 뒤에 보호자 해시가 이어지며, 계정 정리와 알림 감시도 같은 값을 쓴다.
+  static const String patientLabelKeyPrefix = 'caregiver_patient_label.';
+  static const String linkedPatientsKeyPrefix = 'caregiver_linked_patients.';
+  static const String alertKeyPrefix = 'caregiver_alert.';
   static const int maximumLabelLength = 20;
 
   // 함수이름: resolveLabel
@@ -31,12 +32,14 @@ class CaregiverPatientLocalStateService {
   // - preferences (SharedPreferences): 보호자 기기의 로컬 저장소
   // - caregiverHash (String): 현재 보호자 식별 hash
   // - patientHash (String): 표시할 환자 식별 hash
+  // - isEnglish (bool): 별칭이 없을 때 기본 식별명을 영어로 만들지 여부
   // 반환값:
   // - 보호자 화면과 알림에 사용할 환자 표시 이름
   static String resolveLabel(
     SharedPreferences preferences, {
     required String caregiverHash,
     required String patientHash,
+    bool isEnglish = false,
   }) {
     final savedLabel = preferences
         .getString(_labelKey(caregiverHash, patientHash))
@@ -44,33 +47,35 @@ class CaregiverPatientLocalStateService {
     if (savedLabel != null && savedLabel.isNotEmpty) {
       return savedLabel;
     }
-    return fallbackLabel(patientHash);
+    return fallbackLabel(patientHash, isEnglish: isEnglish);
   }
 
   // 함수이름: fallbackLabel
-  // 함수역할: 환자 hash 전체를 노출하지 않고 마지막 네 글자로 기본 식별명을 만든다.
+  // 함수역할: 환자 hash 전체를 노출하지 않고 마지막 네 글자로 기본 식별명을 만든다. 기본 식별명은 저장하지 않으므로 언어를 바꾸면 그 언어로 다시 만들어진다.
   // 매개변수:
   // - patientHash (String): 환자 식별 hash
+  // - isEnglish (bool): 영어 식별명(Patient ABCD)을 만들지 여부; false이면 한국어
   // 반환값:
-  // - 환자 ABCD 형식의 기본 표시 이름
-  static String fallbackLabel(String patientHash) {
+  // - 환자 ABCD 또는 Patient ABCD 형식의 기본 표시 이름
+  static String fallbackLabel(String patientHash, {bool isEnglish = false}) {
     final normalized = patientHash.trim();
     if (normalized.isEmpty) {
-      return '연결된 환자';
+      return isEnglish ? 'Linked patient' : '연결된 환자';
     }
     final suffix = normalized.length <= 4
         ? normalized
         : normalized.substring(normalized.length - 4);
-    return '환자 ${suffix.toUpperCase()}';
+    return '${isEnglish ? 'Patient' : '환자'} ${suffix.toUpperCase()}';
   }
 
   // 함수이름: saveLabel
-  // 함수역할: 보호자가 입력한 환자 별칭을 정리해 환자별 키로 저장한다. 빈 값을 저장하면 사용자 별칭을 제거하고 기본 식별명으로 되돌린다.
+  // 함수역할: 보호자가 입력한 환자 별칭을 정리해 환자별 키로 저장한다. 빈 값을 저장하면 사용자 별칭을 제거하고 기본 식별명으로 되돌린다. 저장된 값과 같으면 저장소에 다시 쓰지 않는다.
   // 매개변수:
   // - preferences (SharedPreferences): 보호자 기기의 로컬 저장소
   // - caregiverHash (String): 현재 보호자 식별 hash
   // - patientHash (String): 별칭을 지정할 환자 식별 hash
   // - label (String): 보호자가 입력한 표시 이름
+  // - isEnglish (bool): 별칭을 지웠을 때 돌려줄 기본 식별명을 영어로 만들지 여부
   // 반환값:
   // - 저장 후 실제 화면에 표시할 이름
   static Future<String> saveLabel(
@@ -78,6 +83,7 @@ class CaregiverPatientLocalStateService {
     required String caregiverHash,
     required String patientHash,
     required String label,
+    bool isEnglish = false,
   }) async {
     final normalizedLabel = label
         .replaceAll(RegExp(r'[\r\n\t]+'), ' ')
@@ -85,13 +91,18 @@ class CaregiverPatientLocalStateService {
         .trim();
     final key = _labelKey(caregiverHash, patientHash);
     if (normalizedLabel.isEmpty) {
-      await preferences.remove(key);
-      return fallbackLabel(patientHash);
+      if (preferences.containsKey(key)) {
+        await preferences.remove(key);
+      }
+      return fallbackLabel(patientHash, isEnglish: isEnglish);
     }
     final boundedLabel = normalizedLabel.length <= maximumLabelLength
         ? normalizedLabel
         : normalizedLabel.substring(0, maximumLabelLength);
-    await preferences.setString(key, boundedLabel);
+    // 채팅 목록과 알림 감시가 주기적으로 서버 별칭을 다시 반영하므로 값이 같으면 쓰지 않는다.
+    if (preferences.getString(key) != boundedLabel) {
+      await preferences.setString(key, boundedLabel);
+    }
     return boundedLabel;
   }
 
@@ -111,15 +122,8 @@ class CaregiverPatientLocalStateService {
     final normalizedCaregiver = PatientHash.normalizePatientHash(caregiverHash);
     final currentPatients = patientHashes
         .map(PatientHash.normalizePatientHash)
-        .where(/* 함수이름: where 콜백
-         * 함수역할: 숨긴 환자 목록에서 빈 해시를 제외한다.
-         * 매개변수:
-         * - hash (String): 저장된 숨김 환자 해시
-         * 반환값:
-         * - 환자 해시가 비어 있지 않으면 true.
-         */(hash) => hash.isNotEmpty)
         .toSet();
-    final linkedPatientsKey = '$_linkedPatientsPrefix.$normalizedCaregiver';
+    final linkedPatientsKey = '$linkedPatientsKeyPrefix$normalizedCaregiver';
     final previousPatients = preferences.getStringList(linkedPatientsKey);
     if (previousPatients != null) {
       final removedPatients = previousPatients.toSet().difference(
@@ -154,7 +158,7 @@ class CaregiverPatientLocalStateService {
     final normalizedPatient = PatientHash.normalizePatientHash(patientHash);
     final labelKey = _labelKey(normalizedCaregiver, normalizedPatient);
     final alertPrefix =
-        '$_alertPrefix.$normalizedCaregiver.$normalizedPatient.';
+        '$alertKeyPrefix$normalizedCaregiver.$normalizedPatient.';
     final keysToRemove = preferences
         .getKeys()
         .where(/* 함수이름: where 콜백
@@ -180,6 +184,6 @@ class CaregiverPatientLocalStateService {
   static String _labelKey(String caregiverHash, String patientHash) {
     final normalizedCaregiver = PatientHash.normalizePatientHash(caregiverHash);
     final normalizedPatient = PatientHash.normalizePatientHash(patientHash);
-    return '$_labelPrefix.$normalizedCaregiver.$normalizedPatient';
+    return '$patientLabelKeyPrefix$normalizedCaregiver.$normalizedPatient';
   }
 }

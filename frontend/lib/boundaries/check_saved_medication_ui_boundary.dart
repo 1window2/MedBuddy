@@ -6,14 +6,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../widgets/medbuddy_preference_row.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import 'check_medication_detail_ui_boundary.dart';
-import 'guided_prescription_camera_ui_boundary.dart';
-import 'manual_medication_entry_ui_boundary.dart';
-import 'medication_capture_options_ui_boundary.dart';
-import 'pill_identification_ui_boundary.dart';
+import 'medication_registration_flow.dart';
 import '../entities/medication_detail_entity.dart';
 import '../entities/medication_image_url_entity.dart';
 import '../entities/user_setting_entity.dart';
@@ -39,16 +35,23 @@ part 'check_saved_medication_support.dart';
 // - Provides guidance, photo, and deletion dialogs.
 // Attributes:
 // - showCloseButton (bool): Whether to show the navigation action leaving the screen.
+// - isActive (bool): Whether the screen is the one the user currently sees; a host that keeps it mounted behind another tab passes false so it stops handling system back.
 class CheckSavedMedicationUI extends StatefulWidget {
   final bool showCloseButton;
+  final bool isActive;
 
   // Function Name: CheckSavedMedicationUI
   // Description: Initializes date-grouped saved medications, filtering, and selection deletion with the supplied configuration.
   // Parameters:
   // - key (Key?): Widget identity used to distinguish elements and preserve state.
   // - showCloseButton (bool): Whether to show the navigation action leaving the screen.
+  // - isActive (bool): Whether the screen is currently shown; defaults to true for hosts that only build it while visible.
   // Returns: Initialized CheckSavedMedicationUI instance.
-  const CheckSavedMedicationUI({super.key, this.showCloseButton = true});
+  const CheckSavedMedicationUI({
+    super.key,
+    this.showCloseButton = true,
+    this.isActive = true,
+  });
 
   // Function Name: createState
   // Description: Creates the state object that coordinates date-grouped saved medications, filtering, and selection deletion.
@@ -111,6 +114,19 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     });
   }
 
+  // 함수이름: didUpdateWidget
+  // 함수역할: 화면이 다른 탭 뒤로 숨겨지면 선택 모드를 끝내 보이지 않는 선택이 남지 않게 한다. 삭제 진행 중인 선택은 삭제가 끝날 때까지 유지한다.
+  // 매개변수: oldWidget은 이전 구성. 반환값: 없음.
+  @override
+  void didUpdateWidget(covariant CheckSavedMedicationUI oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isActive && !widget.isActive && !_isDeleting) {
+      // 이 호출 뒤에 곧바로 다시 그려지므로 setState 없이 상태만 바꾼다.
+      _isSelectionMode = false;
+      _selectedMedicationIds.clear();
+    }
+  }
+
   // 함수역할: 검색 입력 자원을 정리한다. 매개변수·반환값: 없음.
   @override
   void dispose() {
@@ -170,7 +186,8 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     final selectedIds = _selectedMedicationIds.intersection(visibleIds);
 
     return PopScope(
-      canPop: !_isSelectionMode && !_isDeleting,
+      // 숨겨진 탭으로 유지되는 동안에는 다른 화면의 시스템 뒤로가기를 가로채지 않는다.
+      canPop: !widget.isActive || (!_isSelectionMode && !_isDeleting),
       onPopInvokedWithResult: _handleBack,
       child: Scaffold(
         backgroundColor: MedBuddyColors.pageBackground,
@@ -303,7 +320,6 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
                       child: _SelectionDeleteBar(
                         text: text,
-                        userSetting: viewModel.userSetting,
                         selectedCount: selectedIds.length,
                         isDeleting: _isDeleting,
                         // 함수역할: 보이는 선택 약의 삭제를 확인한다.
@@ -348,6 +364,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
   // 함수역할: 시스템 뒤로가기는 화면보다 선택을 먼저 닫는다.
   // 매개변수: didPop은 이동 여부, result는 이동 결과. 반환값: 없음.
   void _handleBack(bool didPop, Object? result) {
+    if (!widget.isActive) return;
     if (!didPop && _isSelectionMode && !_isDeleting) _endSelection();
   }
 
@@ -414,7 +431,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
   }
 
   // 함수이름: _buildContent
-  // 함수역할: 로딩·빈 결과·날짜별 목록을 나누고 기존 등록 및 상세 흐름을 연결한다.
+  // 함수역할: 로딩·조회 실패·빈 결과·날짜별 목록을 나누고 기존 등록 및 상세 흐름을 연결한다.
   // 매개변수: viewModel은 상태, savedMedicationInfoList는 전체 목록, text는 문구.
   // 반환값: 스크롤 가능한 목록 또는 빈 상태.
   Widget _buildContent(
@@ -430,14 +447,24 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
         ),
       );
     }
+    if (savedMedicationInfoList.isEmpty &&
+        viewModel.hasSavedMedicationLoadError) {
+      // 조회에 실패한 목록을 저장된 약이 없는 상태로 안내하지 않는다.
+      return _SavedMedicationLoadErrorState(
+        text: text,
+        onRetryRequested: _isDeleting
+            ? null
+            // 함수역할: 저장 목록을 다시 조회한다. 매개변수: 없음. 반환값: 조회 완료.
+            : () => viewModel.fetchSavedMedicationInfo(),
+      );
+    }
     if (savedMedicationInfoList.isEmpty) {
       return _SavedMedicationEmptyState(
         text: text,
-        userSetting: viewModel.userSetting,
         onPrescriptionInputRequested: _isDeleting
             ? null
             // 함수역할: 기존 등록 선택을 연다. 매개변수: 없음. 반환값: 선택 처리 완료.
-            : () => _showMedicationCaptureOptions(viewModel: viewModel),
+            : _showMedicationCaptureOptions,
       );
     }
     final filtered = _filterMedicationList(savedMedicationInfoList);
@@ -450,7 +477,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
         onRegister: _isDeleting
             ? null
             // 함수역할: 기존 약 등록·식별을 연다. 매개변수: 없음. 반환값: 선택 처리 완료.
-            : () => _showMedicationCaptureOptions(viewModel: viewModel),
+            : _showMedicationCaptureOptions,
       );
     }
     final groups = _SavedMedicationGroup.fromMedicationList(
@@ -467,7 +494,6 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
         showRegisteredDate:
             _sortMode != _SavedMedicationSortMode.registeredDate,
         text: text,
-        userSetting: viewModel.userSetting,
         isSelectionMode: _isSelectionMode,
         enabled: !_isDeleting,
         selectedMedicationIds: _selectedMedicationIds,
@@ -479,11 +505,8 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
           userSetting: viewModel.userSetting,
         ),
         // 함수역할: 약 사진을 연다. 매개변수: medication은 대상 약. 반환값: 없음.
-        onImageRequested: (medication) => _showMedicationImage(
-          medication: medication,
-          text: text,
-          userSetting: viewModel.userSetting,
-        ),
+        onImageRequested: (medication) =>
+            _showMedicationImage(medication: medication, text: text),
         // 함수역할: 날짜 묶음 삭제를 확인한다. 매개변수: 없음. 반환값: 삭제 처리 완료.
         onDeleteRequested: () => _confirmAndDeleteMedicationGroup(
           viewModel: viewModel,
@@ -527,95 +550,12 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
   }
 
   // Function Name: _showMedicationCaptureOptions
-  // Description: Routes task and image-source choices into pill identification, manual entry, or prescription OCR.
+  // Description: Opens the shared medication registration flow, which routes task and image-source choices into pill identification, manual entry, or prescription OCR.
   // Parameters:
-  // - viewModel (MedBuddyViewModel): View model exposing screen state, user settings, and medication actions.
+  // - None.
   // Returns: Future<void> completing when the requested interaction or refresh finishes.
-  Future<void> _showMedicationCaptureOptions({
-    required MedBuddyViewModel viewModel,
-  }) async {
-    final task = await showMedicationCaptureTaskOptions(
-      context: context,
-      userSetting: viewModel.userSetting,
-    );
-    if (!mounted || task == null) {
-      return;
-    }
-    if (task == MedicationCaptureTask.multiplePills ||
-        task == MedicationCaptureTask.individualPills) {
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          // 함수이름: _showMedicationCaptureOptions.builder callback
-          // 함수역할: 저장 약품의 날짜별 조회·필터·선택 삭제에 현재 부모의 레이아웃 제약을 적용해 현재 배치를 구성한다.
-          // 매개변수:
-          // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-          // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-          builder: (context) => PillIdentificationUI(
-            userSetting: viewModel.userSetting,
-            captureMode: task == MedicationCaptureTask.multiplePills
-                ? PillCaptureMode.singlePhoto
-                : PillCaptureMode.individualPhotos,
-            onSaveRequested: viewModel.saveIdentifiedPill,
-            onBatchSaveRequested: viewModel.saveIdentifiedPills,
-          ),
-        ),
-      );
-      return;
-    }
-    if (task == MedicationCaptureTask.manual) {
-      await Navigator.push<bool>(
-        context,
-        MaterialPageRoute<bool>(
-          // 함수이름: _showMedicationCaptureOptions.builder callback
-          // 함수역할: 저장 약품의 날짜별 조회·필터·선택 삭제에 현재 부모의 레이아웃 제약을 적용해 현재 배치를 구성한다.
-          // 매개변수:
-          // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-          // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-          builder: (context) => ManualMedicationEntryUI(
-            userSetting: viewModel.userSetting,
-            onSaveRequested: viewModel.saveManualMedication,
-          ),
-        ),
-      );
-      return;
-    }
-
-    final source = await showPrescriptionImageSourceOptions(
-      context: context,
-      userSetting: viewModel.userSetting,
-    );
-    if (!mounted || source == null) {
-      return;
-    }
-
-    if (source == PrescriptionImageSource.camera) {
-      final image = await Navigator.push<XFile>(
-        context,
-        MaterialPageRoute<XFile>(
-          // 함수이름: _showMedicationCaptureOptions.builder callback
-          // 함수역할: 저장 약품의 날짜별 조회·필터·선택 삭제에 현재 부모의 레이아웃 제약을 적용해 현재 배치를 구성한다.
-          // 매개변수:
-          // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-          // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-          builder: (context) =>
-              GuidedPrescriptionCameraUI(userSetting: viewModel.userSetting),
-        ),
-      );
-      if (!mounted || image == null) {
-        return;
-      }
-      if (widget.showCloseButton) {
-        Navigator.pop(context);
-      }
-      await viewModel.requestCapturedPrescriptionImage(image);
-      return;
-    }
-    if (widget.showCloseButton) {
-      Navigator.pop(context);
-    }
-    viewModel.requestPrescriptionImageFromGallery();
-  }
+  Future<void> _showMedicationCaptureOptions() =>
+      openMedicationRegistration(context);
 
   // 함수이름: _confirmAndDeleteMedicationGroup
   // 함수역할: 날짜 묶음 중 현재 보이는 약의 삭제를 확인한다.
@@ -717,12 +657,10 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
   // Parameters:
   // - medication (MedicationDetail): Medication data to display, transform, save, or compare.
   // - text (_SavedMedicationText): Localized labels used by this section.
-  // - userSetting (UserSetting): User settings for language, accessibility, medication reminders, and persistence.
   // Returns: None; updates state or performs the documented action.
   void _showMedicationImage({
     required MedicationDetail medication,
     required _SavedMedicationText text,
-    required UserSetting userSetting,
   }) {
     final localImagePath = medication.localImagePath.trim();
     final hasLocalImage =
@@ -742,11 +680,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
       // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
       // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
       builder: (context) {
-        return _MedicationImageDialog(
-          medication: medication,
-          text: text,
-          userSetting: userSetting,
-        );
+        return _MedicationImageDialog(medication: medication, text: text);
       },
     );
   }

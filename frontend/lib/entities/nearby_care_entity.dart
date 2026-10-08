@@ -248,7 +248,14 @@ class NearbyCarePlace {
 // Role: Bundles nearby-care places with search scope and reliability metadata.
 // Responsibilities: Preserve catalog/calendar freshness, partial-result and sampled-region uncertainty separately.
 // Attributes: data: display places; searchArea/searchMode/targetDateTime: effective query; remaining fields: reliability.
+// - searchRadiusExpanded: whether the provider control widened the requested radius by itself.
 class NearbyCareSearchResult {
+  // Backend holiday_schedule_status values that controls and screens branch on.
+  // unknown: the holiday calendar could not be verified for the target date.
+  static const holidayScheduleUnknown = 'unknown';
+  // not_applicable: the target date is a confirmed ordinary day, so no holiday roster applies.
+  static const holidayScheduleNotApplicable = 'not_applicable';
+
   final NearbyCareSearchArea? searchArea;
   final List<NearbyCarePlace> data;
   final NearbyCareSearchMode searchMode;
@@ -259,11 +266,13 @@ class NearbyCareSearchResult {
   final bool searchTruncated;
   // 병원 검색의 주소 표본 한계이며 실제 목록 조회 제한과 구별한다.
   final bool regionScopeUncertain;
+  final bool searchRadiusExpanded;
 
   // Function Name: NearbyCareSearchResult
   // Description: Preserves the provider's effective query scope and uncertainty without treating unknown as closed.
   // Parameters: data/searchArea/searchMode/targetDateTime: result/query; catalog and holiday fields: reliability.
   // - searchTruncated/regionScopeUncertain: result incompleteness and region-sampling evidence, respectively.
+  // - searchRadiusExpanded: true only when the control itself searched a wider radius than requested.
   // Returns: A display result whose optional searchArea supports existing injected controller responses.
   const NearbyCareSearchResult({
     this.searchArea,
@@ -275,7 +284,25 @@ class NearbyCareSearchResult {
     required this.holidayScheduleStatus,
     this.searchTruncated = false,
     this.regionScopeUncertain = false,
+    this.searchRadiusExpanded = false,
   });
+
+  // Function Name: withSearchRadiusExpanded
+  // Description: Marks a result that came from a radius the control widened automatically, so screens need not infer it from radii.
+  // Parameters: None.
+  // Returns: A copy with every query and reliability field unchanged and searchRadiusExpanded set.
+  NearbyCareSearchResult withSearchRadiusExpanded() => NearbyCareSearchResult(
+    searchArea: searchArea,
+    data: data,
+    searchMode: searchMode,
+    targetDateTime: targetDateTime,
+    catalogUpdatedAt: catalogUpdatedAt,
+    catalogIsStale: catalogIsStale,
+    holidayScheduleStatus: holidayScheduleStatus,
+    searchTruncated: searchTruncated,
+    regionScopeUncertain: regionScopeUncertain,
+    searchRadiusExpanded: true,
+  );
 }
 
 // Class Name: NearbyCareSelection

@@ -8,6 +8,36 @@ import 'package:camera/camera.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as image_library;
 import 'package:medbuddy_frontend/services/prescription_image_crop_service.dart';
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
+
+// Class Name: _TemporaryPathProvider
+// Role: Reports a test directory as the app temporary directory.
+// Responsibilities:
+// - Let the stale guide-crop cleanup run against a sandbox instead of the platform cache directory.
+// Attributes:
+// - temporaryPath (String): Directory returned as the app temporary directory.
+class _TemporaryPathProvider extends PathProviderPlatform {
+  final String temporaryPath;
+
+  // Function Name: _TemporaryPathProvider
+  // Description:
+  // - Store the directory to report.
+  // Parameters:
+  // - temporaryPath (String): Directory returned as the app temporary directory.
+  // Returns:
+  // - A path provider fake.
+  _TemporaryPathProvider(this.temporaryPath);
+
+  // Function Name: getTemporaryPath
+  // Description:
+  // - Return the configured directory.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - The configured temporary directory path.
+  @override
+  Future<String?> getTemporaryPath() async => temporaryPath;
+}
 
 // Function Name: main
 // Description:
@@ -129,5 +159,85 @@ void main() {
       throwsA(isA<FileSystemException>()),
     );
     expect(await sourceFile.exists(), isFalse);
+  });
+
+  // Function Name: test callback
+  // Description:
+  // - Verify that the stale-crop cleanup removes only guide crops older than one day from the app temporary directory and leaves recent crops, other files and subdirectories alone.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  test('하루가 지난 가이드 촬영본만 임시 폴더에서 정리한다', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final temporaryDirectory = await Directory.systemTemp.createTemp(
+      'medbuddy-prescription-stale-guide-',
+    );
+    final originalProvider = PathProviderPlatform.instance;
+    PathProviderPlatform.instance = _TemporaryPathProvider(
+      temporaryDirectory.path,
+    );
+    // Function Name: addTearDown callback
+    // Description:
+    // - Restore the path provider and remove the sandbox after the case, including failure paths.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Completion of temporary-file cleanup.
+    addTearDown(() async {
+      PathProviderPlatform.instance = originalProvider;
+      await temporaryDirectory.delete(recursive: true);
+    });
+    final now = DateTime(2026, 9, 10, 12);
+    final staleGuide = File('${temporaryDirectory.path}/CAP1_guide.jpg');
+    final recentGuide = File('${temporaryDirectory.path}/CAP2_guide.jpg');
+    final staleOtherFile = File('${temporaryDirectory.path}/scaled_photo.jpg');
+    final nestedDirectory = await Directory(
+      '${temporaryDirectory.path}/nested_guide.jpg',
+    ).create();
+    for (final file in [staleGuide, recentGuide, staleOtherFile]) {
+      await file.writeAsBytes([1, 2, 3]);
+    }
+    await staleGuide.setLastModified(now.subtract(const Duration(days: 2)));
+    await recentGuide.setLastModified(now.subtract(const Duration(hours: 23)));
+    await staleOtherFile.setLastModified(
+      now.subtract(const Duration(days: 2)),
+    );
+
+    const service = PrescriptionImageCropService();
+    final deletedCount = await service.deleteStaleGuideImages(now: now);
+
+    expect(deletedCount, 1);
+    expect(await staleGuide.exists(), isFalse);
+    expect(await recentGuide.exists(), isTrue);
+    expect(await staleOtherFile.exists(), isTrue);
+    expect(await nestedDirectory.exists(), isTrue);
+  });
+
+  // Function Name: test callback
+  // Description:
+  // - Verify that the stale-crop cleanup reports nothing instead of throwing when the temporary directory cannot be resolved.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  test('임시 폴더를 알 수 없으면 가이드 촬영본 정리를 건너뛴다', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final originalProvider = PathProviderPlatform.instance;
+    PathProviderPlatform.instance = _TemporaryPathProvider(
+      '${Directory.systemTemp.path}/medbuddy-missing-temporary-directory',
+    );
+    // Function Name: addTearDown callback
+    // Description:
+    // - Restore the path provider after the case.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - No value; the original provider is restored.
+    addTearDown(() => PathProviderPlatform.instance = originalProvider);
+
+    const service = PrescriptionImageCropService();
+
+    expect(await service.deleteStaleGuideImages(), 0);
   });
 }

@@ -177,6 +177,47 @@ class _DeferredInputPrescription extends InputPrescription {
   }
 }
 
+// Class Name: _GalleryPickInputPrescription
+// Role: Stands in for the gallery flow with an explicit picker phase so tests can cancel or delay the pick.
+// Responsibilities:
+// - Return the recognized schedules of the first pick, report every later pick as cancelled, and optionally hold a pick open.
+// Attributes:
+// - schedules (List<MedicationSchedule>): Schedules recognized from the first picked image.
+// - pendingPick (Completer<bool>?): When set, the picker stays open until completed with true (image chosen) or false (cancelled).
+// - requestCount (int): Number of gallery requests that reached the control.
+class _GalleryPickInputPrescription extends InputPrescription {
+  final List<MedicationSchedule> schedules;
+  Completer<bool>? pendingPick;
+  int requestCount = 0;
+
+  // Function Name: _GalleryPickInputPrescription
+  // Description: Stores the schedules returned for the first picked image.
+  // Parameters:
+  // - schedules (List<MedicationSchedule>): Schedules recognized from the first picked image.
+  // Returns: A gallery control fake.
+  _GalleryPickInputPrescription(this.schedules);
+
+  // Function Name: requestPrescriptionImageFromGallery
+  // Description: Waits for the held picker when one is set, signals selection only for a chosen image, and returns null for a cancelled picker.
+  // Parameters:
+  // - onImageSelected (PrescriptionImageSelectedCallback?): Receiver notified after an image was actually chosen.
+  // Returns: The configured schedules for a chosen image, or null when the pick was cancelled.
+  @override
+  Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
+    PrescriptionImageSelectedCallback? onImageSelected,
+  }) async {
+    requestCount += 1;
+    final picked = pendingPick == null
+        ? requestCount == 1
+        : await pendingPick!.future;
+    if (!picked) {
+      return null;
+    }
+    onImageSelected?.call();
+    return schedules;
+  }
+}
+
 // Class Name: _DeferredCheckMedicationDetail
 // Role: Medication-detail stub with controllable response timing for stale-result tests.
 // Responsibilities:
@@ -519,6 +560,144 @@ void main() {
       },
     );
   }
+  // Function Name: gallery cancel keeps the reviewable flow test
+  // Description: Verifies that cancelling the gallery picker from a retryable analysis failure keeps the failure state, its message and the recognized schedules, and that picking an image afterwards starts a fresh recognition.
+  // Parameters: None.
+  // Returns: Completion after the state assertions pass.
+  test('cancelling the gallery picker keeps a retryable analysis failure', () async {
+    final control = _GalleryPickInputPrescription(const [
+      MedicationSchedule(medicationName: 'a-tablet', intakeTime: '3회'),
+    ]);
+    final model = MedBuddyViewModel(
+      inputPrescription: control,
+      checkMedicationDetail: _AccountLockedMedicationDetail(alwaysBusy: true),
+    );
+    addTearDown(model.dispose);
+    await model.requestPrescriptionImageFromGallery();
+    await model.requestPrescriptionAnalysis();
+    expect(model.prescriptionFlowState, PrescriptionFlowState.analysisFailed);
+    expect(model.canRetryPrescriptionAnalysis, isTrue);
+    final failureMessage = model.analysisErrorMessage;
+    final statusMessage = model.prescriptionStatusMessage;
+    expect(failureMessage, isNotEmpty);
+
+    await model.requestPrescriptionImageFromGallery();
+
+    expect(control.requestCount, 2);
+    expect(model.prescriptionFlowState, PrescriptionFlowState.analysisFailed);
+    expect(model.canRetryPrescriptionAnalysis, isTrue);
+    expect(model.recognizedMedicationScheduleList, hasLength(1));
+    expect(model.analysisErrorMessage, failureMessage);
+    expect(model.prescriptionStatusMessage, statusMessage);
+  });
+
+  // Function Name: idle gallery cancel test
+  // Description: Verifies that cancelling the picker from the idle screen still reports the cancellation and stays idle.
+  // Parameters: None.
+  // Returns: Completion after the state assertions pass.
+  test('cancelling the gallery picker while idle reports the cancellation', () async {
+    final control = _GalleryPickInputPrescription(const [])
+      ..pendingPick = (Completer<bool>()..complete(false));
+    final model = MedBuddyViewModel(inputPrescription: control);
+    addTearDown(model.dispose);
+
+    await model.requestPrescriptionImageFromGallery();
+
+    expect(model.prescriptionFlowState, PrescriptionFlowState.idle);
+    expect(model.prescriptionStatusMessage, '이미지 선택이 취소되었습니다.');
+  });
+
+  // Function Name: pending gallery pick guard test
+  // Description: Verifies that a second gallery request is ignored while the picker is still open, that the open picker does not clear the current preview, and that the chosen image then replaces it.
+  // Parameters: None.
+  // Returns: Completion after the request-count and state assertions pass.
+  test('a second gallery request is ignored while the picker is open', () async {
+    final control = _GalleryPickInputPrescription(const [
+      MedicationSchedule(medicationName: 'a-tablet'),
+    ]);
+    final model = MedBuddyViewModel(inputPrescription: control);
+    addTearDown(model.dispose);
+    await model.requestPrescriptionImageFromGallery();
+    expect(model.prescriptionFlowState, PrescriptionFlowState.previewReady);
+
+    control.pendingPick = Completer<bool>();
+    final firstRequest = model.requestPrescriptionImageFromGallery();
+    await model.requestPrescriptionImageFromGallery();
+    expect(control.requestCount, 2);
+    expect(model.prescriptionFlowState, PrescriptionFlowState.previewReady);
+    expect(model.recognizedMedicationScheduleList, hasLength(1));
+
+    control.pendingPick!.complete(true);
+    await firstRequest;
+    expect(model.prescriptionFlowState, PrescriptionFlowState.previewReady);
+
+    // The guard is released once the pick finished.
+    control.pendingPick = Completer<bool>()..complete(false);
+    await model.requestPrescriptionImageFromGallery();
+    expect(control.requestCount, 3);
+  });
+
+  // Function Name: reset during open picker test
+  // Description: Verifies that an image chosen after the flow was reset while the picker was open does not start a recognition.
+  // Parameters: None.
+  // Returns: Completion after the state assertions pass.
+  test('a pick finished after a reset does not start recognition', () async {
+    final control = _GalleryPickInputPrescription(const [
+      MedicationSchedule(medicationName: 'late-tablet'),
+    ])..pendingPick = Completer<bool>();
+    final model = MedBuddyViewModel(inputPrescription: control);
+    addTearDown(model.dispose);
+
+    final request = model.requestPrescriptionImageFromGallery();
+    model.clearAnalysisResult();
+    control.pendingPick!.complete(true);
+    await request;
+
+    expect(model.prescriptionFlowState, PrescriptionFlowState.idle);
+    expect(model.recognizedMedicationScheduleList, isEmpty);
+  });
+
+  // Function Name: new recognition clears save progress test
+  // Description: Verifies that starting a new recognition clears the saving marker and completed-save indexes left by the previous result, whose late save response can no longer clear them.
+  // Parameters: None.
+  // Returns: Completion after the save-state assertions pass.
+  test('a new recognition clears save progress of the previous result', () async {
+    final saveControl = _DeferredCheckSavedMedication();
+    final model = MedBuddyViewModel(
+      inputPrescription: _FakeInputPrescription(const [
+        MedicationSchedule(medicationName: 'next-tablet'),
+      ]),
+      checkSavedMedication: saveControl,
+    );
+    addTearDown(model.dispose);
+    const medication = AnalyzedMedication(
+      schedule: MedicationSchedule(medicationName: 'test'),
+      detail: MedicationDetail(
+        itemName: 'test',
+        efficacy: '',
+        usageMethod: '',
+        warning: '',
+      ),
+    );
+    final save = model.requestMedicationSave(medication, 0);
+    expect(model.savingMedicationIndex, 0);
+
+    await model.requestPrescriptionImageFromGallery();
+
+    expect(model.prescriptionFlowState, PrescriptionFlowState.previewReady);
+    expect(model.savingMedicationIndex, isNull);
+    expect(model.completedMedicationSaveIndexes, isEmpty);
+    saveControl.completer.complete(
+      const MedicationSaveResult(
+        status: MedicationSaveStatus.saved,
+        message: 'saved',
+      ),
+    );
+    await save;
+    expect(model.savingMedicationIndex, isNull);
+    expect(model.completedMedicationSaveIndexes, isEmpty);
+  });
+
   for (final alwaysBusy in [false, true]) {
     test(
       'account lock retry is serialized and bounded (always busy: $alwaysBusy)',

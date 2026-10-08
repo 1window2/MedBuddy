@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/check_today_medication_info_control.dart';
+import 'package:medbuddy_frontend/services/api_response_parser.dart';
 
 // 함수이름: main
 // 함수역할:
@@ -81,4 +82,52 @@ void main() {
       expect(schedules.first.isSlotCompleted('morning'), isTrue);
     },
   );
+
+  // 함수이름: 실패 분류 테스트
+  // 함수역할: 거부 응답은 상태 코드와 서버 안내를 기존 문구 그대로 전달하고, 응답을 받지 못한 실패는
+  //   원래 예외를 보존해 호출자가 연결·지연 안내를 고를 수 있게 하는지 검증한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  test('summary failures keep the status code or the transport cause', () async {
+    CheckTodayMedicationInfo control(MockClient client) =>
+        CheckTodayMedicationInfo(
+          baseUrl: 'http://localhost',
+          patientHash: 'patient-a',
+          client: client,
+        );
+
+    await expectLater(
+      control(
+        MockClient(
+          (_) async => http.Response(
+            '{"detail":"Service unavailable"}',
+            503,
+            headers: {'content-type': 'application/json'},
+          ),
+        ),
+      ).requestTodayMedicationInfo(),
+      throwsA(
+        isA<ApiRequestException>()
+            .having((e) => e.statusCode, 'statusCode', 503)
+            .having(
+              (e) => e.message,
+              'message',
+              'Today medication info lookup failed (503): Service unavailable',
+            ),
+      ),
+    );
+    await expectLater(
+      control(
+        MockClient((_) async => throw http.ClientException('offline')),
+      ).requestTodayMedicationInfo(),
+      throwsA(
+        isA<ApiRequestException>()
+            .having((e) => e.cause, 'cause', isA<http.ClientException>())
+            .having(
+              (e) => e.message,
+              'message',
+              'Today medication info lookup failed.',
+            ),
+      ),
+    );
+  });
 }

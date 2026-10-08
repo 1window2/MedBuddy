@@ -14,6 +14,7 @@ import 'package:medbuddy_frontend/entities/recognized_text_region_entity.dart';
 import 'package:medbuddy_frontend/services/prescription_local_ocr_service.dart';
 import 'package:medbuddy_frontend/services/authenticated_api_client.dart';
 import 'package:medbuddy_frontend/services/user_facing_error_message.dart';
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 
 // Class Name: _FakeImagePicker
 // Role: Image-picker substitute with a preselected file or cancellation result.
@@ -123,6 +124,73 @@ class _BlockingPrescriptionLocalOcrBoundary
       regions: [],
     );
   }
+}
+
+// Class Name: _SequenceImagePicker
+// Role: Returns one queued pick result per gallery request so a test can pick an image and then cancel.
+// Responsibilities:
+// - Hand out the queued images in order and report a cancelled picker (null) once the queue is empty.
+// Attributes:
+// - images (List<XFile?>): Results still to be returned; null stands for a cancelled picker.
+class _SequenceImagePicker extends ImagePicker {
+  final List<XFile?> images;
+
+  // Function Name: _SequenceImagePicker
+  // Description:
+  // - Store the pick results to return in order.
+  // Parameters:
+  // - images (List<XFile?>): Results to return; null stands for a cancelled picker.
+  // Returns:
+  // - A picker fake holding the queue.
+  _SequenceImagePicker(this.images);
+
+  // Function Name: pickImage
+  // Description:
+  // - Return the next queued result without opening a platform picker.
+  // Parameters:
+  // - source, maxWidth, maxHeight, imageQuality, preferredCameraDevice, requestFullMetadata: Ignored picker options.
+  // Returns:
+  // - The next queued image, or null when the queue is empty or the entry is a cancellation.
+  @override
+  Future<XFile?> pickImage({
+    required ImageSource source,
+    double? maxWidth,
+    double? maxHeight,
+    int? imageQuality,
+    CameraDevice preferredCameraDevice = CameraDevice.rear,
+    bool requestFullMetadata = true,
+  }) async {
+    return images.isEmpty ? null : images.removeAt(0);
+  }
+}
+
+// Class Name: _TemporaryPathProvider
+// Role: Reports a test directory as the app temporary directory.
+// Responsibilities:
+// - Let a test decide which files count as picker copies inside the app temporary directory.
+// Attributes:
+// - temporaryPath (String): Directory returned as the app temporary directory.
+class _TemporaryPathProvider extends PathProviderPlatform {
+  final String temporaryPath;
+
+  // Function Name: _TemporaryPathProvider
+  // Description:
+  // - Store the directory to report.
+  // Parameters:
+  // - temporaryPath (String): Directory returned as the app temporary directory.
+  // Returns:
+  // - A path provider fake.
+  _TemporaryPathProvider(this.temporaryPath);
+
+  // Function Name: getTemporaryPath
+  // Description:
+  // - Return the configured directory.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - The configured temporary directory path.
+  @override
+  Future<String?> getTemporaryPath() async => temporaryPath;
 }
 
 // Function Name: _disposeControl
@@ -492,6 +560,167 @@ void main() {
     await control.clearSelectedImage();
 
     expect(await imageFile.exists(), isTrue);
+  });
+
+  // Function Name: test callback
+  // Description:
+  // - Verify that the picker's copy inside the app temporary directory is removed when the flow closes, while a gallery file outside that directory is kept.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  test('앱 임시 폴더 안의 갤러리 복사본만 분석 흐름을 닫을 때 삭제한다', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final sandbox = await Directory.systemTemp.createTemp(
+      'medbuddy-gallery-copy-test-',
+    );
+    final cacheDirectory = await Directory('${sandbox.path}/cache').create();
+    final galleryDirectory = await Directory(
+      '${sandbox.path}/cache-gallery',
+    ).create();
+    final originalProvider = PathProviderPlatform.instance;
+    PathProviderPlatform.instance = _TemporaryPathProvider(cacheDirectory.path);
+    // Function Name: addTearDown callback
+    // Description:
+    // - Restore the path provider and remove the sandbox after the case, including failure paths.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Completion of temporary-file cleanup.
+    addTearDown(() async {
+      PathProviderPlatform.instance = originalProvider;
+      if (await sandbox.exists()) {
+        await sandbox.delete(recursive: true);
+      }
+    });
+    final pickerCopy = File('${cacheDirectory.path}/scaled_gallery.jpg');
+    await pickerCopy.writeAsBytes([1, 2, 3]);
+    final galleryOriginal = File('${galleryDirectory.path}/gallery.jpg');
+    await galleryOriginal.writeAsBytes([1, 2, 3]);
+    final client = MockClient(
+      // Function Name: MockClient callback
+      // Description:
+      // - Provide successful empty recognition output while the test focuses on source-file lifetime.
+      // Parameters:
+      // - _ (http.Request): Unused intercepted HTTP request.
+      // Returns:
+      // - HTTP 200 containing an empty medication list.
+      (_) async => http.Response(
+        jsonEncode({'medications': <Object>[]}),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      ),
+    );
+    final control = InputPrescription(
+      baseUrl: 'http://localhost',
+      imagePicker: _SequenceImagePicker([
+        XFile(pickerCopy.path),
+        XFile(pickerCopy.path),
+        XFile(galleryOriginal.path),
+      ]),
+      client: client,
+      localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
+    );
+    // Function Name: addTearDown callback
+    // Description:
+    // - Clear the selected prescription image and dispose its control after the case.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Completion of image cleanup and control disposal.
+    addTearDown(() => _disposeControl(control));
+
+    await control.requestPrescriptionImageFromGallery();
+    expect(control.lastSelectedImagePath, pickerCopy.path);
+    expect(control.lastSelectedImageOwnedByApp, isFalse);
+    expect(await pickerCopy.exists(), isTrue);
+
+    // Choosing the same photo again reuses the picker's file name; the file holds the new pick and stays.
+    await control.requestPrescriptionImageFromGallery();
+    expect(control.lastSelectedImagePath, pickerCopy.path);
+    expect(await pickerCopy.exists(), isTrue);
+
+    // Choosing another image clears the previous pick.
+    await control.requestPrescriptionImageFromGallery();
+    expect(await pickerCopy.exists(), isFalse);
+    expect(control.lastSelectedImagePath, galleryOriginal.path);
+
+    await control.clearSelectedImage();
+    expect(await galleryOriginal.exists(), isTrue);
+  });
+
+  // Function Name: test callback
+  // Description:
+  // - Verify that cancelling the gallery picker keeps the previously selected image and its file.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  test('갤러리 선택을 취소하면 이전에 선택한 처방전 이미지를 지우지 않는다', () async {
+    final tempDirectory = await Directory.systemTemp.createTemp(
+      'medbuddy-gallery-cancel-test-',
+    );
+    // Function Name: addTearDown callback
+    // Description:
+    // - Remove the temporary image directory after the case, including failure paths.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Completion of temporary-file cleanup.
+    addTearDown(() async {
+      if (await tempDirectory.exists()) {
+        await tempDirectory.delete(recursive: true);
+      }
+    });
+    final capturedFile = File('${tempDirectory.path}/capture_guide.jpg');
+    await capturedFile.writeAsBytes([1, 2, 3]);
+    final client = MockClient(
+      // Function Name: MockClient callback
+      // Description:
+      // - Provide successful empty recognition output while the test focuses on source-file lifetime.
+      // Parameters:
+      // - _ (http.Request): Unused intercepted HTTP request.
+      // Returns:
+      // - HTTP 200 containing an empty medication list.
+      (_) async => http.Response(
+        jsonEncode({'medications': <Object>[]}),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      ),
+    );
+    final control = InputPrescription(
+      baseUrl: 'http://localhost',
+      imagePicker: _SequenceImagePicker([null]),
+      client: client,
+      localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
+    );
+    // Function Name: addTearDown callback
+    // Description:
+    // - Clear the selected prescription image and dispose its control after the case.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Completion of image cleanup and control disposal.
+    addTearDown(() => _disposeControl(control));
+    await control.requestCapturedPrescriptionImage(XFile(capturedFile.path));
+    var selectionCount = 0;
+
+    final schedules = await control.requestPrescriptionImageFromGallery(
+      // Function Name: onImageSelected callback
+      // Description:
+      // - Count selection notifications; a cancelled picker must not send one.
+      // Parameters:
+      // - None.
+      // Returns:
+      // - No value; the counter is incremented.
+      onImageSelected: () => selectionCount += 1,
+    );
+
+    expect(schedules, isNull);
+    expect(selectionCount, 0);
+    expect(control.lastSelectedImagePath, capturedFile.path);
+    expect(control.lastSelectedImageOwnedByApp, isTrue);
+    expect(await capturedFile.exists(), isTrue);
   });
 
   // Function Name: test callback

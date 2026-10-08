@@ -6,6 +6,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 
 // 클래스명: MedicationLoadingTip
@@ -179,7 +180,7 @@ class _MedicationLoadingTipState extends State<MedicationLoadingTip>
   // 매개변수: context는 언어·접근성 문맥. 반환값: 제목, 팁, 다음 팁 버튼.
   @override
   Widget build(BuildContext context) {
-    final isEnglish = widget.language == 'en';
+    final isEnglish = isEnglishLanguage(widget.language);
     final labels = [for (final tip in _tips) isEnglish ? tip.en : tip.ko];
     final selected = _order[_position];
     return Column(

@@ -3,10 +3,51 @@
 
 import '../controls/link_patient_caregiver_control.dart';
 import '../controls/manage_user_setting_control.dart';
+import '../entities/chat_message_entity.dart';
+import '../entities/user_setting_entity.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/linked_chat_notification_monitor_service.dart';
 import '../services/linked_chat_realtime_service.dart';
 import '../services/notification_service.dart';
+
+// 함수이름: deliverLinkedChatAlert
+// 함수역할: 최신 사용자 설정을 읽어 채팅 알림이 꺼져 있으면 아무것도 표시하지 않고, 켜져 있으면 알림 상세 표시 설정을 적용한 뒤 연동·메시지에서 계산한 알림 ID로 로컬 알림을 표시한다.
+// 매개변수:
+// - loadSetting (Future<UserSetting> Function()): 알림 직전의 사용자 설정을 읽는 함수
+// - notifications (NotificationService): 로컬 알림 표시 경계
+// - userHash (String): 알림함에 기록할 수신 계정 해시
+// - linkId (int): 조회·전송·감시 대상 연동 ID
+// - messageId (int): 서버가 부여한 채팅 메시지 ID
+// - messageBody (String): 전송하거나 표시할 메시지·알림 본문
+// - messageKind (ChatMessageKind): 일반·복약·약국 맥락 메시지 유형
+// - slotKey (String?): morning·lunch·evening·bedtime 복약 시간대 키
+// 반환값:
+// - Future<void>: 알림 비활성화 확인 또는 표시가 완료되는 Future.
+Future<void> deliverLinkedChatAlert({
+  required Future<UserSetting> Function() loadSetting,
+  required NotificationService notifications,
+  required String userHash,
+  required int linkId,
+  required int messageId,
+  required String messageBody,
+  required ChatMessageKind messageKind,
+  required String? slotKey,
+}) async {
+  final setting = await loadSetting();
+  if (!setting.chatNotificationsEnabled) {
+    return;
+  }
+  notifications.setShowSensitiveDetails(setting.showNotificationDetails);
+  return notifications.showLinkedChatAlert(
+    historyUserHash: userHash,
+    id: LinkedChatNotificationMonitorFactory._notificationId(linkId, messageId),
+    linkId: linkId,
+    language: setting.language,
+    messagePreview: messageBody,
+    messageKind: messageKind.wireName,
+    slotKey: slotKey,
+  );
+}
 
 // 클래스명: LinkedChatNotificationMonitorFactory
 // 역할: 채팅 감시 서비스와 구체적인 HTTP·WebSocket·알림 구현을 연결한다.
@@ -79,24 +120,16 @@ class LinkedChatNotificationMonitorFactory {
             required messageBody,
             required messageKind,
             required slotKey,
-          }) async {
-            final setting = await settingControl.requestUserSetting();
-            if (!setting.chatNotificationsEnabled) {
-              return;
-            }
-            NotificationService.instance.setShowSensitiveDetails(
-              setting.showNotificationDetails,
-            );
-            return NotificationService.instance.showLinkedChatAlert(
-              historyUserHash: userHash,
-              id: _notificationId(linkId, messageId),
-              linkId: linkId,
-              language: setting.language,
-              messagePreview: messageBody,
-              messageKind: messageKind.wireName,
-              slotKey: slotKey,
-            );
-          },
+          }) => deliverLinkedChatAlert(
+            loadSetting: settingControl.requestUserSetting,
+            notifications: NotificationService.instance,
+            userHash: userHash,
+            linkId: linkId,
+            messageId: messageId,
+            messageBody: messageBody,
+            messageKind: messageKind,
+            slotKey: slotKey,
+          ),
       permissionRequester: NotificationService.instance.requestPermission,
       linkRefreshInterval: linkRefreshInterval,
       requestPermission: requestPermission,

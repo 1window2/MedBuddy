@@ -57,9 +57,10 @@ class CheckTodayMedicationInfo {
       final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
-        throw StateError(
-          'Today medication info lookup failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        throw ApiResponseParser.httpFailure(
+          'Today medication info lookup failed',
+          response,
+          responseBody,
         );
       }
 
@@ -83,7 +84,10 @@ class CheckTodayMedicationInfo {
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Today medication info lookup failed.');
+      throw ApiResponseParser.transportFailure(
+        'Today medication info lookup failed',
+        error,
+      );
     }
   }
 

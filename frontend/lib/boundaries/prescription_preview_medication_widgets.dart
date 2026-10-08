@@ -79,7 +79,6 @@ class _PreviewMedicationTable extends StatelessWidget {
   // 반환값: 인식된 모든 약의 수정 가능한 가로 스크롤 표에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-    final scale = userSetting.contentTextScale;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -89,7 +88,7 @@ class _PreviewMedicationTable extends StatelessWidget {
           children: [
             Icon(
               Icons.edit_note_rounded,
-              size: 20 * scale,
+              size: 20,
               color: MedBuddyColors.primaryDark,
             ),
             const SizedBox(width: 7),
@@ -98,7 +97,7 @@ class _PreviewMedicationTable extends StatelessWidget {
                 previewText.tableEditGuide,
                 style: TextStyle(
                   color: MedBuddyColors.textMuted,
-                  fontSize: 12 * scale,
+                  fontSize: 12,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0,
                 ),
@@ -144,7 +143,7 @@ class _PreviewMedicationTable extends StatelessWidget {
                     },
                     defaultVerticalAlignment: TableCellVerticalAlignment.middle,
                     children: [
-                      _buildHeaderRow(scale),
+                      _buildHeaderRow(),
                       for (
                         int index = 0;
                         index < medicationScheduleList.length;
@@ -153,7 +152,6 @@ class _PreviewMedicationTable extends StatelessWidget {
                         _buildMedicationRow(
                           index,
                           medicationScheduleList[index],
-                          scale,
                         ),
                     ],
                   ),
@@ -169,18 +167,18 @@ class _PreviewMedicationTable extends StatelessWidget {
   // 함수이름: _buildHeaderRow
   // 함수역할: 약명·용량·횟수·일수·시작일·시간대의 여섯 열 제목을 구성한다.
   // 매개변수:
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
+  // - 없음.
   // 반환값: TableRow: 복약 표의 열 제목 또는 편집 가능한 약품 한 행.
-  TableRow _buildHeaderRow(double scale) {
+  TableRow _buildHeaderRow() {
     return TableRow(
       decoration: const BoxDecoration(color: MedBuddyColors.successSurface),
       children: [
-        _TableHeaderCell(label: previewText.medicationName, scale: scale),
-        _TableHeaderCell(label: previewText.dosage, scale: scale),
-        _TableHeaderCell(label: previewText.dailyFrequency, scale: scale),
-        _TableHeaderCell(label: previewText.totalDays, scale: scale),
-        _TableHeaderCell(label: previewText.medicationStartDate, scale: scale),
-        _TableHeaderCell(label: previewText.scheduleSlots, scale: scale),
+        _TableHeaderCell(label: previewText.medicationName),
+        _TableHeaderCell(label: previewText.dosage),
+        _TableHeaderCell(label: previewText.dailyFrequency),
+        _TableHeaderCell(label: previewText.totalDays),
+        _TableHeaderCell(label: previewText.medicationStartDate),
+        _TableHeaderCell(label: previewText.scheduleSlots),
       ],
     );
   }
@@ -190,12 +188,10 @@ class _PreviewMedicationTable extends StatelessWidget {
   // 매개변수:
   // - scheduleIndex (int): 대상 약품·사진·행의 0부터 시작하는 목록 위치.
   // - schedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // 반환값: TableRow: 복약 표의 열 제목 또는 편집 가능한 약품 한 행.
   TableRow _buildMedicationRow(
     int scheduleIndex,
     MedicationSchedule schedule,
-    double scale,
   ) {
     final isVerified = verifiedScheduleIndexes.contains(scheduleIndex);
     return TableRow(
@@ -224,7 +220,6 @@ class _PreviewMedicationTable extends StatelessWidget {
           child: _MedicationNameTableValue(
             schedule: schedule,
             previewText: previewText,
-            scale: scale,
             isVerified: isVerified,
           ),
         ),
@@ -248,7 +243,6 @@ class _PreviewMedicationTable extends StatelessWidget {
                 ),
           child: _TableValueText(
             value: schedule.dosageLabelForLanguage(previewText.language),
-            scale: scale,
             isVerified: isVerified,
           ),
         ),
@@ -274,7 +268,6 @@ class _PreviewMedicationTable extends StatelessWidget {
             value: schedule.dailyFrequencyLabelForLanguage(
               previewText.language,
             ),
-            scale: scale,
             isVerified: isVerified,
           ),
         ),
@@ -298,7 +291,6 @@ class _PreviewMedicationTable extends StatelessWidget {
                 ),
           child: _TableValueText(
             value: schedule.durationLabelForLanguage(previewText.language),
-            scale: scale,
             isVerified: isVerified,
           ),
         ),
@@ -322,7 +314,6 @@ class _PreviewMedicationTable extends StatelessWidget {
                 ),
           child: _TableValueText(
             value: previewText.dateValue(schedule.prescriptionDate),
-            scale: scale,
             isVerified: isVerified,
           ),
         ),
@@ -346,7 +337,6 @@ class _PreviewMedicationTable extends StatelessWidget {
                 ),
           child: _TableValueText(
             value: previewText.slotSummary(schedule.slotKeys),
-            scale: scale,
             isVerified: isVerified,
           ),
         ),
@@ -361,18 +351,15 @@ class _PreviewMedicationTable extends StatelessWidget {
 // - 부모가 전달한 표시값과 동작을 반영해 복약 표 열 이름의 공통 표시 위젯을 구성한다.
 // 속성:
 // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 class _TableHeaderCell extends StatelessWidget {
   final String label;
-  final double scale;
 
   // 함수이름: _TableHeaderCell
   // 함수역할: 복약 표 열 이름의 공통 표시에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // 반환값: 입력 설정이 반영된 _TableHeaderCell 인스턴스.
-  const _TableHeaderCell({required this.label, required this.scale});
+  const _TableHeaderCell({required this.label});
 
   // 함수이름: build
   // 함수역할: 현재 입력값과 상태를 반영해 복약 표 열 이름의 공통 표시 화면을 구성한다.
@@ -390,7 +377,7 @@ class _TableHeaderCell extends StatelessWidget {
         maxLines: 2,
         style: TextStyle(
           color: MedBuddyColors.textStrong,
-          fontSize: 13 * scale,
+          fontSize: 13,
           fontWeight: FontWeight.w700,
           letterSpacing: 0,
         ),
@@ -460,23 +447,19 @@ class _EditableMedicationCell extends StatelessWidget {
 // - 부모가 전달한 표시값과 동작을 반영해 검증 상태를 구분하는 복약 표 값 위젯을 구성한다.
 // 속성:
 // - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 // - isVerified (bool): 현재 약품이나 일정이 확인된 값인지 여부.
 class _TableValueText extends StatelessWidget {
   final String value;
-  final double scale;
   final bool isVerified;
 
   // 함수이름: _TableValueText
   // 함수역할: 검증 상태를 구분하는 복약 표 값 선택에 사용할 언어를 보관한다.
   // 매개변수:
   // - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // - isVerified (bool): 현재 약품이나 일정이 확인된 값인지 여부.
   // 반환값: 입력 설정이 반영된 _TableValueText 인스턴스.
   const _TableValueText({
     required this.value,
-    required this.scale,
     this.isVerified = false,
   });
 
@@ -495,7 +478,7 @@ class _TableValueText extends StatelessWidget {
         color: isVerified
             ? MedBuddyColors.textLight
             : MedBuddyColors.textStrong,
-        fontSize: 14 * scale,
+        fontSize: 14,
         fontWeight: FontWeight.w600,
         letterSpacing: 0,
         decoration: isVerified ? TextDecoration.lineThrough : null,
@@ -510,12 +493,10 @@ class _TableValueText extends StatelessWidget {
 // - 부모가 전달한 표시값과 동작을 반영해 약품명·보정 표식·최초 OCR 약품명 위젯을 구성한다.
 // 속성:
 // - schedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 // - isVerified (bool): 현재 약품이나 일정이 확인된 값인지 여부.
 class _MedicationNameTableValue extends StatelessWidget {
   final MedicationSchedule schedule;
   final _PreviewText previewText;
-  final double scale;
   final bool isVerified;
 
   // 함수이름: _MedicationNameTableValue
@@ -523,13 +504,11 @@ class _MedicationNameTableValue extends StatelessWidget {
   // 매개변수:
   // - schedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
   // - previewText (_PreviewText): 해당 화면 구역의 언어별 표시 문구.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // - isVerified (bool): 현재 약품이나 일정이 확인된 값인지 여부.
   // 반환값: 입력 설정이 반영된 _MedicationNameTableValue 인스턴스.
   const _MedicationNameTableValue({
     required this.schedule,
     required this.previewText,
-    required this.scale,
     this.isVerified = false,
   });
 
@@ -541,15 +520,14 @@ class _MedicationNameTableValue extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final correctionBadge = isVerified
-        ? _CorrectionBadge(label: previewText.verified, scale: scale)
+        ? _CorrectionBadge(label: previewText.verified)
         : schedule.isNameConfirmed
-        ? _CorrectionBadge(label: previewText.confirmed, scale: scale)
+        ? _CorrectionBadge(label: previewText.confirmed)
         : schedule.hasNameCorrection
-        ? _CorrectionBadge(label: previewText.corrected, scale: scale)
+        ? _CorrectionBadge(label: previewText.corrected)
         : schedule.isNameReviewRequired
         ? _CorrectionBadge(
             label: previewText.reviewNeeded,
-            scale: scale,
             isWarning: true,
           )
         : null;
@@ -570,7 +548,7 @@ class _MedicationNameTableValue extends StatelessWidget {
                   color: isVerified
                       ? MedBuddyColors.textLight
                       : MedBuddyColors.textStrong,
-                  fontSize: 14 * scale,
+                  fontSize: 14,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0,
                   decoration: isVerified ? TextDecoration.lineThrough : null,
@@ -591,7 +569,7 @@ class _MedicationNameTableValue extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: MedBuddyColors.textLight,
-              fontSize: 11 * scale,
+              fontSize: 11,
               fontWeight: FontWeight.w600,
               letterSpacing: 0,
             ),
@@ -608,23 +586,19 @@ class _MedicationNameTableValue extends StatelessWidget {
 // - 부모가 전달한 표시값과 동작을 반영해 약명 보정 또는 확인 필요 표식 위젯을 구성한다.
 // 속성:
 // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 // - isWarning (bool): 경고 색상과 강조를 사용할지 여부.
 class _CorrectionBadge extends StatelessWidget {
   final String label;
-  final double scale;
   final bool isWarning;
 
   // 함수이름: _CorrectionBadge
   // 함수역할: 약명 보정 또는 확인 필요 표식에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // - isWarning (bool): 경고 색상과 강조를 사용할지 여부.
   // 반환값: 입력 설정이 반영된 _CorrectionBadge 인스턴스.
   const _CorrectionBadge({
     required this.label,
-    required this.scale,
     this.isWarning = false,
   });
 
@@ -649,7 +623,7 @@ class _CorrectionBadge extends StatelessWidget {
           color: isWarning
               ? MedBuddyColors.reminderAccent
               : MedBuddyColors.primaryDark,
-          fontSize: 10 * scale,
+          fontSize: 10,
           fontWeight: FontWeight.w700,
           letterSpacing: 0,
         ),
@@ -773,7 +747,6 @@ class _MedicationScheduleEditDialogState
   @override
   Widget build(BuildContext context) {
     final text = widget.previewText;
-    final scale = widget.userSetting.contentTextScale;
 
     return AlertDialog(
       scrollable: true,
@@ -781,7 +754,7 @@ class _MedicationScheduleEditDialogState
         widget.isNewSchedule ? text.addTitle : text.editTitle,
         style: TextStyle(
           color: MedBuddyColors.textStrong,
-          fontSize: 21 * scale,
+          fontSize: 21,
           fontWeight: FontWeight.w700,
           letterSpacing: 0,
         ),
@@ -892,7 +865,7 @@ class _MedicationScheduleEditDialogState
                   text.scheduleSlots,
                   style: TextStyle(
                     color: MedBuddyColors.textStrong,
-                    fontSize: 14 * scale,
+                    fontSize: 14,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0,
                   ),
@@ -930,9 +903,10 @@ class _MedicationScheduleEditDialogState
                               _selectedSlotKeys.remove(slotKey);
                             }
                             if (_selectedSlotKeys.isNotEmpty) {
-                              _frequencyController.text = _selectedSlotKeys
-                                  .length
-                                  .toString();
+                              _frequencyController.text =
+                                  _canonicalDailyFrequency(
+                                    _selectedSlotKeys.length,
+                                  );
                             }
                             _showSlotValidationError = false;
                           });
@@ -949,7 +923,7 @@ class _MedicationScheduleEditDialogState
                     text.scheduleSlotRequired,
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.error,
-                      fontSize: 12 * scale,
+                      fontSize: 12,
                       letterSpacing: 0,
                     ),
                   ),
@@ -990,6 +964,17 @@ class _MedicationScheduleEditDialogState
     return match == null ? null : int.tryParse(match.group(1)!);
   }
 
+  // 함수이름: _canonicalDailyFrequency
+  // 함수역할: 하루 횟수를 일정 검토 화면·서버 예시와 같은 "N회" 표기로 만든다. 표기가 섞이면 처방 변경 비교에서 일정이 바뀐 것으로 보인다.
+  // 매개변수: count 하루 복용 횟수. 반환값: "N회" 문자열.
+  String _canonicalDailyFrequency(int count) => '$count회';
+
+  // 함수이름: _isDailyFrequencyUntouched
+  // 함수역할: 횟수 입력이 처음 표시한 값 그대로인지 확인한다.
+  // 매개변수: value 현재 횟수 입력. 반환값: 처음 값과 같으면 true.
+  bool _isDailyFrequencyUntouched(String value) =>
+      value.trim() == widget.medicationSchedule.intakeTime.trim();
+
   // 함수이름: _updateDailyFrequency
   // 함수역할: 횟수가 달라질 때 기본 시간대를 갱신하되 같은 횟수의 사용자 선택은 유지한다.
   // 매개변수: value 수정된 횟수. 반환값: 없음.
@@ -1003,12 +988,13 @@ class _MedicationScheduleEditDialogState
   }
 
   // 함수이름: _validateDailyFrequency
-  // 함수역할: 해석하지 못한 횟수로 기존 시간대가 조용히 저장되는 것을 막는다.
+  // 함수역할: 해석하지 못한 횟수로 기존 시간대가 조용히 저장되는 것을 막는다. 손대지 않은 OCR 횟수("8시간마다" 등)는 다른 항목 수정을 막지 않도록 그대로 통과시킨다.
   // 매개변수: value 횟수 입력. 반환값: 잘못된 입력 안내 또는 null.
   String? _validateDailyFrequency(String? value) =>
-      _readDailyFrequency(value ?? '') == null
-      ? widget.previewText.invalidDailyFrequency
-      : null;
+      _isDailyFrequencyUntouched(value ?? '') ||
+          _readDailyFrequency(value ?? '') != null
+      ? null
+      : widget.previewText.invalidDailyFrequency;
 
   // 함수이름: _validateMedicationDays
   // 함수역할: 총 투약일 입력값이 비어 있거나 허용 범위의 양의 정수인지 확인한다.
@@ -1020,10 +1006,7 @@ class _MedicationScheduleEditDialogState
     if (trimmedValue.isEmpty) {
       return null;
     }
-    final medicationDays = int.tryParse(trimmedValue);
-    if (medicationDays == null ||
-        medicationDays <= 0 ||
-        medicationDays > 3650) {
+    if (!isValidMedicationCourseDays(int.tryParse(trimmedValue))) {
       return widget.previewText.invalidTotalDays;
     }
     return null;
@@ -1047,21 +1030,19 @@ class _MedicationScheduleEditDialogState
   }
 
   // 함수이름: _minimumPrescriptionDate
-  // 함수역할: 허용할 가장 이른 처방일인 2000년 1월 1일을 제공한다.
+  // 함수역할: 공통 복약 일정 한도에서 허용할 가장 이른 처방일(2000년 1월 1일)을 가져온다.
   // 매개변수:
   // - 없음.
   // 반환값: DateTime: 허용 범위 또는 시각 제거 규칙을 반영한 날짜.
-  DateTime get _minimumPrescriptionDate => DateTime(2000);
+  DateTime get _minimumPrescriptionDate => earliestMedicationStartDate();
 
   // 함수이름: _maximumPrescriptionDate
-  // 함수역할: 현재 날짜에서 365일 뒤의 자정을 가장 늦은 처방일로 계산한다.
+  // 함수역할: 공통 복약 일정 한도에서 가장 늦은 처방일(현재 날짜에서 365일 뒤의 자정)을 가져온다.
   // 매개변수:
   // - 없음.
   // 반환값: DateTime: 허용 범위 또는 시각 제거 규칙을 반영한 날짜.
-  DateTime get _maximumPrescriptionDate {
-    final maximumDate = DateTime.now().add(const Duration(days: 365));
-    return DateTime(maximumDate.year, maximumDate.month, maximumDate.day);
-  }
+  DateTime get _maximumPrescriptionDate =>
+      latestMedicationStartDate(DateTime.now());
 
   // 함수이름: _selectPrescriptionDate
   // 함수역할: 달력에서 조제일자를 선택하고 직접 입력 필드에 반영한다.
@@ -1119,13 +1100,20 @@ class _MedicationScheduleEditDialogState
         .trim();
     final restoresOriginalName =
         _restoreOriginalName && medicationName == originalMedicationName;
+    // 손대지 않은 횟수는 그대로 두고, 바꾼 횟수만 "N회" 표기로 맞춘다.
+    final frequencyText = _frequencyController.text.trim();
+    final frequencyCount = _isDailyFrequencyUntouched(frequencyText)
+        ? null
+        : _readDailyFrequency(frequencyText);
 
     Navigator.pop(
       context,
       widget.medicationSchedule.copyWith(
         medicationName: medicationName,
         dosage: _dosageController.text.trim(),
-        intakeTime: _frequencyController.text.trim(),
+        intakeTime: frequencyCount == null
+            ? frequencyText
+            : _canonicalDailyFrequency(frequencyCount),
         medicationTime: int.tryParse(_daysController.text.trim()) ?? 0,
         prescriptionDate: _parseDate(_prescriptionDateController.text.trim()),
         scheduleSlotKeys: medicationScheduleSlotKeys
@@ -1230,11 +1218,11 @@ class _PreviewText {
   const _PreviewText(this.language);
 
   // 함수이름: isEnglish
-  // 함수역할: 언어 코드가 en과 정확히 일치하는지 확인한다.
+  // 함수역할: 공통 언어 판별 규칙으로 언어 코드가 영어인지 확인한다.
   // 매개변수:
   // - 없음.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
-  bool get isEnglish => language == 'en';
+  bool get isEnglish => isEnglishLanguage(language);
 
   // 함수이름: back
   // 함수역할: 현재 언어와 입력값에 맞춰 "뒤로가기" 문구를 제공한다.
@@ -1479,28 +1467,12 @@ class _PreviewText {
       : '약 $count개는 확인이 필요합니다. 후보가 있으면 처방전과 비교해 선택해주세요. 일치하는 약이 없으면 약 이름과 함량을 확인한 뒤 수정해주세요.';
 
   // 함수이름: slotLabel
-  // 함수역할: 현재 언어와 입력값에 맞춰 "취침 전" 문구를 제공한다.
+  // 함수역할: 시간대 키를 현재 언어의 공통 시간대 이름으로 바꾸고, 모르는 키는 그대로 돌려준다.
   // 매개변수:
   // - slotKey (String): 아침·점심·저녁·취침 전을 구분하는 시간대 키.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String slotLabel(String slotKey) {
-    if (isEnglish) {
-      return switch (slotKey) {
-        'morning' => 'Morning',
-        'lunch' => 'Lunch',
-        'evening' => 'Evening',
-        'bedtime' => 'Bedtime',
-        _ => slotKey,
-      };
-    }
-    return switch (slotKey) {
-      'morning' => '아침',
-      'lunch' => '점심',
-      'evening' => '저녁',
-      'bedtime' => '취침 전',
-      _ => slotKey,
-    };
-  }
+  String slotLabel(String slotKey) =>
+      medicationSlotLabel(slotKey, isEnglish: isEnglish);
 
   // 함수이름: recognizedRegionGuide
   // 함수역할: 현재 언어와 입력값에 맞춰 "초록색은 약품 정보 인식 영역이며 회색은 개인정보 마스킹 영역입니다." 문구를 제공한다.

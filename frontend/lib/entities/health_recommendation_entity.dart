@@ -1,6 +1,8 @@
 // 파일명: health_recommendation_entity.dart
 // 역할: 건강 관리 추천 API 응답을 화면에서 사용할 모델로 변환한다.
 
+import 'user_setting_entity.dart';
+
 // 클래스명: HealthRecommendation
 // 역할: 약 조합 기반 건강 관리 추천 내용을 보관한다.
 // 주요 책임:
@@ -44,7 +46,7 @@ class HealthRecommendation {
     Map<String, dynamic> json, {
     String language = 'ko',
   }) {
-    final isEnglish = language.trim().toLowerCase().startsWith('en');
+    final isEnglish = isEnglishLanguage(language);
     return HealthRecommendation(
       dietRecommendation: _readString(
         json['diet_recommendation'] ?? json['dietRecommendation'],

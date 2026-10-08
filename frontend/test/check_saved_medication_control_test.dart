@@ -2,6 +2,7 @@
 // Role: Regression coverage for patient-scoped medication persistence, duplicate results, and
 //   manual/OCR fields.
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -11,6 +12,8 @@ import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
 import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/patient_hash_entity.dart';
+import 'package:medbuddy_frontend/services/api_response_parser.dart';
+import 'package:medbuddy_frontend/services/user_facing_error_message.dart';
 
 
 // Function Name: main
@@ -344,6 +347,82 @@ void main() {
     final success = await control.requestDelete(3);
 
     expect(success, isTrue);
+  });
+
+  // Function Name: test callback
+  // Description:
+  // - Expected behavior: a rejected list request keeps its message and carries the status code,
+  //   so a number inside the server detail is not read as the status.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  test('a rejected list request carries its status code', () async {
+    final client = MockClient(
+      (_) async => http.Response('{"detail":"limit 4290 reached"}', 409),
+    );
+    addTearDown(client.close);
+    final control = CheckSavedMedication(
+      baseUrl: 'http://localhost',
+      client: client,
+    );
+
+    await expectLater(
+      control.requestSavedMedicationInfo(),
+      throwsA(
+        isA<ApiRequestException>()
+            .having((error) => error.statusCode, 'statusCode', 409)
+            .having(
+              (error) => error.message,
+              'message',
+              '저장된 복약 정보 조회 실패 (409): limit 4290 reached',
+            )
+            .having(
+              (error) =>
+                  UserFacingErrorMessage.resolve(error, isEnglish: true),
+              'guidance',
+              '저장된 복약 정보 조회 실패 (409): limit 4290 reached',
+            ),
+      ),
+    );
+  });
+
+  // Function Name: test callback
+  // Description:
+  // - Expected behavior: a list request that gets no answer keeps its message and the original
+  //   timeout, so the screen can show delay guidance in the user's language.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  test('a list request without an answer keeps the original failure', () async {
+    final client = MockClient(
+      (_) async => throw TimeoutException('no answer'),
+    );
+    addTearDown(client.close);
+    final control = CheckSavedMedication(
+      baseUrl: 'http://localhost',
+      client: client,
+    );
+
+    await expectLater(
+      control.requestSavedMedicationInfo(),
+      throwsA(
+        isA<ApiRequestException>()
+            .having((error) => error.cause, 'cause', isA<TimeoutException>())
+            .having(
+              (error) => error.message,
+              'message',
+              '저장된 복약 정보를 불러오지 못했습니다.',
+            )
+            .having(
+              (error) =>
+                  UserFacingErrorMessage.resolve(error, isEnglish: true),
+              'guidance',
+              isNot(contains('저장된')),
+            ),
+      ),
+    );
   });
 
   // Function Name: test callback

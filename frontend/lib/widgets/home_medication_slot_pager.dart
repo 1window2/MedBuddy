@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_schedule_entity.dart';
+import '../entities/medication_slot_label.dart';
 import '../theme/medbuddy_theme.dart';
 import 'home_medication_preview.dart';
 
@@ -102,12 +103,11 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
     });
   }
 
-  String _slotLabel(String slot) => switch (slot) {
-    'morning' => widget.isEnglish ? 'Morning' : '아침',
-    'lunch' => widget.isEnglish ? 'Lunch' : '점심',
-    'evening' => widget.isEnglish ? 'Evening' : '저녁',
-    _ => widget.isEnglish ? 'Bedtime' : '취침 전',
-  };
+  String _slotLabel(String slot) => medicationSlotLabel(
+    slot,
+    isEnglish: widget.isEnglish,
+    fallback: widget.isEnglish ? 'Bedtime' : '취침 전',
+  );
 
   List<MedicationSchedule> _medications(String slot) => widget.schedules
       .where((schedule) => schedule.slotKeys.contains(slot))

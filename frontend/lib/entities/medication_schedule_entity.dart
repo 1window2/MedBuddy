@@ -3,6 +3,7 @@
 
 import 'medication_image_url_entity.dart';
 import 'json_value_reader.dart';
+import 'user_setting_entity.dart';
 
 const List<String> medicationScheduleSlotKeys = [
   'morning',
@@ -369,14 +370,22 @@ class MedicationSchedule {
   }
 
   // 함수이름: slotKeys
-  // 함수역할: 명시된 복약 시간대가 있으면 읽기 전용으로 제공하고 없으면 하루 복용 횟수에서 기본 시간대를 유도한다.
+  // 함수역할: 명시된 복약 시간대가 있으면 읽기 전용으로 제공하고, 없으면 하루 복용 횟수에서, 횟수도 없으면 완료 상태가 기록된 시간대에서 유도한다.
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - List<String>: 명시된 복약 시간대가 있으면 읽기 전용으로 제공하고 없으면 하루 복용 횟수에서 기본 시간대를 유도한다.
+  // - List<String>: 화면 분류·복용 기록·알림·위젯이 함께 쓰는 복약 시간대 키 목록. 아무 정보도 없으면 기본 시간대 하나.
   List<String> get slotKeys {
     if (scheduleSlotKeys.isNotEmpty) {
       return List.unmodifiable(scheduleSlotKeys);
+    }
+    if (dailyFrequencyCount <= 0 && slotStatuses.isNotEmpty) {
+      final recordedSlotKeys = medicationScheduleSlotKeys
+          .where(slotStatuses.containsKey)
+          .toList(growable: false);
+      if (recordedSlotKeys.isNotEmpty) {
+        return recordedSlotKeys;
+      }
     }
     return medicationScheduleSlotKeysForFrequency(dailyFrequencyCount);
   }
@@ -457,7 +466,10 @@ class MedicationSchedule {
     if (!_isEnglishLanguage(language)) {
       return value;
     }
-    final koreanFrequency = RegExp(r'^1일\s*(\d+)회$').firstMatch(value);
+    // 검토 화면이 저장하는 "3회"와 처방전 표기 "1일 3회"를 모두 읽는다.
+    final koreanFrequency = RegExp(
+      r'^(?:1일\s*)?(\d+)회$',
+    ).firstMatch(value);
     final numericFrequency = RegExp(r'^\d+$').hasMatch(value)
         ? int.tryParse(value)
         : null;
@@ -632,7 +644,7 @@ class MedicationSchedule {
   // 반환값:
   // - bool: 언어 코드의 공백과 대소문자를 정리한 뒤 en 접두사로 영어 계열을 판정한다.
   static bool _isEnglishLanguage(String language) {
-    return language.trim().toLowerCase().startsWith('en');
+    return isEnglishLanguage(language);
   }
 
   // Function Name: _readDouble

@@ -97,24 +97,16 @@ void main() {
         home: ManageUserSettingUI(
           initialSetting: const UserSetting(),
           authenticationControl: control,
-          onSettingSaveRequested:
-              // Function Name: onSettingSaveRequested callback
+          onExtendedSettingSaveRequested:
+              // Function Name: onExtendedSettingSaveRequested callback
               // Description:
               // - Acknowledge the configured local-only or synchronized settings save without persistence.
               // Parameters:
-              // - fontSizeOption (String): Selected application text-size option. Accepted but not consumed by this
+              // - setting (UserSetting): Settings edited on the screen. Accepted but not consumed by this
               //   fixture.
-              // - readingSpeedOption (String): Selected voice-reading speed option. Accepted but not consumed by
-              //   this fixture.
-              // - language (String): Language code used for labels or notification content. Accepted but not
-              //   consumed by this fixture.
               // Returns:
               // - A settings result marked synchronized.
-              ({
-                required fontSizeOption,
-                required readingSpeedOption,
-                required language,
-              }) async => UserSettingSaveResult(
+              (setting) async => UserSettingSaveResult(
                 setting: const UserSetting(),
                 synchronizedWithServer: true,
               ),

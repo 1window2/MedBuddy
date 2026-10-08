@@ -98,10 +98,7 @@ class CheckPrescriptionChange {
 
     final responseBody = ApiResponseParser.decodeBody(response);
     if (response.statusCode != 200) {
-      throw StateError(
-        '처방 변화 조회 실패 (${response.statusCode}): '
-        '${ApiResponseParser.extractErrorDetail(responseBody)}',
-      );
+      throw ApiResponseParser.httpFailure('처방 변화 조회 실패', response, responseBody);
     }
     return PrescriptionChangeRadar.fromJson(
       ApiResponseParser.decodeMap(responseBody),

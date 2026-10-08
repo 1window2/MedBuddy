@@ -26,10 +26,14 @@ class ManageCaregiverPatientLocalState {
   // 함수역할: 저장된 별칭이 없을 때 사용할 환자 해시 기반의 기본 표시 이름을 구한다.
   // 매개변수:
   // - patientHash (String): 조회·저장·알림 대상 환자의 소유권 해시
+  // - isEnglish (bool): 기본 표시 이름을 영어로 만들지 여부; false이면 한국어
   // 반환값:
   // - String: 저장된 별칭이 없을 때 사용할 환자 해시 기반의 기본 표시 이름을 구한다.
-  String fallbackLabel(String patientHash) {
-    return CaregiverPatientLocalStateService.fallbackLabel(patientHash);
+  String fallbackLabel(String patientHash, {bool isEnglish = false}) {
+    return CaregiverPatientLocalStateService.fallbackLabel(
+      patientHash,
+      isEnglish: isEnglish,
+    );
   }
 
   // 함수이름: loadLabel
@@ -37,17 +41,20 @@ class ManageCaregiverPatientLocalState {
   // 매개변수:
   // - caregiverHash (String): 조회·저장 범위를 제한할 보호자 해시
   // - patientHash (String): 조회·저장·알림 대상 환자의 소유권 해시
+  // - isEnglish (bool): 별칭이 없을 때 기본 표시 이름을 영어로 만들지 여부
   // 반환값:
   // - Future<String>: 현재 보호자·환자 쌍의 로컬 별칭을 읽고 없으면 기본 표시 이름을 사용한다.
   Future<String> loadLabel({
     required String caregiverHash,
     required String patientHash,
+    bool isEnglish = false,
   }) async {
     final preferences = await SharedPreferences.getInstance();
     return CaregiverPatientLocalStateService.resolveLabel(
       preferences,
       caregiverHash: caregiverHash,
       patientHash: patientHash,
+      isEnglish: isEnglish,
     );
   }
 
@@ -56,11 +63,13 @@ class ManageCaregiverPatientLocalState {
   // 매개변수:
   // - caregiverHash (String): 조회·저장 범위를 제한할 보호자 해시
   // - links (List<PatientCaregiverLink>): 참여자·활성 상태를 확인할 환자·보호자 연동 목록
+  // - isEnglish (bool): 별칭이 없는 환자의 기본 표시 이름을 영어로 만들지 여부
   // 반환값:
   // - Future<Map<String, String>>: 현재 보호자의 연동만 처리하고 서버 별칭을 로컬 저장소에 반영한 뒤 환자 해시별 표시 이름을 모은다.
   Future<Map<String, String>> loadLabels({
     required String caregiverHash,
     required List<PatientCaregiverLink> links,
+    bool isEnglish = false,
   }) async {
     final preferences = await SharedPreferences.getInstance();
     final labels = <String, String>{};
@@ -72,6 +81,7 @@ class ManageCaregiverPatientLocalState {
       if (serverAlias != null) {
         // NULL은 서버 별칭 도입 전의 기존 행이므로 기기 별칭을 보존한다.
         // 빈 문자열은 사용자가 다른 기기에서 별칭을 지운 상태이므로 캐시도 비운다.
+        // 서비스는 저장된 값과 같으면 쓰지 않으므로 주기적 호출이 저장소를 다시 쓰지 않는다.
         await CaregiverPatientLocalStateService.saveLabel(
           preferences,
           caregiverHash: caregiverHash,
@@ -83,6 +93,7 @@ class ManageCaregiverPatientLocalState {
         preferences,
         caregiverHash: caregiverHash,
         patientHash: link.patientHash,
+        isEnglish: isEnglish,
       );
     }
     return labels;
@@ -94,12 +105,14 @@ class ManageCaregiverPatientLocalState {
   // - caregiverHash (String): 조회·저장 범위를 제한할 보호자 해시
   // - patientHash (String): 조회·저장·알림 대상 환자의 소유권 해시
   // - label (String): 보호자가 지정한 환자 표시 이름
+  // - isEnglish (bool): 별칭을 지웠을 때 돌려줄 기본 표시 이름을 영어로 만들지 여부
   // 반환값:
   // - Future<String>: 보호자·환자 쌍의 표시 이름을 정규화하여 기기에 저장하고 실제 표시할 이름을 구한다.
   Future<String> saveLabel({
     required String caregiverHash,
     required String patientHash,
     required String label,
+    bool isEnglish = false,
   }) async {
     final preferences = await SharedPreferences.getInstance();
     return CaregiverPatientLocalStateService.saveLabel(
@@ -107,6 +120,7 @@ class ManageCaregiverPatientLocalState {
       caregiverHash: caregiverHash,
       patientHash: patientHash,
       label: label,
+      isEnglish: isEnglish,
     );
   }
 

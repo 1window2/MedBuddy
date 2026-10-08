@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/authentication_gate.dart';
@@ -672,5 +673,218 @@ void main() {
     expect(auth.isBusy, isFalse);
     expect(await auth.sendPasswordReset('language@example.test'), isTrue);
     expect(firebase.calls.sublist(2), ['language:ko', 'reset:ko']);
+  });
+
+  // 모든 인증 실패 코드는 두 언어의 안내를 가지며, 일반 안내로 뭉개지지 않는다.
+  test('every authentication error code has its own guidance', () {
+    for (final code in AuthenticationErrorCode.values) {
+      expect(code.english.trim(), isNotEmpty, reason: code.name);
+      expect(code.korean.trim(), isNotEmpty, reason: code.name);
+      expect(code.messageFor(true), code.english);
+      expect(code.messageFor(false), code.korean);
+      final error = AuthenticationStateError(code);
+      expect(error, isA<StateError>());
+      expect(error.message, code.english);
+      expect(error.messageFor(false), code.korean);
+      if (code != AuthenticationErrorCode.requestFailed) {
+        expect(
+          code.korean,
+          isNot(AuthenticationErrorCode.requestFailed.korean),
+          reason: code.name,
+        );
+      }
+    }
+  });
+
+  // 예전에는 한국어 화면에서 일반 안내로만 보이던 실패도 원인에 맞는 문구로 보여야 한다.
+  test('operation failures are localized by code', () async {
+    final failures = <AuthenticationErrorCode>[
+      AuthenticationErrorCode.googleIdentityTokenMissing,
+      AuthenticationErrorCode.firebaseUnavailable,
+      AuthenticationErrorCode.mfaSignInExpired,
+      AuthenticationErrorCode.mfaEnrollmentExpired,
+      AuthenticationErrorCode.deletionRequiresRecentSignIn,
+    ];
+    for (final code in failures) {
+      final auth = AuthenticationControl.withFirebaseAuth(_FirebaseAuth());
+      addTearDown(auth.dispose);
+      await auth.runAuthOperationForTest(
+        () async => throw AuthenticationStateError(code),
+      );
+      expect(auth.errorMessage, code.english);
+      expect(auth.errorMessageForLanguage(isEnglish: true), code.english);
+      expect(auth.errorMessageForLanguage(isEnglish: false), code.korean);
+    }
+
+    // 로그아웃된 상태의 세션 재시도는 로그인이 필요하다고 두 언어로 안내한다.
+    final firebase = _FirebaseAuth()..signedOut = true;
+    final auth = AuthenticationControl.withFirebaseAuth(firebase);
+    addTearDown(auth.dispose);
+    await auth.retryBackendSession();
+    expect(auth.errorMessage, 'Sign in before retrying the secure session.');
+    expect(
+      auth.errorMessageForLanguage(isEnglish: false),
+      '보안 세션을 다시 연결하려면 먼저 로그인해 주세요.',
+    );
+
+    // 코드가 없는 StateError는 영어 원문과 한국어 일반 안내를 유지한다.
+    await auth.runAuthOperationForTest(
+      () async => throw StateError('push token unregister failed'),
+    );
+    expect(auth.errorMessage, 'push token unregister failed');
+    expect(
+      auth.errorMessageForLanguage(isEnglish: false),
+      '인증 요청을 처리하지 못했습니다. 다시 시도해 주세요.',
+    );
+  });
+
+  // 계정 선택 창을 닫은 것은 오류가 아니며, 그 밖의 Google 실패는 플러그인 원문 대신 정해진 안내를 보인다.
+  test('a canceled Google prompt is not an error', () async {
+    final auth = AuthenticationControl.withFirebaseAuth(_FirebaseAuth());
+    addTearDown(auth.dispose);
+    await auth.runAuthOperationForTest(
+      () async => throw const GoogleSignInException(
+        code: GoogleSignInExceptionCode.canceled,
+        description: 'activity is cancelled by the user.',
+      ),
+    );
+    expect(auth.errorMessage, isNull);
+    expect(auth.errorMessageForLanguage(isEnglish: false), isNull);
+    expect(auth.isBusy, isFalse);
+
+    for (final code in const [
+      GoogleSignInExceptionCode.interrupted,
+      GoogleSignInExceptionCode.clientConfigurationError,
+      GoogleSignInExceptionCode.providerConfigurationError,
+      GoogleSignInExceptionCode.uiUnavailable,
+      GoogleSignInExceptionCode.userMismatch,
+      GoogleSignInExceptionCode.unknownError,
+    ]) {
+      await auth.runAuthOperationForTest(
+        () async => throw GoogleSignInException(
+          code: code,
+          description: 'androidx.credentials provider detail',
+        ),
+      );
+      expect(auth.errorMessage, 'Google sign-in was not completed.');
+      expect(
+        auth.errorMessageForLanguage(isEnglish: false),
+        'Google 로그인을 완료하지 못했습니다. 다시 시도해 주세요.',
+      );
+    }
+  });
+
+  // 계정 삭제 재인증처럼 실패를 호출자에게 알리는 경로는 코드가 담긴 StateError를 던진다.
+  test('strict operations throw coded errors for the caller', () async {
+    final auth = AuthenticationControl.withFirebaseAuth(_FirebaseAuth());
+    addTearDown(auth.dispose);
+
+    // 함수이름: failWith
+    // 함수역할: 엄격한 인증 작업이 주어진 실패를 어떤 코드로 바꿔 던지는지 구한다.
+    // 매개변수: failure는 공급자 호출이 던질 실패. 반환값: 던져진 인증 실패 코드.
+    Future<AuthenticationErrorCode> failWith(Object failure) async {
+      try {
+        await auth.runAuthOperationForTest(
+          () async => throw failure,
+          strict: true,
+        );
+      } on AuthenticationStateError catch (error) {
+        return error.code;
+      }
+      throw StateError('The strict operation did not fail.');
+    }
+
+    expect(
+      await failWith(
+        const GoogleSignInException(code: GoogleSignInExceptionCode.canceled),
+      ),
+      AuthenticationErrorCode.googleSignInCanceled,
+    );
+    expect(auth.errorMessage, isNull);
+    expect(
+      await failWith(
+        const GoogleSignInException(
+          code: GoogleSignInExceptionCode.unknownError,
+          description: 'provider detail',
+        ),
+      ),
+      AuthenticationErrorCode.googleSignInIncomplete,
+    );
+    expect(auth.errorMessage, 'Google sign-in was not completed.');
+    expect(
+      await failWith(FirebaseAuthException(code: 'network-request-failed')),
+      AuthenticationErrorCode.network,
+    );
+    expect(
+      await failWith(TimeoutException('provider')),
+      AuthenticationErrorCode.timeout,
+    );
+    expect(
+      await failWith(Exception('unexpected')),
+      AuthenticationErrorCode.requestFailed,
+    );
+    expect(
+      auth.errorMessageForLanguage(isEnglish: false),
+      '인증 요청을 처리하지 못했습니다. 다시 시도해 주세요.',
+    );
+
+    // 이미 진행 중인 작업이 있으면 두 번째 엄격한 작업은 시작하지 않는다.
+    final gate = Completer<void>();
+    final running = auth.runAuthOperationForTest(() => gate.future);
+    expect(
+      await failWith(Exception('never started')),
+      AuthenticationErrorCode.operationInProgress,
+    );
+    gate.complete();
+    await running;
+  });
+
+  // 실제 로그아웃 본문: 토큰이 유효한 동안 정리 → 공급자 로그아웃 → 세션·문자 인증 상태 비우기.
+  test('signOut runs cleanup, then the provider, then clears the session', () async {
+    final firebase = _FirebaseAuth();
+    firebase.user.verified = true;
+    final client = AuthenticatedApiClient(
+      inner: MockClient(
+        (_) async => http.Response(
+          jsonEncode({
+            'user_hash': 'sign-out-fixture',
+            'authenticated': true,
+            'email_verified': true,
+          }),
+          200,
+        ),
+      ),
+      tokenProvider: () async => 'test-token',
+      appCheckRequired: false,
+    );
+    final auth = AuthenticationControl.withFirebaseAuth(
+      firebase,
+      apiClient: client,
+    );
+    addTearDown(auth.dispose);
+    await auth.retryBackendSession();
+    expect(auth.isAuthenticated, isTrue);
+    firebase.calls.clear();
+    auth.setBeforeSignOut(() async {
+      expect(auth.isAuthenticated, isTrue);
+      firebase.calls.add('cleanup');
+    });
+    await auth.signOut();
+    expect(firebase.calls, ['cleanup', 'signOut']);
+    expect(auth.isAuthenticated, isFalse);
+    expect(auth.errorMessage, isNull);
+    expect(auth.isBusy, isFalse);
+
+    // 공급자 로그아웃이 실패하면 세션을 유지하고 실패를 호출자에게 알린다.
+    firebase.signedOut = false;
+    await auth.retryBackendSession();
+    expect(auth.isAuthenticated, isTrue);
+    firebase.failSignOut = true;
+    await expectLater(auth.signOut(), throwsStateError);
+    expect(auth.isAuthenticated, isTrue);
+    expect(
+      auth.errorMessageForLanguage(isEnglish: false),
+      '인터넷 연결을 확인한 뒤 다시 시도해 주세요.',
+    );
   });
 }

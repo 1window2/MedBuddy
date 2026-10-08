@@ -3,6 +3,24 @@
 
 import 'json_value_reader.dart';
 
+// 함수이름: isEnglishLanguage
+// 함수역할: 앞뒤 공백과 대소문자를 무시하고 en으로 시작하는 언어 코드를 영어 표시로 판정하는 앱 공통 기준을 제공한다.
+// 매개변수:
+// - language (String?): 판정할 언어 코드. null은 빈 값으로 본다.
+// 반환값:
+// - bool: en·EN·en-US처럼 영어를 가리키면 true, 빈 값과 그 밖의 값은 false.
+bool isEnglishLanguage(String? language) =>
+    (language ?? '').trim().toLowerCase().startsWith('en');
+
+// 함수이름: normalizeAppLanguage
+// 함수역할: 저장·서버 언어 값을 앱이 지원하는 ko 또는 en 코드로 맞춰 화면마다 판정이 달라지지 않게 한다.
+// 매개변수:
+// - language (String?): 정규화할 언어 코드. null은 빈 값으로 본다.
+// 반환값:
+// - String: 영어로 판정되면 en, 빈 값을 포함한 그 밖의 값은 ko.
+String normalizeAppLanguage(String? language) =>
+    isEnglishLanguage(language) ? 'en' : 'ko';
+
 // 클래스명: UserSetting
 // 역할: 글씨 크기, 읽기 속도, 언어 설정을 앱 전체에서 동일한 형식으로 사용하게 한다.
 // 주요 책임:
@@ -84,19 +102,19 @@ class UserSetting {
   });
 
   // 함수이름: UserSetting.fromJson
-  // 함수역할: 현재·구형 설정 필드를 읽고 누락 값에 기본값을 적용하며 언어 모드·시간제·알림 상세·시각 문자열을 정규화한다.
+  // 함수역할: 현재·구형 설정 필드를 읽고 누락 값에 기본값을 적용하며 언어·언어 모드·시간제·알림 상세·시각 문자열을 정규화한다.
   // 매개변수:
   // - json (Map<String, dynamic>): 해당 모델의 서버 응답 또는 저장 JSON 객체
   // 반환값:
   // - UserSetting: 필드 검증과 기본값 처리를 거쳐 복원한 레코드.
   factory UserSetting.fromJson(Map<String, dynamic> json) {
-    final language = readJsonText(json['language']);
+    final language = normalizeAppLanguage(readJsonText(json['language']));
     return UserSetting(
       userHash: readJsonText(json['user_hash'] ?? json['userHash']),
       fontSize: _readInt(json['font_size'] ?? json['fontSize']) ?? 16,
       readingSpeed:
           _readDouble(json['reading_speed'] ?? json['readingSpeed']) ?? 1.0,
-      language: language.isEmpty ? 'ko' : language,
+      language: language,
       languageMode: _normalizedLanguageMode(
         readJsonText(json['language_mode'] ?? json['languageMode']),
         fallbackLanguage: language,
@@ -177,8 +195,17 @@ class UserSetting {
     return 'medium';
   }
 
+  // 함수이름: isEnglish
+  // 함수역할: 현재 설정 언어가 영어 표시 대상인지 앱 공통 기준으로 판정한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - bool: language가 isEnglishLanguage 기준으로 영어이면 true.
+  bool get isEnglish => isEnglishLanguage(language);
+
   // 함수이름: contentTextScale
   // 함수역할: 이미 앱 전역에서 적용된 글씨 확대를 콘텐츠에서 중복 적용하지 않도록 1.0 배율을 제공한다.
+  // 비고: 사용 중단 예정(deprecated). 항상 1.0이므로 새 코드는 읽지 않으며, 기존 화면의 읽기가 모두 없어지면 삭제한다.
   // 매개변수:
   // - 없음.
   // 반환값:
@@ -236,8 +263,8 @@ class UserSetting {
           '${safeMinute.toString().padLeft(2, '0')}';
     }
     final period = safeHour < 12
-        ? (language == 'en' ? 'AM' : '오전')
-        : (language == 'en' ? 'PM' : '오후');
+        ? (isEnglish ? 'AM' : '오전')
+        : (isEnglish ? 'PM' : '오후');
     final displayHour = safeHour % 12 == 0 ? 12 : safeHour % 12;
     return '$period $displayHour:${safeMinute.toString().padLeft(2, '0')}';
   }
@@ -295,7 +322,7 @@ class UserSetting {
   }
 
   // 함수이름: copyWith
-  // 함수역할: 기존 설정을 유지하면서 일부 값만 바꾼 새 설정 객체를 만든다.
+  // 함수역할: 기존 설정을 유지하면서 일부 값만 바꾼 새 설정 객체를 만들고 언어 코드는 ko·en으로 정규화한다.
   // 매개변수:
   // - userHash (String?): 현재 사용자 소유권·표시·저장 범위의 해시
   // - fontSize (int?): 사용자 기본 글씨 크기
@@ -334,7 +361,7 @@ class UserSetting {
       userHash: userHash ?? this.userHash,
       fontSize: fontSize ?? this.fontSize,
       readingSpeed: readingSpeed ?? this.readingSpeed,
-      language: language ?? this.language,
+      language: normalizeAppLanguage(language ?? this.language),
       languageMode: languageMode ?? this.languageMode,
       timeFormat: timeFormat ?? this.timeFormat,
       homeScheduleSource: _normalizedHomeScheduleSource(

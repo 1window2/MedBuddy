@@ -4,10 +4,15 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/manage_user_setting_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/set_notification_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/authentication_control.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 
 // 함수역할: 사용자 의도와 실제 저장 결과에 따른 종료 동작을 검증한다.
+// 설정 초안의 한 필드를 바꾸는 방법: 설정 영역 키, 값을 바꾸는 조작, 저장 내용에서 달라져야 하는 JSON 값.
+typedef _FieldEdit =
+    (String, Future<void> Function(WidgetTester), Map<String, Object>);
+
 void main() {
   testWidgets('홈 일정 선택은 저장·변경 취소를 따르며 내 일정이 기본이다', (tester) async {
     UserSetting? saved;
@@ -108,6 +113,124 @@ void main() {
     expect(find.byKey(const Key('unsaved-settings-dialog')), findsOneWidget);
   });
 
+  // 설정 초안의 열네 필드를 하나씩 바꿔, 각 필드가 미저장 판정·저장 내용·변경 취소에 모두 포함되는지 확인한다.
+  // 각 항목: 설정 영역 키, 값을 바꾸는 조작, 저장 내용에서 달라져야 하는 JSON 값.
+  final fieldEdits = <String, _FieldEdit>{
+    'fontSize': (
+      'settingsDisplayAndVoiceMenu',
+      (tester) => _choose(tester, 'fontSize', 'large'),
+      {'font_size': 20},
+    ),
+    'readingSpeed': (
+      'settingsDisplayAndVoiceMenu',
+      (tester) => _choose(tester, 'readingSpeed', 'fast'),
+      {'reading_speed': 1.2},
+    ),
+    'language': (
+      'settingsDisplayAndVoiceMenu',
+      (tester) => _choose(tester, 'language', 'en'),
+      {'language': 'en', 'language_mode': 'en'},
+    ),
+    'languageMode': (
+      'settingsDisplayAndVoiceMenu',
+      (tester) => _choose(tester, 'language', 'system'),
+      {'language_mode': 'system'},
+    ),
+    'timeFormat': (
+      'settingsDisplayAndVoiceMenu',
+      (tester) => _choose(tester, 'timeFormat', '12h'),
+      {'time_format': '12h'},
+    ),
+    'homeScheduleSource': (
+      'settingsDisplayAndVoiceMenu',
+      (tester) => _choose(tester, 'homeScheduleSource', 'patients'),
+      {'home_schedule_source': 'patients'},
+    ),
+    'medicationNotificationsEnabled': (
+      'settingsMedicationAndNotificationsMenu',
+      (tester) => _tap(tester, 'medicationNotificationsSwitch'),
+      {'medication_notifications_enabled': false},
+    ),
+    'caregiverNotificationsEnabled': (
+      'settingsMedicationAndNotificationsMenu',
+      (tester) => _tap(tester, 'caregiverNotificationsSwitch'),
+      {'caregiver_notifications_enabled': false},
+    ),
+    'chatNotificationsEnabled': (
+      'settingsMedicationAndNotificationsMenu',
+      (tester) => _tap(tester, 'chatNotificationsSwitch'),
+      {'chat_notifications_enabled': false},
+    ),
+    'notificationDetailMode': (
+      'settingsMedicationAndNotificationsMenu',
+      (tester) => _choose(tester, 'notificationPrivacy', 'type_only'),
+      {'notification_detail_mode': 'type_only'},
+    ),
+    'defaultMorningTime': (
+      'settingsMedicationAndNotificationsMenu',
+      (tester) => _pickDefaultTime(tester, 'morning', 9, 10),
+      {'default_morning_time': '09:10'},
+    ),
+    'defaultLunchTime': (
+      'settingsMedicationAndNotificationsMenu',
+      (tester) => _pickDefaultTime(tester, 'lunch', 13, 20),
+      {'default_lunch_time': '13:20'},
+    ),
+    'defaultEveningTime': (
+      'settingsMedicationAndNotificationsMenu',
+      (tester) => _pickDefaultTime(tester, 'evening', 19, 30),
+      {'default_evening_time': '19:30'},
+    ),
+    'defaultBedtime': (
+      'settingsMedicationAndNotificationsMenu',
+      (tester) => _pickDefaultTime(tester, 'bedtime', 23, 40),
+      {'default_bedtime': '23:40'},
+    ),
+  };
+  for (final field in fieldEdits.entries) {
+    testWidgets('설정 초안 필드는 미저장 판정·저장·변경 취소에 포함된다: ${field.key}', (
+      tester,
+    ) async {
+      // 기기 언어를 한국어로 고정해 "기기 설정 따르기"가 언어 모드만 바꾸게 한다.
+      tester.platformDispatcher.localeTestValue = const Locale('ko');
+      addTearDown(tester.platformDispatcher.clearLocaleTestValue);
+      final (section, edit, changed) = field.value;
+      final initial = const UserSetting().toJson();
+      final saves = <UserSetting>[];
+      await _pump(tester, (setting) async {
+        saves.add(setting);
+        return UserSettingSaveResult(
+          setting: setting,
+          synchronizedWithServer: true,
+        );
+      });
+
+      // 변경 → 미저장 확인 → 변경 취소: 저장하지 않고 원래 값으로 돌아간다.
+      await _tap(tester, section);
+      await edit(tester);
+      await _tap(tester, 'settingsBackButton');
+      expect(find.byKey(const Key('unsaved-settings-dialog')), findsOneWidget);
+      await _tap(tester, 'settings-discard-changes');
+      expect(saves, isEmpty);
+      await _tap(tester, section);
+      await _tap(tester, 'settingsBackButton');
+      expect(find.byKey(const Key('unsaved-settings-dialog')), findsNothing);
+
+      // 다시 변경 → 저장: 바꾼 값만 달라진 설정 전체가 한 번 전달된다.
+      await _tap(tester, section);
+      await edit(tester);
+      await _tap(tester, 'settingsBackButton');
+      await _tap(tester, 'settings-save-and-leave');
+      expect(saves, hasLength(1));
+      expect(saves.single.toJson(), {...initial, ...changed});
+
+      // 저장한 값이 새 기준이 되어 다시 나갈 때 확인하지 않는다.
+      await _tap(tester, section);
+      await _tap(tester, 'settingsBackButton');
+      expect(find.byKey(const Key('unsaved-settings-dialog')), findsNothing);
+    });
+  }
+
   testWidgets('두 배 글씨에서도 종료 확인의 세 선택지를 사용할 수 있다', (tester) async {
     tester.view.physicalSize = const Size(320, 640);
     tester.view.devicePixelRatio = 1;
@@ -142,12 +265,6 @@ Future<void> _pump(WidgetTester tester, ExtendedUserSettingSaver saver) async {
           previewSpeaker: (text, setting, {onComplete}) async {},
           previewStopper: () async {},
           onExtendedSettingSaveRequested: saver,
-          onSettingSaveRequested:
-              ({
-                required fontSizeOption,
-                required readingSpeedOption,
-                required language,
-              }) => throw StateError('Use extended settings'),
         ),
       },
     ),
@@ -166,6 +283,31 @@ Future<void> _tap(WidgetTester tester, String key) async {
   final finder = find.byKey(ValueKey(key));
   await tester.ensureVisible(finder);
   await tester.tap(finder);
+  await tester.pumpAndSettle();
+}
+
+// 함수역할: 공통 선택창에서 값을 고른다. 매개변수: tester, 항목 키, 선택값. 반환값: 선택 완료.
+Future<void> _choose(
+  WidgetTester tester,
+  String preferenceKey,
+  String value,
+) async {
+  await _tap(tester, '${preferenceKey}Selector');
+  await _tap(tester, '$preferenceKey-$value');
+}
+
+// 함수역할: 기본 복약 시간 선택기를 열고 지정한 시각으로 닫는다. 매개변수: tester, 시간대, 시·분.
+Future<void> _pickDefaultTime(
+  WidgetTester tester,
+  String slotKey,
+  int hour,
+  int minute,
+) async {
+  await _tap(tester, 'defaultMedicationTime-$slotKey');
+  final picker = find.byType(SetNotificationUI);
+  Navigator.of(
+    tester.element(picker),
+  ).pop(TimeOfDay(hour: hour, minute: minute));
   await tester.pumpAndSettle();
 }
 

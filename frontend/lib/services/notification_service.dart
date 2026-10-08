@@ -12,10 +12,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as timezone_data;
 import 'package:timezone/timezone.dart' as timezone;
 
+import '../entities/json_value_reader.dart';
 import '../entities/medication_alarm_entity.dart';
 import '../entities/caregiver_alert_context_entity.dart';
 import '../entities/medication_notification_selection_entity.dart';
 import '../entities/notification_inbox_entity.dart';
+import '../entities/user_setting_entity.dart';
 import 'medication_notification_payload_codec.dart';
 import 'notification_inbox_store.dart';
 
@@ -46,6 +48,13 @@ class NotificationService {
       MedicationNotificationPayloadCodec.caregiverSnoozeActionId;
   static const String caregiverChatActionId =
       MedicationNotificationPayloadCodec.caregiverChatActionId;
+  // 구형 고정 ID(1001~1004) 예약을 이 설치에서 모두 지웠음을 기록하는 기기 저장소 키.
+  static const String legacyReminderIdsCancelledKey =
+      'medbuddy_legacy_reminder_ids_cancelled';
+  // 테스트에서만 교체한다. 예약 갱신이 기기 저장소를 읽고 쓰는 횟수를 세는 데 쓴다.
+  @visibleForTesting
+  static Future<SharedPreferences> Function() preferencesLoader =
+      SharedPreferences.getInstance;
   static MedicationNotificationSelectionHandler? _selectionHandler;
   static MedicationNotificationSelection? _pendingSelection;
 
@@ -60,6 +69,8 @@ class NotificationService {
   String? _historyUserHash;
   Future<void> _scopeWrite = Future<void>.value();
   Future<void>? _reminderWrite;
+  // 이 실행 중 실제로 취소한 구형 고정 ID.
+  final Set<int> _cancelledLegacyReminderIds = <int>{};
 
   // 예약·미루기·취소의 호출 순서를 지켜 늦은 예약이 취소를 되돌리지 않게 한다.
   Future<void> _serializeReminder(Future<void> Function() action) {
@@ -106,12 +117,39 @@ class NotificationService {
         });
   }
 
+  // 함수이름: _inboxStore
+  // 함수역할: 계정의 알림함 저장소를 이 서비스와 같은 기기 저장소 경계로 만든다. 매개변수: owner. 반환값: 저장소.
+  NotificationInboxStore _inboxStore(String owner) => NotificationInboxStore(
+    userHash: owner,
+    loadPreferences: () => preferencesLoader(),
+  );
+
   // 함수이름: _recordInbox
   // 함수역할: 기록 오류가 실제 알림 표시를 막지 않게 한다. 매개변수: owner, entry. 반환값: 기록 시도 완료.
   Future<void> _recordInbox(String? owner, NotificationInboxEntry entry) async {
     if (owner == null || owner.isEmpty) return;
     try {
-      await NotificationInboxStore(userHash: owner).record(entry);
+      await _inboxStore(owner).record(entry);
+    } catch (error, stack) {
+      developer.log(
+        '알림 내역 저장 실패',
+        name: 'NotificationService',
+        error: error,
+        stackTrace: stack,
+      );
+    }
+  }
+
+  // 함수이름: _recordInboxAll
+  // 함수역할: 한 번의 예약 갱신에서 생긴 알림함 항목을 한꺼번에 기록한다. 기록 오류는 예약을 막지 않는다.
+  // 매개변수: owner, entries. 반환값: 기록 시도 완료.
+  Future<void> _recordInboxAll(
+    String? owner,
+    List<NotificationInboxEntry> entries,
+  ) async {
+    if (owner == null || owner.isEmpty || entries.isEmpty) return;
+    try {
+      await _inboxStore(owner).recordAll(entries);
     } catch (error, stack) {
       developer.log(
         '알림 내역 저장 실패',
@@ -128,9 +166,7 @@ class NotificationService {
     final owner = _historyUserHash;
     if (owner == null || owner.isEmpty) return;
     try {
-      await NotificationInboxStore(
-        userHash: owner,
-      ).cancelFutureReminders(slotKey: slotKey, id: id);
+      await _inboxStore(owner).cancelFutureReminders(slotKey: slotKey, id: id);
     } catch (error, stack) {
       developer.log(
         '알림 내역 예약 취소 실패',
@@ -393,7 +429,7 @@ class NotificationService {
   }) async {
     await initialize();
     if (owner != _historyUserHash) return;
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await preferencesLoader();
     await preferences.reload();
     if (owner != _historyUserHash) return;
     final planKey = 'medbuddy_reminder_plan_${owner ?? "guest"}_$slotKey';
@@ -428,52 +464,70 @@ class NotificationService {
       await _cancelInboxReminders(id: staleId);
     }
     final nextPlan = <String, String>{};
+    // 새로 예약한 날짜의 알림함 항목은 모아 두었다가 한 번에 기록한다.
+    final scheduledEntries = <NotificationInboxEntry>[];
 
-    for (final activeDate in sortedDates) {
-      if (owner != _historyUserHash) return;
-      final body = _buildReminderBody(language);
-      final scheduledDate = timezone.TZDateTime(
-        timezone.local,
-        activeDate.year,
-        activeDate.month,
-        activeDate.day,
-        hour,
-        minute,
-      );
-      final notificationId = _notificationIdForDate(id, slotKey, activeDate);
-      final key = '$notificationId';
-      final signature = jsonEncode([hour, minute, slotTitle, language, body]);
-      nextPlan[key] = signature;
-      if (!scheduledDate.isAfter(now) ||
-          (pending.containsKey(notificationId) && previous[key] == signature)) {
-        continue;
-      }
-      try {
-        await _scheduleWithMode(
-          owner: owner,
-          id: notificationId,
-          slotKey: slotKey,
-          slotTitle: slotTitle,
-          language: language,
-          body: body,
-          scheduledDate: scheduledDate,
-          scheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+    try {
+      for (final activeDate in sortedDates) {
+        if (owner != _historyUserHash) return;
+        final body = _buildReminderBody(language);
+        final scheduledDate = timezone.TZDateTime(
+          timezone.local,
+          activeDate.year,
+          activeDate.month,
+          activeDate.day,
+          hour,
+          minute,
         );
-      } on PlatformException {
-        await _scheduleWithMode(
-          owner: owner,
-          id: notificationId,
-          slotKey: slotKey,
-          slotTitle: slotTitle,
-          language: language,
-          body: body,
-          scheduledDate: scheduledDate,
-          scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        );
+        final notificationId = _notificationIdForDate(id, slotKey, activeDate);
+        final key = '$notificationId';
+        final signature = jsonEncode([hour, minute, slotTitle, language, body]);
+        nextPlan[key] = signature;
+        if (!scheduledDate.isAfter(now) ||
+            (pending.containsKey(notificationId) &&
+                previous[key] == signature)) {
+          continue;
+        }
+        NotificationInboxEntry? entry;
+        try {
+          entry = await _scheduleWithMode(
+            owner: owner,
+            id: notificationId,
+            slotKey: slotKey,
+            slotTitle: slotTitle,
+            language: language,
+            body: body,
+            scheduledDate: scheduledDate,
+            scheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          );
+        } on PlatformException {
+          entry = await _scheduleWithMode(
+            owner: owner,
+            id: notificationId,
+            slotKey: slotKey,
+            slotTitle: slotTitle,
+            language: language,
+            body: body,
+            scheduledDate: scheduledDate,
+            scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          );
+        }
+        if (entry == null) continue;
+        // 시각이나 문구가 바뀌어 다시 예약한 날짜는 이전 시각으로 남은 알림함 예정 항목을 지운다.
+        if (previous[key] != null && previous[key] != signature) {
+          await _cancelInboxReminders(id: notificationId);
+        }
+        scheduledEntries.add(entry);
       }
+    } finally {
+      // 도중에 중단되어도 이미 기기에 예약한 알림은 알림함에 남긴다.
+      await _recordInboxAll(owner, scheduledEntries);
     }
-    if (owner == _historyUserHash) {
-      await preferences.setString(planKey, jsonEncode(nextPlan));
+    final encodedPlan = jsonEncode(nextPlan);
+    // 계획이 그대로면 다시 저장하지 않는다.
+    if (owner == _historyUserHash &&
+        preferences.getString(planKey) != encodedPlan) {
+      await preferences.setString(planKey, encodedPlan);
     }
   }
 
@@ -507,11 +561,7 @@ class NotificationService {
   // - date (DateTime): 달력 날짜 계산 또는 비교의 기준 시각
   // 반환값:
   // - String: 알림 날짜별 약명과 안정 ID에 사용할 YYYY-MM-DD 달력 날짜 키를 만든다.
-  String _dateKey(DateTime date) {
-    return '${date.year.toString().padLeft(4, '0')}-'
-        '${date.month.toString().padLeft(2, '0')}-'
-        '${date.day.toString().padLeft(2, '0')}';
-  }
+  String _dateKey(DateTime date) => formatJsonDate(date)!;
 
   // 함수이름: _notificationIdForDate
   // 함수역할: 시간대와 복용 날짜마다 충돌 가능성이 낮은 고정 알림 ID를 생성한다.
@@ -522,12 +572,7 @@ class NotificationService {
   // 반환값:
   // - int: 시간대와 복용 날짜마다 충돌 가능성이 낮은 고정 알림 ID를 생성한다.
   int _notificationIdForDate(int baseId, String slotKey, DateTime date) {
-    final source = '$baseId|$slotKey|${_dateKey(date)}';
-    var hash = 0x811C9DC5;
-    for (final codeUnit in source.codeUnits) {
-      hash ^= codeUnit;
-      hash = (hash * 0x01000193) & 0x7FFFFFFF;
-    }
+    final hash = fnv1a31('$baseId|$slotKey|${_dateKey(date)}');
     return 100000 + (hash % 2000000000);
   }
 
@@ -551,9 +596,7 @@ class NotificationService {
   // - language (String): 표시·음성 안내에 사용할 언어 코드
   // 반환값:
   // - bool: 언어 코드의 공백과 대소문자를 정리한 뒤 en 접두사로 영어 계열을 판정한다.
-  bool _isEnglish(String language) {
-    return language.trim().toLowerCase().startsWith('en');
-  }
+  bool _isEnglish(String language) => isEnglishLanguage(language);
 
   // Function Name: _scheduleWithMode
   // Description: Schedules a localized zoned reminder with the chosen Android precision mode, completion and snooze actions, and a slot-aware navigation payload.
@@ -567,8 +610,8 @@ class NotificationService {
   // - scheduleMode (AndroidScheduleMode): Exact or inexact Android scheduling mode.
   // - scheduleDate (DateTime?): Original dose day when rescheduling a snooze.
   // Returns:
-  // - Future<void>: asynchronous completion without a result payload.
-  Future<void> _scheduleWithMode({
+  // - Future<NotificationInboxEntry?>: The inbox entry for the scheduled reminder, which the caller records; null when the account changed and nothing was scheduled.
+  Future<NotificationInboxEntry?> _scheduleWithMode({
     required String? owner,
     required int id,
     required String slotKey,
@@ -580,7 +623,7 @@ class NotificationService {
     DateTime? scheduleDate,
   }) async {
     // 예약 도중 계정이 바뀌면 나머지 예약을 새 계정에 남기지 않는다.
-    if (owner != _historyUserHash) return;
+    if (owner != _historyUserHash) return null;
     final title = _isEnglish(language)
         ? '$slotTitle medication schedule'
         : '$slotTitle 복약 일정 확인';
@@ -619,17 +662,14 @@ class NotificationService {
       payload:
           'schedule:$slotKey:$id:${_dateKey(scheduleDate ?? scheduledDate)}',
     );
-    await _recordInbox(
-      owner,
-      NotificationInboxEntry(
-        id: 'reminder:$id:${scheduledDate.millisecondsSinceEpoch}',
-        title: title,
-        body: body,
-        payload:
-            'schedule:$slotKey:$id:${_dateKey(scheduleDate ?? scheduledDate)}',
-        category: NotificationInboxCategory.medication,
-        occurredAt: scheduledDate,
-      ),
+    return NotificationInboxEntry(
+      id: 'reminder:$id:${scheduledDate.millisecondsSinceEpoch}',
+      title: title,
+      body: body,
+      payload:
+          'schedule:$slotKey:$id:${_dateKey(scheduleDate ?? scheduledDate)}',
+      category: NotificationInboxCategory.medication,
+      occurredAt: scheduledDate,
     );
   }
 
@@ -666,8 +706,9 @@ class NotificationService {
     final scheduledDate = now.add(delay);
     final originalDate = scheduleDate ?? now;
     final body = _buildReminderBody(language);
+    NotificationInboxEntry? entry;
     try {
-      await _scheduleWithMode(
+      entry = await _scheduleWithMode(
         owner: owner,
         id: id,
         slotKey: slotKey,
@@ -679,7 +720,7 @@ class NotificationService {
         scheduleDate: originalDate,
       );
     } on PlatformException {
-      await _scheduleWithMode(
+      entry = await _scheduleWithMode(
         owner: owner,
         id: id,
         slotKey: slotKey,
@@ -691,6 +732,7 @@ class NotificationService {
         scheduleDate: originalDate,
       );
     }
+    if (entry != null) await _recordInbox(owner, entry);
   }
 
   // 함수이름: cancelReminder
@@ -735,7 +777,7 @@ class NotificationService {
         await _plugin.cancel(id: id, tag: notification.tag);
       }
     }
-    await NotificationInboxStore(userHash: owner).cancelFutureReminders(id: id);
+    await _inboxStore(owner).cancelFutureReminders(id: id);
   });
 
   Future<void> _cancelReminder(int id, {String? slotKey}) async {
@@ -777,6 +819,34 @@ class NotificationService {
       return;
     }
     await _plugin.cancel(id: id);
+    await _rememberLegacyReminderCancelled(id);
+  }
+
+  // 함수이름: _rememberLegacyReminderCancelled
+  // 함수역할: 구형 고정 ID 예약은 현재 앱이 다시 만들지 않으므로 설치마다 한 번만 지우면 된다. 네 시간대의
+  //   구형 ID를 실제로 모두 취소한 뒤 기기에 표시해 이후 동기화가 같은 취소를 반복하지 않게 한다.
+  // 매개변수: id - 방금 취소한 알림 ID. 반환값: 완료. 표시 저장 실패는 다음 실행에서 다시 시도한다.
+  Future<void> _rememberLegacyReminderCancelled(int id) async {
+    final legacyIds = {
+      for (final slotKey in const ['morning', 'lunch', 'evening', 'bedtime'])
+        MedicationAlarm.legacyNotificationIdForSlot(slotKey),
+    };
+    if (!legacyIds.contains(id)) return;
+    _cancelledLegacyReminderIds.add(id);
+    if (!_cancelledLegacyReminderIds.containsAll(legacyIds)) return;
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      if (preferences.getBool(legacyReminderIdsCancelledKey) != true) {
+        await preferences.setBool(legacyReminderIdsCancelledKey, true);
+      }
+    } catch (error, stack) {
+      developer.log(
+        '구형 알림 정리 기록 실패',
+        name: 'NotificationService',
+        error: error,
+        stackTrace: stack,
+      );
+    }
   }
 
   // Function Name: cancelAllMedicationReminders
@@ -811,9 +881,9 @@ class NotificationService {
       }
     }
     for (final slotKey in const ['morning', 'lunch', 'evening', 'bedtime']) {
-      await _plugin.cancel(
-        id: MedicationAlarm.legacyNotificationIdForSlot(slotKey),
-      );
+      final legacyId = MedicationAlarm.legacyNotificationIdForSlot(slotKey);
+      await _plugin.cancel(id: legacyId);
+      await _rememberLegacyReminderCancelled(legacyId);
     }
     if (_pendingSelection != null) {
       _pendingSelection = null;
@@ -850,9 +920,9 @@ class NotificationService {
       }
     }
     for (final slotKey in const ['morning', 'lunch', 'evening', 'bedtime']) {
-      await _plugin.cancel(
-        id: MedicationAlarm.legacyNotificationIdForSlot(slotKey),
-      );
+      final legacyId = MedicationAlarm.legacyNotificationIdForSlot(slotKey);
+      await _plugin.cancel(id: legacyId);
+      await _rememberLegacyReminderCancelled(legacyId);
     }
   }
 
@@ -1007,7 +1077,7 @@ class NotificationService {
   }) {
     final preview = _linkedChatMessagePreview(messagePreview);
     if (showSensitiveDetails && preview.isNotEmpty) return preview;
-    return language.trim().toLowerCase().startsWith('en')
+    return isEnglishLanguage(language)
         ? 'You received a new message from a linked family member.'
         : '연동된 가족에게 새 메시지가 도착했습니다.';
   }

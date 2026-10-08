@@ -13,11 +13,14 @@ import '../controls/app_language_control.dart';
 import '../controls/check_schedule_control.dart';
 import '../controls/manage_user_setting_control.dart';
 import '../controls/set_notification_control.dart';
+import '../entities/json_value_reader.dart';
 import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_schedule_entity.dart';
+import '../entities/medication_slot_label.dart';
 import '../entities/patient_hash_entity.dart';
 import '../entities/user_setting_entity.dart';
 import 'api_config.dart';
+import 'dose_sync_service.dart';
 import 'notification_service.dart';
 
 // Function Name: MedicationAlarmSettingsLoader
@@ -106,6 +109,7 @@ const String _reminderWorkerOwnerKey = 'medbuddy_reminder_worker_owner';
 // 속성:
 // - _loadSettings (MedicationAlarmSettingsLoader): 시간대별 알림 조건 조회 경계
 // - _loadSchedules (MedicationScheduleLoader): 대상 환자의 복약 일정 조회 경계
+// - _loadTodaySchedules (MedicationScheduleLoader?): 오늘 복용 완료 여부가 담긴 일정 조회 경계
 // - _loadUserSetting (ReminderUserSettingLoader): 알림 허용·표시·언어를 정할 사용자 설정 조회
 // - _registerReminder (MedicationReminderRegistrar): 날짜별 로컬 알림 예약 경계
 // - _cancelReminder (MedicationReminderCanceler): ID 또는 시간대의 로컬 알림 취소 경계
@@ -117,6 +121,7 @@ class MedicationReminderRefreshService {
 
   final MedicationAlarmSettingsLoader _loadSettings;
   final MedicationScheduleLoader _loadSchedules;
+  final MedicationScheduleLoader? _loadTodaySchedules;
   final ReminderUserSettingLoader _loadUserSetting;
   final MedicationReminderRegistrar _registerReminder;
   final MedicationReminderCanceler _cancelReminder;
@@ -130,6 +135,7 @@ class MedicationReminderRefreshService {
   // 매개변수:
   // - loadSettings (MedicationAlarmSettingsLoader): 시간대별 알림 조건 조회 경계
   // - loadSchedules (MedicationScheduleLoader): 대상 환자의 복약 일정 조회 경계
+  // - loadTodaySchedules (MedicationScheduleLoader?): 오늘 복용 완료 여부가 담긴 일정 조회 경계. 기간 일정에는 완료 기록이 없으므로, 이미 복용한 시간대의 오늘 알림을 다시 예약하지 않으려면 필요하다.
   // - loadUserSetting (ReminderUserSettingLoader?): 알림 허용·표시·언어를 정할 사용자 설정 조회
   // - registerReminder (MedicationReminderRegistrar): 날짜별 로컬 알림 예약 경계
   // - cancelReminder (MedicationReminderCanceler): ID 또는 시간대의 로컬 알림 취소 경계
@@ -142,6 +148,7 @@ class MedicationReminderRefreshService {
   MedicationReminderRefreshService({
     required MedicationAlarmSettingsLoader loadSettings,
     required MedicationScheduleLoader loadSchedules,
+    MedicationScheduleLoader? loadTodaySchedules,
     ReminderUserSettingLoader? loadUserSetting,
     required MedicationReminderRegistrar registerReminder,
     required MedicationReminderCanceler cancelReminder,
@@ -151,6 +158,7 @@ class MedicationReminderRefreshService {
     VoidCallback? onDispose,
   }) : _loadSettings = loadSettings,
        _loadSchedules = loadSchedules,
+       _loadTodaySchedules = loadTodaySchedules,
        _loadUserSetting = loadUserSetting ?? (/* 함수이름: callback 콜백
         * 함수역할: 사용자 설정 로더가 주입되지 않았을 때 기본 사용자 설정을 제공한다.
         * 매개변수:
@@ -203,6 +211,7 @@ class MedicationReminderRefreshService {
     return MedicationReminderRefreshService(
       loadSettings: alarmControl.requestMedicationAlarm,
       loadSchedules: scheduleControl.requestMedicationScheduleWindow,
+      loadTodaySchedules: scheduleControl.requestTodayMedicationSchedule,
       loadUserSetting: userSettingControl.requestUserSetting,
       registerReminder: resolvedNotificationService.registerNotification,
       cancelReminder: resolvedNotificationService.cancelReminder,
@@ -223,6 +232,7 @@ class MedicationReminderRefreshService {
 
   // 함수이름: synchronize
   // 함수역할: 인증된 서버 상태를 기준으로 모든 로컬 시간대 알림을 갱신한다. 일시적 오류에서는 false를 반환해 Workmanager가 재시도하게 한다.
+  //   오늘 이미 모두 복용한 시간대는 오늘 알림을 다시 예약하지 않는다.
   // 매개변수:
   // - 없음.
   // 반환값:
@@ -262,6 +272,9 @@ class MedicationReminderRefreshService {
         return true;
       }
 
+      final loadTodaySchedules = _loadTodaySchedules;
+      List<MedicationSchedule>? todaySchedules;
+      var todayRequestDay = '';
       for (final slotKey in medicationScheduleSlotKeys) {
         final setting =
             settingsBySlot[slotKey] ?? MedicationAlarm.defaults(slotKey);
@@ -281,38 +294,34 @@ class MedicationReminderRefreshService {
           );
           continue;
         }
+        // 오늘 일정은 예약할 시간대가 있을 때 한 번만 읽는다. 읽지 못하면 전체를 실패로 돌려
+        // 기존 예약을 그대로 두고 재시도하게 한다.
+        if (loadTodaySchedules != null && todaySchedules == null) {
+          todayRequestDay = doseScheduleDay(_now());
+          todaySchedules = await loadTodaySchedules();
+        }
         final now = _now();
-        final activeDates = activeReminderDates(slotSchedules, now: now);
+        final activeDates = activeReminderDates(
+          slotSchedules,
+          now: now,
+          slotCompletedToday:
+              todaySchedules != null &&
+              _isSlotCompletedToday(
+                todaySchedules,
+                slotKey,
+                requestDay: todayRequestDay,
+                now: now,
+              ),
+        );
+        // 알림 문구는 약 이름을 쓰지 않으므로 이름 목록은 만들지 않는다.
         await _registerReminder(
           id: setting.notificationId,
           slotKey: setting.slotKey,
           slotTitle: slotTitle(slotKey, language),
           hour: setting.hour,
           minute: setting.minute,
-          medicationNames: slotSchedules
-              .map(/* 함수이름: map 콜백
-               * 함수역할: 알림 언어에 맞는 약 표시 이름을 추출한다.
-               * 매개변수:
-               * - schedule (MedicationSchedule): 처리할 약 이름·복용량·기간·시간대 일정
-               * 반환값:
-               * - 해당 언어의 약 표시 이름.
-               */(schedule) => schedule.displayNameForLanguage(language))
-              .where(/* Function Name: where callback
-               * Description: Excludes medication names that contain only whitespace.
-               * Parameters:
-               * - name (String): Medication name being matched or selected for display.
-               * Returns:
-               * - Whether the name has non-whitespace content.
-               */(name) => name.trim().isNotEmpty)
-              .toSet()
-              .toList(growable: false),
+          medicationNames: const [],
           activeDates: activeDates,
-          medicationNamesByDate: medicationNamesForDates(
-            slotSchedules,
-            activeDates: activeDates,
-            now: now,
-            language: language,
-          ),
           language: language,
         );
       }
@@ -328,16 +337,44 @@ class MedicationReminderRefreshService {
     }
   }
 
+  // 함수이름: _isSlotCompletedToday
+  // 함수역할: 오늘 일정에서 한 시간대의 약을 모두 복용했는지 판정한다. 조회 도중 날짜가 바뀌었거나 서버의 오늘과
+  //   기기의 오늘이 다르면 완료로 보지 않아, 복용하지 않은 날의 알림이 빠지지 않게 한다.
+  // 매개변수:
+  // - todaySchedules (List<MedicationSchedule>): 완료 여부가 담긴 오늘 일정
+  // - slotKey (String): morning·lunch·evening·bedtime 복약 시간대 키
+  // - requestDay (String): 조회를 시작할 때의 서버 기준 날짜
+  // - now (DateTime): 조회를 마친 뒤의 현재 시각
+  // 반환값:
+  // - bool: 오늘 그 시간대에 약이 있고 모두 복용했으면 true.
+  static bool _isSlotCompletedToday(
+    List<MedicationSchedule> todaySchedules,
+    String slotKey, {
+    required String requestDay,
+    required DateTime now,
+  }) {
+    if (doseScheduleDay(now) != requestDay || _dateKey(now) != requestDay) {
+      return false;
+    }
+    final slotSchedules = todaySchedules.where(
+      (schedule) => schedule.slotKeys.contains(slotKey),
+    );
+    return slotSchedules.isNotEmpty &&
+        slotSchedules.every((schedule) => schedule.isSlotCompleted(slotKey));
+  }
+
   // Function Name: activeReminderDates
-  // Description: Returns sorted unique local dates in the next 14-day window without extending beyond course end; missing start dates use today and unknown durations do not extend beyond today.
+  // Description: Returns sorted unique local dates in the next 14-day window without extending beyond course end; missing start dates use today and unknown durations do not extend beyond today. Today is left out when the slot is already completed, so foreground and background refreshes follow one rule and neither re-arms a reminder for a dose already taken.
   // Parameters:
   // - schedules (List<MedicationSchedule>): Medication schedules used for lookup, comparison, or reminders.
   // - now (DateTime): Reference timestamp for comparisons and calendar calculations.
+  // - slotCompletedToday (bool): Whether every medication of this slot is recorded as taken today.
   // Returns:
   // - List<DateTime>: Sorted unique local dates in the next 14-day window without extending beyond course end; missing start dates use today and unknown durations do not extend beyond today.
   static List<DateTime> activeReminderDates(
     List<MedicationSchedule> schedules, {
     required DateTime now,
+    bool slotCompletedToday = false,
   }) {
     final today = DateTime(now.year, now.month, now.day);
     final lastReservableDate = today.add(
@@ -368,86 +405,10 @@ class MedicationReminderRefreshService {
       }
     }
 
+    if (slotCompletedToday) {
+      activeDateKeys.remove(_dateKey(today));
+    }
     return activeDateKeys.values.toList(growable: false)..sort();
-  }
-
-  // 함수이름: medicationNamesForDates
-  // 함수역할: 각 알림 날짜에 실제 복용 중인 약 이름만 구성한다.
-  // 매개변수:
-  // - schedules (List<MedicationSchedule>): 한 알림 시간대에 배정된 복약 일정
-  // - activeDates (List<DateTime>): 로컬 알림을 받을 제한된 날짜 목록
-  // - now (DateTime): 시작일이 없는 일정의 기준이 되는 현재 지역 시각
-  // - language (String): 표시·음성 안내에 사용할 언어 코드
-  // 반환값:
-  // - 지역 ISO 달력 날짜별 약 표시 이름 목록
-  static Map<String, List<String>> medicationNamesForDates(
-    List<MedicationSchedule> schedules, {
-    required List<DateTime> activeDates,
-    required DateTime now,
-    required String language,
-  }) {
-    final today = DateTime(now.year, now.month, now.day);
-    return {
-      for (final activeDate in activeDates)
-        _dateKey(activeDate): schedules
-            .where(
-              // Function Name: where callback
-              // Description: Includes schedules active on the reminder date, using today when their start date is absent.
-              // Parameters:
-              // - schedule (MedicationSchedule): Medication course with name, dose, duration, and slots.
-              // Returns:
-              // - Whether this schedule is active on the target date.
-              (schedule) => _isScheduleActiveOnDate(
-                schedule,
-                activeDate,
-                fallbackStartDate: today,
-              ),
-            )
-            .map(/* 함수이름: map 콜백
-             * 함수역할: 날짜별 알림 언어에 맞춘 약 표시 이름의 앞뒤 공백을 제거한다.
-             * 매개변수:
-             * - schedule (MedicationSchedule): 처리할 약 이름·복용량·기간·시간대 일정
-             * 반환값:
-             * - 공백 정리된 번역 약 이름.
-             */(schedule) => schedule.displayNameForLanguage(language).trim())
-            .where(/* Function Name: where callback
-             * Description: Keeps nonempty medication names for the reminder body.
-             * Parameters:
-             * - name (String): Medication name being matched or selected for display.
-             * Returns:
-             * - Whether the name is nonempty.
-             */(name) => name.isNotEmpty)
-            .toSet()
-            .toList(growable: false),
-    };
-  }
-
-  // Function Name: _isScheduleActiveOnDate
-  // Description: Tests inclusive course boundaries using prescription date, creation date, or the supplied fallback, with unknown duration ending at the fallback date.
-  // Parameters:
-  // - schedule (MedicationSchedule): Medication course with name, dose, duration, and slots.
-  // - date (DateTime): Timestamp used for calendar-date calculation or comparison.
-  // - fallbackStartDate (DateTime): Start-date fallback when prescription and creation dates are absent.
-  // Returns:
-  // - bool: Tests inclusive course boundaries using prescription date, creation date, or the supplied fallback, with unknown duration ending at the fallback date.
-  static bool _isScheduleActiveOnDate(
-    MedicationSchedule schedule,
-    DateTime date, {
-    required DateTime fallbackStartDate,
-  }) {
-    final rawStartDate =
-        schedule.prescriptionDate ?? schedule.createdDate ?? fallbackStartDate;
-    final startDate = DateTime(
-      rawStartDate.year,
-      rawStartDate.month,
-      rawStartDate.day,
-    );
-    final targetDate = DateTime(date.year, date.month, date.day);
-    final courseDays = schedule.medicationTime;
-    final endDate = courseDays > 0
-        ? startDate.add(Duration(days: courseDays - 1))
-        : fallbackStartDate;
-    return !targetDate.isBefore(startDate) && !targetDate.isAfter(endDate);
   }
 
   // Function Name: slotTitle
@@ -458,14 +419,12 @@ class MedicationReminderRefreshService {
   // Returns:
   // - String: Selects a localized medication slot title, using a general schedule label for unknown keys.
   static String slotTitle(String slotKey, String language) {
-    final isEnglish = language == 'en';
-    return switch (slotKey) {
-      'morning' => isEnglish ? 'Morning' : '아침',
-      'lunch' => isEnglish ? 'Lunch' : '점심',
-      'evening' => isEnglish ? 'Evening' : '저녁',
-      'bedtime' => isEnglish ? 'Bedtime' : '취침 전',
-      _ => isEnglish ? 'Schedule' : '일정',
-    };
+    final isEnglish = isEnglishLanguage(language);
+    return medicationSlotLabel(
+      slotKey,
+      isEnglish: isEnglish,
+      fallback: isEnglish ? 'Schedule' : '일정',
+    );
   }
 
   // Function Name: _dateKey
@@ -474,11 +433,7 @@ class MedicationReminderRefreshService {
   // - date (DateTime): Timestamp used for calendar-date calculation or comparison.
   // Returns:
   // - String: Formats a local calendar date as a zero-padded YYYY-MM-DD key for dated reminder names.
-  static String _dateKey(DateTime date) {
-    return '${date.year.toString().padLeft(4, '0')}-'
-        '${date.month.toString().padLeft(2, '0')}-'
-        '${date.day.toString().padLeft(2, '0')}';
-  }
+  static String _dateKey(DateTime date) => formatJsonDate(date)!;
 
   // Function Name: dispose
   // Description: Releases the control resources owned by the live composition through its injected cleanup callback.

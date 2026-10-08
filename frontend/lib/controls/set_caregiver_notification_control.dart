@@ -60,9 +60,10 @@ class SetCaregiverNotification {
       final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
-        throw StateError(
-          'Caregiver notification lookup failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        throw ApiResponseParser.httpFailure(
+          'Caregiver notification lookup failed',
+          response,
+          responseBody,
         );
       }
 
@@ -76,7 +77,10 @@ class SetCaregiverNotification {
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Caregiver notification lookup failed.');
+      throw ApiResponseParser.transportFailure(
+        'Caregiver notification lookup failed',
+        error,
+      );
     }
   }
 
@@ -95,9 +99,10 @@ class SetCaregiverNotification {
       final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
-        throw StateError(
-          'Caregiver notification lookup failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        throw ApiResponseParser.httpFailure(
+          'Caregiver notification lookup failed',
+          response,
+          responseBody,
         );
       }
 
@@ -111,7 +116,10 @@ class SetCaregiverNotification {
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Caregiver notification lookup failed.');
+      throw ApiResponseParser.transportFailure(
+        'Caregiver notification lookup failed',
+        error,
+      );
     }
   }
 
@@ -149,9 +157,10 @@ class SetCaregiverNotification {
       final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
-        throw StateError(
-          'Caregiver notification save failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        throw ApiResponseParser.httpFailure(
+          'Caregiver notification save failed',
+          response,
+          responseBody,
         );
       }
 
@@ -165,7 +174,10 @@ class SetCaregiverNotification {
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Caregiver notification save failed.');
+      throw ApiResponseParser.transportFailure(
+        'Caregiver notification save failed',
+        error,
+      );
     }
   }
 

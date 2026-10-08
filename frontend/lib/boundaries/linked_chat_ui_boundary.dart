@@ -17,6 +17,7 @@ import '../entities/chat_message_draft_entity.dart';
 import '../entities/medication_image_url_entity.dart';
 import '../entities/nearby_care_entity.dart';
 import '../entities/medication_schedule_entity.dart';
+import '../entities/medication_slot_label.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/linked_chat_realtime_service.dart';
@@ -25,7 +26,7 @@ import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 import '../viewmodels/linked_chat_history_view_model.dart';
 import '../viewmodels/linked_chat_composer_view_model.dart';
-import '../services/dose_sync_service.dart';
+import '../viewmodels/linked_chat_dose_recorder.dart';
 import '../widgets/dose_sync_status.dart';
 import '../widgets/medbuddy_page_header.dart';
 
@@ -145,7 +146,6 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   String? _selectedMedicationScheduleDate;
   String? _sendErrorMessage;
   bool _isRecordingTaken = false;
-  final Map<String, String> _pendingTakenRequests = {};
   bool _isSelectingMessages = false;
   bool _isDeletingMessages = false;
   final Set<int> _selectedMessageIds = {};
@@ -165,6 +165,8 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   late final LinkedChatHistoryViewModel _history;
 
   late final LinkedChatComposerViewModel _composer;
+
+  late final LinkedChatDoseRecorder _doseRecorder;
 
   // Function Name: _isSending
   // Description: Prevents UI actions from racing either an outgoing message or a dose record.
@@ -303,6 +305,12 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       linkId: _configuration.linkId,
       control: _control,
     )..addListener(_composerChanged);
+    _doseRecorder = LinkedChatDoseRecorder(
+      linkId: _configuration.linkId,
+      currentUserHash: _configuration.currentUserHash,
+      control: _control,
+      createRequestId: _composer.createClientMessageId,
+    );
     _history = LinkedChatHistoryViewModel(
       linkId: _configuration.linkId,
       userHash: _configuration.currentUserHash,
@@ -514,19 +522,13 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
       setState(() {
         if (_medicationContexts.isEmpty) {
-          final sync = context.read<MedBuddyViewModel?>()?.doseSync;
-          if (_isPatient && sync != null && sync.hasCache) {
-            _medicationContexts = [
-              for (final s in sync.schedules)
-                if (int.tryParse(s.medicationID) case final medicationId?)
-                  ChatMedicationContext(
-                    medicationId: medicationId,
-                    medicationName: s.medicationName,
-                    dosagePerTime: s.dosage,
-                    scheduleSlotKeys: s.slotKeys,
-                    imageUrl: s.imageUrl ?? '',
-                  ),
-            ];
+          final cached = _isPatient
+              ? _doseRecorder.cachedMedicationContexts(
+                  context.read<MedBuddyViewModel?>(),
+                )
+              : null;
+          if (cached != null) {
+            _medicationContexts = cached;
           } else {
             _sendErrorMessage = _text.medicationLoadFailed;
           }
@@ -695,6 +697,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   }
 
   // 선택 화면에서 정한 날짜/시간대/약 조합을 그대로 기록한다.
+  // 검증과 저장은 LinkedChatDoseRecorder가 맡고, 여기서는 진행 표시·오류 문구·선택 정리만 한다.
   // 시간대별 성공 항목만 선택에서 빼므로 부분 실패 시 미처리 항목만 재시도한다.
   Future<void> _recordSelectedMedicationTaken(
     List<ChatMedicationContext> selectedMedications,
@@ -707,116 +710,43 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       _sendErrorMessage = null;
     });
     try {
-      final sync = viewModel?.doseSync;
-      final contexts = sync != null && sync.hasCache
-          ? [
-              for (final slot in medicationScheduleSlotKeys)
-                ChatScheduleContext(
-                  scheduleDate: doseScheduleDay(sync.clock()),
-                  slotKey: slot,
-                  alarmTime: '',
-                  alarmEnabled: false,
-                  completedCount: 0,
-                  totalCount: sync.schedules
-                      .where((s) => s.slotKeys.contains(slot))
-                      .length,
-                  medications: [
-                    for (final s in sync.schedules.where(
-                      (s) => s.slotKeys.contains(slot),
-                    ))
-                      if (int.tryParse(s.medicationID) case final medicationId?)
-                        ChatMedicationContext(
-                          medicationId: medicationId,
-                          medicationName: s.medicationName,
-                          dosagePerTime: s.dosage,
-                        ),
-                  ],
-                ),
-            ]
-          : await _control.requestScheduleContexts(
-              linkId: _configuration.linkId,
-            );
-      if (!mounted) return;
-      final requests = <({ChatScheduleContext slot, List<int> ids})>[];
-      for (final slotKey in medicationScheduleSlotKeys) {
-        final ids =
-            selectedMedications
-                .where((m) => m.scheduleSlotKeys.contains(slotKey))
-                .map((m) => m.medicationId)
-                .toSet()
-                .toList()
-              ..sort();
-        if (ids.isEmpty) continue;
-        final slot = contexts
-            .where(
-              (slot) =>
-                  slot.slotKey == slotKey && slot.scheduleDate == selectedDate,
-            )
-            .firstOrNull;
-        final availableIds =
-            slot?.medications.map((m) => m.medicationId).toSet() ?? <int>{};
-        // Validate all selections before writing; never substitute another dose/day.
-        if (slot == null || !ids.every(availableIds.contains)) {
-          setState(() => _sendErrorMessage = _text.selectionScheduleChanged);
-          return;
+      final contexts = await _doseRecorder.loadScheduleContexts(viewModel);
+      // Validate all selections before writing; never substitute another dose/day.
+      final plan = LinkedChatDoseRecorder.plan(
+        selectedMedications,
+        selectedDate,
+        contexts,
+      );
+      if (plan.status != ChatDosePlanStatus.ready) {
+        if (mounted) {
+          setState(
+            () => _sendErrorMessage =
+                plan.status == ChatDosePlanStatus.scheduleChanged
+                ? _text.selectionScheduleChanged
+                : _text.noConfirmableSchedule,
+          );
         }
-        requests.add((slot: slot, ids: ids));
-      }
-      if (requests.isEmpty) {
-        setState(() => _sendErrorMessage = _text.noConfirmableSchedule);
         return;
       }
-      for (final request in requests) {
-        final slot = request.slot;
-        final medicationIds = request.ids;
-        final signature =
-            '${slot.scheduleDate}:${slot.slotKey}:${medicationIds.join(',')}';
-        if (sync != null) {
-          final saved = await sync.record(
-            medicationIds: medicationIds,
-            slotKey: slot.slotKey,
-            completed: true,
-            scheduleDate: slot.scheduleDate,
-            linkId: _configuration.linkId,
-            medicationNames: selectedMedications
-                .where((m) => medicationIds.contains(m.medicationId))
-                .map((m) => m.medicationName)
-                .toList(),
-          );
-          if (!saved) throw StateError('Dose was not queued.');
-        } else {
-          final requestId = _pendingTakenRequests.putIfAbsent(
-            signature,
-            _composer.createClientMessageId,
-          );
-          final result = await _control.recordMedicationTaken(
-            linkId: _configuration.linkId,
-            clientMessageId: requestId,
-            scheduleDate: slot.scheduleDate,
-            slotKey: slot.slotKey,
-            medicationIds: medicationIds,
-          );
-          if (viewModel != null &&
-              viewModel.patientHash == _configuration.currentUserHash) {
-            viewModel.applyConfirmedTodaySchedules(result.schedules);
-          }
-          _pendingTakenRequests.remove(signature);
-          if (mounted) {
-            _history.addMessage(result.message);
-          }
-        }
-        if (!mounted) return;
+      for (final request in plan.requests) {
+        final message = await _doseRecorder.record(
+          request,
+          viewModel: viewModel,
+        );
+        // 화면을 벗어나도 사용자가 확인한 나머지 시간대는 끝까지 기록하고 화면 갱신만 생략한다.
+        if (!mounted) continue;
+        if (message != null) _history.addMessage(message);
         setState(() {
           _selectedMedicationContexts = [
             for (final medication in _selectedMedicationContexts)
-              if (!medicationIds.contains(medication.medicationId))
+              if (!request.medicationIds.contains(medication.medicationId))
                 medication
               else if (medication.scheduleSlotKeys.any(
-                (s) => s != slot.slotKey,
+                (s) => s != request.slotKey,
               ))
                 medication.withScheduleSlots(
                   medication.scheduleSlotKeys
-                      .where((s) => s != slot.slotKey)
+                      .where((s) => s != request.slotKey)
                       .toList(),
                 ),
           ];
@@ -826,6 +756,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
           _sendErrorMessage = null;
         });
       }
+      if (!mounted) return;
       _scrollToLatest();
       await _refreshScheduleContexts();
     } catch (_) {
@@ -1077,14 +1008,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     if (_medicationContexts.isEmpty || _isSending) {
       return;
     }
-    final sync = context.read<MedBuddyViewModel?>()?.doseSync;
-    final selectionDate = sync != null && sync.hasCache
-        ? doseScheduleDay(sync.clock())
-        : _scheduleContexts
-                  .map((s) => s.scheduleDate)
-                  .where((date) => date.isNotEmpty)
-                  .firstOrNull ??
-              doseScheduleDay(DateTime.now());
+    final selectionDate = _doseRecorder.selectionDay(
+      context.read<MedBuddyViewModel?>(),
+      _scheduleContexts,
+    );
     final medicationsById = {
       for (final medication in _medicationContexts)
         medication.medicationId: medication,
@@ -3047,6 +2974,8 @@ class _MedicationThumbnail extends StatelessWidget {
         width: size,
         height: size,
         fit: BoxFit.contain,
+        // 원본 해상도 대신 표시 크기에 맞춰 디코딩해 목록의 이미지 메모리를 줄인다.
+        cacheWidth: (size * MediaQuery.devicePixelRatioOf(context)).round(),
         // 함수이름: build.errorBuilder callback
         // 함수역할: 이미지를 해석하거나 불러올 수 없으면 사진 없음 대체 표시를 구성한다.
         // 매개변수:
@@ -3323,7 +3252,7 @@ class _LinkedChatText {
   // 매개변수:
   // - 없음.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
-  bool get isEnglish => language.trim().toLowerCase().startsWith('en');
+  bool get isEnglish => isEnglishLanguage(language);
 
   String get findNearbyCare =>
       isEnglish ? 'Find hospitals or pharmacies' : '병원·약국 찾기';
@@ -3697,13 +3626,11 @@ class _LinkedChatText {
   // - slotKey (String): 아침·점심·저녁·취침 전을 구분하는 시간대 키.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String slotLabel(String slotKey) {
-    return switch (slotKey) {
-      'morning' => isEnglish ? 'Morning' : '아침',
-      'lunch' => isEnglish ? 'Lunch' : '점심',
-      'evening' => isEnglish ? 'Evening' : '저녁',
-      'bedtime' => isEnglish ? 'Bedtime' : '취침 전',
-      _ => isEnglish ? 'Medication' : '복약',
-    };
+    return medicationSlotLabel(
+      slotKey,
+      isEnglish: isEnglish,
+      fallback: isEnglish ? 'Medication' : '복약',
+    );
   }
 
   // 함수이름: slotIcon

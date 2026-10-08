@@ -2,6 +2,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../entities/caregiver_alert_context_entity.dart';
+import '../entities/user_setting_entity.dart';
 import 'notification_inbox_store.dart';
 import 'notification_service.dart';
 
@@ -27,7 +28,7 @@ class CaregiverAlertDeliveryService {
           preferences.getBool(key) == true) {
         return false;
       }
-      final language = data['language'] == 'en' ? 'en' : 'ko';
+      final language = normalizeAppLanguage(data['language']?.toString());
       final detailed = preferences.getString(
         'user_setting_${alert.recipientHash}_notification_detail_mode',
       ) != 'type_only';

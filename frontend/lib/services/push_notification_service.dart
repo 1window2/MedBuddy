@@ -12,6 +12,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../entities/notification_inbox_entity.dart';
 import '../entities/caregiver_alert_context_entity.dart';
+import '../entities/medication_slot_label.dart';
+import '../entities/user_setting_entity.dart';
 import 'caregiver_alert_delivery_service.dart';
 import 'api_config.dart';
 import 'auth_config.dart';
@@ -40,7 +42,9 @@ Future<void> recordPushNotificationHistory(
       return;
     }
     final type = message.data['type'];
-    final english = (language ?? message.data['language']) == 'en';
+    final english = isEnglishLanguage(
+      language ?? message.data['language']?.toString(),
+    );
     late final String payload;
     late final String title;
     late final String body;
@@ -128,10 +132,64 @@ void registerMedBuddyPushBackgroundHandler() {
   }
 }
 
+// 클래스명: PushMessagingPlatform
+// 역할: PushNotificationService가 쓰는 FCM 호출을 한곳에 묶는다.
+// 주요 책임:
+// - 기본 구현은 실제 FirebaseMessaging을 호출한다.
+// - 테스트는 이 클래스를 대체해 토큰 발급·갱신과 메시지 수신을 재현한다.
+class PushMessagingPlatform {
+  final FirebaseMessaging? _injectedMessaging;
+
+  // 함수이름: PushMessagingPlatform
+  // 함수역할: 주입된 FCM 인스턴스를 쓰고, 없으면 처음 필요할 때 기본 인스턴스를 고른다.
+  // 매개변수: messaging - 선택적 FCM 인스턴스. 반환값: 초기화된 인스턴스.
+  const PushMessagingPlatform({FirebaseMessaging? messaging})
+    : _injectedMessaging = messaging;
+
+  FirebaseMessaging get _messaging =>
+      _injectedMessaging ?? FirebaseMessaging.instance;
+
+  // 함수이름: enabled
+  // 함수역할: 서버 푸시를 쓰는 인증 모드인지 알려 준다. 반환값: Firebase 인증 모드이면 true.
+  bool get enabled => AuthConfig.mode == AuthenticationMode.firebase;
+
+  // 함수이름: registerBackgroundHandler
+  // 함수역할: 앱이 꺼져 있을 때 받은 메시지를 처리할 함수를 등록한다. 반환값: 없음.
+  void registerBackgroundHandler() =>
+      FirebaseMessaging.onBackgroundMessage(medBuddyPushBackgroundHandler);
+
+  // 함수이름: requestPermission
+  // 함수역할: 알림 표시 권한을 요청한다. 반환값: 사용자가 응답하면 완료되는 Future.
+  Future<void> requestPermission() =>
+      _messaging.requestPermission(alert: true, badge: true, sound: true);
+
+  // 함수이름: getToken
+  // 함수역할: 이 기기의 현재 FCM 토큰을 받는다. 반환값: 토큰 또는 아직 없으면 null.
+  Future<String?> getToken() => _messaging.getToken();
+
+  // 함수이름: onTokenRefresh
+  // 함수역할: Firebase가 토큰을 바꿀 때마다 새 토큰을 전달한다. 반환값: 토큰 스트림.
+  Stream<String> get onTokenRefresh => _messaging.onTokenRefresh;
+
+  // 함수이름: onMessage
+  // 함수역할: 앱이 열려 있을 때 받은 메시지를 전달한다. 반환값: 메시지 스트림.
+  Stream<RemoteMessage> get onMessage => FirebaseMessaging.onMessage;
+
+  // 함수이름: onMessageOpenedApp
+  // 함수역할: 사용자가 알림을 눌러 앱을 앞으로 가져온 메시지를 전달한다. 반환값: 메시지 스트림.
+  Stream<RemoteMessage> get onMessageOpenedApp =>
+      FirebaseMessaging.onMessageOpenedApp;
+
+  // 함수이름: getInitialMessage
+  // 함수역할: 꺼져 있던 앱을 알림으로 실행한 메시지를 받는다. 반환값: 메시지 또는 null.
+  Future<RemoteMessage?> getInitialMessage() => _messaging.getInitialMessage();
+}
+
 // 클래스명: PushNotificationService
 // 역할: 서버 푸시 등록과 전경 보호자 알림 표시를 앱 생명주기에 맞춰 처리한다.
 // 주요 책임:
 // - 로그인한 기기의 FCM 토큰을 백엔드에 등록한다.
+// - 등록에 실패하면 수신 구독은 유지한 채 간격을 늘려 가며 다시 시도한다.
 // - Firebase가 토큰을 갱신하면 서버 등록값도 교체한다.
 // - 앱이 열려 있을 때 수신한 보호자 알림을 로컬 알림으로 표시한다.
 // - 로그아웃 시 현재 기기 토큰을 서버에서 비활성화한다.
@@ -140,14 +198,18 @@ void registerMedBuddyPushBackgroundHandler() {
 // - userHash (String): 현재 사용자 소유권·표시·저장 범위의 해시
 // - _client (http.Client): 요청에 사용할 HTTP 클라이언트; 주입 여부에 따른 소유권은 생성자 설명 참조
 // - _languageProvider (String Function()): 알림 생성 시점의 언어 조회 경계
-// - _messaging (FirebaseMessaging?): FCM 권한·토큰·수신 경계
+// - _platform (PushMessagingPlatform): FCM 권한·토큰·수신 경계
+// - retryBaseDelay (Duration): 시작 실패 뒤 첫 재시도까지의 간격; 실패할 때마다 두 배가 된다.
+// - retryMaxDelay (Duration): 재시도 간격의 상한
 class PushNotificationService {
   static const Duration _requestTimeout = Duration(seconds: 10);
 
   final String userHash;
   final http.Client _client;
   final String Function() _languageProvider;
-  FirebaseMessaging? _messaging;
+  final PushMessagingPlatform _platform;
+  final Duration retryBaseDelay;
+  final Duration retryMaxDelay;
 
   StreamSubscription<String>? _tokenRefreshSubscription;
   StreamSubscription<RemoteMessage>? _foregroundMessageSubscription;
@@ -155,8 +217,17 @@ class PushNotificationService {
   String? _registeredToken;
   bool _started = false;
   bool _stopping = false;
+  // 시작 단계별 완료 여부. 재시도는 끝내지 못한 단계만 다시 수행한다.
+  bool _listening = false;
+  bool _initialMessageChecked = false;
+  bool _permissionRequested = false;
+  bool _registrationPending = true;
   Future<void>? _startOperation;
-  final Set<Future<void>> _pendingTokenRegistrations = <Future<void>>{};
+  Timer? _retryTimer;
+  int _retryAttempt = 0;
+  // 같은 토큰의 등록 요청이 겹치면 진행 중인 요청 하나를 함께 기다린다.
+  final Map<String, Future<void>> _pendingTokenRegistrations =
+      <String, Future<void>>{};
 
   // 함수이름: PushNotificationService
   // 함수역할: 현재 사용자와 인증 HTTP 클라이언트, 선택적 FCM 인스턴스 및 표시 언어 제공자를 연결한다.
@@ -165,6 +236,9 @@ class PushNotificationService {
   // - client (http.Client): 요청에 사용할 HTTP 클라이언트; 주입 여부에 따른 소유권은 생성자 설명 참조
   // - messaging (FirebaseMessaging?): FCM 권한·토큰·수신 경계
   // - languageProvider (String Function()?): 알림 생성 시점의 언어 조회 경계
+  // - platform (PushMessagingPlatform?): FCM 호출 묶음; 생략하면 messaging으로 실제 구현을 만든다.
+  // - retryBaseDelay (Duration): 시작 실패 뒤 첫 재시도까지의 간격
+  // - retryMaxDelay (Duration): 재시도 간격의 상한
   // 반환값:
   // - PushNotificationService: 초기화된 인스턴스.
   PushNotificationService({
@@ -172,9 +246,12 @@ class PushNotificationService {
     required http.Client client,
     FirebaseMessaging? messaging,
     String Function()? languageProvider,
+    PushMessagingPlatform? platform,
+    this.retryBaseDelay = const Duration(seconds: 5),
+    this.retryMaxDelay = const Duration(minutes: 5),
   }) : _client = client,
        _languageProvider = languageProvider ?? _defaultLanguage,
-       _messaging = messaging;
+       _platform = platform ?? PushMessagingPlatform(messaging: messaging);
 
   // 함수이름: _defaultLanguage
   // 함수역할: 언어 제공자가 없을 때 푸시 표시 문구에 사용할 한국어 코드를 제공한다.
@@ -185,7 +262,7 @@ class PushNotificationService {
   static String _defaultLanguage() => 'ko';
 
   // Function Name: start
-  // Description: Shares an in-flight FCM startup and starts permission, token, and message subscriptions only once in Firebase authentication mode.
+  // Description: Shares an in-flight FCM startup and starts permission, token, and message subscriptions only once in Firebase authentication mode. A failed startup keeps what already succeeded and is retried later.
   // Parameters:
   // - None.
   // Returns:
@@ -196,9 +273,53 @@ class PushNotificationService {
       await pendingStart;
       return;
     }
-    if (_started || AuthConfig.mode != AuthenticationMode.firebase) {
+    if (!_platform.enabled) {
       return;
     }
+    if (_started) {
+      // 이미 시작했다면 끝내지 못한 단계만 다시 시도한다.
+      await retryRegistration();
+      return;
+    }
+    _started = true;
+    await _runStart();
+  }
+
+  // 함수이름: retryRegistration
+  // 함수역할: 시작이 끝까지 성공하지 못했을 때 남은 단계(수신 구독, 실행 메시지 확인, 권한 요청, 토큰 등록)를
+  //   지금 다시 시도한다. 앱이 다시 앞으로 올 때 호출한다. 이미 끝났거나 시작 전·중지 중이면 아무 일도 하지 않는다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 이번 시도가 끝나면 완료된다. 실패는 기록하고 다음 재시도를 예약한다.
+  Future<void> retryRegistration() async {
+    final pendingStart = _startOperation;
+    if (pendingStart != null) {
+      await pendingStart;
+    }
+    if (!_started ||
+        _stopping ||
+        _isStartComplete ||
+        _startOperation != null) {
+      return;
+    }
+    await _runStart();
+  }
+
+  // 함수이름: _isStartComplete
+  // 함수역할: 시작의 모든 단계가 끝나 재시도할 일이 없는지 알려 준다. 반환값: 모두 끝났으면 true.
+  bool get _isStartComplete =>
+      _listening &&
+      _initialMessageChecked &&
+      _permissionRequested &&
+      !_registrationPending;
+
+  // 함수이름: _runStart
+  // 함수역할: 예약된 재시도를 취소하고 시작 시도 하나를 진행 중 작업으로 등록해 겹치는 호출이 함께 기다리게 한다.
+  // 매개변수: 없음. 반환값: 이번 시도가 끝나면 완료되는 Future.
+  Future<void> _runStart() {
+    _retryTimer?.cancel();
+    _retryTimer = null;
     late final Future<void> startOperation;
     startOperation = _start().whenComplete(
       /* Function Name: whenComplete callback
@@ -215,96 +336,137 @@ class PushNotificationService {
       },
     );
     _startOperation = startOperation;
-    await startOperation;
+    return startOperation;
   }
 
   // Function Name: _start
-  // Description: Requests FCM permission, registers the initial token, subscribes to token and message streams, and dispatches a launch message while reporting initialization failures.
+  // Description: Subscribes to token and message streams first, dispatches a launch message, then requests FCM permission and registers the current token. Each completed step is remembered, so a later attempt repeats only what failed and never subscribes or prompts twice; a failure is reported and retried with a growing delay.
   // Parameters:
   // - None.
   // Returns:
   // - Future<void>: asynchronous completion without a result payload.
   Future<void> _start() async {
-    _started = true;
     try {
-      // 포그라운드 수신을 구독하기 전에, 이 기기에 저장된 계정 설정이 내용 숨김이면 먼저 적용한다.
-      // 설정 조회가 끝나기 전에 도착한 보호자 알림이 세부 내용을 다시 만들지 않게 한다.
-      final preferences = await SharedPreferences.getInstance();
-      if (preferences.getString(
-            'user_setting_${userHash.trim()}_notification_detail_mode',
-          ) ==
-          'type_only') {
-        NotificationService.instance.setShowSensitiveDetails(false);
+      if (!_listening) {
+        // 포그라운드 수신을 구독하기 전에, 이 기기에 저장된 계정 설정이 내용 숨김이면 먼저 적용한다.
+        // 설정 조회가 끝나기 전에 도착한 보호자 알림이 세부 내용을 다시 만들지 않게 한다.
+        final preferences = await SharedPreferences.getInstance();
+        if (preferences.getString(
+              'user_setting_${userHash.trim()}_notification_detail_mode',
+            ) ==
+            'type_only') {
+          NotificationService.instance.setShowSensitiveDetails(false);
+        }
+        _platform.registerBackgroundHandler();
+        // 토큰 등록이 실패해도 수신과 알림 선택은 동작하도록 구독을 먼저 연결한다.
+        _tokenRefreshSubscription ??= _platform.onTokenRefresh.listen(
+          /* Function Name: listen callback
+         * Description: Registers each refreshed FCM token; a failed registration is reported and retried later.
+         * Parameters:
+         * - refreshedToken (String): Refreshed Firebase device messaging token.
+         * Returns:
+         * - No return value.
+         */
+          (refreshedToken) {
+            unawaited(
+              _trackTokenRegistration(refreshedToken).catchError(
+                /* Function Name: catchError callback
+             * Description: Routes refreshed-token registration failures to the push error reporter and schedules a retry.
+             * Parameters:
+             * - error (Object): Original failure object to classify or record.
+             * - stackTrace (StackTrace): Call stack recorded alongside the error.
+             * Returns:
+             * - No return value.
+             */
+                (Object error, StackTrace stackTrace) {
+                  _reportPushError(error, stackTrace);
+                  _registrationPending = true;
+                  _scheduleRetry();
+                },
+              ),
+            );
+          },
+          onError: _reportPushError,
+        );
+        _foregroundMessageSubscription ??= _platform.onMessage.listen(
+          /* 함수이름: listen 콜백
+         * 함수역할: 포그라운드 FCM 메시지를 로컬 알림 표시 처리기로 전달한다.
+         * 매개변수:
+         * - message (RemoteMessage): Firebase에서 수신한 푸시 메시지
+         * 반환값:
+         * - 없음; 알림 표시는 비동기로 이어진다.
+         */
+          (message) {
+            unawaited(_showForegroundMessage(message));
+          },
+          onError: _reportPushError,
+        );
+        _openedMessageSubscription ??= _platform.onMessageOpenedApp.listen(
+          _handleOpenedMessage,
+          onError: _reportPushError,
+        );
+        _listening = true;
       }
-      final messaging = _resolvedMessaging;
-      FirebaseMessaging.onBackgroundMessage(medBuddyPushBackgroundHandler);
-      await messaging.requestPermission(alert: true, badge: true, sound: true);
-      final token = await messaging.getToken();
+      if (!_initialMessageChecked) {
+        final initialMessage = await _platform.getInitialMessage();
+        _initialMessageChecked = true;
+        if (initialMessage != null) {
+          _handleOpenedMessage(initialMessage);
+        }
+      }
+      if (!_permissionRequested) {
+        await _platform.requestPermission();
+        _permissionRequested = true;
+      }
+      // 이 시도 중에 갱신 토큰 등록이 실패하면 다시 true가 되어 재시도 대상으로 남는다.
+      _registrationPending = false;
+      final token = await _platform.getToken();
       if (token != null && token.trim().isNotEmpty) {
         await _trackTokenRegistration(token);
       }
-      _tokenRefreshSubscription = messaging.onTokenRefresh.listen(
-        /* Function Name: listen callback
-       * Description: Registers each refreshed FCM token and reports asynchronous registration failures.
-       * Parameters:
-       * - refreshedToken (String): Refreshed Firebase device messaging token.
-       * Returns:
-       * - No return value.
-       */
-        (refreshedToken) {
-          unawaited(
-            _trackTokenRegistration(refreshedToken).catchError(
-              /* Function Name: catchError callback
-           * Description: Routes refreshed-token registration failures to the push error reporter.
-           * Parameters:
-           * - error (Object): Original failure object to classify or record.
-           * - stackTrace (StackTrace): Call stack recorded alongside the error.
-           * Returns:
-           * - No return value.
-           */
-              (Object error, StackTrace stackTrace) {
-                _reportPushError(error, stackTrace);
-              },
-            ),
-          );
-        },
-        onError: _reportPushError,
-      );
-      _foregroundMessageSubscription = FirebaseMessaging.onMessage.listen(
-        /* 함수이름: listen 콜백
-       * 함수역할: 포그라운드 FCM 메시지를 로컬 알림 표시 처리기로 전달한다.
-       * 매개변수:
-       * - message (RemoteMessage): Firebase에서 수신한 푸시 메시지
-       * 반환값:
-       * - 없음; 알림 표시는 비동기로 이어진다.
-       */
-        (message) {
-          unawaited(_showForegroundMessage(message));
-        },
-        onError: _reportPushError,
-      );
-      _openedMessageSubscription = FirebaseMessaging.onMessageOpenedApp.listen(
-        _handleOpenedMessage,
-        onError: _reportPushError,
-      );
-      final initialMessage = await messaging.getInitialMessage();
-      if (initialMessage != null) {
-        _handleOpenedMessage(initialMessage);
+      if (!_registrationPending) {
+        _retryAttempt = 0;
       }
     } catch (error, stackTrace) {
-      _started = false;
+      _registrationPending = true;
       _reportPushError(error, stackTrace);
+      _scheduleRetry();
     }
   }
 
+  // 함수이름: _scheduleRetry
+  // 함수역할: 시작 실패 뒤 다음 시도를 예약한다. 간격은 retryBaseDelay에서 시작해 실패할 때마다 두 배가 되고
+  //   retryMaxDelay를 넘지 않는다. 이미 예약되어 있거나 시작 전·중지 중이면 예약하지 않는다.
+  // 매개변수: 없음. 반환값: 없음.
+  void _scheduleRetry() {
+    if (!_started || _stopping || _retryTimer != null) {
+      return;
+    }
+    final proposedMilliseconds =
+        retryBaseDelay.inMilliseconds * (1 << _retryAttempt.clamp(0, 16));
+    final delay = Duration(
+      milliseconds: proposedMilliseconds.clamp(
+        0,
+        retryMaxDelay.inMilliseconds,
+      ),
+    );
+    _retryAttempt += 1;
+    _retryTimer = Timer(delay, () {
+      _retryTimer = null;
+      unawaited(retryRegistration());
+    });
+  }
+
   // Function Name: stop
-  // Description: Waits for startup and tracked token registrations, unregisters the last token, and cancels message subscriptions; strict cleanup rethrows server-unregistration failure before discarding state.
+  // Description: Cancels any scheduled start retry, waits for startup and tracked token registrations, unregisters the last token, and cancels message subscriptions; strict cleanup rethrows server-unregistration failure before discarding state.
   // Parameters:
   // - requireServerUnregistration (bool): Whether server token-unregistration failure must propagate to the caller.
   // Returns:
   // - Future<void>: asynchronous completion without a result payload.
   Future<void> stop({bool requireServerUnregistration = false}) async {
     _stopping = true;
+    _retryTimer?.cancel();
+    _retryTimer = null;
     await _startOperation;
     await _awaitPendingTokenRegistrations();
     final token = _registeredToken;
@@ -330,12 +492,17 @@ class PushNotificationService {
         _reportPushError(error, stackTrace);
         if (requireServerUnregistration) {
           _stopping = false;
+          // 중지가 취소되었으므로 끝내지 못한 시작 단계의 재시도를 다시 예약한다.
+          if (!_isStartComplete) _scheduleRetry();
           rethrow;
         }
       }
     }
 
     _started = false;
+    _listening = false;
+    _registrationPending = true;
+    _retryAttempt = 0;
     await _tokenRefreshSubscription?.cancel();
     await _foregroundMessageSubscription?.cancel();
     await _openedMessageSubscription?.cancel();
@@ -368,13 +535,19 @@ class PushNotificationService {
   }
 
   // Function Name: _trackTokenRegistration
-  // Description: Tracks token registration until settlement so sign-out waits for it, and rejects new work while cleanup is stopping the service.
+  // Description: Tracks token registration until settlement so sign-out waits for it, and rejects new work while cleanup is stopping the service. A second request for a token that is already being registered joins the request in flight, so the start path and the token-refresh listener do not register the same token twice.
   // Parameters:
   // - token (String): Current device push token issued by Firebase.
   // Returns:
   // - Future<void>: asynchronous completion without a result payload.
   Future<void> _trackTokenRegistration(String token) async {
     if (_stopping) {
+      return;
+    }
+    final normalizedToken = token.trim();
+    final inFlight = _pendingTokenRegistrations[normalizedToken];
+    if (inFlight != null) {
+      await inFlight;
       return;
     }
     late final Future<void> registration;
@@ -387,10 +560,15 @@ class PushNotificationService {
      * - No return value.
      */
       () {
-        _pendingTokenRegistrations.remove(registration);
+        if (identical(
+          _pendingTokenRegistrations[normalizedToken],
+          registration,
+        )) {
+          _pendingTokenRegistrations.remove(normalizedToken);
+        }
       },
     );
-    _pendingTokenRegistrations.add(registration);
+    _pendingTokenRegistrations[normalizedToken] = registration;
     await registration;
   }
 
@@ -401,7 +579,7 @@ class PushNotificationService {
   // Returns:
   // - Future<void>: asynchronous completion without a result payload.
   Future<void> _awaitPendingTokenRegistrations() async {
-    for (final registration in _pendingTokenRegistrations.toList(
+    for (final registration in _pendingTokenRegistrations.values.toList(
       growable: false,
     )) {
       try {
@@ -582,7 +760,7 @@ class PushNotificationService {
     required String? slotKey,
     required String language,
   }) {
-    final isEnglish = language.trim().toLowerCase() == 'en';
+    final isEnglish = isEnglishLanguage(language);
     final slotName = _slotName(slotKey, language);
     final isMissed = type == 'caregiver_slot_missed';
     return (
@@ -607,14 +785,13 @@ class PushNotificationService {
   // 반환값:
   // - String: 푸시 데이터의 시간대를 현재 언어의 복약 안내 이름으로 바꾸고 알 수 없는 키는 일반 복약 표현으로 처리한다.
   static String _slotName(String? slotKey, String language) {
-    final isEnglish = language.trim().toLowerCase() == 'en';
-    return switch (slotKey) {
-      'morning' => isEnglish ? 'morning' : '아침',
-      'lunch' => isEnglish ? 'lunch' : '점심',
-      'evening' => isEnglish ? 'evening' : '저녁',
-      'bedtime' => isEnglish ? 'bedtime' : '취침 전',
-      _ => isEnglish ? 'scheduled' : '복약',
-    };
+    final isEnglish = isEnglishLanguage(language);
+    return medicationSlotLabelOrNull(
+          slotKey ?? '',
+          isEnglish: isEnglish,
+          lowercase: true,
+        ) ??
+        (isEnglish ? 'scheduled' : '복약');
   }
 
   // 함수이름: _reportPushError
@@ -631,15 +808,5 @@ class PushNotificationService {
       error: error,
       stackTrace: stackTrace,
     );
-  }
-
-  // 함수이름: _resolvedMessaging
-  // 함수역할: 주입된 메시징 인스턴스를 재사용하고 없으면 FirebaseMessaging 기본 인스턴스를 지연 선택한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - FirebaseMessaging: 주입된 메시징 인스턴스를 재사용하고 없으면 FirebaseMessaging 기본 인스턴스를 지연 선택한다.
-  FirebaseMessaging get _resolvedMessaging {
-    return _messaging ??= FirebaseMessaging.instance;
   }
 }

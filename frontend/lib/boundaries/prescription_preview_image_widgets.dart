@@ -62,18 +62,15 @@ class _ScrollableCenteredCard extends StatelessWidget {
 // - 부모가 전달한 표시값과 동작을 반영해 OCR 인식 결과의 검토 안내 위젯을 구성한다.
 // 속성:
 // - message (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 class _RecognitionNoticeBanner extends StatelessWidget {
   final String message;
-  final double scale;
 
   // 함수이름: _RecognitionNoticeBanner
   // 함수역할: OCR 인식 결과의 검토 안내에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - message (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // 반환값: 입력 설정이 반영된 _RecognitionNoticeBanner 인스턴스.
-  const _RecognitionNoticeBanner({required this.message, required this.scale});
+  const _RecognitionNoticeBanner({required this.message});
 
   // 함수이름: build
   // 함수역할: 현재 입력값과 상태를 반영해 OCR 인식 결과의 검토 안내 화면을 구성한다.
@@ -84,7 +81,6 @@ class _RecognitionNoticeBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return MedBuddyNotice(
       message: message,
-      scale: scale,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
     );
   }
@@ -99,12 +95,10 @@ class _RecognitionNoticeBanner extends StatelessWidget {
 // 속성:
 // - imagePath (String): 사진 미리보기 또는 확대에 사용할 로컬 파일 경로.
 // - regions (List<RecognizedTextRegion>): 이미지 좌표에 표시할 정규화 OCR 영역.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 class _RecognizedTextRegionPreview extends StatelessWidget {
   final String imagePath;
   final List<RecognizedTextRegion> regions;
   final _PreviewText previewText;
-  final double scale;
 
   // 함수이름: _RecognizedTextRegionPreview
   // 함수역할: OCR 사용 영역과 개인정보 마스킹을 표시한 사진에 필요한 입력값과 표시 설정을 초기화한다.
@@ -112,13 +106,11 @@ class _RecognizedTextRegionPreview extends StatelessWidget {
   // - imagePath (String): 사진 미리보기 또는 확대에 사용할 로컬 파일 경로.
   // - regions (List<RecognizedTextRegion>): 이미지 좌표에 표시할 정규화 OCR 영역.
   // - previewText (_PreviewText): 해당 화면 구역의 언어별 표시 문구.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // 반환값: 입력 설정이 반영된 _RecognizedTextRegionPreview 인스턴스.
   const _RecognizedTextRegionPreview({
     required this.imagePath,
     required this.regions,
     required this.previewText,
-    required this.scale,
   });
 
   // 함수이름: build
@@ -228,7 +220,6 @@ class _RecognizedTextRegionPreview extends StatelessWidget {
           imagePath: imagePath,
           regions: regions,
           previewText: previewText,
-          scale: scale,
         );
       },
       // 함수이름: _showExpandedPreview.transitionBuilder callback
@@ -556,12 +547,10 @@ class _RecognizedImageCanvasState extends State<_RecognizedImageCanvas> {
 // 속성:
 // - imagePath (String): 사진 미리보기 또는 확대에 사용할 로컬 파일 경로.
 // - regions (List<RecognizedTextRegion>): 이미지 좌표에 표시할 정규화 OCR 영역.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 class _ExpandedRecognizedImageView extends StatelessWidget {
   final String imagePath;
   final List<RecognizedTextRegion> regions;
   final _PreviewText previewText;
-  final double scale;
 
   // 함수이름: _ExpandedRecognizedImageView
   // 함수역할: 최대 5배 확대 가능한 OCR 처리 처방전 사진에 필요한 입력값과 표시 설정을 초기화한다.
@@ -569,13 +558,11 @@ class _ExpandedRecognizedImageView extends StatelessWidget {
   // - imagePath (String): 사진 미리보기 또는 확대에 사용할 로컬 파일 경로.
   // - regions (List<RecognizedTextRegion>): 이미지 좌표에 표시할 정규화 OCR 영역.
   // - previewText (_PreviewText): 해당 화면 구역의 언어별 표시 문구.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // 반환값: 입력 설정이 반영된 _ExpandedRecognizedImageView 인스턴스.
   const _ExpandedRecognizedImageView({
     required this.imagePath,
     required this.regions,
     required this.previewText,
-    required this.scale,
   });
 
   // 함수이름: build
@@ -652,7 +639,6 @@ class _ExpandedRecognizedImageView extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
               child: _PrivacyNoticeBanner(
                 message: previewText.privacyNotice,
-                scale: scale,
               ),
             ),
           ],
@@ -668,18 +654,15 @@ class _ExpandedRecognizedImageView extends StatelessWidget {
 // - 부모가 전달한 표시값과 동작을 반영해 처방전 이미지 전송과 개인정보 처리 범위 안내 위젯을 구성한다.
 // 속성:
 // - message (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 class _PrivacyNoticeBanner extends StatelessWidget {
   final String message;
-  final double scale;
 
   // 함수이름: _PrivacyNoticeBanner
   // 함수역할: 처방전 이미지 전송과 개인정보 처리 범위 안내에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - message (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // 반환값: 입력 설정이 반영된 _PrivacyNoticeBanner 인스턴스.
-  const _PrivacyNoticeBanner({required this.message, required this.scale});
+  const _PrivacyNoticeBanner({required this.message});
 
   // 함수이름: build
   // 함수역할: 현재 입력값과 상태를 반영해 처방전 이미지 전송과 개인정보 처리 범위 안내 화면을 구성한다.
@@ -702,7 +685,7 @@ class _PrivacyNoticeBanner extends StatelessWidget {
           Icon(
             Icons.shield_outlined,
             color: MedBuddyColors.primaryDark,
-            size: 17 * scale,
+            size: 17,
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -710,7 +693,7 @@ class _PrivacyNoticeBanner extends StatelessWidget {
               message,
               style: TextStyle(
                 color: MedBuddyColors.textBody,
-                fontSize: 11 * scale,
+                fontSize: 11,
                 fontWeight: FontWeight.w600,
                 height: 1.4,
               ),
@@ -729,23 +712,19 @@ class _PrivacyNoticeBanner extends StatelessWidget {
 // - 시스템 하단 영역과 겹치지 않도록 안전 영역을 반영한다.
 // 속성:
 // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 // - onPressed (VoidCallback?): 해당 항목의 명시된 주 동작을 실행할 콜백.
 class _AnalysisBottomBar extends StatelessWidget {
   final String label;
-  final double scale;
   final VoidCallback? onPressed;
 
   // 함수이름: _AnalysisBottomBar
   // 함수역할: 스크롤과 무관하게 접근 가능한 분석 시작 명령에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // - onPressed (VoidCallback?): 해당 항목의 명시된 주 동작을 실행할 콜백.
   // 반환값: 입력 설정이 반영된 _AnalysisBottomBar 인스턴스.
   const _AnalysisBottomBar({
     required this.label,
-    required this.scale,
     required this.onPressed,
   });
 
@@ -776,7 +755,7 @@ class _AnalysisBottomBar extends StatelessWidget {
               key: const Key('prescription-analyze-button'),
               style: FilledButton.styleFrom(
                 textStyle: TextStyle(
-                  fontSize: 19 * scale,
+                  fontSize: 19,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0,
                 ),
@@ -791,30 +770,36 @@ class _AnalysisBottomBar extends StatelessWidget {
   }
 }
 
-// 클래스명: _TopBackButton
-// 역할: 처방전 검토에서 이전 단계로 이동을 담당한다.
+// 클래스명: PrescriptionFlowBackButton
+// 역할: 처방전 검토와 분석 진행 화면에서 이전 단계로 이동을 담당한다.
 // 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 처방전 검토에서 이전 단계로 이동 위젯을 구성한다.
+// - 부모가 전달한 표시값과 동작을 반영해 화면 왼쪽 위의 뒤로가기 버튼을 구성한다.
+// - 검토 화면과 분석 진행 화면이 같은 위치·크기의 버튼을 쓰도록 한 곳에서 제공한다.
 // 속성:
 // - tooltip (String): 아이콘의 동작을 설명할 도움말·접근성 문구.
 // - onBackRequested (VoidCallback): 이전 단계로 이동하거나 현재 화면을 닫을 때 실행할 콜백.
-class _TopBackButton extends StatelessWidget {
+class PrescriptionFlowBackButton extends StatelessWidget {
   final String tooltip;
   final VoidCallback onBackRequested;
 
-  // 함수이름: _TopBackButton
-  // 함수역할: 처방전 검토에서 이전 단계로 이동에 필요한 입력값과 표시 설정을 초기화한다.
+  // 함수이름: PrescriptionFlowBackButton
+  // 함수역할: 처방전 흐름에서 이전 단계로 이동에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
+  // - key (Key?): 위젯을 구분하고 상태를 유지할 식별 키.
   // - tooltip (String): 아이콘의 동작을 설명할 도움말·접근성 문구.
   // - onBackRequested (VoidCallback): 이전 단계로 이동하거나 현재 화면을 닫을 때 실행할 콜백.
-  // 반환값: 입력 설정이 반영된 _TopBackButton 인스턴스.
-  const _TopBackButton({required this.tooltip, required this.onBackRequested});
+  // 반환값: 입력 설정이 반영된 PrescriptionFlowBackButton 인스턴스.
+  const PrescriptionFlowBackButton({
+    super.key,
+    required this.tooltip,
+    required this.onBackRequested,
+  });
 
   // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 처방전 검토에서 이전 단계로 이동 화면을 구성한다.
+  // 함수역할: 현재 입력값과 상태를 반영해 처방전 흐름에서 이전 단계로 이동 화면을 구성한다.
   // 매개변수:
   // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 처방전 검토에서 이전 단계로 이동에 쓰는 위젯 트리.
+  // 반환값: 처방전 흐름에서 이전 단계로 이동에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
     return Padding(

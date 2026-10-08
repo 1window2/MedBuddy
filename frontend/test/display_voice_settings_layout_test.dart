@@ -278,15 +278,6 @@ Future<void> _pumpSettings(
         previewSpeaker: speaker ?? (text, setting, {onComplete}) async {},
         previewStopper: stopper ?? () async {},
         // 저장 결과만 반환하고 실제 계정 설정은 변경하지 않는다.
-        onSettingSaveRequested:
-            ({
-              required fontSizeOption,
-              required readingSpeedOption,
-              required language,
-            }) async => UserSettingSaveResult(
-              setting: setting,
-              synchronizedWithServer: true,
-            ),
         onExtendedSettingSaveRequested: (draft) async {
           onSave?.call(draft);
           return UserSettingSaveResult(
