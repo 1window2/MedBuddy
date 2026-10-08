@@ -119,27 +119,18 @@ Reviewed for v0.2.1 and deferred:
       worker; they wait until the same account signs in again on the device.
 - [ ] With the medication box in selection mode, one back press ends the
       selection and also returns to Home.
-- [ ] Structure, measured on October 8 (no import cycles in either code
-      base; backend layers have no upward import): the three Flutter
-      background entry points (`dose_home_widget_service`,
-      `medication_reminder_background_service`,
-      `caregiver_notification_background_service`) live in `services/` but
-      construct controls and one composition factory. They are composition
-      roots; moving them changes the stored callback handles of the widget and
-      WorkManager tasks, so background work would stop after an update until
-      the app is opened once. Do it only together with a migration of those
-      handles.
-- [ ] Operations drawn in the class diagrams that no production code calls:
-      `AppLanguageControl.toggleLanguage`,
-      `CheckNearbyPharmacy.requestNearbyPharmacies`,
-      `ResolveDuplicatePillSelectionControl.mergeEquivalentRequests` and
-      `PrescriptionPrivacyFilter.shouldMaskFollowingLine`. Removing them needs
-      a diagram change. Not drawn and used only by tests:
-      `SetCaregiverNotification.requestCaregiverNotificationSetting` and the
-      two link-status helpers on `PatientCaregiverLink`.
-- [ ] Backend controls import ORM models directly in about twenty places
-      instead of going through a repository, and the two background workers in
-      `services/` drive controls.
+- [ ] The widget and WorkManager entry points moved to `composition/` in
+      v0.2.1, which changes their stored callback handles. After an update
+      from 0.2.0 the periodic workers and widget-initiated refreshes cannot
+      resolve their callback until the app has been opened once; widget taps
+      are kept in the native queue meanwhile. Check on a device: update
+      without opening, tap the widget, then open the app.
+- Decided, not planned: backend controls keep querying ORM models directly.
+  Only three of fourteen models have a repository (the ones several controls
+  share), and controls reference models in about 290 places. Wrapping the rest
+  would move the queries that were just fixed to a query budget without
+  changing behaviour. Add a repository when a second control needs the same
+  query. The two background workers in `services/` drive controls by design.
 - [ ] Home screen: lifecycle work still runs inside `build`, the shell
       rebuilds on every inbox or chat notification, the link list is polled
       every 15 seconds under a pushed screen, and the facade status message
@@ -147,11 +138,11 @@ Reviewed for v0.2.1 and deferred:
       unused and still declared.
 - [ ] Test runs through the application still use the default Redis URL, so
       a developer's local Redis receives rate-limit keys.
-- [ ] Class diagrams: ten members and nine relationship endpoints do not
-      match the code, one router is drawn as a class, five static markers are
-      missing, diagram titles still name `beta/v0.2.0`, and the operations and
-      classes added in v0.2.1 are not drawn. The rendered images need a font
-      with Korean glyphs.
+- [ ] Class diagrams: the operations and classes added in v0.2.1 are not
+      drawn, 195 code classes are in no class diagram although the README
+      calls the full diagram complete, and stereotypes and package placement
+      differ between the full diagram and the feature diagrams. Owner
+      decisions on scope and vocabulary.
 
 Defects and limits recorded during the v0.2.0 audits and not changed:
 

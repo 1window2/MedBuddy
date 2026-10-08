@@ -112,71 +112,12 @@ class ManageUserSetting {
   }
 
   // 함수이름: saveUserSetting
-  // 함수역할: 설정 화면에서 선택한 옵션을 실제 설정값으로 변환한 뒤 저장한다.
-  // 매개변수:
-  // - currentSetting (UserSetting): 현재 사용자 설정
-  // - fontSizeOption (String): small, medium, large 중 선택된 글씨 크기 옵션
-  // - readingSpeedOption (String): slow, medium, fast 중 선택된 읽기 속도 옵션
-  // - language (String): ko 또는 en 언어 코드
-  // - languageMode (String?): system·ko·en 언어 선택 모드
-  // - timeFormat (String?): 12h 또는 24h 시각 표시 방식
-  // - medicationNotificationsEnabled (bool?): 본인 복약 시간 알림 허용 여부
-  // - caregiverNotificationsEnabled (bool?): 보호자 복약 상태 알림 허용 여부
-  // - chatNotificationsEnabled (bool?): 가족 채팅 알림 허용 여부
-  // - notificationDetailMode (String?): full 또는 type_only 알림 세부 표시 모드
-  // - defaultMorningTime (String?): 새 아침 알림의 HH:mm 기본 시각
-  // - defaultLunchTime (String?): 새 점심 알림의 HH:mm 기본 시각
-  // - defaultEveningTime (String?): 새 저녁 알림의 HH:mm 기본 시각
-  // - defaultBedtime (String?): 새 취침 전 알림의 HH:mm 기본 시각
-  // 반환값:
-  // - 저장 완료된 설정과 서버 동기화 여부
-  Future<UserSettingSaveResult> saveUserSetting({
-    required UserSetting currentSetting,
-    required String fontSizeOption,
-    required String readingSpeedOption,
-    required String language,
-    String? languageMode,
-    String? timeFormat,
-    String? homeScheduleSource,
-    bool? medicationNotificationsEnabled,
-    bool? caregiverNotificationsEnabled,
-    bool? chatNotificationsEnabled,
-    String? notificationDetailMode,
-    String? defaultMorningTime,
-    String? defaultLunchTime,
-    String? defaultEveningTime,
-    String? defaultBedtime,
-  }) async {
-    final nextSetting = currentSetting
-        .copyWith(userHash: _normalizedUserHash)
-        .updateUserSetting(
-          fontSize: UserSetting.fontSizeFromOption(fontSizeOption),
-          readingSpeed: UserSetting.readingSpeedFromOption(readingSpeedOption),
-          language: language,
-        )
-        .copyWith(
-          languageMode: languageMode,
-          timeFormat: timeFormat,
-          homeScheduleSource: homeScheduleSource,
-          medicationNotificationsEnabled: medicationNotificationsEnabled,
-          caregiverNotificationsEnabled: caregiverNotificationsEnabled,
-          chatNotificationsEnabled: chatNotificationsEnabled,
-          notificationDetailMode: notificationDetailMode,
-          defaultMorningTime: defaultMorningTime,
-          defaultLunchTime: defaultLunchTime,
-          defaultEveningTime: defaultEveningTime,
-          defaultBedtime: defaultBedtime,
-        );
-    return saveUserSettingSnapshot(nextSetting);
-  }
-
-  // 함수이름: saveUserSettingSnapshot
   // 함수역할: 이미 완성된 설정 객체를 값 변환 없이 현재 사용자 범위로 기기에 저장하고 서버와 동기화한다. 설정 화면의 초안과 기기 언어 재동기화처럼 설정 전체를 가진 호출부가 사용한다.
   // 매개변수:
   // - setting (UserSetting): 저장할 설정 전체. 사용자 해시는 이 컨트롤의 범위로 바꾼다.
   // 반환값:
   // - 저장 완료된 설정과 서버 동기화 여부
-  Future<UserSettingSaveResult> saveUserSettingSnapshot(
+  Future<UserSettingSaveResult> saveUserSetting(
     UserSetting setting,
   ) async {
     final nextSetting = setting.copyWith(userHash: _normalizedUserHash);

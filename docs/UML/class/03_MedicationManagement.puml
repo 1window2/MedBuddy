@@ -107,7 +107,6 @@ FCheckSavedMedication --> BCheckSavedMedication : saved medication API
 FCheckMedicationDetail --> BCheckMedicationDetail : detail API
 
 BCheckSchedule --> MedicationCoursePolicy
-BCheckSchedule --> SavedMedicationRetentionPolicy
 BCheckSchedule --> SavedMedicationRepository
 BCheckSchedule --> DBSavedMedication
 BCheckSchedule --> DBMedicationCompletion

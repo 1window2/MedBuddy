@@ -156,10 +156,10 @@ void main() {
   // 반환값:
   // - 없음; 기대 조건 불일치 시 테스트가 실패한다.
   test('개인정보 라벨만 있는 경우 다음 OCR 줄도 마스킹한다', () {
-    expect(filter.shouldMaskFollowingLine('환자명'), isTrue);
-    expect(filter.shouldMaskFollowingLine('주소 :'), isTrue);
-    expect(filter.shouldMaskFollowingLine('환자명 홍길동'), isFalse);
-    expect(filter.shouldMaskFollowingLine('약품명'), isFalse);
+    expect(filter.sensitiveLineFlags(['환자명', '홍길동']).last, isTrue);
+    expect(filter.sensitiveLineFlags(['주소 :', '홍길동']).last, isTrue);
+    expect(filter.sensitiveLineFlags(['환자명 홍길동', '홍길동']).last, isFalse);
+    expect(filter.sensitiveLineFlags(['약품명', '홍길동']).last, isFalse);
   });
 
   // 함수이름: test 콜백
@@ -364,8 +364,8 @@ void main() {
     }
     expect(filter.containsSensitiveInformation('수진자 홍길동'), isTrue);
     expect(filter.containsSensitiveInformation('수진자명: 홍길동'), isTrue);
-    expect(filter.shouldMaskFollowingLine('환자명 주민등록번호'), isTrue);
-    expect(filter.shouldMaskFollowingLine('수진자'), isTrue);
+    expect(filter.sensitiveLineFlags(['환자명 주민등록번호', '홍길동']).last, isTrue);
+    expect(filter.sensitiveLineFlags(['수진자', '홍길동']).last, isTrue);
   });
 
   // 함수이름: 약 행이 가려지지 않아야 하는 배치 테스트
@@ -453,9 +453,9 @@ void main() {
     for (final (lines, expected) in cases) {
       expect(filter.sensitiveLineFlags(lines), expected, reason: '$lines');
     }
-    expect(filter.shouldMaskFollowingLine('약품명 투약량 횟수 일수'), isFalse);
-    expect(filter.shouldMaskFollowingLine('연령'), isFalse);
-    expect(filter.shouldMaskFollowingLine('수진자 홍길동'), isFalse);
+    expect(filter.sensitiveLineFlags(['약품명 투약량 횟수 일수', '홍길동']).last, isFalse);
+    expect(filter.sensitiveLineFlags(['연령', '홍길동']).last, isFalse);
+    expect(filter.sensitiveLineFlags(['수진자 홍길동', '홍길동']).last, isFalse);
   });
 
   // 함수이름: recognizeAndMask 전송 텍스트 테스트

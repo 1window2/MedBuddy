@@ -73,26 +73,6 @@ class _FakeCaregiverNotificationControl extends SetCaregiverNotification {
   _FakeCaregiverNotificationControl({this.morning})
     : super(baseUrl: 'http://localhost', caregiverHash: 'caregiver-a');
 
-  // 함수이름: requestCaregiverNotificationSetting
-  // 함수역할:
-  // - 선택 환자와 시간대를 유지한 기본 보호자 알림 설정을 제공한다.
-  // 매개변수:
-  // - patientHash (String): 요청 데이터 범위를 제한하는 환자 식별자.
-  // - slotKey (String): 아침·점심·저녁·취침 전 등을 구분하는 복약 시간대 키.
-  // 반환값:
-  // - 요청 범위가 반영된 기본 알림 설정.
-  @override
-  Future<CaregiverNotification> requestCaregiverNotificationSetting({
-    required String patientHash,
-    String slotKey = 'morning',
-  }) async {
-    return CaregiverNotification(
-      caregiverHash: 'caregiver-a',
-      patientHash: patientHash,
-      slotKey: slotKey,
-    );
-  }
-
   // 함수이름: requestCaregiverNotificationSettings
   // 함수역할:
   // - 모든 지원 시간대 중 아침에만 복용 완료 알림을 활성화한다.

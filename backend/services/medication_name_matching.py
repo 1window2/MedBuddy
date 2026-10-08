@@ -326,18 +326,6 @@ class MedicationNameMatcher:
             candidate_name,
         )
 
-    # 함수이름: is_confident_match
-    # 함수역할:
-    # - 검색어 길이에 따른 최소 점수를 적용해 후보를 사용할 수 있는지 판정한다.
-    # 매개변수:
-    # - search_text (str): OCR 보정 과정을 거친 검색어
-    # - candidate_name (str): DB 또는 공공데이터 API가 반환한 약품명
-    # 반환값:
-    # - 신뢰 가능한 이름 후보이면 True, 아니면 False
-    def is_confident_match(self, search_text: str, candidate_name: str) -> bool:
-        score = self.calculate_score(search_text, candidate_name)
-        return score >= self._required_score(search_text)
-
     # 함수이름: rank_candidates
     # 함수역할:
     # - 여러 약품 후보 중 최소 유사도를 통과한 항목만 점수순으로 정렬한다.

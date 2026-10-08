@@ -97,12 +97,10 @@ WebSocket 연결 Registry를 채팅 Database 또는 분산 방송 broker로 혼�
 전체 `ClassDiagram`은 상세 설명이나 부록에 배치한다. 구조가 변경되면 `.puml`을
 먼저 수정한 뒤 같은 이름의 `.png`도 다시 생성한다.
 
-기존 beta/v0.2.0 정합성 갱신은 텍스트 원본만 반영했다. 2026-09-21에는 새 `06`
-클래스 그림과 복약 동기화·홈 위젯·전체 시스템 시퀀스 PNG를 원본에서 생성했다.
-그 밖의 기존 PNG는 최신 텍스트 원본과 차이가 있을 수 있다.
-
-2026-09-29 갱신은 `63b6165`의 실제 구현과 각 문서의 최근 수정 내용을 대조했다.
-이번에는 `.md`·`.puml`만 갱신하고 PNG는 생성·변경하지 않았으므로 최신 내용은 텍스트 원본을 기준으로 확인한다.
+2026-10-08(`beta/v0.2.1`) 갱신은 클래스 그림을 코드와 다시 대조해, 코드에 없는
+멤버와 삭제한 연산, 끝점이 잘못된 관계선, 빠진 `{static}` 표시를 고치고 바뀐
+`.puml`의 PNG를 모두 다시 생성했다. `00`과 `01`은 한글이 빈 상자로 나오던 PNG만
+다시 생성했다.
 
 2026-10-02에는 원문 함량·제형 검증, 약명 후보 직접 확인과 계정 잠금 재시도,
 위젯 완료 후 날짜별 재알림 취소를 자연어 명세와 UML에 반영했다.
@@ -115,7 +113,7 @@ flows. Prescription verification, notification protocol ownership, account-lock
 cleanup and cancellation-safe request database work are reflected in the changed
 sources and their regenerated PNGs. `ClassDiagram` explicitly uses the bundled
 ELK layout engine; the compact feature diagrams retain Smetana. Rendered locally
-with PlantUML 1.2026.6 without transmitting diagram source to a remote service.
+with PlantUML 1.2026.8 without transmitting diagram source to a remote service.
 
 The follow-up refactoring separates medication-detail cache, summary, name matching
 and local catalog collaborators; nearby hospital/pharmacy controls are siblings

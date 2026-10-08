@@ -80,61 +80,6 @@ class MedBuddyUserSettingViewModel {
     }
   }
 
-  // 함수이름: requestUserSettingSave
-  // 함수역할: 사용자 설정을 저장하고 알림 허용·민감정보 표시·언어 변경에 맞춰 기존 예약을 취소하거나 새로고침한 뒤 설정 구독자를 갱신한다.
-  // 매개변수:
-  // - fontSizeOption (String): small·medium·large 글씨 크기 선택값
-  // - readingSpeedOption (String): slow·medium·fast 읽기 속도 선택값
-  // - language (String): 표시·음성 안내에 사용할 언어 코드
-  // - languageMode (String?): system·ko·en 언어 선택 모드
-  // - timeFormat (String?): 12h 또는 24h 시각 표시 방식
-  // - medicationNotificationsEnabled (bool?): 본인 복약 시간 알림 허용 여부
-  // - caregiverNotificationsEnabled (bool?): 보호자 복약 상태 알림 허용 여부
-  // - chatNotificationsEnabled (bool?): 가족 채팅 알림 허용 여부
-  // - notificationDetailMode (String?): full 또는 type_only 알림 세부 표시 모드
-  // - defaultMorningTime (String?): 새 아침 알림의 HH:mm 기본 시각
-  // - defaultLunchTime (String?): 새 점심 알림의 HH:mm 기본 시각
-  // - defaultEveningTime (String?): 새 저녁 알림의 HH:mm 기본 시각
-  // - defaultBedtime (String?): 새 취침 전 알림의 HH:mm 기본 시각
-  // 반환값:
-  // - Future<UserSettingSaveResult>: 사용자 설정을 저장하고 알림 허용·민감정보 표시·언어 변경에 맞춰 기존 예약을 취소하거나 새로고침한 뒤 설정 구독자를 갱신한다.
-  Future<UserSettingSaveResult> requestUserSettingSave({
-    required String fontSizeOption,
-    required String readingSpeedOption,
-    required String language,
-    String? languageMode,
-    String? timeFormat,
-    String? homeScheduleSource,
-    bool? medicationNotificationsEnabled,
-    bool? caregiverNotificationsEnabled,
-    bool? chatNotificationsEnabled,
-    String? notificationDetailMode,
-    String? defaultMorningTime,
-    String? defaultLunchTime,
-    String? defaultEveningTime,
-    String? defaultBedtime,
-  }) {
-    return _saveAndApply(
-      () => manageUserSetting.saveUserSetting(
-        currentSetting: _userSetting,
-        fontSizeOption: fontSizeOption,
-        readingSpeedOption: readingSpeedOption,
-        language: language,
-        languageMode: languageMode,
-        timeFormat: timeFormat,
-        homeScheduleSource: homeScheduleSource,
-        medicationNotificationsEnabled: medicationNotificationsEnabled,
-        caregiverNotificationsEnabled: caregiverNotificationsEnabled,
-        chatNotificationsEnabled: chatNotificationsEnabled,
-        notificationDetailMode: notificationDetailMode,
-        defaultMorningTime: defaultMorningTime,
-        defaultLunchTime: defaultLunchTime,
-        defaultEveningTime: defaultEveningTime,
-        defaultBedtime: defaultBedtime,
-      ),
-    );
-  }
-
   // 함수이름: saveUserSetting
   // 함수역할: 설정 화면이 편집한 설정 전체를 값 변환 없이 저장하고, 선택지별 저장과 같은 알림·일정 후속 처리를 수행한다.
   // 매개변수:
@@ -143,7 +88,7 @@ class MedBuddyUserSettingViewModel {
   // - Future<UserSettingSaveResult>: 저장된 설정과 서버 동기화 여부.
   Future<UserSettingSaveResult> saveUserSetting(UserSetting setting) {
     return _saveAndApply(
-      () => manageUserSetting.saveUserSettingSnapshot(setting),
+      () => manageUserSetting.saveUserSetting(setting),
     );
   }
 

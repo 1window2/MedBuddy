@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/check_saved_medication_ui_boundary.dart';
+import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/boundaries/pill_identification_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
@@ -1053,11 +1054,14 @@ void main() {
       apiClient: client,
     );
     addTearDown(viewModel.dispose);
-    await viewModel.requestUserSettingSave(
-      fontSizeOption: 'medium',
-      readingSpeedOption: 'medium',
-      language: 'en',
-    );
+    await viewModel.saveUserSetting(
+        viewModel.userSetting
+          .updateUserSetting(
+            fontSize: UserSetting.fontSizeFromOption('medium'),
+            readingSpeed: UserSetting.readingSpeedFromOption('medium'),
+            language: 'en',
+          ),
+      );
 
     await tester.pumpWidget(
       ChangeNotifierProvider.value(
@@ -1200,11 +1204,14 @@ void main() {
       apiClient: client,
     );
     addTearDown(viewModel.dispose);
-    await viewModel.requestUserSettingSave(
-      fontSizeOption: 'large',
-      readingSpeedOption: 'medium',
-      language: 'en',
-    );
+    await viewModel.saveUserSetting(
+        viewModel.userSetting
+          .updateUserSetting(
+            fontSize: UserSetting.fontSizeFromOption('large'),
+            readingSpeed: UserSetting.readingSpeedFromOption('medium'),
+            language: 'en',
+          ),
+      );
 
     await tester.pumpWidget(
       ChangeNotifierProvider.value(
@@ -1313,11 +1320,14 @@ Future<void> _pumpFilterApp(
     apiClient: client,
   );
   addTearDown(viewModel.dispose);
-  await viewModel.requestUserSettingSave(
-    fontSizeOption: 'large',
-    readingSpeedOption: 'medium',
-    language: language,
-  );
+  await viewModel.saveUserSetting(
+      viewModel.userSetting
+        .updateUserSetting(
+          fontSize: UserSetting.fontSizeFromOption('large'),
+          readingSpeed: UserSetting.readingSpeedFromOption('medium'),
+          language: language,
+        ),
+    );
   await tester.pumpWidget(
     ChangeNotifierProvider.value(
       value: viewModel,
@@ -1627,11 +1637,14 @@ Future<_SelectionTestViewModel> _pumpSelectionApp(
   ]);
   addTearDown(model.dispose);
   model.control.loadFailure = loadFailure;
-  await model.requestUserSettingSave(
-    fontSizeOption: 'medium',
-    readingSpeedOption: 'medium',
-    language: language,
-  );
+  await model.saveUserSetting(
+      model.userSetting
+        .updateUserSetting(
+          fontSize: UserSetting.fontSizeFromOption('medium'),
+          readingSpeed: UserSetting.readingSpeedFromOption('medium'),
+          language: language,
+        ),
+    );
   await tester.pumpWidget(
     ChangeNotifierProvider<MedBuddyViewModel>.value(
       value: model,

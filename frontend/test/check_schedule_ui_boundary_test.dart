@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:medbuddy_frontend/boundaries/check_schedule_ui_boundary.dart';
+import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/boundaries/health_recommendation_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_health_recommendation_control.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
@@ -601,11 +602,14 @@ void main() {
       manageUserSetting: ManageUserSetting(useRemotePersistence: false),
     );
     addTearDown(viewModel.dispose);
-    await viewModel.requestUserSettingSave(
-      fontSizeOption: 'large',
-      readingSpeedOption: 'medium',
-      language: 'en',
-    );
+    await viewModel.saveUserSetting(
+        viewModel.userSetting
+          .updateUserSetting(
+            fontSize: UserSetting.fontSizeFromOption('large'),
+            readingSpeed: UserSetting.readingSpeedFromOption('medium'),
+            language: 'en',
+          ),
+      );
 
     await tester.pumpWidget(
       ChangeNotifierProvider<MedBuddyViewModel>.value(

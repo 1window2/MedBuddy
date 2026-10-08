@@ -281,10 +281,7 @@ def test_name_matcher_accepts_parenthesized_ingredient_and_dosage() -> None:
     )
 
     assert score >= 0.90
-    assert matcher.is_confident_match(
-        "켈로인정(펠루비프로펜)",
-        "켈로인정30밀리그램(펠루비프로펜)",
-    )
+    assert matcher.rank_candidates("켈로인정(펠루비프로펜)", ["켈로인정30밀리그램(펠루비프로펜)"], str, 1)
 
 
 # 함수이름: test_name_matcher_accepts_one_character_error_in_long_name
@@ -297,10 +294,7 @@ def test_name_matcher_accepts_parenthesized_ingredient_and_dosage() -> None:
 def test_name_matcher_accepts_one_character_error_in_long_name() -> None:
     matcher = MedicationNameMatcher()
 
-    assert matcher.is_confident_match(
-        "클래리트로마이산",
-        "클래리트로마이신정250밀리그램",
-    )
+    assert matcher.rank_candidates("클래리트로마이산", ["클래리트로마이신정250밀리그램"], str, 1)
 
 
 # 함수이름: test_name_matcher_rejects_unrelated_medication_name
@@ -313,7 +307,7 @@ def test_name_matcher_accepts_one_character_error_in_long_name() -> None:
 def test_name_matcher_rejects_unrelated_medication_name() -> None:
     matcher = MedicationNameMatcher()
 
-    assert not matcher.is_confident_match("아스피린정", "타이레놀정")
+    assert not matcher.rank_candidates("아스피린정", ["타이레놀정"], str, 1)
 
 
 # 함수이름: test_name_matcher_ranks_best_candidate_first

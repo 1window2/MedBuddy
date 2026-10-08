@@ -23,7 +23,8 @@ import 'controls/caregiver_alert_action_control.dart';
 import 'entities/user_setting_entity.dart';
 import 'services/notification_service.dart';
 import 'services/caregiver_notification_monitor_service.dart';
-import 'services/caregiver_notification_background_service.dart';
+import 'composition/caregiver_notification_background_service.dart';
+import 'composition/dose_home_widget_background.dart';
 import 'composition/caregiver_notification_monitor_factory.dart';
 import 'services/auth_config.dart';
 import 'services/authenticated_api_client.dart';
@@ -66,8 +67,9 @@ Future<void> main() async {
     );
   }
   try {
+    installDoseHomeWidgetReaders();
     await CaregiverNotificationBackgroundScheduler.initialize();
-    await DoseHomeWidget.initialize();
+    await DoseHomeWidget.initialize(doseHomeWidgetCallback);
   } catch (error, stackTrace) {
     FlutterError.reportError(
       FlutterErrorDetails(

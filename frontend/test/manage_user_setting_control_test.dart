@@ -37,12 +37,16 @@ void main() {
     final control = ManageUserSetting(userHash: 'user-a', client: client);
     addTearDown(control.dispose);
     final result = await control.saveUserSetting(
-      currentSetting: const UserSetting(),
-      fontSizeOption: 'medium',
-      readingSpeedOption: 'medium',
-      language: 'ko',
-      homeScheduleSource: 'patients',
-    );
+        const UserSetting()
+          .updateUserSetting(
+            fontSize: UserSetting.fontSizeFromOption('medium'),
+            readingSpeed: UserSetting.readingSpeedFromOption('medium'),
+            language: 'ko',
+          )
+          .copyWith(
+            homeScheduleSource: 'patients',
+          ),
+      );
     expect(result.synchronizedWithServer, isTrue);
     expect(result.setting.homeScheduleSource, 'patients');
     final restored = ManageUserSetting(
@@ -95,21 +99,25 @@ void main() {
     final control = ManageUserSetting(useRemotePersistence: false);
 
     final result = await control.saveUserSetting(
-      currentSetting: const UserSetting(),
-      fontSizeOption: 'large',
-      readingSpeedOption: 'fast',
-      language: 'en',
-      languageMode: 'system',
-      timeFormat: '12h',
-      medicationNotificationsEnabled: false,
-      caregiverNotificationsEnabled: false,
-      chatNotificationsEnabled: false,
-      notificationDetailMode: 'type_only',
-      defaultMorningTime: '07:30',
-      defaultLunchTime: '12:30',
-      defaultEveningTime: '19:10',
-      defaultBedtime: '23:20',
-    );
+        const UserSetting()
+          .updateUserSetting(
+            fontSize: UserSetting.fontSizeFromOption('large'),
+            readingSpeed: UserSetting.readingSpeedFromOption('fast'),
+            language: 'en',
+          )
+          .copyWith(
+            languageMode: 'system',
+            timeFormat: '12h',
+            medicationNotificationsEnabled: false,
+            caregiverNotificationsEnabled: false,
+            chatNotificationsEnabled: false,
+            notificationDetailMode: 'type_only',
+            defaultMorningTime: '07:30',
+            defaultLunchTime: '12:30',
+            defaultEveningTime: '19:10',
+            defaultBedtime: '23:20',
+          ),
+      );
     final setting = result.setting;
 
     expect(result.synchronizedWithServer, isFalse);
@@ -180,11 +188,13 @@ void main() {
 
     addTearDown(control.dispose);
     final saved = await control.saveUserSetting(
-      currentSetting: const UserSetting(),
-      fontSizeOption: 'large',
-      readingSpeedOption: 'slow',
-      language: 'en',
-    );
+        const UserSetting()
+          .updateUserSetting(
+            fontSize: UserSetting.fontSizeFromOption('large'),
+            readingSpeed: UserSetting.readingSpeedFromOption('slow'),
+            language: 'en',
+          ),
+      );
     final restoredSetting = await control.requestUserSetting();
 
     expect(restoredSetting.toJson(), saved.setting.toJson());
@@ -394,21 +404,25 @@ void main() {
     );
 
     final result = await control.saveUserSetting(
-      currentSetting: const UserSetting(),
-      fontSizeOption: 'large',
-      readingSpeedOption: 'fast',
-      language: 'ko',
-      languageMode: 'system',
-      timeFormat: '12h',
-      medicationNotificationsEnabled: false,
-      caregiverNotificationsEnabled: false,
-      chatNotificationsEnabled: false,
-      notificationDetailMode: 'type_only',
-      defaultMorningTime: '07:15',
-      defaultLunchTime: '12:15',
-      defaultEveningTime: '19:15',
-      defaultBedtime: '23:15',
-    );
+        const UserSetting()
+          .updateUserSetting(
+            fontSize: UserSetting.fontSizeFromOption('large'),
+            readingSpeed: UserSetting.readingSpeedFromOption('fast'),
+            language: 'ko',
+          )
+          .copyWith(
+            languageMode: 'system',
+            timeFormat: '12h',
+            medicationNotificationsEnabled: false,
+            caregiverNotificationsEnabled: false,
+            chatNotificationsEnabled: false,
+            notificationDetailMode: 'type_only',
+            defaultMorningTime: '07:15',
+            defaultLunchTime: '12:15',
+            defaultEveningTime: '19:15',
+            defaultBedtime: '23:15',
+          ),
+      );
 
     expect(result.synchronizedWithServer, isTrue);
     expect(result.setting.fontSizeOption, 'large');
@@ -450,11 +464,13 @@ void main() {
     );
 
     final result = await control.saveUserSetting(
-      currentSetting: const UserSetting(),
-      fontSizeOption: 'small',
-      readingSpeedOption: 'slow',
-      language: 'ko',
-    );
+        const UserSetting()
+          .updateUserSetting(
+            fontSize: UserSetting.fontSizeFromOption('small'),
+            readingSpeed: UserSetting.readingSpeedFromOption('slow'),
+            language: 'ko',
+          ),
+      );
     final setting = result.setting;
 
     expect(result.synchronizedWithServer, isFalse);
@@ -524,7 +540,7 @@ void main() {
       defaultEveningTime: '18:30',
       defaultBedtime: '22:40',
     );
-    final result = await control.saveUserSettingSnapshot(setting);
+    final result = await control.saveUserSetting(setting);
     final expected = {...setting.toJson(), 'user_hash': 'user-a'};
     expect(result.synchronizedWithServer, isTrue);
     expect(sent, expected);

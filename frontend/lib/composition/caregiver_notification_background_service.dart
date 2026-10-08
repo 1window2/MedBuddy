@@ -1,5 +1,5 @@
 // 파일명: caregiver_notification_background_service.dart
-// 역할: 백그라운드에서 보호자 미복용 알림 상태를 주기적으로 확인한다.
+// 역할: 백그라운드 작업 진입점에서 Control과 서비스를 조립해 보호자 알림 확인, 복약 알림 갱신, 복용 기록 전송을 실행한다.
 
 import 'dart:async';
 import 'dart:developer' as developer;
@@ -11,19 +11,21 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 
-import '../composition/caregiver_notification_monitor_factory.dart';
+import 'caregiver_notification_monitor_factory.dart';
+import 'dose_home_widget_background.dart';
+import 'medication_reminder_refresh_factory.dart';
 import '../controls/app_language_control.dart';
 import '../entities/patient_hash_entity.dart';
-import 'api_config.dart';
-import 'auth_config.dart';
-import 'authenticated_api_client.dart';
-import 'firebase_runtime_service.dart';
-import 'medication_reminder_background_service.dart';
-import 'dose_sync_service.dart';
-import 'dose_home_widget_service.dart';
-import 'dose_sync_background_service.dart';
-import 'dose_outbox_store.dart';
-import 'notification_service.dart';
+import '../services/api_config.dart';
+import '../services/auth_config.dart';
+import '../services/authenticated_api_client.dart';
+import '../services/firebase_runtime_service.dart';
+import '../services/medication_reminder_background_service.dart';
+import '../services/dose_sync_service.dart';
+import '../services/dose_home_widget_service.dart';
+import '../services/dose_sync_background_service.dart';
+import '../services/dose_outbox_store.dart';
+import '../services/notification_service.dart';
 
 const String caregiverNotificationBackgroundTask =
     'medbuddy_caregiver_notification_check';
@@ -115,7 +117,7 @@ class BackgroundTaskDeps {
     required String baseUrl,
     required http.Client client,
   }) async {
-    final reminderRefresh = MedicationReminderRefreshService.live(
+    final reminderRefresh = MedicationReminderRefreshFactory.create(
       patientHash: patientHash,
       baseUrl: baseUrl,
       client: client,
@@ -270,6 +272,8 @@ void caregiverNotificationCallbackDispatcher() {
    * 반환값:
    * - 작업 성공·무시 여부는 true, 인증 또는 실행 실패는 false로 완료하는 Future.
    */ (taskName, inputData) {
+    // 백그라운드 실행 환경에는 앱 시작 코드가 돌지 않으므로 위젯 서비스의 서버 조회 함수를 여기서 연결한다.
+    installDoseHomeWidgetReaders();
     return runBackgroundTask(taskName, inputData, const BackgroundTaskDeps());
   });
 }

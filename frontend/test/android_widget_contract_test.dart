@@ -162,15 +162,24 @@ void main() {
     expect(input?.group(1), 'uri_data');
     final refresh = Uri.parse(input!.group(2)!);
     expect(refresh.toString(), 'medbuddy-widget://refresh');
+    // The entry point lives in the composition layer; the service only registers the function it is given.
+    final background = File(
+      'lib/composition/dose_home_widget_background.dart',
+    ).readAsStringSync();
     expect(
-      service,
+      background,
       contains(
         "uri?.scheme != '${refresh.scheme}' || uri?.host != '${refresh.host}'",
       ),
     );
+    expect(background, contains("@pragma('vm:entry-point')"));
     expect(
       service,
-      contains('HomeWidget.registerInteractivityCallback(doseHomeWidgetCallback)'),
+      contains('HomeWidget.registerInteractivityCallback(callback)'),
+    );
+    expect(
+      File('lib/main.dart').readAsStringSync(),
+      contains('DoseHomeWidget.initialize(doseHomeWidgetCallback)'),
     );
   });
 

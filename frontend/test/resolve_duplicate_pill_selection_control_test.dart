@@ -45,7 +45,7 @@ void main() {
   // 반환값:
   // - 없음; 기대 조건 불일치 시 테스트가 실패한다.
   test('품목과 검토한 복약 일정이 모두 같으면 하나로 묶는다', () {
-    final requests = control.mergeEquivalentRequests([_request(), _request()]);
+    final requests = control.buildPillSavePlan([_request(), _request()], mergeEquivalent: true).uniqueRequests;
 
     expect(requests, hasLength(1));
   });
@@ -58,11 +58,13 @@ void main() {
   // 반환값:
   // - 없음; 기대 조건 불일치 시 테스트가 실패한다.
   test('같은 약도 복용량이나 기간이 다르면 별도 일정으로 유지한다', () {
-    final requests = control.mergeEquivalentRequests([
+    final requests = control.buildPillSavePlan([
       _request(dosage: '1정', totalDays: 3),
       _request(dosage: '0.5정', totalDays: 3),
       _request(dosage: '1정', totalDays: 5),
-    ]);
+    ],
+      mergeEquivalent: true,
+    ).uniqueRequests;
 
     expect(requests, hasLength(3));
   });
@@ -127,7 +129,7 @@ void main() {
     expect(plan.sourceToRequestIndex, [0, 1, 0, 2, 0]);
     expect(plan.mergedCount, 2);
     expect(
-      control.mergeEquivalentRequests([first, other, _request()]),
+      control.buildPillSavePlan([first, other, _request()], mergeEquivalent: true).uniqueRequests,
       [first, other],
     );
   });

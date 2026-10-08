@@ -598,40 +598,11 @@ class MedBuddyViewModel extends ChangeNotifier {
   // Description: Delegates settings operations to their state owner.
   // Parameters: As declared by the operation. Returns: Its result.
   Future<void> loadUserSetting() => _settings.loadUserSetting();
-  // Function Name: requestUserSettingSave
+  // Function Name: saveUserSetting
   // Description: Delegates settings operations to their state owner.
   // Parameters: As declared by the operation. Returns: Its result.
-  Future<UserSettingSaveResult> requestUserSettingSave({
-    required String fontSizeOption,
-    required String readingSpeedOption,
-    required String language,
-    String? languageMode,
-    String? timeFormat,
-    String? homeScheduleSource,
-    bool? medicationNotificationsEnabled,
-    bool? caregiverNotificationsEnabled,
-    bool? chatNotificationsEnabled,
-    String? notificationDetailMode,
-    String? defaultMorningTime,
-    String? defaultLunchTime,
-    String? defaultEveningTime,
-    String? defaultBedtime,
-  }) => _settings.requestUserSettingSave(
-    fontSizeOption: fontSizeOption,
-    readingSpeedOption: readingSpeedOption,
-    language: language,
-    languageMode: languageMode,
-    timeFormat: timeFormat,
-    homeScheduleSource: homeScheduleSource,
-    medicationNotificationsEnabled: medicationNotificationsEnabled,
-    caregiverNotificationsEnabled: caregiverNotificationsEnabled,
-    chatNotificationsEnabled: chatNotificationsEnabled,
-    notificationDetailMode: notificationDetailMode,
-    defaultMorningTime: defaultMorningTime,
-    defaultLunchTime: defaultLunchTime,
-    defaultEveningTime: defaultEveningTime,
-    defaultBedtime: defaultBedtime,
-  );
+  Future<UserSettingSaveResult> saveUserSetting(UserSetting setting) =>
+      _settings.saveUserSetting(setting);
   // Function Name: requestCapturedPrescriptionImage
   // Description: Delegates prescription operations to their state owner.
   // Parameters: As declared by the operation. Returns: Its result.

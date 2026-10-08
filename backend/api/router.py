@@ -3,6 +3,7 @@
 
 import asyncio
 import logging
+from dataclasses import dataclass
 
 from fastapi import (
     APIRouter,
@@ -122,6 +123,64 @@ auth_router = APIRouter(
     dependencies=_authenticated_app_dependencies,
 )
 logger = logging.getLogger(__name__)
+
+
+# 클래스명: _CaregiverPatientScope
+# 역할:
+# - 보호자 전용 경로가 다루는 보호자와 환자 범위를 한 번 확정해 전달한다.
+# 속성:
+# - caregiver_hash (str): 인증 주체 본인으로 확인된 보호자 계정 식별자.
+# - patient_hash (str): 그 보호자에 연동된 것으로 확인된 환자 식별자.
+@dataclass(frozen=True)
+class _CaregiverPatientScope:
+    caregiver_hash: str
+    patient_hash: str
+
+
+# 함수이름: _resolve_caregiver_patient_scope
+# 함수역할:
+# - 보호자 식별자가 인증 주체 본인인지 확인한 뒤 환자가 그 보호자에 연동되어 있는지 확인한다.
+# - 보호자 전용 경로들이 같은 순서의 권한 확인을 각자 반복하지 않도록 의존성으로 제공한다.
+# 매개변수:
+# - patient_hash (str): 경로에 지정된 환자 식별자.
+# - caregiver_hash (str | None): 환자와 연동된 보호자 계정 식별자.
+# - guardian_hash (str | None): 보호자 범위를 지정하는 기존 호환 식별자.
+# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
+# - authorization (AuthorizationControl): 환자·보호자 데이터 접근 범위 판정 Control.
+# 반환값:
+# - 권한이 확인된 보호자·환자 범위.
+def _resolve_caregiver_patient_scope(
+    patient_hash: str,
+    caregiver_hash: str | None = None,
+    guardian_hash: str | None = None,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    authorization: AuthorizationControl = Depends(get_authorization_control),
+) -> _CaregiverPatientScope:
+    own_caregiver_hash = authorization.resolveOwnUserHash(
+        principal,
+        caregiver_hash or guardian_hash,
+    )
+    return _CaregiverPatientScope(
+        caregiver_hash=own_caregiver_hash,
+        patient_hash=authorization.requireLinkedPatient(principal, patient_hash),
+    )
+
+
+# 함수이름: _pill_input_or_availability_error
+# 함수역할:
+# - 낱알 식별 경로 두 곳이 같은 기준으로 응답하도록 사진 품질 오류와 일시적 이용 불가를 HTTP 오류로 바꾼다.
+# 매개변수:
+# - exc (Exception): 사진 품질 오류, 카탈로그 이용 불가 또는 시각 분석 서비스 이용 불가.
+# 반환값:
+# - 사진 품질 오류는 422, 이용 불가는 Retry-After가 붙은 503 응답 예외.
+def _pill_input_or_availability_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, PillImageQualityError):
+        return HTTPException(status_code=422, detail=str(exc))
+    return HTTPException(
+        status_code=503,
+        detail=str(exc),
+        headers={"Retry-After": "5"},
+    )
 
 
 # 클래스명: OCRParseRequest
@@ -901,37 +960,20 @@ async def get_health_recommendation(
 # 함수역할:
 # - 연동 권한을 확인하고 보호자·환자의 모든 시간대 알림 설정을 조회한다.
 # 매개변수:
-# - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
-# - caregiver_hash (str | None): 환자와 연동된 보호자 계정 식별자.
-# - guardian_hash (str | None): 보호자 범위를 지정하는 기존 호환 식별자.
-# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
-# - authorization (AuthorizationControl): 환자·보호자 데이터 접근 범위 판정 Control.
+# - scope (_CaregiverPatientScope): 인증된 보호자와 그 보호자에 연동된 환자로 확정한 요청 범위.
 # - set_caregiver_notification (SetCaregiverNotification): 연동 환자별 보호자 알림 설정 Control.
 # 반환값:
 # - 시간대별 보호자 알림 설정 목록 응답.
 @router.get("/caregiver-notification/settings/{patient_hash}/slots")
 def get_caregiver_notification_settings(
-    patient_hash: str,
-    caregiver_hash: str | None = None,
-    guardian_hash: str | None = None,
-    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
-    authorization: AuthorizationControl = Depends(get_authorization_control),
+    scope: _CaregiverPatientScope = Depends(_resolve_caregiver_patient_scope),
     set_caregiver_notification: SetCaregiverNotification = Depends(
         get_set_caregiver_notification
     ),
 ) -> dict[str, object]:
-    requested_caregiver_hash = caregiver_hash or guardian_hash
-    requesting_caregiver_hash = authorization.resolveOwnUserHash(
-        principal,
-        requested_caregiver_hash,
-    )
-    authorized_patient_hash = authorization.requireLinkedPatient(
-        principal,
-        patient_hash,
-    )
     return set_caregiver_notification.requestCaregiverNotificationSettings(
-        requesting_caregiver_hash,
-        authorized_patient_hash,
+        scope.caregiver_hash,
+        scope.patient_hash,
     )
 
 
@@ -939,12 +981,8 @@ def get_caregiver_notification_settings(
 # 함수역할:
 # - 연동 권한을 확인하고 선택 시간대의 보호자 알림 설정을 조회한다.
 # 매개변수:
-# - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
-# - caregiver_hash (str | None): 환자와 연동된 보호자 계정 식별자.
-# - guardian_hash (str | None): 보호자 범위를 지정하는 기존 호환 식별자.
+# - scope (_CaregiverPatientScope): 인증된 보호자와 그 보호자에 연동된 환자로 확정한 요청 범위.
 # - slot_key (str): morning, lunch, evening, bedtime 중 복용 시간대 키.
-# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
-# - authorization (AuthorizationControl): 환자·보호자 데이터 접근 범위 판정 Control.
 # - set_caregiver_notification (SetCaregiverNotification): 연동 환자별 보호자 알림 설정 Control.
 # 반환값:
 # - 선택 시간대 알림 설정 응답.
@@ -954,28 +992,15 @@ def get_caregiver_notification_settings(
     include_in_schema=False,
 )
 def get_caregiver_notification_setting(
-    patient_hash: str,
-    caregiver_hash: str | None = None,
-    guardian_hash: str | None = None,
+    scope: _CaregiverPatientScope = Depends(_resolve_caregiver_patient_scope),
     slot_key: str = "morning",
-    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
-    authorization: AuthorizationControl = Depends(get_authorization_control),
     set_caregiver_notification: SetCaregiverNotification = Depends(
         get_set_caregiver_notification
     ),
 ) -> dict[str, object]:
-    requested_caregiver_hash = caregiver_hash or guardian_hash
-    requesting_caregiver_hash = authorization.resolveOwnUserHash(
-        principal,
-        requested_caregiver_hash,
-    )
-    authorized_patient_hash = authorization.requireLinkedPatient(
-        principal,
-        patient_hash,
-    )
     return set_caregiver_notification.requestCaregiverNotificationSetting(
-        requesting_caregiver_hash,
-        authorized_patient_hash,
+        scope.caregiver_hash,
+        scope.patient_hash,
         slot_key,
     )
 
@@ -984,13 +1009,9 @@ def get_caregiver_notification_setting(
 # 함수역할:
 # - 연동 권한을 확인한 뒤 선택 시간대의 알림 모드와 마감 시각을 저장한다.
 # 매개변수:
-# - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
+# - scope (_CaregiverPatientScope): 인증된 보호자와 그 보호자에 연동된 환자로 확정한 요청 범위.
 # - request (CaregiverNotificationUpdate): 알림 모드·활성 상태와 선택적 미복용 마감 시각.
-# - caregiver_hash (str | None): 환자와 연동된 보호자 계정 식별자.
-# - guardian_hash (str | None): 보호자 범위를 지정하는 기존 호환 식별자.
 # - slot_key (str): morning, lunch, evening, bedtime 중 복용 시간대 키.
-# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
-# - authorization (AuthorizationControl): 환자·보호자 데이터 접근 범위 판정 Control.
 # - set_caregiver_notification (SetCaregiverNotification): 연동 환자별 보호자 알림 설정 Control.
 # 반환값:
 # - 저장된 시간대 알림 설정 응답.
@@ -1000,29 +1021,16 @@ def get_caregiver_notification_setting(
     include_in_schema=False,
 )
 def save_caregiver_notification_setting(
-    patient_hash: str,
     request: CaregiverNotificationUpdate,
-    caregiver_hash: str | None = None,
-    guardian_hash: str | None = None,
+    scope: _CaregiverPatientScope = Depends(_resolve_caregiver_patient_scope),
     slot_key: str = "morning",
-    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
-    authorization: AuthorizationControl = Depends(get_authorization_control),
     set_caregiver_notification: SetCaregiverNotification = Depends(
         get_set_caregiver_notification
     ),
 ) -> dict[str, object]:
-    requested_caregiver_hash = caregiver_hash or guardian_hash
-    requesting_caregiver_hash = authorization.resolveOwnUserHash(
-        principal,
-        requested_caregiver_hash,
-    )
-    authorized_patient_hash = authorization.requireLinkedPatient(
-        principal,
-        patient_hash,
-    )
     return set_caregiver_notification.saveCaregiverNotificationSetting(
-        requesting_caregiver_hash,
-        authorized_patient_hash,
+        scope.caregiver_hash,
+        scope.patient_hash,
         request.notification_enabled,
         request.notification_type,
         request.deadline_hour,
@@ -1102,11 +1110,7 @@ def get_caregiver_schedule_snapshot(
 # Description:
 # - Requires an active caregiver link before returning the selected patient's read-only pillbox and daily summary.
 # Parameters:
-# - patient_hash (str): Patient ownership scope for the operation.
-# - caregiver_hash (str | None): Caregiver account participating in the patient link.
-# - guardian_hash (str | None): Compatibility alias for the requested caregiver scope.
-# - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
-# - authorization (AuthorizationControl): Patient/guardian access-scope resolver.
+# - scope (_CaregiverPatientScope): Authenticated caregiver and the linked patient the request is limited to.
 # - check_caregiver_medication (CheckCaregiverMedication): Read-only linked-patient medication control.
 # Returns:
 # - Saved medications and today's medication information for the linked patient.
@@ -1116,27 +1120,14 @@ def get_caregiver_schedule_snapshot(
     include_in_schema=False,
 )
 def get_caregiver_patient_medication_info(
-    patient_hash: str,
-    caregiver_hash: str | None = None,
-    guardian_hash: str | None = None,
-    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
-    authorization: AuthorizationControl = Depends(get_authorization_control),
+    scope: _CaregiverPatientScope = Depends(_resolve_caregiver_patient_scope),
     check_caregiver_medication: CheckCaregiverMedication = Depends(
         get_check_caregiver_medication
     ),
 ) -> dict[str, object]:
-    requested_caregiver_hash = caregiver_hash or guardian_hash
-    requesting_caregiver_hash = authorization.resolveOwnUserHash(
-        principal,
-        requested_caregiver_hash,
-    )
-    authorized_patient_hash = authorization.requireLinkedPatient(
-        principal,
-        patient_hash,
-    )
     return check_caregiver_medication.requestPatientMedicationInfo(
-        requesting_caregiver_hash,
-        authorized_patient_hash,
+        scope.caregiver_hash,
+        scope.patient_hash,
     )
 
 
@@ -1385,20 +1376,12 @@ async def identify_loose_pill(
         return PillIdentificationResponse.from_domain(result)
     except HTTPException:
         raise
-    except PillImageQualityError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except PillCatalogUnavailableError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=str(exc),
-            headers={"Retry-After": "5"},
-        ) from exc
-    except PillVisionUnavailableError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=str(exc),
-            headers={"Retry-After": "5"},
-        ) from exc
+    except (
+        PillImageQualityError,
+        PillCatalogUnavailableError,
+        PillVisionUnavailableError,
+    ) as exc:
+        raise _pill_input_or_availability_error(exc) from exc
     except PillVisionResponseError as exc:
         raise HTTPException(
             status_code=502,
@@ -1449,20 +1432,12 @@ async def identify_multiple_loose_pills(
         return MultiplePillIdentificationResponse.from_domain(result)
     except HTTPException:
         raise
-    except PillImageQualityError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except PillCatalogUnavailableError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=str(exc),
-            headers={"Retry-After": "5"},
-        ) from exc
-    except PillVisionUnavailableError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=str(exc),
-            headers={"Retry-After": "5"},
-        ) from exc
+    except (
+        PillImageQualityError,
+        PillCatalogUnavailableError,
+        PillVisionUnavailableError,
+    ) as exc:
+        raise _pill_input_or_availability_error(exc) from exc
     except PillVisionResponseError as exc:
         raise HTTPException(
             status_code=502,

@@ -25,7 +25,6 @@ class CheckCaregiverHome extends ChangeNotifier {
   bool _disposed = false;
   int _generation = 0;
   String? _snapshotDay;
-  String? get snapshotDay => _snapshotDay;
 
   // 현재 연동만 위젯에 전달하며 자정을 지난 응답은 오늘 일정으로 바꾸지 않는다.
   Map<String, dynamic> get widgetCache => {

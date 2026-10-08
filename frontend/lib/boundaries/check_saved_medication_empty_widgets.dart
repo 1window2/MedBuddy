@@ -3,6 +3,49 @@ part of 'check_saved_medication_ui_boundary.dart';
 // 파일명: check_saved_medication_empty_widgets.dart
 // 역할: 빈 목록의 등록 진입, 조회 실패 안내, 전체 선택과 삭제 버튼 및 날짜 묶음을 제공한다.
 
+// 클래스명: _SavedMedicationStateShell
+// 역할: 복약함의 빈 목록·조회 실패·빈 조회 결과가 함께 쓰는 가운데 정렬 안내 틀을 그린다.
+// 주요 책임: 아이콘, 안내 문구, 동작 버튼을 세로로 배치하고 큰 글씨에서도 버튼까지 스크롤되게 한다.
+// 속성: icon은 상태 아이콘, message는 안내 문구, gap은 문구와 버튼 사이 간격, actions는 동작 버튼 목록이다.
+class _SavedMedicationStateShell extends StatelessWidget {
+  final IconData icon;
+  final Widget message;
+  final double gap;
+  final List<Widget> actions;
+
+  // 함수이름: _SavedMedicationStateShell
+  // 함수역할: 상태 안내의 아이콘·문구·간격·버튼을 받는다.
+  // 매개변수: icon, message, gap, actions. 반환값: 안내 틀 위젯.
+  const _SavedMedicationStateShell({
+    required this.icon,
+    required this.message,
+    required this.gap,
+    required this.actions,
+  });
+
+  // 함수이름: build
+  // 함수역할: 남은 화면을 채우는 스크롤 영역 가운데에 아이콘, 문구, 버튼을 차례로 놓는다.
+  // 매개변수: context는 화면 위치. 반환값: 스크롤 가능한 상태 안내.
+  @override
+  Widget build(BuildContext context) => SliverFillRemaining(
+    hasScrollBody: false,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Icon(icon, color: MedBuddyColors.textMuted, size: 42),
+          const SizedBox(height: 14),
+          message,
+          SizedBox(height: gap),
+          ...actions,
+        ],
+      ),
+    ),
+  );
+}
+
 // 클래스명: _SavedMedicationEmptyState
 // 역할: 빈 복약함 안내와 보통 크기의 등록 버튼을 배치한다.
 // 주요 책임: 큰 글씨에서도 등록 버튼까지 스크롤되게 한다.
@@ -23,48 +66,35 @@ class _SavedMedicationEmptyState extends StatelessWidget {
   // 함수역할: 안내와 전체 너비 등록 버튼을 구성한다.
   // 매개변수: context는 화면 위치. 반환값: 스크롤 가능한 빈 상태.
   @override
-  Widget build(BuildContext context) => SliverFillRemaining(
-    hasScrollBody: false,
-    child: Padding(
-      padding: const EdgeInsets.symmetric(vertical: 24),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Icon(
-            Icons.medication_outlined,
-            color: MedBuddyColors.textMuted,
-            size: 42,
-          ),
-          const SizedBox(height: 14),
-          Text(
-            text.emptyMessage,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: MedBuddyColors.textMuted,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            key: const Key('saved-medication-register'),
-            onPressed: onPrescriptionInputRequested,
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(48),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              textStyle: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0,
-              ),
-            ),
-            icon: const Icon(Icons.add),
-            label: Text(text.registerMedication, textAlign: TextAlign.center),
-          ),
-        ],
+  Widget build(BuildContext context) => _SavedMedicationStateShell(
+    icon: Icons.medication_outlined,
+    gap: 24,
+    message: Text(
+      text.emptyMessage,
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        color: MedBuddyColors.textMuted,
+        fontSize: 16,
+        fontWeight: FontWeight.w600,
       ),
     ),
+    actions: [
+      FilledButton.icon(
+        key: const Key('saved-medication-register'),
+        onPressed: onPrescriptionInputRequested,
+        style: FilledButton.styleFrom(
+          minimumSize: const Size.fromHeight(48),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          textStyle: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0,
+          ),
+        ),
+        icon: const Icon(Icons.add),
+        label: Text(text.registerMedication, textAlign: TextAlign.center),
+      ),
+    ],
   );
 }
 
@@ -88,48 +118,35 @@ class _SavedMedicationLoadErrorState extends StatelessWidget {
   // 함수역할: 조회 실패 안내와 전체 너비 다시 시도 버튼을 구성한다.
   // 매개변수: context는 화면 위치. 반환값: 스크롤 가능한 조회 실패 상태.
   @override
-  Widget build(BuildContext context) => SliverFillRemaining(
-    hasScrollBody: false,
-    child: Padding(
-      padding: const EdgeInsets.symmetric(vertical: 24),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Icon(
-            Icons.cloud_off_outlined,
-            color: MedBuddyColors.textMuted,
-            size: 42,
-          ),
-          const SizedBox(height: 14),
-          Text(
-            text.loadFailedMessage,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: MedBuddyColors.textMuted,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            key: const Key('saved-medication-retry'),
-            onPressed: onRetryRequested,
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(48),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              textStyle: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0,
-              ),
-            ),
-            icon: const Icon(Icons.refresh),
-            label: Text(text.retry, textAlign: TextAlign.center),
-          ),
-        ],
+  Widget build(BuildContext context) => _SavedMedicationStateShell(
+    icon: Icons.cloud_off_outlined,
+    gap: 24,
+    message: Text(
+      text.loadFailedMessage,
+      textAlign: TextAlign.center,
+      style: const TextStyle(
+        color: MedBuddyColors.textMuted,
+        fontSize: 16,
+        fontWeight: FontWeight.w600,
       ),
     ),
+    actions: [
+      FilledButton.icon(
+        key: const Key('saved-medication-retry'),
+        onPressed: onRetryRequested,
+        style: FilledButton.styleFrom(
+          minimumSize: const Size.fromHeight(48),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          textStyle: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0,
+          ),
+        ),
+        icon: const Icon(Icons.refresh),
+        label: Text(text.retry, textAlign: TextAlign.center),
+      ),
+    ],
   );
 }
 

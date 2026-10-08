@@ -1131,10 +1131,12 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
         self.assertIsInstance(analysis_result, PrescriptionAnalysisResult)
         self.assertEqual(analysis_result.candidateCount, 1)
         self.assertEqual(
-            analysis_result.medication_candidates.findByName(
-                "\ud504\ub8e8\ucf54\ud504\uc815"
-            ),
-            medication_candidate_list.candidates[0],
+            [
+                candidate
+                for candidate in analysis_result.medication_candidates.candidates
+                if candidate.drug_name == "\ud504\ub8e8\ucf54\ud504\uc815"
+            ],
+            [medication_candidate_list.candidates[0]],
         )
 
     # Function Name: _save_basic_drug

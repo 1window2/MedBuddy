@@ -205,18 +205,6 @@ class ResolveDuplicatePillSelectionControl {
     ];
   }
 
-  // 함수이름: mergeEquivalentRequests
-  // 함수역할: 품목과 사용자가 검토한 복약 일정이 모두 같은 요청만 하나로 묶는다. 복용량, 기간, 시작일 또는 시간대가 다르면 같은 약도 별도로 유지한다.
-  // 매개변수:
-  // - requests (Iterable<IdentifiedPillSaveRequest>): 입력 순서를 보존할 알약 저장 요청 목록
-  // 반환값:
-  // - List<IdentifiedPillSaveRequest>: 품목과 사용자가 검토한 복약 일정이 모두 같은 요청만 하나로 묶는다. 복용량, 기간, 시작일 또는 시간대가 다르면 같은 약도 별도로 유지한다.
-  List<IdentifiedPillSaveRequest> mergeEquivalentRequests(
-    Iterable<IdentifiedPillSaveRequest> requests,
-  ) {
-    return buildPillSavePlan(requests, mergeEquivalent: true).uniqueRequests;
-  }
-
   // 함수이름: buildPillSavePlan
   // 함수역할: 사진별 저장 요청에서 실제로 보낼 요청과 사진→요청 대응을 만든다. 병합을 선택했을 때만 품목과 검토 일정이 모두 같은 요청을 처음 요청 하나로 묶는다.
   // 매개변수:

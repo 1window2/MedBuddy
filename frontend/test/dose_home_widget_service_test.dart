@@ -10,6 +10,7 @@ import 'package:cryptography/cryptography.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:medbuddy_frontend/composition/dose_home_widget_background.dart';
 import 'package:medbuddy_frontend/entities/dose_widget_state.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/services/dose_home_widget_service.dart';
@@ -204,6 +205,8 @@ void main() {
   List<Object?> uploadedIds() => [for (final u in uploads) u['operation_id']];
 
   setUp(() async {
+    // Production installs the server readers at every entry point; the tests use the same wiring.
+    installDoseHomeWidgetReaders();
     directory = await Directory.systemTemp.createTemp('dose-widget-service-');
     db = await databaseFactoryFfi.openDatabase(
       '${directory.path}/outbox.db',

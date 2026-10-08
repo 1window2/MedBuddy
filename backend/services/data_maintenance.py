@@ -19,6 +19,7 @@ from entities.caregiver_alert_outbox_entity import (
 from entities.medication_completion_entity import _MedicationCompletion
 from entities.patient_caregiver_link_entity import _PatientLinkCode
 from entities.saved_medication_entity import _SavedMedication
+from services.background_loop_runner import BackgroundLoopRunner
 from services.chat_message_retention import ChatMessageRetentionPolicy
 from services.saved_medication_retention import SavedMedicationRetentionPolicy
 
@@ -140,7 +141,7 @@ class DataMaintenanceService:
 # - session_factory (sessionmaker[Session]): 작업별 세션 생성기.
 # - service (DataMaintenanceService): 일괄 정리 서비스.
 # - _task / _stop_event: 반복 태스크와 종료 신호.
-class PeriodicDataMaintenanceRunner:
+class PeriodicDataMaintenanceRunner(BackgroundLoopRunner):
     # 함수이름: __init__
     # 함수역할:
     # - 정리 세션 생성기와 서비스를 저장하고 반복 태스크의 종료 이벤트를 준비한다.
@@ -156,32 +157,7 @@ class PeriodicDataMaintenanceRunner:
     ) -> None:
         self.session_factory = session_factory
         self.service = service or DataMaintenanceService()
-        self._stop_event = asyncio.Event()
-        self._task: asyncio.Task[None] | None = None
-
-    # 함수이름: start
-    # 함수역할:
-    # - 등록된 태스크가 없을 때만 주기적 데이터 정리 작업을 시작한다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - 없음; 중복 태스크를 생성하지 않는다.
-    def start(self) -> None:
-        if self._task is None:
-            self._task = asyncio.create_task(self._run_loop())
-
-    # 함수이름: stop
-    # 함수역할:
-    # - 종료 신호를 설정하고 진행 중인 정리가 끝날 때까지 기다린 후 태스크를 해제한다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - 없음; 반복 태스크 종료 후 반환한다.
-    async def stop(self) -> None:
-        self._stop_event.set()
-        if self._task is not None:
-            await self._task
-            self._task = None
+        super().__init__()
 
     # 함수이름: _run_loop
     # 함수역할:

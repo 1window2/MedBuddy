@@ -271,27 +271,15 @@ class CheckSchedule:
             medication.medication_status = self._all_slots_completed(slot_statuses)
             medication.medication_status_date = today
             self.db.flush()
-            current_slot_completion_states = self._slot_completion_states(
-                active_medications,
-                completion_rows_by_medication_id,
-                today,
-                target_slot_keys,
-            )
-            completion_events = self._new_slot_completion_events(
+            completion_events = self._queue_slot_completion_events(
                 patient_hash=normalized_patient_hash,
                 schedule_date=today,
                 target_slot_keys=target_slot_keys,
+                active_medications=active_medications,
+                completion_rows_by_medication_id=completion_rows_by_medication_id,
                 previous_slot_completion_states=previous_slot_completion_states,
-                current_slot_completion_states=current_slot_completion_states,
+                alertable=True,
             )
-            for completion_event in completion_events:
-                outbox_row = self._get_or_create_completion_outbox(
-                    event_key=str(completion_event["event_key"]),
-                    patient_hash=normalized_patient_hash,
-                    slot_key=str(completion_event["slot_key"]),
-                    schedule_date=today,
-                )
-                completion_event["outbox_id"] = int(outbox_row.id)
             # 응답은 커밋 전에 만들어 커밋 뒤 행을 다시 읽지 않는다.
             schedule = self._to_schedule_dict(medication, today, completion_rows)
             self.db.commit()
@@ -443,30 +431,16 @@ class CheckSchedule:
                     medication.medication_status = self._all_slots_completed(slot_statuses)
                     medication.medication_status_date = today
             self.db.flush()
-            current_slot_completion_states = self._slot_completion_states(
-                active_medications,
-                completion_rows_by_medication_id,
-                today,
-                target_slot_keys,
-            )
-            completion_events = self._new_slot_completion_events(
+            # Historical uploads are records, not a new "just taken" alert.
+            completion_events = self._queue_slot_completion_events(
                 patient_hash=normalized_patient_hash,
                 schedule_date=today,
                 target_slot_keys=target_slot_keys,
+                active_medications=active_medications,
+                completion_rows_by_medication_id=completion_rows_by_medication_id,
                 previous_slot_completion_states=previous_slot_completion_states,
-                current_slot_completion_states=current_slot_completion_states,
+                alertable=today == current_day,
             )
-            # Historical uploads are records, not a new "just taken" alert.
-            if today != current_day:
-                completion_events = []
-            for completion_event in completion_events:
-                outbox_row = self._get_or_create_completion_outbox(
-                    event_key=str(completion_event["event_key"]),
-                    patient_hash=normalized_patient_hash,
-                    slot_key=normalized_slot_key,
-                    schedule_date=today,
-                )
-                completion_event["outbox_id"] = int(outbox_row.id)
             # The response is built inside the transaction, so no row has to be
             # read again after the commit.
             schedules = [
@@ -503,6 +477,55 @@ class CheckSchedule:
             "message": "Medication slot status was updated.",
             "data": schedules,
         }
+
+    # 함수이름: _queue_slot_completion_events
+    # 함수역할:
+    # - 변경 전후의 시간대 완료 상태를 비교해 새로 완료된 시간대마다 알림 아웃박스 행을 하나씩 만든다.
+    # - 약 하나 변경과 시간대 전체 변경이 같은 규칙으로 완료 이벤트를 만들도록 한 곳에 둔다.
+    # 매개변수:
+    # - patient_hash (str): 환자 소유권 hash
+    # - schedule_date (date): 복약 완료 날짜
+    # - target_slot_keys: 이번 요청에서 변경한 시간대 목록
+    # - active_medications: 해당 날짜에 복용 중인 약 목록
+    # - completion_rows_by_medication_id: 변경 후 약별 완료 기록
+    # - previous_slot_completion_states: 변경 전 시간대별 완료 상태
+    # - alertable (bool): 다른 날짜의 기록이면 False이며 알림 이벤트를 만들지 않는다.
+    # 반환값:
+    # - 아웃박스 행 ID가 채워진 새 완료 이벤트 목록
+    def _queue_slot_completion_events(
+        self,
+        *,
+        patient_hash: str,
+        schedule_date,
+        target_slot_keys,
+        active_medications,
+        completion_rows_by_medication_id,
+        previous_slot_completion_states,
+        alertable: bool,
+    ) -> list[dict[str, str | int]]:
+        if not alertable:
+            return []
+        completion_events = self._new_slot_completion_events(
+            patient_hash=patient_hash,
+            schedule_date=schedule_date,
+            target_slot_keys=target_slot_keys,
+            previous_slot_completion_states=previous_slot_completion_states,
+            current_slot_completion_states=self._slot_completion_states(
+                active_medications,
+                completion_rows_by_medication_id,
+                schedule_date,
+                target_slot_keys,
+            ),
+        )
+        for completion_event in completion_events:
+            outbox_row = self._get_or_create_completion_outbox(
+                event_key=str(completion_event["event_key"]),
+                patient_hash=patient_hash,
+                slot_key=str(completion_event["slot_key"]),
+                schedule_date=schedule_date,
+            )
+            completion_event["outbox_id"] = int(outbox_row.id)
+        return completion_events
 
     # 함수이름: _new_slot_completion_events
     # 함수역할:

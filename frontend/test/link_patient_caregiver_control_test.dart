@@ -461,26 +461,6 @@ void main() {
 
   // Function Name: test callback
   // Description:
-  // - Expected behavior: PatientCaregiverLink preserves diagram lifecycle methods.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - No value; a failed expectation fails this test.
-  test('PatientCaregiverLink preserves diagram lifecycle methods', () {
-    const link = PatientCaregiverLink(
-      patientHash: 'patient-a',
-      caregiverHash: 'caregiver-a',
-    );
-
-    final createdLink = link.savePatientCaregiverLink();
-    final deletedLink = createdLink.removePatientCaregiverLink();
-
-    expect(createdLink.linkStatus, isTrue);
-    expect(deletedLink.linkStatus, isFalse);
-  });
-
-  // Function Name: test callback
-  // Description:
   // - Expected behavior: every link request reports a rejected response with its status code and a
   //   transport error with its cause, keeping the message text, so the screen can show connection
   //   guidance instead of the generic English sentence.

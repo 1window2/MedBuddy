@@ -46,7 +46,7 @@ package "Flutter: Boundary / Control / Entity" {
   }
   class LinkedChatUI <<Boundary>>
   class "ManageLinkedChat" as FChat <<Control>>
-  class ChatPlaceContext <<Entity>>
+  abstract class ChatPlaceContext <<Entity>>
 }
 package "FastAPI: Boundary / Control / Entity" {
   note "module-level route functions\napi/hospital_router.py" as HospitalRouter

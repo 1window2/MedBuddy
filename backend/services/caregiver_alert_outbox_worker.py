@@ -12,6 +12,8 @@ from controls.process_caregiver_alert_outbox_control import (
     ProcessCaregiverAlertOutbox,
 )
 from controls.queue_missed_dose_alerts_control import QueueMissedDoseAlerts
+from services.background_loop_runner import BackgroundLoopRunner
+
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +29,7 @@ logger = logging.getLogger(__name__)
 # - push_boundary_factory (Callable): 푸시 전송 경계 생성기.
 # - interval_seconds (int): 조회 간격(초).
 # - _task / _stop_event: 반복 작업과 종료 신호.
-class CaregiverAlertOutboxWorker:
+class CaregiverAlertOutboxWorker(BackgroundLoopRunner):
     # 함수이름: __init__
     # 함수역할:
     # - 주기별 세션과 푸시 경계 생성기를 보관하고 반복 작업의 종료 신호를 초기화한다.
@@ -46,32 +48,7 @@ class CaregiverAlertOutboxWorker:
         self.session_factory = session_factory
         self.push_boundary_factory = push_boundary_factory
         self.interval_seconds = interval_seconds
-        self._stop_event = asyncio.Event()
-        self._task: asyncio.Task[None] | None = None
-
-    # 함수이름: start
-    # 함수역할:
-    # - 실행 중인 작업이 없을 때만 아웃박스 반복 처리 태스크를 등록한다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - 없음; 기존 태스크가 있으면 추가로 시작하지 않는다.
-    def start(self) -> None:
-        if self._task is None:
-            self._task = asyncio.create_task(self._run_loop())
-
-    # 함수이름: stop
-    # 함수역할:
-    # - 종료 이벤트를 알리고 현재 처리 주기의 종료를 기다린 뒤 태스크 참조를 비운다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - 없음; 실행 중이던 반복 작업이 끝난 뒤 반환한다.
-    async def stop(self) -> None:
-        self._stop_event.set()
-        if self._task is not None:
-            await self._task
-            self._task = None
+        super().__init__()
 
     # 함수이름: _run_loop
     # 함수역할:

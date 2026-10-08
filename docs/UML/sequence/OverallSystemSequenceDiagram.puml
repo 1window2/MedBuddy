@@ -1,7 +1,7 @@
 @startuml
 scale max 4096*4096
 
-title beta/v0.2.0 전체 시스템 주요 동작 Sequence Diagram
+title beta/v0.2.1 전체 시스템 주요 동작 Sequence Diagram
 
 autonumber
 hide footbox

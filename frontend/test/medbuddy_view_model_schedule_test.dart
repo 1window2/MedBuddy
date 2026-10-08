@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
+import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
 import 'package:medbuddy_frontend/controls/manage_account_control.dart';
 import 'package:medbuddy_frontend/controls/manage_user_setting_control.dart';
@@ -112,14 +113,19 @@ void main() {
         ),
       );
       addTearDown(viewModel.dispose);
-      await viewModel.requestUserSettingSave(
-        fontSizeOption: 'medium',
-        readingSpeedOption: 'normal',
-        language: 'ko',
-        defaultMorningTime: '07:15',
-        defaultLunchTime: '13:15',
-        defaultEveningTime: '19:15',
-      );
+      await viewModel.saveUserSetting(
+          viewModel.userSetting
+            .updateUserSetting(
+              fontSize: UserSetting.fontSizeFromOption('medium'),
+              readingSpeed: UserSetting.readingSpeedFromOption('normal'),
+              language: 'ko',
+            )
+            .copyWith(
+              defaultMorningTime: '07:15',
+              defaultLunchTime: '13:15',
+              defaultEveningTime: '19:15',
+            ),
+        );
       expect(reads, 1);
       expect(
         viewModel.medicationReminderSettings['morning']!.timeLabel,
@@ -138,10 +144,17 @@ void main() {
       expect(notifications.registeredSlotKeys, isEmpty);
       expect(notifications.canceledIds, isEmpty);
       saveSucceeds = false;
-      final pending = await viewModel.requestUserSettingSave(
-        fontSizeOption: 'medium', readingSpeedOption: 'normal', language: 'ko',
-        defaultMorningTime: '06:45',
-      );
+      final pending = await viewModel.saveUserSetting(
+          viewModel.userSetting
+            .updateUserSetting(
+              fontSize: UserSetting.fontSizeFromOption('medium'),
+              readingSpeed: UserSetting.readingSpeedFromOption('normal'),
+              language: 'ko',
+            )
+            .copyWith(
+              defaultMorningTime: '06:45',
+            ),
+        );
       expect(pending.synchronizedWithServer, isFalse);
       expect(reads, 1); // Do not fetch stale defaults after a failed server save.
       expect(notifications.registeredSlotKeys, isEmpty);

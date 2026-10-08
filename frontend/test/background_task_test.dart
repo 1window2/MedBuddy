@@ -10,7 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/services/api_config.dart';
-import 'package:medbuddy_frontend/services/caregiver_notification_background_service.dart';
+import 'package:medbuddy_frontend/composition/caregiver_notification_background_service.dart';
 import 'package:medbuddy_frontend/services/dose_home_widget_service.dart';
 import 'package:medbuddy_frontend/services/dose_outbox_store.dart';
 import 'package:medbuddy_frontend/services/dose_sync_background_service.dart';

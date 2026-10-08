@@ -326,61 +326,48 @@ class _SavedMedicationFilteredEmptyState extends StatelessWidget {
   // 함수역할: 전체 보기와 복용 중 빈 상태의 등록 버튼을 구성한다.
   // 매개변수: context는 화면 위치. 반환값: 스크롤 가능한 빈 결과 안내.
   @override
-  Widget build(BuildContext context) => SliverFillRemaining(
-    hasScrollBody: false,
-    child: Padding(
-      padding: const EdgeInsets.symmetric(vertical: 24),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Icon(
-            Icons.medication_outlined,
-            color: MedBuddyColors.textMuted,
-            size: 42,
-          ),
-          const SizedBox(height: 14),
-          Text(
-            isSearching
-                ? (text.isEnglish
-                      ? 'No medications match your search.'
-                      : '검색한 약이 없습니다.')
-                : text.filteredEmptyMessage(filterMode),
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: MedBuddyColors.textMuted,
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 20),
-          OutlinedButton(
-            key: const Key('saved-medication-show-all'),
-            onPressed: onShowAll,
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size.fromHeight(48),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            ),
-            child: Text(text.showAll, textAlign: TextAlign.center),
-          ),
-          if (filterMode == _SavedMedicationFilterMode.active) ...[
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              key: const Key('saved-medication-register'),
-              onPressed: onRegister,
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(48),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 14,
-                ),
-              ),
-              icon: const Icon(Icons.add),
-              label: Text(text.registerMedication, textAlign: TextAlign.center),
-            ),
-          ],
-        ],
+  Widget build(BuildContext context) => _SavedMedicationStateShell(
+    icon: Icons.medication_outlined,
+    gap: 20,
+    message: Text(
+      isSearching
+          ? (text.isEnglish
+                ? 'No medications match your search.'
+                : '검색한 약이 없습니다.')
+          : text.filteredEmptyMessage(filterMode),
+      textAlign: TextAlign.center,
+      style: const TextStyle(
+        color: MedBuddyColors.textMuted,
+        fontSize: 16,
+        fontWeight: FontWeight.w700,
       ),
     ),
+    actions: [
+      OutlinedButton(
+        key: const Key('saved-medication-show-all'),
+        onPressed: onShowAll,
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size.fromHeight(48),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        ),
+        child: Text(text.showAll, textAlign: TextAlign.center),
+      ),
+      if (filterMode == _SavedMedicationFilterMode.active) ...[
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          key: const Key('saved-medication-register'),
+          onPressed: onRegister,
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(48),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
+          ),
+          icon: const Icon(Icons.add),
+          label: Text(text.registerMedication, textAlign: TextAlign.center),
+        ),
+      ],
+    ],
   );
 }

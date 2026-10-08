@@ -292,16 +292,6 @@ class PrescriptionPrivacyFilter {
         _emailPattern.hasMatch(text);
   }
 
-  // 함수이름: shouldMaskFollowingLine
-  // 함수역할: 개인정보 라벨만 인식돼(한 줄에 여럿이어도) 실제 값이 다음 줄에 있을 가능성을 판별한다.
-  // 매개변수:
-  // - text (String): 기기 OCR이 인식한 한 줄
-  // 반환값:
-  // - 다음 줄까지 제거해야 하면 true
-  bool shouldMaskFollowingLine(String text) {
-    return _sensitiveLabelCount(text) > 0 && _isLabelOnlyLine(text);
-  }
-
   // 함수이름: sensitiveLineFlags
   // 함수역할: 인식한 줄 순서대로 개인정보 여부를 판정한다. 값 없이 라벨만 있는 줄이 이어지면 그 라벨 수만큼 뒤따르는 줄도 값으로 보고 가린다.
   // - 라벨 줄 묶음에 개인정보 라벨이 하나라도 있으면 함께 나열된 나이·성별 라벨도 값 줄 수에 포함한다.

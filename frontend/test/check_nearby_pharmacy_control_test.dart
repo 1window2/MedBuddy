@@ -67,7 +67,7 @@ void main() {
   // - 없음.
   // 반환값:
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  test('requestNearbyPharmacies sends coordinates and decodes items', () async {
+  test('requestNearbyCareSearch sends coordinates and decodes items', () async {
     // 함수이름: MockClient 콜백
     // 함수역할:
     // - 좌표·영업 검색 모드·시각·반경을 검사하고 운영 중 약국의 상세 필드를 제공한다.
@@ -113,7 +113,7 @@ void main() {
       client: client,
     );
 
-    final result = await control.requestNearbyPharmacies();
+    final result = (await control.requestNearbyCareSearch()).data;
 
     expect(result, hasLength(1));
     expect(result.single.name, '메드버디약국');

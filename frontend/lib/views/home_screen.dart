@@ -1181,29 +1181,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           onDeviceNotificationSettingsRequested:
               NotificationService.instance.openSystemNotificationSettings,
           // 함수이름: _openUserSettings.onExtendedSettingSaveRequested callback
-          // 함수역할: 처방 분석 단계와 앱 탐색 목적지별 활성 화면에서 캡처된 작업 `viewModel.requestUserSettingSave(fontSizeOption: setting.fontSizeOption, readingSpeedOption: setting.readingSpeedOption, language: setting.lan...; appLanguageControl.setLanguageMode(result.setting.languageMode)`을 실행한다.
+          // 함수역할: 설정 화면이 넘긴 설정 객체를 그대로 저장하고, 저장된 언어 선택 모드를 앱 전체 언어에 적용한다.
           // 매개변수:
           // - setting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
           // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
           onExtendedSettingSaveRequested: (UserSetting setting) async {
-            final result = await viewModel.requestUserSettingSave(
-              fontSizeOption: setting.fontSizeOption,
-              readingSpeedOption: setting.readingSpeedOption,
-              language: setting.language,
-              languageMode: setting.languageMode,
-              timeFormat: setting.timeFormat,
-              homeScheduleSource: setting.homeScheduleSource,
-              medicationNotificationsEnabled:
-                  setting.medicationNotificationsEnabled,
-              caregiverNotificationsEnabled:
-                  setting.caregiverNotificationsEnabled,
-              chatNotificationsEnabled: setting.chatNotificationsEnabled,
-              notificationDetailMode: setting.notificationDetailMode,
-              defaultMorningTime: setting.defaultMorningTime,
-              defaultLunchTime: setting.defaultLunchTime,
-              defaultEveningTime: setting.defaultEveningTime,
-              defaultBedtime: setting.defaultBedtime,
-            );
+            final result = await viewModel.saveUserSetting(setting);
             await appLanguageControl.setLanguageMode(
               result.setting.languageMode,
             );

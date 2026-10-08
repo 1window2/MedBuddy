@@ -572,7 +572,7 @@ void main() {
       expect(control.unlinkIds, [1]);
 
       control.unlinkRequests.single.complete(
-        _caregiverLink.removePatientCaregiverLink(),
+        _caregiverLink.copyWith(linkStatus: false),
       );
       // 재조회가 진행 중이라 진행 표시가 계속 움직이므로 정해진 횟수만 프레임을 진행한다.
       await tester.pump();

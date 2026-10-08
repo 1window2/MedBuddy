@@ -21,61 +21,6 @@ import 'package:medbuddy_frontend/services/api_response_parser.dart';
 void main() {
   // 함수이름: test 콜백
   // 함수역할:
-  // - 보호자 알림 조회가 보호자·환자 식별자와 시간대 범위를 전달하는지 검증한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  test(
-    'requestCaregiverNotificationSetting scopes lookup by caregiver and patient',
-    () async {
-      // 함수이름: MockClient 콜백
-      // 함수역할:
-      // - 보호자·환자·아침 시간대 조회 범위를 검사하고 비활성 설정을 제공한다.
-      // 매개변수:
-      // - request (http.Request): 실제 서버 전송 대신 가로챈 HTTP 요청.
-      // 반환값:
-      // - 보호자 알림 설정의 HTTP 200 응답.
-      final client = MockClient((http.Request request) async {
-        expect(request.method, 'GET');
-        expect(request.url.path, '/caregiver-notification/settings/patient-a');
-        expect(request.url.queryParameters['caregiver_hash'], 'caregiver-a');
-        expect(request.url.queryParameters['slot_key'], 'morning');
-        return http.Response(
-          jsonEncode({
-            'success': true,
-            'data': {
-              'setting_id': 1,
-              'caregiver_hash': 'caregiver-a',
-              'patient_hash': 'patient-a',
-              'is_enabled': false,
-              'alert_option': 'disable',
-            },
-          }),
-          200,
-          headers: {'content-type': 'application/json; charset=utf-8'},
-        );
-      });
-      final control = SetCaregiverNotification(
-        baseUrl: 'http://localhost',
-        caregiverHash: 'caregiver-a',
-        client: client,
-      );
-
-      final setting = await control.requestCaregiverNotificationSetting(
-        patientHash: 'patient-a',
-      );
-
-      expect(setting.notificationId, 1);
-      expect(setting.caregiverHash, 'caregiver-a');
-      expect(setting.patientHash, 'patient-a');
-      expect(setting.notificationEnabled, isFalse);
-      expect(setting.notificationType, 'disabled');
-    },
-  );
-
-  // 함수이름: test 콜백
-  // 함수역할:
   // - 보호자 알림 저장에 활성 상태와 알림 방식을 전달하는지 검증한다.
   // 매개변수:
   // - 없음.
@@ -278,12 +223,6 @@ void main() {
           client: client,
         );
 
-    await _expectTypedFailures(
-      'Caregiver notification lookup failed',
-      (client) => control(
-        client,
-      ).requestCaregiverNotificationSetting(patientHash: 'patient-a'),
-    );
     await _expectTypedFailures(
       'Caregiver notification lookup failed',
       (client) => control(

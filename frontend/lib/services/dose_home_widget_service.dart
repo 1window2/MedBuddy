@@ -5,13 +5,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/widgets.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:http/http.dart' as http;
 
-import '../controls/check_schedule_control.dart';
-import '../controls/check_caregiver_medication_control.dart';
+import '../entities/caregiver_monitoring_snapshot_entity.dart';
 import '../entities/dose_widget_state.dart';
+import '../entities/medication_schedule_entity.dart';
 import 'auth_config.dart';
 import 'authenticated_api_client.dart';
 import 'dose_outbox_store.dart';
@@ -20,12 +19,18 @@ import 'dose_sync_service.dart';
 import 'firebase_runtime_service.dart';
 import 'notification_service.dart';
 
-@pragma('vm:entry-point')
-Future<void> doseHomeWidgetCallback(Uri? uri) async {
-  WidgetsFlutterBinding.ensureInitialized();
-  if (uri?.scheme != 'medbuddy-widget' || uri?.host != 'refresh') return;
-  await DoseHomeWidget.refreshInBackground(requestedByWidget: true);
-}
+// 함수형: DoseWidgetTodayScheduleReader
+// 역할: 계정의 오늘 복약 일정을 서버에서 읽는다. 조립 계층이 일정 Control로 구현해 넣는다.
+typedef DoseWidgetTodayScheduleReader =
+    Future<List<MedicationSchedule>> Function(String owner, http.Client client);
+
+// 함수형: DoseWidgetPatientSnapshotReader
+// 역할: 보호자 계정에 연동된 환자들의 오늘 일정을 서버에서 읽는다. 조립 계층이 보호자 Control로 구현해 넣는다.
+typedef DoseWidgetPatientSnapshotReader =
+    Future<List<CaregiverMonitoringSnapshot>> Function(
+      String owner,
+      http.Client client,
+    );
 
 // 클래스명: DoseHomeWidgetPlatform
 // 역할: 위젯 서비스가 쓰는 위젯 플러그인·저장소·알림·전송 예약·통신 준비 호출을 묶는다.
@@ -111,6 +116,9 @@ class DoseHomeWidget {
   static const journalKey = 'dose_widget_actions';
   // 테스트에서만 교체한다.
   static DoseHomeWidgetPlatform platform = const DoseHomeWidgetPlatform();
+  // 서버 조회 함수. 앱 시작과 두 백그라운드 진입점에서 조립 계층이 채우며, 비어 있으면 서버 조회를 실패로 처리한다.
+  static DoseWidgetTodayScheduleReader? readTodaySchedules;
+  static DoseWidgetPatientSnapshotReader? readPatientSnapshots;
   static bool get supported => platform.supported;
   // 이 실행 환경에서 재알림을 이미 취소한 시간대. 키는 "계정|날짜"이며 현재 것만 보관한다.
   static final Map<String, Set<String>> _cancelledReminderSlots = {};
@@ -123,9 +131,14 @@ class DoseHomeWidget {
     _cancelledReminderSlots.clear();
   }
 
-  static Future<void> initialize() async {
+  // 함수이름: initialize
+  // 함수역할: 위젯이 앱 없이 새로고침을 요청할 때 실행할 백그라운드 진입점을 플러그인에 등록한다.
+  // 매개변수: callback: 조립 계층에 정의된 최상위 진입 함수. 반환값: 등록 완료 Future.
+  static Future<void> initialize(
+    Future<void> Function(Uri? uri) callback,
+  ) async {
     if (supported) {
-      await HomeWidget.registerInteractivityCallback(doseHomeWidgetCallback);
+      await HomeWidget.registerInteractivityCallback(callback);
     }
   }
 
@@ -306,10 +319,11 @@ class DoseHomeWidget {
           final day = doseWidgetDay(DateTime.now());
           final revision = state.data['patient_revision'] as String?;
           try {
-            final snapshots = await CheckCaregiverMedication(
-              caregiverHash: owner,
-              client: client,
-            ).requestScheduleSnapshot();
+            final readSnapshots = readPatientSnapshots;
+            if (readSnapshots == null) {
+              throw StateError('Patient snapshot reader is not installed.');
+            }
+            final snapshots = await readSnapshots(owner, client);
             if (day == doseWidgetDay(DateTime.now())) {
               await publish(
                 owner: owner,
@@ -347,10 +361,11 @@ class DoseHomeWidget {
         try {
           final revision = await sync.cacheRevision();
           final day = doseWidgetDay(DateTime.now());
-          final schedules = await CheckSchedule(
-            patientHash: owner,
-            client: client,
-          ).requestTodayMedicationSchedule();
+          final readSchedules = readTodaySchedules;
+          if (readSchedules == null) {
+            throw StateError('Today schedule reader is not installed.');
+          }
+          final schedules = await readSchedules(owner, client);
           // A request crossing midnight must not relabel yesterday's response.
           if (day == doseWidgetDay(DateTime.now())) {
             await sync.cacheSchedules(

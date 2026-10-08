@@ -5,14 +5,9 @@ import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 
-import '../controls/app_language_control.dart';
-import '../controls/check_schedule_control.dart';
-import '../controls/manage_user_setting_control.dart';
-import '../controls/set_notification_control.dart';
 import '../entities/json_value_reader.dart';
 import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_schedule_entity.dart';
@@ -20,8 +15,8 @@ import '../entities/medication_slot_label.dart';
 import '../entities/patient_hash_entity.dart';
 import '../entities/user_setting_entity.dart';
 import 'api_config.dart';
+import 'app_language_resolver.dart';
 import 'dose_sync_service.dart';
-import 'notification_service.dart';
 
 // Function Name: MedicationAlarmSettingsLoader
 // Description: Loads the patient's enabled and disabled medication alarm settings for reminder-window refresh.
@@ -173,63 +168,6 @@ class MedicationReminderRefreshService {
        _now = now ?? DateTime.now,
        _onDispose = onDispose;
 
-  // 함수이름: MedicationReminderRefreshService.live
-  // 함수역할: 환자 범위의 설정·일정 Control을 만들고 로컬 알림 예약·취소 및 민감정보 정책과 함께 갱신 서비스에 연결한다.
-  // 매개변수:
-  // - patientHash (String): 조회·저장·알림 대상 환자의 소유권 해시
-  // - baseUrl (String): 복약 API 기본 주소
-  // - client (http.Client?): 요청에 사용할 HTTP 클라이언트; 주입 여부에 따른 소유권은 생성자 설명 참조
-  // - notificationService (NotificationService?): 플랫폼 로컬 알림 서비스
-  // 반환값:
-  // - MedicationReminderRefreshService: 초기화된 인스턴스.
-  factory MedicationReminderRefreshService.live({
-    required String patientHash,
-    String baseUrl = ApiConfig.baseUrl,
-    http.Client? client,
-    NotificationService? notificationService,
-  }) {
-    final normalizedPatientHash = PatientHash.normalizePatientHash(patientHash);
-    final alarmControl = SetNotification(
-      baseUrl: baseUrl,
-      patientHash: normalizedPatientHash,
-      client: client,
-    );
-    final scheduleControl = CheckSchedule(
-      baseUrl: baseUrl,
-      patientHash: normalizedPatientHash,
-      client: client,
-    );
-    final userSettingControl = ManageUserSetting(
-      baseUrl: baseUrl,
-      userHash: normalizedPatientHash,
-      client: client,
-      useRemotePersistence: false,
-    );
-    final resolvedNotificationService =
-        notificationService ?? NotificationService.instance;
-    resolvedNotificationService.setHistoryUser(normalizedPatientHash, persistSession: false);
-    return MedicationReminderRefreshService(
-      loadSettings: alarmControl.requestMedicationAlarm,
-      loadSchedules: scheduleControl.requestMedicationScheduleWindow,
-      loadTodaySchedules: scheduleControl.requestTodayMedicationSchedule,
-      loadUserSetting: userSettingControl.requestUserSetting,
-      registerReminder: resolvedNotificationService.registerNotification,
-      cancelReminder: resolvedNotificationService.cancelReminder,
-      setPrivacy: resolvedNotificationService.setShowSensitiveDetails,
-      onDispose: /* 함수이름: onDispose 콜백
-       * 함수역할: 갱신 서비스가 생성한 알림·일정·사용자 설정 제어기를 해제한다.
-       * 매개변수:
-       * - 없음.
-       * 반환값:
-       * - 없음.
-       */() {
-        alarmControl.dispose();
-        scheduleControl.dispose();
-        userSettingControl.dispose();
-      },
-    );
-  }
-
   // 함수이름: synchronize
   // 함수역할: 인증된 서버 상태를 기준으로 모든 로컬 시간대 알림을 갱신한다. 일시적 오류에서는 false를 반환해 Workmanager가 재시도하게 한다.
   //   오늘 이미 모두 복용한 시간대는 오늘 알림을 다시 예약하지 않는다.
@@ -249,9 +187,9 @@ class MedicationReminderRefreshService {
       final schedules = results[1] as List<MedicationSchedule>;
       final preferences = results[2] as SharedPreferences;
       final userSetting = results[3] as UserSetting;
-      final language = AppLanguageControl.resolveLanguage(
+      final language = resolveAppLanguage(
         userSetting.languageMode.isEmpty
-            ? preferences.getString(AppLanguageControl.preferenceKey) ?? 'ko'
+            ? preferences.getString(appLanguagePreferenceKey) ?? 'ko'
             : userSetting.languageMode,
       );
       _setPrivacy?.call(userSetting.showNotificationDetails);
