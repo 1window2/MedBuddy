@@ -1,15 +1,18 @@
 # File Name: dependabot.yml
-# Role: Schedules dependency update proposals for Python, Flutter and GitHub Actions.
+# Role: Schedules one monthly dependency update proposal covering Python, Flutter and GitHub Actions.
 
 version: 2
 
+# Every ecosystem below belongs to this group, so version updates arrive as a
+# single pull request once a month instead of one pull request per package.
 multi-ecosystem-groups:
   all-dependencies:
     schedule:
-      interval: "weekly"
+      interval: "monthly"
     labels:
       - "dependencies"
       - "backend"
+      - "frontend"
       - "github-actions"
 
 updates:
@@ -30,12 +33,9 @@ updates:
   # Flutter and Dart package updates
   - package-ecosystem: "pub"
     directory: "/frontend"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 10
-    labels:
-      - "dependencies"
-      - "frontend"
+    patterns:
+      - "*"
+    multi-ecosystem-group: "all-dependencies"
 
   # GitHub Actions dependencies
   - package-ecosystem: "github-actions"
