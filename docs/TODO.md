@@ -12,13 +12,6 @@ small improvements. See the [v0.2.1 notes](releases/v0.2.1-beta.md).
 
 Physical acceptance that was not performed for v0.2.0:
 
-- [ ] Push delivery to the physical phone and missed-dose alerts between two
-      devices. Linking, chat in both directions, the caregiver's view of the
-      patient's schedule and the completion alert were checked on October 8
-      between the phone (patient) and an Android 14 emulator (guest
-      caregiver). No push reached the phone during that check because its
-      Google messaging connection was down (power saving with a VPN); FCM
-      reported its token as valid.
 - [ ] A notification "taken" or snooze action from a cold start, and the first
       launch after the application day changes. The "taken" action was checked
       with the app in the background only.
@@ -34,8 +27,9 @@ Introduced in v0.2.1 and not yet checked on a device:
       so the encrypted dose store cannot arrive without its device-bound key.
       This needs two phones.
 
-Checked on October 8 with the signed build of `4b840ce` (Galaxy Note10+,
-Android 12, replace-only update from 0.2.0; backend `014aaf4`):
+Checked on October 8 with signed builds (Galaxy Note10+, Android 12,
+replace-only updates from 0.2.0; an Android 14 emulator with a guest account as
+the second device; backend `014aaf4`). The last build checked was `490ef7c`:
 
 - [x] Start without credential entry; saved medications and notification
       history identical before and after the update.
@@ -44,12 +38,23 @@ Android 12, replace-only update from 0.2.0; backend `014aaf4`):
       notification "taken" action with the app in the background.
 - [x] A reminder scheduled as an exact alarm fired on the minute; a slot
       already taken was not re-armed when its reminder was enabled again.
-- [x] Home-screen widget "taken" and undo. With background network blocked by
-      power saving the record stayed queued on the device and was uploaded
-      once when the app was opened.
-- [x] Language switching (English, device language, Korean), voice guide,
-      nearby pharmacy and hospital search, medication detail and health
-      recommendation.
+- [x] Home-screen widget "taken" and undo: uploaded from the background within
+      seconds; with background network blocked by power saving the record
+      stayed queued and was uploaded once when the app was opened.
+- [x] Update with the moved background entry points: a widget tap made before
+      the app was opened logged a callback lookup failure without a crash, was
+      kept, and was applied and uploaded at the first launch; background
+      handling worked afterwards.
+- [x] Two devices: linking by code, chat in both directions, the caregiver's
+      view of the patient's schedule, a dose recorded from chat with exactly
+      one confirmation, the completion alert, and a missed-dose alert 13
+      seconds after its deadline with its two actions.
+- [x] Push to the phone arrived within five seconds on the app's own channel.
+      It did not arrive on a network where Google's messaging connection
+      failed behind a VPN; that was the device's connection, not the app.
+- [x] Language switching (English, device language, Korean), settings save,
+      voice guide, nearby pharmacy and hospital search, medication detail and
+      health recommendation.
 - [x] The direct APK (112.9 MB, `arm64-v8a` and `armeabi-v7a`) installs and
       runs on the phone and on an arm64 emulator.
 - [x] Backend: per-user rate-limit counters exist for the prefixed routes, row
@@ -57,20 +62,21 @@ Android 12, replace-only update from 0.2.0; backend `014aaf4`):
 
 Changed in v0.2.1 and still without a device check (automated tests only):
 
-- [ ] A dose tapped right after midnight; the widget refresh button; an
-      immediate background upload from the widget with power saving off.
+- [ ] A dose tapped right after midnight, and the widget refresh button.
 - [ ] Reminders after a reboot and through the 12-hour worker; cancellation
       after a widget "taken" and again after undo and retake.
-- [ ] Push registration after a cold start without network, and the
-      permission prompt appearing once on the phone.
+- [ ] Push registration after a cold start without network.
 - [ ] Session: a network loss during a token refresh keeps the session; a
       401 in chat signs out; ending the session with a pushed screen open.
 - [ ] Privacy filter on a real prescription (the label rules are judgments
       and the OCR line order is unverified); cleanup of picked photo copies.
 - [ ] Marker retry on the native map and recovery of the dose store on a real
       Keystore.
-- [ ] Two devices: a dose taken from chat, unlink while a chat is open, and
-      more than three sessions on one link.
+- [ ] Two devices: unlink while a chat is open, and more than three sessions
+      on one link.
+- [ ] The periodic WorkManager tasks after an update and before the first
+      launch. Their entry point moved like the widget's; only the widget path
+      was exercised.
 
 Found during the October 8 checks:
 
@@ -119,12 +125,6 @@ Reviewed for v0.2.1 and deferred:
       worker; they wait until the same account signs in again on the device.
 - [ ] With the medication box in selection mode, one back press ends the
       selection and also returns to Home.
-- [ ] The widget and WorkManager entry points moved to `composition/` in
-      v0.2.1, which changes their stored callback handles. After an update
-      from 0.2.0 the periodic workers and widget-initiated refreshes cannot
-      resolve their callback until the app has been opened once; widget taps
-      are kept in the native queue meanwhile. Check on a device: update
-      without opening, tap the widget, then open the app.
 - Decided, not planned: backend controls keep querying ORM models directly.
   Only three of fourteen models have a repository (the ones several controls
   share), and controls reference models in about 290 places. Wrapping the rest
