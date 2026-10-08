@@ -7,7 +7,7 @@ import logging
 import re
 from typing import Any
 
-from sqlalchemy import or_
+from sqlalchemy import or_, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -26,6 +26,10 @@ from services.medication_name_matching import MedicationNameMatcher
 
 logger = logging.getLogger(__name__)
 
+# Text the summary generator has returned for a field it could not summarize.
+# It is never stored as a summary, and a row that already holds it is summarized again.
+SUMMARY_FAILURE_PLACEHOLDER = "요약 실패"
+
 
 # 클래스명: LocalMedicationCatalog
 # 역할:
@@ -41,6 +45,9 @@ class LocalMedicationCatalog:
     _WHITESPACE_PATTERN = re.compile(r"\s+")
     _FUZZY_ANCHOR_LENGTH = 3
     _FUZZY_CANDIDATE_LIMIT = 30
+    # The weekly catalog sync keeps row locks until its single commit; the optional summary
+    # write gives up after this wait instead of holding a worker thread behind it.
+    _SUMMARY_WRITE_LOCK_TIMEOUT_SQL = "SELECT set_config('lock_timeout', '2s', true)"
 
     # 함수이름: __init__
     # 함수역할:
@@ -326,18 +333,19 @@ class LocalMedicationCatalog:
     # Function Name: _build_cached_approval_summary
     # Description:
     # - Reuses an approval summary only when efficacy, usage and warning fields are all populated.
+    # - A field holding the failure placeholder counts as missing, so the row is summarized again.
     # Parameters:
     # - approval_item (_DrugApprovalInfo): Stored approval record with raw documents and optional generated summary.
     # Returns:
-    # - MedicationDetail with stored guidance, or None when the summary is incomplete.
+    # - MedicationDetail with stored guidance, or None when the summary is incomplete or failed.
     def _build_cached_approval_summary(
         self,
         approval_item: _DrugApprovalInfo,
     ) -> MedicationDetail | None:
         if not (
-            approval_item.summary_efficacy
-            and approval_item.summary_use_method
-            and approval_item.summary_warning_message
+            self._is_usable_summary_text(approval_item.summary_efficacy)
+            and self._is_usable_summary_text(approval_item.summary_use_method)
+            and self._is_usable_summary_text(approval_item.summary_warning_message)
         ):
             return None
 
@@ -488,6 +496,7 @@ class LocalMedicationCatalog:
     # Description:
     # - Offloads optional summary caching using an immutable identity/document snapshot.
     # - Skips connection-local in-memory SQLite rather than commit the borrowed request transaction.
+    # - Skips a summary with a blank or failed field, so it is generated again on the next lookup.
     # Parameters:
     # - approval_info (_DrugApprovalInfo): Stored approval record with raw documents and optional generated summary.
     # - medication_detail (MedicationDetail): Patient-facing medication guidance and product metadata.
@@ -499,6 +508,13 @@ class LocalMedicationCatalog:
         medication_detail: MedicationDetail,
     ) -> None:
         if self._worker_session_factory is None or self._uses_memory_sqlite:
+            return
+        if not (
+            self._is_usable_summary_text(medication_detail.efficacy)
+            and self._is_usable_summary_text(medication_detail.usage_method)
+            and self._is_usable_summary_text(medication_detail.warning)
+        ):
+            logger.warning("Local approval summary is incomplete; not persisted.")
             return
 
         approval_snapshot = {
@@ -527,6 +543,7 @@ class LocalMedicationCatalog:
     # Description:
     # - Atomically caches guidance only if the same product and source documents still exist.
     # - Owns commit, rollback and closure entirely inside the worker; failures never replace generated guidance.
+    # - On PostgreSQL the row-lock wait is bounded for this transaction; a timeout is one of the tolerated failures.
     # Parameters:
     # - approval_snapshot (dict[str, Any]): Approval identity and exact document fields used to generate the summary.
     # - summary_fields (dict[str, str | None]): Four generated guidance fields permitted for cache persistence.
@@ -541,6 +558,8 @@ class LocalMedicationCatalog:
             return
         try:
             with self._worker_session_factory.begin() as worker_db:
+                if worker_db.get_bind().dialect.name == "postgresql":
+                    worker_db.execute(text(self._SUMMARY_WRITE_LOCK_TIMEOUT_SQL))
                 worker_db.query(_DrugApprovalInfo).filter_by(
                     **approval_snapshot,
                 ).update(summary_fields, synchronize_session=False)
@@ -549,6 +568,18 @@ class LocalMedicationCatalog:
                 "Failed to persist local approval summary: %s",
                 type(exc).__name__,
             )
+
+    # Function Name: _is_usable_summary_text
+    # Description:
+    # - Tells a generated summary field apart from a blank one and from the failure placeholder.
+    # Parameters:
+    # - value (str | None): Stored or freshly generated summary field.
+    # Returns:
+    # - True when the field holds real guidance text.
+    @staticmethod
+    def _is_usable_summary_text(value: str | None) -> bool:
+        summary_text = (value or "").strip()
+        return bool(summary_text) and summary_text != SUMMARY_FAILURE_PLACEHOLDER
 
     # Function Name: _normalize_name
     # Description:

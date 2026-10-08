@@ -13,7 +13,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from api import chat_router
+from api import chat_router, route_support
 from boundaries.hospital_api_boundary import NationalEmergencyMedicalCenterHospitalAPI, HospitalApiUnavailableError
 from controls.check_nearby_hospital_control import CheckNearbyHospital
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
@@ -61,13 +61,18 @@ def context():
 async def send(chat, monkeypatch, *, sender="patient-a", request=None, provider=None):
     """외부 통신만 대역으로 바꾸고 실제 저장·멱등 처리 경로를 실행한다."""
     control, link_id = chat
-    monkeypatch.setattr(chat_router, "_enforce_chat_daily_quota", AsyncMock())
-    monkeypatch.setattr(chat_router, "get_chat_connection_manager", lambda _: SimpleNamespace(broadcast=AsyncMock()))
-    monkeypatch.setattr(chat_router, "get_check_nearby_hospital", lambda **_: provider)
-    return await chat_router.post_chat_message(
-        link_id=link_id, payload=request or payload(), request=object(), user_hash=sender,
-        principal=object(), authorization=SimpleNamespace(resolveOwnUserHash=lambda _, value: value), chat=control,
-    )
+    quota = AsyncMock()
+    monkeypatch.setattr(chat_router, "enforce_chat_daily_quota", quota)
+    monkeypatch.setattr(route_support, "get_chat_connection_manager", lambda _: SimpleNamespace(broadcast=AsyncMock()))
+    try:
+        return await chat_router.post_chat_message(
+            link_id=link_id, payload=request or payload(), request=object(), user_hash=sender,
+            principal=object(), authorization=SimpleNamespace(resolveOwnUserHash=lambda _, value: value),
+            chat=control, hospital=provider,
+        )
+    finally:
+        # 성공·거절과 무관하게 전송 시도는 일일 한도를 한 번 소비한다.
+        quota.assert_awaited_once()
 
 
 @pytest.mark.parametrize("sender", ["patient-a", "caregiver-a"])

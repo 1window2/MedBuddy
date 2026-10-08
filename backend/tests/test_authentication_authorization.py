@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.routing import APIRoute
 from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -177,24 +178,32 @@ class _RecordingRateLimitStore(RequestRateLimitStore):
 # - app (FastAPI): Application supplying request state and dependencies.
 # - method (str): HTTP method used to derive the request's quota scope.
 # - path (str): HTTP route path used by the request and rate-limit scope.
+# - route_path (str | None): Template of the matched route as a router mounted with a prefix
+#   reports it (without the prefix); None leaves the request without a matched route.
 # Returns:
 # - Request: Synthetic HTTPS request with the supplied app, method, and route.
-def _request(app: FastAPI, method: str, path: str) -> Request:
-    return Request(
-        {
-            "type": "http",
-            "http_version": "1.1",
-            "method": method,
-            "scheme": "https",
-            "path": path,
-            "raw_path": path.encode("ascii"),
-            "query_string": b"",
-            "headers": [],
-            "client": ("203.0.113.10", 12345),
-            "server": ("api.medbuddy.example", 443),
-            "app": app,
-        }
-    )
+def _request(
+    app: FastAPI,
+    method: str,
+    path: str,
+    route_path: str | None = None,
+) -> Request:
+    scope: dict[str, object] = {
+        "type": "http",
+        "http_version": "1.1",
+        "method": method,
+        "scheme": "https",
+        "path": path,
+        "raw_path": path.encode("ascii"),
+        "query_string": b"",
+        "headers": [],
+        "client": ("203.0.113.10", 12345),
+        "server": ("api.medbuddy.example", 443),
+        "app": app,
+    }
+    if route_path is not None:
+        scope["route"] = APIRoute(route_path, endpoint=lambda: None, methods=[method])
+    return Request(scope)
 
 
 # Function Name: _resolve_registered_principal
@@ -355,6 +364,7 @@ async def test_registered_principal_quota_uses_stable_identity_and_route_scope(
                 app,
                 "POST",
                 "/api/v1/medication/identify",
+                route_path="/identify",
             ),
             principal=principals[0],
             db_session=db_session,
@@ -364,6 +374,7 @@ async def test_registered_principal_quota_uses_stable_identity_and_route_scope(
                 app,
                 "GET",
                 "/api/v1/medication/health/recommendation",
+                route_path="/health/recommendation",
             ),
             principal=principals[1],
             db_session=db_session,

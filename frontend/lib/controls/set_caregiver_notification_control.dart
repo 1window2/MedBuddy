@@ -42,44 +42,6 @@ class SetCaregiverNotification {
   }) : _client = client ?? AuthenticatedApiClient(),
        _ownsClient = client == null;
 
-  // 함수이름: requestCaregiverNotificationSetting
-  // 함수역할: 보호자-환자 쌍의 알림 설정을 조회한다.
-  // 매개변수:
-  // - patientHash (String): 보호자가 모니터링하는 환자 해시
-  // - slotKey (String): 조회할 복약 시간대
-  // 반환값:
-  // - CaregiverNotification
-  Future<CaregiverNotification> requestCaregiverNotificationSetting({
-    required String patientHash,
-    String slotKey = 'morning',
-  }) async {
-    try {
-      final response = await _client
-          .get(_buildCaregiverNotificationUri(patientHash, slotKey: slotKey))
-          .timeout(const Duration(seconds: 30));
-      final responseBody = ApiResponseParser.decodeBody(response);
-
-      if (response.statusCode != 200) {
-        throw StateError(
-          'Caregiver notification lookup failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
-        );
-      }
-
-      return _decodeSetting(responseBody);
-    } on StateError {
-      rethrow;
-    } catch (error, stackTrace) {
-      developer.log(
-        'Caregiver notification lookup failed.',
-        name: 'SetCaregiverNotification',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      throw StateError('Caregiver notification lookup failed.');
-    }
-  }
-
   // 함수이름: requestCaregiverNotificationSettings
   // 함수역할: 한 환자의 모든 복약 시간대 알림 설정을 한 번에 조회한다.
   // 매개변수:
@@ -95,9 +57,10 @@ class SetCaregiverNotification {
       final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
-        throw StateError(
-          'Caregiver notification lookup failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        throw ApiResponseParser.httpFailure(
+          'Caregiver notification lookup failed',
+          response,
+          responseBody,
         );
       }
 
@@ -111,7 +74,10 @@ class SetCaregiverNotification {
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Caregiver notification lookup failed.');
+      throw ApiResponseParser.transportFailure(
+        'Caregiver notification lookup failed',
+        error,
+      );
     }
   }
 
@@ -149,9 +115,10 @@ class SetCaregiverNotification {
       final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
-        throw StateError(
-          'Caregiver notification save failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        throw ApiResponseParser.httpFailure(
+          'Caregiver notification save failed',
+          response,
+          responseBody,
         );
       }
 
@@ -165,7 +132,10 @@ class SetCaregiverNotification {
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Caregiver notification save failed.');
+      throw ApiResponseParser.transportFailure(
+        'Caregiver notification save failed',
+        error,
+      );
     }
   }
 

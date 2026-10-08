@@ -61,8 +61,6 @@ void main() {
                       ),
                     ],
                     userSetting: const UserSetting(),
-                    purpose:
-                        MedicationScheduleReviewPurpose.prescriptionAnalysis,
                   );
                 },
                 child: const Text('열기'),
@@ -170,8 +168,6 @@ void main() {
                       ),
                     ),
                     userSetting: const UserSetting(fontSize: 20),
-                    purpose:
-                        MedicationScheduleReviewPurpose.prescriptionAnalysis,
                   );
                 },
                 child: const Text('열기'),
@@ -237,7 +233,6 @@ void main() {
                     ),
                   ],
                   userSetting: const UserSetting(),
-                  purpose: MedicationScheduleReviewPurpose.prescriptionAnalysis,
                 );
               },
               child: const Text('열기'),

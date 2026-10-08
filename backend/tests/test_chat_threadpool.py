@@ -16,6 +16,7 @@ from services.chat_connection_manager import ChatConnectionManager
 
 # Function Name: test_rest_chat_operations_leave_event_loop_responsive
 # Description: Exercise each async write route, including ownership checks and dose refresh.
+#   The two message-creating routes must also consume the daily chat quota exactly once.
 # Parameters: operation - route and synchronous control operation under test.
 # Returns: None; fails if a DB call runs on the loop or prevents a loop callback.
 @pytest.mark.parametrize("operation", ["send_message", "delete_messages", "mark_read", "record_medication_taken"])
@@ -54,8 +55,9 @@ def test_rest_chat_operations_leave_event_loop_responsive(operation: str) -> Non
         kwargs = dict(link_id=1, payload=payload, request=object(), user_hash="patient",
                       principal=object(), authorization=authorization, chat=chat)
         manager = SimpleNamespace(broadcast=AsyncMock())
-        with patch.object(chat_router, "_enforce_chat_daily_quota", AsyncMock()), \
-             patch.object(chat_router, "_publish_saved_message", AsyncMock(return_value={"success": True})), \
+        quota = AsyncMock()
+        with patch.object(chat_router, "enforce_chat_daily_quota", quota), \
+             patch.object(chat_router, "publish_saved_message", AsyncMock(return_value={"success": True})), \
              patch.object(chat_router, "get_chat_connection_manager", return_value=manager), \
              patch.object(chat_router, "CheckSchedule", return_value=SimpleNamespace(
                  requestTodayMedicationSchedule=partial(blocking, "schedule", {"data": []}))):
@@ -67,6 +69,7 @@ def test_rest_chat_operations_leave_event_loop_responsive(operation: str) -> Non
                      "record_medication_taken": chat_router.record_chat_medication_taken}[operation]
             await route(**kwargs)
         assert calls == ["authorize", operation] + (["schedule"] if operation == "record_medication_taken" else [])
+        assert quota.await_count == (1 if operation in ("send_message", "record_medication_taken") else 0)
     asyncio.run(exercise())
 
 
@@ -139,6 +142,7 @@ def test_cancelled_websocket_handshake_finishes_database_work_before_close() -> 
 
 # Function Name: test_websocket_handshake_offloads_auth_and_closes_session
 # Description: Bound DB lifetime to the handshake and preserve failure close codes.
+#   A rejected handshake is closed without being accepted.
 # Parameters: failure - successful handshake, rejected quota, or authorization failure.
 # Returns: None; fails on event-loop I/O, leaked sessions, or incorrect rejection codes.
 @pytest.mark.parametrize("failure", [None, "quota", "authorization"])
@@ -163,9 +167,12 @@ def test_websocket_handshake_offloads_auth_and_closes_session(failure: str | Non
 
         db = SimpleNamespace(commit=partial(blocking, "commit"),
                              rollback=partial(blocking, "rollback"), close=partial(blocking, "close"))
+        transport = []
         socket = SimpleNamespace(
             app=SimpleNamespace(state=SimpleNamespace(chat_connection_manager=ChatConnectionManager())),
-            accept=AsyncMock(), close=AsyncMock(), send_json=AsyncMock(),
+            accept=AsyncMock(side_effect=lambda: transport.append("accept")),
+            close=AsyncMock(side_effect=lambda **_: transport.append("close")),
+            send_json=AsyncMock(),
             receive_text=AsyncMock(side_effect=WebSocketDisconnect()),
         )
         # SimpleNamespace is not hashable; a socket registry requires identity hashing.
@@ -183,7 +190,11 @@ def test_websocket_handshake_offloads_auth_and_closes_session(failure: str | Non
         if failure is None:
             assert calls == ["authenticate", "authorize", "link", "commit", "close"]
             socket.send_json.assert_awaited_once()
+            socket.accept.assert_not_awaited()
         else:
             assert "commit" not in calls
-            assert socket.close.await_args.kwargs["code"] == (4429 if failure == "quota" else 4403)
+            assert transport == ["close"]
+            assert socket.close.await_args.kwargs == (
+                {"code": 4429, "reason": "5"} if failure == "quota" else {"code": 4403}
+            )
     asyncio.run(exercise())

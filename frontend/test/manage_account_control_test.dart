@@ -93,6 +93,66 @@ void main() {
     expect(preferences.getString('user_setting_usr_test_font_size'), 'large');
   });
 
+  // Function Name: test callback
+  // Description: Verify that a stopped deletion is typed so the settings screen can show it in either language, and that it leaves every key in place.
+  // Parameters: None.
+  // Returns: Future<void>; completes when the failure reasons and preserved keys are confirmed.
+  test('deletion failures carry a reason for both languages', () async {
+    SharedPreferences.setMockInitialValues({
+      'user_setting_usr_test_font_size': 16,
+      'user_setting_font_size': 18,
+      'medbuddy_medication_reminder_morning': '08:00',
+    });
+    Object? rejected;
+    try {
+      await ManageAccount(
+        userHash: 'usr_test',
+        // Function Name: MockClient callback
+        // Description: Rejects deletion without contacting the account server.
+        // Parameters: _ (http.Request), unused request.
+        // Returns: HTTP 500 response.
+        client: MockClient((_) async => http.Response('failure', 500)),
+      ).deleteAccountData();
+    } catch (error) {
+      rejected = error;
+    }
+    expect(rejected, isA<AccountDeletionFailure>());
+    final failure = rejected! as AccountDeletionFailure;
+    expect(failure.reason, AccountDeletionFailureReason.serverRejected);
+    expect(failure.message, '계정 데이터를 삭제하지 못했습니다.');
+    expect(failure.messageFor(false), '계정 데이터를 삭제하지 못했습니다.');
+    expect(failure.messageFor(true), 'Could not delete account data.');
+
+    Object? unscoped;
+    try {
+      await ManageAccount(
+        userHash: '   ',
+        // Function Name: MockClient callback
+        // Description: Authorizes deletion without contacting the account server.
+        // Parameters: _ (http.Request), unused request.
+        // Returns: HTTP 200 response.
+        client: MockClient((_) async => http.Response('{"success":true}', 200)),
+      ).deleteAccountData();
+    } catch (error) {
+      unscoped = error;
+    }
+    expect(unscoped, isA<AccountDeletionFailure>());
+    expect(
+      (unscoped! as AccountDeletionFailure).reason,
+      AccountDeletionFailureReason.missingAccountScope,
+    );
+    expect(
+      (unscoped as AccountDeletionFailure).messageFor(true),
+      'There is no account scope to delete.',
+    );
+    final preferences = await SharedPreferences.getInstance();
+    expect(preferences.getKeys(), {
+      'user_setting_usr_test_font_size',
+      'user_setting_font_size',
+      'medbuddy_medication_reminder_morning',
+    });
+  });
+
   // Function Name: scopedPreferences
   // Description: Creates representative keys using the existing account-owned storage formats.
   // Parameters:
@@ -212,4 +272,109 @@ void main() {
       expect(preferences.getKeys(), preserved.keys.toSet());
     },
   );
+  // Function Name: legacyPreferences
+  // Description: Creates the seven keys written before settings and reminders were scoped to an account.
+  // Parameters: None.
+  // Returns: Map<String, Object>: Unscoped legacy settings and per-slot reminder records.
+  Map<String, Object> legacyPreferences() => {
+    'user_setting_font_size': 18,
+    'user_setting_reading_speed': 1.2,
+    'user_setting_language': 'en',
+    for (final slot in const ['morning', 'lunch', 'evening', 'bedtime'])
+      'medbuddy_medication_reminder_$slot': '{"slot_key":"$slot"}',
+  };
+
+  // Function Name: deleteAccount
+  // Description: Runs a server-authorized deletion for the given account hash.
+  // Parameters: userHash (String), account whose device cache is cleared.
+  // Returns: Future<SharedPreferences>; the store after the cleanup.
+  Future<SharedPreferences> deleteAccount(String userHash) async {
+    // Function Name: MockClient callback
+    // Description: Authorizes deletion without contacting the account server.
+    // Parameters: request (http.Request), unused request.
+    // Returns: HTTP 200 response.
+    final client = MockClient(
+      (request) async => http.Response('{"success":true}', 200),
+    );
+    addTearDown(client.close);
+    await ManageAccount(userHash: userHash, client: client).deleteAccountData();
+    return SharedPreferences.getInstance();
+  }
+
+  // Function Name: test callback
+  // Description: Removes the unscoped legacy keys when the deleted account was the only one on the device, so the next account does not inherit them, and keeps device-level and look-alike keys.
+  // Parameters: None.
+  // Returns: Future<void>; completes when only device-level keys remain.
+  test(
+    'unscoped legacy keys are removed with the only account on the device',
+    () async {
+      final deviceLevel = <String, Object>{
+        'medbuddy_app_language': 'ko',
+        'medbuddy.favorite_pharmacy_ids': <String>['shared'],
+        'medbuddy.favorite_hospital_ids': <String>['shared'],
+        'notification_inbox_active_user': 'usr_test',
+        'unrelated_usr_test_cache': 'keep',
+        // Written for reminders scheduled without a signed-in owner.
+        'medbuddy_reminder_plan_guest_morning': '{}',
+        // Names that only resemble the seven legacy keys.
+        'user_setting_theme': 'light',
+        'user_setting_font_size_backup': 20,
+        'xuser_setting_language': 'en',
+        'medbuddy_medication_reminder_refresh': 'worker',
+        'medbuddy_medication_reminder_morning_snooze': '08:10',
+        'medbuddy_medication_reminder_': 'empty-slot',
+      };
+      SharedPreferences.setMockInitialValues({
+        ...scopedPreferences('usr_test'),
+        ...legacyPreferences(),
+        ...deviceLevel,
+      });
+      final preferences = await deleteAccount('usr_test');
+      expect(preferences.getKeys(), deviceLevel.keys.toSet());
+      for (final entry in deviceLevel.entries) {
+        expect(preferences.get(entry.key), entry.value, reason: entry.key);
+      }
+    },
+  );
+
+  // One key from every account-scoped namespace: each is enough to show that another account
+  // still uses this device and may read the unscoped legacy keys as its fallback.
+  final otherAccountEvidence = <String, Object>{
+    'user_setting_usr_other_language': 'ko',
+    'user_setting_usr_other_default_bedtime': '22:00',
+    'medbuddy_medication_reminder_patient_usr_other_usr_other_lunch': '{}',
+    'medbuddy_reminder_plan_usr_other_evening': '{}',
+    'medbuddy.favorite_pharmacy_ids.usr_other': <String>['pharmacy-1'],
+    'medbuddy.favorite_hospital_ids.usr_other': <String>['hospital-1'],
+    'caregiver_linked_patients.usr_other': <String>['patient-1'],
+    'caregiver_patient_label.usr_other.patient-1': 'Family',
+    'caregiver_alert.usr_other.patient-1.morning.mode': 'all',
+    'notification_inbox_v1.usr_other.entry.notice-1': 'cached',
+    'caregiver_delivery_usr_other_${'b' * 64}': true,
+  };
+  for (final evidence in otherAccountEvidence.entries) {
+    // Function Name: test callback
+    // Description: Keeps the unscoped legacy keys while another account's data remains on the device, because that account may still rely on them.
+    // Parameters: None.
+    // Returns: Future<void>; completes when the legacy keys and the other account's key are intact.
+    test(
+      'unscoped legacy keys stay while another account remains: '
+      '${evidence.key}',
+      () async {
+        final preserved = <String, Object>{
+          ...legacyPreferences(),
+          evidence.key: evidence.value,
+        };
+        SharedPreferences.setMockInitialValues({
+          ...scopedPreferences('usr_test'),
+          ...preserved,
+        });
+        final preferences = await deleteAccount('usr_test');
+        expect(preferences.getKeys(), preserved.keys.toSet());
+        for (final entry in preserved.entries) {
+          expect(preferences.get(entry.key), entry.value, reason: entry.key);
+        }
+      },
+    );
+  }
 }

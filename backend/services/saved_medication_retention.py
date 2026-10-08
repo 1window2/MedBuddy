@@ -63,6 +63,9 @@ class SavedMedicationRetentionPolicy:
         *,
         commit: bool = True,
     ) -> int:
+        # 보관 기간이 0이면 삭제 대상이 없으므로 저장 약 전체를 읽지 않는다.
+        if self.retention_days_after_end == 0:
+            return 0
         reference_date = today or application_today()
         repository = SavedMedicationRepository(db)
         medications = (

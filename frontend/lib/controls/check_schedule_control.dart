@@ -56,9 +56,10 @@ class CheckSchedule {
       final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
-        throw StateError(
-          'Schedule lookup failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        throw ApiResponseParser.httpFailure(
+          'Schedule lookup failed',
+          response,
+          responseBody,
         );
       }
 
@@ -76,7 +77,7 @@ class CheckSchedule {
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Schedule lookup failed.');
+      throw ApiResponseParser.transportFailure('Schedule lookup failed', error);
     }
   }
 
@@ -99,9 +100,10 @@ class CheckSchedule {
           .timeout(const Duration(seconds: 30));
       final responseBody = ApiResponseParser.decodeBody(response);
       if (response.statusCode != 200) {
-        throw StateError(
-          'Schedule window lookup failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        throw ApiResponseParser.httpFailure(
+          'Schedule window lookup failed',
+          response,
+          responseBody,
         );
       }
       final decodedData = ApiResponseParser.decodeMap(responseBody);
@@ -118,7 +120,10 @@ class CheckSchedule {
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Schedule window lookup failed.');
+      throw ApiResponseParser.transportFailure(
+        'Schedule window lookup failed',
+        error,
+      );
     }
   }
 
@@ -150,9 +155,10 @@ class CheckSchedule {
       final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
-        throw StateError(
-          'Status update failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        throw ApiResponseParser.httpFailure(
+          'Status update failed',
+          response,
+          responseBody,
         );
       }
 
@@ -173,7 +179,7 @@ class CheckSchedule {
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Status update failed.');
+      throw ApiResponseParser.transportFailure('Status update failed', error);
     }
   }
 
@@ -207,9 +213,10 @@ class CheckSchedule {
           .timeout(const Duration(seconds: 30));
       final responseBody = ApiResponseParser.decodeBody(response);
       if (response.statusCode != 200) {
-        throw StateError(
-          'Slot status update failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        throw ApiResponseParser.httpFailure(
+          'Slot status update failed',
+          response,
+          responseBody,
         );
       }
       final decodedData = ApiResponseParser.decodeMap(responseBody);
@@ -225,7 +232,10 @@ class CheckSchedule {
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Slot status update failed.');
+      throw ApiResponseParser.transportFailure(
+        'Slot status update failed',
+        error,
+      );
     }
   }
 

@@ -20,7 +20,7 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
   // 함수이름: 문구 조회 중 중지 테스트
-  // 함수역할: 안내 문구를 받아오는 동안 중지하면 응답이 도착한 뒤에도 읽기를 시작하지 않고, 다음 요청은 정상적으로 읽는지 검증한다.
+  // 함수역할: 안내 문구를 받아오는 동안 중지하면 응답이 도착한 뒤에도 읽기를 시작하지 않고, 다음 요청은 늦게 도착해 보관된 문구를 서버에 다시 묻지 않고 정상적으로 읽는지 검증한다.
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   test('a voice guide stopped while its text is loading is not spoken', () async {
     final pendingResponses = <Completer<http.Response>>[];
@@ -59,14 +59,148 @@ void main() {
     await stopped;
     expect(spoken, isEmpty);
 
-    final played = control.requestVoiceGuide(
+    await control.requestVoiceGuide(
       medicationDetail: detail,
       userSetting: const UserSetting(),
     );
-    await Future<void>.delayed(Duration.zero);
-    pendingResponses.last.complete(guide('current guide'));
-    await played;
-    expect(spoken, ['current guide']);
+    expect(spoken, ['late guide']);
+    expect(pendingResponses, hasLength(1));
+  });
+
+  // 함수이름: 안내 문구 보관 테스트
+  // 함수역할: 같은 약과 언어의 안내 문구는 한 번만 서버에 요청하고, 언어나 약 내용이 달라지면 다시 요청하는지 검증한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  test('a resolved voice guide is reused per medication and language', () async {
+    final requestedLanguages = <String>[];
+    final spoken = <String>[];
+    // 함수역할: 요청 언어를 기록하고 요청 순번이 담긴 안내 문구를 돌려준다. 매개변수: request. 반환값: HTTP 200 응답.
+    final client = MockClient((request) async {
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      requestedLanguages.add(body['language'] as String);
+      return http.Response(
+        jsonEncode({
+          'data': {
+            'voice_guide_text':
+                'guide ${requestedLanguages.length} ${body['item_name']}',
+          },
+        }),
+        200,
+      );
+    });
+    addTearDown(client.close);
+    final control = RequestVoiceGuide(
+      baseUrl: 'http://localhost',
+      client: client,
+      // 함수역할: 읽을 문구를 기록한다. 매개변수: text, userSetting, onComplete. 반환값: 기록 완료.
+      speaker: (text, userSetting, {onComplete}) async => spoken.add(text),
+    );
+    const detail = MedicationDetail(
+      itemName: 'Saved tablet',
+      efficacy: '',
+      usageMethod: 'Take after meals',
+      warning: '',
+    );
+
+    for (var attempt = 0; attempt < 2; attempt += 1) {
+      await control.requestVoiceGuide(
+        medicationDetail: detail,
+        userSetting: const UserSetting(),
+      );
+    }
+    await control.requestVoiceGuide(
+      medicationDetail: detail,
+      userSetting: const UserSetting(language: 'en'),
+    );
+    await control.requestVoiceGuide(
+      medicationDetail: detail.copyWith(itemName: 'Other tablet'),
+      userSetting: const UserSetting(),
+    );
+
+    expect(requestedLanguages, ['ko', 'en', 'ko']);
+    expect(spoken, [
+      'guide 1 Saved tablet',
+      'guide 1 Saved tablet',
+      'guide 2 Saved tablet',
+      'guide 3 Other tablet',
+    ]);
+  });
+
+  // 함수이름: 연결 실패 뒤 보관 테스트
+  // 함수역할: 서버에 연결하지 못해 만든 로컬 안내도 보관해 같은 안내를 다시 들을 때 요청 제한 시간을 기다리지 않는지 검증한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  test('a local voice guide is reused instead of asking the server again', () async {
+    var requestCount = 0;
+    final spoken = <String>[];
+    // 함수역할: 요청 횟수를 세고 연결 실패를 재현한다. 매개변수: request. 반환값: 연결 예외.
+    final client = MockClient((request) async {
+      requestCount += 1;
+      throw http.ClientException('offline');
+    });
+    addTearDown(client.close);
+    final control = RequestVoiceGuide(
+      baseUrl: 'http://localhost',
+      client: client,
+      // 함수역할: 읽을 문구를 기록한다. 매개변수: text, userSetting, onComplete. 반환값: 기록 완료.
+      speaker: (text, userSetting, {onComplete}) async => spoken.add(text),
+    );
+    const detail = MedicationDetail(
+      itemName: 'Saved tablet',
+      efficacy: '',
+      usageMethod: 'Take after meals',
+      warning: '',
+    );
+
+    for (var attempt = 0; attempt < 2; attempt += 1) {
+      await control.requestVoiceGuide(
+        medicationDetail: detail,
+        userSetting: const UserSetting(),
+      );
+    }
+
+    expect(requestCount, 1);
+    expect(spoken, [
+      '약 이름: Saved tablet\n복용 방법: Take after meals',
+      '약 이름: Saved tablet\n복용 방법: Take after meals',
+    ]);
+  });
+
+  // 함수이름: 서버 형식 일치 테스트
+  // 함수역할: 로컬 안내가 서버와 같은 항목명·구분 기호를 쓰고 빈 항목을 생략하며, 세 항목이 모두 비면 이름 확인 문구만 안내하는지 검증한다.
+  // 매개변수: 없음. 반환값: 없음; 기대 조건 불일치 시 테스트가 실패한다.
+  test('MedicationDetail local voice guide follows the server template', () {
+    const full = MedicationDetail(
+      itemName: ' Saved tablet ',
+      efficacy: 'Pain relief',
+      usageMethod: ' Take after meals ',
+      warning: ' May cause drowsiness ',
+    );
+    expect(
+      full.voiceGuideTextForLanguage('en'),
+      'Medication: Saved tablet\n'
+      'How to take: Take after meals\n'
+      'Warning: May cause drowsiness',
+    );
+    const warningOnly = MedicationDetail(
+      itemName: 'Saved tablet',
+      efficacy: '',
+      usageMethod: ' ',
+      warning: 'May cause drowsiness',
+    );
+    expect(
+      warningOnly.voiceGuideTextForLanguage('ko'),
+      '약 이름: Saved tablet\n주의사항: May cause drowsiness',
+    );
+    const blank = MedicationDetail(
+      itemName: ' ',
+      efficacy: '',
+      usageMethod: '',
+      warning: '',
+    );
+    expect(blank.voiceGuideTextForLanguage('ko'), '약 이름: 약품명 확인 필요');
+    expect(
+      blank.voiceGuideTextForLanguage('en'),
+      'Medication: Medication name needs review',
+    );
   });
 
   // 함수이름: test 콜백
@@ -90,9 +224,9 @@ void main() {
       expect(medicationDetail.aiGuide, 'Drink enough water.');
       expect(
         medicationDetail.voiceGuideTextForLanguage('ko'),
-        'Saved tablet\n'
-        '복용 방법. Take after meals\n'
-        '주의사항. May cause drowsiness',
+        '약 이름: Saved tablet\n'
+        '복용 방법: Take after meals\n'
+        '주의사항: May cause drowsiness',
       );
       expect(
         medicationDetail.voiceGuideTextForLanguage('ko'),
@@ -160,7 +294,7 @@ void main() {
       );
       expect(
         medicationDetail.voiceGuideTextForLanguage('en'),
-        contains('Warnings. No information'),
+        'Medication: Test tablet\nHow to take: 식후 복용',
       );
     },
   );
@@ -364,8 +498,12 @@ void main() {
         userSetting: const UserSetting(language: 'en'),
       );
 
-      expect(usedText, contains('How to take it.'));
-      expect(usedText, contains('Warnings.'));
+      expect(
+        usedText,
+        'Medication: Fallback tablet\n'
+        'How to take: Take after meals\n'
+        'Warning: May cause drowsiness',
+      );
       expect(usedText, isNot(contains('복용 방법')));
       expect(spokenText, usedText);
       control.dispose();

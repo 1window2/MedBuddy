@@ -111,6 +111,10 @@ void main() {
       });
 
       expect(events, <String>['cleanup', 'provider-sign-out']);
+      // The shared sign-out body also publishes the empty session.
+      expect(control.session, isNull);
+      expect(control.isAuthenticated, isFalse);
+      expect(control.errorMessage, isNull);
       control.dispose();
     },
   );
@@ -153,6 +157,7 @@ void main() {
       );
 
       expect(providerSignOutCalled, isFalse);
+      expect(control.isAuthenticated, isTrue);
       control.dispose();
     },
   );

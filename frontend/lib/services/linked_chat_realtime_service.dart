@@ -68,14 +68,26 @@ abstract interface class LinkedChatSessionTransport
   Future<void> stop();
 }
 
+// 함수이름: LinkedChatSocketConnector
+// 함수역할: 채팅 WebSocket을 여는 연결 계약이다. 기본값은 WebSocket.connect이며 테스트는 네트워크 없는 대역을 주입한다.
+// 매개변수:
+// - url (String): 연결할 WebSocket 주소
+// - headers (Map<String, dynamic>?): 연결 요청에 붙일 인증 헤더
+// 반환값:
+// - Future<WebSocket>: 서버가 수락한 소켓.
+typedef LinkedChatSocketConnector =
+    Future<WebSocket> Function(String url, {Map<String, dynamic>? headers});
+
 // 클래스명: LinkedChatRealtimeService
 // 역할: 한 환자·보호자 연동의 인증 WebSocket 연결을 관리한다.
 // 주요 책임:
 // - 공유 인증 헤더로 연결하고 ping·재연결·세대 검증을 수행하며 JSON 이벤트와 연결 상태를 방송한다.
+// - 서버가 수락 직후 닫는 연결(한도 초과·권한 거부)에는 재연결 간격을 줄이지 않는다.
 // 속성:
 // - linkId (int): 조회·전송·감시 대상 연동 ID
 // - userHash (String): 현재 사용자 소유권·표시·저장 범위의 해시
 // - authenticationClient (AuthenticatedApiClient): REST와 소켓의 공통 인증 헤더 제공자
+// - _connector (LinkedChatSocketConnector): 소켓을 여는 연결 함수
 // - _socket (WebSocket?): 현재 heartbeat와 수신에 사용할 WebSocket
 // - _generation (int): 이전 비동기 응답을 차단할 현재 작업 세대
 class LinkedChatRealtimeService implements LinkedChatSessionTransport {
@@ -85,10 +97,14 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
     Duration(seconds: 5),
     Duration(seconds: 10),
   ];
+  static const Duration _connectTimeout = Duration(seconds: 15);
+  // chat_ready를 보내지 않는 서버에서도 이만큼 유지된 연결은 정상으로 본다.
+  static const Duration _stableConnectionDuration = Duration(seconds: 30);
 
   final int linkId;
   final String userHash;
   final AuthenticatedApiClient authenticationClient;
+  final LinkedChatSocketConnector _connector;
   final StreamController<Map<String, dynamic>> _eventController =
       StreamController<Map<String, dynamic>>.broadcast();
   final StreamController<LinkedChatConnectionState> _stateController =
@@ -97,6 +113,7 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
   WebSocket? _socket;
   Timer? _heartbeatTimer;
   Timer? _reconnectTimer;
+  Timer? _stableTimer;
   int _generation = 0;
   int _reconnectAttempt = 0;
   bool _started = false;
@@ -107,13 +124,15 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
   // - linkId (int): 조회·전송·감시 대상 연동 ID
   // - userHash (String): 현재 사용자 소유권·표시·저장 범위의 해시
   // - authenticationClient (AuthenticatedApiClient): REST와 소켓의 공통 인증 헤더 제공자
+  // - connector (LinkedChatSocketConnector?): 소켓 연결 함수; 생략하면 WebSocket.connect
   // 반환값:
   // - LinkedChatRealtimeService: 초기화된 인스턴스.
   LinkedChatRealtimeService({
     required this.linkId,
     required this.userHash,
     required this.authenticationClient,
-  });
+    LinkedChatSocketConnector? connector,
+  }) : _connector = connector ?? WebSocket.connect;
 
   // 함수이름: events
   // 함수역할: 채팅 메시지와 읽음 등 서버의 구조화된 실시간 이벤트 스트림을 제공한다.
@@ -160,7 +179,7 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
     if (!_started || generation != _generation) {
       return;
     }
-    _stateController.add(
+    _emitState(
       reconnecting
           ? LinkedChatConnectionState.reconnecting
           : LinkedChatConnectionState.connecting,
@@ -175,10 +194,15 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
       final headers = await authenticationClient.buildAuthenticationHeaders(
         uri,
       );
-      final socket = await WebSocket.connect(
-        uri.toString(),
-        headers: headers,
-      ).timeout(const Duration(seconds: 15));
+      final connecting = _connector(uri.toString(), headers: headers);
+      final WebSocket socket;
+      try {
+        socket = await connecting.timeout(_connectTimeout);
+      } on TimeoutException {
+        // 제한 시간 뒤에 수락된 소켓은 아무도 쓰지 않으므로 닫아 서버의 연결 한도를 차지하지 않게 한다.
+        unawaited(_closeLateSocket(connecting));
+        rethrow;
+      }
       if (!_started || generation != _generation) {
         await socket.close(WebSocketStatus.normalClosure);
         return;
@@ -186,11 +210,30 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
       _socket = socket;
       // 응답 없는 연결도 장애로 감지해 재연결과 REST 보완 조회로 전환한다.
       socket.pingInterval = const Duration(seconds: 30);
-      _reconnectAttempt = 0;
-      _stateController.add(LinkedChatConnectionState.connected);
+      // 수락만으로는 재연결 간격을 되돌리지 않는다. 서버는 한도 초과·권한 거부도 수락 뒤에 닫는다.
+      _stableTimer?.cancel();
+      _stableTimer = Timer(_stableConnectionDuration, /* 함수이름: Timer 콜백
+       * 함수역할: 같은 소켓이 충분히 유지되면 다음 끊김의 재연결을 가장 짧은 간격부터 시작하게 한다.
+       * 매개변수:
+       * - 없음.
+       * 반환값:
+       * - 없음.
+       */ () {
+        if (identical(_socket, socket)) {
+          _reconnectAttempt = 0;
+        }
+      });
+      _emitState(LinkedChatConnectionState.connected);
       _startHeartbeat(socket, generation);
       socket.listen(
-        _handleSocketData,
+        /* 함수이름: onData 콜백
+         * 함수역할: 수신 데이터를 해당 소켓의 이벤트로 처리한다.
+         * 매개변수:
+         * - rawData (dynamic): 해석 전 WebSocket 수신 데이터
+         * 반환값:
+         * - 없음.
+         */
+        (dynamic rawData) => _handleSocketData(socket, rawData),
         onError: /* 함수이름: onError 콜백
          * 함수역할: 웹소켓 오류를 보고하고 해당 소켓 세대의 연결 해제 처리를 진행한다.
          * 매개변수:
@@ -218,20 +261,52 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
     }
   }
 
+  // 함수이름: _closeLateSocket
+  // 함수역할: 연결 제한 시간이 지난 뒤에 완료된 연결을 닫고, 그 연결의 늦은 실패는 무시한다.
+  // 매개변수:
+  // - connecting (Future<WebSocket>): 제한 시간 안에 끝나지 않은 연결 시도
+  // 반환값:
+  // - Future<void>: 늦은 소켓을 닫았거나 연결이 실패하면 완료.
+  Future<void> _closeLateSocket(Future<WebSocket> connecting) async {
+    try {
+      final late = await connecting;
+      await late.close(WebSocketStatus.normalClosure);
+    } catch (_) {
+      // 이미 시간 초과로 재연결을 예약했으므로 늦은 실패는 따로 처리하지 않는다.
+    }
+  }
+
   // 함수이름: _handleSocketData
   // 함수역할: 수신 문자열을 JSON 객체로 해석해 이벤트 스트림으로 전달하고 파싱 오류는 진단 로그에 남긴다.
+  //           현재 소켓의 chat_ready는 서버가 연결을 등록했다는 뜻이므로 재연결 간격을 처음으로 되돌린다.
   // 매개변수:
+  // - socket (WebSocket): 데이터를 받은 소켓
   // - rawData (dynamic): 해석 전 WebSocket 수신 데이터
   // 반환값:
   // - 없음.
-  void _handleSocketData(dynamic rawData) {
+  void _handleSocketData(WebSocket socket, dynamic rawData) {
     try {
       final decoded = jsonDecode(rawData.toString());
       if (decoded is Map) {
+        if (decoded['type'] == 'chat_ready' && identical(_socket, socket)) {
+          _reconnectAttempt = 0;
+        }
         _eventController.add(Map<String, dynamic>.from(decoded));
       }
     } catch (error, stackTrace) {
       _reportError(error, stackTrace);
+    }
+  }
+
+  // 함수이름: _emitState
+  // 함수역할: 해제로 스트림이 닫힌 뒤에 끝난 비동기 작업이 상태를 추가하지 않게 막고 연결 상태를 방송한다.
+  // 매개변수:
+  // - state (LinkedChatConnectionState): 구독자에게 알릴 연결 상태
+  // 반환값:
+  // - 없음.
+  void _emitState(LinkedChatConnectionState state) {
+    if (!_stateController.isClosed) {
+      _stateController.add(state);
     }
   }
 
@@ -275,6 +350,7 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
     }
     _socket = null;
     _heartbeatTimer?.cancel();
+    _stableTimer?.cancel();
     _scheduleReconnect(generation);
   }
 
@@ -288,7 +364,7 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
     if (!_started || generation != _generation || _reconnectTimer != null) {
       return;
     }
-    _stateController.add(LinkedChatConnectionState.reconnecting);
+    _emitState(LinkedChatConnectionState.reconnecting);
     final index = _reconnectAttempt.clamp(0, _reconnectDelays.length - 1);
     final delay = _reconnectDelays[index];
     _reconnectAttempt += 1;
@@ -306,6 +382,7 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
 
   // 함수이름: stop
   // 함수역할: 화면 종료 시 재연결과 heartbeat를 중지하고 소켓을 정상 종료한다.
+  //           소켓을 닫는 동안 start()가 다시 호출되었으면 새 연결의 상태를 연결 해제로 덮어쓰지 않는다.
   // 매개변수:
   // - 없음.
   // 반환값:
@@ -316,17 +393,21 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
       return;
     }
     _started = false;
-    _generation += 1;
+    final generation = ++_generation;
     _heartbeatTimer?.cancel();
     _reconnectTimer?.cancel();
+    _stableTimer?.cancel();
     _heartbeatTimer = null;
     _reconnectTimer = null;
+    _stableTimer = null;
     final socket = _socket;
     _socket = null;
     if (socket != null) {
       await socket.close(WebSocketStatus.normalClosure);
     }
-    _stateController.add(LinkedChatConnectionState.disconnected);
+    if (generation == _generation) {
+      _emitState(LinkedChatConnectionState.disconnected);
+    }
   }
 
   // 함수이름: dispose

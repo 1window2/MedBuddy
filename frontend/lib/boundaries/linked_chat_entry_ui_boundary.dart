@@ -4,12 +4,15 @@ import 'package:flutter/material.dart';
 import '../controls/manage_chat_list_control.dart';
 import '../entities/patient_caregiver_link_entity.dart';
 import '../entities/user_setting_entity.dart';
+import '../services/authenticated_api_client.dart';
 import '../widgets/medbuddy_page_header.dart';
 import 'linked_chat_ui_boundary.dart';
 
 // 클래스명: LinkedChatEntryUI
 // 역할: 알림에서 받은 연결 ID를 현재 계정의 환자·보호자 역할로 해석한다.
 // 주요 책임: 활성 연결 확인 후 채팅을 열며 실패 시 잘못된 역할로 진입하지 않는다.
+// 속성: apiClient: 연동 확인과 채팅이 함께 쓸 세션 인증 클라이언트. 호출자가 소유하며,
+//       없으면 기본 Control과 채팅 화면이 각자 만든다.
 class LinkedChatEntryUI extends StatefulWidget {
   const LinkedChatEntryUI({
     super.key,
@@ -18,6 +21,7 @@ class LinkedChatEntryUI extends StatefulWidget {
     required this.userSetting,
     this.control,
     this.latestMessageRequest,
+    this.apiClient,
   });
 
   final int linkId;
@@ -25,6 +29,7 @@ class LinkedChatEntryUI extends StatefulWidget {
   final UserSetting userSetting;
   final ManageChatList? control;
   final Listenable? latestMessageRequest;
+  final AuthenticatedApiClient? apiClient;
 
   @override
   State<LinkedChatEntryUI> createState() => _LinkedChatEntryUIState();
@@ -39,7 +44,12 @@ class _LinkedChatEntryUIState extends State<LinkedChatEntryUI> {
   void initState() {
     super.initState();
     _control =
-        widget.control ?? ManageChatList(userHash: widget.currentUserHash);
+        widget.control ??
+        ManageChatList(
+          userHash: widget.currentUserHash,
+          client: widget.apiClient,
+          isEnglish: widget.userSetting.isEnglish,
+        );
     _loadLink();
   }
 
@@ -77,7 +87,7 @@ class _LinkedChatEntryUIState extends State<LinkedChatEntryUI> {
 
   @override
   Widget build(BuildContext context) {
-    final english = widget.userSetting.language.toLowerCase().startsWith('en');
+    final english = widget.userSetting.isEnglish;
     final link = _link;
     if (link != null) {
       return LinkedChatUI(
@@ -87,6 +97,7 @@ class _LinkedChatEntryUIState extends State<LinkedChatEntryUI> {
         patientHash: link.patientHash,
         peerName: _control.peerName(link, isEnglish: english),
         userSetting: widget.userSetting,
+        apiClient: widget.apiClient,
       );
     }
     return Scaffold(

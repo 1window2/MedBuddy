@@ -12,6 +12,13 @@ _STRENGTH = re.compile(
     rf"(?:\s*/\s*(?P<denominator>{_NUMBER})?\s*(?P<denunit>ml|밀리리터|g|그램|그람))?",
     re.IGNORECASE,
 )
+# 복합제에서 마지막 숫자에만 단위를 붙인 표기("5/50mg")의 앞쪽 숫자들.
+# 숫자 바로 뒤에 단위가 있는 "5mg/5ml" 같은 농도 표기는 해당하지 않는다.
+_UNITLESS_COMPONENTS = re.compile(
+    rf"(?<![\d.,])((?:(?:{_NUMBER})\s*/\s*)+)"
+    rf"(?=(?:{_NUMBER})\s*(?P<unit>{_UNIT})(?![a-z]))",
+    re.IGNORECASE,
+)
 _UNITS = {
     "g": ("mass", Decimal(1000)), "그램": ("mass", Decimal(1000)),
     "그람": ("mass", Decimal(1000)), "mg": ("mass", Decimal(1)),
@@ -45,6 +52,17 @@ def strengths(name: str) -> Counter:
     return Counter(_strength(match) for match in _STRENGTH.finditer(_text(name)))
 
 
+def component_strengths(name: str) -> Counter:
+    # "5/50mg"을 "5mg 50mg"으로 풀어, 마지막 성분만이 아니라 모든 성분의 함량을 읽는다.
+    def expand(match: re.Match) -> str:
+        return ''.join(
+            f"{amount.strip()}{match['unit']} "
+            for amount in match[1].split('/') if amount.strip()
+        )
+    expanded = _UNITLESS_COMPONENTS.sub(expand, _text(name))
+    return Counter(_strength(match) for match in _STRENGTH.finditer(expanded))
+
+
 def dosage_form(name: str) -> tuple[str, str]:
     value = re.sub(r"\s+", "", _text(name))
     release = 'extended' if re.search(r'서방|(?<![a-z])(?:sr|er|cr|xr)(?![a-z])', value) else ''
@@ -61,6 +79,10 @@ def match_conflict(original: str, candidate: str) -> str | None:
     if expected and not actual:
         return 'strength_unknown'
     if expected and expected != actual:
+        return 'strength_mismatch'
+    # 위 비교는 "5/50mg"에서 50mg만 읽는다. 앞 성분이 다른 복합제를 여기서 추가로 걸러 낸다.
+    # 추가 검사이므로 기존에 충돌로 판정하던 쌍의 결과는 바뀌지 않는다.
+    if expected and component_strengths(original) != component_strengths(candidate):
         return 'strength_mismatch'
     if any(kind == 'invalid' for kind, _ in expected | actual):
         return 'strength_unknown'

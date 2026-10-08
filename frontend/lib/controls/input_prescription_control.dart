@@ -11,6 +11,7 @@ import '../entities/recognized_text_region_entity.dart';
 import '../services/api_config.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
+import '../services/app_temp_file.dart';
 import '../services/prescription_local_ocr_service.dart';
 
 // 함수이름: PrescriptionImageSelectedCallback
@@ -134,15 +135,14 @@ class InputPrescription {
   }
 
   // Function Name: requestPrescriptionImageFromGallery
-  // Description: Clears the prior preview, selects a bounded gallery image, signals only successful selection, and requests OCR analysis without claiming ownership of the gallery original.
+  // Description: Selects a bounded gallery image, clears the prior preview only once an image was actually chosen, signals only successful selection, and requests OCR analysis without claiming ownership of the gallery original. A cancelled picker leaves the previous image in place.
   // Parameters:
   // - onImageSelected (PrescriptionImageSelectedCallback?): Progress receiver called immediately after actual image selection.
   // Returns:
-  // - Future<List<MedicationSchedule>?>: Clears the prior preview, selects a bounded gallery image, signals only successful selection, and requests OCR analysis without claiming ownership of the gallery original.
+  // - Future<List<MedicationSchedule>?>: Recognized schedules of the chosen image, or null when the picker was cancelled.
   Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
     PrescriptionImageSelectedCallback? onImageSelected,
   }) async {
-    await clearSelectedImage();
     final image = await _imagePicker.pickImage(
       source: ImageSource.gallery,
       imageQuality: 82,
@@ -153,6 +153,10 @@ class InputPrescription {
     if (image == null) {
       return null;
     }
+    // The picker reuses its cache file name when the same photo is chosen again; that file now holds the new pick and must not be deleted with the previous selection.
+    await _releaseSelectedImage(
+      deleteFile: image.path != _lastSelectedImagePath,
+    );
     _prepareSelectedImage(image.path, ownedByApp: false);
     onImageSelected?.call();
     return _requestPrescriptionAnalysis(
@@ -240,10 +244,7 @@ class InputPrescription {
       final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
-        throw StateError(
-          '분석 실패 (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
-        );
+        throw ApiResponseParser.httpFailure('분석 실패', response, responseBody);
       }
 
       final decodedData = ApiResponseParser.decodeMap(responseBody);
@@ -340,20 +341,36 @@ class InputPrescription {
   }
 
   // Function Name: clearSelectedImage
-  // Description: Releases preview references immediately, waits for OCR on an app-owned capture before deleting it, and never deletes a gallery original.
+  // Description: Releases preview references immediately and waits for OCR on the image before removing it. An app-owned capture is always deleted. A gallery pick is deleted only when it is the picker's copy inside the app temporary directory; a gallery original outside that directory is never deleted.
   // Parameters:
   // - None.
   // Returns:
   // - Future<void>: asynchronous completion without a result payload.
-  Future<void> clearSelectedImage() async {
+  Future<void> clearSelectedImage() => _releaseSelectedImage(deleteFile: true);
+
+  // Function Name: _releaseSelectedImage
+  // Description: Releases the preview references of the selected image, waits for OCR still reading it, and then removes its file under the ownership rules of clearSelectedImage unless the caller keeps the file.
+  // Parameters:
+  // - deleteFile (bool): Whether the released image file may be removed; false when the same path already holds the next selection.
+  // Returns:
+  // - Future<void>: asynchronous completion without a result payload.
+  Future<void> _releaseSelectedImage({required bool deleteFile}) async {
     final imagePath = _lastSelectedImagePath;
     final ownedByApp = _lastSelectedImageOwnedByApp;
     final activeOperation = _activeImageOperations[imagePath];
     _prepareSelectedImage('', ownedByApp: false);
-    if (!ownedByApp || imagePath.isEmpty) {
+    if (imagePath.isEmpty) {
       return;
     }
     await activeOperation?.future;
+    if (!deleteFile) {
+      return;
+    }
+    if (!ownedByApp) {
+      // The Android picker hands back a resized copy in the app cache, not the user's photo; the helper refuses any path outside the app temporary directory.
+      await deleteAppTempFile(imagePath);
+      return;
+    }
     final imageFile = File(imagePath);
     try {
       if (await imageFile.exists()) {

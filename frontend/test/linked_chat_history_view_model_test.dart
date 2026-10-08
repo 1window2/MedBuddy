@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/manage_linked_chat_control.dart';
 import 'package:medbuddy_frontend/entities/chat_message_entity.dart';
+import 'package:medbuddy_frontend/services/api_response_parser.dart';
 import 'package:medbuddy_frontend/services/linked_chat_realtime_service.dart';
 import 'package:medbuddy_frontend/viewmodels/linked_chat_history_view_model.dart';
 
@@ -314,6 +315,97 @@ void main() {
       expect(fixture.control.historyBoundaries.length, afterReconnect);
     },
   );
+
+  // Verifies a removed or forbidden link ends the 12 s poll and the reconnect loop, while a
+  // resume still tries once and a successful read resumes realtime delivery.
+  for (final status in [403, 404]) {
+    testWidgets('a $status history answer stops polling and the transport', (
+      tester,
+    ) async {
+      final fixture = _HistoryFixture();
+      addTearDown(fixture.dispose);
+      fixture.control.history = [_message(1)];
+      await fixture.model.initialize();
+      fixture.realtime.emitState(LinkedChatConnectionState.disconnected);
+      await tester.pump();
+      fixture.control.historyHandler = (_) async => throw ApiRequestException(
+        'History lookup failed',
+        statusCode: status,
+        detail: 'An active patient-caregiver link is required.',
+      );
+      await tester.pump(const Duration(seconds: 12));
+      expect(fixture.control.historyBoundaries.length, 2);
+      expect(fixture.model.linkUnavailable, isTrue);
+      expect(fixture.realtime.stops, 1);
+      // The already loaded messages stay readable.
+      expect(fixture.model.messages.single.messageId, 1);
+
+      await tester.pump(const Duration(seconds: 60));
+      expect(fixture.control.historyBoundaries.length, 2);
+
+      // A resume retries once; a still rejected link stays quiet afterwards.
+      fixture.model.setForeground(true);
+      await tester.pump();
+      expect(fixture.control.historyBoundaries.length, 3);
+      expect(fixture.realtime.stops, 2);
+      await tester.pump(const Duration(seconds: 60));
+      expect(fixture.control.historyBoundaries.length, 3);
+
+      // An explicit retry that succeeds leaves the terminal state and restarts the transport.
+      fixture.control.historyHandler = null;
+      final starts = fixture.realtime.starts;
+      await fixture.model.refresh(showLoading: true);
+      expect(fixture.model.linkUnavailable, isFalse);
+      expect(fixture.realtime.starts, starts + 1);
+      await tester.pump(const Duration(seconds: 12));
+      expect(fixture.control.historyBoundaries.length, 5);
+      // The fallback timer is running again; end the model before the pending-timer check.
+      fixture.disposeModel();
+    });
+  }
+
+  // Verifies other failures (offline, 5xx) keep the existing retry cadence.
+  testWidgets('a server error keeps the fallback poll running', (tester) async {
+    final fixture = _HistoryFixture();
+    addTearDown(fixture.dispose);
+    await fixture.model.initialize();
+    fixture.realtime.emitState(LinkedChatConnectionState.disconnected);
+    await tester.pump();
+    fixture.control.historyHandler = (_) async =>
+        throw ApiRequestException('History lookup failed', statusCode: 503);
+    await tester.pump(const Duration(seconds: 36));
+    expect(fixture.control.historyBoundaries.length, 4);
+    expect(fixture.model.linkUnavailable, isFalse);
+    expect(fixture.realtime.stops, 0);
+    fixture.disposeModel();
+  });
+
+  // Verifies a page with a skipped unparseable row still counts as full for both paging paths.
+  test('a full server page with a skipped row still pages backwards', () async {
+    final fixture = _HistoryFixture();
+    addTearDown(fixture.dispose);
+    // Rows 52..101 arrived, row 60 could not be parsed.
+    fixture.control.historyHandler = (before) async => switch (before) {
+      null => ChatHistoryPage([
+        for (var id = 52; id <= 101; id++)
+          if (id != 60) _message(id),
+      ], rowCount: 50),
+      52 => ChatHistoryPage([
+        for (var id = 2; id <= 51; id++)
+          if (id != 2) _message(id),
+      ], rowCount: 50),
+      3 => ChatHistoryPage([_message(1)], rowCount: 1),
+      _ => throw StateError('Unexpected boundary $before'),
+    };
+    await fixture.model.refresh(showLoading: true);
+    expect(fixture.model.hasOlderMessages, isTrue);
+    await fixture.model.loadOlderMessages();
+    expect(fixture.model.hasOlderMessages, isTrue);
+    await fixture.model.loadOlderMessages();
+    expect(fixture.model.hasOlderMessages, isFalse);
+    expect(fixture.control.historyBoundaries, [null, 52, 3]);
+    expect(fixture.model.messages, hasLength(99));
+  });
 }
 
 // Function Name: _message

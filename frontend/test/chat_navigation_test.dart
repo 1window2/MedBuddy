@@ -426,7 +426,7 @@ void main() {
       expect(patient.links.length, 1);
       expect(
         patient.peerName(patient.links.single, isEnglish: false),
-        '보호자 caregiver',
+        '보호자 IVER',
       );
     },
   );

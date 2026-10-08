@@ -2,6 +2,7 @@
 // 역할: 환자·보호자 채팅 메시지와 읽음 상태를 표현한다.
 
 import 'json_value_reader.dart';
+import 'medication_schedule_entity.dart';
 
 // 클래스명: ChatMessageKind
 // 역할: 일반 대화와 복약·약국 맥락 메시지의 유형을 구분한다.
@@ -108,6 +109,26 @@ class ChatMedicationContext {
         dosagePerTime: dosagePerTime,
         scheduleSlotKeys: List.unmodifiable(slots),
       );
+
+  // 함수이름: fromSchedule
+  // 함수역할: 기기에 저장된 오늘 일정 한 건을 채팅에서 선택할 약 정보로 바꾸며 시간대와 사진을 유지한다.
+  // 매개변수:
+  // - schedule (MedicationSchedule): 복용 동기화 캐시의 일정
+  // 반환값:
+  // - ChatMedicationContext?: 약 ID가 서버의 숫자 ID가 아니면 null.
+  static ChatMedicationContext? fromSchedule(MedicationSchedule schedule) {
+    final medicationId = int.tryParse(schedule.medicationID);
+    if (medicationId == null) {
+      return null;
+    }
+    return ChatMedicationContext(
+      medicationId: medicationId,
+      medicationName: schedule.medicationName,
+      imageUrl: schedule.imageUrl ?? '',
+      dosagePerTime: schedule.dosage,
+      scheduleSlotKeys: schedule.slotKeys,
+    );
+  }
 
   // 함수이름: ChatMedicationContext.fromJson
   // 함수역할: 서버가 검증한 활성 복약정보를 채팅에서 선택 가능한 약 정보로 변환한다.

@@ -8,6 +8,8 @@ import '../entities/manual_medication_entry_entity.dart';
 import '../entities/pill_identification_entity.dart';
 import '../entities/identified_pill_save_request_entity.dart';
 import '../entities/medication_image_url_entity.dart';
+import '../entities/medication_match_review_entity.dart';
+import '../services/app_temp_file.dart';
 import '../services/manual_medication_image_store.dart';
 import '../services/user_facing_error_message.dart';
 import 'medbuddy_feature_updates.dart';
@@ -33,6 +35,7 @@ class MedBuddySavedMedicationViewModel {
   bool _disposed = false;
   int _loadGeneration = 0;
   bool _isSavedMedicationLoading = false;
+  bool _hasLoadError = false;
   List<MedicationDetail> _savedMedicationInfoList = [];
   String _statusMessage = '';
 
@@ -58,6 +61,11 @@ class MedBuddySavedMedicationViewModel {
   // Description: Exposes loading owned by the newest request.
   // Parameters: None. Returns: Whether a list request is active.
   bool get isLoading => _isSavedMedicationLoading;
+
+  // Function Name: hasLoadError
+  // Description: Tells a failed list request apart from a list that is really empty.
+  // Parameters: None. Returns: Whether the newest finished list request failed.
+  bool get hasLoadError => _hasLoadError;
 
   // Function Name: medications
   // Description: Prevents callers from mutating the owned list.
@@ -89,6 +97,7 @@ class MedBuddySavedMedicationViewModel {
     _loadGeneration++;
     _savedMedicationInfoList = [];
     _isSavedMedicationLoading = false;
+    _hasLoadError = false;
     _statusMessage = '';
   }
 
@@ -140,6 +149,8 @@ class MedBuddySavedMedicationViewModel {
           medicationId: savedMedicationId,
           sourcePath: localImagePath,
         );
+        // 보관용 사본을 만든 뒤에는 사진 선택 과정에서 생긴 임시 사본을 남기지 않는다. 앱 임시 폴더 밖의 파일은 지우지 않는다.
+        await deleteAppTempFile(localImagePath);
       } catch (_) {
         // 서버 저장은 완료됐으므로 로컬 사진 실패가 복약정보 저장까지 취소하지 않게 한다.
       }
@@ -194,7 +205,7 @@ class MedBuddySavedMedicationViewModel {
   }
 
   // 함수이름: saveIdentifiedPill
-  // 함수역할: 사용자가 고른 낱알약 후보와 확인한 복약 일정을 공공데이터 상세 정보로 보완한다. 상세 조회가 실패해도 후보 정보와 사용자 입력 일정으로 기존 저장 흐름을 계속 진행한다.
+  // 함수역할: 사용자가 고른 낱알약 후보와 확인한 복약 일정을 공공데이터 상세 정보로 보완한다. 상세 조회가 실패해도 후보 정보와 사용자 입력 일정으로 기존 저장 흐름을 계속 진행한다. 이름으로 조회한 상세 정보는 후보와 품목번호가 같을 때만 사용해 다른 제품의 효능·복용법·주의사항·사진이 선택한 품목번호로 저장되지 않게 한다.
   // 매개변수:
   // - candidate (PillIdentificationCandidate): 사용자가 선택하거나 동일성을 비교할 알약 후보
   // - medicationSchedule (MedicationSchedule): 처리할 약 이름·복용량·기간·시간대 일정
@@ -211,8 +222,19 @@ class MedBuddySavedMedicationViewModel {
       medicationDetail = await checkMedicationDetail.requestMedicationDetail(
         medicationSchedule,
       );
+    } on MedicationMatchReview catch (review) {
+      // 같은 이름의 제품이 여러 개이면 사용자가 이미 고른 품목번호의 제품만 사용한다.
+      medicationDetail = _findCatalogDetailByItemSeq(
+        review.candidates,
+        candidate.itemSeq,
+      );
     } catch (_) {
       // 낱알약 후보는 이미 사용자가 확인했으므로 외부 상세 조회 실패가 저장을 막지 않게 한다.
+    }
+    if (medicationDetail != null &&
+        _isDifferentCatalogItem(medicationDetail.itemSeq, candidate.itemSeq)) {
+      // 이름 조회가 다른 제품을 반환하면 그 설명과 사진을 버리고 후보 정보만 저장한다.
+      medicationDetail = null;
     }
 
     final candidateImageUrl = safeMedicationImageUrl(candidate.imageUrl);
@@ -243,6 +265,45 @@ class MedBuddySavedMedicationViewModel {
       ),
       refreshAfterSave: refreshAfterSave,
     );
+  }
+
+  // 함수이름: _findCatalogDetailByItemSeq
+  // 함수역할: 확인이 필요한 조회 후보 중 사용자가 고른 품목번호와 같은 제품의 상세 정보를 찾는다.
+  // 매개변수:
+  // - candidates (List<MedicationDetail>): 이름 조회가 확정하지 못하고 돌려준 제품 후보
+  // - itemSeq (String): 사용자가 선택한 낱알약 후보의 품목번호
+  // 반환값:
+  // - MedicationDetail?: 품목번호가 같은 후보. 품목번호가 비어 있거나 같은 후보가 없으면 null.
+  static MedicationDetail? _findCatalogDetailByItemSeq(
+    List<MedicationDetail> candidates,
+    String itemSeq,
+  ) {
+    final chosenItemSeq = itemSeq.trim();
+    if (chosenItemSeq.isEmpty) {
+      return null;
+    }
+    for (final detail in candidates) {
+      if (detail.itemSeq.trim() == chosenItemSeq) {
+        return detail;
+      }
+    }
+    return null;
+  }
+
+  // 함수이름: _isDifferentCatalogItem
+  // 함수역할: 조회한 상세 정보가 사용자가 고른 후보와 다른 제품인지 품목번호로 판단한다. 어느 한쪽 품목번호가 비어 있으면 비교할 수 없으므로 다른 제품으로 보지 않는다.
+  // 매개변수:
+  // - lookedUpItemSeq (String): 이름 조회가 반환한 상세 정보의 품목번호
+  // - chosenItemSeq (String): 사용자가 선택한 낱알약 후보의 품목번호
+  // 반환값:
+  // - bool: 두 품목번호가 모두 있고 서로 다르면 true.
+  static bool _isDifferentCatalogItem(
+    String lookedUpItemSeq,
+    String chosenItemSeq,
+  ) {
+    final lookedUp = lookedUpItemSeq.trim();
+    final chosen = chosenItemSeq.trim();
+    return lookedUp.isNotEmpty && chosen.isNotEmpty && lookedUp != chosen;
   }
 
   // 함수이름: saveIdentifiedPills
@@ -307,6 +368,7 @@ class MedBuddySavedMedicationViewModel {
     if (_disposed) return;
     final generation = ++_loadGeneration;
     _isSavedMedicationLoading = true;
+    _hasLoadError = false;
     _notifyViewModelListeners(MedBuddyFeature.savedMedication);
 
     List<MedicationDetail>? fetchedMedicationList;
@@ -315,15 +377,22 @@ class MedBuddySavedMedicationViewModel {
           .requestSavedMedicationInfo();
       if (_disposed || generation != _loadGeneration) return;
       // 서버 목록을 먼저 표시하고 로컬 사진 파일 확인은 화면을 막지 않도록 분리한다.
-      _savedMedicationInfoList = fetchedMedicationList;
+      // 이미 알고 있는 기기 사진 경로는 그대로 이어 붙여 새로 고칠 때 사진이 깜빡이지 않게 한다.
+      _savedMedicationInfoList = _carryOverLocalImagePaths(
+        fetchedMedicationList,
+      );
+      _hasLoadError = false;
     } on StateError catch (error) {
       if (_disposed || generation != _loadGeneration) return;
+      // 조회 실패를 저장된 약이 없는 상태와 구분할 수 있게 기록한다.
+      _hasLoadError = true;
       _statusMessage = UserFacingErrorMessage.resolve(
         error,
         isEnglish: _isEnglishSetting,
       );
     } catch (_) {
       if (_disposed || generation != _loadGeneration) return;
+      _hasLoadError = true;
       _statusMessage = _isEnglishSetting
           ? 'Could not load saved medication information.'
           : '저장된 복약 정보를 불러오지 못했습니다.';
@@ -419,6 +488,39 @@ class MedBuddySavedMedicationViewModel {
     );
   }
 
+  // 함수이름: _carryOverLocalImagePaths
+  // 함수역할: 새로 받은 서버 목록에 현재 목록이 이미 알고 있는 기기 사진 경로를 저장 ID 기준으로 이어 붙인다. 실제 파일 확인과 정리는 뒤따르는 사진 조회가 맡는다.
+  // 매개변수:
+  // - fetchedMedicationList (List<MedicationDetail>): 기기 사진 경로가 비어 있는 서버 목록
+  // 반환값:
+  // - List<MedicationDetail>: 알고 있던 사진 경로를 유지한 목록. 이어 붙일 경로가 없으면 받은 목록 그대로.
+  List<MedicationDetail> _carryOverLocalImagePaths(
+    List<MedicationDetail> fetchedMedicationList,
+  ) {
+    final knownImagePathById = <int, String>{
+      for (final item in _savedMedicationInfoList)
+        if (item.id != null && item.localImagePath.isNotEmpty)
+          item.id!: item.localImagePath,
+    };
+    if (knownImagePathById.isEmpty) {
+      return fetchedMedicationList;
+    }
+    return fetchedMedicationList
+        .map(/* 함수이름: map 콜백
+         * 함수역할: 같은 저장 ID의 기기 사진 경로를 이미 알고 있으면 새 항목에 유지한다.
+         * 매개변수:
+         * - item (MedicationDetail): 현재 변환·검사 중인 응답 또는 목록 항목
+         * 반환값:
+         * - 알고 있던 사진 경로를 유지한 약 정보 또는 원래 항목.
+         */ (item) {
+          final knownImagePath = knownImagePathById[item.id];
+          return knownImagePath == null
+              ? item
+              : item.copyWith(localImagePath: knownImagePath);
+        })
+        .toList(growable: false);
+  }
+
   // 함수이름: _attachLocalMedicationImages
   // 함수역할: 저장 약 ID별 기기 사진을 조회해 상세 모델에 붙이고 고아 사진을 정리하며 사진 처리 실패 시 원래 목록을 유지한다.
   // 매개변수:
@@ -481,7 +583,7 @@ class MedBuddySavedMedicationViewModel {
   }
 
   // 함수이름: _refreshLocalMedicationImages
-  // 함수역할: 비동기로 찾은 사진 경로를 현재 목록의 같은 저장 ID에만 반영해 늦은 사진 조회가 삭제된 항목을 복원하지 않게 한다.
+  // 함수역할: 비동기로 찾은 사진 경로를 현재 목록의 같은 저장 ID에만 반영해 늦은 사진 조회가 삭제된 항목을 복원하지 않게 한다. 이어 붙여 둔 경로 중 파일이 사라진 것은 비우고, 달라진 경로가 없으면 알림을 보내지 않는다.
   // 매개변수:
   // - fetchedMedicationList (List<MedicationDetail>): 사진 경로를 연결할 저장 약 목록
   // 반환값:
@@ -494,41 +596,33 @@ class MedBuddySavedMedicationViewModel {
       fetchedMedicationList,
     );
     if (_disposed || generation != _loadGeneration) return;
-    if (itemsWithImages.every(
-      /* 함수이름: every 콜백
-     * 함수역할: 저장된 약 전체에 로컬 이미지 경로가 없는지 확인한다.
-     * 매개변수:
-     * - item (MedicationDetail): 현재 변환·검사 중인 응답 또는 목록 항목
-     * 반환값:
-     * - 해당 약의 로컬 이미지 경로가 비어 있으면 true.
-     */ (item) => item.localImagePath.isEmpty,
-    )) {
-      return;
-    }
+    // 사진 조회가 실패하면 받은 목록이 그대로 돌아오므로 이어 붙여 둔 경로를 지우지 않는다.
+    if (identical(itemsWithImages, fetchedMedicationList)) return;
 
-    final localImagePathById = <int, String>{
+    final resolvedImagePathById = <int, String>{
       for (final item in itemsWithImages)
-        if (item.id != null && item.localImagePath.isNotEmpty)
-          item.id!: item.localImagePath,
+        if (item.id != null) item.id!: item.localImagePath,
     };
-    _savedMedicationInfoList = _savedMedicationInfoList
+    var hasChangedImagePath = false;
+    final reconciledMedicationList = _savedMedicationInfoList
         .map(/* 함수이름: map 콜백
-         * 함수역할: 서버 갱신 결과에 이전 약 ID별 로컬 이미지 경로가 있으면 복원한다.
+         * 함수역할: 같은 저장 ID에 대해 방금 확인한 기기 사진 경로가 현재 값과 다르면 반영한다.
          * 매개변수:
          * - item (MedicationDetail): 현재 변환·검사 중인 응답 또는 목록 항목
          * 반환값:
-         * - 이전 로컬 이미지를 유지한 약 정보 또는 원래 항목.
+         * - 확인한 사진 경로를 반영한 약 정보 또는 원래 항목.
          */ (item) {
-          final medicationId = item.id;
-          if (medicationId == null) {
+          final resolvedImagePath = resolvedImagePathById[item.id];
+          if (resolvedImagePath == null ||
+              resolvedImagePath == item.localImagePath) {
             return item;
           }
-          final localImagePath = localImagePathById[medicationId];
-          return localImagePath == null
-              ? item
-              : item.copyWith(localImagePath: localImagePath);
+          hasChangedImagePath = true;
+          return item.copyWith(localImagePath: resolvedImagePath);
         })
         .toList(growable: false);
+    if (!hasChangedImagePath) return;
+    _savedMedicationInfoList = reconciledMedicationList;
     _notifyViewModelListeners(MedBuddyFeature.savedMedication);
   }
 

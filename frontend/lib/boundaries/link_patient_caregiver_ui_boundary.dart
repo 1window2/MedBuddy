@@ -87,6 +87,7 @@ class LinkPatientCaregiverUI extends StatefulWidget {
 // - 연동 목록·환자 별칭·채팅 약품을 조회하고 여전히 유효한 요청의 결과만 반영한다.
 // - 임시 환자 코드를 발급해 대화상자로 보여주고 닫힌 뒤 연동 목록을 갱신한다.
 // - 빈 코드를 거절하고 연동 등록 후 목록·별칭·채팅 맥락을 갱신한다.
+// - 등록·해제·별칭 저장은 서버 결과를 먼저 화면에 반영하고 상위 화면에 알린 뒤, 이어지는 재조회가 실패해도 성공 결과를 유지한다.
 // 속성:
 // - _patientCodeController (TextEditingController): 환자 연결 코드를 입력·검증할 텍스트 컨트롤러.
 // - _control (LinkPatientCaregiver): 화면의 조회·변경 요청을 처리할 컨트롤러.
@@ -264,37 +265,45 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   // - 없음.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _refreshLinks() async {
-    // 함수이름: _refreshLinks._runLinkAction callback
-    // 함수역할: 화면 유지·요청 세대·사용자 해시·컨트롤러 동일성을 함께 확인한다.
+    await _runLinkAction(_reloadLinks);
+  }
+
+  // 함수이름: _reloadLinks
+  // 함수역할: 연동 목록·환자 별칭·채팅 약품을 차례로 조회해 화면 유지·요청 세대·사용자 해시·컨트롤러가 그대로일 때만 반영한다. 화면 열기, 코드 창 닫기, 등록·해제 뒤 재조회가 함께 쓴다.
+  // 매개변수:
+  // - request (_LinkRequest): 작업 세대·사용자·컨트롤러를 묶은 요청 맥락.
+  // - keepStatusMessage (bool): 직전 작업의 결과 문구를 연동 개수 문구로 바꾸지 않고 유지할지 여부.
+  // 반환값: 조회와 반영이 끝나면 완료되는 Future<void>. 조회 실패는 호출자에게 전달한다.
+  Future<void> _reloadLinks(
+    _LinkRequest request, {
+    bool keepStatusMessage = false,
+  }) async {
+    final links = await request.control.requestLinkScreen();
+    if (!_isCurrentRequest(request)) {
+      return;
+    }
+    final labels = await _loadPatientLabels(links);
+    if (!_isCurrentRequest(request)) {
+      return;
+    }
+    final medicationContexts = await _loadChatMedicationContexts(links);
+    if (!_isCurrentRequest(request)) {
+      return;
+    }
+    // 함수이름: _reloadLinks.setState callback
+    // 함수역할: 환자 코드 발급·등록과 연동 목록의 입력·요청 상태를 `_links = links; _patientLabels = labels; _medicationContextsByLink = medicationContexts`로 갱신한다.
     // 매개변수:
-    // - request (콜백 계약에서 추론): 작업 세대·사용자·컨트롤러를 묶은 요청 맥락.
-    // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-    await _runLinkAction((request) async {
-      final links = await request.control.requestLinkScreen();
-      if (!_isCurrentRequest(request)) {
-        return;
-      }
-      final labels = await _loadPatientLabels(links);
-      if (!_isCurrentRequest(request)) {
-        return;
-      }
-      final medicationContexts = await _loadChatMedicationContexts(links);
-      if (!_isCurrentRequest(request)) {
-        return;
-      }
-      // 함수이름: _refreshLinks.setState callback
-      // 함수역할: 환자 코드 발급·등록과 연동 목록의 입력·요청 상태를 `_links = links; _patientLabels = labels; _medicationContextsByLink = medicationContexts`로 갱신한다.
-      // 매개변수:
-      // - 없음.
-      // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-      setState(() {
-        _links = links;
-        _patientLabels = labels;
-        _medicationContextsByLink = medicationContexts;
+    // - 없음.
+    // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
+    setState(() {
+      _links = links;
+      _patientLabels = labels;
+      _medicationContextsByLink = medicationContexts;
+      if (!keepStatusMessage) {
         _statusMessage = links.isEmpty
             ? _text.noSavedLinks
             : _text.linkCount(links.length);
-      });
+      }
     });
   }
 
@@ -337,7 +346,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   }
 
   // 함수이름: _requestPatientCaregiverLink
-  // 함수역할: 빈 코드를 거절하고 연동 등록 후 목록·별칭·채팅 맥락을 갱신한다.
+  // 함수역할: 빈 코드를 거절하고 연동 등록 결과를 먼저 화면에 반영한 뒤 목록·별칭·채팅 맥락을 다시 조회한다. 코드는 한 번만 쓸 수 있으므로 재조회 실패를 등록 실패로 알리지 않는다.
   // 매개변수:
   // - 없음.
   // 반환값: 성공하면 true, 실패하거나 요청을 수행하지 못하면 false로 완료되는 Future.
@@ -361,46 +370,53 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
 
     var registered = false;
     // 함수이름: _requestPatientCaregiverLink._runLinkAction callback
-    // 함수역할: 화면 유지·요청 세대·사용자 해시·컨트롤러 동일성을 함께 확인한다.
+    // 함수역할: 환자 코드를 등록하고 서버가 돌려준 연동을 목록에 반영한다.
     // 매개변수:
     // - request (콜백 계약에서 추론): 작업 세대·사용자·컨트롤러를 묶은 요청 맥락.
     // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-    final request = await _runLinkAction((request) async {
-      await request.control.requestPatientCaregiverLink(patientCode);
-      if (!_isCurrentRequest(request)) {
-        return;
-      }
-      final links = await request.control.requestLinkScreen();
-      if (!_isCurrentRequest(request)) {
-        return;
-      }
-      final labels = await _loadPatientLabels(links);
-      if (!_isCurrentRequest(request)) {
-        return;
-      }
-      final medicationContexts = await _loadChatMedicationContexts(links);
-      if (!_isCurrentRequest(request)) {
-        return;
-      }
-      // 함수이름: _requestPatientCaregiverLink.setState callback
-      // 함수역할: 환자 코드 발급·등록과 연동 목록의 입력·요청 상태를 `_links = links; _patientLabels = labels; _medicationContextsByLink = medicationContexts`로 갱신한다.
-      // 매개변수:
-      // - 없음.
-      // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-      setState(() {
-        _links = links;
-        _patientLabels = labels;
-        _medicationContextsByLink = medicationContexts;
-        _patientCodeController.clear();
-        _statusMessage = _text.linkRegistered;
-        registered = true;
-      });
-    });
-    return request != null && registered;
+    await _runLinkAction(
+      (request) async {
+        final registeredLink = await request.control
+            .requestPatientCaregiverLink(patientCode);
+        if (!_isCurrentRequest(request)) {
+          return;
+        }
+        // 함수이름: _requestPatientCaregiverLink.setState callback
+        // 함수역할: 환자 코드 발급·등록과 연동 목록의 입력·요청 상태를 `_links = _linksWith(registeredLink); _statusMessage = _text.linkRegistered; registered = true`로 갱신한다.
+        // 매개변수:
+        // - 없음.
+        // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
+        setState(() {
+          _links = _linksWith(registeredLink);
+          _patientCodeController.clear();
+          _statusMessage = _text.linkRegistered;
+          registered = true;
+        });
+      },
+      notifyLinksChanged: true,
+      reloadLinksAfterward: true,
+    );
+    return registered;
+  }
+
+  // 함수이름: _linksWith
+  // 함수역할: 방금 등록된 활성 연동을 현재 목록에 더하거나 같은 ID의 항목을 바꾼 새 목록을 만든다.
+  // 매개변수:
+  // - link (PatientCaregiverLink): 환자·보호자 연결과 권한 상태.
+  // 반환값: List<PatientCaregiverLink>: 등록 결과가 반영된 연동 목록; 비활성 연동이면 현재 목록.
+  List<PatientCaregiverLink> _linksWith(PatientCaregiverLink link) {
+    if (!link.linkStatus) {
+      return _links;
+    }
+    return [
+      for (final currentLink in _links)
+        if (currentLink.linkId != link.linkId) currentLink,
+      link,
+    ];
   }
 
   // 함수이름: _removePatientCaregiverLink
-  // 함수역할: 연결 ID를 확인해 연동을 해제하고 로컬 환자 상태를 정리한 뒤 목록을 갱신한다.
+  // 함수역할: 연결 ID를 확인해 연동을 해제하고 로컬 환자 상태를 정리한 뒤, 해제된 연동을 먼저 목록에서 빼고 목록을 다시 조회한다. 재조회가 실패해도 해제 결과는 유지한다.
   // 매개변수:
   // - link (PatientCaregiverLink): 환자·보호자 연결과 권한 상태.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
@@ -423,43 +439,43 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     }
 
     // 함수이름: _removePatientCaregiverLink._runLinkAction callback
-    // 함수역할: 화면 유지·요청 세대·사용자 해시·컨트롤러 동일성을 함께 확인한다.
+    // 함수역할: 연동을 해제하고 해당 환자의 로컬 상태와 화면 항목을 제거한다.
     // 매개변수:
     // - request (콜백 계약에서 추론): 작업 세대·사용자·컨트롤러를 묶은 요청 맥락.
     // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-    await _runLinkAction((request) async {
-      await request.control.requestUnlink(linkId);
-      if (!_isCurrentRequest(request)) {
-        return;
-      }
-      await _localStateControl.clearPatientState(
-        caregiverHash: link.caregiverHash,
-        patientHash: link.patientHash,
-      );
-      final links = await request.control.requestLinkScreen();
-      if (!_isCurrentRequest(request)) {
-        return;
-      }
-      final labels = await _loadPatientLabels(links);
-      if (!_isCurrentRequest(request)) {
-        return;
-      }
-      final medicationContexts = await _loadChatMedicationContexts(links);
-      if (!_isCurrentRequest(request)) {
-        return;
-      }
-      // 함수이름: _removePatientCaregiverLink.setState callback
-      // 함수역할: 환자 코드 발급·등록과 연동 목록의 입력·요청 상태를 `_links = links; _patientLabels = labels; _medicationContextsByLink = medicationContexts`로 갱신한다.
-      // 매개변수:
-      // - 없음.
-      // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-      setState(() {
-        _links = links;
-        _patientLabels = labels;
-        _medicationContextsByLink = medicationContexts;
-        _statusMessage = _text.linkRemoved;
-      });
-    });
+    await _runLinkAction(
+      (request) async {
+        await request.control.requestUnlink(linkId);
+        if (!_isCurrentRequest(request)) {
+          return;
+        }
+        await _localStateControl.clearPatientState(
+          caregiverHash: link.caregiverHash,
+          patientHash: link.patientHash,
+        );
+        if (!_isCurrentRequest(request)) {
+          return;
+        }
+        // 함수이름: _removePatientCaregiverLink.setState callback
+        // 함수역할: 환자 코드 발급·등록과 연동 목록의 입력·요청 상태를 해제된 연동이 빠진 `_links`·`_medicationContextsByLink`와 `_statusMessage = _text.linkRemoved`로 갱신한다.
+        // 매개변수:
+        // - 없음.
+        // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
+        setState(() {
+          _links = [
+            for (final currentLink in _links)
+              if (currentLink.linkId != linkId) currentLink,
+          ];
+          _medicationContextsByLink = {
+            for (final entry in _medicationContextsByLink.entries)
+              if (entry.key != linkId) entry.key: entry.value,
+          };
+          _statusMessage = _text.linkRemoved;
+        });
+      },
+      notifyLinksChanged: true,
+      reloadLinksAfterward: true,
+    );
   }
 
   // 함수이름: _loadPatientLabels
@@ -473,20 +489,21 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     return _localStateControl.loadLabels(
       caregiverHash: _committedUserHash,
       links: links,
+      isEnglish: _text.isEnglish,
     );
   }
 
   // 함수이름: _loadChatMedicationContexts
-  // 함수역할: 각 연동 환자의 활성 복약 목록을 병렬로 불러온다. 한 연동의 조회 실패가 다른 환자의 연동 목록까지 막지 않게 빈 목록으로 격리한다.
+  // 함수역할: 각 연동 환자의 활성 복약 목록을 병렬로 불러온다. 한 연동의 조회 실패가 다른 환자의 연동 목록까지 막지 않게 격리하고, 실패한 연동은 "복용 중인 약 없음"과 구분되도록 결과에서 뺀다.
   // 매개변수:
   // - links (List<PatientCaregiverLink>): 표시하거나 관련 정보를 조회할 연동 목록.
-  // 반환값: Future<Map<int, List<ChatMedicationContext>>>: 유효 연동별 약품 맥락; 조회 실패 항목은 빈 목록.
+  // 반환값: Future<Map<int, List<ChatMedicationContext>>>: 유효 연동별 약품 맥락; 조회에 실패한 연동은 항목이 없다.
   Future<Map<int, List<ChatMedicationContext>>> _loadChatMedicationContexts(
     List<PatientCaregiverLink> links,
   ) async {
     final entries = await Future.wait(
       // 함수이름: _loadChatMedicationContexts.map callback
-      // 함수역할: 환자 코드 발급·등록과 연동 목록의 변환값을 `null; MapEntry(linkId, medications); MapEntry<int, List<ChatMedicationContext>>(linkId, const [])` 규칙으로 계산한다.
+      // 함수역할: 환자 코드 발급·등록과 연동 목록의 변환값을 `null; MapEntry(linkId, medications)` 규칙으로 계산한다. 조회 실패는 null이다.
       // 매개변수:
       // - link (콜백 계약에서 추론): 환자·보호자 연결과 권한 상태.
       // 반환값: 컬렉션 연산에 전달할 변환값.
@@ -501,7 +518,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
           );
           return MapEntry(linkId, medications);
         } catch (_) {
-          return MapEntry<int, List<ChatMedicationContext>>(linkId, const []);
+          return null;
         }
       }),
     );
@@ -511,13 +528,17 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   }
 
   // 함수이름: _runLinkAction
-  // 함수역할: 중복 실행을 막고 사용자·세대가 유지된 요청에만 로딩·오류 결과를 반영한다.
+  // 함수역할: 중복 실행을 막고 사용자·세대가 유지된 요청에만 로딩·오류 결과를 반영한다. 연동을 바꾼 작업은 성공 직후 상위 화면에 알리고, 요청하면 목록을 이어서 다시 조회하되 그 실패는 무시한다.
   // 매개변수:
   // - action (Future<void> Function(_LinkRequest request)): 현재 요청 맥락에서 수행할 비동기 연동 작업.
+  // - notifyLinksChanged (bool): 작업이 연동·별칭을 바꾸므로 성공하면 onLinksChanged를 호출할지 여부. 조회와 코드 발급은 false로 둔다.
+  // - reloadLinksAfterward (bool): 작업 성공 뒤 같은 로딩 구간에서 연동 목록을 다시 조회할지 여부.
   // 반환값: Future<_LinkRequest?>: 아직 유효한 완료 요청 맥락; 실패·생략·무효화되면 null.
   Future<_LinkRequest?> _runLinkAction(
-    Future<void> Function(_LinkRequest request) action,
-  ) async {
+    Future<void> Function(_LinkRequest request) action, {
+    bool notifyLinksChanged = false,
+    bool reloadLinksAfterward = false,
+  }) async {
     if (!mounted || _isLoading) {
       return null;
     }
@@ -538,7 +559,19 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
 
     try {
       await action(request);
-      if (_isCurrentRequest(request)) widget.onLinksChanged?.call();
+      if (!_isCurrentRequest(request)) {
+        return null;
+      }
+      if (notifyLinksChanged) {
+        widget.onLinksChanged?.call();
+      }
+      if (reloadLinksAfterward) {
+        try {
+          await _reloadLinks(request, keepStatusMessage: true);
+        } catch (_) {
+          // 변경은 이미 서버에 반영되었으므로 재조회 실패로 성공 결과를 오류로 바꾸지 않는다.
+        }
+      }
       return _isCurrentRequest(request) ? request : null;
     } catch (error) {
       if (_isCurrentRequest(request)) {
@@ -657,9 +690,17 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       userHash: _committedUserHash,
       control: _control,
     );
+    // 기본 식별명은 별칭이 아니므로 입력란에 채우지 않는다. 그대로 저장하면 기본 식별명이 서버 별칭으로 남는다.
+    final currentPatientLabel = _patientLabels[link.patientHash];
+    final hasPatientAlias =
+        currentPatientLabel != null &&
+        currentPatientLabel !=
+            _localStateControl.fallbackLabel(
+              link.patientHash,
+              isEnglish: _text.isEnglish,
+            );
     var draftLabel = isCaregiver
-        ? (_patientLabels[link.patientHash] ??
-              _localStateControl.fallbackLabel(link.patientHash))
+        ? (hasPatientAlias ? currentPatientLabel : '')
         : (link.caregiverAlias ?? '');
     final submittedLabel = await showDialog<String>(
       context: context,
@@ -739,6 +780,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       return;
     }
     String? savedLabel;
+    var labelCleared = false;
     // 함수이름: _showPeerLabelDialog._runLinkAction callback
     // 함수역할: 환자 코드 발급·등록과 연동 목록의 입력·요청 상태를 `savedLabel = await _localStateControl.saveLabel(caregiverHash: link.caregiverHash, patientHash: l...`로 갱신한다.
     // 매개변수:
@@ -757,13 +799,19 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       if (!_isCurrentRequest(request)) {
         return;
       }
+      final storedAlias = isCaregiver
+          ? (updatedLink.patientAlias ?? submittedLabel)
+          : (updatedLink.caregiverAlias ?? '');
+      // 보호자 쪽 저장 결과는 별칭을 지워도 기본 식별명이 되므로 지움 여부를 저장한 별칭으로 판정한다.
+      labelCleared = storedAlias.trim().isEmpty;
       savedLabel = isCaregiver
           ? await _localStateControl.saveLabel(
               caregiverHash: link.caregiverHash,
               patientHash: link.patientHash,
-              label: updatedLink.patientAlias ?? submittedLabel,
+              label: storedAlias,
+              isEnglish: _text.isEnglish,
             )
-          : (updatedLink.caregiverAlias ?? '');
+          : storedAlias;
       if (!_isCurrentRequest(request)) {
         return;
       }
@@ -788,7 +836,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
           _patientLabels = {..._patientLabels, link.patientHash: savedLabel!};
         }
       });
-    });
+    }, notifyLinksChanged: true);
     final confirmedLabel = savedLabel;
     if (request == null || confirmedLabel == null || !mounted) {
       return;
@@ -799,7 +847,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       ..showSnackBar(
         SnackBar(
           content: Text(
-            confirmedLabel.isEmpty
+            labelCleared
                 ? _text.labelCleared
                 : _text.patientLabelSaved(confirmedLabel),
           ),
@@ -857,13 +905,12 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
   void _openLinkedChat(PatientCaregiverLink link) {
     final linkId = link.linkId;
-    final medicationContexts = linkId == null
-        ? const <ChatMedicationContext>[]
-        : _medicationContextsByLink[linkId] ?? const [];
     if (_isLoading || linkId == null || !link.linkStatus) {
       return;
     }
-    if (medicationContexts.isEmpty) {
+    // 항목이 없으면 약 조회에 실패한 것이므로 막지 않고 연다. 채팅 화면이 약 목록을 직접 다시 조회한다.
+    final medicationContexts = _medicationContextsByLink[linkId];
+    if (medicationContexts != null && medicationContexts.isEmpty) {
       final messenger = ScaffoldMessenger.of(context);
       messenger
         ..hideCurrentSnackBar()
@@ -877,7 +924,11 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
     }
     final isCaregiver = link.caregiverHash == _committedUserHash;
     final peerName = isCaregiver
-        ? (_patientLabels[link.patientHash] ?? _text.patientPeer)
+        ? (_patientLabels[link.patientHash] ??
+              _localStateControl.fallbackLabel(
+                link.patientHash,
+                isEnglish: _text.isEnglish,
+              ))
         : (link.caregiverAlias?.trim().isNotEmpty == true
               ? link.caregiverAlias!.trim()
               : _text.caregiverPeer);
@@ -893,7 +944,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
           currentUserHash: _committedUserHash,
           patientHash: link.patientHash,
           peerName: peerName,
-          initialMedicationContexts: medicationContexts,
+          initialMedicationContexts: medicationContexts ?? const [],
           userSetting: widget.userSetting,
         ),
       ),
@@ -1792,7 +1843,7 @@ class _LinkListCard extends StatelessWidget {
   // - shrinkWrap (bool): 상위 스크롤 레이아웃에 맞춰 콘텐츠 크기를 제한할지 여부.
   // - patientLabels (Map<String, String>): 환자 해시별 저장된 표시 별칭.
   // - showChatAction (bool): 근처 약국 또는 연동 복약 채팅 기능의 노출·사용 상태.
-  // - medicationContextsByLink (Map<int, List<ChatMedicationContext>>): 연동 ID별 채팅에 사용할 약품 맥락.
+  // - medicationContextsByLink (Map<int, List<ChatMedicationContext>>): 연동 ID별 채팅에 사용할 약품 맥락; 조회에 실패한 연동은 항목이 없다.
   // - onChatRequested (void Function(PatientCaregiverLink link)): 연동 사용자와의 복약 대화를 여는 콜백.
   // - onPatientMedicationRequested (void Function(PatientCaregiverLink link)): 연동 환자의 오늘 복약 상태를 여는 콜백.
   // - onPeerLabelRequested (Future<void> Function(PatientCaregiverLink link)): 연동 환자의 표시 별칭을 수정할 콜백.
@@ -1847,15 +1898,17 @@ class _LinkListCard extends StatelessWidget {
       itemBuilder: (context, index) {
         final link = links[index];
         final linkId = link.linkId;
+        // 약 조회에 실패해 항목이 없는 연동은 채팅을 막지 않는다.
         final medicationContexts = linkId == null
             ? const <ChatMedicationContext>[]
-            : medicationContextsByLink[linkId] ?? const [];
+            : medicationContextsByLink[linkId];
         return _LinkedUserTile(
           link: link,
           currentUserHash: currentUserHash,
           patientLabel: patientLabels[link.patientHash],
           showChatAction: showChatAction,
-          isChatAvailable: medicationContexts.isNotEmpty,
+          isChatAvailable:
+              medicationContexts == null || medicationContexts.isNotEmpty,
           // 함수이름: build.onChatRequested callback
           // 함수역할: 연동된 환자 또는 보호자 목록에서 캡처된 작업 `onChatRequested(link)`을 실행한다.
           // 매개변수:
@@ -2205,12 +2258,12 @@ class _LinkPatientCaregiverText {
   final bool isEnglish;
 
   // 함수이름: _LinkPatientCaregiverText
-  // 함수역할: 환자 코드 발급·등록과 환자·보호자 연결 관리에 쓰는 한국어·영어 문구 선택에 사용할 언어를 보관한다.
+  // 함수역할: 환자 코드 발급·등록과 환자·보호자 연결 관리에 쓰는 한국어·영어 문구 선택에 사용할 언어를 앱 공통 기준으로 판정해 보관한다.
   // 매개변수:
   // - language (String): 화면 문구를 선택할 언어 코드.
   // 반환값: 입력 설정이 반영된 _LinkPatientCaregiverText 인스턴스.
-  const _LinkPatientCaregiverText(String language)
-    : isEnglish = language == 'en';
+  _LinkPatientCaregiverText(String language)
+    : isEnglish = isEnglishLanguage(language);
 
   // 함수이름: close
   // 함수역할: 현재 언어와 입력값에 맞춰 "Close" 문구를 제공한다.

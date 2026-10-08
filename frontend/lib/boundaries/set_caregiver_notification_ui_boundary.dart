@@ -36,7 +36,7 @@ class SetCaregiverNotificationUI {
     String? slotLabel,
     UserSetting userSetting = const UserSetting(),
   }) {
-    final isEnglish = language.trim().toLowerCase().startsWith('en');
+    final isEnglish = isEnglishLanguage(language);
     var selectedMode = setting.mode;
     var deadline = TimeOfDay(
       hour: setting.deadlineHour ?? 21,

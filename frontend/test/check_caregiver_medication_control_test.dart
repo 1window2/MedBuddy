@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/check_caregiver_medication_control.dart';
+import 'package:medbuddy_frontend/services/api_response_parser.dart';
 
 // 함수이름: main
 // 함수역할:
@@ -110,7 +111,8 @@ void main() {
 
   // 함수이름: test 콜백
   // 함수역할:
-  // - 선택한 연동 환자만 보호자 식별자 범위로 조회하고 저장 약과 오늘 일정을 해석하는지 검증한다.
+  // - 선택한 연동 환자만 보호자 식별자 범위로 조회하고 오늘 일정만 해석하는지 검증한다.
+  // - 어떤 화면도 읽지 않는 저장 약 목록은 응답에 있어도 해석하지 않는다.
   // 매개변수:
   // - 없음.
   // 반환값:
@@ -175,7 +177,8 @@ void main() {
 
       expect(result.caregiverHash, 'caregiver-a');
       expect(result.patientHash, 'patient-b');
-      expect(result.savedMedications.single.itemName, 'Test tablet');
+      // The response still carries saved_medications; the control no longer decodes it.
+      expect(result.savedMedications, isEmpty);
       expect(
         result.todayMedicationScheduleList.single.medicationName,
         'Test tablet',
@@ -236,4 +239,102 @@ void main() {
       ),
     );
   });
+
+  // Function Name: test callback
+  // Description:
+  // - Expected behavior: caregiver lookups report a rejected response with its status code and a
+  //   transport error with its cause, keeping the message text.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  test('caregiver lookups surface typed failures', () async {
+    // Function Name: control
+    // Description:
+    // - Build a caregiver lookup control for caregiver-a on the given HTTP client.
+    // Parameters:
+    // - client (http.Client): Mock transport for the request under test.
+    // Returns:
+    // - The scoped lookup control.
+    CheckCaregiverMedication control(http.Client client) =>
+        CheckCaregiverMedication(
+          baseUrl: 'http://medbuddy.test',
+          caregiverHash: 'caregiver-a',
+          client: client,
+        );
+
+    await _expectTypedFailures(
+      'Caregiver monitoring lookup failed',
+      (client) => control(client).requestMonitoringSnapshot(),
+    );
+    await _expectTypedFailures(
+      'Caregiver monitoring lookup failed',
+      (client) => control(client).requestScheduleSnapshot(),
+    );
+    await _expectTypedFailures(
+      'Caregiver medication lookup failed',
+      (client) => control(
+        client,
+      ).requestPatientMedicationInfo(patientHash: 'patient-b'),
+    );
+  });
+}
+
+// Function Name: _expectTypedFailures
+// Description:
+// - Run one control request against a rejected response and against a transport error, and check
+//   that both surface as ApiRequestException with the unchanged message text.
+// Parameters:
+// - operation (String): Failure label the control uses, without a trailing period.
+// - request (Future<Object?> Function(http.Client client)): Issues the request under test with the
+//   given HTTP client.
+// Returns:
+// - Future<void>; completes when both failures carry the expected status code or cause.
+Future<void> _expectTypedFailures(
+  String operation,
+  Future<Object?> Function(http.Client client) request,
+) async {
+  final rejectingClient = MockClient(
+    // Function Name: MockClient callback
+    // Description:
+    // - Reject every request with HTTP 409 and a FastAPI detail.
+    // Parameters:
+    // - _ (http.Request): Unused intercepted HTTP request.
+    // Returns:
+    // - HTTP 409 with the detail text.
+    (_) async => http.Response(jsonEncode({'detail': 'Rejected.'}), 409),
+  );
+  await expectLater(
+    request(rejectingClient),
+    throwsA(
+      isA<ApiRequestException>()
+          .having((error) => error.statusCode, 'statusCode', 409)
+          .having((error) => error.cause, 'cause', isNull)
+          .having(
+            (error) => error.message,
+            'message',
+            '$operation (409): Rejected.',
+          ),
+    ),
+  );
+
+  final offlineClient = MockClient(
+    // Function Name: MockClient callback
+    // Description:
+    // - Fail every request before a response exists, as an offline device does.
+    // Parameters:
+    // - _ (http.Request): Unused intercepted HTTP request.
+    // Returns:
+    // - A Future failing with ClientException.
+    (_) async => throw http.ClientException('offline'),
+  );
+  await expectLater(
+    request(offlineClient),
+    throwsA(
+      isA<ApiRequestException>()
+          .having((error) => error.statusCode, 'statusCode', isNull)
+          .having((error) => error.cause, 'cause', isA<http.ClientException>())
+          .having((error) => error.message, 'message', '$operation.'),
+    ),
+  );
 }

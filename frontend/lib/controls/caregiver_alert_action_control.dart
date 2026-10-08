@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../entities/caregiver_alert_context_entity.dart';
 import '../entities/chat_message_entity.dart';
+import '../entities/medication_slot_label.dart';
+import '../entities/user_setting_entity.dart';
 import '../services/api_config.dart';
 import '../services/auth_config.dart';
 import 'manage_linked_chat_control.dart';
@@ -31,14 +33,13 @@ class CaregiverAlertActionControl {
         final body = _response(response);
         if (body['success'] != true || body['data'] is! Map) throw StateError('Snooze was not confirmed.');
       } else {
-        final labels = language == 'en'
-            ? const {'morning': 'morning', 'lunch': 'lunch', 'evening': 'evening', 'bedtime': 'bedtime'}
-            : const {'morning': '아침', 'lunch': '점심', 'evening': '저녁', 'bedtime': '취침 전'};
+        final english = isEnglishLanguage(language);
+        final slotLabel = medicationSlotLabelOrNull(context.slotKey, isEnglish: english, lowercase: true) ?? context.slotKey;
         final chat = ManageLinkedChat(userHash: userHash, client: client);
         await chat.sendMessage(
           linkId: context.linkId,
           clientMessageId: 'missed_chat_${context.sourceAlertId}',
-          body: language == 'en' ? 'Please check your ${labels[context.slotKey]} medication schedule.' : '${labels[context.slotKey]} 복약 일정을 확인해 주세요.',
+          body: english ? 'Please check your $slotLabel medication schedule.' : '$slotLabel 복약 일정을 확인해 주세요.',
           messageKind: ChatMessageKind.slotCheckRequest, slotKey: context.slotKey,
           sourceAlertId: context.sourceAlertId,
         );

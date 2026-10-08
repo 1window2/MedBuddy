@@ -61,14 +61,12 @@ class MedBuddyOptionSheet extends StatelessWidget {
 // - icon (IconData): Leading choice icon.
 // - title (String): Choice name.
 // - subtitle (String): What the choice does.
-// - scale (double): User content text scale.
 // - onTap (VoidCallback): Selection action.
 // - inkKey (Key?): Optional key for the tappable area.
 class MedBuddyOptionTile extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
-  final double scale;
   final VoidCallback onTap;
   final Key? inkKey;
 
@@ -76,7 +74,6 @@ class MedBuddyOptionTile extends StatelessWidget {
   // Description: Stores the choice content and selection action.
   // Parameters:
   // - icon, title, subtitle: Displayed choice content.
-  // - scale (double): User content text scale.
   // - onTap (VoidCallback): Selection action.
   // - inkKey (Key?): Optional key for the tappable area.
   // Returns: A configured MedBuddyOptionTile.
@@ -85,7 +82,6 @@ class MedBuddyOptionTile extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.subtitle,
-    required this.scale,
     required this.onTap,
     this.inkKey,
   });
@@ -123,7 +119,7 @@ class MedBuddyOptionTile extends StatelessWidget {
                       title,
                       style: TextStyle(
                         color: MedBuddyColors.textStrong,
-                        fontSize: 17 * scale,
+                        fontSize: 17,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0,
                       ),
@@ -133,7 +129,7 @@ class MedBuddyOptionTile extends StatelessWidget {
                       subtitle,
                       style: TextStyle(
                         color: MedBuddyColors.textMuted,
-                        fontSize: 13 * scale,
+                        fontSize: 13,
                         height: 1.25,
                         fontWeight: FontWeight.w500,
                         letterSpacing: 0,

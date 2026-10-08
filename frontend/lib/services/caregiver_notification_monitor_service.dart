@@ -7,11 +7,15 @@ import 'dart:developer' as developer;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter/foundation.dart';
+import '../entities/caregiver_alert_context_entity.dart';
 import '../entities/caregiver_monitoring_snapshot_entity.dart';
 import '../entities/caregiver_notification_entity.dart';
+import '../entities/json_value_reader.dart';
 import '../entities/medication_schedule_entity.dart';
+import '../entities/medication_slot_label.dart';
 import '../entities/patient_caregiver_link_entity.dart';
 import '../entities/patient_hash_entity.dart';
+import '../entities/user_setting_entity.dart';
 import 'caregiver_patient_local_state_service.dart';
 
 // 함수이름: CaregiverLinkLoader
@@ -87,6 +91,7 @@ typedef CaregiverLanguageProvider = String Function();
 // Role: Converts linked-patient completion changes and missed deadlines into caregiver alerts.
 // Responsibilities:
 // - Restrict checks to active caregiver links, persist per-slot snapshots, isolate patient failures, and suppress duplicate alerts.
+// - Poll only while this device can raise an alert; when the server delivers every alert by push, check link state once and stop.
 // Attributes:
 // - caregiverHash (String): Caregiver hash defining the lookup or persistence scope.
 // - _loadMonitoringSnapshots (CaregiverMonitoringLoader?): Optional aggregate loader of per-patient settings and schedules.
@@ -134,6 +139,8 @@ class CaregiverNotificationMonitorService {
   Future<bool>? _permissionRequestFuture;
   bool _hasCaregiverLinks = false;
   bool _isDisposed = false;
+  bool _isStarted = false;
+  bool _isPaused = false;
   int _consecutiveFailures = 0;
 
   // 함수이름: hasCaregiverLinks
@@ -204,13 +211,49 @@ class CaregiverNotificationMonitorService {
   static String _defaultLanguage() => 'ko';
 
   // 함수이름: start
-  // 함수역할: 앱 실행 중 즉시 한 번 확인하고 이후 짧은 주기로 상태를 갱신한다.
+  // 함수역할: 앱 실행 중 즉시 한 번 확인하고 이후 짧은 주기로 상태를 갱신한다. 이 기기에서 만들 알림이 없는
+  //   구성(완료·미복용 감시가 모두 꺼짐)에서는 연동 상태 확인이 한 번 성공하면 주기 확인을 하지 않는다.
   // 매개변수:
   // - 없음.
   // 반환값:
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
   Future<void> start() async {
+    _isStarted = true;
     _timer?.cancel();
+    await checkNow();
+    _scheduleNextCheck();
+  }
+
+  // 함수이름: _deliversAlerts
+  // 함수역할: 이 기기의 확인으로 보호자 알림이 만들어질 수 있는지 알려 준다. 둘 다 꺼져 있으면 알림은 서버 푸시로만 온다.
+  // 매개변수: 없음. 반환값: 완료 변화 또는 미복용 마감 감시가 켜져 있으면 true.
+  bool get _deliversAlerts =>
+      monitorCompletionTransitions || monitorMissedDeadlines;
+
+  // 함수이름: pause
+  // 함수역할: 앱이 화면에서 사라진 동안 주기 확인을 멈춘다. 진행 중인 확인은 끝까지 수행한다.
+  // 매개변수: 없음. 반환값: 없음.
+  void pause() {
+    if (_isDisposed) {
+      return;
+    }
+    _isPaused = true;
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  // 함수이름: resume
+  // 함수역할: pause로 멈춘 주기 확인을 다시 시작하며 그동안의 변화를 바로 한 번 확인한다. 멈춘 적이 없거나
+  //   start 전이면 아무 일도 하지 않고, 주기 확인이 필요 없는 구성에서는 다시 확인하지 않는다.
+  // 매개변수: 없음. 반환값: 재개에 따른 확인이 끝나면 완료되는 Future.
+  Future<void> resume() async {
+    if (_isDisposed || !_isPaused) {
+      return;
+    }
+    _isPaused = false;
+    if (!_isStarted || (!_deliversAlerts && _consecutiveFailures == 0)) {
+      return;
+    }
     await checkNow();
     _scheduleNextCheck();
   }
@@ -491,16 +534,21 @@ class CaregiverNotificationMonitorService {
   }
 
   // 함수이름: _scheduleNextCheck
-  // 함수역할: 보호자 연결이 있으면 짧은 주기, 없으면 저빈도 주기로 다음 확인을 예약한다.
+  // 함수역할: 보호자 연결이 있으면 짧은 주기, 없으면 저빈도 주기로 다음 확인을 예약한다. 멈춘 동안에는 예약하지
+  //   않는다. 이 기기에서 만들 알림이 없으면 마지막 확인이 성공한 뒤에는 예약하지 않고, 실패했을 때만 다시 시도한다.
   // 매개변수:
   // - 없음.
   // 반환값:
   // - 없음.
   void _scheduleNextCheck() {
-    if (_isDisposed) {
+    if (_isDisposed || _isPaused) {
       return;
     }
     _timer?.cancel();
+    _timer = null;
+    if (!_deliversAlerts && _consecutiveFailures == 0) {
+      return;
+    }
     final baseInterval = _hasCaregiverLinks
         ? pollingInterval
         : idlePollingInterval;
@@ -924,7 +972,8 @@ class CaregiverNotificationMonitorService {
   // - String: 보호자·환자·시간대를 결합해 알림 스냅샷과 중복 방지 기록이 섞이지 않는 저장 접두사를 만든다.
   String _preferenceScope(String patientHash, String slotKey) {
     final normalizedCaregiver = PatientHash.normalizePatientHash(caregiverHash);
-    return 'caregiver_alert.$normalizedCaregiver.$patientHash.$slotKey';
+    return '${CaregiverPatientLocalStateService.alertKeyPrefix}'
+        '$normalizedCaregiver.$patientHash.$slotKey';
   }
 
   // 함수이름: _dateKey
@@ -933,11 +982,7 @@ class CaregiverNotificationMonitorService {
   // - dateTime (DateTime): 달력 날짜 계산 또는 비교의 기준 시각
   // 반환값:
   // - String: 감시 시각의 날짜를 연·월·일 두 자리 규칙의 YYYY-MM-DD 서명으로 만든다.
-  String _dateKey(DateTime dateTime) {
-    return '${dateTime.year.toString().padLeft(4, '0')}-'
-        '${dateTime.month.toString().padLeft(2, '0')}-'
-        '${dateTime.day.toString().padLeft(2, '0')}';
-  }
+  String _dateKey(DateTime dateTime) => formatJsonDate(dateTime)!;
 
   // 함수이름: _stableNotificationId
   // 함수역할: 알림 구분 문자열을 FNV 방식으로 접어 보호자 알림용 300000~899999 범위의 안정 ID를 만든다.
@@ -946,12 +991,7 @@ class CaregiverNotificationMonitorService {
   // 반환값:
   // - int: 알림 구분 문자열을 FNV 방식으로 접어 보호자 알림용 300000~899999 범위의 안정 ID를 만든다.
   int _stableNotificationId(String source) {
-    var hash = 0x811C9DC5;
-    for (final codeUnit in source.codeUnits) {
-      hash ^= codeUnit;
-      hash = (hash * 0x01000193) & 0x7FFFFFFF;
-    }
-    return 300000 + (hash % 600000);
+    return 300000 + (fnv1a31(source) % 600000);
   }
 
   // 함수이름: dispose
@@ -984,7 +1024,7 @@ class _CaregiverNotificationText {
   // 반환값:
   // - _CaregiverNotificationText: 초기화된 인스턴스.
   _CaregiverNotificationText(String language)
-    : isEnglish = language.trim().toLowerCase() == 'en';
+    : isEnglish = isEnglishLanguage(language);
 
   // 함수이름: completedTitle
   // 함수역할: 환자의 시간대 복약이 모두 완료되었음을 알리는 제목을 현재 언어로 제공한다.
@@ -1043,12 +1083,11 @@ class _CaregiverNotificationText {
   // 반환값:
   // - String: 복약 시간대 키에 맞는 한국어·영어 이름을 제공하고 알 수 없는 키에는 일반 일정 문구를 사용한다.
   String slotName(String slotKey) {
-    return switch (slotKey) {
-      'morning' => isEnglish ? 'morning' : '아침',
-      'lunch' => isEnglish ? 'lunch' : '점심',
-      'evening' => isEnglish ? 'evening' : '저녁',
-      'bedtime' => isEnglish ? 'bedtime' : '취침 전',
-      _ => isEnglish ? 'scheduled' : '복약 일정',
-    };
+    return medicationSlotLabelOrNull(
+          slotKey,
+          isEnglish: isEnglish,
+          lowercase: true,
+        ) ??
+        (isEnglish ? 'scheduled' : '복약 일정');
   }
 }

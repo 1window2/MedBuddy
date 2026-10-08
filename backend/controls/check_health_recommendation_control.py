@@ -22,6 +22,18 @@ from services.medication_course_policy import MedicationCoursePolicy
 
 logger = logging.getLogger(__name__)
 
+
+# Function Name: _accept_current_access
+# Description:
+# - Default access check for a caller that has no scope to re-validate; accepts the request.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+def _accept_current_access() -> None:
+    return None
+
+
 # 클래스명: CheckHealthRecommendation
 # 역할:
 # - 오늘 복용 중인 약을 모아 건강 관리 안내를 생성하고 환자별 캐시를 관리한다.
@@ -62,18 +74,21 @@ class CheckHealthRecommendation:
     # Function Name: requestHealthRecommendation
     # Description:
     # - Loads a detached recommendation snapshot off-loop, generates missing guidance and caches it in a second sequential worker phase.
-    # - Retains the caller's transaction and account-deletion lock; cancellation drains database work before session cleanup.
+    # - Holds no transaction or connection while the guidance is generated, then re-validates access and the medication
+    #   inputs before caching; cancellation drains database work before session cleanup.
     # Parameters:
     # - patient_hash (str | None): Authorized patient ownership scope.
     # - language (str): Requested recommendation language.
+    # - validate_access (Callable[[], None]): Lock and scope check run before each database phase; accepts by default.
     # Returns:
-    # - Medication names and guidance; raises HTTP 404 when no active medications exist.
+    # - Medication names and guidance; raises HTTP 404 when no active medications exist and HTTP 409 when the
+    #   medications changed while the guidance was generated.
     async def requestHealthRecommendation(
         self,
         patient_hash: str | None = None,
         language: str = "ko",
         *,
-        validate_access: Callable[[], None] | None = None,
+        validate_access: Callable[[], None] = _accept_current_access,
     ) -> dict[str, object]:
         normalized_patient_hash = normalize_patient_hash(patient_hash)
         (
@@ -81,11 +96,11 @@ class CheckHealthRecommendation:
             recommendation_key,
             cached_recommendation,
         ) = await run_request_database_work(
-            self._read_scoped_snapshot if validate_access else self._read_recommendation_snapshot,
+            self._read_scoped_snapshot,
             normalized_patient_hash,
             application_today(),
             language,
-            **({"validate_access": validate_access} if validate_access else {}),
+            validate_access=validate_access,
         )
         if cached_recommendation is not None:
             return self._build_response(
@@ -98,29 +113,16 @@ class CheckHealthRecommendation:
             medication_summaries,
             language,
         )
-        # 재검증 콜백이 있는 API 경로는 외부 대기 중 연결을 보유하지 않는다.
-        # 콜백 없는 기존 호출자는 위에 문서화된 호출자 트랜잭션 계약을 유지한다.
-        if validate_access is not None:
-            response = self._build_response(
-                recommendation, medication_summaries, "Health recommendation generated.",
-            )
-            await run_request_database_work(
-                self._save_revalidated_recommendation,
-                normalized_patient_hash, language, recommendation_key,
-                recommendation, validate_access,
-            )
-            return response
+        # 외부 대기 중에는 연결을 보유하지 않고, 저장 전에 권한과 복약 입력을 다시 확인한다.
+        response = self._build_response(
+            recommendation, medication_summaries, "Health recommendation generated.",
+        )
         await run_request_database_work(
-            self._save_cached_recommendation,
-            normalized_patient_hash,
-            recommendation_key,
-            recommendation,
+            self._save_revalidated_recommendation,
+            normalized_patient_hash, language, recommendation_key,
+            recommendation, validate_access,
         )
-        return self._build_response(
-            recommendation,
-            medication_summaries,
-            "Health recommendation generated.",
-        )
+        return response
 
     # 최초 권한 조회의 읽기 트랜잭션을 끝내고, 잠금 아래 만든 값만 외부로 넘긴다.
     # 함수이름: _read_scoped_snapshot
@@ -340,7 +342,10 @@ class CheckHealthRecommendation:
         patient_hash: str,
         today: date,
     ) -> list[_SavedMedication]:
-        medications = self.medication_repository.list_by_patient(patient_hash)
+        # The summary and the course dates need only the schedule columns, not the full rows.
+        medications = self.medication_repository.list_schedule_medications_by_patient(
+            patient_hash,
+        )
         return [
             medication
             for medication in medications

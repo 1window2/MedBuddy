@@ -113,6 +113,7 @@ class ApiContractMismatchException implements Exception {
 // - _appCheckTokenProvider (AppCheckTokenProvider): Asynchronous provider of the current app-attestation token.
 // - _appCheckRequired (bool): Whether requests require App Check attestation.
 // - _onUnauthorized (UnauthorizedResponseHandler?): Session-cleanup callback after a server HTTP 401 response.
+// - defaultOnUnauthorized (UnauthorizedResponseHandler?): Shell-registered fallback for clients built without a callback.
 // - _trustedBaseUri (Uri): MedBuddy origin permitted to receive authentication headers.
 class AuthenticatedApiClient extends http.BaseClient {
   static const Duration _authenticationTimeout = Duration(seconds: 10);
@@ -123,6 +124,11 @@ class AuthenticatedApiClient extends http.BaseClient {
   final bool _appCheckRequired;
   final UnauthorizedResponseHandler? _onUnauthorized;
   final Uri _trustedBaseUri;
+
+  // Session-cleanup callback used by clients constructed without `onUnauthorized`.
+  // The app shell sets it while it is mounted, so every screen-owned client reports
+  // an HTTP 401 to the authentication gate; background isolates never set it.
+  static UnauthorizedResponseHandler? defaultOnUnauthorized;
 
   // Function Name: AuthenticatedApiClient
   // Description: Wraps a transport client with injected or Firebase-backed token providers, App Check requirements, trusted origin, and optional unauthorized-session handling.
@@ -201,7 +207,7 @@ class AuthenticatedApiClient extends http.BaseClient {
       throw ApiContractMismatchException(serverContract);
     }
     if (response.statusCode == 401) {
-      await _onUnauthorized?.call();
+      await (_onUnauthorized ?? defaultOnUnauthorized)?.call();
     }
     return response;
   }

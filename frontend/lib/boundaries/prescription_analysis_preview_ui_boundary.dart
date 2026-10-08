@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../entities/medication_schedule_entity.dart';
+import '../entities/medication_schedule_limits.dart';
+import '../entities/medication_slot_label.dart';
 import '../entities/medication_detail_entity.dart';
 import '../entities/medication_match_review_entity.dart';
 import 'medication_candidate_dialog.dart';
@@ -164,7 +166,6 @@ class _PrescriptionAnalysisPreviewUIState
   @override
   Widget build(BuildContext context) {
     final text = _PreviewText(widget.userSetting.language);
-    final scale = widget.userSetting.contentTextScale;
     final recognitionNotice = widget.recognitionNotice.trim();
     final hasReviewRequired = widget.medicationScheduleList.any(
       // 함수이름: build.any callback
@@ -183,7 +184,6 @@ class _PrescriptionAnalysisPreviewUIState
             : hasReviewRequired
             ? text.reviewBeforeAnalyze
             : text.confirmAndAnalyze,
-        scale: scale,
         onPressed: _isAnalysisRequested ? null : _requestAnalysis,
       ),
       body: SafeArea(
@@ -193,7 +193,7 @@ class _PrescriptionAnalysisPreviewUIState
           color: MedBuddyColors.pageBackground,
           child: Column(
             children: [
-              _TopBackButton(
+              PrescriptionFlowBackButton(
                 tooltip: text.back,
                 onBackRequested: widget.onBackRequested,
               ),
@@ -216,7 +216,7 @@ class _PrescriptionAnalysisPreviewUIState
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: MedBuddyColors.textStrong,
-                            fontSize: 26 * scale,
+                            fontSize: 26,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 0,
                           ),
@@ -228,13 +228,11 @@ class _PrescriptionAnalysisPreviewUIState
                               widget.medicationScheduleList.length -
                                   widget.verifiedScheduleIndexes.length,
                             ),
-                            scale: scale,
                           ),
                           const SizedBox(height: 20),
                           if (widget.lookupErrorMessage.isNotEmpty) ...[
                             _RecognitionNoticeBanner(
                               message: widget.lookupErrorMessage,
-                              scale: scale,
                             ),
                             const SizedBox(height: 12),
                           ],
@@ -242,7 +240,6 @@ class _PrescriptionAnalysisPreviewUIState
                           const SizedBox(height: 14),
                           _RecognitionNoticeBanner(
                             message: recognitionNotice,
-                            scale: scale,
                           ),
                           const SizedBox(height: 20),
                         ] else
@@ -252,7 +249,6 @@ class _PrescriptionAnalysisPreviewUIState
                             imagePath: widget.previewImagePath,
                             regions: widget.recognizedTextRegions,
                             previewText: text,
-                            scale: scale,
                           ),
                           const SizedBox(height: 16),
                         ],
@@ -289,7 +285,7 @@ class _PrescriptionAnalysisPreviewUIState
                                   ),
                                   icon: const Icon(Icons.fact_check_outlined),
                                   label: Text(
-                                    '${entry.key + 1}. ${widget.medicationScheduleList[entry.key].medicationName}\n${widget.userSetting.language == 'en' ? 'Review medication candidates' : '약품 후보 확인'}',
+                                    '${entry.key + 1}. ${widget.medicationScheduleList[entry.key].medicationName}\n${widget.userSetting.isEnglish ? 'Review medication candidates' : '약품 후보 확인'}',
                                   ),
                                   onPressed: () => _showMedicationCandidates(
                                     entry.key,
@@ -343,7 +339,7 @@ class _PrescriptionAnalysisPreviewUIState
             ? schedule.medicationName
             : schedule.rawMedicationName,
         candidates: review.candidates,
-        isEnglish: widget.userSetting.language == 'en',
+        isEnglish: widget.userSetting.isEnglish,
       ),
     );
     if (!mounted ||
@@ -401,7 +397,7 @@ class _PrescriptionAnalysisPreviewUIState
       prescriptionDate: referenceSchedule?.prescriptionDate ?? DateTime.now(),
       prescriptionBatchId: referenceSchedule?.prescriptionBatchId ?? '',
       dosage: '1',
-      intakeTime: '1',
+      intakeTime: '1회',
       medicationTime: referenceSchedule?.medicationTime ?? 1,
       scheduleSlotKeys: const [defaultMedicationScheduleSlotKey],
       nameConfidence: 1,
@@ -529,20 +525,16 @@ class _PrescriptionAnalysisPreviewUIState
 // - 부모가 전달한 표시값과 동작을 반영해 상세조회 미확인 약의 수정·재조회 안내 위젯을 구성한다.
 // 속성:
 // - message (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 class _MedicationLookupReviewBanner extends StatelessWidget {
   final String message;
-  final double scale;
 
   // 함수이름: _MedicationLookupReviewBanner
   // 함수역할: 상세조회 미확인 약의 수정·재조회 안내에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - message (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // 반환값: 입력 설정이 반영된 _MedicationLookupReviewBanner 인스턴스.
   const _MedicationLookupReviewBanner({
     required this.message,
-    required this.scale,
   });
 
   // 함수이름: build
@@ -555,7 +547,6 @@ class _MedicationLookupReviewBanner extends StatelessWidget {
     return MedBuddyNotice(
       key: const Key('medication-lookup-review-banner'),
       message: message,
-      scale: scale,
     );
   }
 }

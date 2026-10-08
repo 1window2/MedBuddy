@@ -14,6 +14,7 @@ from controls.manage_account_control import (
     AccountDeletionPendingError,
     ManageAccount,
 )
+from core.config import settings
 from core.database import Base
 from core.request_rate_limits import (
     DEFAULT_RATE_LIMIT_RULES,
@@ -21,6 +22,14 @@ from core.request_rate_limits import (
     RequestRateLimitMiddleware,
     RequestRateLimitStore,
     resolve_rate_limit_rule,
+)
+from entities.caregiver_alert_outbox_entity import (
+    CAREGIVER_ALERT_STATUS_DEAD_LETTER,
+    CAREGIVER_ALERT_STATUS_FAILED,
+    CAREGIVER_ALERT_STATUS_PENDING,
+    CAREGIVER_ALERT_STATUS_PROCESSING,
+    CAREGIVER_ALERT_STATUS_SENT,
+    _CaregiverAlertOutbox,
 )
 from entities.dose_sync_operation_entity import _DoseSyncOperation
 from entities.health_recommendation_cache_entity import _HealthRecommendationCache
@@ -122,6 +131,132 @@ def test_data_maintenance_removes_expired_and_orphaned_rows(db_session) -> None:
     assert db_session.query(_MedicationCompletion).count() == 0
     assert db_session.query(_PatientLinkCode).count() == 0
     assert db_session.query(_HealthRecommendationCache).count() == 0
+
+
+# Function Name: test_data_maintenance_keeps_rows_inside_their_retention_window
+# Description:
+# - Requires maintenance to leave an active medication with its completion, an unexpired
+#   unused link code and a recent health-recommendation cache row untouched.
+# Parameters:
+# - db_session (Session): Isolated SQLAlchemy session supplied by the test fixture.
+# Returns:
+# - None.
+def test_data_maintenance_keeps_rows_inside_their_retention_window(db_session) -> None:
+    patient_hash = "patient-kept"
+    now = datetime.now(UTC).replace(tzinfo=None)
+    db_session.add(_UserAccount(user_hash=patient_hash))
+    medication = _SavedMedication(
+        patient_hash=patient_hash,
+        created_date=datetime.now().date(),
+        prescription_date=datetime.now().date(),
+        item_name="복용 중 테스트약",
+        efficacy="",
+        use_method="",
+        warning_message="",
+        dosage_per_time="1정",
+        daily_frequency="1회",
+        total_days="30일",
+        schedule_slot_keys='["morning"]',
+    )
+    db_session.add(medication)
+    db_session.flush()
+    db_session.add_all(
+        [
+            _MedicationCompletion(
+                saved_medication_id=medication.id,
+                patient_hash=patient_hash,
+                schedule_date=datetime.now().date(),
+                slot_key="morning",
+            ),
+            _PatientLinkCode(
+                patient_hash=patient_hash,
+                patient_code="NEW12345",
+                expires_at=now + timedelta(minutes=5),
+            ),
+            _HealthRecommendationCache(
+                patient_hash=patient_hash,
+                recommendation_key="recent-cache",
+                payload="{}",
+                created_at=now
+                - timedelta(
+                    days=settings.HEALTH_RECOMMENDATION_CACHE_RETENTION_DAYS - 1
+                ),
+            ),
+        ]
+    )
+    db_session.commit()
+
+    deleted = DataMaintenanceService(
+        retention_policy=SavedMedicationRetentionPolicy(
+            retention_days_after_end=30,
+        )
+    ).runOnce(db_session)
+
+    assert not any(deleted.values())
+    assert db_session.query(_SavedMedication).count() == 1
+    assert db_session.query(_MedicationCompletion).count() == 1
+    assert db_session.query(_PatientLinkCode).count() == 1
+    assert db_session.query(_HealthRecommendationCache).count() == 1
+
+
+# Function Name: test_data_maintenance_deletes_only_old_finished_caregiver_alerts
+# Description:
+# - Requires maintenance to delete sent and dead-letter outbox rows older than the retention
+#   window, and to keep recent finished rows and every pending, failed or in-flight row
+#   however old it is.
+# Parameters:
+# - db_session (Session): Isolated SQLAlchemy session supplied by the test fixture.
+# Returns:
+# - None.
+def test_data_maintenance_deletes_only_old_finished_caregiver_alerts(db_session) -> None:
+    patient_hash = "patient-outbox"
+    now = datetime.now(UTC).replace(tzinfo=None)
+    retention = timedelta(days=settings.CAREGIVER_ALERT_OUTBOX_RETENTION_DAYS)
+    old = now - retention - timedelta(days=1)
+    recent = now - retention + timedelta(days=1)
+    db_session.add(_UserAccount(user_hash=patient_hash))
+    # (event_key, status, created_at, sent_at)
+    outbox_rows = (
+        ("old-sent", CAREGIVER_ALERT_STATUS_SENT, old, old),
+        ("old-dead-letter", CAREGIVER_ALERT_STATUS_DEAD_LETTER, old, None),
+        ("recently-sent", CAREGIVER_ALERT_STATUS_SENT, old, recent),
+        ("recent-dead-letter", CAREGIVER_ALERT_STATUS_DEAD_LETTER, recent, None),
+        ("old-pending", CAREGIVER_ALERT_STATUS_PENDING, old, None),
+        ("old-failed", CAREGIVER_ALERT_STATUS_FAILED, old, None),
+        ("old-processing", CAREGIVER_ALERT_STATUS_PROCESSING, old, None),
+    )
+    db_session.add_all(
+        [
+            _CaregiverAlertOutbox(
+                event_key=event_key,
+                patient_hash=patient_hash,
+                slot_key="morning",
+                schedule_date=created_at.date(),
+                status=status,
+                created_at=created_at,
+                available_at=created_at,
+                sent_at=sent_at,
+                processing_started_at=(
+                    created_at if status == CAREGIVER_ALERT_STATUS_PROCESSING else None
+                ),
+            )
+            for event_key, status, created_at, sent_at in outbox_rows
+        ]
+    )
+    db_session.commit()
+
+    deleted = DataMaintenanceService().runOnce(db_session)
+
+    assert deleted["sent_caregiver_alerts"] == 2
+    assert sorted(
+        row.event_key for row in db_session.query(_CaregiverAlertOutbox).all()
+    ) == [
+        "old-failed",
+        "old-pending",
+        "old-processing",
+        "recent-dead-letter",
+        "recently-sent",
+    ]
 
 
 # 함수이름: test_manage_account_exports_and_deletes_owned_data

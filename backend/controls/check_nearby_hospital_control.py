@@ -22,6 +22,7 @@ from services.nearby_care_policy import (
     haversine_distance,
     is_open_now,
     minutes_until_close,
+    normalize_target_datetime,
     parse_minutes,
 )
 
@@ -83,16 +84,10 @@ class CheckNearbyHospital:
         if department is not None and department not in DEPARTMENT_NAMES:
             raise ValueError("Unsupported hospital department code.")
         search_mode = HospitalSearchMode(search_mode)
-        target = target_datetime or self._clock()
-        try:
-            target = (
-                target.replace(tzinfo=self._timezone)
-                if target.tzinfo is None else target.astimezone(self._timezone)
-            )
-        except OverflowError:
-            raise ValueError("Invalid hospital search date.") from None
-        if target.year <= 1 or target.year >= 9999:
-            raise ValueError("Invalid hospital search date.")
+        # 약국 검색과 같은 달력일 범위(오늘 기준 7일 전~366일 후)만 허용해 임의 연도의 달력 조회를 막는다.
+        target = normalize_target_datetime(
+            target_datetime, now=self._clock(), timezone=self._timezone,
+        )
         # 라우터의 전체 제한 전에 부분 결과를 반환할 시간을 남긴다.
         deadline = asyncio.get_running_loop().time() + max(
             0.01, settings.HOSPITAL_SEARCH_TIMEOUT_SECONDS - 1,

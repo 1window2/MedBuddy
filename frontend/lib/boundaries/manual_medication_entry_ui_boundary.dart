@@ -1,6 +1,7 @@
 // 파일명: manual_medication_entry_ui_boundary.dart
 // 역할: 약품명·사진·기간·복약 시간대 직접 입력을 제공한다.
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -11,7 +12,10 @@ import 'package:image_picker/image_picker.dart';
 import '../controls/check_saved_medication_control.dart';
 import '../entities/manual_medication_entry_entity.dart';
 import '../entities/medication_schedule_entity.dart';
+import '../entities/medication_schedule_limits.dart';
+import '../entities/medication_slot_label.dart';
 import '../entities/user_setting_entity.dart';
+import '../services/app_temp_file.dart';
 import '../theme/medbuddy_theme.dart';
 import 'medication_photo_source_sheet.dart';
 
@@ -69,6 +73,7 @@ class ManualMedicationEntryUI extends StatefulWidget {
 // - _imagePicker (ImagePicker): 카메라·갤러리 이미지 선택 의존성.
 // - _endDate (DateTime): 복용 기간의 마지막 날짜.
 // - _isSaving (bool): 해당 저장·분석·복약 갱신 요청이 진행 중인지 여부.
+// - _isSaveRequestPending (bool): 저장 콜백의 응답을 기다리는 중인지 여부.
 class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
   static const List<String> _dosageUnits = ['정', '캡슐', '포', 'mL', '방울'];
 
@@ -86,14 +91,15 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
   String _selectedImagePath = '';
   String _errorMessage = '';
   bool _isSaving = false;
+  // 저장 콜백을 기다리는 동안에만 true. 화면 잠금용 _isSaving과 달리 저장 성공 뒤에는 바로 내려간다.
+  bool _isSaveRequestPending = false;
 
   // 함수이름: _isEnglish
-  // 함수역할: 언어 코드의 공백과 대소문자를 정리한 뒤 en 접두어로 영어 여부를 판별한다.
+  // 함수역할: 사용자 설정의 공통 언어 판정으로 영어 여부를 판별한다.
   // 매개변수:
   // - 없음.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
-  bool get _isEnglish =>
-      widget.userSetting.language.trim().toLowerCase().startsWith('en');
+  bool get _isEnglish => widget.userSetting.isEnglish;
 
   // 함수이름: _text
   // 함수역할: 현재 언어에 맞는 약품명·사진·기간·복약 시간대 직접 입력 문구 객체를 만든다.
@@ -114,12 +120,16 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
   }
 
   // 함수이름: dispose
-  // 함수역할: _medicationNameController, _dosageController 관련 자원을 정리하고 화면 수명 종료 처리를 수행한다.
+  // 함수역할: _medicationNameController, _dosageController 관련 자원을 정리하고 선택 사진의 임시 사본을 지운 뒤 화면 수명 종료 처리를 수행한다.
   // 매개변수:
   // - 없음.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
   @override
   void dispose() {
+    // 저장 요청이 진행 중이면 저장 흐름이 아직 사진을 읽을 수 있으므로 _submit이 끝난 뒤에 지운다.
+    if (!_isSaveRequestPending) {
+      _discardPickedImage(_selectedImagePath);
+    }
     _medicationNameController.dispose();
     _dosageController.dispose();
     super.dispose();
@@ -297,6 +307,8 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
             width: double.infinity,
             height: 140,
             fit: BoxFit.contain,
+            // 140dp 미리보기에 필요한 해상도까지만 디코딩한다.
+            cacheHeight: (140 * MediaQuery.devicePixelRatioOf(context)).round(),
             // 함수이름: _buildSelectedPhoto.errorBuilder callback
             // 함수역할: 이미지를 해석하거나 불러올 수 없으면 사진 없음 대체 표시를 구성한다.
             // 매개변수:
@@ -313,19 +325,12 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
           child: IconButton.filled(
             key: const Key('manual-medication-remove-photo'),
             tooltip: _text.removePhoto,
-            // 함수이름: _buildSelectedPhoto.setState callback
-            // 함수역할: 사진을 포함한 약품명·처방일·복용 일정 직접 입력의 입력·요청 상태를 `_selectedImagePath = ''`로 갱신한다.
-            // 매개변수:
-            // - 없음.
-            // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
             // 함수이름: _buildSelectedPhoto.onPressed callback
-            // 함수역할: 저장 중이 아닐 때 선택 사진을 제거한다.
+            // 함수역할: 저장 중이 아닐 때 선택 사진을 제거하고 임시 사본을 지운다.
             // 매개변수:
             // - 없음.
             // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-            onPressed: _isSaving
-                ? null
-                : () => setState(() => _selectedImagePath = ''),
+            onPressed: _isSaving ? null : _removeSelectedImage,
             style: IconButton.styleFrom(
               backgroundColor: Colors.black.withValues(alpha: 0.68),
               foregroundColor: Colors.white,
@@ -496,7 +501,9 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
         ),
         const SizedBox(height: 8),
         Text(
-          _text.periodSummary(_endDate.difference(_startDate).inDays + 1),
+          _text.periodSummary(
+            inclusiveMedicationCourseDays(_startDate, _endDate),
+          ),
           style: const TextStyle(
             color: MedBuddyColors.primaryDark,
             fontWeight: FontWeight.w700,
@@ -639,7 +646,7 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
   }
 
   // 함수이름: _selectImageSource
-  // 함수역할: 공통 카메라·갤러리 선택창에서 선택한 사진을 기존 크기 제한으로 가져와 경로를 보관한다.
+  // 함수역할: 공통 카메라·갤러리 선택창에서 선택한 사진을 기존 크기 제한으로 가져와 경로를 보관한다. 선택에 실패하면 오류 안내를 표시하고, 사진을 바꾸면 이전 임시 사본을 지운다.
   // 매개변수:
   // - 없음.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
@@ -651,24 +658,76 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
     if (!mounted || source == null) {
       return;
     }
-    final selectedImage = await _imagePicker.pickImage(
-      source: source,
-      imageQuality: 88,
-      maxWidth: 1800,
-      maxHeight: 1800,
-    );
-    if (!mounted || selectedImage == null) {
+    final XFile? selectedImage;
+    try {
+      selectedImage = await _imagePicker.pickImage(
+        source: source,
+        imageQuality: 88,
+        maxWidth: 1800,
+        maxHeight: 1800,
+      );
+    } catch (_) {
+      // 카메라·사진 접근 거부처럼 선택기가 예외로 끝나면 기존 선택을 유지하고 안내만 표시한다.
+      if (mounted) {
+        // 함수이름: _selectImageSource.setState callback
+        // 함수역할: 사진을 포함한 약품명·처방일·복용 일정 직접 입력의 입력·요청 상태를 `_errorMessage = _text.photoSelectionFailed`로 갱신한다.
+        // 매개변수:
+        // - 없음.
+        // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
+        setState(() => _errorMessage = _text.photoSelectionFailed);
+      }
       return;
     }
+    if (selectedImage == null) {
+      return;
+    }
+    final selectedPath = selectedImage.path;
+    if (!mounted) {
+      // 선택기를 연 채 화면을 닫았다면 쓰이지 않을 임시 사본을 남기지 않는다.
+      _discardPickedImage(selectedPath);
+      return;
+    }
+    final previousPath = _selectedImagePath;
     // 함수이름: _selectImageSource.setState callback
-    // 함수역할: 사진을 포함한 약품명·처방일·복용 일정 직접 입력의 입력·요청 상태를 `_selectedImagePath = selectedImage.path; _errorMessage = ''`로 갱신한다.
+    // 함수역할: 사진을 포함한 약품명·처방일·복용 일정 직접 입력의 입력·요청 상태를 `_selectedImagePath = selectedPath; _errorMessage = ''`로 갱신한다.
     // 매개변수:
     // - 없음.
     // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
     setState(() {
-      _selectedImagePath = selectedImage.path;
+      _selectedImagePath = selectedPath;
       _errorMessage = '';
     });
+    if (previousPath != selectedPath) {
+      _discardPickedImage(previousPath);
+    }
+  }
+
+  // 함수이름: _removeSelectedImage
+  // 함수역할: 선택 사진을 화면에서 제거하고 선택기가 만든 임시 사본을 지운다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
+  void _removeSelectedImage() {
+    final removedPath = _selectedImagePath;
+    // 함수이름: _removeSelectedImage.setState callback
+    // 함수역할: 사진을 포함한 약품명·처방일·복용 일정 직접 입력의 입력·요청 상태를 `_selectedImagePath = ''`로 갱신한다.
+    // 매개변수:
+    // - 없음.
+    // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
+    setState(() => _selectedImagePath = '');
+    _discardPickedImage(removedPath);
+  }
+
+  // 함수이름: _discardPickedImage
+  // 함수역할: 더 쓰지 않는 선택 사진의 임시 사본을 지운다. 앱 임시 폴더 밖의 파일은 건드리지 않으며 실패해도 화면 흐름을 막지 않는다.
+  // 매개변수:
+  // - path (String): 선택기가 돌려준 사진 경로. 비어 있으면 아무것도 하지 않는다.
+  // 반환값: 없음. 삭제는 기다리지 않고 진행한다.
+  static void _discardPickedImage(String path) {
+    if (path.isEmpty) {
+      return;
+    }
+    unawaited(deleteAppTempFile(path));
   }
 
   // 함수이름: _selectDate
@@ -678,10 +737,12 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _selectDate(bool selectsStartDate) async {
     final currentDate = selectsStartDate ? _startDate : _endDate;
-    final firstDate = selectsStartDate ? DateTime(2000) : _startDate;
+    final firstDate = selectsStartDate
+        ? earliestMedicationStartDate()
+        : _startDate;
     final lastDate = selectsStartDate
-        ? _dateOnly(DateTime.now().add(const Duration(days: 365)))
-        : _startDate.add(const Duration(days: 3649));
+        ? latestMedicationStartDate(DateTime.now())
+        : _latestEndDate(_startDate);
     final selectedDate = await showDatePicker(
       context: context,
       initialDate: currentDate.isBefore(firstDate)
@@ -706,8 +767,8 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
         if (_endDate.isBefore(_startDate)) {
           _endDate = _startDate;
         }
-        // 서버는 3650일을 넘는 복용 기간을 받지 않으므로 종료일을 그 안으로 맞춘다.
-        final latestEndDate = _startDate.add(const Duration(days: 3649));
+        // 서버는 최대 복용 기간을 넘는 일정을 받지 않으므로 종료일을 그 안으로 맞춘다.
+        final latestEndDate = _latestEndDate(_startDate);
         if (_endDate.isAfter(latestEndDate)) {
           _endDate = latestEndDate;
         }
@@ -719,11 +780,14 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
   }
 
   // 함수이름: _submit
-  // 함수역할: 필수 값과 시간대를 검증해 직접 입력 약을 저장하고 중복·실패·완료 결과를 표시한다.
+  // 함수역할: 필수 값과 시간대를 검증해 직접 입력 약을 저장하고 중복·실패·완료 결과를 표시한다. 저장 중 재호출은 무시하며 저장 콜백이 예외로 끝나도 저장 중 상태를 해제한다.
   // 매개변수:
   // - 없음.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _submit() async {
+    if (_isSaving) {
+      return;
+    }
     FocusScope.of(context).unfocus();
     final isFormValid = _formKey.currentState?.validate() ?? false;
     if (_selectedSlotKeys.isEmpty) {
@@ -748,43 +812,69 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
       _isSaving = true;
       _errorMessage = '';
     });
-    final result = await widget.onSaveRequested(
-      ManualMedicationEntry(
-        medicationName: _medicationNameController.text.trim(),
-        dosageAmount: _dosageController.text.trim(),
-        dosageUnit: _dosageUnit,
-        startDate: _startDate,
-        endDate: _endDate,
-        scheduleSlotKeys: _selectedSlotKeys.toList(growable: false),
-        localImagePath: _selectedImagePath,
-      ),
-    );
+    final submittedImagePath = _selectedImagePath;
+    MedicationSaveResult? result;
+    _isSaveRequestPending = true;
+    try {
+      result = await widget.onSaveRequested(
+        ManualMedicationEntry(
+          medicationName: _medicationNameController.text.trim(),
+          dosageAmount: _dosageController.text.trim(),
+          dosageUnit: _dosageUnit,
+          startDate: _startDate,
+          endDate: _endDate,
+          scheduleSlotKeys: _selectedSlotKeys.toList(growable: false),
+          localImagePath: submittedImagePath,
+        ),
+      );
+    } catch (_) {
+      // 저장 콜백이 예외로 끝나면 결과 없이 아래의 실패 안내로 넘어가 저장 중 상태를 해제한다.
+    } finally {
+      _isSaveRequestPending = false;
+    }
     if (!mounted) {
+      // 저장 도중 화면을 닫아 dispose가 남겨 둔 임시 사본을 저장 흐름이 끝난 지금 지운다.
+      _discardPickedImage(submittedImagePath);
       return;
     }
-    if (!result.isCompleted) {
+    final completedResult = result;
+    if (completedResult == null || !completedResult.isCompleted) {
       // 함수이름: _submit.setState callback
-      // 함수역할: 사진을 포함한 약품명·처방일·복용 일정 직접 입력의 입력·요청 상태를 `_isSaving = false; _errorMessage = result.message`로 갱신한다.
+      // 함수역할: 사진을 포함한 약품명·처방일·복용 일정 직접 입력의 입력·요청 상태를 `_isSaving = false; _errorMessage = completedResult?.message ?? _text.saveFailed`로 갱신한다.
       // 매개변수:
       // - 없음.
       // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
       setState(() {
         _isSaving = false;
-        _errorMessage = result.message;
+        _errorMessage = completedResult?.message ?? _text.saveFailed;
       });
       return;
     }
 
+    // 저장에 성공하면 화면이 닫힐 때까지 _isSaving을 유지해 닫히는 동안의 중복 저장을 막는다.
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          result.status == MedicationSaveStatus.duplicate
+          completedResult.status == MedicationSaveStatus.duplicate
               ? _text.duplicate
               : _text.saved,
         ),
       ),
     );
     Navigator.pop(context, true);
+  }
+
+  // 함수이름: _latestEndDate
+  // 함수역할: 시작일을 포함해 최대 복용 기간을 채우는 마지막 날짜를 달력 날짜로 계산한다.
+  // 매개변수:
+  // - startDate (DateTime): 복용 기간의 시작일.
+  // 반환값: DateTime: 허용 범위 또는 시각 제거 규칙을 반영한 날짜.
+  static DateTime _latestEndDate(DateTime startDate) {
+    return DateTime(
+      startDate.year,
+      startDate.month,
+      startDate.day + maxMedicationCourseDays - 1,
+    );
   }
 
   // 함수이름: _dateOnly
@@ -1099,13 +1189,7 @@ class _ManualMedicationText {
   // - key (String): 위젯을 구분하고 상태를 유지할 식별 키.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String slotLabel(String key) {
-    return switch (key) {
-      'morning' => isEnglish ? 'Morning' : '아침',
-      'lunch' => isEnglish ? 'Lunch' : '점심',
-      'evening' => isEnglish ? 'Evening' : '저녁',
-      'bedtime' => isEnglish ? 'Bedtime' : '취침 전',
-      _ => key,
-    };
+    return medicationSlotLabel(key, isEnglish: isEnglish);
   }
 
   // 함수이름: save
@@ -1133,4 +1217,20 @@ class _ManualMedicationText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get duplicate =>
       isEnglish ? 'This medication is already saved.' : '이미 추가된 약입니다.';
+  // 함수이름: saveFailed
+  // 함수역할: 현재 언어와 입력값에 맞춰 "복약 정보를 저장하지 못했습니다." 문구를 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  String get saveFailed => isEnglish
+      ? 'Could not save the medication plan.'
+      : '복약 정보를 저장하지 못했습니다.';
+  // 함수이름: photoSelectionFailed
+  // 함수역할: 현재 언어와 입력값에 맞춰 "사진을 불러오지 못했습니다. 카메라와 사진 접근 권한을 확인한 뒤 다시 시도해주세요." 문구를 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  String get photoSelectionFailed => isEnglish
+      ? 'Could not load the photo. Check camera and photo access, then try again.'
+      : '사진을 불러오지 못했습니다. 카메라와 사진 접근 권한을 확인한 뒤 다시 시도해주세요.';
 }

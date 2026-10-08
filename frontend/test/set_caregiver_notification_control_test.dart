@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/set_caregiver_notification_control.dart';
 import 'package:medbuddy_frontend/entities/caregiver_notification_entity.dart';
+import 'package:medbuddy_frontend/services/api_response_parser.dart';
 
 // 함수이름: main
 // 함수역할:
@@ -18,61 +19,6 @@ import 'package:medbuddy_frontend/entities/caregiver_notification_entity.dart';
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
-  // 함수이름: test 콜백
-  // 함수역할:
-  // - 보호자 알림 조회가 보호자·환자 식별자와 시간대 범위를 전달하는지 검증한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  test(
-    'requestCaregiverNotificationSetting scopes lookup by caregiver and patient',
-    () async {
-      // 함수이름: MockClient 콜백
-      // 함수역할:
-      // - 보호자·환자·아침 시간대 조회 범위를 검사하고 비활성 설정을 제공한다.
-      // 매개변수:
-      // - request (http.Request): 실제 서버 전송 대신 가로챈 HTTP 요청.
-      // 반환값:
-      // - 보호자 알림 설정의 HTTP 200 응답.
-      final client = MockClient((http.Request request) async {
-        expect(request.method, 'GET');
-        expect(request.url.path, '/caregiver-notification/settings/patient-a');
-        expect(request.url.queryParameters['caregiver_hash'], 'caregiver-a');
-        expect(request.url.queryParameters['slot_key'], 'morning');
-        return http.Response(
-          jsonEncode({
-            'success': true,
-            'data': {
-              'setting_id': 1,
-              'caregiver_hash': 'caregiver-a',
-              'patient_hash': 'patient-a',
-              'is_enabled': false,
-              'alert_option': 'disable',
-            },
-          }),
-          200,
-          headers: {'content-type': 'application/json; charset=utf-8'},
-        );
-      });
-      final control = SetCaregiverNotification(
-        baseUrl: 'http://localhost',
-        caregiverHash: 'caregiver-a',
-        client: client,
-      );
-
-      final setting = await control.requestCaregiverNotificationSetting(
-        patientHash: 'patient-a',
-      );
-
-      expect(setting.notificationId, 1);
-      expect(setting.caregiverHash, 'caregiver-a');
-      expect(setting.patientHash, 'patient-a');
-      expect(setting.notificationEnabled, isFalse);
-      expect(setting.notificationType, 'disabled');
-    },
-  );
-
   // 함수이름: test 콜백
   // 함수역할:
   // - 보호자 알림 저장에 활성 상태와 알림 방식을 전달하는지 검증한다.
@@ -253,4 +199,101 @@ void main() {
     expect(setting.deadlineMinute, 30);
     expect(setting.notificationEnabled, isTrue);
   });
+
+  // Function Name: test callback
+  // Description:
+  // - Expected behavior: caregiver notification lookups and saves report a rejected response with
+  //   its status code and a transport error with its cause, keeping the message text.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  test('caregiver notification requests surface typed failures', () async {
+    // Function Name: control
+    // Description:
+    // - Build a notification control for caregiver-a on the given HTTP client.
+    // Parameters:
+    // - client (http.Client): Mock transport for the request under test.
+    // Returns:
+    // - The scoped notification control.
+    SetCaregiverNotification control(http.Client client) =>
+        SetCaregiverNotification(
+          baseUrl: 'http://medbuddy.test',
+          caregiverHash: 'caregiver-a',
+          client: client,
+        );
+
+    await _expectTypedFailures(
+      'Caregiver notification lookup failed',
+      (client) => control(
+        client,
+      ).requestCaregiverNotificationSettings(patientHash: 'patient-a'),
+    );
+    await _expectTypedFailures(
+      'Caregiver notification save failed',
+      (client) => control(client).saveCaregiverNotificationSetting(
+        patientHash: 'patient-a',
+        mode: CaregiverNotificationMode.doseCompleted,
+      ),
+    );
+  });
+}
+
+// Function Name: _expectTypedFailures
+// Description:
+// - Run one control request against a rejected response and against a transport error, and check
+//   that both surface as ApiRequestException with the unchanged message text.
+// Parameters:
+// - operation (String): Failure label the control uses, without a trailing period.
+// - request (Future<Object?> Function(http.Client client)): Issues the request under test with the
+//   given HTTP client.
+// Returns:
+// - Future<void>; completes when both failures carry the expected status code or cause.
+Future<void> _expectTypedFailures(
+  String operation,
+  Future<Object?> Function(http.Client client) request,
+) async {
+  final rejectingClient = MockClient(
+    // Function Name: MockClient callback
+    // Description:
+    // - Reject every request with HTTP 409 and a FastAPI detail.
+    // Parameters:
+    // - _ (http.Request): Unused intercepted HTTP request.
+    // Returns:
+    // - HTTP 409 with the detail text.
+    (_) async => http.Response(jsonEncode({'detail': 'Rejected.'}), 409),
+  );
+  await expectLater(
+    request(rejectingClient),
+    throwsA(
+      isA<ApiRequestException>()
+          .having((error) => error.statusCode, 'statusCode', 409)
+          .having((error) => error.cause, 'cause', isNull)
+          .having(
+            (error) => error.message,
+            'message',
+            '$operation (409): Rejected.',
+          ),
+    ),
+  );
+
+  final offlineClient = MockClient(
+    // Function Name: MockClient callback
+    // Description:
+    // - Fail every request before a response exists, as an offline device does.
+    // Parameters:
+    // - _ (http.Request): Unused intercepted HTTP request.
+    // Returns:
+    // - A Future failing with ClientException.
+    (_) async => throw http.ClientException('offline'),
+  );
+  await expectLater(
+    request(offlineClient),
+    throwsA(
+      isA<ApiRequestException>()
+          .having((error) => error.statusCode, 'statusCode', isNull)
+          .having((error) => error.cause, 'cause', isA<http.ClientException>())
+          .having((error) => error.message, 'message', '$operation.'),
+    ),
+  );
 }

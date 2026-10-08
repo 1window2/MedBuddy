@@ -4,7 +4,8 @@
 import math
 from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import func
+from sqlalchemy import bindparam, func, select, update
+from sqlalchemy.engine import Row
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -158,6 +159,8 @@ class PharmacyCatalogRepository:
     # Function Name: search_nearby_candidates
     # Description:
     # - Select a latitude/longitude bounding box covering the search radius, adjusting longitude span for latitude.
+    # - Reads plain column rows instead of ORM objects: a wide urban radius returns thousands of
+    #   rows, and building a tracked entity for each cost more than the query itself.
     # Parameters:
     # - latitude (float): WGS84 latitude of the search center.
     # - longitude (float): WGS84 longitude of the search center.
@@ -174,9 +177,18 @@ class PharmacyCatalogRepository:
         latitude_delta = max_distance_km / 110.574
         longitude_scale = max(abs(math.cos(math.radians(latitude))), 0.01)
         longitude_delta = max_distance_km / (111.320 * longitude_scale)
-        rows = (
-            self.db.query(PharmacyCatalogRecord)
-            .filter(
+        rows = self.db.execute(
+            select(
+                PharmacyCatalogRecord.pharmacy_id,
+                PharmacyCatalogRecord.name,
+                PharmacyCatalogRecord.address,
+                PharmacyCatalogRecord.telephone,
+                PharmacyCatalogRecord.latitude,
+                PharmacyCatalogRecord.longitude,
+                PharmacyCatalogRecord.weekly_hours,
+                PharmacyCatalogRecord.official_designations,
+                PharmacyCatalogRecord.source_updated_at,
+            ).where(
                 PharmacyCatalogRecord.latitude.between(
                     latitude - latitude_delta,
                     latitude + latitude_delta,
@@ -186,8 +198,7 @@ class PharmacyCatalogRepository:
                     longitude + longitude_delta,
                 ),
             )
-            .all()
-        )
+        ).all()
         return [self._to_entry(row) for row in rows]
 
     # Function Name: replace_all
@@ -235,6 +246,8 @@ class PharmacyCatalogRepository:
     # Function Name: apply_official_designations_by_phone
     # Description:
     # - Match designation overlays by digit-only phone and normalized name, clearing unmatched overlays without changing source timestamps.
+    # - Writes only the rows whose overlay differs from the stored one. This runs on every deploy
+    #   to refresh a few dozen designations; an unchanged list must not rewrite the whole catalog.
     # Parameters:
     # - designations_by_phone (dict[str, dict[str, object]]): Official late-night designations keyed by normalized telephone digits.
     # Returns:
@@ -246,11 +259,19 @@ class PharmacyCatalogRepository:
         """Updates designation overlays without downloading the full catalogue."""
 
         matched = 0
-        mappings: list[dict[str, object]] = []
+        changes: list[dict[str, object]] = []
         try:
-            for row in self.db.query(PharmacyCatalogRecord).all():
+            rows = self.db.execute(
+                select(
+                    PharmacyCatalogRecord.pharmacy_id,
+                    PharmacyCatalogRecord.telephone,
+                    PharmacyCatalogRecord.name,
+                    PharmacyCatalogRecord.official_designations,
+                )
+            ).all()
+            for pharmacy_id, telephone, name, current_value in rows:
                 designation = match_official_designation(
-                    row.telephone, row.name, designations_by_phone
+                    telephone, name, designations_by_phone
                 )
                 next_value = (
                     {"public_late_night": designation}
@@ -259,14 +280,23 @@ class PharmacyCatalogRepository:
                 )
                 if designation is not None:
                     matched += 1
-                mappings.append(
-                    {
-                        "pharmacy_id": row.pharmacy_id,
-                        "official_designations": next_value,
-                        "source_updated_at": row.source_updated_at,
-                    }
+                if (current_value or {}) != next_value:
+                    changes.append(
+                        {"target_id": pharmacy_id, "next_value": next_value}
+                    )
+            if changes:
+                catalog = PharmacyCatalogRecord.__table__
+                self.db.execute(
+                    update(catalog)
+                    .where(catalog.c.pharmacy_id == bindparam("target_id"))
+                    .values(
+                        official_designations=bindparam("next_value"),
+                        # The column refreshes itself on UPDATE; assigning it to itself keeps
+                        # the timestamp of the last catalogue download.
+                        source_updated_at=catalog.c.source_updated_at,
+                    ),
+                    changes,
                 )
-            self.db.bulk_update_mappings(PharmacyCatalogRecord, mappings)
             self.db.commit()
         except Exception:
             self.db.rollback()
@@ -277,11 +307,11 @@ class PharmacyCatalogRepository:
     # 함수역할:
     # - 저장된 영업시간 JSON을 요일별 시간 쌍으로 바꾸고 누락된 선택 필드를 안전한 기본값으로 채운다.
     # 매개변수:
-    # - row (PharmacyCatalogRecord): 변환할 영속 약국 카탈로그 행.
+    # - row (PharmacyCatalogRecord | Row): 변환할 영속 약국 카탈로그 행 또는 같은 열 이름을 가진 조회 결과 행.
     # 반환값:
     # - DB 행에서 구성한 PharmacyCatalogEntry.
     @staticmethod
-    def _to_entry(row: PharmacyCatalogRecord) -> PharmacyCatalogEntry:
+    def _to_entry(row: PharmacyCatalogRecord | Row) -> PharmacyCatalogEntry:
         raw_hours = row.weekly_hours if isinstance(row.weekly_hours, dict) else {}
         weekly_hours: dict[str, tuple[str, str]] = {}
         for key, value in raw_hours.items():

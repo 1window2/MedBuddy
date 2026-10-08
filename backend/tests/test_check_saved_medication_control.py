@@ -17,6 +17,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from controls.check_saved_medication_control import CheckSavedMedication  # noqa: E402
+from core.application_clock import application_today  # noqa: E402
 from core.database import Base  # noqa: E402
 from entities.medication_completion_entity import (  # noqa: E402
     _MedicationCompletion,
@@ -27,6 +28,9 @@ from entities.saved_medication_entity import (  # noqa: E402
     build_saved_medication_deduplication_key,
 )
 from schemas.medication import SavedMedicationCreate  # noqa: E402
+from services.saved_medication_retention import (  # noqa: E402
+    SavedMedicationRetentionPolicy,
+)
 
 
 # Class Name: CheckSavedMedicationTest
@@ -444,6 +448,80 @@ class CheckSavedMedicationTest(unittest.TestCase):
             )
         )
         self.assertIsNotNone(self.db.get(_SavedMedication, expired_response["id"]))
+
+    # Function Name: test_retention_deletes_only_courses_past_the_grace_period
+    # Description:
+    # - With 30 days of retention after the course end, a running course that started more
+    #   than 30 days ago and a course that ended 10 days ago stay listed and stored, while a
+    #   course that ended 31 days ago is hidden from the list and deleted with its
+    #   completion rows by the next save.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_retention_deletes_only_courses_past_the_grace_period(self) -> None:
+        today = application_today()
+        self.control.retention_policy = SavedMedicationRetentionPolicy(
+            self.control.course_policy,
+            retention_days_after_end=30,
+        )
+        courses = {
+            "running-tablet": (today - timedelta(days=40), "60 days"),
+            "recently-ended-tablet": (today - timedelta(days=16), "7 days"),
+            "long-ended-tablet": (today - timedelta(days=37), "7 days"),
+        }
+        medication_ids: dict[str, int] = {}
+        for item_name, (prescription_date, total_days) in courses.items():
+            row = _SavedMedication(
+                patient_hash="patient-a",
+                created_date=prescription_date,
+                prescription_date=prescription_date,
+                item_name=item_name,
+                efficacy="effect",
+                use_method="usage",
+                warning_message="warning",
+                dosage_per_time="1 tablet",
+                daily_frequency="1 time",
+                total_days=total_days,
+            )
+            self.db.add(row)
+            self.db.flush()
+            medication_ids[item_name] = int(row.id)
+            self.db.add(
+                _MedicationCompletion(
+                    saved_medication_id=row.id,
+                    patient_hash="patient-a",
+                    schedule_date=prescription_date,
+                    slot_key="morning",
+                    completed=True,
+                )
+            )
+        self.db.commit()
+        kept_names = ["running-tablet", "recently-ended-tablet"]
+
+        listed = self.control.requestSavedMedicationInfo("patient-a")
+
+        self.assertCountEqual(
+            [medication["item_name"] for medication in listed["data"]],
+            kept_names,
+        )
+        self.assertEqual(self.db.query(_SavedMedication).count(), 3)
+
+        self.control.saveMedicationDetail(
+            self._saved_medication(patient_hash="patient-a", item_name="new-tablet")
+        )
+
+        self.assertCountEqual(
+            [row.item_name for row in self.db.query(_SavedMedication).all()],
+            [*kept_names, "new-tablet"],
+        )
+        self.assertCountEqual(
+            [
+                int(row.saved_medication_id)
+                for row in self.db.query(_MedicationCompletion).all()
+            ],
+            [medication_ids[item_name] for item_name in kept_names],
+        )
 
     # Function Name: test_list_keeps_medications_without_total_days
     # Description:

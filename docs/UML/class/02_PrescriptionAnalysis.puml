@@ -39,7 +39,7 @@ package "Flutter Frontend" #E8F4FF {
   class MedBuddyPrescriptionViewModel <<Control>>
   class "CheckMedicationDetail" as FCheckMedicationDetail <<Control>>
   class MedicationMatchReview <<Entity>>
-  class MedicationLookupBusy <<Entity>>
+  class MedicationLookupBusy <<Exception>>
   class "InputPrescription" as FInputPrescription <<Control>>
 }
 
@@ -49,7 +49,7 @@ package "FastAPI Backend" #EAF8F0 {
   class "PrescriptionMedicationNameVerifier" as MedicationNameVerifier <<Service>>
   class "MedicationSchedule" as BMedicationSchedule <<Entity>>
   class "CheckMedicationDetail" as BCheckMedicationDetail <<Control>>
-  class "medication_match_safety" as MatchSafety <<Service>> {
+  class "medication_match_safety" as MatchSafety <<Module>> {
     + match_conflict(original, candidate)
     + can_auto_match(original, candidate)
   }

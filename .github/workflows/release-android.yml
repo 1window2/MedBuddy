@@ -18,7 +18,7 @@ jobs:
   verify-ci:
     if: >-
       github.ref == 'refs/heads/main' ||
-      github.ref == 'refs/heads/beta/v0.2.0'
+      github.ref == 'refs/heads/beta/v0.2.1'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -35,7 +35,7 @@ jobs:
     needs: verify-ci
     if: >-
       github.ref == 'refs/heads/main' ||
-      github.ref == 'refs/heads/beta/v0.2.0'
+      github.ref == 'refs/heads/beta/v0.2.1'
     runs-on: ubuntu-latest
     environment: beta-android
     permissions:
@@ -55,7 +55,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "${GITHUB_REF}" == "refs/heads/main" || \
-             "${GITHUB_REF}" == "refs/heads/beta/v0.2.0" ]] || {
+             "${GITHUB_REF}" == "refs/heads/beta/v0.2.1" ]] || {
             echo "Signed Android builds are restricted to main and the active beta branch." >&2
             exit 1
           }
@@ -134,7 +134,7 @@ jobs:
       - name: Validate standalone backend endpoint
         shell: bash
         env:
-          MEDBUDDY_API_BASE_URL: ${{ github.ref == 'refs/heads/beta/v0.2.0' && inputs.api_base_url || vars.MEDBUDDY_API_BASE_URL }}
+          MEDBUDDY_API_BASE_URL: ${{ github.ref == 'refs/heads/beta/v0.2.1' && inputs.api_base_url || vars.MEDBUDDY_API_BASE_URL }}
           FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
         run: |
           set -euo pipefail
@@ -195,7 +195,7 @@ jobs:
           MEDBUDDY_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           MEDBUDDY_REQUIRE_RELEASE_SIGNING: 'true'
           EXPECTED_SIGNING_CERT_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
-          MEDBUDDY_API_BASE_URL: ${{ github.ref == 'refs/heads/beta/v0.2.0' && inputs.api_base_url || vars.MEDBUDDY_API_BASE_URL }}
+          MEDBUDDY_API_BASE_URL: ${{ github.ref == 'refs/heads/beta/v0.2.1' && inputs.api_base_url || vars.MEDBUDDY_API_BASE_URL }}
           FIREBASE_API_KEY: ${{ vars.FIREBASE_API_KEY }}
           FIREBASE_APP_ID: ${{ vars.FIREBASE_APP_ID }}
           FIREBASE_MESSAGING_SENDER_ID: ${{ vars.FIREBASE_MESSAGING_SENDER_ID }}
@@ -227,6 +227,7 @@ jobs:
           )
           if [[ "${MEDBUDDY_BUILD_DIRECT_APK}" == "true" ]]; then
             flutter build apk --release --no-pub \
+              --target-platform android-arm,android-arm64 \
               "${COMMON_DEFINES[@]}" \
               "--dart-define=MEDBUDDY_FIREBASE_APP_CHECK_REQUIRED=${APP_CHECK_REQUIRED}"
             sha256sum build/app/outputs/flutter-apk/app-release.apk > build/app-release.apk.sha256
@@ -275,6 +276,12 @@ jobs:
             fi
             if [[ "${APK_CERT}" != "${EXPECTED_CERT}" ]]; then
               echo "APK signing certificate SHA-256 mismatch." >&2
+              exit 1
+            fi
+            APK_NATIVE_ABIS="$(unzip -Z1 "${APK}" 'lib/*' | cut -d/ -f2 | sort -u | paste -sd, -)"
+            APK_ENGINE_ABIS="$(unzip -Z1 "${APK}" 'lib/*/libflutter.so' | cut -d/ -f2 | sort -u | paste -sd, -)"
+            if [[ "${APK_NATIVE_ABIS}" != "arm64-v8a,armeabi-v7a" || "${APK_ENGINE_ABIS}" != "${APK_NATIVE_ABIS}" ]]; then
+              echo "Direct APK must contain exactly the arm64-v8a and armeabi-v7a native libraries." >&2
               exit 1
             fi
           fi

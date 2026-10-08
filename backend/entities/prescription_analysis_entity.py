@@ -168,33 +168,6 @@ class MedicationCandidateList:
     def addCandidate(self, candidate: MedicationCandidate) -> None:
         self.candidates.append(candidate)
 
-    # Function Name: isEmpty
-    # Description:
-    # - Checks whether prescription normalization produced any medication candidates.
-    # Parameters:
-    # - None.
-    # Returns:
-    # - True when the candidate collection is empty.
-    def isEmpty(self) -> bool:
-        return not self.candidates
-
-    # Function Name: findByName
-    # Description:
-    # - Finds the first candidate whose stored drug name equals the supplied name.
-    # Parameters:
-    # - drugName (str): Exact medication name sought in the candidate collection.
-    # Returns:
-    # - Matching candidate, or None when the name is absent.
-    def findByName(self, drugName: str) -> MedicationCandidate | None:
-        return next(
-            (
-                candidate
-                for candidate in self.candidates
-                if candidate.drug_name == drugName
-            ),
-            None,
-        )
-
     # Function Name: deduplicated
     # Description:
     # - Retains the first occurrence of each complete medication-and-course identity.

@@ -7,7 +7,7 @@ from datetime import date, timedelta
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from boundaries.pharmacy_api_boundary import PharmacyApiUnavailableError
+from entities.nearby_pharmacy_entity import PharmacyApiUnavailableError
 from repositories.pharmacy_catalog_repository import PharmacyCatalogRepository
 
 

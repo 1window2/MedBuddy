@@ -1,6 +1,20 @@
 // Role: Versioned, non-secret context for an original missed case and its delivery.
 import 'dart:convert';
 
+// Function Name: fnv1a31
+// Description: Folds a string with 32-bit FNV-1a masked to 31 bits, so notification IDs derived from it stay the same across isolates and app restarts. Callers map the result into their own ID range.
+// Parameters:
+// - source (String): Text that identifies the notification.
+// Returns:
+// - int: Non-negative hash below 2^31.
+int fnv1a31(String source) {
+  var hash = 0x811C9DC5;
+  for (final unit in source.codeUnits) {
+    hash = ((hash ^ unit) * 0x01000193) & 0x7FFFFFFF;
+  }
+  return hash;
+}
+
 class CaregiverAlertContext {
   final int alertId;
   final int sourceAlertId;
@@ -69,11 +83,5 @@ class CaregiverAlertContext {
   }
 
   // Stable across isolates and FCM retries, but different for each snooze cycle.
-  int get notificationId {
-    var hash = 2166136261;
-    for (final unit in '$recipientHash:$eventId'.codeUnits) {
-      hash = ((hash ^ unit) * 16777619) & 0x7fffffff;
-    }
-    return hash;
-  }
+  int get notificationId => fnv1a31('$recipientHash:$eventId');
 }

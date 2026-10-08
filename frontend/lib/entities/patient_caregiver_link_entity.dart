@@ -189,40 +189,6 @@ class PatientCaregiverLink {
     };
   }
 
-  // Function Name: savePatientCaregiverLink
-  // Description: Produces a linked copy only when the caregiver hash is nonblank and differs from the patient hash.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - PatientCaregiverLink: Produces a linked copy only when the caregiver hash is nonblank and differs from the patient hash.
-  PatientCaregiverLink savePatientCaregiverLink() {
-    if (!validateCaregiverHash()) {
-      throw StateError('Caregiver hash must differ from the patient hash.');
-    }
-    return copyWith(linkStatus: true);
-  }
-
-  // Function Name: validateCaregiverHash
-  // Description: Rejects a blank caregiver hash and a caregiver identifier equal to the patient's trimmed hash.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - bool: Rejects a blank caregiver hash and a caregiver identifier equal to the patient's trimmed hash.
-  bool validateCaregiverHash() {
-    return caregiverHash.trim().isNotEmpty &&
-        caregiverHash.trim() != patientHash.trim();
-  }
-
-  // Function Name: removePatientCaregiverLink
-  // Description: Produces an unlinked copy without discarding participant identities, alias, or linkage metadata.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - PatientCaregiverLink: Produces an unlinked copy without discarding participant identities, alias, or linkage metadata.
-  PatientCaregiverLink removePatientCaregiverLink() {
-    return copyWith(linkStatus: false);
-  }
-
   // 함수이름: copyWith
   // 함수역할: 기존 연동 정보를 유지하면서 일부 필드만 변경한 새 객체를 만든다.
   // 매개변수:

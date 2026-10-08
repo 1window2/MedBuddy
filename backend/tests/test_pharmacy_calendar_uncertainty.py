@@ -19,6 +19,8 @@ TODAY = date(2026, 9, 30)
 
 # Function Name: control_for
 # Description: Supply weekday hours that would appear open if a failed calendar became False.
+#   The location fallback is selected the way production selects it: the catalogue returns no
+#   candidates for the area.
 # Parameters: unknown: Dates whose calendar fails; hour: Search hour; live: Use location fallback.
 # Returns: Search control with isolated provider doubles.
 def control_for(unknown: set[date], *, hour: int = 12, live: bool = False) -> CheckNearbyPharmacy:
@@ -36,8 +38,7 @@ def control_for(unknown: set[date], *, hour: int = 12, live: bool = False) -> Ch
     calendar.isHoliday.side_effect = classify
     repository = AsyncMock()
     repository.latest_updated_at.return_value = datetime(2026, 9, 30)
-    repository.count.return_value = 0 if live else 1
-    repository.search_nearby_candidates.return_value = [PharmacyCatalogEntry(
+    repository.search_nearby_candidates.return_value = [] if live else [PharmacyCatalogEntry(
         pharmacy_id="A", name="Pharmacy", address="Seoul", telephone="",
         latitude=37.5665, longitude=126.978,
         weekly_hours={"3": ("0900", "1800"), "2": ("2200", "0200")},
@@ -60,9 +61,13 @@ def control_for(unknown: set[date], *, hour: int = 12, live: bool = False) -> Ch
 @pytest.mark.parametrize("live", [False, True])
 @pytest.mark.anyio
 async def test_unknown_calendar_preserves_locations_without_claiming_opening(live: bool) -> None:
-    result = await control_for({TODAY}, live=live).requestNearbyPharmacySearch(
+    control = control_for({TODAY}, live=live)
+    result = await control.requestNearbyPharmacySearch(
         latitude=37.5665, longitude=126.978, search_mode=PharmacySearchMode.ALL,
     )
+    # Each parameter must really take its own path: the location API only without candidates.
+    assert control._pharmacy_boundary.searchNearby.await_count == int(live)
+    assert control._pharmacy_repository.cache_search_results.await_count == int(live)
     assert result.holiday_schedule_status == "unknown"
     assert len(result.data) == 1
     item = result.data[0]

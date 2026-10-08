@@ -1,6 +1,7 @@
 // 파일명: manage_linked_chat_control.dart
 // 역할: 환자·보호자 채팅 REST API 호출과 응답 해석을 담당한다.
 
+import 'dart:collection';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -40,6 +41,34 @@ class ChatUnreadSummary {
   const ChatUnreadSummary({required this.count, this.firstMessageId});
 }
 
+// 클래스명: ChatHistoryPage
+// 역할: 해석할 수 있는 메시지만 담은 채팅 기록 한 페이지와 서버가 보낸 원래 행 수를 함께 전달한다.
+// 주요 책임:
+// - 해석하지 못해 건너뛴 행이 있어도 "50행이면 이전 페이지가 더 있다"는 판단이 달라지지 않게 한다.
+// 속성:
+// - rowCount (int): 건너뛴 행을 포함해 서버가 이 페이지에 보낸 행 수
+class ChatHistoryPage extends UnmodifiableListView<ChatMessage> {
+  final int rowCount;
+
+  // 함수이름: ChatHistoryPage
+  // 함수역할: 해석한 메시지 목록과 서버 응답의 원래 행 수를 묶는다.
+  // 매개변수:
+  // - messages (Iterable<ChatMessage>): 오래된 순서로 해석한 메시지
+  // - rowCount (int): 서버가 보낸 행 수
+  // 반환값:
+  // - ChatHistoryPage: 초기화된 인스턴스.
+  ChatHistoryPage(super.messages, {required this.rowCount});
+
+  // 함수이름: rowCountOf
+  // 함수역할: 기록 페이지의 서버 행 수를 읽고, 행 수를 따로 담지 않은 일반 목록은 목록 길이를 사용한다.
+  // 매개변수:
+  // - page (List<ChatMessage>): requestHistory가 반환한 페이지
+  // 반환값:
+  // - int: 이전 페이지 존재 여부를 판단할 행 수.
+  static int rowCountOf(List<ChatMessage> page) =>
+      page is ChatHistoryPage ? page.rowCount : page.length;
+}
+
 // 클래스명: ManageLinkedChat
 // 역할: 인증된 연동 참여자의 채팅 REST 요청을 조정한다.
 // 주요 책임:
@@ -75,12 +104,13 @@ class ManageLinkedChat {
 
   // 함수이름: requestHistory
   // 함수역할: 현재 연동에서 최근 채팅 기록 한 페이지를 오래된 순서로 조회한다.
+  //           해석할 수 없는 행은 실시간 수신과 같이 건너뛰어 한 행 때문에 대화 전체가 막히지 않게 한다.
   // 매개변수:
   // - linkId (int): 조회·전송·감시 대상 연동 ID
   // - beforeMessageId (int?): 이 메시지보다 이전 기록을 가져올 페이지 기준
   // - limit (int): 한 번에 선택하거나 조회할 최대 항목 수
   // 반환값:
-  // - Future<List<ChatMessage>>: 현재 연동에서 최근 채팅 기록 한 페이지를 오래된 순서로 조회한다.
+  // - Future<List<ChatMessage>>: 해석한 메시지와 서버 행 수를 담은 ChatHistoryPage.
   Future<List<ChatMessage>> requestHistory({
     required int linkId,
     int? beforeMessageId,
@@ -103,19 +133,16 @@ class ManageLinkedChat {
     if (rawMessages is! List) {
       throw StateError('채팅 기록 응답 형식이 올바르지 않습니다.');
     }
-    return rawMessages
-        .whereType<Map>()
-        .map(
-          /* 함수이름: map 콜백
-         * 함수역할: 연결 채팅 응답 항목을 메시지 모델로 변환한다.
-         * 매개변수:
-         * - item (Map): 현재 변환·검사 중인 응답 또는 목록 항목
-         * 반환값:
-         * - 메시지 본문과 복약 문맥을 담은 채팅 메시지.
-         */
-          (item) => ChatMessage.fromJson(Map<String, dynamic>.from(item)),
-        )
-        .toList(growable: false);
+    final messages = <ChatMessage>[];
+    for (final item in rawMessages.whereType<Map>()) {
+      try {
+        messages.add(ChatMessage.fromJson(Map<String, dynamic>.from(item)));
+      } on FormatException {
+        // 필수 값이 없는 행은 표시하지 않고 나머지 기록을 유지한다.
+        continue;
+      }
+    }
+    return ChatHistoryPage(messages, rowCount: rawMessages.length);
   }
 
   // 함수이름: requestMedicationContexts
@@ -429,9 +456,11 @@ class ManageLinkedChat {
   ) {
     final responseBody = ApiResponseParser.decodeBody(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw StateError(
-        '$failureMessage (${response.statusCode}): '
-        '${ApiResponseParser.extractErrorDetail(responseBody)}',
+      // 문구는 그대로 두고 상태 코드를 함께 전달해 호출자가 403·404를 구분할 수 있게 한다.
+      throw ApiResponseParser.httpFailure(
+        failureMessage,
+        response,
+        responseBody,
       );
     }
     return ApiResponseParser.decodeMap(responseBody);

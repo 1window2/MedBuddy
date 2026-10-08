@@ -5,6 +5,7 @@ import os
 import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from threading import get_ident
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -24,7 +25,10 @@ from controls.check_nearby_pharmacy_control import (  # noqa: E402
     CheckNearbyPharmacy,
     PharmacySearchMode,
 )
-from entities.nearby_pharmacy_entity import PharmacyLocationRecord  # noqa: E402
+from entities.nearby_pharmacy_entity import (  # noqa: E402
+    NearbyPharmacy,
+    PharmacyLocationRecord,
+)
 from entities.pharmacy_catalog_entity import (  # noqa: E402
     PharmacyCatalogEntry,
     PharmacyHolidaySchedule,
@@ -74,17 +78,19 @@ class _FakePharmacyBoundary:
 
 # Class Name: _FakePharmacyRepository
 # Role: Local pharmacy repository double with fixed candidates, catalog age, and holiday-cache
-#   misses.
+#   misses. It implements every operation of PharmacyCatalogLookup, so the control is exercised
+#   without attribute fallbacks.
 # Responsibilities:
-# - Reports the number of configured local pharmacy entries for catalog availability checks.
-# - Supplies a fixed catalog-update timestamp for freshness reporting.
+# - Supplies the configured candidates and a fixed catalog-update timestamp.
 # - Accepts holiday-schedule replacement without persisting data in this repository double.
+# - Records the result lists offered to the share cache.
 # Attributes:
 # - entries (list[PharmacyCatalogEntry]): Catalog references supplied without an external fetch.
+# - cached_result_ids (list[list[str]]): Pharmacy IDs of each cache_search_results call.
 class _FakePharmacyRepository:
     # Function Name: __init__
     # Description:
-    # - Stores the catalog entries to expose through count and nearby-candidate queries.
+    # - Stores the catalog entries to expose through nearby-candidate queries.
     # Parameters:
     # - entries (list[PharmacyCatalogEntry]): Configured catalog records returned by the
     #   double.
@@ -92,17 +98,7 @@ class _FakePharmacyRepository:
     # - None.
     def __init__(self, entries: list[PharmacyCatalogEntry]) -> None:
         self.entries = entries
-
-    # Function Name: count
-    # Description:
-    # - Reports the number of configured local pharmacy entries for catalog availability
-    #   checks.
-    # Parameters:
-    # - None.
-    # Returns:
-    # - int: Number of configured local catalog entries.
-    async def count(self) -> int:
-        return len(self.entries)
+        self.cached_result_ids: list[list[str]] = []
 
     # Function Name: search_nearby_candidates
     # Description:
@@ -159,6 +155,17 @@ class _FakePharmacyRepository:
         schedules: list[PharmacyHolidaySchedule],
     ) -> None:
         del value, schedules
+
+    # Function Name: cache_search_results
+    # Description:
+    # - Records which live fallback results the control offered for later sharing.
+    # Parameters:
+    # - pharmacies (list[NearbyPharmacy]): Selected results of a search without catalog
+    #   candidates.
+    # Returns:
+    # - None.
+    async def cache_search_results(self, pharmacies: list[NearbyPharmacy]) -> None:
+        self.cached_result_ids.append([item.pharmacy_id for item in pharmacies])
 
 
 # Class Name: _FakeHolidayBoundary
@@ -493,9 +500,10 @@ async def test_empty_catalog_falls_back_to_location_api() -> None:
     boundary = _FakePharmacyBoundary(
         [_record("fallback", distance_km=0.2, start_time="0900", end_time="1800")]
     )
+    repository = _FakePharmacyRepository([])
     control = CheckNearbyPharmacy(
         boundary,
-        pharmacy_repository=_FakePharmacyRepository([]),
+        pharmacy_repository=repository,
         now_provider=lambda: datetime(
             2026,
             8,
@@ -515,6 +523,7 @@ async def test_empty_catalog_falls_back_to_location_api() -> None:
 
     assert [item.pharmacy_id for item in result] == ["fallback"]
     assert boundary.requested_limit == 10
+    assert repository.cached_result_ids == [["fallback"]]
 
 
 # 함수이름: test_holiday_lookup_failure_does_not_block_pharmacy_results
@@ -536,8 +545,9 @@ async def test_holiday_lookup_failure_does_not_block_pharmacy_results() -> None:
         longitude=126.9780,
         weekly_hours={"6": ("0900", "1800")},
     )
+    repository = _FakePharmacyRepository([entry])
     control = CheckNearbyPharmacy(
-        pharmacy_repository=_FakePharmacyRepository([entry]),
+        pharmacy_repository=repository,
         holiday_boundary=_UnavailableHolidayBoundary(),
         now_provider=lambda: datetime(
             2026,
@@ -557,6 +567,8 @@ async def test_holiday_lookup_failure_does_not_block_pharmacy_results() -> None:
     )
 
     assert [item.pharmacy_id for item in result] == ["available"]
+    # Catalog results are shareable from the catalog itself and are not copied to the cache.
+    assert repository.cached_result_ids == []
 
 
 # Function Name: test_catalog_search_filters_after_all_nearby_candidates
@@ -901,12 +913,31 @@ async def test_malformed_holiday_roster_uses_bounded_stale_cache() -> None:
 # Description:
 # - Requires official late-night designation to respect its operating weekday and retain the
 #   government source name.
+# - A designated shift that crosses midnight (22:00-01:00) belongs to the weekday it started on:
+#   the Monday shift is still official at Tuesday 00:30 and ends at 01:00, and Monday 00:30 is
+#   the tail of an undesignated Sunday shift.
 # Parameters:
-# - None.
+# - now (datetime): Search reference time.
+# - official (bool): Whether the pharmacy counts as officially designated at that time.
 # Returns:
 # - None.
+@pytest.mark.parametrize(
+    "now,official",
+    [
+        (datetime(2026, 8, 24, 22, 30), True),
+        (datetime(2026, 8, 24, 23, 30), True),
+        (datetime(2026, 8, 25, 0, 30), True),
+        (datetime(2026, 8, 25, 1, 0), False),
+        (datetime(2026, 8, 25, 23, 30), False),
+        (datetime(2026, 8, 24, 0, 30), False),
+        (datetime(2026, 8, 24, 12, 0), True),
+    ],
+)
 @pytest.mark.anyio
-async def test_official_designation_respects_operating_weekday() -> None:
+async def test_official_designation_respects_operating_weekday(
+    now: datetime,
+    official: bool,
+) -> None:
     entry = PharmacyCatalogEntry(
         pharmacy_id="official",
         name="Official pharmacy",
@@ -921,15 +952,15 @@ async def test_official_designation_respects_operating_weekday() -> None:
                 "source_name": "Seoul Metropolitan Government",
                 "source_url": "https://news.seoul.go.kr/welfare/archives/567003",
                 "verified_at": "2026-08-19",
+                "start_time": "2200",
+                "end_time": "0100",
             }
         },
     )
     control = CheckNearbyPharmacy(
         pharmacy_repository=_FakePharmacyRepository([entry]),
         holiday_boundary=_FakeHolidayBoundary(False),
-        now_provider=lambda: datetime(
-            2026, 8, 24, 22, 30, tzinfo=ZoneInfo("Asia/Seoul")
-        ),
+        now_provider=lambda: now.replace(tzinfo=ZoneInfo("Asia/Seoul")),
     )
 
     result = await control.requestNearbyPharmacySearch(
@@ -938,8 +969,215 @@ async def test_official_designation_respects_operating_weekday() -> None:
         search_mode=PharmacySearchMode.OFFICIAL_LATE_NIGHT,
     )
 
-    assert result.data[0].is_official_late_night is True
-    assert result.data[0].designation_source_name == "Seoul Metropolitan Government"
+    assert [item.pharmacy_id for item in result.data] == (["official"] if official else [])
+    if official:
+        assert result.data[0].is_official_late_night is True
+        assert result.data[0].designation_source_name == "Seoul Metropolitan Government"
+
+
+# Function Name: test_designation_without_hours_uses_the_calendar_weekday
+# Description:
+# - A stored designation that carries no shift hours cannot be attributed to the previous
+#   evening, so its operating days keep meaning calendar weekdays, also just after midnight.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_designation_without_hours_uses_the_calendar_weekday() -> None:
+    entry = PharmacyCatalogEntry(
+        pharmacy_id="official",
+        name="Official pharmacy",
+        address="Seoul",
+        telephone="",
+        latitude=37.5665,
+        longitude=126.9780,
+        weekly_hours={"1": ("0900", "2300")},
+        official_designations={
+            "public_late_night": {"operating_days": [1], "verified_at": "2026-08-19"}
+        },
+    )
+    control = CheckNearbyPharmacy(
+        pharmacy_repository=_FakePharmacyRepository([entry]),
+        holiday_boundary=_FakeHolidayBoundary(False),
+        now_provider=lambda: datetime(2026, 8, 24, 0, 30, tzinfo=ZoneInfo("Asia/Seoul")),
+    )
+
+    result = await control.requestNearbyPharmacySearch(
+        latitude=37.5665,
+        longitude=126.9780,
+        search_mode=PharmacySearchMode.OFFICIAL_LATE_NIGHT,
+    )
+
+    assert [item.pharmacy_id for item in result.data] == ["official"]
+
+
+# Function Name: test_result_order_is_open_then_late_then_distance_then_name
+# Description:
+# - Pins the complete ordering contract of a search in one place: pharmacies open at the
+#   reference time come first, among equals those with late hours, 24-hour service or an official
+#   designation, then the nearer one, then the name. The limit is applied after ordering.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_result_order_is_open_then_late_then_distance_then_name() -> None:
+    # Function Name: located
+    # Description:
+    # - Builds a live record with its own name and distance for the ordering scenario.
+    # Parameters:
+    # - pharmacy_id (str): Identifier asserted in the expected order.
+    # - name (str): Display name used as the last ordering key.
+    # - distance_km (float): Provider distance in kilometers.
+    # - end_time (str): HHMM closing time; opening is 09:00.
+    # Returns:
+    # - PharmacyLocationRecord: Record at the search origin with the given fields.
+    def located(
+        pharmacy_id: str,
+        name: str,
+        distance_km: float,
+        end_time: str,
+    ) -> PharmacyLocationRecord:
+        return PharmacyLocationRecord(
+            pharmacy_id=pharmacy_id,
+            name=name,
+            address="Seoul",
+            telephone="",
+            latitude=37.5665,
+            longitude=126.9780,
+            distance_km=distance_km,
+            start_time="0900",
+            end_time=end_time,
+        )
+
+    boundary = _FakePharmacyBoundary(
+        [
+            located("closed-near", "A", 0.1, "1000"),
+            located("open-regular-far", "A", 2.0, "1800"),
+            located("open-regular-near-b", "B", 0.5, "1800"),
+            located("open-regular-near-a", "A", 0.5, "1800"),
+            located("open-late-far", "A", 3.0, "2300"),
+            located("open-late-near", "A", 1.0, "2300"),
+            located("closed-beyond-limit", "A", 0.2, "0930"),
+            located("open-late-near", "duplicate id is ignored", 0.0, "2300"),
+        ]
+    )
+    control = CheckNearbyPharmacy(
+        boundary,
+        now_provider=lambda: datetime(2026, 8, 22, 12, 0, tzinfo=ZoneInfo("Asia/Seoul")),
+    )
+
+    result = await control.requestNearbyPharmacies(
+        latitude=37.5665,
+        longitude=126.9780,
+        open_only=False,
+        limit=6,
+    )
+
+    assert [item.pharmacy_id for item in result] == [
+        "open-late-near",
+        "open-late-far",
+        "open-regular-near-a",
+        "open-regular-near-b",
+        "open-regular-far",
+        "closed-near",
+    ]
+
+
+# Function Name: test_candidate_scoring_runs_off_the_event_loop
+# Description:
+# - Scoring and sorting the candidates is CPU work over thousands of rows in a city-wide search;
+#   it must run in a worker thread so the event loop keeps serving other requests.
+# Parameters:
+# - monkeypatch (pytest.MonkeyPatch): Wraps the selection step to record its thread.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_candidate_scoring_runs_off_the_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loop_thread = get_ident()
+    scoring_threads: list[int] = []
+    select_pharmacies = CheckNearbyPharmacy._select_pharmacies
+
+    # Function Name: recording_select
+    # Description:
+    # - Records the thread that runs the selection step and delegates to the real one.
+    # Parameters:
+    # - **arguments (object): Keyword arguments of _select_pharmacies.
+    # Returns:
+    # - list[NearbyPharmacy]: Result of the real selection step.
+    def recording_select(**arguments: object) -> list[NearbyPharmacy]:
+        scoring_threads.append(get_ident())
+        return select_pharmacies(**arguments)
+
+    monkeypatch.setattr(
+        CheckNearbyPharmacy,
+        "_select_pharmacies",
+        staticmethod(recording_select),
+    )
+    entry = PharmacyCatalogEntry(
+        pharmacy_id="catalog",
+        name="Catalog pharmacy",
+        address="Seoul",
+        telephone="",
+        latitude=37.5665,
+        longitude=126.9780,
+        weekly_hours={"6": ("0900", "1800")},
+    )
+    control = CheckNearbyPharmacy(
+        pharmacy_repository=_FakePharmacyRepository([entry]),
+        holiday_boundary=_FakeHolidayBoundary(False),
+        now_provider=lambda: datetime(2026, 8, 22, 12, 0, tzinfo=ZoneInfo("Asia/Seoul")),
+    )
+
+    result = await control.requestNearbyPharmacies(latitude=37.5665, longitude=126.9780)
+
+    assert [item.pharmacy_id for item in result] == ["catalog"]
+    assert len(scoring_threads) == 1 and scoring_threads[0] != loop_thread
+
+
+# Function Name: test_target_date_window_accepts_both_days_offered_by_the_client
+# Description:
+# - The client date picker offers today - 7 days through today + 366 days and sends the picked
+#   day at 12:00. Both edge days are accepted before and after noon; the next day out is refused
+#   before any data source is asked.
+# Parameters:
+# - hour (int): Current hour of the search clock.
+# Returns:
+# - None.
+@pytest.mark.parametrize("hour", [9, 14])
+@pytest.mark.anyio
+async def test_target_date_window_accepts_both_days_offered_by_the_client(hour: int) -> None:
+    boundary = _FakePharmacyBoundary(
+        [_record("any", distance_km=0.1, start_time="0900", end_time="1800")]
+    )
+    control = CheckNearbyPharmacy(
+        boundary,
+        now_provider=lambda: datetime(2026, 10, 8, hour, 0, tzinfo=ZoneInfo("Asia/Seoul")),
+    )
+
+    for picked in (date(2026, 10, 1), date(2027, 10, 9)):
+        result = await control.requestNearbyPharmacySearch(
+            latitude=37.5665,
+            longitude=126.9780,
+            search_mode=PharmacySearchMode.ALL,
+            target_datetime=datetime(picked.year, picked.month, picked.day, 12),
+        )
+        assert result.target_datetime.date() == picked
+        assert [item.pharmacy_id for item in result.data] == ["any"]
+
+    boundary.requested_limit = 0
+    for outside in (datetime(2026, 9, 30, 23, 59), datetime(2027, 10, 10, 0, 0)):
+        with pytest.raises(ValueError, match="^Target date cannot be more than"):
+            await control.requestNearbyPharmacySearch(
+                latitude=37.5665,
+                longitude=126.9780,
+                search_mode=PharmacySearchMode.ALL,
+                target_datetime=outside,
+            )
+    assert boundary.requested_limit == 0
 
 
 # 함수이름: test_open_pharmacy_reports_minutes_until_close

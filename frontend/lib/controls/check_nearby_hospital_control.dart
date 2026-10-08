@@ -21,6 +21,21 @@ class CheckNearbyHospital extends CheckNearbyCare {
   @override
   String get nearbySearchUrl => ApiConfig.hospitalUrl('/nearby');
 
+  // 함수이름: isWeekendSearchOnWeekday
+  // 함수역할: 공휴일 달력이 평일로 확인한 날짜에 주말·공휴일 조건을 조회했는지 판정한다. 이 경우 반경을 넓혀도 결과가 없으므로 화면은 날짜 변경을 안내한다.
+  // 매개변수: searchMode: 조회 조건, targetDateTime: 조회 날짜, holidayScheduleStatus: 서버가 알린 공휴일 달력 상태.
+  // 반환값: 세 조건이 모두 맞으면 true.
+  static bool isWeekendSearchOnWeekday({
+    required NearbyCareSearchMode searchMode,
+    required DateTime targetDateTime,
+    required String holidayScheduleStatus,
+  }) {
+    return searchMode == NearbyCareSearchMode.weekendHoliday &&
+        targetDateTime.weekday < DateTime.saturday &&
+        holidayScheduleStatus ==
+            NearbyCareSearchResult.holidayScheduleNotApplicable;
+  }
+
   // 전체 진료과목은 조건을 보내지 않고, 선택한 과목만 서버에서 필터링한다.
   @override
   Map<String, String> get additionalSearchParameters => {
@@ -49,6 +64,8 @@ class CheckNearbyHospital extends CheckNearbyCare {
     final selectedDepartment = department;
     final target = targetDateTime ?? DateTime.now();
     final elapsed = Stopwatch()..start();
+    // 화면이 반경을 비교해 추측하지 않도록 자동 확대 여부를 결과에 직접 남긴다.
+    var expanded = false;
     var result = await super.requestNearbyCareSearch(
       searchArea: searchArea,
       maxDistanceKm: maxDistanceKm,
@@ -67,11 +84,14 @@ class CheckNearbyHospital extends CheckNearbyCare {
         break;
       }
       // 달력 장애나 평일의 주말 조건은 거리를 넓혀도 해결되지 않는다.
-      if ((result.holidayScheduleStatus == 'unknown' &&
+      if ((result.holidayScheduleStatus ==
+                  NearbyCareSearchResult.holidayScheduleUnknown &&
               searchMode != NearbyCareSearchMode.all) ||
-          (searchMode == NearbyCareSearchMode.weekendHoliday &&
-              target.weekday < DateTime.saturday &&
-              result.holidayScheduleStatus == 'not_applicable')) {
+          isWeekendSearchOnWeekday(
+            searchMode: searchMode,
+            targetDateTime: target,
+            holidayScheduleStatus: result.holidayScheduleStatus,
+          )) {
         break;
       }
       if (radius <= area.radiusKm) continue;
@@ -84,8 +104,9 @@ class CheckNearbyHospital extends CheckNearbyCare {
         searchMode: searchMode,
         targetDateTime: target,
       );
+      expanded = true;
     }
-    return result;
+    return expanded ? result.withSearchRadiusExpanded() : result;
   }
 
   // 화면을 닫은 뒤 완료된 응답이 추가 반경 조회를 시작하지 않게 한다.

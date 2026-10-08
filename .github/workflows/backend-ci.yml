@@ -12,6 +12,12 @@ on:
 permissions:
   contents: read
 
+# Push runs get one group per commit so none is queued or cancelled (the release gate reads them per commit);
+# only a pull-request run superseded by a newer push to the same pull request is cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
     runs-on: ubuntu-latest

@@ -68,9 +68,11 @@ class _RetryablePushDeliveryError(RuntimeError):
 # - 실패한 요청을 지수 간격으로 다시 시도할 수 있게 만든다.
 # - 재시도 한도를 넘긴 요청을 종료 상태로 전환한다.
 # - 전송 완료 요청을 다시 보내지 않는다.
+# - 선점은 전송 전에 커밋하고 전송 결과는 전송 뒤 짧은 별도 트랜잭션으로 기록한다.
 # 속성:
 # - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
 # - push_boundary (PushNotificationBoundary): 인증 모드에 맞춰 선택된 기기 푸시 전송 경계.
+# - dispatcher (DispatchCaregiverAlert): 이 처리기가 다루는 모든 요청이 함께 쓰는 보호자 알림 전송 제어.
 class ProcessCaregiverAlertOutbox:
     # 함수이름: __init__
     # 함수역할:
@@ -87,6 +89,10 @@ class ProcessCaregiverAlertOutbox:
     ) -> None:
         self.db = db
         self.push_boundary = push_boundary
+        self.dispatcher = DispatchCaregiverAlert(
+            db=db,
+            push_boundary=push_boundary,
+        )
 
     # 함수이름: processDue
     # 함수역할:
@@ -137,6 +143,8 @@ class ProcessCaregiverAlertOutbox:
     # 함수이름: processOne
     # 함수역할:
     # - 한 알림 요청을 선점한 뒤 보호자 알림 전송을 시도한다.
+    # - 전송 제어가 Firebase 호출 전에 세션을 반환하므로 요청 값은 전송 전에 미리 읽어 둔다.
+    # - 전송이 끝난 뒤의 기록 실패는 재전송으로 이어지지 않도록 전송 완료 기록만 다시 시도한다.
     # 매개변수:
     # - outbox_id (int): 처리할 아웃박스 기본키
     # 반환값:
@@ -181,23 +189,23 @@ class ProcessCaregiverAlertOutbox:
         row = self.db.get(_CaregiverAlertOutbox, outbox_id)
         if row is None:
             return "skipped"
+        delivered = False
         try:
-            dispatcher = DispatchCaregiverAlert(
-                db=self.db,
-                push_boundary=self.push_boundary,
-            )
             event_type = str(
                 row.event_type or CAREGIVER_ALERT_EVENT_DOSE_COMPLETED
             )
+            patient_hash = str(row.patient_hash)
+            slot_key = str(row.slot_key)
+            schedule_date = row.schedule_date
             if event_type == CAREGIVER_ALERT_EVENT_DOSE_COMPLETED:
                 # Never reinterpret an old or undated event as today's dose.
                 reason = None
-                if row.schedule_date != application_today():
+                if schedule_date != application_today():
                     reason = "StaleOrUndatedCompletion"
                 elif not CheckSchedule(self.db).is_medication_slot_complete(
-                    patient_hash=str(row.patient_hash),
-                    schedule_date=row.schedule_date,
-                    slot_key=str(row.slot_key),
+                    patient_hash=patient_hash,
+                    schedule_date=schedule_date,
+                    slot_key=slot_key,
                 ):
                     reason = "CompletionNoLongerCurrent"
                 if reason is not None:
@@ -208,25 +216,26 @@ class ProcessCaregiverAlertOutbox:
                     return "skipped"
                 # 채팅 완료 기록은 푸시 공급자의 일시 장애와 무관하게 먼저 보존한다.
                 ManageLinkedChat(self.db).publish_slot_completion(
-                    patient_hash=str(row.patient_hash),
-                    slot_key=str(row.slot_key),
+                    patient_hash=patient_hash,
+                    slot_key=slot_key,
                 )
-                delivery_result = dispatcher.notifySlotCompleted(
-                    patient_hash=str(row.patient_hash),
-                    slot_key=str(row.slot_key),
+                delivery_result = self.dispatcher.notifySlotCompleted(
+                    patient_hash=patient_hash,
+                    slot_key=slot_key,
                 )
             elif event_type == CAREGIVER_ALERT_EVENT_MISSED_DEADLINE:
-                if row.caregiver_hash is None or row.schedule_date is None:
+                if row.caregiver_hash is None or schedule_date is None:
                     raise ValueError("Missed-dose outbox event is incomplete.")
+                caregiver_hash = str(row.caregiver_hash)
                 try:
                     alert_context = ManageCaregiverAlert(self.db).context(row)
                 except HTTPException:
                     alert_context = None
-                delivery_result = dispatcher.notifySlotMissed(
-                    caregiver_hash=str(row.caregiver_hash),
-                    patient_hash=str(row.patient_hash),
-                    slot_key=str(row.slot_key),
-                    schedule_date=row.schedule_date,
+                delivery_result = self.dispatcher.notifySlotMissed(
+                    caregiver_hash=caregiver_hash,
+                    patient_hash=patient_hash,
+                    slot_key=slot_key,
+                    schedule_date=schedule_date,
                     alert_context=alert_context,
                 )
             else:
@@ -235,13 +244,22 @@ class ProcessCaregiverAlertOutbox:
                 raise _RetryablePushDeliveryError(
                     "Some valid caregiver devices did not receive the notification."
                 )
-            row.status = CAREGIVER_ALERT_STATUS_SENT
-            row.sent_at = utc_now()
-            row.processing_started_at = None
-            self.db.commit()
+            delivered = True
+            self._mark_sent(outbox_id)
             return "sent"
         except Exception as exc:
             self.db.rollback()
+            if delivered:
+                # 푸시는 이미 전달됐다. 실패로 기록하면 같은 알림을 다시 보내므로 전송 완료
+                # 기록만 한 번 더 시도한다. 이 기록도 실패하면 예외를 올려 선점 상태로 남긴다.
+                self._mark_sent(outbox_id)
+                logger.warning(
+                    "Caregiver alert outbox delivery was recorded on the second "
+                    "attempt (id=%s): %s",
+                    outbox_id,
+                    _delivery_error_summary(exc),
+                )
+                return "sent"
             row = self.db.get(_CaregiverAlertOutbox, outbox_id)
             if row is None:
                 return "failed"
@@ -269,3 +287,23 @@ class ProcessCaregiverAlertOutbox:
                 row.last_error,
             )
             return "failed"
+
+    # 함수이름: _mark_sent
+    # 함수역할:
+    # - 전달이 끝난 알림 요청을 전송 완료로 기록하고 바로 커밋한다.
+    # - 전송 전에 세션을 반환해 만료된 행을 다시 읽지 않도록 기본키 조건의 UPDATE 한 문장으로 쓴다.
+    # 매개변수:
+    # - outbox_id (int): 이 처리기가 선점해 전송을 마친 아웃박스 기본키.
+    # 반환값:
+    # - 없음.
+    def _mark_sent(self, outbox_id: int) -> None:
+        self.db.execute(
+            update(_CaregiverAlertOutbox)
+            .where(_CaregiverAlertOutbox.id == outbox_id)
+            .values(
+                status=CAREGIVER_ALERT_STATUS_SENT,
+                sent_at=utc_now(),
+                processing_started_at=None,
+            )
+        )
+        self.db.commit()

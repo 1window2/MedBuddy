@@ -153,10 +153,42 @@ void main() {
     final bedtime = find.byKey(const Key('ocr-edit-slot-bedtime'));
     await tester.ensureVisible(bedtime);
     await tester.tap(bedtime);
+    await tester.pump();
+    // 시간대를 눌러 바뀐 횟수도 "N회" 표기를 유지한다.
+    expect(
+      tester
+          .widget<TextFormField>(find.byKey(const Key('ocr-edit-frequency')))
+          .controller
+          ?.text,
+      '3회',
+    );
     await _apply(tester);
     expect(edited?.slotKeys, ['morning', 'evening', 'bedtime']);
     expect(edited?.dailyFrequencyCount, 3);
+    expect(edited?.intakeTime, '3회');
   });
+
+  for (final (input, stored) in const [
+    ('3', '3회'),
+    ('1일 3회', '3회'),
+    ('하루 3번', '3회'),
+    ('3 times', '3회'),
+  ]) {
+    // 함수이름: 직접 입력한 횟수 표기 통일 테스트
+    // 함수역할: 사용자가 횟수를 어떤 표기로 고쳐 적어도 저장되는 값은 "N회" 한 가지인지 확인한다.
+    // 매개변수: tester 화면 시험 도구. 반환값: 비동기 검증 완료.
+    testWidgets('OCR 횟수 "$input" 입력은 "$stored"로 저장된다', (tester) async {
+      MedicationSchedule? edited;
+      await _openEditor(tester, onChanged: (value) => edited = value);
+      await tester.enterText(
+        find.byKey(const Key('ocr-edit-frequency')),
+        input,
+      );
+      await _apply(tester);
+      expect(edited?.intakeTime, stored);
+      expect(edited?.slotKeys, medicationScheduleSlotKeysForFrequency(3));
+    });
+  }
 
   // 함수이름: 다른 필드 수정 시 시간대 보존 테스트
   // 함수역할: 용량만 고치는 경우 사용자가 고른 점심·취침 전 시간대를 기본값으로 바꾸지 않는다.

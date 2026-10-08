@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 
 // 파일명: set_notification_ui_boundary.dart
@@ -102,7 +103,7 @@ class _SetNotificationUIState extends State<SetNotificationUI> {
   // Parameters:
   // - None.
   // Returns: True when the documented condition holds; false otherwise.
-  bool get _isEnglish => widget.language.trim().toLowerCase().startsWith('en');
+  bool get _isEnglish => isEnglishLanguage(widget.language);
 
   // 함수이름: initState
   // 함수역할: 전달받은 초기 시간으로 시·분 값과 각 휠 컨트롤러를 초기화한다.

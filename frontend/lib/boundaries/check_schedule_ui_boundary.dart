@@ -11,6 +11,7 @@ import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_detail_entity.dart';
 import '../entities/medication_image_url_entity.dart';
 import '../entities/medication_schedule_entity.dart';
+import '../entities/medication_slot_label.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
@@ -174,7 +175,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     for (final schedule
         in widget.selectionSchedules ?? const <MedicationSchedule>[])
       if (schedule.medicationID.trim().isNotEmpty)
-        for (final slot in _selectionSlotKeys(schedule))
+        for (final slot in schedule.slotKeys)
           (medicationId: schedule.medicationID, slotKey: slot),
   };
 
@@ -451,7 +452,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
           if (widget.showBackButton && viewModel.doseSync != null)
             DoseSyncStatus(
               service: viewModel.doseSync!,
-              isEnglish: viewModel.userSetting.language == 'en',
+              isEnglish: viewModel.userSetting.isEnglish,
             ),
           Expanded(child: _buildContent(viewModel, slots, text)),
           if (hasTodaySchedule)
@@ -806,12 +807,11 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
           final medications = schedules
               .where(
                 // 함수이름: _buildSelectionSlots.where callback
-                // 함수역할: 오늘의 시간대별 복약 체크·알림·첨부 선택에 대해 `_selectionSlotKeys(schedule).contains(definition.key)` 조건으로 컬렉션 항목을 판별한다.
+                // 함수역할: 오늘의 시간대별 복약 체크·알림·첨부 선택에 대해 `schedule.slotKeys.contains(definition.key)` 조건으로 컬렉션 항목을 판별한다.
                 // 매개변수:
                 // - schedule (콜백 계약에서 추론): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
                 // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
-                (schedule) =>
-                    _selectionSlotKeys(schedule).contains(definition.key),
+                (schedule) => schedule.slotKeys.contains(definition.key),
               )
               .toList(growable: false);
           return _ScheduleSlot(
@@ -820,23 +820,6 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
           );
         })
         .toList(growable: false);
-  }
-
-  // 함수이름: _selectionSlotKeys
-  // 함수역할: 명시된 시간대를 우선하고 없으면 양수 복용 횟수에 따른 시간대를 사용한다.
-  // 매개변수:
-  // - schedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-  // 반환값: List<String>: 정리·선택된 표시 문구 또는 복약 시간대 키 목록.
-  List<String> _selectionSlotKeys(MedicationSchedule schedule) {
-    if (schedule.scheduleSlotKeys.isNotEmpty) {
-      return schedule.slotKeys;
-    }
-    if (schedule.dailyFrequencyCount > 0) {
-      return medicationScheduleSlotKeysForFrequency(
-        schedule.dailyFrequencyCount,
-      );
-    }
-    return schedule.slotKeys;
   }
 
   // 함수이름: _showReminderDialog
@@ -2242,7 +2225,7 @@ class _ScheduleText {
   // 매개변수:
   // - 없음.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
-  bool get isEnglish => language.trim().toLowerCase().startsWith('en');
+  bool get isEnglish => isEnglishLanguage(language);
 
   // 함수이름: back
   // 함수역할: 현재 언어와 입력값에 맞춰 "뒤로가기" 문구를 제공한다.
@@ -2457,12 +2440,10 @@ class _ScheduleText {
   // - slotKey (String): 아침·점심·저녁·취침 전을 구분하는 시간대 키.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String slotTitle(String slotKey) {
-    return switch (slotKey) {
-      'morning' => isEnglish ? 'Morning' : '아침',
-      'lunch' => isEnglish ? 'Lunch' : '점심',
-      'evening' => isEnglish ? 'Evening' : '저녁',
-      'bedtime' => isEnglish ? 'Bedtime' : '취침 전',
-      _ => isEnglish ? 'Schedule' : '일정',
-    };
+    return medicationSlotLabel(
+      slotKey,
+      isEnglish: isEnglish,
+      fallback: isEnglish ? 'Schedule' : '일정',
+    );
   }
 }

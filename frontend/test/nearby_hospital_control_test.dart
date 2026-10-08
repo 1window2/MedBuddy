@@ -107,6 +107,8 @@ void main() {
       );
       expect(result.searchArea!.radiusKm, expected.last);
       expect(result.searchArea!.isMapArea, isFalse);
+      // 화면은 반경 비교 대신 이 값으로 자동 확대 안내를 결정한다.
+      expect(result.searchRadiusExpanded, expected.length > 1);
       expect(
         requests.every(
           (uri) =>
@@ -138,6 +140,62 @@ void main() {
     final result = await control.requestNearbyCareSearch(searchArea: area);
     expect(calls, 1);
     expect(result.searchArea, same(area));
+    expect(result.searchRadiusExpanded, isFalse);
+  });
+
+  // 주말·공휴일 조건을 달력상 평일에 조회한 경우만 날짜 변경 대상으로 본다.
+  test('weekend search on a confirmed weekday is the only date mismatch', () {
+    final tuesday = DateTime(2026, 9, 29);
+    final saturday = DateTime(2026, 10, 3);
+    bool mismatch(NearbyCareSearchMode mode, DateTime date, String status) =>
+        CheckNearbyHospital.isWeekendSearchOnWeekday(
+          searchMode: mode,
+          targetDateTime: date,
+          holidayScheduleStatus: status,
+        );
+    expect(
+      mismatch(NearbyCareSearchMode.weekendHoliday, tuesday, 'not_applicable'),
+      isTrue,
+    );
+    expect(
+      mismatch(
+        NearbyCareSearchMode.weekendHoliday,
+        DateTime(2026, 10, 2),
+        NearbyCareSearchResult.holidayScheduleNotApplicable,
+      ),
+      isTrue,
+    );
+    // 주말, 공휴일로 확인되었거나 달력을 확인하지 못한 평일, 다른 조회 조건은 제외한다.
+    expect(
+      mismatch(NearbyCareSearchMode.weekendHoliday, saturday, 'not_applicable'),
+      isFalse,
+    );
+    expect(
+      mismatch(
+        NearbyCareSearchMode.weekendHoliday,
+        DateTime(2026, 10, 4),
+        'not_applicable',
+      ),
+      isFalse,
+    );
+    for (final status in ['exact', 'stale_fallback', 'weekly_fallback']) {
+      expect(
+        mismatch(NearbyCareSearchMode.weekendHoliday, tuesday, status),
+        isFalse,
+      );
+    }
+    expect(
+      mismatch(
+        NearbyCareSearchMode.weekendHoliday,
+        tuesday,
+        NearbyCareSearchResult.holidayScheduleUnknown,
+      ),
+      isFalse,
+    );
+    for (final mode in NearbyCareSearchMode.values) {
+      if (mode == NearbyCareSearchMode.weekendHoliday) continue;
+      expect(mismatch(mode, tuesday, 'not_applicable'), isFalse);
+    }
   });
 
   // 위치 대체 상태와 중심을 유지해 보호자의 실제 위치로 오인하지 않게 한다.

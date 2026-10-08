@@ -9,6 +9,65 @@ import 'package:medbuddy_frontend/services/notification_inbox_store.dart';
 import 'package:timezone/timezone.dart' as timezone;
 import 'package:shared_preferences/shared_preferences.dart';
 
+// Class Name: _CountingPreferences
+// Role: Counts the reloads and writes a reminder refresh makes on the device preference store.
+// Responsibilities:
+// - Forward every call to the real in-memory test store, so behavior is unchanged.
+// Attributes: reloads - number of reload calls; writes - keys written or removed, in order.
+class _CountingPreferences implements SharedPreferences {
+  // Function Name: _CountingPreferences
+  // Description: Wraps the store returned by SharedPreferences.getInstance.
+  // Parameters: _inner - the real test store. Returns: The counting wrapper.
+  _CountingPreferences(this._inner);
+
+  final SharedPreferences _inner;
+  int reloads = 0;
+  final List<String> writes = [];
+
+  @override
+  Future<void> reload() {
+    reloads++;
+    return _inner.reload();
+  }
+
+  @override
+  Set<String> getKeys() => _inner.getKeys();
+
+  @override
+  bool containsKey(String key) => _inner.containsKey(key);
+
+  @override
+  Object? get(String key) => _inner.get(key);
+
+  @override
+  String? getString(String key) => _inner.getString(key);
+
+  @override
+  bool? getBool(String key) => _inner.getBool(key);
+
+  @override
+  Future<bool> setString(String key, String value) {
+    writes.add(key);
+    return _inner.setString(key, value);
+  }
+
+  @override
+  Future<bool> setBool(String key, bool value) {
+    writes.add(key);
+    return _inner.setBool(key, value);
+  }
+
+  @override
+  Future<bool> remove(String key) {
+    writes.add(key);
+    return _inner.remove(key);
+  }
+
+  // The reminder path uses only the members above; any other call fails the test.
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const channel = MethodChannel('dexterous.com/flutter/local_notifications');
@@ -16,6 +75,7 @@ void main() {
   final cancelled = <Map<dynamic, dynamic>>[];
   final active = <Map<String, Object?>>[];
   final pending = <Map<String, Object?>>[];
+  final pluginCalls = <String>[];
   var rejectExact = false;
 
   setUp(() {
@@ -27,9 +87,11 @@ void main() {
     cancelled.clear();
     active.clear();
     pending.clear();
+    pluginCalls.clear();
     rejectExact = false;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
+          pluginCalls.add(call.method);
           switch (call.method) {
             case 'initialize':
               return true;
@@ -53,6 +115,7 @@ void main() {
   });
 
   tearDown(() {
+    NotificationService.preferencesLoader = SharedPreferences.getInstance;
     NotificationService.instance.setShowSensitiveDetails(true);
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
@@ -155,6 +218,171 @@ void main() {
     expect(cancelled, contains(containsPair('id', firstId)));
     expect(scheduled, hasLength(1));
     expect(scheduled.single['scheduledDateTime'].toString(), contains('09:00'));
+  });
+
+  // Steady state: a refresh that finds every reminder already reserved with the same time and text
+  // only reads the device reservations. It schedules, cancels, writes and announces nothing.
+  test('an unchanged refresh only reads the pending reservations', () async {
+    final service = NotificationService.instance;
+    service.setHistoryUser('patient-a', persistSession: false);
+    await service.initialize();
+    final events = <String>[];
+    final subscription = NotificationInboxStore.changes.stream.listen(events.add);
+    addTearDown(subscription.cancel);
+    final now = timezone.TZDateTime.now(timezone.local);
+    final dates = [
+      for (var day = 1; day <= 3; day++) DateTime(now.year, now.month, now.day + day),
+    ];
+    Future<void> refresh() => service.registerNotification(
+      id: 101, slotKey: 'morning', slotTitle: '아침', hour: 8, minute: 0,
+      medicationNames: [], activeDates: dates,
+    );
+
+    await refresh();
+    await pumpEventQueue();
+    expect(scheduled, hasLength(3));
+    // Three inbox entries are stored together and announced once.
+    expect(events, ['patient-a']);
+    pending.addAll(scheduled.map((item) => {'id': item['id'], 'payload': item['payload']}));
+    final preferences = _CountingPreferences(
+      await SharedPreferences.getInstance(),
+    );
+    NotificationService.preferencesLoader = () async => preferences;
+    Map<String, Object?> stored() =>
+        {for (final key in preferences.getKeys()) key: preferences.get(key)};
+    final before = stored();
+    scheduled.clear();
+    cancelled.clear();
+    events.clear();
+
+    for (var run = 1; run <= 2; run++) {
+      pluginCalls.clear();
+      await refresh();
+      await pumpEventQueue();
+      expect(pluginCalls, ['pendingNotificationRequests']);
+      expect(preferences.reloads, run);
+    }
+    expect(preferences.writes, isEmpty);
+    expect(scheduled, isEmpty);
+    expect(cancelled, isEmpty);
+    expect(events, isEmpty);
+    expect(stored(), before);
+
+    // A changed plan is still written: one more date means one schedule call and one plan write.
+    dates.add(DateTime(now.year, now.month, now.day + 4));
+    await refresh();
+    expect(scheduled, hasLength(1));
+    expect(preferences.writes.where((key) => key.startsWith('medbuddy_reminder_plan_')),
+        hasLength(1));
+  });
+
+  // Skipping repeated work must never skip a reservation that is needed: each change below has to
+  // reach the device, and the refresh after it must be quiet again.
+  test('time, language, new-date and lost-reservation changes are always rescheduled', () async {
+    final service = NotificationService.instance;
+    service.setHistoryUser('patient-a', persistSession: false);
+    await service.initialize();
+    final now = timezone.TZDateTime.now(timezone.local);
+    DateTime day(int offset) => DateTime(now.year, now.month, now.day + offset);
+    Future<void> refresh(
+      List<DateTime> dates, {
+      int hour = 8,
+      String slotTitle = '아침',
+      String language = 'ko',
+    }) => service.registerNotification(
+      id: 101, slotKey: 'morning', slotTitle: slotTitle, hour: hour, minute: 0,
+      medicationNames: [], activeDates: dates, language: language,
+    );
+    // Mirrors Android: a scheduled id replaces the pending reservation with that id.
+    void deliverToDevice() {
+      for (final item in scheduled) {
+        pending.removeWhere((entry) => entry['id'] == item['id']);
+        pending.add({'id': item['id'], 'payload': item['payload']});
+      }
+      scheduled.clear();
+    }
+
+    await refresh([day(1), day(2)]);
+    expect(scheduled, hasLength(2));
+    deliverToDevice();
+
+    // Reminder time changed.
+    await refresh([day(1), day(2)], hour: 9);
+    expect(scheduled, hasLength(2));
+    for (final item in scheduled) {
+      expect(item['scheduledDateTime'].toString(), contains('09:00'));
+    }
+    deliverToDevice();
+    await refresh([day(1), day(2)], hour: 9);
+    expect(scheduled, isEmpty);
+
+    // Language changed, which changes the notification text.
+    await refresh([day(1), day(2)], hour: 9, slotTitle: 'Morning', language: 'en');
+    expect(scheduled, hasLength(2));
+    expect(scheduled.first['title'], 'Morning medication schedule');
+    expect(scheduled.first['body'], _body('en'));
+    deliverToDevice();
+    await refresh([day(1), day(2)], hour: 9, slotTitle: 'Morning', language: 'en');
+    expect(scheduled, isEmpty);
+
+    // A new medication or the rolling window adds a date.
+    await refresh([day(1), day(2), day(3)], hour: 9, slotTitle: 'Morning', language: 'en');
+    expect(scheduled, hasLength(1));
+    expect(scheduled.single['payload'], endsWith(':${_dateKey(day(3))}'));
+    deliverToDevice();
+
+    // The device lost its reservations (reboot without the boot receiver, cleared alarms) while
+    // the stored plan still lists them.
+    pending.clear();
+    await refresh([day(1), day(2), day(3)], hour: 9, slotTitle: 'Morning', language: 'en');
+    expect(scheduled, hasLength(3));
+    deliverToDevice();
+
+    // A slot taken today is passed without today; its reservation is withdrawn, the others stay.
+    cancelled.clear();
+    await refresh([day(2), day(3)], hour: 9, slotTitle: 'Morning', language: 'en');
+    expect(scheduled, isEmpty);
+    expect(cancelled, hasLength(1));
+  });
+
+  // A changed reminder time keeps the notification id, so the inbox entry planned for the old time
+  // has to be withdrawn explicitly or it would surface when the old time passes.
+  test('changing the reminder time withdraws the inbox entries planned for the old time', () async {
+    final service = NotificationService.instance;
+    service.setHistoryUser('patient-a', persistSession: false);
+    await service.initialize();
+    final now = timezone.TZDateTime.now(timezone.local);
+    final dates = [
+      DateTime(now.year, now.month, now.day + 1),
+      DateTime(now.year, now.month, now.day + 2),
+    ];
+    Future<void> refresh(int hour, {String slotKey = 'morning', int id = 101}) =>
+        service.registerNotification(
+          id: id, slotKey: slotKey, slotTitle: slotKey, hour: hour, minute: 0,
+          medicationNames: [], activeDates: dates,
+        );
+    Future<List<String>> plannedTimes() async => [
+      for (final entry in await NotificationInboxStore(
+        userHash: 'patient-a', now: () => now.add(const Duration(days: 5)),
+      ).load())
+        '${entry.payload.split(':')[1]} ${timezone.TZDateTime.from(entry.occurredAt, timezone.local).hour}',
+    ]..sort();
+
+    await refresh(8);
+    await refresh(20, slotKey: 'evening', id: 103);
+    pending.addAll(scheduled.map((item) => {'id': item['id'], 'payload': item['payload']}));
+    // A snooze of the first morning reminder is planned under the same notification id.
+    await service.snoozeMedicationReminder(
+      id: scheduled.first['id'] as int, slotKey: 'morning', slotTitle: 'morning',
+      scheduleDate: dates.first, delay: const Duration(days: 1, hours: 1),
+    );
+    expect(await plannedTimes(), hasLength(5));
+
+    await refresh(9);
+
+    final planned = await plannedTimes();
+    expect(planned.where((entry) => entry.startsWith('morning')), ['morning 9', 'morning 9']);
+    expect(planned.where((entry) => entry.startsWith('evening')), ['evening 20', 'evening 20']);
   });
 
   test('account and missing platform reservations cannot reuse another plan', () async {

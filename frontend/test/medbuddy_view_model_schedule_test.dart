@@ -3,13 +3,13 @@
 //   reminder rollback.
 
 import 'dart:async';
-import 'package:medbuddy_frontend/entities/caregiver_alert_context_entity.dart';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
+import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
 import 'package:medbuddy_frontend/controls/manage_account_control.dart';
 import 'package:medbuddy_frontend/controls/manage_user_setting_control.dart';
@@ -18,10 +18,12 @@ import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/patient_hash_entity.dart';
 import 'package:medbuddy_frontend/services/dose_sync_service.dart';
-import 'package:medbuddy_frontend/services/notification_service.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_feature_updates.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'support/dose_sync_harness.dart';
+import 'support/fake_notification_service.dart';
 
 // Function Name: main
 // Description:
@@ -45,7 +47,7 @@ void main() {
     final vm = MedBuddyViewModel(
       checkSchedule: CheckSchedule(patientHash: 'patient-a', client: client),
       setNotification: SetNotification(patientHash: 'patient-a', client: client),
-      notificationService: _FakeNotificationService(),
+      notificationService: RecordingNotificationService(),
     );
     addTearDown(vm.dispose);
     addTearDown(client.close);
@@ -72,7 +74,7 @@ void main() {
     'saving defaults refreshes unsaved slots and preserves custom alarms',
     () async {
       SharedPreferences.setMockInitialValues({});
-      final notifications = _FakeNotificationService();
+      final notifications = RecordingNotificationService();
       var reads = 0;
       var saveSucceeds = true;
       final client = MockClient((request) async {
@@ -111,14 +113,19 @@ void main() {
         ),
       );
       addTearDown(viewModel.dispose);
-      await viewModel.requestUserSettingSave(
-        fontSizeOption: 'medium',
-        readingSpeedOption: 'normal',
-        language: 'ko',
-        defaultMorningTime: '07:15',
-        defaultLunchTime: '13:15',
-        defaultEveningTime: '19:15',
-      );
+      await viewModel.saveUserSetting(
+          viewModel.userSetting
+            .updateUserSetting(
+              fontSize: UserSetting.fontSizeFromOption('medium'),
+              readingSpeed: UserSetting.readingSpeedFromOption('normal'),
+              language: 'ko',
+            )
+            .copyWith(
+              defaultMorningTime: '07:15',
+              defaultLunchTime: '13:15',
+              defaultEveningTime: '19:15',
+            ),
+        );
       expect(reads, 1);
       expect(
         viewModel.medicationReminderSettings['morning']!.timeLabel,
@@ -137,10 +144,17 @@ void main() {
       expect(notifications.registeredSlotKeys, isEmpty);
       expect(notifications.canceledIds, isEmpty);
       saveSucceeds = false;
-      final pending = await viewModel.requestUserSettingSave(
-        fontSizeOption: 'medium', readingSpeedOption: 'normal', language: 'ko',
-        defaultMorningTime: '06:45',
-      );
+      final pending = await viewModel.saveUserSetting(
+          viewModel.userSetting
+            .updateUserSetting(
+              fontSize: UserSetting.fontSizeFromOption('medium'),
+              readingSpeed: UserSetting.readingSpeedFromOption('normal'),
+              language: 'ko',
+            )
+            .copyWith(
+              defaultMorningTime: '06:45',
+            ),
+        );
       expect(pending.synchronizedWithServer, isFalse);
       expect(reads, 1); // Do not fetch stale defaults after a failed server save.
       expect(notifications.registeredSlotKeys, isEmpty);
@@ -160,7 +174,7 @@ void main() {
       }
       return _jsonResponse({'success': true, 'data': []});
     });
-    final notifications = _FakeNotificationService();
+    final notifications = RecordingNotificationService();
     final viewModel = MedBuddyViewModel(
       checkSchedule: CheckSchedule(patientHash: 'patient-a', client: client),
       setNotification: SetNotification(patientHash: 'patient-a', client: client),
@@ -178,46 +192,86 @@ void main() {
     expect(notifications.canceledIds, isEmpty);
     expect(notifications.registeredSlotKeys, isEmpty);
   });
-  // Failed quick actions must not optimistically mark doses complete or erase
-  // existing records. Only an explicitly retried, successful response applies.
-  for (final failure in ['transport', 'service', 'stale-date']) {
-    test('whole-slot $failure preserves records until explicit retry', () async {
-      var recover = false;
-      var patchCount = 0;
-      final payloadDates = <String?>[];
-      final client = MockClient((request) async {
-        if (request.method == 'PATCH') {
-          patchCount += 1;
-          final body = jsonDecode(request.body) as Map<String, dynamic>;
-          expect(body['medication_status'], isTrue);
-          payloadDates.add(body['expected_schedule_date'] as String?);
-          if (!recover) {
-            if (failure == 'transport') {
-              throw http.ClientException('Simulated offline connection');
-            }
-            return http.Response(
-              '{"detail":"Simulated rejected completion"}',
-              failure == 'stale-date' ? 409 : 503,
-              headers: {'content-type': 'application/json'},
-            );
-          }
-        }
-        return _jsonResponse({
-          'success': true,
-          'data': [
-            for (final id in ['already-complete', 'pending'])
-              {
-                'medication_id': id,
-                'drug_name': id,
-                'schedule_slot_keys': ['morning'],
-                'slot_statuses': {
-                  'morning': id == 'already-complete' || recover,
-                },
-                'patient_hash': 'patient-a',
-              },
-          ],
+  // 운영 앱은 항상 복용 기록 대기열을 붙이므로, 아래 복용 기록 테스트는 서버로 직접 PATCH하지 않고
+  // 기기 대기열에 먼저 저장하는 운영 경로를 검증한다. 전송 실패는 기록을 지우지 않고 같은 요청으로
+  // 다시 보내며, 서버가 거부한 기록은 사용자가 지울 때까지 남아 뒤의 기록을 보류한다.
+  for (final failure in ['transport', 'service']) {
+    test(
+      'whole-slot dose survives a $failure failure and is uploaded once on retry',
+      () async {
+        final scheduleRequests = <String>[];
+        final client = MockClient((request) async {
+          scheduleRequests.add(request.method);
+          return _twoMorningSchedulesResponse();
         });
-      });
+        addTearDown(client.close);
+        final viewModel = MedBuddyViewModel(
+          checkSchedule: CheckSchedule(
+            baseUrl: 'http://localhost',
+            patientHash: 'patient-a',
+            client: client,
+          ),
+        );
+        final harness = await attachTestDoseSync(viewModel);
+        harness.respond = (request) async {
+          if (failure == 'transport') {
+            throw http.ClientException('Simulated offline connection');
+          }
+          return http.Response('unavailable', 503);
+        };
+        await viewModel.fetchTodayMedicationSchedule();
+        expect(viewModel.todayMedicationProgress.completedCount, 1);
+
+        expect(
+          await viewModel.requestMedicationSlotStatusUpdate('morning', true),
+          isTrue,
+        );
+        await harness.service.drain();
+
+        // 화면에 보이던 아침 약 전체가 한 요청으로 기기에 저장되고, 그 기록으로 완료가 표시된다.
+        final queued = harness.queued.single;
+        expect(queued['slot_key'], 'morning');
+        expect(queued['medication_ids'], [7, 8]);
+        expect(queued['schedule_date'], doseScheduleDay(DateTime.now()));
+        expect(queued['completed'], isTrue);
+        expect(queued['medication_names'], ['already-complete', 'pending']);
+        expect((await harness.pending()).single['state'], 'pending');
+        expect(harness.uploads, isNotEmpty);
+        expect(viewModel.todayMedicationProgress.completedCount, 2);
+        expect(viewModel.statusMessage, '기기에 기록했습니다. 서버 전송 대기 중입니다.');
+        expect(scheduleRequests, everyElement('GET'));
+
+        harness.respond = (request) async => doseSyncReceipt(request, [
+          for (final id in ['7', '8'])
+            MedicationSchedule(
+              medicationID: id,
+              medicationName: id == '7' ? 'already-complete' : 'pending',
+              scheduleSlotKeys: const ['morning'],
+              slotStatuses: const {'morning': true},
+            ),
+        ]);
+        await harness.service.drain();
+
+        expect(await harness.pending(), isEmpty);
+        expect(harness.queued, hasLength(1));
+        expect(
+          harness.uploads
+              .map((upload) => (jsonDecode(upload.body) as Map)['operation_id'])
+              .toSet(),
+          {queued['operation_id']},
+        );
+        expect(viewModel.todayMedicationProgress.completedCount, 2);
+        expect(scheduleRequests, everyElement('GET'));
+      },
+    );
+  }
+
+  test(
+    'a dose the server rejects stays queued and holds later doses until removed',
+    () async {
+      final client = MockClient(
+        (request) async => _twoMorningSchedulesResponse(),
+      );
       addTearDown(client.close);
       final viewModel = MedBuddyViewModel(
         checkSchedule: CheckSchedule(
@@ -226,31 +280,65 @@ void main() {
           client: client,
         ),
       );
-      addTearDown(viewModel.dispose);
+      final harness = await attachTestDoseSync(viewModel);
+      harness.respond = (request) async => http.Response(
+        '{"detail":"Simulated rejected completion"}',
+        409,
+        headers: {'content-type': 'application/json'},
+      );
       await viewModel.fetchTodayMedicationSchedule();
-      final previous = viewModel.todayMedicationScheduleList.toList();
-      final firstDate = failure == 'stale-date' ? '2026-09-09' : '2026-09-10';
+      final today = doseScheduleDay(DateTime.now());
 
-      expect(await viewModel.requestMedicationSlotStatusUpdate(
-        'morning', true, expectedScheduleDate: firstDate,
-      ), isFalse);
-      expect(patchCount, 1);
-      expect(viewModel.todayMedicationScheduleList, previous);
+      // 알림에서 온 지난 날짜의 기록은 그 날짜로 저장되고 오늘 화면의 완료 상태를 바꾸지 않는다.
+      expect(
+        await viewModel.requestMedicationSlotStatusUpdate(
+          'morning',
+          true,
+          expectedScheduleDate: '2026-09-09',
+        ),
+        isTrue,
+      );
+      await harness.service.drain();
+      expect(harness.queued.single['schedule_date'], '2026-09-09');
+      expect(harness.service.hasBlocked, isTrue);
       expect(viewModel.todayMedicationProgress.completedCount, 1);
-      expect(viewModel.todayMedicationScheduleList.last.isSlotCompleted('morning'),
-          isFalse);
+      expect(
+        viewModel.todayMedicationScheduleList.last.isSlotCompleted('morning'),
+        isFalse,
+      );
+      final attempts = harness.uploads.length;
+      expect(attempts, 1);
 
-      recover = true;
-      expect(await viewModel.requestMedicationSlotStatusUpdate(
-        'morning', true, expectedScheduleDate: '2026-09-10',
-      ), isTrue);
-      expect(patchCount, 2);
-      expect(payloadDates, [firstDate, '2026-09-10']);
+      harness.respond = (request) async => doseSyncReceipt(request, [
+        for (final id in ['7', '8'])
+          MedicationSchedule(
+            medicationID: id,
+            medicationName: id == '7' ? 'already-complete' : 'pending',
+            scheduleSlotKeys: const ['morning'],
+            slotStatuses: const {'morning': true},
+          ),
+      ]);
+      expect(
+        await viewModel.requestMedicationSlotStatusUpdate('morning', true),
+        isTrue,
+      );
+      await harness.service.drain();
+      // 거부된 기록이 맨 앞에 있는 동안 뒤의 기록은 전송하지 않지만 기기에는 남아 있다.
+      expect(harness.uploads, hasLength(attempts));
+      expect(await harness.pending(), hasLength(2));
       expect(viewModel.todayMedicationProgress.completedCount, 2);
-      expect(viewModel.todayMedicationScheduleList.first.isSlotCompleted('morning'),
-          isTrue);
-    });
-  }
+
+      await harness.service.discardRejected(
+        harness.queued.first['operation_id'] as String,
+      );
+
+      expect(await harness.pending(), isEmpty);
+      final uploaded = jsonDecode(harness.uploads.last.body) as Map;
+      expect(uploaded['schedule_date'], today);
+      expect(uploaded['medication_ids'], [7, 8]);
+      expect(viewModel.todayMedicationProgress.completedCount, 2);
+    },
+  );
 
   // 함수이름: test 콜백
   // 함수역할:
@@ -349,12 +437,299 @@ void main() {
 
   // 함수이름: test 콜백
   // 함수역할:
-  // - 복용 완료 변경이 약 식별자와 시간대 범위를 가진 서버 갱신 흐름을 사용하는지 검증한다.
+  // - 약 하나의 복용 체크가 서버로 직접 가지 않고, 그 약과 시간대만 담은 요청 하나로 기기 대기열에
+  //   저장된 뒤 화면에 반영되는지 검증한다.
   // 매개변수:
   // - 없음.
   // 반환값:
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  test('dose status update uses slot-scoped backend status flow', () async {
+  test('a dose check is queued as one slot-scoped operation', () async {
+    final scheduleRequests = <String>[];
+    final client = MockClient((http.Request request) async {
+      scheduleRequests.add('${request.method} ${request.url.path}');
+      return _scheduleResponse(morningCompleted: false);
+    });
+    addTearDown(client.close);
+    final viewModel = MedBuddyViewModel(
+      checkSchedule: CheckSchedule(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        client: client,
+      ),
+    );
+    final harness = await attachTestDoseSync(viewModel);
+    await viewModel.fetchTodayMedicationSchedule();
+    final schedule = viewModel.todayMedicationScheduleList.first;
+
+    final success = await viewModel.requestMedicationDoseStatusUpdate(
+      'morning',
+      schedule,
+      true,
+    );
+    await harness.service.drain();
+
+    expect(success, isTrue);
+    final queued = harness.queued.single;
+    expect(queued['medication_ids'], [7]);
+    expect(queued['slot_key'], 'morning');
+    expect(queued['schedule_date'], doseScheduleDay(DateTime.now()));
+    expect(queued['completed'], isTrue);
+    expect(queued['medication_names'], ['test-tablet']);
+    expect(scheduleRequests, ['GET /schedule/today']);
+    final upload = harness.uploads.first;
+    expect(upload.method, 'POST');
+    expect(upload.url.path, endsWith('/schedule/completion-operations'));
+    expect(upload.url.queryParameters, {'patient_hash': harness.owner});
+    expect(
+      (jsonDecode(upload.body) as Map).containsKey('medication_names'),
+      isFalse,
+    );
+    expect(
+      viewModel.todayMedicationScheduleList.first.medicationStatus,
+      isFalse,
+    );
+    expect(
+      viewModel.isMedicationDoseCompleted(
+        'morning',
+        viewModel.todayMedicationScheduleList.first,
+      ),
+      isTrue,
+    );
+    expect(
+      viewModel.isMedicationDoseCompleted(
+        'lunch',
+        viewModel.todayMedicationScheduleList.first,
+      ),
+      isFalse,
+    );
+    expect(viewModel.todayMedicationProgress.completedCount, 1);
+    expect(viewModel.todayMedicationProgress.totalCount, 3);
+
+    // 취소도 같은 약·시간대의 별도 요청으로 순서대로 저장된다.
+    expect(
+      await viewModel.requestMedicationDoseStatusUpdate(
+        'morning',
+        viewModel.todayMedicationScheduleList.first,
+        false,
+      ),
+      isTrue,
+    );
+    expect(harness.queued.map((op) => op['completed']), [true, false]);
+    expect(harness.queued.last['medication_ids'], [7]);
+    expect(viewModel.todayMedicationProgress.completedCount, 0);
+  });
+
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 시간대를 지정하지 않은 완료 변경이 그 약의 모든 시간대를 각각의 요청으로 저장하는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  test('a medication-wide update queues one operation per slot', () async {
+    final client = MockClient(
+      (http.Request request) async =>
+          _scheduleResponse(morningCompleted: false),
+    );
+    addTearDown(client.close);
+    final viewModel = MedBuddyViewModel(
+      checkSchedule: CheckSchedule(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        client: client,
+      ),
+    );
+    final harness = await attachTestDoseSync(viewModel);
+    await viewModel.fetchTodayMedicationSchedule();
+
+    expect(
+      await viewModel.requestMedicationStatusUpdate(
+        viewModel.todayMedicationScheduleList.single,
+        true,
+      ),
+      isTrue,
+    );
+
+    expect(harness.queued.map((op) => op['slot_key']), [
+      'morning',
+      'lunch',
+      'evening',
+    ]);
+    expect(harness.queued.every((op) => op['medication_ids'].single == 7), isTrue);
+    expect(viewModel.todayMedicationProgress.completedCount, 3);
+    expect(
+      viewModel.todayMedicationScheduleList.single.medicationStatus,
+      isTrue,
+    );
+  });
+
+  // Function Name: test callback
+  // Description:
+  // - Expected behavior: a whole-slot check queues every visible medicine of that slot as one
+  //   operation, and medicines outside the slot are not touched.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  test(
+    'whole-slot check queues every medicine of the slot as one operation',
+    () async {
+      final scheduleRequests = <String>[];
+      final client = MockClient((http.Request request) async {
+        scheduleRequests.add(request.method);
+        return _jsonResponse({
+          'success': true,
+          'data': [
+            {
+              'medication_id': '7',
+              'drug_name': 'first-tablet',
+              'daily_frequency': '3 times',
+              'slot_statuses': {
+                'morning': false,
+                'lunch': false,
+                'evening': false,
+              },
+              'patient_hash': 'patient-a',
+            },
+            {
+              'medication_id': '8',
+              'drug_name': 'second-tablet',
+              'schedule_slot_keys': ['morning'],
+              'slot_statuses': {'morning': false},
+              'patient_hash': 'patient-a',
+            },
+            {
+              'medication_id': '9',
+              'drug_name': 'evening-tablet',
+              'schedule_slot_keys': ['evening'],
+              'slot_statuses': {'evening': false},
+              'patient_hash': 'patient-a',
+            },
+          ],
+        });
+      });
+      addTearDown(client.close);
+      final viewModel = MedBuddyViewModel(
+        checkSchedule: CheckSchedule(
+          baseUrl: 'http://localhost',
+          patientHash: 'patient-a',
+          client: client,
+        ),
+      );
+      final harness = await attachTestDoseSync(viewModel);
+      await viewModel.fetchTodayMedicationSchedule();
+
+      final success = await viewModel.requestMedicationSlotStatusUpdate(
+        'morning',
+        true,
+      );
+
+      expect(success, isTrue);
+      final queued = harness.queued.single;
+      expect(queued['slot_key'], 'morning');
+      expect(queued['medication_ids'], [7, 8]);
+      expect(queued['completed'], isTrue);
+      expect(queued['medication_names'], ['first-tablet', 'second-tablet']);
+      expect(scheduleRequests, ['GET']);
+      expect(
+        viewModel.todayMedicationScheduleList
+            .where((schedule) => schedule.slotKeys.contains('morning'))
+            .every((schedule) => schedule.isSlotCompleted('morning')),
+        isTrue,
+      );
+      expect(
+        viewModel.todayMedicationScheduleList.last.isSlotCompleted('evening'),
+        isFalse,
+      );
+      expect(viewModel.todayMedicationProgress.completedCount, 2);
+      expect(viewModel.todayMedicationProgress.totalCount, 5);
+    },
+  );
+
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 완료 기록보다 먼저 시작된 일정 조회 응답이 기기에 저장한 최신 완료 상태를 덮어쓰지 않는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  test(
+    'older schedule GET cannot overwrite a newer queued completion',
+    () async {
+      final staleGetStarted = Completer<void>();
+      final staleGetResponse = Completer<http.Response>();
+      var getCount = 0;
+      // 함수이름: MockClient 콜백
+      // 함수역할:
+      // - 첫 조회는 즉시 응답하되 두 번째 GET을 대기시켜 오래된 응답 경쟁을 재현한다.
+      // 매개변수:
+      // - request (http.Request): 실제 서버 전송 대신 가로챈 HTTP 요청.
+      // 반환값:
+      // - 현재 단계의 일정 응답 또는 테스트가 완료하는 오래된 GET Future.
+      final client = MockClient((http.Request request) async {
+        getCount += 1;
+        if (getCount == 1) {
+          return _scheduleResponse(morningCompleted: false);
+        }
+        staleGetStarted.complete();
+        return staleGetResponse.future;
+      });
+      addTearDown(client.close);
+      final viewModel = MedBuddyViewModel(
+        checkSchedule: CheckSchedule(
+          baseUrl: 'http://localhost',
+          patientHash: 'patient-a',
+          client: client,
+        ),
+      );
+      final harness = await attachTestDoseSync(viewModel);
+
+      await viewModel.fetchTodayMedicationSchedule();
+      final schedule = viewModel.todayMedicationScheduleList.single;
+
+      final staleFetch = viewModel.fetchTodayMedicationSchedule();
+      await staleGetStarted.future;
+      final saved = await viewModel.requestMedicationDoseStatusUpdate(
+        'morning',
+        schedule,
+        true,
+      );
+
+      expect(saved, isTrue);
+      expect(harness.queued.single['medication_ids'], [7]);
+      expect(
+        viewModel.isMedicationDoseCompleted(
+          'morning',
+          viewModel.todayMedicationScheduleList.single,
+        ),
+        isTrue,
+      );
+
+      staleGetResponse.complete(_scheduleResponse(morningCompleted: false));
+      await staleFetch;
+
+      expect(getCount, 2);
+      expect(viewModel.isTodayScheduleLoading, isFalse);
+      expect(
+        viewModel.isMedicationDoseCompleted(
+          'morning',
+          viewModel.todayMedicationScheduleList.single,
+        ),
+        isTrue,
+      );
+      expect(await harness.pending(), hasLength(1));
+    },
+  );
+
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 대기열을 붙이지 않은 실행 환경(운영 앱에는 없음)에서 복용 완료 변경이 약 식별자와 시간대 범위를
+  //   가진 서버 갱신 흐름으로 대체되는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  test('without a dose queue a dose update falls back to the slot-scoped backend status flow', () async {
     var patchCalled = false;
     late Map<String, dynamic> patchBody;
     // Function Name: MockClient callback
@@ -463,13 +838,14 @@ void main() {
 
   // Function Name: test callback
   // Description:
-  // - Expected behavior: whole-slot update replaces every returned schedule in one request.
+  // - Expected behavior: without a dose queue (never the case in the shipped app) a whole-slot
+  //   update falls back to one request and replaces every returned schedule.
   // Parameters:
   // - None.
   // Returns:
   // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
   test(
-    'whole-slot update replaces every returned schedule in one request',
+    'without a dose queue a whole-slot update falls back to one backend request',
     () async {
       var patchCount = 0;
       // Function Name: MockClient callback
@@ -565,85 +941,6 @@ void main() {
       );
       expect(viewModel.todayMedicationProgress.completedCount, 2);
       expect(viewModel.todayMedicationProgress.totalCount, 4);
-    },
-  );
-
-  // 함수이름: test 콜백
-  // 함수역할:
-  // - 완료 변경보다 먼저 시작된 일정 조회 응답이 최신 완료 상태를 덮어쓰지 않는지 검증한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  test(
-    'older schedule GET cannot overwrite a newer completion PATCH',
-    () async {
-      final staleGetStarted = Completer<void>();
-      final staleGetResponse = Completer<http.Response>();
-      var getCount = 0;
-      // 함수이름: MockClient 콜백
-      // 함수역할:
-      // - 첫 조회와 완료 PATCH는 즉시 응답하되 두 번째 GET을 대기시켜 오래된 응답 경쟁을 재현한다.
-      // 매개변수:
-      // - request (http.Request): 실제 서버 전송 대신 가로챈 HTTP 요청.
-      // 반환값:
-      // - 현재 단계의 일정 응답 또는 테스트가 완료하는 오래된 GET Future.
-      final client = MockClient((http.Request request) async {
-        if (request.method == 'GET') {
-          getCount += 1;
-          if (getCount == 1) {
-            return _scheduleResponse(morningCompleted: false);
-          }
-          expect(getCount, 2);
-          staleGetStarted.complete();
-          return staleGetResponse.future;
-        }
-
-        expect(request.method, 'PATCH');
-        expect(request.url.path, '/schedule/7/status');
-        return _scheduleResponse(morningCompleted: true, wrapInList: false);
-      });
-      final viewModel = MedBuddyViewModel(
-        checkSchedule: CheckSchedule(
-          baseUrl: 'http://localhost',
-          patientHash: 'patient-a',
-          client: client,
-        ),
-      );
-      addTearDown(viewModel.dispose);
-
-      await viewModel.fetchTodayMedicationSchedule();
-      final schedule = viewModel.todayMedicationScheduleList.single;
-
-      final staleFetch = viewModel.fetchTodayMedicationSchedule();
-      await staleGetStarted.future;
-      final patchSucceeded = await viewModel.requestMedicationDoseStatusUpdate(
-        'morning',
-        schedule,
-        true,
-      );
-
-      expect(patchSucceeded, isTrue);
-      expect(
-        viewModel.isMedicationDoseCompleted(
-          'morning',
-          viewModel.todayMedicationScheduleList.single,
-        ),
-        isTrue,
-      );
-
-      staleGetResponse.complete(_scheduleResponse(morningCompleted: false));
-      await staleFetch;
-
-      expect(getCount, 2);
-      expect(viewModel.isTodayScheduleLoading, isFalse);
-      expect(
-        viewModel.isMedicationDoseCompleted(
-          'morning',
-          viewModel.todayMedicationScheduleList.single,
-        ),
-        isTrue,
-      );
     },
   );
 
@@ -1052,7 +1349,7 @@ void main() {
     'refreshMedicationOverview registers enabled reminders for live slots',
     () async {
       SharedPreferences.setMockInitialValues({});
-      final notificationService = _FakeNotificationService();
+      final notificationService = RecordingNotificationService();
       // Function Name: MockClient callback
       // Description:
       // - Serve enabled 08:15 morning settings and a live morning dose, rejecting unrelated routes.
@@ -1128,7 +1425,7 @@ void main() {
     SharedPreferences.setMockInitialValues({
       'user_setting_local_patient_default_morning_time': '07:00',
     });
-    final notificationService = _FakeNotificationService();
+    final notificationService = RecordingNotificationService();
     // 함수이름: MockClient 콜백
     // 함수역할:
     // - 비활성 오전 9:45 알림과 빈 일정을 제공해 기본 시각 변경 시 기존 시각 보존을 검사한다.
@@ -1191,7 +1488,7 @@ void main() {
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
   test('복약 알림 날짜는 처방된 복용 종료일을 넘지 않는다', () async {
     SharedPreferences.setMockInitialValues({});
-    final notificationService = _FakeNotificationService();
+    final notificationService = RecordingNotificationService();
     // 함수이름: MockClient 콜백
     // 함수역할:
     // - 알림 시각 저장 PUT에 오전 8:30 활성 설정을 제공한다.
@@ -1256,7 +1553,7 @@ void main() {
     () async {
       SharedPreferences.setMockInitialValues({});
       final requestMethods = <String>[];
-      final notificationService = _FakeNotificationService(
+      final notificationService = RecordingNotificationService(
         failRegistration: true,
       );
       // Function Name: MockClient callback
@@ -1333,6 +1630,23 @@ void main() {
       );
       expect(cachedSetting['is_enabled'], isFalse);
       expect(viewModel.medicationReminderSettings, isEmpty);
+
+      // Once this install has recorded that the fixed legacy IDs were cancelled, the same
+      // rollback cancels only the current reminder and does not repeat the legacy cancellation.
+      await preferences.setBool('medbuddy_legacy_reminder_ids_cancelled', true);
+      notificationService.cancellations.clear();
+      await viewModel.requestMedicationReminderSave(
+        slotKey: 'morning',
+        slotTitle: 'Morning',
+        hour: 8,
+        minute: 30,
+        schedules: const [MedicationSchedule(medicationName: 'test-tablet')],
+      );
+      expect(notificationService.canceledIds, contains(setting.notificationId));
+      expect(
+        notificationService.canceledIds,
+        isNot(contains(setting.legacyNotificationId)),
+      );
     },
   );
 
@@ -1345,7 +1659,7 @@ void main() {
   // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
   test('계정 데이터 삭제 전에 기기의 복약 알림을 모두 취소한다', () async {
     SharedPreferences.setMockInitialValues({});
-    final notificationService = _FakeNotificationService();
+    final notificationService = RecordingNotificationService();
     final accountControl = ManageAccount(
       userHash: 'patient-a',
       // Function Name: MockClient callback
@@ -1390,7 +1704,7 @@ void main() {
     addTearDown(client.close);
     final viewModel = MedBuddyViewModel(
       manageAccount: ManageAccount(userHash: 'patient-a', client: client),
-      notificationService: _FakeNotificationService(),
+      notificationService: RecordingNotificationService(),
     );
     addTearDown(viewModel.dispose);
     viewModel.attachDoseSync(
@@ -1500,6 +1814,29 @@ http.Response _scheduleResponse({
   });
 }
 
+// Function Name: _twoMorningSchedulesResponse
+// Description:
+// - Build today's schedule with two morning medicines, the first already taken and the second not.
+// Parameters:
+// - None.
+// Returns:
+// - HTTP 200 schedule list with medication ids 7 and 8.
+http.Response _twoMorningSchedulesResponse() {
+  return _jsonResponse({
+    'success': true,
+    'data': [
+      for (final id in ['7', '8'])
+        {
+          'medication_id': id,
+          'drug_name': id == '7' ? 'already-complete' : 'pending',
+          'schedule_slot_keys': ['morning'],
+          'slot_statuses': {'morning': id == '7'},
+          'patient_hash': 'patient-a',
+        },
+    ],
+  });
+}
+
 // Function Name: _savedMedicationJson
 // Description:
 // - Build a saved-tablet JSON row with stable patient identity and dates.
@@ -1535,233 +1872,4 @@ http.Response _jsonResponse(Map<String, dynamic> payload) {
     200,
     headers: {'content-type': 'application/json; charset=utf-8'},
   );
-}
-
-// Class Name: _FakeNotificationService
-// Role: Notification spy that records registrations and cancellations and can reject registration.
-// Responsibilities:
-// - Skip real notification-plugin initialization while satisfying the platform interface.
-// - Grant notification permission in the fake without invoking an OS permission prompt.
-// - Record registered slots, medication names, and dates, then optionally reject local registration.
-// Attributes:
-// - failRegistration (bool): Whether local notification registration should throw.
-// - canceledAllMedicationReminders (bool): Whether session-wide reminder cancellation occurred.
-class _FakeNotificationService implements NotificationService {
-  // 함수이름: setHistoryUser
-  // 함수역할: 테스트에서는 계정별 플랫폼 저장을 생략한다. 매개변수: 계정과 저장 여부. 반환값: 없음.
-  @override
-  void setHistoryUser(String? userHash, {bool persistSession = true}) {}
-
-  // 함수이름: setShowSensitiveDetails
-  // 함수역할:
-  // - 플랫폼 알림을 표시하지 않는 대역이므로 잠금 화면 상세정보 설정을 외부에 적용하지 않는다.
-  // 매개변수:
-  // - showSensitiveDetails (bool): 잠금 화면 알림에 민감 상세정보를 표시할지 여부. 이 대역에서는 직접 사용하지 않는다.
-  // 반환값:
-  // - 없음; 플랫폼 상태를 변경하지 않는다.
-  @override
-  void setShowSensitiveDetails(bool showSensitiveDetails) {}
-
-  // 함수이름: openSystemNotificationSettings
-  // 함수역할:
-  // - 기기의 설정 앱을 열지 않고 시스템 알림 설정 이동을 성공 처리한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>; 플랫폼 호출 없이 완료된다.
-  @override
-  Future<void> openSystemNotificationSettings() async {}
-
-  // 함수이름: cancelAllScheduledMedicationReminders
-  // 함수역할:
-  // - 계정 정리 순서를 검사하도록 예약 복약 알림 전체 취소 여부를 기록한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - 전체 취소 플래그 설정 완료.
-  @override
-  Future<void> cancelAllScheduledMedicationReminders() async {
-    canceledAllMedicationReminders = true;
-  }
-
-  // 함수이름: showLinkedChatAlert
-  // 함수역할:
-  // - 복약 대화 알림을 실제로 표시하지 않고 테스트 흐름의 알림 요청을 완료한다.
-  // 매개변수:
-  // - id (int): 약·메시지·알림 대역의 식별자. 이 대역에서는 직접 사용하지 않는다.
-  // - linkId (int): 대화를 구분하는 환자·보호자 연결 식별자. 이 대역에서는 직접 사용하지 않는다.
-  // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
-  // - messageKind (String?): 일반 텍스트 또는 복약 문맥 메시지 유형. 이 대역에서는 직접 사용하지 않는다.
-  // - messagePreview (String?): 알림 인터페이스로 전달하는 선택적 채팅 미리보기. 이 대역에서는 직접 사용하지 않는다.
-  // - slotKey (String?): 아침·점심·저녁·취침 전 등을 구분하는 복약 시간대 키. 이 대역에서는 직접 사용하지 않는다.
-  // 반환값:
-  // - Future<void>; 플랫폼 호출 없이 완료된다.
-  @override
-  Future<void> showLinkedChatAlert({
-    String? historyUserHash,
-    bool recordHistory = true,
-    required int id,
-    required int linkId,
-    String language = 'ko',
-    String? messageKind,
-    String? messagePreview,
-    String? slotKey,
-  }) async {}
-
-  final bool failRegistration;
-  bool canceledAllMedicationReminders = false;
-  final List<int> canceledIds = [];
-  final List<String> registeredSlotKeys = [];
-  final List<List<String>> registeredMedicationNames = [];
-  final List<List<DateTime>> registeredActiveDates = [];
-
-  // Function Name: _FakeNotificationService
-  // Description:
-  // - Choose whether the notification spy rejects registration attempts.
-  // Parameters:
-  // - failRegistration (bool): Whether local notification registration should throw.
-  // Returns:
-  // - A recording notification service with the requested failure mode.
-  _FakeNotificationService({this.failRegistration = false});
-
-  // Function Name: initialize
-  // Description:
-  // - Skip real notification-plugin initialization while satisfying the platform interface.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Future<void>; completes without a platform call.
-  @override
-  Future<void> initialize() async {}
-
-  // Function Name: requestPermission
-  // Description:
-  // - Grant notification permission in the fake without invoking an OS permission prompt.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Future<bool> resolving to true.
-  @override
-  Future<bool> requestPermission() async => true;
-
-  // Function Name: registerNotification
-  // Description:
-  // - Record registered slots, medication names, and dates, then optionally reject local registration.
-  // Parameters:
-  // - id (int): Identifier of the medication, message, or notification fixture. Accepted but not
-  //   consumed by this fixture.
-  // - slotKey (String): Dose slot such as morning, lunch, evening, or bedtime.
-  // - slotTitle (String): Localized user-visible name of the dose slot. Accepted but not consumed by
-  //   this fixture.
-  // - hour (int): Selected local alarm hour in 24-hour time. Accepted but not consumed by this fixture.
-  // - minute (int): Selected minute component of the local alarm time. Accepted but not consumed by this
-  //   fixture.
-  // - medicationNames (List<String>): Medication names eligible for this reminder.
-  // - activeDates (List<DateTime>): Dates on which this dose is active.
-  // - medicationNamesByDate (Map<String, List<String>>): Medication names active on each scheduled date.
-  //   Accepted but not consumed by this fixture.
-  // - language (String): Language code used for labels or notification content. Accepted but not
-  //   consumed by this fixture.
-  // Returns:
-  // - Completion on success; StateError when failRegistration is enabled.
-  @override
-  Future<void> registerNotification({
-    required int id,
-    required String slotKey,
-    required String slotTitle,
-    required int hour,
-    required int minute,
-    required List<String> medicationNames,
-    required List<DateTime> activeDates,
-    Map<String, List<String>> medicationNamesByDate = const {},
-    String language = 'ko',
-  }) async {
-    registeredSlotKeys.add(slotKey);
-    registeredMedicationNames.add(medicationNames);
-    registeredActiveDates.add(activeDates);
-    if (failRegistration) {
-      throw StateError('Simulated local notification failure.');
-    }
-  }
-
-  // 함수이름: cancelReminder
-  // 함수역할:
-  // - 개별 취소 식별자를 기록해 알림 롤백 대상을 검사할 수 있게 한다.
-  // 매개변수:
-  // - id (int): 약·메시지·알림 대역의 식별자.
-  // - slotKey (String?): 아침·점심·저녁·취침 전 등을 구분하는 복약 시간대 키. 이 대역에서는 직접 사용하지 않는다.
-  // 반환값:
-  // - 취소 기록 추가 완료.
-  @override
-  Future<void> cancelReminder(int id, {String? slotKey}) async {
-    canceledIds.add(id);
-  }
-
-  @override
-  Future<void> cancelReminderForDate({
-    required String owner,
-    required String slotKey,
-    required DateTime date,
-  }) async {}
-
-  // Function Name: cancelAllMedicationReminders
-  // Description:
-  // - Record that all medication reminders were canceled before account cleanup.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Completion after setting the cancellation flag.
-  @override
-  Future<void> cancelAllMedicationReminders() async {
-    canceledAllMedicationReminders = true;
-  }
-
-  // Function Name: snoozeMedicationReminder
-  // Description:
-  // - Accept the snooze action without scheduling a real delayed notification.
-  // Parameters:
-  // - id (int): Identifier of the medication, message, or notification fixture. Accepted but not
-  //   consumed by this fixture.
-  // - slotKey (String): Dose slot such as morning, lunch, evening, or bedtime. Accepted but not consumed
-  //   by this fixture.
-  // - slotTitle (String): Localized user-visible name of the dose slot. Accepted but not consumed by
-  //   this fixture.
-  // - language (String): Language code used for labels or notification content. Accepted but not
-  //   consumed by this fixture.
-  // - delay (Duration): Requested snooze interval or retry-wait callback. Accepted but not consumed by
-  //   this fixture.
-  // Returns:
-  // - Future<void>; completes without a platform call.
-  @override
-  Future<void> snoozeMedicationReminder({
-    required int id,
-    required String slotKey,
-    required String slotTitle,
-    String language = 'ko',
-    Duration delay = const Duration(minutes: 10),
-    DateTime? scheduleDate,
-  }) async {}
-
-  // 함수이름: showCaregiverAlert
-  // 함수역할:
-  // - 보호자 알림을 실제로 표시하지 않고 테스트 흐름의 알림 요청을 완료한다.
-  // 매개변수:
-  // - id (int): 약·메시지·알림 대역의 식별자. 이 대역에서는 직접 사용하지 않는다.
-  // - title (String): 가로챈 알림의 표시 제목. 이 대역에서는 직접 사용하지 않는다.
-  // - body (String): 호출자가 전달한 알림 또는 메시지 본문. 이 대역에서는 직접 사용하지 않는다.
-  // - patientHash (String?): 요청 데이터 범위를 제한하는 환자 식별자. 이 대역에서는 직접 사용하지 않는다.
-  // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
-  // 반환값:
-  // - Future<void>; 플랫폼 호출 없이 완료된다.
-  @override
-  Future<void> showCaregiverAlert({
-    CaregiverAlertContext? alertContext,
-    String? historyUserHash,
-    bool recordHistory = true,
-    required int id,
-    required String title,
-    required String body,
-    String? patientHash,
-    String language = 'ko',
-  }) async {}
 }

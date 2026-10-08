@@ -71,9 +71,10 @@ class CheckHealthRecommendation {
         if (response.statusCode == 404 && detail == '오늘 복용 중인 약 정보가 없습니다.') {
           throw NoActiveMedicationsError();
         }
-        throw StateError(
-          'Health recommendation failed (${response.statusCode}): '
-          '$detail',
+        throw ApiResponseParser.httpFailure(
+          'Health recommendation failed',
+          response,
+          responseBody,
         );
       }
 
@@ -97,7 +98,11 @@ class CheckHealthRecommendation {
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Health recommendation failed.');
+      // 원래 예외를 함께 전달해 호출자가 응답 지연·연결 실패 같은 원인을 구분할 수 있게 한다.
+      throw ApiResponseParser.transportFailure(
+        'Health recommendation failed',
+        error,
+      );
     }
   }
 

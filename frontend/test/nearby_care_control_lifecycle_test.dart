@@ -170,17 +170,19 @@ void main() {
   });
 
   // Function Name: location dependency test
-  // Description: Generic GPS/cache values must not acquire provider or platform entity dependencies.
+  // Description: Generic GPS values must not acquire provider or platform entity dependencies, and the unused fix cache stays removed.
   // Parameters: None. Returns: None; domain-coupled imports fail the test.
-  test('GPS and coordinate cache are independent of pharmacy records', () {
-    for (final name in [
-      'device_location_service',
-      'recent_device_coordinate_cache',
-    ]) {
-      final source = File('lib/services/$name.dart').readAsStringSync();
-      expect(source, contains('device_coordinate_entity.dart'));
-      expect(source, isNot(contains('nearby_pharmacy_entity.dart')));
-    }
+  test('GPS service is independent of pharmacy records and keeps no cache', () {
+    final source = File(
+      'lib/services/device_location_service.dart',
+    ).readAsStringSync();
+    expect(source, contains('device_coordinate_entity.dart'));
+    expect(source, isNot(contains('nearby_pharmacy_entity.dart')));
+    expect(source, isNot(contains('recent_device_coordinate_cache')));
+    expect(
+      File('lib/services/recent_device_coordinate_cache.dart').existsSync(),
+      isFalse,
+    );
     final coordinate = File(
       'lib/entities/device_coordinate_entity.dart',
     ).readAsStringSync();

@@ -12,6 +12,12 @@ on:
 permissions:
   contents: read
 
+# Push runs get one group per commit so none is queued or cancelled (the release gate reads them per commit);
+# only a pull-request run superseded by a newer push to the same pull request is cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -29,6 +35,12 @@ jobs:
       with:
         distribution: 'zulu'
         java-version: '17'
+        cache: 'gradle'
+        cache-dependency-path: |
+          frontend/android/*.gradle*
+          frontend/android/app/*.gradle*
+          frontend/android/gradle/wrapper/gradle-wrapper.properties
+          frontend/pubspec.lock
 
     - name: Flutter Setup
       uses: subosito/flutter-action@v2
@@ -57,4 +69,17 @@ jobs:
       run: cp android/app/google-services.json.example android/app/google-services.json
 
     - name: Android Release APK Build Test
-      run: flutter build apk --release --no-pub
+      run: flutter build apk --release --no-pub --target-platform android-arm,android-arm64
+
+    - name: Verify APK native ABIs
+      shell: bash
+      run: |
+        set -euo pipefail
+        APK="build/app/outputs/flutter-apk/app-release.apk"
+        APK_NATIVE_ABIS="$(unzip -Z1 "${APK}" 'lib/*' | cut -d/ -f2 | sort -u | paste -sd, -)"
+        APK_ENGINE_ABIS="$(unzip -Z1 "${APK}" 'lib/*/libflutter.so' | cut -d/ -f2 | sort -u | paste -sd, -)"
+        if [[ "${APK_NATIVE_ABIS}" != "arm64-v8a,armeabi-v7a" || "${APK_ENGINE_ABIS}" != "${APK_NATIVE_ABIS}" ]]; then
+          echo "Direct APK must contain exactly the arm64-v8a and armeabi-v7a native libraries (found: ${APK_NATIVE_ABIS}; engine: ${APK_ENGINE_ABIS})." >&2
+          exit 1
+        fi
+        ls -l "${APK}"

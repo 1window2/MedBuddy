@@ -1,6 +1,7 @@
 // File Name: check_medication_detail_ui_boundary.dart
 // Role: UI boundaries and helpers for medication indications, dosage, precautions, and spoken guidance.
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -21,12 +22,15 @@ import 'medication_image_viewer_boundary.dart';
 // Responsibilities:
 // - Provides reusable details for the saved list and today's schedule.
 // - Reads indications, dosage, precautions, and detailed guidance using the configured speech rate and language.
+// - Stops reading aloud when the screen closes or the app moves to the background.
 // Attributes:
 // - medicationDetail (MedicationDetail): Medication data to display, transform, save, or compare.
 // - userSetting (UserSetting): User settings for language, accessibility, medication reminders, and persistence.
+// - requestVoiceGuide (RequestVoiceGuide?): Voice-guide control to use instead of creating one; the caller keeps ownership and disposes it.
 class CheckMedicationDetailUI extends StatefulWidget {
   final MedicationDetail medicationDetail;
   final UserSetting userSetting;
+  final RequestVoiceGuide? requestVoiceGuide;
 
   // Function Name: CheckMedicationDetailUI
   // Description: Initializes medication details with indications, dosage, precautions, and read-aloud controls with the supplied configuration.
@@ -34,11 +38,13 @@ class CheckMedicationDetailUI extends StatefulWidget {
   // - key (Key?): Widget identity used to distinguish elements and preserve state.
   // - medicationDetail (MedicationDetail): Medication data to display, transform, save, or compare.
   // - userSetting (UserSetting): User settings for language, accessibility, medication reminders, and persistence.
+  // - requestVoiceGuide (RequestVoiceGuide?): Optional voice-guide control owned by the caller; when omitted the screen creates and disposes its own.
   // Returns: Initialized CheckMedicationDetailUI instance.
   const CheckMedicationDetailUI({
     super.key,
     required this.medicationDetail,
     required this.userSetting,
+    this.requestVoiceGuide,
   });
 
   // Function Name: createState
@@ -55,21 +61,54 @@ class CheckMedicationDetailUI extends StatefulWidget {
 // 역할: 효능·복용법·주의사항과 읽어주기 기능을 갖춘 약 상세의 화면 상태를 관리한다.
 // 주요 책임:
 // - 읽어주기를 시작하거나 중지하고 완료·오류 시 재생 상태를 해제한다.
+// - 앱이 백그라운드로 가면 읽어주기를 중지한다.
 // 속성:
 // - _isSpeaking (bool): 읽어주기가 현재 재생 중인지 여부.
-class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI> {
-  final RequestVoiceGuide _requestVoiceGuide = RequestVoiceGuide();
+class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI>
+    with WidgetsBindingObserver {
+  late final RequestVoiceGuide _requestVoiceGuide;
+  // 화면이 직접 만든 음성 안내 Control만 화면 종료 때 정리한다.
+  late final bool _ownsRequestVoiceGuide;
   bool _isSpeaking = false;
 
+  // Function Name: initState
+  // Description: Selects the injected or a newly created voice-guide control and starts observing app lifecycle changes.
+  // Parameters:
+  // - None.
+  // Returns: None; updates state or performs the documented action.
+  @override
+  void initState() {
+    super.initState();
+    final injectedRequestVoiceGuide = widget.requestVoiceGuide;
+    _requestVoiceGuide = injectedRequestVoiceGuide ?? RequestVoiceGuide();
+    _ownsRequestVoiceGuide = injectedRequestVoiceGuide == null;
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  // Function Name: didChangeAppLifecycleState
+  // Description: Stops reading aloud when the app moves to the background so speech does not continue over another app.
+  // Parameters:
+  // - state (AppLifecycleState): New lifecycle state of the app.
+  // Returns: None; updates state or performs the documented action.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused && _isSpeaking) {
+      unawaited(_stopVoiceGuide());
+    }
+  }
+
   // Function Name: dispose
-  // Description: Releases _requestVoiceGuide and detaches this screen from active updates.
+  // Description: Stops observing the app lifecycle, stops playback, releases a voice-guide control this screen created, and detaches this screen from active updates.
   // Parameters:
   // - None.
   // Returns: None; updates state or performs the documented action.
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _requestVoiceGuide.stop();
-    _requestVoiceGuide.dispose();
+    if (_ownsRequestVoiceGuide) {
+      _requestVoiceGuide.dispose();
+    }
     super.dispose();
   }
 
@@ -80,7 +119,6 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI> {
   // 반환값: 효능·복용법·주의사항과 읽어주기 기능을 갖춘 약 상세에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-    final scale = widget.userSetting.contentTextScale;
     final text = _MedicationDetailText(widget.userSetting.language);
 
     return Scaffold(
@@ -115,7 +153,6 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI> {
                               widget.userSetting.language,
                             ),
                         language: widget.userSetting.language,
-                        scale: scale,
                       ),
                       const SizedBox(height: 24),
                       _DetailQuestionSection(
@@ -125,7 +162,6 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI> {
                           text.noInformation,
                         ),
                         noInformation: text.noInformation,
-                        scale: scale,
                       ),
                       const SizedBox(height: 24),
                       _DetailQuestionSection(
@@ -136,24 +172,20 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI> {
                               widget.userSetting.language,
                             ),
                         noInformation: text.noInformation,
-                        scale: scale,
                       ),
                       const SizedBox(height: 22),
                       _DetailedDosageGuideCard(
                         medicationDetail: widget.medicationDetail,
-                        scale: scale,
                         text: text,
                       ),
                       const SizedBox(height: 18),
                       _MedicationRiskCard(
                         medicationDetail: widget.medicationDetail,
-                        scale: scale,
                         text: text,
                       ),
                       const SizedBox(height: 18),
                       _MedicationChecklistCard(
                         medicationDetail: widget.medicationDetail,
-                        scale: scale,
                         text: text,
                       ),
                     ],
@@ -186,6 +218,23 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI> {
     );
   }
 
+  // Function Name: _stopVoiceGuide
+  // Description: Stops spoken guidance, including a guide whose text is still loading, and clears the speaking state.
+  // Parameters:
+  // - None.
+  // Returns: Future<void> completing when playback has been asked to stop.
+  Future<void> _stopVoiceGuide() async {
+    await _requestVoiceGuide.stop();
+    if (mounted) {
+      // Function Name: _stopVoiceGuide.setState callback
+      // Description: Updates the local input or request state for medication details with indications, dosage, precautions, and read-aloud controls: `_isSpeaking = false`.
+      // Parameters:
+      // - None.
+      // Returns: No payload; applies the captured state changes.
+      setState(() => _isSpeaking = false);
+    }
+  }
+
   // Function Name: _handleTtsButtonPressed
   // Description: Starts or stops spoken guidance and clears speaking state on completion or failure.
   // Parameters:
@@ -193,15 +242,7 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI> {
   // Returns: Future<void> completing when the requested interaction or refresh finishes.
   Future<void> _handleTtsButtonPressed() async {
     if (_isSpeaking) {
-      await _requestVoiceGuide.stop();
-      if (mounted) {
-        // Function Name: _handleTtsButtonPressed.setState callback
-        // Description: Updates the local input or request state for medication details with indications, dosage, precautions, and read-aloud controls: `_isSpeaking = false`.
-        // Parameters:
-        // - None.
-        // Returns: No payload; applies the captured state changes.
-        setState(() => _isSpeaking = false);
-      }
+      await _stopVoiceGuide();
       return;
     }
 
@@ -252,12 +293,10 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI> {
 // - medicationDetail (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
 // - displayName (String): 사용자에게 표시할 약품 또는 계정 이름.
 // - language (String): 화면 문구를 선택할 언어 코드.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 class _MedicationHeroCard extends StatelessWidget {
   final MedicationDetail medicationDetail;
   final String displayName;
   final String language;
-  final double scale;
 
   // 함수이름: _MedicationHeroCard
   // 함수역할: 약품 대표 이미지와 표시 이름에 필요한 입력값과 표시 설정을 초기화한다.
@@ -265,13 +304,11 @@ class _MedicationHeroCard extends StatelessWidget {
   // - medicationDetail (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
   // - displayName (String): 사용자에게 표시할 약품 또는 계정 이름.
   // - language (String): 화면 문구를 선택할 언어 코드.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // 반환값: 입력 설정이 반영된 _MedicationHeroCard 인스턴스.
   const _MedicationHeroCard({
     required this.medicationDetail,
     required this.displayName,
     required this.language,
-    required this.scale,
   });
 
   // 함수이름: build
@@ -314,7 +351,7 @@ class _MedicationHeroCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: MedBuddyColors.textStrong,
-                    fontSize: 18 * scale,
+                    fontSize: 18,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0,
                   ),
@@ -369,11 +406,14 @@ class _MedicationImageBox extends StatelessWidget {
         : File(medicationDetail.localImagePath.trim());
     final hasLocalImage = localImageFile?.existsSync() ?? false;
     final hasImage = hasLocalImage || normalizedImageUrl.isNotEmpty;
+    // 88dp 상자에 맞춰 디코딩해 원본 크기 사진이 메모리를 차지하지 않게 한다. 가로로 긴 사진을 채워 그릴 때도 흐려지지 않도록 두 배 여유를 둔다.
+    final imageCacheWidth =
+        (88 * MediaQuery.devicePixelRatioOf(context) * 2).round();
 
     return Semantics(
       button: hasImage,
       label: hasImage
-          ? (language.trim().toLowerCase().startsWith('en')
+          ? (isEnglishLanguage(language)
                 ? 'Enlarge $displayName image'
                 : '$displayName 사진 확대')
           : null,
@@ -418,11 +458,13 @@ class _MedicationImageBox extends StatelessWidget {
                 ? Image.file(
                     localImageFile!,
                     fit: BoxFit.cover,
+                    cacheWidth: imageCacheWidth,
                     errorBuilder: _buildImageError,
                   )
                 : Image.network(
                     normalizedImageUrl,
                     fit: BoxFit.cover,
+                    cacheWidth: imageCacheWidth,
                     errorBuilder: _buildImageError,
                   ),
           ),
@@ -462,13 +504,11 @@ class _MedicationImageBox extends StatelessWidget {
 // - title (String): 화면·구역·항목에 표시할 제목.
 // - values (List<String>): 표시·정리할 설명 또는 주의 문구 목록.
 // - noInformation (String): 값이나 약품 정보를 제공할 수 없을 때 사용할 대체 문구.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 class _DetailQuestionSection extends StatelessWidget {
   final String title;
   final String? subtitle;
   final List<String> values;
   final String noInformation;
-  final double scale;
 
   // 함수이름: _DetailQuestionSection
   // 함수역할: 질문 제목·선택 설명과 답변 목록의 표시 설정을 초기화한다.
@@ -477,14 +517,12 @@ class _DetailQuestionSection extends StatelessWidget {
   // - subtitle (String?): 등록된 복용 정보 등 답변의 성격을 구분하는 설명.
   // - values (List<String>): 표시·정리할 설명 또는 주의 문구 목록.
   // - noInformation (String): 값이나 약품 정보를 제공할 수 없을 때 사용할 대체 문구.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // 반환값: 입력 설정이 반영된 _DetailQuestionSection 인스턴스.
   const _DetailQuestionSection({
     required this.title,
     this.subtitle,
     required this.values,
     required this.noInformation,
-    required this.scale,
   });
 
   // 함수이름: build
@@ -510,7 +548,7 @@ class _DetailQuestionSection extends StatelessWidget {
           title,
           style: TextStyle(
             color: MedBuddyColors.textStrong,
-            fontSize: 16 * scale,
+            fontSize: 16,
             fontWeight: FontWeight.w700,
             letterSpacing: 0,
           ),
@@ -521,7 +559,7 @@ class _DetailQuestionSection extends StatelessWidget {
             subtitle!,
             style: TextStyle(
               color: MedBuddyColors.textMuted,
-              fontSize: 14 * scale,
+              fontSize: 14,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -530,7 +568,7 @@ class _DetailQuestionSection extends StatelessWidget {
         Column(
           children: [
             for (int index = 0; index < visibleValues.length; index++) ...[
-              _DetailValueTile(value: visibleValues[index], scale: scale),
+              _DetailValueTile(value: visibleValues[index]),
               if (index != visibleValues.length - 1) const SizedBox(height: 12),
             ],
           ],
@@ -546,18 +584,15 @@ class _DetailQuestionSection extends StatelessWidget {
 // - Composes an emphasized compact medication-information value using the display values and actions supplied by its parent.
 // Attributes:
 // - value (String): Input to validate, normalize, display, or pass through a selection callback.
-// - scale (double): Content text scale reflecting user accessibility settings.
 class _DetailValueTile extends StatelessWidget {
   final String value;
-  final double scale;
 
   // 함수이름: _DetailValueTile
   // 함수역할: 간추린 약품 정보 한 줄의 강조 표시에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // 반환값: 입력 설정이 반영된 _DetailValueTile 인스턴스.
-  const _DetailValueTile({required this.value, required this.scale});
+  const _DetailValueTile({required this.value});
 
   // Function Name: build
   // Description: Renders an emphasized compact medication-information value from the current configuration and state.
@@ -580,7 +615,7 @@ class _DetailValueTile extends StatelessWidget {
         textAlign: TextAlign.center,
         style: TextStyle(
           color: MedBuddyColors.textStrong,
-          fontSize: 14 * scale,
+          fontSize: 14,
           height: 1.35,
           fontWeight: FontWeight.w600,
           letterSpacing: 0,
@@ -596,22 +631,18 @@ class _DetailValueTile extends StatelessWidget {
 // - 부모가 전달한 표시값과 동작을 반영해 설정 언어별 상세 복용 가이드 목록 위젯을 구성한다.
 // 속성:
 // - medicationDetail (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 class _DetailedDosageGuideCard extends StatelessWidget {
   final MedicationDetail medicationDetail;
-  final double scale;
   final _MedicationDetailText text;
 
   // 함수이름: _DetailedDosageGuideCard
   // 함수역할: 설정 언어별 상세 복용 가이드 목록에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - medicationDetail (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // - text (_MedicationDetailText): 해당 화면 구역의 언어별 표시 문구.
   // 반환값: 입력 설정이 반영된 _DetailedDosageGuideCard 인스턴스.
   const _DetailedDosageGuideCard({
     required this.medicationDetail,
-    required this.scale,
     required this.text,
   });
 
@@ -625,7 +656,6 @@ class _DetailedDosageGuideCard extends StatelessWidget {
     return _DetailListCard(
       title: text.detailedGuide,
       items: _uniqueNonEmptyValues([medicationDetail.usageMethod]),
-      scale: scale,
       noInformation: text.noInformation,
     );
   }
@@ -637,22 +667,18 @@ class _DetailedDosageGuideCard extends StatelessWidget {
 // - 부모가 전달한 표시값과 동작을 반영해 중복을 제거한 경고·주의·상호작용·부작용 목록 위젯을 구성한다.
 // 속성:
 // - medicationDetail (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 class _MedicationRiskCard extends StatelessWidget {
   final MedicationDetail medicationDetail;
-  final double scale;
   final _MedicationDetailText text;
 
   // 함수이름: _MedicationRiskCard
   // 함수역할: 중복을 제거한 경고·주의·상호작용·부작용 목록에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - medicationDetail (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // - text (_MedicationDetailText): 해당 화면 구역의 언어별 표시 문구.
   // 반환값: 입력 설정이 반영된 _MedicationRiskCard 인스턴스.
   const _MedicationRiskCard({
     required this.medicationDetail,
-    required this.scale,
     required this.text,
   });
 
@@ -671,7 +697,6 @@ class _MedicationRiskCard extends StatelessWidget {
         medicationDetail.interaction,
         medicationDetail.sideEffect,
       ]),
-      scale: scale,
       useInsetSurface: true,
       noInformation: text.noInformation,
     );
@@ -684,22 +709,18 @@ class _MedicationRiskCard extends StatelessWidget {
 // - 부모가 전달한 표시값과 동작을 반영해 보관법과 AI 안내를 묶은 복약 확인 목록 위젯을 구성한다.
 // 속성:
 // - medicationDetail (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 class _MedicationChecklistCard extends StatelessWidget {
   final MedicationDetail medicationDetail;
-  final double scale;
   final _MedicationDetailText text;
 
   // 함수이름: _MedicationChecklistCard
   // 함수역할: 보관법과 AI 안내를 묶은 복약 확인 목록에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - medicationDetail (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // - text (_MedicationDetailText): 해당 화면 구역의 언어별 표시 문구.
   // 반환값: 입력 설정이 반영된 _MedicationChecklistCard 인스턴스.
   const _MedicationChecklistCard({
     required this.medicationDetail,
-    required this.scale,
     required this.text,
   });
 
@@ -716,7 +737,6 @@ class _MedicationChecklistCard extends StatelessWidget {
         medicationDetail.storageMethod,
         medicationDetail.aiGuide,
       ]),
-      scale: scale,
       noInformation: text.noInformation,
     );
   }
@@ -729,12 +749,10 @@ class _MedicationChecklistCard extends StatelessWidget {
 // 속성:
 // - title (String): 화면·구역·항목에 표시할 제목.
 // - items (List<String>): 표시·정리할 설명 또는 주의 문구 목록.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 // - useInsetSurface (bool): 설명 목록을 내부 배경 면으로 감쌀지 여부.
 class _DetailListCard extends StatelessWidget {
   final String title;
   final List<String> items;
-  final double scale;
   final bool useInsetSurface;
   final String noInformation;
 
@@ -743,14 +761,12 @@ class _DetailListCard extends StatelessWidget {
   // 매개변수:
   // - title (String): 화면·구역·항목에 표시할 제목.
   // - items (List<String>): 표시·정리할 설명 또는 주의 문구 목록.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // - useInsetSurface (bool): 설명 목록을 내부 배경 면으로 감쌀지 여부.
   // - noInformation (String): 값이나 약품 정보를 제공할 수 없을 때 사용할 대체 문구.
   // 반환값: 입력 설정이 반영된 _DetailListCard 인스턴스.
   const _DetailListCard({
     required this.title,
     required this.items,
-    required this.scale,
     this.useInsetSurface = false,
     required this.noInformation,
   });
@@ -771,7 +787,7 @@ class _DetailListCard extends StatelessWidget {
             visibleItems[index],
             style: TextStyle(
               color: MedBuddyColors.textMuted,
-              fontSize: 14 * scale,
+              fontSize: 14,
               height: 1.5,
               fontWeight: FontWeight.w600,
               letterSpacing: 0,
@@ -796,7 +812,7 @@ class _DetailListCard extends StatelessWidget {
             title,
             style: TextStyle(
               color: MedBuddyColors.textStrong,
-              fontSize: 16 * scale,
+              fontSize: 16,
               fontWeight: FontWeight.w700,
               letterSpacing: 0,
             ),
@@ -967,7 +983,8 @@ class _MedicationDetailText {
   // 매개변수:
   // - language (String): 화면 문구를 선택할 언어 코드.
   // 반환값: 입력 설정이 반영된 _MedicationDetailText 인스턴스.
-  const _MedicationDetailText(String language) : isEnglish = language == 'en';
+  _MedicationDetailText(String language)
+    : isEnglish = isEnglishLanguage(language);
 
   // 함수이름: title
   // 함수역할: 현재 언어와 입력값에 맞춰 "약 상세정보" 문구를 제공한다.

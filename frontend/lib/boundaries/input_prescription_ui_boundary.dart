@@ -549,7 +549,6 @@ class _HomeActionCard extends StatelessWidget {
       _HomeActionTone.lavender => MedBuddyColors.infoBlue,
       _HomeActionTone.butter => MedBuddyColors.reminderAccent,
     };
-    final scale = userSetting.contentTextScale;
 
     return Material(
       color: background,
@@ -573,8 +572,8 @@ class _HomeActionCard extends StatelessWidget {
             ),
           ),
           child: compact
-              ? _buildCompactContent(foreground, secondary, accent, scale)
-              : _buildListContent(foreground, secondary, accent, scale),
+              ? _buildCompactContent(foreground, secondary, accent)
+              : _buildListContent(foreground, secondary, accent),
         ),
       ),
     );
@@ -584,13 +583,11 @@ class _HomeActionCard extends StatelessWidget {
   // 함수역할: 큰 글씨에서도 아이콘·화살표·제목·설명을 유지하고 텍스트를 자연스럽게 줄바꿈한다.
   // 매개변수:
   // - foreground, secondary, accent (Color): 제목·설명·아이콘에 사용할 색상.
-  // - scale (double): 콘텐츠 배율. 전역 접근성 배율은 Text가 별도로 상속한다.
   // 반환값: 고정 높이에 맞춰 축소하지 않는 카드 내부 위젯.
   Widget _buildCompactContent(
     Color foreground,
     Color secondary,
     Color accent,
-    double scale,
   ) {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -613,7 +610,7 @@ class _HomeActionCard extends StatelessWidget {
               : TextOverflow.ellipsis,
           style: TextStyle(
             color: foreground,
-            fontSize: 14 * scale,
+            fontSize: 14,
             height: 1.15,
             fontWeight: FontWeight.w700,
           ),
@@ -627,7 +624,7 @@ class _HomeActionCard extends StatelessWidget {
               : TextOverflow.ellipsis,
           style: TextStyle(
             color: secondary,
-            fontSize: 11 * scale,
+            fontSize: 11,
             height: 1.25,
             fontWeight: FontWeight.w600,
           ),
@@ -640,13 +637,11 @@ class _HomeActionCard extends StatelessWidget {
   // 함수역할: 좁은 화면의 한 열 카드에서도 큰 글씨의 제목과 설명을 생략하지 않는다.
   // 매개변수:
   // - foreground, secondary, accent (Color): 제목·설명·아이콘 색상.
-  // - scale (double): 전역 접근성 배율과 중복되지 않는 콘텐츠 배율.
   // 반환값: 내용 높이만큼 늘어나는 목록형 카드 내부 위젯.
   Widget _buildListContent(
     Color foreground,
     Color secondary,
     Color accent,
-    double scale,
   ) {
     return Row(
       children: [
@@ -665,7 +660,7 @@ class _HomeActionCard extends StatelessWidget {
                     : TextOverflow.ellipsis,
                 style: TextStyle(
                   color: foreground,
-                  fontSize: 17 * scale,
+                  fontSize: 17,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -678,7 +673,7 @@ class _HomeActionCard extends StatelessWidget {
                     : TextOverflow.ellipsis,
                 style: TextStyle(
                   color: secondary,
-                  fontSize: 12 * scale,
+                  fontSize: 12,
                   height: 1.3,
                   fontWeight: FontWeight.w600,
                 ),
@@ -796,11 +791,11 @@ class _HomeText {
   const _HomeText(this.language);
 
   // 함수이름: isEnglish
-  // 함수역할: 언어 코드가 en과 정확히 일치하는지 확인한다.
+  // 함수역할: 공통 언어 판별 규칙으로 언어 코드가 영어인지 확인한다.
   // 매개변수:
   // - 없음.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
-  bool get isEnglish => language == 'en';
+  bool get isEnglish => isEnglishLanguage(language);
 
   // 함수이름: brandSubtitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "건강한 복약 관리 도우미" 문구를 제공한다.
@@ -921,9 +916,7 @@ class _HomeEncouragementPanel extends StatelessWidget {
   // 반환값: 여백은 유지하면서 내용에 따라 높이가 정해지는 복약 현황 패널.
   @override
   Widget build(BuildContext context) {
-    final isEnglish = userSetting.language.trim().toLowerCase().startsWith(
-      'en',
-    );
+    final isEnglish = userSetting.isEnglish;
     final dashboard = _HomeDashboardSummary.from(
       schedules: schedules,
       reminderSettings: reminderSettings,

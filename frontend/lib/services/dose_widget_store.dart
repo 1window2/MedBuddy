@@ -95,7 +95,7 @@ extension DoseWidgetStore on DoseOutboxStore {
             'key': old?['key'] ?? newWidgetActionToken(),
             'alias': alias?.isNotEmpty == true
                 ? alias
-                : '${config['language'] == 'en' ? 'Patient' : '환자'} ${patient.substring(patient.length > 4 ? patient.length - 4 : 0).toUpperCase()}',
+                : '${isEnglishLanguage(config['language']?.toString()) ? 'Patient' : '환자'} ${patient.substring(patient.length > 4 ? patient.length - 4 : 0).toUpperCase()}',
           });
         }
         previous['patient_cache'] = {...patientCache, 'patients': patients};
@@ -194,6 +194,48 @@ extension DoseWidgetStore on DoseOutboxStore {
       }, conflictAlgorithm: ConflictAlgorithm.replace);
       return result;
     });
+  }
+
+  // 함수이름: widgetRefreshNeed
+  // 함수역할: 저장소를 바꾸지 않고, 백그라운드 갱신이 서버 조회를 해야 하는지 판단할 값을 읽는다.
+  //   updateWidget과 달리 버튼 토큰을 새로 만들지 않으므로 위젯에 발행하지 않아도 안전하다.
+  // 매개변수: now - 기준 시각.
+  // 반환값: 활성 계정과, 위젯이 표시할 오늘 조회 결과(본인 일정 또는 실패하지 않은 환자 조회)의
+  //   보유 여부. 로그아웃 상태이거나 위젯 상태를 아직 만들지 않았으면 null.
+  Future<({String owner, bool snapshotCurrent})?> widgetRefreshNeed({
+    required DateTime now,
+  }) async {
+    Future<Map<String, dynamic>?> read(String name, String token) async {
+      final rows = await db.query(
+        'metadata',
+        where: 'name = ?',
+        whereArgs: [name],
+      );
+      return rows.isEmpty
+          ? null
+          : _decrypt(rows.single['value'] as String, token);
+    }
+
+    final active = await db.query(
+      'metadata',
+      where: 'name = ?',
+      whereArgs: ['active'],
+    );
+    final token = active.firstOrNull?['value'] as String?;
+    if (token == null || token.isEmpty) return null;
+    final widget = await read('widget:$token', token);
+    final owner = widget?['owner'] as String?;
+    if (owner == null) return null;
+    final day = doseWidgetDay(now);
+    if ((widget?['config'] as Map?)?['source'] == 'patients') {
+      final cache = widget?['patient_cache'] as Map?;
+      return (
+        owner: owner,
+        snapshotCurrent: cache?['date'] == day && cache?['failed'] != true,
+      );
+    }
+    final cache = await read('cache:$token', token);
+    return (owner: owner, snapshotCurrent: cache?['date'] == day);
   }
 
   // Resolve only current, active-account patient keys, never hashes from intents.

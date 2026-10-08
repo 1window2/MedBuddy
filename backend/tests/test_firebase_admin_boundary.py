@@ -79,17 +79,17 @@ def test_firebase_admin_app_initializes_once_under_concurrency() -> None:
 
     # Function Name: initialize_app
     # Description:
-    # - Checks the project and named-app options, marks initialization complete, and returns
-    #   the shared app object.
+    # - Checks the project, HTTP timeout and named-app options, marks initialization complete,
+    #   and returns the shared app object.
     # Parameters:
-    # - options (dict[str, str]): Firebase initialization options containing the expected
-    #   project ID.
+    # - options (dict[str, object]): Firebase initialization options containing the expected
+    #   project ID and the bounded HTTP timeout in seconds.
     # - name (str): Named Firebase application to initialize.
     # Returns:
     # - object: Shared Firebase app object registered by the initializer double.
-    def initialize_app(*, options: dict[str, str], name: str) -> object:
+    def initialize_app(*, options: dict[str, object], name: str) -> object:
         nonlocal initialized
-        assert options == {"projectId": "medbuddy-test"}
+        assert options == {"projectId": "medbuddy-test", "httpTimeout": 10}
         assert name == "medbuddy-backend"
         initialized = True
         return initialized_app

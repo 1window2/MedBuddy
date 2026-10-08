@@ -29,6 +29,12 @@ class ManageUserSetting {
   static const String _legacyFontSizeKey = 'user_setting_font_size';
   static const String _legacyReadingSpeedKey = 'user_setting_reading_speed';
   static const String _legacyLanguageKey = 'user_setting_language';
+  // 계정별 저장으로 바뀌기 전의 키. 계정 삭제 정리에서 이 이름만 정확히 지울 수 있게 공개한다.
+  static const List<String> legacyUnscopedKeys = [
+    _legacyFontSizeKey,
+    _legacyReadingSpeedKey,
+    _legacyLanguageKey,
+  ];
   static const Duration _requestTimeout = Duration(seconds: 5);
 
   final String baseUrl;
@@ -36,6 +42,15 @@ class ManageUserSetting {
   final bool useRemotePersistence;
   final http.Client _client;
   final bool _ownsClient;
+  bool _lastLookupReachedServer = false;
+
+  // 함수이름: lastLookupReachedServer
+  // 함수역할: 가장 최근 설정 조회가 서버 사본을 받았는지 알려 준다. 캐시만으로 채운 설정을 자동 저장해 서버의 더 새로운 값을 덮어쓰지 않게 하는 데 쓴다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - bool: 최근 requestUserSetting이 서버 응답으로 끝났으면 true, 캐시로 대체했거나 아직 조회하지 않았으면 false.
+  bool get lastLookupReachedServer => _lastLookupReachedServer;
 
   // Function Name: ManageUserSetting
   // Description: Binds user-scoped preference persistence to the backend and HTTP client, with an explicit switch for local-only operation.
@@ -63,6 +78,7 @@ class ManageUserSetting {
   // - 저장값이 없으면 기본값으로 채운 UserSetting
   Future<UserSetting> requestUserSetting() async {
     final cachedSetting = await _requestCachedUserSetting();
+    _lastLookupReachedServer = false;
     if (!useRemotePersistence) {
       return cachedSetting;
     }
@@ -73,14 +89,16 @@ class ManageUserSetting {
           .timeout(_requestTimeout);
       final responseBody = ApiResponseParser.decodeBody(response);
       if (response.statusCode != 200) {
-        throw StateError(
-          'User setting lookup failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        throw ApiResponseParser.httpFailure(
+          'User setting lookup failed',
+          response,
+          responseBody,
         );
       }
 
       final setting = _decodeUserSetting(responseBody);
       await _cacheUserSetting(setting);
+      _lastLookupReachedServer = true;
       return setting;
     } catch (error, stackTrace) {
       developer.log(
@@ -94,61 +112,15 @@ class ManageUserSetting {
   }
 
   // 함수이름: saveUserSetting
-  // 함수역할: 설정 화면에서 선택한 옵션을 실제 설정값으로 변환한 뒤 저장한다.
+  // 함수역할: 이미 완성된 설정 객체를 값 변환 없이 현재 사용자 범위로 기기에 저장하고 서버와 동기화한다. 설정 화면의 초안과 기기 언어 재동기화처럼 설정 전체를 가진 호출부가 사용한다.
   // 매개변수:
-  // - currentSetting (UserSetting): 현재 사용자 설정
-  // - fontSizeOption (String): small, medium, large 중 선택된 글씨 크기 옵션
-  // - readingSpeedOption (String): slow, medium, fast 중 선택된 읽기 속도 옵션
-  // - language (String): ko 또는 en 언어 코드
-  // - languageMode (String?): system·ko·en 언어 선택 모드
-  // - timeFormat (String?): 12h 또는 24h 시각 표시 방식
-  // - medicationNotificationsEnabled (bool?): 본인 복약 시간 알림 허용 여부
-  // - caregiverNotificationsEnabled (bool?): 보호자 복약 상태 알림 허용 여부
-  // - chatNotificationsEnabled (bool?): 가족 채팅 알림 허용 여부
-  // - notificationDetailMode (String?): full 또는 type_only 알림 세부 표시 모드
-  // - defaultMorningTime (String?): 새 아침 알림의 HH:mm 기본 시각
-  // - defaultLunchTime (String?): 새 점심 알림의 HH:mm 기본 시각
-  // - defaultEveningTime (String?): 새 저녁 알림의 HH:mm 기본 시각
-  // - defaultBedtime (String?): 새 취침 전 알림의 HH:mm 기본 시각
+  // - setting (UserSetting): 저장할 설정 전체. 사용자 해시는 이 컨트롤의 범위로 바꾼다.
   // 반환값:
   // - 저장 완료된 설정과 서버 동기화 여부
-  Future<UserSettingSaveResult> saveUserSetting({
-    required UserSetting currentSetting,
-    required String fontSizeOption,
-    required String readingSpeedOption,
-    required String language,
-    String? languageMode,
-    String? timeFormat,
-    String? homeScheduleSource,
-    bool? medicationNotificationsEnabled,
-    bool? caregiverNotificationsEnabled,
-    bool? chatNotificationsEnabled,
-    String? notificationDetailMode,
-    String? defaultMorningTime,
-    String? defaultLunchTime,
-    String? defaultEveningTime,
-    String? defaultBedtime,
-  }) async {
-    final nextSetting = currentSetting
-        .copyWith(userHash: _normalizedUserHash)
-        .updateUserSetting(
-          fontSize: UserSetting.fontSizeFromOption(fontSizeOption),
-          readingSpeed: UserSetting.readingSpeedFromOption(readingSpeedOption),
-          language: language,
-        )
-        .copyWith(
-          languageMode: languageMode,
-          timeFormat: timeFormat,
-          homeScheduleSource: homeScheduleSource,
-          medicationNotificationsEnabled: medicationNotificationsEnabled,
-          caregiverNotificationsEnabled: caregiverNotificationsEnabled,
-          chatNotificationsEnabled: chatNotificationsEnabled,
-          notificationDetailMode: notificationDetailMode,
-          defaultMorningTime: defaultMorningTime,
-          defaultLunchTime: defaultLunchTime,
-          defaultEveningTime: defaultEveningTime,
-          defaultBedtime: defaultBedtime,
-        );
+  Future<UserSettingSaveResult> saveUserSetting(
+    UserSetting setting,
+  ) async {
+    final nextSetting = setting.copyWith(userHash: _normalizedUserHash);
 
     await _cacheUserSetting(nextSetting);
 
@@ -170,9 +142,10 @@ class ManageUserSetting {
       final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
-        throw StateError(
-          'User setting save failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        throw ApiResponseParser.httpFailure(
+          'User setting save failed',
+          response,
+          responseBody,
         );
       }
 
@@ -216,10 +189,12 @@ class ManageUserSetting {
           preferences.getDouble(_readingSpeedKey) ??
           preferences.getDouble(_legacyReadingSpeedKey) ??
           fallbackSetting.readingSpeed,
-      language:
-          preferences.getString(_languageKey) ??
-          preferences.getString(_legacyLanguageKey) ??
-          fallbackSetting.language,
+      // 서버 응답과 같은 기준으로 ko·en만 남겨 캐시 값이 화면마다 다르게 판정되지 않게 한다.
+      language: normalizeAppLanguage(
+        preferences.getString(_languageKey) ??
+            preferences.getString(_legacyLanguageKey) ??
+            fallbackSetting.language,
+      ),
       languageMode:
           preferences.getString(_languageModeKey) ??
           preferences.getString(_languageKey) ??

@@ -2,7 +2,7 @@
 # Role: Regression coverage for calendar worker isolation and session lifetime.
 
 import asyncio
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from threading import Event, get_ident
 from unittest.mock import AsyncMock, MagicMock
@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
 from boundaries.korean_holiday_api_boundary import PersistentKoreanHolidayLookup
 from boundaries.pharmacy_api_boundary import PharmacyApiUnavailableError
@@ -110,3 +110,38 @@ def test_calendar_database_failure_is_sanitized_and_session_closed(operation: st
         else:
             cache.replace_korean_holidays(2026, 9, frozenset())
     db.__exit__.assert_called_once()
+
+
+# Function Name: test_month_snapshot_is_served_only_within_the_accepted_age
+# Description: A stored month is returned while its fetch marker is younger than the caller's
+#   limit and reported as missing once it is older, so the 30-day fresh read refreshes it while
+#   the 730-day outage fallback can still use it. A verified empty month is not a missing one.
+# Parameters: tmp_path: Isolated file database directory.
+# Returns: None.
+def test_month_snapshot_is_served_only_within_the_accepted_age(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'calendar-age.db'}")
+    KoreanHolidayRecord.__table__.create(engine)
+    KoreanHolidayMonthFetchRecord.__table__.create(engine)
+    cache = SessionScopedKoreanHolidayCache(sessionmaker(bind=engine))
+    try:
+        cache.replace_korean_holidays(2026, 10, frozenset({date(2026, 10, 9)}))
+        cache.replace_korean_holidays(2026, 11, frozenset())
+        fetched_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=31)
+        with Session(engine) as db:
+            db.get(KoreanHolidayMonthFetchRecord, "2026-10").fetched_at = fetched_at
+            db.commit()
+
+        assert cache.get_cached_korean_holidays(
+            2026, 10, max_age=timedelta(days=30),
+        ) is None
+        assert cache.get_cached_korean_holidays(
+            2026, 10, max_age=timedelta(days=730),
+        ) == frozenset({date(2026, 10, 9)})
+        assert cache.get_cached_korean_holidays(
+            2026, 11, max_age=timedelta(days=30),
+        ) == frozenset()
+        assert cache.get_cached_korean_holidays(
+            2026, 12, max_age=timedelta(days=730),
+        ) is None
+    finally:
+        engine.dispose()

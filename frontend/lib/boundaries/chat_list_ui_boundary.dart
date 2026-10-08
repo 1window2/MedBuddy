@@ -7,6 +7,7 @@ import '../controls/manage_chat_list_control.dart';
 import '../entities/chat_message_entity.dart';
 import '../entities/patient_caregiver_link_entity.dart';
 import '../entities/user_setting_entity.dart';
+import '../services/authenticated_api_client.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/medbuddy_page_header.dart';
 import 'linked_chat_ui_boundary.dart';
@@ -14,27 +15,31 @@ import 'linked_chat_ui_boundary.dart';
 // 클래스명: ChatListUI
 // 역할: 대화 상대·최근 메시지와 갱신 상태를 표시하고 선택한 연동의 채팅을 연다.
 // 주요 책임: 목록 표시, 새로고침·연동 관리 진입, 기존 채팅 화면 재사용.
-// 속성: control: 사용자 범위의 목록 상태, userSetting: 언어·접근성, onManageLinks: 연동 관리 동작.
+// 속성: control: 사용자 범위의 목록 상태, userSetting: 언어·접근성, onManageLinks: 연동 관리 동작,
+//       apiClient: 연 채팅이 함께 쓸 세션 인증 클라이언트(없으면 채팅 화면이 직접 만든다).
 class ChatListUI extends StatelessWidget {
   final ManageChatList control;
   final UserSetting userSetting;
   final VoidCallback onManageLinks;
+  final AuthenticatedApiClient? apiClient;
 
   // 함수이름: ChatListUI
-  // 함수역할: 목록 Control과 표시 설정을 주입받는다. Control 소유권은 상위 화면에 있다.
-  // 매개변수: key, control, userSetting, onManageLinks: 위젯 식별자, 상태, 설정, 연동 관리 명령.
+  // 함수역할: 목록 Control과 표시 설정을 주입받는다. Control과 apiClient 소유권은 상위 화면에 있다.
+  // 매개변수: key, control, userSetting, onManageLinks: 위젯 식별자, 상태, 설정, 연동 관리 명령,
+  //           apiClient: 401 처리를 세션과 공유할 선택적 인증 클라이언트.
   // 반환값: 채팅 목록 UI.
   const ChatListUI({
     super.key,
     required this.control,
     required this.userSetting,
     required this.onManageLinks,
+    this.apiClient,
   });
 
   // 함수이름: _isEnglish
   // 함수역할: 현재 설정에서 영어 표시 여부를 읽는다.
   // 매개변수: 없음. 반환값: 영어 여부.
-  bool get _isEnglish => userSetting.language.toLowerCase().startsWith('en');
+  bool get _isEnglish => userSetting.isEnglish;
 
   // 함수이름: build
   // 함수역할: 앱 공통 제목 크기·굵기를 적용하고 큰 글씨에서도 제목과 도구가 잘리지 않게 목록을 표시한다.
@@ -59,7 +64,7 @@ class ChatListUI extends StatelessWidget {
               prominent: true,
               actions: [
                 IconButton(
-                  onPressed: _refresh,
+                  onPressed: _refreshRequested,
                   icon: const Icon(Icons.refresh),
                   tooltip: _isEnglish ? 'Refresh' : '새로고침',
                 ),
@@ -82,7 +87,7 @@ class ChatListUI extends StatelessWidget {
               ),
             Expanded(
               child: RefreshIndicator(
-                onRefresh: _refresh,
+                onRefresh: _refreshRequested,
                 child: ListView(
                   padding: const EdgeInsets.only(top: 4, bottom: 20),
                   physics: const AlwaysScrollableScrollPhysics(),
@@ -192,6 +197,12 @@ class ChatListUI extends StatelessWidget {
   // 매개변수: 없음. 반환값: 갱신 완료.
   Future<void> _refresh() => control.refresh(includeMessages: true);
 
+  // 함수이름: _refreshRequested
+  // 함수역할: 사용자가 직접 누른 새로고침은 진행 표시와 함께 갱신한다.
+  // 매개변수: 없음. 반환값: 갱신 완료.
+  Future<void> _refreshRequested() =>
+      control.refresh(includeMessages: true, showLoading: true);
+
   // 함수이름: _openChat
   // 함수역할: 기존 권한 검증·복약 첨부·실시간 대화 화면을 열고 돌아오면 미리보기를 갱신한다.
   // 매개변수: context, link: 표시 문맥과 선택한 연동. 반환값: 대화 종료와 목록 갱신 완료.
@@ -210,6 +221,7 @@ class ChatListUI extends StatelessWidget {
           patientHash: link.patientHash,
           peerName: control.peerName(link, isEnglish: _isEnglish),
           userSetting: userSetting,
+          apiClient: apiClient,
         ),
       ),
     );

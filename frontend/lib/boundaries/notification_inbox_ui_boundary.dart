@@ -94,7 +94,7 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
 
   // 함수이름: _english
   // 함수역할: 현재 언어를 판별한다. 매개변수: 없음. 반환값: 영어 여부.
-  bool get _english => widget.userSetting.language == 'en';
+  bool get _english => widget.userSetting.isEnglish;
 
   // 함수이름: initState
   // 함수역할: 열릴 때 최신 기록을 조회한다. 매개변수: 없음. 반환값: 없음.

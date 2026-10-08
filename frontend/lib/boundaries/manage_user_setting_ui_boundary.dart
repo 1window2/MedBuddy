@@ -11,6 +11,7 @@ import '../widgets/medbuddy_preference_row.dart';
 
 import '../controls/app_language_control.dart';
 import '../controls/authentication_control.dart';
+import '../controls/manage_account_control.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/tts_service.dart';
 import '../theme/medbuddy_theme.dart';
@@ -69,11 +70,12 @@ class ManageUserSettingUI extends StatefulWidget {
   final ExtendedUserSettingSaver? onExtendedSettingSaveRequested;
   final VoidCallback? onMedicationScheduleRequested;
   final Future<void> Function()? onDeviceNotificationSettingsRequested;
+  // 이전 세 필드 저장 콜백. onExtendedSettingSaveRequested가 없을 때만 쓰이며, 호출부가 모두 옮겨 가면 삭제한다.
   final Future<UserSettingSaveResult> Function({
     required String fontSizeOption,
     required String readingSpeedOption,
     required String language,
-  })
+  })?
   onSettingSaveRequested;
 
   // 함수이름: ManageUserSettingUI
@@ -83,12 +85,12 @@ class ManageUserSettingUI extends StatefulWidget {
   // - initialSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
   // - initiallyShowDisplayAndVoice (bool): 설정값 변경 없이 화면 및 음성 화면으로 바로 진입한다.
   // - authenticationControl (AuthenticationControl): 인증·계정·다중 인증 상태와 명령 제공자.
-  // - onSettingSaveRequested (Future<UserSettingSaveResult> Function({required String fontSizeOption, required String readingSpeedOption, required String language})): 편집한 사용자 설정을 저장하고 동기화 결과를 반환할 콜백.
+  // - onSettingSaveRequested (Future<UserSettingSaveResult> Function({required String fontSizeOption, required String readingSpeedOption, required String language})?): 글씨 크기·읽기 속도·언어만 전달하는 이전 저장 콜백. onExtendedSettingSaveRequested가 없을 때만 사용한다.
   // - onSignOutRequested (Future<void> Function()?): 현재 계정을 로그아웃할 콜백.
   // - onDeleteAccountRequested (Future<void> Function()?): 확인된 계정 삭제를 수행할 콜백.
   // - previewSpeaker (SettingPreviewSpeaker?): 미리보기 문장을 현재 설정으로 읽는 함수.
   // - previewStopper (SettingPreviewStopper?): 진행 중인 음성 미리보기를 중지하는 함수.
-  // - onExtendedSettingSaveRequested (ExtendedUserSettingSaver?): 편집한 사용자 설정을 저장하고 동기화 결과를 반환할 콜백.
+  // - onExtendedSettingSaveRequested (ExtendedUserSettingSaver?): 편집한 설정 전체를 저장하고 동기화 결과를 반환할 콜백. 두 저장 콜백 중 하나는 반드시 전달한다.
   // - onMedicationScheduleRequested (VoidCallback?): 오늘 복약 일정 화면을 여는 콜백.
   // - onDeviceNotificationSettingsRequested (Future<void> Function()?): 운영체제의 앱 알림 설정을 여는 콜백.
   // 반환값: 입력 설정이 반영된 ManageUserSettingUI 인스턴스.
@@ -97,7 +99,7 @@ class ManageUserSettingUI extends StatefulWidget {
     required this.initialSetting,
     this.initiallyShowDisplayAndVoice = false,
     required this.authenticationControl,
-    required this.onSettingSaveRequested,
+    this.onSettingSaveRequested,
     this.onSignOutRequested,
     this.onDeleteAccountRequested,
     this.previewSpeaker,
@@ -105,7 +107,11 @@ class ManageUserSettingUI extends StatefulWidget {
     this.onExtendedSettingSaveRequested,
     this.onMedicationScheduleRequested,
     this.onDeviceNotificationSettingsRequested,
-  });
+  }) : assert(
+         onExtendedSettingSaveRequested != null ||
+             onSettingSaveRequested != null,
+         'ManageUserSettingUI needs a settings saver.',
+       );
 
   // 함수이름: createState
   // 함수역할: 접근성·기본 복약 시각·계정 보안 설정의 입력·표시 상태를 관리할 State 객체를 만든다.
@@ -133,25 +139,10 @@ enum _SettingSection {
 // - 글씨 크기·읽기 속도·언어·시간 형식과 음성 미리보기를 배치한다.
 // - 계정 요약과 지원되는 MFA·로그아웃·계정 삭제 명령을 표시한다.
 // 속성:
-// - _fontSize (String): 기준 글씨 크기 또는 선택한 크기 옵션.
-// - _readingSpeed (String): 읽어주기에 사용할 음성 속도 옵션.
-// - _language (String): 화면 문구를 선택할 언어 코드.
-// - _languageMode (String): 기기 언어 따르기 또는 명시 언어 선택 값.
+// - _draft (UserSetting): 저장 전까지 화면에서 편집 중인 설정 전체.
+// - _savedSetting (UserSetting): 마지막으로 저장된 설정. 편집 중인 값과 비교해 미저장 변경을 판정한다.
 class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
-  late String _fontSize;
-  late String _readingSpeed;
-  late String _language;
-  late String _languageMode;
-  late String _timeFormat;
-  late String _homeScheduleSource;
-  late bool _medicationNotificationsEnabled;
-  late bool _caregiverNotificationsEnabled;
-  late bool _chatNotificationsEnabled;
-  late String _notificationDetailMode;
-  late String _defaultMorningTime;
-  late String _defaultLunchTime;
-  late String _defaultEveningTime;
-  late String _defaultBedtime;
+  late UserSetting _draft;
   bool _isSaving = false;
   // 마지막 저장값과 비교하며 중복 종료 확인을 막는다.
   late UserSetting _savedSetting;
@@ -162,7 +153,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   _SettingSection _selectedSection = _SettingSection.overview;
 
   // 함수이름: initState
-  // 함수역할: 현재 설정을 수정용 필드에 복사하고 주입된 음성 재생기가 없으면 TTS를 준비한다.
+  // 함수역할: 현재 설정을 편집용 초안으로 복사하고 주입된 음성 재생기가 없으면 TTS를 준비한다.
   // 매개변수:
   // - 없음.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
@@ -172,10 +163,8 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     if (widget.initiallyShowDisplayAndVoice) {
       _selectedSection = _SettingSection.displayAndVoice;
     }
-    _savedSetting = widget.initialSetting;
-    _restoreDraft(_savedSetting);
-    _language = widget.initialSetting.language == 'en' ? 'en' : 'ko';
-    _savedSetting = _draftSetting;
+    _savedSetting = _editableCopy(widget.initialSetting);
+    _draft = _savedSetting;
     if (widget.previewSpeaker == null) {
       _ownedTtsService = TTSService();
     }
@@ -203,10 +192,9 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   @override
   Widget build(BuildContext context) {
     final text = _SettingText(_language);
-    final draftSetting = _copyDraftTo(widget.initialSetting);
     final platformMediaQuery = MediaQueryData.fromView(View.of(context));
     final systemTextScale = platformMediaQuery.textScaler.scale(16) / 16;
-    final selectedTextScale = draftSetting.resolveTextScale(systemTextScale);
+    final selectedTextScale = _draft.resolveTextScale(systemTextScale);
     final mediaQuery = MediaQuery.of(context);
     final accountPresentation = _resolveAccountPresentation(text);
 
@@ -314,14 +302,14 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         text: text,
         accountPresentation: accountPresentation,
         medicationAndNotificationSummary: text.medicationAndNotificationSummary(
-          medicationEnabled: _medicationNotificationsEnabled,
-          caregiverEnabled: _caregiverNotificationsEnabled,
-          chatEnabled: _chatNotificationsEnabled,
+          medicationEnabled: _draft.medicationNotificationsEnabled,
+          caregiverEnabled: _draft.caregiverNotificationsEnabled,
+          chatEnabled: _draft.chatNotificationsEnabled,
         ),
         displayAndVoiceSummary: text.displayAndVoiceSummary(
           fontSize: _fontSize,
           readingSpeed: _readingSpeed,
-          languageMode: _languageMode,
+          languageMode: _draft.languageMode,
         ),
         // 함수이름: _buildSelectedSection.onSectionSelected callback
         // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에서 캡처된 작업 `setState(() => _selectedSection = section)`을 실행한다.
@@ -363,55 +351,43 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
               switchKey: const ValueKey('medicationNotificationsSwitch'),
               title: text.medicationNotificationsTitle,
               description: text.medicationNotificationsDescription,
-              enabled: _medicationNotificationsEnabled,
+              enabled: _draft.medicationNotificationsEnabled,
               // 함수이름: _buildMedicationAndNotificationSettings.onChanged callback
-              // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에서 캡처된 작업 `setState(() => _medicationNotificationsEnabled = enabled)`을 실행한다.
+              // 함수역할: 본인 복약 알림 허용 여부를 편집 중인 설정 초안에 반영한다.
               // 매개변수:
               // - enabled (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
               // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-              onChanged: (enabled) =>
-                  // 함수이름: _buildMedicationAndNotificationSettings.setState callback
-                  // 함수역할: 접근성·기본 복약 시각·계정 보안 설정의 입력·요청 상태를 `_medicationNotificationsEnabled = enabled`로 갱신한다.
-                  // 매개변수:
-                  // - 없음.
-                  // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-                  setState(() => _medicationNotificationsEnabled = enabled),
+              onChanged: (enabled) => _setDraft(
+                _draft.copyWith(medicationNotificationsEnabled: enabled),
+              ),
             ),
             _SettingToggle(
               switchKey: const ValueKey('caregiverNotificationsSwitch'),
               title: text.caregiverNotificationsTitle,
               description: text.caregiverNotificationsDescription,
-              enabled: _caregiverNotificationsEnabled,
+              enabled: _draft.caregiverNotificationsEnabled,
               // 함수이름: _buildMedicationAndNotificationSettings.onChanged callback
-              // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에서 캡처된 작업 `setState(() => _caregiverNotificationsEnabled = enabled)`을 실행한다.
+              // 함수역할: 보호자 알림 허용 여부를 편집 중인 설정 초안에 반영한다.
               // 매개변수:
               // - enabled (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
               // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-              onChanged: (enabled) =>
-                  // 함수이름: _buildMedicationAndNotificationSettings.setState callback
-                  // 함수역할: 접근성·기본 복약 시각·계정 보안 설정의 입력·요청 상태를 `_caregiverNotificationsEnabled = enabled`로 갱신한다.
-                  // 매개변수:
-                  // - 없음.
-                  // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-                  setState(() => _caregiverNotificationsEnabled = enabled),
+              onChanged: (enabled) => _setDraft(
+                _draft.copyWith(caregiverNotificationsEnabled: enabled),
+              ),
             ),
             _SettingToggle(
               switchKey: const ValueKey('chatNotificationsSwitch'),
               title: text.chatNotificationsTitle,
               description: text.chatNotificationsDescription,
-              enabled: _chatNotificationsEnabled,
+              enabled: _draft.chatNotificationsEnabled,
               // 함수이름: _buildMedicationAndNotificationSettings.onChanged callback
-              // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에서 캡처된 작업 `setState(() => _chatNotificationsEnabled = enabled)`을 실행한다.
+              // 함수역할: 채팅 알림 허용 여부를 편집 중인 설정 초안에 반영한다.
               // 매개변수:
               // - enabled (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
               // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-              onChanged: (enabled) =>
-                  // 함수이름: _buildMedicationAndNotificationSettings.setState callback
-                  // 함수역할: 접근성·기본 복약 시각·계정 보안 설정의 입력·요청 상태를 `_chatNotificationsEnabled = enabled`로 갱신한다.
-                  // 매개변수:
-                  // - 없음.
-                  // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-                  setState(() => _chatNotificationsEnabled = enabled),
+              onChanged: (enabled) => _setDraft(
+                _draft.copyWith(chatNotificationsEnabled: enabled),
+              ),
             ),
           ],
         ),
@@ -422,11 +398,11 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
           children: [
             _DefaultMedicationTimePanel(
               text: text,
-              userSetting: _draftSetting,
-              morningTime: _defaultMorningTime,
-              lunchTime: _defaultLunchTime,
-              eveningTime: _defaultEveningTime,
-              bedtime: _defaultBedtime,
+              userSetting: _draft,
+              morningTime: _draft.defaultMorningTime,
+              lunchTime: _draft.defaultLunchTime,
+              eveningTime: _draft.defaultEveningTime,
+              bedtime: _draft.defaultBedtime,
               onTimeRequested: _selectDefaultMedicationTime,
             ),
             MedBuddyPreferenceRow(
@@ -444,7 +420,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
             MedBuddyPreferenceRow(
               key: const ValueKey('notificationPrivacySelector'),
               title: text.notificationContentTitle,
-              value: _notificationDetailMode == 'full'
+              value: _draft.notificationDetailMode == 'full'
                   ? text.notificationFullSummary
                   : text.notificationTypeOnlySummary,
               onTap: _selectNotificationPrivacy,
@@ -493,7 +469,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       preferenceKey: 'notificationPrivacy',
       title: text.notificationPrivacyTitle,
       description: text.notificationPrivacyDescription,
-      selectedValue: _notificationDetailMode,
+      selectedValue: _draft.notificationDetailMode,
       options: [
         _SettingOption(value: 'full', label: text.notificationPrivacyFull),
         _SettingOption(
@@ -503,7 +479,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       ],
     );
     if (!mounted || selected == null) return;
-    setState(() => _notificationDetailMode = selected);
+    _setDraft(_draft.copyWith(notificationDetailMode: selected));
   }
 
   // 함수이름: _showSettingOptions
@@ -519,7 +495,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   }) {
     final systemScale =
         MediaQueryData.fromView(View.of(context)).textScaler.scale(16) / 16;
-    final textScale = _draftSetting.resolveTextScale(systemScale);
+    final textScale = _draft.resolveTextScale(systemScale);
     return showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
@@ -650,7 +626,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
             _buildSettingChoice(
               preferenceKey: 'homeScheduleSource',
               title: text.isEnglish ? 'Home schedule' : '홈 복약 일정',
-              selectedValue: _homeScheduleSource,
+              selectedValue: _draft.homeScheduleSource,
               options: [
                 _SettingOption(
                   value: 'self',
@@ -662,7 +638,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                 ),
               ],
               onSelected: (value) =>
-                  setState(() => _homeScheduleSource = value),
+                  _setDraft(_draft.copyWith(homeScheduleSource: value)),
             ),
             _buildSettingChoice(
               preferenceKey: 'fontSize',
@@ -686,12 +662,16 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                 ),
               ],
               // 글씨 크기는 저장 전에도 현재 설정 화면에서 미리 확인한다.
-              onSelected: (value) => setState(() => _fontSize = value),
+              onSelected: (value) => _setDraft(
+                _draft.copyWith(
+                  fontSize: UserSetting.fontSizeFromOption(value),
+                ),
+              ),
             ),
             _buildSettingChoice(
               preferenceKey: 'language',
               title: text.languageTitle,
-              selectedValue: _languageMode,
+              selectedValue: _draft.languageMode,
               options: [
                 _SettingOption(
                   value: 'system',
@@ -705,13 +685,14 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
             _buildSettingChoice(
               preferenceKey: 'timeFormat',
               title: text.timeFormatTitle,
-              selectedValue: _timeFormat,
+              selectedValue: _draft.timeFormat,
               options: [
                 _SettingOption(value: '12h', label: text.twelveHourTime),
                 _SettingOption(value: '24h', label: text.twentyFourHourTime),
               ],
               // 시간 형식 변경은 기존 알림 시각을 변경하지 않는다.
-              onSelected: (value) => setState(() => _timeFormat = value),
+              onSelected: (value) =>
+                  _setDraft(_draft.copyWith(timeFormat: value)),
             ),
           ],
         ),
@@ -908,12 +889,12 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
 
   // 함수역할: 편집값을 마지막 저장값과 비교한다. 반환값: 미저장 변경 여부.
   bool get _hasUnsavedChanges =>
-      !mapEquals(_draftSetting.toJson(), _savedSetting.toJson());
+      !mapEquals(_draft.toJson(), _savedSetting.toJson());
 
   // 함수역할: 저장·변경 취소·계속 편집 중 하나를 선택한다. 반환값: 나가기 허용 여부.
   Future<bool> _confirmSettingExit() async {
     setState(() => _isConfirmingExit = true);
-    final english = _language == 'en';
+    final english = isEnglishLanguage(_language);
     final choice = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -946,9 +927,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     );
     if (!mounted) return false;
     if (choice == 'discard') {
-      setState(() {
-        _restoreDraft(_savedSetting);
-      });
+      _setDraft(_savedSetting);
     } else if (choice == 'save') {
       await _handleSaveRequested();
     }
@@ -974,51 +953,46 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     setState(() => _selectedSection = _SettingSection.overview);
   }
 
-  // 함수이름: _draftSetting
-  // 함수역할: 기존 설정의 나머지 값은 유지하면서 현재 편집 중인 표시·알림·실험 값을 복사한다.
+  // 함수이름: _fontSize
+  // 함수역할: 초안의 글씨 크기를 설정 화면의 small·medium·large 선택값으로 제공한다.
   // 매개변수:
   // - 없음.
-  // 반환값: UserSetting: 현재 편집 중인 설정 사본.
-  UserSetting get _draftSetting => _copyDraftTo(_savedSetting);
+  // 반환값: String: 글씨 크기 선택값.
+  String get _fontSize => _draft.fontSizeOption;
 
-  // Function Name: _restoreDraft
-  // Description: Restores every editable field on initial load or explicit discard; the caller owns notification of UI changes.
-  // Parameters: setting: Saved settings to restore. Returns: No value.
-  void _restoreDraft(UserSetting setting) {
-    _fontSize = setting.fontSizeOption;
-    _readingSpeed = setting.readingSpeedOption;
-    _language = setting.language;
-    _languageMode = setting.languageMode;
-    _timeFormat = setting.timeFormat;
-    _homeScheduleSource = setting.homeScheduleSource;
-    _medicationNotificationsEnabled = setting.medicationNotificationsEnabled;
-    _caregiverNotificationsEnabled = setting.caregiverNotificationsEnabled;
-    _chatNotificationsEnabled = setting.chatNotificationsEnabled;
-    _notificationDetailMode = setting.notificationDetailMode;
-    _defaultMorningTime = setting.defaultMorningTime;
-    _defaultLunchTime = setting.defaultLunchTime;
-    _defaultEveningTime = setting.defaultEveningTime;
-    _defaultBedtime = setting.defaultBedtime;
+  // 함수이름: _readingSpeed
+  // 함수역할: 초안의 읽기 배속을 설정 화면의 slow·medium·fast 선택값으로 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: String: 읽기 속도 선택값.
+  String get _readingSpeed => _draft.readingSpeedOption;
+
+  // 함수이름: _language
+  // 함수역할: 초안에서 선택한 표시 언어 코드를 제공해 저장 전에도 화면 문구에 반영한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: String: ko 또는 en.
+  String get _language => _draft.language;
+
+  // 함수이름: _setDraft
+  // 함수역할: 편집 중인 설정 초안을 교체하고 화면을 다시 그린다.
+  // 매개변수:
+  // - draft (UserSetting): 변경을 반영한 새 초안.
+  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
+  void _setDraft(UserSetting draft) {
+    setState(() => _draft = draft);
   }
 
-  // Function Name: _copyDraftTo
-  // Description: Applies editable fields while retaining the caller's original or last-saved account baseline.
-  // Parameters: baseline: Settings whose unedited fields are preserved. Returns: Current draft values.
-  UserSetting _copyDraftTo(UserSetting baseline) => baseline.copyWith(
-    fontSize: UserSetting.fontSizeFromOption(_fontSize),
-    readingSpeed: UserSetting.readingSpeedFromOption(_readingSpeed),
-    language: _language,
-    languageMode: _languageMode,
-    timeFormat: _timeFormat,
-    homeScheduleSource: _homeScheduleSource,
-    medicationNotificationsEnabled: _medicationNotificationsEnabled,
-    caregiverNotificationsEnabled: _caregiverNotificationsEnabled,
-    chatNotificationsEnabled: _chatNotificationsEnabled,
-    notificationDetailMode: _notificationDetailMode,
-    defaultMorningTime: _defaultMorningTime,
-    defaultLunchTime: _defaultLunchTime,
-    defaultEveningTime: _defaultEveningTime,
-    defaultBedtime: _defaultBedtime,
+  // 함수이름: _editableCopy
+  // 함수역할: 글씨 크기와 읽기 속도를 화면이 고를 수 있는 단계 값으로 맞춘 사본을 만든다. 저장값과 초안을 같은 기준으로 비교해, 편집하지 않은 화면이 변경된 것으로 판정되지 않게 한다.
+  // 매개변수:
+  // - setting (UserSetting): 초기 설정 또는 저장 결과.
+  // 반환값: UserSetting: 편집·비교에 사용할 설정 사본.
+  UserSetting _editableCopy(UserSetting setting) => setting.copyWith(
+    fontSize: UserSetting.fontSizeFromOption(setting.fontSizeOption),
+    readingSpeed: UserSetting.readingSpeedFromOption(
+      setting.readingSpeedOption,
+    ),
   );
 
   // 함수이름: _selectLanguageMode
@@ -1027,15 +1001,12 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   // - languageMode (String): 기기 언어 따르기 또는 명시 언어 선택 값.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
   void _selectLanguageMode(String languageMode) {
-    // 함수이름: _selectLanguageMode.setState callback
-    // 함수역할: 접근성·기본 복약 시각·계정 보안 설정의 입력·요청 상태를 `_languageMode = languageMode; _language = AppLanguageControl.resolveLanguage(languageMode)`로 갱신한다.
-    // 매개변수:
-    // - 없음.
-    // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-    setState(() {
-      _languageMode = languageMode;
-      _language = AppLanguageControl.resolveLanguage(languageMode);
-    });
+    _setDraft(
+      _draft.copyWith(
+        languageMode: languageMode,
+        language: AppLanguageControl.resolveLanguage(languageMode),
+      ),
+    );
   }
 
   // 함수이름: _selectDefaultMedicationTime
@@ -1044,7 +1015,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   // - slotKey (String): 아침·점심·저녁·취침 전을 구분하는 시간대 키.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _selectDefaultMedicationTime(String slotKey) async {
-    final currentValue = _draftSetting.defaultTimeForSlot(slotKey);
+    final currentValue = _draft.defaultTimeForSlot(slotKey);
     final initialTime = _parseTime(currentValue);
     final selectedTime = await SetNotificationUI.showNotificationPopup(
       context,
@@ -1058,26 +1029,13 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     final formattedTime =
         '${selectedTime.hour.toString().padLeft(2, '0')}:'
         '${selectedTime.minute.toString().padLeft(2, '0')}';
-    // 함수이름: _selectDefaultMedicationTime.setState callback
-    // 함수역할: 접근성·기본 복약 시각·계정 보안 설정의 입력·요청 상태를 `_defaultMorningTime = formattedTime; _defaultLunchTime = formattedTime; _defaultEveningTime = formattedTime`로 갱신한다.
-    // 매개변수:
-    // - 없음.
-    // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-    setState(() {
-      switch (slotKey) {
-        case 'morning':
-          _defaultMorningTime = formattedTime;
-          break;
-        case 'lunch':
-          _defaultLunchTime = formattedTime;
-          break;
-        case 'evening':
-          _defaultEveningTime = formattedTime;
-          break;
-        case 'bedtime':
-          _defaultBedtime = formattedTime;
-          break;
-      }
+    // 알 수 없는 시간대 키는 초안을 바꾸지 않는다.
+    _setDraft(switch (slotKey) {
+      'morning' => _draft.copyWith(defaultMorningTime: formattedTime),
+      'lunch' => _draft.copyWith(defaultLunchTime: formattedTime),
+      'evening' => _draft.copyWith(defaultEveningTime: formattedTime),
+      'bedtime' => _draft.copyWith(defaultBedtime: formattedTime),
+      _ => _draft,
     });
   }
 
@@ -1123,12 +1081,9 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     if (!mounted) {
       return;
     }
-    // 함수이름: _selectReadingSpeed.setState callback
-    // 함수역할: 접근성·기본 복약 시각·계정 보안 설정의 입력·요청 상태를 `_readingSpeed = value`로 갱신한다.
-    // 매개변수:
-    // - 없음.
-    // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-    setState(() => _readingSpeed = value);
+    _setDraft(
+      _draft.copyWith(readingSpeed: UserSetting.readingSpeedFromOption(value)),
+    );
   }
 
   // 함수이름: _toggleVoicePreview
@@ -1145,8 +1100,8 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     final requestId = ++_voicePreviewRequestId;
     final text = _SettingText(_language);
     final previewSetting = UserSetting(
-      fontSize: UserSetting.fontSizeFromOption(_fontSize),
-      readingSpeed: UserSetting.readingSpeedFromOption(_readingSpeed),
+      fontSize: _draft.fontSize,
+      readingSpeed: _draft.readingSpeed,
       language: _language,
     );
     // 함수이름: _toggleVoicePreview.setState callback
@@ -1252,8 +1207,8 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     try {
       final extendedSaver = widget.onExtendedSettingSaveRequested;
       final saveResult = extendedSaver != null
-          ? await extendedSaver(_draftSetting)
-          : await widget.onSettingSaveRequested(
+          ? await extendedSaver(_draft)
+          : await widget.onSettingSaveRequested!(
               fontSizeOption: _fontSize,
               readingSpeedOption: _readingSpeed,
               language: _language,
@@ -1263,13 +1218,14 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       }
 
       // 함수이름: _handleSaveRequested.setState callback
-      // 함수역할: 접근성·기본 복약 시각·계정 보안 설정의 입력·요청 상태를 `_isSaving = false`로 갱신한다.
+      // 함수역할: 저장 중 상태를 해제하고 저장 결과를 비교 기준으로 삼는다. 초안은 사용자가 고른 값을 유지하되 계정 범위만 저장 결과를 따른다.
       // 매개변수:
       // - 없음.
       // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
       setState(() {
         _isSaving = false;
-        _savedSetting = saveResult.setting;
+        _savedSetting = _editableCopy(saveResult.setting);
+        _draft = _draft.copyWith(userHash: _savedSetting.userHash);
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1477,17 +1433,33 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       // - 없음.
       // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
       setState(() => _isSaving = false);
+      // Google 재인증 창을 닫은 것은 사용자의 선택이므로 오류로 알리지 않는다.
+      if (error is AuthenticationStateError &&
+          error.code == AuthenticationErrorCode.googleSignInCanceled) {
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            error is StateError
-                ? error.message.toString()
-                : text.deleteAccountFailed,
-          ),
-        ),
+        SnackBar(content: Text(_accountDeletionFailureMessage(error, text))),
       );
     }
   }
+}
+
+// 함수이름: _accountDeletionFailureMessage
+// 함수역할: 계정 삭제 실패를 종류별로 현재 설정 화면의 언어에 맞는 안내로 바꾼다. 재로그인 요구와 서버 삭제 실패가 화면 언어와 다른 언어로 보이지 않게 한다.
+// 매개변수:
+// - error (Object): 계정 삭제 콜백이 던진 실패.
+// - text (_SettingText): 현재 화면 언어의 표시 문구.
+// 반환값: String: 스낵바에 표시할 안내 문구.
+String _accountDeletionFailureMessage(Object error, _SettingText text) {
+  if (error is AuthenticationStateError) {
+    return error.messageFor(text.isEnglish);
+  }
+  if (error is AccountDeletionFailure) {
+    return error.messageFor(text.isEnglish);
+  }
+  // 그 밖의 StateError는 한 가지 언어의 문구만 가지므로 화면 언어의 일반 안내로 대신한다.
+  return text.deleteAccountFailed;
 }
 
 // 클래스명: _AccountPresentation
@@ -2327,11 +2299,11 @@ class _SettingText {
   const _SettingText(this.language);
 
   // 함수이름: isEnglish
-  // 함수역할: 언어 코드가 en과 정확히 일치하는지 확인한다.
+  // 함수역할: 언어 코드가 앱 공통 기준으로 영어인지 확인한다.
   // 매개변수:
   // - 없음.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
-  bool get isEnglish => language == 'en';
+  bool get isEnglish => isEnglishLanguage(language);
 
   // 함수이름: back
   // 함수역할: 현재 언어와 입력값에 맞춰 "뒤로가기" 문구를 제공한다.

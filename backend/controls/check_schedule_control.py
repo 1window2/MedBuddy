@@ -20,13 +20,15 @@ from entities.medication_completion_entity import (
     _MedicationCompletion,
     utc_now,
 )
-from entities.caregiver_alert_outbox_entity import _CaregiverAlertOutbox
+from entities.caregiver_alert_outbox_entity import (
+    CAREGIVER_ALERT_STATUS_DEAD_LETTER,
+    CAREGIVER_ALERT_STATUS_PENDING,
+    _CaregiverAlertOutbox,
+)
 from entities.medication_image_url_entity import safe_medication_image_url
 from entities.medication_schedule_entity import (
     MEDICATION_SCHEDULE_SLOT_KEYS,
     MedicationSchedule,
-    decode_medication_schedule_slot_keys,
-    medication_schedule_slot_keys_for_frequency,
 )
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient_hash
 from entities.saved_medication_entity import _SavedMedication
@@ -34,6 +36,10 @@ from repositories.saved_medication_repository import SavedMedicationRepository
 from services.medication_course_policy import MedicationCoursePolicy
 
 logger = logging.getLogger(__name__)
+
+# Reason the outbox worker records when it retires a completion event whose slot was
+# unchecked before delivery (controls/process_caregiver_alert_outbox_control.py).
+_COMPLETION_NO_LONGER_CURRENT_ERROR = "CompletionNoLongerCurrent"
 
 
 # Class Name: CheckSchedule
@@ -83,16 +89,7 @@ class CheckSchedule:
     ) -> dict[str, object]:
         normalized_patient_hash = normalize_patient_hash(patient_hash)
         today = application_today()
-        medications = self.medication_repository.list_by_patient(
-            normalized_patient_hash
-        )
-        active_medications = [
-            medication
-            for medication in medications
-            if self.course_policy.is_active_on(medication, today)
-        ]
-        completion_rows_by_medication_id = self._completion_rows_by_medication_id(
-            active_medications,
+        active_medications, completion_rows_by_medication_id = self._load_day(
             normalized_patient_hash,
             today,
         )
@@ -166,7 +163,7 @@ class CheckSchedule:
         normalized_patient_hash = normalize_patient_hash(patient_hash)
         window_start = application_today()
         window_end = window_start + timedelta(days=days - 1)
-        medications = self.medication_repository.list_by_patient(
+        medications = self.medication_repository.list_schedule_medications_by_patient(
             normalized_patient_hash
         )
         window_medications = [
@@ -197,26 +194,45 @@ class CheckSchedule:
     # - medication_status (bool): 요청한 복약 완료 여부.
     # - patient_hash (str | None): 작업 대상 환자의 데이터 소유 범위 식별자.
     # - slot_key (str | None): morning, lunch, evening, bedtime 중 복용 시간대 키.
+    # - expected_schedule_date (date | None): 요청이 가리키는 복약 날짜; 오늘과 다르면 지연된 요청으로 보고 거부한다.
     # 반환값:
-    # - 갱신된 일정 응답; 저장 실패 시 롤백하고 HTTP 500.
+    # - 갱신된 일정 응답; 날짜가 오늘과 다르면 HTTP 409, 저장 실패 시 롤백하고 HTTP 500.
     def updateMedicationStatus(
         self,
         medication_id: int,
         medication_status: bool,
         patient_hash: str | None = None,
         slot_key: str | None = None,
+        *,
+        expected_schedule_date: date | None = None,
     ) -> dict[str, object]:
         self._pending_completion_events.clear()
         normalized_patient_hash = normalize_patient_hash(patient_hash)
+        today = application_today()
+        if expected_schedule_date is not None and expected_schedule_date != today:
+            raise HTTPException(
+                status_code=409,
+                detail="The reminder date no longer matches today's schedule.",
+            )
         medication = self._get_existing_medication(
             medication_id,
             normalized_patient_hash,
         )
-        today = application_today()
         slot_keys = self._slot_keys_for_medication(medication)
         target_slot_keys = self._slot_keys_for_update(slot_key, slot_keys)
-        previous_slot_completion_states = self._slot_completion_states_for_patient(
+        # 오늘의 활성 약과 완료 기록을 한 번만 읽고, 이후 판정은 이 목록으로 계산한다.
+        active_medications, completion_rows_by_medication_id = self._load_day(
             normalized_patient_hash,
+            today,
+            include=medication,
+        )
+        completion_rows = completion_rows_by_medication_id.setdefault(
+            int(medication.id),
+            [],
+        )
+        previous_slot_completion_states = self._slot_completion_states(
+            active_medications,
+            completion_rows_by_medication_id,
             today,
             target_slot_keys,
         )
@@ -230,7 +246,12 @@ class CheckSchedule:
                     medication,
                     normalized_patient_hash,
                     today,
-                    self._slot_statuses_for_medication(medication, today),
+                    self._slot_statuses_for_medication(
+                        medication,
+                        today,
+                        completion_rows,
+                    ),
+                    completion_rows,
                 )
                 self.db.flush()
             for target_slot_key in target_slot_keys:
@@ -240,36 +261,28 @@ class CheckSchedule:
                     today,
                     target_slot_key,
                     medication_status,
+                    completion_rows,
                 )
-            self.db.flush()
-            slot_statuses = self._slot_statuses_for_medication(medication, today)
+            slot_statuses = self._slot_statuses_for_medication(
+                medication,
+                today,
+                completion_rows,
+            )
             medication.medication_status = self._all_slots_completed(slot_statuses)
             medication.medication_status_date = today
-            current_slot_completion_states = (
-                self._slot_completion_states_for_patient(
-                    normalized_patient_hash,
-                    today,
-                    target_slot_keys,
-                )
-            )
-            completion_events = self._new_slot_completion_events(
+            self.db.flush()
+            completion_events = self._queue_slot_completion_events(
                 patient_hash=normalized_patient_hash,
                 schedule_date=today,
                 target_slot_keys=target_slot_keys,
+                active_medications=active_medications,
+                completion_rows_by_medication_id=completion_rows_by_medication_id,
                 previous_slot_completion_states=previous_slot_completion_states,
-                current_slot_completion_states=current_slot_completion_states,
+                alertable=True,
             )
-            for completion_event in completion_events:
-                outbox_row = self._get_or_create_completion_outbox(
-                    event_key=str(completion_event["event_key"]),
-                    patient_hash=normalized_patient_hash,
-                    slot_key=str(completion_event["slot_key"]),
-                    schedule_date=today,
-                )
-                self.db.flush()
-                completion_event["outbox_id"] = int(outbox_row.id)
+            # 응답은 커밋 전에 만들어 커밋 뒤 행을 다시 읽지 않는다.
+            schedule = self._to_schedule_dict(medication, today, completion_rows)
             self.db.commit()
-            self.db.refresh(medication)
         except Exception as exc:
             self.db.rollback()
             logger.error(
@@ -286,7 +299,7 @@ class CheckSchedule:
         return {
             "success": True,
             "message": "Medication status was updated.",
-            "data": self._to_schedule_dict(medication, today),
+            "data": schedule,
         }
 
     # Function Name: updateMedicationSlotStatus
@@ -332,13 +345,16 @@ class CheckSchedule:
                 status_code=409,
                 detail="The reminder date no longer matches today's schedule.",
             )
+        # The day's active medications and completion rows are read once; every
+        # later decision in this operation works on these two collections.
+        active_medications, completion_rows_by_medication_id = self._load_day(
+            normalized_patient_hash,
+            today,
+        )
         medications = [
             medication
-            for medication in self.medication_repository.list_by_patient(
-                normalized_patient_hash
-            )
-            if self.course_policy.is_active_on(medication, today)
-            and normalized_slot_key in self._slot_keys_for_medication(medication)
+            for medication in active_medications
+            if normalized_slot_key in self._slot_keys_for_medication(medication)
         ]
         if not medications:
             raise HTTPException(
@@ -362,8 +378,9 @@ class CheckSchedule:
             ]
 
         target_slot_keys = [normalized_slot_key]
-        previous_slot_completion_states = self._slot_completion_states_for_patient(
-            normalized_patient_hash,
+        previous_slot_completion_states = self._slot_completion_states(
+            active_medications,
+            completion_rows_by_medication_id,
             today,
             target_slot_keys,
         )
@@ -372,12 +389,21 @@ class CheckSchedule:
             # Step 1: Preserve explicit states for every non-target slot when
             # older rows still represent completion only at medication level.
             for medication in medications:
+                completion_rows = completion_rows_by_medication_id.setdefault(
+                    int(medication.id),
+                    [],
+                )
                 if self._is_legacy_completed_on(medication, today):
                     self._materialize_missing_completion_slots(
                         medication,
                         normalized_patient_hash,
                         today,
-                        self._slot_statuses_for_medication(medication, today),
+                        self._slot_statuses_for_medication(
+                            medication,
+                            today,
+                            completion_rows,
+                        ),
+                        completion_rows,
                     )
             self.db.flush()
 
@@ -390,8 +416,8 @@ class CheckSchedule:
                     today,
                     normalized_slot_key,
                     medication_status,
+                    completion_rows_by_medication_id[int(medication.id)],
                 )
-            self.db.flush()
 
             # Step 3: Keep the legacy row-level completion flag consistent and
             # enqueue one caregiver event only for a full-slot completion.
@@ -399,40 +425,34 @@ class CheckSchedule:
                 slot_statuses = self._slot_statuses_for_medication(
                     medication,
                     today,
+                    completion_rows_by_medication_id[int(medication.id)],
                 )
                 if today == current_day:
                     medication.medication_status = self._all_slots_completed(slot_statuses)
                     medication.medication_status_date = today
-            current_slot_completion_states = (
-                self._slot_completion_states_for_patient(
-                    normalized_patient_hash,
-                    today,
-                    target_slot_keys,
-                )
-            )
-            completion_events = self._new_slot_completion_events(
+            self.db.flush()
+            # Historical uploads are records, not a new "just taken" alert.
+            completion_events = self._queue_slot_completion_events(
                 patient_hash=normalized_patient_hash,
                 schedule_date=today,
                 target_slot_keys=target_slot_keys,
+                active_medications=active_medications,
+                completion_rows_by_medication_id=completion_rows_by_medication_id,
                 previous_slot_completion_states=previous_slot_completion_states,
-                current_slot_completion_states=current_slot_completion_states,
+                alertable=today == current_day,
             )
-            # Historical uploads are records, not a new "just taken" alert.
-            if today != current_day:
-                completion_events = []
-            for completion_event in completion_events:
-                outbox_row = self._get_or_create_completion_outbox(
-                    event_key=str(completion_event["event_key"]),
-                    patient_hash=normalized_patient_hash,
-                    slot_key=normalized_slot_key,
-                    schedule_date=today,
+            # The response is built inside the transaction, so no row has to be
+            # read again after the commit.
+            schedules = [
+                self._to_schedule_dict(
+                    medication,
+                    today,
+                    completion_rows_by_medication_id[int(medication.id)],
                 )
-                self.db.flush()
-                completion_event["outbox_id"] = int(outbox_row.id)
+                for medication in medications
+            ]
             if commit:
                 self.db.commit()
-                for medication in medications:
-                    self.db.refresh(medication)
             else:
                 self.db.flush()
         except HTTPException:
@@ -455,11 +475,57 @@ class CheckSchedule:
         return {
             "success": True,
             "message": "Medication slot status was updated.",
-            "data": [
-                self._to_schedule_dict(medication, today)
-                for medication in medications
-            ],
+            "data": schedules,
         }
+
+    # 함수이름: _queue_slot_completion_events
+    # 함수역할:
+    # - 변경 전후의 시간대 완료 상태를 비교해 새로 완료된 시간대마다 알림 아웃박스 행을 하나씩 만든다.
+    # - 약 하나 변경과 시간대 전체 변경이 같은 규칙으로 완료 이벤트를 만들도록 한 곳에 둔다.
+    # 매개변수:
+    # - patient_hash (str): 환자 소유권 hash
+    # - schedule_date (date): 복약 완료 날짜
+    # - target_slot_keys: 이번 요청에서 변경한 시간대 목록
+    # - active_medications: 해당 날짜에 복용 중인 약 목록
+    # - completion_rows_by_medication_id: 변경 후 약별 완료 기록
+    # - previous_slot_completion_states: 변경 전 시간대별 완료 상태
+    # - alertable (bool): 다른 날짜의 기록이면 False이며 알림 이벤트를 만들지 않는다.
+    # 반환값:
+    # - 아웃박스 행 ID가 채워진 새 완료 이벤트 목록
+    def _queue_slot_completion_events(
+        self,
+        *,
+        patient_hash: str,
+        schedule_date,
+        target_slot_keys,
+        active_medications,
+        completion_rows_by_medication_id,
+        previous_slot_completion_states,
+        alertable: bool,
+    ) -> list[dict[str, str | int]]:
+        if not alertable:
+            return []
+        completion_events = self._new_slot_completion_events(
+            patient_hash=patient_hash,
+            schedule_date=schedule_date,
+            target_slot_keys=target_slot_keys,
+            previous_slot_completion_states=previous_slot_completion_states,
+            current_slot_completion_states=self._slot_completion_states(
+                active_medications,
+                completion_rows_by_medication_id,
+                schedule_date,
+                target_slot_keys,
+            ),
+        )
+        for completion_event in completion_events:
+            outbox_row = self._get_or_create_completion_outbox(
+                event_key=str(completion_event["event_key"]),
+                patient_hash=patient_hash,
+                slot_key=str(completion_event["slot_key"]),
+                schedule_date=schedule_date,
+            )
+            completion_event["outbox_id"] = int(outbox_row.id)
+        return completion_events
 
     # 함수이름: _new_slot_completion_events
     # 함수역할:
@@ -512,10 +578,12 @@ class CheckSchedule:
     # 함수역할:
     # - DB 고유 제약과 원자적 삽입을 이용해 같은 완료 이벤트를 한 번만 저장한다.
     # - 동시에 들어온 요청이 충돌해도 복약 상태 트랜잭션 전체를 되돌리지 않는다.
+    # - 완료 취소 때문에 전송 작업이 종결한 기존 행은 같은 트랜잭션에서 전송 대기로 되돌린다.
     # 매개변수:
     # - event_key (str): 환자·날짜·시간대 완료 이벤트의 중복 방지 키.
     # - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
     # - slot_key (str): morning, lunch, evening, bedtime 중 복용 시간대 키.
+    # - schedule_date (date | None): 완료 이벤트의 복약 날짜; None이면 오늘.
     # 반환값:
     # - 새로 만들었거나 동일 이벤트 키로 이미 존재하는 완료 알림 아웃박스 행.
     def _get_or_create_completion_outbox(
@@ -553,6 +621,16 @@ class CheckSchedule:
         )
         if outbox_row is None:
             raise RuntimeError("Caregiver alert outbox row could not be loaded.")
+        if (
+            outbox_row.status == CAREGIVER_ALERT_STATUS_DEAD_LETTER
+            and outbox_row.last_error == _COMPLETION_NO_LONGER_CURRENT_ERROR
+        ):
+            # 완료를 취소한 뒤 전송 작업이 종결한 행이다. 시간대가 다시 완료됐으므로
+            # 하루 종일 알림이 막히지 않도록 새 이벤트처럼 전송 대기로 되돌린다.
+            outbox_row.status = CAREGIVER_ALERT_STATUS_PENDING
+            outbox_row.attempt_count = 0
+            outbox_row.available_at = utc_now()
+            outbox_row.last_error = None
         return outbox_row
 
     # 함수이름: _insert_outbox_with_savepoint
@@ -630,18 +708,19 @@ class CheckSchedule:
         normalized_slot_key = slot_key.strip().lower()
         if normalized_slot_key not in MEDICATION_SCHEDULE_SLOT_KEYS:
             return False
-        medications = self.medication_repository.list_by_patient(
-            normalized_patient_hash
+        active_medications, completion_rows_by_medication_id = self._load_day(
+            normalized_patient_hash,
+            schedule_date,
         )
         has_active_slot = any(
-            self.course_policy.is_active_on(medication, schedule_date)
-            and normalized_slot_key in self._slot_keys_for_medication(medication)
-            for medication in medications
+            normalized_slot_key in self._slot_keys_for_medication(medication)
+            for medication in active_medications
         )
         if not has_active_slot:
             return False
-        completion_state = self._slot_completion_states_for_patient(
-            normalized_patient_hash,
+        completion_state = self._slot_completion_states(
+            active_medications,
+            completion_rows_by_medication_id,
             schedule_date,
             [normalized_slot_key],
         )
@@ -661,8 +740,7 @@ class CheckSchedule:
 
     # 함수이름: _slot_completion_states_for_patient
     # 함수역할:
-    # - 환자의 오늘 활성 약을 기준으로 각 시간대가 모두 완료되었는지 계산한다.
-    # - 대상 약이 하나도 없는 시간대는 완료로 간주하지 않는다.
+    # - 환자의 지정일 활성 약과 완료 기록을 읽어 각 시간대가 모두 완료되었는지 계산한다.
     # 매개변수:
     # - patient_hash (str): 환자 소유권 hash
     # - schedule_date (date): 완료 상태를 확인할 날짜
@@ -675,17 +753,71 @@ class CheckSchedule:
         schedule_date: date,
         slot_keys: list[str],
     ) -> dict[str, bool]:
-        medications = self.medication_repository.list_by_patient(patient_hash)
-        active_medications = [
-            medication
-            for medication in medications
-            if self.course_policy.is_active_on(medication, schedule_date)
-        ]
-        completion_rows_by_medication_id = self._completion_rows_by_medication_id(
-            active_medications,
+        active_medications, completion_rows_by_medication_id = self._load_day(
             patient_hash,
             schedule_date,
         )
+        return self._slot_completion_states(
+            active_medications,
+            completion_rows_by_medication_id,
+            schedule_date,
+            slot_keys,
+        )
+
+    # 함수이름: _load_day
+    # 함수역할:
+    # - 한 환자의 지정일 활성 약과 그 약들의 완료 기록을 조회 두 번으로 읽는다.
+    # - 복용 기록 변경과 완료 판정이 약마다 다시 조회하지 않도록 같은 결과를 공유하게 한다.
+    # 매개변수:
+    # - patient_hash (str): 정규화된 환자 소유권 hash
+    # - schedule_date (date): 활성 여부와 완료 기록을 확인할 날짜
+    # - include (_SavedMedication | None): 활성 여부와 무관하게 완료 기록을 함께 읽을 변경 대상 약
+    # 반환값:
+    # - 지정일 활성 약 목록과 약 ID별 완료 기록 목록; include는 활성 목록에 추가하지 않는다.
+    def _load_day(
+        self,
+        patient_hash: str,
+        schedule_date: date,
+        include: _SavedMedication | None = None,
+    ) -> tuple[list[_SavedMedication], dict[int, list[_MedicationCompletion]]]:
+        active_medications = [
+            medication
+            for medication in (
+                self.medication_repository.list_schedule_medications_by_patient(
+                    patient_hash
+                )
+            )
+            if self.course_policy.is_active_on(medication, schedule_date)
+        ]
+        completion_scope = active_medications
+        if include is not None and all(
+            medication.id != include.id for medication in active_medications
+        ):
+            completion_scope = [*active_medications, include]
+        return active_medications, self._completion_rows_by_medication_id(
+            completion_scope,
+            patient_hash,
+            schedule_date,
+        )
+
+    # 함수이름: _slot_completion_states
+    # 함수역할:
+    # - 미리 읽은 활성 약과 완료 기록만으로 각 시간대가 모두 완료되었는지 계산한다.
+    # - 대상 약이 하나도 없는 시간대는 완료로 간주하지 않는다.
+    # 매개변수:
+    # - active_medications (list[_SavedMedication]): 지정일에 복용 중인 저장 약 목록
+    # - completion_rows_by_medication_id (dict[int, list[_MedicationCompletion]]): 약 ID별 지정일 완료 기록
+    # - schedule_date (date): 완료 상태를 확인할 날짜
+    # - slot_keys (list[str]): 확인할 복약 시간대 목록
+    # 반환값:
+    # - 시간대 키별 전체 완료 여부; DB를 조회하지 않는다.
+    def _slot_completion_states(
+        self,
+        active_medications: list[_SavedMedication],
+        completion_rows_by_medication_id: dict[int, list[_MedicationCompletion]],
+        schedule_date: date,
+        slot_keys: list[str],
+    ) -> dict[str, bool]:
         medication_slot_keys = {
             int(medication.id): self._slot_keys_for_medication(medication)
             for medication in active_medications
@@ -831,15 +963,12 @@ class CheckSchedule:
     # 반환값:
     # - 약에 적용할 순서 있는 복용 시간대 목록.
     def _slot_keys_for_medication(self, medication: _SavedMedication) -> list[str]:
-        confirmed_slot_keys = decode_medication_schedule_slot_keys(
-            medication.schedule_slot_keys
+        return list(
+            self.course_policy.read_slot_keys(
+                medication.schedule_slot_keys,
+                medication.daily_frequency,
+            )
         )
-        if confirmed_slot_keys:
-            return confirmed_slot_keys
-        frequency_count = self.course_policy.read_frequency_count(
-            medication.daily_frequency
-        )
-        return medication_schedule_slot_keys_for_frequency(frequency_count)
 
     # Function Name: _slot_keys_for_update
     # Description:
@@ -950,6 +1079,7 @@ class CheckSchedule:
     # - patient_hash (str): Normalized patient ownership key.
     # - schedule_date (date): Date of the schedule slots.
     # - slot_statuses (dict[str, bool]): Effective slot statuses before the requested update.
+    # - completion_rows (list[_MedicationCompletion]): Preloaded completion rows of the medication/date; new rows are appended.
     # Returns:
     # - None.
     def _materialize_missing_completion_slots(
@@ -958,34 +1088,24 @@ class CheckSchedule:
         patient_hash: str,
         schedule_date: date,
         slot_statuses: dict[str, bool],
+        completion_rows: list[_MedicationCompletion],
     ) -> None:
-        existing_slot_keys = {
-            completion.slot_key
-            for completion in (
-                self.db.query(_MedicationCompletion)
-                .filter(
-                    _MedicationCompletion.saved_medication_id == medication.id,
-                    _MedicationCompletion.patient_hash == patient_hash,
-                    _MedicationCompletion.schedule_date == schedule_date,
-                )
-                .all()
-            )
-        }
+        existing_slot_keys = {completion.slot_key for completion in completion_rows}
         for current_slot_key, completed in slot_statuses.items():
             if current_slot_key in existing_slot_keys:
                 continue
-            self.db.add(
-                MedicationCompletion(
-                    patient_hash=patient_hash,
-                    medicine_name=medication.item_name or "",
-                    time_slot=current_slot_key,
-                    completed=completed,
-                    completed_at=utc_now() if completed else None,
-                ).insertMedicationCompletion(
-                    saved_medication_id=int(medication.id),
-                    schedule_date=schedule_date,
-                )
+            completion = MedicationCompletion(
+                patient_hash=patient_hash,
+                medicine_name=medication.item_name or "",
+                time_slot=current_slot_key,
+                completed=completed,
+                completed_at=utc_now() if completed else None,
+            ).insertMedicationCompletion(
+                saved_medication_id=int(medication.id),
+                schedule_date=schedule_date,
             )
+            self.db.add(completion)
+            completion_rows.append(completion)
 
     # Function Name: _upsert_completion
     # Description:
@@ -996,6 +1116,7 @@ class CheckSchedule:
     # - schedule_date (date): Date of the updated schedule slot.
     # - slot_key (str): Time-slot key to update.
     # - completed (bool): New completion state.
+    # - completion_rows (list[_MedicationCompletion]): Preloaded completion rows of the medication/date; a new row is appended.
     # Returns:
     # - None.
     def _upsert_completion(
@@ -1005,16 +1126,11 @@ class CheckSchedule:
         schedule_date: date,
         slot_key: str,
         completed: bool,
+        completion_rows: list[_MedicationCompletion],
     ) -> None:
-        completion = (
-            self.db.query(_MedicationCompletion)
-            .filter(
-                _MedicationCompletion.saved_medication_id == medication.id,
-                _MedicationCompletion.patient_hash == patient_hash,
-                _MedicationCompletion.schedule_date == schedule_date,
-                _MedicationCompletion.slot_key == slot_key,
-            )
-            .first()
+        completion = next(
+            (row for row in completion_rows if row.slot_key == slot_key),
+            None,
         )
         if completion is None:
             completion = MedicationCompletion(
@@ -1028,6 +1144,7 @@ class CheckSchedule:
                 schedule_date=schedule_date,
             )
             self.db.add(completion)
+            completion_rows.append(completion)
 
         completion.completed = completed
         completion.completed_at = utc_now() if completed else None

@@ -17,6 +17,7 @@ import 'package:medbuddy_frontend/entities/nearby_care_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/services/device_location_service.dart';
 import 'package:medbuddy_frontend/services/pharmacy_favorite_service.dart';
+import 'package:medbuddy_frontend/widgets/medbuddy_page_header.dart';
 
 // 클래스명: _DelayedFavorites
 // 역할: 즐겨찾기 저장 지연·거절·예외를 재현한다.
@@ -851,6 +852,47 @@ void main() {
     expect(map.centerRevision, revision);
   });
 
+  // 함수이름: 상세창 드래그 재구성 범위 테스트
+  // 함수역할: 상세창을 드래그할 때 지도 여백만 갱신하고 화면 상단은 다시 만들지 않는지 검증한다.
+  // 매개변수: tester: 위젯 제어기. 반환값: 비동기 검증 완료.
+  testWidgets('details sheet drag updates the map inset without a rebuild of '
+      'the header', (tester) async {
+    await tester.pumpWidget(_testApp(_buildControl(), nativeMap: true));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('pharmacy-card-open')));
+    await tester.pumpAndSettle();
+    // 화면 State가 다시 빌드되면 상단 위젯 인스턴스가 새로 만들어진다.
+    final header = tester.widget<MedBuddyPageHeader>(
+      find.byType(MedBuddyPageHeader),
+    );
+    final expandedInset = tester
+        .widget<NearbyPharmacyMap>(find.byType(NearbyPharmacyMap))
+        .bottomInset;
+    await tester.drag(
+      find.byKey(const Key('pharmacy-detail-handle')),
+      const Offset(0, 280),
+    );
+    await tester.pumpAndSettle();
+    final map = tester.widget<NearbyPharmacyMap>(
+      find.byType(NearbyPharmacyMap),
+    );
+    expect(map.bottomInset, lessThan(expandedInset));
+    expect(
+      map.bottomInset,
+      closeTo(
+        tester.getSize(find.byKey(const Key('pharmacy-detail-sheet'))).height,
+        .1,
+      ),
+    );
+    expect(
+      tester.widget<MedBuddyPageHeader>(find.byType(MedBuddyPageHeader)),
+      same(header),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   // 함수이름: 목록·지도 이동 테스트
   // 함수역할: 목록에서 선택하면 지도 상세로 이동하고 뒤로가기가 각 패널을 닫는지 확인한다.
   // 매개변수: tester: 위젯 제어기. 반환값: 비동기 검증 완료.
@@ -1432,12 +1474,49 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    // The map-first banner must state the same uncertainty as the list.
+    expect(find.text('map-status:약국 영업 여부를 확인할 수 없습니다'), findsOneWidget);
+    expect(find.textContaining('조건에 맞는 약국이 없어요'), findsNothing);
     await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
     await tester.pumpAndSettle();
     expect(find.text('약국 영업 여부를 확인할 수 없습니다'), findsOneWidget);
     expect(find.text('검색한 지역에 영업 중인 약국이 없습니다'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  // Function Name: calendar verification failure does not blur the all-pharmacies filter
+  // Description: The all filter ignores opening hours, so its empty result stays a definite "no match".
+  // Parameters: tester: Widget test driver. Returns: Completed regression check.
+  testWidgets(
+    'calendar verification failure keeps the all filter empty state definite',
+    (tester) async {
+      await tester.pumpWidget(
+        _testApp(
+          _buildControl(
+            emptyModes: {'open_at_time', 'all'},
+            holidayScheduleStatus: 'unknown',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('전체 약국 보기'),
+        100,
+        scrollable: find.byType(Scrollable).last,
+      );
+      await tester.tap(find.text('전체 약국 보기'));
+      await tester.pumpAndSettle();
+      expect(find.text('주변 약국을 찾지 못했습니다'), findsOneWidget);
+      expect(find.text('약국 영업 여부를 확인할 수 없습니다'), findsNothing);
+      expect(
+        find.text('map-status:조건에 맞는 약국이 없어요. 지도를 옮기거나 조회 조건을 바꿔보세요.'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('shows open pharmacies first and filters closed pharmacies', (
     tester,

@@ -378,8 +378,10 @@ void main() {
     () async {
       var online = false;
       final requests = <Map<String, dynamic>>[];
+      final sent = <http.Request>[];
       final client = MockClient((request) async {
         if (!online) throw const SocketException('offline');
+        sent.add(request);
         final payload = jsonDecode(request.body) as Map<String, dynamic>;
         requests.add(payload);
         return http.Response(
@@ -404,9 +406,14 @@ void main() {
         medicationIds: [91],
         slotKey: 'morning',
         completed: true,
+        medicationNames: ['private-dose-name'],
       );
       await service.drain();
       expect(service.schedules.single.isSlotCompleted('morning'), isTrue);
+      // 화면 표시용 약 이름은 기기 대기열에만 남는다.
+      expect(service.operations.single['medication_names'], [
+        'private-dose-name',
+      ]);
       await service.record(
         medicationIds: [91],
         slotKey: 'morning',
@@ -437,6 +444,21 @@ void main() {
         requests.every((op) => op['schedule_date'] == '2026-09-21'),
         isTrue,
       );
+      // 요청은 계정 범위가 붙은 전송 경로로만 나가고 약 이름은 서버로 보내지 않는다.
+      // (콜백 안의 expect는 전송 재시도 처리에 가려지므로 요청을 모아 밖에서 검사한다.)
+      for (final request in sent) {
+        expect(request.method, 'POST');
+        expect(request.url.path, endsWith('/schedule/completion-operations'));
+        expect(request.url.queryParameters, {'patient_hash': 'patient-a'});
+        expect(request.headers['content-type'], contains('application/json'));
+        expect(request.body, isNot(contains('private-dose-name')));
+      }
+      expect(requests.every((op) => !op.containsKey('medication_names')), isTrue);
+      expect(requests.map((op) => op['slot_key']).toSet(), {'morning'});
+      expect(requests.map((op) => op['medication_ids']).toList(), [
+        [91],
+        [91],
+      ]);
       expect(service.pendingCount, 0);
       client.close();
     },
@@ -606,6 +628,45 @@ void main() {
     await service.drain();
     expect(service.operations.single['schedule_date'], '2026-09-21');
     expect(service.schedules, isEmpty);
+  });
+
+  // 함수이름: 일정 저장 후 변경 알림 테스트
+  // 함수역할: 서버 일정을 저장한 뒤의 다음 재조회가 같은 상태를 새 변경으로 다시 알리거나 발행하지 않는지 검증한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  test('a cached snapshot is published once, not again by the next reload', () async {
+    var publications = 0;
+    var notifications = 0;
+    final client = MockClient((_) async => http.Response('offline', 503));
+    addTearDown(client.close);
+    final service = DoseSyncService(
+      owner: 'patient-a',
+      client: client,
+      openStore: () async => store,
+      clock: () => now,
+      onStateChanged: () async => publications++,
+    );
+    addTearDown(service.dispose);
+    await service.initialize();
+    await Future<void>.delayed(Duration.zero);
+    service.addListener(() => notifications++);
+    publications = 0;
+
+    await service.cacheSchedules([medication], scheduleDate: doseScheduleDay(now));
+    await Future<void>.delayed(Duration.zero);
+    expect(publications, 1);
+
+    await service.reload();
+    await service.drain();
+    await Future<void>.delayed(Duration.zero);
+    expect(publications, 1);
+    expect(notifications, 0);
+
+    // 실제로 바뀐 상태는 계속 알린다.
+    await service.record(medicationIds: [91], slotKey: 'morning', completed: true);
+    await service.drain();
+    await Future<void>.delayed(Duration.zero);
+    expect(publications, greaterThan(1));
+    expect(notifications, greaterThan(0));
   });
 }
 

@@ -8,6 +8,7 @@ import unittest
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from threading import Barrier, Lock, Thread
+from unittest.mock import patch
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine, event
@@ -17,7 +18,14 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+from boundaries.push_notification_boundary import PushDeliveryResult  # noqa: E402
 from controls.check_schedule_control import CheckSchedule  # noqa: E402
+from controls.dispatch_caregiver_alert_control import (  # noqa: E402
+    DispatchCaregiverAlert,
+)
+from controls.process_caregiver_alert_outbox_control import (  # noqa: E402
+    ProcessCaregiverAlertOutbox,
+)
 from core.application_clock import application_today  # noqa: E402
 from core.database import Base  # noqa: E402
 from entities.medication_completion_entity import (  # noqa: E402
@@ -25,13 +33,16 @@ from entities.medication_completion_entity import (  # noqa: E402
     _MedicationCompletion,
 )
 from entities.caregiver_alert_outbox_entity import (  # noqa: E402
+    CAREGIVER_ALERT_STATUS_DEAD_LETTER,
     CAREGIVER_ALERT_STATUS_PENDING,
+    CAREGIVER_ALERT_STATUS_SENT,
     _CaregiverAlertOutbox,
 )
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH  # noqa: E402
 from entities.saved_medication_entity import (  # noqa: E402
     _SavedMedication,
 )
+from support.fakes import RecordingPushBoundary  # noqa: E402
 
 
 # 클래스명: _CompletionEventRecorder
@@ -619,72 +630,211 @@ class CheckScheduleTest(unittest.TestCase):
                 verification_session.close()
                 engine.dispose()
 
-    # Function Name: test_completion_transition_is_computed_before_transaction_commit
+    # Function Name: test_failed_commit_leaves_no_completion_or_outbox_rows
     # Description:
-    # - Requires both before/after slot-state reads to occur before transaction commit.
+    # - Requires the dose rows and the completion outbox event to be written inside one
+    #   transaction: both exist when the commit starts, and a failing commit returns HTTP 500
+    #   and leaves no completion row, outbox row, pending event or legacy flag behind, for the
+    #   single-medication and the whole-slot writer.
     # Parameters:
     # - None.
     # Returns:
     # - None.
-    def test_completion_transition_is_computed_before_transaction_commit(
-        self,
-    ) -> None:
+    def test_failed_commit_leaves_no_completion_or_outbox_rows(self) -> None:
         medication = self._saved_medication(
             patient_hash="patient-a",
             item_name="serialized-tablet",
+            daily_frequency="1 time",
+            schedule_slot_keys='["morning"]',
         )
-        commit_completed = False
-        completion_state_reads: list[bool] = []
-        original_reader = self.control._slot_completion_states_for_patient
-
-        # Function Name: mark_commit
-        # Description:
-        # - Marks the transaction as committed for the ordering assertions in the
-        #   surrounding test.
-        # Parameters:
-        # - _session (object): Session passed to the after-commit listener; the callback
-        #   records only timing.
-        # Returns:
-        # - None.
-        def mark_commit(_session: object) -> None:
-            nonlocal commit_completed
-            commit_completed = True
-
-        # Function Name: tracked_reader
-        # Description:
-        # - Records whether commit has occurred before delegating to the original
-        #   slot-state reader.
-        # Parameters:
-        # - patient_hash (str): Patient owner identifying the medication or linked-data
-        #   scope.
-        # - schedule_date (date): Calendar day whose dose-completion states are queried.
-        # - slot_keys (list[str]): Medication slots included in the completion-state
-        #   lookup.
-        # Returns:
-        # - dict[str, bool]: Original per-slot completion states, unchanged by
-        #   instrumentation.
-        def tracked_reader(
-            patient_hash: str,
-            schedule_date: date,
-            slot_keys: list[str],
-        ) -> dict[str, bool]:
-            completion_state_reads.append(commit_completed)
-            return original_reader(patient_hash, schedule_date, slot_keys)
-
-        event.listen(self.db, "after_commit", mark_commit)
-        self.control._slot_completion_states_for_patient = tracked_reader
-        try:
-            self.control.updateMedicationStatus(
+        event_recorder = _CompletionEventRecorder()
+        control = CheckSchedule(
+            self.db,
+            completion_event_boundary=event_recorder,
+        )
+        operations = {
+            "single medication": lambda: control.updateMedicationStatus(
                 medication.id,
                 True,
                 "patient-a",
                 slot_key="morning",
-            )
-        finally:
-            event.remove(self.db, "after_commit", mark_commit)
-            self.control._slot_completion_states_for_patient = original_reader
+            ),
+            "whole slot": lambda: control.updateMedicationSlotStatus(
+                "morning",
+                True,
+                "patient-a",
+            ),
+        }
 
-        self.assertEqual(completion_state_reads, [False, False])
+        for name, operation in operations.items():
+            with self.subTest(operation=name):
+                rows_at_commit: list[tuple[int, int]] = []
+
+                # Function Name: failing_commit
+                # Description:
+                # - Records how many completion and outbox rows the transaction holds
+                #   when the control asks for the commit, then fails it.
+                # Parameters:
+                # - None.
+                # Returns:
+                # - None; always raises RuntimeError.
+                def failing_commit() -> None:
+                    rows_at_commit.append(
+                        (
+                            self.db.query(_MedicationCompletion).count(),
+                            self.db.query(_CaregiverAlertOutbox).count(),
+                        )
+                    )
+                    raise RuntimeError("commit failed")
+
+                with patch.object(self.db, "commit", side_effect=failing_commit):
+                    with self.assertRaises(HTTPException) as raised:
+                        operation()
+
+                self.assertEqual(raised.exception.status_code, 500)
+                self.assertEqual(rows_at_commit, [(1, 1)])
+                self.assertEqual(self.db.query(_MedicationCompletion).count(), 0)
+                self.assertEqual(self.db.query(_CaregiverAlertOutbox).count(), 0)
+                self.assertEqual(control.consumeCompletionEvents(), [])
+                self.assertEqual(event_recorder.events, [])
+                self.db.refresh(medication)
+                self.assertFalse(medication.medication_status)
+
+    # Function Name: test_single_medication_update_rejects_stale_schedule_date
+    # Description:
+    # - Rejects a single-medication action that names another day with the same HTTP 409 as
+    #   the whole-slot writer, before any completion or outbox row is written, and accepts
+    #   the action when the named day is today.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_single_medication_update_rejects_stale_schedule_date(self) -> None:
+        medication = self._saved_medication(patient_hash="patient-a")
+
+        for delta in (-1, 1):
+            with self.assertRaises(HTTPException) as raised:
+                self.control.updateMedicationStatus(
+                    medication.id,
+                    True,
+                    "patient-a",
+                    "morning",
+                    expected_schedule_date=application_today() + timedelta(days=delta),
+                )
+            self.assertEqual(raised.exception.status_code, 409)
+            self.assertEqual(
+                raised.exception.detail,
+                "The reminder date no longer matches today's schedule.",
+            )
+        self.assertEqual(self.db.query(_MedicationCompletion).count(), 0)
+        self.assertEqual(self.db.query(_CaregiverAlertOutbox).count(), 0)
+
+        response = self.control.updateMedicationStatus(
+            medication.id,
+            True,
+            "patient-a",
+            "morning",
+            expected_schedule_date=application_today(),
+        )
+
+        self.assertTrue(response["data"]["slot_statuses"]["morning"])
+        self.assertEqual(self.db.query(_MedicationCompletion).count(), 1)
+
+    # Function Name: test_recompleted_slot_revives_its_retired_completion_event
+    # Description:
+    # - A slot is completed, unchecked, and its event is retired by the outbox worker as no
+    #   longer current. Completing the slot again must put the same event back to pending
+    #   with a fresh attempt budget, so the worker delivers it instead of skipping it for
+    #   the rest of the day.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_recompleted_slot_revives_its_retired_completion_event(self) -> None:
+        self._saved_medication(
+            patient_hash="patient-a",
+            daily_frequency="1 time",
+            schedule_slot_keys='["morning"]',
+        )
+        worker = ProcessCaregiverAlertOutbox(self.db, RecordingPushBoundary())
+
+        self.control.updateMedicationSlotStatus("morning", True, "patient-a")
+        outbox_id = int(self.control.consumeCompletionEvents()[0]["outbox_id"])
+        self.control.updateMedicationSlotStatus("morning", False, "patient-a")
+        self.assertEqual(worker.processOne(outbox_id), "skipped")
+        outbox_row = self.db.get(_CaregiverAlertOutbox, outbox_id)
+        self.assertEqual(outbox_row.status, CAREGIVER_ALERT_STATUS_DEAD_LETTER)
+        self.assertEqual(outbox_row.last_error, "CompletionNoLongerCurrent")
+
+        self.control.updateMedicationSlotStatus("morning", True, "patient-a")
+
+        completion_events = self.control.consumeCompletionEvents()
+        self.assertEqual(
+            [int(event["outbox_id"]) for event in completion_events],
+            [outbox_id],
+        )
+        self.db.refresh(outbox_row)
+        self.assertEqual(outbox_row.status, CAREGIVER_ALERT_STATUS_PENDING)
+        self.assertEqual(outbox_row.attempt_count, 0)
+        self.assertIsNone(outbox_row.last_error)
+        self.assertEqual(self.db.query(_CaregiverAlertOutbox).count(), 1)
+
+        with patch.object(
+            DispatchCaregiverAlert,
+            "notifySlotCompleted",
+            return_value=PushDeliveryResult(success_count=1),
+        ) as notify:
+            outcome = worker.processOne(outbox_id)
+
+        self.assertEqual(outcome, "sent")
+        notify.assert_called_once_with(patient_hash="patient-a", slot_key="morning")
+        self.db.refresh(outbox_row)
+        self.assertEqual(outbox_row.status, CAREGIVER_ALERT_STATUS_SENT)
+
+    # Function Name: test_recompleted_slot_keeps_other_terminal_completion_events
+    # Description:
+    # - Only an event retired because the completion was undone is revived. An event that
+    #   exhausted its delivery attempts, or was already sent, is reused unchanged, so a
+    #   slot toggled again never produces a second alert.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_recompleted_slot_keeps_other_terminal_completion_events(self) -> None:
+        self._saved_medication(
+            patient_hash="patient-a",
+            daily_frequency="1 time",
+            schedule_slot_keys='["morning"]',
+        )
+        self.control.updateMedicationSlotStatus("morning", True, "patient-a")
+        outbox_id = int(self.control.consumeCompletionEvents()[0]["outbox_id"])
+        outbox_row = self.db.get(_CaregiverAlertOutbox, outbox_id)
+        terminal_states = (
+            (CAREGIVER_ALERT_STATUS_DEAD_LETTER, "PushProviderError", 8),
+            (CAREGIVER_ALERT_STATUS_SENT, None, 1),
+        )
+
+        for status, last_error, attempt_count in terminal_states:
+            with self.subTest(status=status):
+                outbox_row.status = status
+                outbox_row.last_error = last_error
+                outbox_row.attempt_count = attempt_count
+                self.db.commit()
+                self.control.updateMedicationSlotStatus("morning", False, "patient-a")
+
+                self.control.updateMedicationSlotStatus("morning", True, "patient-a")
+
+                self.assertEqual(
+                    [
+                        int(event["outbox_id"])
+                        for event in self.control.consumeCompletionEvents()
+                    ],
+                    [outbox_id],
+                )
+                self.db.refresh(outbox_row)
+                self.assertEqual(outbox_row.status, status)
+                self.assertEqual(outbox_row.last_error, last_error)
+                self.assertEqual(outbox_row.attempt_count, attempt_count)
 
     # Function Name: test_medication_completion_preserves_uml_entity_names
     # Description:
@@ -803,6 +953,53 @@ class CheckScheduleTest(unittest.TestCase):
         )
         self.db.refresh(medication)
         self.assertFalse(medication.medication_status)
+
+    # Function Name: test_whole_slot_update_preserves_other_legacy_completed_slots
+    # Description:
+    # - A medication completed only through the legacy row-level flag keeps its other
+    #   slots complete when the whole-slot writer unchecks one slot: every slot gets an
+    #   explicit completion row before the flag is cleared.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_whole_slot_update_preserves_other_legacy_completed_slots(self) -> None:
+        medication = self._saved_medication(
+            patient_hash="patient-a",
+            medication_status=True,
+            medication_status_date=application_today(),
+        )
+
+        response = self.control.updateMedicationSlotStatus(
+            "lunch",
+            False,
+            "patient-a",
+        )
+
+        expected_slot_statuses = {"morning": True, "lunch": False, "evening": True}
+        self.assertEqual(len(response["data"]), 1)
+        self.assertFalse(response["data"][0]["medication_status"])
+        self.assertEqual(response["data"][0]["slot_statuses"], expected_slot_statuses)
+        completions = {
+            row.slot_key: row
+            for row in self.db.query(_MedicationCompletion)
+            .filter(_MedicationCompletion.saved_medication_id == medication.id)
+            .all()
+        }
+        self.assertEqual(
+            {slot_key: bool(row.completed) for slot_key, row in completions.items()},
+            expected_slot_statuses,
+        )
+        self.assertIsNotNone(completions["morning"].completed_at)
+        self.assertIsNone(completions["lunch"].completed_at)
+        self.db.refresh(medication)
+        self.assertFalse(medication.medication_status)
+        self.assertEqual(
+            self.control.requestTodayMedicationSchedule("patient-a")["data"][0][
+                "slot_statuses"
+            ],
+            expected_slot_statuses,
+        )
 
     # Function Name: test_invalid_slot_key_is_rejected
     # Description:

@@ -6,6 +6,8 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/app_language_resolver.dart';
+
 // 클래스명: AppLanguageControl
 // 역할: 인증 화면과 로그인 후 화면이 하나의 저장된 언어 설정을 사용하게 한다.
 // 주요 책임:
@@ -15,7 +17,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 // 속성:
 // - _languageMode (String): system·ko·en 언어 선택 모드
 class AppLanguageControl extends ChangeNotifier with WidgetsBindingObserver {
-  static const String preferenceKey = 'medbuddy_app_language';
+  static const String preferenceKey = appLanguagePreferenceKey;
 
   String _languageMode;
   int _selectionRevision = 0;
@@ -107,16 +109,6 @@ class AppLanguageControl extends ChangeNotifier with WidgetsBindingObserver {
     await preferences.setString(preferenceKey, normalizedMode);
   }
 
-  // Function Name: toggleLanguage
-  // Description: Selects the opposite of the current display language and persists that explicit choice on the device.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - Future<void>: asynchronous completion without a result payload.
-  Future<void> toggleLanguage() {
-    return setLanguage(isEnglish ? 'ko' : 'en');
-  }
-
   // 함수이름: normalizeLanguage
   // 함수역할: 선택 모드를 검증한 뒤 시스템 설정까지 해석한 ko 또는 en 코드를 구한다.
   // 매개변수:
@@ -134,11 +126,7 @@ class AppLanguageControl extends ChangeNotifier with WidgetsBindingObserver {
   // 반환값:
   // - String: 공백과 대소문자를 정리하고 system·en 이외의 선택값을 ko로 제한한다.
   static String normalizeLanguageMode(String languageMode) {
-    final normalized = languageMode.trim().toLowerCase();
-    if (normalized == 'system' || normalized == 'en') {
-      return normalized;
-    }
-    return 'ko';
+    return normalizeAppLanguageMode(languageMode);
   }
 
   // 함수이름: resolveLanguage
@@ -149,13 +137,7 @@ class AppLanguageControl extends ChangeNotifier with WidgetsBindingObserver {
   // 반환값:
   // - String: 언어 모드를 현재 기기 언어에 맞는 실제 앱 언어 코드로 변환한다.
   static String resolveLanguage(String languageMode, {Locale? locale}) {
-    final normalizedMode = normalizeLanguageMode(languageMode);
-    if (normalizedMode != 'system') {
-      return normalizedMode;
-    }
-    final deviceLocale =
-        locale ?? WidgetsBinding.instance.platformDispatcher.locale;
-    return deviceLocale.languageCode.toLowerCase() == 'en' ? 'en' : 'ko';
+    return resolveAppLanguage(languageMode, locale: locale);
   }
 
   // 함수이름: didChangeLocales

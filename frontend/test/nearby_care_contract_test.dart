@@ -12,6 +12,7 @@ import 'package:medbuddy_frontend/controls/check_nearby_hospital_control.dart';
 import 'package:medbuddy_frontend/controls/check_nearby_pharmacy_control.dart';
 import 'package:medbuddy_frontend/entities/device_coordinate_entity.dart';
 import 'package:medbuddy_frontend/entities/nearby_care_entity.dart';
+import 'package:medbuddy_frontend/services/api_response_parser.dart';
 import 'package:medbuddy_frontend/services/device_location_service.dart';
 import 'package:medbuddy_frontend/services/pharmacy_favorite_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -45,10 +46,167 @@ class _UnavailableLocation implements DeviceLocationBoundary {
   Future<bool> openDeviceLocationSettings() async => true;
 }
 
+// Function Name: _place
+// Description: Builds a synthetic result that differs only in the fields the display order reads.
+// Parameters: id: place identifier; open/late/official/allDay: operating evidence; distanceKm: query distance.
+// Returns: A place with no network or device origin.
+NearbyCarePlace _place(
+  String id, {
+  bool? open,
+  bool late = false,
+  bool official = false,
+  bool allDay = false,
+  double distanceKm = 1,
+}) => NearbyCarePlace(
+  placeId: id,
+  name: id,
+  address: '',
+  telephone: '',
+  latitude: 37.55,
+  longitude: 126.92,
+  distanceKm: distanceKm,
+  todayOpenTime: null,
+  todayCloseTime: null,
+  isOpenNow: open,
+  is24Hours: allDay,
+  isOpenLate: late,
+  isOfficialLateNight: official,
+);
+
 // Function Name: main
 // Description: Registers provider identity, metadata, radius, selection and architecture regressions.
 // Parameters: None. Returns: None; tests report contract drift without network or device access.
 void main() {
+  // Function Name: display order test
+  // Description: Results are ordered by open state, late operation, favorite membership and distance, without touching the input.
+  // Parameters: None. Returns: None.
+  test('display order is open, late, favorite, then nearest', () {
+    final places = [
+      _place('closed-near', open: false, distanceKm: .1),
+      _place('unknown-late', late: true, distanceKm: .2),
+      _place('open-far', open: true, distanceKm: 9),
+      _place('open-near', open: true, distanceKm: 2),
+      _place('open-favorite', open: true, distanceKm: 5),
+      _place('open-late', open: true, late: true, distanceKm: 8),
+      _place('open-all-day', open: true, allDay: true, distanceKm: 7),
+    ];
+    final original = List.of(places);
+    final sorted = sortNearbyCarePlaces(
+      places,
+      favoriteIds: {'open-favorite', 'closed-near'},
+      hospitals: false,
+    );
+    expect(sorted.map((place) => place.placeId), [
+      'open-all-day',
+      'open-late',
+      'open-favorite',
+      'open-near',
+      'open-far',
+      'unknown-late',
+      'closed-near',
+    ]);
+    expect(places, original);
+    expect(sorted, isNot(same(places)));
+  });
+
+  // Function Name: late-operation provider test
+  // Description: The official late-night designation counts for pharmacies only; reported late hours count for both.
+  // Parameters: None. Returns: None.
+  test('official late-night designation ranks pharmacies only', () {
+    final official = _place('official', open: true, official: true);
+    expect(nearbyCarePlaceOperatesLate(official, hospitals: false), isTrue);
+    expect(nearbyCarePlaceOperatesLate(official, hospitals: true), isFalse);
+    for (final hospitals in [false, true]) {
+      expect(
+        nearbyCarePlaceOperatesLate(
+          _place('late', late: true),
+          hospitals: hospitals,
+        ),
+        isTrue,
+      );
+      expect(
+        nearbyCarePlaceOperatesLate(
+          _place('all-day', allDay: true),
+          hospitals: hospitals,
+        ),
+        isTrue,
+      );
+      expect(
+        nearbyCarePlaceOperatesLate(_place('plain'), hospitals: hospitals),
+        isFalse,
+      );
+    }
+    final places = [
+      _place('plain-near', open: true, distanceKm: 1),
+      _place('official-far', open: true, official: true, distanceKm: 5),
+    ];
+    expect(
+      sortNearbyCarePlaces(
+        places,
+        favoriteIds: const {},
+        hospitals: false,
+      ).first.placeId,
+      'official-far',
+    );
+    expect(
+      sortNearbyCarePlaces(
+        places,
+        favoriteIds: const {},
+        hospitals: true,
+      ).first.placeId,
+      'plain-near',
+    );
+  });
+
+  for (final hospital in [false, true]) {
+    // Function Name: typed request failure test
+    // Description: A rejected response keeps its message and status; a transport error keeps its message and original cause.
+    // Parameters: hospital: selected provider. Returns: None.
+    test('request failures stay typed: hospital=$hospital', () async {
+      const area = NearbyCareSearchArea(
+        center: NearbyCareSearchArea.fallbackCenter,
+        radiusKm: 5,
+        isMapArea: true,
+      );
+      var offline = false;
+      final client = MockClient((_) async {
+        if (offline) throw const SocketException('offline');
+        return http.Response(jsonEncode({'detail': 'busy'}), 503);
+      });
+      final CheckNearbyCare control = hospital
+          ? CheckNearbyHospital(client: client)
+          : CheckNearbyPharmacy(client: client);
+      addTearDown(control.dispose);
+      addTearDown(client.close);
+      await expectLater(
+        control.requestNearbyCareSearch(searchArea: area),
+        throwsA(
+          isA<ApiRequestException>()
+              .having((error) => error.statusCode, 'statusCode', 503)
+              .having(
+                (error) => error.message,
+                'message',
+                'Nearby care request failed (503): busy',
+              ),
+        ),
+      );
+      offline = true;
+      await expectLater(
+        control.requestNearbyCareSearch(searchArea: area),
+        throwsA(
+          isA<ApiRequestException>()
+              .having((error) => error.statusCode, 'statusCode', isNull)
+              .having((error) => error.cause, 'cause', isA<SocketException>())
+              .having(
+                (error) => error.message,
+                'message',
+                'Nearby care request failed.',
+              ),
+        ),
+      );
+    });
+  }
+
   for (final wireField in ['pharmacy_id', 'hospital_id']) {
     for (final identifier in <Object>['000123', 'A-0001', 37]) {
       // Function Name: provider identifier test

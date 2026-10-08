@@ -6,6 +6,7 @@ import asyncio
 from datetime import UTC, date, datetime, timedelta
 import logging
 import re
+import time
 import xml.etree.ElementTree as ElementTree
 
 import httpx
@@ -25,6 +26,9 @@ _TIME_RANGE_PATTERN = re.compile(
     r"(?P<end>\d{1,2})\s*:\s*(?P<end_minute>\d{2})"
 )
 _PAGE_SIZE = 20_000
+# A search needs the roster of the target day and the day before; 16 dates cover the dates in
+# use at one time and keep both per-date tables from growing with every date ever requested.
+_MAX_TRACKED_DATES = 16
 
 
 # Class Name: HolidayEmergencyPharmacyAPI
@@ -32,9 +36,12 @@ _PAGE_SIZE = 20_000
 # - Provides nationwide pharmacy opening hours for one holiday date.
 # Responsibilities:
 # - Page through the official roster, validate hours and retain a 12-hour per-date cache.
+# - Answer a date whose roster just failed from a short failure mark instead of the provider.
 # Attributes:
 # - _client (AsyncClient | None): Borrowed or lazily created HTTP client.
-# - _cache (dict): Fetch timestamps and immutable schedules indexed by date.
+# - _cache (dict): Fetch timestamps and immutable schedules indexed by date; newest 16 dates.
+# - _failed_until (dict[date, float]): Monotonic time until which a date is not requested again
+#   after the provider was unavailable; newest 16 dates.
 # - _lock (asyncio.Lock): Serializes cache fills.
 class HolidayEmergencyPharmacyAPI:
     """Queries the nationwide, exact-date NEMC holiday pharmacy roster."""
@@ -60,10 +67,14 @@ class HolidayEmergencyPharmacyAPI:
             date,
             tuple[datetime, tuple[PharmacyHolidaySchedule, ...]],
         ] = {}
+        self._failed_until: dict[date, float] = {}
 
     # Function Name: fetchSchedules
     # Description:
     # - Load every roster page for the requested date, deduplicate pharmacy IDs and reuse fresh cached results.
+    # - After the provider was unavailable for a date, fail that date immediately for
+    #   PUBLIC_API_FAILURE_CACHE_SECONDS: without the mark every search on a holiday waited a full
+    #   provider timeout, one after another behind the fill lock.
     # Parameters:
     # - value (date): Exact holiday date to query.
     # Returns:
@@ -77,6 +88,7 @@ class HolidayEmergencyPharmacyAPI:
             and cached[0] >= datetime.now(UTC) - timedelta(hours=12)
         ):
             return list(cached[1])
+        self._raise_if_recently_failed(value)
         async with self._lock:
             cached = self._cache.get(value)
             if (
@@ -84,29 +96,73 @@ class HolidayEmergencyPharmacyAPI:
                 and cached[0] >= datetime.now(UTC) - timedelta(hours=12)
             ):
                 return list(cached[1])
+            # Requests that queued behind a failing fill must not repeat it.
+            self._raise_if_recently_failed(value)
             if not settings.PUBLIC_DATA_API_KEY.strip():
                 raise PharmacyApiUnavailableError(
                     "Public holiday pharmacy credentials are unavailable."
                 )
             page_no = 1
             schedules_by_id: dict[str, PharmacyHolidaySchedule] = {}
-            while True:
-                root = await self._fetch_page(value, page_no=page_no)
-                total_count = self._parse_nonnegative_int(
-                    root.findtext(".//totalCount"),
-                    field_name="totalCount",
+            try:
+                while True:
+                    root = await self._fetch_page(value, page_no=page_no)
+                    total_count = self._parse_nonnegative_int(
+                        root.findtext(".//totalCount"),
+                        field_name="totalCount",
+                    )
+                    items = root.findall(".//item")
+                    for item in items:
+                        schedule = self._parse_item(item, value)
+                        if schedule is not None:
+                            schedules_by_id[schedule.pharmacy_id] = schedule
+                    if page_no * _PAGE_SIZE >= total_count or not items:
+                        break
+                    page_no += 1
+            except PharmacyApiUnavailableError:
+                self._failed_until[value] = (
+                    time.monotonic() + settings.PUBLIC_API_FAILURE_CACHE_SECONDS
                 )
-                items = root.findall(".//item")
-                for item in items:
-                    schedule = self._parse_item(item, value)
-                    if schedule is not None:
-                        schedules_by_id[schedule.pharmacy_id] = schedule
-                if page_no * _PAGE_SIZE >= total_count or not items:
-                    break
-                page_no += 1
+                self._keep_newest_dates(self._failed_until)
+                raise
             schedules = tuple(schedules_by_id.values())
+            # Re-insert so a refreshed date counts as the newest entry.
+            self._cache.pop(value, None)
             self._cache[value] = (datetime.now(UTC), schedules)
+            self._keep_newest_dates(self._cache)
             return list(schedules)
+
+    # Function Name: _raise_if_recently_failed
+    # Description:
+    # - Reject a date whose failure mark is still in the future and drop a mark that has expired,
+    #   so a date is only ever requested without a mark and a success leaves none behind.
+    # Parameters:
+    # - value (date): Roster date about to be requested.
+    # Returns:
+    # - None; raises PharmacyApiUnavailableError during the cool-down.
+    def _raise_if_recently_failed(self, value: date) -> None:
+        failed_until = self._failed_until.get(value)
+        if failed_until is None:
+            return
+        if failed_until > time.monotonic():
+            raise PharmacyApiUnavailableError(
+                "The NEMC holiday pharmacy roster is temporarily unavailable."
+            )
+        del self._failed_until[value]
+
+    # Function Name: _keep_newest_dates
+    # Description:
+    # - Bound a per-date table to the most recently written dates. A date is absent when it is
+    #   written (failure marks) or re-inserted (cache), so dict order is write order and the first
+    #   keys are the oldest.
+    # Parameters:
+    # - table (dict[date, object]): Per-date cache or failure table to trim in place.
+    # Returns:
+    # - None.
+    @staticmethod
+    def _keep_newest_dates(table: dict[date, object]) -> None:
+        while len(table) > _MAX_TRACKED_DATES:
+            del table[next(iter(table))]
 
     # Function Name: close
     # Description:

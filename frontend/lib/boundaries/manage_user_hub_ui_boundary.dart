@@ -332,11 +332,11 @@ class _UserHubText {
   const _UserHubText(this.language);
 
   // Function Name: isEnglish
-  // Description: Recognizes English locale prefixes after trimming and lowercasing the language code.
+  // Description: Recognizes an English language code by the app-wide rule.
   // Parameters:
   // - None.
   // Returns: True when the documented condition holds; false otherwise.
-  bool get isEnglish => language.trim().toLowerCase().startsWith('en');
+  bool get isEnglish => isEnglishLanguage(language);
 
   // Function Name: title
   // Description: Provides localized wording for "My Info" using the current language and message inputs.

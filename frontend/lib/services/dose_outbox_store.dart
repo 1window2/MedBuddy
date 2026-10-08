@@ -3,9 +3,11 @@
 import 'dart:convert';
 
 import 'package:cryptography/cryptography.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:sqflite/sqflite.dart';
 import '../entities/dose_widget_state.dart';
+import '../entities/user_setting_entity.dart';
 
 part 'dose_widget_store.dart';
 
@@ -29,20 +31,85 @@ class DoseOutboxStore {
     Error.throwWithStackTrace(error, stackTrace);
   });
 
+  static const _keyName = 'medbuddy_dose_outbox_key_v1';
+
   static Future<DoseOutboxStore> _open() async {
     const secure = FlutterSecureStorage();
     final path = '${await getDatabasesPath()}/dose_outbox_v1.db';
-    var encodedKey = await secure.read(key: 'medbuddy_dose_outbox_key_v1');
-    if (encodedKey == null) {
-      if (await databaseExists(path)) {
-        throw StateError('Dose storage key unavailable.');
-      }
-      final key = await AesGcm.with256bits().newSecretKey();
-      encodedKey = base64Encode(await key.extractBytes());
-      await secure.write(key: 'medbuddy_dose_outbox_key_v1', value: encodedKey);
-    }
-    final db = await openDatabase(path, version: 1, onCreate: createSchema);
+    return openWith(
+      readKey: () => secure.read(key: _keyName),
+      writeKey: (value) => secure.write(key: _keyName, value: value),
+      openDatabase: () =>
+          openDatabase(path, version: 1, onCreate: createSchema),
+    );
+  }
+
+  // 함수이름: openWith
+  // 함수역할: 보안 저장소의 키로 DB를 연다. 키가 없으면 새 키로 빈 저장소를 시작한다.
+  // 매개변수: readKey/writeKey - 기기 보안 저장소 접근, openDatabase - DB 열기.
+  // 반환값: 열린 저장소. 보안 저장소나 DB 오류는 그대로 전달해 다음 요청에서 다시 시도한다.
+  // 키를 읽는 중 발생한 오류는 키가 없는 것으로 취급하지 않으므로 기록을 지우지 않는다.
+  @visibleForTesting
+  static Future<DoseOutboxStore> openWith({
+    required Future<String?> Function() readKey,
+    required Future<void> Function(String value) writeKey,
+    required Future<Database> Function() openDatabase,
+  }) async {
+    var encodedKey = await readKey();
+    final db = await openDatabase();
+    encodedKey ??= await _recoverMissingKey(db, readKey, writeKey);
     return DoseOutboxStore(db, SecretKey(base64Decode(encodedKey)));
+  }
+
+  // 함수이름: _recoverMissingKey
+  // 함수역할: 키가 사라진 DB를 매번 실패시키지 않고, 읽을 수 없게 된 기록의 건수만 남긴 뒤
+  //   새 키로 다시 시작한다. 처음 설치한 빈 DB에서는 키만 만든다.
+  // 매개변수: db - 열린 DB, readKey/writeKey - 기기 보안 저장소 접근.
+  // 반환값: 사용할 키. 앱과 백그라운드 작업이 동시에 열어도 같은 키를 받는다.
+  static Future<String> _recoverMissingKey(
+    Database db,
+    Future<String?> Function() readKey,
+    Future<void> Function(String value) writeKey,
+  ) async {
+    // 키가 없으면 기존 행은 어느 실행 환경에서도 복호화할 수 없다. 그 사이 다른 실행 환경이
+    // 새 키를 만들었다면 그 키로 쓴 행이므로 지우지 않는다.
+    await db.transaction((tx) async {
+      if (await readKey() != null) return;
+      final lost = <String, int>{};
+      for (final row in await tx.query(
+        'metadata',
+        where: 'name LIKE ?',
+        whereArgs: ['$_lostPrefix%'],
+      )) {
+        lost[(row['name'] as String).substring(_lostPrefix.length)] =
+            int.tryParse(row['value'] as String) ?? 0;
+      }
+      for (final row in await tx.rawQuery(
+        'SELECT owner, COUNT(*) AS count FROM operations GROUP BY owner',
+      )) {
+        final owner = row['owner'] as String;
+        lost[owner] = (lost[owner] ?? 0) + (row['count'] as int);
+      }
+      await tx.delete('operations');
+      await tx.delete('metadata');
+      for (final entry in lost.entries) {
+        if (entry.value <= 0) continue;
+        await tx.insert('metadata', {
+          'name': '$_lostPrefix${entry.key}',
+          'value': '${entry.value}',
+        });
+      }
+    });
+    // 새 키는 한 실행 환경만 만든다. 나머지는 잠금을 기다린 뒤 저장된 키를 읽어 함께 쓴다.
+    // 키 저장이 실패하거나 도중에 종료되어도 DB에는 건수만 남아 다음 열기에서 이어진다.
+    return db.transaction((tx) async {
+      final existing = await readKey();
+      if (existing != null) return existing;
+      final key = await AesGcm.with256bits().newSecretKey();
+      final encoded = base64Encode(await key.extractBytes());
+      await writeKey(encoded);
+      return encoded;
+    });
   }
 
   static Future<void> createSchema(Database db, int version) async {
@@ -53,6 +120,9 @@ class DoseOutboxStore {
       'CREATE TABLE metadata (name TEXT PRIMARY KEY, value TEXT NOT NULL)',
     );
   }
+
+  // 키 분실로 읽을 수 없게 된 전송 대기 건수를 계정 해시별로 평문 보관한다.
+  static const _lostPrefix = 'lost:';
 
   Future<String> ownerKey(String owner) async =>
       base64UrlEncode((await Sha256().hash(utf8.encode(owner))).bytes);
@@ -217,6 +287,22 @@ class DoseOutboxStore {
     return row == null ? null : _decrypt(row['payload'] as String, token);
   }
 
+  // 함수이름: hasUploadableOperation
+  // 함수역할: 복호화 없이 지금 전송을 시도할 기록이 있는지 확인한다. claim과 같이 가장 이른
+  //   요청이 서버 거부로 보류 중이면 사용자가 다시 시도할 때까지 보낼 것이 없다고 본다.
+  // 매개변수: owner - 계정. 반환값: 전송할 기록이 있으면 true.
+  Future<bool> hasUploadableOperation(String owner) async {
+    final rows = await db.query(
+      'operations',
+      columns: ['state'],
+      where: 'owner = ?',
+      whereArgs: [await ownerKey(owner)],
+      orderBy: 'seq',
+      limit: 1,
+    );
+    return rows.isNotEmpty && rows.single['state'] != 'blocked';
+  }
+
   Future<void> finish(
     String owner,
     String id,
@@ -262,6 +348,29 @@ class DoseOutboxStore {
       'operations',
       where: 'owner = ? AND id = ? AND state = ?',
       whereArgs: [await ownerKey(owner), id, 'blocked'],
+    );
+  }
+
+  // 함수이름: lostOperationCount
+  // 함수역할: 기기 키가 사라져 전송하지 못하고 버려진 이 계정의 복용 기록 건수를 읽는다.
+  // 매개변수: owner - 계정. 반환값: 사용자가 아직 확인하지 않은 유실 건수(없으면 0).
+  Future<int> lostOperationCount(String owner) async {
+    final rows = await db.query(
+      'metadata',
+      where: 'name = ?',
+      whereArgs: ['$_lostPrefix${await ownerKey(owner)}'],
+    );
+    return rows.isEmpty ? 0 : int.tryParse(rows.single['value'] as String) ?? 0;
+  }
+
+  // 함수이름: clearLostOperations
+  // 함수역할: 사용자가 유실 안내를 확인한 뒤 건수 표시를 지운다.
+  // 매개변수: owner - 계정. 반환값: 삭제 완료 Future.
+  Future<void> clearLostOperations(String owner) async {
+    await db.delete(
+      'metadata',
+      where: 'name = ?',
+      whereArgs: ['$_lostPrefix${await ownerKey(owner)}'],
     );
   }
 
@@ -382,6 +491,11 @@ class DoseOutboxStore {
         'metadata',
         where: 'name = ?',
         whereArgs: ['widget:$token'],
+      );
+      await tx.delete(
+        'metadata',
+        where: 'name = ?',
+        whereArgs: ['$_lostPrefix$token'],
       );
     });
   }

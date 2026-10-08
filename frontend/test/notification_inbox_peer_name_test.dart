@@ -9,6 +9,7 @@ import 'package:medbuddy_frontend/boundaries/notification_inbox_ui_boundary.dart
 import 'package:medbuddy_frontend/controls/link_patient_caregiver_control.dart';
 import 'package:medbuddy_frontend/controls/manage_chat_list_control.dart';
 import 'package:medbuddy_frontend/controls/manage_notification_inbox_control.dart';
+import 'package:medbuddy_frontend/entities/caregiver_alert_context_entity.dart';
 import 'package:medbuddy_frontend/entities/notification_inbox_entity.dart';
 import 'package:medbuddy_frontend/entities/patient_caregiver_link_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
@@ -181,6 +182,76 @@ void main() {
     },
   );
 
+  // 함수이름: 미복용 동작 알림 별칭 테스트
+  // 함수역할: 동작 버튼이 있는 미복용 알림(caregiver-v1 경로)에도 활성 환자 별칭을 표시하고, 해석할 수 없는
+  //   경로와 내용 숨김에서는 일반 제목을 유지하는지 검증한다. 매개변수: 없음. 반환값: 검증 완료.
+  test(
+    'missed-dose action alerts use the patient alias from the versioned payload',
+    () async {
+      createControls();
+      await chats.refresh();
+      NotificationInboxEntry missed(String payload) => NotificationInboxEntry(
+        id: 'caregiver:77',
+        title: '미복용 일정 확인',
+        body: '연동된 환자의 저녁 복약이 아직 확인되지 않았습니다.',
+        payload: payload,
+        category: NotificationInboxCategory.medication,
+        occurredAt: DateTime(2026, 9, 12),
+      );
+      CaregiverAlertContext alert(String patientHash) => CaregiverAlertContext(
+        alertId: 5,
+        sourceAlertId: 4,
+        linkId: 2,
+        eventId: 'a' * 64,
+        sourceEventId: 'b' * 64,
+        patientHash: patientHash,
+        recipientHash: 'caregiver',
+        slotKey: 'evening',
+        scheduleDate: '2026-09-12',
+      );
+
+      final entry = missed(alert('patient-2').payload);
+      expect(inbox.titleFor(entry, isEnglish: false), '아빠');
+      expect(inbox.bodyFor(entry, isEnglish: false), entry.body);
+      expect(
+        inbox.titleFor(entry, isEnglish: false, showSensitiveDetails: false),
+        '복약 상태 알림',
+      );
+      for (final payload in [
+        alert('patient-99').payload,
+        'caregiver-v1:%7Bbroken',
+        'caregiver-v1:',
+      ]) {
+        expect(inbox.titleFor(missed(payload), isEnglish: false), '미복용 일정 확인');
+      }
+      links.result = [_link(1, '엄마')];
+      await chats.refresh();
+      expect(inbox.titleFor(entry, isEnglish: false), '미복용 일정 확인');
+    },
+  );
+
+  // 함수이름: 이름 변경 알림 테스트
+  // 함수역할: 채팅 목록이 같은 내용으로 다시 조회될 때는 알림함을 다시 그리게 하지 않고, 별칭이 바뀌거나
+  //   연동이 해제될 때만 알리는지 검증한다. 매개변수: 없음. 반환값: 검증 완료.
+  test('inbox is notified only when a peer name or link changes', () async {
+    createControls();
+    await chats.refresh();
+    var notified = 0;
+    inbox.addListener(() => notified++);
+
+    await chats.refresh();
+    await chats.refresh();
+    expect(notified, 0);
+
+    links.result = [_link(1, '어머니'), _link(2, '아빠')];
+    await chats.refresh();
+    expect(notified, 1);
+
+    links.result = [_link(1, '어머니')];
+    await chats.refresh();
+    expect(notified, 2);
+  });
+
   // 함수이름: 보호자 알림 화면 테스트
   // 함수역할: 작은 화면의 큰 글씨에서도 별칭과 실제 시간대 설명이 보이며 내용 숨김을 적용한다.
   // 매개변수: tester는 화면 테스트 제어기. 반환값: 렌더링 검증 완료.
@@ -259,11 +330,11 @@ void main() {
         await patientChats.refresh();
         expect(
           patientInbox.titleFor(_entry('chat:1'), isEnglish: false),
-          '보호자 caregiver',
+          '보호자 IVER',
         );
         expect(
           patientInbox.titleFor(_entry('chat:1'), isEnglish: true),
-          'Caregiver caregiver',
+          'Caregiver IVER',
         );
         // 환자 별칭은 유지한 채 보호자 별칭만 바꾸면 채팅과 기존 알림이 함께 갱신된다.
         links.result = [_link(1, '엄마').copyWith(caregiverAlias: '우리 딸')];
@@ -290,7 +361,7 @@ void main() {
         await patientChats.refresh();
         expect(
           patientInbox.titleFor(_entry('chat:1'), isEnglish: false),
-          '보호자 caregiver',
+          '보호자 IVER',
         );
         expect(
           () => ManageNotificationInbox(

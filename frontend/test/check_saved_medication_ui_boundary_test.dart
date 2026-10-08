@@ -5,10 +5,12 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/check_saved_medication_ui_boundary.dart';
+import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/boundaries/pill_identification_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
@@ -400,6 +402,69 @@ void main() {
     expect(find.text('목록 열기'), findsOneWidget);
   });
 
+  // 함수이름: 숨겨진 탭 뒤로가기 테스트
+  // 함수역할: 홈 화면과 같은 탭 호스트에서 선택 모드를 켠 채 다른 탭으로 옮기면 선택을 끝내고, 숨겨진 복약함이 첫 시스템 뒤로가기를 가로채지 않는지 검증한다.
+  // 매개변수: tester. 반환값: 검증 완료.
+  testWidgets('다른 탭 뒤에 숨겨진 복약함은 선택을 끝내고 뒤로가기를 가로채지 않는다', (tester) async {
+    final tabIndex = ValueNotifier<int>(1);
+    addTearDown(tabIndex.dispose);
+    var systemPops = 0;
+    // 함수역할: 앱 종료 요청 횟수를 센다. 매개변수: call은 플랫폼 호출. 반환값: 없음.
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'SystemNavigator.pop') systemPops += 1;
+        return null;
+      },
+    );
+    // 함수역할: 다른 테스트가 기본 플랫폼 처리를 쓰도록 되돌린다. 매개변수: 없음. 반환값: 없음.
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await _pumpSelectionApp(
+      tester,
+      home: ValueListenableBuilder<int>(
+        valueListenable: tabIndex,
+        // 함수역할: 홈이 아닌 탭의 뒤로가기를 홈 탭 이동으로 바꾸는 앱 셸을 재현한다.
+        // 매개변수: context, value는 현재 탭, _는 미사용. 반환값: 탭 호스트.
+        builder: (context, value, _) => PopScope<void>(
+          canPop: value == 0,
+          // 함수역할: 닫히지 않은 뒤로가기를 홈 탭 이동으로 처리한다. 매개변수: didPop, _. 반환값: 없음.
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop && value != 0) tabIndex.value = 0;
+          },
+          child: IndexedStack(
+            index: value,
+            children: [
+              const Scaffold(body: Text('홈 탭')),
+              CheckSavedMedicationUI(
+                showCloseButton: false,
+                isActive: value == 1,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await _startSavedSelection(tester);
+    expect(find.text('복약 선택'), findsOneWidget);
+
+    tabIndex.value = 0;
+    await tester.pumpAndSettle();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(systemPops, 1);
+    expect(tabIndex.value, 0);
+
+    tabIndex.value = 1;
+    await tester.pumpAndSettle();
+    expect(find.text('복약 선택'), findsNothing);
+    expect(find.byKey(const Key('saved-medication-select')), findsOneWidget);
+  });
+
   // 함수이름: 빈 결과 복구 테스트
   // 함수역할: 전체 보기로 실제 목록을 표시하고 등록 버튼은 기존 작업 선택을 연다.
   // 매개변수: tester. 반환값: 검증 완료.
@@ -529,6 +594,84 @@ void main() {
       expect(tester.getRect(register).bottom, lessThanOrEqualTo(640));
       expect(tester.getRect(register).left, 20);
       expect(tester.getRect(register).right, 300);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  // 함수이름: 첫 조회 실패 테스트
+  // 함수역할: 조회에 실패한 복약함을 약이 없는 상태로 표시하지 않고 오류와 다시 시도를 제공하며, 다시 시도가 성공하면 목록을 표시한다.
+  // 매개변수: tester. 반환값: 검증 완료.
+  testWidgets('첫 조회에 실패하면 빈 복약함 대신 오류와 다시 시도를 표시한다', (tester) async {
+    final model = await _pumpSelectionApp(
+      tester,
+      loadFailure: StateError('저장된 복약 정보 조회 실패 (500): boom'),
+    );
+    expect(find.text('저장된 복약정보가 없습니다.'), findsNothing);
+    expect(find.byKey(const Key('saved-medication-register')), findsNothing);
+    expect(find.text('저장된 복약 정보를 불러오지 못했습니다.'), findsOneWidget);
+    expect(find.byKey(const Key('saved-medication-select')), findsNothing);
+
+    // 다시 시도도 실패하면 오류 상태를 유지한다.
+    await tester.tap(find.byKey(const Key('saved-medication-retry')));
+    await tester.pumpAndSettle();
+    expect(find.text('저장된 복약 정보를 불러오지 못했습니다.'), findsOneWidget);
+    expect(find.text('저장된 복약정보가 없습니다.'), findsNothing);
+
+    model.control.loadFailure = null;
+    await tester.tap(find.byKey(const Key('saved-medication-retry')));
+    await tester.pumpAndSettle();
+    expect(find.text('약 1'), findsOneWidget);
+    expect(find.byKey(const Key('saved-medication-retry')), findsNothing);
+    expect(find.text('저장된 복약 정보를 불러오지 못했습니다.'), findsNothing);
+  });
+
+  // 함수이름: 목록 유지 테스트
+  // 함수역할: 이미 표시한 목록의 새로 고침이 실패해도 목록을 지우거나 오류 화면으로 바꾸지 않는다.
+  // 매개변수: tester. 반환값: 검증 완료.
+  testWidgets('표시 중인 목록은 새로 고침이 실패해도 유지한다', (tester) async {
+    final model = await _pumpSelectionApp(tester);
+    model.control.loadFailure = StateError('저장된 복약 정보 조회 실패 (500): boom');
+    await model.fetchSavedMedicationInfo();
+    await tester.pumpAndSettle();
+    expect(find.text('약 1'), findsOneWidget);
+    expect(find.byKey(const Key('saved-medication-retry')), findsNothing);
+  });
+
+  for (final language in ['ko', 'en']) {
+    // 함수이름: 조회 실패 접근성 테스트
+    // 함수역할: 작은 화면의 두 배 글씨에서도 조회 실패 안내와 다시 시도 버튼이 넘치지 않는다.
+    // 매개변수: tester. 반환값: 검증 완료.
+    testWidgets('조회 실패 안내와 다시 시도는 큰 글씨를 수용한다: $language', (tester) async {
+      await _pumpSelectionApp(
+        tester,
+        language: language,
+        textScale: 2,
+        small: true,
+        loadFailure: StateError('저장된 복약 정보 조회 실패 (500): boom'),
+      );
+      final retry = find.byKey(const Key('saved-medication-retry'));
+      await tester.scrollUntilVisible(
+        retry,
+        160,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const Key('saved-medication-scroll')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
+      expect(tester.getRect(retry).bottom, lessThanOrEqualTo(640));
+      expect(tester.getRect(retry).left, 20);
+      expect(tester.getRect(retry).right, 300);
+      expect(
+        find.text(
+          language == 'en'
+              ? 'Could not load saved medication information.'
+              : '저장된 복약 정보를 불러오지 못했습니다.',
+        ),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     });
   }
@@ -911,11 +1054,14 @@ void main() {
       apiClient: client,
     );
     addTearDown(viewModel.dispose);
-    await viewModel.requestUserSettingSave(
-      fontSizeOption: 'medium',
-      readingSpeedOption: 'medium',
-      language: 'en',
-    );
+    await viewModel.saveUserSetting(
+        viewModel.userSetting
+          .updateUserSetting(
+            fontSize: UserSetting.fontSizeFromOption('medium'),
+            readingSpeed: UserSetting.readingSpeedFromOption('medium'),
+            language: 'en',
+          ),
+      );
 
     await tester.pumpWidget(
       ChangeNotifierProvider.value(
@@ -1058,11 +1204,14 @@ void main() {
       apiClient: client,
     );
     addTearDown(viewModel.dispose);
-    await viewModel.requestUserSettingSave(
-      fontSizeOption: 'large',
-      readingSpeedOption: 'medium',
-      language: 'en',
-    );
+    await viewModel.saveUserSetting(
+        viewModel.userSetting
+          .updateUserSetting(
+            fontSize: UserSetting.fontSizeFromOption('large'),
+            readingSpeed: UserSetting.readingSpeedFromOption('medium'),
+            language: 'en',
+          ),
+      );
 
     await tester.pumpWidget(
       ChangeNotifierProvider.value(
@@ -1171,11 +1320,14 @@ Future<void> _pumpFilterApp(
     apiClient: client,
   );
   addTearDown(viewModel.dispose);
-  await viewModel.requestUserSettingSave(
-    fontSizeOption: 'large',
-    readingSpeedOption: 'medium',
-    language: language,
-  );
+  await viewModel.saveUserSetting(
+      viewModel.userSetting
+        .updateUserSetting(
+          fontSize: UserSetting.fontSizeFromOption('large'),
+          readingSpeed: UserSetting.readingSpeedFromOption('medium'),
+          language: language,
+        ),
+    );
   await tester.pumpWidget(
     ChangeNotifierProvider.value(
       value: viewModel,
@@ -1354,17 +1506,22 @@ class _SelectionTestControl extends CheckSavedMedication {
   List<MedicationDetail> medications;
   final List<int> deletedIds = [];
   Completer<void>? deleteGate;
+  // 값이 있으면 목록 조회가 이 오류로 실패한다.
+  Object? loadFailure;
 
   // 함수이름: _SelectionTestControl
   // 함수역할: 외부 요청 없는 조회 목록을 받는다. 매개변수: medications. 반환값: 테스트 제어기.
   _SelectionTestControl(this.medications);
 
   // 함수이름: requestSavedMedicationInfo
-  // 함수역할: 파싱을 거치지 않아 잘못된 ID도 UI에서 검증한다.
+  // 함수역할: 파싱을 거치지 않아 잘못된 ID도 UI에서 검증하며, 지정된 실패가 있으면 그 오류를 던진다.
   // 매개변수: 없음. 반환값: 현재 약 목록.
   @override
-  Future<List<MedicationDetail>> requestSavedMedicationInfo() async =>
-      List<MedicationDetail>.from(medications);
+  Future<List<MedicationDetail>> requestSavedMedicationInfo() async {
+    final failure = loadFailure;
+    if (failure != null) throw failure;
+    return List<MedicationDetail>.from(medications);
+  }
 
   // 함수이름: requestDelete
   // 함수역할: 요청 ID를 기록하고 대기 신호 뒤 성공 처리한다.
@@ -1449,7 +1606,7 @@ MedicationDetail _selectionMedication(int? id, {int offsetDays = 0}) =>
 
 // 함수이름: _pumpSelectionApp
 // 함수역할: 선택 회귀 검사를 위한 루트 또는 하위 화면을 준비한다.
-// 매개변수: tester, invalidIds, submenu, language, textScale, small. 반환값: 제어 가능한 ViewModel.
+// 매개변수: tester, invalidIds, submenu, language, textScale, small, loadFailure(첫 조회를 실패시킬 오류), home(루트 화면을 대신할 호스트). 반환값: 제어 가능한 ViewModel.
 Future<_SelectionTestViewModel> _pumpSelectionApp(
   WidgetTester tester, {
   bool invalidIds = false,
@@ -1457,6 +1614,8 @@ Future<_SelectionTestViewModel> _pumpSelectionApp(
   String language = 'ko',
   double textScale = 1,
   bool small = false,
+  Object? loadFailure,
+  Widget? home,
 }) async {
   tester.view.physicalSize = small
       ? const Size(320, 640)
@@ -1477,11 +1636,15 @@ Future<_SelectionTestViewModel> _pumpSelectionApp(
     ],
   ]);
   addTearDown(model.dispose);
-  await model.requestUserSettingSave(
-    fontSizeOption: 'medium',
-    readingSpeedOption: 'medium',
-    language: language,
-  );
+  model.control.loadFailure = loadFailure;
+  await model.saveUserSetting(
+      model.userSetting
+        .updateUserSetting(
+          fontSize: UserSetting.fontSizeFromOption('medium'),
+          readingSpeed: UserSetting.readingSpeedFromOption('medium'),
+          language: language,
+        ),
+    );
   await tester.pumpWidget(
     ChangeNotifierProvider<MedBuddyViewModel>.value(
       value: model,
@@ -1509,7 +1672,7 @@ Future<_SelectionTestViewModel> _pumpSelectionApp(
                   ),
                 ),
               )
-            : const CheckSavedMedicationUI(showCloseButton: false),
+            : home ?? const CheckSavedMedicationUI(showCloseButton: false),
       ),
     ),
   );

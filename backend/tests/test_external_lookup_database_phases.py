@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import anyio.to_thread
 from fastapi import HTTPException
+from fastapi.routing import APIRoute
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.requests import Request
@@ -37,6 +38,17 @@ Database = tuple[Engine, sessionmaker[Session]]
 # 매개변수: owner: 시험 계정. 반환값: 인증 주체.
 def principal(owner: str = "caregiver") -> AuthenticatedPrincipal:
     return AuthenticatedPrincipal(subject=owner, issuer="test", user_hash=owner)
+
+
+# 함수이름: routed_request
+# 함수역할: 접두사로 붙인 라우터처럼 route.path가 상대 경로인 요청을 만든다.
+# 매개변수: method: HTTP 메서드, path: 접두사를 포함한 실제 경로, route_path: 라우터 안의 경로 템플릿.
+# 반환값: route가 설정된 시험 요청.
+def routed_request(method: str, path: str, route_path: str) -> Request:
+    return Request({
+        "type": "http", "method": method, "path": path, "headers": [],
+        "route": APIRoute(route_path, endpoint=lambda: None, methods=[method]),
+    })
 
 
 # 함수이름: database
@@ -206,19 +218,28 @@ def test_cancelled_ai_keeps_no_connection_or_cache(database: Database) -> None:
 
 # 함수이름: test_only_explicit_external_lookups_release_postgres_registration
 # 함수역할: 외부 조회 허용 목록만 등록 단계에서 commit하는지 검사한다.
-# 매개변수: method/path: route, detached: 연결 반환 기대 여부. 반환값: 없음.
-@pytest.mark.parametrize("method,path,detached", [
-    (method, path, True) for method, path in sorted(dependencies._DETACHED_LOOKUP_ROUTES)
-] + [
-    ("POST", "/api/v1/medication/save", False),
-    ("POST", "/api/v1/chat/links/1/messages", False),
-    ("DELETE", "/api/v1/auth/account-data", False),
+# 매개변수: method/path: route, route_path: 라우터 안의 경로, detached: 연결 반환 기대 여부. 반환값: 없음.
+# 허용 목록을 표에서 읽지 않고 직접 적어, 표의 항목이 빠지거나 바뀌면 이 시험이 실패하게 한다.
+@pytest.mark.parametrize("method,path,route_path,detached", [
+    ("POST", "/api/v1/medication/identify", "/identify", True),
+    ("POST", "/api/v1/medication/analyze-prescription-text", "/analyze-prescription-text", True),
+    ("POST", "/api/v1/medication/pill-identification/candidates", "/pill-identification/candidates", True),
+    ("POST", "/api/v1/medication/pill-identification/multiple-candidates", "/pill-identification/multiple-candidates", True),
+    ("POST", "/api/v1/medication/voice-guide", "/voice-guide", True),
+    ("GET", "/api/v1/pharmacy/nearby", "/nearby", True),
+    ("GET", "/api/v1/hospitals/nearby", "/nearby", True),
+    ("GET", "/api/v1/medication/health/recommendation", "/health/recommendation", True),
+    ("POST", "/api/v1/medication/save", "/save", False),
+    ("POST", "/api/v1/chat/links/1/messages", "/links/{link_id}/messages", False),
+    ("DELETE", "/api/v1/auth/account-data", "/api/v1/auth/account-data", False),
 ])
-def test_only_explicit_external_lookups_release_postgres_registration(method: str, path: str, detached: bool) -> None:
+def test_only_explicit_external_lookups_release_postgres_registration(
+    method: str, path: str, route_path: str, detached: bool,
+) -> None:
     # PostgreSQL 분기 자체의 호출 계약을 검사한다. 실제 서버 잠금 검증을 대체하지 않는다.
     db = MagicMock()
     db.get_bind.return_value.dialect.name = "postgresql"
-    request = Request({"type": "http", "method": method, "path": path, "headers": []})
+    request = routed_request(method, path, route_path)
 
     # 함수이름: scenario
     # 함수역할: 인증 dependency의 등록·commit 호출 계약을 검사한다.
@@ -236,6 +257,34 @@ def test_only_explicit_external_lookups_release_postgres_registration(method: st
                 await dependency.aclose()
 
     asyncio.run(scenario())
+
+
+# 함수이름: test_postgres_registration_takes_the_account_lock_and_commits_only_when_detached
+# 함수역할: 실제 등록 함수가 PostgreSQL 계정 잠금을 잡고, 외부 조회 등록만 commit하는지 검사한다.
+# 매개변수: detached: 외부 조회용 등록 여부. 반환값: 없음.
+@pytest.mark.parametrize("detached", [False, True])
+def test_postgres_registration_takes_the_account_lock_and_commits_only_when_detached(detached: bool) -> None:
+    # 다른 시험은 _register_account_scope를 대체하므로 잠금 호출이 빠져도 통과한다.
+    db = MagicMock()
+    db.in_transaction.return_value = False
+    db.get_bind.return_value.dialect.name = "postgresql"
+    db.get.return_value = _UserAccount(user_hash="caregiver")
+    register = (
+        dependencies._register_detached_lookup_scope if detached
+        else dependencies._register_account_scope
+    )
+
+    register(db, "caregiver")
+
+    statements = [str(call.args[0]) for call in db.execute.call_args_list]
+    assert len(statements) == 2 and "lock_timeout" in statements[0]
+    assert "pg_advisory_xact_lock" in statements[1]
+    assert db.execute.call_args_list[1].args[1] == {"user_hash": "caregiver"}
+    # 잠금은 계정 조회보다 먼저 잡아야 하고, 요청 수명 등록은 transaction을 닫지 않는다.
+    names = [call[0] for call in db.mock_calls]
+    assert names.index("execute") < names.index("get")
+    assert db.commit.call_count == int(detached)
+    db.rollback.assert_not_called()
 
 
 # 함수이름: test_catalog_worker_uses_the_released_connection
@@ -268,10 +317,9 @@ def test_sqlite_external_lookup_does_not_hold_request_lifetime_lock(database: Da
     # 함수역할: 같은 계정의 dependency 두 개가 동시에 열릴 수 있는지 검사한다.
     # 매개변수: 없음. 반환값: 없음.
     async def scenario() -> None:
-        request = Request({
-            "type": "http", "method": "GET",
-            "path": "/api/v1/medication/health/recommendation", "headers": [],
-        })
+        request = routed_request(
+            "GET", "/api/v1/medication/health/recommendation", "/health/recommendation",
+        )
         with factory() as first, factory() as second, patch.object(
             dependencies.settings, "RATE_LIMIT_ENABLED", False,
         ):

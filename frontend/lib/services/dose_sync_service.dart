@@ -49,7 +49,12 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   bool _foreground = true;
   bool _observing = false;
   int _retry = 0;
-  List<Map<String, dynamic>> operations = const [];
+  List<Map<String, dynamic>> _operations = const [];
+  // 외부에서는 읽기만 하고 값은 이 객체만 바꾼다.
+  List<Map<String, dynamic>> get operations => _operations;
+  // 기기 키가 사라져 전송하지 못하고 버려진 기록 수. 사용자가 확인할 때까지 유지한다.
+  int _lostRecordCount = 0;
+  int get lostRecordCount => _lostRecordCount;
   List<MedicationSchedule> _confirmed = const [];
   String _cacheDate = '';
   String _fingerprint = '';
@@ -65,8 +70,8 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
        scheduleWork = scheduleWork ?? (() async {}),
        clock = clock ?? DateTime.now;
 
-  int get pendingCount => operations.length;
-  bool get hasBlocked => operations.any((op) => op['state'] == 'blocked');
+  int get pendingCount => _operations.length;
+  bool get hasBlocked => _operations.any((op) => op['state'] == 'blocked');
   bool get hasCache => _cacheDate == doseScheduleDay(clock());
   List<MedicationSchedule> get schedules =>
       project(hasCache ? _confirmed : const []);
@@ -103,18 +108,25 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     final cache = await _store!.readCache(owner);
     _cacheDate = cache?['date'] as String? ?? '';
     _confirmed = MedicationSchedule.fromScheduleJsonList(cache?['schedules']);
-    operations = await _store!.pending(owner);
-    final fingerprint = jsonEncode([
-      doseScheduleDay(clock()),
-      cache,
-      operations,
-    ]);
+    _operations = await _store!.pending(owner);
+    _lostRecordCount = await _store!.lostOperationCount(owner);
+    final fingerprint = _stateFingerprint(cache);
     if (fingerprint != _fingerprint) {
       _fingerprint = fingerprint;
       if (!_disposed) notifyListeners();
       await _publishState();
     }
   }
+
+  // 함수이름: _stateFingerprint
+  // 함수역할: 화면·위젯에 보이는 상태가 실제로 바뀌었는지 비교할 값을 만든다.
+  // 매개변수: cache - 저장소에 있는 일정 캐시. 반환값: 기준일·캐시·대기 기록을 합친 문자열.
+  String _stateFingerprint(Map<String, dynamic>? cache) => jsonEncode([
+    doseScheduleDay(clock()),
+    cache,
+    _operations,
+    _lostRecordCount,
+  ]);
 
   Future<int> cacheRevision() async {
     await initialize();
@@ -135,17 +147,24 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     if (scheduleDate != doseScheduleDay(clock())) {
       throw StateError('The medication schedule has expired. Please refresh.');
     }
-    final saved = await _store!.saveCache(owner, {
+    final cache = <String, dynamic>{
       'date': scheduleDate,
       'schedules': schedules.map((s) => s.toJson()).toList(),
-    }, expectedRevision: expectedRevision);
+    };
+    final saved = await _store!.saveCache(
+      owner,
+      cache,
+      expectedRevision: expectedRevision,
+    );
     if (!saved) {
       await reload();
       return;
     }
     _confirmed = schedules;
     _cacheDate = scheduleDate;
-    operations = await _store!.pending(owner);
+    _operations = await _store!.pending(owner);
+    // The next reload must not report this same snapshot as a new change.
+    _fingerprint = _stateFingerprint(cache);
     await _publishState();
   }
 
@@ -180,7 +199,7 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
         for (final slot in schedule.slotKeys)
           slot: schedule.isSlotCompleted(slot),
       };
-      for (final op in operations) {
+      for (final op in _operations) {
         if (op['schedule_date'] == today &&
             (op['medication_ids'] as List).contains(
               int.tryParse(schedule.medicationID),
@@ -228,7 +247,7 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
       'link_id': ?linkId,
       'medication_names': medicationNames,
     });
-    operations = await _store!.pending(owner);
+    _operations = await _store!.pending(owner);
     if (!_disposed) notifyListeners();
     await _publishState();
     // OS 작업 예약이 실패해도 기록은 남아 다음 앱 실행이나 주기 작업에서 재전송한다.
@@ -322,11 +341,21 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     await drain();
   }
 
+  // 함수이름: acknowledgeLostRecords
+  // 함수역할: 사용자가 유실 안내를 확인하면 건수 표시를 지우고 화면을 갱신한다.
+  // 매개변수: 없음. 반환값: 반영 완료 Future.
+  Future<void> acknowledgeLostRecords() async {
+    await initialize();
+    await _store!.clearLostOperations(owner);
+    await reload();
+  }
+
   Future<void> deleteAccountData() async {
     await initialize();
     await _store!.activate(null);
     await _store!.clearAccount(owner);
-    operations = const [];
+    _operations = const [];
+    _lostRecordCount = 0;
     _confirmed = const [];
     _cacheDate = '';
   }

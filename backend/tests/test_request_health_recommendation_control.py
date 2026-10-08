@@ -11,7 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -25,9 +25,13 @@ from controls.check_health_recommendation_control import (  # noqa: E402
 )
 from api.router import get_health_recommendation  # noqa: E402
 from core.database import Base  # noqa: E402
+from entities.health_recommendation_cache_entity import (  # noqa: E402
+    _HealthRecommendationCache,
+)
 from entities.saved_medication_entity import (  # noqa: E402
     _SavedMedication,
 )
+from support.fakes import FakeGeminiClient  # noqa: E402
 
 
 # Class Name: _FakeLLMService
@@ -164,14 +168,15 @@ class CheckHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
         self.db.refresh(medication)
         return medication
 
-    # Function Name: test_database_phases_leave_event_loop_responsive_and_retain_transaction
+    # Function Name: test_database_phases_leave_event_loop_responsive_and_release_transaction
     # Description:
-    # - Requires lookup and cache operations off-loop, while preserving the request transaction during LLM generation.
+    # - Requires lookup and cache operations off-loop, no open transaction during LLM generation, and a second
+    #   medication and cache read that re-validates the inputs before the cache write.
     # Parameters:
     # - None.
     # Returns:
-    # - None; fails if SQL blocks the loop, crosses concurrent phases or releases account serialization early.
-    async def test_database_phases_leave_event_loop_responsive_and_retain_transaction(self) -> None:
+    # - None; fails if SQL blocks the loop, a transaction is held across generation or the re-validation is skipped.
+    async def test_database_phases_leave_event_loop_responsive_and_release_transaction(self) -> None:
         self._save_medication(item_name="active-tablet")
         loop = asyncio.get_running_loop()
         loop_thread = threading.get_ident()
@@ -217,12 +222,12 @@ class CheckHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
             original_cache_write(patient_hash, key, value)
 
         # Function Name: generate
-        # Description: Verifies LLM execution stays async and does not end the request's authorization transaction.
+        # Description: Verifies LLM execution stays async and runs with no transaction held on the request session.
         # Parameters: summaries (list[dict]): Plain medication values; language (str): Requested content language.
         # Returns: Synthetic guidance from the existing recording boundary.
         async def generate(summaries: list[dict[str, str]], language: str) -> dict[str, object]:
             assert threading.get_ident() == loop_thread
-            assert self.db.in_transaction()
+            assert not self.db.in_transaction()
             calls.append("generate")
             return await original_generate(summaries, language)
 
@@ -234,7 +239,114 @@ class CheckHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
         ):
             response = await self.control.requestHealthRecommendation("patient-a")
         self.assertTrue(response["success"])
-        self.assertEqual(calls, ["medications", "cache_read", "generate", "cache_write"])
+        self.assertEqual(
+            calls,
+            ["medications", "cache_read", "generate", "medications", "cache_read", "cache_write"],
+        )
+        self.assertFalse(self.db.in_transaction())
+
+    # Function Name: test_medication_change_during_generation_is_rejected_without_access_callback
+    # Description:
+    # - Requires a caller that passes no access callback to get the same re-validation as the API route: guidance
+    #   generated for a medication set that changed meanwhile is answered with HTTP 409 and is not cached.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None; fails if stale guidance is returned or stored.
+    async def test_medication_change_during_generation_is_rejected_without_access_callback(self) -> None:
+        self._save_medication(item_name="active-tablet")
+        original_generate = self.llm_service.requestHealthRecommendation
+
+        # Function Name: generate
+        # Description: Saves another active medication while the guidance is being generated.
+        # Parameters: summaries (list[dict]): Plain medication values; language (str): Requested content language.
+        # Returns: Synthetic guidance for the medication set read before the change.
+        async def generate(summaries: list[dict[str, str]], language: str) -> dict[str, object]:
+            self._save_medication(item_name="added-tablet")
+            return await original_generate(summaries, language)
+
+        with patch.object(self.llm_service, "requestHealthRecommendation", side_effect=generate):
+            with self.assertRaises(HTTPException) as rejected:
+                await self.control.requestHealthRecommendation("patient-a")
+
+        self.assertEqual(rejected.exception.status_code, 409)
+        self.assertEqual(self.db.query(_HealthRecommendationCache).count(), 0)
+
+    # Function Name: test_blank_ai_answer_is_not_cached_and_the_next_request_generates_again
+    # Description:
+    # - Runs the real LLM boundary behind the control: an answer without diet and exercise text ends in an error
+    #   with no cache row, and the next request asks the AI again and caches the real guidance.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None; fails if a blank answer is returned as guidance or served from the cache afterwards.
+    async def test_blank_ai_answer_is_not_cached_and_the_next_request_generates_again(self) -> None:
+        self._save_medication(item_name="active-tablet")
+        gemini_client = FakeGeminiClient(
+            {},
+            {},
+            {
+                "diet_recommendation": "diet",
+                "exercise_recommendation": "exercise",
+                "caution_items": ["caution"],
+            },
+        )
+        control = CheckHealthRecommendation(
+            self.db, llm_service=LLMService(ai_client=gemini_client),
+        )
+
+        with self.assertRaises(RuntimeError):
+            await control.requestHealthRecommendation("patient-a")
+        self.assertEqual(self.db.query(_HealthRecommendationCache).count(), 0)
+        blank_attempts = gemini_client.call_count
+
+        response = await control.requestHealthRecommendation("patient-a")
+
+        self.assertEqual(gemini_client.call_count, blank_attempts + 1)
+        self.assertEqual(response["data"]["diet_recommendation"], "diet")
+        self.assertEqual(self.db.query(_HealthRecommendationCache).count(), 1)
+
+    # Function Name: test_active_medication_lookup_reads_only_schedule_columns
+    # Description:
+    # - Requires the recommendation to read saved medications without the detail columns it never uses, while the
+    #   guidance columns of the prompt are still selected.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None; fails if the full saved-medication row is loaded again.
+    async def test_active_medication_lookup_reads_only_schedule_columns(self) -> None:
+        self._save_medication(item_name="active-tablet")
+        statements: list[str] = []
+
+        # Function Name: record
+        # Description: Collects the SQL text of each statement sent to the test engine.
+        # Parameters: statement (str): SQL text; the other SQLAlchemy hook arguments are unused.
+        # Returns: None.
+        def record(
+            _connection: object, _cursor: object, statement: str,
+            _parameters: object, _context: object, _executemany: bool,
+        ) -> None:
+            statements.append(statement)
+
+        event.listen(self.engine, "before_cursor_execute", record)
+        try:
+            response = await self.control.requestHealthRecommendation("patient-a")
+        finally:
+            event.remove(self.engine, "before_cursor_execute", record)
+
+        medication_reads = [
+            statement for statement in statements
+            if statement.lstrip().upper().startswith("SELECT") and "FROM saved_medications" in statement
+        ]
+        self.assertTrue(medication_reads)
+        for statement in medication_reads:
+            self.assertIn("saved_medications.warning_message", statement)
+            for unused_column in ("interaction", "side_effect", "storage_method", "ai_guide"):
+                self.assertNotIn(f"saved_medications.{unused_column}", statement)
+        self.assertEqual(
+            self.llm_service.received_medications[0]["warning_message"], "warning",
+        )
+        self.assertEqual(response["data"]["medication_names"], ["active-tablet"])
 
     # Function Name: test_cancelled_recommendation_waits_for_database_before_cleanup
     # Description:
@@ -323,15 +435,26 @@ class CheckHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
 
     # Function Name: test_cache_write_failure_preserves_guidance_and_hides_database_details
     # Description:
-    # - Retains best-effort cache behavior and logs only the failure type when a worker commit fails.
+    # - Retains best-effort cache behavior and logs only the failure type when the cache-row commit fails.
     # Parameters:
     # - None.
     # Returns:
     # - None; fails if caching errors expose private data or fail otherwise valid guidance.
     async def test_cache_write_failure_preserves_guidance_and_hides_database_details(self) -> None:
         self._save_medication(item_name="active-tablet")
+        original_commit = self.db.commit
+
+        # Function Name: fail_cache_commit
+        # Description: Fails only the commit that would store the recommendation cache row.
+        # Parameters: None.
+        # Returns: None; raises RuntimeError while a cache row is pending.
+        def fail_cache_commit() -> None:
+            if any(isinstance(row, _HealthRecommendationCache) for row in self.db.new):
+                raise RuntimeError("private database details")
+            original_commit()
+
         with (
-            patch.object(self.db, "commit", side_effect=RuntimeError("private database details")),
+            patch.object(self.db, "commit", side_effect=fail_cache_commit),
             self.assertLogs("controls.check_health_recommendation_control", level="WARNING") as captured,
         ):
             response = await self.control.requestHealthRecommendation("patient-a")

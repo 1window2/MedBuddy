@@ -1,6 +1,6 @@
 // File Name: link_patient_caregiver_ui_boundary_test.dart
-// Role: Regression coverage for link-screen request races, patient registration, aliases, and
-//   accessible dialogs.
+// Role: Regression coverage for link-screen request races, patient registration, unlinking, follow-up
+//   reload failures, the chat gate, aliases, and accessible dialogs.
 
 import 'dart:async';
 
@@ -13,12 +13,14 @@ import 'package:medbuddy_frontend/controls/link_patient_caregiver_control.dart';
 import 'package:medbuddy_frontend/controls/manage_linked_chat_control.dart';
 import 'package:medbuddy_frontend/entities/chat_message_entity.dart';
 import 'package:medbuddy_frontend/entities/patient_caregiver_link_entity.dart';
+import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // 클래스명: _FakeLinkPatientCaregiver
 // 역할: 연동 조회·코드 발급·등록의 완료 시점을 제어하고 별칭 변경과 폐기를 기록하는 대역.
 // 주요 책임:
 // - 입력 코드를 기록하고 연동 등록의 완료를 테스트가 결정하도록 대기시킨다.
+// - 해제할 연결 식별자를 기록하고 연동 해제의 완료를 테스트가 결정하도록 대기시킨다.
 // - 연결 식별자와 별칭 변경을 기록하고 현재 보호자 소유의 갱신 연결을 제공한다.
 // 속성:
 // - fakeUserHash (String): 가짜 연동 제어기에 배정할 사용자 식별자.
@@ -29,6 +31,8 @@ class _FakeLinkPatientCaregiver extends LinkPatientCaregiver {
   final List<Completer<PatientLinkCode>> codeRequests = [];
   final List<Completer<PatientCaregiverLink>> registrationRequests = [];
   final List<String> registrationCodes = [];
+  final List<Completer<PatientCaregiverLink>> unlinkRequests = [];
+  final List<int> unlinkIds = [];
   final List<(int, String)> aliasUpdates = [];
   final List<(int, String)> caregiverAliasUpdates = [];
   bool failCaregiverAlias = false;
@@ -97,6 +101,21 @@ class _FakeLinkPatientCaregiver extends LinkPatientCaregiver {
     registrationCodes.add(patientCode);
     final request = Completer<PatientCaregiverLink>();
     registrationRequests.add(request);
+    return request.future;
+  }
+
+  // 함수이름: requestUnlink
+  // 함수역할:
+  // - 해제할 연결 식별자를 기록하고 연동 해제의 완료를 테스트가 결정하도록 대기시킨다.
+  // 매개변수:
+  // - linkId (int): 해제할 환자·보호자 연결 식별자.
+  // 반환값:
+  // - 새로 등록한 해제 요청의 Future.
+  @override
+  Future<PatientCaregiverLink> requestUnlink(int linkId) {
+    unlinkIds.add(linkId);
+    final request = Completer<PatientCaregiverLink>();
+    unlinkRequests.add(request);
     return request.future;
   }
 
@@ -196,9 +215,77 @@ class _FakeChatControl extends ManageLinkedChat {
   }) async => medications;
 }
 
+// 클래스명: _FailingChatControl
+// 역할: 연동 화면의 채팅 진입 검사에서 약 목록 조회 실패를 재현하는 대역.
+// 주요 책임:
+// - 모든 연결의 약 목록 조회를 StateError로 실패시킨다.
+class _FailingChatControl extends ManageLinkedChat {
+  // 함수이름: _FailingChatControl
+  // 함수역할:
+  // - 고정 보호자 범위와 실제 통신을 막는 HTTP 대역을 설정한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 약 목록 조회가 항상 실패하는 채팅 제어 대역.
+  _FailingChatControl()
+    : super(
+        userHash: 'caregiver-a',
+        // 함수이름: MockClient 콜백
+        // 함수역할:
+        // - 네트워크 없이 HTTP 500 상태와 빈 JSON 객체를 제공한다.
+        // 매개변수:
+        // - request (http.Request): 실제 서버 전송 대신 가로챈 HTTP 요청. 이 대역에서는 직접 사용하지 않는다.
+        // 반환값:
+        // - HTTP 500 응답 Future.
+        client: MockClient((request) async => http.Response('{}', 500)),
+      );
+
+  // 함수이름: requestMedicationContexts
+  // 함수역할:
+  // - 약 유무를 알 수 없는 조회 실패를 재현한다.
+  // 매개변수:
+  // - linkId (int): 대화를 구분하는 환자·보호자 연결 식별자. 이 대역에서는 직접 사용하지 않는다.
+  // 반환값:
+  // - StateError로 실패하는 Future.
+  @override
+  Future<List<ChatMedicationContext>> requestMedicationContexts({
+    required int linkId,
+  }) async => throw StateError('Medication context lookup failed.');
+}
+
+// 클래스명: _RouteRecorder
+// 역할: 화면을 그리지 않고도 새 경로가 열렸는지 확인할 수 있게 push된 경로를 기록한다.
+// 속성:
+// - pushedRoutes (List<Route<dynamic>>): 관찰한 Navigator에 push된 경로.
+class _RouteRecorder extends NavigatorObserver {
+  final List<Route<dynamic>> pushedRoutes = [];
+
+  // 함수이름: didPush
+  // 함수역할: push된 경로를 순서대로 기록한다.
+  // 매개변수: route: 새로 열린 경로, previousRoute: 그 아래의 경로.
+  // 반환값: 없음.
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    pushedRoutes.add(route);
+  }
+}
+
+const _caregiverLink = PatientCaregiverLink(
+  linkId: 1,
+  patientHash: 'patient-a',
+  caregiverHash: 'caregiver-a',
+  linkStatus: true,
+);
+
+const _activeMedication = ChatMedicationContext(
+  medicationId: 91,
+  medicationName: '테스트정',
+  dosagePerTime: '1정',
+);
+
 // 함수이름: main
 // 함수역할:
-// - 연동 화면 요청 경쟁, 환자 등록, 별칭과 접근성 대화상자 검증 사례와 테스트 대역을 등록한다.
+// - 연동 화면 요청 경쟁, 환자 등록·해제, 재조회 실패, 채팅 진입, 별칭과 접근성 대화상자 검증 사례와 테스트 대역을 등록한다.
 // 매개변수:
 // - 없음.
 // 반환값:
@@ -342,6 +429,345 @@ void main() {
       find.widgetWithIcon(IconButton, Icons.chat_bubble_outline),
     );
     expect(chatButton.onPressed, isNotNull);
+  });
+
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 기대 동작: 약 목록 조회에 실패한 연동은 "복용 중인 약 없음"으로 막지 않고 채팅 화면을 연다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  testWidgets('약 목록 조회에 실패한 연동은 채팅을 막지 않는다', (tester) async {
+    _useLinkScreenViewport(tester);
+    final control = _FakeLinkPatientCaregiver('caregiver-a');
+    final routes = _RouteRecorder();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorObservers: [routes],
+        home: LinkPatientCaregiverUI(
+          initialUserHash: 'caregiver-a',
+          // 함수이름: controlFactory 콜백
+          // 함수역할:
+          // - 캡처한 연동 제어기를 재사용해 테스트가 응답 시점을 제어하게 한다.
+          // 매개변수:
+          // - _ (String): 고정 대역에서는 사용하지 않는 환자·사용자 범위.
+          // 반환값:
+          // - 설정된 제어기 대역.
+          controlFactory: (_) => control,
+          // 함수이름: chatControlFactory 콜백
+          // 함수역할:
+          // - 약 목록 조회가 실패하는 채팅 제어기 대역을 제공한다.
+          // 매개변수:
+          // - _ (String): 고정 대역에서는 사용하지 않는 환자·사용자 범위.
+          // 반환값:
+          // - 설정된 제어기 대역.
+          chatControlFactory: (_) => _FailingChatControl(),
+        ),
+      ),
+    );
+    await tester.pump();
+    control.linkRequests.single.complete(const [_caregiverLink]);
+    await tester.pumpAndSettle();
+
+    final chatButton = find.widgetWithIcon(
+      IconButton,
+      Icons.chat_bubble_outline,
+    );
+    expect(tester.widget<IconButton>(chatButton).tooltip, '복약 대화');
+    expect(routes.pushedRoutes, hasLength(1));
+
+    // 채팅 화면은 그리지 않고 경로가 열렸는지만 확인한다. 안내만 띄우는 경로는 push하지 않는다.
+    await tester.tap(chatButton);
+    expect(routes.pushedRoutes, hasLength(2));
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 기대 동작: 조회와 코드 발급은 상위 화면에 연동 변경을 알리지 않는다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  testWidgets('조회와 코드 발급은 연동 변경을 알리지 않는다', (tester) async {
+    _useLinkScreenViewport(tester);
+    final control = _FakeLinkPatientCaregiver('patient-a');
+    var updates = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkPatientCaregiverUI(
+          initialUserHash: 'patient-a',
+          controlFactory: (_) => control,
+          onLinksChanged: () => updates++,
+        ),
+      ),
+    );
+    await tester.pump();
+    control.linkRequests.single.complete(const []);
+    await tester.pumpAndSettle();
+    expect(updates, 0);
+
+    await tester.tap(find.text('환자 코드 생성'));
+    await tester.pump();
+    control.codeRequests.single.complete(
+      PatientLinkCode(
+        code: 'TEST1234',
+        patientHash: 'patient-a',
+        expiresAt: DateTime.utc(2100),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.close).last);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(control.linkRequests, hasLength(2));
+    control.linkRequests.last.complete(const []);
+    await tester.pumpAndSettle();
+
+    expect(updates, 0);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  for (final reloadFails in [false, true]) {
+    // 함수이름: testWidgets 콜백
+    // 함수역할:
+    // - 기대 동작: 연동 해제가 성공하면 목록에서 바로 빼고 상위 화면에 알리며, 이어지는 재조회가 실패해도 해제 결과를 오류로 바꾸지 않는다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+    // 반환값:
+    // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+    testWidgets('연동 해제 결과를 반영한다 (재조회 실패: $reloadFails)', (tester) async {
+      _useLinkScreenViewport(tester);
+      SharedPreferences.setMockInitialValues({
+        'caregiver_patient_label.caregiver-a.patient-a': '어머니',
+      });
+      final control = _FakeLinkPatientCaregiver('caregiver-a');
+      var updates = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LinkPatientCaregiverUI(
+            initialUserHash: 'caregiver-a',
+            controlFactory: (_) => control,
+            chatControlFactory: (_) =>
+                _FakeChatControl(const [_activeMedication]),
+            onLinksChanged: () => updates++,
+          ),
+        ),
+      );
+      await tester.pump();
+      control.linkRequests.single.complete(const [_caregiverLink]);
+      await tester.pumpAndSettle();
+      expect(find.text('어머니'), findsOneWidget);
+      expect(updates, 0);
+
+      await tester.tap(find.text('연동 관리'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('연동 해제'));
+      await tester.pump();
+      expect(control.unlinkIds, [1]);
+
+      control.unlinkRequests.single.complete(
+        _caregiverLink.copyWith(linkStatus: false),
+      );
+      // 재조회가 진행 중이라 진행 표시가 계속 움직이므로 정해진 횟수만 프레임을 진행한다.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      // 재조회 응답을 기다리지 않고 해제 결과를 먼저 반영하고 알린다.
+      expect(updates, 1);
+      expect(find.text('어머니'), findsNothing);
+      expect(find.text('환자-보호자 연동을 해제했습니다.'), findsOneWidget);
+      expect(control.linkRequests, hasLength(2));
+
+      if (reloadFails) {
+        control.linkRequests.last.completeError(
+          StateError('Link lookup failed.'),
+        );
+      } else {
+        control.linkRequests.last.complete(const []);
+      }
+      await tester.pumpAndSettle();
+
+      expect(find.text('환자-보호자 연동을 해제했습니다.'), findsOneWidget);
+      expect(find.text('Link lookup failed.'), findsNothing);
+      expect(find.text('어머니'), findsNothing);
+      expect(find.text('연동 관리'), findsNothing);
+      expect(updates, 1);
+      final preferences = await SharedPreferences.getInstance();
+      expect(
+        preferences.getString('caregiver_patient_label.caregiver-a.patient-a'),
+        isNull,
+      );
+      // 요청이 끝났으므로 다음 작업을 다시 받을 수 있다.
+      expect(
+        tester
+            .widget<OutlinedButton>(find.byType(OutlinedButton).first)
+            .onPressed,
+        isNotNull,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 기대 동작: 등록이 성공하면 재조회가 실패해도 등록 창을 닫고 등록된 환자를 보여주며, 이미 쓴 코드를 다시 보내게 하지 않는다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  testWidgets('등록 뒤 재조회가 실패해도 등록 성공으로 처리한다', (tester) async {
+    _useLinkScreenViewport(tester);
+    final control = _FakeLinkPatientCaregiver('caregiver-a');
+    var updates = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkPatientCaregiverUI(
+          initialUserHash: 'caregiver-a',
+          controlFactory: (_) => control,
+          chatControlFactory: (_) =>
+              _FakeChatControl(const [_activeMedication]),
+          onLinksChanged: () => updates++,
+        ),
+      ),
+    );
+    await tester.pump();
+    control.linkRequests.single.complete(const []);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('환자 관리 등록'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('patient-link-code')),
+      'ABCD1234',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, '등록하기'));
+    await tester.pump();
+    control.registrationRequests.single.complete(_caregiverLink);
+    await tester.pump();
+    expect(updates, 1);
+    expect(control.linkRequests, hasLength(2));
+
+    control.linkRequests.last.completeError(StateError('Link lookup failed.'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('patient-link-code')), findsNothing);
+    expect(control.registrationCodes, ['ABCD1234']);
+    expect(find.text('환자-보호자 연동을 등록했습니다.'), findsOneWidget);
+    expect(find.text('Link lookup failed.'), findsNothing);
+    // 재조회 없이도 서버가 돌려준 연동이 목록에 보인다.
+    expect(find.text('환자 NT-A'), findsOneWidget);
+    expect(updates, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 기대 동작: 영어 화면의 보호자는 영어 기본 환자 이름을 보고, 그 이름이 별칭 입력란에 채워지거나 서버 별칭으로 저장되지 않는다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  testWidgets('English caregiver sees an English default patient name', (
+    tester,
+  ) async {
+    _useLinkScreenViewport(tester);
+    final control = _FakeLinkPatientCaregiver('caregiver-a');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkPatientCaregiverUI(
+          initialUserHash: 'caregiver-a',
+          userSetting: const UserSetting(language: 'en'),
+          controlFactory: (_) => control,
+          chatControlFactory: (_) =>
+              _FakeChatControl(const [_activeMedication]),
+        ),
+      ),
+    );
+    await tester.pump();
+    control.linkRequests.single.complete(const [_caregiverLink]);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Patient NT-A'), findsOneWidget);
+    expect(find.text('환자 NT-A'), findsNothing);
+
+    await tester.tap(find.byTooltip('Edit patient display name'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      isEmpty,
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(control.aliasUpdates, [(1, '')]);
+    expect(find.text('Restored the default name.'), findsOneWidget);
+    expect(find.text('Patient NT-A'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 기대 동작: 보호자가 환자 별칭을 지우면 기본 이름으로 돌아갔다고 안내하고 목록에 기본 이름을 표시한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  testWidgets('보호자가 환자 표시 이름을 지우면 기본 이름으로 돌아간다', (tester) async {
+    _useLinkScreenViewport(tester);
+    final control = _FakeLinkPatientCaregiver('caregiver-a');
+    var updates = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkPatientCaregiverUI(
+          initialUserHash: 'caregiver-a',
+          controlFactory: (_) => control,
+          chatControlFactory: (_) =>
+              _FakeChatControl(const [_activeMedication]),
+          onLinksChanged: () => updates++,
+        ),
+      ),
+    );
+    await tester.pump();
+    control.linkRequests.single.complete([
+      _caregiverLink.copyWith(patientAlias: '어머니'),
+    ]);
+    await tester.pumpAndSettle();
+    expect(find.text('어머니'), findsOneWidget);
+    updates = 0;
+
+    await tester.tap(find.byTooltip('환자 표시 이름 수정'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      '어머니',
+    );
+    await tester.enterText(find.byType(TextFormField), '');
+    await tester.tap(find.widgetWithText(FilledButton, '저장'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(control.aliasUpdates, [(1, '')]);
+    expect(find.text('기본 이름으로 변경했습니다.'), findsOneWidget);
+    expect(find.text('환자 NT-A 표시 이름을 저장했습니다.'), findsNothing);
+    expect(find.text('환자 NT-A'), findsOneWidget);
+    expect(find.text('어머니'), findsNothing);
+    expect(updates, 1);
+
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
   });
 
   // 함수이름: testWidgets 콜백

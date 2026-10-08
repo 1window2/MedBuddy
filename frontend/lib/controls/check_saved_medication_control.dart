@@ -235,9 +235,10 @@ class CheckSavedMedication {
 
       final responseBody = ApiResponseParser.decodeBody(response);
       if (response.statusCode != 200) {
-        throw StateError(
-          '저장된 복약 정보 조회 실패 (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        throw ApiResponseParser.httpFailure(
+          '저장된 복약 정보 조회 실패',
+          response,
+          responseBody,
         );
       }
 
@@ -257,7 +258,8 @@ class CheckSavedMedication {
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('저장된 복약 정보를 불러오지 못했습니다.');
+      // 원래 예외를 함께 전달해 화면이 응답 지연·연결 실패 같은 원인별 안내를 고를 수 있게 한다.
+      throw ApiResponseParser.transportFailure('저장된 복약 정보를 불러오지 못했습니다', error);
     }
   }
 

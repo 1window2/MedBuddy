@@ -32,6 +32,9 @@ CHAT_MESSAGE_KIND_PHARMACY_SHARE = "pharmacy_share"
 CHAT_MESSAGE_KIND_PHARMACY_PHONE_VERIFIED = "pharmacy_phone_verified"
 CHAT_MESSAGE_KIND_HOSPITAL_SHARE = "hospital_share"
 MAX_CHAT_MEDICATION_CONTEXTS = 10
+# 메시지에 복사해 두는 약 이름·1회 용량 열의 길이. 저장 약 입력 한도가 더 길어 저장 전에 이 길이로 자른다.
+CHAT_MEDICATION_NAME_MAX_LENGTH = 300
+CHAT_MEDICATION_DOSAGE_MAX_LENGTH = 100
 CHAT_MESSAGE_KINDS = (
     CHAT_MESSAGE_KIND_TEXT,
     CHAT_MESSAGE_KIND_SLOT_CHECK_REQUEST,
@@ -92,9 +95,13 @@ class _ChatMessage(Base):
     )
     context_payload = Column(JSON, nullable=True)
     medication_id = Column(Integer, nullable=True)
-    medication_name = Column(String(length=300), nullable=True)
+    medication_name = Column(
+        String(length=CHAT_MEDICATION_NAME_MAX_LENGTH), nullable=True,
+    )
     medication_image_url = Column(Text, nullable=True)
-    medication_dosage = Column(String(length=100), nullable=True)
+    medication_dosage = Column(
+        String(length=CHAT_MEDICATION_DOSAGE_MAX_LENGTH), nullable=True,
+    )
     created_at = Column(DateTime, nullable=False, default=utc_now, index=True)
     read_at = Column(DateTime, nullable=True)
     patient_deleted_at = Column(DateTime, nullable=True)

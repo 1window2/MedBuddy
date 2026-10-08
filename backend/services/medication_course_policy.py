@@ -5,6 +5,11 @@ from datetime import date, timedelta
 import re
 from typing import Any
 
+from entities.medication_schedule_entity import (
+    decode_medication_schedule_slot_keys,
+    medication_schedule_slot_keys_for_frequency,
+)
+
 _SCHEDULE_COUNT_PATTERN = re.compile(r"-?\d+")
 _FREQUENCY_COUNT_PATTERN = re.compile(
     r"(?<!\d)"
@@ -22,6 +27,7 @@ MAX_DAILY_FREQUENCY = 4
 # Responsibilities:
 # - Read a saved medication start date from prescription or created date.
 # - Extract count values from prescription-derived schedule labels.
+# - Own the course end date and the dose-slot derivation shared by schedule and chat.
 # - Decide whether a medication is active on a requested date.
 # - Decide whether a medication has passed a retention window.
 class MedicationCoursePolicy:
@@ -44,11 +50,10 @@ class MedicationCoursePolicy:
             return False
 
         course_start = self.read_start_date(medication, window_start)
-        total_days = self.read_total_days(getattr(medication, "total_days", None))
-        if total_days <= 0:
+        course_end = self.read_end_date(medication, window_start)
+        if course_end is None:
             return course_start <= window_end
 
-        course_end = course_start + timedelta(days=total_days - 1)
         return course_start <= window_end and course_end >= window_start
 
     # Function Name: is_active_on
@@ -61,11 +66,10 @@ class MedicationCoursePolicy:
     # - True when the medication course includes the target date.
     def is_active_on(self, medication: Any, target_date: date) -> bool:
         start_date = self.read_start_date(medication, target_date)
-        total_days = self.read_total_days(getattr(medication, "total_days", None))
-        if total_days <= 0:
+        end_date = self.read_end_date(medication, target_date)
+        if end_date is None:
             return start_date <= target_date
 
-        end_date = start_date + timedelta(days=total_days - 1)
         return start_date <= target_date <= end_date
 
     # Function Name: is_expired_after
@@ -83,12 +87,10 @@ class MedicationCoursePolicy:
         target_date: date,
         retention_days: int,
     ) -> bool:
-        total_days = self.read_total_days(getattr(medication, "total_days", None))
-        if total_days <= 0:
+        end_date = self.read_end_date(medication, target_date)
+        if end_date is None:
             return False
 
-        start_date = self.read_start_date(medication, target_date)
-        end_date = start_date + timedelta(days=total_days - 1)
         delete_after_date = end_date + timedelta(days=retention_days)
         return target_date >= delete_after_date
 
@@ -101,18 +103,56 @@ class MedicationCoursePolicy:
     # Returns:
     # - Parsed medication course start date.
     def read_start_date(self, medication: Any, fallback_date: date) -> date:
-        raw_date = (
-            getattr(medication, "prescription_date", None)
-            or getattr(medication, "created_date", None)
+        recorded_date = self._read_recorded_start_date(medication)
+        return fallback_date if recorded_date is None else recorded_date
+
+    # Function Name: read_end_date
+    # Description:
+    # - Returns the last day of a medication course: start date plus total_days minus one.
+    # - Single owner of the course-end rule behind the active, window and retention checks.
+    # Parameters:
+    # - medication (Any): Saved medication-like object with date and total_days fields.
+    # - fallback (date | None): Start date assumed when the row holds no valid date.
+    # Returns:
+    # - Course end date; None when no positive duration can be read, or when the row
+    #   holds no valid date and no fallback is given.
+    def read_end_date(
+        self,
+        medication: Any,
+        fallback: date | None = None,
+    ) -> date | None:
+        total_days = self.read_total_days(getattr(medication, "total_days", None))
+        if total_days <= 0:
+            return None
+        start_date = self._read_recorded_start_date(medication)
+        if start_date is None:
+            start_date = fallback
+        if start_date is None:
+            return None
+        return start_date + timedelta(days=total_days - 1)
+
+    # Function Name: read_slot_keys
+    # Description:
+    # - Resolves the dose slots of a medication: the slots the user confirmed, otherwise
+    #   the slots implied by the daily frequency label.
+    # Parameters:
+    # - raw_slot_keys (str | None): Stored JSON list of confirmed slot keys.
+    # - raw_frequency (str | None): Raw label such as "3 times" or "1일 3회".
+    # Returns:
+    # - Ordered slot keys; never empty, because an unreadable frequency means one morning dose.
+    def read_slot_keys(
+        self,
+        raw_slot_keys: str | None,
+        raw_frequency: str | None,
+    ) -> tuple[str, ...]:
+        confirmed_slot_keys = decode_medication_schedule_slot_keys(raw_slot_keys)
+        if confirmed_slot_keys:
+            return tuple(confirmed_slot_keys)
+        return tuple(
+            medication_schedule_slot_keys_for_frequency(
+                self.read_frequency_count(raw_frequency)
+            )
         )
-        if isinstance(raw_date, date):
-            return raw_date
-        if isinstance(raw_date, str) and raw_date.strip():
-            try:
-                return date.fromisoformat(raw_date.strip())
-            except ValueError:
-                return fallback_date
-        return fallback_date
 
     # Function Name: read_total_days
     # Description:
@@ -148,6 +188,27 @@ class MedicationCoursePolicy:
         if not matches:
             return 0
         return self._bounded_positive_count(matches[-1], MAX_DAILY_FREQUENCY)
+
+    # Function Name: _read_recorded_start_date
+    # Description:
+    # - Reads the start date stored on the row, preferring prescription_date over created_date.
+    # Parameters:
+    # - medication (Any): Saved medication-like object.
+    # Returns:
+    # - Parsed date, or None when neither field holds a valid date.
+    def _read_recorded_start_date(self, medication: Any) -> date | None:
+        raw_date = (
+            getattr(medication, "prescription_date", None)
+            or getattr(medication, "created_date", None)
+        )
+        if isinstance(raw_date, date):
+            return raw_date
+        if isinstance(raw_date, str) and raw_date.strip():
+            try:
+                return date.fromisoformat(raw_date.strip())
+            except ValueError:
+                return None
+        return None
 
     # Function Name: _read_schedule_count
     # Description:

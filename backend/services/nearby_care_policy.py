@@ -2,7 +2,55 @@
 # Role: Pure time and distance calculations shared by nearby-care use cases.
 
 import math
-from datetime import datetime
+from datetime import datetime, timedelta, tzinfo
+
+# The client date picker offers today - 7 days through today + 366 days and sends the picked day
+# at 12:00, so the accepted window is counted in calendar days of the application zone.
+TARGET_DATE_PAST_DAYS = 7
+TARGET_DATE_FUTURE_DAYS = 366
+
+
+# Function Name: normalize_target_datetime
+# Description:
+# - Places a requested search time in the application time zone and accepts it when its calendar
+#   date lies from TARGET_DATE_PAST_DAYS before to TARGET_DATE_FUTURE_DAYS after today's date.
+# - Whole days are compared, not instants: comparing datetimes rejected the first offered day once
+#   the current time had passed the requested time of day, and the last offered day before it.
+# Parameters:
+# - value (datetime | None): Requested search time; a naive value is read as application time.
+# - now (datetime): Current time from the caller's clock.
+# - timezone (tzinfo): Application time zone.
+# Returns:
+# - Aware target datetime in the application zone, or the current application time when value is
+#   None; raises ValueError for a date outside the window or outside the calendar range.
+def normalize_target_datetime(
+    value: datetime | None,
+    *,
+    now: datetime,
+    timezone: tzinfo,
+) -> datetime:
+    current = now.astimezone(timezone)
+    if value is None:
+        return current
+    try:
+        normalized = (
+            value.replace(tzinfo=timezone)
+            if value.tzinfo is None
+            else value.astimezone(timezone)
+        )
+    except OverflowError:
+        # A date at the edge of the calendar cannot be shifted into the application zone.
+        raise ValueError("Target date is out of range.") from None
+    today = current.date()
+    if normalized.date() < today - timedelta(days=TARGET_DATE_PAST_DAYS):
+        raise ValueError(
+            f"Target date cannot be more than {TARGET_DATE_PAST_DAYS} days in the past."
+        )
+    if normalized.date() > today + timedelta(days=TARGET_DATE_FUTURE_DAYS):
+        raise ValueError(
+            f"Target date cannot be more than {TARGET_DATE_FUTURE_DAYS} days in the future."
+        )
+    return normalized
 
 
 # 함수이름: minutes_until_close

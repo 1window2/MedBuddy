@@ -536,6 +536,181 @@ class _PhotoSourceIdentifyPill extends _FakeIdentifyPill {
   }
 }
 
+// 클래스명: _NamedIdentifyPill
+// 역할: 사진 선택 순서대로 지정한 약명을 후보로 돌려주어 저장 결과별 재시도 흐름을 재현한다.
+// 주요 책임:
+// - 선택 순번을 이미지 바이트에 덧붙여 어떤 사진의 식별 요청인지 구분한다.
+// - 같은 이름을 두 번 주면 서로 다른 사진이 같은 품목으로 판정된다.
+// 속성:
+// - names (List<String>): 사진 선택 순서에 대응하는 후보 약명.
+// - _selectionCount (int): 이미지 바이트 구분에 사용하는 사진 선택 순번.
+class _NamedIdentifyPill extends _FakeIdentifyPill {
+  final List<String> names;
+  int _selectionCount = 0;
+
+  // 함수이름: _NamedIdentifyPill
+  // 함수역할: 사진 순서별 후보 약명을 보관한다. 매개변수: names. 반환값: 초기화된 대역.
+  _NamedIdentifyPill(this.names);
+
+  // 함수이름: requestPillImage
+  // 함수역할: 선택 순번을 덧붙인 사진 바이트를 돌려준다. 매개변수: source. 반환값: 순번이 포함된 PNG 기반 바이트.
+  @override
+  Future<Uint8List?> requestPillImage(ImageSource source) async {
+    _selectionCount += 1;
+    return Uint8List.fromList([..._FakeIdentifyPill._png, _selectionCount]);
+  }
+
+  // 함수이름: requestPillIdentification
+  // 함수역할: 사진 순번에 대응하는 약명 하나를 후보로 돌려준다. 매개변수: frontImage, backImage. 반환값: 후보 한 건.
+  @override
+  Future<PillIdentificationResult> requestPillIdentification({
+    required Uint8List frontImage,
+    Uint8List? backImage,
+  }) async {
+    final name = names[(frontImage.last - 1) % names.length];
+    return PillIdentificationResult(
+      isConfident: true,
+      requiresConfirmation: true,
+      observedFeatures: const PillVisualFeatures(shape: 'round'),
+      candidates: [
+        PillIdentificationCandidate(
+          itemSeq: 'seq-$name',
+          itemName: name,
+          manufacturer: '제조사',
+          matchScore: 0.9,
+        ),
+      ],
+    );
+  }
+}
+
+// 클래스명: _PartlyEmptyIdentifyPill
+// 역할: 한 장 사진의 두 번째 알약만 후보가 없는 결과를 재현한다.
+// 주요 책임:
+// - 전체 사진 분석 호출 횟수를 세어 한 알약 재비교가 사진 전체를 다시 분석하지 않는지 확인하게 한다.
+// 속성:
+// - multipleCalls (int): 전체 사진 분석 요청 횟수.
+class _PartlyEmptyIdentifyPill extends _RefinementIdentifyPill {
+  int multipleCalls = 0;
+
+  // 함수이름: requestMultiplePillIdentification
+  // 함수역할: 첫 알약은 후보 한 건, 둘째 알약은 후보 없음으로 돌려준다. 매개변수: image. 반환값: 두 알약의 결과.
+  @override
+  Future<MultiplePillIdentificationResult> requestMultiplePillIdentification({
+    required Uint8List image,
+  }) async {
+    multipleCalls += 1;
+    final result = await super.requestMultiplePillIdentification(image: image);
+    return MultiplePillIdentificationResult(
+      requiresConfirmation: true,
+      observations: [
+        result.observations.first,
+        MultiplePillObservation(
+          index: 2,
+          boundingBox: result.observations.last.boundingBox,
+          identification: const PillIdentificationResult(
+            isConfident: false,
+            requiresConfirmation: true,
+            observedFeatures: PillVisualFeatures(),
+            candidates: [],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// 함수이름: _addPillPhoto
+// 함수역할: 필요하면 알약 입력을 추가한 뒤 해당 위치의 앞면 사진을 카메라로 선택한다.
+// 매개변수:
+// - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+// - index (int): 0부터 시작하는 알약 입력 위치.
+// 반환값:
+// - 사진 선택 반영 완료.
+Future<void> _addPillPhoto(WidgetTester tester, int index) async {
+  if (index > 0) {
+    await _tapVisible(
+      tester,
+      find.byKey(const Key('add-pill-photo-set-button')),
+    );
+    await tester.pumpAndSettle();
+  }
+  await _tapVisible(
+    tester,
+    find.byKey(
+      Key(index == 0 ? 'pill-front-image-slot' : 'pill-front-image-slot-$index'),
+    ),
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('카메라로 촬영'));
+  await tester.pumpAndSettle();
+}
+
+// 함수이름: _setTallPillViewport
+// 함수역할: 여러 알약 결과와 확인 버튼이 한 화면에 들어오도록 세로로 긴 화면을 설정한다.
+// 매개변수:
+// - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+// 반환값:
+// - 없음; 테스트 종료 시 화면 크기를 되돌린다.
+void _setTallPillViewport(WidgetTester tester) {
+  tester.view.physicalSize = const Size(360, 3000);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
+// 함수이름: _confirmButton
+// 함수역할: 선택 확인 버튼 위젯을 읽는다. 매개변수: tester. 반환값: 현재 OutlinedButton.
+OutlinedButton _confirmButton(WidgetTester tester) {
+  return tester.widget<OutlinedButton>(
+    find.byKey(const Key('confirm-pill-candidate-button')),
+  );
+}
+
+// 함수이름: _confirmButtonLabel
+// 함수역할: 선택 확인 버튼에 표시된 문구를 읽는다. 매개변수: tester. 반환값: 버튼 문구.
+String? _confirmButtonLabel(WidgetTester tester) {
+  return tester
+      .widget<Text>(
+        find.descendant(
+          of: find.byKey(const Key('confirm-pill-candidate-button')),
+          matching: find.byType(Text),
+        ),
+      )
+      .data;
+}
+
+// 함수이름: _reviewAndConfirm
+// 함수역할: 앞선 결과 안내를 닫고 선택 확인을 누른 뒤, 중복 안내가 뜨면 지정한 방식을 골라 일정 검토를 확정한다.
+// 매개변수:
+// - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+// - duplicateChoiceKey (String?): 중복 안내에서 누를 버튼 키; 안내가 없어야 하면 null.
+// 반환값:
+// - 저장 콜백 완료와 화면 갱신 완료.
+Future<void> _reviewAndConfirm(
+  WidgetTester tester, {
+  String? duplicateChoiceKey,
+}) async {
+  // 앞선 저장 결과 안내가 일정 검토 화면의 확인 버튼을 가리지 않게 먼저 닫는다.
+  ScaffoldMessenger.of(
+    tester.element(find.byType(PillIdentificationUI)),
+  ).hideCurrentSnackBar();
+  await tester.pumpAndSettle();
+  await _tapVisible(
+    tester,
+    find.byKey(const Key('confirm-pill-candidate-button')),
+  );
+  await tester.pumpAndSettle();
+  if (duplicateChoiceKey == null) {
+    expect(find.text('동일 약품 사진 확인'), findsNothing);
+  } else {
+    await tester.tap(find.byKey(Key(duplicateChoiceKey)));
+    await tester.pumpAndSettle();
+  }
+  await _tapVisible(tester, find.byKey(const Key('schedule-review-confirm')));
+  await tester.pumpAndSettle();
+}
+
 // Function Name: main
 // Description:
 // - Register regression cases for pill-photo selection, candidate confirmation, schedule review, and
@@ -795,6 +970,24 @@ void main() {
     await _tapVisible(tester, find.byKey(const Key('refine-pill-back-1')));
     await tester.pumpAndSettle();
     expect(find.textContaining('같은 알약을 뒤집어'), findsOneWidget);
+    // 확인용 앞면 미리보기는 140dp 높이에 필요한 해상도까지만 디코딩한다.
+    final frontPreview = tester.widget<Image>(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(Image),
+      ),
+    );
+    expect(frontPreview.height, 140);
+    expect(
+      frontPreview.image,
+      isA<ResizeImage>().having(
+        // 함수이름: having 콜백
+        // 함수역할: 디코딩 높이 제한을 꺼낸다. 매개변수: image. 반환값: 제한 높이.
+        (image) => image.height,
+        'height',
+        (140 * tester.view.devicePixelRatio).round(),
+      ),
+    );
     await tester.tap(find.text('갤러리에서 선택'));
     await tester.pumpAndSettle();
     expect(control.croppedRegion?.left, 0.6);
@@ -1300,6 +1493,397 @@ void main() {
 
     expect(savedRequests, hasLength(1));
     expect(find.textContaining('동일한 복약 일정 1개'), findsOneWidget);
+    // 묶어 보낸 요청 하나가 저장되면 두 사진 모두 저장된 것으로 표시한다.
+    expect(_confirmButtonLabel(tester), '저장 완료');
+    expect(_confirmButton(tester).onPressed, isNull);
+  });
+
+  // 함수이름: 일부 실패 후 재확인 테스트
+  // 함수역할: 병합 없이 A는 저장되고 B가 실패하면 다시 확인할 때 B만 보내는지 검증한다.
+  // 매개변수: tester: 위젯 렌더링과 사용자 입력을 수행하는 테스트 도구. 반환값: 비동기 검증 완료.
+  testWidgets('저장된 알약은 실패한 알약을 다시 확인할 때 보내지 않는다', (tester) async {
+    _setTallPillViewport(tester);
+    final sentBatches = <List<String>>[];
+    var failB = true;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PillIdentificationUI(
+          userSetting: const UserSetting(language: 'ko'),
+          control: _NamedIdentifyPill(['A약', 'B약']),
+          onBatchSaveRequested: (requests) async {
+            sentBatches.add([
+              for (final request in requests) request.candidate.itemName,
+            ]);
+            return [
+              for (final request in requests)
+                MedicationSaveResult(
+                  status: failB && request.candidate.itemName == 'B약'
+                      ? MedicationSaveStatus.failed
+                      : MedicationSaveStatus.saved,
+                  message: 'result',
+                ),
+            ];
+          },
+        ),
+      ),
+    );
+
+    await _addPillPhoto(tester, 0);
+    await _addPillPhoto(tester, 1);
+    await _tapVisible(tester, find.byKey(const Key('identify-pill-button')));
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.text('A약'));
+    await _tapVisible(tester, find.text('B약'));
+    await tester.pumpAndSettle();
+
+    await _reviewAndConfirm(tester);
+    expect(sentBatches.single, ['A약', 'B약']);
+    expect(find.text('저장 1개, 기존 정보 0개, 실패 1개입니다.'), findsOneWidget);
+    // 실패한 B만 남았으므로 저장 완료로 표시하지 않고 한 건만 다시 확인한다.
+    expect(_confirmButtonLabel(tester), '선택한 후보 확인');
+    expect(_confirmButton(tester).onPressed, isNotNull);
+
+    failB = false;
+    await _reviewAndConfirm(tester);
+    expect(sentBatches, hasLength(2));
+    expect(sentBatches.last, ['B약']);
+    expect(_confirmButtonLabel(tester), '저장 완료');
+    expect(_confirmButton(tester).onPressed, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  // 함수이름: 병합과 실패가 겹친 저장 테스트
+  // 함수역할: 같은 약 두 장을 묶어 저장하고 다른 약이 실패해도 저장된 두 장을 다시 보내지 않는지 검증한다.
+  // 매개변수: tester: 위젯 렌더링과 사용자 입력을 수행하는 테스트 도구. 반환값: 비동기 검증 완료.
+  testWidgets('묶어 저장한 사진은 다른 알약이 실패해도 다시 보내지 않는다', (tester) async {
+    _setTallPillViewport(tester);
+    final sentBatches = <List<String>>[];
+    var failB = true;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PillIdentificationUI(
+          userSetting: const UserSetting(language: 'ko'),
+          control: _NamedIdentifyPill(['A약', 'A약', 'B약']),
+          onBatchSaveRequested: (requests) async {
+            sentBatches.add([
+              for (final request in requests) request.candidate.itemName,
+            ]);
+            return [
+              for (final request in requests)
+                MedicationSaveResult(
+                  status: failB && request.candidate.itemName == 'B약'
+                      ? MedicationSaveStatus.failed
+                      : MedicationSaveStatus.saved,
+                  message: 'result',
+                ),
+            ];
+          },
+        ),
+      ),
+    );
+
+    await _addPillPhoto(tester, 0);
+    await _addPillPhoto(tester, 1);
+    await _addPillPhoto(tester, 2);
+    await _tapVisible(tester, find.byKey(const Key('identify-pill-button')));
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.text('A약').at(0));
+    await _tapVisible(tester, find.text('A약').at(1));
+    await _tapVisible(tester, find.text('B약'));
+    await tester.pumpAndSettle();
+
+    await _reviewAndConfirm(
+      tester,
+      duplicateChoiceKey: 'duplicate-pill-merge-matching',
+    );
+    expect(sentBatches.single, ['A약', 'B약']);
+    expect(find.textContaining('동일한 복약 일정 1개'), findsOneWidget);
+    expect(_confirmButtonLabel(tester), '선택한 후보 확인');
+
+    // 남은 것은 B 한 장뿐이므로 중복 안내 없이 B만 다시 보낸다.
+    failB = false;
+    await _reviewAndConfirm(tester);
+    expect(sentBatches, hasLength(2));
+    expect(sentBatches.last, ['B약']);
+    expect(_confirmButtonLabel(tester), '저장 완료');
+    expect(tester.takeException(), isNull);
+  });
+
+  // 함수이름: 묶은 요청 실패 테스트
+  // 함수역할: 묶어 보낸 요청이 실패하면 그 두 장을 저장됨으로 표시하지 않고 저장된 다른 약만 제외하는지 검증한다.
+  // 매개변수: tester: 위젯 렌더링과 사용자 입력을 수행하는 테스트 도구. 반환값: 비동기 검증 완료.
+  testWidgets('묶어 보낸 요청이 실패하면 그 사진들만 다시 확인 대상으로 남는다', (tester) async {
+    _setTallPillViewport(tester);
+    final sentBatches = <List<String>>[];
+    var failA = true;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PillIdentificationUI(
+          userSetting: const UserSetting(language: 'ko'),
+          control: _NamedIdentifyPill(['A약', 'A약', 'B약']),
+          onBatchSaveRequested: (requests) async {
+            sentBatches.add([
+              for (final request in requests) request.candidate.itemName,
+            ]);
+            return [
+              for (final request in requests)
+                MedicationSaveResult(
+                  status: failA && request.candidate.itemName == 'A약'
+                      ? MedicationSaveStatus.failed
+                      : MedicationSaveStatus.saved,
+                  message: 'result',
+                ),
+            ];
+          },
+        ),
+      ),
+    );
+
+    await _addPillPhoto(tester, 0);
+    await _addPillPhoto(tester, 1);
+    await _addPillPhoto(tester, 2);
+    await _tapVisible(tester, find.byKey(const Key('identify-pill-button')));
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.text('A약').at(0));
+    await _tapVisible(tester, find.text('A약').at(1));
+    await _tapVisible(tester, find.text('B약'));
+    await tester.pumpAndSettle();
+
+    await _reviewAndConfirm(
+      tester,
+      duplicateChoiceKey: 'duplicate-pill-merge-matching',
+    );
+    expect(sentBatches.single, ['A약', 'B약']);
+    // A 두 장은 저장되지 않았으므로 두 장 모두 다시 확인 대상이다.
+    expect(_confirmButtonLabel(tester), '선택한 알약 2개 검토 후 저장');
+    expect(find.text('저장 완료'), findsNothing);
+
+    failA = false;
+    await _reviewAndConfirm(
+      tester,
+      duplicateChoiceKey: 'duplicate-pill-merge-matching',
+    );
+    expect(sentBatches, hasLength(2));
+    expect(sentBatches.last, ['A약']);
+    expect(_confirmButtonLabel(tester), '저장 완료');
+    expect(tester.takeException(), isNull);
+  });
+
+  // 함수이름: 개별 저장 콜백 예외 테스트
+  // 함수역할: 개별 저장 콜백이 두 번째 약에서 예외를 내도 먼저 저장된 약을 다시 보내지 않는지 검증한다.
+  // 매개변수: tester: 위젯 렌더링과 사용자 입력을 수행하는 테스트 도구. 반환값: 비동기 검증 완료.
+  testWidgets('저장 도중 예외가 나도 먼저 저장된 알약은 다시 보내지 않는다', (tester) async {
+    _setTallPillViewport(tester);
+    final sentNames = <String>[];
+    var throwOnB = true;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PillIdentificationUI(
+          userSetting: const UserSetting(language: 'ko'),
+          control: _NamedIdentifyPill(['A약', 'B약']),
+          onSaveRequested: (candidate, schedule) async {
+            sentNames.add(candidate.itemName);
+            if (throwOnB && candidate.itemName == 'B약') {
+              throw StateError('save interrupted');
+            }
+            return const MedicationSaveResult(
+              status: MedicationSaveStatus.saved,
+              message: 'saved',
+            );
+          },
+        ),
+      ),
+    );
+
+    await _addPillPhoto(tester, 0);
+    await _addPillPhoto(tester, 1);
+    await _tapVisible(tester, find.byKey(const Key('identify-pill-button')));
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.text('A약'));
+    await _tapVisible(tester, find.text('B약'));
+    await tester.pumpAndSettle();
+
+    await _reviewAndConfirm(tester);
+    expect(sentNames, ['A약', 'B약']);
+    expect(find.text('저장 1개, 기존 정보 0개, 실패 1개입니다.'), findsOneWidget);
+    expect(_confirmButtonLabel(tester), '선택한 후보 확인');
+
+    throwOnB = false;
+    await _reviewAndConfirm(tester);
+    expect(sentNames, ['A약', 'B약', 'B약']);
+    expect(_confirmButtonLabel(tester), '저장 완료');
+    expect(tester.takeException(), isNull);
+  });
+
+  // 함수이름: 일괄 저장 콜백 예외 테스트
+  // 함수역할: 일괄 저장 콜백이 예외를 내면 어떤 약도 저장됨으로 표시하지 않는지 검증한다.
+  // 매개변수: tester: 위젯 렌더링과 사용자 입력을 수행하는 테스트 도구. 반환값: 비동기 검증 완료.
+  testWidgets('일괄 저장이 예외로 끝나면 어떤 알약도 저장됨으로 표시하지 않는다', (tester) async {
+    _setTallPillViewport(tester);
+    var saveCalls = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PillIdentificationUI(
+          userSetting: const UserSetting(language: 'ko'),
+          control: _NamedIdentifyPill(['A약', 'B약']),
+          onBatchSaveRequested: (requests) async {
+            saveCalls += 1;
+            throw StateError('save interrupted');
+          },
+        ),
+      ),
+    );
+
+    await _addPillPhoto(tester, 0);
+    await _addPillPhoto(tester, 1);
+    await _tapVisible(tester, find.byKey(const Key('identify-pill-button')));
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.text('A약'));
+    await _tapVisible(tester, find.text('B약'));
+    await tester.pumpAndSettle();
+
+    await _reviewAndConfirm(tester);
+    expect(saveCalls, 1);
+    expect(find.text('저장 0개, 기존 정보 0개, 실패 2개입니다.'), findsOneWidget);
+    expect(_confirmButtonLabel(tester), '선택한 알약 2개 검토 후 저장');
+    expect(find.text('저장 완료'), findsNothing);
+    expect(_confirmButton(tester).onPressed, isNotNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  // 함수이름: 저장 완료 후 같은 후보 재선택 테스트
+  // 함수역할: 모두 저장한 뒤 같은 후보를 다시 눌러도 0개 저장 버튼이 생기지 않는지 검증한다.
+  // 매개변수: tester: 위젯 렌더링과 사용자 입력을 수행하는 테스트 도구. 반환값: 비동기 검증 완료.
+  testWidgets('저장을 마친 뒤 같은 후보를 다시 눌러도 저장 완료 상태를 유지한다', (tester) async {
+    _setTallPillViewport(tester);
+    var saveCalls = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PillIdentificationUI(
+          userSetting: const UserSetting(language: 'ko'),
+          control: _NamedIdentifyPill(['A약']),
+          onBatchSaveRequested: (requests) async {
+            saveCalls += 1;
+            return [
+              for (var index = 0; index < requests.length; index += 1)
+                const MedicationSaveResult(
+                  status: MedicationSaveStatus.saved,
+                  message: 'saved',
+                ),
+            ];
+          },
+        ),
+      ),
+    );
+
+    await _addPillPhoto(tester, 0);
+    await _tapVisible(tester, find.byKey(const Key('identify-pill-button')));
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.text('A약'));
+    await tester.pumpAndSettle();
+    await _reviewAndConfirm(tester);
+    expect(saveCalls, 1);
+    expect(_confirmButtonLabel(tester), '저장 완료');
+
+    await _tapVisible(tester, find.text('A약'));
+    await tester.pumpAndSettle();
+
+    expect(_confirmButtonLabel(tester), '저장 완료');
+    expect(find.textContaining('0개'), findsNothing);
+    expect(_confirmButton(tester).onPressed, isNull);
+    expect(saveCalls, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  // 함수이름: 저장 진행 표시 테스트
+  // 함수역할: 저장 요청이 끝나기 전까지 확인 버튼에 진행 표시와 저장 중 문구가 보이는지 검증한다.
+  // 매개변수: tester: 위젯 렌더링과 사용자 입력을 수행하는 테스트 도구. 반환값: 비동기 검증 완료.
+  testWidgets('알약을 저장하는 동안 확인 버튼에 진행 상태를 표시한다', (tester) async {
+    _setTallPillViewport(tester);
+    final pendingSave = Completer<List<MedicationSaveResult>>();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PillIdentificationUI(
+          userSetting: const UserSetting(language: 'ko'),
+          control: _NamedIdentifyPill(['A약']),
+          onBatchSaveRequested: (requests) => pendingSave.future,
+        ),
+      ),
+    );
+
+    await _addPillPhoto(tester, 0);
+    await _tapVisible(tester, find.byKey(const Key('identify-pill-button')));
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.text('A약'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('pill-save-progress-indicator')),
+      findsNothing,
+    );
+    await _tapVisible(
+      tester,
+      find.byKey(const Key('confirm-pill-candidate-button')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('schedule-review-confirm')));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(
+      find.byKey(const Key('pill-save-progress-indicator')),
+      findsOneWidget,
+    );
+    expect(_confirmButtonLabel(tester), '저장 중...');
+    expect(_confirmButton(tester).onPressed, isNull);
+
+    pendingSave.complete(const [
+      MedicationSaveResult(status: MedicationSaveStatus.saved, message: 'ok'),
+    ]);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('pill-save-progress-indicator')),
+      findsNothing,
+    );
+    expect(_confirmButtonLabel(tester), '저장 완료');
+    expect(tester.takeException(), isNull);
+  });
+
+  // 함수이름: 한 알약 재비교 테스트
+  // 함수역할: 한 장 사진에서 후보가 없는 알약만 다시 비교하고 다른 알약의 선택을 유지하는지 검증한다.
+  // 매개변수: tester: 위젯 렌더링과 사용자 입력을 수행하는 테스트 도구. 반환값: 비동기 검증 완료.
+  testWidgets('한 장 사진에서 후보 없는 알약만 다시 비교한다', (tester) async {
+    final control = _PartlyEmptyIdentifyPill();
+    addTearDown(control.dispose);
+    await _openRefinementGroup(tester, control);
+    await _tapVisible(tester, find.text('첫 번째 알약'));
+    await tester.pumpAndSettle();
+    expect(control.multipleCalls, 1);
+    expect(find.byKey(const Key('pill-empty-results-1')), findsOneWidget);
+
+    await _tapVisible(tester, find.text('이 알약 다시 비교'));
+    await tester.pumpAndSettle();
+
+    // 사진 전체를 다시 분석하지 않고 둘째 알약의 영역만 보낸다.
+    expect(control.multipleCalls, 1);
+    expect(control.refinementCalls, 1);
+    expect(control.croppedRegion?.left, 0.6);
+    expect(control.submittedFront, control.croppedBytes);
+    expect(find.byIcon(Icons.radio_button_checked), findsOneWidget);
+    expect(find.text('첫 번째 알약'), findsOneWidget);
+    expect(find.byKey(const Key('pill-empty-results-1')), findsNothing);
+
+    await _tapVisible(tester, find.text('페라트라정2.5밀리그램(레트로졸)'));
+    await tester.pumpAndSettle();
+    expect(_confirmButton(tester).onPressed, isNotNull);
+    expect(tester.takeException(), isNull);
   });
 
   // 함수이름: testWidgets 콜백

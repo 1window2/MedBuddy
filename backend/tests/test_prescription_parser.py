@@ -207,7 +207,7 @@ class PrescriptionParserTest(unittest.TestCase):
             }
         )
 
-        self.assertTrue(candidates.isEmpty())
+        self.assertFalse(candidates.candidates)
 
     # Function Name: test_normalize_prescription_candidates_skips_non_finite_numeric_aliases
     # Description:
@@ -267,13 +267,17 @@ class PrescriptionParserTest(unittest.TestCase):
         )
         candidate_list = MedicationCandidateList()
 
-        self.assertTrue(candidate_list.isEmpty())
+        self.assertFalse(candidate_list.candidates)
         candidate_list.addCandidate(medication_candidate)
 
-        self.assertFalse(candidate_list.isEmpty())
+        self.assertTrue(candidate_list.candidates)
         self.assertEqual(
-            candidate_list.findByName("\ud504\ub8e8\ucf54\ud504\uc815"),
-            medication_candidate,
+            [
+                candidate
+                for candidate in candidate_list.candidates
+                if candidate.drug_name == "\ud504\ub8e8\ucf54\ud504\uc815"
+            ],
+            [medication_candidate],
         )
         self.assertEqual(medication_candidate.drugName, "\ud504\ub8e8\ucf54\ud504\uc815")
         self.assertEqual(medication_candidate.dosagePerTime, "1")

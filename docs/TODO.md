@@ -1,81 +1,222 @@
 # MedBuddy Release TODO
 
-## v0.2.0 feature freeze and stabilization
+## v0.2.1 maintenance line
 
-As of October 5, finish the existing candidate without new features or implementation
-paths. Cleanup may reorganize existing responsibilities, remove proven dead code and
-reduce duplication, but must preserve behavior, API/storage contracts, dependencies
-and safety/release gates. Use bounded reviewed commits on `beta/v0.2.0`; no shared
-history rewrite or automatic merge/tag/publication. See the
-[candidate boundary and release gates](releases/v0.2.0-beta.md) and
-[latest refactoring evidence](qa/v0.2.0-architecture-gates.md).
+`v0.2.0-beta` was published on October 8 as a limited GitHub pre-release for
+direct-install testers; its notes are on the
+[releases page](https://github.com/1window2/MedBuddy/releases/tag/v0.2.0-beta).
+Work for 0.2.1 continues on `beta/v0.2.1` and is limited to corrections and
+small improvements. See the [v0.2.1 notes](releases/v0.2.1-beta.md).
 
-Code cleanup is not release acceptance. The owner-authorized signed candidate
-`866db67` was installed as a verified matching-signer update on the synthetic
-Android 12 phone on October 5. Startup and bounded physical checks are recorded
-in [the candidate evidence](qa/v0.2.0-map-direct-filter-device-validation.md#signed-candidate-update--2026-10-05).
-Full physical acceptance remains incomplete. Google Play enrollment remains
-deferred and two-device checks remain unperformed.
-On October 8 the owner chose to merge and publish `v0.2.0-beta` as a limited
-GitHub pre-release with those gates open; see
-[the decision](releases/v0.2.0-beta.md#limited-pre-release-decision--2026-10-08).
-Unimplemented enhancements below are explicitly outside this candidate.
+### Carried over from v0.2.0
 
-October 6 cleanup consolidates existing pill-upload transport and settings draft
-handling and removes a map callback wrapper; see [the cleanup evidence](qa/v0.2.0-architecture-gates.md#cleanup-evidence--2026-10-06).
-October 7 cleanup removes unreferenced frontend members and the test-only
-pre-Alembic schema patchers, shares the home choice-sheet widgets and tidies the
-visual tokens (AA brand green, distinct dose-time colors, flat headers); see
-[the latest evidence](qa/v0.2.0-architecture-gates.md#latest-cleanup-evidence--2026-10-07).
-Neither changes dependencies or public contracts. The signed build of `2d85e6e`
-replaced the phone's `866db67` build on October 7 with exact-source CI, preserved
-account data and a physical large-text pass; see
-[the signed update evidence](qa/v0.2.0-map-direct-filter-device-validation.md#signed-candidate-update--2026-10-07).
-A pre-merge audit then corrected reminder, account-deletion, chat dose-record
-and proxy-trust defects; the signed build of `e328bab` is the installed
-candidate. See [the audit record](qa/v0.2.0-architecture-gates.md#pre-merge-audit-and-corrections--2026-10-07).
-The backend corrections were deployed on October 7; see
-[the backend update](qa/v0.2.0-2026-09-30-production-rollout.md#backend-update--2026-10-07).
-A test medication then exercised the dose-time cards and whole-slot toggle.
-Caregiver screens were not exercised on the device because the test account
-has no linked caregiver.
+Physical acceptance that was not performed for v0.2.0:
 
-### Current stabilization acceptance follow-up
+- [ ] A notification "taken" or snooze action from a cold start, and the first
+      launch after the application day changes. The "taken" action was checked
+      with the app in the background only.
+- [ ] Prescription capture with the on-device privacy filter, and saving
+      several identified pills, on a physical device.
+- [ ] Android 16 background work. Android 14 was exercised on an emulator
+      only.
+- [ ] Native map-marker recovery after a partially failed marker addition.
 
-- [ ] Diagnose the observed notification unread-state difference across the
-      signed update: the baseline home badge showed four, while the candidate
-      showed none and retained four historical inbox rows. Do not equate preserved
-      rows with preserved read flags or infer data loss without reproduction.
-- [ ] Reproduce and diagnose the first health-recommendation request failure
-      observed in the [October 5 contributor emulator checks](qa/v0.2.0-2026-10-05-refactor-validation.md).
-      Later generation/cache/retry success does not establish the original cause
-      or close this finding. Preserve sanitized failure evidence before changing
-      existing behavior; do not add product functionality as part of this triage.
-- [ ] Physically confirm corrected native map-marker recovery after a partially
-      successful addition, failed call and then empty/changed results. The queue
-      now clears uncertain marker state before the next diff; synthetic platform
-      regressions cover empty/same results, failed clearing and controller
-      replacement. This is not yet physical-device acceptance.
+Introduced in v0.2.1 and not yet checked on a device:
 
-Current implementation, verification evidence, and remaining work are summarized
-in [the September 21 architecture and roadmap review](qa/v0.2.0-2026-09-21-architecture-review.md).
-The subsequent offline-dose date-boundary correction and SDK/lockfile follow-up
-are recorded in [the September 22 review](qa/v0.2.0-2026-09-22-dose-midnight-review.md).
-The latest contributor work, Home guidance follow-up, and new pharmacy-cache
-migration prerequisite are summarized in
-[the September 25 follow-up](qa/v0.2.0-2026-09-25-contributor-followup.md).
-The migration data-preservation CI gate and rollout/rollback guidance are recorded
-in [the September 26 follow-up](qa/v0.2.0-2026-09-26-migration-release-gate.md).
-The event-loop blocking correction and exact-commit signing gate are recorded in
-[the P1 architecture follow-up](qa/v0.2.0-2026-09-26-p1-architecture-fixes.md).
-Ordinary chat push now has a transactional queue; migration and acceptance
-requirements are in [the durable delivery design](MedBuddy%20-%20Durable%20Chat%20Delivery.md).
-The September 30 production backup, isolated restore and migration rehearsal,
-deployment, and public ingress checks are recorded in
-[the rollout evidence](qa/v0.2.0-2026-09-30-production-rollout.md).
-Individual physical checks below remain open unless their exact scope has evidence;
-the September 13 slot-specific cancellation pass does not close global-toggle or
-account-cleanup acceptance.
+- [ ] Device-to-device transfer: the new extraction rules exclude all app data
+      so the encrypted dose store cannot arrive without its device-bound key.
+      This needs two phones.
+
+Checked on October 8 with signed builds (Galaxy Note10+, Android 12,
+replace-only updates from 0.2.0; an Android 14 emulator with a guest account as
+the second device; backend `014aaf4`). The last build checked was `490ef7c`:
+
+- [x] Start without credential entry; saved medications and notification
+      history identical before and after the update.
+- [x] Manual registration with a photo from the system picker (no storage
+      permission), dose check, undo and re-check, whole-slot check, and the
+      notification "taken" action with the app in the background.
+- [x] A reminder scheduled as an exact alarm fired on the minute; a slot
+      already taken was not re-armed when its reminder was enabled again.
+- [x] Home-screen widget "taken" and undo: uploaded from the background within
+      seconds; with background network blocked by power saving the record
+      stayed queued and was uploaded once when the app was opened.
+- [x] Update with the moved background entry points: a widget tap made before
+      the app was opened logged a callback lookup failure without a crash, was
+      kept, and was applied and uploaded at the first launch; background
+      handling worked afterwards.
+- [x] Two devices: linking by code, chat in both directions, the caregiver's
+      view of the patient's schedule, a dose recorded from chat with exactly
+      one confirmation, the completion alert, and a missed-dose alert 13
+      seconds after its deadline with its two actions.
+- [x] Push to the phone arrived within five seconds on the app's own channel.
+      It did not arrive on a network where Google's messaging connection
+      failed behind a VPN; that was the device's connection, not the app.
+- [x] Language switching (English, device language, Korean), settings save,
+      voice guide, nearby pharmacy and hospital search, medication detail and
+      health recommendation.
+- [x] The direct APK (112.9 MB, `arm64-v8a` and `armeabi-v7a`) installs and
+      runs on the phone and on an arm64 emulator.
+- [x] Backend: per-user rate-limit counters exist for the prefixed routes, row
+      counts and the migration head are unchanged by the deployment.
+
+Changed in v0.2.1 and still without a device check (automated tests only):
+
+- [ ] A dose tapped right after midnight, and the widget refresh button.
+- [ ] Reminders after a reboot and through the 12-hour worker; cancellation
+      after a widget "taken" and again after undo and retake.
+- [ ] Push registration after a cold start without network.
+- [ ] Session: a network loss during a token refresh keeps the session; a
+      401 in chat signs out; ending the session with a pushed screen open.
+- [ ] Privacy filter on a real prescription (the label rules are judgments
+      and the OCR line order is unverified); cleanup of picked photo copies.
+- [ ] Marker retry on the native map and recovery of the dose store on a real
+      Keystore.
+- [ ] Two devices: unlink while a chat is open, and more than three sessions
+      on one link.
+- [ ] The periodic WorkManager tasks after an update and before the first
+      launch. Their entry point moved like the widget's; only the widget path
+      was exercised.
+
+Found during the October 8 checks:
+
+- [ ] On Android 14 a reminder set for 13:19 was delivered at 13:21:10. Exact
+      alarms are denied by default there and the app falls back to an inexact
+      alarm. Owner decision: prompt for the permission or declare
+      `USE_EXACT_ALARM`.
+- [ ] The server sends every push, chat included, on the caregiver-updates
+      channel. The client now creates its channels at start-up, so a push no
+      longer lands on the Firebase fallback channel on a fresh install; moving
+      chat pushes to the chat channel must wait until clients older than 0.2.1
+      are gone.
+- [ ] Switching a reminder off and changing its time in the same save keeps
+      the old time.
+- [ ] A health recommendation is generated with specific advice for a
+      medication whose stored information is empty.
+- [ ] A completion alert is sent once per patient, slot and day. A slot first
+      completed before a caregiver was linked produces no alert when it is
+      undone and completed again after linking.
+- [ ] Push tokens that FCM reports as unregistered stay enabled until a send
+      to them fails; two such rows exist in production.
+
+Reviewed for v0.2.1 and deferred:
+
+- [ ] Ranking fuzzy catalogue candidates by matched fragments raised recall on
+      a synthetic catalogue from 5 to 189 of 200, but every name it moves from
+      `unverified` to `llm_catalog_candidate` (0.86–0.89) stops requiring user
+      review, because the client flags only `unverified` or a confidence below
+      0.75. Needs a check on the production catalogue and a decision on
+      review flagging. The same ranking on the local catalogue window turned
+      correct automatic matches into review lists without the true product
+      and must not be applied as is.
+- [ ] Accepting the chat WebSocket before closing it would deliver the close
+      code, but no client reads close codes and the released client resets its
+      reconnect delay on connect, so it would reconnect every second. Ship a
+      client that backs off and reads the codes first.
+- [ ] Rate-limit values that took effect in v0.2.1 (including 120 per minute
+      for per-item deletes), retention of dose-sync and tombstone rows, and
+      HTTP 403 wording and retry behaviour before App Check is enabled. Owner
+      decisions.
+- [ ] Database: 31 of 64 secondary indexes have no query that uses them, a
+      stored course-end column and `pg_trgm` would need migrations.
+- [ ] A partial AI summary is stored with "정보 없음" in the missing fields and
+      stays until the source document changes.
+- [ ] Sign-out does not upload doses recorded offline before suspending the
+      worker; they wait until the same account signs in again on the device.
+- [ ] With the medication box in selection mode, one back press ends the
+      selection and also returns to Home.
+- Decided, not planned: backend controls keep querying ORM models directly.
+  Only three of fourteen models have a repository (the ones several controls
+  share), and controls reference models in about 290 places. Wrapping the rest
+  would move the queries that were just fixed to a query budget without
+  changing behaviour. Add a repository when a second control needs the same
+  query. The two background workers in `services/` drive controls by design.
+- [ ] Home screen: lifecycle work still runs inside `build`, the shell
+      rebuilds on every inbox or chat notification, the link list is polled
+      every 15 seconds under a pushed screen, and the facade status message
+      has no reader. The legacy three-field settings saver parameter is
+      unused and still declared.
+- [ ] Test runs through the application still use the default Redis URL, so
+      a developer's local Redis receives rate-limit keys.
+- [ ] Class diagrams: the operations and classes added in v0.2.1 are not
+      drawn, 195 code classes are in no class diagram although the README
+      calls the full diagram complete, and stereotypes and package placement
+      differ between the full diagram and the feature diagrams. Owner
+      decisions on scope and vocabulary.
+
+Defects and limits recorded during the v0.2.0 audits and not changed:
+
+- [ ] Non-daily directions ("주 1회", "격일", "8시간마다") are stored as a daily
+      count, and week or month durations are read as days. Needs a product
+      decision.
+- [ ] A caregiver missed-dose deadline is accepted without comparing it with
+      the slot's reminder time; the dialog default (21:00) precedes the default
+      bedtime reminder (22:00).
+- [ ] The weekly catalog refresh sleeps a full interval after every container
+      start, so deployments spaced under a week postpone it indefinitely.
+- [ ] The chat socket is authenticated once and not re-validated when the
+      token expires.
+- [ ] Reminder reconciliation trusts the plugin's pending list after a
+      force-stop, and a course with unknown duration is scheduled one day at a
+      time. A reminder time moved to earlier than now leaves today's alarm at
+      the old time, and the reminder worker does not see a dose recorded
+      offline that has not been uploaded yet.
+- [ ] "Use device language" follows the device after a restart, but a device
+      language change while the app is running is not written back to the
+      server setting (`synchronizeDeviceLanguage` exists and is not wired).
+- [ ] The release gate does not compare the client's API contract default with
+      `backend/API_CONTRACT_VERSION`.
+- [ ] Tests do not cover weekly or interval frequencies, fuzzy candidate
+      recall on a realistic catalog, or a PostgreSQL run of the full test suite
+      (CI runs only the migration round trip and two integration files on
+      PostgreSQL 16). Nothing ties the entities to the migrations, and the
+      server strings the client matches are not pinned by a test.
+
+Platform and pipeline items reviewed for v0.2.1 and deferred:
+
+- [ ] The two disabled scheduled workflows (`data-maintenance.yml`,
+      `sync-drug-catalog.yml`) still create a skipped run on every schedule
+      tick.
+- [ ] Both CI workflows report a job named `build`. Making the names unique
+      changes the required-check names and needs a branch-protection change by
+      the owner.
+- [ ] `subosito/flutter-action` and `google-github-actions/auth` are referenced
+      by major-version tag, not by commit SHA. Owner decision.
+- [ ] `check_release_ingress.py` does not require the
+      `X-MedBuddy-Api-Contract` response header; this must be checked against
+      the live edge first, because a false rejection blocks a release.
+- [ ] Dependabot does not watch the `gradle` and `docker` ecosystems. Owner
+      decision on pull-request volume.
+- [ ] Exact alarms on Android 14 and later: `SCHEDULE_EXACT_ALARM` is denied by
+      default and nothing requests it, so reminders fall back to inexact
+      delivery. Needs an owner decision (settings prompt or `USE_EXACT_ALARM`)
+      and an Android 14+ device.
+- [ ] The merged manifest still carries `RECORD_AUDIO` from the camera plugin
+      although capture disables audio. Removal needs a capture check on a
+      device.
+- [ ] Further APK size reduction (arm64 only, compressed native libraries, or
+      per-ABI splits) changes device support or update mechanics. Owner
+      decision.
+- [ ] The Android instrumented tests run in no workflow; that needs an emulator
+      job. A text-level contract test covers the widget names and keys instead.
+- [ ] This file and the beta scope still describe the open App Check and
+      acceptance gates as v0.2.0 release conditions although v0.2.0-beta was
+      published with them open. Owner decision: retitle them as Google Play
+      release criteria or record the exception.
+
+Unexplained observations from v0.2.0, analysed without a confirmed cause:
+
+- The home unread badge differed across one signed update on October 5. A
+  controlled check on October 7 showed that an in-place update preserves
+  unread state, so the update itself is not the cause.
+- The first health-recommendation request failed once on an emulator with a
+  local backend. The server makes a single generation attempt and maps any
+  failure to HTTP 500; production generation measured about two seconds.
+
+Firebase console items for the owner: one registered SHA-256 fingerprint that
+is not the release certificate could not be attributed, and the phone sign-in
+provider is enabled although the app and backend disable phone
+authentication.
 
 ## Hospital provider access: restored on October 1
 
@@ -85,7 +226,6 @@ confirmed an approved hospital-service development account, valid through
 October 1, 2028, with 1,000 calls per day per operation. Bounded browser requests
 using the portal credential returned `00 / NORMAL SERVICE` and nonempty results
 for location, hospital details, and specialty-filtered list operations.
-See [the provider approval evidence](qa/v0.2.0-2026-10-01-hospital-provider-approval.md).
 
 The deployed backend at `16191b2` now passes bounded location, detail and
 specialty-list checks with its existing `PUBLIC_DATA_API_KEY` fallback. No
@@ -212,10 +352,10 @@ silently inferred from weak evidence.
       layout, TalkBack labels, and one-handed reachability for the medication,
       caregiver, and chat flows.
 
-### Post-v0.2.0 product backlog — not release-blocking implementation work
+### Product backlog — outside the v0.2.1 maintenance scope
 
-These ideas remain recorded, but feature freeze defers their implementation until
-after v0.2.0. Existing-flow acceptance tests above remain release requirements.
+These ideas remain recorded but are outside the v0.2.1 maintenance scope.
+Existing-flow acceptance tests above remain release requirements.
 
 - [ ] Add caregiver escalation levels with explicit consent, quiet hours,
       cooldowns, acknowledgement, and deduplication. Do not implement literal

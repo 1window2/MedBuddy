@@ -12,7 +12,6 @@ part of 'check_saved_medication_ui_boundary.dart';
 // - showRegisteredDate (bool): 등록일 줄을 함께 표시할지 여부.
 // - medication (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
 // - text (_SavedMedicationText): 해당 화면 구역의 언어별 표시 문구.
-// - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
 // - isSelectionMode (bool): 일반 조작 대신 첨부·삭제 선택 모드를 사용할지 여부.
 // - enabled (bool): 삭제 중이 아니어서 조작할 수 있는지 여부.
 // - isSelected (bool): 현재 선택 집합에 포함되는지 여부.
@@ -23,7 +22,6 @@ class _SavedMedicationNameRow extends StatelessWidget {
   final bool showRegisteredDate;
   final MedicationDetail medication;
   final _SavedMedicationText text;
-  final UserSetting userSetting;
   final bool isSelectionMode;
   final bool enabled;
   final bool isSelected;
@@ -39,7 +37,6 @@ class _SavedMedicationNameRow extends StatelessWidget {
     required this.showRegisteredDate,
     required this.medication,
     required this.text,
-    required this.userSetting,
     required this.isSelectionMode,
     required this.enabled,
     required this.isSelected,
@@ -55,7 +52,6 @@ class _SavedMedicationNameRow extends StatelessWidget {
   // 반환값: 저장 약 한 건의 목록 항목 위젯 트리.
   @override
   Widget build(BuildContext context) {
-    final scale = userSetting.contentTextScale;
     final interactive = enabled && !isSelectionMode;
     final displayName = medication.itemName.trim().isEmpty
         ? text.noInformation
@@ -97,7 +93,7 @@ class _SavedMedicationNameRow extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: MedBuddyColors.textStrong,
-                        fontSize: 16 * scale,
+                        fontSize: 16,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0,
                       ),
@@ -108,7 +104,6 @@ class _SavedMedicationNameRow extends StatelessWidget {
                         label: text.registeredDate,
                         value: _formatMedicationDate(medication.createdDate),
                         fallback: text.noInformation,
-                        scale: scale,
                       ),
                     ],
                     const SizedBox(height: 4),
@@ -116,7 +111,6 @@ class _SavedMedicationNameRow extends StatelessWidget {
                       label: text.medicationPeriod,
                       value: _formatMedicationPeriod(medication),
                       fallback: text.noInformation,
-                      scale: scale,
                     ),
                   ],
                 ),
@@ -129,7 +123,7 @@ class _SavedMedicationNameRow extends StatelessWidget {
                     color: interactive
                         ? MedBuddyColors.textSubtle
                         : MedBuddyColors.textLight,
-                    size: 24 * scale,
+                    size: 24,
                   ),
                 ),
             ],
@@ -148,12 +142,10 @@ class _SavedMedicationNameRow extends StatelessWidget {
 // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
 // - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
 // - fallback (String): 값이나 약품 정보를 제공할 수 없을 때 사용할 대체 문구.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 class _MedicationDateLine extends StatelessWidget {
   final String label;
   final String value;
   final String fallback;
-  final double scale;
 
   // 함수이름: _MedicationDateLine
   // 함수역할: 날짜 제목·값과 날짜 부재 대체 표시에 필요한 입력값과 표시 설정을 초기화한다.
@@ -161,13 +153,11 @@ class _MedicationDateLine extends StatelessWidget {
   // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
   // - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
   // - fallback (String): 값이나 약품 정보를 제공할 수 없을 때 사용할 대체 문구.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // 반환값: 입력 설정이 반영된 _MedicationDateLine 인스턴스.
   const _MedicationDateLine({
     required this.label,
     required this.value,
     required this.fallback,
-    required this.scale,
   });
 
   // 함수이름: build
@@ -184,7 +174,7 @@ class _MedicationDateLine extends StatelessWidget {
       softWrap: true,
       style: TextStyle(
         color: MedBuddyColors.textMuted,
-        fontSize: 13 * scale,
+        fontSize: 13,
         fontWeight: FontWeight.w600,
         letterSpacing: 0,
       ),

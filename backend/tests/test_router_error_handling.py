@@ -4,6 +4,7 @@
 import os
 import sys
 import unittest
+from datetime import date, timedelta
 from pathlib import Path
 
 from fastapi import BackgroundTasks, HTTPException
@@ -19,19 +20,24 @@ from api.router import (  # noqa: E402
     get_saved_medications,
     get_today_medication_schedule,
     identify_loose_pill,
+    identify_multiple_loose_pills,
     update_medication_status,
 )
 from boundaries.pill_identification_boundary import (  # noqa: E402
     MAX_PILL_IMAGE_BYTES,
+    PillCatalogUnavailableError,
     PillImageQualityError,
     PillVisionResponseError,
     PillVisionUnavailableError,
 )
 from controls.authorization_control import AuthorizationControl  # noqa: E402
+from controls.check_schedule_control import CheckSchedule  # noqa: E402
+from core.application_clock import application_today  # noqa: E402
 from entities.authenticated_principal_entity import (  # noqa: E402
     AuthenticatedPrincipal,
 )
 from schemas.medication import MedicationStatusUpdate  # noqa: E402
+from support.db import make_engine, make_session, seed_medication  # noqa: E402
 
 
 _DEVELOPMENT_PRINCIPAL = AuthenticatedPrincipal.development_principal()
@@ -99,12 +105,52 @@ class _FailingSavedMedicationControl:
         raise RuntimeError("sensitive database details")
 
 
+# 클래스명: _RecordingRequestSession
+# 역할: 라우터가 요청 세션의 트랜잭션을 끝냈는지 기록하는 세션 대역이다.
+# 속성:
+# - rollback_count (int): rollback() 호출 횟수.
+class _RecordingRequestSession:
+    # 함수이름: __init__
+    # 함수역할:
+    # - 호출 횟수를 0으로 준비한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
+    def __init__(self) -> None:
+        self.rollback_count = 0
+
+    # 함수이름: rollback
+    # 함수역할:
+    # - 트랜잭션 종료 요청을 한 건 기록한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
+    def rollback(self) -> None:
+        self.rollback_count += 1
+
+
 # 클래스명: _RecordingStatusControl
 # 역할: 복약 상태 갱신 성공과 전달할 완료 이벤트를 제공하는 라우터 테스트용 control이다.
 # 주요 책임:
 # - 지정 약 ID를 담은 성공 응답을 제공하여 백그라운드 알림 예약을 검증하게 한다.
 # - 로컬 환자의 아침 완료와 outbox ID가 포함된 단일 이벤트를 제공한다.
+# 속성:
+# - db (_RecordingRequestSession): 라우터가 트랜잭션을 끝내는 요청 세션 대역.
+# - expected_schedule_dates (list[date | None]): 라우터가 전달한 기대 복약 날짜 목록.
 class _RecordingStatusControl:
+    # 함수이름: __init__
+    # 함수역할:
+    # - 요청 세션 대역과 빈 날짜 기록을 준비한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
+    def __init__(self) -> None:
+        self.db = _RecordingRequestSession()
+        self.expected_schedule_dates: list[date | None] = []
+
     # 함수이름: updateMedicationStatus
     # 함수역할:
     # - 지정 약 ID를 담은 성공 응답을 제공하여 백그라운드 알림 예약을 검증하게 한다.
@@ -113,6 +159,7 @@ class _RecordingStatusControl:
     # - medication_status (bool): 요청한 복약 완료 여부.
     # - patient_hash (str): 약 또는 연동 데이터 범위를 식별할 환자 소유자 해시.
     # - slot_key (str | None): 복약 시간대 키 또는 약 전체 상태 변경을 뜻하는 None.
+    # - expected_schedule_date (date | None): 요청이 가리키는 복약 날짜.
     # 반환값:
     # - dict[str, object]: 요청한 약 ID를 포함한 성공 응답.
     def updateMedicationStatus(
@@ -121,7 +168,10 @@ class _RecordingStatusControl:
         medication_status: bool,
         patient_hash: str,
         slot_key: str | None,
+        *,
+        expected_schedule_date: date | None = None,
     ) -> dict[str, object]:
+        self.expected_schedule_dates.append(expected_schedule_date)
         return {
             "success": True,
             "data": {"medication_id": medication_id},
@@ -216,6 +266,19 @@ class _RecordingPillIdentificationControl:
             raise self.error
         raise AssertionError("This fake is only used for error mapping.")
 
+    # Function Name: requestMultiplePillIdentification
+    # Description:
+    # - Raises the configured identification failure for the multiple-pill route and fails
+    #   the test if incorrectly used for a success path.
+    # Parameters:
+    # - _image (bytes): Multi-pill photograph bytes. Unused by this double.
+    # Returns:
+    # - No normal result; raises the configured failure described above.
+    async def requestMultiplePillIdentification(self, _image: bytes) -> object:
+        if self.error is not None:
+            raise self.error
+        raise AssertionError("This fake is only used for error mapping.")
+
 
 # 클래스명: RouterErrorHandlingTest
 # 역할: control 오류의 HTTP 변환, 민감정보 숨김, 업로드 제한 및 알림 예약을 검증하는 비동기 테스트 모음이다.
@@ -282,6 +345,7 @@ class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
     # 함수이름: test_medication_status_response_queues_caregiver_push_in_background
     # 함수역할:
     # - 복약 상태 성공 응답에서 보호자 푸시를 즉시 실행하지 않고 백그라운드 작업 한 건으로 예약하는지 검증한다.
+    # - 예약한 뒤 요청 세션의 트랜잭션을 끝내고, 요청의 기대 복약 날짜를 control에 전달하는지도 검증한다.
     # 매개변수:
     # - 없음.
     # 반환값:
@@ -290,21 +354,82 @@ class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         background_tasks = BackgroundTasks()
+        control = _RecordingStatusControl()
+        expected_date = date(2026, 10, 8)
 
         response = update_medication_status(
             medication_id=7,
             request=MedicationStatusUpdate(
                 medication_status=True,
                 slot_key="morning",
+                expected_schedule_date=expected_date,
             ),
             background_tasks=background_tasks,
             principal=_DEVELOPMENT_PRINCIPAL,
             authorization=_DEVELOPMENT_AUTHORIZATION,
-            check_schedule=_RecordingStatusControl(),  # type: ignore[arg-type]
+            check_schedule=control,  # type: ignore[arg-type]
         )
 
         self.assertTrue(response["success"])
         self.assertEqual(len(background_tasks.tasks), 1)
+        self.assertEqual(control.db.rollback_count, 1)
+        self.assertEqual(control.expected_schedule_dates, [expected_date])
+
+    # Function Name: test_medication_status_rejects_a_reminder_for_another_day
+    # Description:
+    # - A single-medication completion whose expected schedule date is not today is refused
+    #   with HTTP 409 by the real schedule control and records nothing, while the same
+    #   request dated today is applied.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_medication_status_rejects_a_reminder_for_another_day(self) -> None:
+        engine = make_engine()
+        self.addCleanup(engine.dispose)
+        db = make_session(engine)
+        self.addCleanup(db.close)
+        medication = seed_medication(
+            db,
+            patient_hash=_DEVELOPMENT_PRINCIPAL.user_hash,
+            daily_frequency="1",
+            schedule_slot_keys='["morning"]',
+        )
+        today = application_today()
+
+        # Function Name: complete_morning
+        # Description:
+        # - Sends the morning completion of the seeded medication for one expected date.
+        # Parameters:
+        # - expected_schedule_date (date): Day the reminder action was issued for.
+        # Returns:
+        # - dict[str, object]: Router response for an accepted request.
+        def complete_morning(expected_schedule_date: date) -> dict[str, object]:
+            return update_medication_status(
+                medication_id=int(medication.id),
+                request=MedicationStatusUpdate(
+                    medication_status=True,
+                    slot_key="morning",
+                    expected_schedule_date=expected_schedule_date,
+                ),
+                background_tasks=BackgroundTasks(),
+                principal=_DEVELOPMENT_PRINCIPAL,
+                authorization=_DEVELOPMENT_AUTHORIZATION,
+                check_schedule=CheckSchedule(db),
+            )
+
+        with self.assertRaises(HTTPException) as context:
+            complete_morning(today - timedelta(days=1))
+
+        self.assertEqual(context.exception.status_code, 409)
+        schedule = CheckSchedule(db).requestTodayMedicationSchedule(
+            _DEVELOPMENT_PRINCIPAL.user_hash
+        )["data"][0]
+        self.assertFalse(schedule["slot_statuses"]["morning"])
+
+        accepted = complete_morning(today)
+
+        self.assertTrue(accepted["data"]["slot_statuses"]["morning"])
 
     # Function Name: test_pill_upload_reads_only_the_validated_size_window
     # Description:
@@ -353,6 +478,50 @@ class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(context.exception.status_code, 503)
         self.assertNotIn("private", str(context.exception.detail))
+        self.assertEqual(context.exception.headers, {"Retry-After": "5"})
+
+    # Function Name: test_pill_outages_tell_the_client_when_to_retry
+    # Description:
+    # - Catalog and vision outages on both pill-identification routes keep HTTP 503 and
+    #   carry Retry-After: 5 like the other retryable 503 responses.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    async def test_pill_outages_tell_the_client_when_to_retry(self) -> None:
+        outages = (
+            PillCatalogUnavailableError("The pill catalog is temporarily unavailable."),
+            PillVisionUnavailableError("The pill visual analysis is unavailable."),
+        )
+        for outage in outages:
+            control = _RecordingPillIdentificationControl(outage)
+            for route_name, call in (
+                (
+                    "single",
+                    lambda: identify_loose_pill(
+                        front=_RecordingUploadFile(),
+                        back=None,
+                        identify_pill=control,
+                    ),
+                ),
+                (
+                    "multiple",
+                    lambda: identify_multiple_loose_pills(
+                        image=_RecordingUploadFile(),
+                        identify_pill=control,
+                    ),
+                ),
+            ):
+                with self.subTest(outage=type(outage).__name__, route=route_name):
+                    with self.assertRaises(HTTPException) as context:
+                        await call()
+
+                    self.assertEqual(context.exception.status_code, 503)
+                    self.assertEqual(context.exception.detail, str(outage))
+                    self.assertEqual(
+                        context.exception.headers,
+                        {"Retry-After": "5"},
+                    )
 
     # Function Name: test_pill_upload_maps_invalid_upstream_contract_to_bad_gateway
     # Description:

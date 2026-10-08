@@ -3,6 +3,23 @@ import 'medication_schedule_entity.dart';
 // 파일명: manual_medication_entry_entity.dart
 // 역할: 사용자가 직접 입력한 약 이름과 복용 일정을 하나의 값 객체로 보관한다.
 
+// 함수이름: inclusiveMedicationCourseDays
+// 함수역할: 시작일과 종료일의 연·월·일만 UTC 날짜로 옮겨 양 끝을 포함한 복용 일수를 계산한다. 현지 시각의 차이를 쓰지 않으므로 서머타임 전환일이 기간에 끼어도 하루가 줄지 않는다.
+// 매개변수:
+// - startDate (DateTime): 양 끝을 포함한 복용 기간의 시작일
+// - endDate (DateTime): 시작일과 함께 포함하여 계산할 복용 종료일
+// 반환값:
+// - int: 시각을 무시하고 시작일과 종료일을 모두 포함한 일수.
+int inclusiveMedicationCourseDays(DateTime startDate, DateTime endDate) {
+  final normalizedStart = DateTime.utc(
+    startDate.year,
+    startDate.month,
+    startDate.day,
+  );
+  final normalizedEnd = DateTime.utc(endDate.year, endDate.month, endDate.day);
+  return normalizedEnd.difference(normalizedStart).inDays + 1;
+}
+
 // 클래스명: ManualMedicationEntry
 // 역할: 직접 등록 화면의 입력값을 기존 복약 일정 저장 형식으로 변환한다.
 // 주요 책임:
@@ -54,15 +71,7 @@ class ManualMedicationEntry {
   // - 없음.
   // 반환값:
   // - int: 시작일과 종료일의 시각을 제거하고 양 끝 날짜를 포함한 복용 일수를 계산한다.
-  int get totalDays {
-    final normalizedStart = DateTime(
-      startDate.year,
-      startDate.month,
-      startDate.day,
-    );
-    final normalizedEnd = DateTime(endDate.year, endDate.month, endDate.day);
-    return normalizedEnd.difference(normalizedStart).inDays + 1;
-  }
+  int get totalDays => inclusiveMedicationCourseDays(startDate, endDate);
 
   // 함수이름: dosage
   // 함수역할: 공백을 정리한 복용량 숫자와 단위를 붙여 저장할 1회 용량 문자열을 만든다.

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../controls/app_language_control.dart';
 import '../controls/authentication_control.dart';
+import '../entities/user_setting_entity.dart';
 import '../services/foreground_recovery_service.dart';
 import '../theme/medbuddy_theme.dart';
 
@@ -654,11 +655,11 @@ class _AuthenticationText {
   const _AuthenticationText(this.language);
 
   // 함수이름: isEnglish
-  // 함수역할: 언어 코드가 en과 정확히 일치하는지 확인한다.
+  // 함수역할: 언어 코드가 앱 공통 기준으로 영어인지 확인한다.
   // 매개변수:
   // - 없음.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
-  bool get isEnglish => language == 'en';
+  bool get isEnglish => isEnglishLanguage(language);
   // 함수이름: _isEnglish
   // 함수역할: 문구 제공 객체의 영어 선택 상태를 그대로 사용한다.
   // 매개변수:

@@ -170,6 +170,165 @@ class MedicationCoursePolicyTest(unittest.TestCase):
             MAX_DAILY_FREQUENCY,
         )
 
+    # Function Name: test_read_end_date_is_start_plus_duration_minus_one
+    # Description:
+    # - Returns the last course day from the prescription date, then the created date, then
+    #   the fallback; an unknown duration, or no date without a fallback, has no end date.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_read_end_date_is_start_plus_duration_minus_one(self) -> None:
+        fallback = date(2026, 3, 1)
+        cases = [
+            (
+                SimpleNamespace(
+                    prescription_date=date(2026, 1, 1),
+                    created_date=date(2026, 1, 5),
+                    total_days="7 days",
+                ),
+                date(2026, 1, 7),
+            ),
+            (
+                SimpleNamespace(
+                    prescription_date=None,
+                    created_date="2026-01-05",
+                    total_days="1",
+                ),
+                date(2026, 1, 5),
+            ),
+            (
+                SimpleNamespace(
+                    prescription_date=None,
+                    created_date=None,
+                    total_days="3 days",
+                ),
+                date(2026, 3, 3),
+            ),
+            (
+                SimpleNamespace(
+                    prescription_date="not-a-date",
+                    created_date=None,
+                    total_days="3 days",
+                ),
+                date(2026, 3, 3),
+            ),
+            (
+                SimpleNamespace(
+                    prescription_date=date(2026, 1, 1),
+                    created_date=None,
+                    total_days="",
+                ),
+                None,
+            ),
+            (
+                SimpleNamespace(
+                    prescription_date=date(2026, 1, 1),
+                    created_date=None,
+                    total_days="0 days",
+                ),
+                None,
+            ),
+        ]
+
+        for medication, expected in cases:
+            with self.subTest(medication=medication):
+                self.assertEqual(
+                    self.policy.read_end_date(medication, fallback),
+                    expected,
+                )
+        self.assertIsNone(
+            self.policy.read_end_date(
+                SimpleNamespace(
+                    prescription_date=None,
+                    created_date=None,
+                    total_days="3 days",
+                )
+            )
+        )
+        self.assertEqual(
+            self.policy.read_end_date(
+                SimpleNamespace(
+                    prescription_date=date(2026, 1, 1),
+                    created_date=None,
+                    total_days="7 days",
+                )
+            ),
+            date(2026, 1, 7),
+        )
+
+    # Function Name: test_read_end_date_bounds_the_active_and_retention_rules
+    # Description:
+    # - The end date is the last active day, the last day that overlaps a window, and the
+    #   day the retention period starts counting from.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_read_end_date_bounds_the_active_and_retention_rules(self) -> None:
+        medication = SimpleNamespace(
+            prescription_date=date(2026, 1, 1),
+            created_date=None,
+            total_days="7 days",
+        )
+        end_date = self.policy.read_end_date(medication)
+        day_after = end_date + timedelta(days=1)
+
+        self.assertEqual(end_date, date(2026, 1, 7))
+        self.assertTrue(self.policy.is_active_on(medication, end_date))
+        self.assertFalse(self.policy.is_active_on(medication, day_after))
+        self.assertTrue(self.policy.is_active_during(medication, end_date, day_after))
+        self.assertFalse(
+            self.policy.is_active_during(
+                medication,
+                day_after,
+                day_after + timedelta(days=5),
+            )
+        )
+        self.assertFalse(
+            self.policy.is_expired_after(
+                medication,
+                end_date + timedelta(days=29),
+                retention_days=30,
+            )
+        )
+        self.assertTrue(
+            self.policy.is_expired_after(
+                medication,
+                end_date + timedelta(days=30),
+                retention_days=30,
+            )
+        )
+
+    # Function Name: test_read_slot_keys_prefers_confirmed_slots_over_frequency
+    # Description:
+    # - Uses the stored confirmed slots in schedule order and falls back to the slots implied
+    #   by the daily frequency when the stored value is empty, invalid or holds no valid key.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_read_slot_keys_prefers_confirmed_slots_over_frequency(self) -> None:
+        cases = [
+            ('["evening","morning"]', "3 times", ("morning", "evening")),
+            ('["bedtime"]', None, ("bedtime",)),
+            ("[]", "3 times", ("morning", "lunch", "evening")),
+            (None, "하루 2번", ("morning", "evening")),
+            ("", "4 times", ("morning", "lunch", "evening", "bedtime")),
+            ("not-json", "1 time", ("morning",)),
+            ('["snack"]', "2 times", ("morning", "evening")),
+            ('{"morning": true}', "2 times", ("morning", "evening")),
+            ("[]", None, ("morning",)),
+            ("[]", "as needed", ("morning",)),
+        ]
+
+        for raw_slot_keys, raw_frequency, expected in cases:
+            with self.subTest(raw_slot_keys=raw_slot_keys, raw_frequency=raw_frequency):
+                self.assertEqual(
+                    self.policy.read_slot_keys(raw_slot_keys, raw_frequency),
+                    expected,
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

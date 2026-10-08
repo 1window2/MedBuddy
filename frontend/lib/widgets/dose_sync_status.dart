@@ -1,6 +1,7 @@
 // 파일명: dose_sync_status.dart
 // 역할: 홈·일정·채팅에서 전송 대기와 확인이 필요한 복약 기록을 같은 방식으로 표시한다.
 import 'package:flutter/material.dart';
+import '../entities/medication_slot_label.dart';
 import '../services/dose_sync_service.dart';
 import '../theme/medbuddy_theme.dart';
 
@@ -14,7 +15,50 @@ class DoseSyncStatus extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [_buildLostRecords(), _buildPending(context)],
+  );
+
+  // 함수이름: _buildLostRecords
+  // 함수역할: 기기 키가 사라져 전송하지 못하고 버려진 기록이 있으면 건수와 다음 행동을 알린다.
+  // 매개변수: 없음. 반환값: 안내 줄. 유실 기록이 없으면 빈 위젯.
+  Widget _buildLostRecords() => ListenableBuilder(
+    listenable: service,
+    builder: (context, _) {
+      final count = service.lostRecordCount;
+      if (count == 0) return const SizedBox.shrink();
+      return Material(
+        color: MedBuddyColors.warningSurface,
+        child: ListTile(
+          key: const ValueKey('dose-sync-lost-records'),
+          dense: true,
+          leading: const Icon(
+            Icons.warning_amber_rounded,
+            color: MedBuddyColors.reminderAccent,
+          ),
+          title: Text(
+            isEnglish
+                ? '$count dose records could not be recovered'
+                : '복용 기록 $count건을 복구하지 못했습니다',
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          subtitle: Text(
+            isEnglish
+                ? 'This device\'s secure storage was reset before they were sent. Check today\'s doses and record them again.'
+                : '서버로 보내기 전에 기기 보안 저장소가 초기화되었습니다. 오늘 복약 상태를 확인하고 다시 기록해주세요.',
+          ),
+          trailing: IconButton(
+            tooltip: isEnglish ? 'Dismiss' : '확인',
+            icon: const Icon(Icons.close),
+            onPressed: service.acknowledgeLostRecords,
+          ),
+        ),
+      );
+    },
+  );
+
+  Widget _buildPending(BuildContext context) => ListenableBuilder(
     listenable: service,
     builder: (context, _) {
       if (service.pendingCount == 0) return const SizedBox.shrink();
@@ -156,13 +200,5 @@ class DoseSyncStatus extends StatelessWidget {
     },
   );
 
-  String _slot(String key) => isEnglish
-      ? key
-      : const {
-              'morning': '아침',
-              'lunch': '점심',
-              'evening': '저녁',
-              'bedtime': '취침 전',
-            }[key] ??
-            key;
+  String _slot(String key) => medicationSlotLabel(key, isEnglish: isEnglish);
 }

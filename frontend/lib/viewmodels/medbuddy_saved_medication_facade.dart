@@ -7,6 +7,11 @@ part of 'medbuddy_view_model.dart';
 // Role: Keeps existing screen and prescription call sites stable.
 // Responsibilities: Forward operations without accessing feature-private state.
 extension MedBuddySavedMedicationFacade on MedBuddyViewModel {
+  // Function Name: hasSavedMedicationLoadError
+  // Description: Lets screens tell a failed saved-medication list request apart from an empty list.
+  // Parameters: None. Returns: Whether the newest finished list request failed.
+  bool get hasSavedMedicationLoadError => _savedMedications.hasLoadError;
+
   // Function Name: saveMedicationInfo
   // Description: Delegates a medication and optional schedule to the feature.
   // Parameters: Medication, schedule, local image and refresh policy.

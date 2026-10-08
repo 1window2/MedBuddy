@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/check_health_recommendation_control.dart';
+import 'package:medbuddy_frontend/services/api_response_parser.dart';
 
 // 함수이름: main
 // 함수역할:
@@ -47,6 +48,52 @@ void main() {
       },
     );
   }
+
+  // 함수이름: 요청 실패 유형 테스트
+  // 함수역할: 거부된 응답은 기존 문구와 함께 상태 코드를, 응답을 받지 못한 요청은 원래 예외를 전달하는지 확인한다. 매개변수: 없음. 반환값: 검증 완료.
+  test('request failures carry the status code or the original cause', () async {
+    final rejectedClient = MockClient(
+      (_) async => http.Response('{"detail":"busy"}', 503),
+    );
+    addTearDown(rejectedClient.close);
+    final rejected = CheckHealthRecommendation(client: rejectedClient);
+    addTearDown(rejected.dispose);
+    await expectLater(
+      rejected.requestHealthRecommendation(),
+      throwsA(
+        isA<ApiRequestException>()
+            .having((error) => error.statusCode, 'statusCode', 503)
+            .having(
+              (error) => error.message,
+              'message',
+              'Health recommendation failed (503): busy',
+            ),
+      ),
+    );
+
+    final offlineClient = MockClient(
+      (_) async => throw http.ClientException('offline'),
+    );
+    addTearDown(offlineClient.close);
+    final offline = CheckHealthRecommendation(client: offlineClient);
+    addTearDown(offline.dispose);
+    await expectLater(
+      offline.requestHealthRecommendation(),
+      throwsA(
+        isA<ApiRequestException>()
+            .having(
+              (error) => error.cause,
+              'cause',
+              isA<http.ClientException>(),
+            )
+            .having(
+              (error) => error.message,
+              'message',
+              'Health recommendation failed.',
+            ),
+      ),
+    );
+  });
 
   // 함수이름: 알 수 없는 404 테스트
   // 함수역할: 잘못된 주소나 일반 404를 약 없음으로 오인하지 않는지 확인한다. 매개변수: 없음. 반환값: 검증 완료.

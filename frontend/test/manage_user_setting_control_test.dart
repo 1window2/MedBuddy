@@ -37,12 +37,16 @@ void main() {
     final control = ManageUserSetting(userHash: 'user-a', client: client);
     addTearDown(control.dispose);
     final result = await control.saveUserSetting(
-      currentSetting: const UserSetting(),
-      fontSizeOption: 'medium',
-      readingSpeedOption: 'medium',
-      language: 'ko',
-      homeScheduleSource: 'patients',
-    );
+        const UserSetting()
+          .updateUserSetting(
+            fontSize: UserSetting.fontSizeFromOption('medium'),
+            readingSpeed: UserSetting.readingSpeedFromOption('medium'),
+            language: 'ko',
+          )
+          .copyWith(
+            homeScheduleSource: 'patients',
+          ),
+      );
     expect(result.synchronizedWithServer, isTrue);
     expect(result.setting.homeScheduleSource, 'patients');
     final restored = ManageUserSetting(
@@ -95,21 +99,25 @@ void main() {
     final control = ManageUserSetting(useRemotePersistence: false);
 
     final result = await control.saveUserSetting(
-      currentSetting: const UserSetting(),
-      fontSizeOption: 'large',
-      readingSpeedOption: 'fast',
-      language: 'en',
-      languageMode: 'system',
-      timeFormat: '12h',
-      medicationNotificationsEnabled: false,
-      caregiverNotificationsEnabled: false,
-      chatNotificationsEnabled: false,
-      notificationDetailMode: 'type_only',
-      defaultMorningTime: '07:30',
-      defaultLunchTime: '12:30',
-      defaultEveningTime: '19:10',
-      defaultBedtime: '23:20',
-    );
+        const UserSetting()
+          .updateUserSetting(
+            fontSize: UserSetting.fontSizeFromOption('large'),
+            readingSpeed: UserSetting.readingSpeedFromOption('fast'),
+            language: 'en',
+          )
+          .copyWith(
+            languageMode: 'system',
+            timeFormat: '12h',
+            medicationNotificationsEnabled: false,
+            caregiverNotificationsEnabled: false,
+            chatNotificationsEnabled: false,
+            notificationDetailMode: 'type_only',
+            defaultMorningTime: '07:30',
+            defaultLunchTime: '12:30',
+            defaultEveningTime: '19:10',
+            defaultBedtime: '23:20',
+          ),
+      );
     final setting = result.setting;
 
     expect(result.synchronizedWithServer, isFalse);
@@ -180,11 +188,13 @@ void main() {
 
     addTearDown(control.dispose);
     final saved = await control.saveUserSetting(
-      currentSetting: const UserSetting(),
-      fontSizeOption: 'large',
-      readingSpeedOption: 'slow',
-      language: 'en',
-    );
+        const UserSetting()
+          .updateUserSetting(
+            fontSize: UserSetting.fontSizeFromOption('large'),
+            readingSpeed: UserSetting.readingSpeedFromOption('slow'),
+            language: 'en',
+          ),
+      );
     final restoredSetting = await control.requestUserSetting();
 
     expect(restoredSetting.toJson(), saved.setting.toJson());
@@ -394,21 +404,25 @@ void main() {
     );
 
     final result = await control.saveUserSetting(
-      currentSetting: const UserSetting(),
-      fontSizeOption: 'large',
-      readingSpeedOption: 'fast',
-      language: 'ko',
-      languageMode: 'system',
-      timeFormat: '12h',
-      medicationNotificationsEnabled: false,
-      caregiverNotificationsEnabled: false,
-      chatNotificationsEnabled: false,
-      notificationDetailMode: 'type_only',
-      defaultMorningTime: '07:15',
-      defaultLunchTime: '12:15',
-      defaultEveningTime: '19:15',
-      defaultBedtime: '23:15',
-    );
+        const UserSetting()
+          .updateUserSetting(
+            fontSize: UserSetting.fontSizeFromOption('large'),
+            readingSpeed: UserSetting.readingSpeedFromOption('fast'),
+            language: 'ko',
+          )
+          .copyWith(
+            languageMode: 'system',
+            timeFormat: '12h',
+            medicationNotificationsEnabled: false,
+            caregiverNotificationsEnabled: false,
+            chatNotificationsEnabled: false,
+            notificationDetailMode: 'type_only',
+            defaultMorningTime: '07:15',
+            defaultLunchTime: '12:15',
+            defaultEveningTime: '19:15',
+            defaultBedtime: '23:15',
+          ),
+      );
 
     expect(result.synchronizedWithServer, isTrue);
     expect(result.setting.fontSizeOption, 'large');
@@ -450,11 +464,13 @@ void main() {
     );
 
     final result = await control.saveUserSetting(
-      currentSetting: const UserSetting(),
-      fontSizeOption: 'small',
-      readingSpeedOption: 'slow',
-      language: 'ko',
-    );
+        const UserSetting()
+          .updateUserSetting(
+            fontSize: UserSetting.fontSizeFromOption('small'),
+            readingSpeed: UserSetting.readingSpeedFromOption('slow'),
+            language: 'ko',
+          ),
+      );
     final setting = result.setting;
 
     expect(result.synchronizedWithServer, isFalse);
@@ -465,5 +481,97 @@ void main() {
     final preferences = await SharedPreferences.getInstance();
     expect(preferences.getInt('user_setting_user-a_font_size'), 14);
     control.dispose();
+  });
+  // 캐시에서 읽은 언어도 서버 응답과 같은 기준으로 ko·en만 남아야 화면마다 다르게 판정되지 않는다.
+  test('캐시의 언어 값은 ko·en으로 정규화해 복원한다', () async {
+    for (final entry in const {
+      'EN': 'en',
+      'en-US': 'en',
+      ' en ': 'en',
+      'ko-KR': 'ko',
+      'fr': 'ko',
+      '': 'ko',
+    }.entries) {
+      SharedPreferences.setMockInitialValues({
+        'user_setting_user-a_language': entry.key,
+        'user_setting_language': entry.key,
+      });
+      final scoped = ManageUserSetting(
+        userHash: 'user-a',
+        useRemotePersistence: false,
+      );
+      final legacy = ManageUserSetting(
+        userHash: 'user-b',
+        useRemotePersistence: false,
+      );
+      addTearDown(scoped.dispose);
+      addTearDown(legacy.dispose);
+      expect((await scoped.requestUserSetting()).language, entry.value);
+      expect((await legacy.requestUserSetting()).language, entry.value);
+    }
+  });
+
+  // 설정 전체를 저장하는 경로는 값을 선택지 단계로 바꾸지 않고 그대로 저장·전송한다.
+  test('saveUserSettingSnapshot은 설정 전체를 변환 없이 저장한다', () async {
+    SharedPreferences.setMockInitialValues({});
+    Map<String, dynamic>? sent;
+    final control = ManageUserSetting(
+      userHash: 'user-a',
+      client: MockClient((request) async {
+        sent = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(jsonEncode({'success': true, 'data': sent}), 200);
+      }),
+    );
+    addTearDown(control.dispose);
+    const setting = UserSetting(
+      userHash: 'another-user',
+      fontSize: 18,
+      readingSpeed: 0.9,
+      language: 'en',
+      languageMode: 'system',
+      timeFormat: '12h',
+      homeScheduleSource: 'patients',
+      medicationNotificationsEnabled: false,
+      caregiverNotificationsEnabled: false,
+      chatNotificationsEnabled: false,
+      notificationDetailMode: 'type_only',
+      defaultMorningTime: '07:10',
+      defaultLunchTime: '12:20',
+      defaultEveningTime: '18:30',
+      defaultBedtime: '22:40',
+    );
+    final result = await control.saveUserSetting(setting);
+    final expected = {...setting.toJson(), 'user_hash': 'user-a'};
+    expect(result.synchronizedWithServer, isTrue);
+    expect(sent, expected);
+    expect(result.setting.toJson(), expected);
+    final restored = ManageUserSetting(
+      userHash: 'user-a',
+      useRemotePersistence: false,
+    );
+    addTearDown(restored.dispose);
+    expect((await restored.requestUserSetting()).toJson(), expected);
+  });
+
+  // 서버 사본을 받았는지 알아야 캐시만 가진 설정을 자동으로 올리지 않을 수 있다.
+  test('lastLookupReachedServer는 최근 조회가 서버 응답이었는지 알려 준다', () async {
+    SharedPreferences.setMockInitialValues({});
+    var statusCode = 200;
+    final control = ManageUserSetting(
+      userHash: 'user-a',
+      client: MockClient(
+        (request) async => http.Response(
+          jsonEncode({'success': true, 'data': const UserSetting().toJson()}),
+          statusCode,
+        ),
+      ),
+    );
+    addTearDown(control.dispose);
+    expect(control.lastLookupReachedServer, isFalse);
+    await control.requestUserSetting();
+    expect(control.lastLookupReachedServer, isTrue);
+    statusCode = 503;
+    await control.requestUserSetting();
+    expect(control.lastLookupReachedServer, isFalse);
   });
 }

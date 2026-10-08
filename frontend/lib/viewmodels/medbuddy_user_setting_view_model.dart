@@ -1,5 +1,6 @@
 // File Name: medbuddy_user_setting_view_model.dart
 // Role: Owns user settings without accessing sibling feature state.
+import '../controls/app_language_control.dart';
 import '../controls/manage_user_setting_control.dart';
 import '../entities/user_setting_entity.dart';
 import '../entities/medication_schedule_entity.dart';
@@ -27,6 +28,8 @@ class MedBuddyUserSettingViewModel {
   final void Function() _onChanged;
   final bool Function() _readEnglish;
   bool _disposed = false;
+  bool _settingLoaded = false;
+  Future<bool>? _deviceLanguageSynchronization;
   // Function Name: MedBuddyUserSettingViewModel
   // Description: Binds settings persistence and narrow refresh operations.
   // Parameters: Borrowed dependencies and callbacks. Returns: Settings state owner.
@@ -67,6 +70,7 @@ class MedBuddyUserSettingViewModel {
       final setting = await manageUserSetting.requestUserSetting();
       if (_disposed) return;
       _userSetting = setting;
+      _settingLoaded = true;
       notificationService.setShowSensitiveDetails(
         _userSetting.showNotificationDetails,
       );
@@ -76,40 +80,61 @@ class MedBuddyUserSettingViewModel {
     }
   }
 
-  // 함수이름: requestUserSettingSave
-  // 함수역할: 사용자 설정을 저장하고 알림 허용·민감정보 표시·언어 변경에 맞춰 기존 예약을 취소하거나 새로고침한 뒤 설정 구독자를 갱신한다.
+  // 함수이름: saveUserSetting
+  // 함수역할: 설정 화면이 편집한 설정 전체를 값 변환 없이 저장하고, 선택지별 저장과 같은 알림·일정 후속 처리를 수행한다.
   // 매개변수:
-  // - fontSizeOption (String): small·medium·large 글씨 크기 선택값
-  // - readingSpeedOption (String): slow·medium·fast 읽기 속도 선택값
-  // - language (String): 표시·음성 안내에 사용할 언어 코드
-  // - languageMode (String?): system·ko·en 언어 선택 모드
-  // - timeFormat (String?): 12h 또는 24h 시각 표시 방식
-  // - medicationNotificationsEnabled (bool?): 본인 복약 시간 알림 허용 여부
-  // - caregiverNotificationsEnabled (bool?): 보호자 복약 상태 알림 허용 여부
-  // - chatNotificationsEnabled (bool?): 가족 채팅 알림 허용 여부
-  // - notificationDetailMode (String?): full 또는 type_only 알림 세부 표시 모드
-  // - defaultMorningTime (String?): 새 아침 알림의 HH:mm 기본 시각
-  // - defaultLunchTime (String?): 새 점심 알림의 HH:mm 기본 시각
-  // - defaultEveningTime (String?): 새 저녁 알림의 HH:mm 기본 시각
-  // - defaultBedtime (String?): 새 취침 전 알림의 HH:mm 기본 시각
+  // - setting (UserSetting): 저장할 설정 전체
   // 반환값:
-  // - Future<UserSettingSaveResult>: 사용자 설정을 저장하고 알림 허용·민감정보 표시·언어 변경에 맞춰 기존 예약을 취소하거나 새로고침한 뒤 설정 구독자를 갱신한다.
-  Future<UserSettingSaveResult> requestUserSettingSave({
-    required String fontSizeOption,
-    required String readingSpeedOption,
-    required String language,
-    String? languageMode,
-    String? timeFormat,
-    String? homeScheduleSource,
-    bool? medicationNotificationsEnabled,
-    bool? caregiverNotificationsEnabled,
-    bool? chatNotificationsEnabled,
-    String? notificationDetailMode,
-    String? defaultMorningTime,
-    String? defaultLunchTime,
-    String? defaultEveningTime,
-    String? defaultBedtime,
-  }) async {
+  // - Future<UserSettingSaveResult>: 저장된 설정과 서버 동기화 여부.
+  Future<UserSettingSaveResult> saveUserSetting(UserSetting setting) {
+    return _saveAndApply(
+      () => manageUserSetting.saveUserSetting(setting),
+    );
+  }
+
+  // 함수이름: synchronizeDeviceLanguage
+  // 함수역할: 언어 모드가 기기 설정 따르기일 때 기기 언어가 저장된 표시 언어와 달라졌으면 기존 저장 경로로 다시 저장한다. 화면 문구와 예약된 알림, 서버가 보내는 푸시 언어가 함께 기기 언어를 따르게 한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<bool>: 언어를 다시 저장했으면 true. 설정을 아직 불러오지 않았거나, 모드가 system이 아니거나, 언어가 이미 같거나, 서버 사본을 받지 못해 캐시만 가진 경우에는 저장하지 않고 false.
+  Future<bool> synchronizeDeviceLanguage() {
+    return _deviceLanguageSynchronization ??= _synchronizeDeviceLanguage()
+        .whenComplete(() => _deviceLanguageSynchronization = null);
+  }
+
+  // 함수이름: _synchronizeDeviceLanguage
+  // 함수역할: 기기 언어 재동기화의 조건을 확인하고 필요한 경우 한 번 저장한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<bool>: 언어를 다시 저장했으면 true.
+  Future<bool> _synchronizeDeviceLanguage() async {
+    if (_disposed || !_settingLoaded || _userSetting.languageMode != 'system') {
+      return false;
+    }
+    // 캐시로 대체한 설정을 자동으로 올리면 다른 기기에서 바꾼 서버 값을 덮어쓸 수 있다.
+    if (manageUserSetting.useRemotePersistence &&
+        !manageUserSetting.lastLookupReachedServer) {
+      return false;
+    }
+    final deviceLanguage = AppLanguageControl.resolveLanguage('system');
+    if (deviceLanguage == _userSetting.language) {
+      return false;
+    }
+    await saveUserSetting(_userSetting.copyWith(language: deviceLanguage));
+    return true;
+  }
+
+  // 함수이름: _saveAndApply
+  // 함수역할: 설정을 저장한 뒤 알림 허용·민감정보 표시·언어·기본 시각 변경에 맞춰 예약을 취소하거나 새로고침하고 설정 구독자를 갱신한다.
+  // 매개변수:
+  // - save (Future<UserSettingSaveResult> Function()): 실제 저장을 수행하는 함수
+  // 반환값:
+  // - Future<UserSettingSaveResult>: 저장된 설정과 서버 동기화 여부.
+  Future<UserSettingSaveResult> _saveAndApply(
+    Future<UserSettingSaveResult> Function() save,
+  ) async {
     final previousMedicationNotificationsEnabled =
         _userSetting.medicationNotificationsEnabled;
     final previousNotificationDetailMode = _userSetting.notificationDetailMode;
@@ -118,23 +143,7 @@ class MedBuddyUserSettingViewModel {
       for (final slot in medicationScheduleSlotKeys)
         slot: _userSetting.defaultTimeForSlot(slot),
     };
-    final saveResult = await manageUserSetting.saveUserSetting(
-      currentSetting: _userSetting,
-      fontSizeOption: fontSizeOption,
-      readingSpeedOption: readingSpeedOption,
-      language: language,
-      languageMode: languageMode,
-      timeFormat: timeFormat,
-      homeScheduleSource: homeScheduleSource,
-      medicationNotificationsEnabled: medicationNotificationsEnabled,
-      caregiverNotificationsEnabled: caregiverNotificationsEnabled,
-      chatNotificationsEnabled: chatNotificationsEnabled,
-      notificationDetailMode: notificationDetailMode,
-      defaultMorningTime: defaultMorningTime,
-      defaultLunchTime: defaultLunchTime,
-      defaultEveningTime: defaultEveningTime,
-      defaultBedtime: defaultBedtime,
-    );
+    final saveResult = await save();
     if (_disposed) return saveResult;
     _userSetting = saveResult.setting;
     notificationService.setShowSensitiveDetails(

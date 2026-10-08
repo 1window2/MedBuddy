@@ -34,6 +34,8 @@ class MedBuddyPrescriptionViewModel {
   // - PrescriptionFlowState: 입력·인식·미리보기·분석·결과·실패를 구분하는 현재 처방 흐름 상태를 제공한다.
   PrescriptionFlowState get prescriptionFlowState => _prescriptionFlowState;
   int _prescriptionOperationId = 0;
+  // 갤러리 선택 창이 열려 있어 아직 이미지를 고르지 않은 요청이 있는지 여부.
+  bool _isPrescriptionImagePickPending = false;
   AnalysisProgressStep _analysisProgressStep =
       AnalysisProgressStep.prescriptionRecognition;
   // 함수이름: analysisProgressStep
@@ -395,6 +397,7 @@ class MedBuddyPrescriptionViewModel {
       cancelledMessage: _isEnglishSetting
           ? 'Image selection was canceled.'
           : '이미지 선택이 취소되었습니다.',
+      resetAfterImageSelection: true,
     );
   }
 
@@ -1075,10 +1078,13 @@ class MedBuddyPrescriptionViewModel {
   }
 
   // 함수이름: _requestPrescriptionRecognition
-  // 함수역할: 카메라/갤러리 공통 처방전 OCR 흐름을 상태 머신 형태로 처리한다. 사용자가 선택을 취소하면 분석 화면으로 넘어가지 않도록 idle 상태로 되돌린다.
+  // 함수역할: 카메라/갤러리 공통 처방전 OCR 흐름을 상태 머신 형태로 처리한다.
+  // - 촬영처럼 이미지가 이미 있는 요청은 바로 이전 인식·분석 상태를 지우고 시작한다.
+  // - 갤러리처럼 선택 창을 먼저 여는 요청(resetAfterImageSelection)은 이미지를 실제로 고른 뒤에만 이전 상태를 지운다. 선택을 취소하면 실패·검토 중이던 흐름을 그대로 두고, 선택 창이 열려 있는 동안의 두 번째 요청은 무시한다.
   // 매개변수:
   // - imageRequest (Future<List<MedicationSchedule>?> Function({VoidCallback? onImageSelected})): 이미지 선택과 OCR 요청을 수행하는 함수
   // - cancelledMessage (String): 사용자가 취소했을 때 보여줄 상태 메시지
+  // - resetAfterImageSelection (bool): 이미지를 고른 뒤에 이전 상태를 지울지 여부
   // 반환값:
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
   Future<void> _requestPrescriptionRecognition({
@@ -1087,20 +1093,33 @@ class MedBuddyPrescriptionViewModel {
     })
     imageRequest,
     required String cancelledMessage,
+    bool resetAfterImageSelection = false,
   }) async {
-    final operationId = _beginPrescriptionOperation();
-    _recognizedMedicationScheduleList = [];
-    _medicationMatchReviews.clear();
-    _recognizedTextRegionList = [];
-    _prescriptionPreviewImagePath = '';
-    _analyzedMedicationList = [];
-    _analyzedMedicationByScheduleIndex.clear();
-    _unverifiedMedicationScheduleIndexes.clear();
-    _prescriptionChangeRadar = null;
-    _isPrescriptionChangeLoading = false;
-    _analysisErrorMessage = '';
-    _clearPrescriptionRecognitionCounts();
-    _analysisProgressStep = AnalysisProgressStep.prescriptionRecognition;
+    if (resetAfterImageSelection) {
+      if (_isPrescriptionImagePickPending) {
+        return;
+      }
+      _isPrescriptionImagePickPending = true;
+    }
+    final requestGeneration = _prescriptionOperationId;
+    int? operationId;
+    // 함수이름: beginRecognition
+    // 함수역할: 이 요청의 인식 작업을 한 번만 시작한다. 선택 창이 열려 있는 동안 흐름이 초기화됐으면(세대 변경·해제) 시작하지 않는다.
+    // 매개변수: 없음. 반환값: 이 요청이 현재 처방 작업이면 true.
+    bool beginRecognition() {
+      if (operationId == null) {
+        if (_disposed || _prescriptionOperationId != requestGeneration) {
+          return false;
+        }
+        operationId = _beginPrescriptionOperation();
+        _resetPrescriptionRecognitionState();
+      }
+      return _isCurrentPrescriptionOperation(operationId!);
+    }
+
+    if (!resetAfterImageSelection) {
+      beginRecognition();
+    }
 
     try {
       final result = await imageRequest(
@@ -1111,14 +1130,27 @@ class MedBuddyPrescriptionViewModel {
          * 반환값:
          * - 없음.
          */ () {
-          if (_isCurrentPrescriptionOperation(operationId)) {
+          if (resetAfterImageSelection) {
+            _isPrescriptionImagePickPending = false;
+          }
+          if (beginRecognition()) {
             _prescriptionPreviewImagePath =
                 inputPrescription.lastSelectedImagePath;
             _showPrescriptionRecognitionProgress();
           }
         },
       );
-      if (!_isCurrentPrescriptionOperation(operationId)) {
+      if (result == null && operationId == null) {
+        // 이미지를 고르지 않고 선택 창을 닫았다. 진행 중이던 흐름과 인식 결과는 건드리지 않는다.
+        if (!_disposed &&
+            _prescriptionOperationId == requestGeneration &&
+            _prescriptionFlowState == PrescriptionFlowState.idle) {
+          _statusMessage = cancelledMessage;
+          _notifyViewModelListeners(MedBuddyFeature.prescription);
+        }
+        return;
+      }
+      if (!beginRecognition()) {
         return;
       }
       if (result == null) {
@@ -1150,20 +1182,49 @@ class MedBuddyPrescriptionViewModel {
                 : '처방전 인식이 완료되었습니다. 인식 내역을 확인해주세요.');
       _notifyViewModelListeners(MedBuddyFeature.prescription);
     } on StateError catch (error) {
-      if (!_isCurrentPrescriptionOperation(operationId)) {
+      if (!beginRecognition()) {
         return;
       }
       _showAnalysisFailure(
         UserFacingErrorMessage.resolve(error, isEnglish: _isEnglishSetting),
       );
     } catch (error) {
-      if (!_isCurrentPrescriptionOperation(operationId)) {
+      if (!beginRecognition()) {
         return;
       }
       _showAnalysisFailure(
         UserFacingErrorMessage.resolve(error, isEnglish: _isEnglishSetting),
       );
+    } finally {
+      if (resetAfterImageSelection) {
+        _isPrescriptionImagePickPending = false;
+      }
     }
+  }
+
+  // 함수이름: _resetPrescriptionRecognitionState
+  // 함수역할: 새 처방전 인식을 시작하기 전에 이전 인식·분석 결과와 저장 진행 표시를 지운다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음.
+  void _resetPrescriptionRecognitionState() {
+    _recognizedMedicationScheduleList = [];
+    _medicationMatchReviews.clear();
+    _recognizedTextRegionList = [];
+    _prescriptionPreviewImagePath = '';
+    _analyzedMedicationList = [];
+    _analyzedMedicationByScheduleIndex.clear();
+    _unverifiedMedicationScheduleIndexes.clear();
+    _prescriptionChangeRadar = null;
+    _isPrescriptionChangeLoading = false;
+    // 이전 작업의 저장 응답은 세대가 달라 표시를 되돌리지 못하므로 여기서 함께 지운다.
+    _completedMedicationSaveIndexes.clear();
+    _isAllMedicationSaving = false;
+    _savingMedicationIndex = null;
+    _analysisErrorMessage = '';
+    _clearPrescriptionRecognitionCounts();
+    _analysisProgressStep = AnalysisProgressStep.prescriptionRecognition;
   }
 
   // 함수이름: _beginPrescriptionOperation

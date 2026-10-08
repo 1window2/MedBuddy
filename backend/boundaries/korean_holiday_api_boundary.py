@@ -23,11 +23,12 @@ logger = logging.getLogger(__name__)
 # Role:
 # - Retrieves Korean legal holiday dates with an in-process monthly cache.
 # Responsibilities:
-# - Serialize monthly cache fills, parse government XML dates and classify upstream failures.
+# - Share one cache fill per month, parse government XML dates and classify upstream failures.
 # Attributes:
 # - _cache (dict[tuple[int, int], frozenset[date]]): Holidays by year and month.
 # - _client (AsyncClient | None): Borrowed or owned HTTP transport.
-# - _lock (asyncio.Lock): Prevents duplicate monthly fetches.
+# - _inflight (dict[tuple[int, int], asyncio.Task]): Running cache fill per month; every caller
+#   of that month waits on the same task, and a caller's timeout does not cancel it.
 class KoreanHolidayAPI:
     """Month-cached boundary for Korean legal holiday dates."""
 
@@ -38,7 +39,7 @@ class KoreanHolidayAPI:
 
     # Function Name: __init__
     # Description:
-    # - Set up the monthly cache and lock while recording whether this boundary owns its HTTP client.
+    # - Set up the monthly cache and the in-flight fill table while recording whether this boundary owns its HTTP client.
     # Parameters:
     # - client (httpx.AsyncClient | None): Optional borrowed HTTP client; omitted to create an owned client.
     # Returns:
@@ -46,10 +47,10 @@ class KoreanHolidayAPI:
     def __init__(self, *, client: httpx.AsyncClient | None = None) -> None:
         self._client = client
         self._owns_client = client is None
-        self._lock = asyncio.Lock()
         self._cache: OrderedDict[tuple[int, int], frozenset[date]] = OrderedDict()
         self._expires: dict[tuple[int, int], float] = {}
         self._failures: OrderedDict[tuple[int, int], float] = OrderedDict()
+        self._inflight: dict[tuple[int, int], asyncio.Task[frozenset[date]]] = {}
 
     # Function Name: isHoliday
     # Description:
@@ -64,49 +65,98 @@ class KoreanHolidayAPI:
 
     # Function Name: fetchMonth
     # Description:
-    # - Return the monthly holiday set, fetching it once under the cache-fill lock when absent.
+    # - Return the monthly holiday set from the cache, or wait for the single fill task of that month.
+    # - The fill runs as its own task behind asyncio.shield: a caller that gives up (the nearby-care
+    #   controls allow 2-3 seconds) stops waiting, while the provider request finishes and stores its
+    #   answer for the next lookup. Cancelling the fill with the caller meant a provider slower than
+    #   that budget could never populate the cache.
     # Parameters:
     # - year (int): Calendar year of the requested holiday month.
     # - month (int): Calendar month, from 1 through 12.
     # Returns:
-    # - Immutable holiday dates for the requested month.
+    # - Immutable holiday dates for the requested month; raises PharmacyApiUnavailableError when the
+    #   fill fails or the month is inside its failure cool-down.
     async def fetchMonth(self, year: int, month: int) -> frozenset[date]:
         cache_key = (year, month)
         if self._expires.get(cache_key, 0) <= time.monotonic():
             self._cache.pop(cache_key, None)
             self._expires.pop(cache_key, None)
         dates = self._cache.get(cache_key)
-        if dates is None:
-            async with self._lock:
-                dates = self._cache.get(cache_key)
-                if dates is None:
-                    if self._failures.get(cache_key, 0) > time.monotonic():
-                        raise PharmacyApiUnavailableError("Holiday lookup is temporarily unavailable.")
-                    try:
-                        dates = await self._fetch_month(*cache_key)
-                    except (PharmacyApiUnavailableError, asyncio.CancelledError):
-                        # Prevent repeated failures and queued requests from amplifying calls for the same month.
-                        self._failures[cache_key] = time.monotonic() + 30
-                        self._failures.move_to_end(cache_key)
-                        while len(self._failures) > 48:
-                            self._failures.popitem(last=False)
-                        raise
-                    self._cache[cache_key] = dates
-                    self._expires[cache_key] = time.monotonic() + 86400
-                    self._failures.pop(cache_key, None)
-                    while len(self._cache) > 48:
-                        removed, _ = self._cache.popitem(last=False)
-                        self._expires.pop(removed, None)
+        if dates is not None:
+            return dates
+        # No await separates this lookup from the registration below, so one task per month exists.
+        fill = self._inflight.get(cache_key)
+        if fill is None:
+            if self._failures.get(cache_key, 0) > time.monotonic():
+                raise PharmacyApiUnavailableError("Holiday lookup is temporarily unavailable.")
+            fill = asyncio.create_task(self._fill_month(cache_key))
+            self._inflight[cache_key] = fill
+            fill.add_done_callback(self._retrieve_fill_outcome)
+        return await asyncio.shield(fill)
+
+    # Function Name: _fill_month
+    # Description:
+    # - Fetch one month and record the outcome itself, so the result is kept even when no caller is
+    #   still waiting: the cache entry on success, a 30-second failure mark on provider failure.
+    # Parameters:
+    # - cache_key (tuple[int, int]): Year and month being filled.
+    # Returns:
+    # - Immutable holiday dates; re-raises PharmacyApiUnavailableError after marking the failure.
+    async def _fill_month(self, cache_key: tuple[int, int]) -> frozenset[date]:
+        try:
+            dates = await self._fetch_month(*cache_key)
+        except PharmacyApiUnavailableError:
+            # Prevent repeated failures and queued requests from amplifying calls for the same month.
+            self._failures[cache_key] = time.monotonic() + 30
+            self._failures.move_to_end(cache_key)
+            while len(self._failures) > 48:
+                self._failures.popitem(last=False)
+            raise
+        finally:
+            self._inflight.pop(cache_key, None)
+        self._cache[cache_key] = dates
+        self._expires[cache_key] = time.monotonic() + 86400
+        self._failures.pop(cache_key, None)
+        while len(self._cache) > 48:
+            removed, _ = self._cache.popitem(last=False)
+            self._expires.pop(removed, None)
         return dates
+
+    # Function Name: _retrieve_fill_outcome
+    # Description:
+    # - Mark a finished fill's exception as retrieved. Every waiting caller may have timed out, and
+    #   an unretrieved task exception would be reported by the event loop as an error.
+    # - A provider failure is an expected outcome that _fill_month recorded as the cool-down; any
+    #   other exception is logged here because no caller may be left to receive it.
+    # Parameters:
+    # - fill (asyncio.Task[frozenset[date]]): Finished cache-fill task.
+    # Returns:
+    # - None.
+    @staticmethod
+    def _retrieve_fill_outcome(fill: asyncio.Task[frozenset[date]]) -> None:
+        if fill.cancelled():
+            return
+        error = fill.exception()
+        if error is not None and not isinstance(error, PharmacyApiUnavailableError):
+            logger.error(
+                "Korean holiday cache fill failed unexpectedly: %s",
+                type(error).__name__,
+            )
 
     # Function Name: close
     # Description:
-    # - Close and release an internally created HTTP client without closing a borrowed client.
+    # - Cancel and await any running cache fill, then close and release an internally created HTTP
+    #   client without closing a borrowed client.
     # Parameters:
     # - None.
     # Returns:
     # - None.
     async def close(self) -> None:
+        fills = list(self._inflight.values())
+        for fill in fills:
+            fill.cancel()
+        if fills:
+            await asyncio.gather(*fills, return_exceptions=True)
         if self._owns_client and self._client is not None:
             await self._client.aclose()
             self._client = None

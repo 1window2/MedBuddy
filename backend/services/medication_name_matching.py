@@ -5,7 +5,7 @@ import re
 from difflib import SequenceMatcher
 from typing import Callable, TypeVar
 
-from services.medication_match_safety import can_auto_match, match_conflict
+from services.medication_match_safety import can_auto_match, match_conflict, strengths
 
 _CandidateT = TypeVar("_CandidateT")
 
@@ -273,10 +273,6 @@ class MedicationTextNormalizer:
 # - text_normalizer (MedicationTextNormalizer): OCR 특성을 반영한 약품명 정규화·변형 생성기.
 class MedicationNameMatcher:
     _NON_NAME_CHARACTER_PATTERN = re.compile(r"[^0-9a-z가-힣]+", re.IGNORECASE)
-    _DOSAGE_VALUE_PATTERN = re.compile(
-        r"(\d+(?:\.\d+)?)\s*(mg|g|ml|밀리그램|밀리그람|그램|그람|밀리리터)",
-        re.IGNORECASE,
-    )
     _LONG_NAME_MIN_SCORE = 0.76
     _MEDIUM_NAME_MIN_SCORE = 0.84
     _SHORT_NAME_MIN_SCORE = 0.96
@@ -329,18 +325,6 @@ class MedicationNameMatcher:
             search_text,
             candidate_name,
         )
-
-    # 함수이름: is_confident_match
-    # 함수역할:
-    # - 검색어 길이에 따른 최소 점수를 적용해 후보를 사용할 수 있는지 판정한다.
-    # 매개변수:
-    # - search_text (str): OCR 보정 과정을 거친 검색어
-    # - candidate_name (str): DB 또는 공공데이터 API가 반환한 약품명
-    # 반환값:
-    # - 신뢰 가능한 이름 후보이면 True, 아니면 False
-    def is_confident_match(self, search_text: str, candidate_name: str) -> bool:
-        score = self.calculate_score(search_text, candidate_name)
-        return score >= self._required_score(search_text)
 
     # 함수이름: rank_candidates
     # 함수역할:
@@ -441,7 +425,9 @@ class MedicationNameMatcher:
 
     # 함수이름: _adjust_dosage_score
     # 함수역할:
-    # - 이름이 비슷한 다른 함량 제품보다 OCR 함량과 같은 후보를 우선한다.
+    # - 검색어의 함량이 후보의 함량과 같다고 확인되면 이름 점수에 0.03을 더한다.
+    # - 함량 비교는 medication_match_safety의 정규화 규칙을 그대로 사용한다. 함량이 다르거나
+    #   후보에서 확인되지 않으면 calculate_score가 이 함수에 앞서 0점으로 제외하므로 감점은 두지 않는다.
     # 매개변수:
     # - name_score (float): 약품명 문자열만으로 계산한 유사도
     # - search_text (str): OCR 보정 과정을 거친 검색어
@@ -454,31 +440,7 @@ class MedicationNameMatcher:
         search_text: str,
         candidate_name: str,
     ) -> float:
-        search_dosages = self._extract_dosage_values(search_text)
-        candidate_dosages = self._extract_dosage_values(candidate_name)
-        if not search_dosages or not candidate_dosages:
-            return name_score
-        if search_dosages & candidate_dosages:
+        search_strengths = strengths(search_text)
+        if search_strengths and search_strengths == strengths(candidate_name):
             return min(1.0, name_score + 0.03)
-        return max(0.0, name_score - 0.08)
-
-    # 함수이름: _extract_dosage_values
-    # 함수역할:
-    # - 영문과 한글 함량 단위를 공통 형식으로 바꿔 비교 가능한 값으로 추출한다.
-    # 매개변수:
-    # - value (str): 함량 표기가 포함될 수 있는 약품명
-    # 반환값:
-    # - 숫자와 표준화된 단위를 결합한 함량 값 집합
-    def _extract_dosage_values(self, value: str) -> set[str]:
-        unit_aliases = {
-            "밀리그램": "mg",
-            "밀리그람": "mg",
-            "그램": "g",
-            "그람": "g",
-            "밀리리터": "ml",
-        }
-        dosage_values: set[str] = set()
-        for amount, raw_unit in self._DOSAGE_VALUE_PATTERN.findall(value):
-            normalized_unit = unit_aliases.get(raw_unit.casefold(), raw_unit.casefold())
-            dosage_values.add(f"{amount}:{normalized_unit}")
-        return dosage_values
+        return name_score

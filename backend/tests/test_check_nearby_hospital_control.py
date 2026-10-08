@@ -85,9 +85,10 @@ def detail(identifier="A1", *, departments=("내과",), hours=None):
                            weekly_hours=tuple((day, *times) for day, times in (hours or {}).items()))
 
 
-async def search(boundary, *, calendar=None, **kwargs):
-    """명시적 달력과 기준일로 결과를 계산한다."""
-    control = CheckNearbyHospital(boundary, holiday_boundary=calendar or Calendar())
+async def search(boundary, *, calendar=None, clock=None, **kwargs):
+    """명시적 달력과 기준일로 결과를 계산한다. 조회 허용 범위는 고정 시계(기본 MONDAY) 기준이다."""
+    control = CheckNearbyHospital(boundary, holiday_boundary=calendar or Calendar(),
+                                  clock=clock or (lambda: MONDAY))
     return await control.requestNearbyHospitalSearch(latitude=37.5665, longitude=126.978,
                                                      target_datetime=kwargs.pop("target_datetime", MONDAY), **kwargs)
 
@@ -230,6 +231,32 @@ async def test_invalid_requests_rejected_before_network(kwargs):
     with pytest.raises(ValueError):
         await search(boundary, **kwargs)
     assert not boundary.pages
+
+
+@pytest.mark.parametrize("hour", [9, 14])
+@pytest.mark.anyio
+async def test_target_date_window_is_counted_in_calendar_days(hour):
+    """앱 달력이 제공하는 첫날·마지막 날은 현재 시각과 무관하게 허용하고 범위 밖 날짜는 달력·병원 조회 전에 거절한다."""
+    now = datetime(2026, 10, 8, hour, tzinfo=KST)
+    calendar = Calendar()
+    calendar.seen = []
+    lookup = calendar.isHoliday
+
+    async def recording(value):
+        calendar.seen.append(value)
+        return await lookup(value)
+
+    calendar.isHoliday = recording
+    boundary = Boundary({"A1": detail()})
+    for picked in (datetime(2026, 10, 1, 12), datetime(2027, 10, 9, 12)):
+        result = await search(boundary, calendar=calendar, clock=lambda: now, target_datetime=picked)
+        assert result.target_datetime == picked.replace(tzinfo=KST) and len(result.data) == 1
+    pages, seen = list(boundary.pages), list(calendar.seen)
+    for outside in (datetime(2026, 9, 30, 23, 59), datetime(2027, 10, 10), datetime(1990, 5, 5, 12),
+                    datetime.max.replace(tzinfo=timezone.utc)):
+        with pytest.raises(ValueError, match="^Target date"):
+            await search(boundary, calendar=calendar, clock=lambda: now, target_datetime=outside)
+    assert boundary.pages == pages and calendar.seen == seen
 
 
 @pytest.mark.anyio

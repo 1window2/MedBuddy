@@ -38,7 +38,7 @@ package "Flutter Frontend" #E8F4FF {
   interface LinkedChatSessionTransport
   class LinkedChatRealtimeService <<Service>>
   class LinkedChatEntryUI <<UI>>
-  class ChatUnreadSummary
+  class ChatUnreadSummary <<Entity>>
   class ManageChatList <<Control>>
   class ManageLinkedChat <<Control>>
   class LinkPatientCaregiverUI <<UI>>
@@ -53,10 +53,10 @@ package "Flutter Frontend" #E8F4FF {
   class NotificationInboxUI <<UI>>
   class ManageNotificationInbox <<Control>>
   class NotificationInboxStore <<Service>>
-  class NotificationInboxEntry
+  class NotificationInboxEntry <<Entity>>
   class CaregiverAlertActionControl <<Control>>
   class CaregiverAlertDeliveryService <<Service>>
-  class CaregiverAlertContext
+  class CaregiverAlertContext <<Entity>>
 }
 
 package "FastAPI Backend" #EAF8F0 {
@@ -101,8 +101,7 @@ ChatListUI --> ManageChatList
 ManageChatList --> FLinkPatientCaregiver
 ManageChatList --> ManageCaregiverPatientLocalState
 ManageChatList --> ManageLinkedChat : latest messages / unread summary
-NotificationService --> LinkedChatEntryUI : recipient-scoped chat route
-LinkedChatEntryUI --> FLinkPatientCaregiver : verify active link and role
+LinkedChatEntryUI --> ManageChatList : verify active link and role
 LinkedChatEntryUI --> LinkedChatUI : patient hash / peer / current settings
 ManageLinkedChat --> ChatUnreadSummary
 LinkedChatUI --> ManageLinkedChat
@@ -154,7 +153,6 @@ BLinkPatientCaregiver --> DBPatientCaregiverLink
 BLinkPatientCaregiver --> DBCaregiverNotification
 
 BCheckCaregiverMedication --> BLinkPatientCaregiver : verifies relationship
-BCheckCaregiverMedication --> BCheckSchedule : reads schedule
 BCheckSchedule --> DBCaregiverAlertOutbox : completion event
 DBCaregiverAlertOutbox --> ProcessCaregiverAlertOutbox
 CaregiverAlertOutboxWorker --> ProcessCaregiverAlertOutbox : retry due events

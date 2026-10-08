@@ -10,6 +10,7 @@ from threading import Lock
 
 from fastapi import Depends, Header, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from google import genai
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -37,6 +38,8 @@ from boundaries.pharmacy_api_boundary import (
     NationalEmergencyMedicalCenterPharmacyAPI,
 )
 from boundaries.hospital_api_boundary import NationalEmergencyMedicalCenterHospitalAPI
+from boundaries.llm_service_boundary import LLMService
+from boundaries.medication_summary_boundary import MedicationSummaryGenerator
 from boundaries.oidc_token_verifier_boundary import (
     OIDCTokenVerifier,
     TokenVerificationError,
@@ -54,11 +57,12 @@ from boundaries.push_notification_boundary import (
 )
 from core.config import settings
 from core.account_operation_locks import AccountOperationLocks
-from core.account_database_lock import lock_account_operations
+from core.account_database_lock import ACCOUNT_BUSY_DETAIL, lock_account_operations
 from core.database import get_db
 from core.request_database_work import run_request_database_work
 from core.request_rate_limits import (
     RequestRateLimitStore,
+    mounted_route_template,
     resolve_rate_limit_rule,
 )
 from controls.authorization_control import AuthorizationControl
@@ -85,9 +89,11 @@ from controls.check_caregiver_medication_control import CheckCaregiverMedication
 from controls.check_caregiver_monitoring_control import CheckCaregiverMonitoring
 from controls.manage_push_token_control import ManagePushToken
 from controls.manage_linked_chat_control import ManageLinkedChat
+from controls.manage_caregiver_alert_control import ManageCaregiverAlert
 from controls.request_voice_guide_control import RequestVoiceGuide
 from controls.set_caregiver_notification_control import SetCaregiverNotification
 from controls.set_notification_control import SetNotification
+from controls.sync_dose_control import SyncDose
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from repositories.async_pharmacy_catalog import AsyncPharmacyCatalog
 from repositories.korean_holiday_cache import SessionScopedKoreanHolidayCache
@@ -106,6 +112,11 @@ _pill_boundary_lock = Lock()
 _pill_vision_boundary: PillVisionBoundary | None = None
 _pill_catalog_boundary: MFDSPillCatalogBoundary | None = None
 _pill_ranking_semaphore = asyncio.Semaphore(2)
+_gemini_client_lock = Lock()
+_gemini_text_client: genai.Client | None = None
+_gemini_ocr_client: genai.Client | None = None
+_medication_summary_generator: MedicationSummaryGenerator | None = None
+_health_recommendation_llm_service: LLMService | None = None
 _oidc_token_verifier_lock = Lock()
 _oidc_token_verifier: OIDCTokenVerifier | None = None
 _app_check_token_verifier_lock = Lock()
@@ -360,7 +371,12 @@ async def get_registered_principal(
     db: Session = Depends(get_db),
 ) -> AsyncGenerator[AuthenticatedPrincipal, None]:
     route = request.scope.get("route")
-    route_path = str(getattr(route, "path", request.url.path))
+    # 접두사로 붙인 라우터의 route.path는 상대 경로이므로 전체 템플릿으로 복원한다.
+    # request.url.path를 그대로 쓰면 호출자가 고른 경로 값이 카운터 키에 들어간다.
+    route_path = mounted_route_template(
+        getattr(route, "path", None),
+        request.url.path,
+    )
     detach_registration = (request.method.upper(), route_path) in _DETACHED_LOOKUP_ROUTES
     resolved_rule = resolve_rate_limit_rule(
         request.method,
@@ -401,7 +417,7 @@ async def get_registered_principal(
             except TimeoutError as exc:
                 raise HTTPException(
                     status_code=503,
-                    detail="This account is busy. Retry the request shortly.",
+                    detail=ACCOUNT_BUSY_DETAIL,
                     headers={"Retry-After": "5"},
                 ) from exc
 
@@ -439,7 +455,7 @@ async def get_registered_principal(
             db.rollback()
             raise HTTPException(
                 status_code=503,
-                detail="This account is busy. Retry the request shortly.",
+                detail=ACCOUNT_BUSY_DETAIL,
                 headers={"Retry-After": "5"},
             ) from exc
 
@@ -611,9 +627,113 @@ async def close_hospital_boundary() -> None:
     await _hospital_api.close()
 
 
+# Function Name: _get_gemini_text_client
+# Description:
+# - Lazily creates the process-shared Gemini client for text generation (medication summaries and health recommendations) under a lock.
+# Parameters:
+# - None.
+# Returns:
+# - Shared Gemini client on the default API version.
+def _get_gemini_text_client() -> genai.Client:
+    global _gemini_text_client
+    with _gemini_client_lock:
+        if _gemini_text_client is None:
+            _gemini_text_client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        return _gemini_text_client
+
+
+# Function Name: _get_gemini_ocr_client
+# Description:
+# - Lazily creates the process-shared Gemini client for prescription OCR analysis and name verification under a lock.
+# - Kept apart from the text client because only this path uses the v1alpha API version.
+# Parameters:
+# - None.
+# Returns:
+# - Shared Gemini client on the v1alpha API version.
+def _get_gemini_ocr_client() -> genai.Client:
+    global _gemini_ocr_client
+    with _gemini_client_lock:
+        if _gemini_ocr_client is None:
+            _gemini_ocr_client = genai.Client(
+                api_key=settings.GEMINI_API_KEY,
+                http_options={"api_version": "v1alpha"},
+            )
+        return _gemini_ocr_client
+
+
+# Function Name: _get_medication_summary_generator
+# Description:
+# - Lazily creates the stateless medication summary boundary on the shared text client and reuses it across requests.
+# Parameters:
+# - None.
+# Returns:
+# - Process-shared MedicationSummaryGenerator.
+def _get_medication_summary_generator() -> MedicationSummaryGenerator:
+    global _medication_summary_generator
+    text_client = _get_gemini_text_client()
+    with _gemini_client_lock:
+        if _medication_summary_generator is None:
+            _medication_summary_generator = MedicationSummaryGenerator(
+                ai_client=text_client
+            )
+        return _medication_summary_generator
+
+
+# Function Name: _get_health_recommendation_llm_service
+# Description:
+# - Lazily creates the stateless health-recommendation boundary on the shared text client and reuses it across requests.
+# Parameters:
+# - None.
+# Returns:
+# - Process-shared LLMService.
+def _get_health_recommendation_llm_service() -> LLMService:
+    global _health_recommendation_llm_service
+    text_client = _get_gemini_text_client()
+    with _gemini_client_lock:
+        if _health_recommendation_llm_service is None:
+            _health_recommendation_llm_service = LLMService(ai_client=text_client)
+        return _health_recommendation_llm_service
+
+
+# Function Name: close_gemini_clients
+# Description:
+# - Clears the shared Gemini clients and the boundaries built on them, then closes each client's asynchronous and synchronous transport.
+# - Logs each shutdown failure separately so one failed close does not skip the remaining ones.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+async def close_gemini_clients() -> None:
+    global _gemini_text_client, _gemini_ocr_client
+    global _medication_summary_generator, _health_recommendation_llm_service
+    with _gemini_client_lock:
+        clients = (_gemini_text_client, _gemini_ocr_client)
+        _gemini_text_client = None
+        _gemini_ocr_client = None
+        _medication_summary_generator = None
+        _health_recommendation_llm_service = None
+    for client in clients:
+        if client is None:
+            continue
+        try:
+            await client.aio.aclose()
+        except Exception as exc:
+            logger.warning(
+                "Gemini async client shutdown failed: %s",
+                type(exc).__name__,
+            )
+        try:
+            client.close()
+        except Exception as exc:
+            logger.warning(
+                "Gemini client shutdown failed: %s",
+                type(exc).__name__,
+            )
+
+
 # Function Name: get_input_prescription
 # Description:
-# - Binds OCR prescription parsing and local catalog verification to the request session.
+# - Binds OCR prescription parsing and local catalog verification to the request session, on the shared OCR Gemini client.
 # Parameters:
 # - db (Session): SQLAlchemy session for this unit of work.
 # Returns:
@@ -621,7 +741,7 @@ async def close_hospital_boundary() -> None:
 def get_input_prescription(
     db: Session = Depends(get_db),
 ) -> InputPrescription:
-    return InputPrescription(db=db)
+    return InputPrescription(db=db, client=_get_gemini_ocr_client())
 
 
 # Function Name: _get_pill_identification_boundaries
@@ -693,7 +813,7 @@ def get_identify_pill() -> IdentifyPill:
 
 # Function Name: get_check_medication_detail
 # Description:
-# - Binds local drug lookup to the request session while reusing Redis and public drug/image clients.
+# - Binds local drug lookup to the request session while reusing Redis, public drug/image clients and the shared summary boundary.
 # Parameters:
 # - db (Session): SQLAlchemy session for this unit of work.
 # - medication_cache (MedicationDetailCache): Shared Redis cache of medication detail results.
@@ -711,6 +831,7 @@ def get_check_medication_detail(
         public_drug_small_api=_public_drug_small_api,
         public_drug_large_api=_public_drug_large_api,
         pill_image_api=_pill_image_api,
+        summary_generator=_get_medication_summary_generator(),
     )
 
 
@@ -816,7 +937,7 @@ def get_check_today_medication_info(
 
 # Function Name: get_check_health_recommendation
 # Description:
-# - Binds medication-based health guidance and its persisted cache to the request database session.
+# - Binds medication-based health guidance and its persisted cache to the request database session, on the shared recommendation boundary.
 # Parameters:
 # - db (Session): SQLAlchemy session for this unit of work.
 # Returns:
@@ -824,7 +945,10 @@ def get_check_today_medication_info(
 def get_check_health_recommendation(
     db: Session = Depends(get_db),
 ) -> CheckHealthRecommendation:
-    return CheckHealthRecommendation(db=db)
+    return CheckHealthRecommendation(
+        db=db,
+        llm_service=_get_health_recommendation_llm_service(),
+    )
 
 
 # Function Name: get_link_patient_caregiver_control
@@ -851,6 +975,32 @@ def get_manage_linked_chat(
     db: Session = Depends(get_db),
 ) -> ManageLinkedChat:
     return ManageLinkedChat(db=db)
+
+
+# Function Name: get_manage_caregiver_alert
+# Description:
+# - Binds caregiver missed-dose alert snoozing and local-delivery lookup to the request session.
+# Parameters:
+# - db (Session): SQLAlchemy session for this unit of work.
+# Returns:
+# - Request-scoped ManageCaregiverAlert control.
+def get_manage_caregiver_alert(
+    db: Session = Depends(get_db),
+) -> ManageCaregiverAlert:
+    return ManageCaregiverAlert(db)
+
+
+# Function Name: get_sync_dose
+# Description:
+# - Binds idempotent dose-completion operations to the request session, the same session the other controls of the request receive.
+# Parameters:
+# - db (Session): SQLAlchemy session for this unit of work.
+# Returns:
+# - Request-scoped SyncDose control.
+def get_sync_dose(
+    db: Session = Depends(get_db),
+) -> SyncDose:
+    return SyncDose(db)
 
 
 # Function Name: get_check_caregiver_medication

@@ -50,7 +50,7 @@ responsibilities without improving MedBuddy's medication domain.
 | Backend external boundary | `NationalEmergencyMedicalCenterPharmacyAPI` | Send the minimum coordinate query to the public pharmacy service and normalize its untrusted response. |
 | Backend control | `CheckNearbyPharmacy` | Validate coordinates, apply result bounds, and return only presentation-safe pharmacy fields. |
 | Backend control | `ManageLinkedChat` | Authorize the active link, validate optional medication context when attached, persist idempotent messages, and track participant read state. |
-| Backend control | `DispatchChatMessageAlert` | Notify only the linked recipient with generic content after the message transaction succeeds. |
+| Backend control | `DispatchChatMessageAlert` | Notify only the linked recipient with the bounded message preview, or generic content when previews are hidden, after the message transaction succeeds. |
 | Backend runtime service | `ChatConnectionManager` | Own in-process WebSocket memberships and broadcast only to connections authorized for the same active link. |
 | Backend composition root | `api.dependencies` | Construct the principal and inject authorized controls. |
 | Backend dependency policy | `get_recently_authenticated_principal` | Require a recent `auth_time` for irreversible credential-backed account deletion; anonymous guests have an explicit exception. |
@@ -148,8 +148,7 @@ Router --> AuthenticatedApiClient : JSON response
    header-role fallback. Firebase anonymous identities are accepted only when
    the backend explicitly enables that authenticated provider.
 7. Linked-chat history, message, read, unread-count, and WebSocket routes repeat
-   the same active-link authorization. A laboratory toggle controls only UI
-   visibility and cannot grant chat or pharmacy access.
+   the same active-link authorization.
 
 ## Irreversible Account Deletion
 
@@ -190,7 +189,7 @@ exhausted. Push startup and token registration are tracked as lifecycle
 operations, so signing out waits for any in-flight registration before it
 requests deactivation of the current token.
 
-In Firebase mode, the backend maintenance worker evaluates configured
+In Firebase mode, the backend caregiver-alert outbox worker evaluates configured
 missed-dose deadlines and inserts a durable outbox event with a unique
 caregiver/patient/date/slot key. Immediately before FCM delivery it revalidates
 the active link, explicit per-slot consent, current deadline, global caregiver
@@ -222,7 +221,7 @@ not removed by patient-reminder cleanup.
 
 ## Nearby Pharmacy Location Boundary
 
-Nearby-pharmacy lookup is a user-initiated laboratory feature. Flutter requests
+Nearby-pharmacy lookup is a user-initiated feature. Flutter requests
 foreground location only while the screen is active and sends latitude and
 longitude to the authenticated MedBuddy backend over HTTPS. The backend keeps
 the public-data key private, validates coordinate ranges, requests only the
@@ -252,9 +251,10 @@ malformed public-data value cannot become an arbitrary external URI.
 
 ## Linked Medication Chat Boundary
 
-The chat laboratory feature requires an active patient-caregiver link and at
-least one active medication belonging to the linked patient. A plain text
-message may be sent without context. Medication, schedule-slot, and pharmacy
+Chat requires an active patient-caregiver link. A plain text message may be
+sent without context; medication-shortage and discomfort messages additionally
+require an active medication of the linked patient. Medication,
+schedule-slot, and pharmacy
 messages carry only bounded context identifiers from the client. A medication
 message may include a deduplicated list of up to ten identifiers; the first
 identifier is retained in the legacy singular field for older clients.
@@ -346,10 +346,10 @@ Cloudflare Tunnel.
   but no model-returned region text. Caregiver notifications use generic
   lock-screen content and keep the patient scope only in the private tap
   payload used for authenticated in-app navigation.
-- Prescription image processing rejects decoded dimensions above 24 megapixels
-  from the image header and uses a dedicated single-worker executor before
-  OpenCV allocation. Multipart byte limits remain a separate outer control.
-- Search-keyword expansion, frequency parsing, model fallback caches, and save
+- Loose-pill image processing rejects images above 24 megapixels from the image
+  header before decoding and bounds decode/analysis concurrency with semaphores
+  around worker threads. Multipart byte limits remain a separate outer control.
+- Search-keyword expansion, frequency parsing, and save
   actions have explicit bounds or serialization. Completed-only dose records
   cannot redefine the expected daily schedule.
 - Pull-request CI uses deterministic fake API keys. Public issue templates
@@ -361,8 +361,9 @@ Cloudflare Tunnel.
 - Use Play App Signing for store distribution and protect the upload key.
 - Keep the keystore and `key.properties` ignored and outside source control.
 - Store CI signing material in a protected GitHub Environment; expose it only
-  to the protected `main` branch after an explicit environment approval, never
-  pull-request, beta-branch, wildcard-ref, or tag jobs.
+  to `main` and the single active beta branch named in the workflow, after an
+  explicit environment approval; never to pull-request, other-branch,
+  wildcard-ref, or tag jobs.
 - Pull requests compile a release-mode APK without production signing secrets.
 - Release jobs verify certificate fingerprints and archive checksums/provenance.
 - APK fingerprint extraction is anchored to the exact `apksigner` digest line,
@@ -419,9 +420,9 @@ authentication paths.
 8. Firebase mode registers authenticated Android FCM tokens with the backend,
    refreshes them when Firebase rotates a token, and disables the current token
    during sign-out.
-9. Newly completed-dose transitions are delivered through FCM. Missed-deadline
-   checks remain an authenticated Workmanager task; periodic server maintenance
-   runs inside the single production FastAPI process.
+9. Newly completed-dose transitions and server-scheduled missed-deadline events
+   are delivered through FCM by the backend outbox worker; periodic server
+   maintenance runs inside the single production FastAPI process.
 
 10. Permanent deletion requires a recent Firebase `auth_time` for credential-
     backed users. Keep `ACCOUNT_DELETION_REAUTH_MAX_AGE_SECONDS=300` unless a
@@ -462,9 +463,11 @@ runtime values in ignored `deploy/backend.env`. A Firebase Admin credential and
 Cloudflare Tunnel token remain outside the repository and are mounted read-only
 into the required containers.
 
-The one-shot bootstrap waits for PostgreSQL, runs `alembic upgrade head`, and
-seeds all empty medication catalogs before the backend starts. The periodic
-worker then refreshes all three datasets atomically without the empty-only
+The one-shot `database-migrate` service waits for PostgreSQL and runs
+`alembic upgrade head` before the backend starts. The independent
+`catalog-bootstrap` service then seeds empty medication and pharmacy catalogs
+without gating the API. The periodic worker refreshes all four catalogs
+atomically without the empty-only
 shortcut. Complete basic and approval refreshes mark observed rows with a
 generation token and remove rows not returned by MFDS in the same transaction;
 failed or page-limited jobs cannot publish that pruning. FastAPI port `8000` is exposed only on host loopback for
@@ -476,7 +479,9 @@ The historical GCP deployment, catalog-sync, and maintenance workflows retain
 their source but every job has `if: false`. They cannot provision or invoke
 Cloud Run, Cloud SQL, Redis, VPC, Artifact Registry, or Secret Manager resources.
 
-The current ordered Alembic chain records the beta data boundary:
+The following revisions established the beta security and data boundary. This
+is not the full chain; the current head is `b3a7d9e2f601` (see
+[Production Deployment](Production%20Deployment.md)).
 
 | Revision | Purpose |
 | --- | --- |
@@ -498,9 +503,12 @@ The current ordered Alembic chain records the beta data boundary:
 The public HTTPS endpoint reaches FastAPI without host-level user authentication
 because Firebase client tokens are application credentials. FastAPI still
 authenticates every application route. `/health` and `/ready` are intentionally
-anonymous: the former reports process liveness, while the latter returns only a
-binary readiness result after checking database connectivity and Alembic
-revision, OIDC and App Check verifier initialization, and Redis connectivity.
+anonymous: the former reports process liveness and the API contract version,
+while the latter answers 200 or 503 after checking database connectivity and
+Alembic revision, OIDC and App Check verifier initialization, and Redis
+connectivity and, when ready, returns the non-secret runtime identity the
+release gate compares (`api_contract`, `app_env`, `runtime_role`, `auth_mode`,
+`firebase_project_id`, `app_check_required`).
 The single API container, database pool, request limits, and image-processing
 semaphores keep prescription-text and loose-pill image requests from multiplying
 resource use without limit.
@@ -516,7 +524,7 @@ secrets. It supplies `ANDROID_SIGNING_CERT_SHA256`,
 variables for Flutter compile-time configuration. Firebase API/app identifiers
 and certificate fingerprints are identifiers rather than credentials. The
 environment must require owner approval and an exact custom deployment policy
-for `main` and the active `beta/v0.2.0` branch. The workflow repeats that exact-ref
+for `main` and the active `beta/v0.2.1` branch. The workflow repeats that exact-ref
 gate before repository build code can receive signing material. Other beta
 branches and version-like tags cannot access the environment. The protected environment
 also prevents accidental cross-project builds rather than treating public

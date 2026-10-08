@@ -9,23 +9,19 @@ part of 'check_saved_medication_ui_boundary.dart';
 // - 부모가 전달한 표시값과 동작을 반영해 저장 약 사진과 불러오기 실패 안내 위젯을 구성한다.
 // 속성:
 // - medication (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
-// - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
 class _MedicationImageDialog extends StatelessWidget {
   final MedicationDetail medication;
   final _SavedMedicationText text;
-  final UserSetting userSetting;
 
   // 함수이름: _MedicationImageDialog
   // 함수역할: 저장 약 사진과 불러오기 실패 안내에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - medication (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
   // - text (_SavedMedicationText): 해당 화면 구역의 언어별 표시 문구.
-  // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
   // 반환값: 입력 설정이 반영된 _MedicationImageDialog 인스턴스.
   const _MedicationImageDialog({
     required this.medication,
     required this.text,
-    required this.userSetting,
   });
 
   // 함수이름: build
@@ -35,7 +31,6 @@ class _MedicationImageDialog extends StatelessWidget {
   // 반환값: 저장 약 사진과 불러오기 실패 안내에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-    final scale = userSetting.contentTextScale;
     final imageUrl = safeMedicationImageUrl(medication.imageUrl);
     final localImageFile = medication.localImagePath.trim().isEmpty
         ? null
@@ -66,7 +61,7 @@ class _MedicationImageDialog extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: MedBuddyColors.textStrong,
-                        fontSize: 17 * scale,
+                        fontSize: 17,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0,
                       ),
@@ -105,7 +100,7 @@ class _MedicationImageDialog extends StatelessWidget {
                             // - stackTrace (콜백 계약에서 추론): 이미지 로드 실패 지점의 선택적 호출 스택; 표시에는 사용하지 않음.
                             // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
                             errorBuilder: (context, error, stackTrace) =>
-                                _buildImageLoadFailure(scale),
+                                _buildImageLoadFailure(),
                           )
                         : Image.network(
                             imageUrl,
@@ -119,7 +114,7 @@ class _MedicationImageDialog extends StatelessWidget {
                             // - stackTrace (콜백 계약에서 추론): 이미지 로드 실패 지점의 선택적 호출 스택; 표시에는 사용하지 않음.
                             // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
                             errorBuilder: (context, error, stackTrace) =>
-                                _buildImageLoadFailure(scale),
+                                _buildImageLoadFailure(),
                           ),
                   ),
                 ),
@@ -132,11 +127,11 @@ class _MedicationImageDialog extends StatelessWidget {
   }
 
   // 함수이름: _buildImageLoadFailure
-  // 함수역할: 약 사진 대화상자에 현재 글씨 배율로 불러오기 실패 문구를 표시한다.
+  // 함수역할: 약 사진 대화상자에 불러오기 실패 문구를 표시한다.
   // 매개변수:
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
+  // - 없음.
   // 반환값: 저장 약 사진과 불러오기 실패 안내에 쓰는 위젯 트리.
-  Widget _buildImageLoadFailure(double scale) {
+  Widget _buildImageLoadFailure() {
     return Padding(
       padding: const EdgeInsets.all(28),
       child: Text(
@@ -144,7 +139,7 @@ class _MedicationImageDialog extends StatelessWidget {
         textAlign: TextAlign.center,
         style: TextStyle(
           color: MedBuddyColors.textMuted,
-          fontSize: 14 * scale,
+          fontSize: 14,
           letterSpacing: 0,
         ),
       ),
@@ -398,11 +393,11 @@ class _SavedMedicationText {
   const _SavedMedicationText(this.language);
 
   // 함수이름: isEnglish
-  // 함수역할: 언어 코드가 en과 정확히 일치하는지 확인한다.
+  // 함수역할: 언어 코드가 영어 표시 대상인지 앱 공통 기준으로 확인한다.
   // 매개변수:
   // - 없음.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
-  bool get isEnglish => language == 'en';
+  bool get isEnglish => isEnglishLanguage(language);
 
   // 함수이름: title
   // 함수역할: 현재 언어와 입력값에 맞춰 "저장된 복약 정보" 문구를 제공한다.
@@ -514,6 +509,16 @@ class _SavedMedicationText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get emptyMessage =>
       isEnglish ? 'No saved medication information.' : '저장된 복약정보가 없습니다.';
+  // 함수이름: loadFailedMessage
+  // 함수역할: 저장 목록 조회에 실패했음을 저장된 약이 없는 안내와 구분해 알린다. 매개변수: 없음. 반환값: 안내 문구.
+  String get loadFailedMessage => isEnglish
+      ? 'Could not load saved medication information.'
+      : '저장된 복약 정보를 불러오지 못했습니다.';
+
+  // 함수이름: retry
+  // 함수역할: 저장 목록을 다시 조회하는 동작을 제공한다. 매개변수: 없음. 반환값: 버튼 문구.
+  String get retry => isEnglish ? 'Try again' : '다시 시도';
+
   // 함수이름: noInformation
   // 함수역할: 현재 언어와 입력값에 맞춰 "정보 없음" 문구를 제공한다.
   // 매개변수:

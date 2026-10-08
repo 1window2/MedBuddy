@@ -19,10 +19,11 @@ import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/services/authenticated_api_client.dart';
-import 'package:medbuddy_frontend/services/dose_sync_service.dart';
 import 'package:medbuddy_frontend/services/linked_chat_realtime_service.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:provider/provider.dart';
+
+import 'support/dose_sync_harness.dart';
 
 // 클래스명: _RetryChatControl
 // 역할: 첫 전송 실패, 재시도 식별자와 선택 복약 문맥을 기록하는 채팅 대역.
@@ -271,26 +272,21 @@ class _RetryChatControl extends ManageLinkedChat {
 
 // 명시적 복용 확인 요청만 기록하고 일반 메시지 전송과 구분하는 대역.
 // 클래스명: _TakenChatControl
-// 역할: 복용 확인 요청의 대상과 재시도 식별자를 수집한다.
-// 주요 책임: 선택 시간대와 부분 실패·중복 입력을 검증할 응답을 제공한다.
-// 속성: takenRequestIds·takenMedicationIds·takenSlotKeys: 수집 요청, 실패 플래그·saveGate: 응답 제어.
+// 역할: 기기 전송 대기열이 없을 때만 쓰이는 채팅 복용 확인 요청의 대상과 식별자를 수집한다.
+// 주요 책임: 대기열 경로에서는 이 요청이 전혀 나가지 않았음을 확인할 근거를 제공한다.
+// 속성: takenRequestIds·takenMedicationIds·takenSlotKeys: 수집 요청, saveGate: 응답 제어.
 class _TakenChatControl extends _RetryChatControl {
   final List<String> takenRequestIds = [];
   final List<List<int>> takenMedicationIds = [];
   final List<String> takenSlotKeys = [];
-  final bool failFirstTaken;
   final bool multiSlotMedication;
-  final bool failEveningOnce;
-  bool _eveningFailed = false;
   final Completer<void>? saveGate;
 
   // 함수이름: _TakenChatControl
-  // 함수역할: 초기 일정과 실패·지연 조건을 지정해 선택 시간대 복용 확인의 재시도를 재현한다.
-  // 매개변수: failFirstTaken: 첫 기록 실패, multiSlotMedication: 다중 시간대 약, failEveningOnce: 저녁 첫 실패, saveGate: 저장 대기, contexts: 일정 문맥. 반환값: 복용 확인 테스트 대역.
+  // 함수역할: 초기 일정과 지연 조건을 지정해 복용 확인 대역을 만든다.
+  // 매개변수: multiSlotMedication: 다중 시간대 약, saveGate: 저장 대기, contexts: 일정 문맥. 반환값: 복용 확인 테스트 대역.
   _TakenChatControl({
-    this.failFirstTaken = false,
     this.multiSlotMedication = false,
-    this.failEveningOnce = false,
     this.saveGate,
     List<ChatScheduleContext>? contexts,
   }) : super(
@@ -339,8 +335,8 @@ class _TakenChatControl extends _RetryChatControl {
   }
 
   // 함수이름: recordMedicationTaken
-  // 함수역할: 원래 날짜를 확인하고 요청·약·시간대를 수집하며 지정한 실패·대기 후 완료 응답을 제공한다.
-  // 매개변수: linkId: 연동, clientMessageId: 요청 식별자, scheduleDate: 기준일, slotKey: 시간대, medicationIds: 선택 약. 반환값: 확인 메시지와 갱신 일정 Future; 실패 조건이면 StateError.
+  // 함수역할: 원래 날짜를 확인하고 요청·약·시간대를 수집하며 지정한 대기 후 완료 응답을 제공한다.
+  // 매개변수: linkId: 연동, clientMessageId: 요청 식별자, scheduleDate: 기준일, slotKey: 시간대, medicationIds: 선택 약. 반환값: 확인 메시지와 갱신 일정 Future.
   @override
   Future<ChatMedicationTakenResult> recordMedicationTaken({
     required int linkId,
@@ -353,13 +349,6 @@ class _TakenChatControl extends _RetryChatControl {
     takenSlotKeys.add(slotKey);
     takenRequestIds.add(clientMessageId);
     takenMedicationIds.add(medicationIds);
-    if (failEveningOnce && slotKey == 'evening' && !_eveningFailed) {
-      _eveningFailed = true;
-      throw StateError('evening request failed');
-    }
-    if (failFirstTaken && takenRequestIds.length == 1) {
-      throw StateError('offline');
-    }
     if (saveGate != null) await saveGate!.future;
     return ChatMedicationTakenResult(
       message: ChatMessage(
@@ -382,68 +371,112 @@ class _TakenChatControl extends _RetryChatControl {
   }
 }
 
-// Records the exact dose handed to the offline queue without platform storage.
-// 클래스명: _ChatDoseSyncService
-// 역할: 채팅에서 선택한 복용 요청을 실제 저장소 없이 수집한다.
-// 주요 책임: 캐시가 있는 경로를 재현하고 원래 날짜·시간대·연동 전달을 검증한다.
-// 속성: requests: 대기열에 전달된 약 식별자·시간대·날짜·연동 목록.
-class _ChatDoseSyncService extends DoseSyncService {
-  final requests =
-      <({List<int> ids, String slot, String? date, int? linkId})>[];
+// 운영 경로와 같은 기기 전송 대기열을 채팅 테스트에 연결할 때 쓰는 기준 시각(2026-09-21 12:00 KST).
+final DateTime _doseNow = DateTime.utc(2026, 9, 21, 3);
 
-  // 함수이름: _ChatDoseSyncService
-  // 함수역할: 플랫폼 저장소 없이 테스트 계정과 고정 시각으로 복용 동기화 대역을 초기화한다.
-  // 매개변수: client: 실제 통신을 대신할 HTTP 클라이언트. 반환값: 요청을 수집하는 동기화 대역.
-  _ChatDoseSyncService(http.Client client)
-    : super(
-        owner: 'patient-a',
-        client: client,
-        clock: () => DateTime.utc(2026, 9, 21, 3),
-      );
+// 아침·저녁에 복용하는 약 한 건으로 구성한 오늘 일정 캐시.
+const List<MedicationSchedule> _cachedTwoSlotSchedule = [
+  MedicationSchedule(
+    medicationID: '91',
+    medicationName: '테스트정',
+    dosage: '1정',
+    intakeTime: '1회',
+    medicationTime: 2,
+    scheduleSlotKeys: ['morning', 'evening'],
+  ),
+];
 
-  // 함수이름: hasCache
-  // 함수역할: 채팅이 로컬 저장 경로를 선택하도록 일정 캐시가 있다고 알린다.
-  // 매개변수: 없음. 반환값: 항상 true.
-  @override
-  bool get hasCache => true;
-
-  // 함수이름: schedules
-  // 함수역할: 하나의 약이 아침·저녁에 등장하는 일정을 제공해 정확한 시간대 선택을 검사한다.
-  // 매개변수: 없음. 반환값: 테스트 일정 목록.
-  @override
-  List<MedicationSchedule> get schedules => const [
-    MedicationSchedule(
-      medicationID: '91',
-      medicationName: '테스트정',
-      dosage: '1정',
-      intakeTime: '1회',
-      medicationTime: 2,
-      scheduleSlotKeys: ['morning', 'evening'],
+// 함수이름: _attachChatDoseSync
+// 함수역할: main.dart와 같은 방식으로 실제 DoseSyncService와 전송 대기열을 환자 ViewModel에 붙이고 오늘 일정 캐시를 채운다.
+// 매개변수: schedules: 서버에서 받은 것으로 저장할 오늘 일정. 반환값: 대기열 기록과 업로드를 확인할 하네스.
+Future<DoseSyncHarness> _attachChatDoseSync([
+  List<MedicationSchedule> schedules = _cachedTwoSlotSchedule,
+]) async {
+  final harness = await attachTestDoseSync(
+    MedBuddyViewModel(
+      patientHash: 'patient-a',
+      checkSchedule: _ChatScheduleControl(),
+      setNotification: _ChatSetNotification(),
     ),
-  ];
+    clock: () => _doseNow,
+  );
+  await harness.seedSchedules(schedules);
+  return harness;
+}
 
-  // 함수이름: record
-  // 함수역할: 완료 여부와 약명을 확인하고 대기열에 전달될 약·시간대·날짜·연동을 복사해 보관한다.
-  // 매개변수: medicationIds: 약 목록, slotKey: 시간대, completed: 완료 여부, scheduleDate: 기준일, linkId: 연동, medicationNames: 약명. 반환값: 저장 수락을 나타내는 true Future.
-  @override
-  Future<bool> record({
-    required List<int> medicationIds,
-    required String slotKey,
-    required bool completed,
-    String? scheduleDate,
-    int? linkId,
-    List<String> medicationNames = const [],
-  }) async {
-    expect(completed, isTrue);
-    expect(medicationNames, ['테스트정']);
-    requests.add((
-      ids: List<int>.of(medicationIds),
-      slot: slotKey,
-      date: scheduleDate,
-      linkId: linkId,
-    ));
-    return true;
+// 함수이름: _pumpPatientChat
+// 함수역할: 전송 대기열이 붙은 ViewModel 아래에 환자 채팅 화면을 표시한다.
+// 매개변수: tester: 화면 도구, harness: 대기열 하네스, control·realtime: 채팅 대역, mediaQuery: 선택적 화면 조건. 반환값: 첫 조회까지 끝난 뒤 완료.
+Future<void> _pumpPatientChat(
+  WidgetTester tester,
+  DoseSyncHarness harness, {
+  required ManageLinkedChat control,
+  required LinkedChatRealtimeService realtime,
+  MediaQueryData? mediaQuery,
+}) async {
+  final Widget chat = LinkedChatUI(
+    linkId: 17,
+    currentUserHash: 'patient-a',
+    patientHash: 'patient-a',
+    control: control,
+    realtimeService: realtime,
+  );
+  await tester.pumpWidget(
+    ChangeNotifierProvider<MedBuddyViewModel>.value(
+      value: harness.viewModel,
+      child: MaterialApp(
+        home: mediaQuery == null
+            ? chat
+            : MediaQuery(data: mediaQuery, child: chat),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+// 함수이름: _selectDoseSlots
+// 함수역할: 약 선택 화면에서 91번 약의 지정 시간대를 고르고 확인한다.
+// 매개변수: tester: 화면 도구, slots: 선택할 시간대 키. 반환값: 채팅으로 돌아온 뒤 완료.
+Future<void> _selectDoseSlots(WidgetTester tester, List<String> slots) async {
+  await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
+  await tester.pumpAndSettle();
+  for (final slot in slots) {
+    final row = find.byKey(
+      ValueKey('scheduleMedicationSelectionOption_${slot}_91'),
+    );
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    await tester.tap(row);
+    await tester.pumpAndSettle();
   }
+  await tester.tap(
+    find.byKey(const ValueKey('scheduleMedicationSelectionConfirm')),
+  );
+  await tester.pumpAndSettle();
+}
+
+// 함수이름: _tapTaken
+// 함수역할: 빠른 답장의 "먹었어요"를 눌러 선택한 복용을 기록하게 한다.
+// 매개변수: tester: 화면 도구. 반환값: 기록과 화면 갱신이 끝난 뒤 완료.
+Future<void> _tapTaken(WidgetTester tester) async {
+  await tester.ensureVisible(find.widgetWithText(ActionChip, '먹었어요'));
+  await tester.tap(find.widgetWithText(ActionChip, '먹었어요'));
+  await tester.pumpAndSettle();
+}
+
+// 함수이름: _closeChat
+// 함수역할: 화면을 내리고 채팅 대역과 대기열 하네스를 테스트 본문 안에서 정리한다(재시도 타이머가 남지 않게 한다).
+// 매개변수: tester: 화면 도구, harness: 대기열 하네스, control·realtime: 채팅 대역. 반환값: 정리 완료.
+Future<void> _closeChat(
+  WidgetTester tester,
+  DoseSyncHarness harness, {
+  required ManageLinkedChat control,
+  required _FakeRealtimeService realtime,
+}) async {
+  await tester.pumpWidget(const SizedBox.shrink());
+  await realtime.dispose();
+  control.dispose();
+  await harness.close();
 }
 
 // 클래스명: _ChatScheduleControl
@@ -1077,6 +1110,60 @@ void main() {
     );
   }
 
+  // 함수이름: 약 사진 디코딩 크기 테스트
+  // 함수역할: 메시지에 첨부된 약 사진을 원본 해상도가 아니라 표시 크기(46dp)에 화면 배율을 곱한 폭으로 디코딩하는지 검증한다.
+  // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  testWidgets('medication thumbnails decode at display size', (tester) async {
+    const medication = ChatMedicationContext(
+      medicationId: 91,
+      medicationName: '테스트정',
+      dosagePerTime: '1정',
+      imageUrl: 'https://nedrug.mfds.go.kr/pbp/cmn/itemImageDownload/test',
+    );
+    final control = _RetryChatControl(
+      failFirstSend: false,
+      historyMessages: [
+        ChatMessage(
+          messageId: 10,
+          linkId: 17,
+          senderHash: 'caregiver-a',
+          clientMessageId: 'thumbnail_message_10',
+          body: '이 약을 확인해주세요.',
+          createdAt: DateTime.now().toUtc(),
+          medicationContext: medication,
+          medicationContexts: const [medication],
+        ),
+      ],
+    );
+    final realtime = _FakeRealtimeService();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkedChatUI(
+          linkId: 17,
+          currentUserHash: 'patient-a',
+          patientHash: 'patient-a',
+          control: control,
+          realtimeService: realtime,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final image = tester.widget<Image>(find.byType(Image).first);
+    expect(image.width, 46);
+    expect(
+      image.image,
+      isA<ResizeImage>().having(
+        (resized) => resized.width,
+        'width',
+        (46 * tester.view.devicePixelRatio).round(),
+      ),
+    );
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await realtime.dispose();
+    control.dispose();
+  });
+
   // 약 부족·불편 안내에서는 메시지의 모든 약 첨부를 유지하고 검색은 명시적 선택으로만 연다.
   for (final kind in [
     ChatMessageKind.medicationShortage,
@@ -1406,73 +1493,90 @@ void main() {
     await realtime.dispose();
     control.dispose();
   });
+  // 아래 복용 확인 테스트는 운영과 같은 경로를 쓴다: main.dart처럼 실제 DoseSyncService와
+  // 전송 대기열(DoseOutboxStore)을 ViewModel에 붙이고, 대기열에 저장된 요청으로 결과를 확인한다.
+
   // 함수이름: 선택 시간대 오프라인 저장 테스트
-  // 함수역할: 저녁 약을 선택하면 추가 확인창 없이 원래 날짜·연동·시간대를 대기열에 전달하고 별도 채팅 요청은 보내지 않는지 검증한다.
+  // 함수역할: 저녁 약을 선택하면 추가 확인창 없이 원래 날짜·연동·시간대를 대기열에 한 건 저장하고 별도 채팅 요청은 보내지 않는지 검증한다.
   // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   testWidgets('selected evening dose goes straight to the offline queue', (
     tester,
   ) async {
-    final client = MockClient((_) async => http.Response('{}', 200));
-    addTearDown(client.close);
-    final sync = _ChatDoseSyncService(client);
+    final harness = await _attachChatDoseSync();
     final control = _TakenChatControl(multiSlotMedication: true);
     final realtime = _FakeRealtimeService();
-    final viewModel = MedBuddyViewModel(
-      patientHash: 'patient-a',
-      checkSchedule: _ChatScheduleControl(),
-      setNotification: _ChatSetNotification(),
-    )..doseSync = sync;
-    addTearDown(viewModel.dispose);
-    await tester.pumpWidget(
-      ChangeNotifierProvider<MedBuddyViewModel>.value(
-        value: viewModel,
-        child: MaterialApp(
-          home: LinkedChatUI(
-            linkId: 17,
-            currentUserHash: 'patient-a',
-            patientHash: 'patient-a',
-            control: control,
-            realtimeService: realtime,
-          ),
-        ),
-      ),
+    await _pumpPatientChat(
+      tester,
+      harness,
+      control: control,
+      realtime: realtime,
     );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
-    await tester.pumpAndSettle();
-    final evening = find.byKey(
-      const ValueKey('scheduleMedicationSelectionOption_evening_91'),
-    );
-    await tester.ensureVisible(evening);
-    await tester.pumpAndSettle();
-    await tester.tap(evening);
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey('scheduleMedicationSelectionConfirm')),
-    );
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.widgetWithText(ActionChip, '먹었어요'));
-    await tester.tap(find.widgetWithText(ActionChip, '먹었어요'));
-    await tester.pumpAndSettle();
+    await _selectDoseSlots(tester, ['evening']);
+    await _tapTaken(tester);
     expect(find.byType(BottomSheet), findsNothing);
-    expect(sync.requests, hasLength(1));
-    expect(sync.requests.single.ids, [91]);
-    expect(sync.requests.single.slot, 'evening');
-    expect(sync.requests.single.date, '2026-09-21');
-    expect(sync.requests.single.linkId, 17);
+    final operation = harness.queued.single;
+    expect(operation['medication_ids'], [91]);
+    expect(operation['slot_key'], 'evening');
+    expect(operation['schedule_date'], '2026-09-21');
+    expect(operation['link_id'], 17);
+    expect(operation['completed'], isTrue);
+    expect(operation['medication_names'], ['테스트정']);
+    // 기록은 대기열 한 경로로만 나간다. 채팅 복용 확인 요청과 일반 메시지는 보내지 않는다.
     expect(control.takenRequestIds, isEmpty);
     expect(control.sendAttempts, 0);
+    // 서버에 닿지 않아도 기기에 남아 있고, 선택하지 않은 아침은 그대로다.
+    expect(await harness.pending(), hasLength(1));
+    final projected = harness.service.schedules.single;
+    expect(projected.isSlotCompleted('evening'), isTrue);
+    expect(projected.isSlotCompleted('morning'), isFalse);
+    expect(find.text('복용 기록 1건 전송 대기'), findsOneWidget);
     expect(tester.takeException(), isNull);
-    await tester.pumpWidget(const SizedBox.shrink());
-    await realtime.dispose();
-    control.dispose();
+    await _closeChat(tester, harness, control: control, realtime: realtime);
   });
 
-  // 함수이름: 즉시 복용 확인 중복 방지 테스트
-  // 함수역할: 저장 중 반복 입력에도 선택 약을 한 번만 기록하고 완료 응답을 공용 일정과 확인 메시지에 반영하는지 검증한다.
+  // 함수이름: 대기열 복용 확인 중복 방지 테스트
+  // 함수역할: 화면이 다시 그려지기 전의 반복 입력에도 선택 약을 한 번만 대기열에 저장하고 공용 일정과 선택 상태에 반영하는지 검증한다.
+  // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  testWidgets('taken is queued once and updates the shared schedule', (
+    tester,
+  ) async {
+    final harness = await _attachChatDoseSync();
+    final control = _TakenChatControl(multiSlotMedication: true);
+    final realtime = _FakeRealtimeService();
+    await _pumpPatientChat(
+      tester,
+      harness,
+      control: control,
+      realtime: realtime,
+    );
+    await _selectDoseSlots(tester, ['morning']);
+    final taken = find.widgetWithText(ActionChip, '먹었어요');
+    await tester.ensureVisible(taken);
+    // 첫 입력의 저장이 진행 중이거나 막 끝난 상태에서 화면 갱신 없이 다시 누른다.
+    await tester.tap(taken);
+    await tester.tap(taken, warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(find.byType(BottomSheet), findsNothing);
+    expect(harness.queued, hasLength(1));
+    expect(harness.queued.single['slot_key'], 'morning');
+    expect(harness.queued.single['medication_ids'], [91]);
+    expect(control.takenRequestIds, isEmpty);
+    expect(control.sendAttempts, 0);
+    // 일정 화면이 읽는 공용 일정에 같은 기록이 보인다.
+    final shared = harness.viewModel.todayMedicationScheduleList.single;
+    expect(shared.isSlotCompleted('morning'), isTrue);
+    expect(shared.isSlotCompleted('evening'), isFalse);
+    // 기록한 선택은 비워져 같은 복용을 다시 보낼 대상이 남지 않는다.
+    expect(find.widgetWithText(ActionChip, '먹었어요'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await _closeChat(tester, harness, control: control, realtime: realtime);
+  });
+
+  // 함수이름: 대기열 없는 대체 경로 테스트
+  // 함수역할: 전송 대기열이 붙지 않은 ViewModel(운영에서는 생기지 않는 구성)에서만 쓰이는 채팅 복용 확인 요청이 저장 중 반복 입력에도 한 번만 나가고 완료 응답을 공용 일정과 확인 메시지에 반영하는지 검증한다.
   // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   testWidgets(
-    'taken records immediately once and updates the shared schedule',
+    'without an outbox the chat endpoint records once and updates the shared schedule',
     (tester) async {
       final gate = Completer<void>();
       final control = _TakenChatControl(saveGate: gate);
@@ -1546,123 +1650,78 @@ void main() {
   );
 
   // 함수이름: 큰 글씨 복용 재시도 테스트
-  // 함수역할: 좁은 화면·큰 글씨에서 추가 확인창 없이 재시도하며 실패한 요청 식별자를 재사용하는지 검증한다.
+  // 함수역할: 좁은 화면·큰 글씨에서 기기 저장이 실패하면 오류를 알리고 선택을 유지하며, 다시 누르면 추가 확인창 없이 같은 복용을 한 건만 저장하는지 검증한다.
   // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   testWidgets(
-    'failed immediate dose save retries the same ID at large text size',
+    'failed dose save keeps the selection and the retry queues it once at large text size',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(320, 640));
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      final control = _TakenChatControl(failFirstTaken: true);
+      final harness = await _attachChatDoseSync();
+      final control = _TakenChatControl(multiSlotMedication: true);
       final realtime = _FakeRealtimeService();
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MediaQuery(
-            data: const MediaQueryData(
-              size: Size(320, 640),
-              textScaler: TextScaler.linear(1.6),
-            ),
-            child: LinkedChatUI(
-              linkId: 17,
-              currentUserHash: 'patient-a',
-              patientHash: 'patient-a',
-              control: control,
-              realtimeService: realtime,
-            ),
-          ),
+      await _pumpPatientChat(
+        tester,
+        harness,
+        control: control,
+        realtime: realtime,
+        mediaQuery: const MediaQueryData(
+          size: Size(320, 640),
+          textScaler: TextScaler.linear(1.6),
         ),
       );
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(
-          const ValueKey('scheduleMedicationSelectionOption_morning_91'),
-        ),
+      await _selectDoseSlots(tester, ['morning']);
+      // 저장소가 쓰기를 거부하는 상황(저장 공간 부족 등)을 실제 데이터베이스에서 만든다.
+      await harness.store.db.execute(
+        'CREATE TRIGGER reject_insert BEFORE INSERT ON operations '
+        "BEGIN SELECT RAISE(ABORT, 'disk full'); END",
       );
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const ValueKey('scheduleMedicationSelectionConfirm')),
-      );
-      await tester.pumpAndSettle();
-      for (var attempt = 0; attempt < 2; attempt++) {
-        await tester.ensureVisible(find.widgetWithText(ActionChip, '먹었어요'));
-        await tester.tap(find.widgetWithText(ActionChip, '먹었어요'));
-        await tester.pumpAndSettle();
-        expect(tester.takeException(), isNull);
-        expect(find.byType(BottomSheet), findsNothing);
-      }
-      expect(control.takenRequestIds.length, 2);
-      expect(control.takenRequestIds.toSet().length, 1);
-      expect(control.sendAttempts, 0);
+      await _tapTaken(tester);
       expect(tester.takeException(), isNull);
-      await tester.pumpWidget(const SizedBox.shrink());
-      await realtime.dispose();
-      control.dispose();
+      expect(find.byType(BottomSheet), findsNothing);
+      expect(harness.queued, isEmpty);
+      expect(
+        find.text('복용 기록의 저장을 확인하지 못했습니다. 연결 상태를 확인한 뒤 다시 시도해주세요.'),
+        findsOneWidget,
+      );
+
+      await harness.store.db.execute('DROP TRIGGER reject_insert');
+      await _tapTaken(tester);
+      expect(tester.takeException(), isNull);
+      expect(find.byType(BottomSheet), findsNothing);
+      expect(harness.queued, hasLength(1));
+      expect(harness.queued.single['slot_key'], 'morning');
+      expect(await harness.pending(), hasLength(1));
+      expect(
+        find.text('복용 기록의 저장을 확인하지 못했습니다. 연결 상태를 확인한 뒤 다시 시도해주세요.'),
+        findsNothing,
+      );
+      expect(control.takenRequestIds, isEmpty);
+      expect(control.sendAttempts, 0);
+      await _closeChat(tester, harness, control: control, realtime: realtime);
     },
   );
 
   for (final mode in ['morning', 'evening', 'both', 'partial', 'changed']) {
     // 함수이름: 선택 시간대 보존·부분 재시도 테스트
-    // 함수역할: 선택을 다시 열어도 시간대를 보존하고 일정 변경 시 기록을 거부하며 부분 실패 시 실패한 시간대만 같은 식별자로 재시도하는지 검증한다.
+    // 함수역할: 선택을 다시 열어도 시간대를 보존하고 일정 변경 시 기록을 거부하며 부분 실패 시 저장하지 못한 시간대만 다시 저장하는지 검증한다.
     // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
     testWidgets('selected dose slots are preserved without another prompt: $mode', (
       tester,
     ) async {
-      final contexts = [
-        for (final slotKey in ['morning', 'evening'])
-          ChatScheduleContext(
-            scheduleDate: '2026-09-21',
-            slotKey: slotKey,
-            alarmTime: slotKey == 'morning' ? '08:00' : '18:00',
-            alarmEnabled: true,
-            completedCount: 0,
-            totalCount: 1,
-            medications: const [
-              ChatMedicationContext(
-                medicationId: 91,
-                medicationName: '테스트정',
-                dosagePerTime: '1정',
-              ),
-            ],
-          ),
-      ];
-      final control = _TakenChatControl(
-        contexts: contexts,
-        multiSlotMedication: true,
-        failEveningOnce: mode == 'partial',
-      );
+      final harness = await _attachChatDoseSync();
+      final control = _TakenChatControl(multiSlotMedication: true);
       final realtime = _FakeRealtimeService();
-      await tester.pumpWidget(
-        MaterialApp(
-          home: LinkedChatUI(
-            linkId: 17,
-            currentUserHash: 'patient-a',
-            patientHash: 'patient-a',
-            control: control,
-            realtimeService: realtime,
-          ),
-        ),
+      await _pumpPatientChat(
+        tester,
+        harness,
+        control: control,
+        realtime: realtime,
       );
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
-      await tester.pumpAndSettle();
       final slots = mode == 'both' || mode == 'partial'
           ? ['morning', 'evening']
           : [mode == 'evening' ? 'evening' : 'morning'];
-      for (final slot in slots) {
-        final row = find.byKey(
-          ValueKey('scheduleMedicationSelectionOption_${slot}_91'),
-        );
-        await tester.ensureVisible(row);
-        await tester.pumpAndSettle();
-        await tester.tap(row);
-        await tester.pumpAndSettle();
-      }
-      await tester.tap(
-        find.byKey(const ValueKey('scheduleMedicationSelectionConfirm')),
-      );
-      await tester.pumpAndSettle();
+      await _selectDoseSlots(tester, slots);
 
       // Reopening must restore the exact dose choices, not all slots of that drug.
       await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
@@ -1679,42 +1738,65 @@ void main() {
       await tester.pumpAndSettle();
 
       if (mode == 'changed') {
-        final old = contexts.first;
-        contexts[0] = ChatScheduleContext(
-          scheduleDate: '2026-09-22',
-          slotKey: old.slotKey,
-          alarmTime: old.alarmTime,
-          alarmEnabled: true,
-          completedCount: 0,
-          totalCount: 1,
-          medications: old.medications,
+        // 선택한 뒤 오늘 일정에서 아침 복용이 빠졌다(처방 변경이 다른 화면에서 반영된 경우).
+        await harness.seedSchedules(const [
+          MedicationSchedule(
+            medicationID: '91',
+            medicationName: '테스트정',
+            dosage: '1정',
+            intakeTime: '1회',
+            medicationTime: 1,
+            scheduleSlotKeys: ['evening'],
+          ),
+        ]);
+      }
+      if (mode == 'partial') {
+        // 첫 시간대(아침)는 저장되고 두 번째(저녁) 쓰기만 거부된다.
+        await harness.store.db.execute(
+          'CREATE TRIGGER reject_second BEFORE INSERT ON operations '
+          'WHEN (SELECT COUNT(*) FROM operations) >= 1 '
+          "BEGIN SELECT RAISE(ABORT, 'disk full'); END",
         );
       }
-      await tester.ensureVisible(find.widgetWithText(ActionChip, '먹었어요'));
-      await tester.tap(find.widgetWithText(ActionChip, '먹었어요'));
-      await tester.pumpAndSettle();
+      await _tapTaken(tester);
       expect(find.text('복용한 시간대'), findsNothing);
       expect(find.text('기록하고 보내기'), findsNothing);
       expect(find.byType(BottomSheet), findsNothing);
-      expect(control.takenSlotKeys, mode == 'changed' ? isEmpty : slots);
+      final queuedSlots = [
+        for (final operation in harness.queued) operation['slot_key'],
+      ];
       if (mode == 'changed') {
+        expect(queuedSlots, isEmpty);
         expect(find.text('선택한 복약 일정이 변경되었습니다. 약을 다시 선택해주세요.'), findsOneWidget);
+      } else if (mode == 'partial') {
+        expect(queuedSlots, ['morning']);
+        expect(
+          find.text('복용 기록의 저장을 확인하지 못했습니다. 연결 상태를 확인한 뒤 다시 시도해주세요.'),
+          findsOneWidget,
+        );
       } else {
-        expect(control.takenMedicationIds, everyElement([91]));
+        expect(queuedSlots, slots);
+      }
+      for (final operation in harness.queued) {
+        expect(operation['medication_ids'], [91]);
+        expect(operation['schedule_date'], '2026-09-21');
+        expect(operation['link_id'], 17);
       }
       if (mode == 'partial') {
-        // The successful morning must not be sent again, and retry keeps its ID.
-        await tester.ensureVisible(find.widgetWithText(ActionChip, '먹었어요'));
-        await tester.tap(find.widgetWithText(ActionChip, '먹었어요'));
-        await tester.pumpAndSettle();
-        expect(control.takenSlotKeys, ['morning', 'evening', 'evening']);
-        expect(control.takenRequestIds[1], control.takenRequestIds[2]);
+        // The successful morning must not be stored again; only the evening is retried.
+        await harness.store.db.execute('DROP TRIGGER reject_second');
+        await _tapTaken(tester);
+        expect(
+          [for (final operation in harness.queued) operation['slot_key']],
+          ['morning', 'evening'],
+        );
+        expect(await harness.pending(), hasLength(2));
+        expect(find.widgetWithText(ActionChip, '먹었어요'), findsNothing);
       }
+      expect(control.takenRequestIds, isEmpty);
       expect(control.sendAttempts, 0);
       expect(tester.takeException(), isNull);
-      await tester.pumpWidget(const SizedBox.shrink());
-      await realtime.dispose();
-      control.dispose();
+      await _closeChat(tester, harness, control: control, realtime: realtime);
     });
   }
 

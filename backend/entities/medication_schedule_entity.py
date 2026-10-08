@@ -8,6 +8,19 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 MEDICATION_SCHEDULE_SLOT_KEYS = ("morning", "lunch", "evening", "bedtime")
 DEFAULT_MEDICATION_SCHEDULE_SLOT_KEY = MEDICATION_SCHEDULE_SLOT_KEYS[0]
+# Display names of the dose slots for server-written texts (push bodies and chat confirmations).
+MEDICATION_SLOT_KOREAN_NAMES = {
+    "morning": "아침",
+    "lunch": "점심",
+    "evening": "저녁",
+    "bedtime": "취침 전",
+}
+MEDICATION_SLOT_ENGLISH_NAMES = {
+    "morning": "morning",
+    "lunch": "lunch",
+    "evening": "evening",
+    "bedtime": "bedtime",
+}
 
 
 # Function Name: medication_schedule_slot_keys_for_frequency

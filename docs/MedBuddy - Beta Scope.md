@@ -3,9 +3,9 @@
 ## Status
 
 - Scope review: 2026-09-30
-- Stable functional baseline: `v0.1.1-beta`
-- Active development branch: `beta/v0.2.0`
-- Target release tag: `v0.2.0-beta`
+- Stable functional baseline: `v0.2.0-beta`
+- Active development branch: `beta/v0.2.1`
+- Target release tag: `v0.2.1-beta`
 - Target platform: Android
 - iOS: deferred until after the Android public-release decision, no earlier than
   October 2026
@@ -55,7 +55,7 @@ The following implemented flows are in v0.2.0 verification:
    per-pill partial failure, and schedule review before save. One-photo detection
    supports tie-aware candidate expansion, per-pill original-region reanalysis,
    user-paired back photos, and explicit uncertainty instead of probability-like
-   percentages. See [pill identification review](MedBuddy%20-%20Pill%20Identification%20Review.md).
+   percentages.
 9. Direct medication entry with optional app-owned local image, dose and unit,
    start/end dates, and schedule slots using the shared saved-medication model.
 10. Nearby-pharmacy lookup using foreground location, backend-held
@@ -114,9 +114,9 @@ Historical Google Cloud workflows are disabled.
 
 The September 30 review found public HTML 403 responses for hospital search and
 `/ready/catalogs` despite healthy core readiness. The corrected ingress rule and
-credential-free signing probes are in source; applying the rule and obtaining
-successful public probes remain deployment gates. See the
-[launch readiness review](qa/v0.2.0-2026-09-30-launch-readiness.md).
+credential-free signing probes are in source. The corrected ingress rule was
+applied and the public probes passed on September 30; see
+[Production Deployment](Production%20Deployment.md).
 
 ### P0: Identity and Transport Security
 
@@ -170,8 +170,8 @@ successful public probes remain deployment gates. See the
   schedule review, multi-pill partial failure, camera-guide layout/cropping,
   pharmacy permission, cooldown, favorite, freshness, and external-action
   states; the explained pharmacy filter selector; linked-chat multi-medication
-  context, role-specific replies, schedule navigation, and lifecycle; laboratory
-  feature visibility; and health-recommendation bottom reachability.
+  context, role-specific replies, schedule navigation, and lifecycle; absence of
+  the retired laboratory menu; and health-recommendation bottom reachability.
 - Compile an Android release APK on every pull request.
 - Add authenticated API integration tests for patient ownership, caregiver
   access, revoked links, expired tokens, and cross-user denial.
@@ -198,7 +198,8 @@ successful public probes remain deployment gates. See the
 - Embedded turn-by-turn navigation, pharmacy inventory guarantees, or automatic
   claims that a pharmacy is open without user confirmation.
 - General-purpose social messaging, group chat, attachments, or unlinked chat;
-  v0.2.0 chat is limited to an active link and active medication context.
+  v0.2.0 chat is limited to an active link, and medication context is validated
+  whenever a message attaches it.
 - Any feature that bypasses the BCE control layer or introduces a second API
   path around the medication, pharmacy, or chat routers and shared dependencies.
 
@@ -220,6 +221,5 @@ The v0.2.0 beta may be published only when all of the following are true:
 - README, SECURITY, UML, API contracts, and release notes describe the same
   behavior as the shipped artifact.
 
-The completed v0.1.1 baseline is recorded in
-[`docs/releases/v0.1.1-beta.md`](releases/v0.1.1-beta.md); v0.2.0 release-candidate
-changes and verification evidence must be recorded before publication.
+Published releases and their verification notes are on the
+[GitHub releases page](https://github.com/1window2/MedBuddy/releases).

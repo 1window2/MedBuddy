@@ -1,5 +1,5 @@
 # File Name: test_release_app_check_policy.py
-# Role: Keep the temporary off-Play attestation exception out of main release artifacts.
+# Role: Keep the temporary off-Play attestation exception out of every ref except the named beta branch.
 
 import importlib.util
 import sys
@@ -18,16 +18,19 @@ SPEC.loader.exec_module(gate)
 
 # Function Name: test_signed_workflow_requires_attestation_on_main
 # Description: Execute the workflow's shared policy command before it can access signing material.
-# Parameters: monkeypatch, tmp_path: Isolated environment/output; ref: Source branch;
+# Parameters: monkeypatch, tmp_path: Isolated environment/output; ref: Source branch or tag;
 #   policy: Environment setting; expected: Accepted normalized value or rejection.
 # Returns: None.
 @pytest.mark.parametrize("ref,policy,expected", [
     ("refs/heads/main", "", "true"),
     ("refs/heads/main", " TRUE ", "true"),
     ("refs/heads/main", "false", None),
-    ("refs/heads/beta/v0.2.0", "false", "false"),
-    ("refs/heads/beta/v0.2.0", "", "true"),
-    ("refs/heads/beta/v0.2.0", "invalid", None),
+    ("refs/heads/beta/v0.2.1", "false", "false"),
+    ("refs/heads/beta/v0.2.1", "", "true"),
+    ("refs/heads/beta/v0.2.1", "invalid", None),
+    ("refs/tags/v0.2.1-beta", "false", None),
+    ("refs/heads/beta/v0.3.0", "false", None),
+    ("refs/heads/beta/v0.3.0", "", "true"),
 ])
 def test_signed_workflow_requires_attestation_on_main(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
@@ -64,7 +67,7 @@ def test_signed_workflow_normalizes_one_shared_artifact_plan(
     policy: str, channel: str, expected: str | None,
 ) -> None:
     output = tmp_path / "github-env"
-    monkeypatch.setenv("GITHUB_REF", "refs/heads/beta/v0.2.0")
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/beta/v0.2.1")
     monkeypatch.setenv("FIREBASE_APP_CHECK_REQUIRED", policy)
     monkeypatch.setenv("APP_CHECK_RELEASE_DISTRIBUTION", channel)
     monkeypatch.setenv("GITHUB_ENV", str(output))

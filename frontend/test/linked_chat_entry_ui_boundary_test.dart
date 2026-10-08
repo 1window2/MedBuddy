@@ -12,6 +12,8 @@ import 'package:medbuddy_frontend/controls/link_patient_caregiver_control.dart';
 import 'package:medbuddy_frontend/controls/manage_chat_list_control.dart';
 import 'package:medbuddy_frontend/entities/patient_caregiver_link_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
+import 'package:medbuddy_frontend/services/api_config.dart';
+import 'package:medbuddy_frontend/services/authenticated_api_client.dart';
 
 class _Links extends LinkPatientCaregiver {
   _Links() : super(client: MockClient((_) async => http.Response('{}', 200)));
@@ -166,4 +168,47 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  // 세션 인증 클라이언트를 넘기면 연동 확인 요청이 그 클라이언트로 나가 401이 세션 처리기에 전달되고,
+  // 빌린 클라이언트는 화면이 닫혀도 닫지 않는다.
+  testWidgets('entry lookup uses the injected session client for a 401', (
+    tester,
+  ) async {
+    var unauthorized = 0;
+    final paths = <String>[];
+    final client = AuthenticatedApiClient(
+      inner: MockClient((request) async {
+        paths.add(request.url.path);
+        return http.Response('{"detail":"expired"}', 401);
+      }),
+      tokenProvider: () async => null,
+      appCheckTokenProvider: () async => null,
+      appCheckRequired: false,
+      onUnauthorized: () async => unauthorized += 1,
+    );
+    addTearDown(client.close);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkedChatEntryUI(
+          linkId: 17,
+          currentUserHash: 'patient-a',
+          userSetting: const UserSetting(),
+          apiClient: client,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(paths.single, endsWith('/link/list'));
+    expect(unauthorized, 1);
+    expect(find.byType(LinkedChatUI), findsNothing);
+    expect(find.textContaining('대화 상대를 확인하지 못했어요'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    final response = await client.get(
+      Uri.parse('${ApiConfig.baseUrl}/link/list'),
+    );
+    expect(response.statusCode, 401);
+    expect(tester.takeException(), isNull);
+  });
 }

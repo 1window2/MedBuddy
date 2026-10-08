@@ -94,9 +94,10 @@ class SetNotification {
       final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
-        throw StateError(
-          'Medication alarms lookup failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        throw ApiResponseParser.httpFailure(
+          'Medication alarms lookup failed',
+          response,
+          responseBody,
         );
       }
 
@@ -127,7 +128,7 @@ class SetNotification {
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Medication alarms lookup failed.');
+      throw ApiResponseParser.transportFailure('Medication alarms lookup failed', error);
     }
   }
 
@@ -156,9 +157,10 @@ class SetNotification {
       final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
-        throw StateError(
-          'Medication alarm save failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        throw ApiResponseParser.httpFailure(
+          'Medication alarm save failed',
+          response,
+          responseBody,
         );
       }
 
@@ -172,7 +174,7 @@ class SetNotification {
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Medication alarm save failed.');
+      throw ApiResponseParser.transportFailure('Medication alarm save failed', error);
     }
   }
 
@@ -233,9 +235,10 @@ class SetNotification {
       final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {
-        throw StateError(
-          'Medication alarm disable failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        throw ApiResponseParser.httpFailure(
+          'Medication alarm disable failed',
+          response,
+          responseBody,
         );
       }
 
@@ -249,7 +252,7 @@ class SetNotification {
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Medication alarm disable failed.');
+      throw ApiResponseParser.transportFailure('Medication alarm disable failed', error);
     }
   }
 

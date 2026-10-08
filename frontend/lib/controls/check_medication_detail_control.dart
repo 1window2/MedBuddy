@@ -91,7 +91,16 @@ class CheckMedicationDetail {
         throw MedicationLookupBusy(Duration(seconds: seconds));
       }
       if (response.statusCode != 200) {
-        throw StateError(_messageForStatus(response.statusCode, responseBody));
+        final statusMessage = _messageForStatus(response.statusCode);
+        if (statusMessage != null) {
+          throw StateError(statusMessage);
+        }
+        // 전용 안내가 없는 상태는 상태 코드를 함께 전달해 서버 상세 문구 속 숫자로 원인을 추측하지 않게 한다.
+        throw ApiResponseParser.httpFailure(
+          '약품 정보 조회 실패',
+          response,
+          responseBody,
+        );
       }
 
       final decodedData = ApiResponseParser.decodeMap(responseBody);
@@ -132,7 +141,8 @@ class CheckMedicationDetail {
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('약품 정보를 불러오지 못했습니다.');
+      // 원래 예외를 함께 전달해 화면이 버전 불일치 같은 원인별 안내를 고를 수 있게 한다.
+      throw ApiResponseParser.transportFailure('약품 정보를 불러오지 못했습니다', error);
     }
   }
 
@@ -140,10 +150,9 @@ class CheckMedicationDetail {
   // 함수역할: 인증 만료, 조회 결과 없음, 시간 초과, 과부하와 서버 오류를 구분해 재시도에 필요한 안내를 만든다.
   // 매개변수:
   // - statusCode (int): 오류 안내를 선택할 HTTP 상태 코드
-  // - responseBody (dynamic): UTF-8로 읽은 서버 응답 본문
   // 반환값:
-  // - String: 인증 만료, 조회 결과 없음, 시간 초과, 과부하와 서버 오류를 구분해 재시도에 필요한 안내를 만든다.
-  String _messageForStatus(int statusCode, dynamic responseBody) {
+  // - String?: 상태 코드에 대응하는 전용 안내. 전용 안내가 없는 상태 코드는 null.
+  String? _messageForStatus(int statusCode) {
     if (statusCode == 401 || statusCode == 403) {
       return '로그인 정보가 만료되었습니다. 다시 로그인해주세요.';
     }
@@ -159,8 +168,7 @@ class CheckMedicationDetail {
     if (statusCode >= 500) {
       return '공공데이터 약품 정보 서비스가 일시적으로 응답하지 않습니다.';
     }
-    return '약품 정보 조회 실패 ($statusCode): '
-        '${ApiResponseParser.extractErrorDetail(responseBody)}';
+    return null;
   }
 
   // Function Name: _decodeMedicationDetailList

@@ -14,7 +14,6 @@ import '../controls/check_nearby_care_control.dart';
 import '../entities/device_coordinate_entity.dart';
 import '../entities/nearby_care_entity.dart';
 import '../entities/user_setting_entity.dart';
-import '../services/device_location_service.dart';
 import '../services/pharmacy_favorite_service.dart';
 import '../theme/medbuddy_theme.dart';
 import 'nearby_pharmacy_map_widget.dart';
@@ -195,12 +194,18 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   Set<String> _favoritePharmacyIds = const {};
   bool _favoritesLoaded = false;
   bool _isSavingFavorite = false;
-  DeviceLocationFailure? _locationFailure;
   DeviceCoordinate? _deviceLocation;
   String? _errorMessage;
   bool _isLoading = true;
   bool _listExpanded = false;
-  double _detailExtent = _PharmacyDetailsSheet.initialExtent;
+  // 정보창 높이는 지도 영역만 다시 그리도록 setState 없이 알린다.
+  final _detailExtent = ValueNotifier<double>(
+    _PharmacyDetailsSheet.initialExtent,
+  );
+  // 정렬 결과는 원본 목록과 즐겨찾기 집합이 교체될 때만 다시 계산한다.
+  List<NearbyCarePlace>? _sortedPharmacies;
+  List<NearbyCarePlace>? _sortedFromPharmacies;
+  Set<String>? _sortedFromFavorites;
   bool _isRefreshCoolingDown = false;
   Timer? _refreshCooldownTimer;
   Timer? _mapDistanceGuideTimer;
@@ -217,7 +222,8 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   bool _catalogIsStale = false;
   bool _searchTruncated = false;
   bool _regionScopeUncertain = false;
-  String _holidayScheduleStatus = 'not_applicable';
+  String _holidayScheduleStatus =
+      NearbyCareSearchResult.holidayScheduleNotApplicable;
   DateTime? _lastRefreshedAt;
   bool _selectedPhoneVerified = false;
   NearbyCareSearchArea? _searchArea;
@@ -252,7 +258,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
         now.year != previous.year ||
         now.month != previous.month ||
         now.day != previous.day;
-    if (!stale && _errorMessage == null && _locationFailure == null) return;
+    if (!stale && _errorMessage == null) return;
     if (_isLoading) {
       _resumeRefreshPending = true;
     } else {
@@ -270,19 +276,30 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
           widget.userSetting.language,
           searchTruncated: _searchTruncated,
           regionScopeUncertain: _regionScopeUncertain,
-          calendarUnknown: _holidayScheduleStatus == 'unknown',
+          calendarUnknown:
+              _holidayScheduleStatus ==
+              NearbyCareSearchResult.holidayScheduleUnknown,
           requiresWeekendDate: _requiresHospitalHolidayDate,
         )
-      : _NearbyPharmacyText(widget.userSetting.language);
+      // 전체 약국 조건은 영업 여부와 무관하므로 달력 미확인 안내 대상에서 제외한다.
+      : _NearbyPharmacyText(
+          widget.userSetting.language,
+          calendarUnknown:
+              _holidayScheduleStatus ==
+                  NearbyCareSearchResult.holidayScheduleUnknown &&
+              _filter != _PharmacyFilter.all,
+        );
 
   // 공휴일 달력에서 평일로 확인된 날짜만 날짜 변경 안내 대상으로 삼는다.
   bool get _requiresHospitalHolidayDate =>
       widget.hospitals &&
       !_isLoading &&
       _errorMessage == null &&
-      _filter == _PharmacyFilter.weekendHoliday &&
-      _targetDateTime.weekday < DateTime.saturday &&
-      _holidayScheduleStatus == 'not_applicable';
+      CheckNearbyHospital.isWeekendSearchOnWeekday(
+        searchMode: _searchModeForFilter(_filter),
+        targetDateTime: _targetDateTime,
+        holidayScheduleStatus: _holidayScheduleStatus,
+      );
 
   // 함수이름: initState
   // 함수역할: 약국 조회·즐겨찾기 의존성을 준비하고 첫 프레임 뒤 두 정보를 불러온다.
@@ -326,6 +343,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     WidgetsBinding.instance.removeObserver(this);
     _refreshCooldownTimer?.cancel();
     _mapDistanceGuideTimer?.cancel();
+    _detailExtent.dispose();
     if (_ownsControl) {
       _control.dispose();
     }
@@ -353,13 +371,12 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       _targetDateTime = _now();
     }
     // 함수이름: _loadPharmacies.setState callback
-    // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도의 입력·요청 상태를 `_isLoading = true; _locationFailure = null; _errorMessage = null`로 갱신한다.
+    // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도의 입력·요청 상태를 `_isLoading = true; _errorMessage = null`로 갱신한다.
     // 매개변수:
     // - 없음.
     // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
     setState(() {
       _isLoading = true;
-      _locationFailure = null;
       _errorMessage = null;
     });
     try {
@@ -375,12 +392,8 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       if (!mounted || generation != _searchGeneration) {
         return false;
       }
-      final expanded =
-          widget.hospitals &&
-          result.searchArea != null &&
-          !result.searchArea!.isMapArea &&
-          result.searchArea!.radiusKm >
-              (requestedArea?.radiusKm ?? CheckNearbyHospital.defaultRadiusKm);
+      // 자동 반경 확대 여부는 확대를 수행한 Control이 결과에 알린다.
+      final expanded = result.searchRadiusExpanded && result.searchArea != null;
       // 함수이름: _loadPharmacies.setState callback
       // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도의 입력·요청 상태를 `_pharmacies = result.data; _catalogIsStale = result.catalogIsStale; _holidayScheduleStatus = result.holidayScheduleStatus`로 갱신한다.
       // 매개변수:
@@ -444,15 +457,6 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
         );
       }
       return true;
-    } on DeviceLocationException catch (error) {
-      if (mounted && generation == _searchGeneration) {
-        // 함수이름: _loadPharmacies.setState callback
-        // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도의 입력·요청 상태를 `_locationFailure = error.failure`로 갱신한다.
-        // 매개변수:
-        // - 없음.
-        // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-        setState(() => _locationFailure = error.failure);
-      }
     } catch (_) {
       if (mounted && generation == _searchGeneration) {
         // 함수이름: _loadPharmacies.setState callback
@@ -536,7 +540,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
         (!_showHospitalFirstGuide && !_searchTruncated && !wide)) {
       return const SizedBox.shrink();
     }
-    final english = widget.userSetting.language.toLowerCase().startsWith('en');
+    final english = widget.userSetting.isEnglish;
     final message = _searchTruncated
         ? (english
               ? 'Some hospital data is unavailable. Try again.'
@@ -613,9 +617,6 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     }
 
     _isRefreshCoolingDown = true;
-    if (_filter == _PharmacyFilter.openNow) {
-      _targetDateTime = DateTime.now();
-    }
     _refreshCooldownTimer?.cancel();
     // 함수이름: _requestRefresh.Timer callback
     // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도의 입력·요청 상태를 `_isRefreshCoolingDown = false`로 갱신한다.
@@ -629,48 +630,25 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   }
 
   // 함수이름: _visiblePharmacies
-  // 함수역할: 영업 중·심야 운영·즐겨찾기·거리 순으로 약국 사본을 정렬한다.
+  // 함수역할: 영업 중·심야 운영·즐겨찾기·거리 순으로 정렬한 약국 사본을 제공하고, 원본 목록과 즐겨찾기가 그대로면 이전 정렬을 재사용한다.
   // 매개변수:
   // - 없음.
-  // 반환값: List<NearbyCarePlace>: 조회 또는 좌표 조건을 반영한 지도·목록용 약국 목록.
+  // 반환값: List<NearbyCarePlace>: 조회 또는 좌표 조건을 반영한 지도·목록용 약국 목록. 호출자는 수정하지 않는다.
   List<NearbyCarePlace> get _visiblePharmacies {
-    final visiblePharmacies = List<NearbyCarePlace>.of(_pharmacies);
-    // 함수이름: _visiblePharmacies.sort callback
-    // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도의 정렬 비교값을 `leftOpenRank.compareTo(rightOpenRank); leftLateRank.compareTo(rightLateRank); leftFavorite ? -1 : 1` 규칙으로 계산한다.
-    // 매개변수:
-    // - left (콜백 계약에서 추론): 정렬 순서를 비교할 두 항목 중 해당 항목.
-    // - right (콜백 계약에서 추론): 정렬 순서를 비교할 두 항목 중 해당 항목.
-    // 반환값: 컬렉션 연산에 전달할 정렬 비교값.
-    visiblePharmacies.sort((left, right) {
-      final leftOpenRank = left.isOpenNow == true ? 0 : 1;
-      final rightOpenRank = right.isOpenNow == true ? 0 : 1;
-      if (leftOpenRank != rightOpenRank) {
-        return leftOpenRank.compareTo(rightOpenRank);
-      }
-      final leftLateRank = _operatesLate(left) ? 0 : 1;
-      final rightLateRank = _operatesLate(right) ? 0 : 1;
-      if (leftLateRank != rightLateRank) {
-        return leftLateRank.compareTo(rightLateRank);
-      }
-      final leftFavorite = _favoritePharmacyIds.contains(left.placeId);
-      final rightFavorite = _favoritePharmacyIds.contains(right.placeId);
-      if (leftFavorite != rightFavorite) {
-        return leftFavorite ? -1 : 1;
-      }
-      return left.distanceKm.compareTo(right.distanceKm);
-    });
-    return visiblePharmacies;
-  }
-
-  // 함수이름: _operatesLate
-  // 함수역할: 24시간 운영·늦은 영업·공식 심야 지정 중 하나라도 해당하는지 확인한다.
-  // 매개변수:
-  // - pharmacy (NearbyCarePlace): 표시하거나 전화·길찾기·공유할 약국.
-  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
-  bool _operatesLate(NearbyCarePlace pharmacy) {
-    return pharmacy.is24Hours ||
-        pharmacy.isOpenLate ||
-        (!widget.hospitals && pharmacy.isOfficialLateNight);
+    final cached = _sortedPharmacies;
+    // 두 필드는 항상 새 객체로 교체되므로 동일 객체 여부만으로 변경을 알 수 있다.
+    if (cached != null &&
+        identical(_pharmacies, _sortedFromPharmacies) &&
+        identical(_favoritePharmacyIds, _sortedFromFavorites)) {
+      return cached;
+    }
+    _sortedFromPharmacies = _pharmacies;
+    _sortedFromFavorites = _favoritePharmacyIds;
+    return _sortedPharmacies = sortNearbyCarePlaces(
+      _pharmacies,
+      favoriteIds: _favoritePharmacyIds,
+      hospitals: widget.hospitals,
+    );
   }
 
   // 함수이름: _loadFavorites
@@ -992,7 +970,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     if (_listExpanded) {
       setState(() {
         _listExpanded = false;
-        _detailExtent = _PharmacyDetailsSheet.initialExtent;
+        _detailExtent.value = _PharmacyDetailsSheet.initialExtent;
       });
     } else if (_selectedPharmacyId != null) {
       _closePharmacyDetails();
@@ -1054,7 +1032,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     if (_searchArea == null) {
       return _buildBody();
     }
-    final english = widget.userSetting.language.toLowerCase().startsWith('en');
+    final english = widget.userSetting.isEnglish;
     return LayoutBuilder(
       builder: (context, constraints) {
         return Column(
@@ -1150,9 +1128,6 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final showDetails = !_listExpanded && selected != null;
-                  final bottomInset = showDetails
-                      ? constraints.maxHeight * _detailExtent.clamp(0.0, .92)
-                      : 0.0;
                   return Stack(
                     children: [
                       Positioned.fill(
@@ -1160,11 +1135,22 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                           excluding: _listExpanded || _isLoading,
                           child: IgnorePointer(
                             ignoring: _listExpanded || _isLoading,
-                            child: _buildPharmacyMap(
-                              pharmacies,
-                              bottomInset: bottomInset,
-                              showControls:
-                                  constraints.maxHeight - bottomInset >= 128,
+                            // 정보창을 드래그하는 동안에는 이 지도 영역만 다시 빌드한다.
+                            child: ValueListenableBuilder<double>(
+                              valueListenable: _detailExtent,
+                              builder: (context, detailExtent, _) {
+                                final bottomInset = showDetails
+                                    ? constraints.maxHeight *
+                                          detailExtent.clamp(0.0, .92)
+                                    : 0.0;
+                                return _buildPharmacyMap(
+                                  pharmacies,
+                                  bottomInset: bottomInset,
+                                  showControls:
+                                      constraints.maxHeight - bottomInset >=
+                                      128,
+                                );
+                              },
                             ),
                           ),
                         ),
@@ -1177,8 +1163,8 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                           isEnglish: english,
                           hospitals: widget.hospitals,
                           onExtentChanged: (extent) {
-                            if ((_detailExtent - extent).abs() > .001) {
-                              setState(() => _detailExtent = extent);
+                            if ((_detailExtent.value - extent).abs() > .001) {
+                              _detailExtent.value = extent;
                             }
                           },
                           contentBuilder: (context, compact) => Column(
@@ -1254,7 +1240,8 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                       ? null
                       : () => setState(() {
                           _listExpanded = !_listExpanded;
-                          _detailExtent = _PharmacyDetailsSheet.initialExtent;
+                          _detailExtent.value =
+                              _PharmacyDetailsSheet.initialExtent;
                         }),
                   icon: Icon(
                     _listExpanded ? Icons.map_outlined : Icons.list_alt,
@@ -1339,9 +1326,6 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
           ? Center(child: SingleChildScrollView(child: loading))
           : loading;
     }
-    if (_locationFailure != null) {
-      return _buildLocationFailure(_locationFailure!);
-    }
     final failureState = _errorMessage != null
         ? _PharmacyMessageState(
             icon: Icons.cloud_off_outlined,
@@ -1425,19 +1409,13 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                       icon: widget.hospitals
                           ? Icons.local_hospital_outlined
                           : Icons.local_pharmacy_outlined,
-                      title:
-                          !widget.hospitals &&
-                              _holidayScheduleStatus == 'unknown' &&
-                              _filter != _PharmacyFilter.all
-                          ? text.openingStatusUnverified
-                          : switch (_filter) {
-                              _PharmacyFilter.openNow => text.noOpenPharmacy,
-                              _PharmacyFilter.lateHours =>
-                                text.noLateNightPharmacy,
-                              _PharmacyFilter.weekendHoliday =>
-                                text.noWeekendHolidayPharmacy,
-                              _PharmacyFilter.all => text.noNearbyPharmacy,
-                            },
+                      title: switch (_filter) {
+                        _PharmacyFilter.openNow => text.noOpenPharmacy,
+                        _PharmacyFilter.lateHours => text.noLateNightPharmacy,
+                        _PharmacyFilter.weekendHoliday =>
+                          text.noWeekendHolidayPharmacy,
+                        _PharmacyFilter.all => text.noNearbyPharmacy,
+                      },
                       message: _filter == _PharmacyFilter.all
                           ? text.checkLocation
                           : text.tryAllPharmacies,
@@ -1682,9 +1660,6 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       onCurrentLocationRequested: _searchCurrentLocation,
       searchAreaLabel: text.isEnglish ? 'Search this area' : '이 지역에서 검색',
       myLocationTooltip: text.isEnglish ? 'My location' : '현재 위치로 이동',
-      locationFailureText: text.isEnglish
-          ? 'Could not find your location. Check location permission and GPS settings.'
-          : '현재 위치를 확인할 수 없습니다. 위치 권한과 GPS 설정을 확인해 주세요.',
       pharmacies: pharmacies,
       selectedPharmacyId: _selectedPharmacyId,
       onPharmacySelected: _selectPharmacy,
@@ -1727,69 +1702,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       }
       _selectedPharmacyId = pharmacy.placeId;
       _listExpanded = false;
-      _detailExtent = _PharmacyDetailsSheet.initialExtent;
+      _detailExtent.value = _PharmacyDetailsSheet.initialExtent;
       _centerRevision++;
     });
-  }
-
-  // 함수이름: _buildLocationFailure
-  // 함수역할: 위치 서비스·권한·위치 확인 실패 유형에 맞는 복구 버튼과 안내를 표시한다.
-  // 매개변수:
-  // - failure (DeviceLocationFailure): 사용자 안내 또는 복구 분기에 사용할 실패 정보.
-  // 반환값: 위치 권한·조회 조건에 따른 약국 목록과 지도에 쓰는 위젯 트리.
-  Widget _buildLocationFailure(DeviceLocationFailure failure) {
-    final text = _text;
-    final (title, message, actionLabel, action) = switch (failure) {
-      DeviceLocationFailure.serviceDisabled => (
-        text.locationDisabledTitle,
-        text.locationDisabledMessage,
-        text.openLocationSettings,
-        _openLocationSettings,
-      ),
-      DeviceLocationFailure.deniedForever => (
-        text.locationBlockedTitle,
-        text.locationBlockedMessage,
-        text.openAppSettings,
-        _openApplicationSettings,
-      ),
-      DeviceLocationFailure.denied => (
-        text.locationPermissionTitle,
-        text.locationPermissionMessage,
-        text.requestAgain,
-        _loadPharmacies,
-      ),
-      DeviceLocationFailure.unavailable => (
-        text.locationUnavailableTitle,
-        text.locationUnavailableMessage,
-        text.retry,
-        _loadPharmacies,
-      ),
-    };
-    return _PharmacyMessageState(
-      icon: Icons.location_off_outlined,
-      title: title,
-      message: message,
-      actionLabel: actionLabel,
-      onAction: action,
-    );
-  }
-
-  // 함수이름: _openApplicationSettings
-  // 함수역할: 위치 권한을 수정할 수 있도록 앱 설정 열기를 요청한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
-  Future<void> _openApplicationSettings() async {
-    await _control.openApplicationSettings();
-  }
-
-  // 함수이름: _openLocationSettings
-  // 함수역할: 위치 서비스를 켤 수 있도록 기기 위치 설정 열기를 요청한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
-  Future<void> _openLocationSettings() async {
-    await _control.openDeviceLocationSettings();
   }
 
   // 함수이름: _requestPhoneCall
@@ -2626,22 +2541,25 @@ class _PharmacySourceNotice extends StatelessWidget {
 // - 위치·운영시간별 약국 검색과 전화·길찾기·채팅 공유에 쓰는 한국어·영어 문구의 언어를 선택하고 안내에 필요한 값을 문구에 반영한다.
 // 속성:
 // - language (String): 화면 문구를 선택할 언어 코드.
+// - calendarUnknown (bool): 공휴일 달력을 확인하지 못해 빈 결과를 "없음"으로 단정할 수 없는지 여부.
 class _NearbyPharmacyText {
   final String language;
+  final bool calendarUnknown;
 
   // 함수이름: _NearbyPharmacyText
-  // 함수역할: 위치·운영시간별 약국 검색과 전화·길찾기·채팅 공유에 쓰는 한국어·영어 문구 선택에 사용할 언어를 보관한다.
+  // 함수역할: 위치·운영시간별 약국 검색과 전화·길찾기·채팅 공유에 쓰는 한국어·영어 문구 선택에 사용할 언어와 달력 확인 상태를 보관한다.
   // 매개변수:
   // - language (String): 화면 문구를 선택할 언어 코드.
+  // - calendarUnknown (bool): 공휴일 달력 미확인으로 영업 여부를 단정할 수 없는지 여부.
   // 반환값: 입력 설정이 반영된 _NearbyPharmacyText 인스턴스.
-  const _NearbyPharmacyText(this.language);
+  const _NearbyPharmacyText(this.language, {this.calendarUnknown = false});
 
   // 함수이름: isEnglish
-  // 함수역할: 언어 코드의 공백과 대소문자를 정리한 뒤 en 접두어로 영어 여부를 판별한다.
+  // 함수역할: 앱 공통 기준(isEnglishLanguage)으로 언어 코드의 영어 여부를 판별한다.
   // 매개변수:
   // - 없음.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
-  bool get isEnglish => language.trim().toLowerCase().startsWith('en');
+  bool get isEnglish => isEnglishLanguage(language);
 
   bool get hospitals => false;
 
@@ -2651,7 +2569,10 @@ class _NearbyPharmacyText {
 
   String get closeDetails => isEnglish ? 'Close pharmacy details' : '약국 정보 닫기';
 
-  String get noMapMatches => isEnglish
+  // 지도 안내도 목록과 같이 달력 미확인 상태에서는 결과 없음을 단정하지 않는다.
+  String get noMapMatches => calendarUnknown
+      ? openingStatusUnverified
+      : isEnglish
       ? 'No pharmacies match here. Move the map or change the filter.'
       : '조건에 맞는 약국이 없어요. 지도를 옮기거나 조회 조건을 바꿔보세요.';
 
@@ -2801,7 +2722,9 @@ class _NearbyPharmacyText {
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get noOpenPharmacy => isEnglish
+  String get noOpenPharmacy => calendarUnknown
+      ? openingStatusUnverified
+      : isEnglish
       ? 'No open pharmacies were found in this search area'
       : '검색한 지역에 영업 중인 약국이 없습니다';
   // Function Name: openingStatusUnverified
@@ -2812,12 +2735,16 @@ class _NearbyPharmacyText {
       : '약국 영업 여부를 확인할 수 없습니다';
   // 함수이름: noLateNightPharmacy
   // 함수역할: 선택 지역의 심야 약국 검색 결과가 없음을 안내한다. 매개변수: 없음. 반환값: 번역 문구.
-  String get noLateNightPharmacy => isEnglish
+  String get noLateNightPharmacy => calendarUnknown
+      ? openingStatusUnverified
+      : isEnglish
       ? 'No late-night pharmacies were found in this search area'
       : '검색한 지역에 심야 운영 약국이 없습니다';
   // 함수이름: noWeekendHolidayPharmacy
   // 함수역할: 선택 지역의 주말·공휴일 약국 결과가 없음을 안내한다. 매개변수: 없음. 반환값: 번역 문구.
-  String get noWeekendHolidayPharmacy => isEnglish
+  String get noWeekendHolidayPharmacy => calendarUnknown
+      ? openingStatusUnverified
+      : isEnglish
       ? 'No pharmacies with weekend or holiday hours were found in this search area'
       : '검색한 지역에 주말·공휴일 운영 약국이 없습니다';
   // 함수이름: noNearbyPharmacy
@@ -2855,86 +2782,6 @@ class _NearbyPharmacyText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get showAll => isEnglish ? 'Show all pharmacies' : '전체 약국 보기';
-  // 함수이름: locationDisabledTitle
-  // 함수역할: 현재 언어와 입력값에 맞춰 "기기 위치가 꺼져 있습니다" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get locationDisabledTitle =>
-      isEnglish ? 'Device location is turned off' : '기기 위치가 꺼져 있습니다';
-  // 함수이름: locationDisabledMessage
-  // 함수역할: 현재 언어와 입력값에 맞춰 "현재 위치에서 가까운 약국을 찾으려면 기기 위치를 켜주세요." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get locationDisabledMessage => isEnglish
-      ? 'Turn on device location to find pharmacies near you.'
-      : '현재 위치에서 가까운 약국을 찾으려면 기기 위치를 켜주세요.';
-  // 함수이름: openLocationSettings
-  // 함수역할: 현재 언어와 입력값에 맞춰 "위치 설정 열기" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get openLocationSettings =>
-      isEnglish ? 'Open location settings' : '위치 설정 열기';
-  // 함수이름: locationBlockedTitle
-  // 함수역할: 현재 언어와 입력값에 맞춰 "위치 권한이 차단되어 있습니다" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get locationBlockedTitle =>
-      isEnglish ? 'Location permission is blocked' : '위치 권한이 차단되어 있습니다';
-  // 함수이름: locationBlockedMessage
-  // 함수역할: 현재 언어와 입력값에 맞춰 "앱 설정에서 MedBuddy의 위치 권한을 허용해주세요." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get locationBlockedMessage => isEnglish
-      ? 'Allow MedBuddy to use location in the app settings.'
-      : '앱 설정에서 MedBuddy의 위치 권한을 허용해주세요.';
-  // 함수이름: openAppSettings
-  // 함수역할: 현재 언어와 입력값에 맞춰 "앱 설정 열기" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get openAppSettings => isEnglish ? 'Open app settings' : '앱 설정 열기';
-  // 함수이름: locationPermissionTitle
-  // 함수역할: 현재 언어와 입력값에 맞춰 "위치 권한이 필요합니다" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get locationPermissionTitle =>
-      isEnglish ? 'Location permission is required' : '위치 권한이 필요합니다';
-  // 함수이름: locationPermissionMessage
-  // 함수역할: 현재 언어와 입력값에 맞춰 "위치는 근처 약국을 찾을 때만 사용하며 서버 DB에 저장하지 않습니다." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get locationPermissionMessage => isEnglish
-      ? 'Location is used only to find nearby pharmacies and is not stored in the server database.'
-      : '위치는 근처 약국을 찾을 때만 사용하며 서버 DB에 저장하지 않습니다.';
-  // 함수이름: requestAgain
-  // 함수역할: 현재 언어와 입력값에 맞춰 "다시 요청" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get requestAgain => isEnglish ? 'Request again' : '다시 요청';
-  // 함수이름: locationUnavailableTitle
-  // 함수역할: 현재 언어와 입력값에 맞춰 "현재 위치를 확인하지 못했습니다" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get locationUnavailableTitle => isEnglish
-      ? 'Could not determine your current location'
-      : '현재 위치를 확인하지 못했습니다';
-  // 함수이름: locationUnavailableMessage
-  // 함수역할: 현재 언어와 입력값에 맞춰 "잠시 이동한 뒤 또는 위치 신호가 좋은 곳에서 다시 시도해주세요." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get locationUnavailableMessage => isEnglish
-      ? 'Move briefly or try again where the location signal is stronger.'
-      : '잠시 이동한 뒤 또는 위치 신호가 좋은 곳에서 다시 시도해주세요.';
   // 함수이름: phoneAppFailed
   // 함수역할: 현재 언어와 입력값에 맞춰 "전화 앱을 열 수 없습니다." 문구를 제공한다.
   // 매개변수:
@@ -3279,7 +3126,7 @@ class _NearbyPharmacyText {
               : ' 동기화된 약국 목록이 예상보다 오래되었습니다.')
         : '';
     final holidayWarning = switch (holidayScheduleStatus) {
-      'unknown' =>
+      NearbyCareSearchResult.holidayScheduleUnknown =>
         isEnglish
             ? ' The holiday calendar could not be verified; opening status may be unknown.'
             : ' 공휴일 여부를 확인하지 못해 영업 상태가 미확인일 수 있습니다.',
@@ -3307,14 +3154,13 @@ class _NearbyPharmacyText {
 class _NearbyHospitalText extends _NearbyPharmacyText {
   final bool searchTruncated;
   final bool regionScopeUncertain;
-  final bool calendarUnknown;
   final bool requiresWeekendDate;
 
   const _NearbyHospitalText(
     super.language, {
     this.searchTruncated = false,
     this.regionScopeUncertain = false,
-    this.calendarUnknown = false,
+    super.calendarUnknown,
     this.requiresWeekendDate = false,
   });
 
@@ -3435,14 +3281,6 @@ class _NearbyHospitalText extends _NearbyPharmacyText {
       : '전체 병원으로 전환하거나 진료과목을 바꿔 다시 확인해주세요.';
   @override
   String get showAll => isEnglish ? 'Show all hospitals' : '전체 병원 보기';
-  @override
-  String get locationDisabledMessage => isEnglish
-      ? 'Turn on device location to find hospitals near you.'
-      : '현재 위치에서 가까운 병원을 찾으려면 기기 위치를 켜주세요.';
-  @override
-  String get locationPermissionMessage => isEnglish
-      ? 'Location is used only to find nearby hospitals and is not stored in the server database.'
-      : '위치는 근처 병원을 찾을 때만 사용하며 서버 DB에 저장하지 않습니다.';
   @override
   String get mapInstruction => isEnglish
       ? 'Tap a marker or open the hospital list for details'

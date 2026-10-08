@@ -334,7 +334,6 @@ class _SaveCompletedSheet extends StatelessWidget {
   // 반환값: 저장 완료 후 오늘 일정·복약함·홈 이동에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-    final scale = userSetting.contentTextScale;
     return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(
         24,
@@ -356,7 +355,7 @@ class _SaveCompletedSheet extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
               color: MedBuddyColors.textStrong,
-              fontSize: 22 * scale,
+              fontSize: 22,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -366,7 +365,7 @@ class _SaveCompletedSheet extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
               color: MedBuddyColors.textMuted,
-              fontSize: 14 * scale,
+              fontSize: 14,
               height: 1.4,
             ),
           ),
@@ -507,7 +506,6 @@ class _AnalysisSummary extends StatelessWidget {
   // Returns: Widget tree for a summary of analyzed medications ready to save.
   @override
   Widget build(BuildContext context) {
-    final scale = userSetting.contentTextScale;
 
     return Container(
       width: double.infinity,
@@ -543,7 +541,7 @@ class _AnalysisSummary extends StatelessWidget {
                   text.complete,
                   style: TextStyle(
                     color: MedBuddyColors.primaryDark,
-                    fontSize: 18 * scale,
+                    fontSize: 18,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0,
                   ),
@@ -552,7 +550,7 @@ class _AnalysisSummary extends StatelessWidget {
                   text.summary(count),
                   style: TextStyle(
                     color: MedBuddyColors.textMuted,
-                    fontSize: 14 * scale,
+                    fontSize: 14,
                     letterSpacing: 0,
                   ),
                 ),
@@ -605,7 +603,6 @@ class _BulkSaveButton extends StatelessWidget {
   // Returns: Widget tree for the bulk-save action with busy and completed states preventing duplicate requests.
   @override
   Widget build(BuildContext context) {
-    final scale = userSetting.contentTextScale;
 
     return Container(
       width: double.infinity,
@@ -653,7 +650,7 @@ class _BulkSaveButton extends StatelessWidget {
             disabledForegroundColor: Colors.white,
             minimumSize: const Size.fromHeight(66),
             textStyle: TextStyle(
-              fontSize: 22 * scale,
+              fontSize: 22,
               fontWeight: FontWeight.w700,
               letterSpacing: 0,
             ),
@@ -711,7 +708,6 @@ class _MedicationResultCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final schedule = analyzedMedication.schedule;
-    final scale = userSetting.contentTextScale;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -754,7 +750,7 @@ class _MedicationResultCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: MedBuddyColors.textStrong,
-                      fontSize: 22 * scale,
+                      fontSize: 22,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 0,
                     ),
@@ -936,7 +932,6 @@ class _DoseInfoRow extends StatelessWidget {
   // 반환값: 복용량·횟수·기간의 라벨과 값에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-    final scale = userSetting.contentTextScale;
 
     return Row(
       children: [
@@ -948,7 +943,7 @@ class _DoseInfoRow extends StatelessWidget {
             label,
             style: TextStyle(
               color: MedBuddyColors.textMuted,
-              fontSize: 15 * scale,
+              fontSize: 15,
               fontWeight: FontWeight.w600,
               letterSpacing: 0,
             ),
@@ -967,7 +962,7 @@ class _DoseInfoRow extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: MedBuddyColors.primaryDark,
-                fontSize: 15 * scale,
+                fontSize: 15,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0,
               ),
@@ -996,11 +991,11 @@ class _ResultText {
   const _ResultText(this.language);
 
   // 함수이름: isEnglish
-  // 함수역할: 언어 코드가 en과 정확히 일치하는지 확인한다.
+  // 함수역할: 공통 언어 판별 규칙으로 언어 코드가 영어인지 확인한다.
   // 매개변수:
   // - 없음.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
-  bool get isEnglish => language == 'en';
+  bool get isEnglish => isEnglishLanguage(language);
 
   // 함수이름: title
   // 함수역할: 현재 언어와 입력값에 맞춰 "처방전 분석 결과" 문구를 제공한다.

@@ -41,7 +41,6 @@ class PrescriptionChangeRadarUI extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = _PrescriptionChangeText(userSetting.language);
-    final scale = userSetting.contentTextScale;
 
     return Container(
       width: double.infinity,
@@ -57,7 +56,6 @@ class PrescriptionChangeRadarUI extends StatelessWidget {
         children: [
           _RadarHeader(
             text: text,
-            scale: scale,
             comparisonWindowDays: radar.comparisonWindowDays,
           ),
           Padding(
@@ -66,8 +64,8 @@ class PrescriptionChangeRadarUI extends StatelessWidget {
                 radar.hasPreviousPrescription &&
                     radar.comparisonStatus ==
                         PrescriptionComparisonStatus.comparable
-                ? _buildComparisonContent(text, scale)
-                : _buildUnavailableContent(text, scale),
+                ? _buildComparisonContent(text)
+                : _buildUnavailableContent(text),
           ),
         ],
       ),
@@ -78,9 +76,8 @@ class PrescriptionChangeRadarUI extends StatelessWidget {
   // 함수역할: 비교 실패·만료·무관한 처방 상태에 맞춘 아이콘과 생략 이유를 표시한다.
   // 매개변수:
   // - text (_PrescriptionChangeText): 해당 화면 구역의 언어별 표시 문구.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // 반환값: 처방 비교 상태와 추가·변경·미확인 약품에 쓰는 위젯 트리.
-  Widget _buildUnavailableContent(_PrescriptionChangeText text, double scale) {
+  Widget _buildUnavailableContent(_PrescriptionChangeText text) {
     final icon = switch (radar.comparisonStatus) {
       PrescriptionComparisonStatus.expired => Icons.event_busy_outlined,
       PrescriptionComparisonStatus.unrelated => Icons.compare_arrows,
@@ -99,7 +96,7 @@ class PrescriptionChangeRadarUI extends StatelessWidget {
             ),
             style: TextStyle(
               color: MedBuddyColors.textMuted,
-              fontSize: 14 * scale,
+              fontSize: 14,
               height: 1.45,
               letterSpacing: 0,
             ),
@@ -113,9 +110,8 @@ class PrescriptionChangeRadarUI extends StatelessWidget {
   // 함수역할: 비교 기준일·변화 수·약별 차이 또는 변화 없음과 안전 안내를 표시한다.
   // 매개변수:
   // - text (_PrescriptionChangeText): 해당 화면 구역의 언어별 표시 문구.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // 반환값: 처방 비교 상태와 추가·변경·미확인 약품에 쓰는 위젯 트리.
-  Widget _buildComparisonContent(_PrescriptionChangeText text, double scale) {
+  Widget _buildComparisonContent(_PrescriptionChangeText text) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -126,26 +122,26 @@ class PrescriptionChangeRadarUI extends StatelessWidget {
           ),
           style: TextStyle(
             color: MedBuddyColors.textMuted,
-            fontSize: 13 * scale,
+            fontSize: 13,
             fontWeight: FontWeight.w600,
             letterSpacing: 0,
           ),
         ),
         const SizedBox(height: 12),
         if (radar.hasChanges) ...[
-          _ChangeSummary(summary: radar.summary, text: text, scale: scale),
+          _ChangeSummary(summary: radar.summary, text: text),
           const SizedBox(height: 14),
           ...radar.changes.map(
             // 함수이름: _buildComparisonContent.map callback
-            // 함수역할: 처방 비교 상태와 추가·변경·미확인 약품의 변환값을 `_MedicationChangeRow(change: change, text: text, scale: scale)` 규칙으로 계산한다.
+            // 함수역할: 처방 비교 상태와 추가·변경·미확인 약품의 변환값을 `_MedicationChangeRow(change: change, text: text)` 규칙으로 계산한다.
             // 매개변수:
             // - change (콜백 계약에서 추론): 약품 한 건의 추가·일정 변경·미확인 정보.
             // 반환값: 컬렉션 연산에 전달할 변환값.
             (change) =>
-                _MedicationChangeRow(change: change, text: text, scale: scale),
+                _MedicationChangeRow(change: change, text: text),
           ),
         ] else
-          _NoChangeMessage(text: text, scale: scale),
+          _NoChangeMessage(text: text),
         const SizedBox(height: 12),
         Container(
           width: double.infinity,
@@ -168,7 +164,7 @@ class PrescriptionChangeRadarUI extends StatelessWidget {
                   text.safetyNotice,
                   style: TextStyle(
                     color: MedBuddyColors.reminderAccent,
-                    fontSize: 12.5 * scale,
+                    fontSize: 12.5,
                     height: 1.4,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0,
@@ -211,7 +207,6 @@ class PrescriptionChangeRadarLoadingUI extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = _PrescriptionChangeText(userSetting.language);
-    final scale = userSetting.contentTextScale;
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 18),
@@ -237,7 +232,7 @@ class PrescriptionChangeRadarLoadingUI extends StatelessWidget {
               text.loading,
               style: TextStyle(
                 color: MedBuddyColors.primaryDark,
-                fontSize: 14 * scale,
+                fontSize: 14,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0,
               ),
@@ -254,23 +249,19 @@ class PrescriptionChangeRadarLoadingUI extends StatelessWidget {
 // 주요 책임:
 // - 부모가 전달한 표시값과 동작을 반영해 처방 변화 제목과 비교 기간 설명 위젯을 구성한다.
 // 속성:
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 // - comparisonWindowDays (int): 이전 처방을 찾는 비교 기간의 일수.
 class _RadarHeader extends StatelessWidget {
   final _PrescriptionChangeText text;
-  final double scale;
   final int comparisonWindowDays;
 
   // 함수이름: _RadarHeader
   // 함수역할: 처방 변화 제목과 비교 기간 설명에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - text (_PrescriptionChangeText): 해당 화면 구역의 언어별 표시 문구.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // - comparisonWindowDays (int): 이전 처방을 찾는 비교 기간의 일수.
   // 반환값: 입력 설정이 반영된 _RadarHeader 인스턴스.
   const _RadarHeader({
     required this.text,
-    required this.scale,
     required this.comparisonWindowDays,
   });
 
@@ -309,7 +300,7 @@ class _RadarHeader extends StatelessWidget {
                   text.title,
                   style: TextStyle(
                     color: MedBuddyColors.textStrong,
-                    fontSize: 18 * scale,
+                    fontSize: 18,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0,
                   ),
@@ -318,7 +309,7 @@ class _RadarHeader extends StatelessWidget {
                   text.subtitle(comparisonWindowDays),
                   style: TextStyle(
                     color: MedBuddyColors.textMuted,
-                    fontSize: 12.5 * scale,
+                    fontSize: 12.5,
                     letterSpacing: 0,
                   ),
                 ),
@@ -337,23 +328,19 @@ class _RadarHeader extends StatelessWidget {
 // - 부모가 전달한 표시값과 동작을 반영해 추가·일정 변경·미확인 약 개수 위젯을 구성한다.
 // 속성:
 // - summary (PrescriptionChangeSummary): 화면에 반영할 작업 결과 또는 요약·추천 데이터.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 class _ChangeSummary extends StatelessWidget {
   final PrescriptionChangeSummary summary;
   final _PrescriptionChangeText text;
-  final double scale;
 
   // 함수이름: _ChangeSummary
   // 함수역할: 추가·일정 변경·미확인 약 개수에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - summary (PrescriptionChangeSummary): 화면에 반영할 작업 결과 또는 요약·추천 데이터.
   // - text (_PrescriptionChangeText): 해당 화면 구역의 언어별 표시 문구.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // 반환값: 입력 설정이 반영된 _ChangeSummary 인스턴스.
   const _ChangeSummary({
     required this.summary,
     required this.text,
-    required this.scale,
   });
 
   // 함수이름: build
@@ -372,21 +359,18 @@ class _ChangeSummary extends StatelessWidget {
             label: text.addedCount(summary.addedCount),
             foreground: MedBuddyColors.primaryDark,
             background: MedBuddyColors.successSurface,
-            scale: scale,
           ),
         if (summary.scheduleChangedCount > 0)
           _SummaryChip(
             label: text.changedCount(summary.scheduleChangedCount),
             foreground: MedBuddyColors.reminderAccent,
             background: MedBuddyColors.warningSurface,
-            scale: scale,
           ),
         if (summary.missingCount > 0)
           _SummaryChip(
             label: text.missingCount(summary.missingCount),
             foreground: MedBuddyColors.danger,
             background: MedBuddyColors.dangerSurface,
-            scale: scale,
           ),
       ],
     );
@@ -401,12 +385,10 @@ class _ChangeSummary extends StatelessWidget {
 // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
 // - foreground (Color): 문자·아이콘·상태 가이드에 적용할 전경 또는 강조 색상.
 // - background (Color): 항목의 바탕 색상.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 class _SummaryChip extends StatelessWidget {
   final String label;
   final Color foreground;
   final Color background;
-  final double scale;
 
   // 함수이름: _SummaryChip
   // 함수역할: 처방 변화 유형별 색상 개수 표식에 필요한 입력값과 표시 설정을 초기화한다.
@@ -414,13 +396,11 @@ class _SummaryChip extends StatelessWidget {
   // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
   // - foreground (Color): 문자·아이콘·상태 가이드에 적용할 전경 또는 강조 색상.
   // - background (Color): 항목의 바탕 색상.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // 반환값: 입력 설정이 반영된 _SummaryChip 인스턴스.
   const _SummaryChip({
     required this.label,
     required this.foreground,
     required this.background,
-    required this.scale,
   });
 
   // 함수이름: build
@@ -440,7 +420,7 @@ class _SummaryChip extends StatelessWidget {
         label,
         style: TextStyle(
           color: foreground,
-          fontSize: 12.5 * scale,
+          fontSize: 12.5,
           fontWeight: FontWeight.w700,
           letterSpacing: 0,
         ),
@@ -455,23 +435,19 @@ class _SummaryChip extends StatelessWidget {
 // - 부모가 전달한 표시값과 동작을 반영해 약품 변화 유형과 변경 전후 일정 값 위젯을 구성한다.
 // 속성:
 // - change (PrescriptionMedicationChange): 약품 한 건의 추가·일정 변경·미확인 정보.
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
 class _MedicationChangeRow extends StatelessWidget {
   final PrescriptionMedicationChange change;
   final _PrescriptionChangeText text;
-  final double scale;
 
   // 함수이름: _MedicationChangeRow
   // 함수역할: 약품 변화 유형과 변경 전후 일정 값에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - change (PrescriptionMedicationChange): 약품 한 건의 추가·일정 변경·미확인 정보.
   // - text (_PrescriptionChangeText): 해당 화면 구역의 언어별 표시 문구.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // 반환값: 입력 설정이 반영된 _MedicationChangeRow 인스턴스.
   const _MedicationChangeRow({
     required this.change,
     required this.text,
-    required this.scale,
   });
 
   // 함수이름: build
@@ -505,7 +481,7 @@ class _MedicationChangeRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: MedBuddyColors.textStrong,
-                    fontSize: 15 * scale,
+                    fontSize: 15,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0,
                   ),
@@ -515,7 +491,7 @@ class _MedicationChangeRow extends StatelessWidget {
                   presentation.label,
                   style: TextStyle(
                     color: presentation.color,
-                    fontSize: 13 * scale,
+                    fontSize: 13,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0,
                   ),
@@ -537,7 +513,7 @@ class _MedicationChangeRow extends StatelessWidget {
                         ),
                         style: TextStyle(
                           color: MedBuddyColors.textMuted,
-                          fontSize: 12.5 * scale,
+                          fontSize: 12.5,
                           height: 1.35,
                           letterSpacing: 0,
                         ),
@@ -558,18 +534,16 @@ class _MedicationChangeRow extends StatelessWidget {
 // 주요 책임:
 // - 부모가 전달한 표시값과 동작을 반영해 비교 가능한 처방에 변화가 없다는 안내 위젯을 구성한다.
 // 속성:
-// - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
+// - text (_PrescriptionChangeText): 해당 화면 구역의 언어별 표시 문구.
 class _NoChangeMessage extends StatelessWidget {
   final _PrescriptionChangeText text;
-  final double scale;
 
   // 함수이름: _NoChangeMessage
   // 함수역할: 비교 가능한 처방에 변화가 없다는 안내에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - text (_PrescriptionChangeText): 해당 화면 구역의 언어별 표시 문구.
-  // - scale (double): 사용자 접근성 설정을 반영한 콘텐츠 글씨 배율.
   // 반환값: 입력 설정이 반영된 _NoChangeMessage 인스턴스.
-  const _NoChangeMessage({required this.text, required this.scale});
+  const _NoChangeMessage({required this.text});
 
   // 함수이름: build
   // 함수역할: 현재 입력값과 상태를 반영해 비교 가능한 처방에 변화가 없다는 안내 화면을 구성한다.
@@ -591,7 +565,7 @@ class _NoChangeMessage extends StatelessWidget {
             text.noChanges,
             style: TextStyle(
               color: MedBuddyColors.primaryDark,
-              fontSize: 14 * scale,
+              fontSize: 14,
               fontWeight: FontWeight.w700,
               letterSpacing: 0,
             ),
@@ -684,7 +658,7 @@ class _PrescriptionChangeText {
   // 매개변수:
   // - 없음.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
-  bool get isEnglish => language.trim().toLowerCase().startsWith('en');
+  bool get isEnglish => isEnglishLanguage(language);
 
   // 함수이름: title
   // 함수역할: 현재 언어와 입력값에 맞춰 "처방 변화 레이더" 문구를 제공한다.

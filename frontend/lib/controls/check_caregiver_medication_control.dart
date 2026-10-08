@@ -19,7 +19,7 @@ import '../entities/json_value_reader.dart';
 // Parameters:
 // - None.
 // Returns:
-// - A record containing caregiverHash, patientHash, savedMedications, and todayMedicationScheduleList.
+// - A record containing caregiverHash, patientHash, savedMedications, and todayMedicationScheduleList. savedMedications is kept for the record shape and is always empty.
 typedef CaregiverMedicationInfo = ({
   String caregiverHash,
   String patientHash,
@@ -124,9 +124,10 @@ class CheckCaregiverMedication {
           .timeout(const Duration(seconds: 30));
       final responseBody = ApiResponseParser.decodeBody(response);
       if (response.statusCode != 200) {
-        throw StateError(
-          'Caregiver monitoring lookup failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        throw ApiResponseParser.httpFailure(
+          'Caregiver monitoring lookup failed',
+          response,
+          responseBody,
         );
       }
 
@@ -170,12 +171,15 @@ class CheckCaregiverMedication {
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Caregiver monitoring lookup failed.');
+      throw ApiResponseParser.transportFailure(
+        'Caregiver monitoring lookup failed',
+        error,
+      );
     }
   }
 
   // Function Name: requestPatientMedicationInfo
-  // Description: Requests the medication information of an explicitly selected linked patient.
+  // Description: Requests the medication information of an explicitly selected linked patient. Only today's schedules are decoded; the saved medication list in the response is ignored.
   // Parameters:
   // - patientHash (String): Ownership hash of the patient targeted by lookup, storage, or alerts.
   // Returns:
@@ -203,9 +207,10 @@ class CheckCaregiverMedication {
           .timeout(const Duration(seconds: 30));
       final responseBody = ApiResponseParser.decodeBody(response);
       if (response.statusCode != 200) {
-        throw StateError(
-          'Caregiver medication lookup failed (${response.statusCode}): '
-          '${ApiResponseParser.extractErrorDetail(responseBody)}',
+        throw ApiResponseParser.httpFailure(
+          'Caregiver medication lookup failed',
+          response,
+          responseBody,
         );
       }
 
@@ -224,7 +229,8 @@ class CheckCaregiverMedication {
           data['caregiver_hash'] ?? data['guardian_hash'],
         ),
         patientHash: readJsonText(data['patient_hash']),
-        savedMedications: _readSavedMedications(data['saved_medications']),
+        // No screen reads the saved medication list, so the response field is not decoded on each poll.
+        savedMedications: const <MedicationDetail>[],
         todayMedicationScheduleList: MedicationSchedule.fromScheduleJsonList(
           rawTodaySchedules,
         ),
@@ -238,32 +244,11 @@ class CheckCaregiverMedication {
         error: error,
         stackTrace: stackTrace,
       );
-      throw StateError('Caregiver medication lookup failed.');
+      throw ApiResponseParser.transportFailure(
+        'Caregiver medication lookup failed',
+        error,
+      );
     }
-  }
-
-  // Function Name: _readSavedMedications
-  // Description: Decodes map entries into saved medication details, treating a nonlist payload as an empty collection.
-  // Parameters:
-  // - rawItems (dynamic): Raw server item or list before model conversion.
-  // Returns:
-  // - List<MedicationDetail>: Decodes map entries into saved medication details, treating a nonlist payload as an empty collection.
-  static List<MedicationDetail> _readSavedMedications(dynamic rawItems) {
-    if (rawItems is! List) {
-      return const [];
-    }
-    return rawItems
-        .whereType<Map>()
-        .map(
-          // Function Name: map callback
-          // Description: Parses one medication response object into the shared medication-detail model.
-          // Parameters:
-          // - item (Map): Current response or collection entry being transformed or checked.
-          // Returns:
-          // - The parsed medication details.
-          (item) => MedicationDetail.fromJson(Map<String, dynamic>.from(item)),
-        )
-        .toList(growable: false);
   }
 
   // Function Name: dispose

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/manage_user_setting_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/authentication_control.dart';
+import 'package:medbuddy_frontend/controls/manage_account_control.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 
 // 함수이름: main
@@ -49,21 +50,15 @@ void main() {
           // 반환값:
           // - Future<void>; 부수 효과 없이 완료된다.
           onDeleteAccountRequested: () async {},
-          onSettingSaveRequested:
-              // 함수이름: onSettingSaveRequested 콜백
+          onExtendedSettingSaveRequested:
+              // 함수이름: onExtendedSettingSaveRequested 콜백
               // 함수역할:
               // - 실제 저장 없이 지정한 서버 동기화 또는 기기 전용 저장 결과를 제공한다.
               // 매개변수:
-              // - fontSizeOption (String): 선택한 앱 글씨 크기 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - readingSpeedOption (String): 선택한 음성 읽기 속도 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
+              // - setting (UserSetting): 화면에서 편집한 설정 전체.
               // 반환값:
               // - 서버 동기화 상태의 설정 저장 결과.
-              ({
-                required fontSizeOption,
-                required readingSpeedOption,
-                required language,
-              }) async => _saveResult(),
+              (setting) async => _saveResult(),
         ),
       ),
     );
@@ -109,21 +104,15 @@ void main() {
         home: ManageUserSettingUI(
           initialSetting: const UserSetting(),
           authenticationControl: authenticationControl,
-          onSettingSaveRequested:
-              // 함수이름: onSettingSaveRequested 콜백
+          onExtendedSettingSaveRequested:
+              // 함수이름: onExtendedSettingSaveRequested 콜백
               // 함수역할:
               // - 실제 저장 없이 지정한 서버 동기화 또는 기기 전용 저장 결과를 제공한다.
               // 매개변수:
-              // - fontSizeOption (String): 선택한 앱 글씨 크기 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - readingSpeedOption (String): 선택한 음성 읽기 속도 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
+              // - setting (UserSetting): 화면에서 편집한 설정 전체.
               // 반환값:
               // - 서버 동기화 상태의 설정 저장 결과.
-              ({
-                required fontSizeOption,
-                required readingSpeedOption,
-                required language,
-              }) async => _saveResult(),
+              (setting) async => _saveResult(),
         ),
       ),
     );
@@ -161,22 +150,16 @@ void main() {
         home: ManageUserSettingUI(
           initialSetting: const UserSetting(),
           authenticationControl: authenticationControl,
-          onSettingSaveRequested:
-              // 함수이름: onSettingSaveRequested 콜백
+          onExtendedSettingSaveRequested:
+              // 함수이름: onExtendedSettingSaveRequested 콜백
               // 함수역할:
               // - 선택 언어를 기록하고 서버 동기화 성공 결과를 제공한다.
               // 매개변수:
-              // - fontSizeOption (String): 선택한 앱 글씨 크기 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - readingSpeedOption (String): 선택한 음성 읽기 속도 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - language (String): 화면 문구 또는 알림 내용의 언어 코드.
+              // - setting (UserSetting): 화면에서 편집한 설정 전체.
               // 반환값:
               // - 서버 동기화 상태의 설정 저장 결과.
-              ({
-                required fontSizeOption,
-                required readingSpeedOption,
-                required language,
-              }) async {
-                savedLanguage = language;
+              (setting) async {
+                savedLanguage = setting.language;
                 return _saveResult();
               },
         ),
@@ -211,21 +194,15 @@ void main() {
         home: ManageUserSettingUI(
           initialSetting: const UserSetting(language: 'en'),
           authenticationControl: authenticationControl,
-          onSettingSaveRequested:
-              // 함수이름: onSettingSaveRequested 콜백
+          onExtendedSettingSaveRequested:
+              // 함수이름: onExtendedSettingSaveRequested 콜백
               // 함수역할:
               // - 실제 저장 없이 지정한 서버 동기화 또는 기기 전용 저장 결과를 제공한다.
               // 매개변수:
-              // - fontSizeOption (String): 선택한 앱 글씨 크기 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - readingSpeedOption (String): 선택한 음성 읽기 속도 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
+              // - setting (UserSetting): 화면에서 편집한 설정 전체.
               // 반환값:
               // - 서버 동기화 상태의 설정 저장 결과.
-              ({
-                required fontSizeOption,
-                required readingSpeedOption,
-                required language,
-              }) async => _saveResult(),
+              (setting) async => _saveResult(),
         ),
       ),
     );
@@ -257,21 +234,15 @@ void main() {
         home: ManageUserSettingUI(
           initialSetting: const UserSetting(),
           authenticationControl: authenticationControl,
-          onSettingSaveRequested:
-              // 함수이름: onSettingSaveRequested 콜백
+          onExtendedSettingSaveRequested:
+              // 함수이름: onExtendedSettingSaveRequested 콜백
               // 함수역할:
               // - 저장 시도를 기록하고 응답을 대기시켜 중복 요청 차단과 실패 후 재시도를 검사한다.
               // 매개변수:
-              // - fontSizeOption (String): 선택한 앱 글씨 크기 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - readingSpeedOption (String): 선택한 음성 읽기 속도 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
+              // - setting (UserSetting): 화면에서 편집한 설정 전체.
               // 반환값:
               // - 테스트가 완료시키는 설정 저장 Future.
-              ({
-                required fontSizeOption,
-                required readingSpeedOption,
-                required language,
-              }) {
+              (setting) {
                 requestCount += 1;
                 return saveRequest.future;
               },
@@ -347,21 +318,15 @@ void main() {
           previewStopper: () async {
             stopRequestCount += 1;
           },
-          onSettingSaveRequested:
-              // 함수이름: onSettingSaveRequested 콜백
+          onExtendedSettingSaveRequested:
+              // 함수이름: onExtendedSettingSaveRequested 콜백
               // 함수역할:
               // - 실제 저장 없이 지정한 서버 동기화 또는 기기 전용 저장 결과를 제공한다.
               // 매개변수:
-              // - fontSizeOption (String): 선택한 앱 글씨 크기 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - readingSpeedOption (String): 선택한 음성 읽기 속도 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
+              // - setting (UserSetting): 화면에서 편집한 설정 전체.
               // 반환값:
               // - 서버 동기화 상태의 설정 저장 결과.
-              ({
-                required fontSizeOption,
-                required readingSpeedOption,
-                required language,
-              }) async => _saveResult(),
+              (setting) async => _saveResult(),
         ),
       ),
     );
@@ -428,21 +393,15 @@ void main() {
               playback.completeError(StateError('playback cancelled'));
             }
           },
-          onSettingSaveRequested:
-              // 함수이름: onSettingSaveRequested 콜백
+          onExtendedSettingSaveRequested:
+              // 함수이름: onExtendedSettingSaveRequested 콜백
               // 함수역할:
               // - 실제 저장 없이 지정한 서버 동기화 또는 기기 전용 저장 결과를 제공한다.
               // 매개변수:
-              // - fontSizeOption (String): 선택한 앱 글씨 크기 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - readingSpeedOption (String): 선택한 음성 읽기 속도 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
+              // - setting (UserSetting): 화면에서 편집한 설정 전체.
               // 반환값:
               // - 서버 동기화 상태의 설정 저장 결과.
-              ({
-                required fontSizeOption,
-                required readingSpeedOption,
-                required language,
-              }) async => _saveResult(),
+              (setting) async => _saveResult(),
         ),
       ),
     );
@@ -477,21 +436,15 @@ void main() {
         home: ManageUserSettingUI(
           initialSetting: const UserSetting(),
           authenticationControl: authenticationControl,
-          onSettingSaveRequested:
-              // 함수이름: onSettingSaveRequested 콜백
+          onExtendedSettingSaveRequested:
+              // 함수이름: onExtendedSettingSaveRequested 콜백
               // 함수역할:
               // - 실제 저장 없이 지정한 서버 동기화 또는 기기 전용 저장 결과를 제공한다.
               // 매개변수:
-              // - fontSizeOption (String): 선택한 앱 글씨 크기 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - readingSpeedOption (String): 선택한 음성 읽기 속도 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
+              // - setting (UserSetting): 화면에서 편집한 설정 전체.
               // 반환값:
               // - 서버 동기화 상태의 설정 저장 결과.
-              ({
-                required fontSizeOption,
-                required readingSpeedOption,
-                required language,
-              }) async => _saveResult(),
+              (setting) async => _saveResult(),
         ),
       ),
     );
@@ -522,21 +475,15 @@ void main() {
         home: ManageUserSettingUI(
           initialSetting: const UserSetting(),
           authenticationControl: authenticationControl,
-          onSettingSaveRequested:
-              // 함수이름: onSettingSaveRequested 콜백
+          onExtendedSettingSaveRequested:
+              // 함수이름: onExtendedSettingSaveRequested 콜백
               // 함수역할:
               // - 실제 저장 없이 지정한 서버 동기화 또는 기기 전용 저장 결과를 제공한다.
               // 매개변수:
-              // - fontSizeOption (String): 선택한 앱 글씨 크기 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - readingSpeedOption (String): 선택한 음성 읽기 속도 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
+              // - setting (UserSetting): 화면에서 편집한 설정 전체.
               // 반환값:
               // - 서버 동기화 상태의 설정 저장 결과.
-              ({
-                required fontSizeOption,
-                required readingSpeedOption,
-                required language,
-              }) async => _saveResult(),
+              (setting) async => _saveResult(),
         ),
       ),
     );
@@ -606,21 +553,15 @@ void main() {
                   builder: (_) => ManageUserSettingUI(
                     initialSetting: const UserSetting(),
                     authenticationControl: authenticationControl,
-                    onSettingSaveRequested:
-                        // 함수이름: onSettingSaveRequested 콜백
+                    onExtendedSettingSaveRequested:
+                        // 함수이름: onExtendedSettingSaveRequested 콜백
                         // 함수역할:
                         // - 실제 저장 없이 지정한 서버 동기화 또는 기기 전용 저장 결과를 제공한다.
                         // 매개변수:
-                        // - fontSizeOption (String): 선택한 앱 글씨 크기 옵션. 이 대역에서는 직접 사용하지 않는다.
-                        // - readingSpeedOption (String): 선택한 음성 읽기 속도 옵션. 이 대역에서는 직접 사용하지 않는다.
-                        // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
+                        // - setting (UserSetting): 화면에서 편집한 설정 전체.
                         // 반환값:
                         // - 서버 동기화 상태의 설정 저장 결과.
-                        ({
-                          required fontSizeOption,
-                          required readingSpeedOption,
-                          required language,
-                        }) async => _saveResult(),
+                        (setting) async => _saveResult(),
                   ),
                 ),
               ),
@@ -659,21 +600,15 @@ void main() {
         home: ManageUserSettingUI(
           initialSetting: const UserSetting(),
           authenticationControl: authenticationControl,
-          onSettingSaveRequested:
-              // 함수이름: onSettingSaveRequested 콜백
+          onExtendedSettingSaveRequested:
+              // 함수이름: onExtendedSettingSaveRequested 콜백
               // 함수역할:
               // - 실제 저장 없이 지정한 서버 동기화 또는 기기 전용 저장 결과를 제공한다.
               // 매개변수:
-              // - fontSizeOption (String): 선택한 앱 글씨 크기 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - readingSpeedOption (String): 선택한 음성 읽기 속도 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
+              // - setting (UserSetting): 화면에서 편집한 설정 전체.
               // 반환값:
               // - 서버 동기화 상태의 설정 저장 결과.
-              ({
-                required fontSizeOption,
-                required readingSpeedOption,
-                required language,
-              }) async => _saveResult(),
+              (setting) async => _saveResult(),
         ),
       ),
     );
@@ -712,21 +647,15 @@ void main() {
         home: ManageUserSettingUI(
           initialSetting: const UserSetting(),
           authenticationControl: authenticationControl,
-          onSettingSaveRequested:
-              // 함수이름: onSettingSaveRequested 콜백
+          onExtendedSettingSaveRequested:
+              // 함수이름: onExtendedSettingSaveRequested 콜백
               // 함수역할:
               // - 실제 저장 없이 지정한 서버 동기화 또는 기기 전용 저장 결과를 제공한다.
               // 매개변수:
-              // - fontSizeOption (String): 선택한 앱 글씨 크기 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - readingSpeedOption (String): 선택한 음성 읽기 속도 옵션. 이 대역에서는 직접 사용하지 않는다.
-              // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
+              // - setting (UserSetting): 화면에서 편집한 설정 전체.
               // 반환값:
               // - 서버 미동기화 상태의 설정 저장 결과.
-              ({
-                required fontSizeOption,
-                required readingSpeedOption,
-                required language,
-              }) async => _saveResult(synchronizedWithServer: false),
+              (setting) async => _saveResult(synchronizedWithServer: false),
         ),
       ),
     );
@@ -761,13 +690,9 @@ void main() {
             authenticationControl: authenticationControl,
             // 함수이름: 설정 저장 대역
             // 함수역할: 실제 저장 없이 성공 결과를 반환한다.
-            // 매개변수: 글씨 크기·읽기 속도·언어. 반환값: 저장 결과.
-            onSettingSaveRequested:
-                ({
-                  required fontSizeOption,
-                  required readingSpeedOption,
-                  required language,
-                }) async => _saveResult(),
+            // 매개변수: setting은 편집한 설정 전체. 반환값: 저장 결과.
+            onExtendedSettingSaveRequested:
+                (setting) async => _saveResult(),
           ),
         ),
       );
@@ -842,21 +767,15 @@ void main() {
                   builder: (_) => ManageUserSettingUI(
                     initialSetting: const UserSetting(),
                     authenticationControl: authenticationControl,
-                    onSettingSaveRequested:
-                        // 함수이름: onSettingSaveRequested 콜백
+                    onExtendedSettingSaveRequested:
+                        // 함수이름: onExtendedSettingSaveRequested 콜백
                         // 함수역할:
                         // - 실제 저장 없이 지정한 서버 동기화 또는 기기 전용 저장 결과를 제공한다.
                         // 매개변수:
-                        // - fontSizeOption (String): 선택한 앱 글씨 크기 옵션. 이 대역에서는 직접 사용하지 않는다.
-                        // - readingSpeedOption (String): 선택한 음성 읽기 속도 옵션. 이 대역에서는 직접 사용하지 않는다.
-                        // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
+                        // - setting (UserSetting): 화면에서 편집한 설정 전체.
                         // 반환값:
                         // - 서버 동기화 상태의 설정 저장 결과.
-                        ({
-                          required fontSizeOption,
-                          required readingSpeedOption,
-                          required language,
-                        }) async => _saveResult(),
+                        (setting) async => _saveResult(),
                     // Function Name: onDeleteAccountRequested callback
                     // Description:
                     // - Record account deletion so the test can assert the action was dispatched.
@@ -890,6 +809,114 @@ void main() {
     expect(find.text('설정 열기'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  // 계정 삭제 실패는 실패 종류에 따라 현재 화면 언어의 안내로 보여야 한다.
+  // 각 항목: 화면 언어, 삭제 콜백이 던지는 실패, 기대하는 안내 문구.
+  final deletionFailures = <(String, Object Function(), String)>[
+    (
+      'ko',
+      () => AuthenticationStateError(
+        AuthenticationErrorCode.deletionRequiresRecentSignIn,
+      ),
+      '보안을 위해 로그아웃한 뒤 다시 로그인하고 계정을 삭제해 주세요.',
+    ),
+    (
+      'en',
+      () => AuthenticationStateError(
+        AuthenticationErrorCode.deletionRequiresRecentSignIn,
+      ),
+      'For security, sign out and sign in again before deleting this account.',
+    ),
+    (
+      'ko',
+      () => AuthenticationStateError(AuthenticationErrorCode.network),
+      '인터넷 연결을 확인한 뒤 다시 시도해 주세요.',
+    ),
+    (
+      'ko',
+      () => AccountDeletionFailure(AccountDeletionFailureReason.serverRejected),
+      '계정 데이터를 삭제하지 못했습니다.',
+    ),
+    (
+      'en',
+      () => AccountDeletionFailure(AccountDeletionFailureReason.serverRejected),
+      'Could not delete account data.',
+    ),
+    (
+      'en',
+      () => StateError('한 가지 언어만 가진 오류'),
+      'Could not delete account data.',
+    ),
+    ('ko', () => Exception('transport'), '계정 데이터를 삭제하지 못했습니다.'),
+  ];
+  for (final (index, (language, failure, message))
+      in deletionFailures.indexed) {
+    testWidgets('계정 삭제 실패를 화면 언어로 안내한다 #$index $language', (tester) async {
+      await _pumpForDeletion(tester, language, () async => throw failure());
+      await _requestDeletion(tester, language);
+      expect(find.widgetWithText(SnackBar, message), findsOneWidget);
+      // 실패 뒤에도 설정 화면에 남아 다시 시도할 수 있다.
+      expect(
+        find.text(language == 'en' ? 'Delete account' : '계정 데이터 삭제'),
+        findsOneWidget,
+      );
+    });
+  }
+
+  // Google 재인증 창을 닫은 것은 실패가 아니므로 오류를 띄우지 않고 화면을 다시 쓸 수 있게 한다.
+  testWidgets('Google 재인증을 취소하면 계정 삭제 오류를 안내하지 않는다', (tester) async {
+    var attempts = 0;
+    await _pumpForDeletion(tester, 'ko', () async {
+      attempts += 1;
+      throw AuthenticationStateError(
+        AuthenticationErrorCode.googleSignInCanceled,
+      );
+    });
+    await _requestDeletion(tester, 'ko');
+    expect(find.byType(SnackBar), findsNothing);
+    await _requestDeletion(tester, 'ko');
+    expect(attempts, 2);
+  });
+}
+
+// 함수이름: _pumpForDeletion
+// 함수역할: 지정한 언어와 계정 삭제 콜백으로 설정 화면을 구성한다.
+// 매개변수: tester, 화면 언어, 계정 삭제 콜백. 반환값: 화면 구성 완료.
+Future<void> _pumpForDeletion(
+  WidgetTester tester,
+  String language,
+  Future<void> Function() onDelete,
+) async {
+  final authenticationControl = AuthenticationControl.development();
+  addTearDown(authenticationControl.dispose);
+  await tester.pumpWidget(
+    MaterialApp(
+      home: ManageUserSettingUI(
+        initialSetting: UserSetting(language: language, languageMode: language),
+        authenticationControl: authenticationControl,
+        onExtendedSettingSaveRequested: (setting) async => _saveResult(),
+        onDeleteAccountRequested: onDelete,
+      ),
+    ),
+  );
+}
+
+// 함수이름: _requestDeletion
+// 함수역할: 계정 화면에서 계정 삭제를 선택하고 확인한다.
+// 매개변수: tester, 화면 언어. 반환값: 삭제 요청 처리 완료.
+Future<void> _requestDeletion(WidgetTester tester, String language) async {
+  final english = language == 'en';
+  if (find.text(english ? 'Delete account' : '계정 데이터 삭제').evaluate().isEmpty) {
+    await _openAccount(tester);
+  }
+  final deleteAccount = find.text(english ? 'Delete account' : '계정 데이터 삭제');
+  await tester.ensureVisible(deleteAccount);
+  await tester.tap(deleteAccount);
+  await tester.pumpAndSettle();
+  await tester.tap(
+    find.widgetWithText(FilledButton, english ? 'Delete' : '삭제'),
+  );
+  await tester.pumpAndSettle();
 }
 
 // 함수이름: _openDisplayAndVoice

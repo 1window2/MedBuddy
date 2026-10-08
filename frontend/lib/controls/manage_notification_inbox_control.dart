@@ -2,6 +2,7 @@
 // 역할: 알림 목록 조회·읽음·삭제와 화면 갱신을 조율한다.
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import '../entities/caregiver_alert_context_entity.dart';
 import '../entities/notification_inbox_entity.dart';
 import '../services/notification_inbox_store.dart';
 import 'manage_chat_list_control.dart';
@@ -11,11 +12,20 @@ import 'manage_chat_list_control.dart';
 class ManageNotificationInbox extends ChangeNotifier {
   final NotificationInboxStore store;
   final ManageChatList? _chatList;
-  List<NotificationInboxEntry> entries = const [];
-  bool isLoading = false;
-  bool hasError = false;
+  List<NotificationInboxEntry> _entries = const [];
+  // 외부에서는 읽기만 하고 값은 이 객체만 바꾼다.
+  List<NotificationInboxEntry> get entries => _entries;
+  bool _isLoading = false;
+  bool get isLoading => _isLoading;
+  bool _hasError = false;
+  bool get hasError => _hasError;
   bool _disposed = false;
+  // 조회 진행 여부. isLoading은 화면에 불러오는 중 표시가 필요한 첫 조회 동안에만 참이다.
+  bool _refreshing = false;
+  bool _loadedOnce = false;
   bool _refreshAgain = false;
+  // 화면에 마지막으로 알린 상대 이름. 이름이 실제로 바뀔 때만 다시 알린다.
+  String _peerNameSignature = '';
   Timer? _timer;
   late final StreamSubscription<String> _subscription;
 
@@ -27,6 +37,7 @@ class ManageNotificationInbox extends ChangeNotifier {
     if (chatList != null && chatList.userHash != store.userHash) {
       throw ArgumentError('Chat list and inbox must belong to the same user.');
     }
+    _peerNameSignature = _currentPeerNameSignature();
     _chatList?.addListener(_onPeerNamesChanged);
     _subscription = NotificationInboxStore.changes.stream.listen((userHash) {
       if (userHash == store.userHash) unawaited(refresh());
@@ -35,7 +46,7 @@ class ManageNotificationInbox extends ChangeNotifier {
 
   // 함수이름: unreadCount
   // 함수역할: 보이는 알림의 미확인 수를 반환한다. 매개변수: 없음. 반환값: 개수.
-  int get unreadCount => entries.where((entry) => !entry.isRead).length;
+  int get unreadCount => _entries.where((entry) => !entry.isRead).length;
 
   // 함수이름: titleFor
   // 함수역할: 채팅·보호자 알림에 현재 활성 연동의 별칭을 표시하며 저장 원본은 변경하지 않는다.
@@ -51,14 +62,8 @@ class ManageNotificationInbox extends ChangeNotifier {
         return isEnglish ? 'Medication update' : '복약 상태 알림';
       }
       if (chatList == null) return entry.title;
-      final String patientHash;
-      try {
-        patientHash = Uri.decodeComponent(
-          entry.payload.substring('caregiver:'.length),
-        );
-      } on ArgumentError {
-        return entry.title;
-      }
+      final patientHash = _caregiverEntryPatientHash(entry);
+      if (patientHash == null) return entry.title;
       for (final link in chatList.links) {
         if (link.linkStatus &&
             link.caregiverHash == store.userHash &&
@@ -114,10 +119,49 @@ class ManageNotificationInbox extends ChangeNotifier {
       (entry.payload.startsWith('caregiver:') ||
           entry.payload.startsWith('caregiver-v1:'));
 
+  // 함수이름: _caregiverEntryPatientHash
+  // 함수역할: 보호자 알림의 이동 경로에서 환자 해시를 읽는다. 완료 알림(caregiver:)과 동작 버튼이 있는
+  //   미복용 알림(caregiver-v1:)은 형식이 다르므로 각각 해석한다.
+  // 매개변수: entry는 보호자 알림. 반환값: 환자 해시 또는 해석할 수 없으면 null.
+  String? _caregiverEntryPatientHash(NotificationInboxEntry entry) {
+    if (entry.payload.startsWith('caregiver-v1:')) {
+      return CaregiverAlertContext.fromPayload(entry.payload)?.patientHash;
+    }
+    try {
+      return Uri.decodeComponent(entry.payload.substring('caregiver:'.length));
+    } on ArgumentError {
+      return null;
+    }
+  }
+
+  // 함수이름: _currentPeerNameSignature
+  // 함수역할: 알림 제목에 쓰이는 활성 연동과 상대 이름을 한 문자열로 만들어 이전 상태와 비교할 수 있게 한다.
+  // 매개변수: 없음. 반환값: 채팅 목록이 없으면 빈 문자열.
+  String _currentPeerNameSignature() {
+    final chatList = _chatList;
+    if (chatList == null) return '';
+    return [
+      for (final link in chatList.links)
+        if (link.linkStatus)
+          [
+            link.linkId,
+            link.patientHash,
+            link.caregiverHash,
+            chatList.peerName(link, isEnglish: false),
+            chatList.peerName(link, isEnglish: true),
+          ].join('\u0001'),
+    ].join('\u0002');
+  }
+
   // 함수이름: _onPeerNamesChanged
-  // 함수역할: 별칭 변경·연동 해제를 기존 알림 제목에도 반영한다. 매개변수: 없음. 반환값: 없음.
+  // 함수역할: 별칭 변경·연동 해제를 기존 알림 제목에도 반영한다. 채팅 목록의 다른 변경은 알리지 않는다.
+  // 매개변수: 없음. 반환값: 없음.
   void _onPeerNamesChanged() {
-    if (!_disposed) notifyListeners();
+    if (_disposed) return;
+    final signature = _currentPeerNameSignature();
+    if (signature == _peerNameSignature) return;
+    _peerNameSignature = signature;
+    notifyListeners();
   }
 
   // 함수이름: start
@@ -136,27 +180,42 @@ class ManageNotificationInbox extends ChangeNotifier {
   void stop() => _timer?.cancel();
 
   // 함수이름: refresh
-  // 함수역할: 동시 조회를 합치고 실패하면 기존 목록을 유지한다. 매개변수: 없음. 반환값: 조회 완료.
+  // 함수역할: 동시 조회를 합치고 실패하면 기존 목록을 유지한다. 아직 한 번도 불러오지 못해 불러오는 중 표시가
+  //   필요할 때와, 조회 뒤 목록·읽음 상태·오류 상태가 실제로 바뀌었을 때만 화면에 알린다.
+  // 매개변수: 없음. 반환값: 조회 완료.
   Future<void> refresh() async {
     if (_disposed) return;
-    if (isLoading) {
+    if (_refreshing) {
       _refreshAgain = true;
       return;
     }
-    isLoading = true;
-    notifyListeners();
+    _refreshing = true;
+    // 이미 불러온 목록(빈 목록 포함)은 그대로 보여 주므로 주기 갱신의 시작은 알리지 않는다.
+    final announcedLoading = !_loadedOnce;
+    if (announcedLoading) {
+      _isLoading = true;
+      notifyListeners();
+    }
+    final previousEntries = _entries;
+    final previousError = _hasError;
     try {
       final loaded = await store.load();
       if (!_disposed) {
-        entries = loaded;
-        hasError = false;
+        _entries = loaded;
+        _hasError = false;
+        _loadedOnce = true;
       }
     } catch (_) {
-      if (!_disposed) hasError = true;
+      if (!_disposed) _hasError = true;
     } finally {
-      isLoading = false;
+      _refreshing = false;
+      _isLoading = false;
       if (!_disposed) {
-        notifyListeners();
+        if (announcedLoading ||
+            _hasError != previousError ||
+            !_sameVisibleEntries(previousEntries, _entries)) {
+          notifyListeners();
+        }
         if (_refreshAgain) {
           _refreshAgain = false;
           unawaited(refresh());
@@ -165,17 +224,35 @@ class ManageNotificationInbox extends ChangeNotifier {
     }
   }
 
+  // 함수이름: _sameVisibleEntries
+  // 함수역할: 두 목록의 순서·항목·읽음 상태가 같은지 비교한다. 저장된 알림의 내용은 바뀌지 않으므로 ID와 읽음 여부만 본다.
+  // 매개변수: before, after: 비교할 목록. 반환값: 화면에 보이는 내용이 같으면 true.
+  bool _sameVisibleEntries(
+    List<NotificationInboxEntry> before,
+    List<NotificationInboxEntry> after,
+  ) {
+    if (identical(before, after)) return true;
+    if (before.length != after.length) return false;
+    for (var index = 0; index < before.length; index++) {
+      if (before[index].id != after[index].id ||
+          before[index].isRead != after[index].isRead) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   // 함수이름: markRead
   // 함수역할: 선택 항목 또는 현재 목록 전체를 읽음 처리한다. 매개변수: 선택적 entry. 반환값: 갱신 완료.
   Future<void> markRead([NotificationInboxEntry? entry]) async {
-    await store.markRead(entry == null ? entries.map((e) => e.id) : [entry.id]);
+    await store.markRead(entry == null ? _entries.map((e) => e.id) : [entry.id]);
     await refresh();
   }
 
   // 함수이름: remove
   // 함수역할: 알림 내역만 삭제하며 채팅·복약 기록에는 영향이 없다. 매개변수: 선택적 entry. 반환값: 갱신 완료.
   Future<void> remove([NotificationInboxEntry? entry]) async {
-    await removeEntries(entry == null ? entries : [entry]);
+    await removeEntries(entry == null ? _entries : [entry]);
   }
 
   // 함수이름: removeEntries

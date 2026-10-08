@@ -2,13 +2,16 @@
 // Role: Regression coverage for pill-identification payload validation, typed failures, and upload
 //   cancellation.
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:medbuddy_frontend/controls/identify_pill_control.dart';
 import 'package:medbuddy_frontend/entities/pill_identification_entity.dart';
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 
 // Class Name: _AbortAwareClient
 // Role: HTTP upload stub that completes only after the multipart abort signal.
@@ -44,6 +47,58 @@ class _AbortAwareClient extends http.BaseClient {
   // Parameters: None. Returns: No value.
   @override
   void close() => wasClosed = true;
+}
+
+// Class Name: _FileImagePicker
+// Role: Image picker stub that returns a prepared local file instead of opening camera or gallery UI.
+// Responsibilities:
+// - Hand the configured path to the control as the picked image.
+// Attributes:
+// - path (String): Local file path returned as the picked image.
+class _FileImagePicker extends ImagePicker {
+  final String path;
+
+  // Function Name: _FileImagePicker
+  // Description: Stores the file path returned for every pick. Parameters: path. Returns: The stub.
+  _FileImagePicker(this.path);
+
+  // Function Name: pickImage
+  // Description:
+  // - Return the configured file without platform interaction.
+  // Parameters:
+  // - source (ImageSource): Requested source; the remaining picker options are accepted but not consumed.
+  // Returns:
+  // - An XFile for the configured path.
+  @override
+  Future<XFile?> pickImage({
+    required ImageSource source,
+    double? maxWidth,
+    double? maxHeight,
+    int? imageQuality,
+    CameraDevice preferredCameraDevice = CameraDevice.rear,
+    bool requestFullMetadata = true,
+  }) async {
+    return XFile(path);
+  }
+}
+
+// Class Name: _TemporaryPathProvider
+// Role: Path-provider stub that reports a test directory as the app temporary directory.
+// Responsibilities:
+// - Let temp-file cleanup resolve the temporary directory without a platform channel.
+// Attributes:
+// - temporaryPath (String): Directory reported as the app temporary directory.
+class _TemporaryPathProvider extends PathProviderPlatform {
+  final String temporaryPath;
+
+  // Function Name: _TemporaryPathProvider
+  // Description: Stores the reported temporary directory. Parameters: temporaryPath. Returns: The stub.
+  _TemporaryPathProvider(this.temporaryPath);
+
+  // Function Name: getTemporaryPath
+  // Description: Reports the configured directory. Parameters: None. Returns: The temporary directory path.
+  @override
+  Future<String?> getTemporaryPath() async => temporaryPath;
 }
 
 // Function Name: main
@@ -807,5 +862,180 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(client.abortedCount, 2);
     expect(client.wasClosed, isFalse);
+  });
+
+  // Function Name: test callback
+  // Description:
+  // - Expected behavior: requestMultiplePillIdentification reports a success body that is not a JSON
+  //   object as an invalid response, as the single-pill route does.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  test(
+    'requestMultiplePillIdentification maps a non-object body to invalid response',
+    () async {
+      for (final multiple in [false, true]) {
+        final control = IdentifyPill(
+          baseUrl: 'http://localhost',
+          client: MockClient(
+            // Function Name: MockClient callback
+            // Description:
+            // - Complete the mocked HTTP request with status 200 and a JSON array instead of an object.
+            // Parameters:
+            // - _ (http.Request): Unused intercepted HTTP request.
+            // Returns:
+            // - Future<http.Response> with status 200.
+            (_) async => http.Response(
+              '[]',
+              200,
+              headers: {'content-type': 'application/json'},
+            ),
+          ),
+        );
+
+        await expectLater(
+          multiple
+              ? control.requestMultiplePillIdentification(
+                  image: Uint8List.fromList([1, 2, 3]),
+                )
+              : control.requestPillIdentification(
+                  frontImage: Uint8List.fromList([1, 2, 3]),
+                ),
+          throwsA(
+            isA<PillIdentificationException>().having(
+              // Function Name: having callback
+              // Description:
+              // - Select the typed failure reason for a focused matcher assertion.
+              // Parameters:
+              // - error (Object): Typed exception inspected by the matcher.
+              // Returns:
+              // - The exception's failure value.
+              (error) => error.failure,
+              'failure',
+              PillIdentificationFailure.invalidResponse,
+            ),
+          ),
+          reason: 'multiple: $multiple',
+        );
+      }
+    },
+  );
+
+  // Function Name: group callback
+  // Description:
+  // - Register cases for removing the picker's temporary copy after the image bytes are read.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; the test framework executes the registered cases.
+  group('requestPillImage temporary copy', () {
+    late Directory sandbox;
+    late Directory temporaryDirectory;
+    late Directory galleryDirectory;
+    late PathProviderPlatform originalProvider;
+
+    // Function Name: setUp callback
+    // Description: Creates an app temporary directory and a sibling directory standing in for user storage.
+    // Parameters: None. Returns: Future<void> completing when the directories exist.
+    setUp(() async {
+      sandbox = await Directory.systemTemp.createTemp('medbuddy-pill-pick-');
+      temporaryDirectory = await Directory('${sandbox.path}/cache').create();
+      galleryDirectory = await Directory('${sandbox.path}/gallery').create();
+      originalProvider = PathProviderPlatform.instance;
+      PathProviderPlatform.instance = _TemporaryPathProvider(
+        temporaryDirectory.path,
+      );
+    });
+
+    // Function Name: tearDown callback
+    // Description: Restores the path provider and removes the test directories.
+    // Parameters: None. Returns: Future<void> completing when cleanup finishes.
+    tearDown(() async {
+      PathProviderPlatform.instance = originalProvider;
+      await sandbox.delete(recursive: true);
+    });
+
+    // Function Name: controlFor
+    // Description: Builds a control whose picker returns the given file and whose HTTP client is never used.
+    // Parameters: path (String): File returned as the picked image. Returns: The control under test.
+    IdentifyPill controlFor(String path) => IdentifyPill(
+      baseUrl: 'http://localhost',
+      imagePicker: _FileImagePicker(path),
+      // Function Name: MockClient callback
+      // Description: Fails the test if image selection reaches the network.
+      // Parameters: _ (http.Request): Unused intercepted HTTP request. Returns: Never; throws.
+      client: MockClient((_) async => fail('image selection must not call the API')),
+    );
+
+    // Function Name: test callback
+    // Description:
+    // - Expected behavior: the bytes are returned and the copy inside the app temporary directory is deleted.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+    test('deletes the picked copy inside the app temp directory', () async {
+      final copy = File('${temporaryDirectory.path}/scaled_pill.jpg');
+      await copy.writeAsBytes([1, 2, 3]);
+
+      final bytes = await controlFor(
+        copy.path,
+      ).requestPillImage(ImageSource.gallery);
+
+      expect(bytes, [1, 2, 3]);
+      expect(await copy.exists(), isFalse);
+    });
+
+    // Function Name: test callback
+    // Description:
+    // - Expected behavior: a picked file outside the app temporary directory is read but never deleted.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+    test('keeps a picked file outside the app temp directory', () async {
+      final original = File('${galleryDirectory.path}/pill.jpg');
+      await original.writeAsBytes([4, 5, 6]);
+
+      final bytes = await controlFor(
+        original.path,
+      ).requestPillImage(ImageSource.gallery);
+
+      expect(bytes, [4, 5, 6]);
+      expect(await original.readAsBytes(), [4, 5, 6]);
+    });
+
+    // Function Name: test callback
+    // Description:
+    // - Expected behavior: a rejected empty image still reports its typed failure and its temporary copy is
+    //   deleted.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+    test('deletes the temp copy of a rejected image', () async {
+      final copy = File('${temporaryDirectory.path}/empty.jpg');
+      await copy.writeAsBytes(const []);
+
+      await expectLater(
+        controlFor(copy.path).requestPillImage(ImageSource.camera),
+        throwsA(
+          isA<PillIdentificationException>().having(
+            // Function Name: having callback
+            // Description:
+            // - Select the typed failure reason for a focused matcher assertion.
+            // Parameters:
+            // - error (Object): Typed exception inspected by the matcher.
+            // Returns:
+            // - The exception's failure value.
+            (error) => error.failure,
+            'failure',
+            PillIdentificationFailure.emptyImage,
+          ),
+        ),
+      );
+      expect(await copy.exists(), isFalse);
+    });
   });
 }

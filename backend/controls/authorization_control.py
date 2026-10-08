@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import OperationalError
 
-from core.account_database_lock import lock_account_operations
+from core.account_database_lock import ACCOUNT_BUSY_DETAIL, lock_account_operations
 
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from entities.patient_hash_entity import normalize_patient_hash
@@ -161,6 +161,6 @@ class AuthorizationControl:
             self.resolvePatientScope(principal, patient_hash, allow_caregiver=True)
         except OperationalError as exc:
             raise HTTPException(
-                503, "This account is busy. Retry the request shortly.",
+                503, ACCOUNT_BUSY_DETAIL,
                 headers={"Retry-After": "5"},
             ) from exc

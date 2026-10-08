@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../controls/check_health_recommendation_control.dart';
 import '../entities/health_recommendation_entity.dart';
+import '../entities/user_setting_entity.dart';
 
 // Class Name: MedBuddyHealthRecommendationViewModel
 // Role: Patient-scoped recommendation presentation state.
@@ -60,7 +61,7 @@ class MedBuddyHealthRecommendationViewModel extends ChangeNotifier {
   Future<void> fetch({required String language}) async {
     if (_disposed) return;
     final requestId = ++_requestId;
-    final english = language.trim().toLowerCase().startsWith('en');
+    final english = isEnglishLanguage(language);
     _loading = true;
     _empty = false;
     _recommendation = null;

@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/manage_linked_chat_control.dart';
 import 'package:medbuddy_frontend/entities/chat_message_entity.dart';
+import 'package:medbuddy_frontend/services/api_response_parser.dart';
 
 // 함수이름: _jsonResponse
 // 함수역할:
@@ -791,6 +792,86 @@ void main() {
         ),
       ),
     );
+    control.dispose();
+  });
+
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 기대 동작: 거부된 응답은 기존 문구를 유지하면서 상태 코드와 서버 상세를 담은 ApiRequestException으로 전달한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  test('거부된 응답은 문구를 유지하고 상태 코드를 함께 전달한다', () async {
+    final control = ManageLinkedChat(
+      userHash: 'patient-a',
+      client: MockClient(
+        (request) async => _jsonResponse({
+          'detail': 'An active patient-caregiver link is required.',
+        }, 403),
+      ),
+      chatUrlBuilder: (path) => '$baseUrl$path',
+    );
+
+    await expectLater(
+      control.requestHistory(linkId: 17),
+      throwsA(
+        isA<ApiRequestException>()
+            .having((error) => error.statusCode, 'statusCode', 403)
+            .having(
+              (error) => error.message,
+              'message',
+              '채팅 기록을 불러오지 못했습니다. (403): '
+                  'An active patient-caregiver link is required.',
+            ),
+      ),
+    );
+    control.dispose();
+  });
+
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 기대 동작: 해석할 수 없는 한 행은 건너뛰고 나머지 기록을 반환하며, 이전 페이지 판단에 쓰는 행 수는 서버가 보낸 수를 유지한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  test('해석할 수 없는 행 하나가 기록 페이지 전체를 실패시키지 않는다', () async {
+    Map<String, Object?> row(int id) => {
+      'message_id': id,
+      'link_id': 17,
+      'sender_hash': 'caregiver-a',
+      'client_message_id': 'message_$id',
+      'body': '메시지 $id',
+      'created_at': '2026-08-23T01:00:00+00:00',
+    };
+    final control = ManageLinkedChat(
+      userHash: 'patient-a',
+      client: MockClient(
+        (request) async => _jsonResponse({
+          'success': true,
+          'data': [
+            for (var id = 1; id <= 50; id++)
+              // 25번 행은 필수 값인 발신자와 작성 시각이 없다.
+              if (id == 25)
+                {'message_id': id, 'link_id': 17, 'body': '깨진 행'}
+              else
+                row(id),
+          ],
+        }, 200),
+      ),
+      chatUrlBuilder: (path) => '$baseUrl$path',
+    );
+
+    final page = await control.requestHistory(linkId: 17);
+
+    expect(page, hasLength(49));
+    expect(page.map((message) => message.messageId), isNot(contains(25)));
+    expect(page.first.messageId, 1);
+    expect(page.last.messageId, 50);
+    expect(ChatHistoryPage.rowCountOf(page), 50);
+    // 행 수를 담지 않은 일반 목록은 길이를 그대로 사용한다.
+    expect(ChatHistoryPage.rowCountOf(page.toList()), 49);
     control.dispose();
   });
 }

@@ -20,11 +20,13 @@ import 'package:medbuddy_frontend/services/nearby_care_marker_diff.dart';
 class _QueueTestMap extends NearbyPharmacyMap {
   // Function Name: _QueueTestMap
   // Description: Provides fixed display text and a stable key for real state updates.
-  // Parameters: places: Synthetic results; favorites: Marker flags.
+  // Parameters: places: Synthetic results; favorites: Marker flags; selected: Selected place ID; bottomInset: Detail-sheet height.
   // Returns: A map widget with no network, device location or external actions.
   _QueueTestMap({
     required List<NearbyCarePlace> places,
     Set<String> favorites = const {},
+    String? selected,
+    super.bottomInset,
   }) : super(
          key: const ValueKey('native-marker-queue-test'),
          searchArea: const NearbyCareSearchArea(
@@ -33,7 +35,7 @@ class _QueueTestMap extends NearbyPharmacyMap {
          ),
          pharmacies: places,
          favoritePharmacyIds: favorites,
-         selectedPharmacyId: null,
+         selectedPharmacyId: selected,
          // Function Name: synthetic selection callback
          // Description: Avoids any navigation. Parameters: place: Selected input. Returns: None.
          onPharmacySelected: (place) {},
@@ -142,7 +144,8 @@ class _QueueMapController implements NaverMapController {
   // Parameters: type: Existing SDK overlay filter. Returns: Success or the injected clear error.
   @override
   Future<void> clearOverlays({NOverlayType? type}) async {
-    expect(type, NOverlayType.marker);
+    // The automatic retry runs from a timer inside tester.pump, where the guarded expect() is rejected.
+    expectSync(type, NOverlayType.marker);
     commands.add('clear');
     if (!firstClear.isCompleted) firstClear.complete();
     if (failNextClear) {
@@ -386,6 +389,134 @@ void main() {
       skip: !isNaverMapConfigured,
     );
   }
+
+  for (final retryFails in [false, true]) {
+    // Function Name: native marker automatic retry regression
+    // Description: A partial add must be repaired once without any widget change, and only once per failure.
+    // Parameters: tester: Host widget driver. Returns: Deterministic native-command assertions.
+    testWidgets(
+      'native marker queue retries a partial add once without a widget '
+      'change: retryFails=$retryFails',
+      (tester) async {
+        final errors = <FlutterErrorDetails>[];
+        final previousErrorHandler = FlutterError.onError;
+        FlutterError.onError = (details) {
+          if (details.library == 'nearby care map') {
+            errors.add(details);
+          } else {
+            previousErrorHandler?.call(details);
+          }
+        };
+        addTearDown(() => FlutterError.onError = previousErrorHandler);
+        final controller = _QueueMapController();
+        final places = [place('a'), place('b')];
+
+        await tester.pumpWidget(
+          MaterialApp(home: _QueueTestMap(places: places)),
+        );
+        final element =
+            tester.element(find.byType(_QueueTestMap)) as _QueueTestMapElement;
+        element.map!.onMapReady!(controller);
+        await _flushMapOperations(
+          tester,
+          until: () => controller.firstAdd.isCompleted,
+        );
+        expect(controller.markers, {'pharmacy-a'});
+        expect(controller.commands, ['add']);
+        expect(errors, hasLength(1));
+
+        // The same widget stays mounted; only time passes.
+        controller.failNextAdd = retryFails;
+        await tester.pump(const Duration(seconds: 2));
+        await _flushMapOperations(
+          tester,
+          until: () => controller.commands.length == 3,
+        );
+        expect(controller.commands, ['add', 'clear', 'add']);
+        if (!retryFails) {
+          expect(controller.markers, {'pharmacy-a', 'pharmacy-b'});
+          expect(errors, hasLength(1));
+        } else {
+          expect(controller.markers, {'pharmacy-a'});
+          expect(errors, hasLength(2));
+        }
+
+        // No second automatic attempt follows, whether the retry succeeded or failed.
+        await tester.pump(const Duration(seconds: 30));
+        await _flushMapOperations(tester);
+        expect(controller.commands, ['add', 'clear', 'add']);
+
+        if (retryFails) {
+          // The next widget change still repairs the map, as before.
+          await tester.pumpWidget(
+            MaterialApp(
+              home: _QueueTestMap(places: places, favorites: {'unrelated'}),
+            ),
+          );
+          await _flushMapOperations(
+            tester,
+            until: () => controller.commands.length == 5,
+          );
+          expect(controller.commands, ['add', 'clear', 'add', 'clear', 'add']);
+          expect(controller.markers, {'pharmacy-a', 'pharmacy-b'});
+        }
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+      },
+      skip: !isNaverMapConfigured,
+    );
+  }
+
+  // Function Name: settled content padding regression
+  // Description: Sheet-drag frames must not change the native content padding until the inset settles; a selection change applies at once.
+  // Parameters: tester: Host widget driver. Returns: Assertions on the options handed to the native map.
+  testWidgets(
+    'map content padding follows the sheet inset only after it settles',
+    (tester) async {
+      final places = [place('a'), place('b')];
+      // Function Name: paddingBottom
+      // Description: Reads the bottom content padding of the latest native map configuration.
+      // Parameters: None. Returns: Padding in logical pixels.
+      double paddingBottom() =>
+          (tester.element(find.byType(_QueueTestMap)) as _QueueTestMapElement)
+              .map!
+              .options
+              .contentPadding
+              .bottom;
+      // Function Name: pumpInset
+      // Description: Rebuilds the same map state with a new sheet inset, as one drag frame does.
+      // Parameters: inset: Sheet height; selected: Selected place ID. Returns: Completion of the frame.
+      Future<void> pumpInset(double inset, {String? selected = 'a'}) =>
+          tester.pumpWidget(
+            MaterialApp(
+              home: _QueueTestMap(
+                places: places,
+                selected: selected,
+                bottomInset: inset,
+              ),
+            ),
+          );
+
+      await pumpInset(100);
+      expect(paddingBottom(), 128);
+      for (final inset in [120.0, 160.0, 200.0]) {
+        await pumpInset(inset);
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(paddingBottom(), 128);
+      }
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(paddingBottom(), 228);
+
+      // Closing the sheet clears the selection; that padding is not delayed.
+      await pumpInset(0, selected: null);
+      expect(paddingBottom(), 28);
+      await tester.pump(const Duration(seconds: 1));
+      expect(paddingBottom(), 28);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+    skip: !isNaverMapConfigured,
+  );
 
   // 함수역할: 선택 이동 시 두 ID만 교체하는지 검사한다. 매개변수: 없음. 반환값: 없음.
   test('선택 변경은 기존 선택과 새 선택의 두 마커만 교체한다', () {

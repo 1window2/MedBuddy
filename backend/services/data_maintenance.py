@@ -5,19 +5,21 @@ import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import exists
+from sqlalchemy import exists, func
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.application_clock import application_now
 from core.config import settings
 from entities.health_recommendation_cache_entity import _HealthRecommendationCache
 from entities.caregiver_alert_outbox_entity import (
+    CAREGIVER_ALERT_STATUS_DEAD_LETTER,
     CAREGIVER_ALERT_STATUS_SENT,
     _CaregiverAlertOutbox,
 )
 from entities.medication_completion_entity import _MedicationCompletion
 from entities.patient_caregiver_link_entity import _PatientLinkCode
 from entities.saved_medication_entity import _SavedMedication
+from services.background_loop_runner import BackgroundLoopRunner
 from services.chat_message_retention import ChatMessageRetentionPolicy
 from services.saved_medication_retention import SavedMedicationRetentionPolicy
 
@@ -30,7 +32,7 @@ logger = logging.getLogger(__name__)
 # 주요 책임:
 # - 설정된 보존 기간을 넘긴 저장 약과 해당 완료 기록을 정리한다; 종료 약 보존 설정이 0이면 유지한다.
 # - 원본 약이 없는 완료 기록과 만료 또는 사용된 연동 코드를 제거한다.
-# - 오래된 추천 캐시, 전송 완료 알림과 보관 기한이 지난 채팅을 제거한다.
+# - 오래된 추천 캐시, 전송 완료·전송 포기 알림과 보관 기한이 지난 채팅을 제거한다.
 # - 모든 정리 결과를 하나의 트랜잭션으로 커밋한다.
 # 속성:
 # - retention_policy (SavedMedicationRetentionPolicy): 종료 약 보존 정책.
@@ -61,6 +63,7 @@ class DataMaintenanceService:
     # - db (Session): 영속 기록에 접근할 호출자의 SQLAlchemy 세션.
     # 반환값:
     # - 저장 약, 고아 완료 기록, 연동 코드, 추천 캐시, 전송 알림과 채팅별 삭제 건수.
+    #   sent_caregiver_alerts에는 전송 완료 행과 함께 재시도를 끝낸 전송 포기 행도 포함된다.
     def runOnce(self, db: Session) -> dict[str, int]:
         application_date = application_now().date()
         utc_now = datetime.now(UTC).replace(tzinfo=None)
@@ -100,11 +103,22 @@ class DataMaintenanceService:
                 .filter(_HealthRecommendationCache.created_at < cache_cutoff)
                 .delete(synchronize_session=False)
             ),
+            # 종료 상태만 지운다. 대기·실패·처리 중인 행은 오래돼도 전송 작업이 계속 소유한다.
+            # 전송 포기 행에는 전송 시각이 없으므로 생성 시각으로 보관 기한을 잰다.
             "sent_caregiver_alerts": (
                 db.query(_CaregiverAlertOutbox)
                 .filter(
-                    _CaregiverAlertOutbox.status == CAREGIVER_ALERT_STATUS_SENT,
-                    _CaregiverAlertOutbox.sent_at < outbox_cutoff,
+                    _CaregiverAlertOutbox.status.in_(
+                        (
+                            CAREGIVER_ALERT_STATUS_SENT,
+                            CAREGIVER_ALERT_STATUS_DEAD_LETTER,
+                        )
+                    ),
+                    func.coalesce(
+                        _CaregiverAlertOutbox.sent_at,
+                        _CaregiverAlertOutbox.created_at,
+                    )
+                    < outbox_cutoff,
                 )
                 .delete(synchronize_session=False)
             ),
@@ -127,7 +141,7 @@ class DataMaintenanceService:
 # - session_factory (sessionmaker[Session]): 작업별 세션 생성기.
 # - service (DataMaintenanceService): 일괄 정리 서비스.
 # - _task / _stop_event: 반복 태스크와 종료 신호.
-class PeriodicDataMaintenanceRunner:
+class PeriodicDataMaintenanceRunner(BackgroundLoopRunner):
     # 함수이름: __init__
     # 함수역할:
     # - 정리 세션 생성기와 서비스를 저장하고 반복 태스크의 종료 이벤트를 준비한다.
@@ -143,43 +157,25 @@ class PeriodicDataMaintenanceRunner:
     ) -> None:
         self.session_factory = session_factory
         self.service = service or DataMaintenanceService()
-        self._stop_event = asyncio.Event()
-        self._task: asyncio.Task[None] | None = None
-
-    # 함수이름: start
-    # 함수역할:
-    # - 등록된 태스크가 없을 때만 주기적 데이터 정리 작업을 시작한다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - 없음; 중복 태스크를 생성하지 않는다.
-    def start(self) -> None:
-        if self._task is None:
-            self._task = asyncio.create_task(self._run_loop())
-
-    # 함수이름: stop
-    # 함수역할:
-    # - 종료 신호를 설정하고 진행 중인 정리가 끝날 때까지 기다린 후 태스크를 해제한다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - 없음; 반복 태스크 종료 후 반환한다.
-    async def stop(self) -> None:
-        self._stop_event.set()
-        if self._task is not None:
-            await self._task
-            self._task = None
+        super().__init__()
 
     # 함수이름: _run_loop
     # 함수역할:
     # - 정리를 별도 스레드에서 한 번 실행한 뒤 설정된 간격이나 종료 신호까지 기다린다.
+    # - 세션 생성·롤백·종료까지 실패한 주기도 기록만 하고 같은 간격으로 다음 주기를 이어간다.
     # 매개변수:
     # - 없음.
     # 반환값:
     # - 없음; 종료 이벤트가 설정되면 반복을 마친다.
     async def _run_loop(self) -> None:
         while not self._stop_event.is_set():
-            await asyncio.to_thread(self._run_once)
+            try:
+                await asyncio.to_thread(self._run_once)
+            except Exception as exc:
+                logger.error(
+                    "Periodic data cleanup cycle failed: %s",
+                    type(exc).__name__,
+                )
             try:
                 await asyncio.wait_for(
                     self._stop_event.wait(),

@@ -4,7 +4,14 @@
 from datetime import date, timedelta
 from typing import Optional
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+)
 
 from core.application_clock import application_today
 from entities.medication_detail_entity import MedicationDetail
@@ -26,6 +33,54 @@ _MAX_PUSH_TOKEN_LENGTH = 4_096
 _MIN_PRESCRIPTION_DATE = date(2000, 1, 1)
 _MAX_PRESCRIPTION_DATE_OFFSET_DAYS = 365
 _PRESCRIPTION_BATCH_ID_PATTERN = r"^[A-Za-z0-9_-]{16,64}$"
+_TRUNCATION_MARKER = "…"
+_NUMBER_SEPARATORS = ".,/"
+
+
+# 함수이름: _is_number_character
+# 함수역할:
+# - 문자가 용량·횟수 숫자의 일부(숫자, 소수점·자릿수·분수 구분 기호)인지 판정한다.
+# 매개변수:
+# - character (str): 판정할 한 글자.
+# 반환값:
+# - 숫자의 일부이면 True.
+def _is_number_character(character: str) -> bool:
+    return character.isdigit() or character in _NUMBER_SEPARATORS
+
+
+# 함수이름: _truncate_to_field_limit
+# 함수역할:
+# - 응답 문자열이 해당 필드에 선언된 max_length를 넘으면 그 길이 이내로 줄이고 끝에 말줄임표를 붙여 잘렸음을 값에 남긴다.
+# - 숫자 중간에서 끊기면 남은 앞자리가 다른 용량·횟수로 읽히므로 끊긴 숫자는 통째로 뺀다.
+# 매개변수:
+# - model (type[BaseModel]): 길이 제한이 선언된 응답 모델.
+# - field_name (str | None): 검증 중인 필드 이름.
+# - value (object): 검증 전 원본 값.
+# 반환값:
+# - 제한 이내로 줄인 문자열; 문자열이 아니거나 제한이 없거나 제한 이내이면 원본 값.
+def _truncate_to_field_limit(
+    model: type[BaseModel],
+    field_name: str | None,
+    value: object,
+) -> object:
+    if not isinstance(value, str) or field_name is None:
+        return value
+    max_length = next(
+        (
+            constraint.max_length
+            for constraint in model.model_fields[field_name].metadata
+            if isinstance(getattr(constraint, "max_length", None), int)
+        ),
+        None,
+    )
+    if max_length is None or len(value) <= max_length:
+        return value
+    kept_length = max_length - len(_TRUNCATION_MARKER)
+    kept = value[:kept_length]
+    if kept and _is_number_character(value[kept_length]):
+        while kept and _is_number_character(kept[-1]):
+            kept = kept[:-1]
+    return kept + _TRUNCATION_MARKER
 
 
 # 클래스명: MedicationRequest
@@ -446,6 +501,7 @@ class MedicationResponse(BaseModel):
 # - dosage_per_time (str): 처방에 표시된 1회 복용량.
 # - daily_frequency (str): 하루 복용 횟수 또는 그 설명.
 # - total_days (str): 처방된 총 복용 기간.
+# 참고: AI가 길이 제한을 넘는 문자열을 돌려줘도 분석 전체가 실패하지 않도록 넘친 값은 말줄임표를 붙여 줄인다.
 class PrescriptionMedicationResponse(BaseModel):
     prescription_date: str = Field(max_length=_MAX_SHORT_TEXT_LENGTH)
     drug_name: str = Field(max_length=_MAX_MEDICATION_NAME_LENGTH)
@@ -455,6 +511,19 @@ class PrescriptionMedicationResponse(BaseModel):
     dosage_per_time: str = Field(max_length=_MAX_SHORT_TEXT_LENGTH)
     daily_frequency: str = Field(max_length=_MAX_SHORT_TEXT_LENGTH)
     total_days: str = Field(max_length=_MAX_SHORT_TEXT_LENGTH)
+
+    # 함수이름: truncate_overlong_text
+    # 함수역할:
+    # - 길이 제한이 있는 문자열 필드의 값을 제한 검증 전에 제한 이내로 줄인다.
+    # 매개변수:
+    # - value (object): 검증 전 원본 값.
+    # - info (ValidationInfo): 검증 중인 필드 이름을 담은 문맥.
+    # 반환값:
+    # - 제한 이내 문자열 또는 변경 없는 원본 값.
+    @field_validator("*", mode="before")
+    @classmethod
+    def truncate_overlong_text(cls, value: object, info: ValidationInfo) -> object:
+        return _truncate_to_field_limit(cls, info.field_name, value)
 
 
 # 클래스명: PrescriptionAnalysisResponse
@@ -467,6 +536,7 @@ class PrescriptionMedicationResponse(BaseModel):
 # - prescription_date (str): 확인된 경우 처방 조제일자.
 # - prescription_batch_id (str): 같은 분석에서 나온 약을 묶는 선택적 처방 배치 식별자.
 # - raw_medication_count (int): 정규화·중복 제거 전 원본 약품 행 수.
+# 참고: 길이 제한을 넘는 병원 이름·조제일자는 말줄임표를 붙여 줄인다.
 class PrescriptionAnalysisResponse(BaseModel):
     hospital_name: str = Field(max_length=_MAX_MEDICATION_NAME_LENGTH)
     prescription_date: str = Field(max_length=_MAX_SHORT_TEXT_LENGTH)
@@ -475,3 +545,16 @@ class PrescriptionAnalysisResponse(BaseModel):
     raw_medication_count: int = Field(ge=0)
     parsed_medication_count: int = Field(ge=0)
     skipped_medication_count: int = Field(ge=0)
+
+    # 함수이름: truncate_overlong_text
+    # 함수역할:
+    # - 길이 제한이 있는 문자열 필드의 값을 제한 검증 전에 제한 이내로 줄인다.
+    # 매개변수:
+    # - value (object): 검증 전 원본 값.
+    # - info (ValidationInfo): 검증 중인 필드 이름을 담은 문맥.
+    # 반환값:
+    # - 제한 이내 문자열 또는 변경 없는 원본 값.
+    @field_validator("*", mode="before")
+    @classmethod
+    def truncate_overlong_text(cls, value: object, info: ValidationInfo) -> object:
+        return _truncate_to_field_limit(cls, info.field_name, value)

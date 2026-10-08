@@ -4,6 +4,9 @@ import 'dart:ui';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as image_library;
+import 'package:path_provider/path_provider.dart';
+
+import 'app_temp_file.dart';
 
 // 파일명: prescription_image_crop_service.dart
 // 역할: 촬영한 원본 사진에서 화면 가이드 안쪽만 남긴 OCR 입력 이미지를 만든다.
@@ -12,7 +15,10 @@ import 'package:image/image.dart' as image_library;
 // Role: Produces OCR input by cropping the captured image to the displayed prescription guide.
 // Responsibilities:
 // - Apply EXIF orientation, clamp crop coordinates, write the derived JPEG, and attempt cleanup of raw captures and failed partial outputs.
+// - Remove guide crops that a flow left in the app temporary directory without reaching its own cleanup.
 class PrescriptionImageCropService {
+  static const String _guideImageSuffix = '_guide.jpg';
+
   // 함수이름: PrescriptionImageCropService
   // 함수역할: 촬영 파일의 방향 보정·가이드 자르기 및 원본 정리를 수행할 무상태 서비스를 만든다.
   // 매개변수:
@@ -68,7 +74,7 @@ class PrescriptionImageCropService {
       final sourceBaseName = sourceName.replaceFirst(RegExp(r'\.[^.]+$'), '');
       croppedFile = File(
         '${sourceFile.parent.path}${Platform.pathSeparator}'
-        '${sourceBaseName}_guide.jpg',
+        '$sourceBaseName$_guideImageSuffix',
       );
       await croppedFile.writeAsBytes(
         image_library.encodeJpg(croppedImage, quality: 92),
@@ -86,6 +92,42 @@ class PrescriptionImageCropService {
       }
     }
     return XFile(croppedFile.path);
+  }
+
+  // Function Name: deleteStaleGuideImages
+  // Description: Deletes guide crops ("*_guide.jpg") that stayed in the app temporary directory because the flow that made them never reached its cleanup, for example after a process kill while the preview was open. Only crops older than the given age are removed so the crop of a flow that is still open is kept. Never throws.
+  // Parameters:
+  // - minimumAge (Duration): Age a guide crop must have reached before it is removed.
+  // - now (DateTime?): Current time; defaults to the device clock.
+  // Returns:
+  // - Future<int>: Number of guide crops removed.
+  Future<int> deleteStaleGuideImages({
+    Duration minimumAge = const Duration(days: 1),
+    DateTime? now,
+  }) async {
+    try {
+      final temporaryDirectory = await getTemporaryDirectory();
+      if (!await temporaryDirectory.exists()) {
+        return 0;
+      }
+      final newestRemovable = (now ?? DateTime.now()).subtract(minimumAge);
+      var deletedCount = 0;
+      await for (final entity in temporaryDirectory.list(followLinks: false)) {
+        if (entity is! File || !entity.path.endsWith(_guideImageSuffix)) {
+          continue;
+        }
+        if ((await entity.lastModified()).isAfter(newestRemovable)) {
+          continue;
+        }
+        if (await deleteAppTempFile(entity.path)) {
+          deletedCount += 1;
+        }
+      }
+      return deletedCount;
+    } catch (_) {
+      // Cleanup is best effort: an unavailable path provider or an IO error leaves the files for the next attempt.
+      return 0;
+    }
   }
 
   // Function Name: _deleteIfPresent

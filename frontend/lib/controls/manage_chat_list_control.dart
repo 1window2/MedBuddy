@@ -1,7 +1,10 @@
 // 파일명: manage_chat_list_control.dart
 // 역할: 현재 사용자의 활성 대화 상대, 표시 이름·최근 메시지·안 읽은 개수를 조회한다.
 
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 
 import '../entities/chat_message_entity.dart';
 import '../entities/patient_caregiver_link_entity.dart';
@@ -12,9 +15,12 @@ import 'manage_linked_chat_control.dart';
 // 클래스명: ManageChatList
 // 역할: 대화 목록의 조회 상태를 사용자 단위로 보관하고 기존 연동·채팅 Control에 요청을 위임한다.
 // 주요 책임: 활성 참여자 검증, 별칭 복원, 최근 메시지 조회와 요청 중복·종료 후 응답 방지.
-// 속성: userHash: 소유 계정, links: 활성 연동, latestMessages: 연동별 미리보기.
+// 속성: userHash: 소유 계정, links: 활성 연동, latestMessages: 연동별 미리보기,
+//       isEnglish: 별칭이 없는 환자의 기본 표시 이름에 쓸 언어.
 class ManageChatList extends ChangeNotifier {
   final String userHash;
+  // 다음 조회부터 적용된다. 설정 언어가 바뀌면 생성한 쪽에서 갱신한다.
+  bool isEnglish;
   final LinkPatientCaregiver _linkControl;
   final ManageLinkedChat _chatControl;
   final ManageCaregiverPatientLocalState _localState;
@@ -22,27 +28,39 @@ class ManageChatList extends ChangeNotifier {
   final bool _ownsChatControl;
   List<PatientCaregiverLink> _links = const [];
   Map<String, String> _labels = const {};
-  final Map<int, ChatMessage> _latestMessages = {};
-  final Map<int, int> _unreadCounts = {};
-  final Set<int> _previewErrors = {};
+  Map<int, ChatMessage> _latestMessages = {};
+  Map<int, int> _unreadCounts = {};
+  Set<int> _previewErrors = {};
   Future<void>? _pending;
   bool _refreshAgain = false;
   bool _includeMessages = false;
+  bool _requested = false;
+  String? _publishedSignature;
   bool _disposed = false;
-  bool isLoading = false;
-  bool hasError = false;
+  bool _isLoading = false;
+  // 외부에서는 읽기만 하고 값은 이 객체만 바꾼다.
+  bool get isLoading => _isLoading;
+  bool _hasError = false;
+  bool get hasError => _hasError;
 
   // 함수이름: ManageChatList
   // 함수역할: 계정 범위와 조회 의존성을 고정한다. 주입받은 Control은 호출자가 해제한다.
-  // 매개변수: userHash: 계정 해시, linkControl/chatControl/localState: 테스트 또는 기존 조회 의존성.
+  // 매개변수: userHash: 계정 해시, linkControl/chatControl/localState: 테스트 또는 기존 조회 의존성,
+  //           client: 기본 Control이 함께 쓸 HTTP 클라이언트(호출자가 닫는다. 없으면 Control마다 새로 만든다),
+  //           isEnglish: 기본 표시 이름의 언어(기본값 한국어).
   // 반환값: 사용자별 대화 목록 Control.
   ManageChatList({
     required this.userHash,
     LinkPatientCaregiver? linkControl,
     ManageLinkedChat? chatControl,
     ManageCaregiverPatientLocalState? localState,
-  }) : _linkControl = linkControl ?? LinkPatientCaregiver(userHash: userHash),
-       _chatControl = chatControl ?? ManageLinkedChat(userHash: userHash),
+    http.Client? client,
+    this.isEnglish = false,
+  }) : _linkControl =
+           linkControl ??
+           LinkPatientCaregiver(userHash: userHash, client: client),
+       _chatControl =
+           chatControl ?? ManageLinkedChat(userHash: userHash, client: client),
        _localState = localState ?? const ManageCaregiverPatientLocalState(),
        _ownsLinkControl = linkControl == null,
        _ownsChatControl = chatControl == null;
@@ -80,26 +98,41 @@ class ManageChatList extends ChangeNotifier {
       if (serverAlias != null) {
         return serverAlias.isNotEmpty
             ? serverAlias
-            : _localState.fallbackLabel(link.patientHash);
+            : _localState.fallbackLabel(link.patientHash, isEnglish: isEnglish);
       }
       final alias = _labels[link.patientHash];
       if (alias != null && alias.trim().isNotEmpty) return alias;
-      return '${isEnglish ? 'Patient' : '환자'} ${link.patientHash}';
+      return _localState.fallbackLabel(link.patientHash, isEnglish: isEnglish);
     }
     final caregiverAlias = link.caregiverAlias?.trim();
     if (caregiverAlias != null && caregiverAlias.isNotEmpty) {
       return caregiverAlias;
     }
-    return '${isEnglish ? 'Caregiver' : '보호자'} ${link.caregiverHash}';
+    // 계정 해시 전체를 화면에 노출하지 않고 연동 화면과 같은 끝 네 글자만 보여준다.
+    final caregiverHash = link.caregiverHash.trim();
+    final suffix = caregiverHash.length <= 4
+        ? caregiverHash
+        : caregiverHash.substring(caregiverHash.length - 4);
+    return '${isEnglish ? 'Caregiver' : '보호자'} ${suffix.toUpperCase()}';
   }
 
   // 함수이름: refresh
   // 함수역할: 중복 요청을 합치고 갱신 중 발생한 연동 변경을 한 번 더 조회한다.
-  // 매개변수: includeMessages: 화면이 보일 때 최근 메시지도 읽을지 여부.
+  // 매개변수: includeMessages: 화면이 보일 때 최근 메시지도 읽을지 여부,
+  //           showLoading: 사용자가 직접 요청한 갱신처럼 진행 표시를 켤지 여부(첫 조회는 항상 켠다).
   // 반환값: 대기 중인 갱신까지 완료되는 Future.
-  Future<void> refresh({bool includeMessages = false}) {
+  Future<void> refresh({
+    bool includeMessages = false,
+    bool showLoading = false,
+  }) {
     if (_disposed) return Future.value();
     _includeMessages |= includeMessages;
+    // 주기 조회는 진행 표시 없이 조용히 실행해 15초마다 화면이 흔들리지 않게 한다.
+    if ((showLoading || !_requested) && !_isLoading) {
+      _isLoading = true;
+      notifyListeners();
+    }
+    _requested = true;
     if (_pending != null) {
       _refreshAgain = true;
       return _pending!;
@@ -109,11 +142,10 @@ class ManageChatList extends ChangeNotifier {
   }
 
   // 함수이름: _refreshLoop
-  // 함수역할: 목록을 먼저 반영한 뒤 선택적으로 미리보기를 읽으며 오류 시 마지막 목록을 유지한다.
+  // 함수역할: 목록·별칭·미리보기를 모두 읽고 정렬한 뒤 한 번에 반영하며 오류 시 마지막 목록을 유지한다.
+  //           표시 내용이 실제로 바뀌었거나 진행 표시를 끌 때만 알린다.
   // 매개변수: 없음. 반환값: 모든 예약 조회가 끝나면 완료.
   Future<void> _refreshLoop() async {
-    isLoading = true;
-    notifyListeners();
     try {
       do {
         _refreshAgain = false;
@@ -136,96 +168,141 @@ class ManageChatList extends ChangeNotifier {
               active[id] = link;
             }
           }
-          _links = active.values.toList();
-          // 해제된 연동의 미리보기는 즉시 제거한다.
-          _latestMessages.removeWhere(_isInactive);
-          _unreadCounts.removeWhere((id, _) => _isInactiveId(id));
-          _previewErrors.removeWhere(_isInactiveId);
-          hasError = false;
-          notifyListeners();
+          final links = active.values.toList();
+          // 해제된 연동의 미리보기는 새 목록과 함께 제거한다.
+          final latestMessages = Map<int, ChatMessage>.of(_latestMessages)
+            ..removeWhere((id, _) => !active.containsKey(id));
+          final unreadCounts = Map<int, int>.of(_unreadCounts)
+            ..removeWhere((id, _) => !active.containsKey(id));
+          final previewErrors = _previewErrors
+              .where(active.containsKey)
+              .toSet();
+          Map<String, String> labels;
           try {
-            final labels = await _localState.loadLabels(
+            labels = await _localState.loadLabels(
               caregiverHash: userHash,
-              links: _links,
+              links: links,
+              isEnglish: isEnglish,
             );
             if (_disposed) return;
-            _labels = labels;
           } catch (_) {
             // 별칭 저장소 장애가 대화 진입을 막지 않도록 서버 이름을 사용한다.
-            _labels = const {};
+            labels = const {};
           }
           if (withMessages && !_disposed) {
             // 여러 환자가 있어도 한 번에 네 요청까지만 실행한다.
-            for (var offset = 0; offset < _links.length; offset += 4) {
-              await Future.wait(_links.skip(offset).take(4).map(_loadPreview));
+            for (var offset = 0; offset < links.length; offset += 4) {
+              await Future.wait(
+                links
+                    .skip(offset)
+                    .take(4)
+                    .map(
+                      (link) => _loadPreview(
+                        link,
+                        latestMessages,
+                        unreadCounts,
+                        previewErrors,
+                      ),
+                    ),
+              );
               if (_disposed) return;
             }
           }
           if (_disposed) return;
-          _links.sort(_compareLinks);
+          // 서버 순서(연동 ID)의 목록이 잠시 보였다가 다시 바뀌지 않도록 정렬을 마친 뒤 교체한다.
+          links.sort((a, b) => _compareLinks(a, b, latestMessages));
+          _links = links;
+          _labels = labels;
+          _latestMessages = latestMessages;
+          _unreadCounts = unreadCounts;
+          _previewErrors = previewErrors;
+          _hasError = false;
         } catch (_) {
           if (_disposed) return;
-          hasError = true;
+          _hasError = true;
         }
       } while (_refreshAgain && !_disposed);
     } finally {
       _pending = null;
-      isLoading = false;
-      if (!_disposed) notifyListeners();
+      final wasLoading = _isLoading;
+      _isLoading = false;
+      if (!_disposed) {
+        final signature = _stateSignature();
+        if (wasLoading || signature != _publishedSignature) {
+          _publishedSignature = signature;
+          notifyListeners();
+        }
+      }
     }
   }
 
-  // 함수이름: _isInactive
-  // 함수역할: 비활성 연동에 속한 미리보기 제거 여부를 판단한다.
-  // 매개변수: id, message: 연동 ID와 미리보기. 반환값: 제거할 항목이면 true.
-  bool _isInactive(int id, ChatMessage message) => _isInactiveId(id);
-
-  // 함수이름: _isInactiveId
-  // 함수역할: 현재 활성 목록에 ID가 없는지 확인한다.
-  // 매개변수: id: 연동 ID. 반환값: 연동 부재 여부.
-  bool _isInactiveId(int id) {
-    for (final link in _links) {
-      if (link.linkId == id) return false;
-    }
-    return true;
-  }
+  // 함수이름: _stateSignature
+  // 함수역할: 화면에 보이는 목록 순서·이름·미리보기·미확인 개수·오류 상태를 비교할 값으로 만든다.
+  // 매개변수: 없음. 반환값: 표시 내용이 같으면 같은 문자열.
+  String _stateSignature() => jsonEncode([
+    _hasError,
+    for (final link in _links)
+      [
+        link.toJson(),
+        _labels[link.patientHash],
+        _unreadCounts[link.linkId],
+        _previewErrors.contains(link.linkId),
+        if (_latestMessages[link.linkId] case final message?)
+          [
+            message.messageId,
+            message.body,
+            message.deletedForEveryone,
+            message.createdAt.toIso8601String(),
+          ],
+      ],
+  ]);
 
   // 함수이름: _loadPreview
   // 함수역할: 읽음 처리 없이 최근 메시지와 미확인 개수를 가져오고 실패한 표시값은 제거한다.
-  // 매개변수: link: 활성 연동. 반환값: 해당 미리보기 조회 완료.
-  Future<void> _loadPreview(PatientCaregiverLink link) async {
+  // 매개변수: link: 활성 연동, latestMessages/unreadCounts/previewErrors: 이번 조회에서 채울 결과.
+  // 반환값: 해당 미리보기 조회 완료.
+  Future<void> _loadPreview(
+    PatientCaregiverLink link,
+    Map<int, ChatMessage> latestMessages,
+    Map<int, int> unreadCounts,
+    Set<int> previewErrors,
+  ) async {
     final id = link.linkId!;
     try {
       final messages = await _chatControl.requestHistory(linkId: id, limit: 1);
       if (_disposed) return;
-      _latestMessages.remove(id);
-      _previewErrors.remove(id);
+      latestMessages.remove(id);
+      previewErrors.remove(id);
       if (messages.isNotEmpty &&
           messages.last.linkId == id &&
           !messages.last.hiddenForMe) {
-        _latestMessages[id] = messages.last;
+        latestMessages[id] = messages.last;
       }
     } catch (_) {
       if (_disposed) return;
-      _latestMessages.remove(id);
-      _previewErrors.add(id);
+      latestMessages.remove(id);
+      previewErrors.add(id);
     }
     try {
       final unread = await _chatControl.requestUnreadSummary(linkId: id);
       if (_disposed) return;
-      _unreadCounts[id] = unread.count;
+      unreadCounts[id] = unread.count;
     } catch (_) {
       if (_disposed) return;
-      _unreadCounts.remove(id);
+      unreadCounts.remove(id);
     }
   }
 
   // 함수이름: _compareLinks
   // 함수역할: 최근 대화 순서로 정렬하고 메시지가 없으면 연동 ID로 순서를 고정한다.
-  // 매개변수: a, b: 비교할 활성 연동. 반환값: 정렬 순서.
-  int _compareLinks(PatientCaregiverLink a, PatientCaregiverLink b) {
-    final first = _latestMessages[a.linkId]?.createdAt;
-    final second = _latestMessages[b.linkId]?.createdAt;
+  // 매개변수: a, b: 비교할 활성 연동, latestMessages: 정렬 기준 미리보기. 반환값: 정렬 순서.
+  int _compareLinks(
+    PatientCaregiverLink a,
+    PatientCaregiverLink b,
+    Map<int, ChatMessage> latestMessages,
+  ) {
+    final first = latestMessages[a.linkId]?.createdAt;
+    final second = latestMessages[b.linkId]?.createdAt;
     if (first != null && second != null) {
       final order = second.compareTo(first);
       if (order != 0) return order;

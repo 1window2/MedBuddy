@@ -10,6 +10,8 @@ import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/link_patient_caregiver_control.dart';
 import 'package:medbuddy_frontend/entities/patient_caregiver_link_entity.dart';
 import 'package:medbuddy_frontend/entities/patient_hash_entity.dart';
+import 'package:medbuddy_frontend/services/api_response_parser.dart';
+import 'package:medbuddy_frontend/services/user_facing_error_message.dart';
 
 // 함수이름: main
 // 함수역할:
@@ -459,21 +461,124 @@ void main() {
 
   // Function Name: test callback
   // Description:
-  // - Expected behavior: PatientCaregiverLink preserves diagram lifecycle methods.
+  // - Expected behavior: every link request reports a rejected response with its status code and a
+  //   transport error with its cause, keeping the message text, so the screen can show connection
+  //   guidance instead of the generic English sentence.
   // Parameters:
   // - None.
   // Returns:
-  // - No value; a failed expectation fails this test.
-  test('PatientCaregiverLink preserves diagram lifecycle methods', () {
-    const link = PatientCaregiverLink(
-      patientHash: 'patient-a',
-      caregiverHash: 'caregiver-a',
+  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  test('link requests surface typed failures', () async {
+    // Function Name: control
+    // Description:
+    // - Build a link control for caregiver-a on the given HTTP client.
+    // Parameters:
+    // - client (http.Client): Mock transport for the request under test.
+    // Returns:
+    // - The scoped link control.
+    LinkPatientCaregiver control(http.Client client) => LinkPatientCaregiver(
+      baseUrl: 'http://medbuddy.test',
+      userHash: 'caregiver-a',
+      client: client,
     );
 
-    final createdLink = link.savePatientCaregiverLink();
-    final deletedLink = createdLink.removePatientCaregiverLink();
+    await _expectTypedFailures(
+      'Link lookup failed',
+      (client) => control(client).requestLinkScreen(),
+    );
+    await _expectTypedFailures(
+      'Patient code creation failed',
+      (client) => control(client).generatePatientHash(),
+    );
+    await _expectTypedFailures(
+      'Patient registration failed',
+      (client) => control(client).requestPatientCaregiverLink('ABCD1234'),
+    );
+    await _expectTypedFailures(
+      'Patient alias save failed',
+      (client) =>
+          control(client).savePatientAlias(linkId: 7, patientAlias: 'Mom'),
+    );
+    await _expectTypedFailures(
+      'Caregiver alias save failed',
+      (client) =>
+          control(client).saveCaregiverAlias(linkId: 7, caregiverAlias: 'Son'),
+    );
+    await _expectTypedFailures(
+      'Unlink failed',
+      (client) => control(client).requestUnlink(7),
+    );
 
-    expect(createdLink.linkStatus, isTrue);
-    expect(deletedLink.linkStatus, isFalse);
+    Object? offlineError;
+    try {
+      await control(
+        MockClient((_) async => throw http.ClientException('offline')),
+      ).requestLinkScreen();
+    } catch (error) {
+      offlineError = error;
+    }
+    expect(
+      UserFacingErrorMessage.resolve(offlineError!, isEnglish: false),
+      '인터넷 연결을 확인한 뒤 다시 시도해주세요.',
+    );
   });
+}
+
+// Function Name: _expectTypedFailures
+// Description:
+// - Run one control request against a rejected response and against a transport error, and check
+//   that both surface as ApiRequestException with the unchanged message text.
+// Parameters:
+// - operation (String): Failure label the control uses, without a trailing period.
+// - request (Future<Object?> Function(http.Client client)): Issues the request under test with the
+//   given HTTP client.
+// Returns:
+// - Future<void>; completes when both failures carry the expected status code or cause.
+Future<void> _expectTypedFailures(
+  String operation,
+  Future<Object?> Function(http.Client client) request,
+) async {
+  final rejectingClient = MockClient(
+    // Function Name: MockClient callback
+    // Description:
+    // - Reject every request with HTTP 409 and a FastAPI detail.
+    // Parameters:
+    // - _ (http.Request): Unused intercepted HTTP request.
+    // Returns:
+    // - HTTP 409 with the detail text.
+    (_) async => http.Response(jsonEncode({'detail': 'Rejected.'}), 409),
+  );
+  await expectLater(
+    request(rejectingClient),
+    throwsA(
+      isA<ApiRequestException>()
+          .having((error) => error.statusCode, 'statusCode', 409)
+          .having((error) => error.cause, 'cause', isNull)
+          .having(
+            (error) => error.message,
+            'message',
+            '$operation (409): Rejected.',
+          ),
+    ),
+  );
+
+  final offlineClient = MockClient(
+    // Function Name: MockClient callback
+    // Description:
+    // - Fail every request before a response exists, as an offline device does.
+    // Parameters:
+    // - _ (http.Request): Unused intercepted HTTP request.
+    // Returns:
+    // - A Future failing with ClientException.
+    (_) async => throw http.ClientException('offline'),
+  );
+  await expectLater(
+    request(offlineClient),
+    throwsA(
+      isA<ApiRequestException>()
+          .having((error) => error.statusCode, 'statusCode', isNull)
+          .having((error) => error.cause, 'cause', isA<http.ClientException>())
+          .having((error) => error.message, 'message', '$operation.'),
+    ),
+  );
 }

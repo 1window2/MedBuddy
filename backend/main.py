@@ -9,13 +9,14 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 from alembic.util.exc import CommandError
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from google.auth.exceptions import GoogleAuthError
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, TimeoutError as DatabasePoolTimeoutError
 from starlette.concurrency import run_in_threadpool
+from starlette.responses import JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from api.chat_router import router as chat_router
@@ -23,6 +24,7 @@ from api.pharmacy_router import router as pharmacy_router
 from api.hospital_router import router as hospital_router
 from api.router import auth_router, router as medication_router
 from api.dependencies import (
+    close_gemini_clients,
     close_pharmacy_boundary,
     close_hospital_boundary,
     close_medication_detail_cache,
@@ -35,6 +37,7 @@ from api.dependencies import (
 from boundaries.firebase_admin_boundary import verify_firebase_admin_credentials
 from boundaries.pill_identification_boundary import MAX_PILL_IMAGE_BYTES
 from core.config import settings
+from core.account_database_lock import ACCOUNT_BUSY_DETAIL
 from core.api_contract import ApiContractMiddleware
 from core.database import SessionLocal, engine
 from controls.process_chat_notifications_control import ProcessChatNotifications, reserve_chat_push
@@ -303,6 +306,7 @@ async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
             await maintenance_runner.stop()
         await app.state.request_rate_limit_store.close()
         await close_pill_identification_boundaries()
+        await close_gemini_clients()
         await close_medication_detail_cache()
         await close_public_drug_boundaries()
         await close_pharmacy_boundary()
@@ -388,6 +392,25 @@ def create_app() -> FastAPI:
         tags=["Chat"],
     )
     app.include_router(auth_router)
+
+    # Function Name: database_pool_timeout_handler
+    # Description:
+    # - Answers a request that could not borrow a pooled database connection in time with the same retryable response as a busy account, instead of an unhandled HTTP 500.
+    # Parameters:
+    # - _request (Request): Request that waited for a connection; unused.
+    # - _exc (DatabasePoolTimeoutError): Pool wait timeout raised by SQLAlchemy; unused.
+    # Returns:
+    # - HTTP 503 JSON response with Retry-After.
+    @app.exception_handler(DatabasePoolTimeoutError)
+    async def database_pool_timeout_handler(
+        _request: Request,
+        _exc: DatabasePoolTimeoutError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": ACCOUNT_BUSY_DETAIL},
+            headers={"Retry-After": "5"},
+        )
 
     # Function Name: health_check
     # Description:
