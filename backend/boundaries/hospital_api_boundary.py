@@ -26,6 +26,8 @@ _LOCATION_PATH = "/getHsptlMdcncLcinfoInqire"
 _DETAIL_PATH = "/getHsptlBassInfoInqire"
 _DEPARTMENT_PATH = "/getHsptlMdcncListInfoInqire"
 _MAX_RESPONSE_BYTES = 1024 * 1024
+# 제공자에 보내는 검색 좌표의 소수 자릿수(약 100 m 격자).
+_QUERY_COORDINATE_DECIMALS = 3
 
 
 class HospitalApiUnavailableError(RuntimeError):
@@ -96,9 +98,11 @@ class NationalEmergencyMedicalCenterHospitalAPI:
             raise ValueError("Invalid hospital search coordinates.")
         if not 1 <= page_no <= settings.HOSPITAL_SEARCH_MAX_PAGES or not 1 <= page_size <= 30:
             raise ValueError("Invalid hospital search pagination.")
+        # 거리는 호출자가 실제 좌표로 다시 계산한다. 제공자에는 약 100 m 격자로 낮춘 좌표만 보내
+        # 정밀 위치를 넘기지 않고, 좌표를 조금씩 바꿔 캐시를 피해 일일 호출 예산을 쓰는 것도 막는다.
         params = {
-            "WGS84_LAT": f"{latitude:.7f}",
-            "WGS84_LON": f"{longitude:.7f}",
+            "WGS84_LAT": f"{latitude:.{_QUERY_COORDINATE_DECIMALS}f}",
+            "WGS84_LON": f"{longitude:.{_QUERY_COORDINATE_DECIMALS}f}",
             "pageNo": str(page_no),
             "numOfRows": str(page_size),
         }

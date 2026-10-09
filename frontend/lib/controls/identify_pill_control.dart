@@ -401,7 +401,8 @@ class IdentifyPill {
       return difference > Duration.zero
           ? difference
           : const Duration(seconds: 1);
-    } on FormatException {
+    } on Exception {
+      // HttpDate.parse는 형식이 틀린 값에 FormatException이 아닌 HttpException을 던진다.
       return null;
     }
   }

@@ -204,6 +204,25 @@ class Settings(BaseSettings):
     RATE_LIMIT_REQUIRE_REDIS: bool = False
     REDIS_URL: str = "redis://localhost:6379"
     CHAT_MESSAGE_DAILY_LIMIT: int = Field(default=500, ge=50, le=10_000)
+    AI_REQUEST_DAILY_LIMIT: int = Field(
+        default=300,
+        ge=20,
+        le=100_000,
+        description=(
+            "Requests one account may send per day to the routes that call the "
+            "generative AI provider (prescription analysis, pill identification, "
+            "health recommendation). One IP address is allowed twenty times this."
+        ),
+    )
+    HOSPITAL_SEARCH_DAILY_LIMIT: int = Field(
+        default=120,
+        ge=10,
+        le=100_000,
+        description=(
+            "Nearby hospital searches one account may run per day. Protects the "
+            "shared daily request budget of the public hospital API."
+        ),
+    )
     CHAT_MESSAGE_RETENTION_DAYS: int = Field(
         default=90,
         ge=1,

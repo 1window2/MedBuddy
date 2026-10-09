@@ -41,11 +41,13 @@ from core.account_operation_locks import AccountOperationLocks
 from core.config import settings
 from core.database import get_db
 from core.request_rate_limits import (
+    DAILY_QUOTA_EXCEEDED_DETAIL,
     DEFAULT_AUTHENTICATED_API_RULES,
     DEFAULT_RATE_LIMIT_RULES,
     RateLimitRule,
     RequestRateLimitStore,
     mounted_route_template,
+    resolve_daily_quota,
 )
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from entities.patient_caregiver_link_entity import _PatientCaregiverLink
@@ -676,7 +678,7 @@ def test_every_body_limit_names_a_mounted_post_route(path: str) -> None:
 # Description:
 # - Walks every authenticated route: without headers 403, with App Check only 401, and with
 #   both exactly one per-user quota check under the full route template and the reviewed rule,
-#   next to one per-IP check.
+#   next to one per-IP check. Routes with a daily cost quota add one daily check to each.
 # Parameters:
 # - pipeline (_Pipeline): Application on replaced outer boundaries.
 # - method (str): HTTP method of the route.
@@ -705,10 +707,13 @@ async def test_route_checks_app_check_then_bearer_then_charges_the_user_once(
     assert all(identity.startswith("ip:") for identity in rejected_identities)
     assert signed_in.status_code not in {401, 429}, signed_in.text
     assert signed_in.status_code < 500, signed_in.text
+    daily_quota = resolve_daily_quota(method, template)
+    daily_checks = [] if daily_quota is None else [(daily_quota[1], daily_quota[0])]
     assert pipeline.store.user_calls("user-a") == [
         (f"{method}:{template}", _expected_user_rule(method, template)),
+        *daily_checks,
     ]
-    assert len(pipeline.store.ip_calls()) == 1
+    assert len(pipeline.store.ip_calls()) == 1 + len(daily_checks)
 
 
 # Function Name: test_default_rule_counts_caller_chosen_path_values_in_one_bucket
@@ -1236,6 +1241,52 @@ async def test_chat_daily_quota_is_enforced_over_http(
         "POST:/api/v1/chat/links/{link_id}/messages",
         "POST:/api/v1/chat/messages:daily",
     ] * 3
+
+
+# Function Name: test_costly_routes_have_a_daily_quota_per_account_and_per_address
+# Description:
+# - With the daily hospital-search quota lowered to two, the third search of an account is 429
+#   with a Retry-After to the end of the day, while another account on the same address still
+#   passes: the address is allowed twenty times the account quota in the same daily scope.
+# Parameters:
+# - pipeline (_Pipeline): Application on replaced outer boundaries.
+# - monkeypatch (pytest.MonkeyPatch): Lowers the daily quota for this test.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_costly_routes_have_a_daily_quota_per_account_and_per_address(
+    pipeline: _Pipeline,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "HOSPITAL_SEARCH_DAILY_LIMIT", 2)
+    search = {"latitude": 37.5, "longitude": 127.0}
+
+    async with _client(pipeline.app) as client:
+        responses = [
+            await client.get(
+                "/api/v1/hospitals/nearby", headers=_headers("user-a"), params=search,
+            )
+            for _ in range(3)
+        ]
+        other_account = await client.get(
+            "/api/v1/hospitals/nearby", headers=_headers("user-b"), params=search,
+        )
+
+    assert [response.status_code == 429 for response in responses] == [False, False, True], [
+        response.text for response in responses
+    ]
+    assert responses[2].json()["detail"] == DAILY_QUOTA_EXCEEDED_DETAIL
+    assert responses[2].headers["retry-after"] == str(86_400 - int(_QUOTA_CLOCK_SECONDS) % 86_400)
+    assert other_account.status_code != 429
+    assert ("daily:hospital-search", RateLimitRule(40, 86_400)) in pipeline.store.ip_calls()
+    assert [scope for scope, _ in pipeline.store.user_calls("user-a")] == [
+        "GET:/api/v1/hospitals/nearby",
+        "daily:hospital-search",
+    ] * 3
+    assert resolve_daily_quota("POST", "/api/v1/medication/analyze-prescription-text") == (
+        RateLimitRule(settings.AI_REQUEST_DAILY_LIMIT, 86_400), "daily:ai",
+    )
+    assert resolve_daily_quota("GET", "/api/v1/medication/list") is None
 
 
 # Function Name: test_exhausted_connection_pool_returns_503_with_retry_after

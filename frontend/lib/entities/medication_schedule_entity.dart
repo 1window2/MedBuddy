@@ -40,6 +40,28 @@ int medicationScheduleCountFromText(dynamic value) {
   return int.tryParse(matches.last.group(0) ?? '') ?? 0;
 }
 
+// Function Name: englishDailyFrequencyLabel
+// Description: Turns a daily dose count into an English phrase only when the text is one of the stored count forms ("3회", "1일 3회", "3"). Any other wording, such as "2일 1회", "주 1회" or "12시간마다", is not a per-day count and must be shown as written.
+// Parameters:
+// - value (String): Stored frequency text.
+// Returns:
+// - String?: "once daily" or "N times daily", or null when the text is not a plain per-day count.
+String? englishDailyFrequencyLabel(String value) {
+  final text = value.trim();
+  // 검토 화면이 저장하는 "3회"와 처방전 표기 "1일 3회"를 모두 읽는다.
+  final koreanFrequency = RegExp(r'^(?:1일\s*)?(\d+)회$').firstMatch(text);
+  final numericFrequency = RegExp(r'^\d+$').hasMatch(text)
+      ? int.tryParse(text)
+      : null;
+  final count = koreanFrequency == null
+      ? numericFrequency
+      : int.tryParse(koreanFrequency.group(1) ?? '');
+  if (count == null || count <= 0) {
+    return null;
+  }
+  return count == 1 ? 'once daily' : '$count times daily';
+}
+
 // Function Name: medicationDayCountFromText
 // Description: Preserves integer input or reads the course length from duration text the way the server does: the first digit group, so "7일분 (1주)" is seven days; zero when no number can be read.
 // Parameters:
@@ -456,20 +478,7 @@ class MedicationSchedule {
     if (!_isEnglishLanguage(language)) {
       return value;
     }
-    // 검토 화면이 저장하는 "3회"와 처방전 표기 "1일 3회"를 모두 읽는다.
-    final koreanFrequency = RegExp(
-      r'^(?:1일\s*)?(\d+)회$',
-    ).firstMatch(value);
-    final numericFrequency = RegExp(r'^\d+$').hasMatch(value)
-        ? int.tryParse(value)
-        : null;
-    final count = koreanFrequency == null
-        ? numericFrequency
-        : int.tryParse(koreanFrequency.group(1) ?? '');
-    if (count == null || count <= 0) {
-      return value;
-    }
-    return count == 1 ? 'once daily' : '$count times daily';
+    return englishDailyFrequencyLabel(value) ?? value;
   }
 
   // 함수이름: durationLabelForLanguage

@@ -718,7 +718,7 @@ package "Flutter Frontend" {
             - _startOperation: Future<void>
             - _pendingTokenRegistrations: Set<Future<void>>
             + start(): Future<void>
-            + stop(requireServerUnregistration): Future<void>
+            + stop(requireServerUnregistration, discardUnregisteredToken): Future<void>
         }
 
         class "CaregiverNotificationMonitorService" as CaregiverNotificationMonitorService <<Service: 보호자 현황 감시>> {

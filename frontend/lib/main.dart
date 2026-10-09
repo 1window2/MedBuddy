@@ -179,6 +179,8 @@ class _MedBuddyAppState extends State<MedBuddyApp>
   String? _openCaregiverScheduleRouteName;
   String? _openLinkedChatRouteName;
   MedicationNotificationSelection? _pendingNotificationSelection;
+  // 직전에 끝난 세션의 계정. 로그아웃 중 보류한 알림 동작을 다른 계정에 넘기지 않는 데 쓴다.
+  String? _endedSessionUserHash;
   CaregiverNotificationMonitorService? _caregiverNotificationMonitor;
   CheckCaregiverMedication? _sharedCaregiverRead;
   LinkedChatNotificationMonitorService? _linkedChatNotificationMonitor;
@@ -333,13 +335,23 @@ class _MedBuddyAppState extends State<MedBuddyApp>
     await _pushNotificationService?.stop(requireServerUnregistration: true);
     await DoseSyncBackgroundScheduler.suspend();
     await DoseHomeWidget.clear();
+    await _cancelSessionReminders();
+  }
+
+  // Function Name: _cancelSessionReminders
+  // Description: Cancels the reminder replenishment work and every scheduled local medication reminder of the account whose session is ending, through the injected cleanup when one is provided.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: asynchronous completion without a result payload.
+  Future<void> _cancelSessionReminders() async {
     final reminderCleanup = widget.sessionReminderCleanup;
     if (reminderCleanup != null) {
       await reminderCleanup();
-    } else {
-      await MedicationReminderBackgroundScheduler.cancel();
-      await NotificationService.instance.cancelAllMedicationReminders();
+      return;
     }
+    await MedicationReminderBackgroundScheduler.cancel();
+    await NotificationService.instance.cancelAllMedicationReminders();
   }
 
   // Function Name: _registerNotificationSelectionHandler
@@ -381,8 +393,12 @@ class _MedBuddyAppState extends State<MedBuddyApp>
   // - 없음.
   void _handleAuthenticationChange() {
     _notifyEmailVerificationCompleted();
+    final previousUserHash = _monitoredUserHash;
     _synchronizeCaregiverNotificationMonitor();
     if (_authenticationControl.session == null) {
+      if (previousUserHash != null && previousUserHash.isNotEmpty) {
+        _endedSessionUserHash = previousUserHash;
+      }
       _pendingWidgetUri = null;
       _pendingNotificationSelection = null;
       _isScheduleRouteOpen = false;
@@ -390,6 +406,15 @@ class _MedBuddyAppState extends State<MedBuddyApp>
       _openLinkedChatRouteName = null;
       _removeRoutesAboveRoot();
       return;
+    }
+    // 로그아웃 상태에서 누른 알림이나 위젯은 끝난 계정의 것일 수 있다. 다른 계정으로 로그인하면
+    // 그 동작을 새 계정에 적용하지 않고 버린다.
+    final endedUserHash = _endedSessionUserHash;
+    _endedSessionUserHash = null;
+    if (endedUserHash != null &&
+        endedUserHash != _authenticationControl.session?.userHash.trim()) {
+      _pendingWidgetUri = null;
+      _pendingNotificationSelection = null;
     }
     final widgetUri = _pendingWidgetUri;
     _pendingWidgetUri = null;
@@ -499,14 +524,18 @@ class _MedBuddyAppState extends State<MedBuddyApp>
     previousMonitor?.dispose();
     unawaited(previousChatMonitor?.dispose());
     if (previousPushService != null) {
-      unawaited(previousPushService.stop());
+      // 강제 로그아웃처럼 서버에서 토큰을 해제하지 못한 채 계정이 바뀌면 기기 토큰을 폐기해,
+      // 이전 계정의 푸시가 이 기기로 계속 오지 않게 한다.
+      unawaited(previousPushService.stop(discardUnregisteredToken: true));
     }
 
     if (userHash == null || userHash.isEmpty) {
       unawaited(DoseHomeWidget.clear().catchError((_) {}));
       unawaited(DoseSyncBackgroundScheduler.suspend().catchError((_) {}));
       unawaited(CaregiverNotificationBackgroundScheduler.cancel());
-      unawaited(MedicationReminderBackgroundScheduler.cancel());
+      // 서버가 세션을 끊은 경우에는 로그아웃 준비 단계를 거치지 않으므로, 끝난 계정의 복약 알림이
+      // 기기에 남아 계속 울리지 않도록 여기서도 취소한다. 일반 로그아웃에서는 반복 취소가 된다.
+      unawaited(_cancelSessionReminders().catchError((_) {}));
       return;
     }
     unawaited(MedicationReminderBackgroundScheduler.register(userHash));

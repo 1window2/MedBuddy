@@ -130,7 +130,14 @@ opening the app. The preview is sensitive delivery data and can appear on a
 device lock screen according to operating-system notification settings. The
 notification must not add medication names, patient display names, image URLs,
 or any data beyond the user-authored preview and the private link identifier
-needed for authenticated in-app navigation.
+needed for authenticated in-app navigation. A dose record that the server
+writes into the chat contains medication names in its stored text, so its
+notification carries a names-free line (date and dose slot) instead of that
+text.
+
+A link stores two display names: the one the caregiver gave the patient and the
+one the patient gave the caregiver. Each is returned only to the participant
+who set it.
 
 ## Push Notification Data
 

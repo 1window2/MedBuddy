@@ -145,7 +145,9 @@ class CheckCaregiverMonitoring:
                 today_medication_info = raw_data
 
         return {
-            "link": LinkPatientCaregiver.toResponseDict(link),
+            "link": LinkPatientCaregiver.toResponseDict(
+                link, viewer_hash=str(link.caregiver_hash)
+            ),
             "patient_hash": patient_hash,
             "patient_alias": str(link.patient_alias or ""),
             "notification_settings": notification_settings,

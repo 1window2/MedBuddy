@@ -38,6 +38,7 @@ from repositories.pill_identification_catalog_repository import (
 logger = logging.getLogger(__name__)
 
 _CatalogIOResult = TypeVar("_CatalogIOResult")
+_PreprocessingResult = TypeVar("_PreprocessingResult")
 
 MAX_PILL_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_PILL_IMAGE_PIXELS = 24_000_000
@@ -855,7 +856,8 @@ class PillVisionBoundary:
         try:
             async with asyncio.timeout(self.timeout_seconds):
                 async with self._analysis_semaphore:
-                    processed = await asyncio.to_thread(
+                    # A timed-out decode keeps its capacity slot until the thread really exits.
+                    processed = await self._run_preprocessing_with_capacity(
                         self.image_processing_boundary.preprocessMultiplePillImage,
                         image,
                     )
@@ -1139,16 +1141,31 @@ class PillVisionBoundary:
         front_image: bytes,
         back_image: bytes | None,
     ) -> tuple[bytes, bytes | None, int | None, int | None]:
+        return await self._run_preprocessing_with_capacity(
+            self._preprocess_images,
+            front_image,
+            back_image,
+        )
+
+    # Function Name: _run_preprocessing_with_capacity
+    # Description:
+    # - Runs one image-decoding operation in a worker thread under the shared decode capacity.
+    # - Shields the thread from cancellation, so a cancelled or timed-out call keeps its slot until
+    #   the thread has really finished; single-pill and multi-pill requests share this limit.
+    # Parameters:
+    # - operation (Callable[..., _PreprocessingResult]): Blocking preprocessing function to run.
+    # - arguments (bytes | None): Original image bytes passed to the operation.
+    # Returns:
+    # - The operation's result; cancellation propagates after the cleanup callback is registered.
+    async def _run_preprocessing_with_capacity(
+        self,
+        operation: Callable[..., _PreprocessingResult],
+        *arguments: bytes | None,
+    ) -> _PreprocessingResult:
         """Keeps decode capacity reserved until a timed-out worker really exits."""
 
         await self._preprocessing_semaphore.acquire()
-        worker = asyncio.create_task(
-            asyncio.to_thread(
-                self._preprocess_images,
-                front_image,
-                back_image,
-            )
-        )
+        worker = asyncio.create_task(asyncio.to_thread(operation, *arguments))
         release_on_exit = True
         try:
             try:
@@ -1165,14 +1182,12 @@ class PillVisionBoundary:
     # 함수역할:
     # - 호출자와 분리된 전처리 작업의 예외를 회수하고 예약된 디코딩 용량을 해제한다.
     # 매개변수:
-    # - worker (asyncio.Task[tuple[bytes, bytes | None, int | None, int | None]]): 취소된 호출에서 계속 실행되어 완료된 전처리 태스크.
+    # - worker (asyncio.Task[object]): 취소된 호출에서 계속 실행되어 완료된 전처리 태스크.
     # 반환값:
     # - 없음; 전처리 세마포어 슬롯을 하나 반환한다.
     def _release_preprocessing_capacity(
         self,
-        worker: asyncio.Task[
-            tuple[bytes, bytes | None, int | None, int | None]
-        ],
+        worker: asyncio.Task[object],
     ) -> None:
         """Consumes a detached worker result and releases its capacity slot."""
 

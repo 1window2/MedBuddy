@@ -219,6 +219,17 @@ Permanent account deletion performs the same local cleanup before the backend
 deletion request. Caregiver alerts and unrelated notification categories are
 not removed by patient-reminder cleanup.
 
+A session the server ends (a rejected credential) cannot unregister its push
+token, and the sign-out preparation stops at that step. The same reminder
+cleanup therefore runs again once the session is cleared, and the device's FCM
+token is deleted so the ended account's server-side registration stops
+delivering to this device. A notification or widget action taken while signed
+out is dropped when a different account signs in next.
+
+Removing an entry from the in-app notification inbox erases its stored title,
+body and navigation payload. Only the identifier and time remain, so a repeated
+delivery cannot bring the entry back, until the retention period removes them.
+
 ## Nearby Pharmacy Location Boundary
 
 Nearby-pharmacy lookup is a user-initiated feature. Flutter requests
@@ -233,6 +244,22 @@ Neither Flutter nor FastAPI persists the current coordinate. Application logs,
 error messages, analytics, and notification payloads must not contain precise
 location. The UI applies a refresh cooldown and the backend retains an
 independent request quota.
+
+Nearby-hospital search follows the same boundary. The backend computes
+distances from the coordinate it received, but the public hospital provider is
+queried with the coordinate rounded to three decimals (a grid of roughly
+100 m), so the provider does not receive the precise position and nearby
+searches share one cached provider response. A hospital can be shared to chat
+only for a date inside the window the search itself accepts (7 days back to
+366 days ahead).
+
+Routes with a real per-request cost carry a daily quota besides the per-minute
+limit: prescription analysis, pill identification and the health
+recommendation share `AI_REQUEST_DAILY_LIMIT` per account, and hospital search
+has `HOSPITAL_SEARCH_DAILY_LIMIT`. One IP address is allowed twenty times the
+account quota, which bounds what scripted accounts can spend from one address.
+The public hospital API budget (`HOSPITAL_API_DAILY_REQUEST_BUDGET`) is still
+shared by all users of one process.
 
 The in-app map requests map content through Naver Dynamic Map for the visible
 viewport. This does not expose the MedBuddy public-data credential, but the map

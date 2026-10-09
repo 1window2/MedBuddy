@@ -120,8 +120,55 @@ class NotificationInboxStore {
   Future<void> markRead(Iterable<String> ids) => _setFlags('read', ids);
 
   // 함수이름: remove
-  // 함수역할: 알림만 숨겨 재수신 시 부활을 막는다. 매개변수: ids. 반환값: 저장 완료.
-  Future<void> remove(Iterable<String> ids) => _setFlags('hidden', ids);
+  // 함수역할: 알림을 숨기고 저장해 둔 제목·본문·이동 정보를 지운다. 항목 키와 발생 시각은 남겨
+  //   재수신 시 부활을 막고 보관 기간이 지나면 정리되게 한다. 매개변수: ids. 반환값: 저장 완료 또는 저장 오류.
+  Future<void> remove(Iterable<String> ids) async {
+    final preferences = await _preferences();
+    for (final id in ids) {
+      if (!await preferences.setBool(_key('hidden', id), true)) {
+        throw StateError('Notification history could not be updated.');
+      }
+      final key = _key('entry', id);
+      final stored = preferences.getString(key);
+      if (stored == null) continue;
+      if (!await preferences.setString(key, _withoutContent(id, stored))) {
+        throw StateError('Notification history could not be updated.');
+      }
+    }
+    changes.add(userHash);
+  }
+
+  // 함수이름: _withoutContent
+  // 함수역할: 삭제한 알림의 저장값에서 내용을 비운 빈 기록을 만든다. 읽을 수 없는 저장값도 같은 형태로 바꾼다.
+  // 매개변수: id - 알림 식별자, stored - 기존 저장 JSON. 반환값: 내용이 없는 항목 JSON.
+  String _withoutContent(String id, String stored) {
+    Object? category;
+    Object? occurredAt;
+    try {
+      final json = jsonDecode(stored);
+      if (json is Map<String, dynamic>) {
+        category = json['category'];
+        occurredAt = json['occurred_at'];
+      }
+    } on FormatException {
+      // 깨진 저장값은 기본값으로 덮어쓴다.
+    }
+    final occurredAtText =
+        occurredAt is String && DateTime.tryParse(occurredAt) != null
+        ? occurredAt
+        : now().toUtc().toIso8601String();
+    return jsonEncode({
+      'id': id,
+      'title': '',
+      'body': '',
+      'payload': '',
+      'category':
+          NotificationInboxCategory.values.any((value) => value.name == category)
+          ? category
+          : NotificationInboxCategory.medication.name,
+      'occurred_at': occurredAtText,
+    });
+  }
 
   // 함수이름: _setFlags
   // 함수역할: 읽음과 삭제를 독립 키로 저장한다. 매개변수: kind, ids. 반환값: 완료 또는 저장 오류.

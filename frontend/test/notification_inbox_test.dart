@@ -71,6 +71,38 @@ void main() {
     expect(await restored.load(), isEmpty);
   });
 
+  // 함수이름: 삭제 내용 제거 테스트
+  // 함수역할: 삭제한 알림의 제목·본문·이동 정보가 기기 저장소에 남지 않고, 보관 기간이 지나면 빈 기록도
+  //   정리되는지 검사한다. 매개변수: 없음. 반환값: 검증 완료.
+  test('removing a notification erases its stored content', () async {
+    final entry = _entry('chat:7:1', now, chat: true);
+    final kept = _entry('chat:7:2', now, chat: true);
+    await store.recordAll([entry, kept]);
+    await store.remove([entry.id]);
+
+    final preferences = await SharedPreferences.getInstance();
+    final stored = [
+      for (final key in preferences.getKeys())
+        if (key.contains('chat%3A7%3A1')) '$key=${preferences.get(key)}',
+    ].join('\n');
+    expect(stored, contains('chat%3A7%3A1'));
+    expect(stored, isNot(contains('테스트 알림 내용')));
+    expect(stored, isNot(contains('새 메시지')));
+    expect(stored, isNot(contains('"payload":"chat:7"')));
+    expect((await store.load()).map((e) => e.id), ['chat:7:2']);
+
+    final later = NotificationInboxStore(
+      userHash: 'patient',
+      now: () => now.add(const Duration(days: 91)),
+    );
+    expect(await later.load(), isEmpty);
+    await preferences.reload();
+    expect(
+      preferences.getKeys().where((key) => key.contains('chat%3A7%3A1')),
+      isEmpty,
+    );
+  });
+
   // 함수이름: 예약 시각 테스트
   // 함수역할: 미래 예약은 숨기고 취소 시 지난 내역은 유지한다. 매개변수: 없음. 반환값: 검증 완료.
   test(

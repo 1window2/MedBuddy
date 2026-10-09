@@ -61,8 +61,10 @@ from core.account_database_lock import ACCOUNT_BUSY_DETAIL, lock_account_operati
 from core.database import get_db
 from core.request_database_work import run_request_database_work
 from core.request_rate_limits import (
+    DAILY_QUOTA_EXCEEDED_DETAIL,
     RequestRateLimitStore,
     mounted_route_template,
+    resolve_daily_quota,
     resolve_rate_limit_rule,
 )
 from controls.authorization_control import AuthorizationControl
@@ -359,6 +361,7 @@ def _register_detached_lookup_scope(db: Session, user_hash: str) -> None:
 # Function Name: get_registered_principal
 # Description:
 # - Enforces per-user request quotas and account registration, holding the SQLite account lock through endpoint execution and allowing deletion retries.
+# - Routes with a daily cost quota are also counted per account for the day.
 # Parameters:
 # - request (Request): Incoming FastAPI request used to access application state.
 # - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
@@ -403,6 +406,28 @@ async def get_registered_principal(
                 detail="요청이 너무 많습니다. 잠시 후 다시 시도해주세요.",
                 headers={"Retry-After": str(max(1, retry_after))},
             )
+        # 비용이 큰 경로는 분당 한도와 별개로 계정별 하루 횟수도 제한한다.
+        daily_quota = resolve_daily_quota(request.method, route_path)
+        if daily_quota is not None:
+            daily_rule, daily_scope = daily_quota
+            try:
+                allowed, retry_after = await rate_limit_store.consume(
+                    identity=f"user:{principal.user_hash}",
+                    request_scope=daily_scope,
+                    rule=daily_rule,
+                )
+            except RuntimeError as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Request quota storage is temporarily unavailable.",
+                    headers={"Retry-After": "5"},
+                ) from exc
+            if not allowed:
+                raise HTTPException(
+                    status_code=429,
+                    detail=DAILY_QUOTA_EXCEEDED_DETAIL,
+                    headers={"Retry-After": str(max(1, retry_after))},
+                )
     # Step 1: Hold SQLite ownership through registration and endpoint teardown.
     async with AsyncExitStack() as account_scope:
         # 공개 조회와 재검증형 추천은 DB 단계만 잠그고 외부 응답 대기에는 계정을 붙잡지 않는다.

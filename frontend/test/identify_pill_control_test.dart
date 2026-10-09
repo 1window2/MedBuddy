@@ -494,6 +494,62 @@ void main() {
 
   // 함수이름: test 콜백
   // 함수역할:
+  // - 숫자도 HTTP 날짜도 아닌 Retry-After 값을 받아도 호출 제한 오류로 변환하고 대기시간만 비우는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  test('a malformed retry delay still reports the rate limit', () async {
+    final control = IdentifyPill(
+      baseUrl: 'http://localhost',
+      client: MockClient(
+        // 함수이름: MockClient 콜백
+        // 함수역할:
+        // - 서버 호출 제한과 해석할 수 없는 재시도 헤더를 함께 제공한다.
+        // 매개변수:
+        // - _ (http.Request): 사용하지 않는 가로챈 HTTP 요청.
+        // 반환값:
+        // - Retry-After가 형식에 맞지 않는 HTTP 429 응답.
+        (_) async => http.Response('{}', 429, headers: {'retry-after': 'soon'}),
+      ),
+    );
+
+    await expectLater(
+      control.requestPillIdentification(
+        frontImage: Uint8List.fromList([1, 2, 3]),
+      ),
+      throwsA(
+        isA<PillIdentificationException>()
+            .having(
+              // 함수이름: having 콜백
+              // 함수역할:
+              // - 오류의 실패 사유를 추출해 해당 필드를 검증한다.
+              // 매개변수:
+              // - error (Object): 매처가 검사할 유형화된 예외.
+              // 반환값:
+              // - 예외의 failure 값.
+              (error) => error.failure,
+              'failure',
+              PillIdentificationFailure.rateLimited,
+            )
+            .having(
+              // 함수이름: having 콜백
+              // 함수역할:
+              // - 오류의 재시도 대기시간을 추출해 비어 있는지 검증한다.
+              // 매개변수:
+              // - error (Object): 매처가 검사할 유형화된 예외.
+              // 반환값:
+              // - 예외의 retryAfter 값.
+              (error) => error.retryAfter,
+              'retryAfter',
+              isNull,
+            ),
+      ),
+    );
+  });
+
+  // 함수이름: test 콜백
+  // 함수역할:
   // - 호출 제한 응답의 서버 재시도 대기시간을 알약 식별 오류에 보존하는지 검증한다.
   // 매개변수:
   // - 없음.

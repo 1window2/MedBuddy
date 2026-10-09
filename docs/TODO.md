@@ -1,5 +1,53 @@
 # MedBuddy Release TODO
 
+## v0.2.2 security review
+
+An external scan of the repository history (33 findings, two of them for
+another repository) was checked against the released code on October 9. Work
+continues on `beta/v0.2.2`.
+
+Corrected on `beta/v0.2.2`:
+
+- [x] The push notification of a server-written dose record no longer carries
+      medication names.
+- [x] A link's two display names are returned only to the participant who set
+      them.
+- [x] Hospital sharing to chat accepts only the date window of the search.
+- [x] Multi-pill image decoding shares the decode capacity limit, also after a
+      timed-out request.
+- [x] Daily quotas per account and per IP address on the AI-backed routes and
+      on hospital search; the hospital provider is queried with a coordinate
+      rounded to about 100 m.
+- [x] A session ended by the server cancels the account's local reminders and
+      deletes the device push token; an action taken while signed out is not
+      applied to a different account.
+- [x] Removing a notification from the inbox erases its stored content.
+- [x] English dosage lines no longer rewrite directions that are not a plain
+      per-day count ("2일 1회", "12시간마다") or durations that are not days.
+- [x] A malformed `Retry-After` header no longer turns a rate-limit answer
+      into an unknown failure.
+
+Open, owner decisions:
+
+- [ ] Chat notifications show the message preview by default; the recipient
+      can switch to type-only. Decide whether type-only should be the default.
+- [ ] The off-Play build runs without App Check and the production backend
+      accepts anonymous sign-in. The new daily quotas bound the cost per
+      account and per address, not across many addresses.
+- [ ] The public hospital API budget (800 requests per day and process) is
+      shared by all users; a specialty search can cost up to 41 requests, so a
+      few uncached searches use it up. Needs a larger provider quota or a
+      reserved share per user.
+- [ ] A low-score multi-pill photo is cropped to one pill. Changing the rule
+      needs real photographs.
+- [ ] The pharmacy provider is still queried with the full-precision
+      coordinate; hospital search is not.
+- [ ] The off-Play exception and the release workflow are pinned to
+      `beta/v0.2.1`. A signed 0.2.2 build needs them re-pointed, and the
+      branch added to the `beta-android` environment.
+- Not automated: dropping a held notification action when a different account
+  signs in has no widget test (no test seam for a second account).
+
 ## v0.2.1 maintenance line
 
 `v0.2.0-beta` was published on October 8 as a limited GitHub pre-release for
