@@ -21,10 +21,17 @@ closed by any code on this branch:
 - [ ] The public hospital API budget (800 requests per day and process) is
       shared by all users, and one specialty search can cost up to 41
       requests. Needs a larger provider quota.
-- [ ] Device verification of this branch. Nothing changed on `beta/v0.2.2`
-      has run on a physical phone yet; the lists below under "without a
-      device check" still apply as well. A signed build needs `beta/v0.2.2`
-      added to the `beta-android` environment.
+- [ ] Device verification of this branch on a physical phone; the lists
+      below under "without a device check" still apply as well. A signed build
+      needs `beta/v0.2.2` added to the `beta-android` environment.
+      Checked on October 11 with a debug build on an Android 14 emulator
+      against a local server: today's schedule hides medications that are not
+      due; a slot whose only medication is not due today can still have its
+      reminder switched on; alarms for a Monday-Wednesday-Friday medication
+      exist on those days only; the exact-alarm notice opens the system
+      screen and, once allowed, all 21 pending alarms were re-armed as exact
+      on return to the app; marking a slot as taken updates the server and
+      cancels today's alarm.
 - [ ] Chat notifications show the message preview by default; the recipient
       can switch to type-only. Decide the default.
 
@@ -55,8 +62,6 @@ closed by any code on this branch:
 
 - [ ] A medication saved from a pill photograph can only be given a daily
       count; a non-daily direction needs manual or prescription registration.
-- [ ] A slot that holds only non-daily medications has no card on a rest day,
-      so its reminder can be configured only on a dose day.
 - [ ] "As needed" directions are scheduled like daily ones, on the slots the
       user confirmed.
 - [ ] A weekly prescription often prints the number of doses as its total

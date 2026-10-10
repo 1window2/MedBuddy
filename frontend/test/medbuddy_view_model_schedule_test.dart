@@ -1632,6 +1632,97 @@ void main() {
 
   // 함수이름: test 콜백
   // 함수역할:
+  // - 오늘은 복용하지 않는 주 1회 약만 있는 시간대도 알림을 켤 수 있고, 예약 날짜가 앞으로의 복용하는 날뿐인지,
+  //   앞으로도 복용할 약이 없는 시간대는 그대로 거절하는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  test('오늘 쉬는 날인 주 1회 약의 시간대도 알림을 켤 수 있다', () async {
+    SharedPreferences.setMockInitialValues({});
+    final notificationService = RecordingNotificationService();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final start = today.subtract(const Duration(days: 3));
+    String isoDate(DateTime date) => date.toIso8601String().split('T').first;
+    final requests = <String>[];
+    // 함수이름: MockClient 콜백
+    // 함수역할:
+    // - 알림 저장 PUT에는 취침 전 22:00 활성 설정을, 14일 일정 조회에는 사흘 전에 시작한 주 1회 약을 제공한다.
+    // 매개변수:
+    // - request (http.Request): 실제 서버 전송 대신 가로챈 HTTP 요청.
+    // 반환값:
+    // - 요청에 맞는 HTTP 200 또는 미지원 요청의 404.
+    final client = MockClient((http.Request request) async {
+      requests.add('${request.method} ${request.url.path.split('/').last}');
+      if (request.method == 'PUT') {
+        return _jsonResponse({
+          'success': true,
+          'data': {
+            'patient_hash': PatientHash.defaultPatientHash,
+            'slot_key': request.url.path.split('/').last,
+            'hour': 22,
+            'minute': 0,
+            'is_enabled': true,
+          },
+        });
+      }
+      if (request.url.path.endsWith('schedule/window')) {
+        return _jsonResponse({
+          'success': true,
+          'data': [
+            {
+              'medication_id': '7',
+              'drug_name': '주간정',
+              'daily_frequency': '주 1회',
+              'total_days': '56일',
+              'schedule_slot_keys': ['bedtime'],
+              'prescription_date': isoDate(start),
+              'created_date': isoDate(start),
+              'dose_cycle_days': 7,
+              'dose_cycle_offsets': [0],
+              'dose_cycle_anchor': isoDate(start),
+            },
+          ],
+        });
+      }
+      return http.Response('Not found', 404);
+    });
+    final viewModel = MedBuddyViewModel(
+      apiClient: client,
+      notificationService: notificationService,
+    );
+    addTearDown(viewModel.dispose);
+
+    final saved = await viewModel.requestMedicationReminderSave(
+      slotKey: 'bedtime',
+      slotTitle: '취침 전',
+      hour: 22,
+      minute: 0,
+      schedules: const [],
+    );
+
+    expect(saved, isTrue);
+    expect(notificationService.registeredActiveDates.single, [
+      today.add(const Duration(days: 4)),
+      today.add(const Duration(days: 11)),
+    ]);
+
+    // 앞으로 14일 안에도 약이 없는 시간대는 저장 요청 없이 거절한다.
+    requests.clear();
+    final rejected = await viewModel.requestMedicationReminderSave(
+      slotKey: 'lunch',
+      slotTitle: '점심',
+      hour: 12,
+      minute: 0,
+      schedules: const [],
+    );
+    expect(rejected, isFalse);
+    expect(requests.where((request) => request.startsWith('PUT')), isEmpty);
+  });
+
+  // 함수이름: test 콜백
+  // 함수역할:
   // - 기대 동작: 복약 알림 날짜는 처방된 복용 종료일을 넘지 않는다.
   // 매개변수:
   // - 없음.

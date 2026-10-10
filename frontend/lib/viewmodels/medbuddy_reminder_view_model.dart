@@ -155,12 +155,18 @@ class MedBuddyReminderViewModel {
       _notifyViewModelListeners(MedBuddyFeature.reminder);
       return false;
     }
+    // 오늘 복용할 약이 없는 시간대라도 앞으로 14일 안에 복용하는 날이 있으면(주 1회 약의 쉬는 날 등)
+    // 알림을 켤 수 있어야 한다. 그렇지 않으면 복용하는 날에 앱을 열어야만 알림을 설정할 수 있다.
+    List<MedicationSchedule>? window;
     if (schedules.isEmpty) {
-      _statusMessage = _isEnglishSetting
-          ? 'There is no medication in this time slot.'
-          : '이 시간대에 복용할 약이 없습니다.';
-      _notifyViewModelListeners(MedBuddyFeature.reminder);
-      return false;
+      window = await _loadScheduleWindowOrNull();
+      if (window == null || _schedulesForSlot(window, slotKey).isEmpty) {
+        _statusMessage = _isEnglishSetting
+            ? 'There is no medication in this time slot.'
+            : '이 시간대에 복용할 약이 없습니다.';
+        _notifyViewModelListeners(MedBuddyFeature.reminder);
+        return false;
+      }
     }
 
     bool hasPermission;
@@ -190,7 +196,7 @@ class MedBuddyReminderViewModel {
       );
       persistedSetting = setting;
 
-      final window = await _loadScheduleWindowOrNull();
+      window ??= await _loadScheduleWindowOrNull();
       await _scheduleMedicationReminder(
         setting: setting,
         slotTitle: slotTitle,
