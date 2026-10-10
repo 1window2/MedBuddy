@@ -39,6 +39,12 @@ Also corrected on `beta/v0.2.2` (recorded defects from earlier reviews):
       follow it without a restart.
 - [x] The pharmacy provider is queried with a coordinate rounded to about
       100 m, like hospital search.
+- [x] The weekly catalogue refresh keeps its schedule in the database
+      (migration `c5e1a7f3b902`). Until now every container start began a new
+      seven-day wait, so deployments spaced under a week postponed the refresh
+      indefinitely. Production last refreshed on October 7, seven days after
+      the September 30 deployment, and every deployment since had reset the
+      wait.
 - [x] The three quota checks (per minute, per day, chat per day) share one
       helper; the unused three-field settings saver is removed; test runs no
       longer reach a developer's local Redis.
@@ -208,8 +214,6 @@ Defects and limits recorded during the v0.2.0 audits and not changed:
 - [ ] A caregiver missed-dose deadline is accepted without comparing it with
       the slot's reminder time; the dialog default (21:00) precedes the default
       bedtime reminder (22:00).
-- [ ] The weekly catalog refresh sleeps a full interval after every container
-      start, so deployments spaced under a week postpone it indefinitely.
 - [ ] The chat socket is authenticated once and not re-validated when the
       token expires.
 - [ ] Reminder reconciliation trusts the plugin's pending list after a

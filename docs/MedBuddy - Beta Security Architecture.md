@@ -481,7 +481,8 @@ stored in the Compose file or Flutter compile-time constants.
 - PostgreSQL 16 with a persistent private volume.
 - Redis with a memory bound and no published host port.
 - One periodic catalog-refresh worker with atomic weekly synchronization,
-  upstream-withdrawal pruning, and bounded retry backoff.
+  upstream-withdrawal pruning, bounded retry backoff, and a schedule stored in
+  the database so restarts do not postpone it.
 - One FastAPI container with production fail-closed settings.
 - One `cloudflared` container providing the only public ingress path.
 
@@ -507,7 +508,7 @@ their source but every job has `if: false`. They cannot provision or invoke
 Cloud Run, Cloud SQL, Redis, VPC, Artifact Registry, or Secret Manager resources.
 
 The following revisions established the beta security and data boundary. This
-is not the full chain; the current head is `b3a7d9e2f601` (see
+is not the full chain; the current head is `c5e1a7f3b902` (see
 [Production Deployment](Production%20Deployment.md)).
 
 | Revision | Purpose |

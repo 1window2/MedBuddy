@@ -165,6 +165,9 @@ def test_issue_templates_forbid_real_medical_data() -> None:
 # - Ensures production keeps refreshing MFDS catalogs after the first seed.
 # - Guards the periodic writer against accidentally inheriting the
 #   bootstrap-only empty-catalog shortcut.
+# - Requires the loop to take its wait from the stored schedule and to record each attempt
+#   before synchronizing, so a restart neither postpones the refresh by a full interval nor
+#   repeats a failing refresh back to back.
 # Parameters:
 # - None.
 # Returns:
@@ -181,6 +184,19 @@ def test_self_hosted_catalog_has_periodic_atomic_refresh() -> None:
     assert "CATALOG_REFRESH_RETRY_SECONDS" in refresh_service
     assert "sync_drug_catalog.py --dataset all" in refresh_service
     assert "--only-if-empty" not in refresh_service
+    loop = refresh_service.split("while true; do", maxsplit=1)
+    # Nothing sleeps a fixed interval before the loop reads the schedule.
+    assert "sleep" not in loop[0]
+    steps = [
+        "catalog_refresh_schedule.py wait-seconds",
+        'sleep "$${wait_seconds}"',
+        "catalog_refresh_schedule.py mark-attempt",
+        "sync_drug_catalog.py --dataset all",
+        "sync_pharmacy_catalog.py",
+        "catalog_refresh_schedule.py mark-success",
+    ]
+    positions = [loop[1].index(step) for step in steps]
+    assert positions == sorted(positions)
 
 
 # Function Name: test_self_hosted_database_url_uses_structured_credentials
