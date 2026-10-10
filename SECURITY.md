@@ -2,18 +2,18 @@
 
 ## Project Status
 
-MedBuddy published the Android `v0.2.0-beta` as a limited off-Play pre-release
-and is developing the v0.2.1 maintenance line on that baseline. Two-device
-acceptance and Play Integrity enforcement remain open; see
+MedBuddy publishes Android betas as limited off-Play pre-releases; `v0.2.1-beta`
+is the current one, and the v0.2.2 release-candidate line is in development on
+that baseline. Play Integrity enforcement remains open; see
 [the release TODO](docs/TODO.md).
 
 ## Supported Versions
 
 | Version | Status | Security Handling |
 | --- | --- | --- |
-| `v0.2.1-beta` source | In development | Security fixes are applied before the v0.2.1 beta is published. |
-| `v0.2.0-beta` | Current baseline | Critical fixes are evaluated for the supported release line and merged forward into v0.2.1. |
-| `v0.1.1-beta` and `v0.1.0-beta` | Superseded betas | Receive no routine backports. |
+| `v0.2.2-beta` source | In development | Security fixes are applied before the v0.2.2 beta is published. |
+| `v0.2.1-beta` | Current baseline | Critical fixes are evaluated for the supported release line and merged forward into v0.2.2. |
+| `v0.2.0-beta`, `v0.1.1-beta` and `v0.1.0-beta` | Superseded betas | Receive no routine backports. The production server stays compatible with `v0.2.0-beta` clients. |
 | `v0.0.9-alpha` and earlier | Published alpha demos | Superseded demos receive no routine backports. |
 
 The release tag and default branch must include all applicable security fixes.
@@ -195,7 +195,10 @@ validated categories and coordinates, never model-returned region text.
 Caregiver lock-screen notification content remains generic while the private
 payload retains the patient scope needed for authenticated in-app navigation.
 Chat REST and WebSocket routes apply the same principal and active-link checks;
-WebSocket authentication does not create a weaker alternate path. Medication,
+WebSocket authentication does not create a weaker alternate path. An open
+stream does not outlive what it was opened with: it is closed with code 4440
+when its ID token expires, so the client reconnects with a fresh token, and
+with code 4404 when a periodic check finds its link no longer active. Medication,
 schedule-slot, and pharmacy context identifiers are revalidated and rebuilt as
 server snapshots instead of accepting client-supplied medical or location
 details. Slot-completion events are idempotent and cannot be used by a caregiver

@@ -324,7 +324,7 @@ class _MedBuddyAppState extends State<MedBuddyApp>
   }
 
   // Function Name: _prepareSessionEnd
-  // Description: Cancels local reminders and replenishment work, then requires server push-token unregistration while the Firebase identity is still valid.
+  // Description: Requires server push-token unregistration while the Firebase identity is still valid, gives doses recorded offline one bounded upload attempt, then suspends dose upload work and cancels local reminders and replenishment work.
   // Parameters:
   // - None.
   // Returns:
@@ -333,9 +333,33 @@ class _MedBuddyAppState extends State<MedBuddyApp>
     // 서버 요청이 필요한 푸시 토큰 해제만 실패할 수 있다. 이를 먼저 해서, 오프라인 등으로
     // 로그아웃이 중단되어도 복용 기록 대기열과 복약 알림이 지워진 채 남지 않게 한다.
     await _pushNotificationService?.stop(requireServerUnregistration: true);
+    // 오프라인에서 기록해 아직 올리지 못한 복용은 토큰이 유효한 지금 한 번 더 올려 본다. 몇 초 안에
+    // 끝나지 않으면 기다리지 않으며, 남은 기록은 같은 계정이 이 기기에 다시 로그인할 때 전송된다.
+    await _flushPendingDoseRecords();
     await DoseSyncBackgroundScheduler.suspend();
     await DoseHomeWidget.clear();
     await _cancelSessionReminders();
+  }
+
+  // Function Name: _flushPendingDoseRecords
+  // Description: Asks the signed-in account's dose sync service for one bounded upload of the records still waiting on the device. Never fails and never waits longer than the service's limit, so it cannot hold up sign-out.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: completes when the upload finished, the limit passed, or no sync service is attached.
+  Future<void> _flushPendingDoseRecords() async {
+    final context = _navigatorKey.currentContext;
+    if (context == null || _authenticationControl.session == null) {
+      return;
+    }
+    try {
+      await Provider.of<MedBuddyViewModel>(
+        context,
+        listen: false,
+      ).doseSync?.flushPending();
+    } catch (_) {
+      // Without a view model or with a failed store the records simply stay queued.
+    }
   }
 
   // Function Name: _cancelSessionReminders
@@ -538,7 +562,10 @@ class _MedBuddyAppState extends State<MedBuddyApp>
       unawaited(_cancelSessionReminders().catchError((_) {}));
       return;
     }
-    unawaited(MedicationReminderBackgroundScheduler.register(userHash));
+    // 등록에 실패해도 처리되지 않은 오류로 남기지 않는다. 다음 앱 시작 때 다시 등록한다.
+    unawaited(
+      MedicationReminderBackgroundScheduler.register(userHash).catchError((_) {}),
+    );
     final pushService = PushNotificationService(
       userHash: userHash,
       client: _authenticationControl.apiClient,

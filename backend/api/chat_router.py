@@ -4,7 +4,9 @@
 """환자·보호자 연동별 채팅 REST 및 WebSocket API를 제공한다."""
 
 import asyncio
+import logging
 import time
+from datetime import UTC, datetime
 
 from fastapi import (
     APIRouter,
@@ -49,6 +51,11 @@ from schemas.chat import ChatMedicationTaken, ChatMessageCreate, ChatMessageDele
 from services.chat_connection_manager import ChatConnectionManager
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+# 수락한 스트림을 자격 증명 만료로 닫을 때의 종료 코드. 인증 실패(4401)와 구분해
+# 클라이언트가 로그아웃하지 않고 새 토큰으로 다시 연결하게 한다.
+_CLOSE_CREDENTIAL_EXPIRED = 4440
 
 # Async routes await each blocking operation sequentially using the bounded
 # AnyIO worker pool. Cancellation drains each database operation before request
@@ -401,6 +408,10 @@ def get_chat_unread_count(
 # - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
 # 반환값:
 # - 없음
+# 비고:
+# - 연결은 열 때 검증한 ID 토큰의 만료 시각에 4440으로 닫고, ping을 처리할 때
+#   설정한 간격마다 연동이 아직 활성인지 다시 확인해 아니면 4404로 닫는다.
+#   출시된 클라이언트는 닫히면 새 토큰으로 다시 연결하므로 토큰 수명마다 한 번만 끊긴다.
 @router.websocket("/links/{link_id}/stream")
 async def stream_chat_events(
     websocket: WebSocket,
@@ -415,8 +426,10 @@ async def stream_chat_events(
     db = SessionLocal()
     authorized_user_hash = ""
     connected = False
+    credential_deadline: float | None = None
     try:
         principal = await run_in_threadpool(_authenticate_websocket, websocket)
+        credential_deadline = _credential_deadline(principal)
         authorization = AuthorizationControl(db)
         authorized_user_hash = await run_request_database_work(
             authorization.resolveOwnUserHash, principal, user_hash,
@@ -458,14 +471,30 @@ async def stream_chat_events(
             return
         await websocket.send_json({"type": "chat_ready", "link_id": link_id})
         last_ping_at = 0.0
+        last_validated_at = time.monotonic()
         while True:
+            receive_timeout = float(settings.CHAT_WEBSOCKET_IDLE_TIMEOUT_SECONDS)
+            if credential_deadline is not None:
+                # 만료 시각이 유휴 제한보다 먼저 오면 그때 깨어나 연결을 닫는다.
+                receive_timeout = min(
+                    receive_timeout, credential_deadline - time.monotonic(),
+                )
+                if receive_timeout <= 0:
+                    await websocket.close(code=_CLOSE_CREDENTIAL_EXPIRED)
+                    return
             try:
                 message = await asyncio.wait_for(
                     websocket.receive_text(),
-                    timeout=settings.CHAT_WEBSOCKET_IDLE_TIMEOUT_SECONDS,
+                    timeout=receive_timeout,
                 )
             except TimeoutError:
-                await websocket.close(code=4408)
+                expired = (
+                    credential_deadline is not None
+                    and time.monotonic() >= credential_deadline
+                )
+                await websocket.close(
+                    code=_CLOSE_CREDENTIAL_EXPIRED if expired else 4408,
+                )
                 return
             except KeyError:
                 # A binary frame carries no text; this stream accepts text pings only.
@@ -486,6 +515,25 @@ async def stream_chat_events(
                 await websocket.close(code=4429)
                 return
             last_ping_at = now
+            if (
+                now - last_validated_at
+                >= settings.CHAT_WEBSOCKET_REVALIDATION_INTERVAL_SECONDS
+            ):
+                try:
+                    still_active = await run_request_database_work(
+                        _link_is_still_active, link_id, authorized_user_hash,
+                    )
+                except Exception as exc:
+                    # 일시적인 DB 장애로 모든 연결을 한꺼번에 끊어 재연결이 몰리지 않게
+                    # 다음 ping에서 다시 확인한다. 토큰 만료 시각은 그대로 적용된다.
+                    logger.warning(
+                        "Chat stream revalidation failed: %s", type(exc).__name__,
+                    )
+                else:
+                    if not still_active:
+                        await websocket.close(code=4404)
+                        return
+                    last_validated_at = now
             await websocket.send_json({"type": "pong"})
     except WebSocketDisconnect:
         pass
@@ -496,6 +544,40 @@ async def stream_chat_events(
                 user_hash=authorized_user_hash,
                 websocket=websocket,
             )
+
+
+# 함수이름: _credential_deadline
+# 함수역할:
+# - 검증한 토큰의 만료 시각을 이 프로세스의 단조 시계 기준 시각으로 바꾼다.
+# 매개변수:
+# - principal (AuthenticatedPrincipal): 핸드셰이크에서 검증한 인증 주체.
+# 반환값:
+# - 연결을 닫을 time.monotonic() 기준 시각; 만료 정보가 없으면(인증 비활성 모드) None.
+def _credential_deadline(principal: AuthenticatedPrincipal) -> float | None:
+    expires_at = principal.expires_at
+    if expires_at is None:
+        return None
+    return time.monotonic() + (expires_at - datetime.now(UTC)).total_seconds()
+
+
+# 함수이름: _link_is_still_active
+# 함수역할:
+# - 열려 있는 스트림의 사용자가 아직 활성 연동의 참여자인지 짧은 세션으로 다시 확인한다.
+#   계정 삭제는 연동을 함께 지우므로 삭제된 계정도 여기서 걸러진다.
+# 매개변수:
+# - link_id (int): 저장된 환자·보호자 연동 식별자.
+# - user_hash (str): 핸드셰이크에서 확정한 참여자 식별자.
+# 반환값:
+# - 활성 연동의 참여자이면 True, 연동이 해제·삭제됐으면 False; 그 밖의 DB 오류는 그대로 전파한다.
+def _link_is_still_active(link_id: int, user_hash: str) -> bool:
+    db = SessionLocal()
+    try:
+        ManageLinkedChat(db).require_active_link(link_id=link_id, user_hash=user_hash)
+        return True
+    except HTTPException:
+        return False
+    finally:
+        db.close()
 
 
 # 함수이름: _reserve_websocket_connection

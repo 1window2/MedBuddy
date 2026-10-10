@@ -8,6 +8,7 @@ import logging
 import os
 import threading
 from collections.abc import Generator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -29,6 +30,7 @@ from entities.medication_detail_entity import (
     _DrugBasicInfo,
 )
 from services.local_medication_catalog import (
+    PARTIAL_SUMMARY_RETRY_AFTER,
     SUMMARY_FAILURE_PLACEHOLDER,
     LocalMedicationCatalog,
 )
@@ -588,3 +590,202 @@ def test_stored_failure_placeholder_is_regenerated(
         assert (stored.summary_efficacy, stored.summary_use_method, stored.summary_warning_message) == (
             "generated effect", "generated usage", "generated warning",
         )
+
+
+# Function Name: _store_partial_summary
+# Description:
+# - Stores a summary whose warning the AI left out, written the given time ago.
+# Parameters:
+# - engine (Engine): File-backed synthetic catalog.
+# - age (timedelta): Time since the summary was written.
+# - warning_doc (str | None): Source warning document of the product.
+# Returns:
+# - None.
+def _store_partial_summary(
+    engine: Engine,
+    age: timedelta,
+    warning_doc: str | None = "synthetic warning document",
+) -> None:
+    with Session(engine) as writer:
+        writer.query(_DrugApprovalInfo).update({
+            "summary_efficacy": "stored effect",
+            "summary_use_method": "stored usage",
+            "summary_warning_message": "정보 없음",
+            "warning_doc": warning_doc,
+            "updated_at": datetime.now(UTC).replace(tzinfo=None) - age,
+        })
+        writer.commit()
+
+
+# Function Name: _stored_summary
+# Description:
+# - Reads the summary columns and the write time of the catalog's only approval row.
+# Parameters:
+# - engine (Engine): File-backed synthetic catalog.
+# Returns:
+# - Efficacy, usage and warning summaries and updated_at.
+def _stored_summary(engine: Engine) -> tuple[str | None, str | None, str | None, datetime]:
+    with Session(engine) as reader:
+        stored = reader.query(_DrugApprovalInfo).one()
+        return (
+            stored.summary_efficacy, stored.summary_use_method,
+            stored.summary_warning_message, stored.updated_at,
+        )
+
+
+# Function Name: test_partial_summary_is_stored_and_reused_inside_the_retry_period
+# Description:
+# - A summary in which the AI left one field out is stored and served from the catalog on the
+#   next lookup, so repeated lookups inside the retry period cost one AI request.
+# Parameters:
+# - catalog_engine (Engine): File-backed synthetic catalog.
+# Returns:
+# - None.
+def test_partial_summary_is_stored_and_reused_inside_the_retry_period(
+    catalog_engine: Engine,
+) -> None:
+    # Function Name: summarize_without_warning
+    # Description: Returns guidance whose warning reads the missing-field text.
+    # Parameters: drug_name (str), raw_item (dict[str, Any]): Synthetic summary inputs.
+    # Returns: Partial guidance for the exact catalog product.
+    async def summarize_without_warning(drug_name: str, raw_item: dict[str, Any]) -> MedicationDetail:
+        complete = await _summarize(drug_name, raw_item)
+        return complete.model_copy(update={"warning": "정보 없음"})
+
+    generator = SimpleNamespace(
+        summarize_advanced_item=AsyncMock(side_effect=summarize_without_warning),
+    )
+    with Session(catalog_engine) as request_db:
+        catalog = LocalMedicationCatalog(request_db, generator)
+        asyncio.run(catalog.fetch_drug_info(PRODUCT_NAME))
+        second = asyncio.run(catalog.fetch_drug_info(PRODUCT_NAME))
+
+    generator.summarize_advanced_item.assert_awaited_once()
+    assert "저장된 AI 요약" in second[0].source
+    assert second[0].warning == "정보 없음"
+
+
+# Function Name: test_partial_summary_is_completed_after_the_retry_period
+# Description:
+# - Once the retry period has passed, a lookup asks for the summary again, stores the completed
+#   fields and serves them; the lookup after that uses the stored summary.
+# Parameters:
+# - catalog_engine (Engine): File-backed synthetic catalog.
+# Returns:
+# - None; fails if a partial summary stays until the source document changes.
+def test_partial_summary_is_completed_after_the_retry_period(catalog_engine: Engine) -> None:
+    _store_partial_summary(catalog_engine, PARTIAL_SUMMARY_RETRY_AFTER + timedelta(minutes=1))
+    generator = SimpleNamespace(summarize_advanced_item=AsyncMock(side_effect=_summarize))
+    with Session(catalog_engine) as request_db:
+        catalog = LocalMedicationCatalog(request_db, generator)
+        first = asyncio.run(catalog.fetch_drug_info(PRODUCT_NAME))
+        second = asyncio.run(catalog.fetch_drug_info(PRODUCT_NAME))
+
+    generator.summarize_advanced_item.assert_awaited_once()
+    assert first[0].warning == second[0].warning == "generated warning"
+    assert "저장된 AI 요약" in second[0].source
+    assert _stored_summary(catalog_engine)[:3] == (
+        "generated effect", "generated usage", "generated warning",
+    )
+
+
+# Function Name: test_fresh_partial_summary_is_not_requested_again
+# Description:
+# - Inside the retry period a stored partial summary is served without an AI request.
+# Parameters:
+# - catalog_engine (Engine): File-backed synthetic catalog.
+# Returns:
+# - None.
+def test_fresh_partial_summary_is_not_requested_again(catalog_engine: Engine) -> None:
+    _store_partial_summary(catalog_engine, PARTIAL_SUMMARY_RETRY_AFTER - timedelta(hours=1))
+    generator = SimpleNamespace(summarize_advanced_item=AsyncMock(side_effect=_summarize))
+    with Session(catalog_engine) as request_db:
+        details = asyncio.run(LocalMedicationCatalog(request_db, generator).fetch_drug_info(PRODUCT_NAME))
+
+    generator.summarize_advanced_item.assert_not_awaited()
+    assert (details[0].efficacy, details[0].warning) == ("stored effect", "정보 없음")
+
+
+# Function Name: test_summary_missing_only_what_the_source_lacks_is_never_requested_again
+# Description:
+# - A field without a source document has nothing to summarize: the stored summary is complete
+#   and is served without an AI request however old it is.
+# Parameters:
+# - catalog_engine (Engine): File-backed synthetic catalog.
+# - warning_doc (str | None): Empty forms of the source warning document.
+# Returns:
+# - None.
+@pytest.mark.parametrize("warning_doc", [None, "", "정보 없음"])
+def test_summary_missing_only_what_the_source_lacks_is_never_requested_again(
+    catalog_engine: Engine,
+    warning_doc: str | None,
+) -> None:
+    _store_partial_summary(catalog_engine, timedelta(days=400), warning_doc=warning_doc)
+    generator = SimpleNamespace(summarize_advanced_item=AsyncMock(side_effect=_summarize))
+    with Session(catalog_engine) as request_db:
+        details = asyncio.run(LocalMedicationCatalog(request_db, generator).fetch_drug_info(PRODUCT_NAME))
+
+    generator.summarize_advanced_item.assert_not_awaited()
+    assert "저장된 AI 요약" in details[0].source
+
+
+# Function Name: test_failed_retry_keeps_the_stored_summary_and_restarts_the_period
+# Description:
+# - When the AI cannot be reached for the retry, the stored partial summary is returned instead
+#   of an error and its write time is renewed, so the next lookup does not ask the AI again.
+# Parameters:
+# - catalog_engine (Engine): File-backed synthetic catalog.
+# Returns:
+# - None.
+def test_failed_retry_keeps_the_stored_summary_and_restarts_the_period(
+    catalog_engine: Engine,
+) -> None:
+    _store_partial_summary(catalog_engine, PARTIAL_SUMMARY_RETRY_AFTER + timedelta(days=3))
+    generator = SimpleNamespace(
+        summarize_advanced_item=AsyncMock(side_effect=RuntimeError("AI is unavailable")),
+    )
+    with Session(catalog_engine) as request_db:
+        catalog = LocalMedicationCatalog(request_db, generator)
+        first = asyncio.run(catalog.fetch_drug_info(PRODUCT_NAME))
+        second = asyncio.run(catalog.fetch_drug_info(PRODUCT_NAME))
+
+    generator.summarize_advanced_item.assert_awaited_once()
+    assert (first[0].efficacy, first[0].warning) == ("stored effect", "정보 없음")
+    assert (second[0].efficacy, second[0].warning) == ("stored effect", "정보 없음")
+    efficacy, usage, warning, written_at = _stored_summary(catalog_engine)
+    assert (efficacy, usage, warning) == ("stored effect", "stored usage", "정보 없음")
+    assert datetime.now(UTC).replace(tzinfo=None) - written_at < timedelta(minutes=5)
+
+
+# Function Name: test_retry_keeps_stored_text_of_a_field_the_new_answer_leaves_out
+# Description:
+# - A retry that fills the missing field but leaves another one out does not lose text: the
+#   stored text of that field is kept in the response and in the catalog.
+# Parameters:
+# - catalog_engine (Engine): File-backed synthetic catalog.
+# Returns:
+# - None.
+def test_retry_keeps_stored_text_of_a_field_the_new_answer_leaves_out(
+    catalog_engine: Engine,
+) -> None:
+    # Function Name: summarize_without_efficacy
+    # Description: Returns guidance with a warning but without the efficacy.
+    # Parameters: drug_name (str), raw_item (dict[str, Any]): Synthetic summary inputs.
+    # Returns: Partial guidance for the exact catalog product.
+    async def summarize_without_efficacy(drug_name: str, raw_item: dict[str, Any]) -> MedicationDetail:
+        complete = await _summarize(drug_name, raw_item)
+        return complete.model_copy(update={"efficacy": "정보 없음"})
+
+    _store_partial_summary(catalog_engine, PARTIAL_SUMMARY_RETRY_AFTER + timedelta(minutes=1))
+    generator = SimpleNamespace(
+        summarize_advanced_item=AsyncMock(side_effect=summarize_without_efficacy),
+    )
+    with Session(catalog_engine) as request_db:
+        details = asyncio.run(LocalMedicationCatalog(request_db, generator).fetch_drug_info(PRODUCT_NAME))
+
+    assert (details[0].efficacy, details[0].usage_method, details[0].warning) == (
+        "stored effect", "generated usage", "generated warning",
+    )
+    assert _stored_summary(catalog_engine)[:3] == (
+        "stored effect", "generated usage", "generated warning",
+    )

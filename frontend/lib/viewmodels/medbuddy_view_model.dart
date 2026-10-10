@@ -447,6 +447,7 @@ class MedBuddyViewModel extends ChangeNotifier {
       readUserSetting: () => userSetting,
       readSchedules: () => todayMedicationScheduleList,
       scheduleIsFresh: () => _schedules.lastLoadSucceeded,
+      loadScheduleWindow: this.checkSchedule.requestMedicationScheduleWindow,
       onChanged: _onReminderChanged,
     );
     _savedMedications = MedBuddySavedMedicationViewModel(

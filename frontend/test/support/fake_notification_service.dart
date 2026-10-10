@@ -2,7 +2,7 @@
 // Role: Shared recording substitute for NotificationService, so a change to the notification
 //   interface is made in one test double instead of in a full copy per test file.
 //
-// Records: every call to the 13 instance members of NotificationService, in call order, with the
+// Records: every call to the 17 instance members of NotificationService, in call order, with the
 //   arguments it received (reminder registrations, cancellations, snoozes, shown alerts, the
 //   history account and the privacy flag).
 // Does not simulate: the platform plugin, scheduling, the per-date notification ids, the
@@ -117,6 +117,12 @@ class RecordingNotificationService implements NotificationService {
   final List<RecordedLinkedChatAlert> linkedChatAlerts = [];
   final List<RecordedHistoryUser> historyUsers = [];
   bool? showSensitiveDetails;
+  // Result of canScheduleExactReminders; requestExactReminderPermission sets it to
+  // exactPermissionAfterRequest when that is not null.
+  bool exactRemindersAllowed = true;
+  bool? exactPermissionAfterRequest;
+  int exactPermissionRequestCount = 0;
+  int exactRescheduleCount = 0;
   int initializeCount = 0;
   int permissionRequestCount = 0;
   int systemSettingsOpenCount = 0;
@@ -177,6 +183,37 @@ class RecordingNotificationService implements NotificationService {
   @override
   void setShowSensitiveDetails(bool showSensitiveDetails) {
     this.showSensitiveDetails = showSensitiveDetails;
+  }
+
+  // Function Name: forgetArmedRemindersForTest
+  // Description: Nothing to forget; the fake keeps no reservations.
+  // Parameters: None. Returns: None.
+  @override
+  void forgetArmedRemindersForTest() {}
+
+  // Function Name: canScheduleExactReminders
+  // Description: Reports the configured exact-alarm state without asking the platform.
+  // Parameters: None. Returns: exactRemindersAllowed.
+  @override
+  Future<bool> canScheduleExactReminders() async => exactRemindersAllowed;
+
+  // Function Name: requestExactReminderPermission
+  // Description: Counts the request instead of opening the system screen, then applies
+  //   exactPermissionAfterRequest as the user's answer when a test set it.
+  // Parameters: None. Returns: The exact-alarm state after the request.
+  @override
+  Future<bool> requestExactReminderPermission() async {
+    exactPermissionRequestCount++;
+    exactRemindersAllowed = exactPermissionAfterRequest ?? exactRemindersAllowed;
+    return exactRemindersAllowed;
+  }
+
+  // Function Name: rescheduleInexactRemindersAsExact
+  // Description: Counts the request; no reminder is rescheduled.
+  // Parameters: None. Returns: Completion.
+  @override
+  Future<void> rescheduleInexactRemindersAsExact() async {
+    exactRescheduleCount++;
   }
 
   // Function Name: openSystemNotificationSettings

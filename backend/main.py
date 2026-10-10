@@ -9,7 +9,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 from alembic.util.exc import CommandError
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from google.auth.exceptions import GoogleAuthError
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
@@ -38,7 +38,7 @@ from boundaries.firebase_admin_boundary import verify_firebase_admin_credentials
 from boundaries.pill_identification_boundary import MAX_PILL_IMAGE_BYTES
 from core.config import settings
 from core.account_database_lock import ACCOUNT_BUSY_DETAIL
-from core.api_contract import ApiContractMiddleware
+from core.api_contract import ApiContractMiddleware, record_client_features
 from core.database import SessionLocal, engine
 from controls.process_chat_notifications_control import ProcessChatNotifications, reserve_chat_push
 from services.chat_notification_worker import ChatNotificationWorker
@@ -380,6 +380,7 @@ def create_app() -> FastAPI:
         medication_router,
         prefix="/api/v1/medication",
         tags=["Medication"],
+        dependencies=[Depends(record_client_features)],
     )
     app.include_router(
         pharmacy_router,
@@ -391,6 +392,7 @@ def create_app() -> FastAPI:
         chat_router,
         prefix="/api/v1/chat",
         tags=["Chat"],
+        dependencies=[Depends(record_client_features)],
     )
     app.include_router(auth_router)
 

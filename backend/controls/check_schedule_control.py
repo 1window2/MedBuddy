@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from boundaries.medication_completion_event_boundary import (
     MedicationCompletionEventBoundary,
 )
+from core.api_contract import client_schedules_by_dose_days
 from core.application_clock import application_today
 from entities.medication_completion_entity import (
     MedicationCompletion,
@@ -21,8 +22,10 @@ from entities.medication_completion_entity import (
     utc_now,
 )
 from entities.caregiver_alert_outbox_entity import (
+    CAREGIVER_ALERT_EVENT_LATE_LINK_COMPLETED,
     CAREGIVER_ALERT_STATUS_DEAD_LETTER,
     CAREGIVER_ALERT_STATUS_PENDING,
+    CAREGIVER_ALERT_STATUS_SENT,
     _CaregiverAlertOutbox,
 )
 from entities.medication_image_url_entity import safe_medication_image_url
@@ -30,6 +33,7 @@ from entities.medication_schedule_entity import (
     MEDICATION_SCHEDULE_SLOT_KEYS,
     MedicationSchedule,
 )
+from entities.patient_caregiver_link_entity import _PatientCaregiverLink
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient_hash
 from entities.saved_medication_entity import _SavedMedication
 from repositories.saved_medication_repository import SavedMedicationRepository
@@ -92,6 +96,7 @@ class CheckSchedule:
         active_medications, completion_rows_by_medication_id = self._load_day(
             normalized_patient_hash,
             today,
+            due_only=client_schedules_by_dose_days(),
         )
         active_schedules = [
             self._to_schedule_dict(
@@ -122,7 +127,14 @@ class CheckSchedule:
         for start in range(0, len(owners), 400):
             batch = owners[start:start + 400]
             medications = self.medication_repository.list_schedule_medications_for_patients(batch)
-            active = [med for med in medications if self.course_policy.is_active_on(med, today)]
+            # 매일 복용하지 않는 약("주 1회" 등)은 복용하는 날에만 오늘 일정에 넣는다.
+            # 그 구분을 모르는 이전 클라이언트에는 예전처럼 복용 기간 안의 약을 모두 준다.
+            is_listed = (
+                self.course_policy.is_due_on
+                if client_schedules_by_dose_days()
+                else self.course_policy.is_active_on
+            )
+            active = [med for med in medications if is_listed(med, today)]
             if not active:
                 continue
             rows = (
@@ -225,6 +237,7 @@ class CheckSchedule:
             normalized_patient_hash,
             today,
             include=medication,
+            due_only=client_schedules_by_dose_days(),
         )
         completion_rows = completion_rows_by_medication_id.setdefault(
             int(medication.id),
@@ -350,6 +363,7 @@ class CheckSchedule:
         active_medications, completion_rows_by_medication_id = self._load_day(
             normalized_patient_hash,
             today,
+            due_only=client_schedules_by_dose_days(),
         )
         medications = [
             medication
@@ -482,6 +496,7 @@ class CheckSchedule:
     # 함수역할:
     # - 변경 전후의 시간대 완료 상태를 비교해 새로 완료된 시간대마다 알림 아웃박스 행을 하나씩 만든다.
     # - 약 하나 변경과 시간대 전체 변경이 같은 규칙으로 완료 이벤트를 만들도록 한 곳에 둔다.
+    # - 그 시간대의 완료 알림이 이미 전송됐으면, 전송 뒤에 처음 연동된 보호자용 행만 따로 만든다.
     # 매개변수:
     # - patient_hash (str): 환자 소유권 hash
     # - schedule_date (date): 복약 완료 날짜
@@ -525,7 +540,49 @@ class CheckSchedule:
                 schedule_date=schedule_date,
             )
             completion_event["outbox_id"] = int(outbox_row.id)
+            self._queue_late_link_completion_alerts(outbox_row)
         return completion_events
+
+    # 함수이름: _queue_late_link_completion_alerts
+    # 함수역할:
+    # - 하루 한 번인 환자·시간대 완료 알림이 이미 전송된 뒤에 처음 연동된 보호자는 그 알림을
+    #   받지 못했으므로, 시간대가 다시 완료될 때 그 보호자 한 명만을 위한 아웃박스 행을 만든다.
+    # - 행의 키에 보호자가 들어가므로 보호자·시간대·날짜마다 한 번만 만들어지고, 전송 시각보다
+    #   먼저 만들어진 연동(해제 후 다시 연동한 경우 포함)은 이미 받았을 수 있어 제외한다.
+    # - 새 행은 반환하는 이벤트 목록에 넣지 않으며 아웃박스 작업자가 다음 주기에 전송한다.
+    # 매개변수:
+    # - sent_row (_CaregiverAlertOutbox): 이번 완료에 해당하는 환자·시간대 완료 알림 행.
+    # 반환값:
+    # - 없음; 행이 아직 전송 완료 상태가 아니면 아무것도 하지 않는다.
+    def _queue_late_link_completion_alerts(
+        self,
+        sent_row: _CaregiverAlertOutbox,
+    ) -> None:
+        if (
+            sent_row.status != CAREGIVER_ALERT_STATUS_SENT
+            or sent_row.sent_at is None
+        ):
+            return
+        late_caregiver_hashes = [
+            str(caregiver_hash)
+            for (caregiver_hash,) in self.db.query(
+                _PatientCaregiverLink.caregiver_hash
+            ).filter(
+                _PatientCaregiverLink.patient_hash == sent_row.patient_hash,
+                _PatientCaregiverLink.linked.is_(True),
+                _PatientCaregiverLink.created_at > sent_row.sent_at,
+            )
+        ]
+        for caregiver_hash in late_caregiver_hashes:
+            self._get_or_create_completion_outbox(
+                event_key=hashlib.sha256(
+                    f"{sent_row.event_key}:{caregiver_hash}".encode("utf-8")
+                ).hexdigest(),
+                patient_hash=str(sent_row.patient_hash),
+                slot_key=str(sent_row.slot_key),
+                schedule_date=sent_row.schedule_date,
+                caregiver_hash=caregiver_hash,
+            )
 
     # 함수이름: _new_slot_completion_events
     # 함수역할:
@@ -584,6 +641,7 @@ class CheckSchedule:
     # - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
     # - slot_key (str): morning, lunch, evening, bedtime 중 복용 시간대 키.
     # - schedule_date (date | None): 완료 이벤트의 복약 날짜; None이면 오늘.
+    # - caregiver_hash (str | None): 늦게 연동된 보호자 한 명에게만 보낼 행이면 그 보호자; None이면 환자·시간대 행.
     # 반환값:
     # - 새로 만들었거나 동일 이벤트 키로 이미 존재하는 완료 알림 아웃박스 행.
     def _get_or_create_completion_outbox(
@@ -593,6 +651,7 @@ class CheckSchedule:
         patient_hash: str,
         slot_key: str,
         schedule_date: date | None = None,
+        caregiver_hash: str | None = None,
     ) -> _CaregiverAlertOutbox:
         values = {
             "event_key": event_key,
@@ -600,6 +659,9 @@ class CheckSchedule:
             "slot_key": slot_key,
             "schedule_date": schedule_date or application_today(),
         }
+        if caregiver_hash is not None:
+            values["caregiver_hash"] = caregiver_hash
+            values["event_type"] = CAREGIVER_ALERT_EVENT_LATE_LINK_COMPLETED
         dialect_name = self.db.get_bind().dialect.name
         if dialect_name == "postgresql":
             statement = postgresql_insert(_CaregiverAlertOutbox).values(**values)
@@ -767,11 +829,14 @@ class CheckSchedule:
     # 함수이름: _load_day
     # 함수역할:
     # - 한 환자의 지정일 활성 약과 그 약들의 완료 기록을 조회 두 번으로 읽는다.
+    # - 활성 약은 복용 기간 안에 있고 그날이 복용하는 날인 약이다("주 1회" 약은 7일마다).
     # - 복용 기록 변경과 완료 판정이 약마다 다시 조회하지 않도록 같은 결과를 공유하게 한다.
     # 매개변수:
     # - patient_hash (str): 정규화된 환자 소유권 hash
     # - schedule_date (date): 활성 여부와 완료 기록을 확인할 날짜
     # - include (_SavedMedication | None): 활성 여부와 무관하게 완료 기록을 함께 읽을 변경 대상 약
+    # - due_only (bool): False이면 복용하는 날을 따지지 않고 복용 기간 안의 약을 모두 읽는다. 복용하는
+    #   날을 구분하지 못하는 이전 클라이언트의 조회·기록 요청에만 쓰며, 알림 판정은 항상 True로 읽는다.
     # 반환값:
     # - 지정일 활성 약 목록과 약 ID별 완료 기록 목록; include는 활성 목록에 추가하지 않는다.
     def _load_day(
@@ -779,7 +844,11 @@ class CheckSchedule:
         patient_hash: str,
         schedule_date: date,
         include: _SavedMedication | None = None,
+        due_only: bool = True,
     ) -> tuple[list[_SavedMedication], dict[int, list[_MedicationCompletion]]]:
+        is_listed = (
+            self.course_policy.is_due_on if due_only else self.course_policy.is_active_on
+        )
         active_medications = [
             medication
             for medication in (
@@ -787,7 +856,7 @@ class CheckSchedule:
                     patient_hash
                 )
             )
-            if self.course_policy.is_active_on(medication, schedule_date)
+            if is_listed(medication, schedule_date)
         ]
         completion_scope = active_medications
         if include is not None and all(
@@ -912,6 +981,8 @@ class CheckSchedule:
                 else ""
             ),
             "prescription_date": schedule.created_date.isoformat(),
+            # 클라이언트가 문구를 다시 해석하지 않고 같은 날에 알림을 예약하도록 복용 주기를 함께 준다.
+            **self.course_policy.dose_cycle_fields(medication),
         }
 
     # 함수이름: _to_schedule

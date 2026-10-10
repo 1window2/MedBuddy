@@ -15,6 +15,8 @@
 #        sent faster than the minimum interval (no reason)
 # - 1013 quota storage unavailable        - 1011 any other handshake failure
 # - 4408 idle timeout    - 1009 frame too large    - 1003 anything that is not the text "ping"
+# - 4440 the ID token the stream was opened with has expired (reconnect with a fresh token)
+# - 4404 on an established stream: the periodic check found the link no longer active
 #
 # Routers, authentication, authorization, the link control and the connection manager are the
 # production objects. Replaced: the database (foreign-key-enforcing in-memory SQLite) and the
@@ -23,6 +25,7 @@
 import asyncio
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import FastAPI
@@ -34,6 +37,7 @@ import main
 from api import chat_router
 from core.config import settings
 from core.request_rate_limits import RequestRateLimitStore
+from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from entities.patient_caregiver_link_entity import _PatientCaregiverLink
 from support.db import seed_account
 from support.fakes import FakeRedis
@@ -451,3 +455,186 @@ def test_frames_other_than_a_text_ping_close_the_stream(
 
     assert closed.value.code == expected_code
     assert not _is_connected(chat_stream)
+
+
+# Function Name: _unlink
+# Description:
+# - Deactivates the fixture's link the way an unlink does while a stream is open.
+# Parameters:
+# - stream (_ChatStream): Application under test.
+# Returns:
+# - None.
+def _unlink(stream: _ChatStream) -> None:
+    with stream.factory() as db:
+        db.get(_PatientCaregiverLink, stream.link_id).linked = False
+        db.commit()
+
+
+# Function Name: test_stream_is_closed_when_its_token_expires
+# Description:
+# - A stream opened with a token that expires shortly afterwards answers pings until then and
+#   is closed with 4440 at the expiry, not at the idle timeout; the registration is released.
+# Parameters:
+# - chat_stream (_ChatStream): Application and client under test.
+# - monkeypatch (pytest.MonkeyPatch): Supplies a verified identity that carries an expiry.
+# Returns:
+# - None.
+def test_stream_is_closed_when_its_token_expires(
+    chat_stream: _ChatStream,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Function Name: authenticate
+    # Description:
+    # - Stands in for token verification with an identity whose token expires in one second.
+    # Parameters:
+    # - _websocket (object): Handshake connection; unused.
+    # Returns:
+    # - Development-scoped principal with an expiry.
+    def authenticate(_websocket: object) -> AuthenticatedPrincipal:
+        return AuthenticatedPrincipal.development_principal().model_copy(
+            update={"expires_at": datetime.now(UTC) + timedelta(seconds=1)},
+        )
+
+    monkeypatch.setattr(chat_router, "_authenticate_websocket", authenticate)
+    with chat_stream.client.websocket_connect(
+        chat_stream.path(), headers=chat_stream.headers
+    ) as socket:
+        assert socket.receive_json()["type"] == "chat_ready"
+        socket.send_text("ping")
+        assert socket.receive_json() == {"type": "pong"}
+        with pytest.raises(WebSocketDisconnect) as closed:
+            socket.receive_json()
+
+    assert closed.value.code == 4440
+    assert not _is_connected(chat_stream)
+
+
+# Function Name: test_token_expiry_claim_becomes_the_principal_expiry
+# Description:
+# - The verified `exp` claim is kept on the principal; a missing or malformed claim leaves the
+#   expiry unset instead of rejecting the identity.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+def test_token_expiry_claim_becomes_the_principal_expiry() -> None:
+    claims: dict[str, object] = {"uid": "user-1", "iss": "issuer", "exp": 1_900_000_000}
+
+    principal = AuthenticatedPrincipal.from_verified_claims(claims)
+
+    assert principal.expires_at == datetime.fromtimestamp(1_900_000_000, tz=UTC)
+    for unusable in (None, "1900000000", True, float("inf")):
+        without = AuthenticatedPrincipal.from_verified_claims({**claims, "exp": unusable})
+        assert without.expires_at is None
+    assert AuthenticatedPrincipal.development_principal().expires_at is None
+
+
+# Function Name: test_established_stream_is_closed_after_its_link_ends
+# Description:
+# - Once the revalidation interval has passed, a ping on a stream whose link is still active is
+#   answered, and the first ping after the link was removed closes the stream with 4404.
+# Parameters:
+# - chat_stream (_ChatStream): Application and client under test.
+# - monkeypatch (pytest.MonkeyPatch): Makes every ping due for revalidation.
+# Returns:
+# - None.
+def test_established_stream_is_closed_after_its_link_ends(
+    chat_stream: _ChatStream,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "CHAT_WEBSOCKET_REVALIDATION_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr(settings, "CHAT_WEBSOCKET_MIN_PING_INTERVAL_SECONDS", 0)
+    with chat_stream.client.websocket_connect(
+        chat_stream.path(), headers=chat_stream.headers
+    ) as socket:
+        assert socket.receive_json()["type"] == "chat_ready"
+        socket.send_text("ping")
+        assert socket.receive_json() == {"type": "pong"}
+        _unlink(chat_stream)
+        socket.send_text("ping")
+        with pytest.raises(WebSocketDisconnect) as closed:
+            socket.receive_json()
+
+    assert closed.value.code == 4404
+    assert not _is_connected(chat_stream)
+
+
+# Function Name: test_link_state_is_not_queried_inside_the_revalidation_interval
+# Description:
+# - With the default interval a ping shortly after the handshake is answered without a link
+#   check, so the check costs at most one query per stream and interval.
+# Parameters:
+# - chat_stream (_ChatStream): Application and client under test.
+# - monkeypatch (pytest.MonkeyPatch): Fails the test if the link check runs.
+# Returns:
+# - None.
+def test_link_state_is_not_queried_inside_the_revalidation_interval(
+    chat_stream: _ChatStream,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Function Name: unexpected_check
+    # Description:
+    # - Stands in for the link check and records that it ran.
+    # Parameters:
+    # - _link_id (int): Link of the stream; unused.
+    # - _user_hash (str): Participant of the stream; unused.
+    # Returns:
+    # - False, which would close the stream.
+    def unexpected_check(_link_id: int, _user_hash: str) -> bool:
+        checks.append(1)
+        return False
+
+    checks: list[int] = []
+    monkeypatch.setattr(chat_router, "_link_is_still_active", unexpected_check)
+    with chat_stream.client.websocket_connect(
+        chat_stream.path(), headers=chat_stream.headers
+    ) as socket:
+        assert socket.receive_json()["type"] == "chat_ready"
+        socket.send_text("ping")
+        assert socket.receive_json() == {"type": "pong"}
+
+    assert checks == []
+
+
+# Function Name: test_failed_revalidation_keeps_the_stream_and_is_retried
+# Description:
+# - A database failure during the link check does not close the stream; the next ping checks
+#   again and the stream continues once the check succeeds.
+# Parameters:
+# - chat_stream (_ChatStream): Application and client under test.
+# - monkeypatch (pytest.MonkeyPatch): Replaces the link check with one that fails once.
+# Returns:
+# - None.
+def test_failed_revalidation_keeps_the_stream_and_is_retried(
+    chat_stream: _ChatStream,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Function Name: flaky_check
+    # Description:
+    # - Stands in for the link check: fails like a lost connection once, then succeeds.
+    # Parameters:
+    # - _link_id (int): Link of the stream; unused.
+    # - _user_hash (str): Participant of the stream; unused.
+    # Returns:
+    # - True from the second call on; the first call raises RuntimeError.
+    def flaky_check(_link_id: int, _user_hash: str) -> bool:
+        checks.append(1)
+        if len(checks) == 1:
+            raise RuntimeError("database connection lost")
+        return True
+
+    checks: list[int] = []
+    monkeypatch.setattr(settings, "CHAT_WEBSOCKET_REVALIDATION_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr(settings, "CHAT_WEBSOCKET_MIN_PING_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr(chat_router, "_link_is_still_active", flaky_check)
+    with chat_stream.client.websocket_connect(
+        chat_stream.path(), headers=chat_stream.headers
+    ) as socket:
+        assert socket.receive_json()["type"] == "chat_ready"
+        socket.send_text("ping")
+        assert socket.receive_json() == {"type": "pong"}
+        socket.send_text("ping")
+        assert socket.receive_json() == {"type": "pong"}
+        assert _is_connected(chat_stream)
+
+    assert len(checks) == 2

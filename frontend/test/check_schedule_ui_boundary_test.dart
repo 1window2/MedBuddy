@@ -369,17 +369,19 @@ class _ScheduleHealthRecommendation extends CheckHealthRecommendation {
 }
 
 // 함수이름: _pumpReminderSchedule
-// 함수역할: tester에 알림 대역 notification과 textScale 글씨 배율을 적용한 일정을 표시한다. 반환값: 생성한 화면 모델.
+// 함수역할: tester에 알림 대역 notification과 textScale 글씨 배율을 적용한 일정을 표시한다. notificationService를 주면
+//   그 알림 서비스 대역을 쓴다. 반환값: 생성한 화면 모델.
 Future<MedBuddyViewModel> _pumpReminderSchedule(
   WidgetTester tester,
   _MutableSetNotification notification, {
   double textScale = 1,
+  RecordingNotificationService? notificationService,
 }) async {
   SharedPreferences.setMockInitialValues({});
   final viewModel = MedBuddyViewModel(
     checkSchedule: _ActiveCheckSchedule(),
     setNotification: notification,
-    notificationService: RecordingNotificationService(),
+    notificationService: notificationService ?? RecordingNotificationService(),
   );
   addTearDown(viewModel.dispose);
   await tester.pumpWidget(
@@ -896,6 +898,33 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  // 켜 둔 알림이 있는데 기기가 정확한 알람을 막고 있으면 일정 화면에서 허용 방법을 안내하고, 꺼 둔 경우에는 안내하지 않는다.
+  for (final enabled in [true, false]) {
+    testWidgets('exact-alarm notice follows the reminder switch (enabled=$enabled)', (
+      tester,
+    ) async {
+      final notificationService = RecordingNotificationService()
+        ..exactRemindersAllowed = false;
+      await _pumpReminderSchedule(
+        tester,
+        _MutableSetNotification(enabled: enabled),
+        notificationService: notificationService,
+      );
+
+      expect(
+        find.byKey(const Key('exact-reminder-notice')),
+        enabled ? findsOneWidget : findsNothing,
+      );
+      if (!enabled) return;
+      // 허용하고 돌아오면 예약을 정확한 알람으로 바꾸고 안내를 지운다.
+      notificationService.exactPermissionAfterRequest = true;
+      await tester.tap(find.byKey(const Key('exact-reminder-allow')));
+      await tester.pumpAndSettle();
+      expect(notificationService.exactRescheduleCount, 1);
+      expect(find.byKey(const Key('exact-reminder-notice')), findsNothing);
+    });
+  }
 
   // 함수이름: 알림 설정 큰 글씨 테스트
   // 함수역할: tester의 작은 화면·2배 글씨에서 설정과 저장 명령이 스크롤로 접근 가능한지 검증한다. 반환값: 검증 완료.

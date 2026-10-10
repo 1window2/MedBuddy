@@ -17,6 +17,8 @@ from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 # - Derive ownership only from verified issuer/subject claims and retain provider and recent-authentication evidence.
 # Attributes:
 # - user_hash (str): Account ownership scope for the operation.
+# - expires_at (datetime | None): Expiry of the verified token; None when the
+#   identity carries no expiry (authentication disabled) or the claim is unusable.
 class AuthenticatedPrincipal(BaseModel):
     """Represents a verified external identity mapped to a MedBuddy user key."""
 
@@ -32,6 +34,7 @@ class AuthenticatedPrincipal(BaseModel):
     anonymous: bool = False
     authentication_disabled: bool = False
     authenticated_at: datetime | None = None
+    expires_at: datetime | None = None
 
     # Function Name: from_verified_claims
     # Description:
@@ -90,7 +93,26 @@ class AuthenticatedPrincipal(BaseModel):
             sign_in_provider=sign_in_provider,
             anonymous=sign_in_provider == "anonymous",
             authenticated_at=authenticated_at,
+            expires_at=cls._expiry_from_claim(claims.get("exp")),
         )
+
+    # Function Name: _expiry_from_claim
+    # Description:
+    # - Reads the token expiry for long-lived connections. The verifier has already
+    #   rejected an expired token, so an absent or malformed claim yields None instead
+    #   of failing a request that only needs the identity.
+    # Parameters:
+    # - value (object): The verified token's `exp` claim, in seconds since the epoch.
+    # Returns:
+    # - Timezone-aware expiry, or None when the claim cannot be read as a time.
+    @staticmethod
+    def _expiry_from_claim(value: object) -> datetime | None:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        try:
+            return datetime.fromtimestamp(float(value), tz=UTC)
+        except (OverflowError, OSError, ValueError):
+            return None
 
     # Function Name: development_principal
     # Description:

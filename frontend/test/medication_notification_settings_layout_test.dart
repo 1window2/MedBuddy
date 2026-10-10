@@ -9,6 +9,8 @@ import 'package:medbuddy_frontend/controls/authentication_control.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 
+import 'support/fake_notification_service.dart';
+
 // 함수이름: main
 // 함수역할: UI 정리 후 기존 저장 계약과 큰 글씨 동작을 검사한다. 매개변수·반환값: 없음.
 void main() {
@@ -138,6 +140,41 @@ void main() {
     expect(saves.single.chatNotificationsEnabled, isFalse);
   });
 
+  // 내 복약 알림을 켜 둔 기기가 정확한 알람을 막고 있으면 스위치 아래에서 허용 방법을 안내하고, 알림을 끄면 안내도 사라진다.
+  for (final language in ['ko', 'en']) {
+    testWidgets('정확한 알람 안내는 내 복약 알림이 켜져 있을 때만 보인다 $language', (tester) async {
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      final notificationService = RecordingNotificationService()
+        ..exactRemindersAllowed = false;
+      await _pumpSettings(
+        tester,
+        width: 320,
+        setting: UserSetting(language: language, fontSize: 20),
+        notificationService: notificationService,
+      );
+
+      final allow = find.byKey(const Key('exact-reminder-allow'));
+      await tester.ensureVisible(allow);
+      await tester.pumpAndSettle();
+      expect(allow.hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await _tap(tester, 'medicationNotificationsSwitch');
+      expect(find.byKey(const Key('exact-reminder-notice')), findsNothing);
+      await _tap(tester, 'medicationNotificationsSwitch');
+      await tester.ensureVisible(allow);
+      await tester.pumpAndSettle();
+
+      notificationService.exactPermissionAfterRequest = true;
+      await tester.tap(allow);
+      await tester.pumpAndSettle();
+      expect(notificationService.exactPermissionRequestCount, 1);
+      expect(find.byKey(const Key('exact-reminder-notice')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   for (final width in [320.0, 411.0]) {
     for (final scale in [1.0, 2.0]) {
       for (final language in ['ko', 'en']) {
@@ -212,7 +249,7 @@ Future<void> _tap(WidgetTester tester, String key) async {
 
 // 함수이름: _pumpSettings
 // 함수역할: 실제 저장·OS 이동 없이 복약 설정 화면을 구성한다.
-// 매개변수: 화면 도구, 초기 설정·너비와 저장·이동 관찰 콜백. 반환값: 복약 설정 진입 완료.
+// 매개변수: 화면 도구, 초기 설정·너비와 저장·이동 관찰 콜백, 정확한 알람 안내에 쓸 알림 대역. 반환값: 복약 설정 진입 완료.
 Future<void> _pumpSettings(
   WidgetTester tester, {
   UserSetting setting = const UserSetting(),
@@ -220,6 +257,7 @@ Future<void> _pumpSettings(
   ValueChanged<UserSetting>? onSave,
   VoidCallback? onDevice,
   VoidCallback? onSchedule,
+  RecordingNotificationService? notificationService,
 }) async {
   tester.view.physicalSize = Size(width, 820);
   tester.view.devicePixelRatio = 1;
@@ -245,6 +283,7 @@ Future<void> _pumpSettings(
         onDeviceNotificationSettingsRequested: () async {
           onDevice?.call();
         },
+        notificationService: notificationService,
       ),
     ),
   );

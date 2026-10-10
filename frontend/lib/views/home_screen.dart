@@ -322,6 +322,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _startChatRefresh();
       _notificationInbox?.start();
       _medicationRecovery?.start();
+      // 시스템 설정에서 '알람 및 리마인더'를 허용하고 돌아오면, 늦게 울릴 수 있는 알람으로 예약해 둔
+      // 복약 알림을 사용자가 따로 저장하지 않아도 정확한 알람으로 바꾼다. 바꿀 것이 없으면 아무 일도 하지 않는다.
+      unawaited(
+        context
+            .read<MedBuddyViewModel>()
+            .notificationService
+            .rescheduleInexactRemindersAsExact()
+            .catchError((_) {}),
+      );
     } else {
       _medicationRecovery?.stop();
       _chatRefreshTimer?.cancel();
@@ -1205,6 +1214,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           },
           onDeviceNotificationSettingsRequested:
               NotificationService.instance.openSystemNotificationSettings,
+          notificationService: viewModel.notificationService,
           // 함수이름: _openUserSettings.onExtendedSettingSaveRequested callback
           // 함수역할: 설정 화면이 넘긴 설정 객체를 그대로 저장하고, 저장된 언어 선택 모드를 앱 전체 언어에 적용한다.
           // 매개변수:

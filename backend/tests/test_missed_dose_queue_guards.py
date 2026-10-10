@@ -5,6 +5,8 @@
 # The baseline of every test is one patient with a lunch medication and one linked caregiver
 # whose lunch setting is "missed_deadline" at 13:00. The scan time 13:05 is past that deadline,
 # so the baseline queues exactly one event; each guard test changes one condition.
+# The patient has no saved lunch alarm, so the lunch reminder time is the product default 12:00
+# and the grace period of 30 minutes ends before the baseline deadline.
 
 from datetime import datetime, timedelta
 
@@ -16,6 +18,7 @@ from controls.queue_missed_dose_alerts_control import (
     missed_event_key,
 )
 from core.application_clock import application_now
+from core.config import settings
 from entities.caregiver_alert_outbox_entity import (
     CAREGIVER_ALERT_EVENT_MISSED_DEADLINE,
     _CaregiverAlertOutbox,
@@ -26,9 +29,11 @@ from entities.caregiver_notification_entity import (
     _CaregiverNotification,
     encode_slot_settings,
 )
+from entities.medication_alarm_entity import _MedicationAlarm
 from entities.medication_completion_entity import _MedicationCompletion
 from entities.patient_caregiver_link_entity import _PatientCaregiverLink
 from entities.saved_medication_entity import _SavedMedication
+from entities.user_setting_entity import _UserSetting
 from support.db import seed_account, seed_medication
 
 PATIENT_HASH = "guard-patient"
@@ -323,3 +328,118 @@ def test_next_day_queues_a_new_event(
         next_day.date(),
     ]
     assert events[0].event_key != events[1].event_key
+
+
+# Function Name: test_deadline_before_the_reminder_waits_for_the_reminder_and_grace
+# Description:
+# - A deadline of 11:00 for a slot the patient is reminded of at 12:00 queues nothing at the
+#   deadline or at the reminder time; the event is queued once the grace period has passed.
+# Parameters:
+# - fk_db (Session): Session on the test database.
+# - due_time (datetime): Baseline scan time; supplies the day.
+# - lunch_medication (_SavedMedication): Baseline lunch medication.
+# Returns:
+# - None; fails if the day's only event is spent before the patient was reminded.
+def test_deadline_before_the_reminder_waits_for_the_reminder_and_grace(
+    fk_db: Session,
+    due_time: datetime,
+    lunch_medication: _SavedMedication,
+) -> None:
+    add_caregiver(fk_db, deadline_hour=11)
+    queue = QueueMissedDoseAlerts(fk_db)
+
+    assert queue.queueDue(now=due_time.replace(hour=11, minute=5)) == 0
+    assert queue.queueDue(now=due_time.replace(hour=12, minute=0)) == 0
+    assert queue.queueDue(now=due_time.replace(hour=12, minute=29)) == 0
+    assert fk_db.query(_CaregiverAlertOutbox).count() == 0
+    assert queue.queueDue(now=due_time.replace(hour=12, minute=30)) == 1
+
+
+# Function Name: test_patient_reminder_time_moves_the_earliest_alert
+# Description:
+# - The reminder time is the patient's own: a saved alarm time, also of an alarm that is
+#   switched off, or the patient's default for the slot. The baseline deadline of 13:00 is
+#   held back until that time plus the grace period.
+# Parameters:
+# - fk_db (Session): Session on the test database.
+# - due_time (datetime): Baseline scan time; supplies the day.
+# - lunch_medication (_SavedMedication): Baseline lunch medication.
+# - source (str): Where the patient's lunch time of 14:10 is stored.
+# Returns:
+# - None.
+@pytest.mark.parametrize("source", ["enabled_alarm", "disabled_alarm", "default_time"])
+def test_patient_reminder_time_moves_the_earliest_alert(
+    fk_db: Session,
+    due_time: datetime,
+    lunch_medication: _SavedMedication,
+    source: str,
+) -> None:
+    add_caregiver(fk_db)
+    if source == "default_time":
+        fk_db.add(_UserSetting(user_hash=PATIENT_HASH, default_lunch_time="14:10"))
+    else:
+        fk_db.add(
+            _MedicationAlarm(
+                patient_hash=PATIENT_HASH, slot_key="lunch", hour=14, minute=10,
+                enabled=source == "enabled_alarm",
+            )
+        )
+    fk_db.commit()
+    queue = QueueMissedDoseAlerts(fk_db)
+
+    assert queue.queueDue(now=due_time) == 0
+    assert queue.queueDue(now=due_time.replace(hour=14, minute=39)) == 0
+    assert queue.queueDue(now=due_time.replace(hour=14, minute=40)) == 1
+
+
+# Function Name: test_reminder_late_in_the_evening_is_still_reported_the_same_day
+# Description:
+# - When the reminder time plus the grace period would fall on the next day, the slot becomes
+#   reportable at 23:59, because the scan never looks back at the previous day.
+# Parameters:
+# - fk_db (Session): Session on the test database.
+# - due_time (datetime): Baseline scan time; supplies the day.
+# - lunch_medication (_SavedMedication): Baseline lunch medication.
+# Returns:
+# - None; fails if a late reminder makes the missed dose unreportable.
+def test_reminder_late_in_the_evening_is_still_reported_the_same_day(
+    fk_db: Session,
+    due_time: datetime,
+    lunch_medication: _SavedMedication,
+) -> None:
+    add_caregiver(fk_db)
+    fk_db.add(
+        _MedicationAlarm(
+            patient_hash=PATIENT_HASH, slot_key="lunch", hour=23, minute=45, enabled=True,
+        )
+    )
+    fk_db.commit()
+    queue = QueueMissedDoseAlerts(fk_db)
+
+    assert queue.queueDue(now=due_time.replace(hour=23, minute=58)) == 0
+    assert queue.queueDue(now=due_time.replace(hour=23, minute=59)) == 1
+
+
+# Function Name: test_grace_period_is_configurable
+# Description:
+# - With a grace period of zero a deadline before the reminder is reported at the reminder
+#   time itself, and still not before it.
+# Parameters:
+# - fk_db (Session): Session on the test database.
+# - due_time (datetime): Baseline scan time; supplies the day.
+# - lunch_medication (_SavedMedication): Baseline lunch medication.
+# - monkeypatch (pytest.MonkeyPatch): Sets the grace period for this test.
+# Returns:
+# - None.
+def test_grace_period_is_configurable(
+    fk_db: Session,
+    due_time: datetime,
+    lunch_medication: _SavedMedication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "CAREGIVER_MISSED_DOSE_GRACE_MINUTES", 0)
+    add_caregiver(fk_db, deadline_hour=11)
+    queue = QueueMissedDoseAlerts(fk_db)
+
+    assert queue.queueDue(now=due_time.replace(hour=11, minute=59)) == 0
+    assert queue.queueDue(now=due_time.replace(hour=12, minute=0)) == 1

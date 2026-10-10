@@ -1,80 +1,77 @@
 # MedBuddy Release TODO
 
-## v0.2.2 security review
+## v0.2.2 release candidate
 
-An external scan of the repository history (33 findings, two of them for
-another repository) was checked against the released code on October 9. Work
-continues on `beta/v0.2.2`.
+v0.2.2 is the hardening line before a 1.0.0 release decision. An external scan
+of the repository history (33 findings, two of them for another repository)
+and every item recorded in this file were checked against the released code;
+what could be decided and corrected without an external account is corrected
+on `beta/v0.2.2`. The changes are listed in the
+[v0.2.2 notes](releases/v0.2.2-beta.md).
 
-Corrected on `beta/v0.2.2`:
+### Blocking a 1.0.0 release
 
-- [x] The push notification of a server-written dose record no longer carries
-      medication names.
-- [x] A link's two display names are returned only to the participant who set
-      them.
-- [x] Hospital sharing to chat accepts only the date window of the search.
-- [x] Multi-pill image decoding shares the decode capacity limit, also after a
-      timed-out request.
-- [x] Daily quotas per account and per IP address on the AI-backed routes and
-      on hospital search; the hospital provider is queried with a coordinate
-      rounded to about 100 m.
-- [x] A session ended by the server cancels the account's local reminders and
-      deletes the device push token; an action taken while signed out is not
-      applied to a different account.
-- [x] Removing a notification from the inbox erases its stored content.
-- [x] English dosage lines no longer rewrite directions that are not a plain
-      per-day count ("2일 1회", "12시간마다") or durations that are not days.
-- [x] A malformed `Retry-After` header no longer turns a rate-limit answer
-      into an unknown failure.
+These need the owner, an external account or a physical device, and are not
+closed by any code on this branch:
 
-Also corrected on `beta/v0.2.2` (recorded defects from earlier reviews):
-
-- [x] Switching a reminder off and changing its time in the same save keeps
-      the new time. Needs the 0.2.2 server and app together; an older app
-      sends no time and behaves as before.
-- [x] In the medication box, a back press in selection mode only ends the
-      selection; it no longer also returns to Home.
-- [x] A device language change while the app is running is written back to
-      the "use device language" setting, so reminders and server pushes
-      follow it without a restart.
-- [x] The pharmacy provider is queried with a coordinate rounded to about
-      100 m, like hospital search.
-- [x] The weekly catalogue refresh keeps its schedule in the database
-      (migration `c5e1a7f3b902`). Until now every container start began a new
-      seven-day wait, so deployments spaced under a week postponed the refresh
-      indefinitely. Production last refreshed on October 7, seven days after
-      the September 30 deployment, and every deployment since had reset the
-      wait.
-- [x] The three quota checks (per minute, per day, chat per day) share one
-      helper; the unused three-field settings saver is removed; test runs no
-      longer reach a developer's local Redis.
-
-Open, owner decisions:
-
-- [ ] Chat notifications show the message preview by default; the recipient
-      can switch to type-only. Decide whether type-only should be the default.
-- [ ] The off-Play build runs without App Check and the production backend
-      accepts anonymous sign-in. The new daily quotas bound the cost per
-      account and per address, not across many addresses.
+- [ ] Google Play distribution with App Check (Play Integrity). The off-Play
+      build runs without App Check and the production backend accepts
+      anonymous sign-in; daily quotas bound the cost per account and per
+      address, not across many addresses. See the App Check section below.
 - [ ] The public hospital API budget (800 requests per day and process) is
-      shared by all users; a specialty search can cost up to 41 requests, so a
-      few uncached searches use it up. Needs a larger provider quota or a
-      reserved share per user.
-- [ ] A low-score multi-pill photo is cropped to one pill. Changing the rule
-      needs real photographs.
-- [ ] The off-Play exception and the release workflow are pinned to
-      `beta/v0.2.1`. A signed 0.2.2 build needs them re-pointed, and the
-      branch added to the `beta-android` environment.
-- Not automated: dropping a held notification action when a different account
-  signs in has no widget test (no test seam for a second account).
+      shared by all users, and one specialty search can cost up to 41
+      requests. Needs a larger provider quota.
+- [ ] Device verification of this branch. Nothing changed on `beta/v0.2.2`
+      has run on a physical phone yet; the lists below under "without a
+      device check" still apply as well. A signed build needs `beta/v0.2.2`
+      added to the `beta-android` environment.
+- [ ] Chat notifications show the message preview by default; the recipient
+      can switch to type-only. Decide the default.
 
-## v0.2.1 maintenance line
+### Decided on this branch
 
-`v0.2.0-beta` was published on October 8 as a limited GitHub pre-release for
-direct-install testers; its notes are on the
-[releases page](https://github.com/1window2/MedBuddy/releases/tag/v0.2.0-beta).
-Work for 0.2.1 continues on `beta/v0.2.1` and is limited to corrections and
-small improvements. See the [v0.2.1 notes](releases/v0.2.1-beta.md).
+- A medication that is not taken every day is scheduled on its dose days,
+  read from the frequency text. "N times a week" without weekdays is spread
+  over the week from the start date (2: days 1 and 4; 3: days 1, 3 and 5), and
+  a monthly direction repeats every 30 days. The review screen states the
+  resulting days before saving.
+- Exact reminders on Android 14 and later are asked for with a notice and the
+  system "Alarms & reminders" screen; `USE_EXACT_ALARM` is not declared
+  because Play restricts it to alarm-clock and calendar apps.
+- A caregiver missed-dose alert waits for the patient's reminder time plus 30
+  minutes. The caregiver dialog proposes the slot time plus one hour and
+  refuses an earlier deadline than the standard slot time; it cannot read the
+  patient's own reminder time.
+- A reminder time moved to earlier than now keeps today's alarm at the old
+  time, because cancelling it would leave today's dose without a reminder.
+- Push tokens are disabled when a send to them fails; FCM offers no other way
+  to learn that a token is gone.
+- A released app (0.2.1 or older) keeps receiving every medication of an
+  active course in today's schedule, because it switches a slot's reminder off
+  when the slot is empty. Only an app that sends the `dose-days` client
+  feature gets the dose-day schedule.
+
+### Known limits of this branch
+
+- [ ] A medication saved from a pill photograph can only be given a daily
+      count; a non-daily direction needs manual or prescription registration.
+- [ ] A slot that holds only non-daily medications has no card on a rest day,
+      so its reminder can be configured only on a dose day.
+- [ ] "As needed" directions are scheduled like daily ones, on the slots the
+      user confirmed.
+- [ ] A weekly prescription often prints the number of doses as its total
+      days ("4" for four weeks). The review screen shows how many dose days
+      result so the user can correct it, but the value is not guessed.
+- [ ] No cap on saved medications or links per account; list responses and
+      the recommendation prompt grow with them.
+- [ ] Dropping a pill-photo crop for a low-score multi-pill image needs real
+      photographs before the rule is changed.
+
+## Carried over from v0.2.1
+
+`v0.2.1-beta` is the current limited GitHub pre-release for direct-install
+testers ([v0.2.1 notes](releases/v0.2.1-beta.md)). The lists below record what
+it left open; items closed on `beta/v0.2.2` have been removed from them.
 
 ### Carried over from v0.2.0
 
@@ -148,22 +145,11 @@ Changed in v0.2.1 and still without a device check (automated tests only):
 
 Found during the October 8 checks:
 
-- [ ] On Android 14 a reminder set for 13:19 was delivered at 13:21:10. Exact
-      alarms are denied by default there and the app falls back to an inexact
-      alarm. Owner decision: prompt for the permission or declare
-      `USE_EXACT_ALARM`.
 - [ ] The server sends every push, chat included, on the caregiver-updates
       channel. The client now creates its channels at start-up, so a push no
       longer lands on the Firebase fallback channel on a fresh install; moving
       chat pushes to the chat channel must wait until clients older than 0.2.1
       are gone.
-- [ ] A health recommendation is generated with specific advice for a
-      medication whose stored information is empty.
-- [ ] A completion alert is sent once per patient, slot and day. A slot first
-      completed before a caregiver was linked produces no alert when it is
-      undone and completed again after linking.
-- [ ] Push tokens that FCM reports as unregistered stay enabled until a send
-      to them fails; two such rows exist in production.
 
 Reviewed for v0.2.1 and deferred:
 
@@ -176,19 +162,15 @@ Reviewed for v0.2.1 and deferred:
       correct automatic matches into review lists without the true product
       and must not be applied as is.
 - [ ] Accepting the chat WebSocket before closing it would deliver the close
-      code, but no client reads close codes and the released client resets its
-      reconnect delay on connect, so it would reconnect every second. Ship a
-      client that backs off and reads the codes first.
+      code. The 0.2.2 app reads the close codes and backs off, but the 0.2.0
+      app resets its reconnect delay on connect, so the server change must
+      wait until 0.2.0 is no longer in use.
 - [ ] Rate-limit values that took effect in v0.2.1 (including 120 per minute
       for per-item deletes), retention of dose-sync and tombstone rows, and
       HTTP 403 wording and retry behaviour before App Check is enabled. Owner
       decisions.
 - [ ] Database: 31 of 64 secondary indexes have no query that uses them, a
       stored course-end column and `pg_trgm` would need migrations.
-- [ ] A partial AI summary is stored with "정보 없음" in the missing fields and
-      stays until the source document changes.
-- [ ] Sign-out does not upload doses recorded offline before suspending the
-      worker; they wait until the same account signs in again on the device.
 - Decided, not planned: backend controls keep querying ORM models directly.
   Only three of fourteen models have a repository (the ones several controls
   share), and controls reference models in about 290 places. Wrapping the rest
@@ -208,19 +190,6 @@ Reviewed for v0.2.1 and deferred:
 
 Defects and limits recorded during the v0.2.0 audits and not changed:
 
-- [ ] Non-daily directions ("주 1회", "격일", "8시간마다") are stored as a daily
-      count, and week or month durations are read as days. Needs a product
-      decision.
-- [ ] A caregiver missed-dose deadline is accepted without comparing it with
-      the slot's reminder time; the dialog default (21:00) precedes the default
-      bedtime reminder (22:00).
-- [ ] The chat socket is authenticated once and not re-validated when the
-      token expires.
-- [ ] Reminder reconciliation trusts the plugin's pending list after a
-      force-stop, and a course with unknown duration is scheduled one day at a
-      time. A reminder time moved to earlier than now leaves today's alarm at
-      the old time, and the reminder worker does not see a dose recorded
-      offline that has not been uploaded yet.
 - [ ] The release gate does not compare the client's API contract default with
       `backend/API_CONTRACT_VERSION`.
 - [ ] Tests do not cover weekly or interval frequencies, fuzzy candidate

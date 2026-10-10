@@ -19,6 +19,7 @@ import re
 import time
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -38,6 +39,7 @@ from boundaries.app_check_token_verifier_boundary import AppCheckTokenVerificati
 from boundaries.pill_identification_boundary import MAX_PILL_IMAGE_BYTES
 from core.account_database_lock import ACCOUNT_BUSY_DETAIL
 from core.account_operation_locks import AccountOperationLocks
+from core.application_clock import application_today
 from core.config import settings
 from core.database import get_db
 from core.request_rate_limits import (
@@ -52,7 +54,7 @@ from core.request_rate_limits import (
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from entities.patient_caregiver_link_entity import _PatientCaregiverLink
 from entities.user_account_entity import _UserAccount, utc_now
-from support.db import make_engine, make_session_factory, seed_account
+from support.db import make_engine, make_session_factory, seed_account, seed_medication
 from support.fakes import FakeGeminiClient, FakeRedis, RecordingPushBoundary
 
 _APP_CHECK_TOKEN = "valid-app-check"
@@ -1241,6 +1243,55 @@ async def test_chat_daily_quota_is_enforced_over_http(
         "POST:/api/v1/chat/links/{link_id}/messages",
         "POST:/api/v1/chat/messages:daily",
     ] * 3
+
+
+# Function Name: test_dose_day_filtering_applies_only_to_clients_that_declare_it
+# Description:
+# - A weekly medication that is not due today is left out of today's schedule and its summary
+#   for a client that sends the dose-days feature, and still listed for a client that does not
+#   (released apps, which would switch the slot's reminder off on an empty list). The schedule
+#   window lists it for both, with the dose cycle.
+# Parameters:
+# - pipeline (_Pipeline): Application on replaced outer boundaries.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_dose_day_filtering_applies_only_to_clients_that_declare_it(
+    pipeline: _Pipeline,
+) -> None:
+    today = application_today()
+    with pipeline.factory() as db:
+        seed_medication(
+            db, patient_hash=_user_hash("user-a"), item_name="weekly",
+            prescription_date=today - timedelta(days=3), total_days="8주",
+            daily_frequency="주 1회", schedule_slot_keys='["bedtime"]',
+        )
+    aware = {**_headers("user-a"), "X-MedBuddy-Client-Features": "dose-days"}
+
+    async with _client(pipeline.app) as client:
+        legacy_today = await client.get(
+            "/api/v1/medication/schedule/today", headers=_headers("user-a"),
+        )
+        aware_today = await client.get("/api/v1/medication/schedule/today", headers=aware)
+        legacy_info = await client.get(
+            "/api/v1/medication/schedule/today/info", headers=_headers("user-a"),
+        )
+        aware_info = await client.get("/api/v1/medication/schedule/today/info", headers=aware)
+        window = await client.get("/api/v1/medication/schedule/window", headers=aware)
+        # The feature of one request must not carry over to the next request.
+        legacy_again = await client.get(
+            "/api/v1/medication/schedule/today", headers=_headers("user-a"),
+        )
+
+    assert [item["drug_name"] for item in legacy_today.json()["data"]] == ["weekly"]
+    assert aware_today.json()["data"] == []
+    assert [item["drug_name"] for item in legacy_again.json()["data"]] == ["weekly"]
+    assert legacy_info.json()["data"]["medication_count"] == 1, legacy_info.text
+    assert aware_info.json()["data"]["medication_count"] == 0, aware_info.text
+    assert [
+        (item["drug_name"], item["dose_cycle_days"], item["dose_cycle_anchor"])
+        for item in window.json()["data"]
+    ] == [("weekly", 7, (today - timedelta(days=3)).isoformat())]
 
 
 # Function Name: test_disabling_an_alarm_accepts_an_optional_new_time

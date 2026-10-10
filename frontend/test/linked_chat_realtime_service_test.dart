@@ -22,6 +22,8 @@ import 'package:medbuddy_frontend/services/linked_chat_realtime_service.dart';
 // - closeCodes (List<int?>): Code of each client close call, oldest first.
 // - closeGate (Completer<void>?): When set, a client close waits for it.
 // - listened (bool): Whether the service subscribed to this socket.
+// - closeCode, closeReason (int?, String?): Close frame the server sent; null for a dropped
+//   connection.
 class _FakeSocket extends Fake implements WebSocket {
   final StreamController<dynamic> _incoming = StreamController<dynamic>();
   final List<dynamic> sent = [];
@@ -31,6 +33,12 @@ class _FakeSocket extends Fake implements WebSocket {
 
   @override
   Duration? pingInterval;
+
+  @override
+  int? closeCode;
+
+  @override
+  String? closeReason;
 
   // Function Name: listen
   // Description: Subscribes the service to the frames a test sends from the server side.
@@ -74,9 +82,13 @@ class _FakeSocket extends Fake implements WebSocket {
   void serverSend(Object frame) => _incoming.add(jsonEncode(frame));
 
   // Function Name: serverClose
-  // Description: Ends the connection from the server side.
-  // Parameters: None. Returns: None.
-  void serverClose() => unawaited(_incoming.close());
+  // Description: Ends the connection from the server side, with the close frame when one is given.
+  // Parameters: code, reason - close frame fields; omitted for a dropped connection. Returns: None.
+  void serverClose([int? code, String? reason]) {
+    closeCode = code;
+    closeReason = reason;
+    unawaited(_incoming.close());
+  }
 }
 
 // Class Name: _Connector
@@ -105,6 +117,10 @@ class _Fixture {
   final _Connector connector = _Connector();
   final List<LinkedChatConnectionState> states = [];
   final List<Map<String, dynamic>> events = [];
+  // Number of credential refreshes the service asked for.
+  int credentialRefreshes = 0;
+  // Number of times the service reported the session as unauthorized.
+  int unauthorizedReports = 0;
   late final AuthenticatedApiClient _client;
   late final LinkedChatRealtimeService service;
 
@@ -117,12 +133,14 @@ class _Fixture {
       tokenProvider: () async => null,
       appCheckTokenProvider: () async => null,
       appCheckRequired: false,
+      onUnauthorized: () async => unauthorizedReports++,
     );
     service = LinkedChatRealtimeService(
       linkId: 17,
       userHash: 'patient-a',
       authenticationClient: _client,
       connector: connector.connect,
+      credentialRefresher: () async => credentialRefreshes++,
     );
     service.states.listen(states.add);
     service.events.listen(events.add);
@@ -367,6 +385,184 @@ void main() {
     await tester.pump(const Duration(seconds: 30));
     expect(fixture.connector.attempts, hasLength(1));
     expect(fixture.states.last, LinkedChatConnectionState.disconnected);
+
+    await fixture.dispose(tester);
+  });
+  // The server closes an accepted stream with 4404 when the link was removed. Reconnecting gets
+  // the same answer, so the client stops instead of knocking every few seconds.
+  testWidgets('a link-removed close stops reconnecting', (tester) async {
+    final fixture = _Fixture();
+    unawaited(fixture.service.start());
+    await tester.pump();
+    final socket = await fixture.accept(tester, 0);
+    socket.serverSend({'type': 'chat_ready', 'link_id': 17});
+    await tester.pump();
+
+    socket.serverClose(4404);
+    await tester.pump();
+    expect(fixture.states.last, LinkedChatConnectionState.disconnected);
+    await tester.pump(const Duration(minutes: 5));
+    expect(fixture.connector.attempts, hasLength(1));
+    expect(fixture.unauthorizedReports, 0);
+
+    // Opening the conversation again (start) tries once more.
+    unawaited(fixture.service.start());
+    await tester.pump();
+    expect(fixture.connector.attempts, hasLength(2));
+
+    await fixture.dispose(tester);
+  });
+
+  // 4401: one retry with a fresh token; a second 4401 ends the retries and reports the session,
+  // which is the same cleanup an HTTP 401 triggers.
+  testWidgets('an authentication close refreshes the token once, then reports the session', (
+    tester,
+  ) async {
+    final fixture = _Fixture();
+    unawaited(fixture.service.start());
+    await tester.pump();
+
+    (await fixture.accept(tester, 0)).serverClose(4401);
+    await tester.pump();
+    expect(fixture.states.last, LinkedChatConnectionState.reconnecting);
+    expect(fixture.credentialRefreshes, 0);
+    await tester.pump(const Duration(seconds: 1));
+    expect(fixture.credentialRefreshes, 1);
+    expect(fixture.connector.attempts, hasLength(2));
+    expect(fixture.unauthorizedReports, 0);
+
+    (await fixture.accept(tester, 1)).serverClose(4401);
+    await tester.pump();
+    expect(fixture.unauthorizedReports, 1);
+    expect(fixture.states.last, LinkedChatConnectionState.disconnected);
+    await tester.pump(const Duration(minutes: 5));
+    expect(fixture.connector.attempts, hasLength(2));
+    expect(fixture.credentialRefreshes, 1);
+
+    await fixture.dispose(tester);
+  });
+
+  // A connection that became ready proves the token works, so a later 4401 gets its own retry.
+  testWidgets('chat_ready renews the single authentication retry', (tester) async {
+    final fixture = _Fixture();
+    unawaited(fixture.service.start());
+    await tester.pump();
+    (await fixture.accept(tester, 0)).serverClose(4401);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+
+    final ready = await fixture.accept(tester, 1);
+    ready.serverSend({'type': 'chat_ready', 'link_id': 17});
+    await tester.pump();
+    ready.serverClose(4401);
+    await tester.pump();
+    expect(fixture.unauthorizedReports, 0);
+    await tester.pump(const Duration(seconds: 1));
+    expect(fixture.credentialRefreshes, 2);
+    expect(fixture.connector.attempts, hasLength(3));
+
+    await fixture.dispose(tester);
+  });
+
+  // 4440: the token used at the handshake expired. The session is fine; reconnect at once with
+  // a fresh token and do not report anything.
+  testWidgets('an expired-credential close reconnects with a fresh token', (tester) async {
+    final fixture = _Fixture();
+    unawaited(fixture.service.start());
+    await tester.pump();
+    final socket = await fixture.accept(tester, 0);
+    socket.serverSend({'type': 'chat_ready', 'link_id': 17});
+    await tester.pump();
+
+    for (var round = 1; round <= 2; round++) {
+      final current = round == 1 ? socket : await fixture.accept(tester, round - 1);
+      if (round == 2) {
+        current.serverSend({'type': 'chat_ready', 'link_id': 17});
+        await tester.pump();
+      }
+      current.serverClose(4440);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(fixture.credentialRefreshes, round);
+      expect(fixture.connector.attempts, hasLength(round + 1));
+    }
+    expect(fixture.unauthorizedReports, 0);
+
+    await fixture.dispose(tester);
+  });
+
+  // 4429 carries the seconds to wait as its reason. The client waits that long even when its own
+  // backoff would be shorter, and never longer than five minutes.
+  testWidgets('a quota close waits as long as the server says', (tester) async {
+    final fixture = _Fixture();
+    unawaited(fixture.service.start());
+    await tester.pump();
+
+    (await fixture.accept(tester, 0)).serverClose(4429, '42');
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 41, milliseconds: 999));
+    expect(fixture.connector.attempts, hasLength(1));
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(fixture.connector.attempts, hasLength(2));
+
+    (await fixture.accept(tester, 1)).serverClose(4429, '86400');
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 299, milliseconds: 999));
+    expect(fixture.connector.attempts, hasLength(2));
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(fixture.connector.attempts, hasLength(3));
+
+    // Without a usable reason (pings sent too fast) the ordinary backoff applies: third step, 5 s.
+    (await fixture.accept(tester, 2)).serverClose(4429);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 4, milliseconds: 999));
+    expect(fixture.connector.attempts, hasLength(3));
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(fixture.connector.attempts, hasLength(4));
+
+    await fixture.dispose(tester);
+  });
+
+  // 4403 (ownership or attestation refused) and 4409 (API contract mismatch) do not heal within
+  // seconds: the client keeps trying, but only once a minute.
+  testWidgets('a refusal close is retried a minute later', (tester) async {
+    for (final code in [4403, 4409]) {
+      final fixture = _Fixture();
+      unawaited(fixture.service.start());
+      await tester.pump();
+      (await fixture.accept(tester, 0)).serverClose(code);
+      await tester.pump();
+      expect(fixture.states.last, LinkedChatConnectionState.reconnecting);
+      await tester.pump(const Duration(seconds: 59, milliseconds: 999));
+      expect(fixture.connector.attempts, hasLength(1), reason: 'code $code');
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(fixture.connector.attempts, hasLength(2), reason: 'code $code');
+      await fixture.dispose(tester);
+    }
+  });
+
+  // Today's server refuses during the handshake: the connect itself fails, no close code arrives,
+  // and the client must simply back off without refreshing or reporting anything.
+  testWidgets('a handshake refusal backs off without reading a close code', (tester) async {
+    final fixture = _Fixture();
+    unawaited(fixture.service.start());
+    await tester.pump();
+
+    var attempt = 0;
+    for (final seconds in [1, 2, 5, 10, 10]) {
+      fixture.connector.attempts[attempt].completeError(
+        const WebSocketException('Connection was not upgraded to websocket'),
+      );
+      await tester.pump();
+      expect(fixture.states.last, LinkedChatConnectionState.reconnecting);
+      await tester.pump(Duration(seconds: seconds) - const Duration(milliseconds: 1));
+      expect(fixture.connector.attempts, hasLength(attempt + 1));
+      await tester.pump(const Duration(milliseconds: 1));
+      attempt += 1;
+      expect(fixture.connector.attempts, hasLength(attempt + 1));
+    }
+    expect(fixture.credentialRefreshes, 0);
+    expect(fixture.unauthorizedReports, 0);
 
     await fixture.dispose(tester);
   });

@@ -31,6 +31,7 @@ from boundaries.push_notification_boundary import (  # noqa: E402
     FirebasePushNotificationBoundary,
     PushDeliveryResult,
 )
+from controls.check_schedule_control import CheckSchedule  # noqa: E402
 from controls.dispatch_caregiver_alert_control import (  # noqa: E402
     DispatchCaregiverAlert,
 )
@@ -44,6 +45,7 @@ from controls.queue_missed_dose_alerts_control import (  # noqa: E402
 )
 from core.database import Base  # noqa: E402
 from core.application_clock import application_today  # noqa: E402
+from core.config import settings  # noqa: E402
 from entities.saved_medication_entity import _SavedMedication  # noqa: E402
 from entities.caregiver_notification_entity import (  # noqa: E402
     CAREGIVER_NOTIFICATION_MODE_DISABLED,
@@ -53,7 +55,10 @@ from entities.caregiver_notification_entity import (  # noqa: E402
     encode_slot_settings,
 )
 from entities.device_push_token_entity import _DevicePushToken  # noqa: E402
+from entities.medication_alarm_entity import _MedicationAlarm  # noqa: E402
+from entities.chat_message_entity import _ChatMessage  # noqa: E402
 from entities.caregiver_alert_outbox_entity import (  # noqa: E402
+    CAREGIVER_ALERT_EVENT_LATE_LINK_COMPLETED,
     CAREGIVER_ALERT_EVENT_DOSE_COMPLETED,
     CAREGIVER_ALERT_EVENT_MISSED_DEADLINE,
     CAREGIVER_ALERT_STATUS_DEAD_LETTER,
@@ -1389,19 +1394,188 @@ def test_legacy_setting_without_slot_json_receives_completed_alert(fk_db) -> Non
     ]
 
 
-# 함수이름: test_legacy_missed_deadline_setting_is_queued_and_delivered
+# 함수이름: _link_late_caregiver
 # 함수역할:
-# - 시간대 JSON이 비어 있는 기존 미복용 설정 행이 큐에 적재되고 실제 푸시까지 전달되는지 검증한다.
+# - 완료 알림이 전송된 뒤에 다른 사용자를 환자의 보호자로 처음 연동하고 아침 완료 알림을 켠다.
+# 매개변수:
+# - db (Session): 장면이 저장된 테스트 세션.
+# - linked_at (datetime): 연동 행의 생성 시각.
+# 반환값:
+# - 새 연동 행의 기본키.
+def _link_late_caregiver(db, linked_at: datetime) -> int:
+    link = _PatientCaregiverLink(
+        patient_hash=_PATIENT, caregiver_hash=_OTHER_USER, linked=True,
+        created_at=linked_at,
+    )
+    db.add_all(
+        [
+            link,
+            _CaregiverNotification(
+                patient_hash=_PATIENT,
+                caregiver_hash=_OTHER_USER,
+                enabled=True,
+                alert_option=CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED,
+                slot_settings=encode_slot_settings(
+                    {
+                        "morning": {
+                            "notification_type": CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED,
+                            "deadline_hour": None,
+                            "deadline_minute": None,
+                        }
+                    }
+                ),
+            ),
+        ]
+    )
+    db.commit()
+    return int(link.id)
+
+
+# 함수이름: test_caregiver_linked_after_the_sent_completion_alert_gets_it_once
+# 함수역할:
+# - 완료 알림이 전송된 뒤에 처음 연동된 보호자는 시간대를 취소했다가 다시 완료하면 알림과 채팅 완료
+#   기록을 한 번 받고, 이미 받은 보호자에게는 다시 가지 않으며, 또 취소·완료해도 아무에게도 다시
+#   가지 않는지 검증한다.
 # 매개변수:
 # - fk_db (Session): 외래 키가 적용된 테스트 세션.
 # 반환값:
 # - 없음 (None).
-def test_legacy_missed_deadline_setting_is_queued_and_delivered(fk_db) -> None:
+def test_caregiver_linked_after_the_sent_completion_alert_gets_it_once(fk_db) -> None:
+    _seed_caregiver_alert_scene(
+        fk_db, notification_type=CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED,
+    )
+    schedule = CheckSchedule(fk_db)
+    first_boundary = RecordingPushBoundary()
+    schedule.updateMedicationSlotStatus("morning", True, _PATIENT)
+    outbox_id = int(schedule.consumeCompletionEvents()[0]["outbox_id"])
+    assert ProcessCaregiverAlertOutbox(fk_db, first_boundary).processOne(outbox_id) == "sent"
+    assert [call["tokens"] for call in first_boundary.calls] == [
+        [_PLAIN_TOKEN, _ACTION_TOKEN],
+    ]
+    sent_at = fk_db.get(_CaregiverAlertOutbox, outbox_id).sent_at
+    late_link_id = _link_late_caregiver(fk_db, sent_at + timedelta(seconds=1))
+
+    boundary = RecordingPushBoundary()
+    worker = ProcessCaregiverAlertOutbox(fk_db, boundary)
+    schedule.updateMedicationSlotStatus("morning", False, _PATIENT)
+    schedule.updateMedicationSlotStatus("morning", True, _PATIENT)
+
+    assert [
+        int(event["outbox_id"]) for event in schedule.consumeCompletionEvents()
+    ] == [outbox_id]
+    late_row = (
+        fk_db.query(_CaregiverAlertOutbox)
+        .filter(_CaregiverAlertOutbox.id != outbox_id)
+        .one()
+    )
+    assert late_row.event_type == CAREGIVER_ALERT_EVENT_LATE_LINK_COMPLETED
+    assert (late_row.caregiver_hash, late_row.patient_hash) == (_OTHER_USER, _PATIENT)
+    assert (late_row.slot_key, late_row.schedule_date) == ("morning", application_today())
+    assert worker.processDue() == {"sent": 1, "failed": 0, "skipped": 0}
+    assert [call["tokens"] for call in boundary.calls] == [[_OTHER_USER_TOKEN]]
+    assert boundary.calls[0]["data"]["type"] == "caregiver_slot_completed"
+    assert boundary.calls[0]["data"]["recipient_hash"] == _OTHER_USER
+    assert fk_db.query(_ChatMessage).filter_by(link_id=late_link_id).count() == 1
+    assert fk_db.query(_ChatMessage).filter(_ChatMessage.link_id != late_link_id).count() == 1
+
+    schedule.updateMedicationSlotStatus("morning", False, _PATIENT)
+    schedule.updateMedicationSlotStatus("morning", True, _PATIENT)
+
+    assert worker.processDue() == {"sent": 0, "failed": 0, "skipped": 0}
+    assert len(boundary.calls) == 1
+    assert fk_db.query(_CaregiverAlertOutbox).count() == 2
+
+
+# 함수이름: test_link_older_than_the_sent_completion_alert_gets_no_second_alert
+# 함수역할:
+# - 완료 알림 전송 시각보다 먼저 만들어진 연동은, 해제했다가 다시 연동했더라도 이미 알림을 받았을 수
+#   있으므로 시간대를 다시 완료해도 보호자별 요청을 만들지 않는지 검증한다.
+# 매개변수:
+# - fk_db (Session): 외래 키가 적용된 테스트 세션.
+# 반환값:
+# - 없음 (None).
+def test_link_older_than_the_sent_completion_alert_gets_no_second_alert(fk_db) -> None:
+    _seed_caregiver_alert_scene(
+        fk_db, notification_type=CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED,
+    )
+    schedule = CheckSchedule(fk_db)
+    boundary = RecordingPushBoundary()
+    worker = ProcessCaregiverAlertOutbox(fk_db, boundary)
+    schedule.updateMedicationSlotStatus("morning", True, _PATIENT)
+    outbox_id = int(schedule.consumeCompletionEvents()[0]["outbox_id"])
+    assert worker.processOne(outbox_id) == "sent"
+    link = fk_db.query(_PatientCaregiverLink).one()
+    link.linked = False
+    fk_db.commit()
+    link.linked = True
+    fk_db.commit()
+
+    schedule.updateMedicationSlotStatus("morning", False, _PATIENT)
+    schedule.updateMedicationSlotStatus("morning", True, _PATIENT)
+
+    assert fk_db.query(_CaregiverAlertOutbox).count() == 1
+    assert worker.processDue() == {"sent": 0, "failed": 0, "skipped": 0}
+    assert len(boundary.calls) == 1
+
+
+# 함수이름: test_late_link_event_undone_before_delivery_is_sent_after_recompletion
+# 함수역할:
+# - 늦게 연동된 보호자용 요청이 전송되기 전에 시간대가 취소되면 전송하지 않고, 다시 완료되면 같은
+#   요청을 한 번만 전송하는지 검증한다.
+# 매개변수:
+# - fk_db (Session): 외래 키가 적용된 테스트 세션.
+# 반환값:
+# - 없음 (None).
+def test_late_link_event_undone_before_delivery_is_sent_after_recompletion(fk_db) -> None:
+    _seed_caregiver_alert_scene(
+        fk_db, notification_type=CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED,
+    )
+    schedule = CheckSchedule(fk_db)
+    schedule.updateMedicationSlotStatus("morning", True, _PATIENT)
+    outbox_id = int(schedule.consumeCompletionEvents()[0]["outbox_id"])
+    ProcessCaregiverAlertOutbox(fk_db, RecordingPushBoundary()).processOne(outbox_id)
+    sent_at = fk_db.get(_CaregiverAlertOutbox, outbox_id).sent_at
+    _link_late_caregiver(fk_db, sent_at + timedelta(seconds=1))
+    boundary = RecordingPushBoundary()
+    worker = ProcessCaregiverAlertOutbox(fk_db, boundary)
+
+    schedule.updateMedicationSlotStatus("morning", False, _PATIENT)
+    schedule.updateMedicationSlotStatus("morning", True, _PATIENT)
+    schedule.updateMedicationSlotStatus("morning", False, _PATIENT)
+
+    assert worker.processDue() == {"sent": 0, "failed": 0, "skipped": 1}
+    assert boundary.calls == []
+
+    schedule.updateMedicationSlotStatus("morning", True, _PATIENT)
+
+    assert worker.processDue() == {"sent": 1, "failed": 0, "skipped": 0}
+    assert [call["tokens"] for call in boundary.calls] == [[_OTHER_USER_TOKEN]]
+    assert fk_db.query(_CaregiverAlertOutbox).count() == 2
+
+
+# 함수이름: test_legacy_missed_deadline_setting_is_queued_and_delivered
+# 함수역할:
+# - 시간대 JSON이 비어 있는 기존 미복용 설정 행이 큐에 적재되고 실제 푸시까지 전달되는지 검증한다.
+# - 큐는 환자의 알림 시각과 유예 시간이 지나야 적재하므로, 실제 시각과 무관하게 마감 00:00이
+#   지난 상태가 되도록 환자의 아침 알림을 00:00으로 저장하고 유예 시간을 0으로 둔다.
+# 매개변수:
+# - fk_db (Session): 외래 키가 적용된 테스트 세션.
+# - monkeypatch (pytest.MonkeyPatch): 미복용 알림 유예 시간을 이 테스트에서만 0으로 바꾼다.
+# 반환값:
+# - 없음 (None).
+def test_legacy_missed_deadline_setting_is_queued_and_delivered(fk_db, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "CAREGIVER_MISSED_DOSE_GRACE_MINUTES", 0)
     _seed_caregiver_alert_scene(
         fk_db,
         notification_type=CAREGIVER_NOTIFICATION_MODE_MISSED_DEADLINE,
         slot_settings="{}",
     )
+    fk_db.add(
+        _MedicationAlarm(
+            patient_hash=_PATIENT, slot_key="morning", hour=0, minute=0, enabled=True,
+        )
+    )
+    fk_db.commit()
     boundary = RecordingPushBoundary()
 
     assert QueueMissedDoseAlerts(fk_db).queueDue() == 1

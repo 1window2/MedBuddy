@@ -195,7 +195,13 @@ caregiver/patient/date/slot key. Immediately before FCM delivery it revalidates
 the active link, explicit per-slot consent, current deadline, global caregiver
 notification preference, and live incomplete schedule state. This suppresses
 stale alerts after a late completion and bounds delivery to one event per
-caregiver, patient, date, and slot. Transient failures use the same retry and
+caregiver, patient, date, and slot. A missed-dose event is never created
+before the patient's own reminder time for the slot plus
+`CAREGIVER_MISSED_DOSE_GRACE_MINUTES` (30 by default), whatever deadline the
+caregiver saved, so a caregiver is not told about a dose the patient has not
+been reminded of yet. Only medications that are due on the day count: a
+medication that is not taken every day is ignored on the days between its
+dose days. Transient failures use the same retry and
 dead-letter policy as dose-completion delivery. In local demo mode,
 `DisabledPushNotificationBoundary` prevents remote delivery and the Android
 monitor retains its local missed-deadline polling fallback. Production still

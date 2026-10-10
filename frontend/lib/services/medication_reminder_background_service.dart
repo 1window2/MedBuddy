@@ -90,6 +90,15 @@ typedef ReminderPreferencesLoader = Future<SharedPreferences> Function();
 // - 없음.
 typedef ReminderPrivacySetter = void Function(bool showSensitiveDetails);
 
+// 함수이름: PendingDoseOperationsLoader
+// 함수역할: 기기에 기록했지만 아직 서버에 올리지 못한 복용 기록을 오래된 순으로 읽는 계약이다.
+// 매개변수:
+// - 없음.
+// 반환값:
+// - Future<List<Map<String, dynamic>>>: 전송 대기 중인 복용 기록. 각 항목은 schedule_date, slot_key, medication_ids, completed를 담는다.
+typedef PendingDoseOperationsLoader =
+    Future<List<Map<String, dynamic>>> Function();
+
 const String medicationReminderBackgroundTask =
     'medbuddy_medication_reminder_refresh';
 const String _medicationReminderBackgroundTag = 'medbuddy_medication_reminder';
@@ -105,6 +114,7 @@ const String _reminderWorkerOwnerKey = 'medbuddy_reminder_worker_owner';
 // - _loadSettings (MedicationAlarmSettingsLoader): 시간대별 알림 조건 조회 경계
 // - _loadSchedules (MedicationScheduleLoader): 대상 환자의 복약 일정 조회 경계
 // - _loadTodaySchedules (MedicationScheduleLoader?): 오늘 복용 완료 여부가 담긴 일정 조회 경계
+// - _loadPendingDoses (PendingDoseOperationsLoader?): 아직 서버에 올리지 못한 기기의 복용 기록 조회 경계
 // - _loadUserSetting (ReminderUserSettingLoader): 알림 허용·표시·언어를 정할 사용자 설정 조회
 // - _registerReminder (MedicationReminderRegistrar): 날짜별 로컬 알림 예약 경계
 // - _cancelReminder (MedicationReminderCanceler): ID 또는 시간대의 로컬 알림 취소 경계
@@ -117,6 +127,7 @@ class MedicationReminderRefreshService {
   final MedicationAlarmSettingsLoader _loadSettings;
   final MedicationScheduleLoader _loadSchedules;
   final MedicationScheduleLoader? _loadTodaySchedules;
+  final PendingDoseOperationsLoader? _loadPendingDoses;
   final ReminderUserSettingLoader _loadUserSetting;
   final MedicationReminderRegistrar _registerReminder;
   final MedicationReminderCanceler _cancelReminder;
@@ -131,6 +142,7 @@ class MedicationReminderRefreshService {
   // - loadSettings (MedicationAlarmSettingsLoader): 시간대별 알림 조건 조회 경계
   // - loadSchedules (MedicationScheduleLoader): 대상 환자의 복약 일정 조회 경계
   // - loadTodaySchedules (MedicationScheduleLoader?): 오늘 복용 완료 여부가 담긴 일정 조회 경계. 기간 일정에는 완료 기록이 없으므로, 이미 복용한 시간대의 오늘 알림을 다시 예약하지 않으려면 필요하다.
+  // - loadPendingDoses (PendingDoseOperationsLoader?): 아직 서버에 올리지 못한 기기의 복용 기록 조회 경계. 오프라인에서 복용을 기록한 시간대의 오늘 알림을 서버 응답만 보고 다시 예약하지 않으려면 필요하다.
   // - loadUserSetting (ReminderUserSettingLoader?): 알림 허용·표시·언어를 정할 사용자 설정 조회
   // - registerReminder (MedicationReminderRegistrar): 날짜별 로컬 알림 예약 경계
   // - cancelReminder (MedicationReminderCanceler): ID 또는 시간대의 로컬 알림 취소 경계
@@ -144,6 +156,7 @@ class MedicationReminderRefreshService {
     required MedicationAlarmSettingsLoader loadSettings,
     required MedicationScheduleLoader loadSchedules,
     MedicationScheduleLoader? loadTodaySchedules,
+    PendingDoseOperationsLoader? loadPendingDoses,
     ReminderUserSettingLoader? loadUserSetting,
     required MedicationReminderRegistrar registerReminder,
     required MedicationReminderCanceler cancelReminder,
@@ -154,6 +167,7 @@ class MedicationReminderRefreshService {
   }) : _loadSettings = loadSettings,
        _loadSchedules = loadSchedules,
        _loadTodaySchedules = loadTodaySchedules,
+       _loadPendingDoses = loadPendingDoses,
        _loadUserSetting = loadUserSetting ?? (/* 함수이름: callback 콜백
         * 함수역할: 사용자 설정 로더가 주입되지 않았을 때 기본 사용자 설정을 제공한다.
         * 매개변수:
@@ -237,6 +251,16 @@ class MedicationReminderRefreshService {
         if (loadTodaySchedules != null && todaySchedules == null) {
           todayRequestDay = doseScheduleDay(_now());
           todaySchedules = await loadTodaySchedules();
+          // 오프라인에서 기록해 아직 서버에 없는 복용도 복용한 것으로 본다. 서버 응답만 보면 이미 복용한
+          // 시간대의 오늘 알림을 다시 예약하게 된다.
+          final pendingDoses = await _readPendingDoses();
+          if (pendingDoses.isNotEmpty) {
+            todaySchedules = projectDoseOperations(
+              todaySchedules,
+              pendingDoses,
+              todayRequestDay,
+            );
+          }
         }
         final now = _now();
         final activeDates = activeReminderDates(
@@ -275,6 +299,29 @@ class MedicationReminderRefreshService {
     }
   }
 
+  // 함수이름: _readPendingDoses
+  // 함수역할: 서버에 아직 올라가지 않은 기기의 복용 기록을 읽는다. 저장소를 열지 못하면 빈 목록으로 보아
+  //   서버 상태만으로 알림을 갱신한다. 기록을 읽지 못한다고 알림 갱신 전체를 멈추지는 않는다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<List<Map<String, dynamic>>>: 전송 대기 중인 복용 기록, 없거나 읽지 못하면 빈 목록.
+  Future<List<Map<String, dynamic>>> _readPendingDoses() async {
+    final loadPendingDoses = _loadPendingDoses;
+    if (loadPendingDoses == null) return const [];
+    try {
+      return await loadPendingDoses();
+    } catch (error, stackTrace) {
+      developer.log(
+        'Pending dose records could not be read for the reminder refresh.',
+        name: 'MedicationReminderRefreshService',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return const [];
+    }
+  }
+
   // 함수이름: _isSlotCompletedToday
   // 함수역할: 오늘 일정에서 한 시간대의 약을 모두 복용했는지 판정한다. 조회 도중 날짜가 바뀌었거나 서버의 오늘과
   //   기기의 오늘이 다르면 완료로 보지 않아, 복용하지 않은 날의 알림이 빠지지 않게 한다.
@@ -302,13 +349,13 @@ class MedicationReminderRefreshService {
   }
 
   // Function Name: activeReminderDates
-  // Description: Returns sorted unique local dates in the next 14-day window without extending beyond course end; missing start dates use today and unknown durations do not extend beyond today. Today is left out when the slot is already completed, so foreground and background refreshes follow one rule and neither re-arms a reminder for a dose already taken.
+  // Description: Returns sorted unique local dates in the next 14-day window without extending beyond course end; missing start dates use today. Dates on which a medication is not due (a weekly or every-other-day medication between its dose days) are left out, so a slot gets no reminder on a day when none of its medications is due. A course without a readable duration has no end date on the server and stays in every day's schedule, so it fills the whole window instead of today only; otherwise tomorrow's reminder would exist only if the app or the 12-hour worker happened to run after midnight and before the reminder time. Today is left out when the slot is already completed, so foreground and background refreshes follow one rule and neither re-arms a reminder for a dose already taken.
   // Parameters:
   // - schedules (List<MedicationSchedule>): Medication schedules used for lookup, comparison, or reminders.
   // - now (DateTime): Reference timestamp for comparisons and calendar calculations.
   // - slotCompletedToday (bool): Whether every medication of this slot is recorded as taken today.
   // Returns:
-  // - List<DateTime>: Sorted unique local dates in the next 14-day window without extending beyond course end; missing start dates use today and unknown durations do not extend beyond today.
+  // - List<DateTime>: Sorted unique local dates in the next 14-day window without extending beyond course end; missing start dates use today and unknown durations fill the window.
   static List<DateTime> activeReminderDates(
     List<MedicationSchedule> schedules, {
     required DateTime now,
@@ -331,15 +378,23 @@ class MedicationReminderRefreshService {
       final courseDays = schedule.medicationTime;
       final endDate = courseDays > 0
           ? startDate.add(Duration(days: courseDays - 1))
-          : today;
+          : lastReservableDate;
       var candidateDate = startDate.isAfter(today) ? startDate : today;
       final boundedEndDate = endDate.isBefore(lastReservableDate)
           ? endDate
           : lastReservableDate;
 
       while (!candidateDate.isAfter(boundedEndDate)) {
-        activeDateKeys[_dateKey(candidateDate)] = candidateDate;
-        candidateDate = candidateDate.add(const Duration(days: 1));
+        // A medication that is not taken every day ("주 1회", "격일") is reminded on its dose days only.
+        if (schedule.isDoseDay(candidateDate)) {
+          activeDateKeys[_dateKey(candidateDate)] = candidateDate;
+        }
+        // Calendar arithmetic, so a daylight-saving change cannot repeat or skip a date.
+        candidateDate = DateTime(
+          candidateDate.year,
+          candidateDate.month,
+          candidateDate.day + 1,
+        );
       }
     }
 

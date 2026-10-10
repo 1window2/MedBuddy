@@ -57,6 +57,46 @@ class _NoopNotificationService implements NotificationService {
   @override
   void setShowSensitiveDetails(bool showSensitiveDetails) {}
 
+  // 함수이름: forgetArmedRemindersForTest
+  // 함수역할:
+  // - 기억한 예약이 없으므로 아무 일도 하지 않는다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음.
+  @override
+  void forgetArmedRemindersForTest() {}
+
+  // 함수이름: canScheduleExactReminders
+  // 함수역할:
+  // - 플랫폼에 묻지 않고 정확한 알람이 허용된 것으로 답한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<bool>; 항상 true.
+  @override
+  Future<bool> canScheduleExactReminders() async => true;
+
+  // 함수이름: requestExactReminderPermission
+  // 함수역할:
+  // - 시스템 설정 화면을 열지 않고 허용된 것으로 답한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<bool>; 항상 true.
+  @override
+  Future<bool> requestExactReminderPermission() async => true;
+
+  // 함수이름: rescheduleInexactRemindersAsExact
+  // 함수역할:
+  // - 실제 기기 알림을 건드리지 않고 재예약을 성공 처리한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 플랫폼 호출 없이 완료된다.
+  @override
+  Future<void> rescheduleInexactRemindersAsExact() async {}
+
   // 함수이름: openSystemNotificationSettings
   // 함수역할:
   // - 기기의 설정 앱을 열지 않고 시스템 알림 설정 이동을 성공 처리한다.

@@ -31,6 +31,8 @@ import 'package:medbuddy_frontend/widgets/home_medication_slot_pager.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/test_viewport.dart';
+
 // 클래스명: _AccessibilityScheduleControl
 // 역할: 접근성 레이아웃 검증에 사용할 긴 약 이름의 복약 일정을 제공한다.
 // 주요 책임:
@@ -1161,6 +1163,187 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(saveButton.hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  });
+  // 보호자 미복용 확인 시각: 기본값은 그 시간대의 복약 알림 뒤이고, 알림보다 이른 시각은 이유를 보여 주며 저장하지 않는다.
+  group('보호자 미복용 확인 시각', () {
+    // 함수이름: openDialog
+    // 함수역할:
+    // - 주어진 설정으로 보호자 알림 설정 창을 열고, 저장으로 닫히면 그 결과를 results에 담는다.
+    // 매개변수:
+    // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+    // - setting (CaregiverNotification): 창에 표시할 저장된 설정.
+    // - results (List<CaregiverNotification?>): 창이 닫힐 때 받은 결과를 담을 목록.
+    // - language (String): 화면 언어.
+    // 반환값:
+    // - 창이 열린 뒤 완료되는 Future.
+    Future<void> openDialog(
+      WidgetTester tester,
+      CaregiverNotification setting,
+      List<CaregiverNotification?> results, {
+      String language = 'ko',
+    }) async {
+      await tester.pumpWidget(
+        _scaledMaterialApp(
+          textScale: 1,
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: FilledButton(
+                onPressed: () async => results.add(
+                  await SetCaregiverNotificationUI.showNotificationPopup(
+                    context,
+                    setting: setting,
+                    language: language,
+                    userSetting: UserSetting(language: language),
+                  ),
+                ),
+                child: const Text('열기'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('열기'));
+      await tester.pumpAndSettle();
+    }
+
+    test('기본 확인 시각은 어느 시간대에서도 복약 알림 시각보다 이르지 않다', () {
+      for (final slotKey in ['morning', 'lunch', 'evening', 'bedtime']) {
+        final reminder = SetCaregiverNotificationUI.slotReminderTime(slotKey);
+        final deadline = SetCaregiverNotificationUI.defaultDeadline(slotKey);
+        expect(
+          SetCaregiverNotificationUI.isDeadlineBeforeReminder(deadline, reminder),
+          isFalse,
+          reason: slotKey,
+        );
+      }
+      expect(
+        SetCaregiverNotificationUI.defaultDeadline('bedtime'),
+        const TimeOfDay(hour: 23, minute: 0),
+      );
+      // 늦은 알림 시각에서도 자정을 넘기지 않는다.
+      expect(
+        SetCaregiverNotificationUI.defaultDeadline(
+          'bedtime',
+          reminderTime: const TimeOfDay(hour: 23, minute: 30),
+        ),
+        const TimeOfDay(hour: 23, minute: 59),
+      );
+    });
+
+    testWidgets('마감 시각이 없던 취침 전 설정은 알림 뒤의 시각으로 저장된다', (tester) async {
+      final results = <CaregiverNotification?>[];
+      await openDialog(
+        tester,
+        const CaregiverNotification(slotKey: 'bedtime'),
+        results,
+      );
+
+      await tester.tap(find.text('정해진 시각까지 미복용 시 알림'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('23:00'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('caregiver-notification-save')));
+      await tester.pumpAndSettle();
+
+      expect(results.single?.mode, CaregiverNotificationMode.missedDeadline);
+      expect(results.single?.deadlineHour, 23);
+      expect(results.single?.deadlineMinute, 0);
+    });
+
+    for (final language in ['ko', 'en']) {
+      testWidgets('알림보다 이른 저장값은 이유를 보여 주고 저장하지 않는다 ($language)', (tester) async {
+        final results = <CaregiverNotification?>[];
+        await openDialog(
+          tester,
+          const CaregiverNotification(
+            slotKey: 'bedtime',
+            mode: CaregiverNotificationMode.missedDeadline,
+            deadlineHour: 21,
+            deadlineMinute: 0,
+          ),
+          results,
+          language: language,
+        );
+
+        // 저장된 시각은 바꾸지 않고 그대로 보여 준다.
+        expect(find.textContaining('21:00'), findsOneWidget);
+        final guidance = tester.widget<Text>(
+          find.byKey(const Key('caregiver-deadline-guidance')),
+        );
+        expect(guidance.data, contains('22:00'));
+        expect(
+          guidance.data,
+          contains(language == 'en' ? 'not late yet' : '아직 복용할 시간이 아니'),
+        );
+        final save = find.byKey(const Key('caregiver-notification-save'));
+        expect(tester.widget<FilledButton>(save).onPressed, isNull);
+        await tester.tap(save, warnIfMissed: false);
+        await tester.pumpAndSettle();
+        expect(results, isEmpty);
+
+        // 미복용 확인을 쓰지 않는 조건으로 바꾸면 저장할 수 있다.
+        await tester.tap(find.text(language == 'en' ? 'Off' : '끄기'));
+        await tester.pumpAndSettle();
+        expect(tester.widget<FilledButton>(save).onPressed, isNotNull);
+        await tester.tap(save);
+        await tester.pumpAndSettle();
+        expect(results.single?.mode, CaregiverNotificationMode.disabled);
+        expect(results.single?.deadlineHour, isNull);
+      });
+    }
+
+    testWidgets('알림 시각과 같거나 늦은 저장값은 그대로 저장된다', (tester) async {
+      final results = <CaregiverNotification?>[];
+      await openDialog(
+        tester,
+        const CaregiverNotification(
+          slotKey: 'bedtime',
+          mode: CaregiverNotificationMode.missedDeadline,
+          deadlineHour: 22,
+          deadlineMinute: 0,
+        ),
+        results,
+      );
+
+      await tester.tap(find.byKey(const Key('caregiver-notification-save')));
+      await tester.pumpAndSettle();
+
+      expect(results.single?.deadlineHour, 22);
+      expect(results.single?.deadlineMinute, 0);
+    });
+
+    testWidgets('이른 시각 안내는 작은 화면과 2배 글씨에서도 넘치지 않는다', (tester) async {
+      setTestViewport(tester, const Size(320, 568));
+      await tester.pumpWidget(
+        _scaledMaterialApp(
+          textScale: 2,
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: FilledButton(
+                onPressed: () => SetCaregiverNotificationUI.showNotificationPopup(
+                  context,
+                  setting: const CaregiverNotification(
+                    slotKey: 'bedtime',
+                    mode: CaregiverNotificationMode.missedDeadline,
+                    deadlineHour: 21,
+                    deadlineMinute: 0,
+                  ),
+                  slotLabel: '취침 전',
+                ),
+                child: const Text('열기'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('열기'));
+      await tester.pumpAndSettle();
+      final guidance = find.byKey(const Key('caregiver-deadline-guidance'));
+      await tester.ensureVisible(guidance);
+      await tester.pumpAndSettle();
+
+      expect(guidance.hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });

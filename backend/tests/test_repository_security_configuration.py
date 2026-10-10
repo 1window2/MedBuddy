@@ -85,12 +85,12 @@ def test_android_signing_secrets_are_limited_to_exact_release_refs() -> None:
     ).read_text(encoding="utf-8")
 
     assert "github.ref == 'refs/heads/main'" in workflow
-    assert workflow.count("refs/heads/beta/v0.2.1") >= 4
+    assert workflow.count("refs/heads/beta/v0.2.2") >= 4
     assert "refs/heads/beta/*" not in workflow
     assert "refs/tags/v*" not in workflow
     assert "environment: beta-android" in workflow
     assert workflow.count(
-        "github.ref == 'refs/heads/beta/v0.2.1' && inputs.api_base_url"
+        "github.ref == 'refs/heads/beta/v0.2.2' && inputs.api_base_url"
     ) == 2
 
 

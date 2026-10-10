@@ -702,7 +702,10 @@ void main() {
       await tester.tap(saveButton);
       await tester.pumpAndSettle();
       expect(updatedSchedule, isNull);
-      expect(find.text('1일 횟수를 1~4회로 입력해주세요.'), findsOneWidget);
+      expect(
+        find.text('1일 횟수를 1~4회로 입력하거나 "주 1회", "격일"처럼 입력해주세요.'),
+        findsOneWidget,
+      );
 
       // 처음 값으로 되돌리고 약 이름만 고치면 적용된다.
       await tester.enterText(
@@ -721,6 +724,111 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  // 함수이름: 매일 복용하지 않는 약 검토 테스트
+  // 함수역할: "주 1회" 약이 표에서 표시되고, 수정 창이 일정이 생기는 날과 복용 횟수를 안내하며, 시간대를 바꿔도
+  //   지시가 매일 횟수로 덮어써지지 않고, 직접 입력한 "격일"도 받아들이는지 검증한다.
+  // 매개변수: tester (WidgetTester): 화면 시험 도구. 반환값: 비동기 검증 완료.
+  testWidgets('매일 복용하지 않는 지시는 유지되고 일정이 생기는 날을 안내한다', (tester) async {
+    await _setViewport(tester, const Size(900, 1600));
+    MedicationSchedule? updatedSchedule;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PrescriptionAnalysisPreviewUI(
+          medicationScheduleList: [
+            MedicationSchedule(
+              medicationName: '주간복용정',
+              dosage: '1정',
+              intakeTime: '주 1회',
+              medicationTime: 28,
+              prescriptionDate: DateTime(2026, 10, 7),
+              scheduleSlotKeys: const ['morning'],
+            ),
+          ],
+          userSetting: const UserSetting(),
+          // 함수이름: onBackRequested 콜백
+          // 함수역할: 뒤로 가기 명령을 받되 동작하지 않는다.
+          // 매개변수: 없음. 반환값: 없음.
+          onBackRequested: () {},
+          // 함수이름: onAnalysisRequested 콜백
+          // 함수역할: 분석 명령을 받되 동작하지 않는다.
+          // 매개변수: 없음. 반환값: 없음.
+          onAnalysisRequested: () {},
+          // 함수이름: onMedicationScheduleChanged 콜백
+          // 함수역할: 수정한 일정을 기록한다.
+          // 매개변수: _ (int): 사용하지 않는 행 위치, schedule (MedicationSchedule): 수정한 일정. 반환값: 없음.
+          onMedicationScheduleChanged: (_, schedule) =>
+              updatedSchedule = schedule,
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('ocr-table-not-daily-0')), findsOneWidget);
+    expect(find.text('매일 아님'), findsOneWidget);
+
+    await tester.ensureVisible(
+      find.byKey(const Key('ocr-table-cell-0-frequency')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('ocr-table-cell-0-frequency')));
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        '매일 복용하는 약이 아닙니다. 복용 시작일부터 7일마다 복용 일정과 알림을 만듭니다. '
+        '총 투약일 28일 동안 복용하는 날은 4일입니다. 복용 시작일과 총 투약일을 확인해주세요.',
+      ),
+      findsOneWidget,
+    );
+
+    // 총 투약일을 4일로 줄이면 복용하는 날이 하루뿐임을 바로 알려 준다.
+    await tester.enterText(find.byKey(const Key('ocr-edit-days')), '4');
+    await tester.pump();
+    expect(find.textContaining('총 투약일 4일 동안 복용하는 날은 1일입니다.'), findsOneWidget);
+    await tester.enterText(find.byKey(const Key('ocr-edit-days')), '28');
+    await tester.pump();
+
+    // 시간대를 바꿔도 "주 1회"가 "1회"(매일)로 바뀌지 않는다.
+    final eveningChip = find.byKey(const Key('ocr-edit-slot-evening'));
+    await tester.ensureVisible(eveningChip);
+    await tester.tap(eveningChip);
+    await tester.pump();
+    final morningChip = find.byKey(const Key('ocr-edit-slot-morning'));
+    await tester.tap(morningChip);
+    await tester.pump();
+    expect(
+      tester
+          .widget<TextFormField>(find.byKey(const Key('ocr-edit-frequency')))
+          .controller!
+          .text,
+      '주 1회',
+    );
+
+    final saveButton = find.byKey(const Key('ocr-edit-save'));
+    await tester.ensureVisible(saveButton);
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+    expect(updatedSchedule?.intakeTime, '주 1회');
+    expect(updatedSchedule?.scheduleSlotKeys, ['evening']);
+
+    // 직접 입력한 "격일"도 받아들이고 안내를 바꾼다.
+    updatedSchedule = null;
+    await tester.ensureVisible(
+      find.byKey(const Key('ocr-table-cell-0-frequency')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('ocr-table-cell-0-frequency')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('ocr-edit-frequency')), '격일');
+    await tester.pump();
+    expect(find.textContaining('복용 시작일부터 2일마다'), findsOneWidget);
+    await tester.ensureVisible(saveButton);
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+    expect(updatedSchedule?.intakeTime, '격일');
+    expect(tester.takeException(), isNull);
+  });
 
   // Function Name: testWidgets callback
   // Description:

@@ -1240,6 +1240,21 @@ class AuthenticationControl extends ChangeNotifier
     });
   }
 
+  // Function Name: establishSessionForTest
+  // Description: Publishes a signed-in session for the given account without a provider or backend, so a test can sign a second account in after a sign-out.
+  // Parameters:
+  // - userHash (String): Account key of the session to publish.
+  // Returns:
+  // - No return value.
+  @visibleForTesting
+  void establishSessionForTest(String userHash) {
+    _session = AuthSession(
+      userHash: PatientHash.normalizePatientHash(userHash),
+      authenticated: false,
+    );
+    notifyListeners();
+  }
+
   // Function Name: signOutForTest
   // Description: Runs the same strict sign-out sequence as signOut with an injected provider operation instead of a live Firebase session.
   // Parameters:
