@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 # longer writes it; the detail cache treats a stored snapshot that still holds it as a miss.
 FAILED_SUMMARY_TEXT = "요약 실패"
 
+# Display text of a detail field without content. A summary field the AI left out reads this.
+MISSING_DETAIL_TEXT = "정보 없음"
+
 
 # 함수이름: read_medication_detail_text
 # 함수역할:
@@ -32,7 +35,7 @@ FAILED_SUMMARY_TEXT = "요약 실패"
 # - default (str): 값이 없거나 비었을 때 표시할 대체 문구.
 # 반환값:
 # - 공백을 제거한 문자열 또는 default.
-def read_medication_detail_text(value: Any, default: str = "정보 없음") -> str:
+def read_medication_detail_text(value: Any, default: str = MISSING_DETAIL_TEXT) -> str:
     if value is None:
         return default
 

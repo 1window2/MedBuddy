@@ -144,7 +144,9 @@ void main() {
     // - request (http.Request): HTTP request intercepted instead of reaching the server.
     // Returns:
     // - HTTP 200 with the disabled 18:00 evening alarm.
+    final bodies = <String>[];
     final client = MockClient((http.Request request) async {
+      bodies.add(request.body);
       expect(request.method, 'PATCH');
       expect(request.url.path, '/notification/settings/evening/disable');
       expect(request.url.queryParameters['patient_hash'], 'patient-b');
@@ -175,6 +177,12 @@ void main() {
 
     expect(setting.slotKey, 'evening');
     expect(setting.isEnabled, isFalse);
+    // Without a new time the request carries no body, so the server keeps the stored time.
+    expect(bodies.single, isEmpty);
+
+    // A time changed in the same save travels with the disable request.
+    await control.disableAlarmSetting('evening', hour: 19, minute: 5);
+    expect(jsonDecode(bodies.last), {'hour': 19, 'minute': 5});
   });
 
   // 함수이름: test 콜백

@@ -22,6 +22,9 @@ CAREGIVER_ALERT_STATUS_FAILED = "failed"
 CAREGIVER_ALERT_STATUS_DEAD_LETTER = "dead_letter"
 CAREGIVER_ALERT_EVENT_DOSE_COMPLETED = "dose_completed"
 CAREGIVER_ALERT_EVENT_MISSED_DEADLINE = "missed_deadline"
+# 완료 알림이 이미 전송된 뒤에 처음 연동된 보호자 한 명에게만 보내는 완료 알림.
+# 이 종류를 모르는 이전 서버는 행을 전송하지 않으므로 다른 보호자에게 다시 보내지 않는다.
+CAREGIVER_ALERT_EVENT_LATE_LINK_COMPLETED = "dose_completed_late_link"
 
 
 # 클래스명: _CaregiverAlertOutbox

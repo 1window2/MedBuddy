@@ -34,13 +34,16 @@ class MedBuddyReminderViewModel {
   final UserSetting Function() _readUserSetting;
   final List<MedicationSchedule> Function() _readSchedules;
   final bool Function() _scheduleIsFresh;
+  // 앞으로 14일 안에 복용 기간이 걸치는 약을 읽는다. 오늘 일정에는 오늘 복용하는 약만 있어, 주 1회·격일 약이
+  // 쉬는 날에는 그 약이 보이지 않기 때문에 알림 날짜와 "빈 시간대" 판단은 이 목록으로 한다.
+  final Future<List<MedicationSchedule>> Function()? _loadScheduleWindow;
   final void Function(String) _onChanged;
   bool _disposed = false;
   int _loadGeneration = 0;
   String _statusMessage = '';
   // Function Name: MedBuddyReminderViewModel
   // Description: Binds reminder dependencies and read-only feature snapshots.
-  // Parameters: Controls, patient, snapshot providers and change callback. Returns: State owner.
+  // Parameters: Controls, patient, snapshot providers, the optional 14-day course loader and change callback. Returns: State owner.
   MedBuddyReminderViewModel({
     required this.setNotification,
     required this.notificationService,
@@ -48,10 +51,12 @@ class MedBuddyReminderViewModel {
     required UserSetting Function() readUserSetting,
     required List<MedicationSchedule> Function() readSchedules,
     required bool Function() scheduleIsFresh,
+    Future<List<MedicationSchedule>> Function()? loadScheduleWindow,
     required void Function(String) onChanged,
   }) : _readUserSetting = readUserSetting,
        _readSchedules = readSchedules,
        _scheduleIsFresh = scheduleIsFresh,
+       _loadScheduleWindow = loadScheduleWindow,
        _onChanged = onChanged;
   // Function Name: userSetting
   // Description: Reads current settings without owning them. Parameters: None. Returns: Settings.
@@ -150,12 +155,18 @@ class MedBuddyReminderViewModel {
       _notifyViewModelListeners(MedBuddyFeature.reminder);
       return false;
     }
+    // 오늘 복용할 약이 없는 시간대라도 앞으로 14일 안에 복용하는 날이 있으면(주 1회 약의 쉬는 날 등)
+    // 알림을 켤 수 있어야 한다. 그렇지 않으면 복용하는 날에 앱을 열어야만 알림을 설정할 수 있다.
+    List<MedicationSchedule>? window;
     if (schedules.isEmpty) {
-      _statusMessage = _isEnglishSetting
-          ? 'There is no medication in this time slot.'
-          : '이 시간대에 복용할 약이 없습니다.';
-      _notifyViewModelListeners(MedBuddyFeature.reminder);
-      return false;
+      window = await _loadScheduleWindowOrNull();
+      if (window == null || _schedulesForSlot(window, slotKey).isEmpty) {
+        _statusMessage = _isEnglishSetting
+            ? 'There is no medication in this time slot.'
+            : '이 시간대에 복용할 약이 없습니다.';
+        _notifyViewModelListeners(MedBuddyFeature.reminder);
+        return false;
+      }
     }
 
     bool hasPermission;
@@ -185,10 +196,14 @@ class MedBuddyReminderViewModel {
       );
       persistedSetting = setting;
 
+      window ??= await _loadScheduleWindowOrNull();
       await _scheduleMedicationReminder(
         setting: setting,
         slotTitle: slotTitle,
         schedules: schedules,
+        courseSchedules: window == null
+            ? null
+            : _schedulesForSlot(window, setting.slotKey),
       );
 
       final preferences = await SharedPreferences.getInstance();
@@ -230,20 +245,27 @@ class MedBuddyReminderViewModel {
   }
 
   // 함수이름: requestMedicationReminderCancel
-  // 함수역할: 이미 활성화된 시간대별 복약 알림을 취소하고 로컬 설정을 비활성화한다.
+  // 함수역할: 이미 활성화된 시간대별 복약 알림을 취소하고 로컬 설정을 비활성화한다. 같은 저장에서 시각도
+  //   바꿨다면 그 시각을 꺼진 알림과 함께 저장한다.
   // 매개변수:
   // - slotKey (String): morning, lunch, evening, bedtime 중 하나
   // - slotTitle (String): 사용자에게 보여줄 시간대명
+  // - hour (int?): 함께 저장할 새 알림 시; 생략하면 저장된 시각을 유지한다
+  // - minute (int?): 함께 저장할 새 알림 분
   // 반환값:
   // - 알림 취소 성공 여부
   Future<bool> requestMedicationReminderCancel({
     required String slotKey,
     required String slotTitle,
+    int? hour,
+    int? minute,
   }) async {
     final storageKey = _reminderStorageKey(slotKey);
     try {
       final disabledSetting = await setNotification.disableAlarmSetting(
         slotKey,
+        hour: hour,
+        minute: minute,
       );
       await _cancelMedicationReminder(disabledSetting);
       final preferences = await SharedPreferences.getInstance();
@@ -385,6 +407,7 @@ class MedBuddyReminderViewModel {
 
   // 함수이름: _synchronizeMedicationReminderSchedules
   // 함수역할: 사용자 알림 허용과 시간대 활성·약 존재 여부에 따라 예약을 재구성하고 빈 시간대 설정을 비활성화한다.
+  //   오늘 일정이 비어 있어도 앞으로 14일 안에 그 시간대에 복용하는 약이 있으면 빈 시간대로 보지 않는다.
   // 매개변수:
   // - 없음.
   // 반환값:
@@ -399,6 +422,9 @@ class MedBuddyReminderViewModel {
     }
 
     final preferences = await SharedPreferences.getInstance();
+    // 켜진 알림이 있을 때만 한 번 읽는다. 읽지 못하면 null로 두고 오늘 일정만으로 판단한다.
+    List<MedicationSchedule>? window;
+    var windowRequested = false;
     for (final slotKey in medicationScheduleSlotKeys) {
       final setting =
           _medicationReminderSettings[slotKey] ??
@@ -408,8 +434,30 @@ class MedBuddyReminderViewModel {
         continue;
       }
 
+      if (!windowRequested) {
+        windowRequested = true;
+        window = await _loadScheduleWindowOrNull();
+      }
       final schedules = _schedulesForReminderSlot(slotKey);
+      final courseSchedules = window == null
+          ? null
+          : _schedulesForSlot(window, slotKey);
+      if (schedules.isEmpty && (courseSchedules?.isNotEmpty ?? false)) {
+        // 오늘은 쉬는 날인 약만 있는 시간대다. 알림 설정은 그대로 두고 복용하는 날짜에만 예약한다.
+        await _scheduleMedicationReminder(
+          setting: setting,
+          slotTitle: _reminderSlotTitle(slotKey),
+          schedules: schedules,
+          courseSchedules: courseSchedules,
+        );
+        continue;
+      }
       if (schedules.isEmpty) {
+        // 기간 일정을 읽지 못했으면 오늘 일정이 비었다는 것만으로 알림을 끄지 않는다. 매일 먹지 않는 약만
+        // 있는 시간대일 수 있고, 꺼진 설정은 복용하는 날에도 알림이 오지 않게 만든다.
+        if (_loadScheduleWindow != null && window == null) {
+          continue;
+        }
         final disabledSetting = await _disableReminderSettingForEmptySlot(
           setNotification,
           slotKey,
@@ -425,8 +473,44 @@ class MedBuddyReminderViewModel {
         setting: setting,
         slotTitle: _reminderSlotTitle(slotKey),
         schedules: schedules,
+        courseSchedules: courseSchedules,
       );
     }
+  }
+
+  // 함수이름: _loadScheduleWindowOrNull
+  // 함수역할: 앞으로 14일의 복약 기간 일정을 읽는다. 조회 경계가 없거나 조회에 실패하면 null을 돌려
+  //   호출자가 오늘 일정으로 대신 판단하게 한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<List<MedicationSchedule>?>: 기간 일정, 읽지 못하면 null.
+  Future<List<MedicationSchedule>?> _loadScheduleWindowOrNull() async {
+    final loadScheduleWindow = _loadScheduleWindow;
+    if (loadScheduleWindow == null) return null;
+    try {
+      return await loadScheduleWindow();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // 함수이름: _schedulesForSlot
+  // 함수역할: 주어진 일정 중 명시·추론된 시간대가 대상 알림 시간대를 포함하는 약만 모은다.
+  // 매개변수:
+  // - schedules (List<MedicationSchedule>): 분류할 복약 일정 목록
+  // - slotKey (String): morning·lunch·evening·bedtime 복약 시간대 키
+  // 반환값:
+  // - List<MedicationSchedule>: 대상 시간대에 속한 일정.
+  List<MedicationSchedule> _schedulesForSlot(
+    List<MedicationSchedule> schedules,
+    String slotKey,
+  ) {
+    return schedules
+        .where(
+          (schedule) => resolveScheduleSlotKeys(schedule).contains(slotKey),
+        )
+        .toList(growable: false);
   }
 
   // 함수이름: synchronizeIfFresh
@@ -470,17 +554,19 @@ class MedBuddyReminderViewModel {
   }
 
   // 함수이름: _scheduleMedicationReminder
-  // 함수역할: 민감정보 표시 정책을 적용하고 구형 예약을 제거한 뒤 복용 기간 안의 날짜로 알림을 등록한다. 알림 문구는 약 이름을 쓰지 않으므로 날짜별 약명은 만들지 않는다.
+  // 함수역할: 민감정보 표시 정책을 적용하고 구형 예약을 제거한 뒤 복용 기간 안의 복용하는 날짜로 알림을 등록한다. 알림 문구는 약 이름을 쓰지 않으므로 날짜별 약명은 만들지 않는다.
   // 매개변수:
   // - setting (MedicationAlarm): 해당 복약 시간대의 알림 설정
   // - slotTitle (String): 현재 언어로 표시할 복약 시간대 이름
-  // - schedules (List<MedicationSchedule>): 조회·비교·예약에 사용할 복약 일정 목록
+  // - schedules (List<MedicationSchedule>): 이 시간대에 오늘 복용하는 약; 오늘 복용 완료 여부를 판단한다
+  // - courseSchedules (List<MedicationSchedule>?): 이 시간대에 앞으로 14일 안에 복용 기간이 걸치는 약; 없으면 오늘 일정으로 날짜를 정한다
   // 반환값:
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
   Future<void> _scheduleMedicationReminder({
     required MedicationAlarm setting,
     required String slotTitle,
     required List<MedicationSchedule> schedules,
+    List<MedicationSchedule>? courseSchedules,
   }) async {
     notificationService.setShowSensitiveDetails(
       userSetting.showNotificationDetails,
@@ -494,7 +580,8 @@ class MedBuddyReminderViewModel {
           (schedule) => schedule.isSlotCompleted(setting.slotKey),
         );
     final activeDates = MedicationReminderRefreshService.activeReminderDates(
-      schedules,
+      // 기간 일정이 늦게 반영되어도 오늘 복용하는 약의 날짜는 빠지지 않게 함께 넘긴다.
+      courseSchedules == null ? schedules : [...courseSchedules, ...schedules],
       now: now,
       slotCompletedToday: slotCompletedToday,
     );

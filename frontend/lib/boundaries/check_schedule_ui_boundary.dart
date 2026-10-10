@@ -18,6 +18,7 @@ import '../viewmodels/medbuddy_view_model.dart';
 import '../viewmodels/medbuddy_feature_updates.dart';
 import '../widgets/medbuddy_page_header.dart';
 import '../widgets/dose_sync_status.dart';
+import '../widgets/exact_reminder_notice.dart';
 import '../widgets/medication_thumbnail.dart';
 import 'medication_image_viewer_boundary.dart';
 
@@ -505,6 +506,16 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
           children: [
+            // 켜 둔 복약 알림이 있는데 기기가 정확한 알람을 막고 있으면 허용 방법을 안내한다.
+            if (viewModel.userSetting.medicationNotificationsEnabled &&
+                viewModel.medicationReminderSettings.values.any(
+                  (setting) => setting.isEnabled,
+                ))
+              ExactReminderNotice(
+                notificationService: viewModel.notificationService,
+                isEnglish: text.isEnglish,
+                margin: const EdgeInsets.only(bottom: 16),
+              ),
             for (final slot in slots) ...[
               KeyedSubtree(
                 key: _slotKeys[slot.key],
@@ -863,6 +874,9 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
         : await viewModel.requestMedicationReminderCancel(
             slotKey: slot.key,
             slotTitle: slotTitle,
+            // 알림을 끄면서 시각도 바꾼 경우 그 시각이 버려지지 않게 함께 보낸다.
+            hour: selectedSetting.hour,
+            minute: selectedSetting.minute,
           );
     if (!mounted) {
       return;

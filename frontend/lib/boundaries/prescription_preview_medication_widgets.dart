@@ -264,11 +264,26 @@ class _PreviewMedicationTable extends StatelessWidget {
                   schedule,
                   _MedicationScheduleEditField.dailyFrequency,
                 ),
-          child: _TableValueText(
-            value: schedule.dailyFrequencyLabelForLanguage(
-              previewText.language,
-            ),
-            isVerified: isVerified,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _TableValueText(
+                value: schedule.dailyFrequencyLabelForLanguage(
+                  previewText.language,
+                ),
+                isVerified: isVerified,
+              ),
+              // 매일 복용하지 않는 약은 일정이 달라지므로 표에서도 바로 알아볼 수 있게 한다.
+              if (!readDoseCycle(schedule.intakeTime).isDaily) ...[
+                const SizedBox(height: 4),
+                _CorrectionBadge(
+                  key: Key('ocr-table-not-daily-$scheduleIndex'),
+                  label: previewText.notDailyBadge,
+                  isWarning: true,
+                ),
+              ],
+            ],
           ),
         ),
         _EditableMedicationCell(
@@ -598,6 +613,7 @@ class _CorrectionBadge extends StatelessWidget {
   // - isWarning (bool): 경고 색상과 강조를 사용할지 여부.
   // 반환값: 입력 설정이 반영된 _CorrectionBadge 인스턴스.
   const _CorrectionBadge({
+    super.key,
     required this.label,
     this.isWarning = false,
   });
@@ -833,7 +849,12 @@ class _MedicationScheduleEditDialogState
                     _MedicationScheduleEditField.dailyFrequency,
                 inputFormatters: [LengthLimitingTextInputFormatter(40)],
                 textInputAction: TextInputAction.next,
-                decoration: InputDecoration(labelText: text.dailyFrequency),
+                decoration: InputDecoration(
+                  labelText: text.dailyFrequency,
+                  // 매일 복용하지 않는 지시는 어떤 날에 일정이 생기는지 저장 전에 알려 준다.
+                  helperText: _doseRhythmNotice,
+                  helperMaxLines: 8,
+                ),
                 onChanged: _updateDailyFrequency,
                 validator: _validateDailyFrequency,
               ),
@@ -850,6 +871,8 @@ class _MedicationScheduleEditDialogState
                 ],
                 textInputAction: TextInputAction.done,
                 decoration: InputDecoration(labelText: text.totalDays),
+                // 총 투약일에 따라 복용 횟수 안내가 달라지므로 다시 그린다.
+                onChanged: (_) => setState(() {}),
                 validator: _validateMedicationDays,
                 // 함수이름: build.onFieldSubmitted callback
                 // 함수역할: OCR 약명·조제일·용량·횟수·일수·시간대 편집에서 캡처된 작업 `_submit()`을 실행한다.
@@ -902,7 +925,11 @@ class _MedicationScheduleEditDialogState
                             } else {
                               _selectedSlotKeys.remove(slotKey);
                             }
-                            if (_selectedSlotKeys.isNotEmpty) {
+                            // "주 1회" 같은 지시를 시간대 개수로 덮어쓰면 매일 복용으로 바뀐다.
+                            if (_selectedSlotKeys.isNotEmpty &&
+                                readDoseCycle(
+                                  _frequencyController.text,
+                                ).isDaily) {
                               _frequencyController.text =
                                   _canonicalDailyFrequency(
                                     _selectedSlotKeys.length,
@@ -980,19 +1007,34 @@ class _MedicationScheduleEditDialogState
   // 매개변수: value 수정된 횟수. 반환값: 없음.
   void _updateDailyFrequency(String value) {
     final count = _readDailyFrequency(value);
-    if (count == null || count == _selectedSlotKeys.length) return;
+    // 시간대가 바뀌지 않아도 복용 요일 안내는 입력에 따라 달라진다.
     setState(() {
+      if (count == null || count == _selectedSlotKeys.length) return;
       _selectedSlotKeys = medicationScheduleSlotKeysForFrequency(count).toSet();
       _showSlotValidationError = false;
     });
   }
 
+  // 함수이름: _doseRhythmNotice
+  // 함수역할: 입력한 횟수가 매일 복용이 아니면 일정이 생기는 날과 총 투약일 안의 복용 횟수를 안내한다.
+  // 매개변수: 없음. 반환값: 안내 문구. 매일 복용이면 null.
+  String? get _doseRhythmNotice {
+    final cycle = readDoseCycle(_frequencyController.text);
+    if (cycle.isDaily) return null;
+    return widget.previewText.doseRhythmNotice(
+      cycle,
+      startDate: _parseDate(_prescriptionDateController.text.trim()),
+      courseDays: int.tryParse(_daysController.text.trim()) ?? 0,
+    );
+  }
+
   // 함수이름: _validateDailyFrequency
-  // 함수역할: 해석하지 못한 횟수로 기존 시간대가 조용히 저장되는 것을 막는다. 손대지 않은 OCR 횟수("8시간마다" 등)는 다른 항목 수정을 막지 않도록 그대로 통과시킨다.
+  // 함수역할: 해석하지 못한 횟수로 기존 시간대가 조용히 저장되는 것을 막는다. 손대지 않은 OCR 횟수("8시간마다" 등)는 다른 항목 수정을 막지 않도록 그대로 통과시키고, "주 1회"·"격일"처럼 복용하는 날을 읽을 수 있는 지시는 받아들인다.
   // 매개변수: value 횟수 입력. 반환값: 잘못된 입력 안내 또는 null.
   String? _validateDailyFrequency(String? value) =>
       _isDailyFrequencyUntouched(value ?? '') ||
-          _readDailyFrequency(value ?? '') != null
+          _readDailyFrequency(value ?? '') != null ||
+          !readDoseCycle(value).isDaily
       ? null
       : widget.previewText.invalidDailyFrequency;
 
@@ -1424,8 +1466,56 @@ class _PreviewText {
   // 함수역할: 지원하는 횟수 범위를 한국어 또는 영어로 안내한다.
   // 매개변수: 없음. 반환값: 입력 확인 문구.
   String get invalidDailyFrequency => isEnglish
-      ? 'Enter a daily frequency from 1 to 4.'
-      : '1일 횟수를 1~4회로 입력해주세요.';
+      ? 'Enter a daily frequency from 1 to 4, or a schedule such as "주 1회" or "격일".'
+      : '1일 횟수를 1~4회로 입력하거나 "주 1회", "격일"처럼 입력해주세요.';
+  // 함수이름: notDailyBadge
+  // 함수역할: 매일 복용하지 않는 약임을 표에서 알리는 짧은 표시를 한국어 또는 영어로 제공한다.
+  // 매개변수: 없음. 반환값: 표시 문구.
+  String get notDailyBadge => isEnglish ? 'Not daily' : '매일 아님';
+  // 함수이름: doseRhythmNotice
+  // 함수역할: 매일 복용하지 않는 약의 일정이 어떤 날에 생기는지, 총 투약일 안에 몇 번 복용하는지를 한국어 또는 영어로 설명한다.
+  // 매개변수: cycle 복용 주기, startDate 복용 시작일, courseDays 총 투약일(0이면 미입력). 반환값: 안내 문구.
+  String doseRhythmNotice(
+    DoseCycle cycle, {
+    required DateTime? startDate,
+    required int courseDays,
+  }) {
+    const koreanWeekdays = ['월', '화', '수', '목', '금', '토', '일'];
+    const englishWeekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final String days;
+    if (cycle.weekdayAnchored) {
+      days = isEnglish
+          ? 'every ${cycle.offsets.map((day) => englishWeekdays[day]).join(', ')}'
+          : '매주 ${cycle.offsets.map((day) => koreanWeekdays[day]).join('·')}요일에만';
+    } else if (cycle.offsets.length > 1) {
+      final dayNumbers = cycle.offsets.map((day) => day + 1);
+      days = isEnglish
+          ? 'on days ${dayNumbers.join(', ')} of every ${cycle.cycleDays}-day cycle counted from the start date'
+          : '복용 시작일을 1일째로 ${cycle.cycleDays}일마다 ${dayNumbers.join('·')}일째에만';
+    } else {
+      days = isEnglish
+          ? 'every ${cycle.cycleDays} days from the start date'
+          : '복용 시작일부터 ${cycle.cycleDays}일마다';
+    }
+    final summary = isEnglish
+        ? 'Not taken every day. Doses and reminders are scheduled $days.'
+        : '매일 복용하는 약이 아닙니다. $days 복용 일정과 알림을 만듭니다.';
+    if (startDate == null || courseDays <= 0) {
+      return summary;
+    }
+    var doseDays = 0;
+    for (var day = 0; day < courseDays; day++) {
+      if (cycle.includes(
+        startDate,
+        DateTime(startDate.year, startDate.month, startDate.day + day),
+      )) {
+        doseDays += 1;
+      }
+    }
+    return isEnglish
+        ? '$summary Within $courseDays total days that is $doseDays dose day(s); check the start date and the total days.'
+        : '$summary 총 투약일 $courseDays일 동안 복용하는 날은 $doseDays일입니다. 복용 시작일과 총 투약일을 확인해주세요.';
+  }
   // 함수이름: invalidTotalDays
   // 함수역할: 현재 언어와 입력값에 맞춰 "1일 이상 3650일 이하의 숫자를 입력해주세요." 문구를 제공한다.
   // 매개변수:

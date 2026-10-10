@@ -67,10 +67,13 @@ def database(tmp_path: Path) -> Iterator[Database]:
     with factory() as db:
         db.add_all([_UserAccount(user_hash="caregiver"), _UserAccount(user_hash="patient")])
         db.add(_PatientCaregiverLink(patient_hash="patient", caregiver_hash="caregiver", linked=True))
+        # 저장된 약 정보가 없는 약은 AI에 보내지 않으므로, AI 대기를 시험하려면 정보가 있어야 한다.
         db.add(_SavedMedication(
             patient_hash="patient", item_name="synthetic tablet",
             prescription_date=application_today(), total_days="7",
             dosage_per_time="1", daily_frequency="2",
+            efficacy="synthetic effect", use_method="synthetic usage",
+            warning_message="synthetic warning",
         ))
         db.commit()
     try:

@@ -186,6 +186,15 @@ class Settings(BaseSettings):
         ge=1,
         le=365,
     )
+    CAREGIVER_MISSED_DOSE_GRACE_MINUTES: int = Field(
+        default=30,
+        ge=0,
+        le=180,
+        description=(
+            "환자의 시간대 알림 시각 뒤 이 시간이 지나기 전에는 보호자 미복용 알림을 "
+            "보내지 않는다. 보호자가 더 이른 마감 시각을 저장했어도 같다."
+        ),
+    )
     HEALTH_RECOMMENDATION_CACHE_RETENTION_DAYS: int = Field(
         default=90,
         ge=1,
@@ -204,6 +213,25 @@ class Settings(BaseSettings):
     RATE_LIMIT_REQUIRE_REDIS: bool = False
     REDIS_URL: str = "redis://localhost:6379"
     CHAT_MESSAGE_DAILY_LIMIT: int = Field(default=500, ge=50, le=10_000)
+    AI_REQUEST_DAILY_LIMIT: int = Field(
+        default=300,
+        ge=20,
+        le=100_000,
+        description=(
+            "Requests one account may send per day to the routes that call the "
+            "generative AI provider (prescription analysis, pill identification, "
+            "health recommendation). One IP address is allowed twenty times this."
+        ),
+    )
+    HOSPITAL_SEARCH_DAILY_LIMIT: int = Field(
+        default=120,
+        ge=10,
+        le=100_000,
+        description=(
+            "Nearby hospital searches one account may run per day. Protects the "
+            "shared daily request budget of the public hospital API."
+        ),
+    )
     CHAT_MESSAGE_RETENTION_DAYS: int = Field(
         default=90,
         ge=1,
@@ -230,6 +258,12 @@ class Settings(BaseSettings):
         default=10,
         ge=1,
         le=60,
+    )
+    CHAT_WEBSOCKET_REVALIDATION_INTERVAL_SECONDS: int = Field(
+        default=60,
+        ge=10,
+        le=3600,
+        description="열려 있는 채팅 스트림의 연동 상태를 다시 확인하는 최소 간격(초)",
     )
     CHAT_WEBSOCKET_MAX_FRAME_BYTES: int = Field(
         default=4_096,

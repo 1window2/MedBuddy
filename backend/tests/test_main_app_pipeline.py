@@ -19,6 +19,7 @@ import re
 import time
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -38,19 +39,22 @@ from boundaries.app_check_token_verifier_boundary import AppCheckTokenVerificati
 from boundaries.pill_identification_boundary import MAX_PILL_IMAGE_BYTES
 from core.account_database_lock import ACCOUNT_BUSY_DETAIL
 from core.account_operation_locks import AccountOperationLocks
+from core.application_clock import application_today
 from core.config import settings
 from core.database import get_db
 from core.request_rate_limits import (
+    DAILY_QUOTA_EXCEEDED_DETAIL,
     DEFAULT_AUTHENTICATED_API_RULES,
     DEFAULT_RATE_LIMIT_RULES,
     RateLimitRule,
     RequestRateLimitStore,
     mounted_route_template,
+    resolve_daily_quota,
 )
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from entities.patient_caregiver_link_entity import _PatientCaregiverLink
 from entities.user_account_entity import _UserAccount, utc_now
-from support.db import make_engine, make_session_factory, seed_account
+from support.db import make_engine, make_session_factory, seed_account, seed_medication
 from support.fakes import FakeGeminiClient, FakeRedis, RecordingPushBoundary
 
 _APP_CHECK_TOKEN = "valid-app-check"
@@ -676,7 +680,7 @@ def test_every_body_limit_names_a_mounted_post_route(path: str) -> None:
 # Description:
 # - Walks every authenticated route: without headers 403, with App Check only 401, and with
 #   both exactly one per-user quota check under the full route template and the reviewed rule,
-#   next to one per-IP check.
+#   next to one per-IP check. Routes with a daily cost quota add one daily check to each.
 # Parameters:
 # - pipeline (_Pipeline): Application on replaced outer boundaries.
 # - method (str): HTTP method of the route.
@@ -705,10 +709,13 @@ async def test_route_checks_app_check_then_bearer_then_charges_the_user_once(
     assert all(identity.startswith("ip:") for identity in rejected_identities)
     assert signed_in.status_code not in {401, 429}, signed_in.text
     assert signed_in.status_code < 500, signed_in.text
+    daily_quota = resolve_daily_quota(method, template)
+    daily_checks = [] if daily_quota is None else [(daily_quota[1], daily_quota[0])]
     assert pipeline.store.user_calls("user-a") == [
         (f"{method}:{template}", _expected_user_rule(method, template)),
+        *daily_checks,
     ]
-    assert len(pipeline.store.ip_calls()) == 1
+    assert len(pipeline.store.ip_calls()) == 1 + len(daily_checks)
 
 
 # Function Name: test_default_rule_counts_caller_chosen_path_values_in_one_bucket
@@ -1236,6 +1243,135 @@ async def test_chat_daily_quota_is_enforced_over_http(
         "POST:/api/v1/chat/links/{link_id}/messages",
         "POST:/api/v1/chat/messages:daily",
     ] * 3
+
+
+# Function Name: test_dose_day_filtering_applies_only_to_clients_that_declare_it
+# Description:
+# - A weekly medication that is not due today is left out of today's schedule and its summary
+#   for a client that sends the dose-days feature, and still listed for a client that does not
+#   (released apps, which would switch the slot's reminder off on an empty list). The schedule
+#   window lists it for both, with the dose cycle.
+# Parameters:
+# - pipeline (_Pipeline): Application on replaced outer boundaries.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_dose_day_filtering_applies_only_to_clients_that_declare_it(
+    pipeline: _Pipeline,
+) -> None:
+    today = application_today()
+    with pipeline.factory() as db:
+        seed_medication(
+            db, patient_hash=_user_hash("user-a"), item_name="weekly",
+            prescription_date=today - timedelta(days=3), total_days="8주",
+            daily_frequency="주 1회", schedule_slot_keys='["bedtime"]',
+        )
+    aware = {**_headers("user-a"), "X-MedBuddy-Client-Features": "dose-days"}
+
+    async with _client(pipeline.app) as client:
+        legacy_today = await client.get(
+            "/api/v1/medication/schedule/today", headers=_headers("user-a"),
+        )
+        aware_today = await client.get("/api/v1/medication/schedule/today", headers=aware)
+        legacy_info = await client.get(
+            "/api/v1/medication/schedule/today/info", headers=_headers("user-a"),
+        )
+        aware_info = await client.get("/api/v1/medication/schedule/today/info", headers=aware)
+        window = await client.get("/api/v1/medication/schedule/window", headers=aware)
+        # The feature of one request must not carry over to the next request.
+        legacy_again = await client.get(
+            "/api/v1/medication/schedule/today", headers=_headers("user-a"),
+        )
+
+    assert [item["drug_name"] for item in legacy_today.json()["data"]] == ["weekly"]
+    assert aware_today.json()["data"] == []
+    assert [item["drug_name"] for item in legacy_again.json()["data"]] == ["weekly"]
+    assert legacy_info.json()["data"]["medication_count"] == 1, legacy_info.text
+    assert aware_info.json()["data"]["medication_count"] == 0, aware_info.text
+    assert [
+        (item["drug_name"], item["dose_cycle_days"], item["dose_cycle_anchor"])
+        for item in window.json()["data"]
+    ] == [("weekly", 7, (today - timedelta(days=3)).isoformat())]
+
+
+# Function Name: test_disabling_an_alarm_accepts_an_optional_new_time
+# Description:
+# - The disable route works without a body, as released clients call it, and stores a time sent
+#   with it; an invalid time is rejected by request validation.
+# Parameters:
+# - pipeline (_Pipeline): Application on replaced outer boundaries.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_disabling_an_alarm_accepts_an_optional_new_time(pipeline: _Pipeline) -> None:
+    disable_url = "/api/v1/medication/notification/settings/morning/disable"
+    async with _client(pipeline.app) as client:
+        saved = await client.put(
+            "/api/v1/medication/notification/settings/morning",
+            headers=_headers("user-a"), json={"hour": 9, "minute": 30},
+        )
+        without_body = await client.patch(disable_url, headers=_headers("user-a"))
+        with_time = await client.patch(
+            disable_url, headers=_headers("user-a"), json={"hour": 7, "minute": 15},
+        )
+        invalid = await client.patch(disable_url, headers=_headers("user-a"), json={"hour": 24})
+
+    assert saved.status_code == 200, saved.text
+    assert without_body.status_code == 200, without_body.text
+    assert [without_body.json()["data"][key] for key in ("hour", "minute", "is_enabled")] == [
+        9, 30, False,
+    ]
+    assert with_time.status_code == 200, with_time.text
+    assert [with_time.json()["data"][key] for key in ("hour", "minute", "is_enabled")] == [
+        7, 15, False,
+    ]
+    assert invalid.status_code == 422
+
+
+# Function Name: test_costly_routes_have_a_daily_quota_per_account_and_per_address
+# Description:
+# - With the daily hospital-search quota lowered to two, the third search of an account is 429
+#   with a Retry-After to the end of the day, while another account on the same address still
+#   passes: the address is allowed twenty times the account quota in the same daily scope.
+# Parameters:
+# - pipeline (_Pipeline): Application on replaced outer boundaries.
+# - monkeypatch (pytest.MonkeyPatch): Lowers the daily quota for this test.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_costly_routes_have_a_daily_quota_per_account_and_per_address(
+    pipeline: _Pipeline,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "HOSPITAL_SEARCH_DAILY_LIMIT", 2)
+    search = {"latitude": 37.5, "longitude": 127.0}
+
+    async with _client(pipeline.app) as client:
+        responses = [
+            await client.get(
+                "/api/v1/hospitals/nearby", headers=_headers("user-a"), params=search,
+            )
+            for _ in range(3)
+        ]
+        other_account = await client.get(
+            "/api/v1/hospitals/nearby", headers=_headers("user-b"), params=search,
+        )
+
+    assert [response.status_code == 429 for response in responses] == [False, False, True], [
+        response.text for response in responses
+    ]
+    assert responses[2].json()["detail"] == DAILY_QUOTA_EXCEEDED_DETAIL
+    assert responses[2].headers["retry-after"] == str(86_400 - int(_QUOTA_CLOCK_SECONDS) % 86_400)
+    assert other_account.status_code != 429
+    assert ("daily:hospital-search", RateLimitRule(40, 86_400)) in pipeline.store.ip_calls()
+    assert [scope for scope, _ in pipeline.store.user_calls("user-a")] == [
+        "GET:/api/v1/hospitals/nearby",
+        "daily:hospital-search",
+    ] * 3
+    assert resolve_daily_quota("POST", "/api/v1/medication/analyze-prescription-text") == (
+        RateLimitRule(settings.AI_REQUEST_DAILY_LIMIT, 86_400), "daily:ai",
+    )
+    assert resolve_daily_quota("GET", "/api/v1/medication/list") is None
 
 
 # Function Name: test_exhausted_connection_pool_returns_503_with_retry_after

@@ -112,18 +112,28 @@ services:
       - /bin/sh
       - -ec
       - |
-        sleep "$${CATALOG_REFRESH_INTERVAL_SECONDS}"
+        # The schedule is stored in the database, so a restart waits only for the time that is
+        # left instead of a full interval, and a failed refresh is not repeated back to back.
         while true; do
-          if python scripts/sync_drug_catalog.py --dataset all --page-size 500 --max-retries 5; then
-            if python scripts/sync_pharmacy_catalog.py --page-size 1000 --max-retries 5; then
-              sleep "$${CATALOG_REFRESH_INTERVAL_SECONDS}"
-            else
-              echo "Pharmacy catalog refresh failed; retrying after the configured backoff." >&2
-              sleep "$${CATALOG_REFRESH_RETRY_SECONDS}"
-            fi
+          wait_seconds="$$(python scripts/catalog_refresh_schedule.py wait-seconds \
+            --interval-seconds "$${CATALOG_REFRESH_INTERVAL_SECONDS}" \
+            --retry-seconds "$${CATALOG_REFRESH_RETRY_SECONDS}")" \
+            || wait_seconds="$${CATALOG_REFRESH_RETRY_SECONDS}"
+          case "$${wait_seconds}" in
+            ''|*[!0-9]*) wait_seconds="$${CATALOG_REFRESH_RETRY_SECONDS}" ;;
+          esac
+          sleep "$${wait_seconds}"
+          if ! python scripts/catalog_refresh_schedule.py mark-attempt; then
+            echo "Catalog refresh schedule could not be recorded; retrying after the configured backoff." >&2
+            sleep "$${CATALOG_REFRESH_RETRY_SECONDS}"
+            continue
+          fi
+          if python scripts/sync_drug_catalog.py --dataset all --page-size 500 --max-retries 5 \
+            && python scripts/sync_pharmacy_catalog.py --page-size 1000 --max-retries 5; then
+            python scripts/catalog_refresh_schedule.py mark-success \
+              || echo "Catalog refresh succeeded but its completion could not be recorded." >&2
           else
             echo "Catalog refresh failed; retrying after the configured backoff." >&2
-            sleep "$${CATALOG_REFRESH_RETRY_SECONDS}"
           fi
         done
     depends_on:

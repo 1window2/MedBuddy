@@ -103,6 +103,15 @@ class _History extends ManageLinkedChat {
 class _ViewModel extends MedBuddyViewModel {
   UserSetting setting = const UserSetting();
   bool hasOwnMedication = false;
+  int deviceLanguageSynchronizations = 0;
+
+  // 함수이름: synchronizeDeviceLanguage
+  // 함수역할: 기기 언어 재동기화 요청 횟수만 센다. 매개변수: 없음. 반환값: 저장하지 않았음을 뜻하는 false.
+  @override
+  Future<bool> synchronizeDeviceLanguage() async {
+    deviceLanguageSynchronizations += 1;
+    return false;
+  }
   // 함수이름: savedMedicationInfoList
   // 함수역할: 본인 약의 유무만 바꿔 홈 일정 출처가 약 보유 여부에 좌우되지 않는지 검사한다.
   // 매개변수: 없음. 반환값: 본인 약 한 건 또는 기본 저장 약 목록.
@@ -219,6 +228,12 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(api.calls, 0);
+      // 앱이 켜진 채 기기 언어가 바뀌면 "기기 설정 따르기"의 저장 언어를 다시 맞춘다.
+      expect(model.deviceLanguageSynchronizations, 0);
+      tester.binding.platformDispatcher.localesTestValue = const [Locale('en')];
+      addTearDown(tester.binding.platformDispatcher.clearLocalesTestValue);
+      await tester.pump();
+      expect(model.deviceLanguageSynchronizations, 1);
       model.setting = const UserSetting(homeScheduleSource: 'patients');
       model.updatesFor(MedBuddyFeature.userSetting).markChanged();
       await tester.pumpAndSettle();

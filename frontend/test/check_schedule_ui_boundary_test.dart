@@ -235,11 +235,12 @@ class _EnabledSetNotification extends SetNotification {
 // 클래스명: _MutableSetNotification
 // 역할: 알림 상태와 저장·해제 요청 횟수를 추적한다.
 // 주요 책임: 플랫폼 알림 없이 설정창 취소·저장에 따른 변경을 검증한다.
-// 속성: _setting은 현재 알림, saveCount·disableCount는 영속화 요청 횟수.
+// 속성: _setting은 현재 알림, saveCount·disableCount는 영속화 요청 횟수, lastDisableTime은 마지막 해제 요청에 실린 시각.
 class _MutableSetNotification extends SetNotification {
   MedicationAlarm _setting;
   int saveCount = 0;
   int disableCount = 0;
+  (int, int)? lastDisableTime;
 
   // 함수이름: _MutableSetNotification
   // 함수역할: enabled로 초기 활성 상태를 지정한다. 반환값: 변경 추적 가능한 알림 대역.
@@ -288,15 +289,26 @@ class _MutableSetNotification extends SetNotification {
 
   // 함수이름: disableAlarmSetting
   // 함수역할:
-  // - 기존 알림 시각을 보존한 채 활성 상태만 해제한다.
+  // - 활성 상태를 해제하고, 시각이 함께 오면 그 시각으로 바꾼다.
   // 매개변수:
   // - slotKey (String): 아침·점심·저녁·취침 전 등을 구분하는 복약 시간대 키. 이 대역에서는 직접 사용하지 않는다.
+  // - hour (int?): 꺼진 알림과 함께 저장할 새 시.
+  // - minute (int?): 꺼진 알림과 함께 저장할 새 분.
   // 반환값:
   // - 비활성으로 바뀐 현재 알림 설정.
   @override
-  Future<MedicationAlarm> disableAlarmSetting(String slotKey) async {
+  Future<MedicationAlarm> disableAlarmSetting(
+    String slotKey, {
+    int? hour,
+    int? minute,
+  }) async {
     disableCount += 1;
-    _setting = _setting.copyWith(enabled: false);
+    lastDisableTime = hour == null ? null : (hour, minute ?? 0);
+    _setting = _setting.copyWith(
+      enabled: false,
+      hour: hour,
+      minute: hour == null ? null : minute ?? 0,
+    );
     return _setting;
   }
 
@@ -357,17 +369,19 @@ class _ScheduleHealthRecommendation extends CheckHealthRecommendation {
 }
 
 // 함수이름: _pumpReminderSchedule
-// 함수역할: tester에 알림 대역 notification과 textScale 글씨 배율을 적용한 일정을 표시한다. 반환값: 생성한 화면 모델.
+// 함수역할: tester에 알림 대역 notification과 textScale 글씨 배율을 적용한 일정을 표시한다. notificationService를 주면
+//   그 알림 서비스 대역을 쓴다. 반환값: 생성한 화면 모델.
 Future<MedBuddyViewModel> _pumpReminderSchedule(
   WidgetTester tester,
   _MutableSetNotification notification, {
   double textScale = 1,
+  RecordingNotificationService? notificationService,
 }) async {
   SharedPreferences.setMockInitialValues({});
   final viewModel = MedBuddyViewModel(
     checkSchedule: _ActiveCheckSchedule(),
     setNotification: notification,
-    notificationService: RecordingNotificationService(),
+    notificationService: notificationService ?? RecordingNotificationService(),
   );
   addTearDown(viewModel.dispose);
   await tester.pumpWidget(
@@ -885,6 +899,33 @@ void main() {
     },
   );
 
+  // 켜 둔 알림이 있는데 기기가 정확한 알람을 막고 있으면 일정 화면에서 허용 방법을 안내하고, 꺼 둔 경우에는 안내하지 않는다.
+  for (final enabled in [true, false]) {
+    testWidgets('exact-alarm notice follows the reminder switch (enabled=$enabled)', (
+      tester,
+    ) async {
+      final notificationService = RecordingNotificationService()
+        ..exactRemindersAllowed = false;
+      await _pumpReminderSchedule(
+        tester,
+        _MutableSetNotification(enabled: enabled),
+        notificationService: notificationService,
+      );
+
+      expect(
+        find.byKey(const Key('exact-reminder-notice')),
+        enabled ? findsOneWidget : findsNothing,
+      );
+      if (!enabled) return;
+      // 허용하고 돌아오면 예약을 정확한 알람으로 바꾸고 안내를 지운다.
+      notificationService.exactPermissionAfterRequest = true;
+      await tester.tap(find.byKey(const Key('exact-reminder-allow')));
+      await tester.pumpAndSettle();
+      expect(notificationService.exactRescheduleCount, 1);
+      expect(find.byKey(const Key('exact-reminder-notice')), findsNothing);
+    });
+  }
+
   // 함수이름: 알림 설정 큰 글씨 테스트
   // 함수역할: tester의 작은 화면·2배 글씨에서 설정과 저장 명령이 스크롤로 접근 가능한지 검증한다. 반환값: 검증 완료.
   testWidgets(
@@ -919,6 +960,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(model.medicationReminderSettings['morning']!.isEnabled, isFalse);
       expect(notification.disableCount, 1);
+      // 끄는 저장에도 화면에서 고른 시각이 함께 전달된다.
+      expect(notification.lastDisableTime, (8, 0));
       expect(tester.takeException(), isNull);
     },
   );

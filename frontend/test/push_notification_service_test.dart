@@ -48,6 +48,15 @@ class _FakePushPlatform extends PushMessagingPlatform {
     log.add('permission');
   }
 
+  // Function Name: deleteToken
+  // Description: Records that the device token was discarded.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the log entry is added.
+  @override
+  Future<void> deleteToken() async => log.add('delete-token');
+
   @override
   Future<String?> getToken() async {
     tokenReads++;
@@ -112,6 +121,7 @@ void main() {
     late _FakePushPlatform platform;
     late List<http.Request> requests;
     late int failingPosts;
+    late bool failingDeletes;
     late MockClient client;
 
     // Function Name: build
@@ -138,11 +148,15 @@ void main() {
       platform = _FakePushPlatform();
       requests = [];
       failingPosts = 0;
+      failingDeletes = false;
       client = MockClient((request) async {
         requests.add(request);
         if (request.method == 'POST' && failingPosts > 0) {
           failingPosts--;
           return http.Response('unavailable', 503);
+        }
+        if (request.method == 'DELETE' && failingDeletes) {
+          return http.Response('unauthorized', 401);
         }
         return http.Response('{}', 200);
       });
@@ -286,6 +300,49 @@ void main() {
       expect(platform.permissionRequests, 1);
       unawaited(service.stop());
       await tester.pump();
+    });
+
+    // Function Name: stale token discard test
+    // Description: When the session has ended and the server refuses the unregistration, the device
+    //   token is deleted so the ended account's registration stops delivering here. A token the
+    //   server did unregister, or a stop that does not ask for it, leaves the device token alone.
+    testWidgets('a token the server could not unregister is discarded on request', (
+      tester,
+    ) async {
+      final service = build();
+      unawaited(service.start());
+      await tester.pump();
+      expect(posts(), hasLength(1));
+
+      failingDeletes = true;
+      unawaited(service.stop());
+      await tester.pump();
+      expect(platform.log, isNot(contains('delete-token')));
+
+      unawaited(service.stop(discardUnregisteredToken: true));
+      await tester.pump();
+      expect(requests.last.method, 'DELETE');
+      expect(platform.subscriptions('delete-token'), 1);
+
+      // The token is gone; a further stop has nothing left to unregister or discard.
+      final deletes = requests.where((request) => request.method == 'DELETE').length;
+      unawaited(service.stop(discardUnregisteredToken: true));
+      await tester.pump();
+      expect(requests.where((request) => request.method == 'DELETE'), hasLength(deletes));
+      expect(platform.subscriptions('delete-token'), 1);
+    });
+
+    // Function Name: unregistered token test
+    // Description: A token the server unregistered is not deleted on the device.
+    testWidgets('a token the server unregistered is kept on the device', (tester) async {
+      final service = build();
+      unawaited(service.start());
+      await tester.pump();
+
+      unawaited(service.stop(discardUnregisteredToken: true));
+      await tester.pump();
+      expect(requests.last.method, 'DELETE');
+      expect(platform.log, isNot(contains('delete-token')));
     });
 
     // Function Name: token read failure test

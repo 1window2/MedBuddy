@@ -470,7 +470,7 @@ package "Flutter Frontend" {
             + patientHash: String
             + requestMedicationAlarm(): Future<List<MedicationAlarm>>
             + saveNotificationSetting(slotKey, hour, minute): Future<MedicationAlarm>
-            + disableAlarmSetting(slotKey): Future<MedicationAlarm>
+            + disableAlarmSetting(slotKey, hour, minute): Future<MedicationAlarm>
         }
 
         class "SetCaregiverNotification" as FSetCaregiverNotification <<Controller: 보호자 알림 관리>> {
@@ -646,6 +646,9 @@ package "Flutter Frontend" {
             + cancelReminder(id): Future<void>
             + cancelReminderForDate(owner, slotKey, date): Future<void>
             + cancelAllMedicationReminders(): Future<void>
+            + canScheduleExactReminders(): Future<bool>
+            + requestExactReminderPermission(): Future<bool>
+            + rescheduleInexactRemindersAsExact(): Future<void>
             + showCaregiverAlert(): Future<void>
         }
 
@@ -718,7 +721,7 @@ package "Flutter Frontend" {
             - _startOperation: Future<void>
             - _pendingTokenRegistrations: Set<Future<void>>
             + start(): Future<void>
-            + stop(requireServerUnregistration): Future<void>
+            + stop(requireServerUnregistration, discardUnregisteredToken): Future<void>
         }
 
         class "CaregiverNotificationMonitorService" as CaregiverNotificationMonitorService <<Service: 보호자 현황 감시>> {
@@ -1260,7 +1263,7 @@ package "FastAPI Backend" {
             - db: Session
             + requestMedicationAlarm(patient_hash): dict
             + saveNotificationSetting(patient_hash, slot_key, hour, minute): dict
-            + disableAlarmSetting(patient_hash, slot_key): dict
+            + disableAlarmSetting(patient_hash, slot_key, hour, minute): dict
         }
 
         class "SetCaregiverNotification" as BSetCaregiverNotification <<Control: 보호자 알림 저장>> {
@@ -1373,9 +1376,21 @@ package "FastAPI Backend" {
 
         class "MedicationCoursePolicy" as MedicationCoursePolicy <<Service: 복약 기간 정책>> {
             + is_active_on(medication, target_date): bool
+            + is_due_on(medication, target_date): bool
             + is_expired_after(medication, target_date, days): bool
             + read_total_days(raw_total_days): int
             + read_frequency_count(raw_frequency): int
+            + read_dose_cycle(medication): DoseCycle
+            + dose_cycle_fields(medication): dict
+        }
+
+        class "DoseCycle" as BDoseCycle <<Entity: 복용 주기>> {
+            + cycle_days: int
+            + offsets: tuple
+            + weekday_anchored: bool
+            + is_daily: bool
+            + anchor(start_date): date
+            + includes(start_date, target_date): bool
         }
 
         class "SavedMedicationRetentionPolicy" as SavedMedicationRetentionPolicy <<Service: 저장 약 보존 정책>> {
@@ -2296,6 +2311,7 @@ BCheckSavedMedication --> DBSavedMedication
 BCheckSavedMedication o-- SavedMedicationRepository
 
 BCheckSchedule *-- MedicationCoursePolicy
+MedicationCoursePolicy ..> BDoseCycle
 BCheckSchedule --> DBSavedMedication
 BCheckSchedule --> DBMedicationCompletion
 BCheckSchedule o-- SavedMedicationRepository

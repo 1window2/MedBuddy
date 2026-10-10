@@ -329,6 +329,92 @@ class MedicationCoursePolicyTest(unittest.TestCase):
                     expected,
                 )
 
+    # Function Name: test_non_daily_medication_is_due_only_on_its_dose_days
+    # Description:
+    # - A weekly medication is due on the first day of the course and every seventh day after
+    #   it, never on the days between, and not after the course has ended; a daily medication
+    #   and a non-daily one without a recorded start date are due every day of the course.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_non_daily_medication_is_due_only_on_its_dose_days(self) -> None:
+        start = date(2026, 10, 7)
+        weekly = SimpleNamespace(
+            prescription_date=start, created_date=None,
+            total_days="4주", daily_frequency="주 1회",
+        )
+        due = [
+            offset for offset in range(35)
+            if self.policy.is_due_on(weekly, start + timedelta(days=offset))
+        ]
+        self.assertEqual(due, [0, 7, 14, 21])
+        self.assertTrue(self.policy.is_active_on(weekly, start + timedelta(days=3)))
+        self.assertFalse(self.policy.is_due_on(weekly, start - timedelta(days=7)))
+
+        daily = SimpleNamespace(
+            prescription_date=start, created_date=None,
+            total_days="3", daily_frequency="1일 3회",
+        )
+        self.assertEqual(
+            [self.policy.is_due_on(daily, start + timedelta(days=offset)) for offset in range(4)],
+            [True, True, True, False],
+        )
+        undated = SimpleNamespace(
+            prescription_date=None, created_date=None,
+            total_days="", daily_frequency="격일",
+        )
+        self.assertTrue(self.policy.is_due_on(undated, start + timedelta(days=1)))
+
+    # Function Name: test_dose_cycle_fields_describe_the_dose_days_for_clients
+    # Description:
+    # - The response fields carry the cycle, its dose days and day 0: the course start for
+    #   intervals, the Monday of the starting week for named weekdays, and a one-day cycle
+    #   without an anchor for daily medications.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_dose_cycle_fields_describe_the_dose_days_for_clients(self) -> None:
+        # Function Name: fields
+        # Description: Reads the response fields for a label on a course starting Wednesday.
+        # Parameters: frequency (str) - Frequency label.
+        # Returns: The dose cycle response fields.
+        def fields(frequency: str) -> dict[str, object]:
+            return self.policy.dose_cycle_fields(SimpleNamespace(
+                prescription_date=date(2026, 10, 7), created_date=None,
+                total_days="30", daily_frequency=frequency,
+            ))
+
+        self.assertEqual(fields("1일 2회"), {
+            "dose_cycle_days": 1, "dose_cycle_offsets": [0], "dose_cycle_anchor": None,
+        })
+        self.assertEqual(fields("격일"), {
+            "dose_cycle_days": 2, "dose_cycle_offsets": [0], "dose_cycle_anchor": "2026-10-07",
+        })
+        self.assertEqual(fields("월수금"), {
+            "dose_cycle_days": 7, "dose_cycle_offsets": [0, 2, 4],
+            "dose_cycle_anchor": "2026-10-05",
+        })
+
+    # Function Name: test_frequency_and_duration_labels_are_not_misread_as_daily_counts
+    # Description:
+    # - A weekly count is one dose on a dose day, an hour interval is the doses that fit a day,
+    #   and week or month durations are converted to days.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_frequency_and_duration_labels_are_not_misread_as_daily_counts(self) -> None:
+        self.assertEqual(self.policy.read_frequency_count("주 3회"), 1)
+        self.assertEqual(self.policy.read_frequency_count("주 3회, 1일 2회"), 2)
+        self.assertEqual(self.policy.read_frequency_count("8시간마다"), 3)
+        self.assertEqual(self.policy.read_frequency_count("4시간마다"), MAX_DAILY_FREQUENCY)
+        self.assertEqual(self.policy.read_slot_keys(None, "주 1회"), ("morning",))
+        self.assertEqual(self.policy.read_total_days("2주"), 14)
+        self.assertEqual(self.policy.read_total_days("1개월"), 30)
+        self.assertEqual(self.policy.read_total_days("7일분 (1주)"), 7)
+
 
 if __name__ == "__main__":
     unittest.main()

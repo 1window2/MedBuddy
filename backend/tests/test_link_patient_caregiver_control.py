@@ -386,12 +386,36 @@ class LinkPatientCaregiverTest(unittest.TestCase):
         self.control.updatePatientAlias(link["id"], "guardian-a", "어머니")
         result = self.control.update_caregiver_alias(link["id"], "patient-a", "  우리  딸  ")["data"]
         self.assertEqual(result["caregiver_alias"], "우리 딸")
-        self.assertEqual(result["patient_alias"], "어머니")
+        # 보호자가 환자에게 붙인 별칭은 환자에게 돌려주지 않는다.
+        self.assertIsNone(result["patient_alias"])
         listed = self.control.requestLinkScreen("patient-a")["data"][0]
         self.assertEqual(listed["caregiver_alias"], "우리 딸")
+        self.assertIsNone(listed["patient_alias"])
+        # 환자가 보호자에게 붙인 별칭도 보호자에게 돌려주지 않는다.
+        guardian_view = self.control.requestLinkScreen("guardian-a")["data"][0]
+        self.assertEqual(guardian_view["patient_alias"], "어머니")
+        self.assertIsNone(guardian_view["caregiver_alias"])
+        saved = self.control.updatePatientAlias(link["id"], "guardian-a", "어머니")["data"]
+        self.assertIsNone(saved["caregiver_alias"])
         result = self.control.update_caregiver_alias(link["id"], "patient-a", "  ")["data"]
         self.assertEqual(result["caregiver_alias"], "")
-        self.assertEqual(result["patient_alias"], "어머니")
+        self.assertIsNone(result["patient_alias"])
+        self.assertEqual(
+            self.control.requestLinkScreen("guardian-a")["data"][0]["patient_alias"],
+            "어머니",
+        )
+
+    # 함수이름: test_unlink_response_hides_the_other_participants_alias
+    # 함수역할: 연동 해제 응답도 해제한 사람이 붙인 별칭만 담는지 확인한다.
+    # 매개변수: 없음. 반환값: 없음.
+    def test_unlink_response_hides_the_other_participants_alias(self) -> None:
+        code = self.control.generatePatientHash("patient-a")["data"]["patient_code"]
+        link = self.control.requestPatientCaregiverLink("guardian-a", code)["data"]
+        self.control.updatePatientAlias(link["id"], "guardian-a", "어머니")
+        self.control.update_caregiver_alias(link["id"], "patient-a", "딸")
+        removed = self.control.requestUnlink(link["id"], "patient-a")["data"]
+        self.assertEqual(removed["caregiver_alias"], "딸")
+        self.assertIsNone(removed["patient_alias"])
 
     # 함수이름: test_caregiver_alias_rejects_nonowners_and_inactive_links
     # 함수역할: 다른 환자, 상대 보호자, 없는 연결 및 해제된 연결의 별칭 변경을 차단한다.

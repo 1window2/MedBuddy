@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../entities/caregiver_notification_entity.dart';
+import '../entities/medication_alarm_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import 'set_notification_ui_boundary.dart';
@@ -20,14 +21,57 @@ class SetCaregiverNotificationUI {
   // 반환값: 입력 설정이 반영된 SetCaregiverNotificationUI 인스턴스.
   const SetCaregiverNotificationUI._();
 
+  // 새 확인 시각의 기본값을 복약 알림 시각에서 이만큼 뒤로 둔다. 알림이 울린 뒤 약을 먹고 기록할 시간이며,
+  // 서버가 알림 시각 뒤에 두는 유예(30분)보다 길다.
+  static const int _defaultDeadlineDelayMinutes = 60;
+
+  // 함수이름: slotReminderTime
+  // 함수역할: 시간대의 복약 알림 시각을 정한다. 보호자 앱은 환자가 바꾼 알림 시각을 받지 못하므로, 호출자가
+  //   알려 주지 않으면 그 시간대의 기본 알림 시각(08:00·12:00·18:00·22:00)을 쓴다.
+  // 매개변수:
+  // - slotKey (String): morning·lunch·evening·bedtime 복약 시간대 키.
+  // - reminderTime (TimeOfDay?): 호출자가 아는 환자의 알림 시각.
+  // 반환값: 확인 시각이 그보다 이를 수 없는 기준 시각.
+  static TimeOfDay slotReminderTime(String slotKey, {TimeOfDay? reminderTime}) {
+    return reminderTime ??
+        TimeOfDay(hour: MedicationAlarm.defaultHourFor(slotKey), minute: 0);
+  }
+
+  // 함수이름: defaultDeadline
+  // 함수역할: 저장된 확인 시각이 없을 때 제안할 시각을 만든다. 그 시간대의 복약 알림 한 시간 뒤이며
+  //   자정을 넘기지 않도록 23:59에서 멈춘다. 따라서 어느 시간대에서도 알림 시각보다 이르지 않다.
+  // 매개변수:
+  // - slotKey (String): morning·lunch·evening·bedtime 복약 시간대 키.
+  // - reminderTime (TimeOfDay?): 호출자가 아는 환자의 알림 시각.
+  // 반환값: 제안할 미복용 확인 시각.
+  static TimeOfDay defaultDeadline(String slotKey, {TimeOfDay? reminderTime}) {
+    final reminder = slotReminderTime(slotKey, reminderTime: reminderTime);
+    final minutes = (reminder.hour * 60 + reminder.minute +
+            _defaultDeadlineDelayMinutes)
+        .clamp(0, 23 * 60 + 59);
+    return TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60);
+  }
+
+  // 함수이름: isDeadlineBeforeReminder
+  // 함수역할: 확인 시각이 그 시간대의 복약 알림 시각보다 이른지 판단한다.
+  // 매개변수: deadline - 확인 시각, reminder - 복약 알림 시각.
+  // 반환값: 확인 시각이 더 이르면 true.
+  static bool isDeadlineBeforeReminder(TimeOfDay deadline, TimeOfDay reminder) {
+    return deadline.hour * 60 + deadline.minute <
+        reminder.hour * 60 + reminder.minute;
+  }
+
   // 함수이름: showNotificationPopup
-  // 함수역할: 현재 보호자 알림 조건·마감 시각을 편집하고 저장으로 확정된 설정을 반환한다.
+  // 함수역할: 현재 보호자 알림 조건·마감 시각을 편집하고 저장으로 확정된 설정을 반환한다. 미복용 확인 시각이
+  //   그 시간대의 복약 알림 시각보다 이르면 이유를 안내하고 저장하지 못하게 한다. 알림이 울리기 전의 약은 아직
+  //   복용할 시간이 아니어서, 그 전에 확인하면 복용 전인 약을 미복용으로 알리게 된다.
   // 매개변수:
   // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
   // - setting (CaregiverNotification): 표시하거나 편집할 복약 시간대의 알림 설정.
   // - language (String): 화면 문구를 선택할 언어 코드.
   // - slotLabel (String?): 시간대 또는 알림 시각의 표시 문구.
   // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
+  // - reminderTime (TimeOfDay?): 환자의 이 시간대 복약 알림 시각; 모르면 시간대의 기본 알림 시각을 기준으로 삼는다.
   // 반환값: Future<CaregiverNotification?>: 확정한 보호자 알림 조건과 마감 시각; 취소 시 null.
   static Future<CaregiverNotification?> showNotificationPopup(
     BuildContext context, {
@@ -35,12 +79,24 @@ class SetCaregiverNotificationUI {
     String language = 'ko',
     String? slotLabel,
     UserSetting userSetting = const UserSetting(),
+    TimeOfDay? reminderTime,
   }) {
     final isEnglish = isEnglishLanguage(language);
     var selectedMode = setting.mode;
-    var deadline = TimeOfDay(
-      hour: setting.deadlineHour ?? 21,
-      minute: setting.deadlineMinute ?? 0,
+    final reminder = slotReminderTime(
+      setting.slotKey,
+      reminderTime: reminderTime,
+    );
+    // 저장된 시각은 그대로 보여 준다. 없을 때만 알림 시각 뒤의 기본값을 제안한다.
+    var deadline = setting.hasValidDeadline
+        ? TimeOfDay(
+            hour: setting.deadlineHour!,
+            minute: setting.deadlineMinute!,
+          )
+        : defaultDeadline(setting.slotKey, reminderTime: reminderTime);
+    final reminderLabel = userSetting.formatTime(
+      reminder.hour,
+      reminder.minute,
     );
 
     return showDialog<CaregiverNotification>(
@@ -82,6 +138,10 @@ class SetCaregiverNotificationUI {
                 setDialogState(() => deadline = selectedTime);
               }
             }
+
+            final deadlineTooEarly =
+                selectedMode == CaregiverNotificationMode.missedDeadline &&
+                isDeadlineBeforeReminder(deadline, reminder);
 
             return Dialog(
               insetPadding: const EdgeInsets.symmetric(horizontal: 28),
@@ -214,15 +274,41 @@ class SetCaregiverNotificationUI {
                             '${userSetting.formatTime(deadline.hour, deadline.minute)}',
                           ),
                         ),
+                        const SizedBox(height: 8),
+                        // 알림 시각보다 이른 확인 시각은 저장할 수 없는 이유를 항상 보여 주고, 실제로 이를 때는 강조한다.
+                        Semantics(
+                          liveRegion: deadlineTooEarly,
+                          child: Text(
+                            isEnglish
+                                ? (deadlineTooEarly
+                                      ? 'Choose $reminderLabel or later. The $reminderLabel medication reminder has not gone off before then, so the dose is not late yet and you would be told it was missed.'
+                                      : 'The check time must be $reminderLabel, the medication reminder time, or later. Before the reminder the dose is not late yet.')
+                                : (deadlineTooEarly
+                                      ? '$reminderLabel 이후로 정해 주세요. 복약 알림($reminderLabel)이 울리기 전에는 아직 복용할 시간이 아니어서, 먹기 전인 약을 미복용으로 알리게 됩니다.'
+                                      : '확인 시각은 복약 알림 시각($reminderLabel)이거나 그 이후여야 합니다. 알림이 울리기 전에는 아직 복용할 시간이 아닙니다.'),
+                            key: const Key('caregiver-deadline-guidance'),
+                            style: TextStyle(
+                              color: deadlineTooEarly
+                                  ? Theme.of(context).colorScheme.error
+                                  : MedBuddyColors.textMuted,
+                              fontSize: 13,
+                              fontWeight: deadlineTooEarly
+                                  ? FontWeight.w700
+                                  : FontWeight.w400,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
                       ],
                       const SizedBox(height: 18),
                       FilledButton(
+                        key: const Key('caregiver-notification-save'),
                         // 함수이름: showNotificationPopup.onPressed callback
-                        // 함수역할: `Navigator.pop(dialogContext, setting.updateNotificationSetting(selectedMode, deadlineHour: deadline.hour, deadlineMinute: deadline.minute))`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
+                        // 함수역할: `Navigator.pop(dialogContext, setting.updateNotificationSetting(selectedMode, deadlineHour: deadline.hour, deadlineMinute: deadline.minute))`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다. 확인 시각이 복약 알림 시각보다 이르면 저장할 수 없다.
                         // 매개변수:
                         // - 없음.
                         // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-                        onPressed: () {
+                        onPressed: deadlineTooEarly ? null : () {
                           Navigator.pop(
                             dialogContext,
                             setting.updateNotificationSetting(

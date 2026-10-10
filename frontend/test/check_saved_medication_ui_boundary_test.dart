@@ -409,6 +409,7 @@ void main() {
     final tabIndex = ValueNotifier<int>(1);
     addTearDown(tabIndex.dispose);
     var systemPops = 0;
+    var cabinetHandlesBack = false;
     // 함수역할: 앱 종료 요청 횟수를 센다. 매개변수: call은 플랫폼 호출. 반환값: 없음.
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
       SystemChannels.platform,
@@ -434,7 +435,7 @@ void main() {
           canPop: value == 0,
           // 함수역할: 닫히지 않은 뒤로가기를 홈 탭 이동으로 처리한다. 매개변수: didPop, _. 반환값: 없음.
           onPopInvokedWithResult: (didPop, _) {
-            if (!didPop && value != 0) tabIndex.value = 0;
+            if (!didPop && !cabinetHandlesBack && value != 0) tabIndex.value = 0;
           },
           child: IndexedStack(
             index: value,
@@ -443,6 +444,8 @@ void main() {
               CheckSavedMedicationUI(
                 showCloseButton: false,
                 isActive: value == 1,
+                onBackHandlingChanged: (handlesBack) =>
+                    cabinetHandlesBack = handlesBack,
               ),
             ],
           ),
@@ -451,11 +454,29 @@ void main() {
     );
     await _startSavedSelection(tester);
     expect(find.text('복약 선택'), findsOneWidget);
+    expect(cabinetHandlesBack, isTrue);
+
+    // 선택 모드에서 누른 뒤로가기는 선택만 닫고 탭은 그대로 둔다. 한 번 더 눌러야 홈으로 간다.
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('복약 선택'), findsNothing);
+    expect(cabinetHandlesBack, isFalse);
+    expect(tabIndex.value, 1);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(tabIndex.value, 0);
+    expect(systemPops, 0);
+
+    tabIndex.value = 1;
+    await tester.pumpAndSettle();
+    await _startSavedSelection(tester);
+    expect(cabinetHandlesBack, isTrue);
 
     tabIndex.value = 0;
     await tester.pumpAndSettle();
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
+    expect(cabinetHandlesBack, isFalse);
     expect(systemPops, 1);
     expect(tabIndex.value, 0);
 

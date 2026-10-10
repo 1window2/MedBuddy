@@ -67,8 +67,13 @@ async def test_location_capped_pages_and_actual_fields():
         assert result.records[0].institution_type == "의원"
         assert requests[0].url.path.endswith("/getHsptlMdcncLcinfoInqire")
         assert requests[0].url.params["serviceKey"] == "fallback-test-key"
-        assert requests[0].url.params["WGS84_LAT"] == "37.5000000"
+        assert requests[0].url.params["WGS84_LAT"] == "37.500"
         assert "QD" not in requests[0].url.params
+        # 약 100 m 격자 안에서 좌표만 조금 바꾼 검색은 제공자를 다시 부르지 않는다.
+        await api.fetchNearbyPage(
+            latitude=37.5001234, longitude=127.0003456, page_no=1, page_size=30,
+        )
+        assert len(requests) == 1
         await api.close()
         assert not client.is_closed
 

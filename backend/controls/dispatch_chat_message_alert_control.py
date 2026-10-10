@@ -10,6 +10,10 @@ from boundaries.push_notification_boundary import (
     PushNotificationBoundary,
 )
 from entities.chat_message_entity import _ChatMessage
+from entities.medication_schedule_entity import (
+    MEDICATION_SLOT_ENGLISH_NAMES,
+    MEDICATION_SLOT_KOREAN_NAMES,
+)
 from repositories.patient_caregiver_link_repository import (
     PatientCaregiverLinkRepository,
 )
@@ -21,6 +25,7 @@ from services.push_recipient_resolver import PushRecipientResolver
 # - 채팅 알림의 토큰 조회, 전송과 만료 토큰 정리를 조율한다.
 # 주요 책임:
 # - 제한된 길이의 메시지 미리보기를 보내고 유효하지 않은 토큰을 비활성화한다.
+# - 서버가 만든 복용 기록 메시지는 약 이름을 뺀 문구로 바꿔 미리보기에 싣는다.
 # - 전송에 필요한 값을 모두 읽은 뒤 DB 연결을 반환하고 나서 Firebase를 호출한다.
 # 속성:
 # - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
@@ -68,6 +73,7 @@ class DispatchChatMessageAlert:
         message_id: int | None = None,
     ) -> PushDeliveryResult:
         """상대 기기에 길이를 제한한 실제 채팅 내용을 미리 보여준다."""
+        dose_receipt: dict[str, object] | None = None
         # Recheck queued work before exposing a preview; completed delivery cannot be recalled.
         if message_id is not None:
             row = self.db.get(_ChatMessage, message_id)
@@ -82,6 +88,7 @@ class DispatchChatMessageAlert:
                 return PushDeliveryResult(success_count=0)
             message_body = str(row.body)
             message_kind = str(row.message_kind)
+            dose_receipt = self._dose_receipt(row)
         resolver = PushRecipientResolver(self.db)
         recipient = resolver.resolve(recipient_hash)
         if not recipient.tokens:
@@ -90,7 +97,12 @@ class DispatchChatMessageAlert:
             return PushDeliveryResult(success_count=0)
         language = recipient.language
         is_english = language == "en"
-        message_preview = self._message_preview(message_body)
+        # 복용 기록 본문에는 약 이름이 들어 있으므로 잠금 화면에 그대로 내보내지 않는다.
+        message_preview = (
+            self._dose_receipt_preview(dose_receipt, is_english)
+            if dose_receipt is not None
+            else self._message_preview(message_body)
+        )
         fallback_body = (
             "You received a new message from a linked family member."
             if is_english
@@ -119,6 +131,42 @@ class DispatchChatMessageAlert:
         if result.invalid_tokens:
             resolver.disable_invalid(result.invalid_tokens)
         return result
+
+    # 함수이름: _dose_receipt
+    # 함수역할:
+    # - 메시지가 서버가 작성한 복용 기록인지 확인하고 그 확인 정보를 돌려준다.
+    # 매개변수:
+    # - row (_ChatMessage): 저장된 채팅 메시지.
+    # 반환값:
+    # - 복용 기록의 날짜와 시간대를 담은 사전. 사용자가 쓴 메시지면 None.
+    @staticmethod
+    def _dose_receipt(row: _ChatMessage) -> dict[str, object] | None:
+        """구조화 문맥에 복용 확인이 붙은 메시지만 복용 기록으로 본다."""
+        context = row.context_payload if isinstance(row.context_payload, dict) else {}
+        confirmation = context.get("completion_confirmation")
+        return confirmation if isinstance(confirmation, dict) else None
+
+    # 함수이름: _dose_receipt_preview
+    # 함수역할:
+    # - 복용 기록 메시지의 알림 문구를 약 이름 없이 날짜와 시간대만으로 만든다.
+    # 매개변수:
+    # - dose_receipt (dict[str, object]): 복용 기록의 날짜와 시간대.
+    # - is_english (bool): 수신자의 알림 언어가 영어인지 여부.
+    # 반환값:
+    # - 약 이름이 없는 알림 표시용 문구.
+    @staticmethod
+    def _dose_receipt_preview(dose_receipt: dict[str, object], is_english: bool) -> str:
+        """날짜와 시간대를 알 수 없으면 그 부분을 빼고 기록 사실만 알린다."""
+        slot_key = str(dose_receipt.get("slot_key") or "")
+        schedule_date = str(dose_receipt.get("schedule_date") or "").strip()
+        if is_english:
+            slot_name = MEDICATION_SLOT_ENGLISH_NAMES.get(slot_key, "")
+            dose_label = f"{slot_name} doses" if slot_name else "doses"
+            suffix = f" for {schedule_date}" if schedule_date else ""
+            return f"Recorded {dose_label}{suffix}."
+        slot_name = MEDICATION_SLOT_KOREAN_NAMES.get(slot_key, "")
+        subject = " ".join(part for part in (schedule_date, slot_name) if part)
+        return f"{subject} 복용을 기록했습니다.".strip()
 
     # 함수이름: _message_preview
     # 함수역할:

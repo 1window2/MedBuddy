@@ -13,10 +13,12 @@ import '../controls/app_language_control.dart';
 import '../controls/authentication_control.dart';
 import '../controls/manage_account_control.dart';
 import '../entities/user_setting_entity.dart';
+import '../services/notification_service.dart';
 import '../services/tts_service.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/medbuddy_page_header.dart';
 import '../widgets/app_version_label.dart';
+import '../widgets/exact_reminder_notice.dart';
 import 'set_notification_ui_boundary.dart';
 
 part 'settings_preference_widgets.dart';
@@ -59,6 +61,7 @@ typedef ExtendedUserSettingSaver =
 // - authenticationControl (AuthenticationControl): 인증·계정·다중 인증 상태와 명령 제공자.
 // - onSignOutRequested (Future<void> Function()?): 현재 계정을 로그아웃할 콜백.
 // - onDeleteAccountRequested (Future<void> Function()?): 확인된 계정 삭제를 수행할 콜백.
+// - notificationService (NotificationService?): 복약 알림이 늦을 수 있는 기기의 정확한 알람 허용 안내에 쓰는 알림 서비스; 없으면 안내를 표시하지 않는다.
 class ManageUserSettingUI extends StatefulWidget {
   final UserSetting initialSetting;
   final bool initiallyShowDisplayAndVoice;
@@ -67,16 +70,10 @@ class ManageUserSettingUI extends StatefulWidget {
   final Future<void> Function()? onDeleteAccountRequested;
   final SettingPreviewSpeaker? previewSpeaker;
   final SettingPreviewStopper? previewStopper;
-  final ExtendedUserSettingSaver? onExtendedSettingSaveRequested;
+  final ExtendedUserSettingSaver onExtendedSettingSaveRequested;
   final VoidCallback? onMedicationScheduleRequested;
   final Future<void> Function()? onDeviceNotificationSettingsRequested;
-  // 이전 세 필드 저장 콜백. onExtendedSettingSaveRequested가 없을 때만 쓰이며, 호출부가 모두 옮겨 가면 삭제한다.
-  final Future<UserSettingSaveResult> Function({
-    required String fontSizeOption,
-    required String readingSpeedOption,
-    required String language,
-  })?
-  onSettingSaveRequested;
+  final NotificationService? notificationService;
 
   // 함수이름: ManageUserSettingUI
   // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에 필요한 입력값과 표시 설정을 초기화한다.
@@ -85,33 +82,29 @@ class ManageUserSettingUI extends StatefulWidget {
   // - initialSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
   // - initiallyShowDisplayAndVoice (bool): 설정값 변경 없이 화면 및 음성 화면으로 바로 진입한다.
   // - authenticationControl (AuthenticationControl): 인증·계정·다중 인증 상태와 명령 제공자.
-  // - onSettingSaveRequested (Future<UserSettingSaveResult> Function({required String fontSizeOption, required String readingSpeedOption, required String language})?): 글씨 크기·읽기 속도·언어만 전달하는 이전 저장 콜백. onExtendedSettingSaveRequested가 없을 때만 사용한다.
   // - onSignOutRequested (Future<void> Function()?): 현재 계정을 로그아웃할 콜백.
   // - onDeleteAccountRequested (Future<void> Function()?): 확인된 계정 삭제를 수행할 콜백.
   // - previewSpeaker (SettingPreviewSpeaker?): 미리보기 문장을 현재 설정으로 읽는 함수.
   // - previewStopper (SettingPreviewStopper?): 진행 중인 음성 미리보기를 중지하는 함수.
-  // - onExtendedSettingSaveRequested (ExtendedUserSettingSaver?): 편집한 설정 전체를 저장하고 동기화 결과를 반환할 콜백. 두 저장 콜백 중 하나는 반드시 전달한다.
+  // - onExtendedSettingSaveRequested (ExtendedUserSettingSaver): 편집한 설정 전체를 저장하고 동기화 결과를 반환할 콜백.
   // - onMedicationScheduleRequested (VoidCallback?): 오늘 복약 일정 화면을 여는 콜백.
   // - onDeviceNotificationSettingsRequested (Future<void> Function()?): 운영체제의 앱 알림 설정을 여는 콜백.
+  // - notificationService (NotificationService?): 정확한 알람 허용 안내에 쓰는 알림 서비스.
   // 반환값: 입력 설정이 반영된 ManageUserSettingUI 인스턴스.
   const ManageUserSettingUI({
     super.key,
     required this.initialSetting,
     this.initiallyShowDisplayAndVoice = false,
     required this.authenticationControl,
-    this.onSettingSaveRequested,
     this.onSignOutRequested,
     this.onDeleteAccountRequested,
     this.previewSpeaker,
     this.previewStopper,
-    this.onExtendedSettingSaveRequested,
+    required this.onExtendedSettingSaveRequested,
     this.onMedicationScheduleRequested,
     this.onDeviceNotificationSettingsRequested,
-  }) : assert(
-         onExtendedSettingSaveRequested != null ||
-             onSettingSaveRequested != null,
-         'ManageUserSettingUI needs a settings saver.',
-       );
+    this.notificationService,
+  });
 
   // 함수이름: createState
   // 함수역할: 접근성·기본 복약 시각·계정 보안 설정의 입력·표시 상태를 관리할 State 객체를 만든다.
@@ -391,6 +384,14 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
             ),
           ],
         ),
+        // 내 복약 알림을 켠 기기가 정확한 알람을 막고 있으면 허용 방법을 안내한다.
+        if (widget.notificationService != null &&
+            _draft.medicationNotificationsEnabled)
+          ExactReminderNotice(
+            notificationService: widget.notificationService!,
+            isEnglish: text.isEnglish,
+            margin: const EdgeInsets.only(top: 12),
+          ),
         const SizedBox(height: 24),
         _SettingsSection(
           title: text.defaultMedicationTimeTitle,
@@ -1205,14 +1206,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     setState(() => _isSaving = true);
     final text = _SettingText(_language);
     try {
-      final extendedSaver = widget.onExtendedSettingSaveRequested;
-      final saveResult = extendedSaver != null
-          ? await extendedSaver(_draft)
-          : await widget.onSettingSaveRequested!(
-              fontSizeOption: _fontSize,
-              readingSpeedOption: _readingSpeed,
-              language: _language,
-            );
+      final saveResult = await widget.onExtendedSettingSaveRequested(_draft);
       if (!mounted) {
         return;
       }

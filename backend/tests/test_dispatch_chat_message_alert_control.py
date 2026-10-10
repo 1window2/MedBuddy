@@ -582,6 +582,49 @@ def test_message_hidden_only_for_the_sender_is_still_delivered(fk_db) -> None:
     assert len(boundary.calls) == 1
 
 
+# 함수이름: test_dose_receipt_push_never_carries_medication_names
+# 함수역할:
+# - 서버가 쓴 복용 기록 메시지의 알림 본문과 데이터에 약 이름이 실리지 않는지 검증한다.
+# 매개변수:
+# - fk_db (Session): 외래 키가 적용된 테스트 세션.
+# - user_setting (dict[str, object] | None): 수신자 설정 값 또는 행 없음.
+# - expected_preview (str): 약 이름 없이 날짜와 시간대만 담은 기대 문구.
+# 반환값:
+# - 없음 (None).
+@pytest.mark.parametrize(
+    ("user_setting", "expected_preview"),
+    [
+        (None, "2026-10-09 아침 복용을 기록했습니다."),
+        ({"language": "en"}, "Recorded morning doses for 2026-10-09."),
+    ],
+)
+def test_dose_receipt_push_never_carries_medication_names(
+    fk_db, user_setting, expected_preview,
+) -> None:
+    link_id, message_id = _seed_chat_scene(fk_db, user_setting)
+    row = fk_db.get(_ChatMessage, message_id)
+    row.body = "2026-10-09 아침 · 비밀혈압약, 비밀당뇨약 복용을 기록했습니다."
+    row.context_payload = {
+        "completion_confirmation": {
+            "schedule_date": "2026-10-09",
+            "slot_key": "morning",
+            "medication_ids": [1, 2],
+        },
+    }
+    fk_db.commit()
+    boundary = RecordingPushBoundary()
+
+    DispatchChatMessageAlert(fk_db, boundary).notify_new_message(
+        recipient_hash=_CAREGIVER, link_id=link_id, message_body="",
+        message_id=message_id,
+    )
+
+    call = boundary.calls[0]
+    assert call["body"] == expected_preview
+    assert call["data"]["message_preview"] == expected_preview
+    assert "비밀" not in str(call)
+
+
 # 함수이름: test_chat_push_is_sent_after_the_session_released_its_connection
 # 함수역할:
 # - 채팅 알림을 보내는 시점에 세션이 트랜잭션도 풀 연결도 잡고 있지 않은지 검증한다.

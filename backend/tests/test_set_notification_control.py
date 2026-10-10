@@ -178,6 +178,20 @@ class SetNotificationTest(unittest.TestCase):
         self.db.refresh(row)
         self.assertFalse(row.enabled)
 
+        # A time changed in the same save is kept with the disabled alarm.
+        retimed = self.control.disableAlarmSetting("patient-a", "morning", 7, 15)["data"]
+        self.assertFalse(retimed["is_enabled"])
+        self.assertEqual((retimed["hour"], retimed["minute"]), (7, 15))
+        self.db.refresh(row)
+        self.assertEqual((row.hour, row.minute, row.enabled), (7, 15, False))
+        # A slot without a stored row takes the chosen time as well.
+        created = self.control.disableAlarmSetting("patient-a", "lunch", 11, 40)["data"]
+        self.assertFalse(created["is_enabled"])
+        self.assertEqual((created["hour"], created["minute"]), (11, 40))
+        with self.assertRaises(HTTPException) as invalid:
+            self.control.disableAlarmSetting("patient-a", "morning", 24, 0)
+        self.assertEqual(invalid.exception.status_code, 400)
+
     # Function Name: test_invalid_alarm_slot_and_time_are_rejected
     # Description:
     # - Rejects invalid alarm slots, hours, and minutes with HTTP 400.

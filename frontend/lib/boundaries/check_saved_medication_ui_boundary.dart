@@ -36,9 +36,11 @@ part 'check_saved_medication_support.dart';
 // Attributes:
 // - showCloseButton (bool): Whether to show the navigation action leaving the screen.
 // - isActive (bool): Whether the screen is the one the user currently sees; a host that keeps it mounted behind another tab passes false so it stops handling system back.
+// - onBackHandlingChanged (ValueChanged<bool>?): Told true while this screen handles system back itself (selection mode or a running deletion), so a host on the same route does not act on the same back press.
 class CheckSavedMedicationUI extends StatefulWidget {
   final bool showCloseButton;
   final bool isActive;
+  final ValueChanged<bool>? onBackHandlingChanged;
 
   // Function Name: CheckSavedMedicationUI
   // Description: Initializes date-grouped saved medications, filtering, and selection deletion with the supplied configuration.
@@ -46,11 +48,13 @@ class CheckSavedMedicationUI extends StatefulWidget {
   // - key (Key?): Widget identity used to distinguish elements and preserve state.
   // - showCloseButton (bool): Whether to show the navigation action leaving the screen.
   // - isActive (bool): Whether the screen is currently shown; defaults to true for hosts that only build it while visible.
+  // - onBackHandlingChanged (ValueChanged<bool>?): Receives whether this screen currently handles system back itself.
   // Returns: Initialized CheckSavedMedicationUI instance.
   const CheckSavedMedicationUI({
     super.key,
     this.showCloseButton = true,
     this.isActive = true,
+    this.onBackHandlingChanged,
   });
 
   // Function Name: createState
@@ -89,6 +93,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   bool _isSelectionMode = false;
+  bool _reportedBackHandling = false;
   bool _isDeleting = false;
   _SavedMedicationSortMode _sortMode = _SavedMedicationSortMode.registeredDate;
   _SavedMedicationSortDirection _sortDirection =
@@ -125,11 +130,35 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
       _isSelectionMode = false;
       _selectedMedicationIds.clear();
     }
+    _reportBackHandling();
   }
 
-  // 함수역할: 검색 입력 자원을 정리한다. 매개변수·반환값: 없음.
+  // 함수이름: setState
+  // 함수역할: 상태를 바꾼 뒤 뒤로가기 처리 여부가 달라졌으면 바깥 화면에 알린다.
+  // 매개변수: fn은 상태 변경 함수. 반환값: 없음.
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _reportBackHandling();
+  }
+
+  // 함수이름: _handlesBack
+  // 함수역할: 보이는 동안 선택 모드이거나 삭제 중이면 뒤로가기를 이 화면이 처리한다. 매개변수: 없음. 반환값: 처리 여부.
+  bool get _handlesBack => widget.isActive && (_isSelectionMode || _isDeleting);
+
+  // 함수이름: _reportBackHandling
+  // 함수역할: 뒤로가기 처리 여부가 바뀐 경우에만 바깥 화면에 알린다. 매개변수: 없음. 반환값: 없음.
+  void _reportBackHandling() {
+    final handlesBack = _handlesBack;
+    if (handlesBack == _reportedBackHandling) return;
+    _reportedBackHandling = handlesBack;
+    widget.onBackHandlingChanged?.call(handlesBack);
+  }
+
+  // 함수역할: 검색 입력 자원을 정리하고 뒤로가기 처리를 내려놓았음을 알린다. 매개변수·반환값: 없음.
   @override
   void dispose() {
+    if (_reportedBackHandling) widget.onBackHandlingChanged?.call(false);
     _searchController.dispose();
     super.dispose();
   }
@@ -187,7 +216,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
 
     return PopScope(
       // 숨겨진 탭으로 유지되는 동안에는 다른 화면의 시스템 뒤로가기를 가로채지 않는다.
-      canPop: !widget.isActive || (!_isSelectionMode && !_isDeleting),
+      canPop: !_handlesBack,
       onPopInvokedWithResult: _handleBack,
       child: Scaffold(
         backgroundColor: MedBuddyColors.pageBackground,

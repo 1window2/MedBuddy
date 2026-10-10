@@ -1,6 +1,7 @@
 // File Name: medication_schedule_entity.dart
 // Role: Defines prescription-analysis and saved-schedule records, slot status, and localized dosage display values.
 
+import 'medication_dose_rhythm.dart';
 import 'medication_image_url_entity.dart';
 import 'json_value_reader.dart';
 import 'user_setting_entity.dart';
@@ -14,7 +15,7 @@ const List<String> medicationScheduleSlotKeys = [
 const String defaultMedicationScheduleSlotKey = 'morning';
 
 // Function Name: medicationScheduleCountFromText
-// Description: Preserves integer input or reads the daily dose count from frequency text the way the server does: the number attached to a count unit (회, 번, times, x) wins, otherwise the last digit group; zero when no count can be read.
+// Description: Preserves integer input or reads the dose count of a dose day from frequency text the way the server does: a per-week or per-month count means one dose on each dose day and an hour interval the doses that fit a day; otherwise the number attached to a count unit (회, 번, times, x) wins, then the last digit group; zero when no count can be read.
 // Parameters:
 // - value (dynamic): Number or frequency text from which to extract the dose count.
 // Returns:
@@ -25,6 +26,11 @@ int medicationScheduleCountFromText(dynamic value) {
   }
 
   final text = value?.toString().trim() ?? '';
+  // "주 3회" is one dose on each dose day and "8시간마다" is three doses a day.
+  final dosesPerDoseDay = readDosesPerDoseDay(text);
+  if (dosesPerDoseDay != null) {
+    return dosesPerDoseDay;
+  }
   // "1일 3회 식후 30분" must read 3, not the trailing 30 minutes.
   final counted = RegExp(
     r'(?<!\d)(\d+)\s*(?:회|번|times?|x)',
@@ -40,8 +46,30 @@ int medicationScheduleCountFromText(dynamic value) {
   return int.tryParse(matches.last.group(0) ?? '') ?? 0;
 }
 
+// Function Name: englishDailyFrequencyLabel
+// Description: Turns a daily dose count into an English phrase only when the text is one of the stored count forms ("3회", "1일 3회", "3"). Any other wording, such as "2일 1회", "주 1회" or "12시간마다", is not a per-day count and must be shown as written.
+// Parameters:
+// - value (String): Stored frequency text.
+// Returns:
+// - String?: "once daily" or "N times daily", or null when the text is not a plain per-day count.
+String? englishDailyFrequencyLabel(String value) {
+  final text = value.trim();
+  // 검토 화면이 저장하는 "3회"와 처방전 표기 "1일 3회"를 모두 읽는다.
+  final koreanFrequency = RegExp(r'^(?:1일\s*)?(\d+)회$').firstMatch(text);
+  final numericFrequency = RegExp(r'^\d+$').hasMatch(text)
+      ? int.tryParse(text)
+      : null;
+  final count = koreanFrequency == null
+      ? numericFrequency
+      : int.tryParse(koreanFrequency.group(1) ?? '');
+  if (count == null || count <= 0) {
+    return null;
+  }
+  return count == 1 ? 'once daily' : '$count times daily';
+}
+
 // Function Name: medicationDayCountFromText
-// Description: Preserves integer input or reads the course length from duration text the way the server does: the first digit group, so "7일분 (1주)" is seven days; zero when no number can be read.
+// Description: Preserves integer input or reads the course length in days from duration text the way the server does: the first number with its unit, so "7일분 (1주)" is seven days, "2주" fourteen and "1개월" thirty; zero when no number can be read.
 // Parameters:
 // - value (dynamic): Number or duration text from which to extract the day count.
 // Returns:
@@ -51,9 +79,7 @@ int medicationDayCountFromText(dynamic value) {
     return value;
   }
 
-  final text = value?.toString().trim() ?? '';
-  final match = RegExp(r'\d+').firstMatch(text);
-  return int.tryParse(match?.group(0) ?? '') ?? 0;
+  return readDurationDays(value?.toString());
 }
 
 // 함수이름: medicationScheduleSlotKeysForFrequency
@@ -99,6 +125,9 @@ List<String> medicationScheduleSlotKeysForFrequency(int frequencyCount) {
 // - rawMedicationName (String): Original OCR medication name before correction.
 // - nameConfidence (double): Confidence assigned to the recognized medication name.
 // - nameCorrectionSource (String): Provenance of medication-name correction or review.
+// - doseCycleDays (int): Length in days of the repeating dose cycle sent by the server; 1 means every day.
+// - doseCycleOffsets (List<int>): Dose days within the cycle, counted from doseCycleAnchor.
+// - doseCycleAnchor (DateTime?): Date counted as day 0 of the cycle; null for a daily medication.
 class MedicationSchedule {
   final DateTime? createdDate;
   final DateTime? prescriptionDate;
@@ -119,6 +148,9 @@ class MedicationSchedule {
   final String rawMedicationName;
   final double nameConfidence;
   final String nameCorrectionSource;
+  final int doseCycleDays;
+  final List<int> doseCycleOffsets;
+  final DateTime? doseCycleAnchor;
 
   // Function Name: MedicationSchedule
   // Description: Captures a medication course and its OCR provenance, patient ownership, optional catalog details, and per-slot completion state.
@@ -142,6 +174,9 @@ class MedicationSchedule {
   // - rawMedicationName (String): Original OCR medication name before correction.
   // - nameConfidence (double): Confidence assigned to the recognized medication name.
   // - nameCorrectionSource (String): Provenance of medication-name correction or review.
+  // - doseCycleDays (int): Length in days of the repeating dose cycle; 1 means every day.
+  // - doseCycleOffsets (List<int>): Dose days within the cycle.
+  // - doseCycleAnchor (DateTime?): Date counted as day 0 of the cycle.
   // Returns:
   // - MedicationSchedule: the initialized instance.
   const MedicationSchedule({
@@ -164,6 +199,9 @@ class MedicationSchedule {
     this.rawMedicationName = '',
     this.nameConfidence = 0,
     this.nameCorrectionSource = '',
+    this.doseCycleDays = 1,
+    this.doseCycleOffsets = const [0],
+    this.doseCycleAnchor,
   });
 
   // Function Name: MedicationSchedule.fromAnalysisJson
@@ -262,8 +300,49 @@ class MedicationSchedule {
       nameCorrectionSource: readJsonText(
         json['name_correction_source'] ?? json['nameCorrectionSource'],
       ),
+      doseCycleDays: _readDoseCycleDays(json['dose_cycle_days']),
+      doseCycleOffsets: _readDoseCycleOffsets(json['dose_cycle_offsets']),
+      doseCycleAnchor: readJsonDate(json['dose_cycle_anchor']),
     );
   }
+
+  // Function Name: _readDoseCycleDays
+  // Description: Reads the dose cycle length; anything that is not a whole number above one means every day.
+  // Parameters:
+  // - value (dynamic): Raw response field.
+  // Returns:
+  // - int: the cycle length in days, at least 1.
+  static int _readDoseCycleDays(dynamic value) {
+    final days = value is int ? value : int.tryParse('${value ?? ''}') ?? 1;
+    return days < 1 ? 1 : days;
+  }
+
+  // Function Name: _readDoseCycleOffsets
+  // Description: Reads the dose days of the cycle; a missing or malformed list means day 0 only.
+  // Parameters:
+  // - value (dynamic): Raw response field.
+  // Returns:
+  // - List<int>: the dose days within the cycle.
+  static List<int> _readDoseCycleOffsets(dynamic value) {
+    if (value is! List) {
+      return const [0];
+    }
+    final offsets = value.whereType<int>().toList(growable: false);
+    return offsets.isEmpty ? const [0] : offsets;
+  }
+
+  // Function Name: isDoseDay
+  // Description: Tells whether a dose of this medication is due on a calendar date according to the dose cycle the server sent. A medication without a cycle is due every day.
+  // Parameters:
+  // - date (DateTime): Calendar date asked about.
+  // Returns:
+  // - bool: true on dose days.
+  bool isDoseDay(DateTime date) => isDoseDayOfCycle(
+    cycleDays: doseCycleDays,
+    offsets: doseCycleOffsets,
+    anchor: doseCycleAnchor,
+    date: date,
+  );
 
   // Function Name: fromScheduleJsonList
   // Description: Accepts a schedule list or a wrapper under schedules or schedule and decodes map entries, returning an empty list for other payload shapes.
@@ -456,20 +535,7 @@ class MedicationSchedule {
     if (!_isEnglishLanguage(language)) {
       return value;
     }
-    // 검토 화면이 저장하는 "3회"와 처방전 표기 "1일 3회"를 모두 읽는다.
-    final koreanFrequency = RegExp(
-      r'^(?:1일\s*)?(\d+)회$',
-    ).firstMatch(value);
-    final numericFrequency = RegExp(r'^\d+$').hasMatch(value)
-        ? int.tryParse(value)
-        : null;
-    final count = koreanFrequency == null
-        ? numericFrequency
-        : int.tryParse(koreanFrequency.group(1) ?? '');
-    if (count == null || count <= 0) {
-      return value;
-    }
-    return count == 1 ? 'once daily' : '$count times daily';
+    return englishDailyFrequencyLabel(value) ?? value;
   }
 
   // 함수이름: durationLabelForLanguage
@@ -533,6 +599,9 @@ class MedicationSchedule {
       'raw_drug_name': rawMedicationName,
       'name_confidence': nameConfidence,
       'name_correction_source': nameCorrectionSource,
+      'dose_cycle_days': doseCycleDays,
+      'dose_cycle_offsets': doseCycleOffsets,
+      'dose_cycle_anchor': formatJsonDate(doseCycleAnchor),
     };
   }
 
@@ -558,6 +627,9 @@ class MedicationSchedule {
   // - rawMedicationName (String?): Original OCR medication name before correction.
   // - nameConfidence (double?): Confidence assigned to the recognized medication name.
   // - nameCorrectionSource (String?): Provenance of medication-name correction or review.
+  // - doseCycleDays (int?): Length in days of the repeating dose cycle.
+  // - doseCycleOffsets (List<int>?): Dose days within the cycle.
+  // - doseCycleAnchor (DateTime?): Date counted as day 0 of the cycle.
   // Returns:
   // - MedicationSchedule: a copy with supplied replacements and all other fields preserved.
   MedicationSchedule copyWith({
@@ -580,6 +652,9 @@ class MedicationSchedule {
     String? rawMedicationName,
     double? nameConfidence,
     String? nameCorrectionSource,
+    int? doseCycleDays,
+    List<int>? doseCycleOffsets,
+    DateTime? doseCycleAnchor,
   }) {
     return MedicationSchedule(
       createdDate: createdDate ?? this.createdDate,
@@ -601,6 +676,9 @@ class MedicationSchedule {
       rawMedicationName: rawMedicationName ?? this.rawMedicationName,
       nameConfidence: nameConfidence ?? this.nameConfidence,
       nameCorrectionSource: nameCorrectionSource ?? this.nameCorrectionSource,
+      doseCycleDays: doseCycleDays ?? this.doseCycleDays,
+      doseCycleOffsets: doseCycleOffsets ?? this.doseCycleOffsets,
+      doseCycleAnchor: doseCycleAnchor ?? this.doseCycleAnchor,
     );
   }
 

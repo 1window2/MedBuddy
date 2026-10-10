@@ -28,6 +28,7 @@ export '../entities/medication_notification_selection_entity.dart';
 // Role: Wraps local notifications for medication, caregiver, and linked-chat workflows.
 // Responsibilities:
 // - Initialize the Seoul timezone and plugin, request permissions, schedule course-bounded dates, apply privacy settings, dispatch selections, and cancel session-owned alerts.
+// - Report whether exact alarms are allowed, open the system screen that allows them, and replace reminders that had to be scheduled as inexact alarms once they are.
 // Attributes:
 // - _showSensitiveDetails (bool): Whether notification bodies may include sensitive details.
 class NotificationService {
@@ -71,6 +72,11 @@ class NotificationService {
   Future<void>? _reminderWrite;
   // 이 실행 중 실제로 취소한 구형 고정 ID.
   final Set<int> _cancelledLegacyReminderIds = <int>{};
+  // 이 실행에서 직접 예약한 날짜별 알림 ID. 강제 종료나 '알람 및 리마인더' 권한 회수 뒤에는 Android가 알람을
+  // 지워도 플러그인의 예약 목록에는 그대로 남으므로, 새로 시작한 실행은 그 목록만 믿지 않고 한 번씩 다시 예약한다.
+  final Set<int> _armedReminderIds = <int>{};
+  // 정확한 알람이 허용되지 않아 부정확 알람으로 예약한 날짜를 계획 서명에 표시하는 값.
+  static const String _inexactScheduleMarker = 'inexact';
 
   // 예약·미루기·취소의 호출 순서를 지켜 늦은 예약이 취소를 되돌리지 않게 한다.
   Future<void> _serializeReminder(Future<void> Function() action) {
@@ -198,6 +204,172 @@ class NotificationService {
       throw UnsupportedError('Notification settings are unavailable.');
     }
     await _settingsChannel.invokeMethod<void>('openNotificationSettings');
+  }
+
+  // 함수이름: forgetArmedRemindersForTest
+  // 함수역할: 앱이 강제 종료되어 새 실행이 시작된 상황을 테스트에서 만든다. 이 실행이 예약했다고 기억하는
+  //   알림 ID를 비워, 다음 예약 갱신이 플러그인의 예약 목록만 믿지 않게 한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음.
+  @visibleForTesting
+  void forgetArmedRemindersForTest() => _armedReminderIds.clear();
+
+  // 함수이름: canScheduleExactReminders
+  // 함수역할: 복약 알림을 정한 분에 울리는 정확한 알람으로 예약할 수 있는지 확인한다. Android 14 이상은
+  //   '알람 및 리마인더' 권한이 기본으로 꺼져 있어, 꺼진 동안에는 알림이 몇 분 늦을 수 있는 부정확 알람으로 예약된다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<bool>: 정확한 알람을 쓸 수 있으면 true. Android가 아니거나 플랫폼 구현이 없으면 true.
+  Future<bool> canScheduleExactReminders() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return true;
+    }
+    await initialize();
+    final androidPlugin = _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    return await androidPlugin?.canScheduleExactNotifications() ?? true;
+  }
+
+  // 함수이름: requestExactReminderPermission
+  // 함수역할: 시스템의 '알람 및 리마인더' 설정 화면을 열어 사용자가 정확한 알람을 허용하게 한다. 이미 허용된
+  //   기기에서는 화면을 열지 않는다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<bool>: 사용자가 돌아온 시점에 정확한 알람이 허용되어 있으면 true.
+  Future<bool> requestExactReminderPermission() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return true;
+    }
+    await initialize();
+    final androidPlugin = _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    return await androidPlugin?.requestExactAlarmsPermission() ?? true;
+  }
+
+  // 함수이름: rescheduleInexactRemindersAsExact
+  // 함수역할: 권한이 없어 부정확 알람으로 예약했던 현재 계정의 복약 알림을, 권한이 허용된 뒤 같은 날짜·시각·문구의
+  //   정확한 알람으로 다시 예약한다. 저장된 예약 계획과 기기의 예약 목록만 쓰므로 서버 조회 없이 동작한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 다시 예약할 알림이 없거나 권한이 아직 없으면 아무것도 바꾸지 않고 완료한다.
+  Future<void> rescheduleInexactRemindersAsExact() =>
+      _serializeReminder(_rescheduleInexactRemindersAsExact);
+
+  Future<void> _rescheduleInexactRemindersAsExact() async {
+    final owner = _historyUserHash;
+    final preferences = await preferencesLoader();
+    await preferences.reload();
+    final plans = <String, Map<String, dynamic>>{};
+    for (final slotKey in const ['morning', 'lunch', 'evening', 'bedtime']) {
+      final rawPlan = preferences.getString(_reminderPlanKey(owner, slotKey));
+      // 부정확 알람이 없는 계획은 해석하지 않고 넘어간다.
+      if (rawPlan == null || !rawPlan.contains(_inexactScheduleMarker)) continue;
+      try {
+        plans[slotKey] = Map<String, dynamic>.from(jsonDecode(rawPlan));
+      } catch (_) {
+        // 손상된 계획은 다음 예약 갱신이 다시 작성한다.
+      }
+    }
+    if (plans.isEmpty || !await canScheduleExactReminders()) return;
+    if (owner != _historyUserHash) return;
+    final pending = {
+      for (final request in await _plugin.pendingNotificationRequests())
+        request.id: request,
+    };
+    final now = timezone.TZDateTime.now(timezone.local);
+    for (final plan in plans.entries) {
+      var changed = false;
+      for (final key in plan.value.keys.toList(growable: false)) {
+        final notificationId = int.tryParse(key);
+        final signature = _decodeReminderSignature(plan.value[key]);
+        final request = pending[notificationId];
+        final scheduleDate = selectionFromPayload(request?.payload)?.scheduleDate;
+        if (notificationId == null ||
+            signature == null ||
+            !signature.inexact ||
+            scheduleDate == null) {
+          continue;
+        }
+        final scheduledDate = timezone.TZDateTime(
+          timezone.local,
+          scheduleDate.year,
+          scheduleDate.month,
+          scheduleDate.day,
+          signature.hour,
+          signature.minute,
+        );
+        // 이미 울린 날짜에 남은 예약은 사용자가 미룬 알림이므로 건드리지 않는다.
+        if (!scheduledDate.isAfter(now)) continue;
+        try {
+          final entry = await _scheduleWithMode(
+            owner: owner,
+            id: notificationId,
+            slotKey: plan.key,
+            slotTitle: signature.slotTitle,
+            language: signature.language,
+            body: signature.body,
+            scheduledDate: scheduledDate,
+            scheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          );
+          if (entry == null) return;
+        } on PlatformException {
+          // 그 사이 권한이 다시 꺼졌다. 플러그인은 기존 부정확 알람을 그대로 둔다.
+          return;
+        }
+        _armedReminderIds.add(notificationId);
+        plan.value[key] = jsonEncode([
+          signature.hour,
+          signature.minute,
+          signature.slotTitle,
+          signature.language,
+          signature.body,
+        ]);
+        changed = true;
+      }
+      if (changed && owner == _historyUserHash) {
+        await preferences.setString(
+          _reminderPlanKey(owner, plan.key),
+          jsonEncode(plan.value),
+        );
+      }
+    }
+  }
+
+  // 함수이름: _reminderPlanKey
+  // 함수역할: 계정과 시간대별 예약 계획을 저장하는 기기 저장소 키를 만든다.
+  // 매개변수: owner - 계정 해시(없으면 guest), slotKey - 복약 시간대 키. 반환값: 저장소 키.
+  String _reminderPlanKey(String? owner, String slotKey) =>
+      'medbuddy_reminder_plan_${owner ?? "guest"}_$slotKey';
+
+  // 함수이름: _decodeReminderSignature
+  // 함수역할: 예약 계획에 저장한 서명에서 예약 시각·문구와 부정확 알람 표시를 읽는다.
+  // 매개변수: rawSignature - 계획에 저장된 값. 반환값: 해석한 값, 형식이 다르면 null.
+  ({int hour, int minute, String slotTitle, String language, String body, bool inexact})?
+  _decodeReminderSignature(Object? rawSignature) {
+    if (rawSignature is! String) return null;
+    try {
+      final values = jsonDecode(rawSignature);
+      if (values is! List || values.length < 5) return null;
+      return (
+        hour: values[0] as int,
+        minute: values[1] as int,
+        slotTitle: values[2] as String,
+        language: values[3] as String,
+        body: values[4] as String,
+        inexact: values.length > 5 && values[5] == _inexactScheduleMarker,
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   // 함수이름: setNotificationSelectionHandler
@@ -437,7 +609,7 @@ class NotificationService {
   }
 
   // Function Name: registerNotification
-  // Description: Replaces dated slot reminders with neutral text and an inexact fallback when exact alarms are unavailable.
+  // Description: Replaces dated slot reminders with neutral text and an inexact fallback when exact alarms are unavailable. A reminder already reserved with the same time and text is left alone only when this process scheduled it; a newly started process re-arms each future date once, because Android drops the alarms of a force-stopped app while the plugin keeps listing them.
   // Parameters:
   // - id (int): Platform identifier used to schedule, replace, or cancel an alert.
   // - slotKey (String): Medication slot key: morning, lunch, evening, or bedtime.
@@ -479,7 +651,7 @@ class NotificationService {
     final preferences = await preferencesLoader();
     await preferences.reload();
     if (owner != _historyUserHash) return;
-    final planKey = 'medbuddy_reminder_plan_${owner ?? "guest"}_$slotKey';
+    final planKey = _reminderPlanKey(owner, slotKey);
     Map<String, dynamic> previous = {};
     try {
       previous = Map<String, dynamic>.from(jsonDecode(preferences.getString(planKey) ?? '{}'));
@@ -513,6 +685,8 @@ class NotificationService {
     final nextPlan = <String, String>{};
     // 새로 예약한 날짜의 알림함 항목은 모아 두었다가 한 번에 기록한다.
     final scheduledEntries = <NotificationInboxEntry>[];
+    // 부정확 알람으로 남은 날짜가 있을 때만 한 번 확인하는 정확한 알람 허용 여부.
+    bool? exactAllowed;
 
     try {
       for (final activeDate in sortedDates) {
@@ -529,13 +703,36 @@ class NotificationService {
         final notificationId = _notificationIdForDate(id, slotKey, activeDate);
         final key = '$notificationId';
         final signature = jsonEncode([hour, minute, slotTitle, language, body]);
-        nextPlan[key] = signature;
-        if (!scheduledDate.isAfter(now) ||
-            (pending.containsKey(notificationId) &&
-                previous[key] == signature)) {
+        final inexactSignature = jsonEncode([
+          hour, minute, slotTitle, language, body, _inexactScheduleMarker,
+        ]);
+        final previousSignature = previous[key];
+        final sameContent =
+            previousSignature == signature ||
+            previousSignature == inexactSignature;
+        if (!scheduledDate.isAfter(now)) {
+          // 이미 지난 시각은 예약하지 않는다. 알림 시각을 지금보다 이르게 옮긴 날에는 이전 시각으로 남은
+          // 오늘 예약을 일부러 그대로 둔다. 취소하면 아직 복용하지 않은 오늘 분의 알림이 하나도 남지 않는다.
+          nextPlan[key] = sameContent ? previousSignature as String : signature;
           continue;
         }
+        // 같은 내용으로 이미 예약되어 있는지. 이 실행이 직접 예약한 것만 그대로 믿는다.
+        final reserved = pending.containsKey(notificationId) && sameContent;
+        if (reserved && _armedReminderIds.contains(notificationId)) {
+          if (previousSignature == signature) {
+            nextPlan[key] = signature;
+            continue;
+          }
+          // 부정확 알람으로 예약된 날짜는 권한이 허용된 뒤에만 정확한 알람으로 바꾼다.
+          exactAllowed ??= await _canScheduleExactAlarmsSafely();
+          if (owner != _historyUserHash) return;
+          if (!exactAllowed) {
+            nextPlan[key] = inexactSignature;
+            continue;
+          }
+        }
         NotificationInboxEntry? entry;
+        var scheduledExact = true;
         try {
           entry = await _scheduleWithMode(
             owner: owner,
@@ -548,6 +745,7 @@ class NotificationService {
             scheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
           );
         } on PlatformException {
+          scheduledExact = false;
           entry = await _scheduleWithMode(
             owner: owner,
             id: notificationId,
@@ -560,8 +758,12 @@ class NotificationService {
           );
         }
         if (entry == null) continue;
+        _armedReminderIds.add(notificationId);
+        nextPlan[key] = scheduledExact ? signature : inexactSignature;
+        // 같은 날짜·시각·문구를 다시 건 예약은 알림함 항목이 이미 있다.
+        if (reserved) continue;
         // 시각이나 문구가 바뀌어 다시 예약한 날짜는 이전 시각으로 남은 알림함 예정 항목을 지운다.
-        if (previous[key] != null && previous[key] != signature) {
+        if (previousSignature != null && !sameContent) {
           await _cancelInboxReminders(id: notificationId);
         }
         scheduledEntries.add(entry);
@@ -575,6 +777,18 @@ class NotificationService {
     if (owner == _historyUserHash &&
         preferences.getString(planKey) != encodedPlan) {
       await preferences.setString(planKey, encodedPlan);
+    }
+  }
+
+  // 함수이름: _canScheduleExactAlarmsSafely
+  // 함수역할: 예약 갱신 도중 정확한 알람 허용 여부를 확인한다. 확인하지 못하면 허용되지 않은 것으로 보아
+  //   이미 걸려 있는 부정확 알람을 그대로 둔다.
+  // 매개변수: 없음. 반환값: 정확한 알람을 쓸 수 있다고 확인되면 true.
+  Future<bool> _canScheduleExactAlarmsSafely() async {
+    try {
+      return await canScheduleExactReminders();
+    } catch (_) {
+      return false;
     }
   }
 

@@ -13,7 +13,7 @@ SPEC.loader.exec_module(gate)
 LIVE = (*gate.REQUIRED_WORKFLOWS, "release-android.yml")
 REF_CONDITION = (
     "    if: >-\n      github.ref == 'refs/heads/main' ||\n"
-    "      github.ref == 'refs/heads/beta/v0.2.1'\n"
+    "      github.ref == 'refs/heads/beta/v0.2.2'\n"
 )
 APK_ABI_CHECK = '"${APK_NATIVE_ABIS}" != "arm64-v8a,armeabi-v7a" || "${APK_ENGINE_ABIS}" != "${APK_NATIVE_ABIS}"'
 
@@ -71,7 +71,7 @@ def test_release_gate_workflows_never_cancel_or_queue_push_runs() -> None:
 def test_signing_jobs_keep_the_exact_ref_condition() -> None:
     workflow = _workflow("release-android.yml")
     assert workflow.count(REF_CONDITION) == 2
-    assert workflow.count("refs/heads/beta/v0.2.1") == 5
+    assert workflow.count("refs/heads/beta/v0.2.2") == 5
     assert "        run: python3 scripts/check_release_ci.py\n" in workflow
 
 

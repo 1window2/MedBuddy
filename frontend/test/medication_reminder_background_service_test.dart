@@ -576,4 +576,247 @@ void main() {
       );
     });
   });
+  // Function Name: unknown-duration test
+  // Description: A course without a readable duration never ends on the server, so its reminders
+  //   fill the 14-day window instead of today only; a dated course still stops at its last day.
+  test('a course of unknown duration is reminded through the whole window', () {
+    final now = DateTime(2026, 8, 3, 6);
+    final unknown = MedicationSchedule(
+      medicationName: '약-A',
+      prescriptionDate: DateTime(2026, 7, 1),
+      scheduleSlotKeys: const ['morning'],
+    );
+    final dated = MedicationSchedule(
+      medicationName: '약-B',
+      prescriptionDate: DateTime(2026, 8, 1),
+      medicationTime: 4,
+      scheduleSlotKeys: const ['morning'],
+    );
+
+    expect(
+      MedicationReminderRefreshService.activeReminderDates([unknown], now: now),
+      [for (var day = 3; day <= 16; day++) DateTime(2026, 8, day)],
+    );
+    expect(
+      MedicationReminderRefreshService.activeReminderDates([dated], now: now),
+      [DateTime(2026, 8, 3), DateTime(2026, 8, 4)],
+    );
+  });
+
+  // Dose days: a medication that is not taken every day is reminded on its dose days only.
+  group('dose days', () {
+    final now = DateTime(2026, 8, 3, 6);
+    final weekly = MedicationSchedule(
+      medicationName: '주간약',
+      prescriptionDate: DateTime(2026, 8, 3),
+      medicationTime: 60,
+      scheduleSlotKeys: const ['morning'],
+      doseCycleDays: 7,
+      doseCycleOffsets: const [0],
+      doseCycleAnchor: DateTime(2026, 8, 3),
+    );
+    final daily = MedicationSchedule(
+      medicationName: '매일약',
+      prescriptionDate: DateTime(2026, 8, 3),
+      medicationTime: 60,
+      scheduleSlotKeys: const ['morning'],
+    );
+
+    // Function Name: weekly test
+    // Description: A weekly medication gets a reminder date every seventh day of the window.
+    test('a weekly medication is reminded every seventh day only', () {
+      expect(
+        MedicationReminderRefreshService.activeReminderDates([weekly], now: now),
+        [DateTime(2026, 8, 3), DateTime(2026, 8, 10)],
+      );
+      // Between dose days the window starts on a rest day and still finds both dose days in it.
+      expect(
+        MedicationReminderRefreshService.activeReminderDates(
+          [weekly],
+          now: DateTime(2026, 8, 5, 6),
+        ),
+        [DateTime(2026, 8, 10), DateTime(2026, 8, 17)],
+      );
+      // A dose taken today removes today only.
+      expect(
+        MedicationReminderRefreshService.activeReminderDates(
+          [weekly],
+          now: now,
+          slotCompletedToday: true,
+        ),
+        [DateTime(2026, 8, 10)],
+      );
+    });
+
+    // Function Name: mixed-slot test
+    // Description: With a daily medication in the same slot every day keeps its reminder, and the
+    //   weekly medication is due only on its own dose days.
+    test('a daily medication in the same slot keeps every day', () {
+      final dates = MedicationReminderRefreshService.activeReminderDates(
+        [weekly, daily],
+        now: now,
+      );
+      expect(dates, [for (var day = 3; day <= 16; day++) DateTime(2026, 8, day)]);
+      expect(
+        [for (final date in dates) if (weekly.isDoseDay(date)) date],
+        [DateTime(2026, 8, 3), DateTime(2026, 8, 10)],
+      );
+      expect(dates.every(daily.isDoseDay), isTrue);
+    });
+
+    // Function Name: no-cycle test
+    // Description: A schedule without cycle fields is reminded every day of its course, as before.
+    test('a schedule without a dose cycle behaves as before', () {
+      final plain = MedicationSchedule(
+        medicationName: '약-A',
+        prescriptionDate: DateTime(2026, 8, 1),
+        medicationTime: 5,
+        scheduleSlotKeys: const ['morning'],
+      );
+      expect(
+        MedicationReminderRefreshService.activeReminderDates([plain], now: now),
+        [DateTime(2026, 8, 3), DateTime(2026, 8, 4), DateTime(2026, 8, 5)],
+      );
+    });
+
+    // Function Name: worker test
+    // Description: The background refresh registers a weekly-only slot on its dose days and does
+    //   not cancel it on a rest day, when today's schedule does not list the medication.
+    test('the worker keeps a weekly-only slot on a rest day', () async {
+      SharedPreferences.setMockInitialValues({});
+      final registered = <String, List<DateTime>>{};
+      final cancelled = <String>[];
+      final service = MedicationReminderRefreshService(
+        loadSettings: () async => const [
+          MedicationAlarm(slotKey: 'morning', hour: 8, minute: 0, enabled: true),
+        ],
+        loadSchedules: () async => [weekly],
+        // The server lists only medications due today; Aug 5 is a rest day.
+        loadTodaySchedules: () async => const [],
+        registerReminder: ({required id, required slotKey, required slotTitle,
+          required hour, required minute, required medicationNames,
+          required activeDates, medicationNamesByDate = const <String, List<String>>{},
+          language = 'ko'}) async {
+          registered[slotKey] = List<DateTime>.from(activeDates);
+        },
+        cancelReminder: (id, {slotKey}) async => cancelled.add(slotKey ?? ''),
+        now: () => DateTime(2026, 8, 5, 6),
+      );
+
+      expect(await service.synchronize(), isTrue);
+      expect(registered, {
+        'morning': [DateTime(2026, 8, 10), DateTime(2026, 8, 17)],
+      });
+      expect(cancelled, ['lunch', 'evening', 'bedtime']);
+      service.dispose();
+    });
+  });
+
+  // A dose recorded offline is still in the device outbox when the worker runs. The server's
+  // today schedule does not show it, so without the outbox the worker would re-arm today's
+  // reminder for a dose the patient already took.
+  group('doses recorded offline', () {
+    final sameDayHour = [
+      for (var hour = 0; hour < 24; hour++)
+        if (doseScheduleDay(DateTime(2026, 8, 1, hour)) == '2026-08-01') hour,
+    ].first;
+    final now = DateTime(2026, 8, 1, sameDayHour);
+
+    // Function Name: build
+    // Description: Creates a refresh service with enabled morning and evening alarms, a two-day
+    //   course in both slots that the server reports as not taken, and the given outbox reader.
+    // Parameters: registered - receives the dates per slot; loadPendingDoses - outbox reader.
+    // Returns: The service under test.
+    MedicationReminderRefreshService build(
+      Map<String, List<DateTime>> registered,
+      PendingDoseOperationsLoader? loadPendingDoses,
+    ) {
+      final course = MedicationSchedule(
+        medicationID: '7',
+        medicationName: '약-A',
+        prescriptionDate: DateTime(2026, 8, 1),
+        medicationTime: 2,
+        scheduleSlotKeys: const ['morning', 'evening'],
+        slotStatuses: const {'morning': false, 'evening': false},
+      );
+      return MedicationReminderRefreshService(
+        loadSettings: () async => const [
+          MedicationAlarm(slotKey: 'morning', hour: 8, minute: 0, enabled: true),
+          MedicationAlarm(slotKey: 'evening', hour: 20, minute: 0, enabled: true),
+        ],
+        loadSchedules: () async => [course],
+        loadTodaySchedules: () async => [course],
+        loadPendingDoses: loadPendingDoses,
+        registerReminder: ({required id, required slotKey, required slotTitle,
+          required hour, required minute, required medicationNames,
+          required activeDates, medicationNamesByDate = const <String, List<String>>{},
+          language = 'ko'}) async {
+          registered[slotKey] = List<DateTime>.from(activeDates);
+        },
+        cancelReminder: (id, {slotKey}) async {},
+        now: () => now,
+      );
+    }
+
+    setUp(() => SharedPreferences.setMockInitialValues({}));
+
+    // Function Name: offline dose test
+    // Description: The slot taken offline loses today's date; the other slot and later days stay.
+    test('a slot taken offline is not re-armed for today', () async {
+      final registered = <String, List<DateTime>>{};
+      final service = build(registered, () async => [
+        {
+          'operation_id': 'dose_1',
+          'schedule_date': '2026-08-01',
+          'slot_key': 'morning',
+          'medication_ids': [7],
+          'completed': true,
+          'state': 'pending',
+        },
+      ]);
+
+      expect(await service.synchronize(), isTrue);
+      expect(registered['morning'], [DateTime(2026, 8, 2)]);
+      expect(registered['evening'], [DateTime(2026, 8, 1), DateTime(2026, 8, 2)]);
+      service.dispose();
+    });
+
+    // Function Name: other-day and undo test
+    // Description: A record of another day, of another medication, or an undo recorded after the
+    //   dose leaves today's reminder in place.
+    test('records that do not complete the slot today keep the reminder', () async {
+      for (final operations in [
+        [
+          {'schedule_date': '2026-07-31', 'slot_key': 'morning', 'medication_ids': [7], 'completed': true},
+        ],
+        [
+          {'schedule_date': '2026-08-01', 'slot_key': 'morning', 'medication_ids': [8], 'completed': true},
+        ],
+        [
+          {'schedule_date': '2026-08-01', 'slot_key': 'morning', 'medication_ids': [7], 'completed': true},
+          {'schedule_date': '2026-08-01', 'slot_key': 'morning', 'medication_ids': [7], 'completed': false},
+        ],
+      ]) {
+        final registered = <String, List<DateTime>>{};
+        final service = build(registered, () async => operations);
+        expect(await service.synchronize(), isTrue);
+        expect(registered['morning'], [DateTime(2026, 8, 1), DateTime(2026, 8, 2)]);
+        service.dispose();
+      }
+    });
+
+    // Function Name: unreadable outbox test
+    // Description: An outbox that cannot be opened must not stop the refresh; the server state
+    //   alone decides, as before.
+    test('an unreadable outbox does not stop the refresh', () async {
+      final registered = <String, List<DateTime>>{};
+      final service = build(
+        registered,
+        () async => throw StateError('store unavailable'),
+      );
+      expect(await service.synchronize(), isTrue);
+      expect(registered['morning'], [DateTime(2026, 8, 1), DateTime(2026, 8, 2)]);
+      service.dispose();
+    });
+  });
 }

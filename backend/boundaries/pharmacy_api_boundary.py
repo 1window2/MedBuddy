@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 _LOCATION_SEARCH_PATH = "/getParmacyLcinfoInqire"
 _FULL_CATALOG_PATH = "/getParmacyFullDown"
 _MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+# 제공자에 보내는 검색 좌표의 소수 자릿수(약 100 m 격자).
+_QUERY_COORDINATE_DECIMALS = 3
 
 
 # 클래스명: PharmacyApiResponseError
@@ -119,10 +121,11 @@ class NationalEmergencyMedicalCenterPharmacyAPI:
         endpoint = (
             settings.PHARMACY_API_BASE_URL.rstrip("/") + _LOCATION_SEARCH_PATH
         )
+        # 거리는 호출자가 실제 좌표로 다시 계산하므로 제공자에는 약 100 m 격자로 낮춘 좌표만 보낸다.
         params = {
             "serviceKey": settings.PUBLIC_DATA_API_KEY,
-            "WGS84_LAT": f"{latitude:.7f}",
-            "WGS84_LON": f"{longitude:.7f}",
+            "WGS84_LAT": f"{latitude:.{_QUERY_COORDINATE_DECIMALS}f}",
+            "WGS84_LON": f"{longitude:.{_QUERY_COORDINATE_DECIMALS}f}",
             "pageNo": 1,
             "numOfRows": limit,
         }

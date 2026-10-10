@@ -195,7 +195,13 @@ caregiver/patient/date/slot key. Immediately before FCM delivery it revalidates
 the active link, explicit per-slot consent, current deadline, global caregiver
 notification preference, and live incomplete schedule state. This suppresses
 stale alerts after a late completion and bounds delivery to one event per
-caregiver, patient, date, and slot. Transient failures use the same retry and
+caregiver, patient, date, and slot. A missed-dose event is never created
+before the patient's own reminder time for the slot plus
+`CAREGIVER_MISSED_DOSE_GRACE_MINUTES` (30 by default), whatever deadline the
+caregiver saved, so a caregiver is not told about a dose the patient has not
+been reminded of yet. Only medications that are due on the day count: a
+medication that is not taken every day is ignored on the days between its
+dose days. Transient failures use the same retry and
 dead-letter policy as dose-completion delivery. In local demo mode,
 `DisabledPushNotificationBoundary` prevents remote delivery and the Android
 monitor retains its local missed-deadline polling fallback. Production still
@@ -219,6 +225,17 @@ Permanent account deletion performs the same local cleanup before the backend
 deletion request. Caregiver alerts and unrelated notification categories are
 not removed by patient-reminder cleanup.
 
+A session the server ends (a rejected credential) cannot unregister its push
+token, and the sign-out preparation stops at that step. The same reminder
+cleanup therefore runs again once the session is cleared, and the device's FCM
+token is deleted so the ended account's server-side registration stops
+delivering to this device. A notification or widget action taken while signed
+out is dropped when a different account signs in next.
+
+Removing an entry from the in-app notification inbox erases its stored title,
+body and navigation payload. Only the identifier and time remain, so a repeated
+delivery cannot bring the entry back, until the retention period removes them.
+
 ## Nearby Pharmacy Location Boundary
 
 Nearby-pharmacy lookup is a user-initiated feature. Flutter requests
@@ -233,6 +250,22 @@ Neither Flutter nor FastAPI persists the current coordinate. Application logs,
 error messages, analytics, and notification payloads must not contain precise
 location. The UI applies a refresh cooldown and the backend retains an
 independent request quota.
+
+Nearby-hospital search follows the same boundary. For both, the backend computes
+distances from the coordinate it received, but the public provider is
+queried with the coordinate rounded to three decimals (a grid of roughly
+100 m), so the provider does not receive the precise position and nearby
+searches share one cached provider response. A hospital can be shared to chat
+only for a date inside the window the search itself accepts (7 days back to
+366 days ahead).
+
+Routes with a real per-request cost carry a daily quota besides the per-minute
+limit: prescription analysis, pill identification and the health
+recommendation share `AI_REQUEST_DAILY_LIMIT` per account, and hospital search
+has `HOSPITAL_SEARCH_DAILY_LIMIT`. One IP address is allowed twenty times the
+account quota, which bounds what scripted accounts can spend from one address.
+The public hospital API budget (`HOSPITAL_API_DAILY_REQUEST_BUDGET`) is still
+shared by all users of one process.
 
 The in-app map requests map content through Naver Dynamic Map for the visible
 viewport. This does not expose the MedBuddy public-data credential, but the map
@@ -454,7 +487,8 @@ stored in the Compose file or Flutter compile-time constants.
 - PostgreSQL 16 with a persistent private volume.
 - Redis with a memory bound and no published host port.
 - One periodic catalog-refresh worker with atomic weekly synchronization,
-  upstream-withdrawal pruning, and bounded retry backoff.
+  upstream-withdrawal pruning, bounded retry backoff, and a schedule stored in
+  the database so restarts do not postpone it.
 - One FastAPI container with production fail-closed settings.
 - One `cloudflared` container providing the only public ingress path.
 
@@ -480,7 +514,7 @@ their source but every job has `if: false`. They cannot provision or invoke
 Cloud Run, Cloud SQL, Redis, VPC, Artifact Registry, or Secret Manager resources.
 
 The following revisions established the beta security and data boundary. This
-is not the full chain; the current head is `b3a7d9e2f601` (see
+is not the full chain; the current head is `c5e1a7f3b902` (see
 [Production Deployment](Production%20Deployment.md)).
 
 | Revision | Purpose |

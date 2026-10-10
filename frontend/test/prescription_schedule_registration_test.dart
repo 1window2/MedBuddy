@@ -99,7 +99,10 @@ void main() {
       );
       await _apply(tester);
       expect(edited, isNull);
-      expect(find.text('1일 횟수를 1~4회로 입력해주세요.'), findsOneWidget);
+      expect(
+        find.text('1일 횟수를 1~4회로 입력하거나 "주 1회", "격일"처럼 입력해주세요.'),
+        findsOneWidget,
+      );
     });
   }
 

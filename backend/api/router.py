@@ -2,6 +2,7 @@
 # Role: Adapts authenticated medication, account, reminder, caregiver-link and pill-identification HTTP requests to domain controls.
 
 import asyncio
+import json
 import logging
 from dataclasses import dataclass
 
@@ -15,7 +16,7 @@ from fastapi import (
     Request,
     UploadFile,
 )
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from api.dependencies import (
     get_authenticated_principal,
@@ -116,6 +117,10 @@ _authenticated_app_dependencies = [
     Depends(verify_app_check_token),
     Depends(get_registered_principal),
 ]
+# ValueError subclasses raised by parsing libraries rather than by a control on purpose. Their
+# text quotes positions or input values, so it is logged by type and never returned to the client.
+_INTERNAL_VALUE_ERRORS = (json.JSONDecodeError, ValidationError)
+
 router = APIRouter(dependencies=_authenticated_app_dependencies)
 auth_router = APIRouter(
     prefix="/api/v1/auth",
@@ -355,6 +360,9 @@ async def identify_medication(
             request.extracted_text,
             **({'original_text': request.original_text} if request.original_text else {}),
         )
+    except _INTERNAL_VALUE_ERRORS as exc:
+        logger.error("Identify API internal error: %s", type(exc).__name__)
+        raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다.") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -798,9 +806,12 @@ def save_medication_alarm(
 
 # Function Name: disable_medication_alarm
 # Description:
-# - Disables one medication alarm setting for a schedule slot.
+# - Disables one medication alarm setting for a schedule slot. A body with a time, sent when the
+#   user also changed the time in the same save, is stored with the disabled alarm; clients that
+#   send no body keep the stored time.
 # Parameters:
 # - slot_key (str): Medication schedule time slot from the route path.
+# - request (MedicationAlarmUpdate | None): Optional newly chosen alarm time.
 # - patient_hash (str | None): Patient ownership key used to scope alarm setting update.
 # - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
 # - authorization (AuthorizationControl): Patient/guardian access-scope resolver.
@@ -810,6 +821,7 @@ def save_medication_alarm(
 @router.patch("/notification/settings/{slot_key}/disable")
 def disable_medication_alarm(
     slot_key: str,
+    request: MedicationAlarmUpdate | None = None,
     patient_hash: str | None = None,
     principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
     authorization: AuthorizationControl = Depends(get_authorization_control),
@@ -819,7 +831,12 @@ def disable_medication_alarm(
         principal,
         patient_hash,
     )
-    return set_notification.disableAlarmSetting(authorized_patient_hash, slot_key)
+    return set_notification.disableAlarmSetting(
+        authorized_patient_hash,
+        slot_key,
+        None if request is None else request.hour,
+        None if request is None else request.minute,
+    )
 
 
 # Function Name: get_user_setting
@@ -1315,6 +1332,15 @@ async def analyze_masked_prescription_text(
     except PrescriptionAnalysisTimeoutError as exc:
         logger.warning("De-identified prescription text analysis timed out.")
         raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except _INTERNAL_VALUE_ERRORS as exc:
+        logger.error(
+            "De-identified prescription text analysis failed: %s",
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="비식별 처방전 텍스트 분석 중 서버 오류가 발생했습니다.",
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:

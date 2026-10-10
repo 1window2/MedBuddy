@@ -434,7 +434,9 @@ void main() {
 
     await tester.tap(find.text('정해진 시각까지 미복용 시 알림'));
     await tester.pump();
-    final missedDoseTime = find.text('확인 시각 21:00');
+    // 저장된 확인 시각이 없으면 그 시간대의 복약 알림(아침 08:00) 한 시간 뒤를 제안한다. 예전 기본값 21:00은
+    // 시간대와 무관해 취침 전 알림(22:00)보다 일렀다.
+    final missedDoseTime = find.text('확인 시각 09:00');
     await tester.ensureVisible(missedDoseTime);
     await tester.pumpAndSettle();
     await tester.tap(missedDoseTime);

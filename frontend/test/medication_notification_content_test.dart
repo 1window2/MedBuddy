@@ -77,6 +77,8 @@ void main() {
   final pending = <Map<String, Object?>>[];
   final pluginCalls = <String>[];
   var rejectExact = false;
+  // Android 14 default: exact alarms are refused until the user allows "Alarms & reminders".
+  var exactDenied = false;
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -89,6 +91,9 @@ void main() {
     pending.clear();
     pluginCalls.clear();
     rejectExact = false;
+    exactDenied = false;
+    // Every test starts as a freshly started process.
+    NotificationService.instance.forgetArmedRemindersForTest();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
           pluginCalls.add(call.method);
@@ -102,9 +107,16 @@ void main() {
             case 'cancel':
               cancelled.add(Map<dynamic, dynamic>.from(call.arguments as Map));
               return null;
+            case 'canScheduleExactNotifications':
+              return !exactDenied;
             case 'zonedSchedule':
               scheduled.add(Map<dynamic, dynamic>.from(call.arguments as Map));
               if (rejectExact && scheduled.length == 1) {
+                throw PlatformException(code: 'exact_alarms_not_permitted');
+              }
+              if (exactDenied && _scheduleMode(scheduled.last).startsWith('exact')) {
+                // The plugin refuses the request and leaves an existing alarm as it is.
+                scheduled.removeLast();
                 throw PlatformException(code: 'exact_alarms_not_permitted');
               }
               return null;
@@ -385,6 +397,202 @@ void main() {
     expect(planned.where((entry) => entry.startsWith('evening')), ['evening 20', 'evening 20']);
   });
 
+  // After a force-stop Android has dropped the app's alarms, but the plugin still lists them as
+  // pending. A new process must therefore re-arm every future date once instead of trusting the
+  // list, without touching the inbox, and be quiet again afterwards.
+  test('a new process re-arms reservations the plugin still lists', () async {
+    final service = NotificationService.instance;
+    service.setHistoryUser('patient-a', persistSession: false);
+    await service.initialize();
+    final now = timezone.TZDateTime.now(timezone.local);
+    final dates = [
+      for (var day = 1; day <= 3; day++) DateTime(now.year, now.month, now.day + day),
+    ];
+    Future<void> refresh() => service.registerNotification(
+      id: 101, slotKey: 'morning', slotTitle: '아침', hour: 8, minute: 0,
+      medicationNames: [], activeDates: dates,
+    );
+    await refresh();
+    await pumpEventQueue();
+    final firstIds = [for (final item in scheduled) item['id']];
+    expect(firstIds, hasLength(3));
+    pending.addAll(scheduled.map((item) => {'id': item['id'], 'payload': item['payload']}));
+    final events = <String>[];
+    final subscription = NotificationInboxStore.changes.stream.listen(events.add);
+    addTearDown(subscription.cancel);
+    Future<int> inboxSize() async => (await NotificationInboxStore(
+      userHash: 'patient-a', now: () => now.add(const Duration(days: 5)),
+    ).load()).length;
+    final inboxBefore = await inboxSize();
+    scheduled.clear();
+
+    // The process was killed: nothing in memory says the alarms were set by this run.
+    service.forgetArmedRemindersForTest();
+    await refresh();
+    await pumpEventQueue();
+    expect([for (final item in scheduled) item['id']], firstIds);
+    for (final item in scheduled) {
+      expect(item['scheduledDateTime'].toString(), contains('08:00'));
+      expect(_scheduleMode(item), 'exactAllowWhileIdle');
+    }
+    expect(cancelled, isEmpty);
+    expect(events, isEmpty);
+    expect(await inboxSize(), inboxBefore);
+
+    scheduled.clear();
+    pluginCalls.clear();
+    await refresh();
+    expect(scheduled, isEmpty);
+    expect(pluginCalls, ['pendingNotificationRequests']);
+  });
+
+  // Android 14 and later refuse exact alarms until the user allows them. The reminder is still
+  // scheduled (inexact), stays untouched while the permission is missing, and is replaced by an
+  // exact alarm by the first refresh after the permission was granted.
+  test('reminders scheduled without the exact-alarm permission become exact once it is granted', () async {
+    final service = NotificationService.instance;
+    service.setHistoryUser('patient-a', persistSession: false);
+    await service.initialize();
+    final now = timezone.TZDateTime.now(timezone.local);
+    final dates = [
+      DateTime(now.year, now.month, now.day + 1),
+      DateTime(now.year, now.month, now.day + 2),
+    ];
+    Future<void> refresh() => service.registerNotification(
+      id: 101, slotKey: 'morning', slotTitle: '아침', hour: 8, minute: 0,
+      medicationNames: [], activeDates: dates,
+    );
+    void deliverToDevice() {
+      for (final item in scheduled) {
+        pending.removeWhere((entry) => entry['id'] == item['id']);
+        pending.add({'id': item['id'], 'payload': item['payload']});
+      }
+      scheduled.clear();
+    }
+
+    exactDenied = true;
+    expect(await service.canScheduleExactReminders(), isFalse);
+    await refresh();
+    expect(scheduled, hasLength(2));
+    expect(scheduled.map(_scheduleMode).toSet(), {'inexactAllowWhileIdle'});
+    deliverToDevice();
+
+    // Still denied: nothing is rescheduled, the working inexact alarms stay.
+    pluginCalls.clear();
+    await refresh();
+    expect(scheduled, isEmpty);
+    expect(cancelled, isEmpty);
+    expect(pluginCalls, ['pendingNotificationRequests', 'canScheduleExactNotifications']);
+
+    // The user allowed "Alarms & reminders".
+    exactDenied = false;
+    expect(await service.canScheduleExactReminders(), isTrue);
+    await refresh();
+    expect(scheduled, hasLength(2));
+    expect(scheduled.map(_scheduleMode).toSet(), {'exactAllowWhileIdle'});
+    for (final item in scheduled) {
+      expect(item['scheduledDateTime'].toString(), contains('08:00'));
+    }
+    expect(cancelled, isEmpty);
+    deliverToDevice();
+
+    pluginCalls.clear();
+    await refresh();
+    expect(scheduled, isEmpty);
+    expect(pluginCalls, ['pendingNotificationRequests']);
+  });
+
+  // Returning from the system settings screen must not need a schedule refresh from the server:
+  // the stored plan and the device's pending list are enough to replace the inexact alarms.
+  test('inexact reminders are replaced from the stored plan without a schedule refresh', () async {
+    final service = NotificationService.instance;
+    service.setHistoryUser('patient-a', persistSession: false);
+    await service.initialize();
+    final now = timezone.TZDateTime.now(timezone.local);
+    final dates = [
+      DateTime(now.year, now.month, now.day + 1),
+      DateTime(now.year, now.month, now.day + 2),
+    ];
+    exactDenied = true;
+    await service.registerNotification(
+      id: 101, slotKey: 'morning', slotTitle: '아침', hour: 8, minute: 30,
+      medicationNames: [], activeDates: dates,
+    );
+    await service.registerNotification(
+      id: 103, slotKey: 'evening', slotTitle: 'Evening', hour: 19, minute: 5,
+      medicationNames: [], activeDates: [dates.first], language: 'en',
+    );
+    final inexact = [for (final item in scheduled) Map<dynamic, dynamic>.from(item)];
+    expect(inexact, hasLength(3));
+    pending.addAll(scheduled.map((item) => {'id': item['id'], 'payload': item['payload']}));
+    scheduled.clear();
+
+    // Permission still missing: the plan is left alone.
+    await service.rescheduleInexactRemindersAsExact();
+    expect(scheduled, isEmpty);
+
+    exactDenied = false;
+    await service.rescheduleInexactRemindersAsExact();
+    expect(scheduled, hasLength(3));
+    for (final before in inexact) {
+      final after = scheduled.singleWhere((item) => item['id'] == before['id']);
+      expect(_scheduleMode(after), 'exactAllowWhileIdle');
+      for (final field in ['title', 'body', 'payload', 'scheduledDateTime']) {
+        expect(after[field], before[field], reason: field);
+      }
+    }
+    expect(cancelled, isEmpty);
+
+    // Done once: neither a second call nor the next refresh schedules anything again.
+    scheduled.clear();
+    pluginCalls.clear();
+    await service.rescheduleInexactRemindersAsExact();
+    expect(scheduled, isEmpty);
+    expect(pluginCalls, isEmpty);
+    await service.registerNotification(
+      id: 101, slotKey: 'morning', slotTitle: '아침', hour: 8, minute: 30,
+      medicationNames: [], activeDates: dates,
+    );
+    expect(scheduled, isEmpty);
+  });
+
+  // Decision pinned here: when the reminder time is moved to a time that has already passed today,
+  // today's alarm at the previous time is kept. Cancelling it would leave today's dose, not yet
+  // taken, without any reminder; from tomorrow the new time applies.
+  test('moving the reminder time to earlier than now keeps the alarm still due today', () async {
+    final service = NotificationService.instance;
+    service.setHistoryUser('patient-a', persistSession: false);
+    await service.initialize();
+    final now = timezone.TZDateTime.now(timezone.local);
+    final later = now.add(const Duration(minutes: 5));
+    final earlier = now.subtract(const Duration(minutes: 5));
+    if (later.day != now.day || earlier.day != now.day) {
+      markTestSkipped('Needs five minutes on both sides of now within one day.');
+      return;
+    }
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = DateTime(now.year, now.month, now.day + 1);
+    Future<void> refresh(timezone.TZDateTime time) => service.registerNotification(
+      id: 101, slotKey: 'morning', slotTitle: '아침', hour: time.hour, minute: time.minute,
+      medicationNames: [], activeDates: [today, tomorrow],
+    );
+    await refresh(later);
+    expect(scheduled, hasLength(2));
+    final todayId = scheduled.first['id'];
+    pending.addAll(scheduled.map((item) => {'id': item['id'], 'payload': item['payload']}));
+    scheduled.clear();
+
+    await refresh(earlier);
+
+    expect(cancelled, isNot(contains(containsPair('id', todayId))));
+    expect(scheduled, hasLength(1));
+    expect(scheduled.single['payload'], endsWith(':${_dateKey(tomorrow)}'));
+    expect(
+      scheduled.single['scheduledDateTime'].toString(),
+      contains('${earlier.hour.toString().padLeft(2, '0')}:${earlier.minute.toString().padLeft(2, '0')}'),
+    );
+  });
+
   test('account and missing platform reservations cannot reuse another plan', () async {
     final service = NotificationService.instance;
     await service.initialize();
@@ -563,3 +771,9 @@ String _dateKey(DateTime date) =>
     '${date.year.toString().padLeft(4, '0')}-'
     '${date.month.toString().padLeft(2, '0')}-'
     '${date.day.toString().padLeft(2, '0')}';
+
+// Function Name: _scheduleMode
+// Description: Reads the Android schedule mode of a recorded zonedSchedule call.
+// Parameters: call - arguments the plugin received. Returns: The mode name, such as exactAllowWhileIdle.
+String _scheduleMode(Map<dynamic, dynamic> call) =>
+    (call['platformSpecifics'] as Map)['scheduleMode'] as String;
