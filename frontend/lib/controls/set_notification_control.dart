@@ -217,21 +217,32 @@ class SetNotification {
   }
 
   // Function Name: disableAlarmSetting
-  // Description: Disables one medication alarm setting.
+  // Description: Disables one medication alarm setting. A time given with it, when the user changed the time in the same save, is stored with the disabled alarm; without one the server keeps the stored time.
   // Parameters:
   // - slotKey (String): Medication schedule slot key.
+  // - hour (int?): Newly chosen hour to keep with the disabled alarm.
+  // - minute (int?): Newly chosen minute; sent only together with hour.
   // Returns:
   // - Disabled MedicationAlarm.
-  Future<MedicationAlarm> disableAlarmSetting(String slotKey) async {
+  Future<MedicationAlarm> disableAlarmSetting(
+    String slotKey, {
+    int? hour,
+    int? minute,
+  }) async {
     final normalizedSlotKey = _normalizeSlotKey(slotKey);
     try {
-      final response = await _client
-          .patch(
-            _buildNotificationUri(
-              'notification/settings/$normalizedSlotKey/disable',
-            ),
-          )
-          .timeout(const Duration(seconds: 30));
+      final uri = _buildNotificationUri(
+        'notification/settings/$normalizedSlotKey/disable',
+      );
+      final response =
+          await (hour == null
+                  ? _client.patch(uri)
+                  : _client.patch(
+                      uri,
+                      headers: const {'Content-Type': 'application/json'},
+                      body: jsonEncode({'hour': hour, 'minute': minute ?? 0}),
+                    ))
+              .timeout(const Duration(seconds: 30));
       final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {

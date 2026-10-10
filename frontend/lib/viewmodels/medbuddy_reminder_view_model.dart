@@ -230,20 +230,27 @@ class MedBuddyReminderViewModel {
   }
 
   // 함수이름: requestMedicationReminderCancel
-  // 함수역할: 이미 활성화된 시간대별 복약 알림을 취소하고 로컬 설정을 비활성화한다.
+  // 함수역할: 이미 활성화된 시간대별 복약 알림을 취소하고 로컬 설정을 비활성화한다. 같은 저장에서 시각도
+  //   바꿨다면 그 시각을 꺼진 알림과 함께 저장한다.
   // 매개변수:
   // - slotKey (String): morning, lunch, evening, bedtime 중 하나
   // - slotTitle (String): 사용자에게 보여줄 시간대명
+  // - hour (int?): 함께 저장할 새 알림 시; 생략하면 저장된 시각을 유지한다
+  // - minute (int?): 함께 저장할 새 알림 분
   // 반환값:
   // - 알림 취소 성공 여부
   Future<bool> requestMedicationReminderCancel({
     required String slotKey,
     required String slotTitle,
+    int? hour,
+    int? minute,
   }) async {
     final storageKey = _reminderStorageKey(slotKey);
     try {
       final disabledSetting = await setNotification.disableAlarmSetting(
         slotKey,
+        hour: hour,
+        minute: minute,
       );
       await _cancelMedicationReminder(disabledSetting);
       final preferences = await SharedPreferences.getInstance();

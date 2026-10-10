@@ -155,21 +155,15 @@ void main() {
             home: ManageUserSettingUI(
               initialSetting: const UserSetting(fontSize: 20),
               authenticationControl: authenticationControl,
-              onSettingSaveRequested:
-                  // 함수이름: onSettingSaveRequested 콜백
+              onExtendedSettingSaveRequested:
+                  // 함수이름: onExtendedSettingSaveRequested 콜백
                   // 함수역할:
                   // - 실제 저장 없이 지정한 서버 동기화 또는 기기 전용 저장 결과를 제공한다.
                   // 매개변수:
-                  // - fontSizeOption (String): 선택한 앱 글씨 크기 옵션. 이 대역에서는 직접 사용하지 않는다.
-                  // - readingSpeedOption (String): 선택한 음성 읽기 속도 옵션. 이 대역에서는 직접 사용하지 않는다.
-                  // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
+                  // - draft (UserSetting): 화면에서 편집한 설정. 이 대역에서는 직접 사용하지 않는다.
                   // 반환값:
                   // - 서버 동기화 상태의 설정 저장 결과.
-                  ({
-                    required fontSizeOption,
-                    required readingSpeedOption,
-                    required language,
-                  }) async => _synchronizedSettingResult(),
+                  (draft) async => _synchronizedSettingResult(),
             ),
           ),
         );
@@ -205,21 +199,15 @@ void main() {
           home: ManageUserSettingUI(
             initialSetting: const UserSetting(),
             authenticationControl: authenticationControl,
-            onSettingSaveRequested:
-                // 함수이름: onSettingSaveRequested 콜백
+            onExtendedSettingSaveRequested:
+                // 함수이름: onExtendedSettingSaveRequested 콜백
                 // 함수역할:
                 // - 실제 저장 없이 지정한 서버 동기화 또는 기기 전용 저장 결과를 제공한다.
                 // 매개변수:
-                // - fontSizeOption (String): 선택한 앱 글씨 크기 옵션. 이 대역에서는 직접 사용하지 않는다.
-                // - readingSpeedOption (String): 선택한 음성 읽기 속도 옵션. 이 대역에서는 직접 사용하지 않는다.
-                // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
+                // - draft (UserSetting): 화면에서 편집한 설정. 이 대역에서는 직접 사용하지 않는다.
                 // 반환값:
                 // - 서버 동기화 상태의 설정 저장 결과.
-                ({
-                  required fontSizeOption,
-                  required readingSpeedOption,
-                  required language,
-                }) async => _synchronizedSettingResult(),
+                (draft) async => _synchronizedSettingResult(),
           ),
         ),
       );
@@ -258,21 +246,15 @@ void main() {
           home: ManageUserSettingUI(
             initialSetting: const UserSetting(),
             authenticationControl: authenticationControl,
-            onSettingSaveRequested:
-                // 함수이름: onSettingSaveRequested 콜백
+            onExtendedSettingSaveRequested:
+                // 함수이름: onExtendedSettingSaveRequested 콜백
                 // 함수역할:
                 // - 실제 저장 없이 지정한 서버 동기화 또는 기기 전용 저장 결과를 제공한다.
                 // 매개변수:
-                // - fontSizeOption (String): 선택한 앱 글씨 크기 옵션. 이 대역에서는 직접 사용하지 않는다.
-                // - readingSpeedOption (String): 선택한 음성 읽기 속도 옵션. 이 대역에서는 직접 사용하지 않는다.
-                // - language (String): 화면 문구 또는 알림 내용의 언어 코드. 이 대역에서는 직접 사용하지 않는다.
+                // - draft (UserSetting): 화면에서 편집한 설정. 이 대역에서는 직접 사용하지 않는다.
                 // 반환값:
                 // - 서버 동기화 상태의 설정 저장 결과.
-                ({
-                  required fontSizeOption,
-                  required readingSpeedOption,
-                  required language,
-                }) async => _synchronizedSettingResult(),
+                (draft) async => _synchronizedSettingResult(),
           ),
         ),
       );

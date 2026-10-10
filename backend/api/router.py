@@ -798,9 +798,12 @@ def save_medication_alarm(
 
 # Function Name: disable_medication_alarm
 # Description:
-# - Disables one medication alarm setting for a schedule slot.
+# - Disables one medication alarm setting for a schedule slot. A body with a time, sent when the
+#   user also changed the time in the same save, is stored with the disabled alarm; clients that
+#   send no body keep the stored time.
 # Parameters:
 # - slot_key (str): Medication schedule time slot from the route path.
+# - request (MedicationAlarmUpdate | None): Optional newly chosen alarm time.
 # - patient_hash (str | None): Patient ownership key used to scope alarm setting update.
 # - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
 # - authorization (AuthorizationControl): Patient/guardian access-scope resolver.
@@ -810,6 +813,7 @@ def save_medication_alarm(
 @router.patch("/notification/settings/{slot_key}/disable")
 def disable_medication_alarm(
     slot_key: str,
+    request: MedicationAlarmUpdate | None = None,
     patient_hash: str | None = None,
     principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
     authorization: AuthorizationControl = Depends(get_authorization_control),
@@ -819,7 +823,12 @@ def disable_medication_alarm(
         principal,
         patient_hash,
     )
-    return set_notification.disableAlarmSetting(authorized_patient_hash, slot_key)
+    return set_notification.disableAlarmSetting(
+        authorized_patient_hash,
+        slot_key,
+        None if request is None else request.hour,
+        None if request is None else request.minute,
+    )
 
 
 # Function Name: get_user_setting

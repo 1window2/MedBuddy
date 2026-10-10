@@ -863,6 +863,9 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
         : await viewModel.requestMedicationReminderCancel(
             slotKey: slot.key,
             slotTitle: slotTitle,
+            // 알림을 끄면서 시각도 바꾼 경우 그 시각이 버려지지 않게 함께 보낸다.
+            hour: selectedSetting.hour,
+            minute: selectedSetting.minute,
           );
     if (!mounted) {
       return;

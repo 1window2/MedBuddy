@@ -576,9 +576,13 @@ class MedBuddyViewModel extends ChangeNotifier {
   Future<bool> requestMedicationReminderCancel({
     required String slotKey,
     required String slotTitle,
+    int? hour,
+    int? minute,
   }) => _reminders.requestMedicationReminderCancel(
     slotKey: slotKey,
     slotTitle: slotTitle,
+    hour: hour,
+    minute: minute,
   );
   // Function Name: _onReminderChanged
   // Description: Bridges reminder-local feedback to compatibility listeners.
@@ -603,6 +607,11 @@ class MedBuddyViewModel extends ChangeNotifier {
   // Parameters: As declared by the operation. Returns: Its result.
   Future<UserSettingSaveResult> saveUserSetting(UserSetting setting) =>
       _settings.saveUserSetting(setting);
+  // Function Name: synchronizeDeviceLanguage
+  // Description: Delegates settings operations to their state owner.
+  // Parameters: As declared by the operation. Returns: Its result.
+  Future<bool> synchronizeDeviceLanguage() =>
+      _settings.synchronizeDeviceLanguage();
   // Function Name: requestCapturedPrescriptionImage
   // Description: Delegates prescription operations to their state owner.
   // Parameters: As declared by the operation. Returns: Its result.

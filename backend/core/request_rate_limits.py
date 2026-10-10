@@ -21,6 +21,7 @@ _PATH_PARAMETER_PATTERN = re.compile(r"^\{[^/{}]+\}$")
 _INTEGER_PATH_SEGMENT_PATTERN = re.compile(r"^\d+$")
 
 _DAILY_WINDOW_SECONDS = 86_400
+RATE_LIMIT_EXCEEDED_DETAIL = "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."
 DAILY_QUOTA_EXCEEDED_DETAIL = "오늘 사용할 수 있는 횟수를 모두 사용했습니다. 내일 다시 시도해주세요."
 
 _ATOMIC_INCREMENT_SCRIPT = """
@@ -471,11 +472,7 @@ class RequestRateLimitMiddleware:
             if not allowed:
                 response = JSONResponse(
                     status_code=429,
-                    content={
-                        "detail": (
-                            "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."
-                        )
-                    },
+                    content={"detail": RATE_LIMIT_EXCEEDED_DETAIL},
                     headers={"Retry-After": str(max(1, retry_after))},
                 )
                 await response(scope, receive, send)

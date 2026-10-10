@@ -1243,6 +1243,40 @@ async def test_chat_daily_quota_is_enforced_over_http(
     ] * 3
 
 
+# Function Name: test_disabling_an_alarm_accepts_an_optional_new_time
+# Description:
+# - The disable route works without a body, as released clients call it, and stores a time sent
+#   with it; an invalid time is rejected by request validation.
+# Parameters:
+# - pipeline (_Pipeline): Application on replaced outer boundaries.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_disabling_an_alarm_accepts_an_optional_new_time(pipeline: _Pipeline) -> None:
+    disable_url = "/api/v1/medication/notification/settings/morning/disable"
+    async with _client(pipeline.app) as client:
+        saved = await client.put(
+            "/api/v1/medication/notification/settings/morning",
+            headers=_headers("user-a"), json={"hour": 9, "minute": 30},
+        )
+        without_body = await client.patch(disable_url, headers=_headers("user-a"))
+        with_time = await client.patch(
+            disable_url, headers=_headers("user-a"), json={"hour": 7, "minute": 15},
+        )
+        invalid = await client.patch(disable_url, headers=_headers("user-a"), json={"hour": 24})
+
+    assert saved.status_code == 200, saved.text
+    assert without_body.status_code == 200, without_body.text
+    assert [without_body.json()["data"][key] for key in ("hour", "minute", "is_enabled")] == [
+        9, 30, False,
+    ]
+    assert with_time.status_code == 200, with_time.text
+    assert [with_time.json()["data"][key] for key in ("hour", "minute", "is_enabled")] == [
+        7, 15, False,
+    ]
+    assert invalid.status_code == 422
+
+
 # Function Name: test_costly_routes_have_a_daily_quota_per_account_and_per_address
 # Description:
 # - With the daily hospital-search quota lowered to two, the third search of an account is 429

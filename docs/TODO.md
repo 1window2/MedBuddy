@@ -27,6 +27,22 @@ Corrected on `beta/v0.2.2`:
 - [x] A malformed `Retry-After` header no longer turns a rate-limit answer
       into an unknown failure.
 
+Also corrected on `beta/v0.2.2` (recorded defects from earlier reviews):
+
+- [x] Switching a reminder off and changing its time in the same save keeps
+      the new time. Needs the 0.2.2 server and app together; an older app
+      sends no time and behaves as before.
+- [x] In the medication box, a back press in selection mode only ends the
+      selection; it no longer also returns to Home.
+- [x] A device language change while the app is running is written back to
+      the "use device language" setting, so reminders and server pushes
+      follow it without a restart.
+- [x] The pharmacy provider is queried with a coordinate rounded to about
+      100 m, like hospital search.
+- [x] The three quota checks (per minute, per day, chat per day) share one
+      helper; the unused three-field settings saver is removed; test runs no
+      longer reach a developer's local Redis.
+
 Open, owner decisions:
 
 - [ ] Chat notifications show the message preview by default; the recipient
@@ -40,8 +56,6 @@ Open, owner decisions:
       reserved share per user.
 - [ ] A low-score multi-pill photo is cropped to one pill. Changing the rule
       needs real photographs.
-- [ ] The pharmacy provider is still queried with the full-precision
-      coordinate; hospital search is not.
 - [ ] The off-Play exception and the release workflow are pinned to
       `beta/v0.2.1`. A signed 0.2.2 build needs them re-pointed, and the
       branch added to the `beta-android` environment.
@@ -137,8 +151,6 @@ Found during the October 8 checks:
       longer lands on the Firebase fallback channel on a fresh install; moving
       chat pushes to the chat channel must wait until clients older than 0.2.1
       are gone.
-- [ ] Switching a reminder off and changing its time in the same save keeps
-      the old time.
 - [ ] A health recommendation is generated with specific advice for a
       medication whose stored information is empty.
 - [ ] A completion alert is sent once per patient, slot and day. A slot first
@@ -171,8 +183,6 @@ Reviewed for v0.2.1 and deferred:
       stays until the source document changes.
 - [ ] Sign-out does not upload doses recorded offline before suspending the
       worker; they wait until the same account signs in again on the device.
-- [ ] With the medication box in selection mode, one back press ends the
-      selection and also returns to Home.
 - Decided, not planned: backend controls keep querying ORM models directly.
   Only three of fourteen models have a repository (the ones several controls
   share), and controls reference models in about 290 places. Wrapping the rest
@@ -180,12 +190,10 @@ Reviewed for v0.2.1 and deferred:
   changing behaviour. Add a repository when a second control needs the same
   query. The two background workers in `services/` drive controls by design.
 - [ ] Home screen: lifecycle work still runs inside `build`, the shell
-      rebuilds on every inbox or chat notification, the link list is polled
-      every 15 seconds under a pushed screen, and the facade status message
-      has no reader. The legacy three-field settings saver parameter is
-      unused and still declared.
-- [ ] Test runs through the application still use the default Redis URL, so
-      a developer's local Redis receives rate-limit keys.
+      rebuilds on every inbox or chat notification, and the link list is
+      polled every 15 seconds under a pushed screen (there is no route
+      observer to pause it). The merged facade status message is read only by
+      tests.
 - [ ] Class diagrams: the operations and classes added in v0.2.1 are not
       drawn, 195 code classes are in no class diagram although the README
       calls the full diagram complete, and stereotypes and package placement
@@ -209,9 +217,6 @@ Defects and limits recorded during the v0.2.0 audits and not changed:
       time. A reminder time moved to earlier than now leaves today's alarm at
       the old time, and the reminder worker does not see a dose recorded
       offline that has not been uploaded yet.
-- [ ] "Use device language" follows the device after a restart, but a device
-      language change while the app is running is not written back to the
-      server setting (`synchronizeDeviceLanguage` exists and is not wired).
 - [ ] The release gate does not compare the client's API contract default with
       `backend/API_CONTRACT_VERSION`.
 - [ ] Tests do not cover weekly or interval frequencies, fuzzy candidate

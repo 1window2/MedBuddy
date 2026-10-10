@@ -470,7 +470,7 @@ package "Flutter Frontend" {
             + patientHash: String
             + requestMedicationAlarm(): Future<List<MedicationAlarm>>
             + saveNotificationSetting(slotKey, hour, minute): Future<MedicationAlarm>
-            + disableAlarmSetting(slotKey): Future<MedicationAlarm>
+            + disableAlarmSetting(slotKey, hour, minute): Future<MedicationAlarm>
         }
 
         class "SetCaregiverNotification" as FSetCaregiverNotification <<Controller: 보호자 알림 관리>> {
@@ -1260,7 +1260,7 @@ package "FastAPI Backend" {
             - db: Session
             + requestMedicationAlarm(patient_hash): dict
             + saveNotificationSetting(patient_hash, slot_key, hour, minute): dict
-            + disableAlarmSetting(patient_hash, slot_key): dict
+            + disableAlarmSetting(patient_hash, slot_key, hour, minute): dict
         }
 
         class "SetCaregiverNotification" as BSetCaregiverNotification <<Control: 보호자 알림 저장>> {

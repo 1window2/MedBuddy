@@ -245,8 +245,8 @@ error messages, analytics, and notification payloads must not contain precise
 location. The UI applies a refresh cooldown and the backend retains an
 independent request quota.
 
-Nearby-hospital search follows the same boundary. The backend computes
-distances from the coordinate it received, but the public hospital provider is
+Nearby-hospital search follows the same boundary. For both, the backend computes
+distances from the coordinate it received, but the public provider is
 queried with the coordinate rounded to three decimals (a grid of roughly
 100 m), so the provider does not receive the precise position and nearby
 searches share one cached provider response. A hospital can be shared to chat

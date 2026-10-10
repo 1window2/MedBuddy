@@ -174,19 +174,29 @@ class SetNotification:
 
     # Function Name: disableAlarmSetting
     # Description:
-    # - Disables one slot alarm while preserving its selected time.
+    # - Disables one slot alarm while preserving its selected time, or storing a newly chosen
+    #   time when the caller changed the time in the same save.
     # Parameters:
     # - patient_hash (str | None): Patient ownership key used to scope alarm settings.
     # - slot_key (str): Medication schedule time slot.
+    # - hour (int | None): Newly chosen hour to keep with the disabled alarm; None keeps the stored one.
+    # - minute (int | None): Newly chosen minute; used only together with hour.
     # Returns:
     # - API-compatible disabled medication alarm dictionary.
     def disableAlarmSetting(
         self,
         patient_hash: str | None,
         slot_key: str,
+        hour: int | None = None,
+        minute: int | None = None,
     ) -> dict[str, object]:
         normalized_patient_hash = normalize_patient_hash(patient_hash)
         normalized_slot_key = self._normalize_slot_key(slot_key)
+        if hour is None:
+            minute = None
+        else:
+            minute = 0 if minute is None else minute
+            self._validate_alarm_time(hour, minute)
 
         try:
             setting = self._find_setting(normalized_patient_hash, normalized_slot_key)
@@ -204,7 +214,7 @@ class SetNotification:
                     enabled=False,
                 )
                 self.db.add(setting)
-            self._apply_alarm_state(setting, enabled=False)
+            self._apply_alarm_state(setting, enabled=False, hour=hour, minute=minute)
             self.db.commit()
             self.db.refresh(setting)
             return {
@@ -217,6 +227,8 @@ class SetNotification:
             return self._disable_existing_alarm_after_conflict(
                 normalized_patient_hash,
                 normalized_slot_key,
+                hour,
+                minute,
             )
         except Exception as exc:
             self.db.rollback()
@@ -335,12 +347,16 @@ class SetNotification:
     # Parameters:
     # - patient_hash (str): Patient ownership scope for the operation.
     # - slot_key (str): Medication time-slot key: morning, lunch, evening or bedtime.
+    # - hour (int | None): Newly chosen hour to keep with the disabled alarm, if any.
+    # - minute (int | None): Newly chosen minute, if any.
     # Returns:
     # - Disabled alarm response, or HTTP 409/500 when recovery fails.
     def _disable_existing_alarm_after_conflict(
         self,
         patient_hash: str,
         slot_key: str,
+        hour: int | None = None,
+        minute: int | None = None,
     ) -> dict[str, object]:
         setting = self._find_setting(patient_hash, slot_key)
         if setting is None:
@@ -349,7 +365,7 @@ class SetNotification:
                 detail="Medication alarm conflict could not be resolved.",
             )
         try:
-            self._apply_alarm_state(setting, enabled=False)
+            self._apply_alarm_state(setting, enabled=False, hour=hour, minute=minute)
             self.db.commit()
             self.db.refresh(setting)
             return {

@@ -233,15 +233,6 @@ Future<void> _pumpSettings(
       home: ManageUserSettingUI(
         initialSetting: setting,
         authenticationControl: auth,
-        onSettingSaveRequested:
-            ({
-              required fontSizeOption,
-              required readingSpeedOption,
-              required language,
-            }) async => UserSettingSaveResult(
-              setting: setting,
-              synchronizedWithServer: true,
-            ),
         // 화면의 초안만 기록하며 실제 알림과 저장소는 변경하지 않는다.
         onExtendedSettingSaveRequested: (draft) async {
           onSave?.call(draft);
