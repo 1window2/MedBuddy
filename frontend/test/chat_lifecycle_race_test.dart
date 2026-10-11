@@ -18,6 +18,66 @@ import 'package:medbuddy_frontend/services/linked_chat_realtime_service.dart';
 // 함수역할: 화면 노출과 응답 순서에 따른 채팅 회귀 사례를 등록한다.
 // 매개변수: 없음. 반환값: 없음.
 void main() {
+  for (final fail in [false, true]) {
+    testWidgets('empty and duplicate sends stay inert after disposal: $fail', (
+      tester,
+    ) async {
+      final flow = _ChatFlow();
+      addTearDown(() => flow.close(tester));
+      await flow.open(tester);
+      final send = find.byKey(const ValueKey('chatSendButton'));
+      await tester.enterText(find.byType(TextField), '   \n  ');
+      await tester.pump();
+      await tester.tap(send);
+      expect(flow.sendRequests, 0);
+      final response = Completer<Map<String, dynamic>>();
+      flow.nextSend = response;
+      await tester.enterText(find.byType(TextField), '한 번만 전송');
+      await tester.pump();
+      await tester.tap(send);
+      await tester.tap(send);
+      await tester.pump();
+      expect(flow.sendRequests, 1);
+      await tester.pumpWidget(const SizedBox.shrink());
+      if (fail) {
+        response.completeError(StateError('늦은 전송 실패'));
+      } else {
+        response.complete(_message(100));
+      }
+      await tester.pumpAndSettle();
+      expect(flow.sendRequests, 1);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('read receipt before send response never shows unread again', (
+    tester,
+  ) async {
+    final flow = _ChatFlow();
+    addTearDown(() => flow.close(tester));
+    await flow.open(tester);
+    final response = Completer<Map<String, dynamic>>();
+    flow.nextSend = response;
+    await tester.enterText(find.byType(TextField), '먼저 읽은 메시지');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('chatSendButton')));
+    await tester.pump();
+    expect(flow.sendRequests, 1);
+    flow.realtime.emit({
+      'type': 'chat_read',
+      'link_id': 17,
+      'reader_hash': 'caregiver-a',
+      'through_message_id': 100,
+      'read_at': '2026-10-10T03:01:00Z',
+    });
+    await tester.pump();
+    response.complete({..._message(100), 'body': '먼저 읽은 메시지'});
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('chat-message-100')), findsOneWidget);
+    expect(find.byKey(const ValueKey('chat-unread-receipt-100')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final outgoingScope in [
     (name: 'account', userHash: 'patient-b', linkId: 17),
     (name: 'link', userHash: 'patient-a', linkId: 18),

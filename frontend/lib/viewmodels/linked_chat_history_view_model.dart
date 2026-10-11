@@ -47,6 +47,8 @@ class LinkedChatHistoryViewModel extends ChangeNotifier {
   bool _foreground = true;
   bool _markingRead = false;
   int? _lastMarkedId;
+  int? _peerReadThrough;
+  DateTime? _peerReadAt;
 
   // Function Name: LinkedChatHistoryViewModel
   // Description: Subscribes to borrowed realtime adapters for one immutable conversation scope.
@@ -350,7 +352,15 @@ class LinkedChatHistoryViewModel extends ChangeNotifier {
     final byId = {for (final message in _messages) message.messageId: message};
     for (final message in incoming) {
       if (message.linkId != linkId) continue;
-      final knownReadAt = byId[message.messageId]?.readAt;
+      var knownReadAt = byId[message.messageId]?.readAt;
+      // 본문보다 먼저 받은 읽음 알림도 늦게 도착한 내 메시지에 적용한다.
+      final peerReadAt = _peerReadAt;
+      if (message.senderHash == userHash &&
+          message.messageId <= (_peerReadThrough ?? 0) &&
+          peerReadAt != null &&
+          (knownReadAt == null || peerReadAt.isAfter(knownReadAt))) {
+        knownReadAt = peerReadAt;
+      }
       byId[message.messageId] =
           knownReadAt != null &&
               (message.readAt == null || message.readAt!.isBefore(knownReadAt))
@@ -446,6 +456,13 @@ class LinkedChatHistoryViewModel extends ChangeNotifier {
       );
       final readAt = DateTime.tryParse(event['read_at']?.toString() ?? '');
       if (through == null || readAt == null) return;
+      // 같은 세션 안에서 읽음 경계는 전진만 하며 다른 대화로 넘기지 않는다.
+      if (_peerReadThrough == null ||
+          through > _peerReadThrough! ||
+          (through == _peerReadThrough && readAt.isAfter(_peerReadAt!))) {
+        _peerReadThrough = through;
+        _peerReadAt = readAt;
+      }
       _merge([
         for (final m in _messages)
           if (m.senderHash == userHash && m.messageId <= through)

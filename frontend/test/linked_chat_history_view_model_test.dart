@@ -17,6 +17,71 @@ import 'package:medbuddy_frontend/viewmodels/linked_chat_history_view_model.dart
 // Description: Registers deterministic state-machine tests without real sockets or accounts.
 // Parameters: None. Returns: None.
 void main() {
+  for (final event in [
+    {'link_id': 99, 'reader_hash': 'peer'},
+    {'link_id': 17, 'reader_hash': 'self'},
+    {'link_id': 17, 'reader_hash': 'peer', 'read_at': 'invalid'},
+  ]) {
+    test('ignored early read event cannot affect a later message: $event', () {
+      final fixture = _HistoryFixture();
+      addTearDown(fixture.dispose);
+      fixture.model.handleEvent({
+        'type': 'chat_read',
+        'through_message_id': 3,
+        'read_at': '2026-10-03T03:02:00Z',
+        ...event,
+      });
+      fixture.model.addMessage(_message(3));
+      expect(fixture.model.messages.single.readAt, isNull);
+    });
+  }
+
+  for (final delivery in ['history', 'send', 'realtime']) {
+    test('early read receipt survives delayed $delivery', () async {
+      final fixture = _HistoryFixture();
+      addTearDown(fixture.dispose);
+      final gate = Completer<List<ChatMessage>>();
+      fixture.control.historyHandler = (_) => gate.future;
+      final pending = fixture.model.refresh(showLoading: true);
+      fixture.model.handleEvent({
+        'type': 'chat_read',
+        'link_id': 17,
+        'reader_hash': 'peer',
+        'through_message_id': 3,
+        'read_at': '2026-10-03T03:02:00Z',
+      });
+      // 뒤늦은 낮은 읽음 경계가 먼저 받은 경계를 되돌리지 않아야 한다.
+      fixture.model.handleEvent({
+        'type': 'chat_read',
+        'reader_hash': 'peer',
+        'through_message_id': 1,
+        'read_at': '2026-10-03T03:01:00Z',
+      });
+      gate.complete(delivery == 'history' ? [_message(3)] : []);
+      await pending;
+      if (delivery == 'send') fixture.model.addMessage(_message(3));
+      if (delivery == 'realtime') {
+        fixture.model.handleEvent({
+          'type': 'chat_message',
+          'message': _wireMessage(3),
+        });
+      }
+      expect(
+        fixture.model.messages.single.readAt,
+        DateTime.utc(2026, 10, 3, 3, 2),
+      );
+      fixture.model.addMessage(_message(4));
+      fixture.model.addMessage(_message(2, sender: 'peer'));
+      expect(fixture.model.messages.last.readAt, isNull);
+      expect(fixture.model.messages.first.readAt, isNull);
+      fixture.model.addMessage(_message(3));
+      expect(
+        fixture.model.messages.singleWhere((m) => m.messageId == 3).readAt,
+        DateTime.utc(2026, 10, 3, 3, 2),
+      );
+    });
+  }
+
   // Enforces transport dependency inversion and rejects widget/navigation/facade coupling.
   test('history owner remains an independent presentation-free library', () {
     final source = File(

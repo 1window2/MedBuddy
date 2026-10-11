@@ -986,6 +986,118 @@ void main() {
     control.dispose();
   });
 
+  for (final hospitals in [false, true]) {
+    for (final confirm in [false, true]) {
+      testWidgets(
+        'care share double dismissal keeps chat: hospital=$hospitals confirm=$confirm',
+        (tester) async {
+          final control = _RetryChatControl(failFirstSend: false);
+          final realtime = _FakeRealtimeService();
+          addTearDown(control.dispose);
+          addTearDown(realtime.dispose);
+          final navigator = GlobalKey<NavigatorState>();
+          await tester.pumpWidget(
+            MaterialApp(
+              navigatorKey: navigator,
+              home: const Scaffold(body: Text('previous screen')),
+            ),
+          );
+          unawaited(
+            navigator.currentState!.push<void>(
+              MaterialPageRoute(
+                builder: (_) => LinkedChatUI(
+                  linkId: 17,
+                  currentUserHash: 'patient-a',
+                  patientHash: 'patient-a',
+                  peerName: '보호자 테스트',
+                  control: control,
+                  realtimeService: realtime,
+                  careSelectorBuilder: (_) => Scaffold(
+                    body: Builder(
+                      builder: (context) => FilledButton(
+                        key: const Key('pick-double-tap-care'),
+                        onPressed: () => Navigator.pop(
+                          context,
+                          NearbyCareSelection(
+                            phoneVerified: false,
+                            place: NearbyCarePlace.fromJson({
+                              if (hospitals)
+                                'hospital_id': 'shared-place'
+                              else
+                                'pharmacy_id': 'shared-place',
+                              'name': '시험 장소',
+                              'address': '서울',
+                              'latitude': 37.55,
+                              'longitude': 126.92,
+                            }),
+                            scheduleDate: DateTime(2026, 10, 5),
+                          ),
+                        ),
+                        child: const Text('선택'),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          await tester.enterText(find.byType(TextField), '유지할 초안');
+          await tester.tap(find.byKey(const ValueKey('chatCareSelector')));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text(hospitals ? '근처 병원' : '근처 약국'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.byKey(const Key('pick-double-tap-care')));
+          await tester.pumpAndSettle();
+          final dismiss = confirm
+              ? find.byKey(const ValueKey('confirmCareShare'))
+              : find.text('취소');
+          // 확인창이 닫히는 동안의 연속 입력도 채팅 화면을 닫으면 안 된다.
+          await tester.tap(dismiss);
+          await tester.tap(dismiss, warnIfMissed: false);
+          await tester.pumpAndSettle();
+          expect(find.byType(LinkedChatUI), findsOneWidget);
+          expect(navigator.currentState!.canPop(), isTrue);
+          expect(control.sendAttempts, confirm ? 1 : 0);
+          expect(
+            tester.widget<TextField>(find.byType(TextField)).controller!.text,
+            '유지할 초안',
+          );
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+      );
+    }
+  }
+
+  testWidgets('care share rapid opening creates only one option sheet', (
+    tester,
+  ) async {
+    final control = _RetryChatControl(failFirstSend: false);
+    final realtime = _FakeRealtimeService();
+    addTearDown(control.dispose);
+    addTearDown(realtime.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkedChatUI(
+          linkId: 17,
+          currentUserHash: 'patient-a',
+          patientHash: 'patient-a',
+          control: control,
+          realtimeService: realtime,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final selector = find.byKey(const ValueKey('chatCareSelector'));
+    await tester.tap(selector);
+    await tester.tap(selector, warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(find.byType(BottomSheet, skipOffstage: false), findsOneWidget);
+    expect(control.sendAttempts, 0);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   for (final mode in [
     (hospitals: true, phoneVerified: false),
     (hospitals: false, phoneVerified: false),
