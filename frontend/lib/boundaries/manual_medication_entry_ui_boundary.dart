@@ -91,6 +91,7 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
   String _selectedImagePath = '';
   String _errorMessage = '';
   bool _isSaving = false;
+  bool _isPickingImage = false;
   // 저장 콜백을 기다리는 동안에만 true. 화면 잠금용 _isSaving과 달리 저장 성공 뒤에는 바로 내려간다.
   bool _isSaveRequestPending = false;
 
@@ -244,7 +245,9 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
             IconButton(
               key: const Key('manual-medication-photo'),
               tooltip: _text.addPhoto,
-              onPressed: _isSaving ? null : _selectImageSource,
+              onPressed: _isSaving || _isPickingImage
+                  ? null
+                  : _selectImageSource,
               icon: const Icon(Icons.add_photo_alternate_outlined),
               color: MedBuddyColors.primary,
             ),
@@ -330,7 +333,9 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
             // 매개변수:
             // - 없음.
             // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-            onPressed: _isSaving ? null : _removeSelectedImage,
+            onPressed: _isSaving || _isPickingImage
+                ? null
+                : _removeSelectedImage,
             style: IconButton.styleFrom(
               backgroundColor: Colors.black.withValues(alpha: 0.68),
               foregroundColor: Colors.white,
@@ -610,7 +615,7 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
       ),
       child: FilledButton.icon(
         key: const Key('manual-medication-save'),
-        onPressed: _isSaving ? null : _submit,
+        onPressed: _isSaving || _isPickingImage ? null : _submit,
         style: FilledButton.styleFrom(
           minimumSize: const Size.fromHeight(56),
           backgroundColor: MedBuddyColors.primary,
@@ -651,6 +656,16 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
   // - 없음.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _selectImageSource() async {
+    if (!mounted || _isSaving || _isPickingImage) return;
+    setState(() => _isPickingImage = true);
+    try {
+      await _pickImage();
+    } finally {
+      if (mounted) setState(() => _isPickingImage = false);
+    }
+  }
+
+  Future<void> _pickImage() async {
     final source = await showMedicationPhotoSourceOptions(
       context: context,
       language: _isEnglish ? 'en' : 'ko',
@@ -708,6 +723,7 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
   // - 없음.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
   void _removeSelectedImage() {
+    if (!mounted || _isSaving || _isPickingImage) return;
     final removedPath = _selectedImagePath;
     // 함수이름: _removeSelectedImage.setState callback
     // 함수역할: 사진을 포함한 약품명·처방일·복용 일정 직접 입력의 입력·요청 상태를 `_selectedImagePath = ''`로 갱신한다.
@@ -785,7 +801,7 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
   // - 없음.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _submit() async {
-    if (_isSaving) {
+    if (!mounted || _isSaving || _isPickingImage) {
       return;
     }
     FocusScope.of(context).unfocus();
@@ -837,6 +853,8 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
       _discardPickedImage(submittedImagePath);
       return;
     }
+    // 뒤로가기 전환 중에는 mounted가 참이어도 아래 화면을 다시 닫으면 안 된다.
+    if (ModalRoute.of(context)?.isCurrent != true) return;
     final completedResult = result;
     if (completedResult == null || !completedResult.isCompleted) {
       // 함수이름: _submit.setState callback
@@ -1222,9 +1240,8 @@ class _ManualMedicationText {
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get saveFailed => isEnglish
-      ? 'Could not save the medication plan.'
-      : '복약 정보를 저장하지 못했습니다.';
+  String get saveFailed =>
+      isEnglish ? 'Could not save the medication plan.' : '복약 정보를 저장하지 못했습니다.';
   // 함수이름: photoSelectionFailed
   // 함수역할: 현재 언어와 입력값에 맞춰 "사진을 불러오지 못했습니다. 카메라와 사진 접근 권한을 확인한 뒤 다시 시도해주세요." 문구를 제공한다.
   // 매개변수:

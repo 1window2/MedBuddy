@@ -10,6 +10,18 @@ Future<ImageSource?> showMedicationPhotoSourceOptions({
   required String language,
 }) {
   final isEnglish = isEnglishLanguage(language);
+  var responded = false;
+  // 닫히는 중인 선택창의 연속 입력이 아래 등록 화면까지 닫지 않게 한다.
+  void select(BuildContext sheetContext, ImageSource source) {
+    if (responded ||
+        !sheetContext.mounted ||
+        ModalRoute.of(sheetContext)?.isCurrent != true) {
+      return;
+    }
+    responded = true;
+    Navigator.pop(sheetContext, source);
+  }
+
   return showModalBottomSheet<ImageSource>(
     context: context,
     isScrollControlled: true,
@@ -26,13 +38,13 @@ Future<ImageSource?> showMedicationPhotoSourceOptions({
             _PhotoSourceRow(
               icon: Icons.photo_camera_outlined,
               label: isEnglish ? 'Take Photo' : '카메라로 촬영',
-              onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
+              onTap: () => select(sheetContext, ImageSource.camera),
             ),
             const Divider(height: 1, color: MedBuddyColors.divider),
             _PhotoSourceRow(
               icon: Icons.photo_library_outlined,
               label: isEnglish ? 'Choose From Gallery' : '갤러리에서 선택',
-              onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
+              onTap: () => select(sheetContext, ImageSource.gallery),
             ),
           ],
         ),

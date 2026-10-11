@@ -94,6 +94,22 @@ class _CountingCheckSavedMedication extends CheckSavedMedication {
   }
 }
 
+// 선택 모드를 실제 홈 셸 안에서 검증할 수 있도록 활성 약 한 개를 제공한다.
+class _SelectableCheckSavedMedication extends CheckSavedMedication {
+  @override
+  Future<List<MedicationDetail>> requestSavedMedicationInfo() async => [
+    MedicationDetail(
+      id: 1,
+      itemName: '선택 테스트 약',
+      efficacy: '',
+      usageMethod: '',
+      warning: '',
+      prescriptionDate: DateTime.now(),
+      totalDays: '7',
+    ),
+  ];
+}
+
 // 클래스명: _HomeReminderViewModel
 // 역할: 홈 기록 안내가 사용하는 사용자 기본 시각과 개별 알림 시각을 고정한다.
 // 주요 책임: 저장소를 조회하지 않고 테스트별 일정 시각을 제공한다.
@@ -757,7 +773,9 @@ void main() {
 
   // 홈 선택창에서 고른 병원·약국만 해당 지도 화면으로 연결한다.
   for (final hospitals in [true, false]) {
-    testWidgets('home selects nearby care hospitals=$hospitals', (tester) async {
+    testWidgets('home selects nearby care hospitals=$hospitals', (
+      tester,
+    ) async {
       _setViewport(tester, const Size(390, 844));
       final viewModel = MedBuddyViewModel();
       addTearDown(viewModel.dispose);
@@ -767,14 +785,18 @@ void main() {
           child: const MaterialApp(home: HomeScreen()),
         ),
       );
-      tester.widget<InputPrescriptionUI>(find.byType(InputPrescriptionUI))
-          .onNearbyPharmacyRequested?.call();
+      tester
+          .widget<InputPrescriptionUI>(find.byType(InputPrescriptionUI))
+          .onNearbyPharmacyRequested
+          ?.call();
       await tester.pumpAndSettle();
       expect(find.byType(CheckNearbyPharmacyUI), findsNothing);
       await tester.tap(find.text(hospitals ? '근처 병원' : '근처 약국'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
-      final screen = tester.widget<CheckNearbyPharmacyUI>(find.byType(CheckNearbyPharmacyUI));
+      final screen = tester.widget<CheckNearbyPharmacyUI>(
+        find.byType(CheckNearbyPharmacyUI),
+      );
       expect(screen.hospitals, hospitals);
       expect(screen.selectionMode, isFalse);
       await tester.pumpWidget(const SizedBox.shrink());
@@ -895,6 +917,54 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(checkSavedMedication.requestCount, 2);
+  });
+
+  testWidgets('복약함 뒤로가기는 선택만 취소하고 두 번째에 홈으로 이동한다', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    _setViewport(tester, const Size(390, 844));
+    final viewModel = MedBuddyViewModel(
+      checkSavedMedication: _SelectableCheckSavedMedication(),
+    );
+    addTearDown(viewModel.dispose);
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: viewModel,
+        child: const MaterialApp(home: HomeScreen()),
+      ),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('bottomNavigation-medicationCabinet')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('saved-medication-select')));
+    await tester.pumpAndSettle();
+    expect(find.text('복약 선택'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('복약 선택'), findsNothing);
+    expect(
+      tester
+          .widget<MedBuddyBottomNavigationUI>(
+            find.byType(MedBuddyBottomNavigationUI),
+          )
+          .selectedDestination,
+      MedBuddyDestination.medicationCabinet,
+    );
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<MedBuddyBottomNavigationUI>(
+            find.byType(MedBuddyBottomNavigationUI),
+          )
+          .selectedDestination,
+      MedBuddyDestination.home,
+    );
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 20));
   });
 
   // Function Name: testWidgets callback

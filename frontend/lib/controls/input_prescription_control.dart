@@ -51,6 +51,8 @@ class InputPrescription {
   final bool _ownsLocalOcrBoundary;
   final Duration requestTimeout;
   final Set<Completer<void>> _abortTriggers = <Completer<void>>{};
+  int _selectionGeneration = 0;
+  bool _disposed = false;
   int _lastRawMedicationCount = 0;
   int _lastParsedMedicationCount = 0;
   int _lastSkippedMedicationCount = 0;
@@ -143,6 +145,8 @@ class InputPrescription {
   Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
     PrescriptionImageSelectedCallback? onImageSelected,
   }) async {
+    if (_disposed) return null;
+    final generation = ++_selectionGeneration;
     final image = await _imagePicker.pickImage(
       source: ImageSource.gallery,
       imageQuality: 82,
@@ -153,12 +157,21 @@ class InputPrescription {
     if (image == null) {
       return null;
     }
+    if (!_isCurrentSelection(generation)) {
+      await _discardUnusedImage(image.path, ownedByApp: false);
+      return null;
+    }
     // The picker reuses its cache file name when the same photo is chosen again; that file now holds the new pick and must not be deleted with the previous selection.
     await _releaseSelectedImage(
       deleteFile: image.path != _lastSelectedImagePath,
     );
+    if (!_isCurrentSelection(generation)) {
+      await _discardUnusedImage(image.path, ownedByApp: false);
+      return null;
+    }
     _prepareSelectedImage(image.path, ownedByApp: false);
     onImageSelected?.call();
+    if (!_isCurrentSelection(generation)) return null;
     return _requestPrescriptionAnalysis(
       image,
       imageSource: ImageSource.gallery,
@@ -176,9 +189,21 @@ class InputPrescription {
     XFile image, {
     PrescriptionImageSelectedCallback? onImageSelected,
   }) async {
-    await clearSelectedImage();
+    final generation = ++_selectionGeneration;
+    if (!_disposed) {
+      await _releaseSelectedImage(
+        deleteFile: image.path != _lastSelectedImagePath,
+      );
+    }
+    if (!_isCurrentSelection(generation)) {
+      await _discardUnusedImage(image.path, ownedByApp: true);
+      throw StateError('Prescription analysis was cancelled.');
+    }
     _prepareSelectedImage(image.path, ownedByApp: true);
     onImageSelected?.call();
+    if (!_isCurrentSelection(generation)) {
+      throw StateError('Prescription analysis was cancelled.');
+    }
     return _requestPrescriptionAnalysis(image, imageSource: ImageSource.camera);
   }
 
@@ -239,6 +264,10 @@ class InputPrescription {
             );
       } finally {
         _abortTriggers.remove(abortTrigger);
+      }
+      // 중단을 지원하지 않는 응답 경계도 취소된 결과로 상태를 되살리지 못하게 한다.
+      if (abortTrigger.isCompleted) {
+        throw StateError('Prescription analysis was cancelled.');
       }
       failureStage = 'response parsing';
       final responseBody = ApiResponseParser.decodeBody(response);
@@ -346,7 +375,25 @@ class InputPrescription {
   // - None.
   // Returns:
   // - Future<void>: asynchronous completion without a result payload.
-  Future<void> clearSelectedImage() => _releaseSelectedImage(deleteFile: true);
+  Future<void> clearSelectedImage() {
+    _selectionGeneration++;
+    return _releaseSelectedImage(deleteFile: true);
+  }
+
+  // 선택창이나 이전 사진 정리를 기다린 요청은 취소 후 새 흐름을 시작할 수 없다.
+  bool _isCurrentSelection(int generation) =>
+      !_disposed && generation == _selectionGeneration;
+
+  Future<void> _discardUnusedImage(
+    String imagePath, {
+    required bool ownedByApp,
+  }) async {
+    if (imagePath == _lastSelectedImagePath ||
+        _activeImageOperations.containsKey(imagePath)) {
+      return;
+    }
+    await _deleteImageFile(imagePath, ownedByApp: ownedByApp);
+  }
 
   // Function Name: _releaseSelectedImage
   // Description: Releases the preview references of the selected image, waits for OCR still reading it, and then removes its file under the ownership rules of clearSelectedImage unless the caller keeps the file.
@@ -363,9 +410,16 @@ class InputPrescription {
       return;
     }
     await activeOperation?.future;
-    if (!deleteFile) {
+    if (!deleteFile || imagePath == _lastSelectedImagePath) {
       return;
     }
+    await _deleteImageFile(imagePath, ownedByApp: ownedByApp);
+  }
+
+  Future<void> _deleteImageFile(
+    String imagePath, {
+    required bool ownedByApp,
+  }) async {
     if (!ownedByApp) {
       // The Android picker hands back a resized copy in the app cache, not the user's photo; the helper refuses any path outside the app temporary directory.
       await deleteAppTempFile(imagePath);
@@ -715,6 +769,7 @@ class InputPrescription {
   // Returns:
   // - No return value.
   void cancelPendingRequests() {
+    _selectionGeneration++;
     for (final abortTrigger in _abortTriggers.toList(growable: false)) {
       if (!abortTrigger.isCompleted) {
         abortTrigger.complete();
@@ -730,6 +785,8 @@ class InputPrescription {
   // Returns:
   // - No return value.
   void dispose() {
+    if (_disposed) return;
+    _disposed = true;
     unawaited(clearSelectedImage());
     cancelPendingRequests();
     if (_ownsClient) {
