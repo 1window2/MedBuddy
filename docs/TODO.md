@@ -9,6 +9,25 @@ what could be decided and corrected without an external account is corrected
 on `beta/v0.2.2`. The changes are listed in the
 [v0.2.2 notes](releases/v0.2.2-beta.md).
 
+### October 11 integration verification
+
+The local audit changes were integrated with upstream `e32c183` without
+rewriting either migration history. Final automated checks on this combined
+source passed:
+
+- Flutter: 1,939 passed, 8 skipped; static analysis reported no issues.
+- The map-marker suite passed all 11 tests with a synthetic client ID,
+  including the 7 skipped in the normal run. The remaining skipped Flutter
+  test requires Windows symbolic-link permission.
+- Backend: 1,716 passed and 68 subtests passed; 2 PostgreSQL integration tests
+  were skipped and 3 Bash-dependent release-script cases were deselected on
+  Windows. Tests used isolated SQLite and blocked external HTTP/Redis access.
+- Class and overall-sequence PNGs were regenerated from their PlantUML sources.
+
+These are automated integration checks, not a new emulator, physical-device,
+FCM delivery or iOS acceptance run. Earlier device records below retain their
+original scope and date.
+
 ### Blocking a 1.0.0 release
 
 These need the owner, an external account or a physical device, and are not
@@ -24,7 +43,8 @@ closed by any code on this branch:
 - [ ] Device verification of this branch on a physical phone; the lists
       below under "without a device check" still apply as well. A signed build
       needs `beta/v0.2.2` added to the `beta-android` environment.
-      Checked on October 11 with a debug build on an Android 14 emulator
+      Independently recorded upstream on October 11 with a debug build on an
+      Android 14 emulator
       against a local server: today's schedule hides medications that are not
       due; a slot whose only medication is not due today can still have its
       reminder switched on; alarms for a Monday-Wednesday-Friday medication
@@ -155,8 +175,77 @@ Found during the October 8 checks:
       longer lands on the Firebase fallback channel on a fresh install; moving
       chat pushes to the chat channel must wait until clients older than 0.2.1
       are gone.
+- [x] Switching a reminder off and changing its time in the same save now
+      persists both atomically. No body or `{}` preserves the existing time;
+      an hour alone defaults minutes to `00`, and minutes alone is rejected.
+      An older server that ignores it is not reported as a successful time save.
+      Regressions: [disable API](../backend/tests/test_disabled_reminder_time.py),
+      [client request](../frontend/test/set_notification_control_test.dart) and
+      [schedule settings](../frontend/test/check_schedule_ui_boundary_test.dart).
+      October 10 live check: while OFF, `18:55` changed to `19:55` and persisted;
+      it was then restored to `18:55`, still OFF.
 
-Reviewed for v0.2.1 and deferred:
+Confirmed in the October 10 working tree (live checks noted separately):
+
+The October 10 audit and APK/backend installation preceded this integration.
+Those live checks do not certify the October 11 combined branch.
+Only the live checks explicitly recorded here are complete; the unchecked
+device items remain open. This pass does not certify physical-device FCM,
+battery-saver or iOS behavior.
+
+- [x] Settings reads, manual saves and device-language updates are serialized;
+      failed server saves retain local edits, and a late previous-account
+      bootstrap cannot replace the current account's language.
+      Regressions: [settings saves](../frontend/test/medbuddy_user_setting_view_model_test.dart)
+      and [session language](../frontend/test/runtime_locale_session_test.dart).
+- [x] Missing or blank push tokens remain pending for retry without another
+      permission prompt. Failed Android channel creation is retried, with
+      concurrent initializers sharing one attempt.
+      Regressions: [push registration](../frontend/test/push_notification_service_test.dart)
+      and [channel recovery](../frontend/test/notification_channel_recovery_test.dart).
+- [x] Backend startup/shutdown failures still close the remaining workers and
+      resources. Push-token revocation checks ownership in the update, so an
+      old account's logout cannot disable a token transferred to a new account.
+      Regressions: [backend cleanup and revocation](../backend/tests/test_backend_environment_regressions.py).
+- [x] Prescription comparison treats `2`, `2회` and `1일 2회`, and `7` and
+      `7일`, as equivalent labels. Actual counts, dosage units and additional
+      directions remain distinct; displayed source values are preserved.
+      Regressions: [schedule comparison](../backend/tests/test_prescription_change_schedule.py).
+- [x] Unlinking requires explicit confirmation explaining stopped schedule
+      sharing, deletion of link notification settings and shared chat history,
+      and preservation of medications and dose records. Cancel is initially
+      focused; dismissal sends no request, and duplicate or stale confirmations
+      cannot submit another unlink. Regressions:
+      [unlink confirmation](../frontend/test/unlink_confirmation_ui_test.dart).
+      October 10 live check: the new confirmation opened, and cancelling it
+      preserved the relationship. Confirmed deletion is outside this live check.
+- [x] October 10 live widget check: offline completion reached `2/7` and
+      survived force-stop/restart; reconnect synchronized it, then undo returned
+      the count to `0/7`. This checks dose-record persistence and synchronization,
+      not reboot alarms or the 12-hour reminder worker.
+
+Significant October 11 integration regressions (automated coverage, not device acceptance):
+
+- [x] Delayed medication/chat actions cannot target newly allocated SQLite IDs;
+      late push rejection matches the observed registration version, including
+      same-owner re-registration. Existing rows and both migration histories
+      are preserved through merge head `f2c8a6d4e901`. Regressions:
+      [delayed actions](../backend/tests/test_delayed_action_regressions.py),
+      [ID migration](../backend/tests/test_resource_id_migration.py) and
+      [migration graph](../backend/tests/test_database_migrations.py).
+      IDs deleted before the ID migration remain a rollout limitation; see
+      [deployment precautions](Production%20Deployment.md#delayed-request-rollout-d19e7c4b2a60).
+- [x] Cancelled or superseded picker/OCR/HTTP work cannot restore old results;
+      cleared/disposed medication-save state cannot start later writes, attach
+      photos or refresh a new session. Regressions:
+      [prescription races](../frontend/test/prescription_input_race_test.dart) and
+      [save lifecycle](../frontend/test/saved_medication_save_flow_test.dart).
+      A server write accepted before cancellation is not rolled back locally.
+- [x] Reminder save/cancel and reconciliation preserve ordering and session
+      ownership; stale reads do not undo newer settings. Regression:
+      [reminder races](../frontend/test/reminder_interaction_race_test.dart).
+
+Reviewed for v0.2.1 (unchecked items remain deferred):
 
 - [ ] Ranking fuzzy catalogue candidates by matched fragments raised recall on
       a synthetic catalogue from 5 to 189 of 200, but every name it moves from
@@ -176,6 +265,11 @@ Reviewed for v0.2.1 and deferred:
       decisions.
 - [ ] Database: 31 of 64 secondary indexes have no query that uses them, a
       stored course-end column and `pg_trgm` would need migrations.
+- [x] With the medication box in selection mode, the first back press now
+      ends selection only; the second returns to Home. Automated regression:
+      [cabinet back navigation](../frontend/test/input_prescription_ui_boundary_test.dart).
+      This exact sequence passed the October 10 final-APK live check; the
+      integrated production path retains the upstream back handler.
 - Decided, not planned: backend controls keep querying ORM models directly.
   Only three of fourteen models have a repository (the ones several controls
   share), and controls reference models in about 290 places. Wrapping the rest
@@ -187,21 +281,46 @@ Reviewed for v0.2.1 and deferred:
       polled every 15 seconds under a pushed screen (there is no route
       observer to pause it). The merged facade status message is read only by
       tests.
-- [ ] Class diagrams: the operations and classes added in v0.2.1 are not
-      drawn, 195 code classes are in no class diagram although the README
-      calls the full diagram complete, and stereotypes and package placement
-      differ between the full diagram and the feature diagrams. Owner
-      decisions on scope and vocabulary.
+- [x] Backend tests override the Redis URL and block real Redis connections,
+      including explicitly constructed clients, so they cannot write to a
+      developer's Redis. Regression:
+      [test-environment isolation](../backend/tests/test_backend_environment_regressions.py).
+- [x] UML scope is explicitly major responsibilities and contracts, not an
+      exhaustive class inventory. The integrated class and overall sequence
+      sources cover the significant v0.2.2 changes; minor UI fixes remain in
+      tests and release notes. See the [diagram guide](UML/class/README.md).
+- [ ] Class diagrams: align stereotypes and package placement between the
+      overall and feature diagrams when those diagrams next change. Unchanged
+      feature diagrams are not a complete inventory of v0.2.2 operations.
 
-Defects and limits recorded during the v0.2.0 audits and not changed:
+Defects and limits recorded during the v0.2.0 audits:
 
+- [x] Moving a reminder to earlier than now preserves today's future old alarm;
+      an unchanged snooze is also preserved. This retains the remote branch's
+      no-missed-reminder policy, superseding the October 10 cancellation rule.
+      Regression:
+      [reminder content and cancellation](../frontend/test/medication_notification_content_test.dart).
+- [x] The reminder worker overlays the same patient's current-day durable
+      offline dose records without uploading them or activating an account.
+      Undo/retake, partial completion, receipt races and midnight remain
+      covered by [background refresh regressions](../frontend/test/medication_reminder_refresh_factory_test.dart).
+- [x] "Use device language" synchronizes at startup, on runtime locale changes
+      and on resume, with retry after failed lookup or save. Fixed language
+      modes remain fixed. Regression:
+      [runtime locale and session isolation](../frontend/test/runtime_locale_session_test.dart).
 - [ ] The release gate does not compare the client's API contract default with
       `backend/API_CONTRACT_VERSION`.
-- [ ] Tests do not cover weekly or interval frequencies, fuzzy candidate
-      recall on a realistic catalog, or a PostgreSQL run of the full test suite
+- [x] Weekly and interval frequencies have shared backend/client vectors:
+      [backend rhythms](../backend/tests/test_medication_dose_rhythm.py),
+      [client rhythms](../frontend/test/medication_dose_rhythm_test.dart) and
+      [course policy](../backend/tests/test_medication_course_policy.py).
+- [ ] Tests do not cover fuzzy candidate recall on a realistic catalog or a
+      PostgreSQL run of the full test suite
       (CI runs only the migration round trip and two integration files on
-      PostgreSQL 16). Nothing ties the entities to the migrations, and the
-      server strings the client matches are not pinned by a test.
+      PostgreSQL 16). Missing ORM columns and both migration branches have
+      [regression coverage](../backend/tests/test_database_migrations.py), but
+      complete ORM/migration drift coverage and pinning the server strings the
+      client matches remain open.
 
 Platform and pipeline items reviewed for v0.2.1 and deferred:
 
@@ -218,10 +337,11 @@ Platform and pipeline items reviewed for v0.2.1 and deferred:
       the live edge first, because a false rejection blocks a release.
 - [ ] Dependabot does not watch the `gradle` and `docker` ecosystems. Owner
       decision on pull-request volume.
-- [ ] Exact alarms on Android 14 and later: `SCHEDULE_EXACT_ALARM` is denied by
-      default and nothing requests it, so reminders fall back to inexact
-      delivery. Needs an owner decision (settings prompt or `USE_EXACT_ALARM`)
-      and an Android 14+ device.
+- [x] The Android exact-alarm notice opens the system permission screen and
+      return-to-app refresh upgrades pending alarms. Regression:
+      [exact reminder notice](../frontend/test/exact_reminder_notice_test.dart).
+      The upstream October 11 emulator check is recorded above; physical-device
+      acceptance remains open.
 - [ ] The merged manifest still carries `RECORD_AUDIO` from the camera plugin
       although capture disables audio. Removal needs a capture check on a
       device.
@@ -230,10 +350,9 @@ Platform and pipeline items reviewed for v0.2.1 and deferred:
       decision.
 - [ ] The Android instrumented tests run in no workflow; that needs an emulator
       job. A text-level contract test covers the widget names and keys instead.
-- [ ] This file and the beta scope still describe the open App Check and
-      acceptance gates as v0.2.0 release conditions although v0.2.0-beta was
-      published with them open. Owner decision: retitle them as Google Play
-      release criteria or record the exception.
+- [x] App Check is explicitly a Google Play/public-release gate, with the
+      limited off-Play testing exception recorded below. This is a documentation
+      correction, not completion of the App Check or device acceptance gates.
 
 Unexplained observations from v0.2.0, analysed without a confirmed cause:
 
@@ -271,10 +390,11 @@ provider outage/quota behavior and the deferred physical-device checks remain
 separate release gates. Core and catalog readiness return HTTP 200, and public
 feature routes still reach FastAPI authentication. Do not commit or print keys.
 
-## v0.2.0 release blocker: restore Firebase App Check with Play Integrity
+## Google Play release blocker: restore Firebase App Check with Play Integrity
 
 **Status:** Deferred only for direct-install functionality testing. This item
-must be completed before the public v0.2.0 Google Play release.
+must be completed before public Google Play distribution, including a 1.0.0
+release. The published off-Play betas do not close this gate.
 
 On October 2, Firebase Console showed `com.medbuddy.app` registered with Play
 Integrity. The signed-in account had no Google Play developer account; the
@@ -309,7 +429,7 @@ Check enabled.
       project used by the MedBuddy Android client and backend.
 - [ ] Verify the production signing certificate SHA-256 fingerprint in Firebase
       Android app and App Check registration settings.
-- [ ] Configure Firebase App Check verdict requirements for the intended v0.2.0
+- [ ] Configure Firebase App Check verdict requirements for the intended public
       distribution channels and confirm the production device-integrity level.
 - [ ] Configure the dedicated read-only preflight identity and protected
       `beta-android` variables, then pass `check_release_app_check.py` against
