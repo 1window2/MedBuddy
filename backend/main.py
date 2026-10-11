@@ -6,7 +6,7 @@ import logging
 import time
 from functools import partial
 from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 
 from alembic.util.exc import CommandError
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -277,41 +277,42 @@ def configure_logging() -> None:
 # - 애플리케이션 실행 구간에 None을 한 번 yield한다.
 @asynccontextmanager
 async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
-    maintenance_runner: PeriodicDataMaintenanceRunner | None = None
-    alert_outbox_worker = CaregiverAlertOutboxWorker(
-        SessionLocal,
-        get_push_notification_boundary,
-        settings.CAREGIVER_ALERT_OUTBOX_POLL_SECONDS,
-    )
-    alert_outbox_worker.start()
-    app.state.caregiver_alert_outbox_worker = alert_outbox_worker
-    app.state.readiness_probe_cache.reset()
-    app.state.catalog_readiness_probe_cache.reset()
-    chat_worker = ChatNotificationWorker(ProcessChatNotifications(
-        SessionLocal, get_push_notification_boundary,
-        app.state.chat_connection_manager.is_user_connected,
-        partial(reserve_chat_push, app.state.request_rate_limit_store),
-    ))
-    chat_worker.start()
-    app.state.chat_notification_worker = chat_worker
-    if settings.PERIODIC_MAINTENANCE_ENABLED:
-        maintenance_runner = PeriodicDataMaintenanceRunner(SessionLocal)
-        maintenance_runner.start()
-        app.state.data_maintenance_runner = maintenance_runner
-    try:
+    async with AsyncExitStack() as cleanup:
+        # 시작 도중이나 정리 중 오류가 나도 작업자를 멈춘 뒤 모든 연결을 정리한다.
+        for close in (
+            close_hospital_boundary,
+            close_pharmacy_boundary,
+            close_public_drug_boundaries,
+            close_medication_detail_cache,
+            close_gemini_clients,
+            close_pill_identification_boundaries,
+            app.state.request_rate_limit_store.close,
+        ):
+            cleanup.push_async_callback(close)
+        alert_outbox_worker = CaregiverAlertOutboxWorker(
+            SessionLocal,
+            get_push_notification_boundary,
+            settings.CAREGIVER_ALERT_OUTBOX_POLL_SECONDS,
+        )
+        cleanup.push_async_callback(alert_outbox_worker.stop)
+        alert_outbox_worker.start()
+        app.state.caregiver_alert_outbox_worker = alert_outbox_worker
+        app.state.readiness_probe_cache.reset()
+        app.state.catalog_readiness_probe_cache.reset()
+        chat_worker = ChatNotificationWorker(ProcessChatNotifications(
+            SessionLocal, get_push_notification_boundary,
+            app.state.chat_connection_manager.is_user_connected,
+            partial(reserve_chat_push, app.state.request_rate_limit_store),
+        ))
+        cleanup.push_async_callback(chat_worker.stop)
+        chat_worker.start()
+        app.state.chat_notification_worker = chat_worker
+        if settings.PERIODIC_MAINTENANCE_ENABLED:
+            maintenance_runner = PeriodicDataMaintenanceRunner(SessionLocal)
+            cleanup.push_async_callback(maintenance_runner.stop)
+            maintenance_runner.start()
+            app.state.data_maintenance_runner = maintenance_runner
         yield
-    finally:
-        await chat_worker.stop()
-        await alert_outbox_worker.stop()
-        if maintenance_runner is not None:
-            await maintenance_runner.stop()
-        await app.state.request_rate_limit_store.close()
-        await close_pill_identification_boundaries()
-        await close_gemini_clients()
-        await close_medication_detail_cache()
-        await close_public_drug_boundaries()
-        await close_pharmacy_boundary()
-        await close_hospital_boundary()
 
 
 # Function Name: create_app

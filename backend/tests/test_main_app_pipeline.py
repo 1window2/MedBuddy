@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -52,6 +53,7 @@ from core.request_rate_limits import (
     resolve_daily_quota,
 )
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
+from entities.nearby_hospital_entity import HospitalLocationPage
 from entities.patient_caregiver_link_entity import _PatientCaregiverLink
 from entities.user_account_entity import _UserAccount, utc_now
 from support.db import make_engine, make_session_factory, seed_account, seed_medication
@@ -1344,6 +1346,14 @@ async def test_costly_routes_have_a_daily_quota_per_account_and_per_address(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "HOSPITAL_SEARCH_DAILY_LIMIT", 2)
+    # 외부 병원·공휴일 조회만 대체하고 실제 라우터·Control·인증·쿼터 검증은 유지한다.
+    hospital_api = SimpleNamespace(fetchNearbyPage=AsyncMock(return_value=HospitalLocationPage(
+        records=(), total_count=0, row_count=0, page_size=30,
+    )))
+    monkeypatch.setattr(dependencies, "_hospital_api", hospital_api)
+    monkeypatch.setattr(dependencies, "_korean_holiday_api", SimpleNamespace(
+        fetchMonth=AsyncMock(return_value=frozenset()),
+    ))
     search = {"latitude": 37.5, "longitude": 127.0}
 
     async with _client(pipeline.app) as client:
@@ -1357,12 +1367,13 @@ async def test_costly_routes_have_a_daily_quota_per_account_and_per_address(
             "/api/v1/hospitals/nearby", headers=_headers("user-b"), params=search,
         )
 
-    assert [response.status_code == 429 for response in responses] == [False, False, True], [
+    assert [response.status_code for response in responses] == [200, 200, 429], [
         response.text for response in responses
     ]
     assert responses[2].json()["detail"] == DAILY_QUOTA_EXCEEDED_DETAIL
     assert responses[2].headers["retry-after"] == str(86_400 - int(_QUOTA_CLOCK_SECONDS) % 86_400)
-    assert other_account.status_code != 429
+    assert other_account.status_code == 200
+    assert hospital_api.fetchNearbyPage.await_count == 3
     assert ("daily:hospital-search", RateLimitRule(40, 86_400)) in pipeline.store.ip_calls()
     assert [scope for scope, _ in pipeline.store.user_calls("user-a")] == [
         "GET:/api/v1/hospitals/nearby",

@@ -112,6 +112,37 @@ def _isolate_test_environment() -> None:
 _isolate_test_environment()
 
 
+@pytest.fixture(autouse=True)
+def _block_external_redis(monkeypatch: pytest.MonkeyPatch) -> None:
+    from redis.asyncio.connection import AbstractConnection
+    from redis.exceptions import ConnectionError as RedisConnectionError
+
+    # 직접 생성한 클라이언트도 실제 Redis에 닿지 않으며, 주입한 대체 객체는 유지한다.
+    async def reject_connection(self: object) -> None:
+        raise RedisConnectionError("Redis network connections are disabled in backend tests.")
+
+    monkeypatch.setattr(AbstractConnection, "connect", reject_connection)
+
+
+@pytest.fixture(autouse=True)
+def _block_external_http(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+    import requests
+    import urllib.request
+
+    # 인메모리 ASGI·MockTransport는 유지하고 실제 HTTP 전송만 차단한다.
+    def reject_request(*args: object, **kwargs: object) -> None:
+        raise AssertionError("HTTP network connections are disabled in backend tests.")
+
+    async def reject_async_request(*args: object, **kwargs: object) -> None:
+        reject_request()
+
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", reject_request)
+    monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", reject_async_request)
+    monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", reject_request)
+    monkeypatch.setattr(urllib.request.OpenerDirector, "open", reject_request)
+
+
 # Function Name: pytest_sessionfinish
 # Description:
 # - Releases the application engine's connections, if the run imported it, and removes the
