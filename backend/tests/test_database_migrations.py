@@ -22,7 +22,13 @@ def test_empty_database_bootstrap_uses_alembic_and_is_repeatable(tmp_path: Path)
         prepare_database_schema(engine, auto_create=True)
         with engine.connect() as connection:
             verify_database_revision(connection)
-        assert "supports_caregiver_actions" in {
+            for table in ("saved_medications", "chat_messages"):
+                definition = connection.exec_driver_sql(
+                    "SELECT sql FROM sqlite_master WHERE name = ?", (table,),
+                ).scalar_one()
+                assert "AUTOINCREMENT" in definition.upper()
+        assert inspect(engine).has_table("catalog_refresh_state")
+        assert {"supports_caregiver_actions", "registration_version"} <= {
             column["name"] for column in inspect(engine).get_columns("device_push_tokens")
         }
     finally:
@@ -90,7 +96,13 @@ def test_empty_database_is_not_created_when_automatic_setup_is_disabled(tmp_path
 def test_merge_preserves_both_independently_applied_heads(tmp_path: Path) -> None:
     from alembic.script import ScriptDirectory
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
-    assert ScriptDirectory.from_config(config).get_heads() == ["c5e1a7f3b902"]
+    scripts = ScriptDirectory.from_config(config)
+    assert scripts.get_heads() == ["f2c8a6d4e901"]
+    assert set(scripts.get_revision("f2c8a6d4e901").down_revision) == {
+        "c5e1a7f3b902", "d19e7c4b2a60",
+    }
+    for applied_revision in ("c5e1a7f3b902", "d19e7c4b2a60"):
+        assert scripts.get_revision(applied_revision).down_revision == "b3a7d9e2f601"
     for revision in ("a6e2d903bc71", "e4a19c7b520d"):
         url = f"sqlite:///{(tmp_path / f'{revision}.db').as_posix()}"
         config.attributes["database_url"] = url

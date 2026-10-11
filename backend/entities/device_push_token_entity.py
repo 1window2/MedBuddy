@@ -1,6 +1,8 @@
 # 파일명: device_push_token_entity.py
 # 역할: Firebase Cloud Messaging 기기 토큰의 사용자 소유권과 활성 상태를 저장한다.
 
+import secrets
+
 from sqlalchemy import (
     Boolean,
     Column,
@@ -44,3 +46,7 @@ class _DevicePushToken(Base):
     supports_caregiver_actions = Column(Boolean, nullable=False, default=False, server_default="0")
     created_at = Column(DateTime, nullable=False, default=utc_now)
     updated_at = Column(DateTime, nullable=False, default=utc_now, onupdate=utc_now)
+    # 시계·DB 시각 정밀도와 무관하게 재등록 전후의 전송 결과를 구분한다.
+    registration_version = Column(
+        String(32), nullable=False, default=lambda: secrets.token_hex(16), server_default="",
+    )
