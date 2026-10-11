@@ -264,11 +264,17 @@ void main() {
     final todayEntry = history.singleWhere(
       (entry) => entry.payload.split(':')[2] == '$oldTodayId',
     );
-    expect(todayEntry.occurredAt.toLocal().hour, 16);
+    expect(
+      todayEntry.occurredAt.isAtSameMomentAs(today.add(const Duration(hours: 16))),
+      isTrue,
+    );
     final tomorrowEntry = history.singleWhere(
       (entry) => entry.payload.split(':')[2] != '$oldTodayId',
     );
-    expect(tomorrowEntry.occurredAt.toLocal().hour, 8);
+    expect(
+      tomorrowEntry.occurredAt.isAtSameMomentAs(tomorrow.add(const Duration(hours: 8))),
+      isTrue,
+    );
   });
 
   test('a snooze survives refresh after the unchanged original time has passed', () async {
