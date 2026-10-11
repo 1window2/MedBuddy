@@ -1479,43 +1479,12 @@ class _PreviewText {
     DoseCycle cycle, {
     required DateTime? startDate,
     required int courseDays,
-  }) {
-    const koreanWeekdays = ['월', '화', '수', '목', '금', '토', '일'];
-    const englishWeekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final String days;
-    if (cycle.weekdayAnchored) {
-      days = isEnglish
-          ? 'every ${cycle.offsets.map((day) => englishWeekdays[day]).join(', ')}'
-          : '매주 ${cycle.offsets.map((day) => koreanWeekdays[day]).join('·')}요일에만';
-    } else if (cycle.offsets.length > 1) {
-      final dayNumbers = cycle.offsets.map((day) => day + 1);
-      days = isEnglish
-          ? 'on days ${dayNumbers.join(', ')} of every ${cycle.cycleDays}-day cycle counted from the start date'
-          : '복용 시작일을 1일째로 ${cycle.cycleDays}일마다 ${dayNumbers.join('·')}일째에만';
-    } else {
-      days = isEnglish
-          ? 'every ${cycle.cycleDays} days from the start date'
-          : '복용 시작일부터 ${cycle.cycleDays}일마다';
-    }
-    final summary = isEnglish
-        ? 'Not taken every day. Doses and reminders are scheduled $days.'
-        : '매일 복용하는 약이 아닙니다. $days 복용 일정과 알림을 만듭니다.';
-    if (startDate == null || courseDays <= 0) {
-      return summary;
-    }
-    var doseDays = 0;
-    for (var day = 0; day < courseDays; day++) {
-      if (cycle.includes(
-        startDate,
-        DateTime(startDate.year, startDate.month, startDate.day + day),
-      )) {
-        doseDays += 1;
-      }
-    }
-    return isEnglish
-        ? '$summary Within $courseDays total days that is $doseDays dose day(s); check the start date and the total days.'
-        : '$summary 총 투약일 $courseDays일 동안 복용하는 날은 $doseDays일입니다. 복용 시작일과 총 투약일을 확인해주세요.';
-  }
+  }) => describeDoseCycle(
+    cycle,
+    isEnglish: isEnglish,
+    startDate: startDate,
+    courseDays: courseDays,
+  );
   // 함수이름: invalidTotalDays
   // 함수역할: 현재 언어와 입력값에 맞춰 "1일 이상 3650일 이하의 숫자를 입력해주세요." 문구를 제공한다.
   // 매개변수:

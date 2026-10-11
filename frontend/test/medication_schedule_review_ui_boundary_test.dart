@@ -103,6 +103,111 @@ void main() {
 
   // 함수이름: testWidgets 콜백
   // 함수역할:
+  // - 기대 동작: 알약 사진으로 등록하는 약도 매일 복용이 아닌 주기를 고를 수 있고, 고른 주기와 하루 횟수가
+  //   한 문구로 저장되며, 이미 그런 지시가 있는 약은 검토 화면을 거쳐도 매일 복용으로 바뀌지 않는다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  testWidgets('매일 복용이 아닌 주기를 골라 저장할 수 있다', (tester) async {
+    await _setViewport(tester, const Size(376, 856));
+    List<MedicationSchedule>? reviewedSchedules;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          // 함수이름: builder 콜백
+          // 함수역할:
+          // - 복약 일정 검토 화면을 여는 버튼을 주어진 컨텍스트 아래에 구성한다.
+          // 매개변수:
+          // - context (BuildContext): 화면 이동에 사용할 위젯 컨텍스트.
+          // 반환값:
+          // - 대화상자 실행 버튼.
+          builder: (context) => Scaffold(
+            body: Center(
+              child: FilledButton(
+                key: const Key('open-schedule-review'),
+                // 함수이름: onPressed 콜백
+                // 함수역할:
+                // - 복약 일정 검토 화면을 열고 선택 결과를 기록한다.
+                // 매개변수:
+                // - 없음.
+                // 반환값:
+                // - 대화상자 선택 결과 기록 완료.
+                onPressed: () async {
+                  reviewedSchedules = await showMedicationScheduleReview(
+                    context: context,
+                    initialSchedules: [
+                      MedicationSchedule(
+                        medicationName: '사진등록정',
+                        prescriptionDate: DateTime(2026, 10, 7),
+                        dosage: '1정',
+                        intakeTime: '1회',
+                        medicationTime: 28,
+                        scheduleSlotKeys: ['morning'],
+                      ),
+                      MedicationSchedule(
+                        medicationName: '주간정',
+                        prescriptionDate: DateTime(2026, 10, 7),
+                        dosage: '1정',
+                        intakeTime: '주 3회',
+                        medicationTime: 28,
+                        scheduleSlotKeys: ['evening'],
+                      ),
+                    ],
+                    userSetting: const UserSetting(),
+                  );
+                },
+                child: const Text('열기'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('open-schedule-review')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('schedule-review-edit-0')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('schedule-edit-dose-days-notice')),
+      findsNothing,
+    );
+
+    await tester.tap(find.byKey(const Key('schedule-edit-dose-days-주 1회')));
+    await tester.pump();
+    expect(
+      tester
+          .widget<Text>(find.byKey(const Key('schedule-edit-dose-days-notice')))
+          .data,
+      '매일 복용하는 약이 아닙니다. 복용 시작일부터 7일마다 복용 일정과 알림을 만듭니다. '
+      '총 투약일 28일 동안 복용하는 날은 4일입니다. 복용 시작일과 총 투약일을 확인해주세요.',
+    );
+    final secondSlot = find.byKey(const Key('schedule-edit-frequency-2'));
+    await tester.ensureVisible(secondSlot);
+    await tester.tap(secondSlot);
+    await tester.pump();
+    final apply = find.byKey(const Key('schedule-edit-apply'));
+    await tester.ensureVisible(apply);
+    await tester.tap(apply);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('schedule-review-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(reviewedSchedules, hasLength(2));
+    expect(reviewedSchedules?.first.intakeTime, '주 1회, 1일 2회');
+    expect(reviewedSchedules?.first.dailyFrequencyCount, 2);
+    expect(reviewedSchedules?.first.scheduleSlotKeys, ['morning', 'evening']);
+    // 손대지 않은 약의 지시도 검토 화면이 "1회"로 바꾸지 않는다.
+    expect(reviewedSchedules?.last.intakeTime, '주 3회');
+    expect(reviewedSchedules?.last.scheduleSlotKeys, ['evening']);
+    expect(tester.takeException(), isNull);
+  });
+
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
   // - 기대 동작: 큰 글씨와 작은 화면에서도 검토 목록을 스크롤할 수 있다.
   // 매개변수:
   // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.

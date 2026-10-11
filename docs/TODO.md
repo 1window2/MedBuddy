@@ -87,8 +87,9 @@ closed by any code on this branch:
 
 ### Known limits of this branch
 
-- [ ] A medication saved from a pill photograph can only be given a daily
-      count; a non-daily direction needs manual or prescription registration.
+- [ ] A medication saved from a pill photograph can be given four rhythms
+      (every day, every other day, once a week, once a month); others such as
+      named weekdays need manual or prescription registration.
 - [ ] "As needed" directions are scheduled like daily ones, on the slots the
       user confirmed.
 - [ ] A weekly prescription often prints the number of doses as its total
