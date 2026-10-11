@@ -80,6 +80,13 @@ closed by any code on this branch:
   patient's own reminder time.
 - A reminder time moved to earlier than now keeps today's alarm at the old
   time, because cancelling it would leave today's dose without a reminder.
+- The background reminder refresh reads today's schedule through the device's
+  dose store, so that a dose recorded offline is not reminded again. When the
+  store cannot be read, the refresh fails and is retried, leaving the reserved
+  14-day window as it is; it does not fall back to the server's state, which
+  could re-arm a reminder for a dose already taken. A store that stays
+  unreadable therefore stops the window from being extended until the app is
+  opened.
 - Push tokens are disabled when a send to them fails; FCM offers no other way
   to learn that a token is gone.
 - One account may hold 300 saved medications and 20 active links as a

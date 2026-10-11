@@ -297,21 +297,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  // 함수이름: didChangeLocales
-  // 함수역할: 앱이 켜진 채 기기 언어가 바뀌면 "기기 설정 따르기"로 저장된 표시 언어를 다시 맞춰, 예약된 알림과
-  //   서버 푸시의 언어도 기기를 따르게 한다.
-  // 매개변수: locales: 바뀐 기기 언어 목록. 반환값: 없음.
-  @override
-  void didChangeLocales(List<Locale>? locales) {
-    // 저장에 실패해도 화면 언어는 이미 기기를 따르므로 다음 변경이나 재시작 때 다시 맞춘다.
-    unawaited(
-      context
-          .read<MedBuddyViewModel>()
-          .synchronizeDeviceLanguage()
-          .catchError((_) => false),
-    );
-  }
-
   // 함수이름: didChangeAppLifecycleState
   // 함수역할: 앱 복귀 시 즉시 조회하고 비활성 상태에서는 타이머를 중지한다.
   // 매개변수: state: 앱 실행 상태. 반환값: 없음.
