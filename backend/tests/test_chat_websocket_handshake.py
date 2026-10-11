@@ -411,6 +411,97 @@ def test_connection_quota_refusal_carries_the_wait_as_reason(
     assert not _is_connected(chat_stream)
 
 
+# Function Name: _close_after_accept
+# Description:
+# - Opens the stream as a client that declared it reads close codes and returns the close frame
+#   the server sends on it. The handshake itself must succeed: a close before the accept raises
+#   inside websocket_connect and fails the test.
+# Parameters:
+# - stream (_ChatStream): Application and client under test.
+# - path (str): Stream URL to open.
+# - headers (dict[str, str]): Handshake headers without the client feature.
+# Returns:
+# - WebSocketDisconnect carrying the close code and reason received after the accept.
+def _close_after_accept(
+    stream: _ChatStream,
+    path: str,
+    headers: dict[str, str],
+) -> WebSocketDisconnect:
+    declared = {**headers, "X-MedBuddy-Client-Features": "dose-days, chat-close-codes"}
+    with stream.client.websocket_connect(path, headers=declared) as socket:
+        with pytest.raises(WebSocketDisconnect) as closed:
+            socket.receive_json()
+    return closed.value
+
+
+# Function Name: test_client_that_reads_close_codes_receives_the_refusal_as_a_close_frame
+# Description:
+# - A client that declares the chat-close-codes feature has its refused handshake accepted and
+#   then closed, so the code of the cause reaches it as a close frame; no connection is
+#   registered. Clients without the feature keep the refusal before accept, covered above.
+# Parameters:
+# - chat_stream (_ChatStream): Application and client under test.
+# - monkeypatch (pytest.MonkeyPatch): Passed to the arrangement of the case.
+# - arrange (_Arrange): Prepares the refusal and returns the URL and headers to connect with.
+# - expected_code (int): Close code the client must receive.
+# Returns:
+# - None.
+@pytest.mark.parametrize(
+    ("arrange", "expected_code"),
+    [
+        pytest.param(_with_malformed_authorization, 4401, id="authentication-4401"),
+        pytest.param(_after_unlinking, 4404, id="unlinked-4404"),
+        pytest.param(_as_outsider, 4404, id="outsider-4404"),
+        pytest.param(_without_contract_header, 4409, id="contract-4409"),
+        pytest.param(_during_quota_storage_outage, 1013, id="quota-storage-1013"),
+        pytest.param(_without_connection_manager, 1011, id="no-manager-1011"),
+    ],
+)
+def test_client_that_reads_close_codes_receives_the_refusal_as_a_close_frame(
+    chat_stream: _ChatStream,
+    monkeypatch: pytest.MonkeyPatch,
+    arrange: _Arrange,
+    expected_code: int,
+) -> None:
+    manager = chat_stream.app.state.chat_connection_manager
+    path, headers = arrange(chat_stream, monkeypatch)
+
+    closed = _close_after_accept(chat_stream, path, headers)
+
+    assert closed.code == expected_code
+    assert closed.reason == ""
+    chat_stream.app.state.chat_connection_manager = manager
+    assert not _is_connected(chat_stream)
+    assert not _is_connected(chat_stream, "outsider-a")
+
+
+# Function Name: test_quota_refusal_reaches_a_client_that_reads_close_codes_with_the_wait
+# Description:
+# - The second connection attempt inside the quota window is accepted and closed with 4429 and
+#   the seconds left as the reason for a client that reads close codes.
+# Parameters:
+# - chat_stream (_ChatStream): Application and client under test.
+# - monkeypatch (pytest.MonkeyPatch): Lowers the per-minute connection quota.
+# Returns:
+# - None.
+def test_quota_refusal_reaches_a_client_that_reads_close_codes_with_the_wait(
+    chat_stream: _ChatStream,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "CHAT_WEBSOCKET_CONNECTIONS_PER_MINUTE", 1)
+    with chat_stream.client.websocket_connect(
+        chat_stream.path(), headers=chat_stream.headers
+    ) as socket:
+        assert socket.receive_json()["type"] == "chat_ready"
+
+    closed = _close_after_accept(chat_stream, chat_stream.path(), chat_stream.headers)
+
+    assert closed.code == 4429
+    assert closed.reason.isdigit()
+    assert 1 <= int(closed.reason) <= 60
+    assert not _is_connected(chat_stream)
+
+
 # Function Name: test_frames_other_than_a_text_ping_close_the_stream
 # Description:
 # - On an established stream a binary frame and a text other than "ping" are closed with 1003,

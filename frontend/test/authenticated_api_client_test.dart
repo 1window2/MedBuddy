@@ -39,7 +39,10 @@ void main() {
       expect(request.headers['accept'], 'application/json');
       expect(request.headers['x-medbuddy-api-contract'], 'medbuddy-api-v1');
       // 복용하는 날 기준 일정을 받겠다고 서버에 알린다.
-      expect(request.headers['x-medbuddy-client-features'], 'dose-days');
+      expect(
+        request.headers['x-medbuddy-client-features'],
+        'dose-days, chat-close-codes',
+      );
       return http.Response('{}', 200);
     });
     final client = AuthenticatedApiClient(

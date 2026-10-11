@@ -25,7 +25,9 @@ class ApiConfig {
   // Behaviours added without a new contract version that this app understands, sent with every
   // request. "dose-days": today's schedule lists a medication that is not taken every day only
   // on its dose days; without it the server lists such a medication daily, as older apps expect.
-  static const String clientFeatures = 'dose-days';
+  // "chat-close-codes": a refused chat stream is opened and closed with the code of its cause,
+  // which this app reads to stop, wait or refresh its credential instead of retrying blindly.
+  static const String clientFeatures = 'dose-days, chat-close-codes';
 
   static const String baseUrl = String.fromEnvironment(
     'MEDBUDDY_API_BASE_URL',

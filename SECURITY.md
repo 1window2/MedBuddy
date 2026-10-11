@@ -198,7 +198,10 @@ Chat REST and WebSocket routes apply the same principal and active-link checks;
 WebSocket authentication does not create a weaker alternate path. An open
 stream does not outlive what it was opened with: it is closed with code 4440
 when its ID token expires, so the client reconnects with a fresh token, and
-with code 4404 when a periodic check finds its link no longer active. Medication,
+with code 4404 when a periodic check finds its link no longer active. A refused
+connection request is answered before the accept; only a client that declares
+it reads close codes has the request accepted and closed at once with the code
+of the cause. Medication,
 schedule-slot, and pharmacy context identifiers are revalidated and rebuilt as
 server snapshots instead of accepting client-supplied medical or location
 details. Slot-completion events are idempotent and cannot be used by a caregiver

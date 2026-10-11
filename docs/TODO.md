@@ -261,10 +261,11 @@ Reviewed for v0.2.1 (unchecked items remain deferred):
       review flagging. The same ranking on the local catalogue window turned
       correct automatic matches into review lists without the true product
       and must not be applied as is.
-- [ ] Accepting the chat WebSocket before closing it would deliver the close
-      code. The 0.2.2 app reads the close codes and backs off, but the 0.2.0
-      app resets its reconnect delay on connect, so the server change must
-      wait until 0.2.0 is no longer in use.
+- [x] A refused chat stream is accepted and then closed with the code of its
+      cause for an app that sends the `chat-close-codes` client feature (0.2.2
+      and later), which reads the codes and backs off. Older apps keep the
+      refusal before accept, because the 0.2.0 app resets its reconnect delay
+      on connect and would reconnect every second.
 - [ ] Rate-limit values that took effect in v0.2.1 (including 120 per minute
       for per-item deletes), retention of dose-sync and tombstone rows, and
       HTTP 403 wording and retry behaviour before App Check is enabled. Owner

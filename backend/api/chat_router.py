@@ -39,6 +39,7 @@ from controls.authorization_control import AuthorizationControl
 from controls.check_nearby_hospital_control import CheckNearbyHospital
 from controls.check_schedule_control import CheckSchedule
 from controls.manage_linked_chat_control import ManageLinkedChat
+from core.api_contract import CHAT_CLOSE_CODES_FEATURE, client_declares_feature
 from core.config import settings
 from core.database import SessionLocal
 from core.request_database_work import run_request_database_work
@@ -412,6 +413,7 @@ def get_chat_unread_count(
 # - 연결은 열 때 검증한 ID 토큰의 만료 시각에 4440으로 닫고, ping을 처리할 때
 #   설정한 간격마다 연동이 아직 활성인지 다시 확인해 아니면 4404로 닫는다.
 #   출시된 클라이언트는 닫히면 새 토큰으로 다시 연결하므로 토큰 수명마다 한 번만 끊긴다.
+# - 연결 요청을 거절할 때의 종료 코드는 그 코드를 읽는다고 알린 클라이언트에만 전달된다(_reject).
 @router.websocket("/links/{link_id}/stream")
 async def stream_chat_events(
     websocket: WebSocket,
@@ -421,7 +423,7 @@ async def stream_chat_events(
     """인증된 연동 참여자에게 새 메시지와 읽음 이벤트를 실시간 전달한다."""
     manager = getattr(websocket.app.state, "chat_connection_manager", None)
     if not isinstance(manager, ChatConnectionManager):
-        await websocket.close(code=1011)
+        await _reject(websocket, 1011)
         return
     db = SessionLocal()
     authorized_user_hash = ""
@@ -440,10 +442,10 @@ async def stream_chat_events(
                 user_hash=authorized_user_hash,
             )
         except RuntimeError:
-            await websocket.close(code=1013)
+            await _reject(websocket, 1013)
             return
         if not allowed:
-            await websocket.close(code=4429, reason=str(max(1, retry_after)))
+            await _reject(websocket, 4429, str(max(1, retry_after)))
             return
         await run_request_database_work(
             ManageLinkedChat(db).require_active_link,
@@ -453,11 +455,11 @@ async def stream_chat_events(
         await run_request_database_work(db.commit)
     except HTTPException as exc:
         await run_request_database_work(db.rollback)
-        await websocket.close(code=_websocket_close_code(exc.status_code))
+        await _reject(websocket, _websocket_close_code(exc.status_code))
         return
     except Exception:
         await run_request_database_work(db.rollback)
-        await websocket.close(code=1011)
+        await _reject(websocket, 1011)
         return
     finally:
         await run_request_database_work(db.close)
@@ -544,6 +546,27 @@ async def stream_chat_events(
                 user_hash=authorized_user_hash,
                 websocket=websocket,
             )
+
+
+# 함수이름: _reject
+# 함수역할:
+# - 연결 요청을 거절한다. 종료 코드를 읽는다고 알린 클라이언트에는 요청을 수락한 뒤 곧바로 종료 코드와
+#   사유를 보내고 닫아, 인증 실패·연동 해제·연결 한도를 구분해 대응할 수 있게 한다.
+# - 그 밖의 클라이언트에는 예전처럼 수락 전에 닫는다(HTTP 403). 0.2.0 앱은 연결이 열리면 재연결
+#   간격을 처음으로 되돌리므로, 수락 후 닫으면 1초마다 다시 연결한다.
+# 매개변수:
+# - websocket (WebSocket): 연결 대기 중인 실시간 채팅 연결.
+# - code (int): 거절 사유를 나타내는 WebSocket 종료 코드.
+# - reason (str): 종료 프레임에 담을 사유; 연결 한도 초과 시 재시도 대기 초.
+# 반환값:
+# - 없음
+async def _reject(websocket: WebSocket, code: int, reason: str = "") -> None:
+    if client_declares_feature(websocket, CHAT_CLOSE_CODES_FEATURE):
+        await websocket.accept()
+    if reason:
+        await websocket.close(code=code, reason=reason)
+    else:
+        await websocket.close(code=code)
 
 
 # 함수이름: _credential_deadline

@@ -16,6 +16,8 @@ API_CONTRACT_HEADER = "X-MedBuddy-Api-Contract"
 CLIENT_FEATURES_HEADER = "X-MedBuddy-Client-Features"
 # 매일 복용하지 않는 약을 복용하는 날에만 일정에 받는 클라이언트가 보내는 기능 이름.
 DOSE_DAYS_FEATURE = "dose-days"
+# 채팅 스트림의 종료 코드를 읽고 그에 맞춰 재연결을 조절하는 클라이언트가 보내는 기능 이름.
+CHAT_CLOSE_CODES_FEATURE = "chat-close-codes"
 
 # 요청 밖(작업자, 스크립트)에서는 항상 복용하는 날 기준으로 계산한다.
 _client_schedules_by_dose_days: ContextVar[bool] = ContextVar(
@@ -34,11 +36,24 @@ _client_schedules_by_dose_days: ContextVar[bool] = ContextVar(
 # 반환값:
 # - 없음.
 async def record_client_features(connection: HTTPConnection) -> None:
-    features = {
-        feature.strip().lower()
-        for feature in connection.headers.get(CLIENT_FEATURES_HEADER, "").split(",")
+    _client_schedules_by_dose_days.set(
+        client_declares_feature(connection, DOSE_DAYS_FEATURE)
+    )
+
+
+# 함수이름: client_declares_feature
+# 함수역할:
+# - 요청 또는 WebSocket 연결의 헤더가 지정한 클라이언트 기능을 알렸는지 확인한다.
+# 매개변수:
+# - connection (HTTPConnection): HTTP 요청 또는 WebSocket 연결.
+# - feature (str): 확인할 기능 이름.
+# 반환값:
+# - 기능 목록에 그 이름이 있으면 True.
+def client_declares_feature(connection: HTTPConnection, feature: str) -> bool:
+    return feature in {
+        declared.strip().lower()
+        for declared in connection.headers.get(CLIENT_FEATURES_HEADER, "").split(",")
     }
-    _client_schedules_by_dose_days.set(DOSE_DAYS_FEATURE in features)
 
 
 # 함수이름: client_schedules_by_dose_days
