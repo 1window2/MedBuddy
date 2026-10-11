@@ -40,7 +40,6 @@ class CaregiverHomeSummaryUI extends StatefulWidget {
 
 class _CaregiverHomeSummaryUIState extends State<CaregiverHomeSummaryUI> {
   int? _selectedLinkId;
-  int _direction = 1;
   CheckCaregiverHome get control => widget.control;
   bool get isEnglish => widget.isEnglish;
   bool get isLoadingLinks => widget.isLoadingLinks;
@@ -67,7 +66,6 @@ class _CaregiverHomeSummaryUIState extends State<CaregiverHomeSummaryUI> {
   void _select(int index) {
     if (index < 0 || index >= control.links.length || index == _index) return;
     setState(() {
-      _direction = index > _index ? 1 : -1;
       _selectedLinkId = control.links[index].linkId;
     });
   }
@@ -77,40 +75,34 @@ class _CaregiverHomeSummaryUIState extends State<CaregiverHomeSummaryUI> {
     final index = _index;
     final links = control.links;
     _selectedLinkId = links[index].linkId;
-    return ClipRect(
+    // 헤더까지 움직이면 원래 화살표 좌표의 재탭이 카드 상세 진입으로 바뀐다.
+    return KeyedSubtree(
       key: const Key('caregiver-patient-pager'),
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 200),
-        transitionBuilder: (child, animation) => FadeTransition(
-          opacity: animation,
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: Offset(_direction * .12, 0),
-              end: Offset.zero,
-            ).animate(animation),
-            child: child,
-          ),
-        ),
-        child: _patientPreview(context, links[index], true),
-      ),
+      child: _patientPreview(context, links[index], true),
     );
   }
 
   // 이름 양옆에서 환자를 전환해 카드 아래에 별도 표시 영역을 만들지 않는다.
-  Widget _patientNavigationButton({required bool previous}) => IconButton(
-    key: Key(
-      previous ? 'caregiver-patient-previous' : 'caregiver-patient-next',
+  Widget _patientNavigationButton({required bool previous}) => GestureDetector(
+    behavior: HitTestBehavior.opaque,
+    excludeFromSemantics: true,
+    // 비활성 화살표의 탭이 부모 카드의 일정 열기로 전달되지 않게 한다.
+    onTap: () {},
+    child: IconButton(
+      key: Key(
+        previous ? 'caregiver-patient-previous' : 'caregiver-patient-next',
+      ),
+      tooltip: previous
+          ? (isEnglish ? 'Previous patient' : '이전 환자')
+          : (isEnglish ? 'Next patient' : '다음 환자'),
+      onPressed: (previous ? _index > 0 : _index < control.links.length - 1)
+          ? () => _select(_index + (previous ? -1 : 1))
+          : null,
+      constraints: const BoxConstraints.tightFor(width: 48, height: 48),
+      padding: EdgeInsets.zero,
+      color: MedBuddyColors.primaryDark,
+      icon: Icon(previous ? Icons.chevron_left : Icons.chevron_right),
     ),
-    tooltip: previous
-        ? (isEnglish ? 'Previous patient' : '이전 환자')
-        : (isEnglish ? 'Next patient' : '다음 환자'),
-    onPressed: (previous ? _index > 0 : _index < control.links.length - 1)
-        ? () => _select(_index + (previous ? -1 : 1))
-        : null,
-    constraints: const BoxConstraints.tightFor(width: 48, height: 48),
-    padding: EdgeInsets.zero,
-    color: MedBuddyColors.primaryDark,
-    icon: Icon(previous ? Icons.chevron_left : Icons.chevron_right),
   );
 
   // 함수역할: 연결된 환자별 미리보기를 본인 홈과 같은 양식으로 표시한다. 매개변수: context.
@@ -247,12 +239,18 @@ class _CaregiverHomeSummaryUIState extends State<CaregiverHomeSummaryUI> {
   }
 
   // 함수역할: 목록 전체의 재조회를 제공하되 환자 상세 화면으로 이동하는 탭과 분리한다.
-  Widget _refreshButton() => IconButton(
-    key: const Key('caregiver-home-refresh'),
-    tooltip: isEnglish ? 'Refresh' : '새로고침',
-    onPressed: control.isLoading || isLoadingLinks
-        ? null
-        : (onRefreshRequested ?? control.refresh),
-    icon: const Icon(Icons.refresh, color: MedBuddyColors.primaryDark),
+  Widget _refreshButton() => GestureDetector(
+    behavior: HitTestBehavior.opaque,
+    excludeFromSemantics: true,
+    // 조회 중 비활성 버튼의 재탭이 부모 카드의 일정 열기로 전달되지 않게 한다.
+    onTap: () {},
+    child: IconButton(
+      key: const Key('caregiver-home-refresh'),
+      tooltip: isEnglish ? 'Refresh' : '새로고침',
+      onPressed: control.isLoading || isLoadingLinks
+          ? null
+          : (onRefreshRequested ?? control.refresh),
+      icon: const Icon(Icons.refresh, color: MedBuddyColors.primaryDark),
+    ),
   );
 }
