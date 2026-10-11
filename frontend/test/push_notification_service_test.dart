@@ -363,6 +363,47 @@ void main() {
       await tester.pump();
     });
 
+    for (final unavailableToken in <String?>[null, '   ']) {
+      testWidgets('an unavailable token is retried without another prompt: $unavailableToken', (tester) async {
+        platform.token = unavailableToken;
+        final service = build();
+        unawaited(service.start());
+        await tester.pump();
+        expect(posts(), isEmpty);
+        expect(platform.listening, isTrue);
+
+        await tester.pump(const Duration(seconds: 5));
+        expect(platform.tokenReads, 2);
+        expect(posts(), isEmpty);
+        platform.token = 'ready-token';
+        await tester.pump(const Duration(seconds: 10));
+        expect(posts(), hasLength(1));
+        expect(jsonDecode(posts().single.body), containsPair('token', 'ready-token'));
+        expect(platform.permissionRequests, 1);
+        expect(platform.initialMessageReads, 1);
+        expect(platform.subscriptions('listen-foreground'), 1);
+        await tester.pump(const Duration(minutes: 10));
+        expect(platform.tokenReads, 3);
+        unawaited(service.stop());
+        await tester.pump();
+      });
+    }
+
+    testWidgets('foreground retry recovers a token that was initially absent', (tester) async {
+      platform.token = null;
+      final service = build();
+      unawaited(service.start());
+      await tester.pump();
+      platform.token = 'ready-token';
+      unawaited(service.retryRegistration());
+      await tester.pump();
+      expect(posts(), hasLength(1));
+      await tester.pump(const Duration(minutes: 10));
+      expect(platform.tokenReads, 2);
+      unawaited(service.stop());
+      await tester.pump();
+    });
+
     // Function Name: duplicate token test
     // Description: Firebase reports the current token on the refresh stream while the first
     //   registration is still in flight; the same token is sent to the server once.

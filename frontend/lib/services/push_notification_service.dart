@@ -425,9 +425,11 @@ class PushNotificationService {
       // 이 시도 중에 갱신 토큰 등록이 실패하면 다시 true가 되어 재시도 대상으로 남는다.
       _registrationPending = false;
       final token = await _platform.getToken();
-      if (token != null && token.trim().isNotEmpty) {
-        await _trackTokenRegistration(token);
+      if (token == null || token.trim().isEmpty) {
+        // 초기 설치나 연결 복구 중 토큰이 아직 없으면 등록 완료로 처리하지 않는다.
+        throw StateError('The device push token is not available yet.');
       }
+      await _trackTokenRegistration(token);
       if (!_registrationPending) {
         _retryAttempt = 0;
       }
