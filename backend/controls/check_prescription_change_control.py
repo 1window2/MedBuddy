@@ -45,6 +45,10 @@ class CheckPrescriptionChange:
         "daily_frequency",
         "total_days",
     )
+    _SCHEDULE_COUNT_PATTERNS = {
+        "daily_frequency": re.compile(r"(?:1일)?([0-9]+)회"),
+        "total_days": re.compile(r"([0-9]+)일"),
+    }
 
     # 함수이름: __init__
     # 함수역할:
@@ -400,8 +404,12 @@ class CheckPrescriptionChange:
         return [
             field_name
             for field_name in self._SCHEDULE_FIELDS
-            if self._normalize_schedule_value(getattr(previous, field_name, ""))
-            != self._normalize_schedule_value(getattr(current, field_name, ""))
+            if self._normalize_schedule_value(
+                getattr(previous, field_name, ""), field_name
+            )
+            != self._normalize_schedule_value(
+                getattr(current, field_name, ""), field_name
+            )
         ]
 
     # 함수이름: _build_added_change
@@ -492,12 +500,20 @@ class CheckPrescriptionChange:
     # 함수이름: _normalize_schedule_value
     # 함수역할:
     # - 복약 일정 값의 공백과 대소문자 차이를 제거한다.
+    # - 횟수와 일수의 명확한 단위 표기만 정리하고 용량 단위와 추가 복용 지시는 보존한다.
     # 매개변수:
     # - value (object): 원본 복약 일정 값
+    # - field_name (str): 횟수·기간·용량의 정규화 범위를 구분하는 필드명
     # 반환값:
     # - 비교용 복약 일정 문자열
-    def _normalize_schedule_value(self, value: object) -> str:
-        return self._SPACE_PATTERN.sub("", self._read_text(value).lower())
+    def _normalize_schedule_value(self, value: object, field_name: str) -> str:
+        normalized = self._SPACE_PATTERN.sub("", self._read_text(value).lower())
+        count_pattern = self._SCHEDULE_COUNT_PATTERNS.get(field_name)
+        if count_pattern is not None:
+            match = count_pattern.fullmatch(normalized)
+            if match is not None:
+                return match.group(1)
+        return normalized
 
     # 함수이름: _read_text
     # 함수역할:
