@@ -265,6 +265,27 @@ void _expectFilterLayout(WidgetTester tester, {bool map = true}) {
 
 // 병원 전용 표시와 약국 기본 경로의 호환성을 검증한다.
 void main() {
+  for (final fail in [false, true]) {
+    testWidgets('late hospital search is inert after disposal: $fail', (
+      tester,
+    ) async {
+      final control = _HospitalControl();
+      final map = _MapProbe();
+      await _pumpHospital(tester, control, map);
+      control.responseGate = Completer<void>();
+      control.fail = fail;
+      final pending = map.search(control.initialArea);
+      await tester.pump();
+      expect(control.requests, hasLength(2));
+      await tester.pumpWidget(const SizedBox.shrink());
+      control.responseGate!.complete();
+      expect(await pending, isFalse);
+      await tester.pumpAndSettle();
+      expect(control.requests, hasLength(2));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   // 일반 검색과 채팅 공유 모두 사용자가 진료과를 고르기 전에는 검색하지 않는다.
   for (final selection in [false, true]) {
     for (final language in ['ko', 'en']) {
