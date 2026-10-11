@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/check_saved_medication_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/check_medication_detail_ui_boundary.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/boundaries/pill_identification_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
@@ -55,6 +56,25 @@ class _CancelledGalleryInputPrescription extends InputPrescription {
 // 함수역할: 등록·정렬·선택 삭제와 작은 화면 접근성 회귀 검사를 등록한다.
 // 매개변수: 없음. 반환값: 없음; 각 테스트가 기대 동작을 검증한다.
 void main() {
+  testWidgets('약 상세를 연속으로 눌러도 한 번 뒤로가면 목록으로 돌아온다', (tester) async {
+    await _pumpSelectionApp(tester);
+    final medication = find.text('약 1');
+    await tester.tap(medication);
+    // 전환 중 첫 화면 위로 들어오는 두 번째 탭은 무시되어야 한다.
+    await tester.tap(medication, warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(find.byType(CheckMedicationDetailUI), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(CheckMedicationDetailUI), findsNothing);
+    expect(find.byType(CheckSavedMedicationUI), findsOneWidget);
+
+    await tester.tap(medication);
+    await tester.pumpAndSettle();
+    expect(find.byType(CheckMedicationDetailUI), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('조회 조건은 현재 값 세 줄로 표시하고 취소하면 기존 조건을 유지한다', (tester) async {
     await _pumpFilterApp(tester);
     await tester.tap(find.byKey(const Key('saved-medication-filter-selector')));
