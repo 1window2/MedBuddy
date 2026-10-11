@@ -242,6 +242,17 @@ python -m alembic upgrade head
   건너뛰지 않는다. DB 삭제·수동 `ALTER TABLE`은 필요하지 않다.
 - 앱은 migration revision 및 ORM 필수 컬럼 불일치 시 worker 시작 전에 중단한다.
   따라서 `AUTO_CREATE_SCHEMA=true`도 기존 DB의 migration을 대체하지 않는다.
+- v0.2.2 통합 migration head는 `f2c8a6d4e901`이다. Catalog 갱신 상태
+  `c5e1a7f3b902`와 ID·Push 등록 보호 `d19e7c4b2a60`을 합치며 기존 revision을 바꾸지 않는다.
+- `d19e7c4b2a60` 적용 전 각 기기의 복용 대기 기록 동기화를 완료하고 실패·보류
+  항목을 확인한다. 기록을 일괄 폐기하거나 조용히 삭제하지 않으며, 대상이 불명확하면
+  자동 재전송하지 않고 사용자 확인 후 진행한다. 앱과 Backend/worker를 중지하고
+  일관된 백업 및 복사본 검증 후 전용 Alembic 연결로 갱신한다.
+  SQLite의 `foreign_keys=OFF`는 이 전용 migration 연결에만 해당하며 서비스 연결은 끄지 않는다.
+  SQLite 약·채팅 ID의 현재 행과 적용 후 발급 이력은 재사용을 방지하지만,
+  적용 전 이미 삭제된 최고 ID는 복원할 수 없다. 큰 timestamp ID를 시딩하거나
+  기존 ID를 바꾸지 않는다. 상세 절차와 rollback 제한은
+  [운영 갱신 안내](docs/Production%20Deployment.md#delayed-request-rollout-d19e7c4b2a60)를 따른다.
 
 Start the API server:
 
