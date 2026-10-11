@@ -1,7 +1,7 @@
 @startuml
 scale max 4096*4096
 
-title beta/v0.2.1 전체 시스템 주요 동작 Sequence Diagram
+title beta/v0.2.2 전체 시스템 주요 동작 Sequence Diagram
 
 autonumber
 hide footbox
@@ -184,7 +184,7 @@ FCM --> FrontService : 기기 FCM Token
 FrontService -> ApiClient : POST /api/v1/auth/push-token\nsupports_caregiver_actions 등록
 ApiClient -> Router : Token 등록 요청
 Router -> BackControl : ManagePushToken.registerPushToken()
-BackControl -> Database : device_push_tokens 저장
+BackControl -> Database : device_push_tokens 저장\n동일 계정 재등록도 새 registration_version 발급
 Database --> BackControl : 저장 완료
 Router --> FrontService : Token 등록 완료
 
@@ -192,18 +192,20 @@ Router --> FrontService : Token 등록 완료
 
 User -> UI : request sign-out
 UI -> AuthControl : signOut()
-AuthControl -> FrontService : cancel reminder replenishment and local reminders
-FrontService -> Workmanager : cancel medication reminder refresh task
-FrontService -> LocalNotification : cancel every schedule:* notification
 AuthControl -> FrontService : PushNotificationService.stop(requireServerUnregistration=true)
 FrontService -> FrontService : 진행 중 start/Token POST 완료 대기
 FrontService -> ApiClient : DELETE /api/v1/auth/push-token
 ApiClient -> Router : Bearer token and device token
 Router -> BackControl : ManagePushToken.unregisterPushToken()
-BackControl -> Database : deactivate device token
+BackControl -> Database : deactivate device token only while ownership still matches
 Database --> BackControl : committed
 Router --> FrontService : token removed
 alt token cleanup succeeds
+    AuthControl -> DoseSync : bounded pending-dose flush (up to four seconds)
+    note over DoseSync,DoseStore : Unsent records stay queued for the same account;\nnever replay them as another account's actions.
+    AuthControl -> FrontService : suspend dose upload, clear widget and cancel reminders
+    FrontService -> Workmanager : cancel medication reminder refresh task
+    FrontService -> LocalNotification : cancel every schedule:* notification
     AuthControl -> FirebaseAuth : signOut()
     FirebaseAuth --> AuthControl : provider session cleared
     AuthControl --> UI : show sign-in screen
@@ -256,9 +258,21 @@ else external identity deletion is temporarily unavailable
     ViewModel --> UI : keep deletion screen retryable
     note over Router, Database : The tombstone blocks new writes; retry is idempotent.
 end
+== 1C. Settings and language lifecycle ==
+
+UI -> ViewModel : startup / locale change / resume / manual settings save
+ViewModel -> ViewModel : serialize settings reads, saves and device-language synchronization
+opt current session; system-language mode on a locale event
+    ViewModel -> FrontControl : ManageUserSetting request/save
+    FrontControl --> ViewModel : persisted settings or local edits awaiting retry
+    ViewModel --> UI : publish only to the still-current account
+end
+note over UI,ViewModel : Fixed language modes do not follow device locale changes.\nA failed lookup/save is retryable; late old-account results cannot change the new language.
+
 == 2. 처방전 입력 및 이미지 분석 ==
 
 User -> UI : 처방전 입력 선택
+note over UI,FrontControl : Picker, OCR and HTTP work retain one selection generation.\nCancellation, replacement or disposal invalidates later continuations;\nno late preview, parse counts or new analysis request is published.
 
 alt 가이드 카메라 촬영
     UI -> FrontService : PrescriptionCameraOrientationService.enableSensorOrientation()
@@ -320,6 +334,7 @@ ViewModel --> UI : PrescriptionAnalysisPreviewUI 출력
 opt 사용자가 흐름을 닫거나 새 촬영을 시작
     UI -> ViewModel : clearAnalysisResult()
     ViewModel -> FrontControl : clearSelectedImage()
+    FrontControl -> FrontControl : invalidate selection and abort pending analysis
     alt 앱 Camera가 생성한 임시 촬영 파일
         FrontControl -> MediaService : 진행 중 OCR 완료 후 파일 삭제
     else 사용자가 선택한 Gallery 원본
@@ -572,6 +587,7 @@ end
 == 5. 복약 일정 확인 및 복약 완료 ==
 
 Patient -> UI : 오늘 복약 일정 선택
+note over FrontControl,BackControl : X-MedBuddy-Client-Features: dose-days selects the dose-day schedule.\nOlder clients keep the legacy daily view. Caregiver missed-dose checks always use dose days.\nFrequency cycles and duration units are preserved through review, save and reminder planning.
 UI -> ViewModel : fetchTodayMedicationSchedule()
 ViewModel -> FrontControl : CheckSchedule.requestTodayMedicationSchedule()
 FrontControl -> ApiClient : GET /schedule/today
@@ -597,6 +613,7 @@ else 홈의 복용했어요 또는 알림의 바로 복용
 end
 ViewModel -> DoseSync : record(표시한 약 ID, 시간대, 원래 날짜, 복용 여부)
 DoseSync -> DoseStore : 요청 ID와 변경 내용 영속 저장
+note over Router,Database : SQLite saved_medications/chat_messages IDs are not reused after migration.\nPreviously deleted IDs cannot be reconstructed: review pending requests before rollout.\nOperation IDs are reused only for the original retry, never a new action.
 DoseStore --> DoseSync : 기기 저장 완료
 DoseSync --> UI : 즉시 상태 반영 + 전송 대기
 DoseSync -> Workmanager : 연결 시 전송 예약
@@ -663,6 +680,8 @@ note right of UI
   저장 전에는 초안만 바꾸며 취소 또는 변경 없는 저장은 요청하지 않는다.
 end note
 Patient -> UI : 알림 사용 여부와 시간 편집 후 저장
+ViewModel -> ViewModel : serialize save/cancel with reconciliation; reject stale generations
+note over ViewModel,FrontService : Old reads cannot undo a newer reminder setting.\nSession disposal prevents late local scheduling or cache writes.\nNo dose today for a non-daily course does not disable its reminder setting.
 alt 알림 사용 상태로 저장
 UI -> ViewModel : requestMedicationReminderSave()
 ViewModel -> FrontControl : SetNotification.saveNotificationSetting()
@@ -680,12 +699,20 @@ LocalNotification --> FrontService : 예약 완료
 FrontService --> ViewModel : 알림 등록 완료
 ViewModel --> UI : 알림 활성 상태 출력
 else 일정 설정창에서 알림 사용을 끄고 저장
-    UI -> ViewModel : requestMedicationReminderCancel()
-    ViewModel -> FrontControl : SetNotification.disableAlarmSetting()
+    UI -> ViewModel : requestMedicationReminderCancel(slotKey, slotTitle, hour, minute)
+    ViewModel -> FrontControl : SetNotification.disableAlarmSetting(slotKey, hour, minute)
+    FrontControl -> ApiClient : PATCH /notification/settings/{slotKey}/disable\n선택 본문 {hour, minute}
+    ApiClient -> Router : MedicationAlarmDisable | None\nhour만 지정하면 minute=00, minute만 지정하면 거절\n시·분 범위와 본인 환자 범위 확인
+    Router -> BackControl : SetNotification.disableAlarmSetting(patient_hash, slot_key, hour, minute)
+    BackControl -> Database : 비활성 상태와 선택 시각을 한 트랜잭션으로 저장\n본문 생략 또는 {}는 기존 시각 유지
+    Database --> BackControl : MedicationAlarm
+    BackControl --> Router : 저장된 비활성 알림 설정
+    Router --> ApiClient : MedicationAlarm
+    ApiClient --> FrontControl : 저장 결과
     FrontControl --> ViewModel : 비활성화된 MedicationAlarm
     ViewModel -> FrontService : 해당 시간대의 로컬 알림 취소
     FrontService -> LocalNotification : 예약 취소 및 이미 표시된 해당 알림 정리
-    ViewModel --> UI : 알림 해제 결과 출력
+    ViewModel --> UI : 알림 해제 결과 출력\n구형 서버의 시각 불일치는 저장 성공으로 표시하지 않음
 end
 
 opt 표시된 복약 알림에서 동작 선택
@@ -711,9 +738,15 @@ loop Android Workmanager 12시간 주기
     Router --> ApiClient : MedicationAlarm과 MedicationSchedule
     ApiClient --> FrontControl : 현재 서버 상태
     FrontControl --> FrontService : 미래 시작 처방을 포함한 과정 목록
-    FrontService -> FrontService : 다음 14일의 복용 기간 내 날짜 계산
+    FrontService -> DoseSync : read current-day schedule with cache revision
+    DoseSync -> DoseStore : overlay same-account, same-day durable pending doses
+    DoseStore --> DoseSync : ordered taken/undo/retake projection and latest receipt
+    DoseSync --> FrontService : stable snapshot or retry on receipt/day change
+    note over DoseSync,DoseStore : Read-only refresh of pending operations: no upload or account activation.\nAn unreadable or unstable snapshot leaves existing reminders intact for retry.
+    FrontService -> FrontService : 다음 14일의 복용 기간과 dose-cycle 날짜 계산\n기간 미상 과정도 14일 창 보충
     FrontService -> LocalNotification : 날짜별 예약 계획 비교 후 변경분만 갱신\n동일 예약·미루기 유지, Rolling Window 보충
 end
+note over FrontService,LocalNotification : After force-stop, re-arm future dates once instead of trusting stale plugin state.\nMoving a reminder earlier than now preserves today's future old alarm.\nExact-alarm permission changes are applied on refresh/resume.
 
 opt 홈에서 기기 알림함 확인
     note right of FrontService : NotificationService / PushNotificationService가\n현재 계정의 SharedPreferences 알림 기록을 저장한다.\n예약 기록은 실제 알림 전달 확인을 뜻하지 않는다.
@@ -842,20 +875,30 @@ opt 내 일정이 선택되어 있고 활성 연결 환자가 있음
 end
 
 opt 환자 또는 보호자가 활성 연결 해제
-    User -> UI : 연결 목록에서 해제 승인
-    UI -> FrontControl : LinkPatientCaregiver.requestUnlink(linkId)
-    FrontControl -> ApiClient : DELETE /link/{linkId}
-    ApiClient -> Router : 연결 해제 요청
-    Router -> BackControl : LinkPatientCaregiver.requestUnlink()
-    BackControl -> Database : 연결 비활성화와 관련 보호자 알림 설정 정리
-    Database --> BackControl : commit된 해제 결과
-    BackControl --> Router : 연결 해제 결과
-    Router --> ApiClient : 연결 해제 응답
-    ApiClient --> FrontControl : PatientCaregiverLink
-    FrontControl --> UI : 연결 해제 완료
-    opt 보호자 기기의 연결 환자 state
-        UI -> FrontControl : ManageCaregiverPatientLocalState.clearPatientState()
-        FrontControl -> FrontService : 표시 이름과 알림 중복 방지 state 삭제
+    User -> UI : 연결 목록에서 해제 선택
+    UI --> User : 상대 이름과 확인창, 취소에 기본 초점\n일정 공유 중단·보호자 알림 설정과 두 사람의 대화 삭제(복구 불가)\n환자의 약과 복약 기록 보존 안내
+    alt 취소·뒤로가기·바깥 누르기·기본 취소 초점에서 Enter 또는 오래된 확인
+        UI -> UI : 해제 요청 없이 종료
+    else 명시적 승인과 유효한 화면·계정·요청 세대
+        User -> UI : 연결 해제 승인
+        UI -> UI : 확인 응답과 진행 요청의 중복 입력 차단
+        UI -> FrontControl : LinkPatientCaregiver.requestUnlink(linkId)
+        FrontControl -> ApiClient : DELETE /link/{linkId}
+        ApiClient -> Router : 연결 해제 요청
+        Router -> BackControl : LinkPatientCaregiver.requestUnlink()
+        BackControl -> Database : 연결 비활성화, 관련 보호자 알림 설정과 대화 기록 삭제\n환자의 약과 복약 기록 유지
+        Database --> BackControl : commit된 해제 결과
+        BackControl --> Router : 연결 해제 결과
+        Router --> ApiClient : 연결 해제 응답
+        ApiClient --> FrontControl : PatientCaregiverLink
+        FrontControl --> UI : 연결 해제 완료
+        opt 응답 시에도 화면·계정·요청 세대가 유효함
+            opt 보호자 기기의 연결 환자 state
+                UI -> FrontControl : ManageCaregiverPatientLocalState.clearPatientState()
+                FrontControl -> FrontService : 표시 이름과 알림 중복 방지 state 삭제
+            end
+            UI -> UI : 해제된 연결을 목록에서 제거하고 갱신
+        end
     end
 end
 
@@ -1026,6 +1069,7 @@ end
 User -> UI : 약 정보 입력에서 직접 등록 선택
 UI --> User : 약명, 용량·단위, 복용기간, 시간대와 선택 사진 입력 화면
 User -> UI : 필수 정보 입력 및 저장 선택
+note over UI,ViewModel : Save work captures account and save generation.\nClear/dispose blocks subsequent requests, photo attachment and refresh.\nAn already accepted server write is not undone by cancelling the local flow.
 UI -> UI : 필수값, 날짜 범위와 시간대 검증
 UI -> ViewModel : saveManualMedication(entry)
 ViewModel -> FrontControl : MedicationSchedule로 약 상세정보 보완 요청
@@ -1263,6 +1307,7 @@ opt 환자가 시간대의 모든 약을 완료
     Router --> UI : 자동 완료 기록을 포함한 조회 가능한 이력
 end
 note over UI,FrontControl : 정상 실시간 연결·이력 조회 중에는 반복 조회하지 않는다.\n장애 중 현재 대화방만 12초 보완 조회하며 백그라운드에서 중지한다.\n복귀·재연결 시 마지막 확인 메시지까지 페이지를 이어 읽는다.
+note over UI,Router : The stream closes on token expiry (4440) or inactive link (4404).\nThe client refreshes credentials for 4440 and stops on 4404; 4429 backs off.\nA 4401 gets one token refresh before ending the session.
 note over UI,FrontControl : 조회·실시간 수신은 이전 대화를 읽던 스크롤을 유지한다.\n오래된 조회 응답으로 이미 받은 읽음 표시를 지우지 않는다.
 ref over UI,Database : ChatReadState.puml: 역할 확인 알림 진입 / 미확인 경계 / 최신 위치
 UI -> FrontControl : 앱 전경·현재 채팅·최신 위치일 때만 markRead(throughMessageId)
@@ -1299,7 +1344,10 @@ note over UI,BackControl : 진료과목(또는 전체)을 먼저 선택한 후 �
 
 == 15. 운영 Catalog 주기 갱신 ==
 
+BackService -> Database : read catalog_refresh_state persisted attempt/success timestamps
+Database --> BackService : remaining interval or retry deadline after restart
 loop 설정된 주기마다 catalog-refresh 실행
+    BackService -> Database : persist refresh attempt time
     BackService -> MFDS : 기본, 허가, 낱알 Catalog 전체 요청
     MFDS --> BackService : 최신 MFDS Dataset
     BackService -> BackService : 낱알 advertised/fetched/valid/unique/rejected/duplicate 집계
@@ -1308,11 +1356,14 @@ loop 설정된 주기마다 catalog-refresh 실행
     BackService -> Database : 낱알 persisted item_seq Set 재조회
     alt 전체 Dataset 성공 + 모든 advertised Row 수신 +\nKPIC Product Floor 충족 + item_seq Set 일치
         Database --> BackService : Commit
+        BackService -> Database : persist successful refresh time
         BackService -> BackService : 구조화된 Reconciliation Log 기록
     else 일부 Dataset 실패 또는 Reconciliation 불일치
         Database --> BackService : Rollback, 기존 Catalog 보존
         BackService -> BackService : 설정된 Backoff 후 재시도
     end
 end
+
+note over BackControl,Database : Push dispatch snapshots each token's row ID, token, owner and registration_version.\nFCM rejection disables only that observed registration in a conditional update.\nA transfer or same-owner re-registration survives a late rejection.
 
 @enduml

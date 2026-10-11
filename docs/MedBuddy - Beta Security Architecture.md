@@ -514,7 +514,9 @@ their source but every job has `if: false`. They cannot provision or invoke
 Cloud Run, Cloud SQL, Redis, VPC, Artifact Registry, or Secret Manager resources.
 
 The following revisions established the beta security and data boundary. This
-is not the full chain; the current head is `c5e1a7f3b902` (see
+is not the full chain; the current head is `f2c8a6d4e901`, merging catalogue
+refresh state (`c5e1a7f3b902`) with SQLite resource-ID preservation and push
+registration-version guards (`d19e7c4b2a60`) without rewriting either history (see
 [Production Deployment](Production%20Deployment.md)).
 
 | Revision | Purpose |

@@ -3,7 +3,7 @@
 scale max 4096*4096
 left to right direction
 
-title beta/v0.2.1 핵심 Class Diagram
+title beta/v0.2.2 핵심 Class Diagram
 
 skinparam classAttributeIconSize 0
 skinparam linetype ortho
@@ -272,6 +272,8 @@ package "Flutter Frontend" {
             + requestMedicationDoseStatusUpdate(): Future<bool>
             + requestMedicationSlotStatusUpdate(): Future<bool>
             + requestAllAnalyzedMedicationSave(): Future<bool>
+            + requestMedicationReminderCancel(slotKey, slotTitle, hour = null, minute = null): Future<bool>
+            + synchronizeDeviceLanguage(retryRemoteLookup): Future<bool>
         }
 
         class "MedBuddyPrescriptionViewModel" as MedBuddyPrescriptionViewModel <<ViewModel: 처방 인식·검토·분석 상태>> {
@@ -287,13 +289,31 @@ package "Flutter Frontend" {
         }
         class "MedBuddyReminderViewModel" as MedBuddyReminderViewModel <<ViewModel: 알림 계획 상태>> {
             + loadMedicationReminderSettings(): Future<void>
+            + requestMedicationReminderCancel(slotKey, slotTitle, hour = null, minute = null): Future<bool>
         }
         class "MedBuddyUserSettingViewModel" as MedBuddyUserSettingViewModel <<ViewModel: 설정 저장 상태>> {
             + loadUserSetting(): Future<void>
+            + synchronizeDeviceLanguage(retryRemoteLookup): Future<bool>
         }
         class "MedBuddyHealthRecommendationViewModel" as MedBuddyHealthRecommendationViewModel <<ViewModel: 건강 추천 상태>> {
             + fetch(language): Future<void>
         }
+
+        note right of MedBuddySavedMedicationViewModel
+            Save continuations belong to one account and save generation.
+            Clear/dispose prevents subsequent saves, photo attachment and refresh.
+            An already accepted server write is not rolled back by local cancellation.
+        end note
+        note right of MedBuddyReminderViewModel
+            Reminder writes and reconciliation are serialized.
+            A stale read cannot overwrite a newer save or re-arm a closed session.
+            A non-daily slot with no dose today keeps its reminder setting.
+        end note
+        note right of MedBuddyUserSettingViewModel
+            Reads, manual saves and device-language updates share one queue.
+            Startup, locale changes and resume synchronize system-language mode.
+            Failed saves retain local edits; disposed sessions cannot publish.
+        end note
 
         note right of MedBuddyViewModel
             기존 화면 API를 유지하는 조립·위임 경계이다.
@@ -331,6 +351,13 @@ package "Flutter Frontend" {
         class "MedicationLookupBusy" as MedicationLookupBusy <<Exception: 계정 잠금 대기>> {
             + retryAt: DateTime
         }
+
+        note right of FInputPrescription
+            Picker, OCR and HTTP continuations validate the active selection.
+            Cancelled results cannot restore previews or analysis counts.
+            OCR releases app-owned temporary files after its readers finish;
+            original gallery files remain untouched.
+        end note
 
         class "CheckSavedMedication" as FCheckSavedMedication <<Controller: 저장 약 관리>> {
             + baseUrl: String
@@ -470,7 +497,7 @@ package "Flutter Frontend" {
             + patientHash: String
             + requestMedicationAlarm(): Future<List<MedicationAlarm>>
             + saveNotificationSetting(slotKey, hour, minute): Future<MedicationAlarm>
-            + disableAlarmSetting(slotKey, hour, minute): Future<MedicationAlarm>
+            + disableAlarmSetting(slotKey, hour = null, minute = null): Future<MedicationAlarm>
         }
 
         class "SetCaregiverNotification" as FSetCaregiverNotification <<Controller: 보호자 알림 관리>> {
@@ -765,8 +792,14 @@ package "Flutter Frontend" {
         }
 
         class "MedicationReminderRefreshFactory" as MedicationReminderRefreshFactory <<Composition: 복약 알림 갱신 조립>> {
-            + {static} create(patientHash, baseUrl, client, notificationService): MedicationReminderRefreshService
+            + {static} create(patientHash, baseUrl, client, notificationService, openDoseStore, now): MedicationReminderRefreshService
         }
+        note right of MedicationReminderRefreshFactory
+            Project the same account's current-day durable dose queue.
+            Respect undo/retake order and newer synchronization receipts.
+            Retry an unstable snapshot or a read crossing midnight.
+            Do not upload pending records or activate an account here.
+        end note
         class "LinkedChatNotificationMonitorFactory" as LinkedChatNotificationMonitorFactory <<Composition: 채팅 알림 감시 조립>> {
             + {static} create(userHash, client): LinkedChatNotificationMonitorService
         }
@@ -1263,7 +1296,7 @@ package "FastAPI Backend" {
             - db: Session
             + requestMedicationAlarm(patient_hash): dict
             + saveNotificationSetting(patient_hash, slot_key, hour, minute): dict
-            + disableAlarmSetting(patient_hash, slot_key, hour, minute): dict
+            + disableAlarmSetting(patient_hash, slot_key, hour = None, minute = None): dict
         }
 
         class "SetCaregiverNotification" as BSetCaregiverNotification <<Control: 보호자 알림 저장>> {
@@ -1392,6 +1425,17 @@ package "FastAPI Backend" {
             + anchor(start_date): date
             + includes(start_date, target_date): bool
         }
+
+        class "PushRecipientResolver" as PushRecipientResolver <<Service: per-dispatch push snapshot>> {
+            + resolve(user_hash): PushRecipient
+            + caregiver_alerts_enabled(user_hash): bool
+            + disable_invalid(invalid_tokens): None
+        }
+        note right of PushRecipientResolver
+            Rejected-token cleanup matches the observed row ID, token,
+            owner and registration_version in the update itself.
+            A late failure cannot disable a transferred or re-registered token.
+        end note
 
         class "SavedMedicationRetentionPolicy" as SavedMedicationRetentionPolicy <<Service: 저장 약 보존 정책>> {
             + retention_days_after_end: int
@@ -1645,6 +1689,21 @@ package "FastAPI Backend" {
 
     package "Domain Entity Layer" {
 
+        class "MedicationAlarmDisable" as MedicationAlarmDisable <<Schema: 알림 비활성화 요청>> {
+            + hour: int | None = None
+            + minute: int | None = None
+            + validate_optional_time(): MedicationAlarmDisable
+        }
+        note right of MedicationAlarmDisable
+            api/router.py의 disable_medication_alarm은
+            request: MedicationAlarmDisable | None = None을 받는다.
+            hour만 지정하면 minute은 00으로 저장한다.
+            minute만 지정하면 거절한다(범위: 시 0..23, 분 0..59).
+            Router가 검증한 값을 SetNotification에 전달하며,
+            비활성 상태와 새 시각을 함께 저장한다.
+            본문 생략 또는 빈 객체 {}는 기존 시각을 유지한다.
+        end note
+
         class "MedicationSchedule" as BMedicationSchedule <<Entity: 복약 일정 DTO>> {
             + medication_name: str
             + dosage: str
@@ -1855,7 +1914,12 @@ package "FastAPI Backend" {
             + platform: String
             + enabled: Boolean
             + supports_caregiver_actions: Boolean
+            + registration_version: String(32)
         }
+        note right of DBDevicePushToken
+            Every registration, including the same owner, gets a new version.
+            Logout revocation checks the current owner in the update.
+        end note
 
         class "_DoseSyncOperation" as DBDoseSyncOperation <<ORM: dose_sync_operations>> {
             + patient_hash: String
@@ -2202,6 +2266,8 @@ AuthenticatedApiClient ..> ApiConfig
 FSetNotification ..> NotificationService
 MedicationReminderRefreshFactory ..> FSetNotification
 MedicationReminderRefreshFactory ..> FCheckSchedule
+MedicationReminderRefreshFactory ..> AuthenticatedApiClient
+MedicationReminderRefreshFactory ..> DoseSyncService : 당일 영속 복용 기록 반영; 전송 없음
 MedicationReminderRefreshFactory ..> MedicationReminderRefreshService : 읽기 함수 주입
 CaregiverNotificationBackgroundScheduler ..> MedicationReminderRefreshFactory
 MedicationReminderRefreshService ..> NotificationService
@@ -2373,7 +2439,9 @@ BManageLinkedChat --> DBSavedMedication
 BManageLinkedChat --> DBChatMessage
 BManageLinkedChat ..> BChatMessage
 DispatchChatMessageAlert o-- PushNotificationBoundary
-DispatchChatMessageAlert --> DBDevicePushToken
+DispatchChatMessageAlert o-- PushRecipientResolver
+PushRecipientResolver --> DBDevicePushToken : observe and conditionally disable
+PushRecipientResolver --> DBUserSetting : consent and preview policy
 ChatRouter ..> ChatConnectionManager : 실시간 연결 수신자 확인
 ChatRouter ..> BManageLinkedChat : 검증·저장·삭제
 ChatNotificationWorker *-- ProcessChatNotifications
@@ -2428,7 +2496,7 @@ DispatchCaregiverAlert --|> MedicationCompletionEventBoundary
 DispatchCaregiverAlert o-- PushNotificationBoundary
 DispatchCaregiverAlert o-- PatientCaregiverLinkRepository
 DispatchCaregiverAlert --> DBCaregiverNotification
-DispatchCaregiverAlert --> DBDevicePushToken
+DispatchCaregiverAlert o-- PushRecipientResolver
 DispatchCaregiverAlert --> DBUserSetting : 알림 허용·표시 정책
 DispatchCaregiverAlert ..> BCheckSchedule : 전송 전 현재 미완료 재검증
 ProcessCaregiverAlertOutbox --> DBCaregiverAlertOutbox
@@ -2487,6 +2555,9 @@ DrugCatalogStore --> DBDrugApprovalInfo
 DrugCatalogStore --> DBPillIdentificationReference
 
 DBUserAccount "1" -- "0..*" DBSavedMedication : {FK, CASCADE}
+note "SQLite AUTOINCREMENT on saved_medications and chat_messages\nprevents reuse of existing and subsequently issued IDs.\nIt cannot recover IDs deleted before migration d19e7c4b2a60.\nExisting IDs remain unchanged; rollout requires pending-dose review." as DelayedRequestIdentity
+DelayedRequestIdentity .. DBSavedMedication
+DelayedRequestIdentity .. DBChatMessage
 DBSavedMedication "1" -- "0..*" DBMedicationCompletion : {FK, CASCADE}
 DBUserAccount "1" -- "0..*" DBMedicationAlarm : {FK, CASCADE}
 DBUserAccount "1" -- "0..1" DBUserSetting : {FK, CASCADE}

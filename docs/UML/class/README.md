@@ -1,12 +1,12 @@
 # Class Diagram Guide
 
-이 폴더에는 전체 클래스 설계와 발표용 단계별 클래스 다이어그램을 함께 관리한다.
+이 폴더에는 주요 책임과 계약을 보여주는 전체 구조 및 발표용 단계별 클래스 다이어그램을 함께 관리한다.
 같은 이름의 `.puml`은 원본 코드이고 `.png`는 발표 및 문서 확인용 렌더링 이미지다.
 
 ## Files
 
 - `ClassDiagram.puml` / `ClassDiagram.png`
-  - 전체 클래스, 속성, 관계를 포함한 상세 설계 원본이다.
+  - 주요 클래스, 속성, 관계를 포함한 상세 설계 원본이며 모든 코드 클래스의 목록은 아니다.
   - 구현 구조를 확인하거나 발표 부록에서 사용할 때 적합하다.
 - `00_SystemOverview.puml` / `00_SystemOverview.png`
   - Frontend, Backend, Database, 외부 서비스의 전체 연결 구조를 간단히 보여준다.
@@ -30,6 +30,14 @@
   - 공통 병원·약국 지도 UI와 별도 병원 조회·공휴일 확인, 서버가 검증한 채팅 공유 문맥을 보여준다.
 
 ## Usage
+
+The v0.2.2 integration updates the overall class and sequence diagrams for major
+contracts only: cancellation/session isolation, serialized settings and reminder
+writes, durable pending-dose projection, unlink confirmation, non-daily schedules,
+SQLite ID preservation and push-registration version guards. Unchanged feature
+diagrams remain focused views, not an exhaustive API inventory. Minor UI fixes
+are tracked by their regression tests rather than additional diagram nodes.
+The matching overall PNGs are rendered locally from the integrated sources.
 
 홈은 약 등록·식별, 건강 관리 추천 / 근처 운영 병원·약국, 환경설정을 2×2로 표시한다.
 병원·약국 선택창에서 탐색 대상을 고르고 병원은 진료과목과 조회 조건을 분리한다.
