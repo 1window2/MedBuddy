@@ -1226,6 +1226,10 @@ class AuthenticationControl extends ChangeNotifier
   // Returns:
   // - Future<void>: asynchronous completion without a result payload.
   Future<void> signOut() {
+    // 인증 비활성화 데모에는 로그아웃할 공급자가 없으므로 알림·위젯 정리도 시작하지 않는다.
+    if (AuthConfig.mode == AuthenticationMode.disabled && _firebaseAuth == null) {
+      return Future<void>.value();
+    }
     return _signOut(/* Function Name: _signOut callback
      * Description: Signs out an initialized Google provider and then the Firebase identity.
      * Parameters:
