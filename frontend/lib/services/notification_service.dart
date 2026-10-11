@@ -56,6 +56,8 @@ class NotificationService {
   @visibleForTesting
   static Future<SharedPreferences> Function() preferencesLoader =
       SharedPreferences.getInstance;
+  @visibleForTesting
+  static DateTime Function() clock = DateTime.now;
   static MedicationNotificationSelectionHandler? _selectionHandler;
   static MedicationNotificationSelection? _pendingSelection;
 
@@ -66,6 +68,8 @@ class NotificationService {
   );
   bool _isInitialized = false;
   Future<void>? _initializationFuture;
+  bool _channelsInitialized = false;
+  Future<void>? _channelInitializationFuture;
   bool _showSensitiveDetails = true;
   String? _historyUserHash;
   Future<void> _scopeWrite = Future<void>.value();
@@ -470,7 +474,7 @@ class NotificationService {
   // - Future<void>: asynchronous completion without a result payload.
   Future<void> initialize() {
     if (_isInitialized) {
-      return Future<void>.value();
+      return _ensureAndroidNotificationChannels();
     }
     return _initializationFuture ??= _initialize();
   }
@@ -499,7 +503,7 @@ class NotificationService {
         onDidReceiveNotificationResponse: _handleNotificationResponse,
       );
       _isInitialized = true;
-      await _createAndroidNotificationChannels();
+      await _ensureAndroidNotificationChannels();
 
       if (launchDetails?.didNotificationLaunchApp ?? false) {
         final response = launchDetails?.notificationResponse;
@@ -513,6 +517,15 @@ class NotificationService {
       _initializationFuture = null;
       rethrow;
     }
+  }
+
+  // 채널 생성 실패는 초기화를 막지 않되 다음 호출에서 재시도하고 동시 호출은 합친다.
+  Future<void> _ensureAndroidNotificationChannels() {
+    if (_channelsInitialized) return Future<void>.value();
+    return _channelInitializationFuture ??=
+        _createAndroidNotificationChannels().whenComplete(() {
+          _channelInitializationFuture = null;
+        });
   }
 
   // Function Name: _createAndroidNotificationChannels
@@ -531,6 +544,7 @@ class NotificationService {
             AndroidFlutterLocalNotificationsPlugin
           >();
       if (android == null) {
+        _channelsInitialized = true;
         return;
       }
       const channels = <AndroidNotificationChannel>[
@@ -556,6 +570,7 @@ class NotificationService {
       for (final channel in channels) {
         await android.createNotificationChannel(channel);
       }
+      _channelsInitialized = true;
     } catch (_) {
       // Channels are still created lazily when a local notification is shown.
     }
@@ -663,7 +678,7 @@ class NotificationService {
         if (request.id == id || (request.payload?.startsWith('schedule:$slotKey:') ?? false))
           request.id: request,
     };
-    final now = timezone.TZDateTime.now(timezone.local);
+    final now = timezone.TZDateTime.from(clock(), timezone.local);
     final uniqueDates = <String, DateTime>{};
     for (final activeDate in activeDates) {
       final normalizedDate = DateTime(

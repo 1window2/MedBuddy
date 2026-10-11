@@ -128,6 +128,7 @@ void main() {
 
   tearDown(() {
     NotificationService.preferencesLoader = SharedPreferences.getInstance;
+    NotificationService.clock = DateTime.now;
     NotificationService.instance.setShowSensitiveDetails(true);
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
@@ -230,6 +231,69 @@ void main() {
     expect(cancelled, contains(containsPair('id', firstId)));
     expect(scheduled, hasLength(1));
     expect(scheduled.single['scheduledDateTime'].toString(), contains('09:00'));
+  });
+
+  test('moving a reminder before now preserves today and replaces future history', () async {
+    final service = NotificationService.instance;
+    service.setHistoryUser('patient-a', persistSession: false);
+    await service.initialize();
+    final now = timezone.TZDateTime.now(timezone.local);
+    final today = timezone.TZDateTime(timezone.local, now.year, now.month, now.day + 2);
+    NotificationService.clock = () => today.add(const Duration(hours: 12));
+    final tomorrow = today.add(const Duration(days: 1));
+    Future<void> refresh(int hour) => service.registerNotification(
+      id: 101, slotKey: 'morning', slotTitle: 'Morning', hour: hour, minute: 0,
+      medicationNames: [], activeDates: [today, tomorrow], language: 'en',
+    );
+
+    await refresh(16);
+    expect(scheduled, hasLength(2));
+    final oldTodayId = scheduled.first['id'];
+    pending.addAll(scheduled.map((item) => {'id': item['id'], 'payload': item['payload']}));
+    scheduled.clear();
+
+    await refresh(8);
+    expect(cancelled, isNot(contains(containsPair('id', oldTodayId))));
+    expect(scheduled, hasLength(1));
+    expect(scheduled.single['id'], isNot(oldTodayId));
+    expect(scheduled.single['scheduledDateTime'].toString(), contains('08:00'));
+    final history = await NotificationInboxStore(
+      userHash: 'patient-a', now: () => tomorrow.add(const Duration(days: 1)),
+    ).load();
+    expect(history, hasLength(2));
+    final todayEntry = history.singleWhere(
+      (entry) => entry.payload.split(':')[2] == '$oldTodayId',
+    );
+    expect(todayEntry.occurredAt.toLocal().hour, 16);
+    final tomorrowEntry = history.singleWhere(
+      (entry) => entry.payload.split(':')[2] != '$oldTodayId',
+    );
+    expect(tomorrowEntry.occurredAt.toLocal().hour, 8);
+  });
+
+  test('a snooze survives refresh after the unchanged original time has passed', () async {
+    final service = NotificationService.instance;
+    await service.initialize();
+    final now = timezone.TZDateTime.now(timezone.local);
+    final today = timezone.TZDateTime(timezone.local, now.year, now.month, now.day + 2);
+    NotificationService.clock = () => today.add(const Duration(hours: 7));
+    Future<void> refresh() => service.registerNotification(
+      id: 101, slotKey: 'morning', slotTitle: 'Morning', hour: 8, minute: 0,
+      medicationNames: [], activeDates: [today], language: 'en',
+    );
+    await refresh();
+    final id = scheduled.single['id'] as int;
+    pending.add({'id': id, 'payload': scheduled.single['payload']});
+    NotificationService.clock = () => today.add(const Duration(hours: 9));
+    await service.snoozeMedicationReminder(
+      id: id, slotKey: 'morning', slotTitle: 'Morning', scheduleDate: today,
+    );
+    scheduled.clear();
+    cancelled.clear();
+
+    await refresh();
+    expect(scheduled, isEmpty);
+    expect(cancelled, isEmpty);
   });
 
   // Steady state: a refresh that finds every reminder already reserved with the same time and text
