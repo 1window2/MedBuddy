@@ -6,6 +6,7 @@ import sys
 import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine
@@ -16,6 +17,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from controls.link_patient_caregiver_control import LinkPatientCaregiver  # noqa: E402
+from core.config import settings  # noqa: E402
 from core.database import Base  # noqa: E402
 from entities.caregiver_notification_entity import _CaregiverNotification  # noqa: E402
 from entities.patient_caregiver_link_entity import (  # noqa: E402
@@ -416,6 +418,40 @@ class LinkPatientCaregiverTest(unittest.TestCase):
         removed = self.control.requestUnlink(link["id"], "patient-a")["data"]
         self.assertEqual(removed["caregiver_alias"], "딸")
         self.assertIsNone(removed["patient_alias"])
+
+    # 함수이름: test_link_is_refused_once_an_account_holds_the_maximum
+    # 함수역할: 환자나 보호자의 활성 연동이 한도에 이르면 새 연동을 409로 거절하고 코드를 소모하지 않으며,
+    #   연동 하나를 해제하면 다시 연동할 수 있는지 확인한다.
+    # 매개변수: 없음. 반환값: 없음.
+    def test_link_is_refused_once_an_account_holds_the_maximum(self) -> None:
+        with patch.object(settings, "PATIENT_CAREGIVER_LINK_MAX_PER_ACCOUNT", 2):
+            links = [
+                self.control.requestPatientCaregiverLink(
+                    guardian,
+                    self.control.generatePatientHash("patient-a")["data"]["patient_code"],
+                )["data"]
+                for guardian in ("guardian-a", "guardian-b")
+            ]
+            code = self.control.generatePatientHash("patient-a")["data"]["patient_code"]
+            with self.assertRaises(HTTPException) as refused:
+                self.control.requestPatientCaregiverLink("guardian-c", code)
+            # 한 보호자가 맡는 환자 수도 같은 한도를 따른다.
+            self.control.requestPatientCaregiverLink(
+                "guardian-a",
+                self.control.generatePatientHash("patient-b")["data"]["patient_code"],
+            )
+            with self.assertRaises(HTTPException) as caregiver_refused:
+                self.control.requestPatientCaregiverLink(
+                    "guardian-a",
+                    self.control.generatePatientHash("patient-c")["data"]["patient_code"],
+                )
+            self.control.requestUnlink(links[1]["id"], "patient-a")
+            # 거절된 요청은 코드를 쓰지 않았으므로 같은 코드로 다시 연동할 수 있다.
+            accepted = self.control.requestPatientCaregiverLink("guardian-c", code)
+
+        self.assertEqual(refused.exception.status_code, 409)
+        self.assertEqual(caregiver_refused.exception.status_code, 409)
+        self.assertTrue(accepted["success"])
 
     # 함수이름: test_caregiver_alias_rejects_nonowners_and_inactive_links
     # 함수역할: 다른 환자, 상대 보호자, 없는 연결 및 해제된 연결의 별칭 변경을 차단한다.

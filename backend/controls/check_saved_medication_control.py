@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.application_clock import application_today
+from core.config import settings
 from entities.medication_completion_entity import _MedicationCompletion
 from entities.medication_image_url_entity import safe_medication_image_url
 from entities.medication_schedule_entity import (
@@ -26,6 +27,10 @@ from services.medication_course_policy import MedicationCoursePolicy
 from services.saved_medication_retention import SavedMedicationRetentionPolicy
 
 logger = logging.getLogger(__name__)
+
+SAVED_MEDICATION_LIMIT_DETAIL = (
+    "저장할 수 있는 약의 수를 넘었습니다. 복약함에서 쓰지 않는 약을 지운 뒤 다시 시도해주세요."
+)
 
 
 # Class Name: CheckSavedMedication
@@ -88,6 +93,15 @@ class CheckSavedMedication:
                     "message": "이미 추가된 약입니다.",
                     "id": duplicate_medication.id,
                 }
+            # 한 계정의 저장 약 수를 제한해 목록·일정 응답과 추천 프롬프트가 끝없이 커지지 않게 한다.
+            if (
+                self.medication_repository.count_by_patient(patient_hash)
+                >= settings.SAVED_MEDICATION_MAX_PER_ACCOUNT
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail=SAVED_MEDICATION_LIMIT_DETAIL,
+                )
 
             db_medication = _SavedMedication(
                 patient_hash=patient_hash,
@@ -137,6 +151,9 @@ class CheckSavedMedication:
                 "message": f"'{db_medication.item_name}' saved to pillbox.",
                 "id": db_medication.id,
             }
+        except HTTPException:
+            self.db.rollback()
+            raise
         except Exception as exc:
             self.db.rollback()
             logger.error(

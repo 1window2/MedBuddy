@@ -10,6 +10,7 @@ from urllib.error import HTTPError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
+API_CONTRACT_HEADER = "X-MedBuddy-Api-Contract"
 ROUTES = {
     "pharmacy": "/api/v1/pharmacy/nearby",
     "hospital": "/api/v1/hospitals/nearby",
@@ -32,9 +33,12 @@ class NoRedirect(HTTPRedirectHandler):
 
 # Function Name: validate_response
 # Description: Accept only JSON authentication denials; HTML edge blocks and route errors fail.
-# Parameters: status: HTTP status; content_type: Response media type; body: Bounded bytes.
+# Parameters: status: HTTP status; content_type: Response media type; body: Bounded bytes;
+#   api_contract: Value of the backend's contract header, or None to skip that check.
 # Returns: None; raises ValueError on unusable ingress evidence.
-def validate_response(status: int, content_type: str, body: bytes) -> None:
+def validate_response(
+    status: int, content_type: str, body: bytes, api_contract: str | None = None,
+) -> None:
     if status == 404:
         raise ValueError("API route returned HTTP 404; deploy the matching backend revision.")
     if status not in {401, 403}:
@@ -47,6 +51,10 @@ def validate_response(status: int, content_type: str, body: bytes) -> None:
         raise ValueError("Invalid API authentication JSON.") from None
     if not isinstance(payload, dict) or not isinstance(payload.get("detail"), str) or not payload["detail"]:
         raise ValueError("Route did not return the API error contract.")
+    if api_contract is not None and not api_contract.strip():
+        # Every backend answer under /api/v1 carries this header; an edge rule that only imitates
+        # the JSON shape does not.
+        raise ValueError("Response lacks the API contract header; it did not come from the backend.")
 
 
 # Function Name: check_routes
@@ -67,7 +75,10 @@ def check_routes(origin: str) -> None:
             response = error
         with response:
             try:
-                validate_response(response.code, response.headers.get("Content-Type", ""), response.read(65537))
+                validate_response(
+                    response.code, response.headers.get("Content-Type", ""), response.read(65537),
+                    response.headers.get(API_CONTRACT_HEADER, ""),
+                )
             except ValueError as exc:
                 raise ValueError(f"{feature}: {exc}") from None
         print(f"{feature}: public route reaches API authentication")

@@ -7,6 +7,7 @@ from datetime import timedelta
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from core.config import settings
 from entities.caregiver_notification_entity import _CaregiverNotification
 from entities.chat_message_entity import _ChatMessage
 from entities.patient_caregiver_link_entity import (
@@ -175,6 +176,21 @@ class LinkPatientCaregiver:
                 link_code.patient_hash,
                 normalized_caregiver_hash,
             )
+            if link is None or not link.linked:
+                # 복용 기록마다 연동된 보호자 모두에게 전달되므로 한 계정의 활성 연동 수를 제한한다.
+                limit = settings.PATIENT_CAREGIVER_LINK_MAX_PER_ACCOUNT
+                if (
+                    len(self.link_repository.list_active_for_patient(
+                        str(link_code.patient_hash)
+                    )) >= limit
+                    or len(self.link_repository.list_active_for_caregiver(
+                        normalized_caregiver_hash
+                    )) >= limit
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="연동할 수 있는 인원을 넘었습니다. 쓰지 않는 연동을 해제한 뒤 다시 시도해주세요.",
+                    )
             if link is None:
                 link_state = PatientCaregiverLink(
                     patient_hash=link_code.patient_hash,

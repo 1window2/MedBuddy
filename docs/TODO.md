@@ -73,6 +73,13 @@ closed by any code on this branch:
   time, because cancelling it would leave today's dose without a reminder.
 - Push tokens are disabled when a send to them fails; FCM offers no other way
   to learn that a token is gone.
+- One account may hold 300 saved medications and 20 active links as a
+  patient and 20 as a caregiver (`SAVED_MEDICATION_MAX_PER_ACCOUNT`,
+  `PATIENT_CAREGIVER_LINK_MAX_PER_ACCOUNT`); the next one is refused with
+  HTTP 409 and a message for the user.
+- The dependency updates proposed in 1window2/MedBuddy#124 (nine backend
+  packages, among them SQLAlchemy 2.1 and websockets 17) are not taken into
+  the release candidate; they change behaviour without a stated security fix.
 - A released app (0.2.1 or older) keeps receiving every medication of an
   active course in today's schedule, because it switches a slot's reminder off
   when the slot is empty. Only an app that sends the `dose-days` client
@@ -87,8 +94,6 @@ closed by any code on this branch:
 - [ ] A weekly prescription often prints the number of doses as its total
       days ("4" for four weeks). The review screen shows how many dose days
       result so the user can correct it, but the value is not guessed.
-- [ ] No cap on saved medications or links per account; list responses and
-      the recommendation prompt grow with them.
 - [ ] Dropping a pill-photo crop for a low-score multi-pill image needs real
       photographs before the rule is changed.
 
@@ -308,8 +313,8 @@ Defects and limits recorded during the v0.2.0 audits:
       and on resume, with retry after failed lookup or save. Fixed language
       modes remain fixed. Regression:
       [runtime locale and session isolation](../frontend/test/runtime_locale_session_test.dart).
-- [ ] The release gate does not compare the client's API contract default with
-      `backend/API_CONTRACT_VERSION`.
+- [x] The release metadata check compares the app's default API contract
+      with `backend/API_CONTRACT_VERSION`.
 - [x] Weekly and interval frequencies have shared backend/client vectors:
       [backend rhythms](../backend/tests/test_medication_dose_rhythm.py),
       [client rhythms](../frontend/test/medication_dose_rhythm_test.dart) and
@@ -332,9 +337,9 @@ Platform and pipeline items reviewed for v0.2.1 and deferred:
       the owner.
 - [ ] `subosito/flutter-action` and `google-github-actions/auth` are referenced
       by major-version tag, not by commit SHA. Owner decision.
-- [ ] `check_release_ingress.py` does not require the
-      `X-MedBuddy-Api-Contract` response header; this must be checked against
-      the live edge first, because a false rejection blocks a release.
+- [x] `check_release_ingress.py` requires the `X-MedBuddy-Api-Contract`
+      response header. Checked against the live edge on October 11: all three
+      probed routes return it with their authentication denial.
 - [ ] Dependabot does not watch the `gradle` and `docker` ecosystems. Owner
       decision on pull-request volume.
 - [x] The Android exact-alarm notice opens the system permission screen and

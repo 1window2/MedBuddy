@@ -213,6 +213,24 @@ class Settings(BaseSettings):
     RATE_LIMIT_REQUIRE_REDIS: bool = False
     REDIS_URL: str = "redis://localhost:6379"
     CHAT_MESSAGE_DAILY_LIMIT: int = Field(default=500, ge=50, le=10_000)
+    SAVED_MEDICATION_MAX_PER_ACCOUNT: int = Field(
+        default=300,
+        ge=20,
+        le=5_000,
+        description=(
+            "Saved medications one account may hold. List responses, the daily "
+            "schedule and the recommendation prompt grow with this number."
+        ),
+    )
+    PATIENT_CAREGIVER_LINK_MAX_PER_ACCOUNT: int = Field(
+        default=20,
+        ge=1,
+        le=200,
+        description=(
+            "Active links one account may have as a patient, and as a caregiver. "
+            "Every dose event is delivered to each linked caregiver."
+        ),
+    )
     AI_REQUEST_DAILY_LIMIT: int = Field(
         default=300,
         ge=20,

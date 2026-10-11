@@ -57,6 +57,20 @@ def main() -> int:
         if not ROOT.joinpath(release_notes_path).is_file():
             errors.append(f"Missing release notes: {release_notes_path}")
 
+    # The app refuses a server with another contract, so a build whose default differs from the
+    # backend's file could not talk to the backend released from the same commit.
+    client_contract = re.search(
+        r"'MEDBUDDY_API_CONTRACT_VERSION',\s*defaultValue:\s*'([^']+)'",
+        _read("frontend/lib/services/api_config.dart"),
+    )
+    if (
+        client_contract is None
+        or client_contract.group(1) != _read("backend/API_CONTRACT_VERSION").strip()
+    ):
+        errors.append(
+            "The app's default API contract does not match backend/API_CONTRACT_VERSION."
+        )
+
     release_workflow = _read(".github/workflows/release-android.yml")
     required_release_controls = {
         "exact-ref signed release": "github.ref == 'refs/heads/main'",

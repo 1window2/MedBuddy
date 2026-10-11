@@ -7,6 +7,7 @@ import sys
 import unittest
 from datetime import date, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine
@@ -16,8 +17,12 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from controls.check_saved_medication_control import CheckSavedMedication  # noqa: E402
+from controls.check_saved_medication_control import (  # noqa: E402
+    SAVED_MEDICATION_LIMIT_DETAIL,
+    CheckSavedMedication,
+)
 from core.application_clock import application_today  # noqa: E402
+from core.config import settings  # noqa: E402
 from core.database import Base  # noqa: E402
 from entities.medication_completion_entity import (  # noqa: E402
     _MedicationCompletion,
@@ -209,6 +214,45 @@ class CheckSavedMedicationTest(unittest.TestCase):
         self.assertTrue(duplicate_response["duplicate"])
         saved_rows = self.db.query(_SavedMedication).all()
         self.assertEqual(len(saved_rows), 1)
+
+    # Function Name: test_save_is_refused_once_the_account_holds_the_maximum
+    # Description:
+    # - An account at its saved-medication limit gets HTTP 409 with a message for the user
+    #   and no new row, a duplicate of an existing medication is still reported as a
+    #   duplicate, another account is unaffected, and deleting one makes room again.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_save_is_refused_once_the_account_holds_the_maximum(self) -> None:
+        with patch.object(settings, "SAVED_MEDICATION_MAX_PER_ACCOUNT", 2):
+            first = self.control.saveMedicationDetail(self._saved_medication(item_name="A"))
+            self.control.saveMedicationDetail(self._saved_medication(item_name="B"))
+            with self.assertRaises(HTTPException) as refused:
+                self.control.saveMedicationDetail(self._saved_medication(item_name="C"))
+            duplicate = self.control.saveMedicationDetail(self._saved_medication(item_name="A"))
+            other_account = self.control.saveMedicationDetail(
+                self._saved_medication(patient_hash="patient-b", item_name="C")
+            )
+            self.db.query(_SavedMedication).filter(
+                _SavedMedication.id == first["id"]
+            ).delete()
+            self.db.commit()
+            after_delete = self.control.saveMedicationDetail(
+                self._saved_medication(item_name="C")
+            )
+
+        self.assertEqual(refused.exception.status_code, 409)
+        self.assertEqual(refused.exception.detail, SAVED_MEDICATION_LIMIT_DETAIL)
+        self.assertTrue(duplicate["duplicate"])
+        self.assertTrue(other_account["success"])
+        self.assertTrue(after_delete["success"])
+        self.assertEqual(
+            self.db.query(_SavedMedication)
+            .filter(_SavedMedication.patient_hash == "patient-a")
+            .count(),
+            2,
+        )
 
     # Function Name: test_legacy_deduplication_key_is_stable_without_batch_id
     # Description:
