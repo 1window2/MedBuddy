@@ -230,19 +230,23 @@ class SetNotification {
     int? minute,
   }) async {
     final normalizedSlotKey = _normalizeSlotKey(slotKey);
+    if (hour == null && minute != null) {
+      throw StateError('Alarm hour is required when minute is provided.');
+    }
     try {
-      final uri = _buildNotificationUri(
-        'notification/settings/$normalizedSlotKey/disable',
-      );
-      final response =
-          await (hour == null
-                  ? _client.patch(uri)
-                  : _client.patch(
-                      uri,
-                      headers: const {'Content-Type': 'application/json'},
-                      body: jsonEncode({'hour': hour, 'minute': minute ?? 0}),
-                    ))
-              .timeout(const Duration(seconds: 30));
+      final response = await _client
+          .patch(
+            _buildNotificationUri(
+              'notification/settings/$normalizedSlotKey/disable',
+            ),
+            headers: hour == null
+                ? null
+                : const {'Content-Type': 'application/json'},
+            body: hour == null
+                ? null
+                : jsonEncode({'hour': hour, 'minute': minute ?? 0}),
+          )
+          .timeout(const Duration(seconds: 30));
       final responseBody = ApiResponseParser.decodeBody(response);
 
       if (response.statusCode != 200) {

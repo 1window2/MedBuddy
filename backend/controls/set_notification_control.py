@@ -192,9 +192,12 @@ class SetNotification:
     ) -> dict[str, object]:
         normalized_patient_hash = normalize_patient_hash(patient_hash)
         normalized_slot_key = self._normalize_slot_key(slot_key)
-        if hour is None:
-            minute = None
-        else:
+        if hour is None and minute is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="Alarm minute requires an hour.",
+            )
+        if hour is not None:
             minute = 0 if minute is None else minute
             self._validate_alarm_time(hour, minute)
 
@@ -214,6 +217,7 @@ class SetNotification:
                     enabled=False,
                 )
                 self.db.add(setting)
+            # 비활성 상태와 선택한 시각을 같은 트랜잭션에서 반영한다.
             self._apply_alarm_state(setting, enabled=False, hour=hour, minute=minute)
             self.db.commit()
             self.db.refresh(setting)
@@ -227,8 +231,8 @@ class SetNotification:
             return self._disable_existing_alarm_after_conflict(
                 normalized_patient_hash,
                 normalized_slot_key,
-                hour,
-                minute,
+                hour=hour,
+                minute=minute,
             )
         except Exception as exc:
             self.db.rollback()

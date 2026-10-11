@@ -149,6 +149,13 @@ void main() {
       bodies.add(request.body);
       expect(request.method, 'PATCH');
       expect(request.url.path, '/notification/settings/evening/disable');
+      if (bodies.length == 1) {
+        expect(request.body, isEmpty);
+      } else {
+        expect(bodies, hasLength(2));
+        expect(request.headers['content-type'], contains('application/json'));
+        expect(jsonDecode(request.body), {'hour': 19, 'minute': 5});
+      }
       expect(request.url.queryParameters['patient_hash'], 'patient-b');
       expect(request.url.queryParameters.containsKey('user_hash'), isFalse);
       expect(request.url.queryParameters.containsKey('role'), isFalse);
@@ -182,7 +189,84 @@ void main() {
 
     // A time changed in the same save travels with the disable request.
     await control.disableAlarmSetting('evening', hour: 19, minute: 5);
+    expect(bodies, hasLength(2));
     expect(jsonDecode(bodies.last), {'hour': 19, 'minute': 5});
+  });
+
+  test('disableAlarmSetting sends edited time in one scoped PATCH', () async {
+    var calls = 0;
+    final client = MockClient((request) async {
+      calls++;
+      expect(request.method, 'PATCH');
+      expect(request.url.path, '/notification/settings/morning/disable');
+      expect(request.url.queryParameters['patient_hash'], 'patient-a');
+      expect(request.headers['content-type'], contains('application/json'));
+      expect(jsonDecode(request.body), {'hour': 19, 'minute': 5});
+      return http.Response(jsonEncode({
+        'data': {
+          'patient_hash': 'patient-a',
+          'slot_key': 'morning',
+          'hour': 19,
+          'minute': 5,
+          'is_enabled': false,
+        },
+      }), 200);
+    });
+    final control = SetNotification(
+      baseUrl: 'http://localhost',
+      patientHash: 'patient-a',
+      client: client,
+    );
+    final setting = await control.disableAlarmSetting('morning', hour: 19, minute: 5);
+    expect(calls, 1);
+    expect(setting.timeLabel, '19:05');
+    expect(setting.isEnabled, isFalse);
+  });
+
+  test('disableAlarmSetting defaults an omitted minute to zero', () async {
+    var calls = 0;
+    final client = MockClient((request) async {
+      calls++;
+      expect(request.method, 'PATCH');
+      expect(request.url.path, '/notification/settings/morning/disable');
+      expect(request.url.queryParameters['patient_hash'], 'patient-a');
+      expect(request.headers['content-type'], contains('application/json'));
+      expect(jsonDecode(request.body), {'hour': 19, 'minute': 0});
+      return http.Response(jsonEncode({
+        'data': {
+          'patient_hash': 'patient-a',
+          'slot_key': 'morning',
+          'hour': 19,
+          'minute': 0,
+          'is_enabled': false,
+        },
+      }), 200);
+    });
+    addTearDown(client.close);
+    final control = SetNotification(
+      baseUrl: 'http://localhost',
+      patientHash: 'patient-a',
+      client: client,
+    );
+
+    final setting = await control.disableAlarmSetting('morning', hour: 19);
+
+    expect(calls, 1);
+    expect(setting.timeLabel, '19:00');
+    expect(setting.isEnabled, isFalse);
+  });
+
+  test('disableAlarmSetting rejects minute without hour before request', () async {
+    var calls = 0;
+    final control = SetNotification(client: MockClient((_) async {
+      calls++;
+      return http.Response('{}', 500);
+    }));
+    await expectLater(
+      control.disableAlarmSetting('morning', minute: 5),
+      throwsStateError,
+    );
+    expect(calls, 0);
   });
 
   // 함수이름: test 콜백

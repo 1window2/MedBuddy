@@ -11,6 +11,7 @@ from pydantic import (
     Field,
     ValidationInfo,
     field_validator,
+    model_validator,
 )
 
 from core.application_clock import application_today
@@ -283,6 +284,20 @@ class PushTokenRegistration(BaseModel):
 class MedicationAlarmUpdate(BaseModel):
     hour: int = Field(ge=0, le=23)
     minute: int = Field(default=0, ge=0, le=59)
+
+
+# 시각을 생략하면 저장값을 유지하고, 시만 입력하면 기존 계약대로 정각을 사용한다.
+class MedicationAlarmDisable(BaseModel):
+    hour: int | None = Field(default=None, ge=0, le=23)
+    minute: int | None = Field(default=None, ge=0, le=59)
+
+    @model_validator(mode="after")
+    def validate_optional_time(self) -> "MedicationAlarmDisable":
+        if self.hour is None and self.minute is not None:
+            raise ValueError("Alarm minute requires an hour.")
+        if self.hour is not None and self.minute is None:
+            self.minute = 0
+        return self
 
 
 # 클래스명: CaregiverNotificationUpdate

@@ -94,6 +94,7 @@ from schemas.medication import (
     PrescriptionAnalysisResponse,
     MedicationStatusUpdate,
     MedicationAlarmUpdate,
+    MedicationAlarmDisable,
     CaregiverNotificationUpdate,
     PatientCodeCreate,
     PatientCodeRegister,
@@ -821,7 +822,7 @@ def save_medication_alarm(
 @router.patch("/notification/settings/{slot_key}/disable")
 def disable_medication_alarm(
     slot_key: str,
-    request: MedicationAlarmUpdate | None = None,
+    request: MedicationAlarmDisable | None = None,
     patient_hash: str | None = None,
     principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
     authorization: AuthorizationControl = Depends(get_authorization_control),
@@ -834,8 +835,8 @@ def disable_medication_alarm(
     return set_notification.disableAlarmSetting(
         authorized_patient_hash,
         slot_key,
-        None if request is None else request.hour,
-        None if request is None else request.minute,
+        hour=request.hour if request is not None else None,
+        minute=request.minute if request is not None else None,
     )
 
 
