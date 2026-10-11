@@ -611,8 +611,8 @@ class MedBuddyViewModel extends ChangeNotifier {
   // Function Name: synchronizeDeviceLanguage
   // Description: Delegates settings operations to their state owner.
   // Parameters: As declared by the operation. Returns: Its result.
-  Future<bool> synchronizeDeviceLanguage() =>
-      _settings.synchronizeDeviceLanguage();
+  Future<bool> synchronizeDeviceLanguage({bool retryRemoteLookup = false}) =>
+      _settings.synchronizeDeviceLanguage(retryRemoteLookup: retryRemoteLookup);
   // Function Name: requestCapturedPrescriptionImage
   // Description: Delegates prescription operations to their state owner.
   // Parameters: As declared by the operation. Returns: Its result.

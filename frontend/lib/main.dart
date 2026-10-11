@@ -189,6 +189,9 @@ class _MedBuddyAppState extends State<MedBuddyApp>
   int _monitorGeneration = 0;
   StreamSubscription<Uri?>? _widgetClicks;
   String? _pendingEmailVerification;
+  MedBuddyViewModel? _settingsViewModel;
+  String? _settingsUserHash;
+  int _settingsGeneration = 0;
 
   // Function Name: initState
   // Description: Resolves injected or owned root controls, installs authentication and notification listeners, and starts monitors for the current session.
@@ -211,6 +214,7 @@ class _MedBuddyAppState extends State<MedBuddyApp>
         _authenticationControl.handleUnauthorizedResponse;
     _ownsAppLanguageControl = widget.appLanguageControl == null;
     _appLanguageControl = widget.appLanguageControl ?? AppLanguageControl();
+    _settingsUserHash = _authenticationControl.session?.userHash;
     _pendingEmailVerification = _authenticationControl.emailVerificationRequired
         ? _authenticationControl.signedInEmail
         : null;
@@ -236,6 +240,7 @@ class _MedBuddyAppState extends State<MedBuddyApp>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
+        unawaited(_synchronizeSessionLanguage(retryRemoteLookup: true));
         unawaited(_pushNotificationService?.retryRegistration());
         unawaited(_caregiverNotificationMonitor?.resume());
       case AppLifecycleState.paused:
@@ -248,6 +253,12 @@ class _MedBuddyAppState extends State<MedBuddyApp>
   }
 
   Uri? _pendingWidgetUri;
+
+  // 기기 언어 이벤트에서만 동기화를 요청해 설정 알림이 다시 저장을 유발하지 않게 한다.
+  @override
+  void didChangeLocales(List<Locale>? locales) {
+    unawaited(_synchronizeSessionLanguage());
+  }
 
   Future<void> _openHomeWidget(Uri? uri) async {
     if (!mounted || uri?.scheme != 'medbuddy-widget') {
@@ -416,6 +427,12 @@ class _MedBuddyAppState extends State<MedBuddyApp>
   // 반환값:
   // - 없음.
   void _handleAuthenticationChange() {
+    final userHash = _authenticationControl.session?.userHash;
+    if (userHash != _settingsUserHash) {
+      _settingsGeneration++;
+      _settingsUserHash = userHash;
+      _settingsViewModel = null;
+    }
     _notifyEmailVerificationCompleted();
     final previousUserHash = _monitoredUserHash;
     _synchronizeCaregiverNotificationMonitor();
@@ -1325,7 +1342,7 @@ class _MedBuddyAppState extends State<MedBuddyApp>
             return application;
           }
           return ChangeNotifierProvider<MedBuddyViewModel>(
-            key: ValueKey(session.userHash),
+            key: ValueKey('${session.userHash}:$_settingsGeneration'),
             create: /* Function Name: create callback
              * Description: Creates the session-scoped view model and starts loading user settings to synchronize the app language.
              * Parameters:
@@ -1351,6 +1368,7 @@ class _MedBuddyAppState extends State<MedBuddyApp>
                   ),
                 );
               }
+              _settingsViewModel = viewModel;
               unawaited(_loadUserSettingAndSyncLanguage(viewModel));
               return viewModel;
             },
@@ -1370,8 +1388,12 @@ class _MedBuddyAppState extends State<MedBuddyApp>
   Future<void> _loadUserSettingAndSyncLanguage(
     MedBuddyViewModel viewModel,
   ) async {
+    final generation = _settingsGeneration;
     try {
       await viewModel.loadUserSetting();
+      if (!_isCurrentSettingsSession(viewModel, generation)) return;
+      await viewModel.synchronizeDeviceLanguage();
+      if (!_isCurrentSettingsSession(viewModel, generation)) return;
       // Apply the stored mode, not the resolved language: writing the language
       // back would replace "system" with a fixed language at every start.
       await _appLanguageControl.setLanguageMode(
@@ -1384,6 +1406,45 @@ class _MedBuddyAppState extends State<MedBuddyApp>
           stack: stackTrace,
           library: 'MedBuddy settings bootstrap',
           context: ErrorDescription('loading authenticated user settings'),
+        ),
+      );
+    }
+  }
+
+  // 같은 계정의 토큰 갱신은 유지하되 계정 전환·로그아웃·재로그인 이전 응답은 차단한다.
+  bool _isCurrentSettingsSession(MedBuddyViewModel viewModel, int generation) =>
+      mounted &&
+      generation == _settingsGeneration &&
+      identical(viewModel, _settingsViewModel) &&
+      _settingsUserHash != null &&
+      _authenticationControl.session?.userHash == _settingsUserHash;
+
+  Future<void> _synchronizeSessionLanguage({
+    bool retryRemoteLookup = false,
+  }) async {
+    final viewModel = _settingsViewModel;
+    final generation = _settingsGeneration;
+    if (viewModel == null ||
+        !_isCurrentSettingsSession(viewModel, generation)) {
+      return;
+    }
+    try {
+      await viewModel.synchronizeDeviceLanguage(
+        retryRemoteLookup: retryRemoteLookup,
+      );
+      if (!_isCurrentSettingsSession(viewModel, generation)) return;
+      await _appLanguageControl.setLanguageMode(
+        viewModel.userSetting.languageMode,
+      );
+    } catch (error, stackTrace) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'MedBuddy settings synchronization',
+          context: ErrorDescription(
+            'synchronizing authenticated device language',
+          ),
         ),
       );
     }

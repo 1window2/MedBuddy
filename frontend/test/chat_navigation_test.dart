@@ -108,7 +108,7 @@ class _ViewModel extends MedBuddyViewModel {
   // 함수이름: synchronizeDeviceLanguage
   // 함수역할: 기기 언어 재동기화 요청 횟수만 센다. 매개변수: 없음. 반환값: 저장하지 않았음을 뜻하는 false.
   @override
-  Future<bool> synchronizeDeviceLanguage() async {
+  Future<bool> synchronizeDeviceLanguage({bool retryRemoteLookup = false}) async {
     deviceLanguageSynchronizations += 1;
     return false;
   }
