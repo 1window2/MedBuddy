@@ -52,6 +52,15 @@ closed by any code on this branch:
       screen and, once allowed, all 21 pending alarms were re-armed as exact
       on return to the app; marking a slot as taken updates the server and
       cancels today's alarm.
+      Also on October 11, the released 0.2.1 app on an emulator against the
+      new production server: start, chat list, history and the live stream
+      work, and the app reconnected by itself after a backend redeployment.
+      With its chat left open for five and a half hours, across several ID
+      token lifetimes, network changes and host sleeps, the server accepted 15
+      connections at intervals of 2 to 78 minutes, refused none and logged no
+      error: closing the stream at token expiry does not make the released
+      app reconnect in a loop. Individual closes were not attributed to their
+      cause, because the server does not log close codes.
 - [ ] Chat notifications show the message preview by default; the recipient
       can switch to type-only. Decide the default.
 
@@ -92,6 +101,9 @@ closed by any code on this branch:
       named weekdays need manual or prescription registration.
 - [ ] "As needed" directions are scheduled like daily ones, on the slots the
       user confirmed.
+- [ ] A dose of a medication that is not taken every day can be recorded
+      only on its dose day; the day after, it is no longer on the schedule, so
+      a weekly dose taken a day late cannot be recorded.
 - [ ] A weekly prescription often prints the number of doses as its total
       days ("4" for four weeks). The review screen shows how many dose days
       result so the user can correct it, but the value is not guessed.
