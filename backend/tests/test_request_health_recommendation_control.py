@@ -2,6 +2,8 @@
 # 역할: 활성 복약 기반 건강 추천의 환자 범위·캐시·언어 및 응답 계약을 검증한다.
 
 import asyncio
+import hashlib
+import json
 import sys
 import threading
 import unittest
@@ -142,6 +144,7 @@ class CheckHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
     # - patient_hash (str): 약 또는 연동 데이터 범위를 식별할 환자 소유자 해시.
     # - prescription_date (date | None): 처방 또는 복용 시작일이며 None이면 fixture 기본 날짜 사용.
     # - total_days (str): 처방된 복용 기간 문자열이며 미상일 수 있음.
+    # - information (str | None): 효능·용법·주의 세 칸에 똑같이 저장할 문구; 생략하면 칸마다 실제 정보 문구를 저장.
     # 반환값:
     # - _SavedMedication: 생성된 ID를 포함하여 저장·갱신한 약 행.
     def _save_medication(
@@ -151,14 +154,15 @@ class CheckHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
         patient_hash: str = "patient-a",
         prescription_date: date | None = None,
         total_days: str = "7 days",
+        information: str | None = None,
     ) -> _SavedMedication:
         medication = _SavedMedication(
             patient_hash=patient_hash,
             prescription_date=prescription_date or date.today(),
             item_name=item_name,
-            efficacy="effect",
-            use_method="usage",
-            warning_message="warning",
+            efficacy="effect" if information is None else information,
+            use_method="usage" if information is None else information,
+            warning_message="warning" if information is None else information,
             dosage_per_time="1 tablet",
             daily_frequency="3 times",
             total_days=total_days,
@@ -560,6 +564,151 @@ class CheckHealthRecommendationTest(unittest.IsolatedAsyncioTestCase):
             await self.control.requestHealthRecommendation("patient-a")
 
         self.assertEqual(context.exception.status_code, 404)
+
+    # Function Name: test_medication_without_stored_information_is_withheld_from_generation
+    # Description:
+    # - A medication whose stored fields are blank or placeholders is not sent to the generator, by name or
+    #   otherwise; the response still lists it and names it in a first caution, also when served from the cache,
+    #   and the cached payload does not contain that caution.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    async def test_medication_without_stored_information_is_withheld_from_generation(
+        self,
+    ) -> None:
+        self._save_medication(item_name="known-tablet")
+        self._save_medication(item_name="blank-tablet", information="")
+        self._save_medication(item_name="placeholder-tablet", information="정보 없음")
+
+        first_response = await self.control.requestHealthRecommendation("patient-a")
+        second_response = await self.control.requestHealthRecommendation("patient-a")
+
+        self.assertEqual(
+            [item["item_name"] for item in self.llm_service.received_medications],
+            ["known-tablet"],
+        )
+        self.assertEqual(self.llm_service.generation_count, 1)
+        self.assertEqual(first_response["data"], second_response["data"])
+        self.assertCountEqual(
+            first_response["data"]["medication_names"],
+            ["known-tablet", "blank-tablet", "placeholder-tablet"],
+        )
+        cautions = first_response["data"]["caution_items"]
+        self.assertEqual(len(cautions), 2)
+        self.assertIn("blank-tablet", cautions[0])
+        self.assertIn("placeholder-tablet", cautions[0])
+        self.assertNotIn("known-tablet", cautions[0])
+        self.assertEqual(cautions[1], "이상 증상이 있으면 의료진과 상담하세요.")
+        cached_payload = self.db.query(_HealthRecommendationCache).one().payload
+        self.assertNotIn("blank-tablet", cached_payload)
+
+    # Function Name: test_only_uninformed_medications_get_an_unavailable_answer_without_generation
+    # Description:
+    # - When no active medication has stored information the generator is not called, nothing is cached and the
+    #   response keeps its shape with text saying guidance is unavailable, in the requested language.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    async def test_only_uninformed_medications_get_an_unavailable_answer_without_generation(
+        self,
+    ) -> None:
+        self._save_medication(item_name="blank-tablet", information=" ")
+        self._save_medication(item_name="failed-tablet", information="요약 실패")
+
+        korean = await self.control.requestHealthRecommendation("patient-a")
+        english = await self.control.requestHealthRecommendation("patient-a", language="en")
+
+        self.assertEqual(self.llm_service.generation_count, 0)
+        self.assertEqual(self.db.query(_HealthRecommendationCache).count(), 0)
+        for response in (korean, english):
+            self.assertTrue(response["success"])
+            self.assertEqual(
+                set(response["data"]),
+                {"diet_recommendation", "exercise_recommendation", "caution_items", "medication_names"},
+            )
+            self.assertCountEqual(
+                response["data"]["medication_names"], ["blank-tablet", "failed-tablet"],
+            )
+            self.assertEqual(len(response["data"]["caution_items"]), 1)
+        self.assertIn("제공할 수 없습니다", korean["data"]["diet_recommendation"])
+        self.assertIn("제공할 수 없습니다", korean["data"]["exercise_recommendation"])
+        self.assertIn("cannot be given", english["data"]["diet_recommendation"])
+
+    # Function Name: test_guidance_cached_with_an_uninformed_medication_in_the_prompt_is_not_served
+    # Description:
+    # - A cache row stored under the key earlier versions built for a set with an uninformed medication, when
+    #   that medication was still part of the prompt, is ignored and the guidance is generated again.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    async def test_guidance_cached_with_an_uninformed_medication_in_the_prompt_is_not_served(
+        self,
+    ) -> None:
+        self._save_medication(item_name="known-tablet")
+        self._save_medication(item_name="blank-tablet", information="")
+        summaries = [
+            {
+                "item_name": name, "efficacy": text, "use_method": usage,
+                "warning_message": warning, "dosage_per_time": "1 tablet",
+                "daily_frequency": "3 times", "total_days": "7 days",
+            }
+            for name, text, usage, warning in (
+                ("blank-tablet", "", "", ""),
+                ("known-tablet", "effect", "usage", "warning"),
+            )
+        ]
+        earlier_key = hashlib.sha256(
+            json.dumps(
+                {"language": "ko", "medications": summaries},
+                ensure_ascii=False, sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        self.db.add(_HealthRecommendationCache(
+            patient_hash="patient-a",
+            recommendation_key=earlier_key,
+            payload=json.dumps({
+                "diet_recommendation": "advice for blank-tablet",
+                "exercise_recommendation": "exercise",
+                "caution_items": [],
+            }),
+        ))
+        self.db.commit()
+
+        response = await self.control.requestHealthRecommendation("patient-a")
+
+        self.assertEqual(self.llm_service.generation_count, 1)
+        self.assertEqual(
+            response["data"]["diet_recommendation"],
+            "위 자극을 줄이는 식사를 권장합니다.",
+        )
+
+    # Function Name: test_cache_key_of_fully_informed_medications_is_unchanged
+    # Description:
+    # - The key of a set in which every medication has stored information is the hash earlier versions built,
+    #   so guidance already cached for such sets keeps being served.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    async def test_cache_key_of_fully_informed_medications_is_unchanged(self) -> None:
+        summaries = [{
+            "item_name": "known-tablet", "efficacy": "effect", "use_method": "usage",
+            "warning_message": "정보 없음", "dosage_per_time": "1 tablet",
+            "daily_frequency": "3 times", "total_days": "7 days",
+        }]
+        earlier_key = hashlib.sha256(
+            json.dumps(
+                {"language": "en", "medications": summaries},
+                ensure_ascii=False, sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+
+        self.assertEqual(
+            self.control._build_recommendation_key(summaries, "en-US"), earlier_key,
+        )
 
 
 # Class Name: LLMServiceTest

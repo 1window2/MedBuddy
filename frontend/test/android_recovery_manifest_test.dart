@@ -56,14 +56,22 @@ void main() {
   // Function Name: test callback
   // Description:
   // - Verify that manifest entries without any remaining caller stay removed: the legacy storage
-  //   permissions, the unused map-app query and the unused widget background receiver.
+  //   permissions, the unused map-app query and the unused widget background receiver. The
+  //   permissions a plugin contributes for video recording appear only as removal markers.
   // Parameters:
   // - None.
   // Returns:
   // - No value; a failed expectation fails this test.
   test('Android manifest declares no unused permission, query or receiver', () {
     final manifest = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
-    expect(manifest, isNot(contains('READ_EXTERNAL_STORAGE')));
+    for (final permission in ['RECORD_AUDIO', 'WRITE_EXTERNAL_STORAGE', 'READ_EXTERNAL_STORAGE']) {
+      final declarations = RegExp('<uses-permission[^>]*android\\.permission\\.$permission"[^>]*>')
+          .allMatches(manifest)
+          .map((match) => match.group(0)!)
+          .toList();
+      expect(declarations, hasLength(1), reason: permission);
+      expect(declarations.single, contains('tools:node="remove"'), reason: permission);
+    }
     expect(manifest, isNot(contains('READ_MEDIA_IMAGES')));
     expect(manifest, isNot(contains('HomeWidgetBackgroundReceiver')));
     expect(manifest, isNot(contains('android:scheme="nmap"')));

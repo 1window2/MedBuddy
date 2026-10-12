@@ -2,6 +2,7 @@
 # 역할: 인증된 사용자의 FCM 기기 토큰 등록과 해제를 처리한다.
 
 import logging
+import secrets
 
 from sqlalchemy.orm import Session
 
@@ -69,6 +70,8 @@ class ManagePushToken:
             push_token.enabled = True
 
         push_token.supports_caregiver_actions = supports_caregiver_actions
+        # 같은 계정의 재등록도 이전 전송 결과와 구분할 수 있게 갱신한다.
+        push_token.registration_version = secrets.token_hex(16)
         self.db.commit()
         self.db.refresh(push_token)
         return {
@@ -92,17 +95,17 @@ class ManagePushToken:
     ) -> dict[str, object]:
         normalized_user_hash = normalize_patient_hash(user_hash)
         normalized_token = token.strip()
-        push_token = (
+        # 소유권 확인과 해제를 함께 처리하여 계정 전환 직후의 토큰을 끄지 않는다.
+        (
             self.db.query(_DevicePushToken)
             .filter(
                 _DevicePushToken.user_hash == normalized_user_hash,
                 _DevicePushToken.token == normalized_token,
+                _DevicePushToken.enabled.is_(True),
             )
-            .first()
+            .update({"enabled": False}, synchronize_session=False)
         )
-        if push_token is not None:
-            push_token.enabled = False
-            self.db.commit()
+        self.db.commit()
         return {
             "success": True,
             "message": "Push token was unregistered.",

@@ -18,6 +18,7 @@ import '../viewmodels/medbuddy_view_model.dart';
 import '../viewmodels/medbuddy_feature_updates.dart';
 import '../widgets/medbuddy_page_header.dart';
 import '../widgets/dose_sync_status.dart';
+import '../widgets/exact_reminder_notice.dart';
 import '../widgets/medication_thumbnail.dart';
 import 'medication_image_viewer_boundary.dart';
 
@@ -112,6 +113,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     for (final definition in _slotDefinitions) definition.key: GlobalKey(),
   };
   final Set<String> _updatingEntireSlotKeys = <String>{};
+  bool _reminderWorkflowActive = false;
   bool _didRevealInitialSlot = false;
   late Set<({String medicationId, String slotKey})> _selectedDoses;
   // 함수이름: initState
@@ -505,6 +507,16 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
           children: [
+            // 켜 둔 복약 알림이 있는데 기기가 정확한 알람을 막고 있으면 허용 방법을 안내한다.
+            if (viewModel.userSetting.medicationNotificationsEnabled &&
+                viewModel.medicationReminderSettings.values.any(
+                  (setting) => setting.isEnabled,
+                ))
+              ExactReminderNotice(
+                notificationService: viewModel.notificationService,
+                isEnglish: text.isEnglish,
+                margin: const EdgeInsets.only(bottom: 16),
+              ),
             for (final slot in slots) ...[
               KeyedSubtree(
                 key: _slotKeys[slot.key],
@@ -834,6 +846,21 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     _ScheduleSlot slot,
     _ScheduleText text,
   ) async {
+    if (_reminderWorkflowActive) return;
+    _reminderWorkflowActive = true;
+    try {
+      await _editAndSaveReminder(viewModel, slot, text);
+    } finally {
+      _reminderWorkflowActive = false;
+    }
+  }
+
+  // 저장 응답이 끝나기 전에는 이전 설정으로 새 편집창을 열지 않는다.
+  Future<void> _editAndSaveReminder(
+    MedBuddyViewModel viewModel,
+    _ScheduleSlot slot,
+    _ScheduleText text,
+  ) async {
     final setting =
         viewModel.medicationReminderSettings[slot.key] ??
         MedicationAlarm.defaults(slot.key);
@@ -863,6 +890,9 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
         : await viewModel.requestMedicationReminderCancel(
             slotKey: slot.key,
             slotTitle: slotTitle,
+            // 알림을 끄면서 시각도 바꾼 경우 그 시각이 버려지지 않게 함께 보낸다.
+            hour: selectedSetting.hour,
+            minute: selectedSetting.minute,
           );
     if (!mounted) {
       return;
@@ -919,30 +949,27 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
                   foregroundColor: MedBuddyColors.primaryDark,
                 ),
                 // 함수역할: 시각 선택을 열어 확정한 값만 초안에 반영한다. 매개변수: 없음. 반환값: 완료 Future.
-                onPressed: !draft.isEnabled
-                    ? null
-                    : () async {
-                        final time =
-                            await SetNotificationUI.showNotificationPopup(
-                              context,
-                              language: text.language,
-                              slotTitle: slotTitle,
-                              initialTime: TimeOfDay(
-                                hour: draft.hour,
-                                minute: draft.minute,
-                              ),
-                            );
-                        if (!context.mounted || time == null) {
-                          return;
-                        }
-                        setDialogState(
-                          // 함수역할: 확정 시각을 초안에 반영한다. 매개변수·반환값: 없음.
-                          () => draft = draft.copyWith(
-                            hour: time.hour,
-                            minute: time.minute,
-                          ),
-                        );
-                      },
+                onPressed: () async {
+                  final time = await SetNotificationUI.showNotificationPopup(
+                    context,
+                    language: text.language,
+                    slotTitle: slotTitle,
+                    initialTime: TimeOfDay(
+                      hour: draft.hour,
+                      minute: draft.minute,
+                    ),
+                  );
+                  if (!context.mounted || time == null) {
+                    return;
+                  }
+                  setDialogState(
+                    // 함수역할: 확정 시각을 초안에 반영한다. 매개변수·반환값: 없음.
+                    () => draft = draft.copyWith(
+                      hour: time.hour,
+                      minute: time.minute,
+                    ),
+                  );
+                },
               ),
             ],
           ),

@@ -585,15 +585,21 @@ class ManageLinkedChat:
     # 매개변수:
     # - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
     # - slot_key (str): morning, lunch, evening, bedtime 중 복용 시간대 키.
+    # - only_caregiver_hash (str | None): 지정하면 이 보호자와의 채팅에만 기록한다.
     # 반환값:
     # - 새로 저장된 완료 메시지 수
-    def publish_slot_completion(self, *, patient_hash: str, slot_key: str) -> int:
+    def publish_slot_completion(
+        self, *, patient_hash: str, slot_key: str,
+        only_caregiver_hash: str | None = None,
+    ) -> int:
         """기존 알림 아웃박스와 같은 완료 사건을 채팅에도 멱등하게 기록한다."""
         if slot_key not in MEDICATION_SCHEDULE_SLOT_KEYS:
             return 0
         today = application_today()
         created_count = 0
         for link in self.link_repository.list_active_for_patient(patient_hash):
+            if only_caregiver_hash is not None and link.caregiver_hash != only_caregiver_hash:
+                continue
             # A full-slot chat confirmation already conveys this event in the
             # initiating conversation. Other linked caregivers still receive it.
             confirmations = self.db.query(_ChatMessage).filter(
@@ -785,7 +791,12 @@ class ManageLinkedChat:
     ) -> list[dict[str, object]]:
         """활성 약, 완료 기록과 알림 설정을 한 번씩 조회해 시간대별로 묶는다."""
         today = schedule_date or application_today()
-        medications = self._active_medications(patient_hash, today)
+        # 매일 복용하지 않는 약은 복용하는 날의 시간대에만 넣는다.
+        medications = [
+            medication
+            for medication in self._active_medications(patient_hash, today)
+            if self.course_policy.is_due_on(medication, today)
+        ]
         medication_ids = [int(item.id) for item in medications if item.id is not None]
         completion_rows = (
             self.db.query(_MedicationCompletion)

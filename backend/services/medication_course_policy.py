@@ -9,6 +9,12 @@ from entities.medication_schedule_entity import (
     decode_medication_schedule_slot_keys,
     medication_schedule_slot_keys_for_frequency,
 )
+from services.medication_dose_rhythm import (
+    DoseCycle,
+    read_dose_cycle,
+    read_doses_per_dose_day,
+    read_duration_days,
+)
 
 _SCHEDULE_COUNT_PATTERN = re.compile(r"-?\d+")
 _FREQUENCY_COUNT_PATTERN = re.compile(
@@ -71,6 +77,63 @@ class MedicationCoursePolicy:
             return start_date <= target_date
 
         return start_date <= target_date <= end_date
+
+    # Function Name: is_due_on
+    # Description:
+    # - Checks whether a dose of the medication is due on a date: the course includes the date
+    #   and, for a medication that is not taken every day ("주 1회", "격일"), the date is one of
+    #   its dose days counted from the start of the course.
+    # - A non-daily medication without a recorded start date has no day to count from and is
+    #   treated as daily, as it was before dose days were read.
+    # Parameters:
+    # - medication (Any): Saved medication-like object with date, total_days and daily_frequency.
+    # - target_date (date): Date asked about.
+    # Returns:
+    # - True when the medication belongs on that day's schedule.
+    def is_due_on(self, medication: Any, target_date: date) -> bool:
+        if not self.is_active_on(medication, target_date):
+            return False
+        cycle = self.read_dose_cycle(medication)
+        if cycle.is_daily:
+            return True
+        start_date = self._read_recorded_start_date(medication)
+        if start_date is None:
+            return True
+        return cycle.includes(start_date, target_date)
+
+    # Function Name: read_dose_cycle
+    # Description:
+    # - Reads the dose days of a medication from its frequency label.
+    # Parameters:
+    # - medication (Any): Saved medication-like object with a daily_frequency label.
+    # Returns:
+    # - The dose cycle; the daily cycle for every label that names no other rhythm.
+    def read_dose_cycle(self, medication: Any) -> DoseCycle:
+        return read_dose_cycle(getattr(medication, "daily_frequency", None))
+
+    # Function Name: dose_cycle_fields
+    # Description:
+    # - Describes the dose days for API responses so that clients schedule reminders on the same
+    #   days without reading the label themselves: a date D is a dose day when the number of
+    #   days from dose_cycle_anchor to D, modulo dose_cycle_days, is in dose_cycle_offsets.
+    # Parameters:
+    # - medication (Any): Saved medication-like object.
+    # Returns:
+    # - The three response fields; a daily medication has a one-day cycle and no anchor.
+    def dose_cycle_fields(self, medication: Any) -> dict[str, object]:
+        cycle = self.read_dose_cycle(medication)
+        start_date = self._read_recorded_start_date(medication)
+        if cycle.is_daily or start_date is None:
+            return {
+                "dose_cycle_days": 1,
+                "dose_cycle_offsets": [0],
+                "dose_cycle_anchor": None,
+            }
+        return {
+            "dose_cycle_days": cycle.cycle_days,
+            "dose_cycle_offsets": list(cycle.offsets),
+            "dose_cycle_anchor": cycle.anchor(start_date).isoformat(),
+        }
 
     # Function Name: is_expired_after
     # Description:
@@ -156,20 +219,20 @@ class MedicationCoursePolicy:
 
     # Function Name: read_total_days
     # Description:
-    # - Extracts the first integer duration from a total_days or frequency label.
+    # - Reads the course length in days from the first number of a total_days label and its
+    #   unit: "7 days" is 7, "2주" is 14 and "1개월" is 30.
     # Parameters:
-    # - raw_total_days (str | None): Raw label such as "7 days" or "3 times".
+    # - raw_total_days (str | None): Raw label such as "7 days" or "2주".
     # Returns:
     # - Positive duration capped at MAX_MEDICATION_COURSE_DAYS, or 0 for absent or nonpositive counts.
     def read_total_days(self, raw_total_days: str | None) -> int:
-        return self._read_schedule_count(
-            raw_total_days,
-            maximum=MAX_MEDICATION_COURSE_DAYS,
-        )
+        return min(read_duration_days(raw_total_days), MAX_MEDICATION_COURSE_DAYS)
 
     # Function Name: read_frequency_count
     # Description:
-    # - Extracts the dose count from a daily_frequency label.
+    # - Extracts the number of doses on a dose day from a daily_frequency label.
+    # - A count that is per week or month ("주 3회") is one dose on each dose day, and an hour
+    #   interval ("8시간마다") is the number of doses that fit into a day.
     # Parameters:
     # - raw_frequency (str | None): Raw label such as "3 times" or "1일 3회".
     # Returns:
@@ -177,6 +240,9 @@ class MedicationCoursePolicy:
     def read_frequency_count(self, raw_frequency: str | None) -> int:
         if not raw_frequency:
             return 0
+        doses_per_dose_day = read_doses_per_dose_day(raw_frequency)
+        if doses_per_dose_day is not None:
+            return min(doses_per_dose_day, MAX_DAILY_FREQUENCY)
         frequency_match = _FREQUENCY_COUNT_PATTERN.search(raw_frequency)
         if frequency_match is not None:
             return self._bounded_positive_count(
@@ -209,27 +275,6 @@ class MedicationCoursePolicy:
             except ValueError:
                 return None
         return None
-
-    # Function Name: _read_schedule_count
-    # Description:
-    # - Extract the first signed integer in a schedule label and enforce a positive upper-bounded count.
-    # Parameters:
-    # - raw_value (str | None): Prescription-derived duration or count label.
-    # - maximum (int): Largest positive schedule count permitted by the caller.
-    # Returns:
-    # - The capped positive count, or 0 for missing text, no match or a nonpositive number.
-    def _read_schedule_count(
-        self,
-        raw_value: str | None,
-        *,
-        maximum: int,
-    ) -> int:
-        if not raw_value:
-            return 0
-        match = _SCHEDULE_COUNT_PATTERN.search(raw_value)
-        if match is None:
-            return 0
-        return self._bounded_positive_count(match.group(0), maximum)
 
     # Function Name: _bounded_positive_count
     # Description:

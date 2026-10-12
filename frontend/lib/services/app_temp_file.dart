@@ -15,22 +15,33 @@ Future<bool> deleteAppTempFile(String path) async {
   if (path.trim().isEmpty) {
     return false;
   }
-  try {
-    // Links are resolved first so that a link cannot point the deletion at a file outside the directory.
-    final canonicalPath = await File(path).resolveSymbolicLinks();
-    if (!await FileSystemEntity.isFile(canonicalPath)) {
+  for (var attempt = 0; ; attempt += 1) {
+    try {
+      // Links are resolved first so that a link cannot point the deletion at a file outside the directory.
+      final canonicalPath = await File(path).resolveSymbolicLinks();
+      if (!await FileSystemEntity.isFile(canonicalPath)) {
+        return false;
+      }
+      for (final directoryPath in await _appTempDirectoryPaths()) {
+        if (_isInsideDirectory(canonicalPath, directoryPath)) {
+          await File(canonicalPath).delete();
+          return true;
+        }
+      }
+      return false;
+    } on FileSystemException catch (error) {
+      // Windows 이미지 디코더가 파일을 잠시 잡고 있으면 제한적으로 재시도한다.
+      // 재시도마다 원래 경로와 임시 폴더를 다시 확인해 외부 파일은 지우지 않는다.
+      if (!Platform.isWindows ||
+          !const [32, 33].contains(error.osError?.errorCode) ||
+          attempt >= 3) {
+        return false;
+      }
+      await Future<void>.delayed(Duration(milliseconds: 100 * (1 << attempt)));
+    } catch (_) {
+      // Cleanup is best effort: a missing file, an IO error or an unavailable path provider leaves the file in place.
       return false;
     }
-    for (final directoryPath in await _appTempDirectoryPaths()) {
-      if (_isInsideDirectory(canonicalPath, directoryPath)) {
-        await File(canonicalPath).delete();
-        return true;
-      }
-    }
-    return false;
-  } catch (_) {
-    // Cleanup is best effort: a missing file, an IO error or an unavailable path provider leaves the file in place.
-    return false;
   }
 }
 

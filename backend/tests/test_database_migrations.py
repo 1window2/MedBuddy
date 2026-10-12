@@ -1,7 +1,9 @@
 # 파일명: test_database_migrations.py
 # 역할: 신규·기존 로컬 DB의 마이그레이션, 필수 스키마 및 데이터 보존 왕복을 검증한다.
 
+import logging
 from pathlib import Path
+from unittest.mock import patch
 
 from alembic import command
 from alembic.config import Config
@@ -9,6 +11,7 @@ from sqlalchemy import create_engine, inspect, MetaData, Table, select
 from datetime import datetime
 import pytest
 
+from core import schema_initialization
 from core.schema_initialization import prepare_database_schema, verify_database_revision
 
 from entities.chat_message_entity import _ChatMessage
@@ -22,7 +25,13 @@ def test_empty_database_bootstrap_uses_alembic_and_is_repeatable(tmp_path: Path)
         prepare_database_schema(engine, auto_create=True)
         with engine.connect() as connection:
             verify_database_revision(connection)
-        assert "supports_caregiver_actions" in {
+            for table in ("saved_medications", "chat_messages"):
+                definition = connection.exec_driver_sql(
+                    "SELECT sql FROM sqlite_master WHERE name = ?", (table,),
+                ).scalar_one()
+                assert "AUTOINCREMENT" in definition.upper()
+        assert inspect(engine).has_table("catalog_refresh_state")
+        assert {"supports_caregiver_actions", "registration_version"} <= {
             column["name"] for column in inspect(engine).get_columns("device_push_tokens")
         }
     finally:
@@ -87,10 +96,37 @@ def test_empty_database_is_not_created_when_automatic_setup_is_disabled(tmp_path
         engine.dispose()
 
 
+def test_revision_check_is_quiet_and_reads_the_scripts_once(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The readiness probe repeats this check; it must not log at INFO or re-read the scripts."""
+    engine = create_engine(f"sqlite:///{(tmp_path / 'quiet.db').as_posix()}")
+    try:
+        prepare_database_schema(engine, auto_create=True)
+        caplog.clear()
+        with caplog.at_level(logging.INFO, logger="alembic"):
+            with patch.object(
+                schema_initialization.ScriptDirectory, "from_config",
+                side_effect=AssertionError("migration scripts were read again"),
+            ):
+                for _ in range(3):
+                    with engine.connect() as connection:
+                        verify_database_revision(connection)
+        assert [record for record in caplog.records if record.name.startswith("alembic")] == []
+    finally:
+        engine.dispose()
+
+
 def test_merge_preserves_both_independently_applied_heads(tmp_path: Path) -> None:
     from alembic.script import ScriptDirectory
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
-    assert ScriptDirectory.from_config(config).get_heads() == ["b3a7d9e2f601"]
+    scripts = ScriptDirectory.from_config(config)
+    assert scripts.get_heads() == ["f2c8a6d4e901"]
+    assert set(scripts.get_revision("f2c8a6d4e901").down_revision) == {
+        "c5e1a7f3b902", "d19e7c4b2a60",
+    }
+    for applied_revision in ("c5e1a7f3b902", "d19e7c4b2a60"):
+        assert scripts.get_revision(applied_revision).down_revision == "b3a7d9e2f601"
     for revision in ("a6e2d903bc71", "e4a19c7b520d"):
         url = f"sqlite:///{(tmp_path / f'{revision}.db').as_posix()}"
         config.attributes["database_url"] = url

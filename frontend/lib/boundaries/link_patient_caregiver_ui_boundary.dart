@@ -106,6 +106,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   Map<int, List<ChatMedicationContext>> _medicationContextsByLink = const {};
   late String _statusMessage;
   bool _isLoading = false;
+  bool _isConfirmingUnlink = false;
   int _requestGeneration = 0;
 
   // 함수이름: initState
@@ -421,7 +422,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   // - link (PatientCaregiverLink): 환자·보호자 연결과 권한 상태.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _removePatientCaregiverLink(PatientCaregiverLink link) async {
-    if (_isLoading || !mounted) {
+    if (_isLoading || _isConfirmingUnlink || !mounted) {
       return;
     }
 
@@ -435,6 +436,76 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       setState(() {
         _statusMessage = _text.missingLinkId;
       });
+      return;
+    }
+
+    // 확인 대기 중 계정·요청 세대가 바뀌면 이전 연동을 해제하지 않는다.
+    final dialogRequest = _LinkRequest(
+      generation: _requestGeneration,
+      userHash: _committedUserHash,
+      control: _control,
+    );
+    final text = _text;
+    final isCaregiver = link.caregiverHash == _committedUserHash;
+    final peerHash = (isCaregiver ? link.patientHash : link.caregiverHash).trim();
+    final suffix = peerHash.length > 4
+        ? peerHash.substring(peerHash.length - 4)
+        : peerHash;
+    final peerName = isCaregiver
+        ? (_patientLabels[link.patientHash] ??
+              _localStateControl.fallbackLabel(peerHash, isEnglish: text.isEnglish))
+        : (link.caregiverAlias?.trim().isNotEmpty == true
+              ? link.caregiverAlias!.trim()
+              : '${text.caregiverPeer} ${suffix.toUpperCase()}'.trim());
+    _isConfirmingUnlink = true;
+    bool? confirmed;
+    var responded = false;
+    try {
+      confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          // 닫히는 프레임에서도 연속 입력으로 아래 화면까지 pop하지 않는다.
+          void respond(bool value) {
+            if (responded ||
+                !dialogContext.mounted ||
+                ModalRoute.of(dialogContext)?.isCurrent != true) {
+              return;
+            }
+            responded = true;
+            Navigator.of(dialogContext).pop(value);
+          }
+
+          final colors = Theme.of(dialogContext).colorScheme;
+          return AlertDialog(
+            key: const Key('unlink-confirmation-dialog'),
+            scrollable: true,
+            title: Text(text.unlinkTitle),
+            content: Text(text.unlinkWarning(peerName)),
+            actions: [
+              TextButton(
+                key: const Key('unlink-cancel'),
+                autofocus: true,
+                onPressed: () => respond(false),
+                child: Text(text.cancel),
+              ),
+              FilledButton.icon(
+                key: const Key('unlink-confirm'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: colors.error,
+                  foregroundColor: colors.onError,
+                ),
+                onPressed: () => respond(true),
+                icon: const Icon(Icons.link_off),
+                label: Text(text.delete),
+              ),
+            ],
+          );
+        },
+      );
+    } finally {
+      _isConfirmingUnlink = false;
+    }
+    if (confirmed != true || !_isCurrentRequest(dialogRequest) || _isLoading) {
       return;
     }
 
@@ -2583,6 +2654,17 @@ class _LinkPatientCaregiverText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get delete => isEnglish ? 'Remove link' : '연동 해제';
+
+  String get unlinkTitle => isEnglish ? 'Remove this link?' : '연동을 해제할까요?';
+
+  String unlinkWarning(String peerName) => isEnglish
+      ? 'Medication schedule sharing with $peerName will stop.\n\n'
+            'Caregiver notification settings for this link and your shared chat '
+            'history will be deleted. Deleted chat history cannot be recovered. '
+            'The patient\'s medications and dose records will remain.'
+      : '$peerName 님과의 복약 일정 공유가 중단됩니다.\n\n'
+            '이 연동의 보호자 알림 설정과 두 사람의 대화 기록이 삭제됩니다. '
+            '삭제된 대화 기록은 복구할 수 없습니다. 환자의 약과 복약 기록은 삭제되지 않습니다.';
 
   // 추가 입력 없이 현재 언어의 상세 연동 관리 제목을 반환한다.
   String get linkManagement => isEnglish ? 'Manage link' : '연동 관리';

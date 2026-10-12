@@ -138,6 +138,21 @@ class SavedMedicationRepository:
             .first()
         )
 
+    # 함수이름: count_by_patient
+    # 함수역할:
+    # - 한 환자가 저장해 둔 약의 개수를 센다.
+    # 매개변수:
+    # - patient_hash (str): 저장 기록의 소유 범위를 제한할 환자 해시.
+    # 반환값:
+    # - 저장된 약의 개수.
+    def count_by_patient(self, patient_hash: str) -> int:
+        """계정별 저장 한도를 확인할 때 쓰는 개수를 반환한다."""
+        return (
+            self.db.query(_SavedMedication)
+            .filter(_SavedMedication.patient_hash == patient_hash)
+            .count()
+        )
+
     # 함수이름: find_daily_duplicate
     # 함수역할:
     # - 같은 환자의 같은 등록일에 동일 처방 중복 방지 키가 저장됐는지 조회한다.

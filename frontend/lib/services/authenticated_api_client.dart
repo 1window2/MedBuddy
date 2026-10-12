@@ -212,6 +212,16 @@ class AuthenticatedApiClient extends http.BaseClient {
     return response;
   }
 
+  // Function Name: reportUnauthorized
+  // Description: Runs the same session cleanup as an HTTP 401 for a transport that is not an HTTP response, such as a chat socket the server closed for failed authentication.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: completes after the registered session cleanup ran, or immediately when none is registered.
+  Future<void> reportUnauthorized() async {
+    await (_onUnauthorized ?? defaultOnUnauthorized)?.call();
+  }
+
   // Function Name: buildAuthenticationHeaders
   // Description: Builds shared REST and WebSocket contract, bearer, and App Check headers only for the configured backend origin, with bounded token retrieval and typed failures.
   // Parameters:
@@ -227,6 +237,7 @@ class AuthenticatedApiClient extends http.BaseClient {
     final headers = <String, String>{
       'Accept': 'application/json',
       'X-MedBuddy-Api-Contract': ApiConfig.contractVersion,
+      'X-MedBuddy-Client-Features': ApiConfig.clientFeatures,
     };
     late final String? token;
     try {

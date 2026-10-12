@@ -99,6 +99,58 @@ void main() {
     client.close();
   });
 
+  // 로그아웃 직전의 전송 시도는 정해진 시간만 기다린다. 응답이 없으면 기록을 대기열에 둔 채 돌아온다.
+  test('flushPending uploads what it can and never waits past its limit', () async {
+    final hanging = Completer<http.Response>();
+    var online = false;
+    var posts = 0;
+    final client = MockClient((request) async {
+      posts++;
+      if (!online) return hanging.future;
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      return http.Response(
+        jsonEncode({
+          'operation_id': body['operation_id'],
+          'schedule_date': body['schedule_date'],
+          'data': [medication.toJson()],
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    await store.enqueue('patient-a', op('dose_flush_1'));
+    final stalled = DoseSyncService(owner: 'patient-a', client: client,
+      openStore: () async => store, clock: () => now);
+    final watch = Stopwatch()..start();
+    await stalled.flushPending(limit: const Duration(milliseconds: 200));
+    expect(watch.elapsed, lessThan(const Duration(seconds: 3)));
+    expect(posts, 1);
+    expect(await store.pending('patient-a'), hasLength(1));
+    // 늦게 도착한 실패 응답은 기록을 재시도 대기로 되돌린다.
+    hanging.complete(http.Response('offline', 503));
+    await stalled.drain();
+    stalled.dispose();
+    expect((await store.pending('patient-a')).single['state'], 'pending');
+
+    online = true;
+    final sync = DoseSyncService(owner: 'patient-a', client: client,
+      openStore: () async => store, clock: () => now.add(const Duration(minutes: 5)));
+    await sync.flushPending();
+    expect(await store.pending('patient-a'), isEmpty);
+
+    // 서버가 거부해 보류된 기록만 남았으면 다시 보내지 않는다.
+    await store.enqueue('patient-a', op('dose_flush_2'));
+    final lease = 'lease-1';
+    await store.claim('patient-a', lease, 0);
+    await store.finish('patient-a', 'dose_flush_2', lease, blocked: true);
+    final before = posts;
+    await sync.flushPending();
+    expect(posts, before);
+    expect((await store.pending('patient-a')).single['state'], 'blocked');
+    sync.dispose();
+    client.close();
+  });
+
   // Both foreground read boundaries must reject yesterday's delayed response,
   // then recover on an explicit same-day refresh without queueing any writes.
   for (final summary in [false, true]) {

@@ -568,6 +568,9 @@ void main() {
       await tester.tap(find.text('연동 관리'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('연동 해제'));
+      await tester.pumpAndSettle();
+      expect(control.unlinkIds, isEmpty);
+      await tester.tap(find.byKey(const Key('unlink-confirm')));
       await tester.pump();
       expect(control.unlinkIds, [1]);
 

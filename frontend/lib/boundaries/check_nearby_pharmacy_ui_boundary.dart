@@ -1771,13 +1771,15 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     var opened = false;
     if (choice == _PharmacyDirectionsChoice.installedMapApp) {
       opened = await _control.requestInstalledMapDirections(pharmacy);
+      // 실행 대기 중 떠난 화면의 실패 응답으로 새 외부 작업을 시작하지 않는다.
+      if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
       if (!opened) {
         opened = await _control.requestGoogleMapDirections(pharmacy);
       }
     } else {
       opened = await _control.requestGoogleMapDirections(pharmacy);
     }
-    if (!opened && mounted) {
+    if (!opened && mounted && ModalRoute.of(context)?.isCurrent == true) {
       await _copyPharmacyAddress(pharmacy, copiedAsFallback: true);
     }
   }

@@ -383,10 +383,8 @@ async def test_registered_principal_quota_uses_stable_identity_and_route_scope(
     assert verifier.tokens == ["rotated-token-one", "rotated-token-two"]
     assert principals[0].user_hash == principals[1].user_hash
     stable_identity = f"user:{principals[0].user_hash}"
-    assert [call[0] for call in rate_limit_store.calls] == [
-        stable_identity,
-        stable_identity,
-    ]
+    # 건강 추천은 하루 비용 한도도 함께 세므로 같은 계정으로 한 번 더 기록된다.
+    assert [call[0] for call in rate_limit_store.calls] == [stable_identity] * 3
     assert all(
         credentials.credentials not in stable_identity
         for credentials in credentials
@@ -394,6 +392,7 @@ async def test_registered_principal_quota_uses_stable_identity_and_route_scope(
     assert [call[1] for call in rate_limit_store.calls] == [
         "POST:/api/v1/medication/identify",
         "GET:/api/v1/medication/health/recommendation",
+        "daily:ai",
     ]
 
 

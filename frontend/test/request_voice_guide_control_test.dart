@@ -265,6 +265,50 @@ void main() {
 
   // 함수이름: test 콜백
   // 함수역할:
+  // - 하루 횟수나 일 단위가 아닌 복용 지시를 영어 문구로 바꿔 뜻을 달리 전하지 않는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대 조건 불일치 시 테스트가 실패한다.
+  test('MedicationDetail keeps directions it cannot read as a daily count', () {
+    List<String> lines(String dailyFrequency, String totalDays) =>
+        MedicationDetail(
+          itemName: 'Test tablet',
+          efficacy: '',
+          usageMethod: '',
+          warning: '',
+          dailyFrequency: dailyFrequency,
+          totalDays: totalDays,
+        ).compactDosageGuideLinesForLanguage('en');
+
+    expect(lines('2일 1회', '2주'), [
+      'Daily frequency · 2일 1회',
+      'Duration · 2주',
+    ]);
+    expect(lines('주 1회', '1개월'), [
+      'Daily frequency · 주 1회',
+      'Duration · 1개월',
+    ]);
+    expect(lines('12시간마다', '7일분 (1주)'), [
+      'Daily frequency · 12시간마다',
+      'Duration · 7 days',
+    ]);
+    expect(lines('1일 3회 식후 30분', '0일'), [
+      'Daily frequency · 1일 3회 식후 30분',
+      'Duration · 0일',
+    ]);
+    expect(lines('1회', '1일'), [
+      'Daily frequency · once daily',
+      'Duration · 1 day',
+    ]);
+    expect(lines('2', '30'), [
+      'Daily frequency · 2 times daily',
+      'Duration · 30 days',
+    ]);
+  });
+
+  // 함수이름: test 콜백
+  // 함수역할:
   // - 구조화된 복용량과 대체 음성 안내의 항목명을 선택 언어로 표시하는지 검증한다.
   // 매개변수:
   // - 없음.

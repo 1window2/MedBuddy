@@ -49,6 +49,8 @@ class _SavedMedication(Base):
             "deduplication_key",
             name="uq_saved_medication_daily_signature",
         ),
+        # 삭제된 약의 지연 요청이 새 약을 가리키지 않도록 SQLite ID를 재사용하지 않는다.
+        {"sqlite_autoincrement": True},
     )
 
     id = Column(Integer, primary_key=True, index=True)

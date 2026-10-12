@@ -2,7 +2,7 @@
 # Role: Queues bounded, idempotent caregiver alerts after configured dose deadlines.
 
 import hashlib
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -10,7 +10,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from controls.check_schedule_control import CheckSchedule
+from controls.set_notification_control import SetNotification
 from core.application_clock import application_now
+from core.config import settings
 from entities.caregiver_alert_outbox_entity import (
     CAREGIVER_ALERT_EVENT_MISSED_DEADLINE,
     _CaregiverAlertOutbox,
@@ -33,6 +35,8 @@ def missed_event_key(caregiver_hash: str, patient_hash: str, schedule_date, slot
 # Role: Finds due caregiver deadlines and persists durable delivery work.
 # Responsibilities:
 # - Check explicit missed-deadline preferences only for active caregiver links.
+# - Never report a slot before the patient's own reminder time for it plus a grace period,
+#   whatever deadline the caregiver stored.
 # - Reuse schedule-course and completion rules to detect genuinely incomplete slots.
 # - Insert at most one event for each caregiver, patient, date, and slot.
 # Attributes:
@@ -53,6 +57,9 @@ class QueueMissedDoseAlerts:
     # - Scans active caregiver settings and queues overdue incomplete slots.
     # - Reads today's already queued event keys once, so a slot that was handled on an
     #   earlier scan costs neither a schedule lookup nor a conflicting insert.
+    # - A deadline earlier than the patient's reminder for the slot is held back until the
+    #   reminder time plus the grace period: the one event of the day must not be spent on a
+    #   dose the patient has not been reminded of yet.
     # Parameters:
     # - now: Optional application-time override for deterministic execution.
     # - limit: Maximum number of newly queued events for this scan.
@@ -85,6 +92,7 @@ class QueueMissedDoseAlerts:
         )
         queued_count = 0
         pending_by_patient_slot: dict[tuple[str, str], bool] = {}
+        reminder_times_by_patient: dict[str, dict[str, tuple[int, int]]] = {}
         queued_event_keys: set[str] | None = None
         for row in rows:
             caregiver_hash = str(row.caregiver_hash)
@@ -108,6 +116,15 @@ class QueueMissedDoseAlerts:
                     caregiver_hash, patient_hash, schedule_date, slot_key,
                 )
                 if event_key in queued_event_keys:
+                    continue
+                if patient_hash not in reminder_times_by_patient:
+                    reminder_times_by_patient[patient_hash] = self._reminder_times(
+                        patient_hash,
+                    )
+                if current_time < self._earliest_alert_time(
+                    current_time,
+                    reminder_times_by_patient[patient_hash].get(slot_key),
+                ):
                     continue
                 pending_key = (patient_hash, slot_key)
                 is_incomplete = pending_by_patient_slot.get(pending_key)
@@ -176,6 +193,48 @@ class QueueMissedDoseAlerts:
             current_time.date(),
             deadline_time,
             tzinfo=current_time.tzinfo,
+        )
+
+    # Function Name: _reminder_times
+    # Description:
+    # - Reads the patient's reminder time of every slot: the saved alarm time, enabled or
+    #   not, or the default the patient's app shows for a slot without a saved alarm.
+    # Parameters:
+    # - patient_hash: Patient whose slots are checked.
+    # Returns:
+    # - (hour, minute) by slot key.
+    def _reminder_times(self, patient_hash: str) -> dict[str, tuple[int, int]]:
+        alarms = SetNotification(self.db).requestMedicationAlarm(patient_hash)["data"]
+        return {
+            str(alarm["slot_key"]): (int(alarm["hour"]), int(alarm["minute"]))
+            for alarm in alarms
+        }
+
+    # Function Name: _earliest_alert_time
+    # Description:
+    # - Computes the first moment a slot may be reported as missed today: its reminder time
+    #   plus CAREGIVER_MISSED_DOSE_GRACE_MINUTES, kept within the day at 23:59 because the
+    #   scan only looks at the current day.
+    # Parameters:
+    # - current_time: Timezone-aware application time defining the date and zone.
+    # - reminder_time: (hour, minute) of the patient's reminder; None when the slot is unknown.
+    # Returns:
+    # - Timezone-aware earliest alert time; the start of the day when there is no reminder time.
+    @staticmethod
+    def _earliest_alert_time(
+        current_time: datetime,
+        reminder_time: tuple[int, int] | None,
+    ) -> datetime:
+        day = current_time.date()
+        if reminder_time is None:
+            return datetime.combine(day, time.min, tzinfo=current_time.tzinfo)
+        reminded_at = datetime.combine(
+            day, time(hour=reminder_time[0], minute=reminder_time[1]),
+            tzinfo=current_time.tzinfo,
+        )
+        return min(
+            reminded_at + timedelta(minutes=settings.CAREGIVER_MISSED_DOSE_GRACE_MINUTES),
+            datetime.combine(day, time(hour=23, minute=59), tzinfo=current_time.tzinfo),
         )
 
     # Function Name: _insert_event

@@ -25,10 +25,10 @@ SPEC.loader.exec_module(gate)
     ("refs/heads/main", "", "true"),
     ("refs/heads/main", " TRUE ", "true"),
     ("refs/heads/main", "false", None),
-    ("refs/heads/beta/v0.2.1", "false", "false"),
-    ("refs/heads/beta/v0.2.1", "", "true"),
-    ("refs/heads/beta/v0.2.1", "invalid", None),
-    ("refs/tags/v0.2.1-beta", "false", None),
+    ("refs/heads/beta/v0.2.2", "false", "false"),
+    ("refs/heads/beta/v0.2.2", "", "true"),
+    ("refs/heads/beta/v0.2.2", "invalid", None),
+    ("refs/tags/v0.2.2-beta", "false", None),
     ("refs/heads/beta/v0.3.0", "false", None),
     ("refs/heads/beta/v0.3.0", "", "true"),
 ])
@@ -67,7 +67,7 @@ def test_signed_workflow_normalizes_one_shared_artifact_plan(
     policy: str, channel: str, expected: str | None,
 ) -> None:
     output = tmp_path / "github-env"
-    monkeypatch.setenv("GITHUB_REF", "refs/heads/beta/v0.2.1")
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/beta/v0.2.2")
     monkeypatch.setenv("FIREBASE_APP_CHECK_REQUIRED", policy)
     monkeypatch.setenv("APP_CHECK_RELEASE_DISTRIBUTION", channel)
     monkeypatch.setenv("GITHUB_ENV", str(output))

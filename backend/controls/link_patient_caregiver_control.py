@@ -7,6 +7,7 @@ from datetime import timedelta
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from core.config import settings
 from entities.caregiver_notification_entity import _CaregiverNotification
 from entities.chat_message_entity import _ChatMessage
 from entities.patient_caregiver_link_entity import (
@@ -75,7 +76,10 @@ class LinkPatientCaregiver:
         return {
             "success": True,
             "message": "Patient-caregiver link lookup succeeded.",
-            "data": [self.toResponseDict(link) for link in links],
+            "data": [
+                self.toResponseDict(link, viewer_hash=normalized_user_hash)
+                for link in links
+            ],
         }
 
     # Function Name: generatePatientHash
@@ -172,6 +176,21 @@ class LinkPatientCaregiver:
                 link_code.patient_hash,
                 normalized_caregiver_hash,
             )
+            if link is None or not link.linked:
+                # 복용 기록마다 연동된 보호자 모두에게 전달되므로 한 계정의 활성 연동 수를 제한한다.
+                limit = settings.PATIENT_CAREGIVER_LINK_MAX_PER_ACCOUNT
+                if (
+                    len(self.link_repository.list_active_for_patient(
+                        str(link_code.patient_hash)
+                    )) >= limit
+                    or len(self.link_repository.list_active_for_caregiver(
+                        normalized_caregiver_hash
+                    )) >= limit
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="연동할 수 있는 인원을 넘었습니다. 쓰지 않는 연동을 해제한 뒤 다시 시도해주세요.",
+                    )
             if link is None:
                 link_state = PatientCaregiverLink(
                     patient_hash=link_code.patient_hash,
@@ -213,7 +232,7 @@ class LinkPatientCaregiver:
         return {
             "success": True,
             "message": "Patient-caregiver link was created.",
-            "data": self.toResponseDict(link),
+            "data": self.toResponseDict(link, viewer_hash=normalized_caregiver_hash),
         }
 
     # 함수이름: requestUnlink
@@ -267,7 +286,7 @@ class LinkPatientCaregiver:
         return {
             "success": True,
             "message": "Patient-caregiver link was removed.",
-            "data": self.toResponseDict(link),
+            "data": self.toResponseDict(link, viewer_hash=normalized_user_hash),
         }
 
     # 함수이름: updatePatientAlias
@@ -318,7 +337,7 @@ class LinkPatientCaregiver:
         return {
             "success": True,
             "message": "Patient alias was saved.",
-            "data": self.toResponseDict(link),
+            "data": self.toResponseDict(link, viewer_hash=str(link.caregiver_hash)),
         }
 
     # 함수이름: update_caregiver_alias
@@ -349,7 +368,7 @@ class LinkPatientCaregiver:
         return {
             "success": True,
             "message": "Caregiver alias was saved.",
-            "data": self.toResponseDict(link),
+            "data": self.toResponseDict(link, viewer_hash=str(link.patient_hash)),
         }
 
     # Function Name: _revoke_caregiver_notification
@@ -495,21 +514,34 @@ class LinkPatientCaregiver:
     # 함수이름: toResponseDict
     # 함수역할:
     # - 연결 레코드를 모든 연동 API가 공유하는 응답 형식으로 변환한다.
+    # - 별칭은 붙인 사람만 본다. 보호자가 환자에게 붙인 patient_alias는 환자에게,
+    #   환자가 보호자에게 붙인 caregiver_alias는 보호자에게 돌려주지 않는다.
     # 매개변수:
     # - link (_PatientCaregiverLink): 저장된 환자·보호자 연동과 참여자 식별자.
+    # - viewer_hash (str | None): 응답을 받는 참여자. None이면 서버 내부 용도로 두 별칭을 모두 담는다.
     # 반환값:
-    # - 환자·보호자 식별자, 별칭, 연동 상태와 생성 시각을 담은 응답 사전.
+    # - 환자·보호자 식별자, 조회자가 볼 수 있는 별칭, 연동 상태와 생성 시각을 담은 응답 사전.
     @staticmethod
-    def toResponseDict(link: _PatientCaregiverLink) -> dict[str, object]:
+    def toResponseDict(
+        link: _PatientCaregiverLink,
+        viewer_hash: str | None = None,
+    ) -> dict[str, object]:
         """연결 레코드를 모든 연동 API가 공유하는 응답 형식으로 변환한다."""
+        patient_alias = link.patient_alias
+        caregiver_alias = link.caregiver_alias
+        if viewer_hash is not None:
+            if viewer_hash == str(link.patient_hash):
+                patient_alias = None
+            if viewer_hash == str(link.caregiver_hash):
+                caregiver_alias = None
         return {
             "id": link.id,
             "link_id": link.id,
             "patient_hash": link.patient_hash,
             "caregiver_hash": link.caregiver_hash,
             "guardian_hash": link.caregiver_hash,
-            "patient_alias": link.patient_alias,
-            "caregiver_alias": link.caregiver_alias,
+            "patient_alias": patient_alias,
+            "caregiver_alias": caregiver_alias,
             "linked": link.linked,
             "link_status": link.linked,
             "created_at": link.created_at.isoformat() if link.created_at else "",

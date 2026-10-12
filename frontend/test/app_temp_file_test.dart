@@ -149,9 +149,15 @@ void main() {
   test('does not follow a link out of the temporary directory', () async {
     final original = File('${outsideDirectory.path}/original.jpg');
     await original.writeAsString('original');
-    final link = await Link(
-      '${temporaryDirectory.path}/link.jpg',
-    ).create(original.path);
+    final link = Link('${temporaryDirectory.path}/link.jpg');
+    try {
+      await link.create(original.path);
+    } on FileSystemException catch (error) {
+      // Windows 개발자 모드가 꺼져 있으면 링크 생성 권한만 부족할 수 있다.
+      if (!Platform.isWindows || error.osError?.errorCode != 1314) rethrow;
+      markTestSkipped('Windows requires Developer Mode or symlink privilege.');
+      return;
+    }
 
     expect(await deleteAppTempFile(link.path), isFalse);
 

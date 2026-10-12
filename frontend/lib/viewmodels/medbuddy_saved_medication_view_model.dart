@@ -34,6 +34,7 @@ class MedBuddySavedMedicationViewModel {
   final void Function(String) _onChanged;
   bool _disposed = false;
   int _loadGeneration = 0;
+  int _saveGeneration = 0;
   bool _isSavedMedicationLoading = false;
   bool _hasLoadError = false;
   List<MedicationDetail> _savedMedicationInfoList = [];
@@ -94,6 +95,7 @@ class MedBuddySavedMedicationViewModel {
   // Description: Clears account data and invalidates pending list/image results.
   // Parameters: None. Returns: None.
   void clear() {
+    _saveGeneration++;
     _loadGeneration++;
     _savedMedicationInfoList = [];
     _isSavedMedicationLoading = false;
@@ -108,6 +110,17 @@ class MedBuddySavedMedicationViewModel {
     _disposed = true;
     clear();
   }
+
+  // 목록 재조회와 별도로 계정 초기화 전 저장의 후속 작업을 차단한다.
+  bool _isCurrentSave(int generation) =>
+      !_disposed && generation == _saveGeneration;
+
+  MedicationSaveResult _cancelledSaveResult() => MedicationSaveResult(
+    status: MedicationSaveStatus.failed,
+    message: _isEnglishSetting
+        ? 'Medication saving was canceled.'
+        : '복약 정보 저장이 취소되었습니다.',
+  );
 
   // 함수이름: saveMedicationInfo
   // 함수역할: 약 상세 정보와 선택적 복약 스케줄을 저장 API로 전달하고 저장 목록을 갱신한다.
@@ -124,6 +137,8 @@ class MedBuddySavedMedicationViewModel {
     String localImagePath = '',
     bool refreshAfterSave = true,
   }) async {
+    if (_disposed) return _cancelledSaveResult();
+    final generation = _saveGeneration;
     _statusMessage = _isEnglishSetting
         ? 'Saving ${medicationInfo.itemName}...'
         : '${medicationInfo.itemName} 저장 중...';
@@ -133,6 +148,8 @@ class MedBuddySavedMedicationViewModel {
       medicationInfo,
       medicationSchedule: medicationSchedule,
     );
+    // 서버가 이미 저장한 결과는 유지하되 종료된 계정의 사진·일정 작업은 시작하지 않는다.
+    if (!_isCurrentSave(generation)) return result;
     if (result.status == MedicationSaveStatus.failed) {
       _statusMessage = _isEnglishSetting
           ? 'Could not save medication information.'
@@ -149,12 +166,15 @@ class MedBuddySavedMedicationViewModel {
           medicationId: savedMedicationId,
           sourcePath: localImagePath,
         );
+        if (!_isCurrentSave(generation)) return result;
         // 보관용 사본을 만든 뒤에는 사진 선택 과정에서 생긴 임시 사본을 남기지 않는다. 앱 임시 폴더 밖의 파일은 지우지 않는다.
         await deleteAppTempFile(localImagePath);
       } catch (_) {
         // 서버 저장은 완료됐으므로 로컬 사진 실패가 복약정보 저장까지 취소하지 않게 한다.
       }
     }
+
+    if (!_isCurrentSave(generation)) return result;
 
     _statusMessage = result.status == MedicationSaveStatus.duplicate
         ? (_isEnglishSetting
@@ -165,9 +185,12 @@ class MedBuddySavedMedicationViewModel {
               : '복약 정보가 성공적으로 저장되었습니다.');
     if (refreshAfterSave) {
       await fetchSavedMedicationInfo();
+      if (!_isCurrentSave(generation)) return result;
       await fetchTodayMedicationSchedule();
+      if (!_isCurrentSave(generation)) return result;
       await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
     }
+    if (!_isCurrentSave(generation)) return result;
     _notifyViewModelListeners(MedBuddyFeature.savedMedication);
     return result;
   }
@@ -181,6 +204,8 @@ class MedBuddySavedMedicationViewModel {
   Future<MedicationSaveResult> saveManualMedication(
     ManualMedicationEntry entry,
   ) async {
+    if (_disposed) return _cancelledSaveResult();
+    final generation = _saveGeneration;
     final schedule = entry.toMedicationSchedule();
     MedicationDetail? medicationDetail;
     try {
@@ -190,6 +215,7 @@ class MedBuddySavedMedicationViewModel {
     } catch (_) {
       // 직접 등록은 외부 약품 조회가 잠시 실패해도 사용할 수 있어야 한다.
     }
+    if (!_isCurrentSave(generation)) return _cancelledSaveResult();
     medicationDetail ??= MedicationDetail(
       itemName: entry.medicationName.trim(),
       efficacy: '',
@@ -217,6 +243,8 @@ class MedBuddySavedMedicationViewModel {
     MedicationSchedule medicationSchedule, {
     bool refreshAfterSave = true,
   }) async {
+    if (_disposed) return _cancelledSaveResult();
+    final generation = _saveGeneration;
     MedicationDetail? medicationDetail;
     try {
       medicationDetail = await checkMedicationDetail.requestMedicationDetail(
@@ -231,6 +259,7 @@ class MedBuddySavedMedicationViewModel {
     } catch (_) {
       // 낱알약 후보는 이미 사용자가 확인했으므로 외부 상세 조회 실패가 저장을 막지 않게 한다.
     }
+    if (!_isCurrentSave(generation)) return _cancelledSaveResult();
     if (medicationDetail != null &&
         _isDifferentCatalogItem(medicationDetail.itemSeq, candidate.itemSeq)) {
       // 이름 조회가 다른 제품을 반환하면 그 설명과 사진을 버리고 후보 정보만 저장한다.
@@ -315,12 +344,17 @@ class MedBuddySavedMedicationViewModel {
   Future<List<MedicationSaveResult>> saveIdentifiedPills(
     List<IdentifiedPillSaveRequest> requests,
   ) async {
+    final generation = _saveGeneration;
     if (requests.isEmpty) {
       return const [];
     }
 
     final results = <MedicationSaveResult>[];
     for (final request in requests) {
+      if (!_isCurrentSave(generation)) {
+        results.add(_cancelledSaveResult());
+        continue;
+      }
       try {
         results.add(
           await saveIdentifiedPill(
@@ -341,6 +375,7 @@ class MedBuddySavedMedicationViewModel {
       }
     }
 
+    if (!_isCurrentSave(generation)) return List.unmodifiable(results);
     if (results.any(
       /* 함수이름: any 콜백
      * 함수역할: 일괄 저장 결과 중 실패가 아닌 결과가 있는지 확인한다.
@@ -351,9 +386,12 @@ class MedBuddySavedMedicationViewModel {
      */ (result) => result.status != MedicationSaveStatus.failed,
     )) {
       await fetchSavedMedicationInfo();
+      if (!_isCurrentSave(generation)) return List.unmodifiable(results);
       await fetchTodayMedicationSchedule();
+      if (!_isCurrentSave(generation)) return List.unmodifiable(results);
       await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
     }
+    if (!_isCurrentSave(generation)) return List.unmodifiable(results);
     _notifyViewModelListeners(MedBuddyFeature.savedMedication);
     return List<MedicationSaveResult>.unmodifiable(results);
   }

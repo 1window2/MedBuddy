@@ -5,6 +5,7 @@
 import logging
 from dataclasses import dataclass
 
+from sqlalchemy import tuple_
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -81,6 +82,7 @@ class PushRecipientResolver:
         self.db = db
         self._preferences: dict[str, _RecipientPreferences] = {}
         self._tokens: dict[str, tuple[tuple[str, bool], ...]] = {}
+        self._token_versions: dict[str, tuple[int, str, str]] = {}
 
     # Function Name: resolve
     # Description:
@@ -128,13 +130,25 @@ class PushRecipientResolver:
         rejected_tokens = tuple(dict.fromkeys(invalid_tokens))
         if not rejected_tokens:
             return
+        # 실제 전송 전에 관찰한 등록만 해제하며, 이후 계정 전환·재등록은 보존한다.
+        versions = [
+            (version[0], token, version[1], version[2])
+            for token in rejected_tokens
+            if (version := self._token_versions.pop(token, None)) is not None
+        ]
+        if not versions:
+            return
         for user_hash, tokens in self._tokens.items():
             self._tokens[user_hash] = tuple(
                 entry for entry in tokens if entry[0] not in rejected_tokens
             )
         try:
             self.db.query(_DevicePushToken).filter(
-                _DevicePushToken.token.in_(rejected_tokens)
+                tuple_(
+                    _DevicePushToken.id, _DevicePushToken.token,
+                    _DevicePushToken.user_hash, _DevicePushToken.registration_version,
+                ).in_(versions),
+                _DevicePushToken.enabled.is_(True),
             ).update({"enabled": False}, synchronize_session=False)
             self.db.commit()
         except SQLAlchemyError as exc:
@@ -204,19 +218,21 @@ class PushRecipientResolver:
         tokens = self._tokens.get(user_hash)
         if tokens is not None:
             return tokens
-        tokens = tuple(
-            (str(row.token), bool(row.supports_caregiver_actions))
-            for row in (
-                self.db.query(
-                    _DevicePushToken.token,
-                    _DevicePushToken.supports_caregiver_actions,
-                )
-                .filter(
-                    _DevicePushToken.user_hash == user_hash,
-                    _DevicePushToken.enabled.is_(True),
-                )
-                .all()
+        rows = (
+            self.db.query(
+                _DevicePushToken.id,
+                _DevicePushToken.token,
+                _DevicePushToken.supports_caregiver_actions,
+                _DevicePushToken.registration_version,
             )
+            .filter(
+                _DevicePushToken.user_hash == user_hash,
+                _DevicePushToken.enabled.is_(True),
+            )
+            .all()
         )
+        tokens = tuple((str(row.token), bool(row.supports_caregiver_actions)) for row in rows)
+        for row in rows:
+            self._token_versions[str(row.token)] = (int(row.id), user_hash, row.registration_version)
         self._tokens[user_hash] = tokens
         return tokens

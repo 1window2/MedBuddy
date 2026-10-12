@@ -18,7 +18,7 @@ from urllib.parse import urlsplit
 
 BACKEND_PROBE_FILES = ("backend-health.json", "backend-ready.json", "backend-catalogs.json")
 # The only ref that may build without Firebase App Check (temporary off-Play beta exception).
-OFF_PLAY_EXCEPTION_REF = "refs/heads/beta/v0.2.1"
+OFF_PLAY_EXCEPTION_REF = "refs/heads/beta/v0.2.2"
 
 
 # Class Name: AndroidReleasePolicy
@@ -57,7 +57,7 @@ class AndroidReleasePolicy:
         if environment["GITHUB_REF"] != OFF_PLAY_EXCEPTION_REF and not required:
             raise ValueError(
                 "Release builds require Firebase App Check. "
-                "The off-Play exception is restricted to beta/v0.2.1."
+                "The off-Play exception is restricted to beta/v0.2.2."
             )
         return cls(required, distribution)
 

@@ -12,11 +12,17 @@ from redis.asyncio import Redis
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from core.config import settings
+
 logger = logging.getLogger(__name__)
 
 _API_PATH_PREFIX = "/api/v1/"
 _PATH_PARAMETER_PATTERN = re.compile(r"^\{[^/{}]+\}$")
 _INTEGER_PATH_SEGMENT_PATTERN = re.compile(r"^\d+$")
+
+_DAILY_WINDOW_SECONDS = 86_400
+RATE_LIMIT_EXCEEDED_DETAIL = "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."
+DAILY_QUOTA_EXCEEDED_DETAIL = "오늘 사용할 수 있는 횟수를 모두 사용했습니다. 내일 다시 시도해주세요."
 
 _ATOMIC_INCREMENT_SCRIPT = """
 local count = redis.call('INCR', KEYS[1])
@@ -85,6 +91,27 @@ def resolve_rate_limit_rule(
         else _canonicalize_api_path(normalized_path)
     )
     return default_rule, canonical_path
+
+
+# 함수이름: resolve_daily_quota
+# 함수역할:
+# - 하루 단위 비용 상한이 걸린 경로이면 그 한도와 카운터 공유 범위를 돌려준다.
+# - 한도는 호출 시점의 설정에서 읽는다.
+# 매개변수:
+# - method (str): HTTP 메서드
+# - path (str): 접두사를 포함한 전체 경로 템플릿
+# 반환값:
+# - 하루 한도 규칙과 같은 묶음의 경로가 함께 쓰는 카운터 범위. 대상 경로가 아니면 None.
+def resolve_daily_quota(method: str, path: str) -> tuple[RateLimitRule, str] | None:
+    """비용이 큰 경로에만 적용하는 하루 한도를 반환한다."""
+    quota = DAILY_QUOTA_ROUTES.get((method.upper(), path or "/"))
+    if quota is None:
+        return None
+    group, setting_name = quota
+    return (
+        RateLimitRule(int(getattr(settings, setting_name)), _DAILY_WINDOW_SECONDS),
+        f"daily:{group}",
+    )
 
 
 # 함수이름: mounted_route_template
@@ -400,6 +427,7 @@ class RequestRateLimitMiddleware:
     # 함수이름: __call__
     # 함수역할:
     # - IP별로 기본 정책의 20배 한도를 적용하고 초과는 429, 필수 저장소 장애는 503으로 응답한다.
+    # - 하루 비용 상한이 있는 경로는 같은 배수의 IP별 하루 한도도 함께 적용한다.
     # 매개변수:
     # - scope (Scope): 요청 경로와 헤더를 포함한 ASGI 연결 정보.
     # - receive (Receive): 다음 수신 메시지를 읽는 ASGI 콜백.
@@ -444,15 +472,33 @@ class RequestRateLimitMiddleware:
             if not allowed:
                 response = JSONResponse(
                     status_code=429,
-                    content={
-                        "detail": (
-                            "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."
-                        )
-                    },
+                    content={"detail": RATE_LIMIT_EXCEEDED_DETAIL},
                     headers={"Retry-After": str(max(1, retry_after))},
                 )
                 await response(scope, receive, send)
                 return
+            # 계정을 여러 개 만들어 계정별 하루 한도를 늘리는 것을 IP 단위로 막는다.
+            daily_quota = resolve_daily_quota(
+                str(scope.get("method", "")), canonical_path,
+            )
+            if daily_quota is not None:
+                daily_rule, daily_scope = daily_quota
+                allowed, retry_after = await self.store.consume(
+                    identity=self._request_ip_identity(scope),
+                    request_scope=daily_scope,
+                    rule=RateLimitRule(
+                        max_requests=daily_rule.max_requests * self._IP_LIMIT_MULTIPLIER,
+                        window_seconds=daily_rule.window_seconds,
+                    ),
+                )
+                if not allowed:
+                    response = JSONResponse(
+                        status_code=429,
+                        content={"detail": DAILY_QUOTA_EXCEEDED_DETAIL},
+                        headers={"Retry-After": str(max(1, retry_after))},
+                    )
+                    await response(scope, receive, send)
+                    return
         except RuntimeError:
             response = JSONResponse(
                 status_code=503,
@@ -554,4 +600,25 @@ DEFAULT_AUTHENTICATED_API_RULES: dict[str, RateLimitRule] = {
     "PUT": RateLimitRule(60, 60),
     "PATCH": RateLimitRule(60, 60),
     "DELETE": RateLimitRule(30, 60),
+}
+
+# 하루 단위 비용 상한. 분당 한도만 있으면 한 계정이 하루 종일 최대 속도로 호출해 외부 AI 비용이나
+# 공공 API의 일일 할당량을 혼자 소진할 수 있으므로, 비용이 큰 경로만 묶어 하루 횟수를 따로 센다.
+# 값은 (카운터를 함께 쓰는 묶음 이름, 한도를 담은 설정 이름)이다.
+DAILY_QUOTA_ROUTES: dict[tuple[str, str], tuple[str, str]] = {
+    ("POST", "/api/v1/medication/analyze-prescription-text"): (
+        "ai", "AI_REQUEST_DAILY_LIMIT",
+    ),
+    ("POST", "/api/v1/medication/pill-identification/candidates"): (
+        "ai", "AI_REQUEST_DAILY_LIMIT",
+    ),
+    ("POST", "/api/v1/medication/pill-identification/multiple-candidates"): (
+        "ai", "AI_REQUEST_DAILY_LIMIT",
+    ),
+    ("GET", "/api/v1/medication/health/recommendation"): (
+        "ai", "AI_REQUEST_DAILY_LIMIT",
+    ),
+    ("GET", "/api/v1/hospitals/nearby"): (
+        "hospital-search", "HOSPITAL_SEARCH_DAILY_LIMIT",
+    ),
 }

@@ -179,6 +179,8 @@ class _MedBuddyAppState extends State<MedBuddyApp>
   String? _openCaregiverScheduleRouteName;
   String? _openLinkedChatRouteName;
   MedicationNotificationSelection? _pendingNotificationSelection;
+  // 직전에 끝난 세션의 계정. 로그아웃 중 보류한 알림 동작을 다른 계정에 넘기지 않는 데 쓴다.
+  String? _endedSessionUserHash;
   CaregiverNotificationMonitorService? _caregiverNotificationMonitor;
   CheckCaregiverMedication? _sharedCaregiverRead;
   LinkedChatNotificationMonitorService? _linkedChatNotificationMonitor;
@@ -187,6 +189,9 @@ class _MedBuddyAppState extends State<MedBuddyApp>
   int _monitorGeneration = 0;
   StreamSubscription<Uri?>? _widgetClicks;
   String? _pendingEmailVerification;
+  MedBuddyViewModel? _settingsViewModel;
+  String? _settingsUserHash;
+  int _settingsGeneration = 0;
 
   // Function Name: initState
   // Description: Resolves injected or owned root controls, installs authentication and notification listeners, and starts monitors for the current session.
@@ -209,6 +214,7 @@ class _MedBuddyAppState extends State<MedBuddyApp>
         _authenticationControl.handleUnauthorizedResponse;
     _ownsAppLanguageControl = widget.appLanguageControl == null;
     _appLanguageControl = widget.appLanguageControl ?? AppLanguageControl();
+    _settingsUserHash = _authenticationControl.session?.userHash;
     _pendingEmailVerification = _authenticationControl.emailVerificationRequired
         ? _authenticationControl.signedInEmail
         : null;
@@ -234,6 +240,7 @@ class _MedBuddyAppState extends State<MedBuddyApp>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
+        unawaited(_synchronizeSessionLanguage(retryRemoteLookup: true));
         unawaited(_pushNotificationService?.retryRegistration());
         unawaited(_caregiverNotificationMonitor?.resume());
       case AppLifecycleState.paused:
@@ -246,6 +253,12 @@ class _MedBuddyAppState extends State<MedBuddyApp>
   }
 
   Uri? _pendingWidgetUri;
+
+  // 기기 언어 이벤트에서만 동기화를 요청해 설정 알림이 다시 저장을 유발하지 않게 한다.
+  @override
+  void didChangeLocales(List<Locale>? locales) {
+    unawaited(_synchronizeSessionLanguage());
+  }
 
   Future<void> _openHomeWidget(Uri? uri) async {
     if (!mounted || uri?.scheme != 'medbuddy-widget') {
@@ -322,7 +335,7 @@ class _MedBuddyAppState extends State<MedBuddyApp>
   }
 
   // Function Name: _prepareSessionEnd
-  // Description: Cancels local reminders and replenishment work, then requires server push-token unregistration while the Firebase identity is still valid.
+  // Description: Requires server push-token unregistration while the Firebase identity is still valid, gives doses recorded offline one bounded upload attempt, then suspends dose upload work and cancels local reminders and replenishment work.
   // Parameters:
   // - None.
   // Returns:
@@ -331,15 +344,49 @@ class _MedBuddyAppState extends State<MedBuddyApp>
     // 서버 요청이 필요한 푸시 토큰 해제만 실패할 수 있다. 이를 먼저 해서, 오프라인 등으로
     // 로그아웃이 중단되어도 복용 기록 대기열과 복약 알림이 지워진 채 남지 않게 한다.
     await _pushNotificationService?.stop(requireServerUnregistration: true);
+    // 오프라인에서 기록해 아직 올리지 못한 복용은 토큰이 유효한 지금 한 번 더 올려 본다. 몇 초 안에
+    // 끝나지 않으면 기다리지 않으며, 남은 기록은 같은 계정이 이 기기에 다시 로그인할 때 전송된다.
+    await _flushPendingDoseRecords();
     await DoseSyncBackgroundScheduler.suspend();
     await DoseHomeWidget.clear();
+    await _cancelSessionReminders();
+  }
+
+  // Function Name: _flushPendingDoseRecords
+  // Description: Asks the signed-in account's dose sync service for one bounded upload of the records still waiting on the device. Never fails and never waits longer than the service's limit, so it cannot hold up sign-out.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: completes when the upload finished, the limit passed, or no sync service is attached.
+  Future<void> _flushPendingDoseRecords() async {
+    final context = _navigatorKey.currentContext;
+    if (context == null || _authenticationControl.session == null) {
+      return;
+    }
+    try {
+      await Provider.of<MedBuddyViewModel>(
+        context,
+        listen: false,
+      ).doseSync?.flushPending();
+    } catch (_) {
+      // Without a view model or with a failed store the records simply stay queued.
+    }
+  }
+
+  // Function Name: _cancelSessionReminders
+  // Description: Cancels the reminder replenishment work and every scheduled local medication reminder of the account whose session is ending, through the injected cleanup when one is provided.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>: asynchronous completion without a result payload.
+  Future<void> _cancelSessionReminders() async {
     final reminderCleanup = widget.sessionReminderCleanup;
     if (reminderCleanup != null) {
       await reminderCleanup();
-    } else {
-      await MedicationReminderBackgroundScheduler.cancel();
-      await NotificationService.instance.cancelAllMedicationReminders();
+      return;
     }
+    await MedicationReminderBackgroundScheduler.cancel();
+    await NotificationService.instance.cancelAllMedicationReminders();
   }
 
   // Function Name: _registerNotificationSelectionHandler
@@ -380,9 +427,19 @@ class _MedBuddyAppState extends State<MedBuddyApp>
   // 반환값:
   // - 없음.
   void _handleAuthenticationChange() {
+    final userHash = _authenticationControl.session?.userHash;
+    if (userHash != _settingsUserHash) {
+      _settingsGeneration++;
+      _settingsUserHash = userHash;
+      _settingsViewModel = null;
+    }
     _notifyEmailVerificationCompleted();
+    final previousUserHash = _monitoredUserHash;
     _synchronizeCaregiverNotificationMonitor();
     if (_authenticationControl.session == null) {
+      if (previousUserHash != null && previousUserHash.isNotEmpty) {
+        _endedSessionUserHash = previousUserHash;
+      }
       _pendingWidgetUri = null;
       _pendingNotificationSelection = null;
       _isScheduleRouteOpen = false;
@@ -390,6 +447,15 @@ class _MedBuddyAppState extends State<MedBuddyApp>
       _openLinkedChatRouteName = null;
       _removeRoutesAboveRoot();
       return;
+    }
+    // 로그아웃 상태에서 누른 알림이나 위젯은 끝난 계정의 것일 수 있다. 다른 계정으로 로그인하면
+    // 그 동작을 새 계정에 적용하지 않고 버린다.
+    final endedUserHash = _endedSessionUserHash;
+    _endedSessionUserHash = null;
+    if (endedUserHash != null &&
+        endedUserHash != _authenticationControl.session?.userHash.trim()) {
+      _pendingWidgetUri = null;
+      _pendingNotificationSelection = null;
     }
     final widgetUri = _pendingWidgetUri;
     _pendingWidgetUri = null;
@@ -499,17 +565,24 @@ class _MedBuddyAppState extends State<MedBuddyApp>
     previousMonitor?.dispose();
     unawaited(previousChatMonitor?.dispose());
     if (previousPushService != null) {
-      unawaited(previousPushService.stop());
+      // 강제 로그아웃처럼 서버에서 토큰을 해제하지 못한 채 계정이 바뀌면 기기 토큰을 폐기해,
+      // 이전 계정의 푸시가 이 기기로 계속 오지 않게 한다.
+      unawaited(previousPushService.stop(discardUnregisteredToken: true));
     }
 
     if (userHash == null || userHash.isEmpty) {
       unawaited(DoseHomeWidget.clear().catchError((_) {}));
       unawaited(DoseSyncBackgroundScheduler.suspend().catchError((_) {}));
       unawaited(CaregiverNotificationBackgroundScheduler.cancel());
-      unawaited(MedicationReminderBackgroundScheduler.cancel());
+      // 서버가 세션을 끊은 경우에는 로그아웃 준비 단계를 거치지 않으므로, 끝난 계정의 복약 알림이
+      // 기기에 남아 계속 울리지 않도록 여기서도 취소한다. 일반 로그아웃에서는 반복 취소가 된다.
+      unawaited(_cancelSessionReminders().catchError((_) {}));
       return;
     }
-    unawaited(MedicationReminderBackgroundScheduler.register(userHash));
+    // 등록에 실패해도 처리되지 않은 오류로 남기지 않는다. 다음 앱 시작 때 다시 등록한다.
+    unawaited(
+      MedicationReminderBackgroundScheduler.register(userHash).catchError((_) {}),
+    );
     final pushService = PushNotificationService(
       userHash: userHash,
       client: _authenticationControl.apiClient,
@@ -1269,7 +1342,7 @@ class _MedBuddyAppState extends State<MedBuddyApp>
             return application;
           }
           return ChangeNotifierProvider<MedBuddyViewModel>(
-            key: ValueKey(session.userHash),
+            key: ValueKey('${session.userHash}:$_settingsGeneration'),
             create: /* Function Name: create callback
              * Description: Creates the session-scoped view model and starts loading user settings to synchronize the app language.
              * Parameters:
@@ -1295,6 +1368,7 @@ class _MedBuddyAppState extends State<MedBuddyApp>
                   ),
                 );
               }
+              _settingsViewModel = viewModel;
               unawaited(_loadUserSettingAndSyncLanguage(viewModel));
               return viewModel;
             },
@@ -1314,8 +1388,12 @@ class _MedBuddyAppState extends State<MedBuddyApp>
   Future<void> _loadUserSettingAndSyncLanguage(
     MedBuddyViewModel viewModel,
   ) async {
+    final generation = _settingsGeneration;
     try {
       await viewModel.loadUserSetting();
+      if (!_isCurrentSettingsSession(viewModel, generation)) return;
+      await viewModel.synchronizeDeviceLanguage();
+      if (!_isCurrentSettingsSession(viewModel, generation)) return;
       // Apply the stored mode, not the resolved language: writing the language
       // back would replace "system" with a fixed language at every start.
       await _appLanguageControl.setLanguageMode(
@@ -1328,6 +1406,45 @@ class _MedBuddyAppState extends State<MedBuddyApp>
           stack: stackTrace,
           library: 'MedBuddy settings bootstrap',
           context: ErrorDescription('loading authenticated user settings'),
+        ),
+      );
+    }
+  }
+
+  // 같은 계정의 토큰 갱신은 유지하되 계정 전환·로그아웃·재로그인 이전 응답은 차단한다.
+  bool _isCurrentSettingsSession(MedBuddyViewModel viewModel, int generation) =>
+      mounted &&
+      generation == _settingsGeneration &&
+      identical(viewModel, _settingsViewModel) &&
+      _settingsUserHash != null &&
+      _authenticationControl.session?.userHash == _settingsUserHash;
+
+  Future<void> _synchronizeSessionLanguage({
+    bool retryRemoteLookup = false,
+  }) async {
+    final viewModel = _settingsViewModel;
+    final generation = _settingsGeneration;
+    if (viewModel == null ||
+        !_isCurrentSettingsSession(viewModel, generation)) {
+      return;
+    }
+    try {
+      await viewModel.synchronizeDeviceLanguage(
+        retryRemoteLookup: retryRemoteLookup,
+      );
+      if (!_isCurrentSettingsSession(viewModel, generation)) return;
+      await _appLanguageControl.setLanguageMode(
+        viewModel.userSetting.languageMode,
+      );
+    } catch (error, stackTrace) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'MedBuddy settings synchronization',
+          context: ErrorDescription(
+            'synchronizing authenticated device language',
+          ),
         ),
       );
     }

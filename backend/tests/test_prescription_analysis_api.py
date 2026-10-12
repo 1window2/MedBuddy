@@ -1,12 +1,14 @@
 # 파일명: test_prescription_analysis_api.py
 # 역할: 처방 텍스트 분석 API의 입력 전달과 분석 배치 식별자 보존을 검증한다.
 
+import json
 import os
 import sys
 from pathlib import Path
 
 import httpx
 import pytest
+from pydantic import ValidationError
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
@@ -19,6 +21,7 @@ from api.dependencies import (  # noqa: E402
     get_input_prescription,
     get_registered_principal,
 )
+from api.router import OCRParseRequest  # noqa: E402
 from entities.authenticated_principal_entity import (  # noqa: E402
     AuthenticatedPrincipal,
 )
@@ -192,3 +195,57 @@ async def test_truncation_never_leaves_part_of_a_number() -> None:
     assert medication["dosage_per_time"] == "가" * 97 + "…"
     assert medication["daily_frequency"] == "나" * 96 + "…"
     assert medication["total_days"] == exact_limit
+
+
+# Class Name: _FailingAnalysis
+# Role: Analysis control double that raises a prepared error.
+# Responsibilities:
+# - Stands in for the control so the route's error mapping can be checked.
+# Attributes:
+# - error (Exception): Error raised by the analysis.
+class _FailingAnalysis:
+    # Function Name: __init__
+    # Description: Stores the error to raise.
+    # Parameters: error (Exception) - Error raised by the analysis.
+    # Returns: None.
+    def __init__(self, error: Exception) -> None:
+        self.error = error
+
+    # Function Name: requestPrescriptionText
+    # Description: Raises the prepared error instead of analysing the text.
+    # Parameters: text (str) - Ignored prescription text.
+    # Returns: Never returns.
+    async def requestPrescriptionText(self, text: str) -> dict[str, object]:
+        raise self.error
+
+
+# Function Name: test_parser_errors_are_not_returned_to_the_client
+# Description:
+# - A message a control raises on purpose is returned with HTTP 400, while a JSON or validation
+#   error raised by a parsing library, whose text quotes positions and input values, becomes
+#   the generic HTTP 500 answer.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_parser_errors_are_not_returned_to_the_client() -> None:
+    intended = await _analyze(_FailingAnalysis(ValueError("Masked prescription text is empty.")))
+    assert intended.status_code == 400
+    assert intended.json()["detail"] == "Masked prescription text is empty."
+
+    try:
+        json.loads('{"drug_name": "비밀약", ')
+    except json.JSONDecodeError as exc:
+        decode_error = exc
+    leaked = await _analyze(_FailingAnalysis(decode_error))
+    assert leaked.status_code == 500
+    assert "Expecting" not in leaked.text and "char" not in leaked.text
+
+    try:
+        OCRParseRequest.model_validate({"text": {"secret": "비밀약"}})
+    except ValidationError as exc:
+        validation_error = exc
+    leaked = await _analyze(_FailingAnalysis(validation_error))
+    assert leaked.status_code == 500
+    assert "비밀약" not in leaked.text and "input" not in leaked.text

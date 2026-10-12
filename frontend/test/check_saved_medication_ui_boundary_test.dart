@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/check_saved_medication_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/check_medication_detail_ui_boundary.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/boundaries/pill_identification_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
@@ -55,6 +56,25 @@ class _CancelledGalleryInputPrescription extends InputPrescription {
 // 함수역할: 등록·정렬·선택 삭제와 작은 화면 접근성 회귀 검사를 등록한다.
 // 매개변수: 없음. 반환값: 없음; 각 테스트가 기대 동작을 검증한다.
 void main() {
+  testWidgets('약 상세를 연속으로 눌러도 한 번 뒤로가면 목록으로 돌아온다', (tester) async {
+    await _pumpSelectionApp(tester);
+    final medication = find.text('약 1');
+    await tester.tap(medication);
+    // 전환 중 첫 화면 위로 들어오는 두 번째 탭은 무시되어야 한다.
+    await tester.tap(medication, warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(find.byType(CheckMedicationDetailUI), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(CheckMedicationDetailUI), findsNothing);
+    expect(find.byType(CheckSavedMedicationUI), findsOneWidget);
+
+    await tester.tap(medication);
+    await tester.pumpAndSettle();
+    expect(find.byType(CheckMedicationDetailUI), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('조회 조건은 현재 값 세 줄로 표시하고 취소하면 기존 조건을 유지한다', (tester) async {
     await _pumpFilterApp(tester);
     await tester.tap(find.byKey(const Key('saved-medication-filter-selector')));
@@ -81,6 +101,46 @@ void main() {
   });
 
   // 함수역할: 검색어와 조회 상태를 모두 통과한 약만 전체 선택 삭제되는지 검증한다.
+  // 함수이름: 다음 복용일 표시 테스트
+  // 함수역할: 매일 복용하지 않는 약만 다음 복용일을 표시하고, 오늘이 복용일이면 "오늘"로 알린다.
+  // 매개변수: tester. 반환값: 없음; 기대와 다르면 실패한다.
+  testWidgets('매일 복용하지 않는 약은 다음 복용일을 표시한다', (tester) async {
+    await _pumpFilterApp(tester, nonDaily: true);
+    final now = DateTime.now();
+    final tomorrow = DateTime(now.year, now.month, now.day + 1);
+    const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
+    final tomorrowText =
+        '${tomorrow.month.toString().padLeft(2, '0')}/'
+        '${tomorrow.day.toString().padLeft(2, '0')} '
+        '(${weekdays[tomorrow.weekday - 1]})';
+
+    expect(
+      tester
+          .widget<Text>(
+            find.descendant(
+              of: find.byKey(const ValueKey('saved-medication-next-dose-4')),
+              matching: find.byType(Text),
+            ),
+          )
+          .data,
+      '다음 복용일: $tomorrowText',
+    );
+    expect(find.text('다음 복용일: 오늘'), findsOneWidget);
+    // "4주"는 일정과 같은 규칙으로 28일로 읽는다.
+    String twoDigits(int value) => value.toString().padLeft(2, '0');
+    String fullDate(DateTime day) =>
+        '${day.year}/${twoDigits(day.month)}/${twoDigits(day.day)}';
+    final end = DateTime(now.year, now.month, now.day + 27);
+    final endText = end.year == now.year
+        ? '${twoDigits(end.month)}/${twoDigits(end.day)}'
+        : fullDate(end);
+    expect(find.text('복용기간: ${fullDate(now)} ~ $endText'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('saved-medication-next-dose-1')),
+      findsNothing,
+    );
+  });
+
   testWidgets('검색한 약만 선택하며 검색어를 바꾸면 숨겨진 선택을 비운다', (tester) async {
     final model = await _pumpSelectionApp(tester);
     await tester.enterText(
@@ -409,6 +469,7 @@ void main() {
     final tabIndex = ValueNotifier<int>(1);
     addTearDown(tabIndex.dispose);
     var systemPops = 0;
+    var cabinetHandlesBack = false;
     // 함수역할: 앱 종료 요청 횟수를 센다. 매개변수: call은 플랫폼 호출. 반환값: 없음.
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
       SystemChannels.platform,
@@ -434,7 +495,7 @@ void main() {
           canPop: value == 0,
           // 함수역할: 닫히지 않은 뒤로가기를 홈 탭 이동으로 처리한다. 매개변수: didPop, _. 반환값: 없음.
           onPopInvokedWithResult: (didPop, _) {
-            if (!didPop && value != 0) tabIndex.value = 0;
+            if (!didPop && !cabinetHandlesBack && value != 0) tabIndex.value = 0;
           },
           child: IndexedStack(
             index: value,
@@ -443,6 +504,8 @@ void main() {
               CheckSavedMedicationUI(
                 showCloseButton: false,
                 isActive: value == 1,
+                onBackHandlingChanged: (handlesBack) =>
+                    cabinetHandlesBack = handlesBack,
               ),
             ],
           ),
@@ -451,11 +514,29 @@ void main() {
     );
     await _startSavedSelection(tester);
     expect(find.text('복약 선택'), findsOneWidget);
+    expect(cabinetHandlesBack, isTrue);
+
+    // 선택 모드에서 누른 뒤로가기는 선택만 닫고 탭은 그대로 둔다. 한 번 더 눌러야 홈으로 간다.
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('복약 선택'), findsNothing);
+    expect(cabinetHandlesBack, isFalse);
+    expect(tabIndex.value, 1);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(tabIndex.value, 0);
+    expect(systemPops, 0);
+
+    tabIndex.value = 1;
+    await tester.pumpAndSettle();
+    await _startSavedSelection(tester);
+    expect(cabinetHandlesBack, isTrue);
 
     tabIndex.value = 0;
     await tester.pumpAndSettle();
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
+    expect(cabinetHandlesBack, isFalse);
     expect(systemPops, 1);
     expect(tabIndex.value, 0);
 
@@ -1266,6 +1347,7 @@ Future<void> _applySavedFilter(WidgetTester tester) async {
 Future<void> _pumpFilterApp(
   WidgetTester tester, {
   bool onlyEnded = false,
+  bool nonDaily = false,
   String language = 'ko',
   double textScale = 1,
   bool small = false,
@@ -1297,6 +1379,22 @@ Future<void> _pumpFilterApp(
                 .toIso8601String(),
             'total_days': '7',
           },
+          if (nonDaily) ...[
+            {
+              ..._savedMedicationJson(request, 4, '격일약'),
+              'prescription_date': today
+                  .subtract(const Duration(days: 1))
+                  .toIso8601String(),
+              'daily_frequency': '격일',
+              'total_days': '14',
+            },
+            {
+              ..._savedMedicationJson(request, 5, '주1회약'),
+              'prescription_date': today.toIso8601String(),
+              'daily_frequency': '주 1회',
+              'total_days': '4주',
+            },
+          ],
           if (!onlyEnded)
             {
               ..._savedMedicationJson(request, 3, '예정약'),

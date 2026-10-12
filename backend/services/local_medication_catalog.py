@@ -5,13 +5,17 @@ import asyncio
 import json
 import logging
 import re
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import or_, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Session, sessionmaker
 
-from boundaries.medication_summary_boundary import MedicationSummaryGenerator
+from boundaries.medication_summary_boundary import (
+    MISSING_DETAIL_TEXT,
+    MedicationSummaryGenerator,
+)
 from boundaries.public_drug_api_boundary import (
     read_public_image_url,
     read_public_item_name,
@@ -29,6 +33,13 @@ logger = logging.getLogger(__name__)
 # Text the summary generator has returned for a field it could not summarize.
 # It is never stored as a summary, and a row that already holds it is summarized again.
 SUMMARY_FAILURE_PLACEHOLDER = "요약 실패"
+
+# A stored summary is partial when the AI left a field out although the source document of that
+# field has text. It is served for this long after it was written and then requested again on
+# the next lookup, so one catalog row causes at most one such AI request per period. A naive
+# updated_at is read as UTC; the period is longer than any time-zone offset, so a database
+# clock in another zone only shifts the retry and cannot make it repeat.
+PARTIAL_SUMMARY_RETRY_AFTER = timedelta(hours=24)
 
 
 # 클래스명: LocalMedicationCatalog
@@ -305,6 +316,8 @@ class LocalMedicationCatalog:
     # 함수이름: _build_approval_detail
     # 함수역할:
     # - 저장된 허가 요약을 재사용하거나 원문을 AI로 요약한 뒤 결과를 캐시에 저장한다.
+    # - 원문이 있는데도 빠진 항목이 있는 저장 요약은 PARTIAL_SUMMARY_RETRY_AFTER가 지나면 다시 요약한다.
+    #   다시 요약하지 못하면 저장된 요약을 그대로 돌려주고, 새 요약에서 빠진 항목은 저장된 문구를 유지한다.
     # 매개변수:
     # - drug_name (str): 검색 또는 직렬화할 약품명.
     # - approval_item (_DrugApprovalInfo): 원문 문서와 선택적 생성 요약을 가진 저장된 허가 정보 행.
@@ -316,19 +329,78 @@ class LocalMedicationCatalog:
         approval_item: _DrugApprovalInfo,
     ) -> MedicationDetail:
         cached_summary = self._build_cached_approval_summary(approval_item)
-        if cached_summary is not None:
+        raw_item = self._load_raw_approval_item(approval_item)
+        if cached_summary is not None and not self._is_partial_summary_due_for_retry(
+            approval_item, raw_item,
+        ):
             return cached_summary
 
-        raw_item = self._load_raw_approval_item(approval_item)
-        medication_detail = await self.summary_generator.summarize_advanced_item(
-            drug_name,
-            raw_item,
-        )
-        medication_detail = medication_detail.model_copy(
-            update={"source": "Local DB (허가정보) + AI 요약", "manufacturer": approval_item.entp_name or ""}
-        )
+        try:
+            medication_detail = await self.summary_generator.summarize_advanced_item(
+                drug_name,
+                raw_item,
+            )
+        except Exception as exc:
+            if cached_summary is None:
+                raise
+            # The stored partial summary is still the best answer. Writing it back restarts
+            # its retry period, so an AI outage is not asked again on every lookup.
+            logger.warning(
+                "Partial approval summary could not be completed; keeping the stored one: %s",
+                type(exc).__name__,
+            )
+            await self._save_approval_summary(approval_item, cached_summary)
+            return cached_summary
+        updated_fields = {
+            "source": "Local DB (허가정보) + AI 요약",
+            "manufacturer": approval_item.entp_name or "",
+        }
+        if cached_summary is not None:
+            # A field the new answer left out keeps the text the stored summary already had.
+            updated_fields.update({
+                field: getattr(cached_summary, field)
+                for field in ("efficacy", "usage_method", "warning")
+                if self._is_missing_text(getattr(medication_detail, field))
+            })
+        medication_detail = medication_detail.model_copy(update=updated_fields)
         await self._save_approval_summary(approval_item, medication_detail)
         return medication_detail
+
+    # Function Name: _is_partial_summary_due_for_retry
+    # Description:
+    # - Tells whether a stored summary lacks a field whose source document has text and was
+    #   written longer ago than PARTIAL_SUMMARY_RETRY_AFTER. A field whose source document is
+    #   empty is complete without a summary and never causes a retry.
+    # Parameters:
+    # - approval_item (_DrugApprovalInfo): Stored approval record with its generated summary.
+    # - raw_item (dict[str, Any]): Approval documents the summary is generated from.
+    # Returns:
+    # - True when the summary should be requested again on this lookup.
+    def _is_partial_summary_due_for_retry(
+        self,
+        approval_item: _DrugApprovalInfo,
+        raw_item: dict[str, Any],
+    ) -> bool:
+        is_partial = any(
+            self._is_missing_text(summary_text)
+            and not self._is_missing_text(raw_item.get(document_key))
+            for summary_text, document_key in (
+                (approval_item.summary_efficacy, "EE_DOC_DATA"),
+                (approval_item.summary_use_method, "UD_DOC_DATA"),
+                (approval_item.summary_warning_message, "NB_DOC_DATA"),
+            )
+        )
+        if not is_partial:
+            return False
+        written_at = approval_item.updated_at
+        if written_at is None:
+            return True
+        written_at = (
+            written_at.replace(tzinfo=UTC)
+            if written_at.tzinfo is None
+            else written_at.astimezone(UTC)
+        )
+        return datetime.now(UTC) - written_at >= PARTIAL_SUMMARY_RETRY_AFTER
 
     # Function Name: _build_cached_approval_summary
     # Description:
@@ -580,6 +652,19 @@ class LocalMedicationCatalog:
     def _is_usable_summary_text(value: str | None) -> bool:
         summary_text = (value or "").strip()
         return bool(summary_text) and summary_text != SUMMARY_FAILURE_PLACEHOLDER
+
+    # Function Name: _is_missing_text
+    # Description:
+    # - Recognizes a summary field or source document without content: blank, or the display
+    #   text the summary generator writes for a field the AI left out.
+    # Parameters:
+    # - value (Any): Stored summary field or raw approval document.
+    # Returns:
+    # - True when the value carries no guidance text.
+    @staticmethod
+    def _is_missing_text(value: Any) -> bool:
+        text_value = "" if value is None else str(value).strip()
+        return not text_value or text_value == MISSING_DETAIL_TEXT
 
     # Function Name: _normalize_name
     # Description:

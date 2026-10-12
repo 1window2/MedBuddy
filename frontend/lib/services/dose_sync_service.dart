@@ -27,6 +27,36 @@ String doseScheduleDay(DateTime now) => now
     .toIso8601String()
     .substring(0, 10);
 
+// 함수이름: projectDoseOperations
+// 함수역할: 서버가 확인한 일정 위에 아직 전송하지 못한 그날의 복용 기록을 순서대로 덮어, 기기에서 본 복용 상태를 만든다.
+// 매개변수: schedules - 서버 일정, operations - 전송 대기 기록(오래된 순), scheduleDay - 기준 날짜(YYYY-MM-DD).
+// 반환값: 대기 기록이 반영된 일정 목록. 다른 날짜나 다른 약의 기록은 반영하지 않는다.
+List<MedicationSchedule> projectDoseOperations(
+  List<MedicationSchedule> schedules,
+  List<Map<String, dynamic>> operations,
+  String scheduleDay,
+) {
+  return schedules.map((schedule) {
+    final statuses = {
+      for (final slot in schedule.slotKeys)
+        slot: schedule.isSlotCompleted(slot),
+    };
+    for (final op in operations) {
+      if (op['schedule_date'] == scheduleDay &&
+          (op['medication_ids'] as List).contains(
+            int.tryParse(schedule.medicationID),
+          )) {
+        statuses[op['slot_key'] as String] = op['completed'] as bool;
+      }
+    }
+    return schedule.copyWith(
+      slotStatuses: statuses,
+      medicationStatus:
+          statuses.isNotEmpty && statuses.values.every((value) => value),
+    );
+  }).toList();
+}
+
 // 클래스명: DoseSyncService
 // 역할: 계정별 전송 큐, 일정 캐시, 앱 수명주기에 따른 재시도를 관리한다.
 // 속성: owner/client - 인증 범위와 통신, openStore - 암호화 저장소,
@@ -192,28 +222,8 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  List<MedicationSchedule> project(List<MedicationSchedule> schedules) {
-    final today = doseScheduleDay(clock());
-    return schedules.map((schedule) {
-      final statuses = {
-        for (final slot in schedule.slotKeys)
-          slot: schedule.isSlotCompleted(slot),
-      };
-      for (final op in _operations) {
-        if (op['schedule_date'] == today &&
-            (op['medication_ids'] as List).contains(
-              int.tryParse(schedule.medicationID),
-            )) {
-          statuses[op['slot_key'] as String] = op['completed'] as bool;
-        }
-      }
-      return schedule.copyWith(
-        slotStatuses: statuses,
-        medicationStatus:
-            statuses.isNotEmpty && statuses.values.every((value) => value),
-      );
-    }).toList();
-  }
+  List<MedicationSchedule> project(List<MedicationSchedule> schedules) =>
+      projectDoseOperations(schedules, _operations, doseScheduleDay(clock()));
 
   // 함수이름: record
   // 함수역할: 사용자가 본 약 목록만 영속 저장한 뒤 전송을 예약한다.
@@ -325,6 +335,25 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
       // 저장소·인증·네트워크 오류가 나도 사용자의 전송 대기 기록을 버리지 않는다.
     } finally {
       _scheduleRetry();
+    }
+  }
+
+  // 함수이름: flushPending
+  // 함수역할: 세션을 끝내기 전에 전송 대기 기록을 정해진 시간 안에서 한 번 더 올려 본다. 올리지 못한 기록은
+  //   대기열에 그대로 남아 같은 계정이 이 기기에 다시 로그인하면 전송된다.
+  // 매개변수: limit - 기다릴 최대 시간.
+  // 반환값: 전송을 마쳤거나 시간이 지나면 완료. 저장소·네트워크 오류로도 실패하지 않는다.
+  Future<void> flushPending({
+    Duration limit = const Duration(seconds: 4),
+  }) async {
+    if (_disposed) return;
+    try {
+      await initialize().timeout(limit);
+      // 서버가 거부해 보류된 기록만 남았으면 보낼 것이 없다.
+      if (!await _store!.hasUploadableOperation(owner).timeout(limit)) return;
+      await drain().timeout(limit);
+    } catch (_) {
+      // 오프라인이거나 응답이 늦으면 기다리지 않는다. 진행 중인 전송은 스스로 끝나거나 재시도로 남는다.
     }
   }
 

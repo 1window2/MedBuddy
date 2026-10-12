@@ -61,8 +61,12 @@ from core.account_database_lock import ACCOUNT_BUSY_DETAIL, lock_account_operati
 from core.database import get_db
 from core.request_database_work import run_request_database_work
 from core.request_rate_limits import (
+    DAILY_QUOTA_EXCEEDED_DETAIL,
+    RATE_LIMIT_EXCEEDED_DETAIL,
+    RateLimitRule,
     RequestRateLimitStore,
     mounted_route_template,
+    resolve_daily_quota,
     resolve_rate_limit_rule,
 )
 from controls.authorization_control import AuthorizationControl
@@ -359,6 +363,7 @@ def _register_detached_lookup_scope(db: Session, user_hash: str) -> None:
 # Function Name: get_registered_principal
 # Description:
 # - Enforces per-user request quotas and account registration, holding the SQLite account lock through endpoint execution and allowing deletion retries.
+# - Routes with a daily cost quota are also counted per account for the day.
 # Parameters:
 # - request (Request): Incoming FastAPI request used to access application state.
 # - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
@@ -384,24 +389,23 @@ async def get_registered_principal(
     )
     if settings.RATE_LIMIT_ENABLED and resolved_rule is not None:
         rule, canonical_path = resolved_rule
-        try:
-            rate_limit_store = get_request_rate_limit_store(request)
-            allowed, retry_after = await rate_limit_store.consume(
-                identity=f"user:{principal.user_hash}",
-                request_scope=f"{request.method.upper()}:{canonical_path}",
-                rule=rule,
-            )
-        except RuntimeError as exc:
-            raise HTTPException(
-                status_code=503,
-                detail="Request quota storage is temporarily unavailable.",
-                headers={"Retry-After": "5"},
-            ) from exc
-        if not allowed:
-            raise HTTPException(
-                status_code=429,
-                detail="요청이 너무 많습니다. 잠시 후 다시 시도해주세요.",
-                headers={"Retry-After": str(max(1, retry_after))},
+        await enforce_user_quota(
+            request,
+            user_hash=principal.user_hash,
+            request_scope=f"{request.method.upper()}:{canonical_path}",
+            rule=rule,
+            exceeded_detail=RATE_LIMIT_EXCEEDED_DETAIL,
+        )
+        # 비용이 큰 경로는 분당 한도와 별개로 계정별 하루 횟수도 제한한다.
+        daily_quota = resolve_daily_quota(request.method, route_path)
+        if daily_quota is not None:
+            daily_rule, daily_scope = daily_quota
+            await enforce_user_quota(
+                request,
+                user_hash=principal.user_hash,
+                request_scope=daily_scope,
+                rule=daily_rule,
+                exceeded_detail=DAILY_QUOTA_EXCEEDED_DETAIL,
             )
     # Step 1: Hold SQLite ownership through registration and endpoint teardown.
     async with AsyncExitStack() as account_scope:
@@ -490,6 +494,47 @@ def get_request_rate_limit_store(request: Request) -> RequestRateLimitStore:
     if not isinstance(rate_limit_store, RequestRateLimitStore):
         raise RuntimeError("Request rate-limit store is not initialized.")
     return rate_limit_store
+
+
+# Function Name: enforce_user_quota
+# Description:
+# - Counts one request of an account against a quota and rejects it when the quota is used up.
+# - Shared by the per-minute route limits and the daily quotas so both answer the same way.
+# Parameters:
+# - request (Request): Incoming FastAPI request used to access application state.
+# - user_hash (str): Account the request is counted for.
+# - request_scope (str): Counter name shared by the requests that use one quota.
+# - rule (RateLimitRule): Allowed requests and the window they are counted in.
+# - exceeded_detail (str): Message of the HTTP 429 answer.
+# Returns:
+# - None; raises HTTP 429 with Retry-After when the quota is used up and HTTP 503 when the
+#   quota storage cannot be reached.
+async def enforce_user_quota(
+    request: Request,
+    *,
+    user_hash: str,
+    request_scope: str,
+    rule: RateLimitRule,
+    exceeded_detail: str,
+) -> None:
+    try:
+        allowed, retry_after = await get_request_rate_limit_store(request).consume(
+            identity=f"user:{user_hash}",
+            request_scope=request_scope,
+            rule=rule,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Request quota storage is temporarily unavailable.",
+            headers={"Retry-After": "5"},
+        ) from exc
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=exceeded_detail,
+            headers={"Retry-After": str(max(1, retry_after))},
+        )
 
 
 # 함수이름: get_push_notification_boundary

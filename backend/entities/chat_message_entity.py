@@ -70,6 +70,8 @@ class _ChatMessage(Base):
             "client_message_id",
             name="uq_chat_message_client_request",
         ),
+        # 연동 해제 뒤에도 지연된 삭제·알림 작업이 새 메시지를 가리키지 않게 한다.
+        {"sqlite_autoincrement": True},
     )
 
     id = Column(Integer, primary_key=True, index=True)

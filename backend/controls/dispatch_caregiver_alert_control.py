@@ -93,6 +93,7 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
     # 매개변수:
     # - patient_hash (str): 복약을 완료한 환자의 식별 hash
     # - slot_key (str): 완료된 복약 시간대
+    # - only_caregiver_hash (str | None): 지정하면 구독한 보호자 가운데 이 보호자에게만 보낸다.
     # 반환값:
     # - 전체 보호자 기기의 성공, 영구 실패 토큰, 재시도 가능한 실패 집계
     def notifySlotCompleted(
@@ -100,12 +101,18 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
         *,
         patient_hash: str,
         slot_key: str,
+        only_caregiver_hash: str | None = None,
     ) -> PushDeliveryResult:
         resolver = PushRecipientResolver(self.db)
         caregiver_hashes = self._caregivers_for_completed_slot(
             patient_hash,
             slot_key,
         )
+        if only_caregiver_hash is not None:
+            caregiver_hashes = [
+                caregiver_hash for caregiver_hash in caregiver_hashes
+                if caregiver_hash == only_caregiver_hash
+            ]
         slot_name = MEDICATION_SLOT_KOREAN_NAMES.get(slot_key, "복약")
         prepared_pushes: list[_PreparedPush] = []
         for caregiver_hash in caregiver_hashes:

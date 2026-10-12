@@ -2,6 +2,7 @@
 // Role: Regression coverage for saving identified pills and manual entries, device photo
 //   storage and orphan photo cleanup in the saved-medication view model.
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -53,6 +54,8 @@ class _RecordingSavedControl extends CheckSavedMedication {
   int listRequests = 0;
   final rejectedDeleteIds = <int>{};
   int _nextId = 41;
+  Future<void>? saveGate;
+  Future<void>? listGate;
 
   // Function Name: _RecordingSavedControl
   // Description:
@@ -83,6 +86,7 @@ class _RecordingSavedControl extends CheckSavedMedication {
     }
     savedDetails.add(medicationDetail);
     savedSchedules.add(medicationSchedule);
+    await saveGate;
     if (failingNames.contains(medicationDetail.itemName)) {
       return const MedicationSaveResult(
         status: MedicationSaveStatus.failed,
@@ -106,6 +110,7 @@ class _RecordingSavedControl extends CheckSavedMedication {
   @override
   Future<List<MedicationDetail>> requestSavedMedicationInfo() async {
     listRequests += 1;
+    await listGate;
     return List<MedicationDetail>.of(listedMedications);
   }
 
@@ -172,6 +177,7 @@ class _FakeImageStore extends ManualMedicationImageStore {
   bool failSave = false;
   final orphanScopes = <Set<int>>[];
   final deletedIds = <int>[];
+  Future<void>? saveGate;
 
   // Function Name: saveImage
   // Description:
@@ -192,6 +198,7 @@ class _FakeImageStore extends ManualMedicationImageStore {
       throw const FileSystemException('disk full');
     }
     savedSources[medicationId] = sourcePath;
+    await saveGate;
     return '/stored/$medicationId.jpg';
   }
 
@@ -292,6 +299,8 @@ class _Harness {
   final _ScriptedDetailControl lookup;
   int scheduleRefreshes = 0;
   int reminderSyncs = 0;
+  Future<void>? scheduleGate;
+  int changes = 0;
   late final MedBuddySavedMedicationViewModel model;
 
   // Function Name: _Harness
@@ -309,9 +318,12 @@ class _Harness {
       manualMedicationImageStore: images,
       patientHash: 'patient-a',
       readEnglishSetting: () => false,
-      fetchTodayMedicationSchedule: () async => scheduleRefreshes += 1,
+      fetchTodayMedicationSchedule: () async {
+        scheduleRefreshes += 1;
+        await scheduleGate;
+      },
       synchronizeReminders: () async => reminderSyncs += 1,
-      onChanged: (_) {},
+      onChanged: (_) => changes++,
     );
   }
 }
@@ -358,6 +370,152 @@ MedicationDetail _catalogDetail(String itemSeq, {String imageUrl = ''}) =>
 // - No value; the test framework executes the registered cases.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test(
+    'old save acknowledgement cannot overwrite a new account flow',
+    () async {
+      final gate = Completer<void>();
+      final harness = _Harness((_) async => null);
+      addTearDown(harness.model.dispose);
+      harness.saved.saveGate = gate.future;
+      final oldSave = harness.model.saveMedicationInfo(_catalogDetail('old'));
+      harness.model.clear();
+      harness.saved.saveGate = null;
+      await harness.model.saveMedicationInfo(_catalogDetail('new'));
+      final status = harness.model.statusMessage;
+      final changes = harness.changes;
+      gate.complete();
+      expect((await oldSave).isCompleted, isTrue);
+      expect(harness.model.statusMessage, status);
+      expect(harness.changes, changes);
+      expect(harness.saved.listRequests, 1);
+      expect(harness.scheduleRefreshes, 1);
+      expect(harness.reminderSyncs, 1);
+    },
+  );
+
+  test('disposed save entry points send no lookup or save requests', () async {
+    final harness = _Harness((_) async => null);
+    harness.model.dispose();
+    final direct = await harness.model.saveMedicationInfo(_catalogDetail('1'));
+    final manual = await harness.model.saveManualMedication(
+      ManualMedicationEntry(
+        medicationName: 'test',
+        dosageAmount: '1',
+        dosageUnit: '정',
+        startDate: DateTime(2026, 10, 10),
+        endDate: DateTime(2026, 10, 10),
+        scheduleSlotKeys: const ['morning'],
+      ),
+    );
+    final identified = await harness.model.saveIdentifiedPill(
+      _chosenCandidate,
+      _chosenSchedule,
+    );
+    expect(
+      [direct, manual, identified].every((result) => !result.isCompleted),
+      isTrue,
+    );
+    expect(harness.lookup.requestedNames, isEmpty);
+    expect(harness.saved.savedDetails, isEmpty);
+    expect(harness.changes, 0);
+  });
+
+  for (final dispose in [false, true]) {
+    for (final stage in ['lookup', 'save', 'image', 'list', 'schedule']) {
+      test(
+        'save stops after $stage when account ends (dispose=$dispose)',
+        () async {
+          final gate = Completer<void>();
+          final harness = _Harness((_) async {
+            if (stage == 'lookup') await gate.future;
+            return null;
+          });
+          addTearDown(harness.model.dispose);
+          if (stage == 'save') harness.saved.saveGate = gate.future;
+          if (stage == 'image') harness.images.saveGate = gate.future;
+          if (stage == 'list') harness.saved.listGate = gate.future;
+          if (stage == 'schedule') harness.scheduleGate = gate.future;
+          final request = stage == 'lookup'
+              ? harness.model.saveManualMedication(
+                  ManualMedicationEntry(
+                    medicationName: 'test',
+                    dosageAmount: '1',
+                    dosageUnit: '정',
+                    startDate: DateTime(2026, 10, 10),
+                    endDate: DateTime(2026, 10, 10),
+                    scheduleSlotKeys: const ['morning'],
+                  ),
+                )
+              : harness.model.saveMedicationInfo(
+                  _catalogDetail('1'),
+                  localImagePath: stage == 'save' || stage == 'image'
+                      ? '/unused/photo.jpg'
+                      : '',
+                );
+          bool hasStarted() => switch (stage) {
+            'lookup' => harness.lookup.requestedNames.isNotEmpty,
+            'save' => harness.saved.savedDetails.isNotEmpty,
+            'image' => harness.images.savedSources.isNotEmpty,
+            'list' => harness.saved.listRequests > 0,
+            _ => harness.scheduleRefreshes > 0,
+          };
+          for (var i = 0; !hasStarted() && i < 30; i++) {
+            await Future<void>.delayed(Duration.zero);
+          }
+          expect(hasStarted(), isTrue);
+          if (dispose) {
+            harness.model.dispose();
+          } else {
+            harness.model.clear();
+          }
+          final changes = harness.changes;
+          gate.complete();
+          final result = await request;
+          expect(result.isCompleted, stage != 'lookup');
+          expect(harness.saved.savedDetails.length, stage == 'lookup' ? 0 : 1);
+          expect(harness.images.savedSources.length, stage == 'image' ? 1 : 0);
+          expect(
+            harness.saved.listRequests,
+            ['list', 'schedule'].contains(stage) ? 1 : 0,
+          );
+          expect(harness.scheduleRefreshes, stage == 'schedule' ? 1 : 0);
+          expect(harness.reminderSyncs, 0);
+          expect(harness.changes, changes);
+          expect(harness.model.statusMessage, isEmpty);
+        },
+      );
+    }
+  }
+
+  test(
+    'identified batch stops lookups and refresh after account clear',
+    () async {
+      final gate = Completer<MedicationDetail?>();
+      final harness = _Harness((_) => gate.future);
+      addTearDown(harness.model.dispose);
+      final request = harness.model.saveIdentifiedPills([
+        IdentifiedPillSaveRequest(
+          candidate: _chosenCandidate,
+          medicationSchedule: _chosenSchedule,
+        ),
+        IdentifiedPillSaveRequest(
+          candidate: _chosenCandidate,
+          medicationSchedule: _chosenSchedule,
+        ),
+      ]);
+      harness.model.clear();
+      gate.complete(null);
+      final results = await request;
+      expect(results, hasLength(2));
+      expect(results.every((result) => !result.isCompleted), isTrue);
+      expect(harness.lookup.requestedNames, hasLength(1));
+      expect(harness.saved.savedDetails, isEmpty);
+      expect(harness.saved.listRequests, 0);
+      expect(harness.scheduleRefreshes, 0);
+      expect(harness.reminderSyncs, 0);
+    },
+  );
 
   group('identified pill', () {
     // Function Name: test callback
@@ -491,26 +649,29 @@ void main() {
     // - None.
     // Returns:
     // - Future<void>; completes when the assertions pass.
-    test('a failed or busy lookup still saves the confirmed candidate', () async {
-      for (final failure in <Object>[
-        StateError('lookup failed'),
-        MedicationLookupBusy(const Duration(seconds: 5)),
-      ]) {
-        final harness = _Harness((_) async => throw failure);
-        addTearDown(harness.model.dispose);
+    test(
+      'a failed or busy lookup still saves the confirmed candidate',
+      () async {
+        for (final failure in <Object>[
+          StateError('lookup failed'),
+          MedicationLookupBusy(const Duration(seconds: 5)),
+        ]) {
+          final harness = _Harness((_) async => throw failure);
+          addTearDown(harness.model.dispose);
 
-        final result = await harness.model.saveIdentifiedPill(
-          _chosenCandidate,
-          _chosenSchedule,
-        );
+          final result = await harness.model.saveIdentifiedPill(
+            _chosenCandidate,
+            _chosenSchedule,
+          );
 
-        expect(result.isCompleted, isTrue);
-        final saved = harness.saved.savedDetails.single;
-        expect(saved.itemSeq, '200000001');
-        expect(saved.itemName, '타이레놀정500밀리그람');
-        expect(saved.imageUrl, 'https://nedrug.mfds.go.kr/chosen.jpg');
-      }
-    });
+          expect(result.isCompleted, isTrue);
+          final saved = harness.saved.savedDetails.single;
+          expect(saved.itemSeq, '200000001');
+          expect(saved.itemName, '타이레놀정500밀리그람');
+          expect(saved.imageUrl, 'https://nedrug.mfds.go.kr/chosen.jpg');
+        }
+      },
+    );
 
     // Function Name: test callback
     // Description:
@@ -520,43 +681,46 @@ void main() {
     // - None.
     // Returns:
     // - Future<void>; completes when the assertions pass.
-    test('a batch keeps its order, isolates failures and refreshes once', () async {
-      final harness = _Harness((_) async => null);
-      addTearDown(harness.model.dispose);
-      harness.saved.failingNames.add('rejected pill');
-      harness.saved.throwingNames.add('crashing pill');
-      IdentifiedPillSaveRequest request(String itemSeq, String name) =>
-          IdentifiedPillSaveRequest(
-            candidate: PillIdentificationCandidate(
-              itemSeq: itemSeq,
-              itemName: name,
-            ),
-            medicationSchedule: MedicationSchedule(medicationName: name),
-          );
+    test(
+      'a batch keeps its order, isolates failures and refreshes once',
+      () async {
+        final harness = _Harness((_) async => null);
+        addTearDown(harness.model.dispose);
+        harness.saved.failingNames.add('rejected pill');
+        harness.saved.throwingNames.add('crashing pill');
+        IdentifiedPillSaveRequest request(String itemSeq, String name) =>
+            IdentifiedPillSaveRequest(
+              candidate: PillIdentificationCandidate(
+                itemSeq: itemSeq,
+                itemName: name,
+              ),
+              medicationSchedule: MedicationSchedule(medicationName: name),
+            );
 
-      final results = await harness.model.saveIdentifiedPills([
-        request('1', 'first pill'),
-        request('2', 'rejected pill'),
-        request('3', 'crashing pill'),
-        request('4', 'last pill'),
-      ]);
+        final results = await harness.model.saveIdentifiedPills([
+          request('1', 'first pill'),
+          request('2', 'rejected pill'),
+          request('3', 'crashing pill'),
+          request('4', 'last pill'),
+        ]);
 
-      expect(results.map((result) => result.status), [
-        MedicationSaveStatus.saved,
-        MedicationSaveStatus.failed,
-        MedicationSaveStatus.failed,
-        MedicationSaveStatus.saved,
-      ]);
-      expect(harness.lookup.requestedNames, [
-        'first pill',
-        'rejected pill',
-        'crashing pill',
-        'last pill',
-      ]);
-      expect(harness.saved.listRequests, 1);
-      expect(harness.scheduleRefreshes, 1);
-      expect(harness.reminderSyncs, 1);
-    });
+        expect(results.map((result) => result.status), [
+          MedicationSaveStatus.saved,
+          MedicationSaveStatus.failed,
+          MedicationSaveStatus.failed,
+          MedicationSaveStatus.saved,
+        ]);
+        expect(harness.lookup.requestedNames, [
+          'first pill',
+          'rejected pill',
+          'crashing pill',
+          'last pill',
+        ]);
+        expect(harness.saved.listRequests, 1);
+        expect(harness.scheduleRefreshes, 1);
+        expect(harness.reminderSyncs, 1);
+      },
+    );
 
     // Function Name: test callback
     // Description:
@@ -815,10 +979,10 @@ void main() {
       await harness.model.fetchSavedMedicationInfo();
       await pumpEventQueue();
 
-      expect(
-        harness.model.medications.map((item) => item.localImagePath),
-        ['/stored/7.jpg', ''],
-      );
+      expect(harness.model.medications.map((item) => item.localImagePath), [
+        '/stored/7.jpg',
+        '',
+      ]);
       expect(harness.images.orphanScopes, [
         {7, 8},
       ]);
@@ -837,10 +1001,7 @@ void main() {
       addTearDown(harness.model.dispose);
       harness.saved.rejectedDeleteIds.add(8);
 
-      final result = await harness.model.requestDeleteSavedMedications([
-        7,
-        8,
-      ]);
+      final result = await harness.model.requestDeleteSavedMedications([7, 8]);
       await pumpEventQueue();
 
       expect(result.successCount, 1);

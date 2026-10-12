@@ -163,6 +163,10 @@ class PushMessagingPlatform {
   Future<void> requestPermission() =>
       _messaging.requestPermission(alert: true, badge: true, sound: true);
 
+  // 함수이름: deleteToken
+  // 함수역할: 이 기기의 FCM 토큰을 폐기해 서버에 남은 등록이 더는 전달되지 않게 한다. 매개변수: 없음. 반환값: 완료.
+  Future<void> deleteToken() => _messaging.deleteToken();
+
   // 함수이름: getToken
   // 함수역할: 이 기기의 현재 FCM 토큰을 받는다. 반환값: 토큰 또는 아직 없으면 null.
   Future<String?> getToken() => _messaging.getToken();
@@ -421,9 +425,11 @@ class PushNotificationService {
       // 이 시도 중에 갱신 토큰 등록이 실패하면 다시 true가 되어 재시도 대상으로 남는다.
       _registrationPending = false;
       final token = await _platform.getToken();
-      if (token != null && token.trim().isNotEmpty) {
-        await _trackTokenRegistration(token);
+      if (token == null || token.trim().isEmpty) {
+        // 초기 설치나 연결 복구 중 토큰이 아직 없으면 등록 완료로 처리하지 않는다.
+        throw StateError('The device push token is not available yet.');
       }
+      await _trackTokenRegistration(token);
       if (!_registrationPending) {
         _retryAttempt = 0;
       }
@@ -461,9 +467,13 @@ class PushNotificationService {
   // Description: Cancels any scheduled start retry, waits for startup and tracked token registrations, unregisters the last token, and cancels message subscriptions; strict cleanup rethrows server-unregistration failure before discarding state.
   // Parameters:
   // - requireServerUnregistration (bool): Whether server token-unregistration failure must propagate to the caller.
+  // - discardUnregisteredToken (bool): Whether a token the server could not unregister is deleted on the device, so the server's stale registration for the ended account stops delivering here.
   // Returns:
   // - Future<void>: asynchronous completion without a result payload.
-  Future<void> stop({bool requireServerUnregistration = false}) async {
+  Future<void> stop({
+    bool requireServerUnregistration = false,
+    bool discardUnregisteredToken = false,
+  }) async {
     _stopping = true;
     _retryTimer?.cancel();
     _retryTimer = null;
@@ -496,6 +506,17 @@ class PushNotificationService {
           if (!_isStartComplete) _scheduleRetry();
           rethrow;
         }
+      }
+    }
+    final unregisteredToken = _registeredToken;
+    if (discardUnregisteredToken &&
+        unregisteredToken != null &&
+        unregisteredToken.isNotEmpty) {
+      try {
+        await _platform.deleteToken();
+        _registeredToken = null;
+      } catch (error, stackTrace) {
+        _reportPushError(error, stackTrace);
       }
     }
 

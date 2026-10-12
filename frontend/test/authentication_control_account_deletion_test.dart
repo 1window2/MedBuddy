@@ -15,6 +15,30 @@ import 'package:medbuddy_frontend/controls/authentication_control.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  // 로컬 데모의 로그아웃은 공급자 호출·정리·상태 알림 없이 같은 세션을 유지한다.
+  test('disabled-auth sign out preserves the demo without cleanup', () async {
+    final control = AuthenticationControl.development();
+    addTearDown(control.dispose);
+    final session = control.session;
+    var cleanups = 0;
+    var changes = 0;
+    control.setBeforeSignOut(() async {
+      cleanups++;
+      throw StateError('Cleanup must not run in the local demo.');
+    });
+    control.addListener(() => changes++);
+
+    await control.signOut();
+    await control.signOut();
+
+    expect(cleanups, 0);
+    expect(changes, 0);
+    expect(control.session, same(session));
+    expect(control.isAuthenticated, isTrue);
+    expect(control.isBusy, isFalse);
+    expect(control.errorMessage, isNull);
+  });
+
   // Function Name: test callback
   // Description:
   // - Expected behavior: account deletion clears the local session before provider failure.

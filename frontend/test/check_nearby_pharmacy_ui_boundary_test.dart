@@ -322,6 +322,244 @@ void main() {
   // 함수역할: 즐겨찾기 저장소를 격리한다. 매개변수: 없음. 반환값: 없음.
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  for (final apply in [false, true]) {
+    testWidgets(
+      'rapid filter and date drafts send only the final choice: $apply',
+      (tester) async {
+        final modes = <String?>[];
+        final times = <DateTime>[];
+        final response = Completer<void>();
+        final control = _buildControl(
+          requestedModes: modes,
+          requestedTimes: times,
+          beforeResponse: () async {
+            if (modes.length > 1) await response.future;
+          },
+        );
+        addTearDown(control.dispose);
+        await tester.binding.setSurfaceSize(const Size(420, 1000));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await tester.pumpWidget(
+          _testApp(
+            control,
+            textScale: 1,
+            clock: () => DateTime(2026, 9, 28, 10),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final selector = find.byKey(const Key('pharmacy-map-filter-selector'));
+        await tester.tap(selector);
+        await tester.pumpAndSettle();
+        for (final filter in ['all', 'lateHours', 'weekendHoliday', 'all']) {
+          await tester.tap(
+            find.byKey(ValueKey('pharmacy-filter-option-$filter')),
+          );
+        }
+        await tester.pumpAndSettle();
+        for (final day in ['30', '29']) {
+          await tester.tap(find.byKey(const Key('care-filter-date')));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text(day));
+          await tester.tap(find.text('OK'));
+          await tester.pumpAndSettle();
+        }
+        expect(modes, ['open_at_time']);
+        await tester.tap(
+          apply
+              ? find.byKey(const Key('care-filter-apply'))
+              : find.byTooltip('닫기'),
+        );
+        await tester.pump();
+        if (apply) {
+          await tester.pump(const Duration(milliseconds: 400));
+          expect(tester.widget<OutlinedButton>(selector).onPressed, isNull);
+          await tester.tap(selector);
+          expect(modes, ['open_at_time', 'all']);
+          expect(times.last, DateTime(2026, 9, 29, 12));
+        }
+        response.complete();
+        await tester.pumpAndSettle();
+        expect(modes, apply ? ['open_at_time', 'all'] : ['open_at_time']);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
+
+  for (final fail in [false, true]) {
+    testWidgets('late pharmacy search is inert after disposal: $fail', (
+      tester,
+    ) async {
+      final response = Completer<void>();
+      final modes = <String?>[];
+      final control = _buildControl(
+        requestedModes: modes,
+        beforeResponse: () => response.future,
+      );
+      addTearDown(control.dispose);
+      await tester.pumpWidget(_testApp(control));
+      await tester.pump();
+      expect(modes, hasLength(1));
+      await tester.pumpWidget(const SizedBox.shrink());
+      if (fail) {
+        response.completeError(StateError('늦은 검색 실패'));
+      } else {
+        response.complete();
+      }
+      await tester.pumpAndSettle();
+      expect(modes, hasLength(1));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final apply in [false, true]) {
+    testWidgets('conditions double dismissal keeps the nearby route: $apply', (
+      tester,
+    ) async {
+      final modes = <String?>[];
+      final control = _buildControl(requestedModes: modes);
+      addTearDown(control.dispose);
+      final navigator = GlobalKey<NavigatorState>();
+      await tester.pumpWidget(
+        MaterialApp(
+          navigatorKey: navigator,
+          home: const Scaffold(body: Text('previous screen')),
+        ),
+      );
+      unawaited(
+        navigator.currentState!.push<void>(
+          MaterialPageRoute(
+            builder: (_) => CheckNearbyPharmacyUI(
+              userSetting: const UserSetting(language: 'ko'),
+              control: control,
+              mapBuilder: _buildTestMap,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('pharmacy-map-filter-selector')));
+      await tester.pumpAndSettle();
+      final option = find.byKey(const ValueKey('pharmacy-filter-option-all'));
+      await tester.ensureVisible(option);
+      await tester.tap(option);
+      await tester.pumpAndSettle();
+      final dismiss = apply
+          ? find.byKey(const Key('care-filter-apply'))
+          : find.byTooltip('닫기');
+      // 닫힘 프레임이 반영되기 전에 같은 버튼을 다시 누른다.
+      await tester.tap(dismiss);
+      await tester.tap(dismiss, warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(find.byType(CheckNearbyPharmacyUI), findsOneWidget);
+      expect(navigator.currentState!.canPop(), isTrue);
+      expect(modes, apply ? ['open_at_time', 'all'] : ['open_at_time']);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
+  testWidgets('conditions rapid opening creates only one sheet', (
+    tester,
+  ) async {
+    final control = _buildControl();
+    addTearDown(control.dispose);
+    await tester.pumpWidget(_testApp(control));
+    await tester.pumpAndSettle();
+    final selector = find.byKey(const Key('pharmacy-map-filter-selector'));
+    await tester.tap(selector);
+    await tester.tap(selector, warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(find.byType(BottomSheet, skipOffstage: false), findsOneWidget);
+    await tester.tap(find.byTooltip('닫기'));
+    await tester.pumpAndSettle();
+    expect(find.byType(BottomSheet), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('conditions rapid date opening creates only one calendar', (
+    tester,
+  ) async {
+    final control = _buildControl();
+    addTearDown(control.dispose);
+    await tester.pumpWidget(_testApp(control));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('pharmacy-map-filter-selector')));
+    await tester.pumpAndSettle();
+    final option = find.byKey(const ValueKey('pharmacy-filter-option-all'));
+    await tester.ensureVisible(option);
+    await tester.tap(option);
+    await tester.pumpAndSettle();
+    final date = find.byKey(const Key('care-filter-date'));
+    await tester.ensureVisible(date);
+    await tester.pumpAndSettle();
+    await tester.tap(date);
+    await tester.tap(date, warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(find.byType(DatePickerDialog, skipOffstage: false), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  for (final dispose in [false, true]) {
+    for (final installed in [false, true]) {
+      testWidgets(
+        'late directions failure starts no fallback after leaving: dispose=$dispose installed=$installed',
+        (tester) async {
+          final response = Completer<bool>();
+          final launches = <Uri>[];
+          final copies = <String>[];
+          final control = _buildControl(
+            uriLauncher: (uri) {
+              launches.add(uri);
+              return response.future;
+            },
+            clipboardWriter: (value) async => copies.add(value),
+          );
+          addTearDown(control.dispose);
+          await tester.pumpWidget(_testApp(control));
+          await tester.pumpAndSettle();
+          await tester.tap(find.byKey(const Key('pharmacy-list-toggle')));
+          await tester.pumpAndSettle();
+          final directions = find.byKey(const Key('pharmacy-directions-open'));
+          await tester.ensureVisible(directions);
+          await tester.tap(directions);
+          await tester.pumpAndSettle();
+          await tester.tap(
+            find.byKey(
+              Key(
+                installed
+                    ? 'directions-choice-installed-app'
+                    : 'directions-choice-google-maps',
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(launches, hasLength(1));
+          if (dispose) {
+            await tester.pumpWidget(const SizedBox.shrink());
+          } else {
+            unawaited(
+              Navigator.of(
+                tester.element(find.byType(CheckNearbyPharmacyUI)),
+              ).push<void>(
+                MaterialPageRoute(
+                  builder: (_) => const Scaffold(body: Text('다른 화면')),
+                ),
+              ),
+            );
+            await tester.pumpAndSettle();
+          }
+          response.complete(false);
+          await tester.pumpAndSettle();
+          expect(launches, hasLength(1));
+          expect(copies, isEmpty);
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+      );
+    }
+  }
+
   for (final language in ['ko', 'en']) {
     // 약국도 날짜를 조회 조건 안에만 표시하며 취소·적용·재진입 동안 값을 정확히 유지한다.
     testWidgets('pharmacy date lives inside conditions in $language', (

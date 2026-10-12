@@ -168,8 +168,8 @@ async def test_search_nearby_uses_location_api_without_exposing_key() -> None:
     assert len(records) == 1
     assert captured_request is not None
     assert captured_request.url.path.endswith("/getParmacyLcinfoInqire")
-    assert captured_request.url.params["WGS84_LAT"] == "37.5665000"
-    assert captured_request.url.params["WGS84_LON"] == "126.9780000"
+    assert captured_request.url.params["WGS84_LAT"] == "37.566"
+    assert captured_request.url.params["WGS84_LON"] == "126.978"
     assert captured_request.url.params["numOfRows"] == "10"
 
 

@@ -45,6 +45,8 @@ _DEVELOPER_DATABASE_PATH = _BACKEND_ROOT / "medbuddy.db"
 _POSTGRES_INTEGRATION_FLAG = "MEDBUDDY_RUN_POSTGRES_INTEGRATION"
 _PLACEHOLDER_API_KEY = "test-key-for-ci"
 
+# Redis address no test run can reach; see _isolate_test_environment.
+_UNREACHABLE_REDIS_URL = "redis://127.0.0.1:1/0"
 # Set by _isolate_test_environment when this run owns a temporary database directory.
 _run_directory: Path | None = None
 
@@ -68,6 +70,7 @@ def _uses_external_database() -> bool:
 # Function Name: _isolate_test_environment
 # Description:
 # - Puts the backend root and the tests directory on sys.path, then sets the environment
+#   (including a Redis address that cannot be reached, so no test touches a local Redis)
 #   described in the file header before core.config reads it.
 # - Refuses to continue when the settings were already loaded with the developer database,
 #   because the environment set here could no longer take effect.
@@ -83,6 +86,9 @@ def _isolate_test_environment() -> None:
             sys.path.insert(0, str(import_root))
 
     os.environ["PERIODIC_MAINTENANCE_ENABLED"] = "false"
+    # A closed local port: the rate-limit store falls back to its in-memory counters at once
+    # instead of writing test keys into a developer's running Redis.
+    os.environ["REDIS_URL"] = _UNREACHABLE_REDIS_URL
     os.environ.setdefault("GEMINI_API_KEY", _PLACEHOLDER_API_KEY)
     os.environ.setdefault("PUBLIC_DATA_API_KEY", _PLACEHOLDER_API_KEY)
     if _uses_external_database():
@@ -104,6 +110,37 @@ def _isolate_test_environment() -> None:
 
 
 _isolate_test_environment()
+
+
+@pytest.fixture(autouse=True)
+def _block_external_redis(monkeypatch: pytest.MonkeyPatch) -> None:
+    from redis.asyncio.connection import AbstractConnection
+    from redis.exceptions import ConnectionError as RedisConnectionError
+
+    # 직접 생성한 클라이언트도 실제 Redis에 닿지 않으며, 주입한 대체 객체는 유지한다.
+    async def reject_connection(self: object) -> None:
+        raise RedisConnectionError("Redis network connections are disabled in backend tests.")
+
+    monkeypatch.setattr(AbstractConnection, "connect", reject_connection)
+
+
+@pytest.fixture(autouse=True)
+def _block_external_http(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+    import requests
+    import urllib.request
+
+    # 인메모리 ASGI·MockTransport는 유지하고 실제 HTTP 전송만 차단한다.
+    def reject_request(*args: object, **kwargs: object) -> None:
+        raise AssertionError("HTTP network connections are disabled in backend tests.")
+
+    async def reject_async_request(*args: object, **kwargs: object) -> None:
+        reject_request()
+
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", reject_request)
+    monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", reject_async_request)
+    monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", reject_request)
+    monkeypatch.setattr(urllib.request.OpenerDirector, "open", reject_request)
 
 
 # Function Name: pytest_sessionfinish

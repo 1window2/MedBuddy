@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../entities/medication_dose_rhythm.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/medication_schedule_limits.dart';
 import '../entities/medication_slot_label.dart';

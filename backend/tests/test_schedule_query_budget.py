@@ -257,8 +257,10 @@ def test_steady_missed_dose_tick_issues_no_insert(
     fk_engine: Engine,
     fk_session_factory: sessionmaker[Session],
 ) -> None:
-    now = application_now().replace(hour=12, minute=0, second=0, microsecond=0)
-    later = now.replace(hour=21)
+    # Both scans run after the default reminder time plus the grace period of the slots they
+    # expect: 19:00 for morning, lunch and evening, 23:00 for bedtime.
+    now = application_now().replace(hour=19, minute=0, second=0, microsecond=0)
+    later = now.replace(hour=23)
     caregivers = ("budget-caregiver-a", "budget-caregiver-b")
     with fk_session_factory() as seed_db:
         seed_account(seed_db, PATIENT_HASH, *caregivers)

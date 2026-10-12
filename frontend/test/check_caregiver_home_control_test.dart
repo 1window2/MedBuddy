@@ -37,6 +37,204 @@ const _other = PatientCaregiverLink(
 // 함수이름: main
 // 매개변수: 없음. 반환값: 없음.
 void main() {
+  for (final viewport in [
+    (width: 411.0, scale: 1.0),
+    (width: 320.0, scale: 2.0),
+  ]) {
+    testWidgets('이름 길이가 달라도 같은 좌표의 연속 환자 탐색은 상세로 가지 않는다: $viewport', (
+      tester,
+    ) async {
+      tester.view.physicalSize = Size(viewport.width, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      const second = PatientCaregiverLink(
+        linkId: 3,
+        patientId: 'second',
+        caregiverId: 'owner',
+        patientHash: 'second',
+        caregiverHash: 'owner',
+        patientAlias: '이름이 아주 긴 테스트 환자',
+        linkStatus: true,
+      );
+      const third = PatientCaregiverLink(
+        linkId: 4,
+        patientId: 'third',
+        caregiverId: 'owner',
+        patientHash: 'third',
+        caregiverHash: 'owner',
+        patientAlias: '아빠',
+        linkStatus: true,
+      );
+      final api = _Monitoring()
+        ..snapshots = [_snapshot(_link), _snapshot(second), _snapshot(third)];
+      final control = CheckCaregiverHome(userHash: 'owner', control: api);
+      addTearDown(control.dispose);
+      addTearDown(api.dispose);
+      control.updateLinks([_link, second, third]);
+      await control.refresh();
+      final selected = <PatientCaregiverLink>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              textScaler: TextScaler.linear(viewport.scale),
+            ),
+            child: child!,
+          ),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: CaregiverHomeSummaryUI(
+                control: control,
+                isEnglish: false,
+                patientLabel: (link) => link.patientAlias!,
+                onPatientRequested: selected.add,
+              ),
+            ),
+          ),
+        ),
+      );
+      final previous = find.byKey(const Key('caregiver-patient-previous'));
+      final next = find.byKey(const Key('caregiver-patient-next'));
+      final previousPosition = tester.getCenter(previous);
+      final nextPosition = tester.getCenter(next);
+      final nextLeft = tester.getRect(next).left;
+      await tester.tapAt(nextPosition);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(find.text(second.patientAlias!), findsOneWidget);
+      final longNameNext = tester.getRect(next);
+      final longNamePrevious = tester.getRect(previous);
+      // 버튼을 다시 찾지 않고 첫 환자에서 기록한 좌표로 재탭한다.
+      await tester.tapAt(nextPosition);
+      await tester.pump();
+      expect(selected, isEmpty);
+      expect(find.text(third.patientAlias!), findsOneWidget);
+      expect(longNameNext.left, nextLeft);
+      expect(longNameNext.contains(nextPosition), isTrue);
+      expect(longNamePrevious.contains(previousPosition), isTrue);
+      await tester.tapAt(nextPosition);
+      expect(selected, isEmpty, reason: '마지막 환자의 비활성 next도 상세 진입이 아니다');
+      await tester.tapAt(previousPosition);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      await tester.tapAt(previousPosition);
+      await tester.pump();
+      expect(find.text(_link.patientAlias!), findsOneWidget);
+      expect(selected, isEmpty);
+      await tester.tapAt(previousPosition);
+      expect(selected, isEmpty);
+      await tester.tap(find.text(_link.patientAlias!));
+      expect(selected, [_link], reason: '이름을 직접 누르는 상세 진입은 유지한다');
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('새로고침 직후 같은 좌표를 다시 눌러도 환자 일정으로 가지 않는다', (tester) async {
+    tester.view.physicalSize = const Size(411, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final api = _Monitoring()..snapshots = [_snapshot(_link)];
+    final control = CheckCaregiverHome(userHash: 'owner', control: api);
+    addTearDown(control.dispose);
+    addTearDown(api.dispose);
+    control.updateLinks([_link]);
+    await control.refresh();
+    api.gate = Completer<List<CaregiverMonitoringSnapshot>>();
+    final selected = <PatientCaregiverLink>[];
+    Future<void>? pending;
+    var refreshes = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AnimatedBuilder(
+            animation: control,
+            builder: (context, child) => CaregiverHomeSummaryUI(
+              control: control,
+              isEnglish: false,
+              patientLabel: (link) => link.patientAlias!,
+              onPatientRequested: selected.add,
+              onRefreshRequested: () {
+                refreshes++;
+                pending = control.refresh();
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    final refresh = find.byKey(const Key('caregiver-home-refresh'));
+    final position = tester.getCenter(refresh);
+    await tester.tapAt(position);
+    await tester.pump();
+    expect(tester.widget<IconButton>(refresh).onPressed, isNull);
+    expect(tester.getCenter(refresh), position);
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.tapAt(position);
+    api.gate!.complete(api.snapshots!);
+    await pending;
+    await tester.pump();
+    expect(selected, isEmpty);
+    expect(refreshes, 1);
+    expect(api.calls, 2, reason: '초기 조회와 첫 새로고침만 실행한다');
+    expect(tester.widget<IconButton>(refresh).onPressed, isNotNull);
+    await tester.tap(find.text('엄마'));
+    expect(selected, [_link], reason: '버튼 밖의 정상적인 카드 상세 진입은 유지한다');
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final loading in [false, true]) {
+    testWidgets('환자 전환 직후 원래 이전 화살표 좌표를 눌러도 상세로 가지 않는다: $loading', (tester) async {
+      tester.view.physicalSize = const Size(411, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      const second = PatientCaregiverLink(
+        linkId: 3, patientId: 'second', caregiverId: 'owner',
+        patientHash: 'second', caregiverHash: 'owner',
+        patientAlias: '테스트환자2', linkStatus: true,
+      );
+      final api = _Monitoring()..snapshots = [_snapshot(_link), _snapshot(second)];
+      final control = CheckCaregiverHome(userHash: 'owner', control: api);
+      addTearDown(control.dispose);
+      addTearDown(api.dispose);
+      control.updateLinks([_link, second]);
+      Future<void>? pending;
+      if (loading) {
+        api.gate = Completer<List<CaregiverMonitoringSnapshot>>();
+        pending = control.refresh();
+      } else {
+        await control.refresh();
+      }
+      final selected = <PatientCaregiverLink>[];
+      await tester.pumpWidget(MaterialApp(home: Scaffold(
+        body: SingleChildScrollView(child: CaregiverHomeSummaryUI(
+          control: control, isEnglish: false,
+          patientLabel: (link) => link.patientAlias!,
+          onPatientRequested: selected.add,
+        )),
+      )));
+      final previous = find.byKey(const Key('caregiver-patient-previous'));
+      final previousPosition = tester.getCenter(previous);
+      await tester.tap(find.byKey(const Key('caregiver-patient-next')));
+      // 전환 애니메이션이 끝나기 전, 실기와 같은 원래 좌표를 누른다.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      await tester.tapAt(previousPosition);
+      await tester.pump(const Duration(milliseconds: 250));
+      if (loading) {
+        api.gate!.complete(api.snapshots!);
+        await pending;
+      }
+      expect(selected, isEmpty);
+      expect(find.text('엄마'), findsOneWidget);
+      await tester.tap(previous);
+      expect(selected, isEmpty, reason: '비활성 이전 버튼도 상세 진입이 아니다');
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   // 같은 목록은 갱신하지 않고 연동 변경만 화면에 알린다.
   test('동일한 연동 목록의 변경 알림을 생략한다', () {
     final control = CheckCaregiverHome(userHash: 'owner');

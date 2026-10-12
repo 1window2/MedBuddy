@@ -1404,15 +1404,166 @@ void main() {
         'test-tablet',
       ]);
       expect(notificationService.registeredActiveDates, hasLength(1));
-      final activeDate =
-          notificationService.registeredActiveDates.single.single;
+      // The course has no readable duration. The server keeps such a course in every day's
+      // schedule, so its reminders fill the 14-day window; with today only, tomorrow's reminder
+      // depended on the app or the worker running after midnight and before the reminder time.
+      final activeDates = notificationService.registeredActiveDates.single;
       final now = DateTime.now();
-      expect(
-        DateTime(activeDate.year, activeDate.month, activeDate.day),
-        DateTime(now.year, now.month, now.day),
-      );
+      expect(activeDates, [
+        for (var day = 0; day < 14; day++)
+          DateTime(now.year, now.month, now.day + day),
+      ]);
     },
   );
+
+  // Dose days in the foreground: the server lists only medications due today, so on a rest day a
+  // slot that holds only a weekly medication looks empty. The 14-day course read decides whether
+  // the slot is really empty and on which dates it is reminded.
+  group('reminder sync with a medication that is not taken every day', () {
+    late RecordingNotificationService notificationService;
+    late List<String> requests;
+
+    // Function Name: buildViewModel
+    // Description: Creates a view model whose server has the morning reminder enabled, today's
+    //   schedule as given, and the 14-day course read answering with `window` (HTTP 503 when null).
+    // Parameters: today - schedules due today; window - courses of the next 14 days, or null.
+    // Returns: The view model; each request is recorded as "METHOD path-suffix".
+    MedBuddyViewModel buildViewModel({
+      required List<Map<String, dynamic>> today,
+      required List<Map<String, dynamic>>? window,
+    }) {
+      final client = MockClient((http.Request request) async {
+        final path = request.url.path;
+        requests.add('${request.method} ${path.split('/').last}');
+        if (request.method == 'GET' && path.endsWith('/notification/settings')) {
+          return _jsonResponse({
+            'success': true,
+            'data': [
+              {
+                'patient_hash': PatientHash.defaultPatientHash,
+                'slot_key': 'morning',
+                'hour': 8,
+                'minute': 15,
+                'is_enabled': true,
+              },
+            ],
+          });
+        }
+        if (path.endsWith('/schedule/today/info')) {
+          return _jsonResponse({
+            'success': true,
+            'data': {
+              'patient_hash': PatientHash.defaultPatientHash,
+              'schedules': today,
+            },
+          });
+        }
+        if (path.endsWith('/schedule/window')) {
+          return window == null
+              ? http.Response('unavailable', 503)
+              : _jsonResponse({'success': true, 'data': window});
+        }
+        if (request.method == 'PATCH') {
+          return _jsonResponse({
+            'success': true,
+            'data': {
+              'patient_hash': PatientHash.defaultPatientHash,
+              'slot_key': 'morning',
+              'hour': 8,
+              'minute': 15,
+              'is_enabled': false,
+            },
+          });
+        }
+        return http.Response('Not found', 404);
+      });
+      final viewModel = MedBuddyViewModel(
+        apiClient: client,
+        notificationService: notificationService,
+      );
+      addTearDown(viewModel.dispose);
+      return viewModel;
+    }
+
+    // Function Name: weeklyCourse
+    // Description: Builds the server row of a weekly morning medication that started `startedDaysAgo`
+    //   days ago, so its dose days are known relative to today.
+    // Parameters: startedDaysAgo - days since the first dose day.
+    // Returns: The schedule JSON with its dose cycle.
+    Map<String, dynamic> weeklyCourse(int startedDaysAgo) {
+      final now = DateTime.now();
+      final start = DateTime(now.year, now.month, now.day - startedDaysAgo);
+      final startText =
+          '${start.year.toString().padLeft(4, '0')}-'
+          '${start.month.toString().padLeft(2, '0')}-'
+          '${start.day.toString().padLeft(2, '0')}';
+      return {
+        'medication_id': '21',
+        'drug_name': 'weekly-tablet',
+        'daily_frequency': '주 1회',
+        'total_days': '90일',
+        'prescription_date': startText,
+        'schedule_slot_keys': ['morning'],
+        'dose_cycle_days': 7,
+        'dose_cycle_offsets': [0],
+        'dose_cycle_anchor': startText,
+        'patient_hash': PatientHash.defaultPatientHash,
+      };
+    }
+
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+      notificationService = RecordingNotificationService();
+      requests = [];
+    });
+
+    // Function Name: rest-day test
+    // Description: On a rest day the reminder setting stays enabled and the slot is reserved on
+    //   the dose days of the window only.
+    test('a weekly-only slot keeps its reminder on a rest day', () async {
+      final viewModel = buildViewModel(today: const [], window: [weeklyCourse(3)]);
+
+      await viewModel.refreshMedicationOverview();
+
+      expect(requests.where((request) => request.startsWith('PATCH')), isEmpty);
+      expect(viewModel.medicationReminderSettings['morning']?.isEnabled, isTrue);
+      expect(notificationService.cancellations.where((c) => c.slotKey == 'morning'), isEmpty);
+      final now = DateTime.now();
+      expect(notificationService.registeredSlotKeys, ['morning']);
+      expect(notificationService.registeredActiveDates.single, [
+        DateTime(now.year, now.month, now.day + 4),
+        DateTime(now.year, now.month, now.day + 11),
+      ]);
+    });
+
+    // Function Name: unreadable-window test
+    // Description: When the course read fails, an empty today schedule is not taken as proof that
+    //   the slot is empty: the setting is not switched off and nothing is cancelled.
+    test('an empty slot is not switched off when the course read fails', () async {
+      final viewModel = buildViewModel(today: const [], window: null);
+
+      await viewModel.refreshMedicationOverview();
+
+      expect(requests.where((request) => request.startsWith('PATCH')), isEmpty);
+      expect(viewModel.medicationReminderSettings['morning']?.isEnabled, isTrue);
+      expect(notificationService.registrations, isEmpty);
+      expect(notificationService.cancellations.where((c) => c.slotKey == 'morning'), isEmpty);
+    });
+
+    // Function Name: empty-slot test
+    // Description: A slot that has no medication today and none in the next 14 days is still
+    //   switched off and its reminders cancelled, as before.
+    test('a slot without any course is switched off', () async {
+      final viewModel = buildViewModel(today: const [], window: const []);
+
+      await viewModel.refreshMedicationOverview();
+
+      expect(requests.where((request) => request.startsWith('PATCH')), hasLength(1));
+      expect(viewModel.medicationReminderSettings['morning']?.isEnabled, isFalse);
+      expect(notificationService.registrations, isEmpty);
+      expect(notificationService.cancellations.where((c) => c.slotKey == 'morning'), isNotEmpty);
+    });
+  });
 
   // 함수이름: test 콜백
   // 함수역할:
@@ -1477,6 +1628,97 @@ void main() {
     expect(existingSetting!.hour, 9);
     expect(existingSetting.minute, 45);
     expect(existingSetting.isEnabled, isFalse);
+  });
+
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 오늘은 복용하지 않는 주 1회 약만 있는 시간대도 알림을 켤 수 있고, 예약 날짜가 앞으로의 복용하는 날뿐인지,
+  //   앞으로도 복용할 약이 없는 시간대는 그대로 거절하는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  test('오늘 쉬는 날인 주 1회 약의 시간대도 알림을 켤 수 있다', () async {
+    SharedPreferences.setMockInitialValues({});
+    final notificationService = RecordingNotificationService();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final start = today.subtract(const Duration(days: 3));
+    String isoDate(DateTime date) => date.toIso8601String().split('T').first;
+    final requests = <String>[];
+    // 함수이름: MockClient 콜백
+    // 함수역할:
+    // - 알림 저장 PUT에는 취침 전 22:00 활성 설정을, 14일 일정 조회에는 사흘 전에 시작한 주 1회 약을 제공한다.
+    // 매개변수:
+    // - request (http.Request): 실제 서버 전송 대신 가로챈 HTTP 요청.
+    // 반환값:
+    // - 요청에 맞는 HTTP 200 또는 미지원 요청의 404.
+    final client = MockClient((http.Request request) async {
+      requests.add('${request.method} ${request.url.path.split('/').last}');
+      if (request.method == 'PUT') {
+        return _jsonResponse({
+          'success': true,
+          'data': {
+            'patient_hash': PatientHash.defaultPatientHash,
+            'slot_key': request.url.path.split('/').last,
+            'hour': 22,
+            'minute': 0,
+            'is_enabled': true,
+          },
+        });
+      }
+      if (request.url.path.endsWith('schedule/window')) {
+        return _jsonResponse({
+          'success': true,
+          'data': [
+            {
+              'medication_id': '7',
+              'drug_name': '주간정',
+              'daily_frequency': '주 1회',
+              'total_days': '56일',
+              'schedule_slot_keys': ['bedtime'],
+              'prescription_date': isoDate(start),
+              'created_date': isoDate(start),
+              'dose_cycle_days': 7,
+              'dose_cycle_offsets': [0],
+              'dose_cycle_anchor': isoDate(start),
+            },
+          ],
+        });
+      }
+      return http.Response('Not found', 404);
+    });
+    final viewModel = MedBuddyViewModel(
+      apiClient: client,
+      notificationService: notificationService,
+    );
+    addTearDown(viewModel.dispose);
+
+    final saved = await viewModel.requestMedicationReminderSave(
+      slotKey: 'bedtime',
+      slotTitle: '취침 전',
+      hour: 22,
+      minute: 0,
+      schedules: const [],
+    );
+
+    expect(saved, isTrue);
+    expect(notificationService.registeredActiveDates.single, [
+      today.add(const Duration(days: 4)),
+      today.add(const Duration(days: 11)),
+    ]);
+
+    // 앞으로 14일 안에도 약이 없는 시간대는 저장 요청 없이 거절한다.
+    requests.clear();
+    final rejected = await viewModel.requestMedicationReminderSave(
+      slotKey: 'lunch',
+      slotTitle: '점심',
+      hour: 12,
+      minute: 0,
+      schedules: const [],
+    );
+    expect(rejected, isFalse);
+    expect(requests.where((request) => request.startsWith('PUT')), isEmpty);
   });
 
   // 함수이름: test 콜백
@@ -1623,7 +1865,9 @@ void main() {
               as Map<String, dynamic>;
 
       expect(result, isFalse);
-      expect(requestMethods, ['PUT', 'PATCH']);
+      // The GET is the 14-day course read that decides the reminder dates; it fails here and the
+      // dates fall back to the schedules passed with the save.
+      expect(requestMethods, ['PUT', 'GET', 'PATCH']);
       expect(
         notificationService.canceledIds,
         containsAll([setting.notificationId, setting.legacyNotificationId]),

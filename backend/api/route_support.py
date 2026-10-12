@@ -4,12 +4,12 @@
 import logging
 from collections.abc import Iterable, Mapping
 
-from fastapi import BackgroundTasks, HTTPException, Request
+from fastapi import BackgroundTasks, Request
 from sqlalchemy.orm import Session
 
 from api.dependencies import (
+    enforce_user_quota,
     get_push_notification_boundary,
-    get_request_rate_limit_store,
 )
 from controls.manage_linked_chat_control import ChatSendResult
 from controls.process_caregiver_alert_outbox_control import (
@@ -101,27 +101,13 @@ async def enforce_chat_daily_quota(
 ) -> None:
     if not settings.RATE_LIMIT_ENABLED:
         return
-    try:
-        allowed, retry_after = await get_request_rate_limit_store(request).consume(
-            identity=f"user:{user_hash}",
-            request_scope="POST:/api/v1/chat/messages:daily",
-            rule=RateLimitRule(
-                settings.CHAT_MESSAGE_DAILY_LIMIT,
-                86_400,
-            ),
-        )
-    except RuntimeError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail="Request quota storage is temporarily unavailable.",
-            headers={"Retry-After": "5"},
-        ) from exc
-    if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail="오늘 보낼 수 있는 채팅 메시지 수를 초과했습니다.",
-            headers={"Retry-After": str(max(1, retry_after))},
-        )
+    await enforce_user_quota(
+        request,
+        user_hash=user_hash,
+        request_scope="POST:/api/v1/chat/messages:daily",
+        rule=RateLimitRule(settings.CHAT_MESSAGE_DAILY_LIMIT, 86_400),
+        exceeded_detail="오늘 보낼 수 있는 채팅 메시지 수를 초과했습니다.",
+    )
 
 
 # Function Name: publish_saved_message

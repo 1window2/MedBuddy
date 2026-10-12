@@ -87,7 +87,11 @@ class InputPrescription:
                         },
                         "daily_frequency": {
                             "type": "STRING",
-                            "description": "Daily frequency, for example '3회'.",
+                            "description": (
+                                "Daily frequency, for example '3회'. When the prescription says "
+                                "the medicine is not taken every day, the instruction as written, "
+                                "for example '주 1회' or '격일'."
+                            ),
                         },
                         "total_days": {
                             "type": "STRING",

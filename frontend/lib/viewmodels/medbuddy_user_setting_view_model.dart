@@ -29,7 +29,10 @@ class MedBuddyUserSettingViewModel {
   final bool Function() _readEnglish;
   bool _disposed = false;
   bool _settingLoaded = false;
+  bool _hasUnsynchronizedSetting = false;
+  Future<void> _settingOperations = Future<void>.value();
   Future<bool>? _deviceLanguageSynchronization;
+  bool _deviceLanguageRetryRequested = false;
   // Function Name: MedBuddyUserSettingViewModel
   // Description: Binds settings persistence and narrow refresh operations.
   // Parameters: Borrowed dependencies and callbacks. Returns: Settings state owner.
@@ -64,8 +67,20 @@ class MedBuddyUserSettingViewModel {
   // - 없음.
   // 반환값:
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
-  Future<void> loadUserSetting() async {
-    if (_disposed) return;
+  Future<void> loadUserSetting() => _enqueueSettingOperation(_loadUserSetting);
+
+  // 조회와 저장을 순서대로 처리해 늦은 응답이 새 선택이나 실패 후의 로컬 저장을 지우지 않게 한다.
+  Future<T> _enqueueSettingOperation<T>(Future<T> Function() operation) {
+    final result = _settingOperations.then((_) => operation());
+    _settingOperations = result.then<void>(
+      (_) {},
+      onError: (Object error, StackTrace stackTrace) {},
+    );
+    return result;
+  }
+
+  Future<void> _loadUserSetting() async {
+    if (_disposed || _hasUnsynchronizedSetting) return;
     try {
       final setting = await manageUserSetting.requestUserSetting();
       if (_disposed) return;
@@ -87,43 +102,93 @@ class MedBuddyUserSettingViewModel {
   // 반환값:
   // - Future<UserSettingSaveResult>: 저장된 설정과 서버 동기화 여부.
   Future<UserSettingSaveResult> saveUserSetting(UserSetting setting) {
-    return _saveAndApply(
-      () => manageUserSetting.saveUserSetting(setting),
+    return _enqueueSettingOperation(
+      () => _saveAndApply(() => manageUserSetting.saveUserSetting(setting)),
     );
   }
 
   // 함수이름: synchronizeDeviceLanguage
-  // 함수역할: 언어 모드가 기기 설정 따르기일 때 기기 언어가 저장된 표시 언어와 달라졌으면 기존 저장 경로로 다시 저장한다. 화면 문구와 예약된 알림, 서버가 보내는 푸시 언어가 함께 기기 언어를 따르게 한다.
+  // 함수역할: 기기 설정 따르기의 표시 언어를 갱신하고, 앱 복귀 때는 고정 언어에서도 실패한 설정 저장을 한 번 재시도한다.
   // 매개변수:
-  // - 없음.
+  // - retryRemoteLookup (bool): 앱 복귀 시 실패했던 조회와 서버 저장을 재시도할지 여부.
   // 반환값:
-  // - Future<bool>: 언어를 다시 저장했으면 true. 설정을 아직 불러오지 않았거나, 모드가 system이 아니거나, 언어가 이미 같거나, 서버 사본을 받지 못해 캐시만 가진 경우에는 저장하지 않고 false.
-  Future<bool> synchronizeDeviceLanguage() {
-    return _deviceLanguageSynchronization ??= _synchronizeDeviceLanguage()
-        .whenComplete(() => _deviceLanguageSynchronization = null);
+  // - Future<bool>: 언어 갱신이나 실패한 설정 저장을 시도했으면 true. 저장할 변경·재시도가 없거나 안전한 서버 기준값이 없으면 false.
+  Future<bool> synchronizeDeviceLanguage({bool retryRemoteLookup = false}) {
+    _deviceLanguageRetryRequested |= retryRemoteLookup;
+    return _deviceLanguageSynchronization ??= _enqueueSettingOperation(() async {
+      try {
+        // 실행 전 합쳐진 복귀 요청은 첫 시도부터 반영한다.
+        final retryAtStart = _deviceLanguageRetryRequested;
+        var saved = await _synchronizeDeviceLanguage(
+          retryRemoteLookup: retryAtStart,
+        );
+        // 실행 중 강화된 요청만 한 번 더 처리하고, 대기한 수동 저장보다 먼저 끝낸다.
+        if (!retryAtStart && _deviceLanguageRetryRequested && !_disposed) {
+          final retried = await _synchronizeDeviceLanguage(
+            retryRemoteLookup: true,
+          );
+          saved = saved || retried;
+        }
+        return saved;
+      } finally {
+        _deviceLanguageRetryRequested = false;
+        _deviceLanguageSynchronization = null;
+      }
+    });
   }
 
   // 함수이름: _synchronizeDeviceLanguage
-  // 함수역할: 기기 언어 재동기화의 조건을 확인하고 필요한 경우 한 번 저장한다.
+  // 함수역할: 복귀 시 고정 언어의 미동기화 설정을 한 번 재전송하고, 기기 설정 따르기는 요청 중 바뀐 최신 언어까지 반영한다.
   // 매개변수:
-  // - 없음.
+  // - retryRemoteLookup (bool): 실패한 조회와 서버 저장을 재시도할지 여부.
   // 반환값:
-  // - Future<bool>: 언어를 다시 저장했으면 true.
-  Future<bool> _synchronizeDeviceLanguage() async {
-    if (_disposed || !_settingLoaded || _userSetting.languageMode != 'system') {
+  // - Future<bool>: 언어 갱신이나 실패한 설정 저장을 시도했으면 true.
+  Future<bool> _synchronizeDeviceLanguage({
+    required bool retryRemoteLookup,
+  }) async {
+    if (_disposed) return false;
+    // 복귀 시 실패했던 조회만 재시도한다. 서버에 아직 반영하지 못한 사용자 설정은 재조회로 덮지 않는다.
+    if (retryRemoteLookup &&
+        !_hasUnsynchronizedSetting &&
+        (!_settingLoaded ||
+            (manageUserSetting.useRemotePersistence &&
+                !manageUserSetting.lastLookupReachedServer))) {
+      await _loadUserSetting();
+    }
+    if (_disposed || !_settingLoaded) {
       return false;
+    }
+    if (_userSetting.languageMode != 'system') {
+      if (!retryRemoteLookup || !_hasUnsynchronizedSetting) return false;
+      // 고정 언어는 기기 언어로 바꾸지 않고 복귀마다 미동기화 설정 전체만 한 번 보낸다.
+      await _saveAndApply(
+        () => manageUserSetting.saveUserSetting(_userSetting),
+      );
+      return true;
     }
     // 캐시로 대체한 설정을 자동으로 올리면 다른 기기에서 바꾼 서버 값을 덮어쓸 수 있다.
     if (manageUserSetting.useRemotePersistence &&
-        !manageUserSetting.lastLookupReachedServer) {
+        !manageUserSetting.lastLookupReachedServer &&
+        !_hasUnsynchronizedSetting) {
       return false;
     }
-    final deviceLanguage = AppLanguageControl.resolveLanguage('system');
-    if (deviceLanguage == _userSetting.language) {
-      return false;
+    var saved = false;
+    while (!_disposed && _userSetting.languageMode == 'system') {
+      final deviceLanguage = AppLanguageControl.resolveLanguage('system');
+      if (deviceLanguage == _userSetting.language &&
+          !(retryRemoteLookup && _hasUnsynchronizedSetting)) {
+        break;
+      }
+      await _saveAndApply(
+        () => manageUserSetting.saveUserSetting(
+          _userSetting.copyWith(language: deviceLanguage),
+        ),
+      );
+      saved = true;
+      // 같은 기기 언어의 실패는 다음 복귀 때 재시도하고, 요청 중 바뀐 언어만 이어서 반영한다.
+      if (deviceLanguage == AppLanguageControl.resolveLanguage('system')) break;
     }
-    await saveUserSetting(_userSetting.copyWith(language: deviceLanguage));
-    return true;
+    return saved;
   }
 
   // 함수이름: _saveAndApply
@@ -135,6 +200,7 @@ class MedBuddyUserSettingViewModel {
   Future<UserSettingSaveResult> _saveAndApply(
     Future<UserSettingSaveResult> Function() save,
   ) async {
+    if (_disposed) throw StateError('Settings state has been disposed.');
     final previousMedicationNotificationsEnabled =
         _userSetting.medicationNotificationsEnabled;
     final previousNotificationDetailMode = _userSetting.notificationDetailMode;
@@ -146,6 +212,10 @@ class MedBuddyUserSettingViewModel {
     final saveResult = await save();
     if (_disposed) return saveResult;
     _userSetting = saveResult.setting;
+    _settingLoaded = true;
+    _hasUnsynchronizedSetting =
+        manageUserSetting.useRemotePersistence &&
+        !saveResult.synchronizedWithServer;
     notificationService.setShowSensitiveDetails(
       _userSetting.showNotificationDetails,
     );

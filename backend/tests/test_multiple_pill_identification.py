@@ -2,9 +2,11 @@
 # Role: Regression coverage for multi-pill observation parsing, independent ranking, and
 #   multipart response contracts.
 
+import asyncio
 import json
 import os
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -217,6 +219,53 @@ async def test_multiple_visual_boundary_rejects_overlapping_duplicate_boxes() ->
 
     with pytest.raises(PillVisionResponseError, match="overlapping"):
         await boundary.extractMultipleVisualFeatures(b"photo")
+
+
+# Function Name: test_timed_out_multiple_pill_decode_keeps_its_capacity_slot
+# Description:
+# - A multi-pill decode that outlives its request timeout holds the shared preprocessing slot
+#   until the worker thread has really finished, so abandoned requests cannot pile up decodes.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_timed_out_multiple_pill_decode_keeps_its_capacity_slot() -> None:
+    release = threading.Event()
+
+    # Class Name: _BlockedProcessor
+    # Role: Image processor double whose decode blocks until the test releases it.
+    class _BlockedProcessor:
+        # Function Name: preprocessMultiplePillImage
+        # Description: Blocks the worker thread, then returns a fixed-size result.
+        # Parameters: image (bytes) - Encoded pill photograph.
+        # Returns: MultiplePillImagePreprocessingResult with fixed dimensions.
+        def preprocessMultiplePillImage(
+            self, image: bytes,
+        ) -> MultiplePillImagePreprocessingResult:
+            release.wait(5)
+            return MultiplePillImagePreprocessingResult(image=image, width=800, height=600)
+
+    boundary = PillVisionBoundary(
+        client=object(),  # type: ignore[arg-type]
+        image_processing_boundary=_BlockedProcessor(),  # type: ignore[arg-type]
+        vision_api=_MultipleVisionAPI({"pills": []}),  # type: ignore[arg-type]
+        timeout_seconds=0.05,
+        max_concurrency=1,
+    )
+
+    try:
+        with pytest.raises(Exception):
+            await boundary.extractMultipleVisualFeatures(b"photo")
+        assert boundary._preprocessing_semaphore.locked()
+        assert not boundary._analysis_semaphore.locked()
+    finally:
+        release.set()
+    for _ in range(100):
+        if not boundary._preprocessing_semaphore.locked():
+            break
+        await asyncio.sleep(0.01)
+    assert not boundary._preprocessing_semaphore.locked()
 
 
 # Function Name: test_multiple_control_loads_catalog_once_and_ranks_each_pill

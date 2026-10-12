@@ -1,6 +1,8 @@
 // 파일명: check_schedule_ui_boundary_test.dart
 // 역할: 일정 조회·알림 설정의 저장과 취소·기존 화면 배치·복약 완료를 검증한다.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -235,21 +237,27 @@ class _EnabledSetNotification extends SetNotification {
 // 클래스명: _MutableSetNotification
 // 역할: 알림 상태와 저장·해제 요청 횟수를 추적한다.
 // 주요 책임: 플랫폼 알림 없이 설정창 취소·저장에 따른 변경을 검증한다.
-// 속성: _setting은 현재 알림, saveCount·disableCount는 영속화 요청 횟수.
+// 속성: _setting은 현재 알림, saveCount·disableCount는 영속화 요청 횟수, lastDisableTime은 마지막 해제 요청에 실린 시각.
 class _MutableSetNotification extends SetNotification {
   MedicationAlarm _setting;
   int saveCount = 0;
   int disableCount = 0;
+  (int, int)? lastDisableTime;
+  final bool ignoreDisabledTime;
 
   // 함수이름: _MutableSetNotification
   // 함수역할: enabled로 초기 활성 상태를 지정한다. 반환값: 변경 추적 가능한 알림 대역.
-  _MutableSetNotification({bool enabled = false, int hour = 8, int minute = 0})
-    : _setting = MedicationAlarm(
-        slotKey: 'morning',
-        hour: hour,
-        minute: minute,
-        enabled: enabled,
-      );
+  _MutableSetNotification({
+    bool enabled = false,
+    int hour = 8,
+    int minute = 0,
+    this.ignoreDisabledTime = false,
+  }) : _setting = MedicationAlarm(
+         slotKey: 'morning',
+         hour: hour,
+         minute: minute,
+         enabled: enabled,
+       );
 
   // 함수이름: requestMedicationAlarm
   // 함수역할:
@@ -288,15 +296,26 @@ class _MutableSetNotification extends SetNotification {
 
   // 함수이름: disableAlarmSetting
   // 함수역할:
-  // - 기존 알림 시각을 보존한 채 활성 상태만 해제한다.
+  // - 활성 상태를 해제하고, 시각이 함께 오면 그 시각으로 바꾼다.
   // 매개변수:
   // - slotKey (String): 아침·점심·저녁·취침 전 등을 구분하는 복약 시간대 키. 이 대역에서는 직접 사용하지 않는다.
+  // - hour (int?): 꺼진 알림과 함께 저장할 새 시.
+  // - minute (int?): 꺼진 알림과 함께 저장할 새 분.
   // 반환값:
   // - 비활성으로 바뀐 현재 알림 설정.
   @override
-  Future<MedicationAlarm> disableAlarmSetting(String slotKey) async {
+  Future<MedicationAlarm> disableAlarmSetting(
+    String slotKey, {
+    int? hour,
+    int? minute,
+  }) async {
     disableCount += 1;
-    _setting = _setting.copyWith(enabled: false);
+    lastDisableTime = hour == null ? null : (hour, minute ?? 0);
+    _setting = _setting.copyWith(
+      enabled: false,
+      hour: ignoreDisabledTime ? null : hour,
+      minute: ignoreDisabledTime ? null : minute,
+    );
     return _setting;
   }
 
@@ -337,6 +356,26 @@ class _MutableSetNotification extends SetNotification {
   }) async {}
 }
 
+class _DelayedReminderSave extends _MutableSetNotification {
+  final gate = Completer<void>();
+  int startedWrites = 0;
+
+  @override
+  Future<MedicationAlarm> saveNotificationSetting({
+    required String slotKey,
+    required int hour,
+    required int minute,
+  }) async {
+    startedWrites++;
+    await gate.future;
+    return super.saveNotificationSetting(
+      slotKey: slotKey,
+      hour: hour,
+      minute: minute,
+    );
+  }
+}
+
 // 클래스명: _ScheduleHealthRecommendation
 // 역할: 일정에서 건강 추천으로 이동할 때 서버 없이 정상 결과를 제공한다.
 // 주요 책임: 실제 추천 화면의 경로와 복귀를 검증할 데이터를 반환한다.
@@ -357,17 +396,19 @@ class _ScheduleHealthRecommendation extends CheckHealthRecommendation {
 }
 
 // 함수이름: _pumpReminderSchedule
-// 함수역할: tester에 알림 대역 notification과 textScale 글씨 배율을 적용한 일정을 표시한다. 반환값: 생성한 화면 모델.
+// 함수역할: tester에 알림 대역 notification과 textScale 글씨 배율을 적용한 일정을 표시한다. notificationService를 주면
+//   그 알림 서비스 대역을 쓴다. 반환값: 생성한 화면 모델.
 Future<MedBuddyViewModel> _pumpReminderSchedule(
   WidgetTester tester,
   _MutableSetNotification notification, {
   double textScale = 1,
+  RecordingNotificationService? notificationService,
 }) async {
   SharedPreferences.setMockInitialValues({});
   final viewModel = MedBuddyViewModel(
     checkSchedule: _ActiveCheckSchedule(),
     setNotification: notification,
-    notificationService: RecordingNotificationService(),
+    notificationService: notificationService ?? RecordingNotificationService(),
   );
   addTearDown(viewModel.dispose);
   await tester.pumpWidget(
@@ -457,14 +498,119 @@ Future<void> _closeDoseSchedule(
 // 함수이름: main
 // 함수역할: 일정·알림·화면 배치·접근성 회귀 사례를 등록한다. 매개변수·반환값: 없음.
 void main() {
+  testWidgets('알림 저장 연타가 설정창 아래 일정까지 닫지 않는다', (tester) async {
+    final notification = _MutableSetNotification();
+    await _pumpReminderSchedule(tester, notification);
+    await tester.tap(find.byTooltip('아침 알림 설정'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('schedule-reminder-enabled')));
+    await tester.pump();
+    final save = find.byKey(const Key('schedule-reminder-save'));
+    // 닫힘 애니메이션 전 같은 버튼으로 들어온 두 입력을 재현한다.
+    final savePosition = tester.getCenter(save);
+    await tester.tapAt(savePosition);
+    await tester.tapAt(savePosition);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byType(CheckScheduleUI), findsOneWidget);
+    expect(notification.saveCount, 1);
+  });
+
+  testWidgets('알림 진입 연타와 시각 편집 연타는 창을 하나씩만 연다', (tester) async {
+    final notification = _MutableSetNotification();
+    await _pumpReminderSchedule(tester, notification);
+    final open = find.byTooltip('아침 알림 설정');
+    final openPosition = tester.getCenter(open);
+    await tester.tapAt(openPosition);
+    await tester.tapAt(openPosition);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(
+        const Key('schedule-reminder-configuration'),
+        skipOffstage: false,
+      ),
+      findsOneWidget,
+    );
+    final edit = find.byKey(const Key('schedule-reminder-edit-time'));
+    final editPosition = tester.getCenter(edit);
+    await tester.tapAt(editPosition);
+    await tester.tapAt(editPosition);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('notification-time-close'), skipOffstage: false),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('notification-time-close')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('schedule-reminder-cancel')));
+    await tester.pumpAndSettle();
+    await tester.tap(open);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('schedule-reminder-configuration')),
+      findsOneWidget,
+    );
+    expect(notification.saveCount + notification.disableCount, 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('알림 저장 응답 대기 중에는 이전 값의 편집창을 다시 열지 않는다', (tester) async {
+    final notification = _DelayedReminderSave();
+    final model = await _pumpReminderSchedule(tester, notification);
+    await tester.tap(find.byTooltip('아침 알림 설정'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('schedule-reminder-enabled')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('schedule-reminder-save')));
+    await tester.pumpAndSettle();
+    expect(notification.startedWrites, 1);
+    await tester.tap(find.byTooltip('아침 알림 설정'));
+    await tester.pumpAndSettle();
+    final reopenedWhilePending = find
+        .byKey(const Key('schedule-reminder-configuration'))
+        .evaluate()
+        .isNotEmpty;
+    notification.gate.complete();
+    await tester.pumpAndSettle();
+    expect(reopenedWhilePending, isFalse);
+    expect(model.medicationReminderSettings['morning']!.isEnabled, isTrue);
+    await tester.tap(find.byTooltip('아침 알림 설정'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<SwitchListTile>(
+            find.byKey(const Key('schedule-reminder-enabled')),
+          )
+          .value,
+      isTrue,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   // A configured reminder is not a prescribed dose time; disabled alarms must
   // not revert to a hard-coded 08:00 label. Viewing never saves a setting.
   for (final enabled in [true, false]) {
-    testWidgets('patient header identifies reminder state $enabled', (tester) async {
-      final notification = _MutableSetNotification(enabled: enabled, hour: 2, minute: 38);
-      final model = await _pumpReminderSchedule(tester, notification, textScale: 2);
-      expect(tester.widget<Text>(find.byKey(const ValueKey('patient-alert-time-morning'))).data,
-        enabled ? '복약 알림 02:38' : '복약 알림 꺼짐');
+    testWidgets('patient header identifies reminder state $enabled', (
+      tester,
+    ) async {
+      final notification = _MutableSetNotification(
+        enabled: enabled,
+        hour: 2,
+        minute: 38,
+      );
+      final model = await _pumpReminderSchedule(
+        tester,
+        notification,
+        textScale: 2,
+      );
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(const ValueKey('patient-alert-time-morning')),
+            )
+            .data,
+        enabled ? '복약 알림 02:38' : '복약 알림 꺼짐',
+      );
       expect(notification.saveCount, 0);
       expect(model.medicationReminderSettings['morning']!.isEnabled, enabled);
       expect(tester.takeException(), isNull);
@@ -603,13 +749,12 @@ void main() {
     );
     addTearDown(viewModel.dispose);
     await viewModel.saveUserSetting(
-        viewModel.userSetting
-          .updateUserSetting(
-            fontSize: UserSetting.fontSizeFromOption('large'),
-            readingSpeed: UserSetting.readingSpeedFromOption('medium'),
-            language: 'en',
-          ),
-      );
+      viewModel.userSetting.updateUserSetting(
+        fontSize: UserSetting.fontSizeFromOption('large'),
+        readingSpeed: UserSetting.readingSpeedFromOption('medium'),
+        language: 'en',
+      ),
+    );
 
     await tester.pumpWidget(
       ChangeNotifierProvider<MedBuddyViewModel>.value(
@@ -801,6 +946,115 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  for (final initiallyEnabled in [true, false]) {
+    testWidgets(
+      'saving a disabled reminder keeps edited time from enabled=$initiallyEnabled',
+      (tester) async {
+        final notification = _MutableSetNotification(
+          enabled: initiallyEnabled,
+          hour: 18,
+          minute: 55,
+        );
+        final model = await _pumpReminderSchedule(tester, notification);
+        await tester.tap(find.byTooltip('아침 알림 설정'));
+        await tester.pumpAndSettle();
+        await _editReminderHour(tester, '19');
+        if (initiallyEnabled) {
+          await tester.tap(find.byKey(const Key('schedule-reminder-enabled')));
+          await tester.pumpAndSettle();
+        }
+        expect(find.text('알림 시간 19:55'), findsOneWidget);
+        await tester.tap(find.byKey(const Key('schedule-reminder-save')));
+        await tester.pumpAndSettle();
+
+        expect(model.medicationReminderSettings['morning']!.isEnabled, isFalse);
+        expect(model.medicationReminderSettings['morning']!.hour, 19);
+        expect(model.medicationReminderSettings['morning']!.minute, 55);
+        expect(notification.saveCount, 0);
+        expect(notification.disableCount, 1);
+        await model.loadMedicationReminderSettings();
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('아침 알림 설정'));
+        await tester.pumpAndSettle();
+        expect(find.text('알림 시간 19:55'), findsOneWidget);
+        expect(model.medicationReminderSettings['morning']!.isEnabled, isFalse);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  test(
+    'older server time mismatch stays off without reporting success',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final control = _MutableSetNotification(
+        enabled: true,
+        hour: 18,
+        minute: 55,
+        ignoreDisabledTime: true,
+      );
+      final service = RecordingNotificationService(permissionGranted: false);
+      final model = MedBuddyViewModel(
+        checkSchedule: EmptyCheckSchedule(),
+        setNotification: control,
+        notificationService: service,
+      );
+      addTearDown(model.dispose);
+      final saved = await model.requestMedicationReminderCancel(
+        slotKey: 'morning',
+        slotTitle: '아침',
+        hour: 19,
+        minute: 5,
+      );
+      expect(saved, isFalse);
+      expect(model.medicationReminderSettings['morning']!.isEnabled, isFalse);
+      expect(model.medicationReminderSettings['morning']!.timeLabel, '18:55');
+      expect(model.reminderStatusMessage, contains('시각을 변경하지 못했습니다'));
+      expect(control.saveCount, 0);
+      expect(service.permissionRequestCount, 0);
+      expect(service.cancellations, isNotEmpty);
+      expect(service.registrations, isEmpty);
+    },
+  );
+
+  test(
+    'disabled time save needs no notification permission or medications',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final control = _MutableSetNotification();
+      final service = RecordingNotificationService(permissionGranted: false);
+      final model = MedBuddyViewModel(
+        checkSchedule: EmptyCheckSchedule(),
+        setNotification: control,
+        notificationService: service,
+      );
+      addTearDown(model.dispose);
+      expect(
+        await model.requestMedicationReminderCancel(
+          slotKey: 'morning',
+          slotTitle: '아침',
+          hour: 19,
+          minute: 5,
+        ),
+        isTrue,
+      );
+      expect(model.medicationReminderSettings['morning']!.isEnabled, isFalse);
+      expect(model.medicationReminderSettings['morning']!.timeLabel, '19:05');
+      expect(control.saveCount, 0);
+      expect(service.permissionRequestCount, 0);
+      expect(service.registrations, isEmpty);
+      final preferences = await SharedPreferences.getInstance();
+      final cached = preferences
+          .getKeys()
+          .where((key) => key.startsWith('medbuddy_medication_reminder_'))
+          .map((key) => preferences.getString(key));
+      expect(cached, hasLength(1));
+      expect(cached.single, contains('"hour":19'));
+      expect(cached.single, contains('"minute":5'));
+      expect(cached.single, contains('false'));
+    },
+  );
+
   // 함수이름: 시간 선택 취소 테스트
   // 함수역할: tester로 중첩 시간창을 취소하고 설정을 그대로 저장하면 영속화 요청이 없는지 검증한다. 반환값: 검증 완료.
   testWidgets(
@@ -885,6 +1139,33 @@ void main() {
     },
   );
 
+  // 켜 둔 알림이 있는데 기기가 정확한 알람을 막고 있으면 일정 화면에서 허용 방법을 안내하고, 꺼 둔 경우에는 안내하지 않는다.
+  for (final enabled in [true, false]) {
+    testWidgets('exact-alarm notice follows the reminder switch (enabled=$enabled)', (
+      tester,
+    ) async {
+      final notificationService = RecordingNotificationService()
+        ..exactRemindersAllowed = false;
+      await _pumpReminderSchedule(
+        tester,
+        _MutableSetNotification(enabled: enabled),
+        notificationService: notificationService,
+      );
+
+      expect(
+        find.byKey(const Key('exact-reminder-notice')),
+        enabled ? findsOneWidget : findsNothing,
+      );
+      if (!enabled) return;
+      // 허용하고 돌아오면 예약을 정확한 알람으로 바꾸고 안내를 지운다.
+      notificationService.exactPermissionAfterRequest = true;
+      await tester.tap(find.byKey(const Key('exact-reminder-allow')));
+      await tester.pumpAndSettle();
+      expect(notificationService.exactRescheduleCount, 1);
+      expect(find.byKey(const Key('exact-reminder-notice')), findsNothing);
+    });
+  }
+
   // 함수이름: 알림 설정 큰 글씨 테스트
   // 함수역할: tester의 작은 화면·2배 글씨에서 설정과 저장 명령이 스크롤로 접근 가능한지 검증한다. 반환값: 검증 완료.
   testWidgets(
@@ -919,6 +1200,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(model.medicationReminderSettings['morning']!.isEnabled, isFalse);
       expect(notification.disableCount, 1);
+      // 끄는 저장에도 화면에서 고른 시각이 함께 전달된다.
+      expect(notification.lastDisableTime, (8, 0));
       expect(tester.takeException(), isNull);
     },
   );

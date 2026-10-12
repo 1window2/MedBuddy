@@ -83,7 +83,8 @@ class HomeMedicationPreview extends StatelessWidget {
     mainAxisSize: MainAxisSize.min,
     children: [
       ?titleLeading,
-      Flexible(
+      // 이름 길이가 바뀌어도 양옆 탐색 버튼의 가로 위치를 유지한다.
+      Expanded(
         child: Text(
           title,
           maxLines: 2,

@@ -21,6 +21,8 @@ class _PhotoPicker extends ImagePicker {
   String? path;
   ImageSource? source;
   Object? failure;
+  Future<XFile?>? pending;
+  int calls = 0;
 
   // 함수이름: pickImage
   // 함수역할: 사진 요청 옵션을 확인하고 준비된 경로 또는 취소를 반환한다. failure가 있으면 그 예외를 던진다.
@@ -37,6 +39,7 @@ class _PhotoPicker extends ImagePicker {
     bool requestFullMetadata = true,
   }) async {
     this.source = source;
+    calls++;
     expect(imageQuality, 88);
     expect(maxWidth, 1800);
     expect(maxHeight, 1800);
@@ -44,6 +47,7 @@ class _PhotoPicker extends ImagePicker {
     if (failure != null) {
       throw failure;
     }
+    if (pending != null) return pending!;
     return path == null ? null : XFile(path!);
   }
 }
@@ -52,15 +56,19 @@ class _PhotoPicker extends ImagePicker {
 // 역할: 테스트 폴더를 앱 임시 폴더로 알려 임시 사본 삭제를 플랫폼 채널 없이 검증한다.
 class _TemporaryPathProvider extends PathProviderPlatform {
   final String temporaryPath;
+  final Future<void> Function()? beforeLookup;
 
   // 함수이름: _TemporaryPathProvider
   // 함수역할: 앱 임시 폴더로 알릴 경로를 보관한다. 매개변수: temporaryPath. 반환값: 초기화된 대역.
-  _TemporaryPathProvider(this.temporaryPath);
+  _TemporaryPathProvider(this.temporaryPath, {this.beforeLookup});
 
   // 함수이름: getTemporaryPath
   // 함수역할: 보관한 경로를 앱 임시 폴더로 돌려준다. 매개변수: 없음. 반환값: 임시 폴더 경로.
   @override
-  Future<String?> getTemporaryPath() async => temporaryPath;
+  Future<String?> getTemporaryPath() async {
+    await beforeLookup?.call();
+    return temporaryPath;
+  }
 }
 
 // 클래스명: _PhotoSandbox
@@ -80,12 +88,15 @@ class _PhotoSandbox {
   // 함수이름: _PhotoSandbox.create
   // 함수역할: 테스트 폴더를 만들고 경로 제공자를 바꾼 뒤 테스트 종료 시 되돌리도록 등록한다.
   // 매개변수: 없음. 반환값: 임시 폴더와 사진 폴더를 가진 인스턴스.
-  factory _PhotoSandbox.create() {
+  factory _PhotoSandbox.create({Future<void> Function()? beforeTemporaryPath}) {
     final root = Directory.systemTemp.createTempSync('manual-photo-cleanup-');
     final cache = Directory('${root.path}/cache')..createSync();
     final gallery = Directory('${root.path}/gallery')..createSync();
     final originalProvider = PathProviderPlatform.instance;
-    PathProviderPlatform.instance = _TemporaryPathProvider(cache.path);
+    PathProviderPlatform.instance = _TemporaryPathProvider(
+      cache.path,
+      beforeLookup: beforeTemporaryPath,
+    );
     addTearDown(() {
       PathProviderPlatform.instance = originalProvider;
       root.deleteSync(recursive: true);
@@ -112,14 +123,29 @@ class _PhotoSandbox {
 // 반환값:
 // - 파일이 없어졌거나 대기 횟수를 모두 쓴 뒤 완료.
 Future<void> _settleFileCleanup(WidgetTester tester, [File? file]) async {
-  for (var attempt = 0; attempt < 40; attempt += 1) {
+  // 파일 입출력은 가상 프레임 시계로 끝나지 않는다. 전체 병렬 실행에서도 실제 완료를 기다린다.
+  final elapsed = Stopwatch()..start();
+  const deadline = Duration(seconds: 5);
+  for (
+    var attempt = 0;
+    file == null ? attempt < 40 : elapsed.elapsed < deadline;
+    attempt += 1
+  ) {
     if (file != null && !file.existsSync()) {
       return;
     }
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 10)),
     );
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 10));
+  }
+  if (file != null) {
+    expect(
+      file.existsSync(),
+      isFalse,
+      reason:
+          'Temporary photo cleanup did not finish within $deadline: ${file.path}',
+    );
   }
 }
 
@@ -154,6 +180,193 @@ Future<MedicationSaveResult> _keepManualEntryOpen(
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  testWidgets('저장 응답이 뒤로가기 전환 중 도착해도 아래 화면을 닫지 않는다', (tester) async {
+    final pending = Completer<MedicationSaveResult>();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            return Scaffold(
+              body: TextButton(
+                child: const Text('menu'),
+                onPressed: () => Navigator.push<void>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) {
+                      return Scaffold(
+                        body: TextButton(
+                          child: const Text('entry'),
+                          onPressed: () => Navigator.push<void>(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) {
+                                return ManualMedicationEntryUI(
+                                  userSetting: const UserSetting(
+                                    language: 'ko',
+                                  ),
+                                  onSaveRequested: (_) => pending.future,
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.tap(find.text('menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('entry'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('manual-medication-name')),
+      'test',
+    );
+    await tester.tap(find.byKey(const Key('manual-medication-save')));
+    await tester.pump();
+    await tester.binding.handlePopRoute();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.byType(ManualMedicationEntryUI), findsOneWidget);
+    pending.complete(
+      const MedicationSaveResult(
+        status: MedicationSaveStatus.saved,
+        message: 'saved',
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('entry'), findsOneWidget);
+    expect(find.text('복약 정보를 저장했습니다.'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('이전 화면 사진 응답은 재진입 사진을 덮지 않고 임시 사본만 정리한다', (tester) async {
+    tester.view.physicalSize = const Size(390, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final sandbox = _PhotoSandbox.create();
+    final oldPhoto = sandbox.cachePhoto('old.png');
+    final newPhoto = sandbox.cachePhoto('new.png');
+    final pending = Completer<XFile?>();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ManualMedicationEntryUI(
+          key: const Key('old-entry'),
+          userSetting: const UserSetting(language: 'ko'),
+          imagePicker: _PhotoPicker()..pending = pending.future,
+          onSaveRequested: _keepManualEntryOpen,
+        ),
+      ),
+    );
+    await _pickManualPhoto(tester);
+    ManualMedicationEntry? saved;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ManualMedicationEntryUI(
+          key: const Key('new-entry'),
+          userSetting: const UserSetting(language: 'ko'),
+          imagePicker: _PhotoPicker()..path = newPhoto.path,
+          onSaveRequested: (entry) {
+            saved = entry;
+            return _keepManualEntryOpen(entry);
+          },
+        ),
+      ),
+    );
+    await _pickManualPhoto(tester);
+    pending.complete(XFile(oldPhoto.path));
+    await _settleFileCleanup(tester, oldPhoto);
+    expect(newPhoto.existsSync(), isTrue);
+    await tester.enterText(
+      find.byKey(const Key('manual-medication-name')),
+      'new',
+    );
+    await tester.tap(find.byKey(const Key('manual-medication-save')));
+    await tester.pumpAndSettle();
+    expect(saved?.localImagePath, newPhoto.path);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await _settleFileCleanup(tester, newPhoto);
+  });
+
+  testWidgets('사진 선택창 중복 클릭과 취소 후 재진입은 한 번씩만 선택한다', (tester) async {
+    tester.view.physicalSize = const Size(390, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final picker = _PhotoPicker();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ManualMedicationEntryUI(
+          userSetting: const UserSetting(language: 'ko'),
+          imagePicker: picker,
+          onSaveRequested: _keepManualEntryOpen,
+        ),
+      ),
+    );
+    final photo = find.byKey(const Key('manual-medication-photo'));
+    final callback = tester.widget<IconButton>(photo).onPressed!;
+    callback();
+    callback();
+    await tester.pumpAndSettle();
+    expect(find.byType(BottomSheet, skipOffstage: false), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(picker.calls, 0);
+    await _pickManualPhoto(tester);
+    expect(picker.calls, 1);
+    expect(tester.widget<IconButton>(photo).onPressed, isNotNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('사진 선택 대기 중에는 재선택과 저장을 중복 실행하지 않는다', (tester) async {
+    tester.view.physicalSize = const Size(390, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final pending = Completer<XFile?>();
+    final picker = _PhotoPicker()..pending = pending.future;
+    var saves = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ManualMedicationEntryUI(
+          userSetting: const UserSetting(language: 'ko'),
+          imagePicker: picker,
+          onSaveRequested: (entry) {
+            saves++;
+            return _keepManualEntryOpen(entry);
+          },
+        ),
+      ),
+    );
+    await tester.enterText(
+      find.byKey(const Key('manual-medication-name')),
+      '직접입력약',
+    );
+    final save = find.byKey(const Key('manual-medication-save'));
+    final saveCallback = tester.widget<FilledButton>(save).onPressed!;
+    await _pickManualPhoto(tester);
+    final photo = find.byKey(const Key('manual-medication-photo'));
+    expect(tester.widget<IconButton>(photo).onPressed, isNull);
+    expect(tester.widget<FilledButton>(save).onPressed, isNull);
+    saveCallback();
+    await tester.pump();
+    expect(saves, 0);
+    expect(picker.calls, 1);
+    pending.complete(null);
+    await tester.pumpAndSettle();
+    expect(tester.widget<IconButton>(photo).onPressed, isNotNull);
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    expect(saves, 1);
+  });
+
   for (final language in ['ko', 'en']) {
     // 함수이름: 필수 입력 순서·큰 글씨 테스트
     // 함수역할: 작은 화면에서 이름·복용량이 선택 사진보다 먼저 오고 안전 문구가 유지된다.
@@ -369,6 +582,24 @@ void main() {
       find.byKey(const Key('manual-medication-dosage')),
       '0.5',
     );
+    // 매일 복용이 기본이며, 주기를 고르기 전에는 안내가 없다.
+    expect(
+      find.byKey(const Key('manual-medication-dose-days-notice')),
+      findsNothing,
+    );
+    final weekly = find.byKey(const Key('manual-medication-dose-days-주 1회'));
+    await tester.ensureVisible(weekly);
+    await tester.pumpAndSettle();
+    await tester.tap(weekly);
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const Key('manual-medication-dose-days-notice')),
+          )
+          .data,
+      contains('매일 복용하는 약이 아닙니다'),
+    );
     final eveningSlot = find.byKey(const Key('manual-medication-slot-evening'));
     await tester.ensureVisible(eveningSlot);
     await tester.pumpAndSettle();
@@ -381,6 +612,8 @@ void main() {
     expect(submittedEntry!.medicationName, '직접입력약');
     expect(submittedEntry!.dosageAmount, '0.5');
     expect(submittedEntry!.dosageUnit, '정');
+    expect(submittedEntry!.doseDays, '주 1회');
+    expect(submittedEntry!.toMedicationSchedule().intakeTime, '주 1회, 1일 2회');
     expect(
       submittedEntry!.scheduleSlotKeys,
       containsAll(['morning', 'evening']),
@@ -444,9 +677,7 @@ void main() {
 
       await tester.tap(find.byKey(const Key('manual-medication-photo')));
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.text(language == 'ko' ? '카메라로 촬영' : 'Take Photo'),
-      );
+      await tester.tap(find.text(language == 'ko' ? '카메라로 촬영' : 'Take Photo'));
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
@@ -461,7 +692,9 @@ void main() {
       expect(find.byType(Image), findsNothing);
       expect(
         tester
-            .widget<IconButton>(find.byKey(const Key('manual-medication-photo')))
+            .widget<IconButton>(
+              find.byKey(const Key('manual-medication-photo')),
+            )
             .onPressed,
         isNotNull,
       );
@@ -651,6 +884,49 @@ void main() {
     expect(original.existsSync(), isTrue);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'slow temporary-directory lookup still cleans up an abandoned photo',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final lookupGate = Completer<void>();
+      Timer? releaseLookup;
+      final sandbox = _PhotoSandbox.create(
+        beforeTemporaryPath: () {
+          // 실제 입출력처럼 위젯의 가상 시계와 별개로 완료시켜 기존 400ms 한도를 재현한다.
+          releaseLookup ??= Zone.root.createTimer(
+            const Duration(milliseconds: 700),
+            () => lookupGate.complete(),
+          );
+          return lookupGate.future;
+        },
+      );
+      addTearDown(() {
+        releaseLookup?.cancel();
+        if (!lookupGate.isCompleted) lookupGate.complete();
+      });
+      final abandoned = sandbox.cachePhoto('slow-abandoned.png');
+      final picker = _PhotoPicker()..path = abandoned.path;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ManualMedicationEntryUI(
+            userSetting: const UserSetting(language: 'ko'),
+            imagePicker: picker,
+            onSaveRequested: _keepManualEntryOpen,
+          ),
+        ),
+      );
+      await _pickManualPhoto(tester);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _settleFileCleanup(tester, abandoned);
+      expect(lookupGate.isCompleted, isTrue);
+      expect(abandoned.existsSync(), isFalse);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   // 함수이름: 화면 종료 시 임시 사본 정리 테스트
   // 함수역할: 저장하지 않고 닫으면 바로, 저장 중에 닫으면 저장이 끝난 뒤에 임시 사본을 지우는지 검증한다.

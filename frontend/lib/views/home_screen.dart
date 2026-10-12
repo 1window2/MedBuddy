@@ -109,6 +109,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   bool _isForeground = true;
+  // 약통 탭이 시스템 뒤로가기를 직접 처리하는 중인지 여부.
+  bool _cabinetHandlesBack = false;
   String? _updatingHomeMedicationSlotKey;
   final Set<MedBuddyDestination> _visitedDestinations = {
     MedBuddyDestination.home,
@@ -305,6 +307,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _startChatRefresh();
       _notificationInbox?.start();
       _medicationRecovery?.start();
+      // 시스템 설정에서 '알람 및 리마인더'를 허용하고 돌아오면, 늦게 울릴 수 있는 알람으로 예약해 둔
+      // 복약 알림을 사용자가 따로 저장하지 않아도 정확한 알람으로 바꾼다. 바꿀 것이 없으면 아무 일도 하지 않는다.
+      unawaited(
+        context
+            .read<MedBuddyViewModel>()
+            .notificationService
+            .rescheduleInexactRemindersAsExact()
+            .catchError((_) {}),
+      );
     } else {
       _medicationRecovery?.stop();
       _chatRefreshTimer?.cancel();
@@ -508,10 +519,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         isPrescriptionChangeLoading: viewModel.isPrescriptionChangeLoading,
         userSetting: viewModel.userSetting,
         // Function Name: _buildActiveScreen.statusMessageProvider callback
-        // Description: Supplies `viewModel.statusMessage` from the captured state of the active screen selected by prescription flow and navigation destination.
+        // Description: Supplies `viewModel.prescriptionStatusMessage` from the captured state of the active screen selected by prescription flow and navigation destination.
         // Parameters:
         // - None.
-        // Returns: The value of `viewModel.statusMessage`.
+        // Returns: The value of `viewModel.prescriptionStatusMessage`.
         statusMessageProvider: () => viewModel.prescriptionStatusMessage,
         savingMedicationIndex: viewModel.savingMedicationIndex,
         completedMedicationSaveIndexes:
@@ -600,7 +611,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // - _ (inferred by callback contract): Argument required by the callback contract but unused by the body.
       // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && _selectedDestination != MedBuddyDestination.home) {
+        // 약통이 선택 모드를 닫는 데 쓴 뒤로가기로 홈까지 이동하지 않는다.
+        final handledByCabinet =
+            _cabinetHandlesBack &&
+            _selectedDestination == MedBuddyDestination.medicationCabinet;
+        if (!didPop &&
+            !handledByCabinet &&
+            _selectedDestination != MedBuddyDestination.home) {
           _selectDestination(MedBuddyDestination.home);
         }
       },
@@ -640,6 +657,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 isActive:
                     _selectedDestination ==
                     MedBuddyDestination.medicationCabinet,
+                onBackHandlingChanged: (handlesBack) =>
+                    _cabinetHandlesBack = handlesBack,
               ),
             ),
             if (showChat)
@@ -1180,6 +1199,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           },
           onDeviceNotificationSettingsRequested:
               NotificationService.instance.openSystemNotificationSettings,
+          notificationService: viewModel.notificationService,
           // 함수이름: _openUserSettings.onExtendedSettingSaveRequested callback
           // 함수역할: 설정 화면이 넘긴 설정 객체를 그대로 저장하고, 저장된 언어 선택 모드를 앱 전체 언어에 적용한다.
           // 매개변수:

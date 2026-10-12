@@ -6,6 +6,8 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io';
 
+import 'package:firebase_auth/firebase_auth.dart';
+
 import 'api_config.dart';
 import 'auth_config.dart';
 import 'authenticated_api_client.dart';
@@ -78,16 +80,28 @@ abstract interface class LinkedChatSessionTransport
 typedef LinkedChatSocketConnector =
     Future<WebSocket> Function(String url, {Map<String, dynamic>? headers});
 
+// 함수이름: LinkedChatCredentialRefresher
+// 함수역할: 다음 연결이 새 인증 토큰을 쓰도록 자격 증명을 갱신하는 계약이다. 기본값은 Firebase ID 토큰 강제 갱신이다.
+// 매개변수:
+// - 없음.
+// 반환값:
+// - Future<void>: 갱신을 마치면 완료.
+typedef LinkedChatCredentialRefresher = Future<void> Function();
+
 // 클래스명: LinkedChatRealtimeService
 // 역할: 한 환자·보호자 연동의 인증 WebSocket 연결을 관리한다.
 // 주요 책임:
 // - 공유 인증 헤더로 연결하고 ping·재연결·세대 검증을 수행하며 JSON 이벤트와 연결 상태를 방송한다.
 // - 서버가 수락 직후 닫는 연결(한도 초과·권한 거부)에는 재연결 간격을 줄이지 않는다.
+// - 서버의 종료 코드를 읽어 연동 해제(4404)에는 재연결을 멈추고, 인증 실패(4401)에는 새 토큰으로 한 번만
+//   다시 시도한 뒤 세션 문제로 알리며, 연결 한도(4429)에는 서버가 알려 준 시간만큼 기다린다.
+//   핸드셰이크에서 거절하는 서버는 종료 코드를 전달하지 못하므로 그때는 간격만 늘려 다시 시도한다.
 // 속성:
 // - linkId (int): 조회·전송·감시 대상 연동 ID
 // - userHash (String): 현재 사용자 소유권·표시·저장 범위의 해시
 // - authenticationClient (AuthenticatedApiClient): REST와 소켓의 공통 인증 헤더 제공자
 // - _connector (LinkedChatSocketConnector): 소켓을 여는 연결 함수
+// - _refreshCredential (LinkedChatCredentialRefresher): 인증 실패·만료로 닫힌 뒤 새 토큰을 받는 함수
 // - _socket (WebSocket?): 현재 heartbeat와 수신에 사용할 WebSocket
 // - _generation (int): 이전 비동기 응답을 차단할 현재 작업 세대
 class LinkedChatRealtimeService implements LinkedChatSessionTransport {
@@ -100,11 +114,23 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
   static const Duration _connectTimeout = Duration(seconds: 15);
   // chat_ready를 보내지 않는 서버에서도 이만큼 유지된 연결은 정상으로 본다.
   static const Duration _stableConnectionDuration = Duration(seconds: 30);
+  // 서버(backend/api/chat_router.py)가 보내는 종료 코드.
+  static const int _closeAuthenticationFailed = 4401;
+  static const int _closeAccessRefused = 4403;
+  static const int _closeLinkInactive = 4404;
+  static const int _closeContractMismatch = 4409;
+  static const int _closeQuotaExceeded = 4429;
+  static const int _closeCredentialExpired = 4440;
+  // 다시 시도해도 곧바로 풀리지 않는 거절(권한·API 계약)에 두는 최소 대기.
+  static const Duration _refusalDelay = Duration(seconds: 60);
+  // 서버가 알려 준 대기 시간을 그대로 믿지 않고 이 범위 안에서만 따른다.
+  static const int _maximumQuotaWaitSeconds = 300;
 
   final int linkId;
   final String userHash;
   final AuthenticatedApiClient authenticationClient;
   final LinkedChatSocketConnector _connector;
+  final LinkedChatCredentialRefresher _refreshCredential;
   final StreamController<Map<String, dynamic>> _eventController =
       StreamController<Map<String, dynamic>>.broadcast();
   final StreamController<LinkedChatConnectionState> _stateController =
@@ -117,6 +143,10 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
   int _generation = 0;
   int _reconnectAttempt = 0;
   bool _started = false;
+  // 다음 연결 전에 새 토큰을 받아야 하는지 여부.
+  bool _refreshCredentialBeforeConnect = false;
+  // 인증 실패로 닫힌 뒤 새 토큰으로 이미 한 번 다시 시도했는지 여부. chat_ready를 받으면 되돌린다.
+  bool _retriedAfterAuthenticationFailure = false;
 
   // 함수이름: LinkedChatRealtimeService
   // 함수역할: 감시할 연동 ID와 현재 사용자 및 인증 헤더 제공 클라이언트를 연결한다.
@@ -125,6 +155,7 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
   // - userHash (String): 현재 사용자 소유권·표시·저장 범위의 해시
   // - authenticationClient (AuthenticatedApiClient): REST와 소켓의 공통 인증 헤더 제공자
   // - connector (LinkedChatSocketConnector?): 소켓 연결 함수; 생략하면 WebSocket.connect
+  // - credentialRefresher (LinkedChatCredentialRefresher?): 새 인증 토큰을 받는 함수; 생략하면 Firebase ID 토큰을 강제로 갱신한다
   // 반환값:
   // - LinkedChatRealtimeService: 초기화된 인스턴스.
   LinkedChatRealtimeService({
@@ -132,7 +163,23 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
     required this.userHash,
     required this.authenticationClient,
     LinkedChatSocketConnector? connector,
-  }) : _connector = connector ?? WebSocket.connect;
+    LinkedChatCredentialRefresher? credentialRefresher,
+  }) : _connector = connector ?? WebSocket.connect,
+       _refreshCredential = credentialRefresher ?? _refreshFirebaseIdToken;
+
+  // 함수이름: _refreshFirebaseIdToken
+  // 함수역할: 인증을 쓰는 실행에서 현재 Firebase 사용자의 ID 토큰을 서버에서 새로 받아, 이어지는 연결의
+  //   인증 헤더가 새 토큰을 쓰게 한다. 인증을 끈 로컬 실행에서는 아무 일도 하지 않는다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 갱신을 마치면 완료.
+  static Future<void> _refreshFirebaseIdToken() async {
+    if (AuthConfig.mode == AuthenticationMode.disabled) {
+      return;
+    }
+    await FirebaseAuth.instance.currentUser?.getIdToken(true);
+  }
 
   // 함수이름: events
   // 함수역할: 채팅 메시지와 읽음 등 서버의 구조화된 실시간 이벤트 스트림을 제공한다.
@@ -164,6 +211,7 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
     }
     _started = true;
     _reconnectAttempt = 0;
+    _retriedAfterAuthenticationFailure = false;
     final generation = ++_generation;
     await _connect(generation, reconnecting: false);
   }
@@ -185,6 +233,18 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
           : LinkedChatConnectionState.connecting,
     );
     try {
+      if (_refreshCredentialBeforeConnect) {
+        _refreshCredentialBeforeConnect = false;
+        try {
+          await _refreshCredential();
+        } catch (error, stackTrace) {
+          // 갱신하지 못하면 가진 토큰으로 연결해 본다. 다시 거절되면 그때 세션 문제로 알린다.
+          _reportError(error, stackTrace);
+        }
+        if (!_started || generation != _generation) {
+          return;
+        }
+      }
       final uri = Uri.parse(ApiConfig.chatWebSocketUrl('/links/$linkId/stream'))
           .replace(
             queryParameters: AuthConfig.mode == AuthenticationMode.disabled
@@ -290,6 +350,7 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
       if (decoded is Map) {
         if (decoded['type'] == 'chat_ready' && identical(_socket, socket)) {
           _reconnectAttempt = 0;
+          _retriedAfterAuthenticationFailure = false;
         }
         _eventController.add(Map<String, dynamic>.from(decoded));
       }
@@ -338,7 +399,8 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
   }
 
   // 함수이름: _handleDisconnected
-  // 함수역할: 현재 소켓의 끊김에만 반응해 참조와 heartbeat를 정리하고 같은 세대의 재연결을 예약한다.
+  // 함수역할: 현재 소켓의 끊김에만 반응해 참조와 heartbeat를 정리하고, 서버가 보낸 종료 코드에 따라
+  //           재연결을 멈추거나 새 토큰·대기 시간을 정해 같은 세대의 재연결을 예약한다.
   // 매개변수:
   // - socket (WebSocket): 현재 heartbeat와 수신에 사용할 WebSocket
   // - generation (int): 이전 비동기 응답을 차단할 현재 작업 세대
@@ -348,25 +410,85 @@ class LinkedChatRealtimeService implements LinkedChatSessionTransport {
     if (!identical(_socket, socket)) {
       return;
     }
+    final closeCode = socket.closeCode;
+    final closeReason = socket.closeReason;
     _socket = null;
     _heartbeatTimer?.cancel();
     _stableTimer?.cancel();
-    _scheduleReconnect(generation);
+    if (!_started || generation != _generation) {
+      return;
+    }
+    switch (closeCode) {
+      case _closeLinkInactive:
+        // 연동이 해제되었거나 참여자가 아니다. 다시 연결해도 같은 답이므로 멈춘다.
+        _haltReconnection();
+        return;
+      case _closeAuthenticationFailed:
+        if (_retriedAfterAuthenticationFailure) {
+          // 새 토큰으로도 거절되었다. 계속 두드리지 않고 REST의 401과 같은 세션 정리로 넘긴다.
+          _haltReconnection();
+          unawaited(
+            authenticationClient.reportUnauthorized().catchError(_reportError),
+          );
+          return;
+        }
+        _retriedAfterAuthenticationFailure = true;
+        _refreshCredentialBeforeConnect = true;
+        _scheduleReconnect(generation);
+      case _closeCredentialExpired:
+        // 연결을 열 때 쓴 토큰의 수명이 끝났을 뿐이다. 새 토큰으로 바로 이어 간다.
+        _refreshCredentialBeforeConnect = true;
+        _scheduleReconnect(generation);
+      case _closeQuotaExceeded:
+        final waitSeconds = int.tryParse(closeReason?.trim() ?? '');
+        _scheduleReconnect(
+          generation,
+          minimumDelay: waitSeconds == null || waitSeconds < 1
+              ? null
+              : Duration(
+                  seconds: waitSeconds.clamp(1, _maximumQuotaWaitSeconds),
+                ),
+        );
+      case _closeAccessRefused:
+      case _closeContractMismatch:
+        _scheduleReconnect(generation, minimumDelay: _refusalDelay);
+      default:
+        _scheduleReconnect(generation);
+    }
+  }
+
+  // 함수이름: _haltReconnection
+  // 함수역할: 서버가 다시 연결해도 소용없다고 알린 뒤 재연결을 멈추고 연결 해제 상태를 알린다.
+  //           start()를 다시 호출하면(화면 재진입·앱 복귀) 한 번 더 연결을 시도한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음.
+  void _haltReconnection() {
+    _started = false;
+    _generation += 1;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _emitState(LinkedChatConnectionState.disconnected);
   }
 
   // 함수이름: _scheduleReconnect
   // 함수역할: 중복 예약과 이전 세대를 차단하고 1·2·5·10초로 늘어나는 지연 중 다음 연결 시도를 예약한다.
   // 매개변수:
   // - generation (int): 이전 비동기 응답을 차단할 현재 작업 세대
+  // - minimumDelay (Duration?): 서버가 요구했거나 거절 사유에 맞춘 최소 대기; 늘어나는 지연보다 길 때만 적용한다
   // 반환값:
   // - 없음.
-  void _scheduleReconnect(int generation) {
+  void _scheduleReconnect(int generation, {Duration? minimumDelay}) {
     if (!_started || generation != _generation || _reconnectTimer != null) {
       return;
     }
     _emitState(LinkedChatConnectionState.reconnecting);
     final index = _reconnectAttempt.clamp(0, _reconnectDelays.length - 1);
-    final delay = _reconnectDelays[index];
+    final ladderDelay = _reconnectDelays[index];
+    final delay = minimumDelay != null && minimumDelay > ladderDelay
+        ? minimumDelay
+        : ladderDelay;
     _reconnectAttempt += 1;
     _reconnectTimer = Timer(delay, /* 함수이름: Timer 콜백
      * 함수역할: 재연결 예약 표시를 지운 뒤 같은 세대의 웹소켓 재접속을 시작한다.

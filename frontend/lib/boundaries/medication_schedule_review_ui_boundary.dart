@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../entities/medication_dose_rhythm.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/medication_schedule_limits.dart';
 import '../entities/medication_slot_label.dart';
@@ -615,6 +616,8 @@ class _MedicationScheduleEditorDialogState
   late final TextEditingController _daysController;
   late DateTime _startDate;
   late int _frequencyCount;
+  // 복용하는 날의 지시. 빈 문자열은 매일 복용이다.
+  late String _doseDays;
   late Set<String> _selectedSlotKeys;
   bool _showSlotValidationError = false;
 
@@ -639,6 +642,7 @@ class _MedicationScheduleEditorDialogState
     _frequencyCount = widget.medicationSchedule.dailyFrequencyCount
         .clamp(1, 4)
         .toInt();
+    _doseDays = _doseDaysOf(widget.medicationSchedule.intakeTime);
     _selectedSlotKeys = widget.medicationSchedule.slotKeys.toSet();
     if (_selectedSlotKeys.isEmpty ||
         _selectedSlotKeys.length != _frequencyCount) {
@@ -730,6 +734,49 @@ class _MedicationScheduleEditorDialogState
             ),
             const SizedBox(height: 16),
             Text(
+              text.doseDays,
+              style: const TextStyle(
+                color: MedBuddyColors.textStrong,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                // 목록에 없는 지시로 저장된 약은 그 지시를 그대로 고를 수 있게 한다.
+                for (final doseDays in {...doseDayChoices, _doseDays})
+                  ChoiceChip(
+                    key: Key('schedule-edit-dose-days-$doseDays'),
+                    label: Text(text.doseDaysValue(doseDays)),
+                    selected: _doseDays == doseDays,
+                    onSelected: (_) => setState(() => _doseDays = doseDays),
+                  ),
+              ],
+            ),
+            if (_doseDays.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                describeDoseCycle(
+                  readDoseCycle(_doseDays),
+                  isEnglish: text.isEnglish,
+                  startDate: _startDate,
+                  courseDays: int.tryParse(_daysController.text.trim()) ?? 0,
+                ),
+                key: const Key('schedule-edit-dose-days-notice'),
+                style: const TextStyle(
+                  color: MedBuddyColors.textMuted,
+                  fontSize: 12,
+                  height: 1.4,
+                  letterSpacing: 0,
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            Text(
               text.dailyFrequency,
               style: const TextStyle(
                 color: MedBuddyColors.textStrong,
@@ -768,6 +815,8 @@ class _MedicationScheduleEditorDialogState
               ],
               textInputAction: TextInputAction.done,
               decoration: InputDecoration(labelText: text.duration),
+              // 복용 기간에 따라 복용하는 날 수 안내가 달라지므로 다시 그린다.
+              onChanged: (_) => setState(() {}),
               validator: _validateDuration,
             ),
             const SizedBox(height: 16),
@@ -947,7 +996,7 @@ class _MedicationScheduleEditorDialogState
         medicationName: _nameController.text.trim(),
         prescriptionDate: _startDate,
         dosage: _dosageController.text.trim(),
-        intakeTime: '$_frequencyCount회',
+        intakeTime: composeDoseFrequency(_doseDays, _frequencyCount),
         medicationTime: int.parse(_daysController.text.trim()),
         scheduleSlotKeys: medicationScheduleSlotKeys
             .where(_selectedSlotKeys.contains)
@@ -957,6 +1006,26 @@ class _MedicationScheduleEditorDialogState
       ),
     );
   }
+}
+
+// 함수이름: _doseDaysOf
+// 함수역할: 저장된 횟수 문구에서 복용하는 날의 지시만 꺼낸다. 선택지와 같은 주기이면 그 선택지로 맞춘다.
+// 매개변수:
+// - frequency (String): 저장된 복용 횟수 문구.
+// 반환값: String: 복용하는 날의 지시. 매일 복용이면 빈 문자열.
+String _doseDaysOf(String frequency) {
+  final cycle = readDoseCycle(frequency);
+  if (cycle.isDaily) return '';
+  for (final choice in doseDayChoices.skip(1)) {
+    final candidate = readDoseCycle(choice);
+    if (candidate.cycleDays == cycle.cycleDays &&
+        candidate.weekdayAnchored == cycle.weekdayAnchored &&
+        candidate.offsets.join(',') == cycle.offsets.join(',')) {
+      return choice;
+    }
+  }
+  // "1일 2회"처럼 뒤에 붙은 하루 횟수는 따로 고르므로 지시 부분만 남긴다.
+  return frequency.split(',').first.trim();
 }
 
 // 함수이름: _normalizeSchedule
@@ -972,7 +1041,8 @@ MedicationSchedule _normalizeSchedule(MedicationSchedule schedule) {
   return schedule.copyWith(
     prescriptionDate: schedule.prescriptionDate ?? DateTime.now(),
     dosage: schedule.dosage.trim().isEmpty ? '1정' : schedule.dosage.trim(),
-    intakeTime: '$frequency회',
+    // 매일 복용이 아닌 지시("주 1회" 등)는 횟수만 남기면 매일 복용으로 바뀌므로 함께 보존한다.
+    intakeTime: composeDoseFrequency(_doseDaysOf(schedule.intakeTime), frequency),
     medicationTime: schedule.medicationTime <= 0 ? 1 : schedule.medicationTime,
     scheduleSlotKeys: slots,
   );
@@ -1102,6 +1172,24 @@ class _MedicationScheduleReviewText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get dailyFrequency => isEnglish ? 'Times per day' : '1일 복용 횟수';
+  // 함수이름: doseDays
+  // 함수역할: 현재 언어에 맞춰 "복용 주기" 문구를 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  String get doseDays => isEnglish ? 'Dose days' : '복용 주기';
+  // 함수이름: doseDaysValue
+  // 함수역할: 복용 주기 선택지를 현재 언어의 문구로 바꾼다. 선택지에 없는 지시는 저장된 그대로 보여 준다.
+  // 매개변수:
+  // - doseDays (String): 복용하는 날의 지시. 빈 문자열은 매일 복용.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  String doseDaysValue(String doseDays) => switch (doseDays) {
+    '' => isEnglish ? 'Every day' : '매일',
+    '격일' => isEnglish ? 'Every other day' : '격일',
+    '주 1회' => isEnglish ? 'Once a week' : '주 1회',
+    '월 1회' => isEnglish ? 'Once a month' : '월 1회',
+    _ => doseDays,
+  };
   // 함수이름: duration
   // 함수역할: 현재 언어와 입력값에 맞춰 "복용 기간(일)" 문구를 제공한다.
   // 매개변수:

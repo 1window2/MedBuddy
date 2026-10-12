@@ -3,9 +3,9 @@
 ## Status
 
 - Scope review: 2026-09-30
-- Stable functional baseline: `v0.2.0-beta`
-- Active development branch: `beta/v0.2.1`
-- Target release tag: `v0.2.1-beta`
+- Stable functional baseline: `v0.2.1-beta`
+- Active development branch: `beta/v0.2.2`
+- Target release tag: `v0.2.2-beta`
 - Target platform: Android
 - iOS: deferred until after the Android public-release decision, no earlier than
   October 2026

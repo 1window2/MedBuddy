@@ -151,7 +151,10 @@ async def test_shared_hours_follow_selected_date_not_current_time(holiday, expec
         weekly_hours=(("1", "0900", "1900"), ("8", "1000", "1300")),
         location=HospitalLocationRecord("A123", "병원", "서울", "", 37.55, 126.92),
         fetched_at=datetime(2026, 9, 28, 1, tzinfo=UTC))
-    control = CheckNearbyHospital(SimpleNamespace(fetchDetails=AsyncMock(return_value=detail)))
+    control = CheckNearbyHospital(
+        SimpleNamespace(fetchDetails=AsyncMock(return_value=detail)),
+        clock=lambda: datetime(2026, 10, 1, 9, tzinfo=UTC),
+    )
     control._is_holiday = AsyncMock(return_value=holiday)
     shared = await control.requestShareContext("A123", date(2026, 10, 5))
     assert shared["today_hours"] == expected and shared["schedule_date"] == "2026-10-05"
@@ -159,6 +162,21 @@ async def test_shared_hours_follow_selected_date_not_current_time(holiday, expec
     control._boundary.fetchDetails.return_value = replace(detail, location=None)
     with pytest.raises(ValueError):
         await control.requestShareContext("A123", date(2026, 10, 5))
+
+
+@pytest.mark.parametrize("schedule_date", [
+    date(2026, 9, 22), date(2027, 10, 4), date(1, 1, 1), date(9999, 12, 31),
+])
+@pytest.mark.anyio
+async def test_share_date_outside_the_search_window_is_rejected_before_any_lookup(schedule_date):
+    """검색이 받는 날짜 범위 밖이면 병원 상세도 공휴일도 조회하지 않고 거절한다."""
+    boundary = SimpleNamespace(fetchDetails=AsyncMock())
+    control = CheckNearbyHospital(boundary, clock=lambda: datetime(2026, 10, 1, 9, tzinfo=UTC))
+    control._is_holiday = AsyncMock()
+    with pytest.raises(ValueError):
+        await control.requestShareContext("A123", schedule_date)
+    boundary.fetchDetails.assert_not_awaited()
+    control._is_holiday.assert_not_awaited()
 
 
 def test_detail_identity_is_parsed_from_provider():

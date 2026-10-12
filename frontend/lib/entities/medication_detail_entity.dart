@@ -1,6 +1,7 @@
 // 파일명: medication_detail_entity.dart
 // 역할: 서버와 화면 사이에서 사용하는 약 상세 정보 모델을 정의한다.
 
+import 'medication_dose_rhythm.dart';
 import 'medication_image_url_entity.dart';
 import 'medication_schedule_entity.dart';
 import 'json_value_reader.dart';
@@ -291,6 +292,33 @@ class MedicationDetail {
     ).add(Duration(days: dayCount - 1));
   }
 
+  // 함수이름: nextDoseDayFrom
+  // 함수역할: 매일 복용하지 않는 약의 기준 날짜 이후 첫 복용일을 계산한다. 서버와 같이 조제일자, 없으면 등록일자를 복용 시작일로 본다.
+  // 매개변수:
+  // - referenceDate (DateTime): 달력 날짜 계산 또는 비교의 기준 시각
+  // 반환값:
+  // - DateTime?: 다음 복용일. 매일 복용하는 약이거나 시작일을 알 수 없거나 남은 복용일이 없으면 null.
+  DateTime? nextDoseDayFrom(DateTime referenceDate) {
+    final cycle = readDoseCycle(dailyFrequency);
+    final startDate = prescriptionDate ?? createdDate;
+    if (cycle.isDaily || startDate == null) {
+      return null;
+    }
+    final dayCount = medicationDayCountFromText(totalDays);
+    return nextDoseDay(
+      cycle,
+      startDate: startDate,
+      from: referenceDate,
+      endDate: dayCount <= 0
+          ? null
+          : DateTime(
+              startDate.year,
+              startDate.month,
+              startDate.day + dayCount - 1,
+            ),
+    );
+  }
+
   // 함수이름: isActiveOn
   // 함수역할: 조제일자와 총 투약일을 기준으로 기준 날짜에 복용 중인 약인지 판단한다. 기간 정보가 부족한 기존 저장 데이터는 목록에서 사라지지 않도록 복용 중으로 취급한다.
   // 매개변수:
@@ -407,38 +435,40 @@ class MedicationDetail {
   }
 
   // 함수이름: _localizedFrequencyValue
-  // 함수역할: 영문 표시에서 숫자로 해석한 하루 횟수를 once daily 또는 times daily 문구로 바꾸고 해석 불가 원문은 유지한다.
+  // 함수역할: 영문 표시에서 "3회"·"1일 3회"·숫자만 있는 하루 횟수만 once daily 또는 times daily 문구로 바꾼다.
+  //   "2일 1회"·"주 1회"·"12시간마다"처럼 하루 횟수가 아닌 지시는 뜻이 바뀌지 않도록 원문 그대로 둔다.
   // 매개변수:
   // - value (String): 표시 언어로 바꿀 일일 복용 횟수 원문
   // - language (String): 표시·음성 안내에 사용할 언어 코드
   // 반환값:
-  // - String: 영문 표시에서 숫자로 해석한 하루 횟수를 once daily 또는 times daily 문구로 바꾸고 해석 불가 원문은 유지한다.
+  // - String: 영문 하루 횟수 문구 또는 바꾸지 않은 원문.
   static String _localizedFrequencyValue(String value, String language) {
     final normalizedValue = value.trim();
     if (!_isEnglish(language)) {
       return normalizedValue;
     }
-    final count = _readInt(normalizedValue);
-    if (count == null) {
-      return normalizedValue;
-    }
-    return count == 1 ? 'once daily' : '$count times daily';
+    return englishDailyFrequencyLabel(normalizedValue) ?? normalizedValue;
   }
 
   // 함수이름: _localizedDurationValue
-  // 함수역할: 영문 표시에서 복용 일수를 day·days 문구로 바꾸고 인식하지 못한 기간은 원문으로 보존한다.
+  // 함수역할: 영문 표시에서 "7일"·"7일분"·숫자만 있는 복용 일수만 day·days 문구로 바꾼다.
+  //   "2주"·"1개월"처럼 일 단위가 아닌 기간은 뜻이 바뀌지 않도록 원문 그대로 둔다.
   // 매개변수:
   // - value (String): 표시 언어로 바꿀 복용 기간 원문
   // - language (String): 표시·음성 안내에 사용할 언어 코드
   // 반환값:
-  // - String: 영문 표시에서 복용 일수를 day·days 문구로 바꾸고 인식하지 못한 기간은 원문으로 보존한다.
+  // - String: 영문 복용 일수 문구 또는 바꾸지 않은 원문.
   static String _localizedDurationValue(String value, String language) {
     final normalizedValue = value.trim();
     if (!_isEnglish(language)) {
       return normalizedValue;
     }
-    final days = medicationDayCountFromText(normalizedValue);
-    if (days == 0) {
+    final dayCount = RegExp(
+      r'^(\d+)\s*(?:(?:일(?:분|간)?|days?)(?:\s*\(.*\))?)?$',
+      caseSensitive: false,
+    ).firstMatch(normalizedValue);
+    final days = int.tryParse(dayCount?.group(1) ?? '') ?? 0;
+    if (days <= 0) {
       return normalizedValue;
     }
     return days == 1 ? '1 day' : '$days days';

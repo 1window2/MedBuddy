@@ -26,6 +26,7 @@ from controls.dispatch_caregiver_alert_control import (  # noqa: E402
 from controls.process_caregiver_alert_outbox_control import (  # noqa: E402
     ProcessCaregiverAlertOutbox,
 )
+from core import api_contract  # noqa: E402
 from core.application_clock import application_today  # noqa: E402
 from core.database import Base  # noqa: E402
 from entities.medication_completion_entity import (  # noqa: E402
@@ -232,6 +233,123 @@ class CheckScheduleTest(unittest.TestCase):
         )
         self.assertEqual(schedule["created_date"], old_saved_date.isoformat())
         self.assertEqual(schedule["prescription_date"], today.isoformat())
+
+    # Function Name: test_non_daily_medication_is_scheduled_only_on_its_dose_days
+    # Description:
+    # - A "주 1회" medication is on today's schedule on its dose days only, is never reported as
+    #   a missed slot on the days between, and the schedule window still lists it with the dose
+    #   cycle clients use for reminders. A daily medication is unaffected.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_non_daily_medication_is_scheduled_only_on_its_dose_days(self) -> None:
+        today = application_today()
+        self._saved_medication(
+            item_name="weekly-due-today", prescription_date=today - timedelta(days=14),
+            total_days="8주", daily_frequency="주 1회", schedule_slot_keys='["evening"]',
+        )
+        self._saved_medication(
+            item_name="weekly-not-due", prescription_date=today - timedelta(days=3),
+            total_days="8주", daily_frequency="주 1회", schedule_slot_keys='["bedtime"]',
+        )
+        self._saved_medication(
+            item_name="daily", prescription_date=today - timedelta(days=3),
+            total_days="30", daily_frequency="1일 1회", schedule_slot_keys='["morning"]',
+        )
+
+        today_names = [
+            item["drug_name"]
+            for item in self.control.requestTodayMedicationSchedule("patient-a")["data"]
+        ]
+        self.assertCountEqual(today_names, ["weekly-due-today", "daily"])
+        batch = self.control.requestTodayMedicationSchedulesForPatients(["patient-a"])
+        self.assertCountEqual(
+            [item["drug_name"] for item in batch["patient-a"]],
+            ["weekly-due-today", "daily"],
+        )
+
+        # Function Name: incomplete
+        # Description: Asks whether a slot counts as missed today.
+        # Parameters: slot_key (str) - Dose slot.
+        # Returns: True when the slot has an untaken dose due today.
+        def incomplete(slot_key: str) -> bool:
+            return self.control.isMedicationSlotIncomplete(
+                patient_hash="patient-a", schedule_date=today, slot_key=slot_key,
+            )
+
+        self.assertTrue(incomplete("evening"))
+        self.assertTrue(incomplete("morning"))
+        self.assertFalse(incomplete("bedtime"))
+        # Four days later the second weekly medication is due and the first is not.
+        self.assertTrue(
+            self.control.isMedicationSlotIncomplete(
+                patient_hash="patient-a", schedule_date=today + timedelta(days=4),
+                slot_key="bedtime",
+            )
+        )
+        self.assertFalse(
+            self.control.isMedicationSlotIncomplete(
+                patient_hash="patient-a", schedule_date=today + timedelta(days=4),
+                slot_key="evening",
+            )
+        )
+
+        window = {
+            item["drug_name"]: item
+            for item in self.control.requestMedicationScheduleWindow("patient-a")["data"]
+        }
+        self.assertEqual(set(window), {"weekly-due-today", "weekly-not-due", "daily"})
+        self.assertEqual(
+            [window["weekly-not-due"][key] for key in (
+                "dose_cycle_days", "dose_cycle_offsets", "dose_cycle_anchor",
+            )],
+            [7, [0], (today - timedelta(days=3)).isoformat()],
+        )
+        self.assertEqual(
+            [window["daily"][key] for key in (
+                "dose_cycle_days", "dose_cycle_offsets", "dose_cycle_anchor",
+            )],
+            [1, [0], None],
+        )
+
+    # Function Name: test_client_without_dose_days_gets_every_active_medication
+    # Description:
+    # - A client that did not declare the dose-days feature (0.2.1 and older, which switch a
+    #   reminder off when its slot is empty) still receives and can record every medication of
+    #   an active course, while the missed-dose check keeps using the dose days.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_client_without_dose_days_gets_every_active_medication(self) -> None:
+        today = application_today()
+        weekly = self._saved_medication(
+            item_name="weekly-not-due", prescription_date=today - timedelta(days=3),
+            total_days="8주", daily_frequency="주 1회", schedule_slot_keys='["bedtime"]',
+        )
+        token = api_contract._client_schedules_by_dose_days.set(False)
+        try:
+            names = [
+                item["drug_name"]
+                for item in self.control.requestTodayMedicationSchedule("patient-a")["data"]
+            ]
+            batch = self.control.requestTodayMedicationSchedulesForPatients(["patient-a"])
+            updated = self.control.updateMedicationSlotStatus(
+                "bedtime", True, "patient-a",
+            )
+        finally:
+            api_contract._client_schedules_by_dose_days.reset(token)
+
+        self.assertEqual(names, ["weekly-not-due"])
+        self.assertEqual([item["drug_name"] for item in batch["patient-a"]], ["weekly-not-due"])
+        self.assertEqual([item["medication_id"] for item in updated["data"]], [str(weekly.id)])
+        self.assertFalse(
+            self.control.isMedicationSlotIncomplete(
+                patient_hash="patient-a", schedule_date=today, slot_key="bedtime",
+            )
+        )
+        self.assertEqual(self.control.requestTodayMedicationSchedule("patient-a")["data"], [])
 
     # Function Name: test_schedule_window_includes_future_starting_course
     # Description:

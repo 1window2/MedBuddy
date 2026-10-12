@@ -232,9 +232,11 @@ class CheckNearbyHospital:
     # 검색일의 운영표와 제공자에서 확인한 병원 정보만 채팅 스냅샷으로 만든다.
     async def requestShareContext(self, hospital_id: str, schedule_date: date) -> dict[str, object]:
         """서버 상세 조회의 식별 정보와 선택 날짜 시간표만 채팅에 저장한다."""
-        target = datetime.combine(schedule_date, datetime.min.time(), self._timezone).replace(hour=12)
-        if not 1 < target.year < 9999:
-            raise ValueError("Invalid hospital share date.")
+        # 검색과 같은 달력일 범위만 받아, 임의 날짜로 공휴일 조회를 반복시키지 못하게 한다.
+        target = normalize_target_datetime(
+            datetime.combine(schedule_date, datetime.min.time()).replace(hour=12),
+            now=self._clock(), timezone=self._timezone,
+        )
         detail = await self._boundary.fetchDetails(hospital_id)
         if detail.location is None or detail.fetched_at is None:
             raise ValueError("Hospital information could not be verified.")

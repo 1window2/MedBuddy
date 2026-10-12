@@ -302,13 +302,13 @@ class MedicationReminderRefreshService {
   }
 
   // Function Name: activeReminderDates
-  // Description: Returns sorted unique local dates in the next 14-day window without extending beyond course end; missing start dates use today and unknown durations do not extend beyond today. Today is left out when the slot is already completed, so foreground and background refreshes follow one rule and neither re-arms a reminder for a dose already taken.
+  // Description: Returns sorted unique local dates in the next 14-day window without extending beyond course end; missing start dates use today. Dates on which a medication is not due (a weekly or every-other-day medication between its dose days) are left out, so a slot gets no reminder on a day when none of its medications is due. A course without a readable duration has no end date on the server and stays in every day's schedule, so it fills the whole window instead of today only; otherwise tomorrow's reminder would exist only if the app or the 12-hour worker happened to run after midnight and before the reminder time. Today is left out when the slot is already completed, so foreground and background refreshes follow one rule and neither re-arms a reminder for a dose already taken.
   // Parameters:
   // - schedules (List<MedicationSchedule>): Medication schedules used for lookup, comparison, or reminders.
   // - now (DateTime): Reference timestamp for comparisons and calendar calculations.
   // - slotCompletedToday (bool): Whether every medication of this slot is recorded as taken today.
   // Returns:
-  // - List<DateTime>: Sorted unique local dates in the next 14-day window without extending beyond course end; missing start dates use today and unknown durations do not extend beyond today.
+  // - List<DateTime>: Sorted unique local dates in the next 14-day window without extending beyond course end; missing start dates use today and unknown durations fill the window.
   static List<DateTime> activeReminderDates(
     List<MedicationSchedule> schedules, {
     required DateTime now,
@@ -331,15 +331,23 @@ class MedicationReminderRefreshService {
       final courseDays = schedule.medicationTime;
       final endDate = courseDays > 0
           ? startDate.add(Duration(days: courseDays - 1))
-          : today;
+          : lastReservableDate;
       var candidateDate = startDate.isAfter(today) ? startDate : today;
       final boundedEndDate = endDate.isBefore(lastReservableDate)
           ? endDate
           : lastReservableDate;
 
       while (!candidateDate.isAfter(boundedEndDate)) {
-        activeDateKeys[_dateKey(candidateDate)] = candidateDate;
-        candidateDate = candidateDate.add(const Duration(days: 1));
+        // A medication that is not taken every day ("주 1회", "격일") is reminded on its dose days only.
+        if (schedule.isDoseDay(candidateDate)) {
+          activeDateKeys[_dateKey(candidateDate)] = candidateDate;
+        }
+        // Calendar arithmetic, so a daylight-saving change cannot repeat or skip a date.
+        candidateDate = DateTime(
+          candidateDate.year,
+          candidateDate.month,
+          candidateDate.day + 1,
+        );
       }
     }
 

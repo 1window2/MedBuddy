@@ -46,7 +46,7 @@ def test_ingress_accepts_backend_authentication_denials(status: int) -> None:
 # Description: Distinguish edge blocking from an undeployed API route without leaking response bodies.
 # Parameters: monkeypatch, capsys: Isolated runtime; outcome: Simulated hospital response.
 # Returns: None.
-@pytest.mark.parametrize("outcome", ["ready", "edge", "missing"])
+@pytest.mark.parametrize("outcome", ["ready", "edge", "missing", "imitation"])
 def test_ingress_command_probes_without_credentials_and_fails_closed(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture, outcome: str,
 ) -> None:
@@ -64,16 +64,18 @@ def test_ingress_command_probes_without_credentials_and_fails_closed(
             urls.append(request.full_url)
             assert timeout == 15 and request.get_header("Authorization") is None
             assert request.get_header("X-firebase-appcheck") is None
-            hospital_failure = outcome != "ready" and "hospitals" in request.full_url
+            hospital_failure = outcome in ("edge", "missing") and "hospitals" in request.full_url
             status = 403 if outcome == "edge" and hospital_failure else 404 if hospital_failure else 401
             body = (
                 b"private-body-never-print" if status == 403
                 else b'{"detail":"Not Found"}' if status == 404
                 else b'{"detail":"Authentication required"}'
             )
-            raise HTTPError(request.full_url, status, "denied",
-                            {"Content-Type": "text/html" if status == 403 else "application/json"},
-                            io.BytesIO(body))
+            headers = {"Content-Type": "text/html" if status == 403 else "application/json"}
+            # An edge rule that imitates the JSON denial does not carry the backend's header.
+            if not (outcome == "imitation" and "hospitals" in request.full_url):
+                headers["X-MedBuddy-Api-Contract"] = "medbuddy-api-v1"
+            raise HTTPError(request.full_url, status, "denied", headers, io.BytesIO(body))
 
     monkeypatch.setattr(gate, "build_opener", lambda *args: Opener())
     assert gate.main(["--origin", "https://example.test"]) == (0 if outcome == "ready" else 1)
@@ -84,6 +86,8 @@ def test_ingress_command_probes_without_credentials_and_fails_closed(
         assert "hospital: Non-JSON authentication response" in captured.err
     if outcome == "missing":
         assert "hospital: API route returned HTTP 404" in captured.err
+    if outcome == "imitation":
+        assert "hospital: Response lacks the API contract header" in captured.err
     assert gate.NoRedirect().redirect_request(None, None, 302, "", None, "https://other.test") is None
 
 

@@ -13,7 +13,7 @@ SPEC.loader.exec_module(gate)
 LIVE = (*gate.REQUIRED_WORKFLOWS, "release-android.yml")
 REF_CONDITION = (
     "    if: >-\n      github.ref == 'refs/heads/main' ||\n"
-    "      github.ref == 'refs/heads/beta/v0.2.1'\n"
+    "      github.ref == 'refs/heads/beta/v0.2.2'\n"
 )
 APK_ABI_CHECK = '"${APK_NATIVE_ABIS}" != "arm64-v8a,armeabi-v7a" || "${APK_ENGINE_ABIS}" != "${APK_NATIVE_ABIS}"'
 
@@ -71,7 +71,7 @@ def test_release_gate_workflows_never_cancel_or_queue_push_runs() -> None:
 def test_signing_jobs_keep_the_exact_ref_condition() -> None:
     workflow = _workflow("release-android.yml")
     assert workflow.count(REF_CONDITION) == 2
-    assert workflow.count("refs/heads/beta/v0.2.1") == 5
+    assert workflow.count("refs/heads/beta/v0.2.2") == 5
     assert "        run: python3 scripts/check_release_ci.py\n" in workflow
 
 
@@ -122,3 +122,26 @@ def test_flutter_sdk_pin_is_identical_in_ci_and_signing() -> None:
         for name in ("frontend-ci.yml", "release-android.yml")
     }
     assert pins["frontend-ci.yml"] == pins["release-android.yml"] and len(pins["frontend-ci.yml"]) == 1
+
+# Function Name: test_third_party_actions_are_pinned_to_a_commit
+# Description: An action outside GitHub's own "actions" organisation must be referenced by a full
+#   commit SHA with its version as a comment: a tag can be moved to other code, and these
+#   workflows hold the signing material and the deployment identity.
+# Parameters: None.
+# Returns: None; fails when a third-party action is referenced by a tag or branch.
+def test_third_party_actions_are_pinned_to_a_commit() -> None:
+    references = [
+        (path.name, line.split("uses:", 1)[1].strip())
+        for path in sorted((ROOT / ".github/workflows").glob("*.yml"))
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip().startswith(("uses:", "- uses:"))
+    ]
+    third_party = [
+        (name, reference) for name, reference in references
+        if not reference.startswith("actions/")
+    ]
+    assert third_party, "expected the Flutter and Google Cloud actions"
+    for name, reference in third_party:
+        assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40} # v\d+\.\d+\.\d+", reference), (
+            name, reference,
+        )

@@ -11,6 +11,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from boundaries.llm_service_boundary import LLMService
+from boundaries.medication_summary_boundary import FAILED_SUMMARY_TEXT
 from core.application_clock import application_today
 from core.request_database_work import run_request_database_work
 from entities.health_recommendation_cache_entity import _HealthRecommendationCache
@@ -21,6 +22,14 @@ from repositories.saved_medication_repository import SavedMedicationRepository
 from services.medication_course_policy import MedicationCoursePolicy
 
 logger = logging.getLogger(__name__)
+
+# Stored guidance fields of a medication, and the texts a field holds when the detail lookup
+# found nothing or its summary failed. A medication whose three fields are all blank or one of
+# these texts has no information the guidance could be based on.
+_INFORMATION_FIELDS = ("efficacy", "use_method", "warning_message")
+_NO_INFORMATION_TEXTS = frozenset(
+    {"정보 없음", FAILED_SUMMARY_TEXT, "no information", "no info"}
+)
 
 
 # Function Name: _accept_current_access
@@ -76,6 +85,9 @@ class CheckHealthRecommendation:
     # - Loads a detached recommendation snapshot off-loop, generates missing guidance and caches it in a second sequential worker phase.
     # - Holds no transaction or connection while the guidance is generated, then re-validates access and the medication
     #   inputs before caching; cancellation drains database work before session cleanup.
+    # - A medication without stored information is never sent to the generator, by name or otherwise, so no advice
+    #   can be produced for it; the response names it in a server-written caution instead. When no active medication
+    #   has stored information nothing is generated or cached and the response says guidance is unavailable.
     # Parameters:
     # - patient_hash (str | None): Authorized patient ownership scope.
     # - language (str): Requested recommendation language.
@@ -102,20 +114,34 @@ class CheckHealthRecommendation:
             language,
             validate_access=validate_access,
         )
+        informed_summaries = [
+            summary for summary in medication_summaries
+            if self._has_stored_information(summary)
+        ]
+        if not informed_summaries:
+            return self._build_response(
+                self._unavailable_recommendation(language),
+                medication_summaries,
+                "Health recommendation is unavailable without medication information.",
+            )
+        # The cache holds only what was generated; the notice is rebuilt for every response.
+        notice = self._missing_information_notice(medication_summaries, language)
         if cached_recommendation is not None:
             return self._build_response(
-                cached_recommendation,
+                self._with_notice(cached_recommendation, notice),
                 medication_summaries,
                 "Health recommendation loaded from cache.",
             )
 
         recommendation = await self.llm_service.requestHealthRecommendation(
-            medication_summaries,
+            informed_summaries,
             language,
         )
         # 외부 대기 중에는 연결을 보유하지 않고, 저장 전에 권한과 복약 입력을 다시 확인한다.
         response = self._build_response(
-            recommendation, medication_summaries, "Health recommendation generated.",
+            self._with_notice(recommendation, notice),
+            medication_summaries,
+            "Health recommendation generated.",
         )
         await run_request_database_work(
             self._save_revalidated_recommendation,
@@ -223,9 +249,118 @@ class CheckHealthRecommendation:
             "data": health_recommendation.model_dump(),
         }
 
+    # Function Name: _has_stored_information
+    # Description:
+    # - Tells whether a medication has any stored efficacy, usage or warning text other than a placeholder.
+    # Parameters:
+    # - summary (dict[str, str]): Medication summary built by _to_medication_summary.
+    # Returns:
+    # - True when at least one guidance field carries real text.
+    @staticmethod
+    def _has_stored_information(summary: dict[str, str]) -> bool:
+        return any(
+            (text := summary.get(field, "").strip())
+            and text.lower() not in _NO_INFORMATION_TEXTS
+            for field in _INFORMATION_FIELDS
+        )
+
+    # Function Name: _missing_information_notice
+    # Description:
+    # - Writes the caution that names the active medications left out of the generated guidance.
+    # Parameters:
+    # - medication_summaries (list[dict[str, str]]): All active medication summaries.
+    # - language (str): Requested Korean or English content language.
+    # Returns:
+    # - Localized caution text, or an empty string when every medication has stored information.
+    def _missing_information_notice(
+        self,
+        medication_summaries: list[dict[str, str]],
+        language: str,
+    ) -> str:
+        names = list(dict.fromkeys(
+            summary["item_name"]
+            for summary in medication_summaries
+            if not self._has_stored_information(summary) and summary["item_name"]
+        ))
+        if not names:
+            return ""
+        joined_names = ", ".join(names)
+        if self._normalize_language(language) == "en":
+            return (
+                "No medication information is stored for the following, so this guidance "
+                f"does not cover them: {joined_names}. Please ask your doctor or pharmacist."
+            )
+        return (
+            f"다음 약은 저장된 약 정보가 없어 이 추천에 반영되지 않았습니다: {joined_names}. "
+            "의사나 약사에게 확인하세요."
+        )
+
+    # Function Name: _with_notice
+    # Description:
+    # - Returns the guidance with the missing-information caution placed first; the given payload is not changed,
+    #   so the cached copy never contains the notice.
+    # Parameters:
+    # - recommendation (dict[str, object]): Generated or cached guidance.
+    # - notice (str): Caution from _missing_information_notice; empty for none.
+    # Returns:
+    # - The same payload when there is no notice, otherwise a copy with the extended caution list.
+    @staticmethod
+    def _with_notice(
+        recommendation: dict[str, object],
+        notice: str,
+    ) -> dict[str, object]:
+        if not notice:
+            return recommendation
+        caution_items = recommendation.get("caution_items")
+        return {
+            **recommendation,
+            "caution_items": [
+                notice,
+                *(caution_items if isinstance(caution_items, list) else []),
+            ],
+        }
+
+    # Function Name: _unavailable_recommendation
+    # Description:
+    # - Builds the server-written answer for a patient none of whose active medications has stored information.
+    #   It is produced without the generator and is never cached.
+    # Parameters:
+    # - language (str): Requested Korean or English content language.
+    # Returns:
+    # - Guidance payload stating that diet and exercise advice cannot be given.
+    def _unavailable_recommendation(self, language: str) -> dict[str, object]:
+        if self._normalize_language(language) == "en":
+            return {
+                "diet_recommendation": (
+                    "No medication information is stored for your current medications, "
+                    "so a diet recommendation cannot be given."
+                ),
+                "exercise_recommendation": (
+                    "No medication information is stored for your current medications, "
+                    "so an exercise recommendation cannot be given."
+                ),
+                "caution_items": [
+                    "Please ask your doctor or pharmacist about diet, exercise and "
+                    "precautions for these medications."
+                ],
+            }
+        return {
+            "diet_recommendation": (
+                "복용 중인 약의 저장된 정보가 없어 식사 추천을 제공할 수 없습니다."
+            ),
+            "exercise_recommendation": (
+                "복용 중인 약의 저장된 정보가 없어 운동 추천을 제공할 수 없습니다."
+            ),
+            "caution_items": [
+                "이 약들의 식사·운동·주의사항은 의사나 약사에게 확인하세요."
+            ],
+        }
+
     # Function Name: _build_recommendation_key
     # Description:
     # - Sorts medication summaries and hashes their JSON together with the normalized language.
+    # - A set that contains a medication without stored information is hashed with an extra marker: guidance cached
+    #   for such a set before those medications were withheld from the generator must not be served again.
     # Parameters:
     # - medication_summaries (list[dict[str, str]]): Active medication guidance and course fields used by the AI prompt.
     # - language (str): Requested Korean or English content language.
@@ -245,11 +380,14 @@ class CheckHealthRecommendation:
                 item.get("total_days", ""),
             ),
         )
+        key_fields: dict[str, object] = {
+            "language": self._normalize_language(language),
+            "medications": normalized_summaries,
+        }
+        if not all(map(self._has_stored_information, normalized_summaries)):
+            key_fields["generated_without_uninformed_medications"] = True
         raw_key = json.dumps(
-            {
-                "language": self._normalize_language(language),
-                "medications": normalized_summaries,
-            },
+            key_fields,
             ensure_ascii=False,
             sort_keys=True,
         )

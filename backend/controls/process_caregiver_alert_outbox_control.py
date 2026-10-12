@@ -19,6 +19,7 @@ from fastapi import HTTPException
 from core.application_clock import application_today
 from entities.caregiver_alert_outbox_entity import (
     CAREGIVER_ALERT_EVENT_DOSE_COMPLETED,
+    CAREGIVER_ALERT_EVENT_LATE_LINK_COMPLETED,
     CAREGIVER_ALERT_EVENT_MISSED_DEADLINE,
     CAREGIVER_ALERT_STATUS_DEAD_LETTER,
     CAREGIVER_ALERT_STATUS_FAILED,
@@ -197,7 +198,17 @@ class ProcessCaregiverAlertOutbox:
             patient_hash = str(row.patient_hash)
             slot_key = str(row.slot_key)
             schedule_date = row.schedule_date
-            if event_type == CAREGIVER_ALERT_EVENT_DOSE_COMPLETED:
+            if event_type in (
+                CAREGIVER_ALERT_EVENT_DOSE_COMPLETED,
+                CAREGIVER_ALERT_EVENT_LATE_LINK_COMPLETED,
+            ):
+                # A late-link event reaches only the caregiver it names; the others
+                # were already told by the patient's event for this slot and day.
+                recipient_scope: dict[str, str] = {}
+                if event_type == CAREGIVER_ALERT_EVENT_LATE_LINK_COMPLETED:
+                    if row.caregiver_hash is None:
+                        raise ValueError("Late-link completion event has no caregiver.")
+                    recipient_scope["only_caregiver_hash"] = str(row.caregiver_hash)
                 # Never reinterpret an old or undated event as today's dose.
                 reason = None
                 if schedule_date != application_today():
@@ -218,10 +229,12 @@ class ProcessCaregiverAlertOutbox:
                 ManageLinkedChat(self.db).publish_slot_completion(
                     patient_hash=patient_hash,
                     slot_key=slot_key,
+                    **recipient_scope,
                 )
                 delivery_result = self.dispatcher.notifySlotCompleted(
                     patient_hash=patient_hash,
                     slot_key=slot_key,
+                    **recipient_scope,
                 )
             elif event_type == CAREGIVER_ALERT_EVENT_MISSED_DEADLINE:
                 if row.caregiver_hash is None or schedule_date is None:

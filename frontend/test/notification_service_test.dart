@@ -683,6 +683,85 @@ void main() {
       events.add('provider-sign-out');
     });
 
-    expect(events, ['reminders-canceled', 'provider-sign-out']);
+    // 세션이 끝난 뒤에도 한 번 더 취소한다(서버가 끊은 세션과 같은 경로).
+    expect(events, [
+      'reminders-canceled',
+      'provider-sign-out',
+      'reminders-canceled',
+    ]);
+  });
+
+  // Function Name: testWidgets callback
+  // Description:
+  // - Expected behavior: when the server ended the session, the sign-out preparation stops at its
+  //   first step (the push token cannot be unregistered with the rejected credential), yet the
+  //   ended account's local medication reminders are still canceled once the session is cleared.
+  // Parameters:
+  // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
+  // Returns:
+  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  testWidgets('a session ended by the server cancels local medication reminders', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final events = <String>[];
+    var cleanupCalls = 0;
+    final authenticationControl = AuthenticationControl.development();
+    addTearDown(authenticationControl.dispose);
+
+    await tester.pumpWidget(
+      MedBuddyApp(
+        authenticationControl: authenticationControl,
+        // Function Name: sessionReminderCleanup callback
+        // Description:
+        // - Fails on the first call, standing in for a preparation that could not finish, and
+        //   records reminder cancellation afterwards.
+        // Parameters:
+        // - None.
+        // Returns:
+        // - Future<void>; records reminder cleanup or throws on the first call.
+        sessionReminderCleanup: () async {
+          cleanupCalls += 1;
+          if (cleanupCalls == 1) {
+            events.add('preparation-failed');
+            throw StateError('The device push token could not be unregistered.');
+          }
+          events.add('reminders-canceled');
+        },
+        // Function Name: viewModelFactory callback
+        // Description:
+        // - Build a view model using local settings and injected schedule/alarm/notification fixtures.
+        // Parameters:
+        // - None.
+        // Returns:
+        // - A MedBuddyViewModel isolated from real notification plugins.
+        viewModelFactory: () => MedBuddyViewModel(
+          checkSchedule: _EmptyCheckSchedule(),
+          setNotification: EmptySetNotification(),
+          manageUserSetting: ManageUserSetting(useRemotePersistence: false),
+          notificationService: RecordingNotificationService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(events, isEmpty);
+
+    // Function Name: invalidateUnauthorizedSessionForTest callback
+    // Description:
+    // - Append provider sign-out, which runs after the session was cleared.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>; records provider sign-out.
+    await authenticationControl.invalidateUnauthorizedSessionForTest(() async {
+      events.add('provider-sign-out');
+    });
+    await tester.pumpAndSettle();
+
+    expect(events, [
+      'preparation-failed',
+      'reminders-canceled',
+      'provider-sign-out',
+    ]);
   });
 }

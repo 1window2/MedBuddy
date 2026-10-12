@@ -34,13 +34,19 @@ class MedBuddyReminderViewModel {
   final UserSetting Function() _readUserSetting;
   final List<MedicationSchedule> Function() _readSchedules;
   final bool Function() _scheduleIsFresh;
+  // 앞으로 14일 안에 복용 기간이 걸치는 약을 읽는다. 오늘 일정에는 오늘 복용하는 약만 있어, 주 1회·격일 약이
+  // 쉬는 날에는 그 약이 보이지 않기 때문에 알림 날짜와 "빈 시간대" 판단은 이 목록으로 한다.
+  final Future<List<MedicationSchedule>> Function()? _loadScheduleWindow;
   final void Function(String) _onChanged;
   bool _disposed = false;
   int _loadGeneration = 0;
+  final Set<String> _writingSlots = {};
+  Future<void>? _synchronization;
+  int? _synchronizationGeneration;
   String _statusMessage = '';
   // Function Name: MedBuddyReminderViewModel
   // Description: Binds reminder dependencies and read-only feature snapshots.
-  // Parameters: Controls, patient, snapshot providers and change callback. Returns: State owner.
+  // Parameters: Controls, patient, snapshot providers, the optional 14-day course loader and change callback. Returns: State owner.
   MedBuddyReminderViewModel({
     required this.setNotification,
     required this.notificationService,
@@ -48,10 +54,12 @@ class MedBuddyReminderViewModel {
     required UserSetting Function() readUserSetting,
     required List<MedicationSchedule> Function() readSchedules,
     required bool Function() scheduleIsFresh,
+    Future<List<MedicationSchedule>> Function()? loadScheduleWindow,
     required void Function(String) onChanged,
   }) : _readUserSetting = readUserSetting,
        _readSchedules = readSchedules,
        _scheduleIsFresh = scheduleIsFresh,
+       _loadScheduleWindow = loadScheduleWindow,
        _onChanged = onChanged;
   // Function Name: userSetting
   // Description: Reads current settings without owning them. Parameters: None. Returns: Settings.
@@ -87,7 +95,7 @@ class MedBuddyReminderViewModel {
   Future<void> loadMedicationReminderSettings({
     bool notifyAfterLoad = true,
   }) async {
-    if (_disposed) return;
+    if (_disposed || _writingSlots.isNotEmpty) return;
     final generation = ++_loadGeneration;
     _lastReminderSettingsLoadSucceeded = false;
     try {
@@ -110,6 +118,7 @@ class MedBuddyReminderViewModel {
       final preferences = await SharedPreferences.getInstance();
       if (_disposed || generation != _loadGeneration) return;
       for (final setting in settingsBySlot.values) {
+        if (_disposed || generation != _loadGeneration) return;
         await _cacheMedicationReminderSetting(preferences, setting);
       }
       if (!_disposed && generation == _loadGeneration) {
@@ -141,6 +150,41 @@ class MedBuddyReminderViewModel {
     required int hour,
     required int minute,
     required List<MedicationSchedule> schedules,
+  }) => _runReminderWrite(
+    slotKey,
+    () => _saveMedicationReminder(
+      slotKey: slotKey,
+      slotTitle: slotTitle,
+      hour: hour,
+      minute: minute,
+      schedules: schedules,
+    ),
+  );
+
+  // 같은 시간대의 중복 쓰기와 저장 이전에 시작한 조회의 뒤늦은 덮어쓰기를 막는다.
+  Future<bool> _runReminderWrite(
+    String slotKey,
+    Future<bool> Function() write,
+  ) async {
+    if (_disposed || !_writingSlots.add(slotKey)) return false;
+    _loadGeneration++;
+    try {
+      // 이미 시작된 서버·기기·캐시 작업을 마친 뒤 최신 사용자 설정을 적용한다.
+      final synchronization = _synchronization;
+      if (synchronization != null) await synchronization;
+      if (_disposed) return false;
+      return await write();
+    } finally {
+      _writingSlots.remove(slotKey);
+    }
+  }
+
+  Future<bool> _saveMedicationReminder({
+    required String slotKey,
+    required String slotTitle,
+    required int hour,
+    required int minute,
+    required List<MedicationSchedule> schedules,
   }) async {
     final storageKey = _reminderStorageKey(slotKey);
     if (!userSetting.medicationNotificationsEnabled) {
@@ -150,24 +194,33 @@ class MedBuddyReminderViewModel {
       _notifyViewModelListeners(MedBuddyFeature.reminder);
       return false;
     }
+    // 오늘 복용할 약이 없는 시간대라도 앞으로 14일 안에 복용하는 날이 있으면(주 1회 약의 쉬는 날 등)
+    // 알림을 켤 수 있어야 한다. 그렇지 않으면 복용하는 날에 앱을 열어야만 알림을 설정할 수 있다.
+    List<MedicationSchedule>? window;
     if (schedules.isEmpty) {
-      _statusMessage = _isEnglishSetting
-          ? 'There is no medication in this time slot.'
-          : '이 시간대에 복용할 약이 없습니다.';
-      _notifyViewModelListeners(MedBuddyFeature.reminder);
-      return false;
+      window = await _loadScheduleWindowOrNull();
+      if (_disposed) return false;
+      if (window == null || _schedulesForSlot(window, slotKey).isEmpty) {
+        _statusMessage = _isEnglishSetting
+            ? 'There is no medication in this time slot.'
+            : '이 시간대에 복용할 약이 없습니다.';
+        _notifyViewModelListeners(MedBuddyFeature.reminder);
+        return false;
+      }
     }
 
     bool hasPermission;
     try {
       hasPermission = await notificationService.requestPermission();
     } catch (_) {
+      if (_disposed) return false;
       _statusMessage = _isEnglishSetting
           ? 'Could not request notification permission.'
           : '알림 권한을 요청하지 못했습니다.';
       _notifyViewModelListeners(MedBuddyFeature.reminder);
       return false;
     }
+    if (_disposed) return false;
     if (!hasPermission) {
       _statusMessage = _isEnglishSetting
           ? 'Notification permission was not allowed.'
@@ -183,20 +236,28 @@ class MedBuddyReminderViewModel {
         hour: hour,
         minute: minute,
       );
+      if (_disposed) return false;
       persistedSetting = setting;
 
+      window ??= await _loadScheduleWindowOrNull();
       await _scheduleMedicationReminder(
         setting: setting,
         slotTitle: slotTitle,
         schedules: schedules,
+        courseSchedules: window == null
+            ? null
+            : _schedulesForSlot(window, setting.slotKey),
       );
+      if (_disposed) return false;
 
       final preferences = await SharedPreferences.getInstance();
+      if (_disposed) return false;
       await _cacheMedicationReminderSetting(
         preferences,
         setting,
         storageKey: storageKey,
       );
+      if (_disposed) return false;
       _medicationReminderSettings[setting.slotKey] = setting;
       final displayTime = userSetting.formatTime(setting.hour, setting.minute);
       _statusMessage = _isEnglishSetting
@@ -205,6 +266,7 @@ class MedBuddyReminderViewModel {
       _notifyViewModelListeners(MedBuddyFeature.reminder);
       return true;
     } on StateError {
+      if (_disposed) return false;
       await _rollbackMedicationReminderSave(
         alarmControl: setNotification,
         setting: persistedSetting,
@@ -216,6 +278,7 @@ class MedBuddyReminderViewModel {
       _notifyViewModelListeners(MedBuddyFeature.reminder);
       return false;
     } catch (_) {
+      if (_disposed) return false;
       await _rollbackMedicationReminderSave(
         alarmControl: setNotification,
         setting: persistedSetting,
@@ -230,35 +293,72 @@ class MedBuddyReminderViewModel {
   }
 
   // 함수이름: requestMedicationReminderCancel
-  // 함수역할: 이미 활성화된 시간대별 복약 알림을 취소하고 로컬 설정을 비활성화한다.
+  // 함수역할: 이미 활성화된 시간대별 복약 알림을 취소하고 로컬 설정을 비활성화한다. 같은 저장에서 시각도
+  //   바꿨다면 그 시각을 꺼진 알림과 함께 저장한다.
   // 매개변수:
   // - slotKey (String): morning, lunch, evening, bedtime 중 하나
   // - slotTitle (String): 사용자에게 보여줄 시간대명
+  // - hour (int?): 함께 저장할 새 알림 시; 생략하면 저장된 시각을 유지한다
+  // - minute (int?): 함께 저장할 새 알림 분
   // 반환값:
   // - 알림 취소 성공 여부
   Future<bool> requestMedicationReminderCancel({
     required String slotKey,
     required String slotTitle,
+    int? hour,
+    int? minute,
+  }) => _runReminderWrite(
+    slotKey,
+    () => _disableMedicationReminder(
+      slotKey: slotKey,
+      slotTitle: slotTitle,
+      hour: hour,
+      minute: minute,
+    ),
+  );
+
+  Future<bool> _disableMedicationReminder({
+    required String slotKey,
+    required String slotTitle,
+    int? hour,
+    int? minute,
   }) async {
     final storageKey = _reminderStorageKey(slotKey);
     try {
       final disabledSetting = await setNotification.disableAlarmSetting(
         slotKey,
+        hour: hour,
+        minute: minute,
       );
+      if (_disposed) return false;
       await _cancelMedicationReminder(disabledSetting);
+      if (_disposed) return false;
       final preferences = await SharedPreferences.getInstance();
+      if (_disposed) return false;
       await _cacheMedicationReminderSetting(
         preferences,
         disabledSetting,
         storageKey: storageKey,
       );
+      if (_disposed) return false;
       _medicationReminderSettings[disabledSetting.slotKey] = disabledSetting;
+      // 구형 서버가 시각을 무시해도 알림은 끄고, 시각 저장 성공으로 표시하지 않는다.
+      if (hour != null &&
+          (disabledSetting.hour != hour ||
+              disabledSetting.minute != (minute ?? 0))) {
+        _statusMessage = _isEnglishSetting
+            ? 'The reminder is off, but its time could not be updated.'
+            : '알림은 꺼졌지만 시각을 변경하지 못했습니다.';
+        _notifyViewModelListeners(MedBuddyFeature.reminder);
+        return false;
+      }
       _statusMessage = _isEnglishSetting
           ? '$slotTitle reminder has been turned off.'
           : '$slotTitle 알림이 해제되었습니다.';
       _notifyViewModelListeners(MedBuddyFeature.reminder);
       return true;
     } catch (_) {
+      if (_disposed) return false;
       _statusMessage = _isEnglishSetting
           ? 'Could not turn off the $slotTitle reminder.'
           : '$slotTitle 알림을 해제하지 못했습니다.';
@@ -321,7 +421,7 @@ class MedBuddyReminderViewModel {
     required MedicationAlarm? setting,
     required String storageKey,
   }) async {
-    if (setting == null) {
+    if (_disposed || setting == null) {
       return;
     }
 
@@ -330,6 +430,7 @@ class MedBuddyReminderViewModel {
     } catch (_) {
       // Local cancellation is best-effort while restoring cross-system state.
     }
+    if (_disposed) return;
 
     MedicationAlarm disabledSetting = setting.copyWith(enabled: false);
     try {
@@ -337,9 +438,11 @@ class MedBuddyReminderViewModel {
     } catch (_) {
       // The disabled cache state prevents an offline reload from rescheduling it.
     }
+    if (_disposed) return;
 
     try {
       final preferences = await SharedPreferences.getInstance();
+      if (_disposed) return;
       await _cacheMedicationReminderSetting(
         preferences,
         disabledSetting,
@@ -385,11 +488,15 @@ class MedBuddyReminderViewModel {
 
   // 함수이름: _synchronizeMedicationReminderSchedules
   // 함수역할: 사용자 알림 허용과 시간대 활성·약 존재 여부에 따라 예약을 재구성하고 빈 시간대 설정을 비활성화한다.
+  //   오늘 일정이 비어 있어도 앞으로 14일 안에 그 시간대에 복용하는 약이 있으면 빈 시간대로 보지 않는다.
   // 매개변수:
   // - 없음.
   // 반환값:
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
-  Future<void> _synchronizeMedicationReminderSchedules() async {
+  Future<void> _synchronizeMedicationReminderSchedules(
+    bool Function() isCurrent,
+  ) async {
+    if (!isCurrent()) return;
     if (!userSetting.medicationNotificationsEnabled) {
       await notificationService.cancelAllScheduledMedicationReminders();
       return;
@@ -399,25 +506,55 @@ class MedBuddyReminderViewModel {
     }
 
     final preferences = await SharedPreferences.getInstance();
+    // 켜진 알림이 있을 때만 한 번 읽는다. 읽지 못하면 null로 두고 오늘 일정만으로 판단한다.
+    List<MedicationSchedule>? window;
+    var windowRequested = false;
     for (final slotKey in medicationScheduleSlotKeys) {
+      if (!isCurrent()) return;
       final setting =
           _medicationReminderSettings[slotKey] ??
           _defaultMedicationAlarm(slotKey);
       if (!setting.isEnabled) {
-        await _cancelMedicationReminder(setting);
+        await _cancelMedicationReminder(setting, isCurrent: isCurrent);
         continue;
       }
 
+      if (!windowRequested) {
+        windowRequested = true;
+        window = await _loadScheduleWindowOrNull();
+        if (!isCurrent()) return;
+      }
       final schedules = _schedulesForReminderSlot(slotKey);
+      final courseSchedules = window == null
+          ? null
+          : _schedulesForSlot(window, slotKey);
+      if (schedules.isEmpty && (courseSchedules?.isNotEmpty ?? false)) {
+        // 오늘은 쉬는 날인 약만 있는 시간대다. 알림 설정은 그대로 두고 복용하는 날짜에만 예약한다.
+        await _scheduleMedicationReminder(
+          setting: setting,
+          slotTitle: _reminderSlotTitle(slotKey),
+          schedules: schedules,
+          courseSchedules: courseSchedules,
+          isCurrent: isCurrent,
+        );
+        continue;
+      }
       if (schedules.isEmpty) {
+        // 기간 일정을 읽지 못했으면 오늘 일정이 비었다는 것만으로 알림을 끄지 않는다. 매일 먹지 않는 약만
+        // 있는 시간대일 수 있고, 꺼진 설정은 복용하는 날에도 알림이 오지 않게 만든다.
+        if (_loadScheduleWindow != null && window == null) {
+          continue;
+        }
         final disabledSetting = await _disableReminderSettingForEmptySlot(
           setNotification,
           slotKey,
           setting,
         );
+        if (!isCurrent()) return;
         await _cacheMedicationReminderSetting(preferences, disabledSetting);
+        if (!isCurrent()) return;
         _medicationReminderSettings[disabledSetting.slotKey] = disabledSetting;
-        await _cancelMedicationReminder(disabledSetting);
+        await _cancelMedicationReminder(disabledSetting, isCurrent: isCurrent);
         continue;
       }
 
@@ -425,8 +562,45 @@ class MedBuddyReminderViewModel {
         setting: setting,
         slotTitle: _reminderSlotTitle(slotKey),
         schedules: schedules,
+        courseSchedules: courseSchedules,
+        isCurrent: isCurrent,
       );
     }
+  }
+
+  // 함수이름: _loadScheduleWindowOrNull
+  // 함수역할: 앞으로 14일의 복약 기간 일정을 읽는다. 조회 경계가 없거나 조회에 실패하면 null을 돌려
+  //   호출자가 오늘 일정으로 대신 판단하게 한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<List<MedicationSchedule>?>: 기간 일정, 읽지 못하면 null.
+  Future<List<MedicationSchedule>?> _loadScheduleWindowOrNull() async {
+    final loadScheduleWindow = _loadScheduleWindow;
+    if (loadScheduleWindow == null) return null;
+    try {
+      return await loadScheduleWindow();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // 함수이름: _schedulesForSlot
+  // 함수역할: 주어진 일정 중 명시·추론된 시간대가 대상 알림 시간대를 포함하는 약만 모은다.
+  // 매개변수:
+  // - schedules (List<MedicationSchedule>): 분류할 복약 일정 목록
+  // - slotKey (String): morning·lunch·evening·bedtime 복약 시간대 키
+  // 반환값:
+  // - List<MedicationSchedule>: 대상 시간대에 속한 일정.
+  List<MedicationSchedule> _schedulesForSlot(
+    List<MedicationSchedule> schedules,
+    String slotKey,
+  ) {
+    return schedules
+        .where(
+          (schedule) => resolveScheduleSlotKeys(schedule).contains(slotKey),
+        )
+        .toList(growable: false);
   }
 
   // 함수이름: synchronizeIfFresh
@@ -435,19 +609,42 @@ class MedBuddyReminderViewModel {
   // - 없음.
   // 반환값:
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
-  Future<void> synchronizeIfFresh() async {
-    if (!_scheduleIsFresh() || !_lastReminderSettingsLoadSucceeded) {
-      return;
+  Future<void> synchronizeIfFresh() {
+    if (_disposed ||
+        _writingSlots.isNotEmpty ||
+        !_scheduleIsFresh() ||
+        !_lastReminderSettingsLoadSucceeded) {
+      return Future<void>.value();
     }
-    try {
-      await _synchronizeMedicationReminderSchedules();
-    } catch (_) {
-      _statusMessage = _isEnglishSetting
-          ? 'The schedule loaded, but reminders could not be synchronized.'
-          : '복약 일정은 불러왔지만 알림을 동기화하지 못했습니다.';
-      _notifyViewModelListeners(MedBuddyFeature.reminder);
+    final pending = _synchronization;
+    final generation = _loadGeneration;
+    if (pending != null && _synchronizationGeneration == generation) {
+      return pending;
     }
+    _synchronizationGeneration = generation;
+    bool isCurrent() => !_disposed && generation == _loadGeneration;
+    late final Future<void> synchronization;
+    // 같은 세대는 합치되, 새 조회의 동기화는 이전 작업 뒤에서 다시 검사한다.
+    synchronization = (pending ?? Future<void>.value())
+        .then((_) => _synchronizeMedicationReminderSchedules(isCurrent))
+        .catchError((Object _) {
+          if (!isCurrent()) return;
+          _statusMessage = _isEnglishSetting
+              ? 'The schedule loaded, but reminders could not be synchronized.'
+              : '복약 일정은 불러왔지만 알림을 동기화하지 못했습니다.';
+          _notifyViewModelListeners(MedBuddyFeature.reminder);
+        })
+        .whenComplete(() {
+          if (identical(_synchronization, synchronization)) {
+            _synchronization = null;
+          }
+        });
+    return _synchronization = synchronization;
   }
+
+  // 수동 저장은 생명주기만, 자동 동기화는 시작 당시 세대도 함께 검사한다.
+  bool _canContinueReminder(bool Function()? isCurrent) =>
+      !_disposed && (isCurrent?.call() ?? true);
 
   // 함수이름: _disableReminderSettingForEmptySlot
   // 함수역할: 빈 시간대의 서버 알림 비활성화를 시도하고 실패하면 기존 설정의 비활성 사본으로 대체한다.
@@ -470,22 +667,27 @@ class MedBuddyReminderViewModel {
   }
 
   // 함수이름: _scheduleMedicationReminder
-  // 함수역할: 민감정보 표시 정책을 적용하고 구형 예약을 제거한 뒤 복용 기간 안의 날짜로 알림을 등록한다. 알림 문구는 약 이름을 쓰지 않으므로 날짜별 약명은 만들지 않는다.
+  // 함수역할: 민감정보 표시 정책을 적용하고 구형 예약을 제거한 뒤 복용 기간 안의 복용하는 날짜로 알림을 등록한다. 알림 문구는 약 이름을 쓰지 않으므로 날짜별 약명은 만들지 않는다.
   // 매개변수:
   // - setting (MedicationAlarm): 해당 복약 시간대의 알림 설정
   // - slotTitle (String): 현재 언어로 표시할 복약 시간대 이름
-  // - schedules (List<MedicationSchedule>): 조회·비교·예약에 사용할 복약 일정 목록
+  // - schedules (List<MedicationSchedule>): 이 시간대에 오늘 복용하는 약; 오늘 복용 완료 여부를 판단한다
+  // - courseSchedules (List<MedicationSchedule>?): 이 시간대에 앞으로 14일 안에 복용 기간이 걸치는 약; 없으면 오늘 일정으로 날짜를 정한다
   // 반환값:
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
   Future<void> _scheduleMedicationReminder({
     required MedicationAlarm setting,
     required String slotTitle,
     required List<MedicationSchedule> schedules,
+    List<MedicationSchedule>? courseSchedules,
+    bool Function()? isCurrent,
   }) async {
+    if (!_canContinueReminder(isCurrent)) return;
     notificationService.setShowSensitiveDetails(
       userSetting.showNotificationDetails,
     );
-    await _cancelLegacyMedicationReminder(setting);
+    await _cancelLegacyMedicationReminder(setting, isCurrent: isCurrent);
+    if (!_canContinueReminder(isCurrent)) return;
     final now = DateTime.now();
     // 이 시간대의 약을 오늘 모두 복용했다면 오늘 알림은 다시 예약하지 않는다.
     final slotCompletedToday =
@@ -494,7 +696,8 @@ class MedBuddyReminderViewModel {
           (schedule) => schedule.isSlotCompleted(setting.slotKey),
         );
     final activeDates = MedicationReminderRefreshService.activeReminderDates(
-      schedules,
+      // 기간 일정이 늦게 반영되어도 오늘 복용하는 약의 날짜는 빠지지 않게 함께 넘긴다.
+      courseSchedules == null ? schedules : [...courseSchedules, ...schedules],
       now: now,
       slotCompletedToday: slotCompletedToday,
     );
@@ -536,12 +739,17 @@ class MedBuddyReminderViewModel {
   // - setting (MedicationAlarm): 해당 복약 시간대의 알림 설정
   // 반환값:
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
-  Future<void> _cancelMedicationReminder(MedicationAlarm setting) async {
+  Future<void> _cancelMedicationReminder(
+    MedicationAlarm setting, {
+    bool Function()? isCurrent,
+  }) async {
+    if (!_canContinueReminder(isCurrent)) return;
     await notificationService.cancelReminder(
       setting.notificationId,
       slotKey: setting.slotKey,
     );
-    await _cancelLegacyMedicationReminder(setting);
+    if (!_canContinueReminder(isCurrent)) return;
+    await _cancelLegacyMedicationReminder(setting, isCurrent: isCurrent);
   }
 
   // 함수이름: _cancelLegacyMedicationReminder
@@ -551,12 +759,17 @@ class MedBuddyReminderViewModel {
   // - setting (MedicationAlarm): 해당 복약 시간대의 알림 설정
   // 반환값:
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
-  Future<void> _cancelLegacyMedicationReminder(MedicationAlarm setting) async {
+  Future<void> _cancelLegacyMedicationReminder(
+    MedicationAlarm setting, {
+    bool Function()? isCurrent,
+  }) async {
+    if (!_canContinueReminder(isCurrent)) return;
     final legacyId = setting.legacyNotificationId;
     if (legacyId == setting.notificationId) {
       return;
     }
     final preferences = await SharedPreferences.getInstance();
+    if (!_canContinueReminder(isCurrent)) return;
     if (preferences.getBool(
           NotificationService.legacyReminderIdsCancelledKey,
         ) ==

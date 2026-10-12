@@ -118,7 +118,7 @@ def test_cancelled_websocket_handshake_finishes_database_work_before_close() -> 
         )
         with (
             patch.object(chat_router, "SessionLocal", return_value=db),
-            patch.object(chat_router, "_authenticate_websocket", return_value=object()),
+            patch.object(chat_router, "_authenticate_websocket", return_value=SimpleNamespace(expires_at=None)),
             patch.object(chat_router, "AuthorizationControl", return_value=SimpleNamespace(resolveOwnUserHash=authorize)),
         ):
             task = asyncio.create_task(chat_router.stream_chat_events(socket, 1, "patient"))
@@ -170,6 +170,8 @@ def test_websocket_handshake_offloads_auth_and_closes_session(failure: str | Non
         transport = []
         socket = SimpleNamespace(
             app=SimpleNamespace(state=SimpleNamespace(chat_connection_manager=ChatConnectionManager())),
+            # A released client declares no feature, so a refusal is closed before the accept.
+            headers={},
             accept=AsyncMock(side_effect=lambda: transport.append("accept")),
             close=AsyncMock(side_effect=lambda **_: transport.append("close")),
             send_json=AsyncMock(),
@@ -179,7 +181,7 @@ def test_websocket_handshake_offloads_auth_and_closes_session(failure: str | Non
         socket.app.state.chat_connection_manager.connect = AsyncMock(return_value=True)
         socket.app.state.chat_connection_manager.disconnect = AsyncMock()
         with patch.object(chat_router, "SessionLocal", return_value=db), \
-             patch.object(chat_router, "_authenticate_websocket", partial(blocking, "authenticate", object())), \
+             patch.object(chat_router, "_authenticate_websocket", partial(blocking, "authenticate", SimpleNamespace(expires_at=None))), \
              patch.object(chat_router, "AuthorizationControl", return_value=SimpleNamespace(
                  resolveOwnUserHash=partial(blocking, "authorize", "patient"))), \
              patch.object(chat_router, "ManageLinkedChat", return_value=SimpleNamespace(

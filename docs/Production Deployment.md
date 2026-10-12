@@ -273,6 +273,35 @@ issuance, quota headroom, or physical-device acceptance. Those gates stay open.
 
 ## Start or Update Production
 
+### Delayed-request rollout (`d19e7c4b2a60`)
+
+The integrated head is `f2c8a6d4e901`, a no-op merge of the existing catalogue
+refresh revision `c5e1a7f3b902` and resource-ID revision `d19e7c4b2a60`. Upgrade
+to `head` from either branch through Alembic; do not rewrite already-applied
+revisions or stamp past either parent's schema work.
+
+This revision adds a push-registration version and SQLite AUTOINCREMENT for
+saved medications and chat messages. It does not renumber existing rows or seed
+large timestamp IDs. SQLite protects current IDs and IDs issued after upgrade;
+previously deleted IDs have no recoverable high-water history and may still be
+issued once after upgrade. Current `MAX(id)` cannot prove those old IDs are safe.
+
+Before upgrading, complete dose synchronization on every device and review all
+failed or held items. Never bulk-discard or silently delete patient records;
+do not automatically replay an old request with an uncertain target. Resolve it
+with the user before proceeding. Reuse an operation ID only for the same original
+retry, not a new action. Preserve existing server outbox jobs and their state.
+
+Stop the apps, backend and workers, then take a consistent backup. Rehearse on a
+copy before running `python -m alembic upgrade head` from `backend/` through a
+dedicated migration connection, never a serving application session. For populated
+SQLite, that connection must have `foreign_keys=OFF`; keep enforcement ON for
+application connections. Compare row counts, existing values, indexes and foreign
+keys, and require clean SQLite `PRAGMA foreign_key_check` and `PRAGMA integrity_check`
+before restarting. Rehearse downgrade/re-upgrade on the copy too: downgrade removes
+these safeguards and the registration-version column, so stop workers and pair it
+with the older backend; it cannot recover previously deleted ID history.
+
 ### Durable chat rollout (`b3a7d9e2f601`)
 
 The chat-delivery worker requires this migration after `6d4f8a2c9301`.
@@ -353,6 +382,22 @@ never prunes unvisited rows. Production retries a failed full refresh after one
 hour. Configure the two intervals in `deploy/.env`; do not add
 `--only-if-empty` to this periodic service.
 
+The schedule is stored in the `catalog_refresh_state` table (start of the last
+refresh and completion of the last successful one), so restarting or
+redeploying the service does not start a new seven-day wait: the loop sleeps
+only for the time that is left, and a refresh that did not succeed is repeated
+one retry period after it started. With no recorded success, as on the first
+start after this table was added, the first refresh runs one retry period
+after the service starts. Rolling back to an image built before this table
+existed requires `alembic downgrade b3a7d9e2f601` with the current image
+first, because the backend refuses to start on a revision it does not know;
+the downgrade drops only this table. To see the state:
+
+```sh
+docker compose --env-file deploy/.env -f compose.self-hosted.yml \
+  exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select * from catalog_refresh_state"'
+```
+
 The pill catalog additionally requires complete upstream row accounting and an
 exact persisted `item_seq` reconciliation. Keep
 `PILL_IDENTIFICATION_KPIC_PRODUCT_FLOOR` aligned with the dated product count on
@@ -418,7 +463,7 @@ docker compose --env-file deploy/.env -f compose.self-hosted.yml \
   exec -T backend alembic current
 ```
 
-The reported head must be `b3a7d9e2f601` for this source revision. The
+The reported head must be `f2c8a6d4e901` for this source revision. The
 v0.2.0 tail adds the shared pharmacy catalog (`8f2c6d4a1b90`), pharmacy schedule provenance and holiday
 cache (`b6d14f8c2a70`), and structured chat message/context columns
 (`b4e7c2d9a160`), then merges the catalog/chat migration branches
@@ -426,7 +471,12 @@ cache (`b6d14f8c2a70`), and structured chat message/context columns
 generalizes the caregiver alert outbox (`c2a7e4d9f610`), then adds dose-sync
 operations (`a6e2d903bc71`), merges the caregiver-action branch
 (`f8a2c6d901be`), adds the pharmacy search cache (`6d4f8a2c9301`), and adds
-durable chat notification jobs (`b3a7d9e2f601`). Cloudflare Tunnel must
+durable chat notification jobs (`b3a7d9e2f601`). v0.2.2 adds the catalogue
+refresh schedule (`c5e1a7f3b902`), one new empty table, and resource-ID/push
+registration guards (`d19e7c4b2a60`), joined by `f2c8a6d4e901`. The merge itself
+changes no data. Downgrading only the merge does not remove either parent's
+schema changes; rehearse the intended older schema and application together.
+Cloudflare Tunnel must
 also permit WebSocket upgrades for
 `/api/v1/chat/links/*/stream`; no separate public port or second backend is
 required.

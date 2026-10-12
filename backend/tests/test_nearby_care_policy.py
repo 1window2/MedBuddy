@@ -147,7 +147,7 @@ def test_nearby_care_dependency_direction() -> None:
         ("services/nearby_care_policy.py", {"math", "datetime"}),
         ("boundaries/holiday_lookup_boundary.py", {"datetime", "typing"}),
     ):
-        tree = ast.parse((backend / relative).read_text())
+        tree = ast.parse((backend / relative).read_text(encoding="utf-8"))
         imports = {
             name.name.split(".")[0]
             for node in ast.walk(tree) if isinstance(node, ast.Import)
@@ -166,7 +166,7 @@ def test_nearby_care_dependency_direction() -> None:
         "hospital_department_search",
     ):
         path = backend / f"controls/{module}.py"
-        tree = ast.parse(path.read_text())
+        tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom):
                 assert node.module not in peer_controllers
