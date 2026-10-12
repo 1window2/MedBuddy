@@ -123,8 +123,13 @@ closed by any code on this branch:
       A second link in the other direction was created by code and removed by
       one side while the other had its chat open: the open chat showed
       "disconnected" within a minute and a send failed with "try again" —
-      the link's end was not stated. Fixed after this pass (see below), not
-      yet re-checked on a device.
+      the link's end was not stated. Fixed after this pass (see below) and
+      checked again the same evening with the signed build of `c87b14a` on
+      both devices: left alone, the open chat showed "link ended" and the
+      notice in place of the input 68 seconds after the link was removed;
+      with a message sent right after the removal it did so three seconds
+      after the send. In selection mode a tap on the message or beside it
+      toggled the selection.
       Not checked: two physical phones, more than three sessions on one link,
       a transient FCM failure, and Android 16.
 - [ ] Chat notifications show the message preview by default; the recipient
