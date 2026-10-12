@@ -554,6 +554,7 @@ async def stream_chat_events(
 #   사유를 보내고 닫아, 인증 실패·연동 해제·연결 한도를 구분해 대응할 수 있게 한다.
 # - 그 밖의 클라이언트에는 예전처럼 수락 전에 닫는다(HTTP 403). 0.2.0 앱은 연결이 열리면 재연결
 #   간격을 처음으로 되돌리므로, 수락 후 닫으면 1초마다 다시 연결한다.
+# - 거절한 연동 ID와 종료 코드를 로그에 남긴다. 계정 식별자와 사유 문자열은 남기지 않는다.
 # 매개변수:
 # - websocket (WebSocket): 연결 대기 중인 실시간 채팅 연결.
 # - code (int): 거절 사유를 나타내는 WebSocket 종료 코드.
@@ -561,6 +562,12 @@ async def stream_chat_events(
 # 반환값:
 # - 없음
 async def _reject(websocket: WebSocket, code: int, reason: str = "") -> None:
+    # 서버 접속 로그는 거절을 모두 403으로만 남기므로, 원인을 구분할 종료 코드를 따로 기록한다.
+    logger.info(
+        "Chat stream refused: link=%s code=%s",
+        getattr(websocket, "path_params", {}).get("link_id"),
+        code,
+    )
     if client_declares_feature(websocket, CHAT_CLOSE_CODES_FEATURE):
         await websocket.accept()
     if reason:

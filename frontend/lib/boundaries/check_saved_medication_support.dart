@@ -537,6 +537,29 @@ class _SavedMedicationText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get medicationPeriod => isEnglish ? 'Medication period' : '복용기간';
+  // 함수이름: nextDoseDay
+  // 함수역할: 현재 언어와 입력값에 맞춰 "다음 복용일" 문구를 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  String get nextDoseDay => isEnglish ? 'Next dose day' : '다음 복용일';
+  // 함수이름: nextDoseDayValue
+  // 함수역할: 다음 복용일을 오늘이면 "오늘", 아니면 월/일과 요일로 표시한다.
+  // 매개변수:
+  // - day (DateTime): 표시할 복용일.
+  // - today (DateTime): 오늘 날짜.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  String nextDoseDayValue(DateTime day, DateTime today) {
+    if (day.year == today.year && day.month == today.month && day.day == today.day) {
+      return isEnglish ? 'Today' : '오늘';
+    }
+    const koreanWeekdays = ['월', '화', '수', '목', '금', '토', '일'];
+    const englishWeekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final weekday = (isEnglish ? englishWeekdays : koreanWeekdays)[day.weekday - 1];
+    final date =
+        '${day.month.toString().padLeft(2, '0')}/${day.day.toString().padLeft(2, '0')}';
+    return '$date ($weekday)';
+  }
   // 함수이름: noImage
   // 함수역할: 현재 언어와 입력값에 맞춰 "제공된 약 사진이 없습니다." 문구를 제공한다.
   // 매개변수:

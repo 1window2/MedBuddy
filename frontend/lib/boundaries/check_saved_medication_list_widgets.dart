@@ -56,6 +56,9 @@ class _SavedMedicationNameRow extends StatelessWidget {
     final displayName = medication.itemName.trim().isEmpty
         ? text.noInformation
         : medication.itemName.trim();
+    // 매일 복용하지 않는 약은 쉬는 날 오늘 일정에 없으므로 다음 복용일을 함께 알려준다.
+    final today = DateTime.now();
+    final nextDoseDay = medication.nextDoseDayFrom(today);
 
     return Material(
       color: Colors.transparent,
@@ -112,6 +115,15 @@ class _SavedMedicationNameRow extends StatelessWidget {
                       value: _formatMedicationPeriod(medication),
                       fallback: text.noInformation,
                     ),
+                    if (nextDoseDay != null) ...[
+                      const SizedBox(height: 4),
+                      _MedicationDateLine(
+                        key: ValueKey('saved-medication-next-dose-${medication.id}'),
+                        label: text.nextDoseDay,
+                        value: text.nextDoseDayValue(nextDoseDay, today),
+                        fallback: text.noInformation,
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -150,11 +162,13 @@ class _MedicationDateLine extends StatelessWidget {
   // 함수이름: _MedicationDateLine
   // 함수역할: 날짜 제목·값과 날짜 부재 대체 표시에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
+  // - key (Key?): 테스트와 위젯 식별에 쓰는 키.
   // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
   // - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
   // - fallback (String): 값이나 약품 정보를 제공할 수 없을 때 사용할 대체 문구.
   // 반환값: 입력 설정이 반영된 _MedicationDateLine 인스턴스.
   const _MedicationDateLine({
+    super.key,
     required this.label,
     required this.value,
     required this.fallback,
@@ -195,7 +209,7 @@ String _formatMedicationDate(DateTime? value) {
 }
 
 // 함수이름: _formatMedicationPeriod
-// 함수역할: 처방일부터 투약일수-1일까지의 기간을 표시하며 하루 이하는 시작일만, 같은 해에 끝나면 끝 날짜의 연도를 생략한다.
+// 함수역할: 처방일부터 복용 종료일까지의 기간을 표시하며 하루 이하는 시작일만, 같은 해에 끝나면 끝 날짜의 연도를 생략한다. 종료일은 일정·알림과 같은 규칙으로 읽어 "8주"를 56일로 계산한다.
 // 매개변수:
 // - medication (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
 // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
@@ -205,30 +219,17 @@ String _formatMedicationPeriod(MedicationDetail medication) {
     return '';
   }
 
-  final totalDays = _readTotalDays(medication.totalDays);
-  if (totalDays <= 1) {
+  final endDate = medication.medicationEndDate;
+  if (endDate == null ||
+      !endDate.isAfter(DateTime(startDate.year, startDate.month, startDate.day))) {
     return _formatMedicationDate(startDate);
   }
 
-  final endDate = startDate.add(Duration(days: totalDays - 1));
   // 같은 해에 끝나면 끝 날짜의 연도를 생략해 한 줄에 들어가게 한다.
   final endText = endDate.year == startDate.year
       ? '${_formatTwoDigits(endDate.month)}/${_formatTwoDigits(endDate.day)}'
       : _formatMedicationDate(endDate);
   return '${_formatMedicationDate(startDate)} ~ $endText';
-}
-
-// 함수이름: _readTotalDays
-// 함수역할: 투약일 문구의 첫 정수를 읽고 숫자가 없거나 파싱 실패 시 0을 사용한다.
-// 매개변수:
-// - totalDays (String): 복용 기간의 일수 또는 이를 표현한 원본 문구.
-// 반환값: int: 문자열에서 읽은 첫 정수; 숫자가 없거나 변환에 실패하면 0.
-int _readTotalDays(String totalDays) {
-  final match = RegExp(r'\d+').firstMatch(totalDays);
-  if (match == null) {
-    return 0;
-  }
-  return int.tryParse(match.group(0) ?? '') ?? 0;
 }
 
 // 함수이름: _formatTwoDigits

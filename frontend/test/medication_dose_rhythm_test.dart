@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_dose_rhythm.dart';
 
 // Function Name: main
@@ -93,6 +94,98 @@ void main() {
         date: anchor,
       ),
       isTrue,
+    );
+  });
+
+  // Function Name: next dose day test
+  // Description: The next dose day is the first dose day on or after the asked date, never before the course starts, and none once the course has ended.
+  // Parameters: None. Returns: None; a mismatch fails the test.
+  test('next dose day skips rest days and stops at the course end', () {
+    // 2026-10-07 is a Wednesday.
+    final start = DateTime(2026, 10, 7);
+    final weekly = readDoseCycle('주 1회');
+    final alternate = readDoseCycle('격일');
+    final weekdays = readDoseCycle('월수금');
+
+    expect(nextDoseDay(weekly, startDate: start, from: start), start);
+    expect(
+      nextDoseDay(weekly, startDate: start, from: DateTime(2026, 10, 8, 21)),
+      DateTime(2026, 10, 14),
+    );
+    expect(
+      nextDoseDay(alternate, startDate: start, from: DateTime(2026, 10, 8)),
+      DateTime(2026, 10, 9),
+    );
+    expect(
+      nextDoseDay(weekdays, startDate: start, from: DateTime(2026, 10, 10)),
+      DateTime(2026, 10, 12),
+    );
+    expect(
+      nextDoseDay(weekly, startDate: start, from: DateTime(2026, 10, 1)),
+      start,
+    );
+    expect(
+      nextDoseDay(
+        weekly,
+        startDate: start,
+        from: DateTime(2026, 10, 8),
+        endDate: DateTime(2026, 10, 13),
+      ),
+      isNull,
+    );
+    expect(
+      nextDoseDay(
+        weekly,
+        startDate: start,
+        from: DateTime(2026, 10, 8),
+        endDate: DateTime(2026, 10, 14),
+      ),
+      DateTime(2026, 10, 14),
+    );
+  });
+
+  // Function Name: saved medication next dose day test
+  // Description: A saved medication reports a next dose day only when it is not taken every day, counting from the dispensing date or, without one, the registration date.
+  // Parameters: None. Returns: None; a mismatch fails the test.
+  test('saved medication reports the next dose day of a non-daily course', () {
+    MedicationDetail medication(
+      String frequency, {
+      DateTime? prescriptionDate,
+      DateTime? createdDate,
+      String totalDays = '28',
+    }) => MedicationDetail(
+      itemName: 'next dose day',
+      efficacy: '',
+      usageMethod: '',
+      warning: '',
+      dailyFrequency: frequency,
+      totalDays: totalDays,
+      prescriptionDate: prescriptionDate,
+      createdDate: createdDate,
+    );
+    final start = DateTime(2026, 10, 7);
+    final asked = DateTime(2026, 10, 9);
+
+    expect(
+      medication('주 1회', prescriptionDate: start).nextDoseDayFrom(asked),
+      DateTime(2026, 10, 14),
+    );
+    expect(
+      medication('주 1회', createdDate: start).nextDoseDayFrom(asked),
+      DateTime(2026, 10, 14),
+    );
+    expect(
+      medication('1일 3회', prescriptionDate: start).nextDoseDayFrom(asked),
+      isNull,
+    );
+    expect(medication('주 1회').nextDoseDayFrom(asked), isNull);
+    expect(
+      medication(
+        '주 1회',
+        prescriptionDate: start,
+        totalDays: '7',
+      ).nextDoseDayFrom(asked),
+      isNull,
     );
   });
 }

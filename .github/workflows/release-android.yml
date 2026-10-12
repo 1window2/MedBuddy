@@ -67,7 +67,7 @@ jobs:
           java-version: '17'
 
       - name: Flutter Setup
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: '3.41.5'
           channel: stable
@@ -99,7 +99,7 @@ jobs:
       - name: Authenticate read-only Firebase preflight
         if: env.MEDBUDDY_APP_CHECK_REQUIRED_NORMALIZED == 'true'
         id: app-check-auth
-        uses: google-github-actions/auth@v3
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           workload_identity_provider: ${{ vars.GCP_APP_CHECK_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_APP_CHECK_SERVICE_ACCOUNT }}

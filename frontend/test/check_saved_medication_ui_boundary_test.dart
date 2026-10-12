@@ -101,6 +101,46 @@ void main() {
   });
 
   // 함수역할: 검색어와 조회 상태를 모두 통과한 약만 전체 선택 삭제되는지 검증한다.
+  // 함수이름: 다음 복용일 표시 테스트
+  // 함수역할: 매일 복용하지 않는 약만 다음 복용일을 표시하고, 오늘이 복용일이면 "오늘"로 알린다.
+  // 매개변수: tester. 반환값: 없음; 기대와 다르면 실패한다.
+  testWidgets('매일 복용하지 않는 약은 다음 복용일을 표시한다', (tester) async {
+    await _pumpFilterApp(tester, nonDaily: true);
+    final now = DateTime.now();
+    final tomorrow = DateTime(now.year, now.month, now.day + 1);
+    const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
+    final tomorrowText =
+        '${tomorrow.month.toString().padLeft(2, '0')}/'
+        '${tomorrow.day.toString().padLeft(2, '0')} '
+        '(${weekdays[tomorrow.weekday - 1]})';
+
+    expect(
+      tester
+          .widget<Text>(
+            find.descendant(
+              of: find.byKey(const ValueKey('saved-medication-next-dose-4')),
+              matching: find.byType(Text),
+            ),
+          )
+          .data,
+      '다음 복용일: $tomorrowText',
+    );
+    expect(find.text('다음 복용일: 오늘'), findsOneWidget);
+    // "4주"는 일정과 같은 규칙으로 28일로 읽는다.
+    String twoDigits(int value) => value.toString().padLeft(2, '0');
+    String fullDate(DateTime day) =>
+        '${day.year}/${twoDigits(day.month)}/${twoDigits(day.day)}';
+    final end = DateTime(now.year, now.month, now.day + 27);
+    final endText = end.year == now.year
+        ? '${twoDigits(end.month)}/${twoDigits(end.day)}'
+        : fullDate(end);
+    expect(find.text('복용기간: ${fullDate(now)} ~ $endText'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('saved-medication-next-dose-1')),
+      findsNothing,
+    );
+  });
+
   testWidgets('검색한 약만 선택하며 검색어를 바꾸면 숨겨진 선택을 비운다', (tester) async {
     final model = await _pumpSelectionApp(tester);
     await tester.enterText(
@@ -1307,6 +1347,7 @@ Future<void> _applySavedFilter(WidgetTester tester) async {
 Future<void> _pumpFilterApp(
   WidgetTester tester, {
   bool onlyEnded = false,
+  bool nonDaily = false,
   String language = 'ko',
   double textScale = 1,
   bool small = false,
@@ -1338,6 +1379,22 @@ Future<void> _pumpFilterApp(
                 .toIso8601String(),
             'total_days': '7',
           },
+          if (nonDaily) ...[
+            {
+              ..._savedMedicationJson(request, 4, '격일약'),
+              'prescription_date': today
+                  .subtract(const Duration(days: 1))
+                  .toIso8601String(),
+              'daily_frequency': '격일',
+              'total_days': '14',
+            },
+            {
+              ..._savedMedicationJson(request, 5, '주1회약'),
+              'prescription_date': today.toIso8601String(),
+              'daily_frequency': '주 1회',
+              'total_days': '4주',
+            },
+          ],
           if (!onlyEnded)
             {
               ..._savedMedicationJson(request, 3, '예정약'),

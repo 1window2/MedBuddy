@@ -60,7 +60,8 @@ closed by any code on this branch:
       connections at intervals of 2 to 78 minutes, refused none and logged no
       error: closing the stream at token expiry does not make the released
       app reconnect in a loop. Individual closes were not attributed to their
-      cause, because the server does not log close codes.
+      cause, because the server did not log close codes then; refusals are
+      logged with their code since October 12.
       On October 12, the released 0.2.1 app on the physical phone (Galaxy
       Note10+, Android 12) against the production server, with a caregiver
       on the emulator: the app starts and loads its schedule; a weekly test
@@ -76,6 +77,11 @@ closed by any code on this branch:
       alarms and 0.2.1 does not reserve them again; 0.2.2 re-arms them, which
       is not yet verified on a phone. The 0.2.2 app itself has not run on the
       phone: the signed build is still refused for `beta/v0.2.2`.
+      Also on October 12, a debug build of this branch on the Android 14
+      emulator: six reserved reminders were all removed by a force-stop and
+      all six were reserved again at the same times when the app was opened;
+      the medication box showed the next dose day of the non-daily test
+      medications and none for the daily one.
 - [ ] Chat notifications show the message preview by default; the recipient
       can switch to type-only. Decide the default.
 
@@ -125,7 +131,9 @@ closed by any code on this branch:
       user confirmed.
 - [ ] A dose of a medication that is not taken every day can be recorded
       only on its dose day; the day after, it is no longer on the schedule, so
-      a weekly dose taken a day late cannot be recorded.
+      a weekly dose taken a day late cannot be recorded. The medication box
+      shows the next dose day of such a medication, so that its absence from
+      today's schedule is explained.
 - [ ] A weekly prescription often prints the number of doses as its total
       days ("4" for four weeks). The review screen shows how many dose days
       result so the user can correct it, but the value is not guessed.
@@ -371,8 +379,12 @@ Platform and pipeline items reviewed for v0.2.1 and deferred:
 - [ ] Both CI workflows report a job named `build`. Making the names unique
       changes the required-check names and needs a branch-protection change by
       the owner.
-- [ ] `subosito/flutter-action` and `google-github-actions/auth` are referenced
-      by major-version tag, not by commit SHA. Owner decision.
+- [x] `subosito/flutter-action`, `google-github-actions/auth` and
+      `google-github-actions/setup-gcloud` are pinned to a commit with the
+      version as a comment (v2.23.0, v3.0.0, v3.0.1). Regression:
+      [workflow pins](../backend/tests/test_ci_workflow_pins.py). Dependabot's
+      `github-actions` updates move the commit and the comment together.
+      GitHub's own `actions/*` stay on major tags.
 - [x] `check_release_ingress.py` requires the `X-MedBuddy-Api-Contract`
       response header. Checked against the live edge on October 11: all three
       probed routes return it with their authentication denial.
@@ -383,9 +395,15 @@ Platform and pipeline items reviewed for v0.2.1 and deferred:
       [exact reminder notice](../frontend/test/exact_reminder_notice_test.dart).
       The upstream October 11 emulator check is recorded above; physical-device
       acceptance remains open.
-- [ ] The merged manifest still carries `RECORD_AUDIO` from the camera plugin
-      although capture disables audio. Removal needs a capture check on a
-      device.
+- [x] `RECORD_AUDIO`, `WRITE_EXTERNAL_STORAGE` and the implied
+      `READ_EXTERNAL_STORAGE`, all contributed by the camera plugin, are
+      removed from the merged manifest. Regression:
+      [manifest test](../frontend/test/android_recovery_manifest_test.dart).
+      Checked on October 12 with a debug build on the Android 14 emulator: the
+      installed package requests none of the three, the camera screen asks for
+      the camera only, and a guided prescription photograph is taken and passed
+      to the on-device text recognition. Capture on a physical phone belongs to
+      the device verification above.
 - [ ] Further APK size reduction (arm64 only, compressed native libraries, or
       per-ABI splits) changes device support or update mechanics. Owner
       decision.

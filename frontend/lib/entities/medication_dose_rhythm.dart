@@ -354,6 +354,40 @@ int readDurationDays(String? rawDuration) {
   return amount;
 }
 
+// Function Name: nextDoseDay
+// Description: Finds the first dose day of a non-daily course on or after a date, so a screen can tell the user when a medication that is absent from today's list is due again.
+// Parameters:
+// - cycle (DoseCycle): Dose cycle read from the frequency label.
+// - startDate (DateTime): First day of the course.
+// - from (DateTime): Earliest date to return; days before the course start are skipped.
+// - endDate (DateTime?): Last day of the course, when known.
+// Returns: DateTime?: the dose day at midnight local time; null when the course has no dose day left.
+DateTime? nextDoseDay(
+  DoseCycle cycle, {
+  required DateTime startDate,
+  required DateTime from,
+  DateTime? endDate,
+}) {
+  final start = DateTime(startDate.year, startDate.month, startDate.day);
+  final requested = DateTime(from.year, from.month, from.day);
+  final first = requested.isBefore(start) ? start : requested;
+  final last = endDate == null
+      ? null
+      : DateTime(endDate.year, endDate.month, endDate.day);
+  // A cycle has at least one dose day, so one full cycle from the first candidate is enough.
+  final span = cycle.isDaily ? 1 : cycle.cycleDays;
+  for (var day = 0; day < span; day++) {
+    final candidate = DateTime(first.year, first.month, first.day + day);
+    if (last != null && candidate.isAfter(last)) {
+      return null;
+    }
+    if (cycle.includes(start, candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
 // Function Name: describeDoseCycle
 // Description: Explains in Korean or English on which days a non-daily medication is scheduled and, when the start date and the course length are known, how many dose days fall inside the course, so the user can check the schedule before saving.
 // Parameters:

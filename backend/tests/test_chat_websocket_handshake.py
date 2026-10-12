@@ -388,14 +388,18 @@ def test_refused_handshake_is_closed_before_accept_with_its_code(
 # Description:
 # - With one connection attempt allowed per minute, the second attempt of the same account is
 #   refused before accept with 4429 and the seconds left in the quota window as the reason.
+# - The refusal is logged with the link and the close code, because the access log shows every
+#   refusal before accept as the same 403; the account and the reason stay out of the log.
 # Parameters:
 # - chat_stream (_ChatStream): Application and client under test.
 # - monkeypatch (pytest.MonkeyPatch): Lowers the per-minute connection quota.
+# - caplog (pytest.LogCaptureFixture): Captures the refusal log line.
 # Returns:
 # - None.
 def test_connection_quota_refusal_carries_the_wait_as_reason(
     chat_stream: _ChatStream,
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     monkeypatch.setattr(settings, "CHAT_WEBSOCKET_CONNECTIONS_PER_MINUTE", 1)
     with chat_stream.client.websocket_connect(
@@ -403,12 +407,17 @@ def test_connection_quota_refusal_carries_the_wait_as_reason(
     ) as socket:
         assert socket.receive_json()["type"] == "chat_ready"
 
-    refused = _refusal_before_accept(chat_stream, chat_stream.path(), chat_stream.headers)
+    with caplog.at_level("INFO", logger="api.chat_router"):
+        refused = _refusal_before_accept(chat_stream, chat_stream.path(), chat_stream.headers)
 
     assert refused.code == 4429
     assert refused.reason.isdigit()
     assert 1 <= int(refused.reason) <= 60
     assert not _is_connected(chat_stream)
+    refusals = [record.getMessage() for record in caplog.records if "refused" in record.getMessage()]
+    assert len(refusals) == 1
+    assert refusals[0].startswith("Chat stream refused: link=")
+    assert refusals[0].endswith(" code=4429")
 
 
 # Function Name: _close_after_accept

@@ -1,6 +1,7 @@
 // 파일명: medication_detail_entity.dart
 // 역할: 서버와 화면 사이에서 사용하는 약 상세 정보 모델을 정의한다.
 
+import 'medication_dose_rhythm.dart';
 import 'medication_image_url_entity.dart';
 import 'medication_schedule_entity.dart';
 import 'json_value_reader.dart';
@@ -289,6 +290,33 @@ class MedicationDetail {
       startDate.month,
       startDate.day,
     ).add(Duration(days: dayCount - 1));
+  }
+
+  // 함수이름: nextDoseDayFrom
+  // 함수역할: 매일 복용하지 않는 약의 기준 날짜 이후 첫 복용일을 계산한다. 서버와 같이 조제일자, 없으면 등록일자를 복용 시작일로 본다.
+  // 매개변수:
+  // - referenceDate (DateTime): 달력 날짜 계산 또는 비교의 기준 시각
+  // 반환값:
+  // - DateTime?: 다음 복용일. 매일 복용하는 약이거나 시작일을 알 수 없거나 남은 복용일이 없으면 null.
+  DateTime? nextDoseDayFrom(DateTime referenceDate) {
+    final cycle = readDoseCycle(dailyFrequency);
+    final startDate = prescriptionDate ?? createdDate;
+    if (cycle.isDaily || startDate == null) {
+      return null;
+    }
+    final dayCount = medicationDayCountFromText(totalDays);
+    return nextDoseDay(
+      cycle,
+      startDate: startDate,
+      from: referenceDate,
+      endDate: dayCount <= 0
+          ? null
+          : DateTime(
+              startDate.year,
+              startDate.month,
+              startDate.day + dayCount - 1,
+            ),
+    );
   }
 
   // 함수이름: isActiveOn
