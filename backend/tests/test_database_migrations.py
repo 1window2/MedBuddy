@@ -1,7 +1,9 @@
 # 파일명: test_database_migrations.py
 # 역할: 신규·기존 로컬 DB의 마이그레이션, 필수 스키마 및 데이터 보존 왕복을 검증한다.
 
+import logging
 from pathlib import Path
+from unittest.mock import patch
 
 from alembic import command
 from alembic.config import Config
@@ -9,6 +11,7 @@ from sqlalchemy import create_engine, inspect, MetaData, Table, select
 from datetime import datetime
 import pytest
 
+from core import schema_initialization
 from core.schema_initialization import prepare_database_schema, verify_database_revision
 
 from entities.chat_message_entity import _ChatMessage
@@ -89,6 +92,27 @@ def test_empty_database_is_not_created_when_automatic_setup_is_disabled(tmp_path
         with pytest.raises(RuntimeError, match="no Alembic revision"):
             prepare_database_schema(engine, auto_create=False)
         assert inspect(engine).get_table_names() == []
+    finally:
+        engine.dispose()
+
+
+def test_revision_check_is_quiet_and_reads_the_scripts_once(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The readiness probe repeats this check; it must not log at INFO or re-read the scripts."""
+    engine = create_engine(f"sqlite:///{(tmp_path / 'quiet.db').as_posix()}")
+    try:
+        prepare_database_schema(engine, auto_create=True)
+        caplog.clear()
+        with caplog.at_level(logging.INFO, logger="alembic"):
+            with patch.object(
+                schema_initialization.ScriptDirectory, "from_config",
+                side_effect=AssertionError("migration scripts were read again"),
+            ):
+                for _ in range(3):
+                    with engine.connect() as connection:
+                        verify_database_revision(connection)
+        assert [record for record in caplog.records if record.name.startswith("alembic")] == []
     finally:
         engine.dispose()
 

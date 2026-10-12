@@ -61,6 +61,21 @@ closed by any code on this branch:
       error: closing the stream at token expiry does not make the released
       app reconnect in a loop. Individual closes were not attributed to their
       cause, because the server does not log close codes.
+      On October 12, the released 0.2.1 app on the physical phone (Galaxy
+      Note10+, Android 12) against the production server, with a caregiver
+      on the emulator: the app starts and loads its schedule; a weekly test
+      medication on a rest day is still listed for this app, as intended for
+      apps without the dose-days feature; a reminder switched on for its slot
+      stayed enabled on the server across restarts, and its alarms were
+      reserved; recording the dose was stored; completing a daily test
+      medication produced the caregiver alert within a second and the chat
+      record appeared in the caregiver's app. Completing the weekly
+      medication on its rest day queued an alert that the worker dropped as
+      no longer current, because that dose is not due that day. The same
+      session confirmed on the device that a force-stop removes the app's
+      alarms and 0.2.1 does not reserve them again; 0.2.2 re-arms them, which
+      is not yet verified on a phone. The 0.2.2 app itself has not run on the
+      phone: the signed build is still refused for `beta/v0.2.2`.
 - [ ] Chat notifications show the message preview by default; the recipient
       can switch to type-only. Decide the default.
 
