@@ -748,7 +748,7 @@ class _MedicationScheduleEditorDialogState
               runSpacing: 8,
               children: [
                 // 목록에 없는 지시로 저장된 약은 그 지시를 그대로 고를 수 있게 한다.
-                for (final doseDays in {..._doseDayChoices, _doseDays})
+                for (final doseDays in {...doseDayChoices, _doseDays})
                   ChoiceChip(
                     key: Key('schedule-edit-dose-days-$doseDays'),
                     label: Text(text.doseDaysValue(doseDays)),
@@ -996,7 +996,7 @@ class _MedicationScheduleEditorDialogState
         medicationName: _nameController.text.trim(),
         prescriptionDate: _startDate,
         dosage: _dosageController.text.trim(),
-        intakeTime: _composeFrequency(_doseDays, _frequencyCount),
+        intakeTime: composeDoseFrequency(_doseDays, _frequencyCount),
         medicationTime: int.parse(_daysController.text.trim()),
         scheduleSlotKeys: medicationScheduleSlotKeys
             .where(_selectedSlotKeys.contains)
@@ -1008,9 +1008,6 @@ class _MedicationScheduleEditorDialogState
   }
 }
 
-// 복용 주기로 고를 수 있는 지시. 빈 문자열은 매일 복용이다.
-const List<String> _doseDayChoices = ['', '격일', '주 1회', '월 1회'];
-
 // 함수이름: _doseDaysOf
 // 함수역할: 저장된 횟수 문구에서 복용하는 날의 지시만 꺼낸다. 선택지와 같은 주기이면 그 선택지로 맞춘다.
 // 매개변수:
@@ -1019,7 +1016,7 @@ const List<String> _doseDayChoices = ['', '격일', '주 1회', '월 1회'];
 String _doseDaysOf(String frequency) {
   final cycle = readDoseCycle(frequency);
   if (cycle.isDaily) return '';
-  for (final choice in _doseDayChoices.skip(1)) {
+  for (final choice in doseDayChoices.skip(1)) {
     final candidate = readDoseCycle(choice);
     if (candidate.cycleDays == cycle.cycleDays &&
         candidate.weekdayAnchored == cycle.weekdayAnchored &&
@@ -1029,17 +1026,6 @@ String _doseDaysOf(String frequency) {
   }
   // "1일 2회"처럼 뒤에 붙은 하루 횟수는 따로 고르므로 지시 부분만 남긴다.
   return frequency.split(',').first.trim();
-}
-
-// 함수이름: _composeFrequency
-// 함수역할: 복용하는 날의 지시와 그날의 복용 횟수를 서버와 앱이 함께 읽는 한 문구로 합친다.
-// 매개변수:
-// - doseDays (String): 복용하는 날의 지시. 빈 문자열은 매일 복용.
-// - count (int): 복용하는 날의 복용 횟수.
-// 반환값: String: "3회", "주 1회", "주 1회, 1일 2회" 같은 저장용 문구.
-String _composeFrequency(String doseDays, int count) {
-  if (doseDays.isEmpty) return '$count회';
-  return count <= 1 ? doseDays : '$doseDays, 1일 $count회';
 }
 
 // 함수이름: _normalizeSchedule
@@ -1056,7 +1042,7 @@ MedicationSchedule _normalizeSchedule(MedicationSchedule schedule) {
     prescriptionDate: schedule.prescriptionDate ?? DateTime.now(),
     dosage: schedule.dosage.trim().isEmpty ? '1정' : schedule.dosage.trim(),
     // 매일 복용이 아닌 지시("주 1회" 등)는 횟수만 남기면 매일 복용으로 바뀌므로 함께 보존한다.
-    intakeTime: _composeFrequency(_doseDaysOf(schedule.intakeTime), frequency),
+    intakeTime: composeDoseFrequency(_doseDaysOf(schedule.intakeTime), frequency),
     medicationTime: schedule.medicationTime <= 0 ? 1 : schedule.medicationTime,
     scheduleSlotKeys: slots,
   );

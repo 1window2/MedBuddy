@@ -41,8 +41,8 @@ closed by any code on this branch:
       shared by all users, and one specialty search can cost up to 41
       requests. Needs a larger provider quota.
 - [ ] Device verification of this branch on a physical phone; the lists
-      below under "without a device check" still apply as well. A signed build
-      needs `beta/v0.2.2` added to the `beta-android` environment.
+      below under "without a device check" still apply as well. The
+      `beta-android` environment allows `beta/v0.2.2` since October 12.
       Independently recorded upstream on October 11 with a debug build on an
       Android 14 emulator
       against a local server: today's schedule hides medications that are not
@@ -75,13 +75,31 @@ closed by any code on this branch:
       no longer current, because that dose is not due that day. The same
       session confirmed on the device that a force-stop removes the app's
       alarms and 0.2.1 does not reserve them again; 0.2.2 re-arms them, which
-      is not yet verified on a phone. The 0.2.2 app itself has not run on the
-      phone: the signed build is still refused for `beta/v0.2.2`.
+      was not yet verified on a phone at that point.
       Also on October 12, a debug build of this branch on the Android 14
       emulator: six reserved reminders were all removed by a force-stop and
       all six were reserved again at the same times when the app was opened;
       the medication box showed the next dose day of the non-daily test
       medications and none for the daily one.
+      Later on October 12 the `beta-android` environment accepted the branch
+      and the signed 0.2.2 build of `9baccff` (same signing certificate as
+      0.2.1, checksum verified) was installed over 0.2.1 on the phone (Galaxy
+      Note10+, Android 12) against the production server. The update kept the
+      session and the data, and the package no longer requests microphone or
+      storage access. Today's schedule hid the weekly test medication on its
+      rest day. A medication registered manually was saved and scheduled. A
+      reminder switched on for its slot was reserved as an exact alarm; a
+      force-stop removed it and opening the app reserved it again. With the
+      app process not running, the notification appeared at its minute; its
+      "taken" action started the app, recorded the dose and cleared the
+      notification, the server stored the completion and sent the caregiver
+      alert in the same second, and the record appeared in the chat. The chat
+      stream connected and a message was sent. The guided prescription camera
+      took a photograph, and the pharmacy map listed 30 pharmacies.
+      Still not checked on a phone: reminders after a reboot, the snooze
+      action, the home-screen widget, the exact-alarm notice (needs Android 14
+      or later), two physical devices, and the manual dose-day choice added
+      after this build.
 - [ ] Chat notifications show the message preview by default; the recipient
       can switch to type-only. Decide the default.
 
@@ -124,9 +142,12 @@ closed by any code on this branch:
 
 ### Known limits of this branch
 
-- [ ] A medication saved from a pill photograph can be given four rhythms
-      (every day, every other day, once a week, once a month); others such as
-      named weekdays need manual or prescription registration.
+- [ ] A medication saved from a pill photograph or registered manually can be
+      given four rhythms (every day, every other day, once a week, once a
+      month); others such as named weekdays need prescription registration.
+      Manual registration offered no rhythm at all until October 12, so a
+      weekly medication entered by hand was scheduled every day; found while
+      using the signed build on the phone.
 - [ ] "As needed" directions are scheduled like daily ones, on the slots the
       user confirmed.
 - [ ] A dose of a medication that is not taken every day can be recorded

@@ -582,6 +582,24 @@ void main() {
       find.byKey(const Key('manual-medication-dosage')),
       '0.5',
     );
+    // 매일 복용이 기본이며, 주기를 고르기 전에는 안내가 없다.
+    expect(
+      find.byKey(const Key('manual-medication-dose-days-notice')),
+      findsNothing,
+    );
+    final weekly = find.byKey(const Key('manual-medication-dose-days-주 1회'));
+    await tester.ensureVisible(weekly);
+    await tester.pumpAndSettle();
+    await tester.tap(weekly);
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const Key('manual-medication-dose-days-notice')),
+          )
+          .data,
+      contains('매일 복용하는 약이 아닙니다'),
+    );
     final eveningSlot = find.byKey(const Key('manual-medication-slot-evening'));
     await tester.ensureVisible(eveningSlot);
     await tester.pumpAndSettle();
@@ -594,6 +612,8 @@ void main() {
     expect(submittedEntry!.medicationName, '직접입력약');
     expect(submittedEntry!.dosageAmount, '0.5');
     expect(submittedEntry!.dosageUnit, '정');
+    expect(submittedEntry!.doseDays, '주 1회');
+    expect(submittedEntry!.toMedicationSchedule().intakeTime, '주 1회, 1일 2회');
     expect(
       submittedEntry!.scheduleSlotKeys,
       containsAll(['morning', 'evening']),

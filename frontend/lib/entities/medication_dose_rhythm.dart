@@ -354,6 +354,20 @@ int readDurationDays(String? rawDuration) {
   return amount;
 }
 
+// Dose-day directions the registration editors offer. The empty text means every day.
+const List<String> doseDayChoices = ['', '격일', '주 1회', '월 1회'];
+
+// Function Name: composeDoseFrequency
+// Description: Joins a dose-day direction and the number of doses on a dose day into the one frequency text the server and the app both read, such as "3회", "주 1회" or "주 1회, 1일 2회".
+// Parameters:
+// - doseDays (String): Dose-day direction; the empty text means every day.
+// - count (int): Doses on a dose day.
+// Returns: String: the frequency text to save.
+String composeDoseFrequency(String doseDays, int count) {
+  if (doseDays.isEmpty) return '$count회';
+  return count <= 1 ? doseDays : '$doseDays, 1일 $count회';
+}
+
 // Function Name: nextDoseDay
 // Description: Finds the first dose day of a non-daily course on or after a date, so a screen can tell the user when a medication that is absent from today's list is due again.
 // Parameters:

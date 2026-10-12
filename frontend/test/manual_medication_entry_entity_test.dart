@@ -129,4 +129,41 @@ void main() {
     expect(schedule.nameCorrectionSource, 'manual_entry');
     expect(schedule.prescriptionDate, DateTime(2026, 8, 23));
   });
+
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 기대 동작: 복용 주기를 고르면 횟수 문구에 함께 담겨, 매일 복용이 아닌 일정으로 저장된다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대 조건 불일치 시 테스트가 실패한다.
+  test('직접 등록한 복용 주기는 횟수 문구에 함께 담긴다', () {
+    ManualMedicationEntry entry(String doseDays, List<String> slots) =>
+        ManualMedicationEntry(
+          medicationName: '주기약',
+          dosageAmount: '1',
+          dosageUnit: '정',
+          startDate: DateTime(2026, 10, 12),
+          endDate: DateTime(2026, 11, 8),
+          scheduleSlotKeys: slots,
+          doseDays: doseDays,
+        );
+
+    final weekly = entry('주 1회', const ['morning']).toMedicationSchedule();
+    expect(weekly.intakeTime, '주 1회');
+    expect(weekly.dailyFrequencyCount, 1);
+    expect(weekly.medicationTime, 28);
+
+    final alternate = entry(
+      '격일',
+      const ['morning', 'evening'],
+    ).toMedicationSchedule();
+    expect(alternate.intakeTime, '격일, 1일 2회');
+    expect(alternate.dailyFrequencyCount, 2);
+
+    expect(
+      entry('', const ['morning', 'evening']).toMedicationSchedule().intakeTime,
+      '2회',
+    );
+  });
 }

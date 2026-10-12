@@ -1,3 +1,4 @@
+import 'medication_dose_rhythm.dart';
 import 'medication_schedule_entity.dart';
 
 // 파일명: manual_medication_entry_entity.dart
@@ -33,6 +34,7 @@ int inclusiveMedicationCourseDays(DateTime startDate, DateTime endDate) {
 // - startDate (DateTime): 양 끝을 포함한 복용 기간의 시작일
 // - endDate (DateTime): 시작일과 함께 포함하여 계산할 복용 종료일
 // - scheduleSlotKeys (List<String>): 명시적으로 선택한 복약 시간대 키 목록
+// - doseDays (String): 매일 복용하지 않는 약의 복용 주기 지시("격일", "주 1회" 등). 빈 문자열은 매일 복용
 // - localImagePath (String): 서버에 전송하지 않는 기기 전용 약 사진 경로
 class ManualMedicationEntry {
   final String medicationName;
@@ -41,6 +43,7 @@ class ManualMedicationEntry {
   final DateTime startDate;
   final DateTime endDate;
   final List<String> scheduleSlotKeys;
+  final String doseDays;
   final String localImagePath;
 
   // 함수이름: ManualMedicationEntry
@@ -52,6 +55,7 @@ class ManualMedicationEntry {
   // - startDate (DateTime): 양 끝을 포함한 복용 기간의 시작일
   // - endDate (DateTime): 시작일과 함께 포함하여 계산할 복용 종료일
   // - scheduleSlotKeys (List<String>): 명시적으로 선택한 복약 시간대 키 목록
+  // - doseDays (String): 복용 주기 지시. 빈 문자열은 매일 복용
   // - localImagePath (String): 서버에 전송하지 않는 기기 전용 약 사진 경로
   // 반환값:
   // - ManualMedicationEntry: 초기화된 인스턴스.
@@ -62,6 +66,7 @@ class ManualMedicationEntry {
     required this.startDate,
     required this.endDate,
     required this.scheduleSlotKeys,
+    this.doseDays = '',
     this.localImagePath = '',
   });
 
@@ -86,7 +91,7 @@ class ManualMedicationEntry {
   }
 
   // 함수이름: toMedicationSchedule
-  // 함수역할: 직접 입력값을 복약 일정으로 변환하고 시작일·총 일수·시간대를 보존하며 약명 출처를 manual_entry로 표시한다.
+  // 함수역할: 직접 입력값을 복약 일정으로 변환하고 시작일·총 일수·시간대·복용 주기를 보존하며 약명 출처를 manual_entry로 표시한다.
   // 매개변수:
   // - 없음.
   // 반환값:
@@ -101,7 +106,8 @@ class ManualMedicationEntry {
       ),
       medicationName: medicationName.trim(),
       dosage: dosage,
-      intakeTime: '${slots.length}회',
+      // 매일 복용하지 않는 약은 복용 주기를 횟수 문구에 함께 담아 복용일에만 일정과 알림을 만든다.
+      intakeTime: composeDoseFrequency(doseDays, slots.length),
       medicationTime: totalDays,
       scheduleSlotKeys: slots,
       rawMedicationName: medicationName.trim(),

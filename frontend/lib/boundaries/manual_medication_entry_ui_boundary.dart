@@ -11,6 +11,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../controls/check_saved_medication_control.dart';
 import '../entities/manual_medication_entry_entity.dart';
+import '../entities/medication_dose_rhythm.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/medication_schedule_limits.dart';
 import '../entities/medication_slot_label.dart';
@@ -72,6 +73,7 @@ class ManualMedicationEntryUI extends StatefulWidget {
 // 속성:
 // - _imagePicker (ImagePicker): 카메라·갤러리 이미지 선택 의존성.
 // - _endDate (DateTime): 복용 기간의 마지막 날짜.
+// - _doseDays (String): 선택한 복용 주기 지시. 빈 문자열은 매일 복용.
 // - _isSaving (bool): 해당 저장·분석·복약 갱신 요청이 진행 중인지 여부.
 // - _isSaveRequestPending (bool): 저장 콜백의 응답을 기다리는 중인지 여부.
 class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
@@ -86,6 +88,7 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
   late final ImagePicker _imagePicker;
   DateTime _startDate = _dateOnly(DateTime.now());
   DateTime _endDate = _dateOnly(DateTime.now());
+  String _doseDays = '';
   final Set<String> _selectedSlotKeys = {defaultMedicationScheduleSlotKey};
   String _dosageUnit = _dosageUnits.first;
   String _selectedImagePath = '';
@@ -173,6 +176,8 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
                       _buildPhotoSection(),
                       const SizedBox(height: 24),
                       _buildDateSection(),
+                      const SizedBox(height: 24),
+                      _buildDoseDaysSection(),
                       const SizedBox(height: 24),
                       _buildScheduleSlotSection(),
                       if (_errorMessage.isNotEmpty) ...[
@@ -518,6 +523,63 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
     );
   }
 
+  // 함수이름: _buildDoseDaysSection
+  // 함수역할: 매일·격일·주 1회·월 1회 중 복용 주기를 고르게 하고, 매일이 아니면 어느 날에 일정과 알림이 만들어지는지 안내한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 사진을 포함한 약품명·처방일·복용 일정 직접 입력에 쓰는 위젯 트리.
+  Widget _buildDoseDaysSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionTitle(title: _text.doseDaysTitle),
+        const SizedBox(height: 8),
+        Text(
+          _text.doseDaysDescription,
+          style: const TextStyle(color: MedBuddyColors.textMuted, height: 1.4),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final doseDays in doseDayChoices)
+              ChoiceChip(
+                key: Key('manual-medication-dose-days-$doseDays'),
+                label: Text(_text.doseDaysValue(doseDays)),
+                selected: _doseDays == doseDays,
+                onSelected: _isSaving
+                    ? null
+                    // 함수이름: _buildDoseDaysSection.onSelected callback
+                    // 함수역할: 고른 복용 주기를 화면 상태에 반영한다.
+                    // 매개변수:
+                    // - _ (콜백 계약에서 추론): 사용하지 않는 선택 여부.
+                    // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                    : (_) => setState(() => _doseDays = doseDays),
+              ),
+          ],
+        ),
+        if (_doseDays.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            describeDoseCycle(
+              readDoseCycle(_doseDays),
+              isEnglish: _text.isEnglish,
+              startDate: _startDate,
+              courseDays: inclusiveMedicationCourseDays(_startDate, _endDate),
+            ),
+            key: const Key('manual-medication-dose-days-notice'),
+            style: const TextStyle(
+              color: MedBuddyColors.textMuted,
+              fontSize: 13,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   // 함수이름: _buildScheduleSlotSection
   // 함수역할: 아침·점심·저녁·취침 전 복약 시간대를 복수 선택하게 한다.
   // 매개변수:
@@ -840,6 +902,7 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
           startDate: _startDate,
           endDate: _endDate,
           scheduleSlotKeys: _selectedSlotKeys.toList(growable: false),
+          doseDays: _doseDays,
           localImagePath: submittedImagePath,
         ),
       );
@@ -1180,6 +1243,32 @@ class _ManualMedicationText {
   // - days (int): 복용 기간의 일수 또는 이를 표현한 원본 문구.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String periodSummary(int days) => isEnglish ? '$days day(s)' : '총 $days일 복용';
+  // 함수이름: doseDaysTitle
+  // 함수역할: 현재 언어와 입력값에 맞춰 "복용 주기" 문구를 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  String get doseDaysTitle => isEnglish ? 'Dose days' : '복용 주기';
+  // 함수이름: doseDaysDescription
+  // 함수역할: 현재 언어와 입력값에 맞춰 "매일 복용하는 약이 아니면 복용 주기를 골라주세요." 문구를 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  String get doseDaysDescription => isEnglish
+      ? 'Choose the dose days if the medication is not taken every day.'
+      : '매일 복용하는 약이 아니면 복용 주기를 골라주세요.';
+  // 함수이름: doseDaysValue
+  // 함수역할: 복용 주기 선택지를 현재 언어의 문구로 바꾼다.
+  // 매개변수:
+  // - doseDays (String): 복용 주기 지시. 빈 문자열은 매일 복용.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  String doseDaysValue(String doseDays) => switch (doseDays) {
+    '' => isEnglish ? 'Every day' : '매일',
+    '격일' => isEnglish ? 'Every other day' : '격일',
+    '주 1회' => isEnglish ? 'Once a week' : '주 1회',
+    '월 1회' => isEnglish ? 'Once a month' : '월 1회',
+    _ => doseDays,
+  };
   // 함수이름: slotTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "복용 시간대" 문구를 제공한다.
   // 매개변수:
