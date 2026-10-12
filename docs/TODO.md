@@ -96,10 +96,14 @@ closed by any code on this branch:
       alert in the same second, and the record appeared in the chat. The chat
       stream connected and a message was sent. The guided prescription camera
       took a photograph, and the pharmacy map listed 30 pharmacies.
+      The signed build of `55ddaf5` followed on the same phone: manual
+      registration offers the dose days and states them ("every 7 days", two
+      dose days in a 14-day period); the medication was stored with the
+      weekly direction, appeared in today's schedule on its first dose day,
+      and the medication box showed its next dose day.
       Still not checked on a phone: reminders after a reboot, the snooze
       action, the home-screen widget, the exact-alarm notice (needs Android 14
-      or later), two physical devices, and the manual dose-day choice added
-      after this build.
+      or later) and two physical devices.
 - [ ] Chat notifications show the message preview by default; the recipient
       can switch to type-only. Decide the default.
 
