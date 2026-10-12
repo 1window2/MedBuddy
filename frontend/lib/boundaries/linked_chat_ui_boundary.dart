@@ -145,6 +145,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   List<ChatMedicationContext> _selectedMedicationContexts = const [];
   String? _selectedMedicationScheduleDate;
   String? _sendErrorMessage;
+  bool _checkedLinkAfterSendFailure = false;
   bool _isRecordingTaken = false;
   bool _isSelectingMessages = false;
   bool _isDeletingMessages = false;
@@ -350,7 +351,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   }
 
   // Function Name: _composerChanged
-  // Description: Localizes outgoing failure and rebuilds busy state without owning retry/concurrency logic.
+  // Description: Localizes outgoing failure and rebuilds busy state without owning retry/concurrency logic. After a failed send it asks the history owner to look at the link once, which is how a link removed by the other participant is recognised without waiting for the stream to close.
   // Parameters: None. Returns: None; context/dose errors remain presentation-owned.
   void _composerChanged() {
     if (!mounted) return;
@@ -361,6 +362,16 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
         _sendErrorMessage = _text.sendFailed;
       }
     });
+    // 연동이 해제되어 실패한 전송이면 기록 조회가 그 사실을 알아내 입력창을 안내로 바꾼다.
+    if (_composer.isSending) {
+      _checkedLinkAfterSendFailure = false;
+    } else if (_composer.sendFailed &&
+        !_checkedLinkAfterSendFailure &&
+        !_history.linkUnavailable) {
+      // 실패 한 번에 한 번만 확인한다. 작성 상태 알림마다 조회를 반복하지 않는다.
+      _checkedLinkAfterSendFailure = true;
+      unawaited(_refreshMessages(showLoading: false));
+    }
   }
 
   // Function Name: _historyChanged
@@ -1511,7 +1522,9 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
                 builder: (context, constraints) => Column(
                   children: [
                     Expanded(child: _buildMessageArea()),
-                    if (!_isSelectingMessages)
+                    if (_history.linkUnavailable)
+                      _buildLinkUnavailableNotice()
+                    else if (!_isSelectingMessages)
                       // Keep messages visible when large text or the keyboard
                       // makes the selected doses and retry message taller.
                       ConstrainedBox(
@@ -1661,6 +1674,16 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
                   ),
                 ),
               GestureDetector(
+                // 선택 중에는 말풍선과 그 옆 빈 자리를 눌러도 선택되게 줄 전체가 터치를 받는다.
+                behavior: _isSelectingMessages ? HitTestBehavior.opaque : null,
+                // 함수이름: _buildMessageArea.onTap callback
+                // 함수역할: 메시지 선택 중에 줄을 누르면 그 메시지의 선택을 전환한다. 선택 중이 아니면 누르기를 가로채지 않는다.
+                // 매개변수:
+                // - 없음.
+                // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                onTap: _isSelectingMessages
+                    ? () => _toggleMessageSelection(_messages[index].messageId)
+                    : null,
                 // 함수이름: _buildMessageArea.onLongPress callback
                 // 함수역할: 전송·삭제 중에는 선택을 막고 메시지 선택을 최대 50개까지 전환한다.
                 // 매개변수:
@@ -1742,6 +1765,44 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
             ],
           );
         },
+      ),
+    );
+  }
+
+  // 함수이름: _buildLinkUnavailableNotice
+  // 함수역할: 상대가 연동을 해제했거나 접근 권한이 사라진 대화에서 입력창 대신 그 사실을 알린다. 다시 눌러도 보낼 수 없는 메시지를 계속 시도하지 않게 한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 연동 사용자 메시지와 복약 관련 첨부에 쓰는 위젯 트리.
+  Widget _buildLinkUnavailableNotice() {
+    return Material(
+      color: Colors.white,
+      elevation: 8,
+      child: Semantics(
+        liveRegion: true,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.link_off, color: MedBuddyColors.danger),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _text.linkUnavailable,
+                  key: const Key('chat-link-unavailable'),
+                  style: const TextStyle(
+                    color: MedBuddyColors.textStrong,
+                    fontSize: 14,
+                    height: 1.4,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1990,11 +2051,12 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   }
 
   // 함수이름: _connectionLabel
-  // 함수역할: 실시간 연결·연결 중·재연결·끊김 상태를 현지화 문구로 변환한다.
+  // 함수역할: 실시간 연결·연결 중·재연결·끊김 상태를 현지화 문구로 변환한다. 연동이 해제된 대화는 연결 상태 대신 그 사실을 알린다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get _connectionLabel {
+    if (_history.linkUnavailable) return _text.linkUnavailableStatus;
     return switch (_connectionState) {
       LinkedChatConnectionState.connected => _text.connected,
       LinkedChatConnectionState.connecting => _text.connecting,
@@ -3490,6 +3552,20 @@ class _LinkedChatText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get disconnected => isEnglish ? 'Disconnected' : '연결 끊김';
+  // 함수이름: linkUnavailableStatus
+  // 함수역할: 현재 언어와 입력값에 맞춰 "연동 해제됨" 문구를 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  String get linkUnavailableStatus => isEnglish ? 'Link ended' : '연동 해제됨';
+  // 함수이름: linkUnavailable
+  // 함수역할: 현재 언어와 입력값에 맞춰 연동이 해제되어 대화를 이어갈 수 없다는 안내 문구를 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  String get linkUnavailable => isEnglish
+      ? 'This link has ended, so messages can no longer be sent here. Check the link under Patient/Caregiver link.'
+      : '연동이 해제되어 이 대화에서는 더 이상 메시지를 보낼 수 없습니다. 환자·보호자 연동에서 확인해주세요.';
   // 함수이름: clearSelectedMedication
   // 함수역할: 현재 언어와 입력값에 맞춰 "선택한 약 해제" 문구를 제공한다.
   // 매개변수:

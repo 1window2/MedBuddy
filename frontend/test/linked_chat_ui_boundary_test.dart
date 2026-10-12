@@ -18,6 +18,7 @@ import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
+import 'package:medbuddy_frontend/services/api_response_parser.dart';
 import 'package:medbuddy_frontend/services/authenticated_api_client.dart';
 import 'package:medbuddy_frontend/services/linked_chat_realtime_service.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
@@ -675,6 +676,45 @@ class _DeleteChatControl extends _RetryChatControl {
     deletionIds.add(messageIds);
     deletionScopes.add(scope);
     if (failDeletion) throw StateError('offline');
+  }
+}
+
+// 클래스명: _RemovableLinkChatControl
+// 역할: 대화 도중 상대가 연동을 해제한 상황을 재현하는 채팅 대역.
+// 주요 책임: 연동이 해제된 뒤의 기록 조회를 서버와 같이 404로 거절한다.
+// 속성:
+// - linkRemoved (bool): 연동이 해제되었는지 여부.
+class _RemovableLinkChatControl extends _DeleteChatControl {
+  bool linkRemoved = false;
+
+  // 함수이름: _RemovableLinkChatControl
+  // 함수역할: 초기 채팅 이력을 보관한다.
+  // 매개변수:
+  // - historyMessages (List<ChatMessage>): 초기 또는 반복 조회에 제공할 채팅 기록.
+  // 반환값: 연동 해제 재현용 채팅 대역.
+  _RemovableLinkChatControl({required super.historyMessages});
+
+  // 함수이름: requestHistory
+  // 함수역할: 연동이 해제되기 전에는 기록을 돌려주고, 해제된 뒤에는 404로 거절한다.
+  // 매개변수:
+  // - linkId (int): 대화를 구분하는 환자·보호자 연결 식별자.
+  // - beforeMessageId (int?): 이전 페이지의 기준 메시지.
+  // - limit (int): 한 번에 가져올 메시지 수.
+  // 반환값: 채팅 기록; 연동 해제 뒤에는 ApiRequestException(404).
+  @override
+  Future<List<ChatMessage>> requestHistory({
+    required int linkId,
+    int? beforeMessageId,
+    int limit = 50,
+  }) async {
+    if (linkRemoved) {
+      throw ApiRequestException('Link was not found.', statusCode: 404);
+    }
+    return super.requestHistory(
+      linkId: linkId,
+      beforeMessageId: beforeMessageId,
+      limit: limit,
+    );
   }
 }
 
@@ -1965,6 +2005,101 @@ void main() {
       control.dispose();
     },
   );
+
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 메시지 선택 중에는 체크박스뿐 아니라 말풍선을 눌러도 선택이 전환되고, 선택 중이 아니면 누르기로 선택되지 않는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  testWidgets('tapping a message toggles its selection while selecting', (
+    tester,
+  ) async {
+    final control = _DeleteChatControl(
+      historyMessages: [_deletionMessage(), _deletionMessage(id: 2)],
+    );
+    final realtime = _FakeRealtimeService();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkedChatUI(
+          linkId: 17,
+          currentUserHash: 'patient-a',
+          patientHash: 'patient-a',
+          userSetting: const UserSetting(language: 'en'),
+          control: control,
+          realtimeService: realtime,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    bool selected(int id) => tester
+        .widget<Checkbox>(find.byKey(ValueKey('selectChatMessage-$id')))
+        .value!;
+
+    await tester.tap(find.text('Message 1'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('selectChatMessage-1')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('deleteChatMessages')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Message 1'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(selected(1), isTrue);
+    expect(selected(2), isFalse);
+    await tester.tap(find.text('Message 1'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(selected(1), isFalse);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await realtime.dispose();
+    control.dispose();
+  });
+
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 대화 중 상대가 연동을 해제하면 입력창 대신 연동 해제 안내를 보이고 상태 문구도 바뀌는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  testWidgets('a chat whose link was removed replaces the composer with a notice', (
+    tester,
+  ) async {
+    final control = _RemovableLinkChatControl(
+      historyMessages: [_deletionMessage()],
+    );
+    final realtime = _FakeRealtimeService();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkedChatUI(
+          linkId: 17,
+          currentUserHash: 'patient-a',
+          patientHash: 'patient-a',
+          userSetting: const UserSetting(language: 'ko'),
+          control: control,
+          realtimeService: realtime,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('chatSendButton')), findsOneWidget);
+    expect(find.byKey(const Key('chat-link-unavailable')), findsNothing);
+
+    // 연결 상태가 다시 알려지면 기록을 따라잡는 조회가 일어나고, 그 조회가 404로 거절된다.
+    control.linkRemoved = true;
+    realtime._states.add(LinkedChatConnectionState.connected);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('chat-link-unavailable')), findsOneWidget);
+    expect(find.byKey(const ValueKey('chatSendButton')), findsNothing);
+    expect(find.text('연동 해제됨'), findsOneWidget);
+    expect(find.text('Message 1'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await realtime.dispose();
+    control.dispose();
+  });
 
   // 함수이름: testWidgets 콜백
   // 함수역할:

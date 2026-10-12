@@ -101,9 +101,32 @@ closed by any code on this branch:
       dose days in a 14-day period); the medication was stored with the
       weekly direction, appeared in today's schedule on its first dose day,
       and the medication box showed its next dose day.
-      Still not checked on a phone: reminders after a reboot, the snooze
-      action, the home-screen widget, the exact-alarm notice (needs Android 14
-      or later) and two physical devices.
+      A second pass on October 12 used the phone as the patient and the
+      signed 0.2.2 build on an Android 14 emulator as the caregiver, both
+      against the production server:
+      the reminder's snooze action, pressed with the app not running, started
+      the app and reserved the alarm ten minutes later; the home-screen widget
+      showed today's state, its refresh ran, and its "taken" stored the dose
+      and cancelled the snoozed alarm; a dose undone in the app was shown as
+      open in the widget again.
+      On the emulator the exact-alarm notice appeared in the settings, opened
+      the system screen, and was gone on return once the permission was
+      allowed. Three reserved reminders were all reserved again after a
+      reboot without opening the app.
+      Between the two devices: the caregiver saw the patient's schedule with
+      the weekly medication on its dose day; a missed-dose deadline produced
+      the alert 15 seconds after the deadline with the caregiver app not
+      running; its snooze action queued the alert again on the server and it
+      returned ten minutes later; its chat action sent the request and the
+      phone received the push. A message sent from the phone appeared live on
+      the emulator and "delete for everyone" replaced it on both at once.
+      A second link in the other direction was created by code and removed by
+      one side while the other had its chat open: the open chat showed
+      "disconnected" within a minute and a send failed with "try again" —
+      the link's end was not stated. Fixed after this pass (see below), not
+      yet re-checked on a device.
+      Not checked: two physical phones, more than three sessions on one link,
+      a transient FCM failure, and Android 16.
 - [ ] Chat notifications show the message preview by default; the recipient
       can switch to type-only. Decide the default.
 
@@ -175,9 +198,9 @@ it left open; items closed on `beta/v0.2.2` have been removed from them.
 
 Physical acceptance that was not performed for v0.2.0:
 
-- [ ] A notification "taken" or snooze action from a cold start, and the first
-      launch after the application day changes. The "taken" action was checked
-      with the app in the background only.
+- [x] A notification "taken" or snooze action from a cold start: both checked
+      on the phone on October 12 with the signed 0.2.2 build.
+- [ ] The first launch after the application day changes.
 - [ ] Prescription capture with the on-device privacy filter, and saving
       several identified pills, on a physical device.
 - [ ] Android 16 background work. Android 14 was exercised on an emulator
@@ -225,9 +248,12 @@ the second device; backend `014aaf4`). The last build checked was `490ef7c`:
 
 Changed in v0.2.1 and still without a device check (automated tests only):
 
-- [ ] A dose tapped right after midnight, and the widget refresh button.
-- [ ] Reminders after a reboot and through the 12-hour worker; cancellation
-      after a widget "taken" and again after undo and retake.
+- [x] The widget refresh button, and cancellation of a pending reminder after
+      a widget "taken" following an undo: checked on the phone on October 12.
+      Reminders after a reboot: checked on the Android 14 emulator with the
+      signed build.
+- [ ] A dose tapped right after midnight, and reminders through the 12-hour
+      worker.
 - [ ] Push registration after a cold start without network.
 - [ ] Session: a network loss during a token refresh keeps the session; a
       401 in chat signs out; ending the session with a pushed screen open.
@@ -235,8 +261,14 @@ Changed in v0.2.1 and still without a device check (automated tests only):
       and the OCR line order is unverified); cleanup of picked photo copies.
 - [ ] Marker retry on the native map and recovery of the dose store on a real
       Keystore.
-- [ ] Two devices: unlink while a chat is open, and more than three sessions
-      on one link.
+- [x] Two devices: unlink while a chat is open. Checked on October 12 between
+      the phone and an emulator; the open chat did not say that the link had
+      ended, which is fixed: the chat now replaces its input with a notice and
+      shows "link ended" once the server refuses the link, and a failed send
+      asks for the history once so that this is recognised without waiting
+      for the stream to close. Regression:
+      [chat screen](../frontend/test/linked_chat_ui_boundary_test.dart).
+- [ ] More than three sessions on one link (needs four clients of one account).
 - [ ] The periodic WorkManager tasks after an update and before the first
       launch. Their entry point moved like the widget's; only the widget path
       was exercised.
@@ -576,12 +608,17 @@ silently inferred from weak evidence.
 - [ ] Deploy and smoke-test the server-scheduled missed-deadline path with two
       linked physical devices, including patient/caregiver force-stop and
       transient FCM failure. The Android polling path is retained only for
-      local/demo authentication mode.
+      local/demo authentication mode. Checked on October 12 between the phone
+      and an emulator with the caregiver app not running (alert, snooze and
+      chat action); force-stop and an FCM failure were not exercised.
 - [x] Define and implement selected-message deletion: private deletion at any
       age; sender-only shared redaction before 24 hours, with server validation,
       confirmation, and retention/export semantics in [Chat Message Deletion.md](Chat%20Message%20Deletion.md).
 - [ ] Verify selected-message deletion on two physical devices, including
       reconnect, offline failure, delivered previews and the 24-hour deadline.
+      "Delete for everyone" was checked live between the phone and an emulator
+      on October 12; the other cases were not. In selection mode only the
+      checkbox reacted to a tap; a tap on the message now selects it too.
 - [ ] Run a short task-count usability study with older adults or proxy users:
       record taps, text entry, completion time, error recovery, large-text
       layout, TalkBack labels, and one-handed reachability for the medication,
