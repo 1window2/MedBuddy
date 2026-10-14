@@ -19,7 +19,17 @@ released under that version instead. Changes are listed in the
 - [ ] The home dose-record notice may not scroll fully at 2x text with a longer
       English message (seen in a widget test while shortening the missed-dose
       text).
-- [ ] Device check of the 0.2.3 changes.
+- [ ] Device check of the 0.2.3 changes. On October 15 the signed build of
+      `ded59c3` was installed over 0.2.2 on the Android 14 emulator (guest
+      account) against the production server, which runs this branch: the
+      update kept the data; undoing a whole slot on home asks first and "keep"
+      leaves the record; the medication box shows its new title, subtitle and
+      dates, a tap on a row selects it, and the delete confirmation names the
+      count (cancelled); the link list's buttons are 48 dp; the patient-code
+      dialog and the settings use the new wording; started offline, the app
+      showed the session error with a retry, and after the network returned the
+      retry restored the same account. Not checked on a device: the phone, two
+      devices, caregiver alerts after an offline start, and the error guidance.
 - Decided: the home-screen widget's undo button keeps undoing a slot in one
   tap. A widget cannot show a confirmation, and the button is disabled while a
   record is being saved, so a double tap does not reach the undo. The in-app
