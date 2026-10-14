@@ -1,5 +1,14 @@
 # MedBuddy Release TODO
 
+## v0.2.3 development line
+
+v0.2.3 starts from `v0.2.2-beta` on `beta/v0.2.3`. It collects small
+corrections and improvements found by reviewing the released code and by using
+the app, leaving out the switches that belong to a public release (Google Play,
+App Check enforcement). If it reaches a state worth publishing as 1.0.0, it is
+released under that version instead. Changes are listed in the
+[v0.2.3 notes](releases/v0.2.3-beta.md).
+
 ## v0.2.2 release candidate
 
 v0.2.2 is the hardening line before a 1.0.0 release decision. An external scan
