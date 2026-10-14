@@ -12,6 +12,17 @@ from entities.prescription_analysis_entity import (
 )
 
 
+# Class Name: PrescriptionAnalysisFormatError
+# Role: Marks an AI analysis reply that is not the agreed JSON object.
+# Responsibilities:
+# - Lets the route answer with an upstream error (502) instead of a client error, because the
+#   request was valid and a retry can succeed.
+# Attributes:
+# - None beyond ValueError.
+class PrescriptionAnalysisFormatError(ValueError):
+    """The AI analysis reply is not the agreed JSON object."""
+
+
 INFO_UNAVAILABLE = "\uc815\ubcf4 \uc5c6\uc74c"
 MAX_MEDICATION_NAME_LENGTH = 200
 
@@ -148,7 +159,9 @@ def normalize_prescription_candidates(
     data: dict[str, Any],
 ) -> tuple[str, str, MedicationCandidateList, int]:
     if not isinstance(data, dict):
-        raise ValueError("Prescription analysis response must be a JSON object.")
+        raise PrescriptionAnalysisFormatError(
+            "Prescription analysis response must be a JSON object."
+        )
 
     prescription_date = _read_first_text(data, PRESCRIPTION_DATE_KEYS)
     normalized_date = normalize_date(prescription_date or "")

@@ -190,7 +190,7 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
               title: _text.screenTitle,
               subtitle: _text.isEnglish
                   ? 'Link patient and caregiver accounts.'
-                  : '환자와 보호자 계정을 연결합니다.',
+                  : '환자와 보호자 계정을 연동합니다.',
               backTooltip: _text.close,
               onBackRequested: () => Navigator.pop(context),
             ),
@@ -340,9 +340,17 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
       return;
     }
 
-    await _showPatientCodeDialog(patientCode!);
-    if (_isCurrentRequest(request)) {
-      await _refreshLinks();
+    final regenerate = await _showPatientCodeDialog(patientCode!);
+    if (!_isCurrentRequest(request)) {
+      return;
+    }
+    await _refreshLinks();
+    // 만료된 코드 창에서 "새 코드 만들기"를 누르면 같은 사용자 범위에서 같은 발급 흐름으로 새 코드를 만든다.
+    if (regenerate == true &&
+        mounted &&
+        request.userHash == _committedUserHash &&
+        identical(request.control, _control)) {
+      await _generatePatientHash();
     }
   }
 
@@ -1026,9 +1034,9 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
   // 함수역할: 발급된 환자 코드와 만료 안내 대화상자를 연다.
   // 매개변수:
   // - patientCode (PatientLinkCode): 발급된 임시 연결 코드와 만료 정보.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
-  Future<void> _showPatientCodeDialog(PatientLinkCode patientCode) {
-    return showDialog<void>(
+  // 반환값: 만료 후 새 코드 만들기를 고르면 true, 그 밖에 닫으면 null로 완료되는 Future.
+  Future<bool?> _showPatientCodeDialog(PatientLinkCode patientCode) {
+    return showDialog<bool>(
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.5),
       // 함수이름: _showPatientCodeDialog.builder callback
@@ -1215,7 +1223,7 @@ class _LinkActionButton extends StatelessWidget {
             const SizedBox(height: 5),
             Text(
               title,
-              maxLines: 1,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
               style: const TextStyle(
@@ -1225,14 +1233,15 @@ class _LinkActionButton extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 3),
+            // 역할 안내는 중요한 정보이므로 13pt 이상으로 두고 잘리지 않게 3줄까지 허용한다.
             Text(
               subtitle,
-              maxLines: 1,
+              maxLines: 3,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: MedBuddyColors.textMuted,
-                fontSize: 10,
+                fontSize: 13,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 0,
               ),
@@ -1384,10 +1393,11 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
                   children: [
                     IconButton(
                       tooltip: widget.text.close,
-                      visualDensity: VisualDensity.compact,
+                      // 어르신이 누르기 쉽게 최소 48dp 터치 영역을 둔다.
+                      visualDensity: VisualDensity.standard,
                       constraints: const BoxConstraints.tightFor(
-                        width: 36,
-                        height: 36,
+                        width: 48,
+                        height: 48,
                       ),
                       onPressed: _isRegistering
                           ? null
@@ -1415,7 +1425,7 @@ class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 36),
+                    const SizedBox(width: 48),
                   ],
                 ),
                 const SizedBox(height: 20),
@@ -1644,6 +1654,7 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
   // 반환값: 환자 코드와 만료 시간·재발급·복사 명령에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
+    final expired = widget.patientCode.isExpired();
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
@@ -1666,10 +1677,11 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                   children: [
                     IconButton(
                       tooltip: widget.text.close,
-                      visualDensity: VisualDensity.compact,
+                      // 어르신이 누르기 쉽게 최소 48dp 터치 영역을 둔다.
+                      visualDensity: VisualDensity.standard,
                       constraints: const BoxConstraints.tightFor(
-                        width: 36,
-                        height: 36,
+                        width: 48,
+                        height: 48,
                       ),
                       // Function Name: build.onPressed callback
                       // Description: Closes this route with the selection or cancellation encoded by `Navigator.pop(context)`.
@@ -1695,7 +1707,7 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 36),
+                    const SizedBox(width: 48),
                   ],
                 ),
                 const SizedBox(height: 20),
@@ -1709,18 +1721,22 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                     // 매개변수:
                     // - 없음.
                     // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                    onTap: () {
-                      Clipboard.setData(
-                        ClipboardData(text: widget.patientCode.code),
-                      );
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(widget.text.codeCopied)),
-                      );
-                    },
+                    // 만료된 코드는 복사해 전달하지 못하게 막는다.
+                    onTap: expired
+                        ? null
+                        : () {
+                            Clipboard.setData(
+                              ClipboardData(text: widget.patientCode.code),
+                            );
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(widget.text.codeCopied)),
+                            );
+                          },
                     child: Container(
                       height: 57,
                       padding: const EdgeInsets.fromLTRB(18, 0, 14, 0),
                       decoration: BoxDecoration(
+                        color: expired ? MedBuddyColors.divider : null,
                         borderRadius: MedBuddyRadii.control,
                         border: Border.all(color: MedBuddyColors.outline),
                       ),
@@ -1729,10 +1745,16 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                           Expanded(
                             child: Text(
                               widget.patientCode.code,
+                              key: const ValueKey('patientCodeValue'),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: MedBuddyColors.textStrong,
+                              style: TextStyle(
+                                color: expired
+                                    ? MedBuddyColors.textLight
+                                    : MedBuddyColors.textStrong,
+                                decoration: expired
+                                    ? TextDecoration.lineThrough
+                                    : null,
                                 fontSize: 16,
                                 letterSpacing: 0,
                                 fontWeight: FontWeight.w500,
@@ -1740,8 +1762,10 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                             ),
                           ),
                           const SizedBox(width: 10),
-                          const Icon(
-                            Icons.copy_outlined,
+                          Icon(
+                            expired
+                                ? Icons.timer_off_outlined
+                                : Icons.copy_outlined,
                             color: MedBuddyColors.textLight,
                             size: 22,
                           ),
@@ -1752,7 +1776,7 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                 ),
                 const SizedBox(height: 7),
                 Text(
-                  widget.text.copyHint,
+                  expired ? widget.text.codeExpired : widget.text.copyHint,
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: MedBuddyColors.textSubtle,
@@ -1774,27 +1798,45 @@ class _PatientCodeDialogState extends State<_PatientCodeDialog> {
                   text: widget.text.codeWarning,
                 ),
                 const SizedBox(height: 24),
-                Text.rich(
-                  TextSpan(
-                    text: widget.text.remainingTime,
-                    children: [
-                      TextSpan(
-                        text: _remainingTimeText,
-                        style: const TextStyle(
-                          color: MedBuddyColors.primary,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                        ),
+                if (expired)
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      key: const ValueKey('patientCodeRegenerate'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(52),
                       ),
-                    ],
+                      // 함수이름: build.onPressed 콜백
+                      // 함수역할: 창을 닫으며 상위 화면에 새 코드 발급을 요청한다.
+                      // 매개변수: 없음.
+                      // 반환값: 없음. 화면 종료 결과로 true를 전달한다.
+                      onPressed: () => Navigator.pop(context, true),
+                      icon: const Icon(Icons.refresh),
+                      label: Text(widget.text.createNewCode),
+                    ),
+                  )
+                else
+                  Text.rich(
+                    TextSpan(
+                      text: widget.text.remainingTime,
+                      children: [
+                        TextSpan(
+                          text: _remainingTimeText,
+                          style: const TextStyle(
+                            color: MedBuddyColors.primary,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: MedBuddyColors.textSubtle,
+                      fontSize: 13,
+                      letterSpacing: 0,
+                    ),
                   ),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: MedBuddyColors.textSubtle,
-                    fontSize: 13,
-                    letterSpacing: 0,
-                  ),
-                ),
               ],
             ),
           ),
@@ -2101,10 +2143,10 @@ class _LinkedUserTile extends StatelessWidget {
                   tooltip: !isChatAvailable
                       ? text.chatUnavailable
                       : text.medicationChat,
-                  visualDensity: VisualDensity.compact,
+                  // 어르신이 누르기 쉽도록 48dp 이상의 터치 영역을 둔다.
                   constraints: const BoxConstraints.tightFor(
-                    width: 40,
-                    height: 40,
+                    width: 48,
+                    height: 48,
                   ),
                   onPressed: onChatRequested,
                   icon: Icon(
@@ -2119,10 +2161,10 @@ class _LinkedUserTile extends StatelessWidget {
                   tooltip: link.caregiverHash == currentUserHash
                       ? text.editPatientLabel
                       : text.editCaregiverLabel,
-                  visualDensity: VisualDensity.compact,
+                  // 어르신이 누르기 쉽도록 48dp 이상의 터치 영역을 둔다.
                   constraints: const BoxConstraints.tightFor(
-                    width: 40,
-                    height: 40,
+                    width: 48,
+                    height: 48,
                   ),
                   onPressed: onPeerLabelRequested,
                   icon: const Icon(
@@ -2134,10 +2176,10 @@ class _LinkedUserTile extends StatelessWidget {
                 IconButton(
                   tooltip: text.openPatientMedication,
                   onPressed: onPatientMedicationRequested,
-                  visualDensity: VisualDensity.compact,
+                  // 어르신이 누르기 쉽도록 48dp 이상의 터치 영역을 둔다.
                   constraints: const BoxConstraints.tightFor(
-                    width: 40,
-                    height: 40,
+                    width: 48,
+                    height: 48,
                   ),
                   icon: const Icon(
                     Icons.medication_outlined,
@@ -2580,12 +2622,26 @@ class _LinkPatientCaregiverText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get codeCopied => isEnglish ? 'Code copied.' : '코드를 복사했습니다.';
   // 함수이름: copyHint
-  // 함수역할: 현재 언어와 입력값에 맞춰 "(코드를 클릭하면 복사됩니다)" 문구를 제공한다.
+  // 함수역할: 현재 언어와 입력값에 맞춰 "(코드를 누르면 복사됩니다)" 문구를 제공한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get copyHint =>
-      isEnglish ? '(Tap the code to copy)' : '(코드를 클릭하면 복사됩니다)';
+      isEnglish ? '(Tap the code to copy)' : '(코드를 누르면 복사됩니다)';
+  // 함수이름: codeExpired
+  // 함수역할: 현재 언어로 "코드가 만료되었어요. 새 코드를 만들어 주세요." 문구를 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  String get codeExpired => isEnglish
+      ? 'This code has expired. Create a new code.'
+      : '코드가 만료되었어요. 새 코드를 만들어 주세요.';
+  // 함수이름: createNewCode
+  // 함수역할: 현재 언어로 "새 코드 만들기" 버튼 문구를 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  String get createNewCode => isEnglish ? 'Create new code' : '새 코드 만들기';
   // 함수이름: codeInstruction
   // 함수역할: 현재 언어와 입력값에 맞춰 "해당 코드를 보호자 휴대폰에\n등록해주세요" 문구를 제공한다.
   // 매개변수:
@@ -2659,7 +2715,7 @@ class _LinkPatientCaregiverText {
 
   String unlinkWarning(String peerName) => isEnglish
       ? 'Medication schedule sharing with $peerName will stop.\n\n'
-            'Caregiver notification settings for this link and your shared chat '
+            'The Caregiver alerts setting for this link and your shared chat '
             'history will be deleted. Deleted chat history cannot be recovered. '
             'The patient\'s medications and dose records will remain.'
       : '$peerName 님과의 복약 일정 공유가 중단됩니다.\n\n'

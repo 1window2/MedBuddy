@@ -381,7 +381,8 @@ void main() {
               (error) =>
                   UserFacingErrorMessage.resolve(error, isEnglish: true),
               'guidance',
-              '저장된 복약 정보 조회 실패 (409): limit 4290 reached',
+              // Developer text is not shown; the status stays for tracing.
+              'Something went wrong. Please try again. (409)',
             ),
       ),
     );
@@ -434,5 +435,100 @@ void main() {
   // - No value; a failed expectation fails this test.
   test('default patient hash remains available before UC-6 linking', () {
     expect(PatientHash.defaultPatientHash, 'local_patient');
+  });
+
+  // Function Name: test callback
+  // Description:
+  // - Expected behavior: a medication that no longer exists on the server (HTTP 404) counts as
+  //   deleted, while other rejections and transport failures still report failure.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; a failed expectation fails this test.
+  test('requestDelete treats a medication already gone as deleted', () async {
+    var status = 404;
+    // Function Name: MockClient callback
+    // Description: Answers every delete with the status chosen by the test, or a transport failure for 0.
+    // Parameters: request - intercepted request. Returns: The fixed response.
+    final control = CheckSavedMedication(
+      baseUrl: 'http://localhost',
+      patientHash: 'patient-a',
+      client: MockClient((request) async {
+        if (status == 0) throw http.ClientException('offline');
+        return http.Response('{"detail":"Medication was not found."}', status);
+      }),
+    );
+    addTearDown(control.dispose);
+    expect(await control.requestDelete(3), isTrue);
+    status = 500;
+    expect(await control.requestDelete(3), isFalse);
+    status = 403;
+    expect(await control.requestDelete(3), isFalse);
+    status = 0;
+    expect(await control.requestDelete(3), isFalse);
+  });
+
+  // Function Name: test callback
+  // Description:
+  // - Expected behavior: failed saves report whether the account limit, the connection or
+  //   something else failed, so screens can show their own localized text.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; a failed expectation fails this test.
+  test('saveMedicationDetail classifies the failure kind', () async {
+    Object outcome = 409;
+    // Function Name: MockClient callback
+    // Description: Returns the chosen status with a Korean detail, or throws the chosen exception.
+    // Parameters: request - intercepted request. Returns: The fixed response.
+    final control = CheckSavedMedication(
+      baseUrl: 'http://localhost',
+      patientHash: 'patient-a',
+      client: MockClient((request) async {
+        final value = outcome;
+        if (value is int) {
+          return http.Response(
+            jsonEncode({'detail': '저장할 수 있는 약의 수를 넘었습니다.'}),
+            value,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }
+        throw value;
+      }),
+    );
+    addTearDown(control.dispose);
+    const detail = MedicationDetail(
+      itemName: 'Test',
+      efficacy: '',
+      usageMethod: '',
+      warning: '',
+    );
+    final expectations = <Object, MedicationSaveFailureKind>{
+      409: MedicationSaveFailureKind.limitReached,
+      500: MedicationSaveFailureKind.other,
+      TimeoutException('slow'): MedicationSaveFailureKind.network,
+      http.ClientException('offline'): MedicationSaveFailureKind.network,
+      const FormatException('bad'): MedicationSaveFailureKind.other,
+    };
+    for (final entry in expectations.entries) {
+      outcome = entry.key;
+      final result = await control.saveMedicationDetail(detail);
+      expect(result.status, MedicationSaveStatus.failed);
+      expect(result.failureKind, entry.value, reason: '${entry.key}');
+    }
+    expect(
+      const MedicationSaveResult(
+        status: MedicationSaveStatus.duplicate,
+        message: '',
+      ).failureKind,
+      MedicationSaveFailureKind.none,
+    );
+    expect(
+      const MedicationSaveResult(
+        status: MedicationSaveStatus.failed,
+        message: '',
+      ).failureKind,
+      MedicationSaveFailureKind.other,
+    );
   });
 }

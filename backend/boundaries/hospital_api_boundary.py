@@ -34,6 +34,10 @@ class HospitalApiUnavailableError(RuntimeError):
     """병원 API의 인증·할당량·통신 장애."""
 
 
+class HospitalApiBudgetExhaustedError(HospitalApiUnavailableError):
+    """오늘 사용할 수 있는 병원 API 호출 예산을 모두 썼다. 서비스 시간대의 자정에 초기화된다."""
+
+
 class HospitalApiResponseError(RuntimeError):
     """병원 API의 XML·페이지 응답 계약 오류."""
 
@@ -70,7 +74,7 @@ class _CacheEntry:
 # 클래스명: NationalEmergencyMedicalCenterHospitalAPI
 # 역할: 국립중앙의료원 병원 API의 제한된 조회·검증·캐시 경계.
 # 주요 책임: 동일 요청 병합, 호출 예산 및 응답 크기 제한, 키가 없는 오류 전파.
-# 속성: _cache는 TTL 결과, _inflight는 공유 작업, _daily_requests는 프로세스별 호출 수다.
+# 속성: _cache는 TTL 결과, _inflight는 공유 작업, _daily_requests는 프로세스별·오퍼레이션별 호출 수다.
 class NationalEmergencyMedicalCenterHospitalAPI:
     # 캐시·진행 요청·연결 풀의 크기를 제한한다.
     def __init__(
@@ -85,7 +89,8 @@ class NationalEmergencyMedicalCenterHospitalAPI:
         self._clock = clock
         self._date_clock = date_clock or (lambda: datetime.now(ZoneInfo(settings.APPLICATION_TIME_ZONE)).date())
         self._budget_date: date | None = None
-        self._daily_requests = 0
+        # 제공기관의 하루 할당량은 오퍼레이션마다 따로 매겨지므로 호출 수도 오퍼레이션별로 센다.
+        self._daily_requests: dict[str, int] = {}
         self._cache: OrderedDict[tuple, _CacheEntry] = OrderedDict()
         self._inflight: dict[tuple, asyncio.Task[_CacheEntry]] = {}
         self._semaphore = asyncio.Semaphore(settings.PUBLIC_API_MAX_CONCURRENCY)
@@ -183,9 +188,12 @@ class NationalEmergencyMedicalCenterHospitalAPI:
                     )
                 entry = _CacheEntry(self._clock() + ttl, value=value)
             except (HospitalApiUnavailableError, HospitalApiResponseError, TimeoutError) as exc:
+                # 예산 소진은 자정까지 풀리지 않으므로 일시 장애와 구분해 그대로 전한다.
                 error = (
                     HospitalApiResponseError
                     if isinstance(exc, HospitalApiResponseError)
+                    else HospitalApiBudgetExhaustedError
+                    if isinstance(exc, HospitalApiBudgetExhaustedError)
                     else HospitalApiUnavailableError
                 )
                 entry = _CacheEntry(
@@ -209,10 +217,13 @@ class NationalEmergencyMedicalCenterHospitalAPI:
                 budget_date = self._date_clock()
                 if self._budget_date != budget_date:
                     self._budget_date = budget_date
-                    self._daily_requests = 0
-                if self._daily_requests >= settings.HOSPITAL_API_DAILY_REQUEST_BUDGET:
-                    raise HospitalApiUnavailableError("Hospital daily request budget exhausted.")
-                self._daily_requests += 1
+                    self._daily_requests = {}
+                used = self._daily_requests.get(path, 0)
+                if used >= settings.HOSPITAL_API_DAILY_REQUEST_BUDGET:
+                    raise HospitalApiBudgetExhaustedError(
+                        "Hospital daily request budget exhausted."
+                    )
+                self._daily_requests[path] = used + 1
                 if self._client is None:
                     self._client = httpx.AsyncClient(
                         timeout=settings.HOSPITAL_API_TIMEOUT_SECONDS,

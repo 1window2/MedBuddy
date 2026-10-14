@@ -800,10 +800,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               leading: const Icon(Icons.people_outline),
               title: Text(viewModel.userSetting.language == 'en'
                   ? 'View linked patient schedules'
-                  : '연결된 환자 일정 보기'),
+                  : '연동된 환자 일정 보기'),
               subtitle: Text(viewModel.userSetting.language == 'en'
                   ? 'Change Home schedule from “My schedule” to “Linked patients”.'
-                  : '홈 복약 일정을 ‘내 일정’에서 ‘연결된 환자’로 바꿔보세요.'),
+                  : '홈 복약 일정을 ‘내 일정’에서 ‘연동된 환자’로 바꿔보세요.'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _openUserSettings(
                 context,
@@ -1073,8 +1073,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         : (isEnglish
               ? 'Medication completion was cancelled.'
               : '해당 시간대의 복용 기록을 취소했습니다.');
+    // 영어 안내도 한국어와 같이 놓친 약을 임의로 더 먹지 말라는 뜻을 분명히 전한다.
     final missedDoseGuidance = isEnglish
-        ? 'Check your prescription guidance before taking a missed dose.'
+        ? 'Do not take an extra dose on your own. Check your prescription guidance.'
         : '놓친 복약은 임의로 추가 복용하지 말고 처방·복약지도를 확인하세요.';
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(
@@ -1096,8 +1097,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           ),
         ),
+        // 실패 안내도 일반 성공 안내만큼 오래 보여 어르신이 놓치지 않게 한다.
         duration: Duration(
-          seconds: success ? (needsTimingGuidance ? 8 : 5) : 2,
+          seconds: success ? (needsTimingGuidance ? 8 : 5) : 5,
         ),
         persist: false,
         action: success

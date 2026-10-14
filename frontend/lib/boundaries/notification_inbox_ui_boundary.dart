@@ -200,10 +200,12 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
   }
 
   // 함수이름: _date
-  // 함수역할: 알림 시각을 지역 날짜·시간으로 표시한다. 매개변수: date. 반환값: 시각 문자열.
+  // 함수역할: 알림 시각을 지역 날짜와 사용자의 오전/오후·24시간 설정에 맞춘 시간으로 표시한다.
+  // 매개변수: date. 반환값: 시각 문자열.
   String _date(DateTime date) {
     final local = date.toLocal();
-    return '${local.month}/${local.day} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+    final time = widget.userSetting.formatTime(local.hour, local.minute);
+    return '${local.month}/${local.day} $time';
   }
 
   // 함수이름: build

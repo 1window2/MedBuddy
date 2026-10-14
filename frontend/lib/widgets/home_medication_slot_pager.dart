@@ -22,6 +22,8 @@ class HomeMedicationSlotPager extends StatefulWidget {
   final bool isCompletionLoading;
   final bool showDetailsButton;
   final VoidCallback? onDetailsRequested;
+  // 사용자가 고른 오전/오후·24시간 방식으로 알림 시각을 표시한다. 없으면 저장값(HH:mm)을 그대로 쓴다.
+  final String Function(int hour, int minute)? timeFormatter;
 
   const HomeMedicationSlotPager({
     super.key,
@@ -36,6 +38,7 @@ class HomeMedicationSlotPager extends StatefulWidget {
     this.isCompletionLoading = false,
     this.showDetailsButton = false,
     this.onDetailsRequested,
+    this.timeFormatter,
   });
 
   @override
@@ -210,7 +213,7 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
                     : medications.isEmpty
                     ? (widget.isEnglish ? 'No scheduled doses' : '복약 일정 없음')
                     : !hasPending
-                    ? (widget.isEnglish ? 'Undo completion' : '복용 취소')
+                    ? (widget.isEnglish ? 'Undo completion' : '복용 완료 취소')
                     : (widget.isEnglish ? 'Taken' : '복용했어요'),
                 style: const TextStyle(
                   fontSize: 16,
@@ -285,7 +288,11 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
           : widget.isEnglish
           ? '$name +$additional more'
           : '$name 외 $additional개';
-      description = alarm == null ? names : '${alarm.timeLabel} · $names';
+      final timeText = alarm == null
+          ? null
+          : widget.timeFormatter?.call(alarm.hour, alarm.minute) ??
+                alarm.timeLabel;
+      description = timeText == null ? names : '$timeText · $names';
     }
     return HomeMedicationSummary(
       key: ValueKey('home-slot-page-${slot ?? 'empty'}'),
@@ -337,10 +344,48 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
     ),
   );
 
+  // 함수이름: _confirmUndo
+  // 함수역할: 같은 버튼을 연달아 눌러 방금 기록한 시간대 전체가 취소되지 않게 취소 전에 한 번 확인한다.
+  //           되돌리기는 드문 동작이라 기록하는 주된 흐름에는 확인 창을 띄우지 않는다.
+  // 매개변수: slot: 복용 완료를 취소할 시간대 키.
+  // 반환값: 사용자가 "복용 완료 취소"를 고르면 true, 닫거나 유지를 고르면 false.
+  Future<bool> _confirmUndo(String slot) async {
+    final label = _slotLabel(slot);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      // 함수이름: _confirmUndo.builder 콜백
+      // 함수역할: 시간대 전체 복용 완료 취소 확인 창을 구성한다.
+      // 매개변수: context: 대화상자 위젯 트리 위치. 반환값: 확인 창.
+      builder: (context) => AlertDialog(
+        key: const Key('home-slot-undo-confirmation'),
+        content: Text(
+          widget.isEnglish
+              ? 'Undo the $label doses marked as taken?'
+              : '$label 복용 완료 기록을 모두 취소할까요?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(widget.isEnglish ? 'Keep' : '그대로 두기'),
+          ),
+          FilledButton(
+            key: const Key('home-slot-undo-confirm'),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(widget.isEnglish ? 'Undo completion' : '복용 완료 취소'),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
   Future<void> _updateSlot(String slot, {required bool completed}) async {
     if (_saving ||
         widget.isCompletionLoading ||
         widget.onStatusUpdateRequested == null) {
+      return;
+    }
+    if (!completed && (!await _confirmUndo(slot) || !mounted)) {
       return;
     }
     setState(() {

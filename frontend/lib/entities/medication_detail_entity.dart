@@ -274,13 +274,13 @@ class MedicationDetail {
   }
 
   // 함수이름: medicationEndDate
-  // 함수역할: 조제일과 양수 투약일을 기준으로 시작일을 포함한 복용 종료일을 계산하고 기간이 부족하면 null을 제공한다.
+  // 함수역할: 조제일(없으면 서버와 같이 등록일)과 양수 투약일을 기준으로 시작일을 포함한 복용 종료일을 계산하고 기간이 부족하면 null을 제공한다.
   // 매개변수:
   // - 없음.
   // 반환값:
   // - DateTime?: 조제일과 양수 투약일을 기준으로 시작일을 포함한 복용 종료일을 계산하고 기간이 부족하면 null을 제공한다.
   DateTime? get medicationEndDate {
-    final startDate = prescriptionDate;
+    final startDate = prescriptionDate ?? createdDate;
     final dayCount = medicationDayCountFromText(totalDays);
     if (startDate == null || dayCount <= 0) {
       return null;
@@ -320,13 +320,13 @@ class MedicationDetail {
   }
 
   // 함수이름: isActiveOn
-  // 함수역할: 조제일자와 총 투약일을 기준으로 기준 날짜에 복용 중인 약인지 판단한다. 기간 정보가 부족한 기존 저장 데이터는 목록에서 사라지지 않도록 복용 중으로 취급한다.
+  // 함수역할: 조제일자(없으면 서버와 같이 등록일자)와 총 투약일을 기준으로 기준 날짜에 복용 중인 약인지 판단한다. 기간 정보가 부족한 기존 저장 데이터는 목록에서 사라지지 않도록 복용 중으로 취급한다.
   // 매개변수:
   // - referenceDate (DateTime): 달력 날짜 계산 또는 비교의 기준 시각
   // 반환값:
   // - bool: 조제일자와 총 투약일을 기준으로 기준 날짜에 복용 중인 약인지 판단한다. 기간 정보가 부족한 기존 저장 데이터는 목록에서 사라지지 않도록 복용 중으로 취급한다.
   bool isActiveOn(DateTime referenceDate) {
-    final startDate = prescriptionDate;
+    final startDate = prescriptionDate ?? createdDate;
     final endDate = medicationEndDate;
     if (startDate == null || endDate == null) {
       return true;
@@ -405,33 +405,14 @@ class MedicationDetail {
   }
 
   // 함수이름: _localizedDosageValue
-  // 함수역할: 영문 표시에서 숫자와 정·캡슐·포·방울 단위를 단복수에 맞게 바꾸고 인식하지 못한 용량은 원문으로 보존한다.
+  // 함수역할: 저장 일정과 같은 공용 함수로 정·캡슐·포·방울 단위의 복용량을 표시 언어에 맞게 바꾸고 인식하지 못한 용량은 원문으로 보존한다.
   // 매개변수:
   // - value (String): 표시 언어로 바꿀 1회 복용량 원문
   // - language (String): 표시·음성 안내에 사용할 언어 코드
   // 반환값:
-  // - String: 영문 표시에서 숫자와 정·캡슐·포·방울 단위를 단복수에 맞게 바꾸고 인식하지 못한 용량은 원문으로 보존한다.
+  // - String: 표시 언어의 복용량 또는 앞뒤 공백을 지운 원문.
   static String _localizedDosageValue(String value, String language) {
-    final normalizedValue = value.trim();
-    if (!_isEnglish(language)) {
-      return normalizedValue;
-    }
-    final match = RegExp(
-      r'^(\d+(?:\.\d+)?)\s*(정|캡슐|포|방울)$',
-    ).firstMatch(normalizedValue);
-    if (match == null) {
-      return normalizedValue;
-    }
-    final amount = match.group(1)!;
-    final isSingular = double.tryParse(amount) == 1;
-    final unit = switch (match.group(2)) {
-      '정' => isSingular ? 'tablet' : 'tablets',
-      '캡슐' => isSingular ? 'capsule' : 'capsules',
-      '포' => isSingular ? 'packet' : 'packets',
-      '방울' => isSingular ? 'drop' : 'drops',
-      _ => '',
-    };
-    return '$amount $unit'.trim();
+    return localizedDoseAmountLabel(value, language);
   }
 
   // 함수이름: _localizedFrequencyValue
@@ -451,8 +432,8 @@ class MedicationDetail {
   }
 
   // 함수이름: _localizedDurationValue
-  // 함수역할: 영문 표시에서 "7일"·"7일분"·숫자만 있는 복용 일수만 day·days 문구로 바꾼다.
-  //   "2주"·"1개월"처럼 일 단위가 아닌 기간은 뜻이 바뀌지 않도록 원문 그대로 둔다.
+  // 함수역할: 영문 표시에서 복용 기간을 저장 일정과 같이 서버 기준 일수(주는 7일, 개월은 30일)로 바꿔 day·days 문구로 보여 준다.
+  //   일수를 읽을 수 없는 기간은 원문 그대로 둔다.
   // 매개변수:
   // - value (String): 표시 언어로 바꿀 복용 기간 원문
   // - language (String): 표시·음성 안내에 사용할 언어 코드
@@ -463,15 +444,8 @@ class MedicationDetail {
     if (!_isEnglish(language)) {
       return normalizedValue;
     }
-    final dayCount = RegExp(
-      r'^(\d+)\s*(?:(?:일(?:분|간)?|days?)(?:\s*\(.*\))?)?$',
-      caseSensitive: false,
-    ).firstMatch(normalizedValue);
-    final days = int.tryParse(dayCount?.group(1) ?? '') ?? 0;
-    if (days <= 0) {
-      return normalizedValue;
-    }
-    return days == 1 ? '1 day' : '$days days';
+    return englishDurationLabel(medicationDayCountFromText(normalizedValue)) ??
+        normalizedValue;
   }
 
   // 함수이름: _localizedTiming

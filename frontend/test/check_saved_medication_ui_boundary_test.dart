@@ -129,10 +129,10 @@ void main() {
     // "4주"는 일정과 같은 규칙으로 28일로 읽는다.
     String twoDigits(int value) => value.toString().padLeft(2, '0');
     String fullDate(DateTime day) =>
-        '${day.year}/${twoDigits(day.month)}/${twoDigits(day.day)}';
+        '${day.year}-${twoDigits(day.month)}-${twoDigits(day.day)}';
     final end = DateTime(now.year, now.month, now.day + 27);
     final endText = end.year == now.year
-        ? '${twoDigits(end.month)}/${twoDigits(end.day)}'
+        ? '${twoDigits(end.month)}-${twoDigits(end.day)}'
         : fullDate(end);
     expect(find.text('복용기간: ${fullDate(now)} ~ $endText'), findsOneWidget);
     expect(
@@ -207,12 +207,12 @@ void main() {
     );
     expect(header.prominent, isTrue);
     expect(header.onBackRequested, isNull);
-    expect(tester.getTopLeft(find.text('저장된 복약 정보')).dx, 32);
-    final title = tester.widget<Text>(find.text('저장된 복약 정보'));
+    expect(tester.getTopLeft(find.text('복약함')).dx, 32);
+    final title = tester.widget<Text>(find.text('복약함'));
     expect(title.style!.fontSize, 21);
     expect(title.style!.color, Colors.white);
     expect(
-      (tester.getTopLeft(find.text('저장된 복약 정보')).dy -
+      (tester.getTopLeft(find.text('복약함')).dy -
               tester
                   .getTopLeft(
                     find.byKey(const ValueKey('saved-medication-select')),
@@ -221,7 +221,7 @@ void main() {
           .abs(),
       lessThan(1),
     );
-    expect(find.text('약과 복용 기록을 확인합니다.'), findsOneWidget);
+    expect(find.text('저장한 약과 복용 기간을 확인합니다.'), findsOneWidget);
   });
 
   // 함수이름: 전체·일부 선택 테스트
@@ -276,6 +276,42 @@ void main() {
     );
   });
 
+  // 함수이름: 선택 모드 행 누르기 테스트
+  // 함수역할: 선택 모드에서 체크박스가 아닌 약 행을 눌러도 선택이 바뀌고 확인 창에 개수와 삭제·취소가 보이는지 확인한다.
+  // 매개변수: tester. 반환값: 검증 완료.
+  testWidgets('선택 모드에서 약 행을 누르면 선택이 바뀌고 삭제 확인에 개수를 표시한다', (
+    tester,
+  ) async {
+    final model = await _pumpSelectionApp(tester);
+    await _startSavedSelection(tester);
+    expect(find.text('0개 선택'), findsOneWidget);
+    await tester.tap(find.text('약 1'));
+    await tester.pumpAndSettle();
+    expect(find.text('1개 선택'), findsOneWidget);
+    expect(
+      tester
+          .widget<Checkbox>(
+            find.byKey(const ValueKey('saved-medication-checkbox-1')),
+          )
+          .value,
+      isTrue,
+    );
+    await tester.tap(find.text('약 2'));
+    await tester.pumpAndSettle();
+    expect(find.text('2개 선택'), findsOneWidget);
+    await tester.tap(find.text('약 2'));
+    await tester.pumpAndSettle();
+    expect(find.text('1개 선택'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('saved-medication-delete-selected')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('선택한 약 1개를 삭제할까요?'), findsOneWidget);
+    expect(_dialogButton('취소'), findsOneWidget);
+    expect(find.text('아니오'), findsNothing);
+    await tester.tap(_dialogButton('취소'));
+    await tester.pumpAndSettle();
+    expect(model.deletedIds, isEmpty);
+  });
+
   // 함수이름: 필터별 삭제 범위 테스트
   // 함수역할: 조건이 바뀔 때 선택을 비우고 최종 표시 조건 외의 약은 삭제하지 않는다.
   // 매개변수: tester. 반환값: 검증 완료.
@@ -318,7 +354,7 @@ void main() {
       _selectionMedication(3, offsetDays: -30),
     ]);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('예'));
+    await tester.tap(_dialogButton('삭제'));
     await tester.pumpAndSettle();
     expect(model.deletedIds, [1]);
     expect(
@@ -382,7 +418,7 @@ void main() {
     await _toggleSavedAll(tester);
     await tester.tap(find.byKey(const Key('saved-medication-delete-selected')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('예'));
+    await tester.tap(_dialogButton('삭제'));
     await tester.pumpAndSettle();
     expect(_allSelection(tester).onChanged, isNull);
     expect(
@@ -1157,7 +1193,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(deleteButton);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Yes'));
+    await tester.tap(_dialogButton('Delete'));
     await tester.pumpAndSettle();
 
     expect(find.text('Deleted: 1. Failed: 1.'), findsOneWidget);
@@ -1318,7 +1354,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Saved Medication'), findsOneWidget);
+    expect(find.text('Medications'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
@@ -1809,12 +1845,18 @@ Future<void> _toggleSavedAll(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+// 함수이름: _dialogButton
+// 함수역할: 화면의 같은 이름 버튼과 구분해 삭제 확인 창 안의 버튼만 찾는다.
+// 매개변수: label: 버튼 문구. 반환값: 확인 창 안의 버튼 문구 Finder.
+Finder _dialogButton(String label) =>
+    find.descendant(of: find.byType(Dialog), matching: find.text(label));
+
 // 함수이름: _deleteSavedSelection
 // 함수역할: 하단 삭제 요청과 한국어 확인을 수행한다. 매개변수: tester. 반환값: 삭제 완료.
 Future<void> _deleteSavedSelection(WidgetTester tester) async {
   await tester.tap(find.byKey(const Key('saved-medication-delete-selected')));
   await tester.pumpAndSettle();
-  await tester.tap(find.text('예'));
+  await tester.tap(_dialogButton('삭제'));
   await tester.pumpAndSettle();
 }
 

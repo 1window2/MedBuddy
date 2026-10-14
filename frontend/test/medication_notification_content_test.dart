@@ -135,6 +135,27 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
 
+  // Function Name: chat preview truncation test
+  // Description: Verifies a long chat preview is cut by user-visible characters, so an emoji or
+  //   combined character at the limit is kept whole, and short previews are only whitespace-normalized.
+  // Parameters: None. Returns: Completion; a failed expectation fails the test.
+  test('chat preview truncation never splits an emoji', () {
+    expect(
+      NotificationService.linkedChatMessagePreview('  hello \n  there '),
+      'hello there',
+    );
+    const family = '👨‍👩‍👧';
+    final long = '${'a' * 118}$family${'b' * 10}';
+    final preview = NotificationService.linkedChatMessagePreview(long);
+    expect(preview, '${'a' * 118}$family…');
+    final exact = '${'a' * 119}$family';
+    expect(NotificationService.linkedChatMessagePreview(exact), exact);
+    expect(
+      NotificationService.linkedChatMessagePreview('${'a' * 119}👍👍'),
+      '${'a' * 119}…',
+    );
+  });
+
   test('completed widget dose cancels its dated snooze without losing other reminders', () async {
     final service = NotificationService.instance;
     service.setHistoryUser('patient-a', persistSession: false);

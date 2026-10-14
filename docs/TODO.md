@@ -9,6 +9,18 @@ App Check enforcement). If it reaches a state worth publishing as 1.0.0, it is
 released under that version instead. Changes are listed in the
 [v0.2.3 notes](releases/v0.2.3-beta.md).
 
+### Open on this line
+
+- [ ] The missed-dose scan re-reads every slot that was completed before its
+      deadline on each 15-second pass for the rest of the day, two to four
+      queries per patient and slot. Negligible at beta size; it grows with
+      users. Remembering "complete at the deadline" would change what happens
+      when a dose is undone after the deadline, so it needs a decision.
+- [ ] The home dose-record notice may not scroll fully at 2x text with a longer
+      English message (seen in a widget test while shortening the missed-dose
+      text).
+- [ ] Device check of the 0.2.3 changes.
+
 ## v0.2.2 release candidate
 
 v0.2.2 is the hardening line before a 1.0.0 release decision. An external scan
@@ -48,7 +60,10 @@ closed by any code on this branch:
       address, not across many addresses. See the App Check section below.
 - [ ] The public hospital API budget (800 requests per day and process) is
       shared by all users, and one specialty search can cost up to 41
-      requests. Needs a larger provider quota.
+      requests. Needs a larger provider quota (the operating account is
+      requested on the public data portal by registering a use case). Since
+      0.2.3 the budget is counted per provider operation, as the provider's
+      quota is, which roughly triples the usable calls without a new quota.
 - [ ] Device verification of this branch on a physical phone; the lists
       below under "without a device check" still apply as well. The
       `beta-android` environment allows `beta/v0.2.2` since October 12.

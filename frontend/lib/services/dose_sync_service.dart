@@ -57,6 +57,16 @@ List<MedicationSchedule> projectDoseOperations(
   }).toList();
 }
 
+// 함수이름: withoutChatReceipt
+// 함수역할: 채팅 복용 요청을 채팅 메시지 없는 일반 복용 요청으로 바꾼다. 서버가 원래 요청 ID를 이미 받았을 수도 있으므로
+//   다른 본문으로 같은 ID를 다시 쓰지 않게 파생한 새 ID를 붙인다. 같은 복용 상태를 다시 적용해도 결과는 같다.
+// 매개변수: operation - 전송 대기 요청 본문.
+// 반환값: link_id를 뺀 새 요청 본문.
+Map<String, dynamic> withoutChatReceipt(Map<String, dynamic> operation) {
+  final id = operation['operation_id'] as String;
+  return {...operation, 'operation_id': '${id}_nochat'}..remove('link_id');
+}
+
 // 클래스명: DoseSyncService
 // 역할: 계정별 전송 큐, 일정 캐시, 앱 수명주기에 따른 재시도를 관리한다.
 // 속성: owner/client - 인증 범위와 통신, openStore - 암호화 저장소,
@@ -99,6 +109,12 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   }) : openStore = openStore ?? DoseOutboxStore.open,
        scheduleWork = scheduleWork ?? (() async {}),
        clock = clock ?? DateTime.now;
+
+  // 함수이름: hasScheduledRetry
+  // 함수역할: 다음 자동 재전송이 예약되어 있는지 알려 준다. 보낼 기록이 없을 때 재시도가 남지 않는지 확인하는 데 쓴다.
+  // 매개변수: 없음. 반환값: 예약된 재시도 타이머가 살아 있으면 true.
+  @visibleForTesting
+  bool get hasScheduledRetry => _timer?.isActive ?? false;
 
   int get pendingCount => _operations.length;
   bool get hasBlocked => _operations.any((op) => op['state'] == 'blocked');
@@ -298,6 +314,19 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
                 body: jsonEncode({...op}..remove('medication_names')),
               )
               .timeout(const Duration(seconds: 20));
+          if (response.statusCode == 429 && op['link_id'] != null) {
+            // 채팅 일일 한도는 채팅 복용 기록에만 먼저 적용된다. 연동이 끊긴 채팅 기록처럼
+            // 채팅 없는 일반 복용 기록으로 바꿔 복용 상태가 한도 초기화까지 막히지 않게 한다.
+            if (await _store!.replaceClaimed(
+              owner,
+              id,
+              lease,
+              withoutChatReceipt(op),
+            )) {
+              continue;
+            }
+            break;
+          }
           if (response.statusCode != 200) {
             final permanent = const [
               400,
@@ -313,6 +342,8 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
               blocked: permanent,
               retry: !permanent,
             );
+            // 거부된 요청은 같은 날짜·시간대·약의 뒤 요청만 붙잡고, 관계없는 요청은 계속 보낸다.
+            if (permanent) continue;
             break;
           }
           final body = jsonDecode(response.body) as Map;
@@ -334,8 +365,31 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     } catch (_) {
       // 저장소·인증·네트워크 오류가 나도 사용자의 전송 대기 기록을 버리지 않는다.
     } finally {
-      _scheduleRetry();
+      await _scheduleRetryIfUploadable();
     }
+  }
+
+  // 함수이름: _scheduleRetryIfUploadable
+  // 함수역할: 전송을 다시 시도할 기록이 남아 있을 때만 재시도를 예약한다. 모두 보냈거나 서버 거부로 보류된
+  //   기록만 남았으면 예약을 지우고 대기 간격을 처음으로 되돌린다. 저장소를 확인하지 못하면 재시도를 예약한다.
+  // 매개변수: 없음. 반환값: 예약 결정 완료 Future.
+  Future<void> _scheduleRetryIfUploadable() async {
+    if (_disposed) return;
+    var uploadable = true;
+    try {
+      final store = _store;
+      if (store != null) uploadable = await store.hasUploadableOperation(owner);
+    } catch (_) {
+      // 확인하지 못했으면 기록을 놓치지 않도록 재시도를 유지한다.
+    }
+    if (_disposed) return;
+    if (!uploadable) {
+      _timer?.cancel();
+      _timer = null;
+      _retry = 0;
+      return;
+    }
+    _scheduleRetry();
   }
 
   // 함수이름: flushPending

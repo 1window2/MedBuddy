@@ -71,7 +71,7 @@ class ChatListUI extends StatelessWidget {
                 IconButton(
                   onPressed: onManageLinks,
                   icon: const Icon(Icons.person_add_alt_1_outlined),
-                  tooltip: _isEnglish ? 'Manage connections' : '환자·보호자 연동 관리',
+                  tooltip: _isEnglish ? 'Manage links' : '환자·보호자 연동 관리',
                 ),
               ],
             ),

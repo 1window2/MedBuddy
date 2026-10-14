@@ -811,7 +811,7 @@ class _HomeText {
   // 함수역할: 환경설정 범위를 표시한다. 매개변수: 없음. 반환값: 설명.
   String get userSettingsSubtitle => isEnglish
       ? 'Adjust text, language and notifications'
-      : '글씨 크기·언어·알림을 설정해요';
+      : '글자 크기·언어·알림을 설정해요';
   // 함수이름: prescriptionAnalysis
   // 함수역할: 처방전·알약 식별·직접 등록을 포함하는 홈 진입점의 이름을 번역한다.
   // 매개변수: 없음. 반환값: 현재 언어의 카드 제목.
@@ -949,6 +949,7 @@ class _HomeEncouragementPanel extends StatelessWidget {
         onStatusUpdateRequested: onStatusUpdateRequested,
         isCompletionLoading: isCompletionLoading,
         onDetailsRequested: onTap,
+        timeFormatter: userSetting.formatTime,
       ),
     );
   }

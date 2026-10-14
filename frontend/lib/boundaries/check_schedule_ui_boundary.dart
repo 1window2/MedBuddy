@@ -102,6 +102,8 @@ class CheckScheduleUI extends StatefulWidget {
 // - _selectedDoses: Independent medication/slot selections for chat attachment.
 class _CheckScheduleUIState extends State<CheckScheduleUI> {
   static const Duration _completionSnackBarDuration = Duration(seconds: 5);
+  // 저장 실패 안내는 성공 안내 중 가장 긴 시간보다 짧지 않게 보여 어르신이 읽을 시간을 준다.
+  static const Duration _failureSnackBarDuration = _completionSnackBarDuration;
   static const List<_ScheduleSlotDefinition> _slotDefinitions = [
     _ScheduleSlotDefinition(key: 'morning'),
     _ScheduleSlotDefinition(key: 'lunch'),
@@ -634,7 +636,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(text.statusUpdateFailed),
-          duration: const Duration(seconds: 2),
+          duration: _failureSnackBarDuration,
         ),
       );
       return;
@@ -688,7 +690,9 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
                         )
                       : text.statusUpdateFailed,
                 ),
-                duration: const Duration(seconds: 2),
+                duration: undoSucceeded
+                    ? const Duration(seconds: 2)
+                    : _failureSnackBarDuration,
               ),
             );
           },
@@ -748,7 +752,9 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
                       )
               : text.statusUpdateFailed,
         ),
-        duration: const Duration(seconds: 2),
+        duration: success
+            ? const Duration(seconds: 2)
+            : _failureSnackBarDuration,
       ),
     );
   }
@@ -869,6 +875,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       setting,
       slotTitle,
       text,
+      viewModel.userSetting,
     );
     if (!mounted || selectedSetting == null) {
       return;
@@ -905,12 +912,14 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
 
   // 함수이름: _showReminderConfiguration
   // 함수역할: 활성 상태와 시각을 임시 편집하며 저장 전에는 기존 알림을 변경하지 않는다.
-  // 매개변수: setting은 기존 알림, slotTitle은 시간대 제목, text는 언어별 문구.
+  // 매개변수: setting은 기존 알림, slotTitle은 시간대 제목, text는 언어별 문구,
+  //           userSetting은 오전/오후·24시간 표시 방식을 정하는 사용자 설정.
   // 반환값: 저장하면 선택한 설정, 취소·뒤로가기·바깥 터치이면 null.
   Future<MedicationAlarm?> _showReminderConfiguration(
     MedicationAlarm setting,
     String slotTitle,
     _ScheduleText text,
+    UserSetting userSetting,
   ) {
     var draft = setting;
     return showDialog<MedicationAlarm>(
@@ -943,7 +952,9 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
               OutlinedButton.icon(
                 key: const Key('schedule-reminder-edit-time'),
                 icon: const Icon(Icons.schedule_outlined),
-                label: Text('${text.reminderTime} ${draft.timeLabel}'),
+                label: Text(
+                  '${text.reminderTime} ${userSetting.formatTime(draft.hour, draft.minute)}',
+                ),
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(48),
                   foregroundColor: MedBuddyColors.primaryDark,
@@ -1008,7 +1019,9 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
         backgroundColor: success
             ? MedBuddyColors.primaryDark
             : Theme.of(context).colorScheme.error,
-        duration: const Duration(seconds: 3),
+        duration: success
+            ? const Duration(seconds: 3)
+            : _failureSnackBarDuration,
       ),
     );
   }
@@ -1719,7 +1732,8 @@ class _MedicationScheduleRow extends StatelessWidget {
               'scheduleMedicationSelectionOption_${selectionSlotKey}_${schedule.medicationID}',
             )
           : null,
-      padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
+      // 48dp 체크 영역이 여백 일부를 대신하므로 아이콘 위치와 행 높이를 이전과 비슷하게 유지한다.
+      padding: const EdgeInsets.fromLTRB(6, 4, 14, 4),
       decoration: BoxDecoration(
         color: isSelectionMode && isSelected
             ? MedBuddyColors.successSurface
@@ -1744,36 +1758,43 @@ class _MedicationScheduleRow extends StatelessWidget {
                   // - 없음.
                   // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
                   : () => onStatusChanged(!isCompleted),
-              child: Padding(
-                padding: const EdgeInsets.all(4),
-                child: isStatusUpdating && !isSelectionMode
-                    ? const SizedBox(
-                        width: 25,
-                        height: 25,
-                        child: Padding(
-                          padding: EdgeInsets.all(3),
-                          child: CircularProgressIndicator(strokeWidth: 2),
+              // 어르신이 누르기 쉽게 체크 표시 주변까지 최소 48dp 터치 영역을 둔다.
+              child: SizedBox(
+                key: ValueKey(
+                  'scheduleMedicationStatusToggle_${schedule.medicationID}',
+                ),
+                width: 48,
+                height: 48,
+                child: Center(
+                  child: isStatusUpdating && !isSelectionMode
+                      ? const SizedBox(
+                          width: 25,
+                          height: 25,
+                          child: Padding(
+                            padding: EdgeInsets.all(3),
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : Icon(
+                          isSelectionMode
+                              ? isSelected
+                                    ? Icons.check_circle
+                                    : Icons.circle_outlined
+                              : isCompleted
+                              ? Icons.check_circle_outline
+                              : Icons.circle_outlined,
+                          color: isSelectionMode
+                              ? MedBuddyColors.primary
+                              : isCompleted
+                              ? MedBuddyColors.primary
+                              : MedBuddyColors.outline,
+                          size: 25,
                         ),
-                      )
-                    : Icon(
-                        isSelectionMode
-                            ? isSelected
-                                  ? Icons.check_circle
-                                  : Icons.circle_outlined
-                            : isCompleted
-                            ? Icons.check_circle_outline
-                            : Icons.circle_outlined,
-                        color: isSelectionMode
-                            ? MedBuddyColors.primary
-                            : isCompleted
-                            ? MedBuddyColors.primary
-                            : MedBuddyColors.outline,
-                        size: 25,
-                      ),
+                ),
               ),
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 4),
           Expanded(
             child: InkWell(
               borderRadius: MedBuddyRadii.small,

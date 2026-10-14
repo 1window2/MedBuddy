@@ -22,10 +22,12 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 // - startCount (int): Number of guides the screen started.
 // - stopCount (int): Number of stop requests received.
 // - disposeCount (int): Number of dispose requests received.
+// - failNextStart (bool): Whether the next start fails as an unavailable speech engine does.
 class _RecordingVoiceGuide extends RequestVoiceGuide {
   int startCount = 0;
   int stopCount = 0;
   int disposeCount = 0;
+  bool failNextStart = false;
   Completer<String>? _playback;
 
   // Function Name: _RecordingVoiceGuide
@@ -58,6 +60,10 @@ class _RecordingVoiceGuide extends RequestVoiceGuide {
     void Function()? onComplete,
   }) {
     startCount += 1;
+    if (failNextStart) {
+      failNextStart = false;
+      return Future<String>.error(StateError('speech engine unavailable'));
+    }
     final playback = Completer<String>();
     _playback = playback;
     return playback.future;
@@ -230,5 +236,28 @@ void main() {
     await tester.pump();
     expect(voiceGuide.stopCount, 1);
     voiceGuide.dispose();
+  });
+
+  // Function Name: testWidgets callback
+  // Description:
+  // - Expected behavior: a read-aloud failure is announced in a snack bar and the button returns
+  //   to its idle label; the Korean checklist title has no English in brackets.
+  // Parameters:
+  // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
+  // Returns:
+  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  testWidgets('read-aloud failure is announced', (tester) async {
+    final voiceGuide = _RecordingVoiceGuide()..failNextStart = true;
+    addTearDown(voiceGuide.dispose);
+    await _pumpDetail(tester, voiceGuide);
+    expect(find.textContaining('(Checklist)'), findsNothing);
+
+    await tester.tap(find.text('큰 소리로 읽어주세요'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.textContaining('음성 안내를 재생하지 못했습니다.'), findsOneWidget);
+    expect(find.text('큰 소리로 읽어주세요'), findsOneWidget);
+    expect(find.text('읽기 중지'), findsNothing);
   });
 }

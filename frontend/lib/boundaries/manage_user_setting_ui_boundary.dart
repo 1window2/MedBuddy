@@ -635,7 +635,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                 ),
                 _SettingOption(
                   value: 'patients',
-                  label: text.isEnglish ? 'Linked patients' : '연결된 환자',
+                  label: text.isEnglish ? 'Linked patients' : '연동된 환자',
                 ),
               ],
               onSelected: (value) =>
@@ -761,6 +761,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
             // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
             // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
             builder: (context, _) => _MfaSettingsPanel(
+              text: text,
               enabled: widget.authenticationControl.hasEnrolledSmsMfa,
               available: widget.authenticationControl.canEnrollSmsMfa,
               onEnrollRequested: _showMfaEnrollment,
@@ -1349,8 +1350,10 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       // Parameters:
       // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
       // Returns: Widget subtree for the described layout or fallback.
-      builder: (context) =>
-          _MfaEnrollmentDialog(control: widget.authenticationControl),
+      builder: (context) => _MfaEnrollmentDialog(
+        control: widget.authenticationControl,
+        text: _SettingText(_language),
+      ),
     );
   }
 
@@ -1769,6 +1772,7 @@ class _SettingsMenuTile extends StatelessWidget {
 // - available (bool): Whether the choice, action, or feature is enabled.
 // - onEnrollRequested (VoidCallback): Callback starting SMS multi-factor enrollment.
 class _MfaSettingsPanel extends StatelessWidget {
+  final _SettingText text;
   final bool enabled;
   final bool available;
   final VoidCallback onEnrollRequested;
@@ -1776,11 +1780,13 @@ class _MfaSettingsPanel extends StatelessWidget {
   // Function Name: _MfaSettingsPanel
   // Description: Initializes SMS multi-factor enrollment state and security actions with the supplied configuration.
   // Parameters:
+  // - text (_SettingText): Localized labels for the panel.
   // - enabled (bool): Whether the choice, action, or feature is enabled.
   // - available (bool): Whether the choice, action, or feature is enabled.
   // - onEnrollRequested (VoidCallback): Callback starting SMS multi-factor enrollment.
   // Returns: Initialized _MfaSettingsPanel instance.
   const _MfaSettingsPanel({
+    required this.text,
     required this.enabled,
     required this.available,
     required this.onEnrollRequested,
@@ -1804,9 +1810,9 @@ class _MfaSettingsPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'SMS two-step verification',
-            style: TextStyle(
+          Text(
+            text.smsMfaTitle,
+            style: const TextStyle(
               color: MedBuddyColors.textStrong,
               fontSize: 18,
               fontWeight: FontWeight.w700,
@@ -1815,10 +1821,10 @@ class _MfaSettingsPanel extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             enabled
-                ? 'An SMS second factor is enrolled.'
+                ? text.smsMfaEnrolled
                 : available
-                ? 'Protect this account with a verified phone number.'
-                : 'Available for verified email or Google accounts.',
+                ? text.smsMfaAvailable
+                : text.smsMfaUnavailable,
             style: const TextStyle(color: MedBuddyColors.textMuted),
           ),
           if (available && !enabled) ...[
@@ -1826,7 +1832,7 @@ class _MfaSettingsPanel extends StatelessWidget {
             OutlinedButton.icon(
               onPressed: onEnrollRequested,
               icon: const Icon(Icons.security_outlined),
-              label: const Text('Enable SMS MFA'),
+              label: Text(text.smsMfaEnable),
             ),
           ],
         ],
@@ -1843,13 +1849,15 @@ class _MfaSettingsPanel extends StatelessWidget {
 // - control (AuthenticationControl): Controller handling this screen's queries and update requests.
 class _MfaEnrollmentDialog extends StatefulWidget {
   final AuthenticationControl control;
+  final _SettingText text;
 
   // Function Name: _MfaEnrollmentDialog
   // Description: Initializes phone-number entry and SMS multi-factor enrollment with the supplied configuration.
   // Parameters:
   // - control (AuthenticationControl): Controller handling this screen's queries and update requests.
+  // - text (_SettingText): Localized labels for the dialog.
   // Returns: Initialized _MfaEnrollmentDialog instance.
-  const _MfaEnrollmentDialog({required this.control});
+  const _MfaEnrollmentDialog({required this.control, required this.text});
 
   // Function Name: createState
   // Description: Creates the state object that coordinates phone-number entry and SMS multi-factor enrollment.
@@ -1899,19 +1907,42 @@ class _MfaEnrollmentDialogState extends State<_MfaEnrollmentDialog> {
         final awaitingCode =
             widget.control.smsChallengePurpose ==
             SmsChallengePurpose.mfaEnrollment;
+        final text = widget.text;
+        // Show the control's failure in the dialog language instead of leaving the user without feedback.
+        final error = widget.control.errorMessageForLanguage(
+          isEnglish: text.isEnglish,
+        );
         return AlertDialog(
-          title: Text(awaitingCode ? 'Verify phone' : 'Enable SMS MFA'),
-          content: TextField(
-            controller: awaitingCode ? _codeController : _phoneController,
-            autofocus: true,
-            keyboardType: TextInputType.phone,
-            maxLength: awaitingCode ? 6 : null,
-            decoration: InputDecoration(
-              labelText: awaitingCode
-                  ? 'Six-digit SMS code'
-                  : 'International phone number',
-              hintText: awaitingCode ? null : '+821012345678',
-            ),
+          title: Text(
+            awaitingCode ? text.smsMfaVerifyPhone : text.smsMfaEnable,
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: awaitingCode ? _codeController : _phoneController,
+                autofocus: true,
+                keyboardType: TextInputType.phone,
+                maxLength: awaitingCode ? 6 : null,
+                decoration: InputDecoration(
+                  labelText: awaitingCode
+                      ? text.smsMfaCodeLabel
+                      : text.smsMfaPhoneLabel,
+                  hintText: awaitingCode ? null : '+821012345678',
+                ),
+              ),
+              if (error != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  error,
+                  key: const ValueKey('smsMfaError'),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                ),
+              ],
+            ],
           ),
           actions: [
             TextButton(
@@ -1926,7 +1957,7 @@ class _MfaEnrollmentDialogState extends State<_MfaEnrollmentDialog> {
                       widget.control.cancelSmsChallenge();
                       Navigator.pop(context);
                     },
-              child: const Text('Cancel'),
+              child: Text(text.cancel),
             ),
             FilledButton(
               onPressed: widget.control.isBusy
@@ -1950,7 +1981,9 @@ class _MfaEnrollmentDialogState extends State<_MfaEnrollmentDialog> {
                         Navigator.pop(context);
                       }
                     },
-              child: Text(awaitingCode ? 'Verify' : 'Send code'),
+              child: Text(
+                awaitingCode ? text.smsMfaVerify : text.smsMfaSendCode,
+              ),
             ),
           ],
         );
@@ -2329,13 +2362,13 @@ class _SettingText {
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get fontSizeTitle => isEnglish ? 'Text Size' : '글씨크기';
+  String get fontSizeTitle => isEnglish ? 'Text Size' : '글자 크기';
   // 함수이름: readingSpeedTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "읽기속도" 문구를 제공한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get readingSpeedTitle => isEnglish ? 'Reading Speed' : '읽기속도';
+  String get readingSpeedTitle => isEnglish ? 'Reading Speed' : '읽기 속도';
   // 함수이름: languageTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "Language" 문구를 제공한다.
   // 매개변수:
@@ -2446,14 +2479,14 @@ class _SettingText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get caregiverNotificationsTitle =>
-      isEnglish ? 'Caregiver updates' : '보호자 알림';
+      isEnglish ? 'Caregiver alerts' : '보호자 알림';
   // 함수이름: caregiverNotificationsDescription
   // 함수역할: 보호자 알림의 수신 대상을 간단히 설명한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get caregiverNotificationsDescription =>
-      isEnglish ? 'Linked patients\' medication status' : '연결된 환자의 복약 상태';
+      isEnglish ? 'Linked patients\' medication status' : '연동된 환자의 복약 상태';
   // 함수이름: chatNotificationsTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "채팅 알림" 문구를 제공한다.
   // 매개변수:
@@ -2832,4 +2865,76 @@ class _SettingText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get deleteAccountFailed =>
       isEnglish ? 'Could not delete account data.' : '계정 데이터를 삭제하지 못했습니다.';
+  // 함수이름: smsMfaTitle
+  // 함수역할: 문자 2단계 인증 영역 제목을 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  String get smsMfaTitle =>
+      isEnglish ? 'SMS two-step verification' : '문자 2단계 인증';
+  // 함수이름: smsMfaEnrolled
+  // 함수역할: 문자 2단계 인증이 등록된 상태 안내를 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  String get smsMfaEnrolled => isEnglish
+      ? 'SMS two-step verification is on.'
+      : '문자 2단계 인증이 켜져 있습니다.';
+  // 함수이름: smsMfaAvailable
+  // 함수역할: 문자 2단계 인증을 켤 수 있는 상태 안내를 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  String get smsMfaAvailable => isEnglish
+      ? 'Protect this account with a verified phone number.'
+      : '확인된 휴대폰 번호로 계정을 한 번 더 보호합니다.';
+  // 함수이름: smsMfaUnavailable
+  // 함수역할: 문자 2단계 인증을 쓸 수 없는 계정 안내를 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  String get smsMfaUnavailable => isEnglish
+      ? 'Available for verified email or Google accounts.'
+      : '이메일 인증을 마친 계정이나 Google 계정에서 사용할 수 있습니다.';
+  // 함수이름: smsMfaEnable
+  // 함수역할: 문자 2단계 인증 켜기 버튼·창 제목을 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  String get smsMfaEnable =>
+      isEnglish ? 'Turn on SMS verification' : '문자 인증 켜기';
+  // 함수이름: smsMfaVerifyPhone
+  // 함수역할: 인증번호 입력 단계의 창 제목을 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  String get smsMfaVerifyPhone => isEnglish ? 'Verify phone' : '휴대폰 번호 확인';
+  // 함수이름: smsMfaCodeLabel
+  // 함수역할: 문자 인증번호 입력란 이름을 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  String get smsMfaCodeLabel =>
+      isEnglish ? 'Six-digit SMS code' : '문자로 받은 6자리 인증번호';
+  // 함수이름: smsMfaPhoneLabel
+  // 함수역할: 국가번호를 포함한 휴대폰 번호 입력란 이름을 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  String get smsMfaPhoneLabel => isEnglish
+      ? 'Phone number with country code'
+      : '국가번호를 포함한 휴대폰 번호';
+  // 함수이름: smsMfaVerify
+  // 함수역할: 인증번호 확인 버튼 문구를 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  String get smsMfaVerify => isEnglish ? 'Verify' : '확인';
+  // 함수이름: smsMfaSendCode
+  // 함수역할: 인증번호 보내기 버튼 문구를 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  String get smsMfaSendCode => isEnglish ? 'Send code' : '인증번호 보내기';
 }
+
+// 함수이름: buildSmsMfaEnrollmentDialogForTesting
+// 함수역할: 출시 빌드에서 꺼져 있는 문자 2단계 인증 창을 테스트에서 직접 띄울 수 있게 만든다.
+// 매개변수:
+// - control (AuthenticationControl): 인증번호 요청·확인과 오류를 제공할 인증 컨트롤.
+// - language (String): 창 문구 언어 코드.
+// 반환값: 문자 2단계 인증 등록 창 위젯.
+@visibleForTesting
+Widget buildSmsMfaEnrollmentDialogForTesting({
+  required AuthenticationControl control,
+  required String language,
+}) => _MfaEnrollmentDialog(control: control, text: _SettingText(language));
+
+// 함수이름: buildSmsMfaSettingsPanelForTesting
+// 함수역할: 출시 빌드에서 꺼져 있는 문자 2단계 인증 설정 영역을 테스트에서 직접 표시할 수 있게 만든다.
+// 매개변수:
+// - enabled (bool): 이미 등록됐는지 여부.
+// - available (bool): 이 계정에서 등록할 수 있는지 여부.
+// - language (String): 문구 언어 코드.
+// 반환값: 문자 2단계 인증 설정 영역 위젯.
+@visibleForTesting
+Widget buildSmsMfaSettingsPanelForTesting({
+  required bool enabled,
+  required bool available,
+  required String language,
+}) => _MfaSettingsPanel(
+  text: _SettingText(language),
+  enabled: enabled,
+  available: available,
+  onEnrollRequested: () {},
+);

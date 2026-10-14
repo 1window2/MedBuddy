@@ -86,6 +86,11 @@ class MedBuddyUserSettingViewModel {
       if (_disposed) return;
       _userSetting = setting;
       _settingLoaded = true;
+      // A save left pending by an earlier run is kept on the device; resume
+      // retries must resend it instead of treating the cache as server state.
+      _hasUnsynchronizedSetting =
+          manageUserSetting.useRemotePersistence &&
+          manageUserSetting.hasPendingSave;
       notificationService.setShowSensitiveDetails(
         _userSetting.showNotificationDetails,
       );

@@ -349,7 +349,7 @@ class _UserHubText {
   // 매개변수: 없음. 반환값: 현재 언어의 계정·연동·설정 요약.
   String get subtitle => isEnglish
       ? 'Manage your account and family links.'
-      : '계정과 가족 연결, 앱 설정을 관리합니다.';
+      : '계정과 가족 연동, 앱 설정을 관리합니다.';
   // Function Name: guestAccount
   // Description: Provides localized wording for "Guest account" using the current language and message inputs.
   // Parameters:
@@ -392,7 +392,7 @@ class _UserHubText {
   // Returns: The formatted display text or identifier described above.
   String get patientCaregiverDescription => isEnglish
       ? 'Connect schedules and review linked patient medication.'
-      : '복약 일정을 연결하고 연동된 환자의 복약 상태를 확인하세요.';
+      : '복약 일정을 연동하고 연동된 환자의 복약 상태를 확인하세요.';
   // Function Name: settings
   // Description: Provides localized wording for "Settings" using the current language and message inputs.
   // Parameters:

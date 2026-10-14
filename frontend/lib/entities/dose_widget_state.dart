@@ -28,15 +28,31 @@ class DoseWidgetState {
   Map<String, dynamic> get view =>
       Map<String, dynamic>.from(data['view'] as Map);
 
-  // 오늘 본인 일정에서 모든 약의 기기 저장이 끝난 시간대만 알림 취소 대상으로 삼는다.
+  // 함수이름: completedReminderSlots
+  // 함수역할: 오늘 본인 일정에서 모든 약의 기기 저장이 끝난 시간대만 알림 취소 대상으로 삼는다.
+  //   위젯 표시 설정(환자 일정 보기)이나 서버 거부로 보류된 기록과 관계없이, 상태를 만들 때 계산한
+  //   본인 일정 투영 결과를 쓴다.
+  // 매개변수: now - 기준 시각.
+  // 반환값: 오늘 모든 약을 복용한 시간대 목록. 기준일이 다르거나 계산 결과가 없으면 빈 목록.
   Iterable<String> completedReminderSlots(DateTime now) {
-    if ((data['config'] as Map?)?['source'] == 'patients' ||
-        view['date'] != doseWidgetDay(now)) {
+    final reminder = data['reminder_slots'] as Map?;
+    if (reminder == null || reminder['date'] != doseWidgetDay(now)) {
       return const [];
     }
-    final completed = data['cancels'] as Map? ?? {};
-    return medicationScheduleSlotKeys.where(completed.containsKey);
+    final completed = (reminder['slots'] as List? ?? const []).toSet();
+    return medicationScheduleSlotKeys.where(completed.contains);
   }
+
+  // 함수이름: completedSlotsOf
+  // 함수역할: 투영된 오늘 일정에서 그 시간대의 약이 하나 이상 있고 모두 복용 완료인 시간대를 고른다.
+  // 매개변수: schedules - 서버 일정에 전송 대기 기록을 덮은 오늘 일정.
+  // 반환값: 시간대 키 목록(아침·점심·저녁·취침 전 순서).
+  static List<String> completedSlotsOf(List<MedicationSchedule> schedules) =>
+      medicationScheduleSlotKeys.where((slot) {
+        final scheduled = schedules.where((s) => s.slotKeys.contains(slot));
+        return scheduled.isNotEmpty &&
+            scheduled.every((s) => s.isSlotCompleted(slot));
+      }).toList();
 
   static List<MedicationSchedule> projectedSchedules(
     Map<String, dynamic>? cache,
@@ -79,8 +95,17 @@ class DoseWidgetState {
     final config =
         configuration ??
         Map<String, dynamic>.from(previous['config'] as Map? ?? {});
+    // 재알림 취소는 표시 설정·보류 기록과 관계없이 본인 일정의 투영 결과로 정한다.
+    final reminderSlots = <String, dynamic>{
+      'date': doseWidgetDay(now),
+      'slots': readOnly
+          ? const <String>[]
+          : completedSlotsOf(
+              projectedSchedules(cache, operations, doseWidgetDay(now)),
+            ),
+    };
     if (config['source'] == 'patients' && !readOnly) {
-      return _patients(owner, previous, now, config);
+      return _patients(owner, previous, now, config, reminderSlots);
     }
     final oldView = previous['view'] as Map? ?? {};
     final english = isEnglishLanguage(config['language']?.toString());
@@ -212,7 +237,7 @@ class DoseWidgetState {
         'button': pageAction == null
             ? tr('일정 열기', 'Open schedule')
             : completed
-            ? tr('복용 취소', 'Undo dose')
+            ? tr('복용 완료 취소', 'Undo completion')
             : tr('복용했어요', 'Taken'),
         'overdue':
             !readOnly &&
@@ -281,16 +306,20 @@ class DoseWidgetState {
       'take': take,
       'takes': takes,
       'cancels': cancels,
+      'reminder_slots': reminderSlots,
       'view': view,
     });
   }
 
   // Patient snapshots never share the owner's outbox, alarms or action tokens.
+  // reminderSlots carries the owner's own completed slots so reminder
+  // cancellation does not depend on which schedule the widget displays.
   static DoseWidgetState _patients(
     String owner,
     Map<String, dynamic> previous,
     DateTime now,
     Map<String, dynamic> config,
+    Map<String, dynamic> reminderSlots,
   ) {
     final base = DoseWidgetState.build(
       owner: owner,
@@ -340,7 +369,7 @@ class DoseWidgetState {
       'title': tr('환자의 복약 일정', 'Patient medication'),
       'heading': !current || cache?['failed'] == true
           ? tr('환자 일정을 새로고침해주세요', 'Refresh patient schedules')
-          : tr('연결된 환자가 없습니다', 'No linked patients'),
+          : tr('연동된 환자가 없습니다', 'No linked patients'),
       'details': '',
       'status': '',
       'action': 'refresh',
@@ -352,6 +381,7 @@ class DoseWidgetState {
       ...base.data,
       'patient_cache': cache,
       'patient_revision': previous['patient_revision'],
+      'reminder_slots': reminderSlots,
       'view': view,
     });
   }

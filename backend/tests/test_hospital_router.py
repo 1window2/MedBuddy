@@ -119,6 +119,33 @@ async def test_provider_errors_are_sanitized(app_control, error, status):
 
 
 @pytest.mark.anyio
+async def test_exhausted_daily_budget_says_so_and_waits_until_local_midnight(app_control, monkeypatch):
+    """하루 조회 예산 소진은 일시 장애와 다른 안내와 서비스 시간대 자정까지의 대기 시간을 준다."""
+    from api import hospital_router
+    from boundaries.hospital_api_boundary import HospitalApiBudgetExhaustedError
+    monkeypatch.setattr(hospital_router, "seconds_until_next_application_day", lambda: 3_600)
+    app, control = app_control
+    control.requestNearbyHospitalSearch.side_effect = HospitalApiBudgetExhaustedError("spent")
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/v1/hospitals/nearby?latitude=37.5&longitude=127")
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "3600"
+    assert response.json()["detail"] == hospital_router.HOSPITAL_BUDGET_EXHAUSTED_DETAIL
+
+
+def test_seconds_until_next_application_day_counts_to_local_midnight(monkeypatch):
+    """다음 자정까지의 초는 서비스 시간대 기준이다."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from core import application_clock
+    monkeypatch.setattr(
+        application_clock, "application_now",
+        lambda: datetime(2026, 10, 12, 23, 30, tzinfo=ZoneInfo("Asia/Seoul")),
+    )
+    assert application_clock.seconds_until_next_application_day() == 1_800
+
+
+@pytest.mark.anyio
 async def test_whole_search_deadline_precedes_frontend_timeout(app_control, monkeypatch):
     """전체 요청의 지연 한도가 UI의 25초 제한보다 짧다."""
     assert settings.HOSPITAL_SEARCH_TIMEOUT_SECONDS < 25

@@ -172,7 +172,7 @@ void main() {
         await tester.pumpAndSettle();
         await _openDisplayAndVoiceSettings(tester);
 
-        expect(find.text('글씨크기'), findsOneWidget);
+        expect(find.text('글자 크기'), findsOneWidget);
         expect(find.widgetWithText(FilledButton, '저장하기'), findsOneWidget);
         expect(
           find.widgetWithText(FilledButton, '저장하기').hitTestable(),

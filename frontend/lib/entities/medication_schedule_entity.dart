@@ -68,6 +68,66 @@ String? englishDailyFrequencyLabel(String value) {
   return count == 1 ? 'once daily' : '$count times daily';
 }
 
+// Function Name: localizedDoseAmountLabel
+// Description: Formats a dose that is a number (integer, decimal or fraction such as "1/2") followed by a Korean count unit (정, 캡슐, 포, 방울). Korean keeps the unit attached to the number; English uses tablet, capsule, packet or drop, singular for one unit or less ("1 tablet", "1/2 tablet") and plural above one ("2 tablets"). Any other text, including unitless numbers and international units such as mg or mL, is returned trimmed as written. Saved schedules and medication details share this helper so a dose reads the same on every screen.
+// Parameters:
+// - value (String): Stored dose-per-intake text.
+// - language (String): Language code used for display or speech guidance.
+// Returns:
+// - String: The localized dose, or the trimmed original text when it is not a recognized count dose.
+String localizedDoseAmountLabel(String value, String language) {
+  final text = value.trim();
+  final match = RegExp(
+    r'^(\d+(?:[.,]\d+)?|\d+/\d+)\s*(정|캡슐|포|방울)$',
+  ).firstMatch(text);
+  if (match == null) {
+    return text;
+  }
+  final amount = match.group(1)!;
+  final unit = match.group(2)!;
+  if (!isEnglishLanguage(language)) {
+    return '$amount$unit';
+  }
+  final englishUnit = switch (unit) {
+    '캡슐' => 'capsule',
+    '포' => 'packet',
+    '방울' => 'drop',
+    _ => 'tablet',
+  };
+  return _doseAmountValue(amount) <= 1
+      ? '$amount $englishUnit'
+      : '$amount ${englishUnit}s';
+}
+
+// Function Name: _doseAmountValue
+// Description: Reads the numeric value of a dose amount written as an integer, a decimal with a point or comma, or a fraction.
+// Parameters:
+// - amount (String): Amount text matched by localizedDoseAmountLabel.
+// Returns:
+// - double: The amount, or NaN when it cannot be evaluated (for example a zero denominator).
+double _doseAmountValue(String amount) {
+  final fraction = amount.split('/');
+  if (fraction.length == 2) {
+    final numerator = double.tryParse(fraction.first) ?? double.nan;
+    final denominator = double.tryParse(fraction.last) ?? 0;
+    return denominator == 0 ? double.nan : numerator / denominator;
+  }
+  return double.tryParse(amount.replaceAll(',', '.')) ?? double.nan;
+}
+
+// Function Name: englishDurationLabel
+// Description: Formats a course length in days for English display. Course text is converted to days the way the server schedules it (weeks times seven, months times thirty), so every screen shows the same day count.
+// Parameters:
+// - days (int): Course length in days.
+// Returns:
+// - String?: "1 day" or "N days", or null when the length is not positive.
+String? englishDurationLabel(int days) {
+  if (days <= 0) {
+    return null;
+  }
+  return days == 1 ? '1 day' : '$days days';
+}
+
 // Function Name: medicationDayCountFromText
 // Description: Preserves integer input or reads the course length in days from duration text the way the server does: the first number with its unit, so "7일분 (1주)" is seven days, "2주" fourteen and "1개월" thirty; zero when no number can be read.
 // Parameters:
@@ -483,40 +543,19 @@ class MedicationSchedule {
   }
 
   // Function Name: dosageLabelForLanguage
-  // Description: Localizes recognized Korean dose units for English display while retaining unparsed text, fractions, and international units such as mg and mL.
+  // Description: Localizes recognized Korean dose units through the shared dose helper while retaining unparsed text, unitless amounts and international units such as mg and mL.
   // Parameters:
   // - language (String): Language code used for display or speech guidance.
   // Returns:
-  // - String: Localizes recognized Korean dose units for English display while retaining unparsed text, fractions, and international units such as mg and mL.
+  // - String: The localized dose, the original text when it is not a recognized count dose, or a "not available" label when it is empty.
   String dosageLabelForLanguage(String language) {
     final value = dosage.trim();
-    final isEnglish = _isEnglishLanguage(language);
     if (value.isEmpty) {
-      return isEnglish ? 'Dose not available' : '투약량 정보 없음';
+      return _isEnglishLanguage(language)
+          ? 'Dose not available'
+          : '투약량 정보 없음';
     }
-
-    final match = RegExp(
-      r'^(\d+(?:[.,]\d+)?|\d+/\d+)\s*(정|캡슐|포|방울)?$',
-    ).firstMatch(value);
-    if (match == null) {
-      return value;
-    }
-
-    final amount = match.group(1) ?? value;
-    final detectedUnit = match.group(2);
-    if (detectedUnit == null) {
-      return value;
-    }
-    if (!isEnglish) {
-      return '$amount$detectedUnit';
-    }
-    final unit = switch (detectedUnit) {
-      '캡슐' => 'capsule',
-      '포' => 'sachet',
-      '방울' => 'drop',
-      _ => 'tablet',
-    };
-    return '$amount $unit';
+    return localizedDoseAmountLabel(value, language);
   }
 
   // 함수이름: dailyFrequencyLabelForLanguage
@@ -553,7 +592,7 @@ class MedicationSchedule {
     if (!_isEnglishLanguage(language)) {
       return '$medicationTime일';
     }
-    return medicationTime == 1 ? '1 day' : '$medicationTime days';
+    return englishDurationLabel(medicationTime)!;
   }
 
   // Function Name: toJson

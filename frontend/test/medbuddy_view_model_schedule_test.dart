@@ -267,7 +267,7 @@ void main() {
   }
 
   test(
-    'a dose the server rejects stays queued and holds later doses until removed',
+    'a dose the server rejects stays queued without holding other days',
     () async {
       final client = MockClient(
         (request) async => _twoMorningSchedulesResponse(),
@@ -323,9 +323,14 @@ void main() {
         isTrue,
       );
       await harness.service.drain();
-      // 거부된 기록이 맨 앞에 있는 동안 뒤의 기록은 전송하지 않지만 기기에는 남아 있다.
-      expect(harness.uploads, hasLength(attempts));
-      expect(await harness.pending(), hasLength(2));
+      // 거부된 기록은 같은 날짜·시간대·약의 뒤 기록만 붙잡는다. 다른 날짜의 오늘 기록은 바로 전송한다.
+      expect(harness.uploads, hasLength(attempts + 1));
+      final uploaded = jsonDecode(harness.uploads.last.body) as Map;
+      expect(uploaded['schedule_date'], today);
+      expect(uploaded['medication_ids'], [7, 8]);
+      final remaining = await harness.pending();
+      expect(remaining.single['schedule_date'], '2026-09-09');
+      expect(remaining.single['state'], 'blocked');
       expect(viewModel.todayMedicationProgress.completedCount, 2);
 
       await harness.service.discardRejected(
@@ -333,9 +338,7 @@ void main() {
       );
 
       expect(await harness.pending(), isEmpty);
-      final uploaded = jsonDecode(harness.uploads.last.body) as Map;
-      expect(uploaded['schedule_date'], today);
-      expect(uploaded['medication_ids'], [7, 8]);
+      expect(harness.uploads, hasLength(attempts + 1));
       expect(viewModel.todayMedicationProgress.completedCount, 2);
     },
   );

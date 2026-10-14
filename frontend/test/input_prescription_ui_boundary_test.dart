@@ -262,6 +262,11 @@ void main() {
         find.text(fail ? '복약 상태를 저장하지 못했습니다.' : '해당 시간대의 복용 기록을 취소했습니다.'),
         findsOneWidget,
       );
+      // 실패 안내는 일반 성공 안내(5초)보다 먼저 사라지지 않는다.
+      expect(
+        tester.widget<SnackBar>(find.byType(SnackBar)).duration,
+        greaterThanOrEqualTo(const Duration(seconds: 5)),
+      );
       expect(
         tester
             .widget<InputPrescriptionUI>(find.byType(InputPrescriptionUI))
@@ -578,7 +583,7 @@ void main() {
       final text = find.descendant(
         of: find.byType(SnackBar),
         matching: find.textContaining(
-          language == 'ko' ? '놓친 복약은' : 'Check your prescription guidance',
+          language == 'ko' ? '놓친 복약은' : 'Do not take an extra dose on your own',
         ),
       );
       expect(text, findsOneWidget);
@@ -1349,7 +1354,7 @@ void main() {
     expect(find.text('건강 관리 추천'), findsOneWidget);
     expect(find.text('환경설정'), findsOneWidget);
     expect(find.text('처방전·알약 사진 또는 직접 입력으로 등록해요'), findsOneWidget);
-    expect(find.text('글씨 크기·언어·알림을 설정해요'), findsOneWidget);
+    expect(find.text('글자 크기·언어·알림을 설정해요'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

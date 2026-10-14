@@ -164,10 +164,53 @@ void main() {
       addTearDown(control.dispose);
       await _pumpEntry(tester, control);
       expect(find.byType(LinkedChatUI), findsNothing);
-      expect(find.textContaining('대화 상대를 확인하지 못했어요'), findsOneWidget);
+      // 조회는 성공했으므로 재시도 대신 연동 종료와 연동 관리 이동을 안내한다.
+      expect(find.textContaining('연동이 종료되었어요'), findsOneWidget);
+      expect(find.text('다시 시도'), findsNothing);
+      expect(find.text('연동 관리 열기'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }
+
+  // 연동이 해제된 알림을 열면 종료 안내 후 닫기로 이전 화면에 돌아간다.
+  testWidgets('ended link offers close back to the previous screen in English', (
+    tester,
+  ) async {
+    final links = _Links();
+    final control = ManageChatList(userHash: 'patient-a', linkControl: links);
+    addTearDown(links.dispose);
+    addTearDown(control.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          // 함수이름: 시작 화면 builder
+          // 함수역할: 알림 진입 화면을 위에 띄울 버튼을 만든다.
+          // 매개변수: context: 위젯 트리 위치. 반환값: 시작 버튼.
+          builder: (context) => TextButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => LinkedChatEntryUI(
+                  linkId: 17,
+                  currentUserHash: 'patient-a',
+                  userSetting: const UserSetting(language: 'en'),
+                  control: control,
+                ),
+              ),
+            ),
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('link has ended'), findsOneWidget);
+    expect(find.text('Manage links'), findsOneWidget);
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+    expect(find.byType(LinkedChatEntryUI), findsNothing);
+    expect(find.text('open'), findsOneWidget);
+  });
 
   // 세션 인증 클라이언트를 넘기면 연동 확인 요청이 그 클라이언트로 나가 401이 세션 처리기에 전달되고,
   // 빌린 클라이언트는 화면이 닫혀도 닫지 않는다.

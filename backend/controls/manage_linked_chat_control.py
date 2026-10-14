@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from controls.manage_caregiver_alert_control import ManageCaregiverAlert
 
+from core.api_contract import client_schedules_by_dose_days
 from core.application_clock import application_today
 from controls.check_schedule_control import CheckSchedule
 from entities.chat_notification_job_entity import ChatNotificationJob
@@ -522,10 +523,23 @@ class ManageLinkedChat:
                 commit=False,
                 allow_historical=allow_historical,
             )
+            # 기록 자체와 같은 기준으로 약을 고른다. 복용일만 받는 앱이 아니면 쉬는 날의 약도
+            # 기록되므로, 그 약을 빼고 만든 요약에서는 시간대를 찾지 못했다.
             slot_context = next(
-                item for item in self._schedule_contexts_for_patient(sender_hash, schedule_date)
-                if item["slot_key"] == slot_key
+                (
+                    item for item in self._schedule_contexts_for_patient(
+                        sender_hash, schedule_date,
+                        due_only=client_schedules_by_dose_days(),
+                    )
+                    if item["slot_key"] == slot_key
+                ),
+                None,
             )
+            if slot_context is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="The selected doses are not on that day's schedule.",
+                )
             medications = [
                 item for item in slot_context["medications"]
                 if item["medication_id"] in confirmation["medication_ids"]
@@ -782,12 +796,16 @@ class ManageLinkedChat:
     # - 활성 약, 완료 기록과 알림 설정을 한 번씩 조회해 시간대별로 묶는다.
     # 매개변수:
     # - patient_hash (str): 작업 대상 환자의 데이터 소유 범위 식별자.
+    # - schedule_date (date | None): 묶을 날짜; 없으면 서비스 기준 오늘.
+    # - due_only (bool): 그날 복용일인 약만 넣을지 여부. 복용일 기능을 알리지 않은 앱의 기록은 False로 부른다.
     # 반환값:
     # - 시간대별 약 목록, 완료 수, 전체 수와 알람 시각·활성 상태.
     def _schedule_contexts_for_patient(
         self,
         patient_hash: str,
         schedule_date: date | None = None,
+        *,
+        due_only: bool = True,
     ) -> list[dict[str, object]]:
         """활성 약, 완료 기록과 알림 설정을 한 번씩 조회해 시간대별로 묶는다."""
         today = schedule_date or application_today()
@@ -795,7 +813,7 @@ class ManageLinkedChat:
         medications = [
             medication
             for medication in self._active_medications(patient_hash, today)
-            if self.course_policy.is_due_on(medication, today)
+            if not due_only or self.course_policy.is_due_on(medication, today)
         ]
         medication_ids = [int(item.id) for item in medications if item.id is not None]
         completion_rows = (

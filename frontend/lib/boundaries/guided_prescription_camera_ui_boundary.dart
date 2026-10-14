@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import '../entities/prescription_camera_guide_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/camera_lifecycle_coordinator.dart';
+import '../services/device_location_service.dart';
 import '../services/prescription_camera_orientation_service.dart';
 import '../services/prescription_frame_analyzer.dart';
 import '../services/prescription_guide_layout.dart';
@@ -25,16 +26,27 @@ import '../theme/medbuddy_theme.dart';
 // - 촬영한 이미지 파일을 기존 처방전 OCR 흐름으로 돌려보낸다.
 // 속성:
 // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
+// - cameraListProvider (Future<List<CameraDescription>> Function()?): 사용 가능한 카메라 목록 조회 함수. 없으면 availableCameras를 쓴다.
+// - appSettingsOpener (Future<bool> Function()?): 카메라 권한을 바꿀 앱 설정 화면을 여는 함수. 없으면 기존 위치 서비스의 앱 설정 열기를 쓴다.
 class GuidedPrescriptionCameraUI extends StatefulWidget {
   final UserSetting userSetting;
+  final Future<List<CameraDescription>> Function()? cameraListProvider;
+  final Future<bool> Function()? appSettingsOpener;
 
   // 함수이름: GuidedPrescriptionCameraUI
   // 함수역할: 실시간 거리 가이드와 처방전 촬영 결과 반환에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - key (Key?): 위젯을 구분하고 상태를 유지할 식별 키.
   // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
+  // - cameraListProvider (Future<List<CameraDescription>> Function()?): 테스트 등에서 바꿀 카메라 목록 조회 함수.
+  // - appSettingsOpener (Future<bool> Function()?): 테스트 등에서 바꿀 앱 설정 열기 함수.
   // 반환값: 입력 설정이 반영된 GuidedPrescriptionCameraUI 인스턴스.
-  const GuidedPrescriptionCameraUI({super.key, required this.userSetting});
+  const GuidedPrescriptionCameraUI({
+    super.key,
+    required this.userSetting,
+    this.cameraListProvider,
+    this.appSettingsOpener,
+  });
 
   // 함수이름: createState
   // 함수역할: 실시간 거리 가이드와 처방전 촬영 결과 반환의 입력·표시 상태를 관리할 State 객체를 만든다.
@@ -69,6 +81,8 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
       PrescriptionCameraGuideStatus.searching;
   DateTime? _lastAnalysisAt;
   String _cameraErrorMessage = '';
+  // 카메라 권한 거부로 실패했을 때 true. 다시 시도와 함께 앱 설정 열기를 제공한다.
+  bool _cameraPermissionDenied = false;
   bool _isCapturing = false;
   bool _isTorchEnabled = false;
   int _cameraGeneration = 0;
@@ -173,13 +187,14 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
     // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
     setState(() {
       _cameraErrorMessage = '';
+      _cameraPermissionDenied = false;
       _guideStatus = PrescriptionCameraGuideStatus.searching;
       _isTorchEnabled = false;
     });
 
     CameraController? initializingController;
     try {
-      final cameras = await availableCameras();
+      final cameras = await (widget.cameraListProvider ?? availableCameras)();
       if (cameras.isEmpty) {
         throw CameraException('camera_unavailable', _text.cameraUnavailable);
       }
@@ -226,7 +241,10 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
     } on CameraException catch (error) {
       await initializingController?.dispose();
       await _disposeCurrentController();
-      _showCameraError(_cameraErrorText(error));
+      _showCameraError(
+        _cameraErrorText(error),
+        permissionDenied: _isPermissionError(error),
+      );
     } catch (_) {
       await initializingController?.dispose();
       await _disposeCurrentController();
@@ -473,8 +491,9 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
   // 함수역할: 화면이 유지되는 경우에만 카메라 오류 문구를 표시 상태에 반영한다.
   // 매개변수:
   // - message (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
+  // - permissionDenied (bool): 권한 거부로 실패해 앱 설정 열기를 함께 보여줄지 여부.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
-  void _showCameraError(String message) {
+  void _showCameraError(String message, {bool permissionDenied = false}) {
     if (!mounted) {
       return;
     }
@@ -485,23 +504,47 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
     // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
     setState(() {
       _cameraErrorMessage = message;
+      _cameraPermissionDenied = permissionDenied;
     });
   }
 
+  // 함수이름: _isPermissionError
+  // 함수역할: 카메라 오류 코드가 권한 거부·제한인지 판별한다.
+  // 매개변수:
+  // - error (CameraException): 판별할 카메라 실패 정보.
+  // 반환값: 권한 거부·제한이면 true, 아니면 false.
+  bool _isPermissionError(CameraException error) {
+    return error.code == 'CameraAccessDenied' ||
+        error.code == 'CameraAccessDeniedWithoutPrompt' ||
+        error.code == 'CameraAccessRestricted';
+  }
+
+  // 함수이름: _openAppSettings
+  // 함수역할: 영구 거부된 카메라 권한을 바꿀 수 있게 운영체제의 앱 설정 화면을 연다. 돌아오면 생명주기 복귀에서 카메라를 다시 초기화한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 설정 화면 열기 요청이 끝나면 완료되는 Future<void>. 열지 못해도 예외를 밖으로 던지지 않는다.
+  Future<void> _openAppSettings() async {
+    try {
+      final opener =
+          widget.appSettingsOpener ??
+          GeolocatorDeviceLocationService().openApplicationSettings;
+      await opener();
+    } catch (_) {
+      // 설정 화면을 열지 못해도 기존 권한 안내와 다시 시도는 그대로 둔다.
+    }
+  }
+
   // 함수이름: _cameraErrorText
-  // 함수역할: 카메라 접근 거부 코드는 권한 안내로, 그 외에는 플랫폼 설명 또는 기본 오류로 표시한다.
+  // 함수역할: 카메라 접근 거부 코드는 권한 안내로, 그 외에는 플랫폼 설명 대신 현지화한 기본 오류로 표시한다.
   // 매개변수:
   // - error (CameraException): 사용자 안내 또는 복구 분기에 사용할 실패 정보.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String _cameraErrorText(CameraException error) {
-    if (error.code == 'CameraAccessDenied' ||
-        error.code == 'CameraAccessDeniedWithoutPrompt' ||
-        error.code == 'CameraAccessRestricted') {
+    if (_isPermissionError(error)) {
       return _text.permissionDenied;
     }
-    return error.description?.trim().isNotEmpty == true
-        ? error.description!.trim()
-        : _text.cameraUnavailable;
+    return _text.cameraUnavailable;
   }
 
   // 함수이름: build
@@ -733,6 +776,18 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
               ),
             ),
             const SizedBox(height: 24),
+            if (_cameraPermissionDenied) ...[
+              FilledButton.icon(
+                key: const ValueKey('guidedCameraOpenSettings'),
+                onPressed: _openAppSettings,
+                icon: const Icon(Icons.settings_outlined),
+                label: Text(_text.openSettings),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 48),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             OutlinedButton.icon(
               onPressed: _initializeCamera,
               icon: const Icon(Icons.refresh_rounded),
@@ -1053,6 +1108,12 @@ class _GuidedCameraText {
   String get permissionDenied => isEnglish
       ? 'Camera permission is required. Enable it in system settings.'
       : '카메라 권한이 필요합니다. 시스템 설정에서 권한을 허용해주세요.';
+  // 함수이름: openSettings
+  // 함수역할: 현재 언어로 "설정 열기" 버튼 문구를 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  String get openSettings => isEnglish ? 'Open settings' : '설정 열기';
   // 함수이름: captureFailed
   // 함수역할: 현재 언어와 입력값에 맞춰 "사진을 촬영하지 못했습니다." 문구를 제공한다.
   // 매개변수:

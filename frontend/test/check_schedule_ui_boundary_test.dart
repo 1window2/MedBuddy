@@ -1430,11 +1430,26 @@ void main() {
     // 저장소가 닫혀 기록할 수 없는 상태를 만든다.
     await harness.store.db.close();
 
+    // 약별 복용 완료 체크는 최소 48dp 터치 영역을 가진다.
+    final toggle = tester.getSize(
+      find.descendant(
+        of: find.byTooltip('복용 완료'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    expect(toggle.width, greaterThanOrEqualTo(48));
+    expect(toggle.height, greaterThanOrEqualTo(48));
+
     await tester.tap(find.byTooltip('복용 완료'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('복약 상태를 변경하지 못했습니다.'), findsOneWidget);
+    // 실패 안내는 성공 안내(5초)보다 먼저 사라지지 않는다.
+    expect(
+      tester.widget<SnackBar>(find.byType(SnackBar)).duration,
+      greaterThanOrEqualTo(const Duration(seconds: 5)),
+    );
     expect(find.byTooltip('복용 완료'), findsOneWidget);
     expect(find.byTooltip('복용 완료 취소'), findsNothing);
     expect(harness.queued, isEmpty);

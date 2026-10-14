@@ -9,6 +9,9 @@ import '../theme/medbuddy_theme.dart';
 // 역할: 고정 목적지와 활성 연동이 있을 때만 노출하는 채팅 목적지를 구분한다.
 enum MedBuddyDestination { home, schedule, medicationCabinet, chat, profile }
 
+// 하단 탭 레이블 글자 크기. 어르신이 읽을 수 있게 13pt로 두고 사용자 글자 크기 배율을 그대로 적용한다.
+const double _labelFontSize = 13;
+
 // Class Name: MedBuddyBottomNavigationUI
 // Role: Represents fixed bottom navigation with selected-state and accessibility cues.
 // Responsibilities:
@@ -135,7 +138,7 @@ class MedBuddyBottomNavigationUI extends StatelessWidget {
         text: TextSpan(
           text: item.label,
           style: const TextStyle(
-            fontSize: 11,
+            fontSize: _labelFontSize,
             height: 1.1,
             fontWeight: FontWeight.w700,
           ),
@@ -216,7 +219,7 @@ class _BottomNavigationButton extends StatelessWidget {
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: foreground,
-                        fontSize: 11,
+                        fontSize: _labelFontSize,
                         height: 1.1,
                         fontWeight: selected
                             ? FontWeight.w700

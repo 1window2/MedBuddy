@@ -87,6 +87,8 @@ class ManageAccount {
     'default_lunch_time',
     'default_evening_time',
     'default_bedtime',
+    // Marks a settings change that has not reached the server yet.
+    'pending_sync',
     // Retired account-scoped settings may still exist after an upgrade.
     'nearby_pharmacy_lab_enabled',
     'linked_medication_chat_lab_enabled',

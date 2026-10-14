@@ -37,6 +37,13 @@ def control() -> CheckPrescriptionChange:
         ("total_days", "7", "7일"),
         ("total_days", "7일", "7"),
         ("total_days", "7일", " 7 일 "),
+        # Bare quantities are read with the schedule's own rules.
+        ("total_days", "7", "7일분"),
+        ("total_days", "7", "1주"),
+        ("total_days", "7일", "7 days"),
+        ("total_days", "30일", "1개월"),
+        ("daily_frequency", "3회", "하루 3회"),
+        ("daily_frequency", "3", "3 times"),
         ("dosage_per_time", "5 mg", "5MG"),
     ],
 )

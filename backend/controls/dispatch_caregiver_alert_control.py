@@ -173,13 +173,36 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
         schedule_date: date,
         alert_context: dict[str, str] | None = None,
     ) -> PushDeliveryResult:
+        result = self.notifySlotMissedIfActionable(
+            caregiver_hash=caregiver_hash, patient_hash=patient_hash,
+            slot_key=slot_key, schedule_date=schedule_date, alert_context=alert_context,
+        )
+        return PushDeliveryResult(success_count=0) if result is None else result
+
+    # 함수이름: notifySlotMissedIfActionable
+    # 함수역할:
+    # - notifySlotMissed와 같지만, 날짜·연동·설정·복용 상태 때문에 보낼 필요가 없어진 알림이면
+    #   아무것도 보내지 않고 None을 돌려 호출자가 "보낸 것 없음"을 구분하게 한다.
+    # 매개변수:
+    # - caregiver_hash, patient_hash, slot_key, schedule_date, alert_context: notifySlotMissed와 같다.
+    # 반환값:
+    # - 전송 결과; 보낼 필요가 없으면 None.
+    def notifySlotMissedIfActionable(
+        self,
+        *,
+        caregiver_hash: str,
+        patient_hash: str,
+        slot_key: str,
+        schedule_date: date,
+        alert_context: dict[str, str] | None = None,
+    ) -> PushDeliveryResult | None:
         resolver = PushRecipientResolver(self.db)
         if not self._missed_slot_is_actionable(
             resolver,
             caregiver_hash=caregiver_hash, patient_hash=patient_hash,
             slot_key=slot_key, schedule_date=schedule_date,
         ):
-            return PushDeliveryResult(success_count=0)
+            return None
         return self._send_missed_notification(
             resolver,
             caregiver_hash=caregiver_hash, patient_hash=patient_hash,
