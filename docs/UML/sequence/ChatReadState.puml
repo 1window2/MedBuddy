@@ -10,6 +10,7 @@ participant "LinkPatientCaregiver" as Link
 participant "LinkedChatUI" as UI
 participant "LinkedChatHistoryViewModel" as History
 participant "ManageLinkedChat" as Control
+participant "LinkedChatRealtimeService" as Realtime
 participant "Chat API / Repository" as API
 participant "Other participant" as Peer
 
@@ -60,5 +61,18 @@ note over UI,API
   Message-list counts and local notification-inbox counts are distinct.
   Hidden/deleted/own messages do not count as incoming unread messages.
   Active chat-list refresh is bounded polling, not a global realtime badge.
+end note
+opt History read or failed-send follow-up confirms HTTP 403/404
+  History -> History : linkUnavailable = true; stop fallback polling
+  History -> Realtime : stop()
+  History --> UI : link unavailable snapshot
+  UI --> User : replace composer with link-ended notice
+end
+note over Realtime,API
+  Current clients declare chat-close-codes on the stream handshake.
+  Rejected handshakes are accepted only to send the cause-specific close code;
+  they are not registered as authorized chat connections.
+  Legacy clients retain pre-accept rejection. Token refresh, backoff and terminal
+  link failures stay distinct; chat_ready resets the reconnect attempt.
 end note
 @enduml

@@ -21,6 +21,9 @@ Sync -> Local: Claim earliest pending operation
 Sync -> API: Same operation ID on every retry
 API -> DB: Begin transaction; insert unique receipt
 alt New valid operation
+  opt Stored chat-linked dose now has no active link (404)
+    API -> API: Keep own dose; omit chat (other authorization failures still reject)
+  end
   API -> DB: Update original day's dose + optional chat + current-day alert outbox
   API -> DB: Commit
 else Previously accepted operation
@@ -30,8 +33,14 @@ else Date / ownership / schedule rejected
   API --> Sync: Rejection
   Sync -> Local: Retain for review; pause later changes
 end
-API --> Sync: Receipt + today's authoritative schedule
-Sync -> Local: Atomically cache response and remove claimed operation
-Sync --> UI: Remove pending indicator
+opt New acceptance or previously accepted receipt
+  API --> Sync: Receipt + today's authoritative schedule
+  Sync -> Local: Atomically cache response and remove claimed operation
+  Sync --> UI: Remove pending indicator
+end
+note over Sync,API
+  Current clients declare dose-days: only dates belonging to the course's
+  dose cycle are scheduled and accepted. A non-dose day is not a course end.
+end note
 note over API, DB: Historical sync never checks today's dose or emits a fresh completion alert
 @enduml

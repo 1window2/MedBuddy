@@ -1,7 +1,9 @@
 # Class Diagram Guide
 
 이 폴더에는 주요 책임과 계약을 보여주는 전체 구조 및 발표용 단계별 클래스 다이어그램을 함께 관리한다.
-같은 이름의 `.puml`은 원본 코드이고 `.png`는 발표 및 문서 확인용 렌더링 이미지다.
+같은 이름의 `.puml`은 설계 원본이고 `.png`는 이전 시점의 렌더링 이미지다.
+이번 `main`의 `v0.2.2-beta`(`9ab3a07`) 현행화는 `.md`와 `.puml`만 갱신했다.
+PNG는 갱신하지 않았으므로 현재 구현 확인에는 텍스트 원본을 기준으로 한다.
 
 ## Files
 
@@ -31,13 +33,14 @@
 
 ## Usage
 
-The v0.2.2 integration updates the overall class and sequence diagrams for major
-contracts only: cancellation/session isolation, serialized settings and reminder
-writes, durable pending-dose projection, unlink confirmation, non-daily schedules,
-SQLite ID preservation and push-registration version guards. Unchanged feature
-diagrams remain focused views, not an exhaustive API inventory. Minor UI fixes
-are tracked by their regression tests rather than additional diagram nodes.
-The matching overall PNGs are rendered locally from the integrated sources.
+기존 v0.2.2의 취소·Session 격리, 설정·알림 저장 직렬화, 미전송 복용 기록 반영,
+연결 해제 확인, 비매일 일정, SQLite ID 보존과 Push 등록 버전 검증을 유지한다.
+추가로 직접 등록·낱알 일정 검토의 복용 주기 선택, 복약함의 다음 복용일,
+계정별 저장 약·활성 연결 한도와 채팅 연결 거절·연동 해제 처리를 반영했다.
+`LinkedChatDoseRecorder`가 선택 복약 기록을 맡고, 설정 저장은 독립 설정
+ViewModel에 위임한다. 보조 그림도 이 책임과 전체 Sequence에 맞춘다.
+모든 DTO·helper를 나열하지 않으며 module-level 함수와 Dart extension을
+독립 클래스처럼 표현하지 않는다. 기존 PNG와 원본의 동기화는 이번 범위에서 제외한다.
 
 홈은 약 등록·식별, 건강 관리 추천 / 근처 운영 병원·약국, 환경설정을 2×2로 표시한다.
 병원·약국 선택창에서 탐색 대상을 고르고 병원은 진료과목과 조회 조건을 분리한다.
@@ -56,6 +59,10 @@ The matching overall PNGs are rendered locally from the integrated sources.
 직접 등록·알약 식별에서 돌아오면 추천을 갱신하며, 처방전 입력은 홈의 기존 OCR 흐름으로 연결한다.
 통신·권한·서버 오류는 빈 복용 약 상태와 구분해 재시도를 안내한다.
 복약함은 기본 조건을 복용 중으로 두고 하나의 조회 조건 버튼에서 복용 중·복용 종료·전체를 선택한다. 날짜 정렬과 선택 삭제는 유지한다.
+매일 복용하지 않는 약은 주기와 다음 복용일을 안내한다. 직접 등록·낱알 일정 검토의
+매일·격일·주 1회·월 1회 선택은 복용일의 횟수·시간대와 구분한다. 월간은 현재 30일
+주기이며 쉬는 날에도 복용 과정과 알림 설정은 유지한다. 새 약이나 연결이 계정 한도를
+넘으면 정리 후 재시도를 안내하고 기존 중복 저장·활성 연결은 추가 생성하지 않는다.
 채팅도 기본 기능이며, 활성 연동이 하나 이상일 때만 하단 채팅 탭을 표시한다.
 다중 알약 식별도 기본 기능으로 제공하므로 실험실 메뉴와 전용 설정을 제거한다.
 구형 실험실 저장값은 기능을 제한하지 않으며 기존 접근성·알림 설정은 유지한다.
@@ -70,6 +77,9 @@ The matching overall PNGs are rendered locally from the integrated sources.
 `ChatNotificationWorker`가 처리·재시도한다. 전체 Sequence와 Class에도 이 구조를 반영한다.
 세부 정책은 [영속 채팅 전달 설계](../../MedBuddy%20-%20Durable%20Chat%20Delivery.md)를 따른다.
 Outbox의 자동 완료 메시지 저장 자체는 WebSocket 방송을 수행하지 않는다.
+현재 Client는 `chat-close-codes`를 선언해 거절된 WebSocket의 인증·한도·연결 오류를
+구분한다. 구형 Client는 승인 전 거절을 유지한다. 이력 조회에서 연결 해제·권한 상실을
+확인하면 반복 복구를 멈추고 채팅 입력창을 안내로 바꾸며, 실패한 전송 후에도 한 번 확인한다.
 환자의 `먹었어요`는 선택한 약·시간대·날짜를 기기에 먼저 저장하고 서버의 복약
 기록과 채팅 영수증을 함께 갱신한다. 응답 전까지 전송 대기를 표시하며 같은 요청을
 재전송해도 중복 기록하지 않는다. 일반 채팅 문구로 복용 여부를 추정하지 않는다.
@@ -102,8 +112,10 @@ WebSocket 연결 Registry를 채팅 Database 또는 분산 방송 broker로 혼�
 두 action 모두 서버에서 현재 권한과 유효성을 확인하며 환자의 복약 기록을 변경하지 않는다.
 
 발표에서는 `00`부터 필요한 기능 다이어그램까지 순서대로 사용하고,
-전체 `ClassDiagram`은 상세 설명이나 부록에 배치한다. 구조가 변경되면 `.puml`을
-먼저 수정한 뒤 같은 이름의 `.png`도 다시 생성한다.
+전체 `ClassDiagram`은 상세 설명이나 부록에 배치한다. 구조 변경은 `.puml`에 먼저
+반영한다. 이미지가 필요한 경우에는 별도로 승인된 렌더링 작업에서 갱신 여부를 확인한다.
+
+아래 PNG 재생성 기록은 과거 작업 이력이며 이번 현행화의 산출물 상태가 아니다.
 
 2026-10-08(`beta/v0.2.1`) 갱신은 클래스 그림을 코드와 다시 대조해, 코드에 없는
 멤버와 삭제한 연산, 끝점이 잘못된 관계선, 빠진 `{static}` 표시를 고치고 바뀐

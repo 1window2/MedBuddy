@@ -34,6 +34,8 @@ package "Flutter Frontend" #E8F4FF {
   class LinkedChatUI <<UI>>
   class LinkedChatHistoryViewModel <<Control>>
   class LinkedChatComposerViewModel <<Control>>
+  class LinkedChatDoseRecorder <<Control>>
+  class DoseSyncService <<Service>>
   class ChatMessageDraft <<Entity>>
   interface LinkedChatSessionTransport
   class LinkedChatRealtimeService <<Service>>
@@ -107,6 +109,9 @@ ManageLinkedChat --> ChatUnreadSummary
 LinkedChatUI --> ManageLinkedChat
 LinkedChatUI *-- LinkedChatHistoryViewModel : account/link/patient session
 LinkedChatUI *-- LinkedChatComposerViewModel : same identity-keyed session
+LinkedChatUI *-- LinkedChatDoseRecorder : 선택 약·날짜·시간대 검증
+LinkedChatDoseRecorder --> DoseSyncService : 계정별 영속 복용 기록
+LinkedChatDoseRecorder --> ManageLinkedChat : 문맥 조회 / 큐 없는 경우의 fallback
 LinkedChatComposerViewModel --> ManageLinkedChat : borrowed authenticated send adapter
 LinkedChatComposerViewModel --> ChatMessageDraft : immutable payload / retry comparison
 LinkedChatHistoryViewModel --> ManageLinkedChat : borrowed authenticated control
@@ -117,6 +122,13 @@ note bottom of LinkedChatHistoryViewModel
   and failure-only polling; publishes immutable snapshots.
   UI supplies visibility/latest-position predicates and owns the draft.
   Late/disposed or wrong-link responses cannot update another session.
+  이력 조회에서 연결 해제·권한 상실을 확인하면 반복 조회와 연결을 멈춘다.
+  UI는 입력창 대신 연동 해제 안내를 표시하며 실패한 전송 후에도 한 번 확인한다.
+end note
+note bottom of LinkedChatRealtimeService
+  chat-close-codes를 선언한 Client는 거절 사유를 종료 코드로 받는다.
+  인증 갱신·접속 한도 대기·연결 중단을 구분한다.
+  구형 Client는 승인 전 HTTP 거절을 유지한다.
 end note
 note bottom of LinkedChatComposerViewModel
   Serializes outgoing sends and retains failed payload/request identity.
@@ -151,6 +163,11 @@ FCheckCaregiverMedication --> BCheckCaregiverMedication : patient status API
 BLinkPatientCaregiver --> PatientCaregiverLinkRepository
 BLinkPatientCaregiver --> DBPatientCaregiverLink
 BLinkPatientCaregiver --> DBCaregiverNotification
+note bottom of BLinkPatientCaregiver
+  신규·재활성 연결은 양쪽 활성 연결 한도를 확인한다.
+  연결 해제는 확인 후 알림 설정과 해당 대화를 삭제한다.
+  환자의 저장 약과 복약 기록은 보존한다.
+end note
 
 BCheckCaregiverMedication --> BLinkPatientCaregiver : verifies relationship
 BCheckSchedule --> DBCaregiverAlertOutbox : completion event
