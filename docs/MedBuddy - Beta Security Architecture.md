@@ -168,6 +168,9 @@ Permanent deletion is a server-managed, retryable saga:
 4. Once tombstoned, ordinary requests fail with `410 Gone`; only the deletion
    endpoint may retry. Firebase `user-not-found` is idempotent success, while
    transient provider failure returns `503 Retry-After` without reopening writes.
+   With the revocation check on, a retry after the identity was deleted still
+   reaches the endpoint: a correctly signed token of a deleted account is
+   accepted for the deletion endpoint only and rejected with 401 elsewhere.
 5. After server success, Flutter clears its in-memory medical session before
    provider sign-out. A sign-out failure remains visible and cannot resurrect
    the deleted subject inside the running application.

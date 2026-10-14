@@ -153,19 +153,21 @@ class ManageUserSetting {
   ) async {
     final nextSetting = setting.copyWith(userHash: _normalizedUserHash);
 
-    await _cacheUserSetting(nextSetting);
-
     if (!useRemotePersistence) {
+      await _cacheUserSetting(nextSetting);
       return UserSettingSaveResult(
         setting: nextSetting,
         synchronizedWithServer: false,
       );
     }
 
+    // 대기 표시를 캐시보다 먼저 남긴다. 순서가 반대면 그 사이에 끝난 서버 조회가 표시를 보지 못하고
+    // 새 캐시를 서버 사본으로 덮어, 이어진 전송이 실패했을 때 바꾼 설정이 사라진다.
     final token = _nextPendingToken();
     final preferences = await SharedPreferences.getInstance();
     await preferences.setString(_pendingSyncKey, token);
     _hasPendingSave = true;
+    await _cacheUserSetting(nextSetting);
     return _sendUserSetting(nextSetting, token);
   }
 

@@ -272,7 +272,7 @@ class DoseWidgetProvider : HomeWidgetProvider() {
             views.setContentDescription(R.id.widget_take, when {
                 !known -> tr("MedBuddy 로그인하기", "Sign in to MedBuddy")
                 pending -> tr("저장 중", "Saving")
-                cancelling -> "${page.optString("label")} " + tr("복용 기록 취소", "undo dose record")
+                cancelling -> "${page.optString("label")} " + tr("복용 완료 취소", "undo completion")
                 known && !expired && page.optString("action") == "take" ->
                     "${page.optString("label")} " + tr("복용했어요", "mark as taken")
                 else -> null

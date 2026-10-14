@@ -20,6 +20,10 @@ released under that version instead. Changes are listed in the
       English message (seen in a widget test while shortening the missed-dose
       text).
 - [ ] Device check of the 0.2.3 changes.
+- Decided: the home-screen widget's undo button keeps undoing a slot in one
+  tap. A widget cannot show a confirmation, and the button is disabled while a
+  record is being saved, so a double tap does not reach the undo. The in-app
+  slot undo asks for confirmation.
 
 ## v0.2.2 release candidate
 

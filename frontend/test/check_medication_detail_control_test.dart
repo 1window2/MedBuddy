@@ -40,6 +40,7 @@ Future<Object?> _lookup(Future<http.Response> Function() respond) {
 void main() {
   const dedicatedMessages = <int, String>{
     401: '로그인 정보가 만료되었습니다. 다시 로그인해주세요.',
+    403: '약품 정보를 조회할 수 없습니다. 잠시 후 다시 시도해주세요.',
     404: '일치하는 약 정보를 찾지 못했습니다. OCR 약 이름을 확인해주세요.',
     504: '약품 정보 서버의 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.',
     429: '현재 약품 조회 요청이 많습니다. 잠시 후 다시 시도해주세요.',
@@ -66,6 +67,34 @@ void main() {
       );
     });
   }
+
+  // Function Name: test callback
+  // Description:
+  // - Expected behavior: a 429 for the daily AI limit says to try again tomorrow, not shortly.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes when the assertions pass.
+  test('a daily-limit 429 says to try again tomorrow', () async {
+    await expectLater(
+      _lookup(
+        () async => http.Response.bytes(
+          utf8.encode(
+            jsonEncode({'detail': '오늘 사용할 수 있는 횟수를 모두 사용했습니다. 내일 다시 시도해주세요.'}),
+          ),
+          429,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      ),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          '오늘 약품 정보를 조회할 수 있는 횟수를 모두 사용했습니다. 내일 다시 시도해주세요.',
+        ),
+      ),
+    );
+  });
 
   // Function Name: test callback
   // Description:

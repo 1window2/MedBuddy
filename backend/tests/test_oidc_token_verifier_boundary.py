@@ -81,3 +81,34 @@ def test_certificate_fetch_failure_is_classified_as_unavailable() -> None:
     ):
         with pytest.raises(TokenVerificationUnavailableError):
             verifier.verifyIdToken("token")
+
+
+# Function Name: test_deleted_account_token_keeps_its_verified_claims
+# Description:
+# - A correctly signed token whose Firebase account no longer exists is still rejected, as a
+#   DeletedIdentityTokenError that carries the claims read without the revocation lookup, so that
+#   only a retried account deletion can finish with it.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+def test_deleted_account_token_keeps_its_verified_claims() -> None:
+    from boundaries.oidc_token_verifier_boundary import DeletedIdentityTokenError
+
+    verifier = _verifier_without_firebase_initialization()
+    claims = {"uid": "gone-user", "iss": "https://securetoken.google.com/medbuddy-test"}
+
+    def verify(token: str, *, app: object, check_revoked: bool) -> dict[str, object]:
+        if check_revoked:
+            raise auth.UserNotFoundError("deleted")
+        return claims
+
+    with patch(
+        "boundaries.oidc_token_verifier_boundary.auth.verify_id_token",
+        side_effect=verify,
+    ):
+        with pytest.raises(DeletedIdentityTokenError) as rejected:
+            verifier.verifyIdToken("token")
+
+    assert isinstance(rejected.value, TokenVerificationError)
+    assert rejected.value.claims == claims

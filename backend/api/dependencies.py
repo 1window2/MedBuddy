@@ -41,6 +41,7 @@ from boundaries.hospital_api_boundary import NationalEmergencyMedicalCenterHospi
 from boundaries.llm_service_boundary import LLMService
 from boundaries.medication_summary_boundary import MedicationSummaryGenerator
 from boundaries.oidc_token_verifier_boundary import (
+    DeletedIdentityTokenError,
     OIDCTokenVerifier,
     TokenVerificationError,
     TokenVerificationUnavailableError,
@@ -212,15 +213,34 @@ def verify_app_check_token(
         ) from exc
 
 
+# Function Name: _is_account_deletion_request
+# Description:
+# - Tells whether the request is the account deletion, the only route that accepts the token of a
+#   Firebase account that is already deleted.
+# Parameters:
+# - request (Request | None): Incoming request; None when the dependency is called directly.
+# Returns:
+# - True for DELETE /api/v1/auth/account-data.
+def _is_account_deletion_request(request: Request | None) -> bool:
+    return (
+        request is not None
+        and request.method.upper() == "DELETE"
+        and request.url.path == "/api/v1/auth/account-data"
+    )
+
+
 # Function Name: get_authenticated_principal
 # Description:
 # - Verifies the bearer token and enforces configured provider and verified-email policies, or returns the explicit development identity.
 # Parameters:
 # - credentials (HTTPAuthorizationCredentials | None): Optional HTTP bearer credentials from the request.
+# - request (Request): Incoming request, injected by FastAPI; lets a retried account deletion use the
+#   token of an already deleted Firebase account.
 # Returns:
 # - Trusted principal; HTTP 401/403 for rejected authentication and 503 for verifier outages.
 def get_authenticated_principal(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+    request: Request = None,  # type: ignore[assignment]
 ) -> AuthenticatedPrincipal:
     if settings.AUTH_MODE == "disabled":
         return AuthenticatedPrincipal.development_principal()
@@ -231,7 +251,14 @@ def get_authenticated_principal(
             headers={"WWW-Authenticate": "Bearer"},
         )
     try:
-        claims = get_oidc_token_verifier().verifyIdToken(credentials.credentials)
+        try:
+            claims = get_oidc_token_verifier().verifyIdToken(credentials.credentials)
+        except DeletedIdentityTokenError as exc:
+            # Only a retried account deletion may finish with the token of an account that is
+            # already gone (the first answer was lost after the Firebase identity was deleted).
+            if not _is_account_deletion_request(request):
+                raise
+            claims = exc.claims
         principal = AuthenticatedPrincipal.from_verified_claims(claims)
     except TokenVerificationUnavailableError as exc:
         logger.warning(

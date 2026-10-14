@@ -20,7 +20,6 @@ from schemas.prescription_change import (
     PrescriptionMedicationChange,
     PrescriptionScheduleSnapshot,
 )
-from services.medication_course_policy import MedicationCoursePolicy
 from services.medication_dose_rhythm import read_duration_days
 from services.prescription_similarity import (
     PRESCRIPTION_COMPARISON_WINDOW_DAYS,
@@ -81,7 +80,6 @@ class CheckPrescriptionChange:
             medication_repository or SavedMedicationRepository(db)
         )
         self.similarity_service = similarity_service or PrescriptionSimilarityService()
-        self._course_policy = MedicationCoursePolicy()
 
     # 함수이름: request_prescription_change
     # 함수역할:
@@ -530,7 +528,9 @@ class CheckPrescriptionChange:
                 if days > 0:
                     return f"days:{days}"
             else:
-                count = self._course_policy.read_frequency_count(text)
+                # 일정용 횟수는 하루 4회로 잘리므로, 비교에는 표기의 횟수를 그대로 쓴다("1일 6회"와 "8회"는 다르다).
+                # 순수 표기에서 마지막 숫자가 횟수다("1일 3회"의 1은 일수다).
+                count = int(re.findall(r"[0-9]+", text)[-1])
                 if count > 0:
                     return f"daily-count:{count}"
         normalized = self._SPACE_PATTERN.sub("", text.lower())

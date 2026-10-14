@@ -287,6 +287,41 @@ def test_manage_account_exports_and_deletes_owned_data(db_session) -> None:
     assert db_session.query(_HealthRecommendationCache).count() == 0
 
 
+# Function Name: test_account_export_leaves_out_the_name_the_other_participant_set
+# Description:
+# - Each display name of a link is returned only to the participant who set it; the account
+#   export of the patient leaves out the name the caregiver gave the patient, and the other way
+#   round.
+# Parameters:
+# - db_session (Session): Isolated SQLAlchemy session supplied by the test fixture.
+# Returns:
+# - None.
+def test_account_export_leaves_out_the_name_the_other_participant_set(db_session) -> None:
+    from entities.patient_caregiver_link_entity import _PatientCaregiverLink
+
+    control = ManageAccount(db_session)
+    patient = control.ensureAccount("patient-export", commit=True)
+    caregiver = control.ensureAccount("caregiver-export", commit=True)
+    db_session.add(
+        _PatientCaregiverLink(
+            patient_hash=patient,
+            caregiver_hash=caregiver,
+            linked=True,
+            patient_alias="caregiver's private name",
+            caregiver_alias="patient's private name",
+        )
+    )
+    db_session.commit()
+
+    patient_link = control.exportAccountData(patient)["data"]["caregiver_links"][0]
+    caregiver_link = control.exportAccountData(caregiver)["data"]["caregiver_links"][0]
+
+    assert "patient_alias" not in patient_link
+    assert patient_link["caregiver_alias"] == "patient's private name"
+    assert "caregiver_alias" not in caregiver_link
+    assert caregiver_link["patient_alias"] == "caregiver's private name"
+
+
 # Class Name: _FailOnceIdentityDeletionBoundary
 # Role: Identity-deletion double that fails once and records subjects across the subsequent
 #   retry.

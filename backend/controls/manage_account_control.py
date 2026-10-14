@@ -3,6 +3,7 @@
 
 import logging
 from datetime import date, datetime
+from typing import Any
 
 from sqlalchemy import and_, inspect as sqlalchemy_inspect, or_
 from sqlalchemy.orm import Session
@@ -168,7 +169,10 @@ class ManageAccount:
                     .filter(_MedicationAlarm.patient_hash == normalized_user_hash)
                     .all()
                 ],
-                "caregiver_links": [self._row_to_dict(row) for row in links],
+                "caregiver_links": [
+                    self._link_to_export_dict(row, normalized_user_hash)
+                    for row in links
+                ],
                 "caregiver_notification_settings": [
                     self._row_to_dict(row) for row in caregiver_settings
                 ],
@@ -178,6 +182,24 @@ class ManageAccount:
                 "saved_medication_ids": medication_ids,
             },
         }
+
+    # Function Name: _link_to_export_dict
+    # Description:
+    # - Exports a link row without the display name the other participant set: each display name
+    #   is returned only to the participant who set it, and the export is no exception. The
+    #   patient sets caregiver_alias; the caregiver sets patient_alias.
+    # Parameters:
+    # - row (Any): Patient-caregiver link row.
+    # - user_hash (str): Account the export is for.
+    # Returns:
+    # - The row as a dictionary without the other participant's display name.
+    def _link_to_export_dict(self, row: Any, user_hash: str) -> dict[str, Any]:
+        exported = self._row_to_dict(row)
+        if str(row.patient_hash) == user_hash:
+            exported.pop("patient_alias", None)
+        if str(row.caregiver_hash) == user_hash:
+            exported.pop("caregiver_alias", None)
+        return exported
 
     # Function Name: deleteAccountData
     # Description:

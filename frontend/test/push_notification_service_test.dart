@@ -332,6 +332,23 @@ void main() {
       expect(platform.subscriptions('delete-token'), 1);
     });
 
+    // Function Name: unconfirmed registration test
+    // Description: A run whose registration never succeeded still unregisters the device token on
+    //   stop, because an earlier run may have registered it for the account that is ending.
+    testWidgets('a token registered by an earlier run is unregistered on stop', (tester) async {
+      failingPosts = 100;
+      final service = build();
+      unawaited(service.start());
+      await tester.pump();
+      expect(posts(), hasLength(1));
+
+      unawaited(service.stop());
+      await tester.pump();
+
+      expect(requests.last.method, 'DELETE');
+      expect(requests.last.body, contains('"token"'));
+    });
+
     // Function Name: unregistered token test
     // Description: A token the server unregistered is not deleted on the device.
     testWidgets('a token the server unregistered is kept on the device', (tester) async {

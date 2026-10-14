@@ -314,9 +314,12 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
                 body: jsonEncode({...op}..remove('medication_names')),
               )
               .timeout(const Duration(seconds: 20));
-          if (response.statusCode == 429 && op['link_id'] != null) {
+          if (response.statusCode == 429 &&
+              op['link_id'] != null &&
+              _isChatDailyLimit(response)) {
             // 채팅 일일 한도는 채팅 복용 기록에만 먼저 적용된다. 연동이 끊긴 채팅 기록처럼
             // 채팅 없는 일반 복용 기록으로 바꿔 복용 상태가 한도 초기화까지 막히지 않게 한다.
+            // 분당 한도 같은 다른 429는 잠시 뒤 다시 보내면 되므로 채팅 기록을 버리지 않는다.
             if (await _store!.replaceClaimed(
               owner,
               id,
@@ -464,5 +467,21 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     _timer?.cancel();
     if (_observing) WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+}
+
+// 함수이름: _isChatDailyLimit
+// 함수역할: 429 응답이 하루 채팅 한도 초과인지 서버 문구로 판정한다. 분당 요청 한도나 주소별 한도의 429와 구분한다.
+// 매개변수:
+// - response (http.Response): 복용 기록 전송의 429 응답
+// 반환값:
+// - bool: 하루 채팅 한도 초과이면 true.
+bool _isChatDailyLimit(http.Response response) {
+  try {
+    final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+    final detail = decoded is Map ? decoded['detail'] : null;
+    return detail is String && detail.contains('오늘 보낼 수 있는 채팅 메시지');
+  } catch (_) {
+    return false;
   }
 }

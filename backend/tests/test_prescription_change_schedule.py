@@ -76,6 +76,9 @@ def test_equivalent_schedule_labels_are_unchanged(
         ("daily_frequency", "2회", "필요시 2회"),
         ("daily_frequency", "2", "2일"),
         ("daily_frequency", "2", "2~3회"),
+        # Counts above the schedule's four slots are still compared as written.
+        ("daily_frequency", "1일 4회", "1일 6회"),
+        ("daily_frequency", "6회", "8"),
         ("daily_frequency", "2", "1일2"),
         ("daily_frequency", "", "2회"),
         ("daily_frequency", "2회", ""),
