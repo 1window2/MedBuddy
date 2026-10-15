@@ -592,6 +592,12 @@ void main() {
         isFalse,
       );
       final notice = find.byKey(const Key('home-dose-record-notice'));
+      // 일정 확인 버튼이 본문 옆 폭을 차지하지 않아, 주의 문구가 화면 폭 대부분(여백 제외)을 쓴다.
+      expect(tester.getRect(notice).width, greaterThan(240));
+      expect(
+        tester.getRect(find.text(language == 'ko' ? '일정 확인' : 'View')).top,
+        greaterThanOrEqualTo(tester.getRect(notice).bottom),
+      );
       expect(tester.getRect(notice).top, greaterThanOrEqualTo(0));
       expect(tester.getRect(notice).bottom, lessThanOrEqualTo(700));
       await tester.drag(notice, const Offset(0, -1000));

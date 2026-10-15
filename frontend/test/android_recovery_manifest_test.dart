@@ -78,4 +78,29 @@ void main() {
     expect(manifest, contains('android.intent.action.TTS_SERVICE'));
     expect(manifest, contains('android.intent.action.PROCESS_TEXT'));
   });
+
+  // Function Name: test callback
+  // Description:
+  // - Verify that the home-screen widget calls no RemoteViews method that Android allows only from
+  //   Android 12 (API 31). The app supports API 24, and one such call (View.setAlpha through
+  //   setFloat) made the whole widget fail to load on Android 7 to 11.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; a failed expectation fails this test.
+  test('home widget uses only RemoteViews calls available on Android 7', () {
+    final provider = File(
+      'android/app/src/main/kotlin/com/example/medbuddy_frontend/DoseWidgetProvider.kt',
+    ).readAsStringSync();
+    for (final call in [
+      RegExp(r'setFloat\([^)]*"setAlpha"'),
+      RegExp(r'setViewLayout(?:Margin|Width|Height)'),
+      RegExp(r'setColorStateList'),
+      RegExp(r'setCompoundButtonChecked'),
+      RegExp(r'setRadioGroupChecked'),
+      RegExp(r'setBlendMode'),
+    ]) {
+      expect(provider, isNot(contains(call)), reason: call.pattern);
+    }
+  });
 }

@@ -16,9 +16,24 @@ released under that version instead. Changes are listed in the
       queries per patient and slot. Negligible at beta size; it grows with
       users. Remembering "complete at the deadline" would change what happens
       when a dose is undone after the deadline, so it needs a decision.
-- [ ] The home dose-record notice may not scroll fully at 2x text with a longer
-      English message (seen in a widget test while shortening the missed-dose
-      text).
+- [x] The home dose-record notice at 2x text: the "View" button took the
+      notice's width (Flutter reserves the action's width, or 40% when the
+      action wraps), so the safety text was about 110 px wide and 1,200 px
+      tall on a 320 px screen. The button now sits below the text inside the
+      notice, which uses the full width, and the notice stays 15 s at large
+      text. Regression in the home notice large-text test.
+- [x] The home-screen widget failed to load on Android 7 to 11 ("Problem
+      loading widget"): it called View.setAlpha through RemoteViews, which
+      Android allows only from Android 12. Introduced on 2026-09-21, so the
+      released 0.2.0 to 0.2.2 apps are affected on those versions. It now
+      dims the patient buttons with setImageAlpha. Checked on Android 11 and
+      Android 16 emulators (widget drawn, "taken" stored); a test rejects
+      Android 12-only widget calls.
+- [x] Android 16 (debug build, emulator, local server): notification
+      permission request, the exact-alarm notice and system screen, 15
+      reminders upgraded to exact alarms, the notification at its minute with
+      the app in the background, all reminders reserved again after a reboot
+      without opening the app, and the widget.
 - [ ] Device check of the 0.2.3 changes. On October 15 the signed build of
       `ded59c3` was installed over 0.2.2 on the Android 14 emulator (guest
       account) against the production server, which runs this branch: the
@@ -246,8 +261,9 @@ Physical acceptance that was not performed for v0.2.0:
 - [ ] The first launch after the application day changes.
 - [ ] Prescription capture with the on-device privacy filter, and saving
       several identified pills, on a physical device.
-- [ ] Android 16 background work. Android 14 was exercised on an emulator
-      only.
+- [ ] Android 16 background work on a physical phone. Exercised on an
+      Android 16 emulator on 2026-10-15 (reminders, exact alarms, reboot,
+      widget); see the v0.2.3 section.
 - [ ] Native map-marker recovery after a partially failed marker addition.
 
 Introduced in v0.2.1 and not yet checked on a device:

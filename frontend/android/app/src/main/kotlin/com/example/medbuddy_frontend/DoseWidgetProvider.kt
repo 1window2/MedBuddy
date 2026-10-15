@@ -194,7 +194,9 @@ class DoseWidgetProvider : HomeWidgetProvider() {
                 val target = patients.getOrNull(targetIndex)
                 views.setViewVisibility(button, if (patients.size > 1) View.VISIBLE else View.GONE)
                 views.setBoolean(button, "setEnabled", target != null)
-                views.setFloat(button, "setAlpha", if (target != null) 1f else .3f)
+                // View.setAlpha(float)는 Android 12부터만 RemoteViews에서 호출할 수 있어, 그 이전 버전에서는
+                // 위젯 전체가 "위젯을 불러오는 중 문제"로 표시되었다. 모든 버전에서 되는 아이콘 투명도로 흐리게 한다.
+                views.setInt(button, "setImageAlpha", if (target != null) 255 else 77)
                 views.setContentDescription(button, if (button == R.id.widget_patient_previous)
                     tr("이전 환자", "Previous patient") else tr("다음 환자", "Next patient"))
                 if (target != null) views.setOnClickPendingIntent(button, patientAction(context, id,

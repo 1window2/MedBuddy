@@ -1078,43 +1078,62 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ? 'Do not take an extra dose on your own. Check your prescription guidance.'
         : '놓친 복약은 임의로 추가 복용하지 말고 처방·복약지도를 확인하세요.';
     messenger.hideCurrentSnackBar();
+    final noticeText = success
+        ? needsTimingGuidance
+              ? '$savedMessage\n$missedDoseGuidance'
+              : savedMessage
+        : (isEnglish
+              ? 'Could not save the medication status.'
+              : '복약 상태를 저장하지 못했습니다.');
     messenger.showSnackBar(
       SnackBar(
-        content: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.sizeOf(context).height * .4,
-          ),
-          child: SingleChildScrollView(
-            key: const Key('home-dose-record-notice'),
-            child: Text(
-              success
-                  ? needsTimingGuidance
-                        ? '$savedMessage\n$missedDoseGuidance'
-                        : savedMessage
-                  : (isEnglish
-                        ? 'Could not save the medication status.'
-                        : '복약 상태를 저장하지 못했습니다.'),
+        // 일정 확인 버튼을 SnackBar의 action 대신 본문 아래에 직접 둔다. action을 쓰면 Flutter가 본문 옆에
+        // 버튼 폭(줄바꿈 시에는 화면 폭의 40%)을 비워 두어, 큰 글씨에서 주의 문구가 몇 글자 폭으로 좁아졌다.
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(context).height * .4,
+              ),
+              child: SingleChildScrollView(
+                key: const Key('home-dose-record-notice'),
+                child: Text(noticeText),
+              ),
             ),
-          ),
+            if (success)
+              Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: TextButton(
+                  style: TextButton.styleFrom(
+                    foregroundColor:
+                        Theme.of(context).colorScheme.inversePrimary,
+                  ),
+                  // Function Name: _updateHomeMedicationSlot.onPressed callback
+                  // Description: Closes the notice and opens individual-dose review without changing other completion records.
+                  // Parameters:
+                  // - None.
+                  // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
+                  onPressed: () {
+                    messenger.hideCurrentSnackBar();
+                    _selectDestination(MedBuddyDestination.schedule);
+                  },
+                  child: Text(isEnglish ? 'View' : '일정 확인'),
+                ),
+              ),
+          ],
         ),
-        // 실패 안내도 일반 성공 안내만큼 오래 보여 어르신이 놓치지 않게 한다.
+        // 실패 안내도 일반 성공 안내만큼 오래 보여 어르신이 놓치지 않게 한다. 큰 글씨에서는 주의 문구가
+        // 안내창 높이를 넘어 스크롤해야 다 보일 수 있으므로 더 오래 보여 준다.
         duration: Duration(
-          seconds: success ? (needsTimingGuidance ? 8 : 5) : 5,
+          seconds: success
+              ? (needsTimingGuidance
+                    ? (MediaQuery.textScalerOf(context).scale(1) > 1.3 ? 15 : 8)
+                    : 5)
+              : 5,
         ),
         persist: false,
-        action: success
-            ? SnackBarAction(
-                label: isEnglish ? 'View' : '일정 확인',
-                // Function Name: _updateHomeMedicationSlot.onPressed callback
-                // Description: Opens individual-dose review without changing other completion records.
-                // Parameters:
-                // - None.
-                // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
-                onPressed: () {
-                  _selectDestination(MedBuddyDestination.schedule);
-                },
-              )
-            : null,
       ),
     );
     return success;
