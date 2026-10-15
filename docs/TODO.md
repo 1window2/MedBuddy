@@ -34,6 +34,15 @@ released under that version instead. Changes are listed in the
       reminders upgraded to exact alarms, the notification at its minute with
       the app in the background, all reminders reserved again after a reboot
       without opening the app, and the widget.
+- [x] Prescription analysis end to end with a synthetic prescription (fictional
+      patient and clinic) on the Android 14 emulator against production,
+      2026-10-15: on-device OCR read every row, the privacy filter greyed out
+      the patient name, resident number and phone number, names were corrected
+      to catalogue names, and the server analysis returned candidates for all
+      three rows after the summary fix below. A real prescription on a phone is
+      still open.
+- [x] A wrong link code shows "코드가 맞지 않거나 만료되었습니다…" (signed
+      build, emulator, production).
 - [ ] Device check of the 0.2.3 changes. On October 15 the signed build of
       `ded59c3` was installed over 0.2.2 on the Android 14 emulator (guest
       account) against the production server, which runs this branch: the
