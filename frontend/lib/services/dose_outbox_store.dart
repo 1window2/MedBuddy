@@ -300,6 +300,11 @@ class DoseOutboxStore {
       whereArgs: [token],
       orderBy: 'seq',
     );
+    // ACK는 전체 일정이므로 같은 계정의 전송은 선점이 끝난 뒤 시작해 응답 역전을 막는다.
+    // now가 없는 재시도 확인은 선점 중인 기록도 계속 전송 대기로 센다.
+    if (now != null && rows.any((row) => (row['lease_until'] as int) > now)) {
+      return [];
+    }
     final earlier = <Map<String, dynamic>>[];
     final ready = <({Map<String, Object?> row, Map<String, dynamic> payload})>[];
     for (final row in rows) {
@@ -314,7 +319,6 @@ class DoseOutboxStore {
       );
       earlier.add(payload);
       if (waiting || row['state'] == 'blocked') continue;
-      if (now != null && (row['lease_until'] as int) > now) continue;
       ready.add((row: row, payload: payload));
     }
     return ready;
