@@ -27,6 +27,7 @@ from entities.medication_detail_entity import (
     _DrugApprovalInfo,
     _DrugBasicInfo,
 )
+from entities.medication_lookup_result import MedicationLookupResult
 from services.medication_name_matching import MedicationNameMatcher
 
 logger = logging.getLogger(__name__)
@@ -97,10 +98,10 @@ class LocalMedicationCatalog:
     # 매개변수:
     # - drug_name (str): 검색 또는 직렬화할 약품명.
     # 반환값:
-    # - 약품 상세 목록; DB나 일치 결과가 없으면 빈 목록.
-    async def fetch_drug_info(self, drug_name: str) -> list[MedicationDetail]:
+    # - 약품 상세 목록과 후보 요약 완결 여부; DB나 일치 결과가 없으면 빈 결과.
+    async def fetch_drug_info(self, drug_name: str) -> MedicationLookupResult:
         if self.db is None:
-            return []
+            return MedicationLookupResult()
 
         basic_items, approval_items = await self._search_catalog(drug_name)
         if basic_items:
@@ -108,10 +109,10 @@ class LocalMedicationCatalog:
                 "[Local DB] e약은요 lookup succeeded (%s items).",
                 len(basic_items),
             )
-            return await self._build_basic_details(basic_items)
+            return MedicationLookupResult(await self._build_basic_details(basic_items))
 
         if not approval_items:
-            return []
+            return MedicationLookupResult()
 
         logger.info("[Local DB] approval lookup succeeded.")
         return await gather_summaries_keeping_successes(

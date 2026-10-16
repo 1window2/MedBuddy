@@ -34,6 +34,7 @@ from services.medication_name_matching import (
     MedicationTextNormalizer,
 )
 from entities.medication_detail_entity import MedicationDetail
+from entities.medication_lookup_result import MedicationLookupResult
 from support.fakes import FakeGeminiClient, FakeRedis
 
 
@@ -1014,7 +1015,7 @@ def _detail(**overrides: object) -> MedicationDetail:
 # Function Name: test_medication_cache_round_trip_through_redis
 # Description:
 # - Requires a saved detail list to come back from the real cache class with the seven-day
-#   expiry, the drug_info key namespace and the cache marker on its source.
+#   expiry, the versioned drug_info key namespace and the cache marker on its source.
 # Parameters:
 # - None.
 # Returns:
@@ -1024,10 +1025,10 @@ async def test_medication_cache_round_trip_through_redis() -> None:
     redis_client = FakeRedis()
     cache = MedicationDetailCache(redis_client=redis_client)
 
-    await cache.set("가나다정", [_detail()])
+    await cache.set("가나다정", MedicationLookupResult([_detail()]))
     cached = await cache.get("가나다정")
 
-    assert redis_client.ttl_seconds == {"drug_info:가나다정": 604800}
+    assert redis_client.ttl_seconds == {"drug_info:v2:가나다정": 604800}
     assert cached is not None and len(cached) == 1
     assert cached[0].item_seq == "200000001"
     assert cached[0].usage_method == "usage"
@@ -1052,7 +1053,7 @@ async def test_medication_cache_retries_redis_after_cooldown() -> None:
 
     assert await cache.get("엘타인캡슐") is None
     assert await cache.get("엘타인캡슐") is None
-    await cache.set("엘타인캡슐", [_detail()])
+    await cache.set("엘타인캡슐", MedicationLookupResult([_detail()]))
     assert redis_client.calls["get"] == 1
     assert redis_client.calls["setex"] == 0
 
@@ -1063,7 +1064,7 @@ async def test_medication_cache_retries_redis_after_cooldown() -> None:
     assert redis_client.calls["get"] == 1
 
     clock.now += 1
-    await cache.set("엘타인캡슐", [_detail()])
+    await cache.set("엘타인캡슐", MedicationLookupResult([_detail()]))
     cached = await cache.get("엘타인캡슐")
     assert cached is not None and cached[0].item_name == "가나다정"
     assert redis_client.calls["setex"] == 1
@@ -1089,14 +1090,14 @@ async def test_medication_cache_save_failure_starts_cooldown_without_raising() -
     cache = MedicationDetailCache(redis_client=redis_client, clock=clock)
 
     redis_client.fail_with = OSError("connection reset")
-    await cache.set("가나다정", [_detail()])
+    await cache.set("가나다정", MedicationLookupResult([_detail()]))
     redis_client.fail_with = None
     assert await cache.get("가나다정") is None
     assert redis_client.calls["setex"] == 1
     assert redis_client.calls["get"] == 0
 
     clock.now += MedicationDetailCache.RETRY_COOLDOWN_SECONDS
-    await cache.set("가나다정", [_detail()])
+    await cache.set("가나다정", MedicationLookupResult([_detail()]))
     assert await cache.get("가나다정") is not None
 
 
@@ -1122,15 +1123,15 @@ async def test_medication_cache_treats_unreadable_entry_as_miss_for_that_key(
 ) -> None:
     redis_client = FakeRedis()
     cache = MedicationDetailCache(redis_client=redis_client)
-    await cache.set("good", [_detail()])
-    redis_client.values["drug_info:bad"] = stored_value
+    await cache.set("good", MedicationLookupResult([_detail()]))
+    redis_client.values["drug_info:v2:bad"] = stored_value
 
     assert await cache.get("bad") is None
     assert await cache.get("good") is not None
     assert redis_client.calls["get"] == 2
 
     # The lookup that follows a miss overwrites the unreadable entry.
-    await cache.set("bad", [_detail()])
+    await cache.set("bad", MedicationLookupResult([_detail()]))
     assert await cache.get("bad") is not None
 
 
@@ -1148,7 +1149,9 @@ async def test_medication_cache_ignores_stored_failed_summary() -> None:
     cache = MedicationDetailCache(redis_client=redis_client)
     await cache.set(
         "가나다정",
-        [_detail(warning=FAILED_SUMMARY_TEXT, source="Advanced (허가정보) + AI 요약")],
+        MedicationLookupResult([
+            _detail(warning=FAILED_SUMMARY_TEXT, source="Advanced (허가정보) + AI 요약"),
+        ]),
     )
 
     assert redis_client.calls["setex"] == 1
@@ -1198,9 +1201,9 @@ class _StubDrugSource:
     # Parameters:
     # - drug_name (str): Search keyword.
     # Returns:
-    # - list[MedicationDetail]: Always empty.
-    async def fetch_drug_info(self, drug_name: str) -> list[MedicationDetail]:
-        return []
+    # - MedicationLookupResult: Always empty and complete.
+    async def fetch_drug_info(self, drug_name: str) -> MedicationLookupResult:
+        return MedicationLookupResult()
 
     # Function Name: searchMedication
     # Description:
@@ -1391,7 +1394,8 @@ async def test_failed_candidate_summary_drops_only_that_candidate() -> None:
     kept = await gather_summaries_keeping_successes(
         summary(name) for name in ("first", "broken", "third")
     )
-    assert [detail.item_name for detail in kept] == ["first", "third"]
+    assert [detail.item_name for detail in kept.details] == ["first", "third"]
+    assert kept.is_complete is False
 
     with pytest.raises(RuntimeError):
         await gather_summaries_keeping_successes(summary(name) for name in ("broken",))

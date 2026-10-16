@@ -17,6 +17,7 @@ from boundaries.public_drug_api_boundary import (
 )
 from core.config import settings
 from entities.medication_detail_entity import MedicationDetail
+from entities.medication_lookup_result import MedicationLookupResult
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +32,11 @@ logger = logging.getLogger(__name__)
 # Parameters:
 # - summaries (Iterable[Awaitable[MedicationDetail]]): Summary calls, one per candidate.
 # Returns:
-# - The successful summaries in their original order; raises the first error when none succeeded.
+# - Successful summaries in their original order with completeness preserved; raises the first
+#   error when none succeeded. A partial result must not authorize automatic product selection.
 async def gather_summaries_keeping_successes(
     summaries: Iterable[Awaitable[MedicationDetail]],
-) -> list[MedicationDetail]:
+) -> MedicationLookupResult:
     results = await asyncio.gather(*summaries, return_exceptions=True)
     succeeded = [result for result in results if isinstance(result, MedicationDetail)]
     failures = [result for result in results if isinstance(result, BaseException)]
@@ -46,7 +48,7 @@ async def gather_summaries_keeping_successes(
             len(failures),
             len(results),
         )
-    return succeeded
+    return MedicationLookupResult(succeeded, is_complete=not failures)
 
 # Text earlier versions wrote into a summary field the AI had not returned. The generator no
 # longer writes it; the detail cache treats a stored snapshot that still holds it as a miss.

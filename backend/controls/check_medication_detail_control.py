@@ -22,6 +22,7 @@ from boundaries.public_drug_api_boundary import (
     read_public_item_sequence,
 )
 from entities.medication_detail_entity import MedicationDetail
+from entities.medication_lookup_result import MedicationLookupResult
 from schemas.medication import MedicationResponse
 from services.local_medication_catalog import LocalMedicationCatalog
 from services.medication_match_safety import can_auto_match, match_conflict
@@ -111,11 +112,13 @@ class CheckMedicationDetail:
         logger.info("Medication lookup generated %s candidate(s).", len(search_keywords))
 
         medication_details: list[MedicationDetail] = []
+        lookup_complete = True
         rejected = False
         for search_keyword in search_keywords[:8]:
             found = await self._fetch_drug_info(search_keyword, reference=reference)
-            safe = [item for item in found if not match_conflict(reference, item.item_name)]
-            rejected = rejected or len(safe) != len(found)
+            lookup_complete = lookup_complete and found.is_complete
+            safe = [item for item in found.details if not match_conflict(reference, item.item_name)]
+            rejected = rejected or len(safe) != len(found.details)
             medication_details = self.name_matcher.rank_candidates(
                 reference, safe, lambda item: item.item_name, limit=5,
             )
@@ -136,7 +139,7 @@ class CheckMedicationDetail:
         }
         medication_details = list(unique.values())
         exact = [item for item in medication_details if can_auto_match(reference, item.item_name)]
-        if len(exact) == 1:
+        if len(exact) == 1 and lookup_complete:
             medication_details = exact
         else:
             return MedicationResponse(
@@ -170,15 +173,18 @@ class CheckMedicationDetail:
     # 매개변수:
     # - drug_name (str): 검색 또는 직렬화할 약품명.
     # 반환값:
-    # - 이미지가 보완된 약품 상세 목록; 일치 약품이 없으면 빈 목록.
-    async def _fetch_drug_info(self, drug_name: str, *, reference: str | None = None) -> list[MedicationDetail]:
+    # - 이미지가 보완된 약품 상세 목록과 후보 요약 완결 여부.
+    async def _fetch_drug_info(self, drug_name: str, *, reference: str | None = None) -> MedicationLookupResult:
         reference = reference or drug_name
-        local_drugs = await self.local_medication_catalog.fetch_drug_info(drug_name)
+        local_result = await self.local_medication_catalog.fetch_drug_info(drug_name)
         local_drugs = self.name_matcher.rank_candidates(
-            reference, local_drugs, lambda item: item.item_name, limit=5,
+            reference, local_result.details, lambda item: item.item_name, limit=5,
         )
         if local_drugs:
-            return await self._enrich_missing_image_urls(local_drugs)
+            return MedicationLookupResult(
+                await self._enrich_missing_image_urls(local_drugs),
+                is_complete=local_result.is_complete,
+            )
 
         cache_name = drug_name if reference == drug_name else f'{reference}|{drug_name}'
         cached_drugs = await self.medication_cache.get(cache_name)
@@ -190,11 +196,18 @@ class CheckMedicationDetail:
                 limit=3,
             )
             if ranked_cached_drugs:
-                return await self._enrich_missing_image_urls(ranked_cached_drugs)
+                return MedicationLookupResult(
+                    await self._enrich_missing_image_urls(ranked_cached_drugs),
+                    is_complete=local_result.is_complete,
+                )
 
-        medication_details = await self._fetch_public_drug_info(drug_name, reference=reference)
-        await self.medication_cache.set(cache_name, medication_details)
-        return medication_details
+        public_result = await self._fetch_public_drug_info(drug_name, reference=reference)
+        result = MedicationLookupResult(
+            public_result.details,
+            is_complete=local_result.is_complete and public_result.is_complete,
+        )
+        await self.medication_cache.set(cache_name, result)
+        return result
 
     # 함수이름: _enrich_missing_image_urls
     # 함수역할:
@@ -243,12 +256,12 @@ class CheckMedicationDetail:
     # 매개변수:
     # - drug_name (str): 검색 또는 직렬화할 약품명.
     # 반환값:
-    # - 신뢰도 기준을 통과한 상세 목록; 두 API 모두 일치하지 않으면 빈 목록.
+    # - 신뢰도 기준을 통과한 상세 목록과 후보 요약 완결 여부.
     async def _fetch_public_drug_info(
         self,
         drug_name: str,
         *, reference: str | None = None,
-    ) -> list[MedicationDetail]:
+    ) -> MedicationLookupResult:
         basic_items = await self.public_drug_small_api.searchMedication(drug_name)
         basic_items = self.name_matcher.rank_candidates(
             reference or drug_name,
@@ -262,7 +275,7 @@ class CheckMedicationDetail:
                 len(basic_items),
             )
             basic_details = await self._build_basic_drug_infos(basic_items)
-            return await self._enrich_missing_image_urls(basic_details)
+            return MedicationLookupResult(await self._enrich_missing_image_urls(basic_details))
 
         logger.info("[Basic API] no result. Trying Advanced API fallback.")
         advanced_items = await self.public_drug_large_api.searchMedication(drug_name)
@@ -274,17 +287,20 @@ class CheckMedicationDetail:
         )
         if not advanced_items:
             logger.warning("No drug information found in public drug databases.")
-            return []
+            return MedicationLookupResult()
 
         exact = [item for item in advanced_items
                  if can_auto_match(reference or drug_name, read_public_item_name(item))]
         if len(exact) == 1:
             advanced_items = exact
-        details = await gather_summaries_keeping_successes(
+        result = await gather_summaries_keeping_successes(
             self.summary_generator.summarize_advanced_item(drug_name, dict(item))
             for item in advanced_items
         )
-        return await self._enrich_missing_image_urls(details)
+        return MedicationLookupResult(
+            await self._enrich_missing_image_urls(result.details),
+            is_complete=result.is_complete,
+        )
 
     # 함수이름: _build_basic_drug_infos
     # 함수역할:

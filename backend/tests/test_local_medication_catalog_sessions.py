@@ -125,9 +125,10 @@ def test_detached_approval_summary_is_persisted_and_reused(catalog_engine: Engin
             assert len(approval) == 1 and inspect(approval[0]).detached
             first = await catalog.fetch_drug_info(PRODUCT_NAME)
             second = await catalog.fetch_drug_info(PRODUCT_NAME)
-            assert first[0].item_seq == second[0].item_seq == PRODUCT_CODE
-            assert first[0].manufacturer == "Synthetic Manufacturer"
-            assert "저장된 AI 요약" in second[0].source
+            assert first.details[0].item_seq == second.details[0].item_seq == PRODUCT_CODE
+            assert first.details[0].manufacturer == "Synthetic Manufacturer"
+            assert "저장된 AI 요약" in second.details[0].source
+            assert first.is_complete and second.is_complete
 
         asyncio.run(scenario())
         assert not request_db.in_transaction()
@@ -212,7 +213,7 @@ def test_connection_bound_request_is_not_retained_by_workers(catalog_engine: Eng
         with Session(bind=connection) as request_db:
             catalog = LocalMedicationCatalog(request_db, generator)
     details = asyncio.run(catalog.fetch_drug_info(PRODUCT_NAME))
-    assert details[0].item_seq == PRODUCT_CODE
+    assert details.details[0].item_seq == PRODUCT_CODE
     with Session(catalog_engine) as reader:
         assert reader.query(_DrugApprovalInfo).one().summary_efficacy == "generated effect"
 
@@ -248,7 +249,7 @@ def test_summary_is_not_written_over_changed_catalog_documents(
     generator = SimpleNamespace(summarize_advanced_item=AsyncMock(side_effect=change_before_summary))
     with Session(catalog_engine) as request_db:
         details = asyncio.run(LocalMedicationCatalog(request_db, generator).fetch_drug_info(PRODUCT_NAME))
-    assert details[0].efficacy == "generated effect"
+    assert details.details[0].efficacy == "generated effect"
     with Session(catalog_engine) as reader:
         stored = reader.query(_DrugApprovalInfo).one_or_none()
         if changed_field is None:
@@ -285,7 +286,7 @@ def test_summary_cache_failure_keeps_guidance_and_sanitizes_logs(
         with Session(catalog_engine) as request_db:
             with caplog.at_level(logging.WARNING, logger="services.local_medication_catalog"):
                 details = asyncio.run(LocalMedicationCatalog(request_db, generator).fetch_drug_info(PRODUCT_NAME))
-        assert details[0].efficacy == "generated effect"
+        assert details.details[0].efficacy == "generated effect"
         assert "RuntimeError" in caplog.text
         assert "sensitive-patient-or-OCR-payload" not in caplog.text
         with Session(catalog_engine) as reader:
@@ -335,7 +336,7 @@ def test_summary_write_runs_off_loop_and_keeps_request_session_unused(catalog_en
                 assert not request_db.in_transaction()
                 assert not lookup.done()
                 release.set()
-                assert (await asyncio.wait_for(lookup, 2))[0].item_seq == PRODUCT_CODE
+                assert (await asyncio.wait_for(lookup, 2)).details[0].item_seq == PRODUCT_CODE
 
             asyncio.run(scenario())
     finally:
@@ -437,7 +438,7 @@ def test_connection_local_memory_catalog_never_commits_request_session(
             forbidden_commit = Mock(side_effect=AssertionError("borrowed session commit"))
             monkeypatch.setattr(request_db, "commit", forbidden_commit)
             details = asyncio.run(catalog.fetch_drug_info(PRODUCT_NAME))
-            assert details[0].efficacy == "generated effect"
+            assert details.details[0].efficacy == "generated effect"
             assert request_db.in_transaction()
             assert request_db.query(_DrugApprovalInfo).one().summary_efficacy is None
             forbidden_commit.assert_not_called()
@@ -540,8 +541,8 @@ def test_failed_summary_is_returned_but_not_persisted(
         catalog = LocalMedicationCatalog(request_db, generator)
         first = asyncio.run(catalog.fetch_drug_info(PRODUCT_NAME))
         second = asyncio.run(catalog.fetch_drug_info(PRODUCT_NAME))
-    assert getattr(first[0], failed_field) == failed_text
-    assert "저장된 AI 요약" not in second[0].source
+    assert getattr(first.details[0], failed_field) == failed_text
+    assert "저장된 AI 요약" not in second.details[0].source
     assert generator.summarize_advanced_item.await_count == 2
     with Session(catalog_engine) as reader:
         stored = reader.query(_DrugApprovalInfo).one()
@@ -581,10 +582,10 @@ def test_stored_failure_placeholder_is_regenerated(
     with Session(catalog_engine) as request_db:
         details = asyncio.run(LocalMedicationCatalog(request_db, generator).fetch_drug_info(PRODUCT_NAME))
     generator.summarize_advanced_item.assert_awaited_once()
-    assert (details[0].efficacy, details[0].usage_method, details[0].warning) == (
+    assert (details.details[0].efficacy, details.details[0].usage_method, details.details[0].warning) == (
         "generated effect", "generated usage", "generated warning",
     )
-    assert "저장된 AI 요약" not in details[0].source
+    assert "저장된 AI 요약" not in details.details[0].source
     with Session(catalog_engine) as reader:
         stored = reader.query(_DrugApprovalInfo).one()
         assert (stored.summary_efficacy, stored.summary_use_method, stored.summary_warning_message) == (
@@ -661,8 +662,8 @@ def test_partial_summary_is_stored_and_reused_inside_the_retry_period(
         second = asyncio.run(catalog.fetch_drug_info(PRODUCT_NAME))
 
     generator.summarize_advanced_item.assert_awaited_once()
-    assert "저장된 AI 요약" in second[0].source
-    assert second[0].warning == "정보 없음"
+    assert "저장된 AI 요약" in second.details[0].source
+    assert second.details[0].warning == "정보 없음"
 
 
 # Function Name: test_partial_summary_is_completed_after_the_retry_period
@@ -682,8 +683,8 @@ def test_partial_summary_is_completed_after_the_retry_period(catalog_engine: Eng
         second = asyncio.run(catalog.fetch_drug_info(PRODUCT_NAME))
 
     generator.summarize_advanced_item.assert_awaited_once()
-    assert first[0].warning == second[0].warning == "generated warning"
-    assert "저장된 AI 요약" in second[0].source
+    assert first.details[0].warning == second.details[0].warning == "generated warning"
+    assert "저장된 AI 요약" in second.details[0].source
     assert _stored_summary(catalog_engine)[:3] == (
         "generated effect", "generated usage", "generated warning",
     )
@@ -703,7 +704,7 @@ def test_fresh_partial_summary_is_not_requested_again(catalog_engine: Engine) ->
         details = asyncio.run(LocalMedicationCatalog(request_db, generator).fetch_drug_info(PRODUCT_NAME))
 
     generator.summarize_advanced_item.assert_not_awaited()
-    assert (details[0].efficacy, details[0].warning) == ("stored effect", "정보 없음")
+    assert (details.details[0].efficacy, details.details[0].warning) == ("stored effect", "정보 없음")
 
 
 # Function Name: test_summary_missing_only_what_the_source_lacks_is_never_requested_again
@@ -726,7 +727,7 @@ def test_summary_missing_only_what_the_source_lacks_is_never_requested_again(
         details = asyncio.run(LocalMedicationCatalog(request_db, generator).fetch_drug_info(PRODUCT_NAME))
 
     generator.summarize_advanced_item.assert_not_awaited()
-    assert "저장된 AI 요약" in details[0].source
+    assert "저장된 AI 요약" in details.details[0].source
 
 
 # Function Name: test_failed_retry_keeps_the_stored_summary_and_restarts_the_period
@@ -750,8 +751,8 @@ def test_failed_retry_keeps_the_stored_summary_and_restarts_the_period(
         second = asyncio.run(catalog.fetch_drug_info(PRODUCT_NAME))
 
     generator.summarize_advanced_item.assert_awaited_once()
-    assert (first[0].efficacy, first[0].warning) == ("stored effect", "정보 없음")
-    assert (second[0].efficacy, second[0].warning) == ("stored effect", "정보 없음")
+    assert (first.details[0].efficacy, first.details[0].warning) == ("stored effect", "정보 없음")
+    assert (second.details[0].efficacy, second.details[0].warning) == ("stored effect", "정보 없음")
     efficacy, usage, warning, written_at = _stored_summary(catalog_engine)
     assert (efficacy, usage, warning) == ("stored effect", "stored usage", "정보 없음")
     assert datetime.now(UTC).replace(tzinfo=None) - written_at < timedelta(minutes=5)
@@ -783,7 +784,7 @@ def test_retry_keeps_stored_text_of_a_field_the_new_answer_leaves_out(
     with Session(catalog_engine) as request_db:
         details = asyncio.run(LocalMedicationCatalog(request_db, generator).fetch_drug_info(PRODUCT_NAME))
 
-    assert (details[0].efficacy, details[0].usage_method, details[0].warning) == (
+    assert (details.details[0].efficacy, details.details[0].usage_method, details.details[0].warning) == (
         "stored effect", "generated usage", "generated warning",
     )
     assert _stored_summary(catalog_engine)[:3] == (
