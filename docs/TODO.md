@@ -35,7 +35,13 @@ released under that version instead. Changes are listed in the
       The instrumented layout test covers 48 to 420 dp at three text scales
       and checks that the slot and save state stay visible and the button
       text is not cut; the Android 16 Pixel launcher placed new widgets at
-      4 x 1 and 4 x 2.
+      4 x 1 and 4 x 2. On the Galaxy Note10 (One UI, Android 12, signed
+      3df4dfd build over 0.2.3 with data kept) the widget list shows 4 x 1
+      and placed it at 4 columns by 1 row (117 dp); undoing and recording
+      lunch from it reached the server and updated the 4 x 3 widget placed
+      earlier, which kept its size. At this height the missed-dose line
+      ("놓친 약은 처방·복약지도를 확인하세요") is not shown, as it already was
+      not below 240 dp with slot paging.
 - [x] The home-screen widget failed to load on Android 7 to 11 ("Problem
       loading widget"): it called View.setAlpha through RemoteViews, which
       Android allows only from Android 12. Introduced on 2026-09-21, so the
