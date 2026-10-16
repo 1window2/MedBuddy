@@ -67,10 +67,11 @@ DoseWidgetProvider --> DoseWidgetLayout : 내용·클릭 동작을 유지한 크
 note right of DoseWidgetLayout
   Android 12 이상은 높이별 RemoteViews를 제공한다.
   이전 버전은 런처의 회전별 높이에 맞춘다.
-  기본 180dp와 최소 축소 110dp를 분리해
-  지원 런처에 요청한 4 x 2 초기 크기를 유지한다.
+  기본·최소 축소 높이 48dp로
+  지원 런처에 요청한 4 x 1 초기 크기를 유지한다.
   작은 높이는 요약 배치로 전환하고 기록 권한은 바꾸지 않는다.
-  180dp 미만은 제목 줄에 시간대와 저장 상태만 남긴다.
+  110dp 미만은 한 줄 배치, 180dp 미만은 제목 줄에
+  시간대와 저장 상태만 남긴다.
 end note
 
 note bottom of DoseWidgetStore

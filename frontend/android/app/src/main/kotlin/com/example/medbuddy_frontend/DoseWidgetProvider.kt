@@ -175,129 +175,138 @@ class DoseWidgetProvider : HomeWidgetProvider() {
                     .appendQueryParameter("patient", state.optString("patient_key"))
                     .appendQueryParameter("context", rootState.optString("navigation_key"))
                     .appendQueryParameter("slot", page.optString("slot")).build())
-            val views = RemoteViews(context.packageName, R.layout.dose_home_widget)
-            views.setOnClickPendingIntent(R.id.widget_content, open)
-            views.setOnClickPendingIntent(R.id.widget_compact_heading, open)
-            views.setOnClickPendingIntent(R.id.widget_refresh, action(context, "refresh", ""))
-            views.setContentDescription(R.id.widget_refresh, tr("새로고침", "Refresh"))
-            // 계정 정보가 없는 상태는 조회 실패와 구분하고 로그인만 안내한다.
-            views.setViewVisibility(R.id.widget_refresh, if (known) View.VISIBLE else View.GONE)
-            views.setViewVisibility(R.id.widget_progress, if (known) View.VISIBLE else View.GONE)
-            views.setViewVisibility(R.id.widget_status, if (known) View.VISIBLE else View.GONE)
-            val title = if (known) state.optString("title", tr("나의 복약 일정", "My medication")) else "MedBuddy"
-            views.setTextViewText(R.id.widget_title, title)
-            views.setContentDescription(R.id.widget_title, title +
-                if (patients.size > 1) ", ${patientIndex + 1}/${patients.size}" else "")
-            views.setViewVisibility(R.id.widget_count, if (!known || patients.size > 1) View.GONE else View.VISIBLE)
-            for ((button, targetIndex) in listOf(R.id.widget_patient_previous to patientIndex - 1,
-                R.id.widget_patient_next to patientIndex + 1)) {
-                val target = patients.getOrNull(targetIndex)
-                views.setViewVisibility(button, if (patients.size > 1) View.VISIBLE else View.GONE)
-                views.setBoolean(button, "setEnabled", target != null)
-                // View.setAlpha(float)는 Android 12부터만 RemoteViews에서 호출할 수 있어, 그 이전 버전에서는
-                // 위젯 전체가 "위젯을 불러오는 중 문제"로 표시되었다. 모든 버전에서 되는 아이콘 투명도로 흐리게 한다.
-                views.setInt(button, "setImageAlpha", if (target != null) 255 else 77)
-                views.setContentDescription(button, if (button == R.id.widget_patient_previous)
-                    tr("이전 환자", "Previous patient") else tr("다음 환자", "Next patient"))
-                if (target != null) views.setOnClickPendingIntent(button, patientAction(context, id,
-                    target.optString("patient_key"), rootState.optString("navigation_key")))
+            // 1칸 높이용 한 줄 배치도 같은 뷰 ID를 쓰므로 같은 코드로 채운다. 없는 ID의 설정은 무시된다.
+            fun build(layout: Int): RemoteViews {
+                val views = RemoteViews(context.packageName, layout)
+                views.setOnClickPendingIntent(R.id.widget_content, open)
+                views.setOnClickPendingIntent(R.id.widget_compact_heading, open)
+                views.setOnClickPendingIntent(R.id.widget_refresh, action(context, "refresh", ""))
+                views.setContentDescription(R.id.widget_refresh, tr("새로고침", "Refresh"))
+                // 계정 정보가 없는 상태는 조회 실패와 구분하고 로그인만 안내한다.
+                views.setViewVisibility(R.id.widget_refresh, if (known) View.VISIBLE else View.GONE)
+                views.setViewVisibility(R.id.widget_progress, if (known) View.VISIBLE else View.GONE)
+                views.setViewVisibility(R.id.widget_status, if (known) View.VISIBLE else View.GONE)
+                val title = if (known) state.optString("title", tr("나의 복약 일정", "My medication")) else "MedBuddy"
+                views.setTextViewText(R.id.widget_title, title)
+                views.setContentDescription(R.id.widget_title, title +
+                    if (patients.size > 1) ", ${patientIndex + 1}/${patients.size}" else "")
+                views.setViewVisibility(R.id.widget_count, if (!known || patients.size > 1) View.GONE else View.VISIBLE)
+                for ((button, targetIndex) in listOf(R.id.widget_patient_previous to patientIndex - 1,
+                    R.id.widget_patient_next to patientIndex + 1)) {
+                    val target = patients.getOrNull(targetIndex)
+                    views.setViewVisibility(button, if (patients.size > 1) View.VISIBLE else View.GONE)
+                    views.setBoolean(button, "setEnabled", target != null)
+                    // View.setAlpha(float)는 Android 12부터만 RemoteViews에서 호출할 수 있어, 그 이전 버전에서는
+                    // 위젯 전체가 "위젯을 불러오는 중 문제"로 표시되었다. 모든 버전에서 되는 아이콘 투명도로 흐리게 한다.
+                    views.setInt(button, "setImageAlpha", if (target != null) 255 else 77)
+                    views.setContentDescription(button, if (button == R.id.widget_patient_previous)
+                        tr("이전 환자", "Previous patient") else tr("다음 환자", "Next patient"))
+                    if (target != null) views.setOnClickPendingIntent(button, patientAction(context, id,
+                        target.optString("patient_key"), rootState.optString("navigation_key")))
+                }
+                // 갱신이 지연돼도 날짜는 앱의 복약 기준 시간대로 오늘을 표시한다.
+                val dateFormat = SimpleDateFormat(if (english) "M/d (EEE)" else "M월 d일 (EEE)",
+                    if (english) Locale.ENGLISH else Locale.KOREAN)
+                dateFormat.timeZone = SimpleTimeZone(state.optInt("utc_offset_minutes", 540) * 60000, "dose")
+                views.setTextViewText(R.id.widget_date, if (!expired && state.has("date_label"))
+                    state.optString("date_label") else dateFormat.format(Date()))
+                views.setTextViewText(R.id.widget_heading, when {
+                    !known -> tr("로그인이 필요해요", "Please sign in")
+                    expired -> tr("일정을 새로고침해주세요", "Refresh your schedule")
+                    else -> page.optString("heading")
+                })
+                views.setTextViewText(R.id.widget_details, when {
+                    !known -> tr("로그인하면 복약 일정을 볼 수 있어요.", "Sign in to view your medication schedule.")
+                    !expired -> page.optString("details")
+                    else -> ""
+                })
+                val count = if (state.optBoolean("counts_known", true)) "${state.optInt("done")}/${state.optInt("total")}" else "-"
+                views.setTextViewText(R.id.widget_count, if (known) count else "")
+                views.setProgressBar(R.id.widget_progress, state.optInt("total", 1).coerceAtLeast(1), state.optInt("done"), false)
+                val status = when {
+                    pending -> tr("기기에 저장 중", "Saving on device")
+                    !known -> tr("로그인 후 일정을 표시합니다", "Sign in to view schedules")
+                    expired -> tr("지난 일정은 기록하지 않아요", "Old schedules cannot be recorded")
+                    else -> (if (patients.size > 1) "$count · " else "") + state.optString("status")
+                }
+                views.setTextViewText(R.id.widget_status, status)
+                // 가장 낮은 높이에서는 제목 줄이 시간대와 저장 상태를 대신 보여주므로 보호자 화면의 환자 이름을 앞에 붙인다.
+                val heading = when {
+                    !known -> tr("로그인이 필요해요", "Please sign in")
+                    expired -> tr("일정을 새로고침해주세요", "Refresh your schedule")
+                    else -> page.optString("heading")
+                }
+                views.setTextViewText(R.id.widget_tiny_heading,
+                    if (state.optString("source") == "patients") "$title · $heading" else heading)
+                views.setTextViewText(R.id.widget_tiny_status, status)
+                views.setOnClickPendingIntent(R.id.widget_tiny_heading, open)
+                views.setTextViewText(R.id.widget_warning, tr("놓친 약은 처방·복약지도를 확인하세요", "Check guidance for missed doses"))
+                // 큰 글씨의 요약 배치에서도 전체 약 정보와 주의 문구를 읽어주기로 확인한다.
+                views.setTextViewText(R.id.widget_compact_heading, page.optString("heading"))
+                if (known && !expired) {
+                    val description = listOfNotNull(
+                        page.optString("heading"), page.optString("details"),
+                        if (page.optBoolean("overdue")) tr("놓친 약은 처방·복약지도를 확인하세요", "Check guidance for missed doses") else null,
+                    ).joinToString(". ")
+                    views.setContentDescription(R.id.widget_content, description)
+                    views.setContentDescription(R.id.widget_compact_heading, description)
+                    views.setContentDescription(R.id.widget_tiny_heading,
+                        if (state.optString("source") == "patients") "$title. $description" else description)
+                }
+                views.setViewVisibility(R.id.widget_warning, if (page.optBoolean("overdue") && !expired) View.VISIBLE else View.GONE)
+                views.setViewVisibility(R.id.widget_pager, if (pages.size > 1) View.VISIBLE else View.GONE)
+                val dots = intArrayOf(R.id.widget_dot_0, R.id.widget_dot_1, R.id.widget_dot_2, R.id.widget_dot_3)
+                for (position in dots.indices) {
+                    views.setViewVisibility(dots[position], if (position < pages.size) View.VISIBLE else View.GONE)
+                    val target = pages.getOrNull(position) ?: continue
+                    views.setImageViewResource(dots[position], if (position == index)
+                        R.drawable.dose_widget_dot_active else R.drawable.dose_widget_dot)
+                    val description = "${target.optString("label")}, ${position + 1}/${pages.size}" +
+                        if (position == index) tr(", 선택됨", ", selected") else ""
+                    views.setContentDescription(dots[position], description)
+                    views.setBoolean(dots[position], "setEnabled", !pending)
+                    views.setOnClickPendingIntent(dots[position], pageAction(context, id,
+                        target.optString("slot"), state.optString("navigation_key")))
+                }
+                for ((button, targetIndex) in listOf(R.id.widget_previous to index - 1, R.id.widget_next to index + 1)) {
+                    val target = pages.getOrNull(targetIndex)
+                    views.setViewVisibility(button, if (target != null) View.VISIBLE else View.INVISIBLE)
+                    views.setBoolean(button, "setEnabled", !pending && target != null)
+                    views.setContentDescription(button, if (button == R.id.widget_previous)
+                        tr("이전 복약 일정", "Previous medication slot") else tr("다음 복약 일정", "Next medication slot"))
+                    if (target != null) views.setOnClickPendingIntent(button, pageAction(context, id,
+                        target.optString("slot"), state.optString("navigation_key")))
+                }
+                views.setTextViewText(R.id.widget_take, when {
+                    !known -> tr("로그인하기", "Sign in")
+                    pending -> tr("저장 중", "Saving")
+                    expired -> tr("새로고침", "Refresh")
+                    else -> page.optString("button", tr("일정 열기", "Open schedule"))
+                })
+                views.setInt(R.id.widget_take, "setBackgroundResource", if (cancelling)
+                    R.drawable.dose_widget_cancel_button else R.drawable.dose_widget_button)
+                views.setTextColor(R.id.widget_take, Color.parseColor(if (cancelling) "#007E5E" else "#FFFFFF"))
+                views.setContentDescription(R.id.widget_take, when {
+                    !known -> tr("MedBuddy 로그인하기", "Sign in to MedBuddy")
+                    pending -> tr("저장 중", "Saving")
+                    cancelling -> "${page.optString("label")} " + tr("복용 완료 취소", "undo completion")
+                    known && !expired && page.optString("action") == "take" ->
+                        "${page.optString("label")} " + tr("복용했어요", "mark as taken")
+                    else -> null
+                })
+                views.setBoolean(R.id.widget_take, "setEnabled", !known || !pending)
+                views.setOnClickPendingIntent(R.id.widget_take, when {
+                    !known -> open
+                    expired || page.optString("action") == "refresh" -> action(context, "refresh", "")
+                    page.optString("action") in listOf("take", "cancel") ->
+                        action(context, page.optString("action"), page.optString("token"), id)
+                    else -> open
+                })
+                return views
             }
-            // 갱신이 지연돼도 날짜는 앱의 복약 기준 시간대로 오늘을 표시한다.
-            val dateFormat = SimpleDateFormat(if (english) "M/d (EEE)" else "M월 d일 (EEE)",
-                if (english) Locale.ENGLISH else Locale.KOREAN)
-            dateFormat.timeZone = SimpleTimeZone(state.optInt("utc_offset_minutes", 540) * 60000, "dose")
-            views.setTextViewText(R.id.widget_date, if (!expired && state.has("date_label"))
-                state.optString("date_label") else dateFormat.format(Date()))
-            views.setTextViewText(R.id.widget_heading, when {
-                !known -> tr("로그인이 필요해요", "Please sign in")
-                expired -> tr("일정을 새로고침해주세요", "Refresh your schedule")
-                else -> page.optString("heading")
-            })
-            views.setTextViewText(R.id.widget_details, when {
-                !known -> tr("로그인하면 복약 일정을 볼 수 있어요.", "Sign in to view your medication schedule.")
-                !expired -> page.optString("details")
-                else -> ""
-            })
-            val count = if (state.optBoolean("counts_known", true)) "${state.optInt("done")}/${state.optInt("total")}" else "-"
-            views.setTextViewText(R.id.widget_count, if (known) count else "")
-            views.setProgressBar(R.id.widget_progress, state.optInt("total", 1).coerceAtLeast(1), state.optInt("done"), false)
-            val status = when {
-                pending -> tr("기기에 저장 중", "Saving on device")
-                !known -> tr("로그인 후 일정을 표시합니다", "Sign in to view schedules")
-                expired -> tr("지난 일정은 기록하지 않아요", "Old schedules cannot be recorded")
-                else -> (if (patients.size > 1) "$count · " else "") + state.optString("status")
-            }
-            views.setTextViewText(R.id.widget_status, status)
-            // 가장 낮은 높이에서는 제목 줄이 시간대와 저장 상태를 대신 보여주므로 보호자 화면의 환자 이름을 앞에 붙인다.
-            val heading = if (expired) tr("일정을 새로고침해주세요", "Refresh your schedule") else page.optString("heading")
-            views.setTextViewText(R.id.widget_tiny_heading,
-                if (state.optString("source") == "patients") "$title · $heading" else heading)
-            views.setTextViewText(R.id.widget_tiny_status, status)
-            views.setOnClickPendingIntent(R.id.widget_tiny_heading, open)
-            views.setTextViewText(R.id.widget_warning, tr("놓친 약은 처방·복약지도를 확인하세요", "Check guidance for missed doses"))
-            // 큰 글씨의 요약 배치에서도 전체 약 정보와 주의 문구를 읽어주기로 확인한다.
-            views.setTextViewText(R.id.widget_compact_heading, page.optString("heading"))
-            if (known && !expired) {
-                val description = listOfNotNull(
-                    page.optString("heading"), page.optString("details"),
-                    if (page.optBoolean("overdue")) tr("놓친 약은 처방·복약지도를 확인하세요", "Check guidance for missed doses") else null,
-                ).joinToString(". ")
-                views.setContentDescription(R.id.widget_content, description)
-                views.setContentDescription(R.id.widget_compact_heading, description)
-                views.setContentDescription(R.id.widget_tiny_heading,
-                    if (state.optString("source") == "patients") "$title. $description" else description)
-            }
-            views.setViewVisibility(R.id.widget_warning, if (page.optBoolean("overdue") && !expired) View.VISIBLE else View.GONE)
-            views.setViewVisibility(R.id.widget_pager, if (pages.size > 1) View.VISIBLE else View.GONE)
-            val dots = intArrayOf(R.id.widget_dot_0, R.id.widget_dot_1, R.id.widget_dot_2, R.id.widget_dot_3)
-            for (position in dots.indices) {
-                views.setViewVisibility(dots[position], if (position < pages.size) View.VISIBLE else View.GONE)
-                val target = pages.getOrNull(position) ?: continue
-                views.setImageViewResource(dots[position], if (position == index)
-                    R.drawable.dose_widget_dot_active else R.drawable.dose_widget_dot)
-                val description = "${target.optString("label")}, ${position + 1}/${pages.size}" +
-                    if (position == index) tr(", 선택됨", ", selected") else ""
-                views.setContentDescription(dots[position], description)
-                views.setBoolean(dots[position], "setEnabled", !pending)
-                views.setOnClickPendingIntent(dots[position], pageAction(context, id,
-                    target.optString("slot"), state.optString("navigation_key")))
-            }
-            for ((button, targetIndex) in listOf(R.id.widget_previous to index - 1, R.id.widget_next to index + 1)) {
-                val target = pages.getOrNull(targetIndex)
-                views.setViewVisibility(button, if (target != null) View.VISIBLE else View.INVISIBLE)
-                views.setBoolean(button, "setEnabled", !pending && target != null)
-                views.setContentDescription(button, if (button == R.id.widget_previous)
-                    tr("이전 복약 일정", "Previous medication slot") else tr("다음 복약 일정", "Next medication slot"))
-                if (target != null) views.setOnClickPendingIntent(button, pageAction(context, id,
-                    target.optString("slot"), state.optString("navigation_key")))
-            }
-            views.setTextViewText(R.id.widget_take, when {
-                !known -> tr("로그인하기", "Sign in")
-                pending -> tr("저장 중", "Saving")
-                expired -> tr("새로고침", "Refresh")
-                else -> page.optString("button", tr("일정 열기", "Open schedule"))
-            })
-            views.setInt(R.id.widget_take, "setBackgroundResource", if (cancelling)
-                R.drawable.dose_widget_cancel_button else R.drawable.dose_widget_button)
-            views.setTextColor(R.id.widget_take, Color.parseColor(if (cancelling) "#007E5E" else "#FFFFFF"))
-            views.setContentDescription(R.id.widget_take, when {
-                !known -> tr("MedBuddy 로그인하기", "Sign in to MedBuddy")
-                pending -> tr("저장 중", "Saving")
-                cancelling -> "${page.optString("label")} " + tr("복용 완료 취소", "undo completion")
-                known && !expired && page.optString("action") == "take" ->
-                    "${page.optString("label")} " + tr("복용했어요", "mark as taken")
-                else -> null
-            })
-            views.setBoolean(R.id.widget_take, "setEnabled", !known || !pending)
-            views.setOnClickPendingIntent(R.id.widget_take, when {
-                !known -> open
-                expired || page.optString("action") == "refresh" -> action(context, "refresh", "")
-                page.optString("action") in listOf("take", "cancel") ->
-                    action(context, page.optString("action"), page.optString("token"), id)
-                else -> open
-            })
             manager.updateAppWidget(id, DoseWidgetLayout.responsive(
-                context, views, manager.getAppWidgetOptions(id), known,
+                context, build(R.layout.dose_home_widget), build(R.layout.dose_home_widget_row),
+                manager.getAppWidgetOptions(id), known,
                 page.optBoolean("overdue") && !expired, pages.size > 1,
             ))
         }

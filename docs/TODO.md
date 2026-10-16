@@ -26,13 +26,16 @@ released under that version instead. Changes are listed in the
       Note10 (117 dp cells) for a title, one slot line, the save state and a
       button, so about half of it was empty. Launcher3 also works out the
       minimum rows from landscape cells (2 rows about 117 dp), so the 180 dp
-      resize floor made it refuse a 4 x 2 request. The widget now asks for
-      4 x 2 (min height 180 dp, resize floor 110 dp); below 180 dp the title
-      line carries the slot and save state, and 230-239 dp (4 x 2 portrait)
-      uses slightly smaller padding and heading. The instrumented layout test
-      covers 110 to 420 dp at three text scales and checks that the slot and
-      save state stay visible; the Android 16 Pixel launcher placed a new
-      widget at 4 x 2.
+      resize floor made it refuse a smaller request. The widget now asks for
+      4 x 1 (min and resize height 48 dp, under one landscape row of about
+      51 dp). Below 110 dp (one Pixel row) a one-row layout shows the slot,
+      the save state and the dose button; 110-179 dp (one Samsung row, two
+      landscape rows) moves the slot and save state into the title line;
+      230-239 dp (4 x 2 portrait) uses slightly smaller padding and heading.
+      The instrumented layout test covers 48 to 420 dp at three text scales
+      and checks that the slot and save state stay visible and the button
+      text is not cut; the Android 16 Pixel launcher placed new widgets at
+      4 x 1 and 4 x 2.
 - [x] The home-screen widget failed to load on Android 7 to 11 ("Problem
       loading widget"): it called View.setAlpha through RemoteViews, which
       Android allows only from Android 12. Introduced on 2026-09-21, so the

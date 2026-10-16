@@ -16,22 +16,43 @@ import android.widget.RemoteViews
 object DoseWidgetLayout {
     // 함수이름: responsive
     // 함수역할: Android 12 이상은 높이별 배치를 제공하고 이전 버전은 회전별 크기를 사용한다.
-    // 매개변수: context 실행 환경, base 내용과 클릭 동작, options 런처 크기,
+    //           110dp 미만(1칸 높이)은 시간대·저장 상태·복용 버튼만 둔 한 줄 배치를 쓴다.
+    // 매개변수: context 실행 환경, base 내용과 클릭 동작, row 같은 내용의 한 줄 배치, options 런처 크기,
     //           known 로그인 여부, overdue 놓친 일정 여부, hasPager 시간대 전환 여부.
     // 반환값: 런처가 실제 크기에 맞춰 선택할 RemoteViews.
-    fun responsive(context: Context, base: RemoteViews, options: Bundle,
+    fun responsive(context: Context, base: RemoteViews, row: RemoteViews, options: Bundle,
         known: Boolean, overdue: Boolean, hasPager: Boolean): RemoteViews {
+        fun pick(height: Int) = if (height < ROW_LIMIT) row(context, row)
+            else sized(context, base, height, known, overdue, hasPager)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            return RemoteViews(listOf(110, 180, 230, 300, 340, 420).associate { height ->
-                SizeF(250f, height.toFloat()) to sized(context, base, height, known, overdue, hasPager)
+            return RemoteViews(listOf(48, ROW_LIMIT, 180, 230, 300, 340, 420).associate { height ->
+                SizeF(250f, height.toFloat()) to pick(height)
             })
         }
         val landscape = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 240)
         val portrait = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 240)
-        return RemoteViews(
-            sized(context, base, landscape, known, overdue, hasPager),
-            sized(context, base, portrait, known, overdue, hasPager),
-        )
+        return RemoteViews(pick(landscape), pick(portrait))
+    }
+
+    // 1칸 높이 런처(세로 약 109dp, 가로 약 51dp)는 제목 줄과 48dp 버튼을 위아래로 둘 수 없다.
+    const val ROW_LIMIT = 110
+
+    // 함수이름: row
+    // 함수역할: 한 줄 배치의 글씨를 글자 배율에 맞춰 줄여 48dp 버튼 높이 안에 두 줄을 넣는다.
+    //           배율 2.0에서도 실제 글씨는 기본 배율의 기본 크기보다 크다.
+    // 매개변수: context 글자 배율, base 한 줄 배치 원본. 반환값: 원본을 변경하지 않은 복사본.
+    fun row(context: Context, base: RemoteViews): RemoteViews {
+        val views = base.clone()
+        val scale = context.resources.configuration.fontScale
+        val large = scale > 1.15f
+        val veryLarge = scale > 1.6f
+        views.setTextViewTextSize(R.id.widget_tiny_heading, TypedValue.COMPLEX_UNIT_SP,
+            if (veryLarge) 9f else if (large) 12f else 14f)
+        views.setTextViewTextSize(R.id.widget_tiny_status, TypedValue.COMPLEX_UNIT_SP,
+            if (veryLarge) 7f else if (large) 10f else 11f)
+        views.setTextViewTextSize(R.id.widget_take, TypedValue.COMPLEX_UNIT_SP,
+            if (veryLarge) 8f else if (large) 12f else 15f)
+        return views
     }
 
     // 함수이름: sized
