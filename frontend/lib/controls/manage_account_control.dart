@@ -89,6 +89,10 @@ class ManageAccount {
     'default_bedtime',
     // Marks a settings change that has not reached the server yet.
     'pending_sync',
+    // Settings synchronization metadata and the authoritative local snapshot.
+    'server_revision',
+    'latest_intent',
+    'snapshot',
     // Retired account-scoped settings may still exist after an upgrade.
     'nearby_pharmacy_lab_enabled',
     'linked_medication_chat_lab_enabled',

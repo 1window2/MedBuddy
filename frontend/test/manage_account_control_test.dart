@@ -74,6 +74,9 @@ void main() {
   test('서버 삭제 실패 시 로컬 캐시를 보존한다', () async {
     SharedPreferences.setMockInitialValues({
       'user_setting_usr_test_font_size': 'large',
+      'user_setting_usr_test_server_revision': 7,
+      'user_setting_usr_test_latest_intent': 'pending-intent',
+      'user_setting_usr_test_snapshot': '{"setting":{}}',
     });
     final control = ManageAccount(
       userHash: 'usr_test',
@@ -91,6 +94,15 @@ void main() {
 
     final preferences = await SharedPreferences.getInstance();
     expect(preferences.getString('user_setting_usr_test_font_size'), 'large');
+    expect(preferences.getInt('user_setting_usr_test_server_revision'), 7);
+    expect(
+      preferences.getString('user_setting_usr_test_latest_intent'),
+      'pending-intent',
+    );
+    expect(
+      preferences.getString('user_setting_usr_test_snapshot'),
+      '{"setting":{}}',
+    );
   });
 
   // Function Name: test callback
@@ -176,6 +188,9 @@ void main() {
       'default_evening_time',
       'default_bedtime',
       'pending_sync',
+      'server_revision',
+      'latest_intent',
+      'snapshot',
       'nearby_pharmacy_lab_enabled',
       'linked_medication_chat_lab_enabled',
       'multi_pill_identification_lab_enabled',
@@ -343,6 +358,9 @@ void main() {
   final otherAccountEvidence = <String, Object>{
     'user_setting_usr_other_language': 'ko',
     'user_setting_usr_other_default_bedtime': '22:00',
+    'user_setting_usr_other_server_revision': 7,
+    'user_setting_usr_other_latest_intent': 'other-intent',
+    'user_setting_usr_other_snapshot': '{"setting":{}}',
     'medbuddy_medication_reminder_patient_usr_other_usr_other_lunch': '{}',
     'medbuddy_reminder_plan_usr_other_evening': '{}',
     'medbuddy.favorite_pharmacy_ids.usr_other': <String>['pharmacy-1'],
