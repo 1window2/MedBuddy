@@ -1,6 +1,7 @@
 // 파일명: manage_user_setting_control.dart
 // 역할: 사용자 설정의 로컬 영속화와 서버 동기화를 수행한다.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 
@@ -12,6 +13,13 @@ import '../entities/user_setting_entity.dart';
 import '../services/api_config.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
+
+typedef _SettingState = ({
+  UserSetting setting,
+  String? pendingToken,
+  String? intent,
+  int revision,
+});
 
 // 클래스명: ManageUserSetting
 // 역할: 글씨 크기, 읽기 속도, 언어 설정을 SharedPreferences에 영구 저장한다.
@@ -45,6 +53,7 @@ class ManageUserSetting {
   bool _lastLookupReachedServer = false;
   bool _hasPendingSave = false;
   static int _pendingTokenSequence = 0;
+  static final Map<String, Future<void>> _localWrites = {};
 
   // 함수이름: lastLookupReachedServer
   // 함수역할: 가장 최근 설정 조회가 서버 사본을 받았는지 알려 준다. 캐시만으로 채운 설정을 자동 저장해 서버의 더 새로운 값을 덮어쓰지 않게 하는 데 쓴다.
@@ -88,22 +97,22 @@ class ManageUserSetting {
   // - 현재 사용자 설정
   // - 저장값이 없으면 기본값으로 채운 UserSetting
   Future<UserSetting> requestUserSetting() async {
-    final preferences = await _loadFreshPreferences();
-    final cachedSetting = _readCachedUserSetting(preferences);
+    final initial = await _withPreferences(_readState);
     _lastLookupReachedServer = false;
     if (!useRemotePersistence) {
       _hasPendingSave = false;
-      return cachedSetting;
+      return initial.setting;
     }
 
-    final pendingToken = preferences.getString(_pendingSyncKey);
+    final pendingToken = initial.pendingToken;
     if (pendingToken != null) {
       // 오프라인에서 바꾼 설정이 다음 조회의 서버 사본에 덮이지 않도록 대기 중인 저장을 먼저 재시도한다.
       _hasPendingSave = true;
-      final result = await _sendUserSetting(cachedSetting, pendingToken);
+      final result = await _sendUserSetting(initial.setting, pendingToken);
       _lastLookupReachedServer = result.synchronizedWithServer;
       return result.setting;
     }
+    final lookupIntent = initial.intent;
 
     try {
       final response = await _client
@@ -120,15 +129,24 @@ class ManageUserSetting {
 
       final setting = _decodeUserSetting(responseBody);
       // 조회 중 다른 화면이나 작업이 오프라인 저장을 남겼다면 서버 사본으로 덮지 않는다.
-      await _reloadPreferences(preferences);
-      if (preferences.getString(_pendingSyncKey) != null) {
-        _hasPendingSave = true;
-        return _readCachedUserSetting(preferences);
-      }
-      await _cacheUserSetting(setting);
-      _hasPendingSave = false;
-      _lastLookupReachedServer = true;
-      return setting;
+      return await _withPreferences((preferences) async {
+        final current = _readState(preferences);
+        _hasPendingSave = current.pendingToken != null;
+        final revision = _responseRevision(responseBody);
+        if (_hasPendingSave ||
+            current.intent != lookupIntent ||
+            (revision != null && revision < current.revision)) {
+          return current.setting;
+        }
+        await _writeState(preferences, (
+          setting: setting,
+          pendingToken: null,
+          intent: current.intent,
+          revision: revision ?? current.revision,
+        ));
+        _lastLookupReachedServer = true;
+        return setting;
+      });
     } catch (error, stackTrace) {
       developer.log(
         'User setting lookup fell back to local cache.',
@@ -136,8 +154,9 @@ class ManageUserSetting {
         error: error,
         stackTrace: stackTrace,
       );
-      _hasPendingSave = preferences.getString(_pendingSyncKey) != null;
-      return cachedSetting;
+      return _withPreferences(
+        (preferences) => _currentSaveResult(preferences).setting,
+      );
     }
   }
 
@@ -148,32 +167,44 @@ class ManageUserSetting {
   // - setting (UserSetting): 저장할 설정 전체. 사용자 해시는 이 컨트롤의 범위로 바꾼다.
   // 반환값:
   // - 저장 완료된 설정과 서버 동기화 여부
-  Future<UserSettingSaveResult> saveUserSetting(
-    UserSetting setting,
-  ) async {
+  Future<UserSettingSaveResult> saveUserSetting(UserSetting setting) async {
     final nextSetting = setting.copyWith(userHash: _normalizedUserHash);
 
     if (!useRemotePersistence) {
-      await _cacheUserSetting(nextSetting);
+      await _withPreferences((preferences) async {
+        final current = _readState(preferences);
+        await _writeState(preferences, (
+          setting: nextSetting,
+          pendingToken: current.pendingToken,
+          intent: current.intent,
+          revision: current.revision,
+        ));
+      });
       return UserSettingSaveResult(
         setting: nextSetting,
         synchronizedWithServer: false,
       );
     }
 
-    // 대기 표시를 캐시보다 먼저 남긴다. 순서가 반대면 그 사이에 끝난 서버 조회가 표시를 보지 못하고
-    // 새 캐시를 서버 사본으로 덮어, 이어진 전송이 실패했을 때 바꾼 설정이 사라진다.
+    // 설정과 대기 표시를 한 스냅샷으로 저장한다. 중간 종료나 백그라운드 조회에서도
+    // 새 표시와 옛 설정이 섞여 재전송되지 않게 한다.
     final token = _nextPendingToken();
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.setString(_pendingSyncKey, token);
-    _hasPendingSave = true;
-    await _cacheUserSetting(nextSetting);
+    await _withPreferences((preferences) async {
+      final current = _readState(preferences);
+      await _writeState(preferences, (
+        setting: nextSetting,
+        pendingToken: token,
+        intent: token,
+        revision: current.revision,
+      ));
+      _hasPendingSave = true;
+    });
     return _sendUserSetting(nextSetting, token);
   }
 
   // 함수이름: _sendUserSetting
   // 함수역할: 기기에 저장된 설정을 서버로 보내고, 성공하면 대기 표시가 그대로일 때만 서버 사본을 캐시하고 표시를 지운다.
-  //   전송 중 더 새로운 기기 저장이 생겼으면 그 값을 보존하고, 표시가 이미 지워졌는데 캐시가 보낸 값과 다르면 다시 대기 표시를 남긴다.
+  //   서버 버전 충돌은 최신 기기 저장만 재시도한다. 시간 초과된 옛 요청은 서버에서 거절되므로 최신 저장을 되돌리지 않는다.
   // 매개변수:
   // - setting (UserSetting): 서버에 보낼 설정 전체.
   // - token (String): 이 저장이 남긴 대기 표시 값.
@@ -184,46 +215,66 @@ class ManageUserSetting {
     String token,
   ) async {
     try {
-      final response = await _client
-          .put(
-            _buildUserSettingUri(),
-            headers: const {'Content-Type': 'application/json'},
-            body: jsonEncode(setting.toJson()),
-          )
-          .timeout(_requestTimeout);
-      final responseBody = ApiResponseParser.decodeBody(response);
-
-      if (response.statusCode != 200) {
-        throw ApiResponseParser.httpFailure(
-          'User setting save failed',
-          response,
-          responseBody,
-        );
-      }
-
-      final savedSetting = _decodeUserSetting(responseBody);
-      final preferences = await _loadFreshPreferences();
-      final currentToken = preferences.getString(_pendingSyncKey);
-      if (currentToken == token) {
-        await _cacheUserSetting(savedSetting);
-        await preferences.remove(_pendingSyncKey);
-        _hasPendingSave = false;
-        return UserSettingSaveResult(
-          setting: savedSetting,
-          synchronizedWithServer: true,
-        );
-      }
-      final currentSetting = _readCachedUserSetting(preferences);
-      if (currentToken == null &&
-          jsonEncode(currentSetting.toJson()) != jsonEncode(setting.toJson())) {
-        // 다른 저장이 먼저 끝난 뒤 이 오래된 값이 서버에 늦게 도착했다. 기기의 최신 값을 다시 보내게 한다.
-        await preferences.setString(_pendingSyncKey, _nextPendingToken());
-      }
-      _hasPendingSave = preferences.getString(_pendingSyncKey) != null;
-      return UserSettingSaveResult(
-        setting: currentSetting,
-        synchronizedWithServer: !_hasPendingSave,
+      var expectedRevision = await _withPreferences(
+        (preferences) => _readState(preferences).revision,
       );
+      for (var attempt = 0; attempt < 3; attempt++) {
+        final superseded = await _withPreferences(
+          (preferences) => _readState(preferences).pendingToken == token
+              ? null
+              : _currentSaveResult(preferences),
+        );
+        if (superseded != null) return superseded;
+        final response = await _client
+            .put(
+              _buildUserSettingUri(),
+              headers: const {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                ...setting.toJson(),
+                'expected_revision': expectedRevision,
+              }),
+            )
+            .timeout(_requestTimeout);
+        final responseBody = ApiResponseParser.decodeBody(response);
+        if (response.statusCode == 409) {
+          final detail = ApiResponseParser.decodeMap(responseBody)['detail'];
+          if (detail is Map &&
+              detail['code'] == 'settings_revision_conflict' &&
+              detail['revision'] is int &&
+              (detail['revision'] as int) >= 0) {
+            expectedRevision = detail['revision'] as int;
+            continue;
+          }
+        }
+
+        if (response.statusCode != 200) {
+          throw ApiResponseParser.httpFailure(
+            'User setting save failed',
+            response,
+            responseBody,
+          );
+        }
+
+        final savedSetting = _decodeUserSetting(responseBody);
+        return await _withPreferences((preferences) async {
+          final current = _readState(preferences);
+          if (current.pendingToken == token) {
+            await _writeState(preferences, (
+              setting: savedSetting,
+              pendingToken: null,
+              intent: current.intent,
+              revision: _responseRevision(responseBody) ?? current.revision,
+            ));
+            _hasPendingSave = false;
+            return UserSettingSaveResult(
+              setting: savedSetting,
+              synchronizedWithServer: true,
+            );
+          }
+          return _currentSaveResult(preferences);
+        });
+      }
+      throw StateError('User setting changed repeatedly while saving.');
     } catch (error, stackTrace) {
       developer.log(
         'User setting save fell back to local cache.',
@@ -231,12 +282,105 @@ class ManageUserSetting {
         error: error,
         stackTrace: stackTrace,
       );
-      _hasPendingSave = true;
-      return UserSettingSaveResult(
-        setting: setting,
-        synchronizedWithServer: false,
-      );
+      return _withPreferences(_currentSaveResult);
     }
+  }
+
+  // 함수역할: 오래된 전송의 완료·실패가 최신 기기 저장 결과를 되돌리지 않게 한다.
+  UserSettingSaveResult _currentSaveResult(SharedPreferences preferences) {
+    final current = _readState(preferences);
+    _hasPendingSave = current.pendingToken != null;
+    return UserSettingSaveResult(
+      setting: current.setting,
+      synchronizedWithServer: !_hasPendingSave,
+    );
+  }
+
+  // 함수역할: 서버가 확정한 설정 버전을 읽는다. 구형 서버에는 이 필드가 없다.
+  int? _responseRevision(String responseBody) {
+    final revision = ApiResponseParser.decodeMap(responseBody)['revision'];
+    return revision is int && revision >= 0 ? revision : null;
+  }
+
+  String get _serverRevisionKey =>
+      'user_setting_${_normalizedUserHash}_server_revision';
+  String get _latestIntentKey =>
+      'user_setting_${_normalizedUserHash}_latest_intent';
+  String get _snapshotKey => 'user_setting_${_normalizedUserHash}_snapshot';
+
+  // 함수역할: 같은 isolate의 계정별 컨트롤이 검사와 저장 사이에 끼어들지 못하게 한다.
+  // 네트워크 대기는 잠금 밖에서 수행한다. 백그라운드 작업은 원격 저장 없이 스냅샷만 읽는다.
+  Future<T> _withPreferences<T>(
+    FutureOr<T> Function(SharedPreferences) action,
+  ) async {
+    final owner = _normalizedUserHash;
+    final previous = _localWrites[owner];
+    final done = Completer<void>();
+    _localWrites[owner] = done.future;
+    try {
+      if (previous != null) await previous;
+      return await action(await _loadFreshPreferences());
+    } finally {
+      done.complete();
+      if (identical(_localWrites[owner], done.future)) {
+        _localWrites.remove(owner);
+      }
+    }
+  }
+
+  // 함수역할: 새 저장은 한 스냅샷에서 읽고, 아직 이행하지 않은 계정만 기존 키로 복원한다.
+  _SettingState _readState(SharedPreferences preferences) {
+    final snapshot = preferences.getString(_snapshotKey);
+    if (snapshot != null) {
+      try {
+        final data = jsonDecode(snapshot) as Map<String, dynamic>;
+        return (
+          setting: UserSetting.fromJson(
+            Map<String, dynamic>.from(data['setting'] as Map),
+          ).copyWith(userHash: _normalizedUserHash),
+          pendingToken: data['pending_sync'] as String?,
+          intent: data['latest_intent'] as String?,
+          revision: data['server_revision'] as int,
+        );
+      } on FormatException {
+        // 읽을 수 없는 스냅샷은 마지막 호환 사본으로 복원한다.
+      } on TypeError {
+        // 구형 또는 손상된 스냅샷도 기존 계정별 값을 버리지 않는다.
+      }
+    }
+    return (
+      setting: _readCachedUserSetting(preferences),
+      pendingToken: preferences.getString(_pendingSyncKey),
+      intent: preferences.getString(_latestIntentKey),
+      revision: preferences.getInt(_serverRevisionKey) ?? 0,
+    );
+  }
+
+  // 함수역할: 값·전송 표시·버전을 먼저 원자적으로 게시하고 구형 기기 설정 키를 보완한다.
+  Future<void> _writeState(
+    SharedPreferences preferences,
+    _SettingState state,
+  ) async {
+    final saved = await preferences.setString(
+      _snapshotKey,
+      jsonEncode({
+        'setting': state.setting.toJson(),
+        'pending_sync': state.pendingToken,
+        'latest_intent': state.intent,
+        'server_revision': state.revision,
+      }),
+    );
+    if (!saved) throw StateError('User setting snapshot could not be saved.');
+    if (state.pendingToken == null) {
+      await preferences.remove(_pendingSyncKey);
+    } else {
+      await preferences.setString(_pendingSyncKey, state.pendingToken!);
+    }
+    if (state.intent != null) {
+      await preferences.setString(_latestIntentKey, state.intent!);
+    }
+    await preferences.setInt(_serverRevisionKey, state.revision);
+    await _cacheUserSetting(state.setting);
   }
 
   // 함수이름: _loadFreshPreferences

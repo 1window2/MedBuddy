@@ -544,7 +544,7 @@ void main() {
     final result = await control.saveUserSetting(setting);
     final expected = {...setting.toJson(), 'user_hash': 'user-a'};
     expect(result.synchronizedWithServer, isTrue);
-    expect(sent, expected);
+    expect(sent, {...expected, 'expected_revision': 0});
     expect(result.setting.toJson(), expected);
     final restored = ManageUserSetting(
       userHash: 'user-a',

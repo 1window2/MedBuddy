@@ -139,7 +139,7 @@ void main() {
     final changesBefore = fixture.changes;
     expect(await fixture.viewModel.synchronizeDeviceLanguage(), isTrue);
     expect(fixture.server.puts, [
-      {...followsDevice.toJson(), 'language': 'en'},
+      {...followsDevice.toJson(), 'language': 'en', 'expected_revision': 0},
     ]);
     expect(fixture.viewModel.userSetting.language, 'en');
     expect(fixture.viewModel.userSetting.languageMode, 'system');
@@ -238,7 +238,10 @@ void main() {
     );
     final result = await fixture.viewModel.saveUserSetting(edited);
     expect(result.synchronizedWithServer, isTrue);
-    expect(fixture.server.puts.single, edited.toJson());
+    expect(fixture.server.puts.single, {
+      ...edited.toJson(),
+      'expected_revision': 0,
+    });
     expect(fixture.viewModel.userSetting.toJson(), edited.toJson());
     expect(fixture.notifications.cancelAllScheduledMedicationRemindersCount, 1);
     expect(fixture.notifications.showSensitiveDetails, isFalse);
@@ -395,7 +398,10 @@ void main() {
     expect(await Future.wait([locale, resume]), [true, true]);
     expect((await manual).synchronizedWithServer, isTrue);
     expect(fixture.server.putAttempts, 3);
-    expect(fixture.server.puts.map((setting) => setting['language']), ['en', 'ko']);
+    expect(fixture.server.puts.map((setting) => setting['language']), [
+      'en',
+      'ko',
+    ]);
     expect(fixture.server.stored.toJson(), edited.toJson());
     expect(fixture.viewModel.userSetting.toJson(), edited.toJson());
   });
@@ -498,7 +504,10 @@ void main() {
         [true, true],
       );
       expect(fixture.server.putAttempts, 4);
-      expect(fixture.server.puts.single, edited.toJson());
+      expect(fixture.server.puts.single, {
+        ...edited.toJson(),
+        'expected_revision': 0,
+      });
       expect(fixture.server.gets, 1);
       expect(fixture.viewModel.userSetting.toJson(), edited.toJson());
       expect(
