@@ -262,7 +262,15 @@ class ManageUserSetting:
             home_schedule_source,
         )
         self._apply_extended_setting(row, next_setting)
-        self.db.commit()
+        try:
+            self.db.commit()
+        except StaleDataError as exc:
+            # 재조회 뒤에도 또 다른 저장이 먼저 끝났으면 500 대신 해결 불가 충돌로 알린다.
+            self.db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail="User setting conflict could not be resolved.",
+            ) from exc
         self.db.refresh(row)
         return self._success_response("User setting was saved.", self._to_entity(row), row.revision)
 

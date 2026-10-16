@@ -87,6 +87,28 @@ class ManageUserSettingTest(unittest.TestCase):
         self.assertEqual(actual["data"]["font_size"], 20)
         self.assertFalse(actual["data"]["medication_notifications_enabled"])
 
+    # 함수역할: 구형 앱 저장의 재시도 중에도 다른 저장이 먼저 끝나면 500 대신 409로 끝낸다.
+    def test_legacy_save_losing_twice_returns_conflict(self) -> None:
+        self.control.saveUserSetting("user-a", 16, 1.0, "ko")
+        other_db = sessionmaker(bind=self.engine)()
+        self.extra_sessions.append(other_db)
+        other = ManageUserSetting(other_db)
+        flushes = []
+
+        def save_newer(session, context, instances):
+            flushes.append(1)
+            if len(flushes) <= 2:
+                other.saveUserSetting("user-a", 18 + len(flushes), 1.0, "ko")
+
+        event.listen(self.db, "before_flush", save_newer)
+        with self.assertRaises(HTTPException) as error:
+            self.control.saveUserSetting("user-a", 24, 1.0, "ko")
+        event.remove(self.db, "before_flush", save_newer)
+        self.assertEqual(error.exception.status_code, 409)
+        actual = self.control.requestUserSetting("user-a")
+        self.assertEqual(actual["revision"], 3)
+        self.assertEqual(actual["data"]["font_size"], 20)
+
     # 함수역할: 처음 저장하는 두 요청도 한 요청만 생성하고 나머지는 충돌로 반환한다.
     def test_concurrent_initial_save_is_rejected(self) -> None:
         other_db = sessionmaker(bind=self.engine)()
