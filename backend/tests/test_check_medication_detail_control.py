@@ -1368,3 +1368,30 @@ async def test_process_cache_cleanup_resets_state_after_close_failure(
 
     assert api_dependencies._medication_detail_cache is None
     assert "ConnectionError" in caplog.text
+
+
+# Function Name: test_failed_candidate_summary_drops_only_that_candidate
+# Description:
+# - One candidate whose AI summary fails is dropped while the others are returned in order; only
+#   when every summary fails does the lookup fail. A medication without a summary is never
+#   returned.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_failed_candidate_summary_drops_only_that_candidate() -> None:
+    from boundaries.medication_summary_boundary import gather_summaries_keeping_successes
+
+    async def summary(name: str) -> MedicationDetail:
+        if name == "broken":
+            raise RuntimeError("provider error")
+        return MedicationDetail(item_name=name, efficacy="e", usage_method="u", warning="w")
+
+    kept = await gather_summaries_keeping_successes(
+        summary(name) for name in ("first", "broken", "third")
+    )
+    assert [detail.item_name for detail in kept] == ["first", "third"]
+
+    with pytest.raises(RuntimeError):
+        await gather_summaries_keeping_successes(summary(name) for name in ("broken",))

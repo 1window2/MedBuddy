@@ -1,5 +1,78 @@
 # MedBuddy Release TODO
 
+## v0.2.3 development line
+
+v0.2.3 starts from `v0.2.2-beta` on `beta/v0.2.3`. It collects small
+corrections and improvements found by reviewing the released code and by using
+the app, leaving out the switches that belong to a public release (Google Play,
+App Check enforcement). If it reaches a state worth publishing as 1.0.0, it is
+released under that version instead. Changes are listed in the
+[v0.2.3 notes](releases/v0.2.3-beta.md).
+
+### Open on this line
+
+- [ ] The missed-dose scan re-reads every slot that was completed before its
+      deadline on each 15-second pass for the rest of the day, two to four
+      queries per patient and slot. Negligible at beta size; it grows with
+      users. Remembering "complete at the deadline" would change what happens
+      when a dose is undone after the deadline, so it needs a decision.
+- [x] The home dose-record notice at 2x text: the "View" button took the
+      notice's width (Flutter reserves the action's width, or 40% when the
+      action wraps), so the safety text was about 110 px wide and 1,200 px
+      tall on a 320 px screen. The button now sits below the text inside the
+      notice, which uses the full width, and the notice stays 15 s at large
+      text. Regression in the home notice large-text test.
+- [x] The home-screen widget started at 4 x 3: 374 dp tall on the Galaxy
+      Note10 (117 dp cells) for a title, one slot line, the save state and a
+      button, so about half of it was empty. Launcher3 also works out the
+      minimum rows from landscape cells (2 rows about 117 dp), so the 180 dp
+      resize floor made it refuse a smaller request. The widget now asks for
+      4 x 1 (min and resize height 48 dp, under one landscape row of about
+      51 dp). Below 110 dp (one Pixel row) a one-row layout shows the slot,
+      the save state and the dose button; 110-179 dp (one Samsung row, two
+      landscape rows) moves the slot and save state into the title line;
+      230-239 dp (4 x 2 portrait) uses slightly smaller padding and heading.
+      The instrumented layout test covers 48 to 420 dp at three text scales
+      and checks that the slot and save state stay visible and the button
+      text is not cut; the Android 16 Pixel launcher placed new widgets at
+      4 x 1 and 4 x 2.
+- [x] The home-screen widget failed to load on Android 7 to 11 ("Problem
+      loading widget"): it called View.setAlpha through RemoteViews, which
+      Android allows only from Android 12. Introduced on 2026-09-21, so the
+      released 0.2.0 to 0.2.2 apps are affected on those versions. It now
+      dims the patient buttons with setImageAlpha. Checked on Android 11 and
+      Android 16 emulators (widget drawn, "taken" stored); a test rejects
+      Android 12-only widget calls.
+- [x] Android 16 (debug build, emulator, local server): notification
+      permission request, the exact-alarm notice and system screen, 15
+      reminders upgraded to exact alarms, the notification at its minute with
+      the app in the background, all reminders reserved again after a reboot
+      without opening the app, and the widget.
+- [x] Prescription analysis end to end with a synthetic prescription (fictional
+      patient and clinic) on the Android 14 emulator against production,
+      2026-10-15: on-device OCR read every row, the privacy filter greyed out
+      the patient name, resident number and phone number, names were corrected
+      to catalogue names, and the server analysis returned candidates for all
+      three rows after the summary fix below. A real prescription on a phone is
+      still open.
+- [x] A wrong link code shows "코드가 맞지 않거나 만료되었습니다…" (signed
+      build, emulator, production).
+- [ ] Device check of the 0.2.3 changes. On October 15 the signed build of
+      `ded59c3` was installed over 0.2.2 on the Android 14 emulator (guest
+      account) against the production server, which runs this branch: the
+      update kept the data; undoing a whole slot on home asks first and "keep"
+      leaves the record; the medication box shows its new title, subtitle and
+      dates, a tap on a row selects it, and the delete confirmation names the
+      count (cancelled); the link list's buttons are 48 dp; the patient-code
+      dialog and the settings use the new wording; started offline, the app
+      showed the session error with a retry, and after the network returned the
+      retry restored the same account. Not checked on a device: the phone, two
+      devices, caregiver alerts after an offline start, and the error guidance.
+- Decided: the home-screen widget's undo button keeps undoing a slot in one
+  tap. A widget cannot show a confirmation, and the button is disabled while a
+  record is being saved, so a double tap does not reach the undo. The in-app
+  slot undo asks for confirmation.
+
 ## v0.2.2 release candidate
 
 v0.2.2 is the hardening line before a 1.0.0 release decision. An external scan
@@ -39,7 +112,10 @@ closed by any code on this branch:
       address, not across many addresses. See the App Check section below.
 - [ ] The public hospital API budget (800 requests per day and process) is
       shared by all users, and one specialty search can cost up to 41
-      requests. Needs a larger provider quota.
+      requests. Needs a larger provider quota (the operating account is
+      requested on the public data portal by registering a use case). Since
+      0.2.3 the budget is counted per provider operation, as the provider's
+      quota is, which roughly triples the usable calls without a new quota.
 - [ ] Device verification of this branch on a physical phone; the lists
       below under "without a device check" still apply as well. The
       `beta-android` environment allows `beta/v0.2.2` since October 12.
@@ -208,8 +284,9 @@ Physical acceptance that was not performed for v0.2.0:
 - [ ] The first launch after the application day changes.
 - [ ] Prescription capture with the on-device privacy filter, and saving
       several identified pills, on a physical device.
-- [ ] Android 16 background work. Android 14 was exercised on an emulator
-      only.
+- [ ] Android 16 background work on a physical phone. Exercised on an
+      Android 16 emulator on 2026-10-15 (reminders, exact alarms, reboot,
+      widget); see the v0.2.3 section.
 - [ ] Native map-marker recovery after a partially failed marker addition.
 
 Introduced in v0.2.1 and not yet checked on a device:

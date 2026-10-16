@@ -902,7 +902,7 @@ void main() {
             findsOneWidget,
           );
           expect(
-            find.text(english ? 'No linked patients.' : '연결된 환자가 없습니다.'),
+            find.text(english ? 'No linked patients.' : '연동된 환자가 없습니다.'),
             findsOneWidget,
           );
           await tester.ensureVisible(linkButton);

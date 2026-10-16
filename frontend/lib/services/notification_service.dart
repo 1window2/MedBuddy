@@ -8,6 +8,7 @@ import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart' show StringCharacters;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as timezone_data;
 import 'package:timezone/timezone.dart' as timezone;
@@ -1351,20 +1352,22 @@ class NotificationService {
     bool showSensitiveDetails = true,
     String language = 'ko',
   }) {
-    final preview = _linkedChatMessagePreview(messagePreview);
+    final preview = linkedChatMessagePreview(messagePreview);
     if (showSensitiveDetails && preview.isNotEmpty) return preview;
     return isEnglishLanguage(language)
         ? 'You received a new message from a linked family member.'
         : '연동된 가족에게 새 메시지가 도착했습니다.';
   }
 
-  // 함수이름: _linkedChatMessagePreview
-  // 함수역할: 채팅 알림 본문을 한 줄로 정리하고 시스템 알림에 적합한 길이로 제한한다.
+  // 함수이름: linkedChatMessagePreview
+  // 함수역할: 채팅 알림 본문을 한 줄로 정리하고 시스템 알림에 적합한 길이로 제한한다. 길이는 사용자가 보는 글자(문자소) 단위로 세어
+  //   이모지·결합 문자를 중간에서 자르지 않는다.
   // 매개변수:
   // - value (String?): 알림 길이에 맞게 공백 정리·축약할 채팅 본문
   // 반환값:
-  // - String: 채팅 알림 본문을 한 줄로 정리하고 시스템 알림에 적합한 길이로 제한한다.
-  static String _linkedChatMessagePreview(String? value) {
+  // - String: 120자 이하의 한 줄 본문. 길면 119자 뒤에 말줄임표를 붙인다.
+  @visibleForTesting
+  static String linkedChatMessagePreview(String? value) {
     const maximumLength = 120;
     final normalized = (value ?? '')
         .trim()
@@ -1380,9 +1383,10 @@ class NotificationService {
           (part) => part.isNotEmpty,
         )
         .join(' ');
-    if (normalized.length <= maximumLength) {
+    final characters = normalized.characters;
+    if (characters.length <= maximumLength) {
       return normalized;
     }
-    return '${normalized.substring(0, maximumLength - 1).trimRight()}…';
+    return '${characters.take(maximumLength - 1).toString().trimRight()}…';
   }
 }

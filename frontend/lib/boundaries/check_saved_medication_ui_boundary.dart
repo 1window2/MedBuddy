@@ -633,7 +633,8 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
         context: context,
         barrierColor: Colors.black.withAlpha(115),
         // 함수역할: 기존 삭제 확인을 표시한다. 매개변수: context. 반환값: 확인 창.
-        builder: (context) => _DeleteConfirmationDialog(text: text),
+        builder: (context) =>
+            _DeleteConfirmationDialog(text: text, count: ids.length),
       );
       if (!mounted || shouldDelete != true) return;
       // 확인 중 조회 결과가 바뀌어도 숨겨진 약을 삭제하지 않는다.

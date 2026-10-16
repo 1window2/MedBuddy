@@ -2,6 +2,7 @@
 // Role: Regression coverage for preserved OCR dosage values, explicit localized units, frequency
 //   labels and slot-key derivation.
 import 'package:flutter_test/flutter_test.dart';
+import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_schedule_slot_policy.dart';
 
@@ -153,6 +154,100 @@ void main() {
     );
 
     expect(schedule.dosageLabelForLanguage('ko'), '2캡슐');
-    expect(schedule.dosageLabelForLanguage('en'), '2 capsule');
+    expect(schedule.dosageLabelForLanguage('en'), '2 capsules');
+  });
+
+  // Function Name: test callback
+  // Description:
+  // - Expected behavior: saved schedules and medication details translate the same dose and
+  //   course text to the same English, with plural units above one and fractions kept.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; a failed expectation fails this test.
+  test('schedules and details share one dose and duration translation', () {
+    const cases = {
+      '1정': '1 tablet',
+      '2정': '2 tablets',
+      '1/2정': '1/2 tablet',
+      '0.5정': '0.5 tablet',
+      '1.5정': '1.5 tablets',
+      '2 캡슐': '2 capsules',
+      '1포': '1 packet',
+      '3포': '3 packets',
+      '5방울': '5 drops',
+      '5mL': '5mL',
+      '5': '5',
+    };
+    for (final entry in cases.entries) {
+      final schedule = MedicationSchedule(
+        medicationName: 'Test',
+        dosage: entry.key,
+      );
+      final detail = MedicationDetail(
+        itemName: 'Test',
+        efficacy: '',
+        usageMethod: '',
+        warning: '',
+        dosagePerTime: entry.key,
+      );
+      expect(schedule.dosageLabelForLanguage('en'), entry.value);
+      expect(
+        detail.compactDosageGuideLinesForLanguage('en').first,
+        'Dose per intake · ${entry.value}',
+      );
+      expect(
+        schedule.dosageLabelForLanguage('ko'),
+        localizedDoseAmountLabel(entry.key, 'ko'),
+      );
+    }
+    for (final duration in const ['8주', '56일', '56']) {
+      final schedule = MedicationSchedule.fromScheduleJson({'total_days': duration});
+      final detail = MedicationDetail(
+        itemName: 'Test',
+        efficacy: '',
+        usageMethod: '',
+        warning: '',
+        totalDays: duration,
+      );
+      expect(schedule.durationLabelForLanguage('en'), '56 days');
+      expect(
+        detail.compactDosageGuideLinesForLanguage('en'),
+        ['Duration · 56 days'],
+      );
+    }
+  });
+
+  // Function Name: test callback
+  // Description:
+  // - Expected behavior: a medication without a prescription date uses its registration date as
+  //   the course start for the end date and active-day check, as the next dose day and the server do.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - No value; a failed expectation fails this test.
+  test('a detail without a prescription date starts on its registration date', () {
+    final detail = MedicationDetail(
+      itemName: 'Test',
+      efficacy: '',
+      usageMethod: '',
+      warning: '',
+      totalDays: '3일',
+      createdDate: DateTime(2026, 9, 1),
+    );
+    expect(detail.medicationEndDate, DateTime(2026, 9, 3));
+    expect(detail.isActiveOn(DateTime(2026, 8, 31)), isFalse);
+    expect(detail.isActiveOn(DateTime(2026, 9, 3)), isTrue);
+    expect(detail.isActiveOn(DateTime(2026, 9, 4)), isFalse);
+    final prescribed = MedicationDetail(
+      itemName: 'Test',
+      efficacy: '',
+      usageMethod: '',
+      warning: '',
+      totalDays: '3일',
+      createdDate: DateTime(2026, 9, 1),
+      prescriptionDate: DateTime(2026, 9, 5),
+    );
+    expect(prescribed.medicationEndDate, DateTime(2026, 9, 7));
   });
 }

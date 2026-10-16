@@ -861,8 +861,9 @@ class _MedicationSaveIconButton extends StatelessWidget {
     return Tooltip(
       message: isMedicationSaved ? text.saved : text.saveSchedule,
       child: IconButton(
-        visualDensity: VisualDensity.compact,
-        constraints: const BoxConstraints.tightFor(width: 38, height: 38),
+        // 어르신이 누르기 쉽게 최소 48dp 터치 영역을 둔다.
+        visualDensity: VisualDensity.standard,
+        constraints: const BoxConstraints.tightFor(width: 48, height: 48),
         style: IconButton.styleFrom(
           foregroundColor: MedBuddyColors.primary,
           disabledForegroundColor: MedBuddyColors.textLight,
@@ -1086,13 +1087,13 @@ class _ResultText {
   String get saveCompletedTitle =>
       isEnglish ? 'Medication schedule saved' : '복약 일정 저장 완료';
   // 함수이름: saveCompletedDescription
-  // 함수역할: 현재 언어와 입력값에 맞춰 "저장한 약을 오늘 일정이나 저장 목록에서 바로 확인할 수 있습니다." 문구를 제공한다.
+  // 함수역할: 현재 언어와 입력값에 맞춰 "저장한 약을 오늘 일정이나 복약함에서 바로 확인할 수 있습니다." 문구를 제공한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get saveCompletedDescription => isEnglish
       ? 'Review the saved schedule now or return home.'
-      : '저장한 약을 오늘 일정이나 저장 목록에서 바로 확인할 수 있습니다.';
+      : '저장한 약을 오늘 일정이나 복약함에서 바로 확인할 수 있습니다.';
   // 함수이름: openTodaySchedule
   // 함수역할: 현재 언어와 입력값에 맞춰 "오늘 일정 확인" 문구를 제공한다.
   // 매개변수:
@@ -1101,12 +1102,12 @@ class _ResultText {
   String get openTodaySchedule =>
       isEnglish ? 'View today\'s schedule' : '오늘 일정 확인';
   // 함수이름: openSavedMedication
-  // 함수역할: 현재 언어와 입력값에 맞춰 "저장된 정보 보기" 문구를 제공한다.
+  // 함수역할: 현재 언어와 입력값에 맞춰 "복약함 보기" 문구를 제공한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get openSavedMedication =>
-      isEnglish ? 'View saved medication' : '저장된 정보 보기';
+      isEnglish ? 'View Medications' : '복약함 보기';
   // 함수이름: returnHome
   // 함수역할: 현재 언어와 입력값에 맞춰 "홈으로 돌아가기" 문구를 제공한다.
   // 매개변수:

@@ -427,6 +427,29 @@ class CheckScheduleTest(unittest.TestCase):
         self.assertTrue(medication.medication_status)
         self.assertEqual(medication.medication_status_date, application_today())
 
+    # Function Name: test_status_update_refuses_a_medication_not_on_todays_schedule
+    # Description:
+    # - The per-medication update applies the same rule as the slot update: a course that ended or
+    #   has not started is refused with 404 and writes no completion.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_status_update_refuses_a_medication_not_on_todays_schedule(self) -> None:
+        today = application_today()
+        ended = self._saved_medication(
+            item_name="ended", prescription_date=today - timedelta(days=10), total_days="7 days",
+        )
+        upcoming = self._saved_medication(
+            item_name="upcoming", prescription_date=today + timedelta(days=2),
+        )
+
+        for medication in (ended, upcoming):
+            with self.assertRaises(HTTPException) as context:
+                self.control.updateMedicationStatus(medication.id, True, "patient-a")
+            self.assertEqual(context.exception.status_code, 404)
+        self.assertEqual(self.db.query(_MedicationCompletion).count(), 0)
+
     # Function Name: test_slot_status_update_only_marks_requested_dose
     # Description:
     # - Completes only the requested morning dose, leaving the overall medication incomplete

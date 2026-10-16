@@ -70,10 +70,12 @@ from controls.check_today_medication_info_control import CheckTodayMedicationInf
 from controls.check_caregiver_medication_control import CheckCaregiverMedication
 from controls.check_caregiver_monitoring_control import CheckCaregiverMonitoring
 from controls.input_prescription_control import (
+    MAX_PRESCRIPTION_TEXT_LENGTH,
     InputPrescription,
     PrescriptionAnalysisTimeoutError,
 )
 from controls.identify_pill_control import IdentifyPill
+from services.prescription_parser import PrescriptionAnalysisFormatError
 from controls.manage_user_setting_control import ManageUserSetting
 from controls.manage_account_control import ManageAccount
 from controls.manage_push_token_control import ManagePushToken
@@ -197,7 +199,7 @@ def _pill_input_or_availability_error(exc: Exception) -> HTTPException:
 # 속성:
 # - text (str): 프론트엔드에서 정제한 비식별 OCR 텍스트
 class OCRParseRequest(BaseModel):
-    text: str = Field(min_length=1, max_length=100_000)
+    text: str = Field(min_length=1, max_length=MAX_PRESCRIPTION_TEXT_LENGTH)
 
 
 # Function Name: get_auth_session
@@ -1333,6 +1335,13 @@ async def analyze_masked_prescription_text(
     except PrescriptionAnalysisTimeoutError as exc:
         logger.warning("De-identified prescription text analysis timed out.")
         raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except PrescriptionAnalysisFormatError as exc:
+        # 요청은 올바랐고 AI 응답이 약속한 형식이 아니었다. 다시 시도하면 될 수 있는 상류 오류다.
+        logger.warning("De-identified prescription text analysis returned an invalid reply.")
+        raise HTTPException(
+            status_code=502,
+            detail="처방전 분석 결과를 해석하지 못했습니다. 다시 시도해주세요.",
+        ) from exc
     except _INTERNAL_VALUE_ERRORS as exc:
         logger.error(
             "De-identified prescription text analysis failed: %s",

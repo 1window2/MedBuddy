@@ -12,6 +12,7 @@ from redis.asyncio import Redis
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from core.application_clock import application_now
 from core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -102,6 +103,21 @@ def resolve_rate_limit_rule(
 # - path (str): 접두사를 포함한 전체 경로 템플릿
 # 반환값:
 # - 하루 한도 규칙과 같은 묶음의 경로가 함께 쓰는 카운터 범위. 대상 경로가 아니면 None.
+# 함수이름: _window_offset_seconds
+# 함수역할:
+# - 하루 단위 창을 서비스 시간대의 자정에 맞추기 위해 현재 UTC 오프셋(초)을 돌려준다.
+#   하루보다 짧은 창은 자정과 무관하므로 0을 돌려준다.
+# 매개변수:
+# - rule (RateLimitRule): 창 길이를 확인할 제한 규칙.
+# 반환값:
+# - 서비스 시간대의 현재 UTC 오프셋(초); 하루 창이 아니면 0.
+def _window_offset_seconds(rule: RateLimitRule) -> int:
+    if rule.window_seconds != _DAILY_WINDOW_SECONDS:
+        return 0
+    offset = application_now().utcoffset()
+    return int(offset.total_seconds()) if offset is not None else 0
+
+
 def resolve_daily_quota(method: str, path: str) -> tuple[RateLimitRule, str] | None:
     """비용이 큰 경로에만 적용하는 하루 한도를 반환한다."""
     quota = DAILY_QUOTA_ROUTES.get((method.upper(), path or "/"))
@@ -267,7 +283,10 @@ class RequestRateLimitStore:
         request_scope: str,
         rule: RateLimitRule,
     ) -> tuple[bool, int]:
-        window_number = int(time.time()) // rule.window_seconds
+        # A daily window follows the service's calendar day (Asia/Seoul), not the UTC day,
+        # so that "try again tomorrow" means after local midnight.
+        now_seconds = int(time.time()) + _window_offset_seconds(rule)
+        window_number = now_seconds // rule.window_seconds
         key = (
             f"medbuddy:rate:{request_scope}:{identity}:{window_number}"
         )
@@ -291,7 +310,7 @@ class RequestRateLimitStore:
                     )
                 )
                 retry_after = rule.window_seconds - (
-                    int(time.time()) % rule.window_seconds
+                    now_seconds % rule.window_seconds
                 )
                 # A later outage must be logged again after Redis has recovered.
                 self._redis_warning_logged = False
@@ -616,6 +635,10 @@ DAILY_QUOTA_ROUTES: dict[tuple[str, str], tuple[str, str]] = {
         "ai", "AI_REQUEST_DAILY_LIMIT",
     ),
     ("GET", "/api/v1/medication/health/recommendation"): (
+        "ai", "AI_REQUEST_DAILY_LIMIT",
+    ),
+    # A medication lookup summarises each public approval record with the AI model.
+    ("POST", "/api/v1/medication/identify"): (
         "ai", "AI_REQUEST_DAILY_LIMIT",
     ),
     ("GET", "/api/v1/hospitals/nearby"): (

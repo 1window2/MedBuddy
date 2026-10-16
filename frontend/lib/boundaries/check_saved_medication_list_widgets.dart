@@ -7,7 +7,7 @@ part of 'check_saved_medication_ui_boundary.dart';
 // 역할: 약 사진·약품명·등록일·복용기간을 한 줄 목록 항목으로 보여 주고 선택·가이드·사진 동작을 연결한다.
 // 주요 책임:
 // - 일반 모드에서는 항목 전체를 눌러 복약 가이드를 열고 사진은 따로 확대한다.
-// - 선택 모드에서는 체크박스로만 선택을 바꾸고 가이드·사진 동작을 막는다.
+// - 선택 모드에서는 항목 전체나 체크박스를 눌러 선택을 바꾸고 가이드·사진 동작을 막는다.
 // 속성:
 // - showRegisteredDate (bool): 등록일 줄을 함께 표시할지 여부.
 // - medication (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
@@ -53,6 +53,8 @@ class _SavedMedicationNameRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final interactive = enabled && !isSelectionMode;
+    // 저장되지 않은 항목(id 없음)은 체크박스와 같은 규칙으로 선택하지 않는다.
+    final selectable = enabled && isSelectionMode && (medication.id ?? 0) > 0;
     final displayName = medication.itemName.trim().isEmpty
         ? text.noInformation
         : medication.itemName.trim();
@@ -63,7 +65,11 @@ class _SavedMedicationNameRow extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: interactive ? onGuideRequested : null,
+        onTap: interactive
+            ? onGuideRequested
+            : selectable
+            ? () => onSelectionChanged(!isSelected)
+            : null,
         child: Padding(
           padding: EdgeInsets.fromLTRB(isSelectionMode ? 6 : 16, 14, 8, 14),
           child: Row(
@@ -74,9 +80,9 @@ class _SavedMedicationNameRow extends StatelessWidget {
                   semanticLabel: medication.itemName,
                   value: isSelected,
                   activeColor: MedBuddyColors.primary,
-                  onChanged: !enabled || (medication.id ?? 0) <= 0
-                      ? null
-                      : (value) => onSelectionChanged(value ?? false),
+                  onChanged: selectable
+                      ? (value) => onSelectionChanged(value ?? false)
+                      : null,
                 ),
               MedicationThumbnail(
                 imageUrl: medication.imageUrl,
@@ -197,7 +203,7 @@ class _MedicationDateLine extends StatelessWidget {
 }
 
 // 함수이름: _formatMedicationDate
-// 함수역할: 날짜를 연/월/일로 표시하고 null이면 빈 문자열을 반환한다.
+// 함수역할: 날짜를 다른 검토 화면과 같은 연-월-일(2026-10-01)로 표시하고 null이면 빈 문자열을 반환한다.
 // 매개변수:
 // - value (DateTime?): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
 // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
@@ -205,7 +211,7 @@ String _formatMedicationDate(DateTime? value) {
   if (value == null) {
     return '';
   }
-  return '${value.year}/${_formatTwoDigits(value.month)}/${_formatTwoDigits(value.day)}';
+  return '${value.year}-${_formatTwoDigits(value.month)}-${_formatTwoDigits(value.day)}';
 }
 
 // 함수이름: _formatMedicationPeriod
@@ -227,7 +233,7 @@ String _formatMedicationPeriod(MedicationDetail medication) {
 
   // 같은 해에 끝나면 끝 날짜의 연도를 생략해 한 줄에 들어가게 한다.
   final endText = endDate.year == startDate.year
-      ? '${_formatTwoDigits(endDate.month)}/${_formatTwoDigits(endDate.day)}'
+      ? '${_formatTwoDigits(endDate.month)}-${_formatTwoDigits(endDate.day)}'
       : _formatMedicationDate(endDate);
   return '${_formatMedicationDate(startDate)} ~ $endText';
 }

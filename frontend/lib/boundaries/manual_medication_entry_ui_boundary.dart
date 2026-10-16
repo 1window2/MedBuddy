@@ -921,13 +921,15 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
     final completedResult = result;
     if (completedResult == null || !completedResult.isCompleted) {
       // 함수이름: _submit.setState callback
-      // 함수역할: 사진을 포함한 약품명·처방일·복용 일정 직접 입력의 입력·요청 상태를 `_isSaving = false; _errorMessage = completedResult?.message ?? _text.saveFailed`로 갱신한다.
+      // 함수역할: 저장 중 상태를 풀고, 서버 원문 대신 실패 범주(저장 한도·연결·기타)에 맞는 현재 언어의 안내를 표시한다.
       // 매개변수:
       // - 없음.
       // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
       setState(() {
         _isSaving = false;
-        _errorMessage = completedResult?.message ?? _text.saveFailed;
+        _errorMessage = _text.saveFailureMessage(
+          completedResult?.failureKind ?? MedicationSaveFailureKind.other,
+        );
       });
       return;
     }
@@ -968,13 +970,13 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
   }
 
   // 함수이름: _formatDate
-  // 함수역할: 날짜를 4자리 연도와 두 자리 월·일의 점 구분 형식으로 표시한다.
+  // 함수역할: 날짜를 다른 화면과 같은 4자리 연도와 두 자리 월·일의 하이픈 구분 형식(2026-10-01)으로 표시한다.
   // 매개변수:
   // - value (DateTime): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   static String _formatDate(DateTime value) {
-    return '${value.year.toString().padLeft(4, '0')}.'
-        '${value.month.toString().padLeft(2, '0')}.'
+    return '${value.year.toString().padLeft(4, '0')}-'
+        '${value.month.toString().padLeft(2, '0')}-'
         '${value.day.toString().padLeft(2, '0')}';
   }
 }
@@ -1331,6 +1333,24 @@ class _ManualMedicationText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get saveFailed =>
       isEnglish ? 'Could not save the medication plan.' : '복약 정보를 저장하지 못했습니다.';
+  // 함수이름: saveFailureMessage
+  // 함수역할: 저장 실패 범주에 맞는 현재 언어의 안내를 고른다. 서버가 보낸 원문은 언어가 맞지 않을 수 있어 쓰지 않는다.
+  // 매개변수:
+  // - kind (MedicationSaveFailureKind): 저장 실패 범주.
+  // 반환값: 저장 한도·연결 실패 안내, 그 밖에는 일반 저장 실패 문구.
+  String saveFailureMessage(MedicationSaveFailureKind kind) {
+    return switch (kind) {
+      MedicationSaveFailureKind.limitReached =>
+        isEnglish
+            ? 'You have saved the maximum number of medications. Delete ones you no longer take from your pillbox, then try again.'
+            : '저장할 수 있는 약의 수를 넘었습니다. 복약함에서 쓰지 않는 약을 지운 뒤 다시 시도해주세요.',
+      MedicationSaveFailureKind.network =>
+        isEnglish
+            ? 'Check your internet connection and try again.'
+            : '인터넷 연결을 확인한 뒤 다시 시도해주세요.',
+      _ => saveFailed,
+    };
+  }
   // 함수이름: photoSelectionFailed
   // 함수역할: 현재 언어와 입력값에 맞춰 "사진을 불러오지 못했습니다. 카메라와 사진 접근 권한을 확인한 뒤 다시 시도해주세요." 문구를 제공한다.
   // 매개변수:

@@ -174,7 +174,7 @@ class SetCaregiverNotificationUI {
                             child: Text(
                               slotLabel == null
                                   ? (isEnglish
-                                        ? 'Caregiver notifications'
+                                        ? 'Caregiver alerts'
                                         : '보호자 알림 설정')
                                   : (isEnglish
                                         ? '$slotLabel notifications'

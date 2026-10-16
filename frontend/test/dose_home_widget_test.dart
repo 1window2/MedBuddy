@@ -107,6 +107,44 @@ void main() {
     expect(caregiver.completedReminderSlots(now), isEmpty);
   });
 
+  // 함수이름: 표시 설정·보류 기록과 무관한 재알림 취소 테스트
+  // 함수역할: 환자 일정 보기로 바꾸거나 관계없는 보류 기록이 있어도 본인이 기기에 기록한 완료 시간대는 재알림 취소 대상인지 검증한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  test('completed reminder slots ignore widget source and blocked records', () async {
+    await cache(schedules: [
+      medication,
+      const MedicationSchedule(medicationID: '92', medicationName: 'other',
+        scheduleSlotKeys: ['evening'], slotStatuses: {'evening': false}),
+    ]);
+    final completed = (await tap(page(await state(), 'morning')))!;
+    expect(completed.completedReminderSlots(now), ['morning']);
+    final caregiverView = await state(config: {'source': 'patients'});
+    expect(caregiverView.completedReminderSlots(now), ['morning']);
+    expect(caregiverView.completedReminderSlots(now.add(const Duration(days: 1))), isEmpty);
+    // 저녁 약 하나만 다른 기록으로 보류되어도 아침 완료의 재알림 취소는 유지된다.
+    await store.enqueue('patient-a', {
+      'operation_id': 'rejected-evening',
+      'schedule_date': '2026-09-21',
+      'slot_key': 'evening',
+      'medication_ids': [92],
+      'completed': false,
+    });
+    final morning = (await store.claim('patient-a', 'lease-1', now.millisecondsSinceEpoch))!;
+    expect(morning['slot_key'], 'morning');
+    await store.finish('patient-a', morning['operation_id'], 'lease-1');
+    final evening = (await store.claim('patient-a', 'lease-2', now.millisecondsSinceEpoch))!;
+    expect(evening['operation_id'], 'rejected-evening');
+    await store.finish('patient-a', 'rejected-evening', 'lease-2', blocked: true);
+    await cache(schedules: [
+      medication.copyWith(slotStatuses: {'morning': true, 'evening': false}),
+      const MedicationSchedule(medicationID: '92', medicationName: 'other',
+        scheduleSlotKeys: ['evening'], slotStatuses: {'evening': false}),
+    ]);
+    final blocked = await state(config: {'source': 'self'});
+    expect(blocked.data['cancels'], isEmpty);
+    expect(blocked.completedReminderSlots(now), ['morning']);
+  });
+
   test('partial or stale completion cannot cancel the slot reminder', () async {
     await cache(schedules: [
       medication.copyWith(slotStatuses: {'morning': true, 'evening': false}),
@@ -283,7 +321,7 @@ void main() {
       expect((filtered.view['patients'] as List).length, 1);
       final failed = await patients([], failed: true);
       expect(failed.view['heading'], '환자 일정을 새로고침해주세요');
-      expect((await patients([])).view['heading'], '연결된 환자가 없습니다');
+      expect((await patients([])).view['heading'], '연동된 환자가 없습니다');
     },
   );
 
@@ -872,7 +910,7 @@ void main() {
       expect(pages.map((page) => page['slot']), ['morning', 'evening']);
       expect(pages.first['details'], 'private medicine · 복용 완료');
       expect(pages.first['action'], 'cancel');
-      expect(pages.first['button'], '복용 취소');
+      expect(pages.first['button'], '복용 완료 취소');
       expect(pages.first['token'], isNotEmpty);
       expect(pages.first['overdue'], isFalse);
       expect(pages.last['details'], 'private medicine · 미복용');

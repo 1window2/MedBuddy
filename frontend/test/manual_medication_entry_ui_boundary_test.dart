@@ -618,7 +618,9 @@ void main() {
       submittedEntry!.scheduleSlotKeys,
       containsAll(['morning', 'evening']),
     );
-    expect(find.text('테스트 저장 중단'), findsOneWidget);
+    // 서버 원문 대신 화면 언어의 실패 안내를 보여 준다.
+    expect(find.text('테스트 저장 중단'), findsNothing);
+    expect(find.text('복약 정보를 저장하지 못했습니다.'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -701,6 +703,59 @@ void main() {
     });
   }
 
+  // 함수이름: 저장 실패 범주 안내 테스트
+  // 함수역할: 저장 실패 시 서버 원문(한국어) 대신 화면 언어의 저장 한도·연결·일반 실패 안내를 보여 주는지 검증한다.
+  // 매개변수: tester. 반환값: 검증 완료.
+  for (final english in [false, true]) {
+    testWidgets('저장 실패는 범주별로 화면 언어의 안내를 보여 준다: english=$english', (tester) async {
+      tester.view.physicalSize = const Size(390, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      var kind = MedicationSaveFailureKind.limitReached;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ManualMedicationEntryUI(
+            userSetting: UserSetting(language: english ? 'en' : 'ko'),
+            // 함수이름: onSaveRequested 콜백
+            // 함수역할: 서버의 한국어 원문과 테스트가 고른 실패 범주를 담은 실패 결과를 돌려준다.
+            // 매개변수: entry (ManualMedicationEntry): 검증한 입력값. 반환값: failed 상태의 저장 결과.
+            onSaveRequested: (entry) async => MedicationSaveResult(
+              status: MedicationSaveStatus.failed,
+              message: '서버 원문 오류',
+              failureKind: kind,
+            ),
+          ),
+        ),
+      );
+      await tester.enterText(
+        find.byKey(const Key('manual-medication-name')),
+        'Test medicine',
+      );
+      final save = find.byKey(const Key('manual-medication-save'));
+      final expected = {
+        MedicationSaveFailureKind.limitReached: english
+            ? 'You have saved the maximum number of medications. Delete ones you no longer take from your pillbox, then try again.'
+            : '저장할 수 있는 약의 수를 넘었습니다. 복약함에서 쓰지 않는 약을 지운 뒤 다시 시도해주세요.',
+        MedicationSaveFailureKind.network: english
+            ? 'Check your internet connection and try again.'
+            : '인터넷 연결을 확인한 뒤 다시 시도해주세요.',
+        MedicationSaveFailureKind.other: english
+            ? 'Could not save the medication plan.'
+            : '복약 정보를 저장하지 못했습니다.',
+      };
+      for (final entry in expected.entries) {
+        kind = entry.key;
+        await tester.ensureVisible(save);
+        await tester.tap(save);
+        await tester.pumpAndSettle();
+        expect(find.text(entry.value), findsOneWidget, reason: '$kind');
+        expect(find.text('서버 원문 오류'), findsNothing);
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   // 함수이름: 저장 콜백 예외 테스트
   // 함수역할: 저장 콜백이 예외로 끝나도 저장 중 상태에 머물지 않고 실패 안내 뒤 다시 저장할 수 있는지 검증한다.
   // 매개변수: tester. 반환값: 검증 완료.
@@ -746,7 +801,7 @@ void main() {
     await tester.tap(save);
     await tester.pumpAndSettle();
     expect(requestCount, 2);
-    expect(find.text('테스트 저장 중단'), findsOneWidget);
+    expect(find.text('복약 정보를 저장하지 못했습니다.'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

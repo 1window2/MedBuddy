@@ -20,6 +20,52 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 void main() {
   // 함수이름: testWidgets 콜백
   // 함수역할:
+  // - 기대 동작: 문자 2단계 인증 영역과 등록 창이 한국어로 표시되고, 인증번호 요청 실패 시 컨트롤의 오류를 창 안에 보여준다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  testWidgets('문자 2단계 인증 영역과 창은 한국어로 표시하고 오류를 보여준다', (tester) async {
+    final authenticationControl = AuthenticationControl.development();
+    addTearDown(authenticationControl.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              buildSmsMfaSettingsPanelForTesting(
+                enabled: false,
+                available: true,
+                language: 'ko',
+              ),
+              Expanded(
+                child: buildSmsMfaEnrollmentDialogForTesting(
+                  control: authenticationControl,
+                  language: 'ko',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('문자 2단계 인증'), findsOneWidget);
+    expect(find.textContaining('SMS'), findsNothing);
+    expect(find.text('문자 인증 켜기'), findsNWidgets(2));
+    expect(find.byKey(const ValueKey('smsMfaError')), findsNothing);
+
+    await tester.tap(find.text('인증번호 보내기'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('smsMfaError'))).data,
+      '현재 버전에서는 문자 인증을 사용할 수 없습니다.',
+    );
+    expect(find.text('취소'), findsOneWidget);
+  });
+
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
   // - 기대 동작: 설정 홈에서 계정 인사와 세 설정 영역을 구분해 표시한다.
   // 매개변수:
   // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
@@ -81,7 +127,7 @@ void main() {
     expect(find.widgetWithText(FilledButton, '저장하기'), findsNothing);
 
     await _openDisplayAndVoice(tester);
-    expect(find.text('글씨크기'), findsOneWidget);
+    expect(find.text('글자 크기'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('settingsBackButton')));
     await tester.pumpAndSettle();
     expect(find.text('환경설정'), findsOneWidget);
@@ -209,11 +255,11 @@ void main() {
 
     await _openDisplayAndVoice(tester);
     expect(find.text('Text Size'), findsOneWidget);
-    expect(find.text('글씨크기'), findsNothing);
+    expect(find.text('글자 크기'), findsNothing);
 
     await _selectSettingChoice(tester, 'language', 'ko');
 
-    expect(find.text('글씨크기'), findsOneWidget);
+    expect(find.text('글자 크기'), findsOneWidget);
     expect(find.text('Text Size'), findsNothing);
   });
   // 함수이름: testWidgets 콜백
@@ -497,7 +543,7 @@ void main() {
     // 반환값:
     // - 제목 위젯에 적용된 글씨 배율.
     double currentScale() {
-      final titleContext = tester.element(find.text('글씨크기'));
+      final titleContext = tester.element(find.text('글자 크기'));
       return MediaQuery.textScalerOf(titleContext).scale(16) / 16;
     }
 
@@ -578,7 +624,7 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, '저장하기'));
     await tester.pumpAndSettle();
 
-    expect(find.text('글씨크기'), findsOneWidget);
+    expect(find.text('글자 크기'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '저장하기'), findsOneWidget);
     expect(find.text('설정 열기'), findsNothing);
     expect(tester.takeException(), isNull);

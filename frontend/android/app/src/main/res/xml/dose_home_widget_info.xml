@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Android 15 런처는 가로 화면의 최소 셀 높이도 검사하므로 초기 높이와 축소 한도를 분리한다. -->
+<!-- Android 15 런처는 가로 화면의 최소 셀 높이도 검사하므로 초기 높이와 축소 한도를 분리한다.
+     작은 위젯을 선호하는 사용자가 많아 기본을 4 x 1로 두고, 가로 화면 1칸(약 51dp)에 맞춘
+     축소 한도 48dp로 런처가 이 요청을 받아들이게 한다. 1칸 높이는 한 줄 배치를 쓰고
+     더 크게 늘리면 날짜·상세 내용·시간대 이동을 더 보여준다. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:initialLayout="@layout/dose_home_widget"
+    android:initialLayout="@layout/dose_home_widget_row"
     android:previewLayout="@layout/dose_home_widget_preview"
-    android:minWidth="250dp" android:minHeight="240dp"
-    android:minResizeWidth="250dp" android:minResizeHeight="180dp"
-    android:targetCellWidth="4" android:targetCellHeight="3"
+    android:minWidth="250dp" android:minHeight="48dp"
+    android:minResizeWidth="250dp" android:minResizeHeight="48dp"
+    android:targetCellWidth="4" android:targetCellHeight="1"
     android:resizeMode="horizontal|vertical"
     android:updatePeriodMillis="1800000"
     android:widgetCategory="home_screen" />

@@ -1,5 +1,5 @@
 # File Name: request_limits.py
-# Role: Rejects oversized HTTP request bodies before multipart or JSON parsing.
+# Role: Rejects oversized HTTP request bodies before multipart or JSON parsing, and JSON bodies carrying NUL.
 
 from collections.abc import Mapping
 
@@ -14,6 +14,16 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 # - Unwind downstream body reads so middleware can emit a generic HTTP 413 response.
 class _RequestBodyTooLarge(Exception):
     """Internal control-flow signal raised while receiving a request body."""
+
+
+# Class Name: _RequestBodyHasNul
+# Role:
+# - Signals that a JSON request body carries a NUL character.
+# Responsibilities:
+# - Unwind downstream body reads so middleware can answer 422: PostgreSQL text columns cannot
+#   store NUL, and without this check such text reached the database and failed with 500.
+class _RequestBodyHasNul(Exception):
+    """Internal control-flow signal raised while receiving a JSON request body."""
 
 
 # Class Name: RequestBodyLimitMiddleware
@@ -92,7 +102,11 @@ class RequestBodyLimitMiddleware:
 
         received_bytes = 0
         exceeded = False
+        has_nul = False
         response_started = False
+        checks_nul = self._is_json(scope)
+        # The JSON escape of NUL can be split between two chunks; keep the end of the last one.
+        previous_tail = b""
 
         # Function Name: limited_receive
         # Description:
@@ -100,15 +114,23 @@ class RequestBodyLimitMiddleware:
         # Parameters:
         # - None.
         # Returns:
-        # - The received message; raises _RequestBodyTooLarge once the enclosing request's limit is exceeded.
+        # - The received message; raises _RequestBodyTooLarge once the enclosing request's limit is exceeded,
+        #   and _RequestBodyHasNul when a JSON body carries NUL.
         async def limited_receive() -> Message:
-            nonlocal received_bytes, exceeded
+            nonlocal received_bytes, exceeded, has_nul, previous_tail
             message = await receive()
             if message["type"] == "http.request":
-                received_bytes += len(message.get("body", b""))
+                body = message.get("body", b"")
+                received_bytes += len(body)
                 if received_bytes > limit:
                     exceeded = True
                     raise _RequestBodyTooLarge
+                if checks_nul:
+                    window = previous_tail + body
+                    if b"\\u0000" in window or b"\x00" in body:
+                        has_nul = True
+                        raise _RequestBodyHasNul
+                    previous_tail = window[-5:]
             return message
 
         # Function Name: limited_send
@@ -122,7 +144,7 @@ class RequestBodyLimitMiddleware:
         # - None; messages are dropped only while the limit is exceeded and no response has started.
         async def limited_send(message: Message) -> None:
             nonlocal response_started
-            if exceeded and not response_started:
+            if (exceeded or has_nul) and not response_started:
                 return
             if message["type"] == "http.response.start":
                 response_started = True
@@ -130,15 +152,37 @@ class RequestBodyLimitMiddleware:
 
         try:
             await self.app(scope, limited_receive, limited_send)
-        except _RequestBodyTooLarge:
+        except (_RequestBodyTooLarge, _RequestBodyHasNul):
             pass
         except Exception:
             # A failure raised after the limit was exceeded is a consequence of the aborted
             # body read; it is answered with HTTP 413 like the signal itself.
-            if not exceeded or response_started:
+            if not (exceeded or has_nul) or response_started:
                 raise
         if exceeded and not response_started:
             await self._send_rejection(scope, receive, send)
+        elif has_nul and not response_started:
+            response = JSONResponse(
+                status_code=422,
+                content={"detail": "The request text contains a character that cannot be stored."},
+            )
+            await response(scope, receive, send)
+
+    # Function Name: _is_json
+    # Description:
+    # - Tell whether the request declares a JSON body; only such bodies are checked for NUL, because
+    #   multipart image uploads contain NUL bytes legitimately.
+    # Parameters:
+    # - scope (Scope): ASGI connection metadata, including request headers.
+    # Returns:
+    # - True when the Content-Type is application/json or a +json type.
+    @staticmethod
+    def _is_json(scope: Scope) -> bool:
+        for name, value in scope.get("headers", ()):
+            if name.lower() == b"content-type":
+                media_type = value.split(b";", 1)[0].strip().lower()
+                return media_type == b"application/json" or media_type.endswith(b"+json")
+        return False
 
     # Function Name: _content_length
     # Description:

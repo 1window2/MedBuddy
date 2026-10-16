@@ -1,6 +1,7 @@
 // File Name: check_saved_medication_control.dart
 // Role: Registers, lists, deduplicates, and deletes patient-scoped saved medications.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 
@@ -20,6 +21,15 @@ import '../services/api_response_parser.dart';
 // - 화면이 재저장 필요 여부와 완료 상태를 일관되게 판단할 수 있도록 결과 범주를 제공한다.
 enum MedicationSaveStatus { saved, duplicate, failed }
 
+// 클래스명: MedicationSaveFailureKind
+// 역할: 실패한 저장의 원인 범주를 구분해 화면이 서버 원문 대신 자기 언어의 안내 문구를 고르게 한다.
+// 주요 책임:
+// - none: 실패가 아닌 결과(저장·중복).
+// - limitReached: 계정당 저장 가능한 약 수(기본 300개)를 넘어 서버가 409로 거절함.
+// - network: 응답 지연·연결 실패로 서버 응답을 받지 못함.
+// - other: 그 밖의 서버 거절·응답 형식 오류·저장 취소.
+enum MedicationSaveFailureKind { none, limitReached, network, other }
+
 // 클래스명: MedicationSaveResult
 // 역할: 약 저장 상태와 사용자 메시지, 저장된 항목 ID를 함께 전달한다.
 // 주요 책임:
@@ -28,10 +38,12 @@ enum MedicationSaveStatus { saved, duplicate, failed }
 // - status (MedicationSaveStatus): 약 저장의 성공·중복·실패 상태
 // - message (String): 사용자에게 표시하거나 오류로 보존할 안내 문구
 // - savedMedicationId (int?): 대상 저장 복약정보의 식별자
+// - failureKind (MedicationSaveFailureKind): 실패 원인 범주. 실패가 아니면 none, 지정하지 않은 실패는 other로 읽는다.
 class MedicationSaveResult {
   final MedicationSaveStatus status;
   final String message;
   final int? savedMedicationId;
+  final MedicationSaveFailureKind _failureKind;
 
   // 함수이름: MedicationSaveResult
   // 함수역할: 약 저장의 성공·중복·실패 상태와 안내 메시지 및 선택적인 저장 ID를 함께 보존한다.
@@ -39,13 +51,30 @@ class MedicationSaveResult {
   // - status (MedicationSaveStatus): 약 저장의 성공·중복·실패 상태
   // - message (String): 사용자에게 표시하거나 오류로 보존할 안내 문구
   // - savedMedicationId (int?): 대상 저장 복약정보의 식별자
+  // - failureKind (MedicationSaveFailureKind): 실패 원인 범주. 생략하면 실패 결과는 other로 취급한다.
   // 반환값:
   // - MedicationSaveResult: 초기화된 인스턴스.
   const MedicationSaveResult({
     required this.status,
     required this.message,
     this.savedMedicationId,
-  });
+    MedicationSaveFailureKind failureKind = MedicationSaveFailureKind.none,
+  }) : _failureKind = failureKind;
+
+  // 함수이름: failureKind
+  // 함수역할: 실패한 저장의 원인 범주를 알려 준다. 실패가 아닌 결과는 none, 원인을 지정하지 않은 실패는 other다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - MedicationSaveFailureKind: 화면이 안내 문구를 고를 실패 범주.
+  MedicationSaveFailureKind get failureKind {
+    if (status != MedicationSaveStatus.failed) {
+      return MedicationSaveFailureKind.none;
+    }
+    return _failureKind == MedicationSaveFailureKind.none
+        ? MedicationSaveFailureKind.other
+        : _failureKind;
+  }
 
   // 함수이름: isCompleted
   // 함수역할: 새 저장과 기존 중복 항목을 모두 저장 완료로 취급하고 실패 결과만 제외한다.
@@ -120,6 +149,10 @@ class CheckSavedMedication {
         return MedicationSaveResult(
           status: MedicationSaveStatus.failed,
           message: ApiResponseParser.extractErrorDetail(responseBody),
+          // 저장 API의 409는 계정당 저장 가능한 약 수를 넘었을 때만 쓰인다.
+          failureKind: response.statusCode == 409
+              ? MedicationSaveFailureKind.limitReached
+              : MedicationSaveFailureKind.other,
         );
       }
 
@@ -152,9 +185,12 @@ class CheckSavedMedication {
         error: error,
         stackTrace: stackTrace,
       );
-      return const MedicationSaveResult(
+      return MedicationSaveResult(
         status: MedicationSaveStatus.failed,
         message: '저장에 실패했습니다. 다시 시도해주세요.',
+        failureKind: error is TimeoutException || error is http.ClientException
+            ? MedicationSaveFailureKind.network
+            : MedicationSaveFailureKind.other,
       );
     }
   }
@@ -264,17 +300,17 @@ class CheckSavedMedication {
   }
 
   // Function Name: requestDelete
-  // Description: Deletes one saved medication within the current patient scope and reports whether the server returned HTTP 200.
+  // Description: Deletes one saved medication within the current patient scope. HTTP 404 means the medication no longer exists in this scope (for example it was deleted on another device), so it counts as deleted and the list can drop it.
   // Parameters:
   // - savedMedicationId (int): Identifier of the targeted saved medication.
   // Returns:
-  // - Future<bool>: Deletes one saved medication within the current patient scope and reports whether the server returned HTTP 200.
+  // - Future<bool>: true when the server returned HTTP 200 or 404; false for other responses and transport failures.
   Future<bool> requestDelete(int savedMedicationId) async {
     try {
       final response = await _client
           .delete(_buildMedicationUri('delete/$savedMedicationId'))
           .timeout(const Duration(seconds: 30));
-      return response.statusCode == 200;
+      return response.statusCode == 200 || response.statusCode == 404;
     } catch (error, stackTrace) {
       developer.log(
         'Saved medication delete failed.',

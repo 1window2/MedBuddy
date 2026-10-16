@@ -60,7 +60,7 @@ class CaregiverPatientLocalStateService {
   static String fallbackLabel(String patientHash, {bool isEnglish = false}) {
     final normalized = patientHash.trim();
     if (normalized.isEmpty) {
-      return isEnglish ? 'Linked patient' : '연결된 환자';
+      return isEnglish ? 'Linked patient' : '연동된 환자';
     }
     final suffix = normalized.length <= 4
         ? normalized

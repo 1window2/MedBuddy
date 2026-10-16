@@ -58,11 +58,14 @@ def context():
             "source_updated_at": "2026-09-28T01:00:00+00:00"}
 
 
-async def send(chat, monkeypatch, *, sender="patient-a", request=None, provider=None):
+async def send(chat, monkeypatch, *, sender="patient-a", request=None, provider=None,
+               hospital_quota=None):
     """외부 통신만 대역으로 바꾸고 실제 저장·멱등 처리 경로를 실행한다."""
     control, link_id = chat
     quota = AsyncMock()
     monkeypatch.setattr(chat_router, "enforce_chat_daily_quota", quota)
+    monkeypatch.setattr(chat_router, "enforce_hospital_share_daily_quota",
+                        hospital_quota or AsyncMock())
     monkeypatch.setattr(route_support, "get_chat_connection_manager", lambda _: SimpleNamespace(broadcast=AsyncMock()))
     try:
         return await chat_router.post_chat_message(
@@ -89,6 +92,33 @@ async def test_share_uses_server_snapshot_and_retry_skips_provider(chat, monkeyp
     assert not second["created"] and second["data"]["message_id"] == first["data"]["message_id"]
     assert lookup.await_count == 1
     assert chat[0].db.query(_ChatMessage).count() == 1
+
+
+@pytest.mark.anyio
+async def test_share_spends_the_hospital_search_quota_but_its_retry_does_not(chat, monkeypatch):
+    """병원 공유는 공공 병원 API를 조회하므로 병원 검색 하루 한도를 쓰고, 이미 저장된 공유의 재시도는 쓰지 않는다."""
+    hospital_quota = AsyncMock()
+    lookup = AsyncMock(return_value=context())
+    await send(chat, monkeypatch, provider=SimpleNamespace(requestShareContext=lookup),
+               hospital_quota=hospital_quota)
+    await send(chat, monkeypatch, provider=SimpleNamespace(requestShareContext=lookup),
+               hospital_quota=hospital_quota)
+    assert hospital_quota.await_count == 1
+    assert lookup.await_count == 1
+
+
+@pytest.mark.anyio
+async def test_exhausted_hospital_quota_refuses_the_share_before_any_lookup(chat, monkeypatch):
+    """하루 한도를 다 쓴 계정의 병원 공유는 제공자 조회 전에 429로 거절된다."""
+    from fastapi import HTTPException
+    lookup = AsyncMock(return_value=context())
+    refused = AsyncMock(side_effect=HTTPException(429, "quota"))
+    with pytest.raises(HTTPException) as error:
+        await send(chat, monkeypatch, provider=SimpleNamespace(requestShareContext=lookup),
+                   hospital_quota=refused)
+    assert error.value.status_code == 429
+    lookup.assert_not_awaited()
+    assert chat[0].db.query(_ChatMessage).count() == 0
 
 
 @pytest.mark.anyio

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from boundaries.medication_detail_cache_boundary import MedicationDetailCache
 from boundaries.medication_summary_boundary import (
     MedicationSummaryGenerator,
+    gather_summaries_keeping_successes,
     read_medication_detail_text,
 )
 from boundaries.public_drug_api_boundary import (
@@ -279,10 +280,10 @@ class CheckMedicationDetail:
                  if can_auto_match(reference or drug_name, read_public_item_name(item))]
         if len(exact) == 1:
             advanced_items = exact
-        details = list(await asyncio.gather(*(
+        details = await gather_summaries_keeping_successes(
             self.summary_generator.summarize_advanced_item(drug_name, dict(item))
             for item in advanced_items
-        )))
+        )
         return await self._enrich_missing_image_urls(details)
 
     # 함수이름: _build_basic_drug_infos

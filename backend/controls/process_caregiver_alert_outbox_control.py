@@ -6,7 +6,7 @@ import re
 import sqlite3
 from datetime import timedelta
 
-from sqlalchemy import or_, update
+from sqlalchemy import case, or_, update
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import DBAPIError
 
@@ -181,6 +181,15 @@ class ProcessCaregiverAlertOutbox:
                 status=CAREGIVER_ALERT_STATUS_PROCESSING,
                 processing_started_at=now,
                 last_error=None,
+                # 처리 중에 멈춘 행을 다시 가져오는 것도 한 번의 시도로 센다. 세지 않으면 전송 뒤
+                # 기록 단계에서 멈추는 행이 5분마다 재전송되고 끝내 포기되지 않는다.
+                attempt_count=case(
+                    (
+                        _CaregiverAlertOutbox.status == CAREGIVER_ALERT_STATUS_PROCESSING,
+                        _CaregiverAlertOutbox.attempt_count + 1,
+                    ),
+                    else_=_CaregiverAlertOutbox.attempt_count,
+                ),
             )
         )
         self.db.commit()
@@ -190,6 +199,16 @@ class ProcessCaregiverAlertOutbox:
         row = self.db.get(_CaregiverAlertOutbox, outbox_id)
         if row is None:
             return "skipped"
+        if int(row.attempt_count or 0) >= _MAX_DELIVERY_ATTEMPTS:
+            row.status = CAREGIVER_ALERT_STATUS_DEAD_LETTER
+            row.processing_started_at = None
+            row.last_error = "StalledProcessing"
+            self.db.commit()
+            logger.warning(
+                "Caregiver alert outbox row stalled repeatedly and was given up (id=%s).",
+                outbox_id,
+            )
+            return "failed"
         delivered = False
         try:
             event_type = str(
@@ -244,13 +263,24 @@ class ProcessCaregiverAlertOutbox:
                     alert_context = ManageCaregiverAlert(self.db).context(row)
                 except HTTPException:
                     alert_context = None
-                delivery_result = self.dispatcher.notifySlotMissed(
+                missed_result = self.dispatcher.notifySlotMissedIfActionable(
                     caregiver_hash=caregiver_hash,
                     patient_hash=patient_hash,
                     slot_key=slot_key,
                     schedule_date=schedule_date,
                     alert_context=alert_context,
                 )
+                if missed_result is None:
+                    # 그사이 복용했거나 기한이 바뀌었거나 날짜가 지나 보낼 필요가 없어졌다. 보내지 않은
+                    # 알림을 전송 완료로 남기지 않도록 완료 알림과 같이 이유를 적어 포기한다.
+                    row = self.db.get(_CaregiverAlertOutbox, outbox_id)
+                    if row is not None:
+                        row.status = CAREGIVER_ALERT_STATUS_DEAD_LETTER
+                        row.processing_started_at = None
+                        row.last_error = "MissedDoseNoLongerCurrent"
+                        self.db.commit()
+                    return "skipped"
+                delivery_result = missed_result
             else:
                 raise ValueError("Unsupported caregiver outbox event type.")
             if not delivery_result.all_valid_targets_succeeded:

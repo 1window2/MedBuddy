@@ -43,6 +43,8 @@ class ManageUserSetting {
   final http.Client _client;
   final bool _ownsClient;
   bool _lastLookupReachedServer = false;
+  bool _hasPendingSave = false;
+  static int _pendingTokenSequence = 0;
 
   // 함수이름: lastLookupReachedServer
   // 함수역할: 가장 최근 설정 조회가 서버 사본을 받았는지 알려 준다. 캐시만으로 채운 설정을 자동 저장해 서버의 더 새로운 값을 덮어쓰지 않게 하는 데 쓴다.
@@ -51,6 +53,14 @@ class ManageUserSetting {
   // 반환값:
   // - bool: 최근 requestUserSetting이 서버 응답으로 끝났으면 true, 캐시로 대체했거나 아직 조회하지 않았으면 false.
   bool get lastLookupReachedServer => _lastLookupReachedServer;
+
+  // 함수이름: hasPendingSave
+  // 함수역할: 기기에 저장했지만 아직 서버에 반영하지 못한 설정이 남아 있는지 알려 준다. 표시는 계정별 저장소에 보관되어 앱 재시작과 백그라운드 작업에서도 유지된다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - bool: 최근 조회·저장 뒤 서버 반영 대기 표시가 남아 있으면 true.
+  bool get hasPendingSave => _hasPendingSave;
 
   // Function Name: ManageUserSetting
   // Description: Binds user-scoped preference persistence to the backend and HTTP client, with an explicit switch for local-only operation.
@@ -71,16 +81,28 @@ class ManageUserSetting {
 
   // 함수이름: requestUserSetting
   // 함수역할: 사용자별 캐시를 먼저 읽고 원격 설정을 조회하며 서버 실패 시 캐시로 대체한다.
+  //   서버에 아직 반영하지 못한 저장이 남아 있으면 서버 사본으로 캐시를 덮지 않고 그 저장을 먼저 다시 보낸다.
   // 매개변수:
   // - 없음.
   // 반환값:
   // - 현재 사용자 설정
   // - 저장값이 없으면 기본값으로 채운 UserSetting
   Future<UserSetting> requestUserSetting() async {
-    final cachedSetting = await _requestCachedUserSetting();
+    final preferences = await _loadFreshPreferences();
+    final cachedSetting = _readCachedUserSetting(preferences);
     _lastLookupReachedServer = false;
     if (!useRemotePersistence) {
+      _hasPendingSave = false;
       return cachedSetting;
+    }
+
+    final pendingToken = preferences.getString(_pendingSyncKey);
+    if (pendingToken != null) {
+      // 오프라인에서 바꾼 설정이 다음 조회의 서버 사본에 덮이지 않도록 대기 중인 저장을 먼저 재시도한다.
+      _hasPendingSave = true;
+      final result = await _sendUserSetting(cachedSetting, pendingToken);
+      _lastLookupReachedServer = result.synchronizedWithServer;
+      return result.setting;
     }
 
     try {
@@ -97,7 +119,14 @@ class ManageUserSetting {
       }
 
       final setting = _decodeUserSetting(responseBody);
+      // 조회 중 다른 화면이나 작업이 오프라인 저장을 남겼다면 서버 사본으로 덮지 않는다.
+      await _reloadPreferences(preferences);
+      if (preferences.getString(_pendingSyncKey) != null) {
+        _hasPendingSave = true;
+        return _readCachedUserSetting(preferences);
+      }
       await _cacheUserSetting(setting);
+      _hasPendingSave = false;
       _lastLookupReachedServer = true;
       return setting;
     } catch (error, stackTrace) {
@@ -107,12 +136,14 @@ class ManageUserSetting {
         error: error,
         stackTrace: stackTrace,
       );
+      _hasPendingSave = preferences.getString(_pendingSyncKey) != null;
       return cachedSetting;
     }
   }
 
   // 함수이름: saveUserSetting
   // 함수역할: 이미 완성된 설정 객체를 값 변환 없이 현재 사용자 범위로 기기에 저장하고 서버와 동기화한다. 설정 화면의 초안과 기기 언어 재동기화처럼 설정 전체를 가진 호출부가 사용한다.
+  //   서버 반영 전까지 계정별 대기 표시를 남겨, 실패하면 다음 조회가 서버 사본 대신 이 저장을 다시 보낸다.
   // 매개변수:
   // - setting (UserSetting): 저장할 설정 전체. 사용자 해시는 이 컨트롤의 범위로 바꾼다.
   // 반환값:
@@ -122,21 +153,42 @@ class ManageUserSetting {
   ) async {
     final nextSetting = setting.copyWith(userHash: _normalizedUserHash);
 
-    await _cacheUserSetting(nextSetting);
-
     if (!useRemotePersistence) {
+      await _cacheUserSetting(nextSetting);
       return UserSettingSaveResult(
         setting: nextSetting,
         synchronizedWithServer: false,
       );
     }
 
+    // 대기 표시를 캐시보다 먼저 남긴다. 순서가 반대면 그 사이에 끝난 서버 조회가 표시를 보지 못하고
+    // 새 캐시를 서버 사본으로 덮어, 이어진 전송이 실패했을 때 바꾼 설정이 사라진다.
+    final token = _nextPendingToken();
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(_pendingSyncKey, token);
+    _hasPendingSave = true;
+    await _cacheUserSetting(nextSetting);
+    return _sendUserSetting(nextSetting, token);
+  }
+
+  // 함수이름: _sendUserSetting
+  // 함수역할: 기기에 저장된 설정을 서버로 보내고, 성공하면 대기 표시가 그대로일 때만 서버 사본을 캐시하고 표시를 지운다.
+  //   전송 중 더 새로운 기기 저장이 생겼으면 그 값을 보존하고, 표시가 이미 지워졌는데 캐시가 보낸 값과 다르면 다시 대기 표시를 남긴다.
+  // 매개변수:
+  // - setting (UserSetting): 서버에 보낼 설정 전체.
+  // - token (String): 이 저장이 남긴 대기 표시 값.
+  // 반환값:
+  // - Future<UserSettingSaveResult>: 서버 반영 시 서버 사본과 true, 실패하거나 더 새로운 기기 저장이 있으면 기기 사본과 false.
+  Future<UserSettingSaveResult> _sendUserSetting(
+    UserSetting setting,
+    String token,
+  ) async {
     try {
       final response = await _client
           .put(
             _buildUserSettingUri(),
             headers: const {'Content-Type': 'application/json'},
-            body: jsonEncode(nextSetting.toJson()),
+            body: jsonEncode(setting.toJson()),
           )
           .timeout(_requestTimeout);
       final responseBody = ApiResponseParser.decodeBody(response);
@@ -150,10 +202,27 @@ class ManageUserSetting {
       }
 
       final savedSetting = _decodeUserSetting(responseBody);
-      await _cacheUserSetting(savedSetting);
+      final preferences = await _loadFreshPreferences();
+      final currentToken = preferences.getString(_pendingSyncKey);
+      if (currentToken == token) {
+        await _cacheUserSetting(savedSetting);
+        await preferences.remove(_pendingSyncKey);
+        _hasPendingSave = false;
+        return UserSettingSaveResult(
+          setting: savedSetting,
+          synchronizedWithServer: true,
+        );
+      }
+      final currentSetting = _readCachedUserSetting(preferences);
+      if (currentToken == null &&
+          jsonEncode(currentSetting.toJson()) != jsonEncode(setting.toJson())) {
+        // 다른 저장이 먼저 끝난 뒤 이 오래된 값이 서버에 늦게 도착했다. 기기의 최신 값을 다시 보내게 한다.
+        await preferences.setString(_pendingSyncKey, _nextPendingToken());
+      }
+      _hasPendingSave = preferences.getString(_pendingSyncKey) != null;
       return UserSettingSaveResult(
-        setting: savedSetting,
-        synchronizedWithServer: true,
+        setting: currentSetting,
+        synchronizedWithServer: !_hasPendingSave,
       );
     } catch (error, stackTrace) {
       developer.log(
@@ -162,21 +231,61 @@ class ManageUserSetting {
         error: error,
         stackTrace: stackTrace,
       );
+      _hasPendingSave = true;
       return UserSettingSaveResult(
-        setting: nextSetting,
+        setting: setting,
         synchronizedWithServer: false,
       );
     }
   }
 
-  // 함수이름: _requestCachedUserSetting
-  // 함수역할: 사용자별 설정을 읽고 구형 접근성 키와 기본값으로 누락을 보완한다. 폐기된 실험실 키는 읽지 않는다.
+  // 함수이름: _loadFreshPreferences
+  // 함수역할: 백그라운드 작업 등 다른 isolate가 쓴 값까지 보이도록 저장소를 다시 읽어 돌려준다.
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - Future<UserSetting>: 현재 사용자 설정 또는 누락 값을 보완한 기본 설정.
-  Future<UserSetting> _requestCachedUserSetting() async {
+  // - Future<SharedPreferences>: 최신 값으로 갱신을 시도한 저장소.
+  Future<SharedPreferences> _loadFreshPreferences() async {
     final preferences = await SharedPreferences.getInstance();
+    await _reloadPreferences(preferences);
+    return preferences;
+  }
+
+  // 함수이름: _reloadPreferences
+  // 함수역할: 저장소를 다시 읽고, 다시 읽기에 실패하면 메모리 사본을 그대로 쓴다.
+  // 매개변수:
+  // - preferences (SharedPreferences): 다시 읽을 저장소.
+  // 반환값:
+  // - Future<void>: 다시 읽기를 시도한 뒤 완료되는 Future.
+  Future<void> _reloadPreferences(SharedPreferences preferences) async {
+    try {
+      await preferences.reload();
+    } catch (error, stackTrace) {
+      developer.log(
+        'User setting preferences reload failed.',
+        name: 'ManageUserSetting',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
+  // 함수이름: _nextPendingToken
+  // 함수역할: 저장마다 다른 서버 반영 대기 표시 값을 만든다. 늦게 끝난 전송이 더 새로운 저장의 표시를 지우지 않게 구분한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - String: 시각과 일련번호로 만든 표시 값.
+  static String _nextPendingToken() =>
+      '${DateTime.now().microsecondsSinceEpoch}-${_pendingTokenSequence++}';
+
+  // 함수이름: _readCachedUserSetting
+  // 함수역할: 사용자별 설정을 읽고 구형 접근성 키와 기본값으로 누락을 보완한다. 폐기된 실험실 키는 읽지 않는다.
+  // 매개변수:
+  // - preferences (SharedPreferences): 설정을 읽을 저장소.
+  // 반환값:
+  // - UserSetting: 현재 사용자 설정 또는 누락 값을 보완한 기본 설정.
+  UserSetting _readCachedUserSetting(SharedPreferences preferences) {
     final fallbackSetting = UserSetting(userHash: _normalizedUserHash);
 
     return UserSetting(
@@ -345,6 +454,15 @@ class ManageUserSetting {
   // - String: 시스템 언어 따르기 선택을 보존할 사용자별 언어 모드 저장 키를 만든다.
   String get _languageModeKey =>
       'user_setting_${_normalizedUserHash}_language_mode';
+
+  // 함수이름: _pendingSyncKey
+  // 함수역할: 기기에 저장했지만 서버에 반영하지 못한 설정이 있음을 표시하는 계정별 키를 만든다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - String: 서버 반영 대기 표시를 저장할 사용자별 키.
+  String get _pendingSyncKey =>
+      'user_setting_${_normalizedUserHash}_pending_sync';
 
   // 함수역할: 홈 일정 선택을 현재 계정에만 저장한다.
   String get _homeScheduleSourceKey =>

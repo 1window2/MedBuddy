@@ -219,6 +219,9 @@ class PushNotificationService {
   StreamSubscription<RemoteMessage>? _foregroundMessageSubscription;
   StreamSubscription<RemoteMessage>? _openedMessageSubscription;
   String? _registeredToken;
+  // 이 기기 토큰이 서버에 등록되어 있을 수 있는지 여부. 이전 실행에서 등록했을 수 있으므로 true로
+  // 시작하고, 서버 해제나 기기 토큰 폐기가 끝나면 false가 된다.
+  bool _platformTokenMayBeRegistered = true;
   bool _started = false;
   bool _stopping = false;
   // 시작 단계별 완료 여부. 재시도는 끝내지 못한 단계만 다시 수행한다.
@@ -479,6 +482,18 @@ class PushNotificationService {
     _retryTimer = null;
     await _startOperation;
     await _awaitPendingTokenRegistrations();
+    // 이번 실행에서 등록을 마치지 못했어도(오프라인으로 시작했거나 등록이 계속 실패) 이전 실행에서 등록한
+    // 이 기기 토큰이 서버에 남아 있을 수 있다. 그대로 두면 끝난 계정의 푸시(채팅 미리보기 포함)가 이 기기에
+    // 계속 표시되므로, 기기에서 토큰을 읽어 같은 방법으로 해제한다. 서버는 등록되지 않은 토큰의 해제도
+    // 성공으로 답한다.
+    if ((_registeredToken == null || _registeredToken!.isEmpty) &&
+        _platformTokenMayBeRegistered) {
+      try {
+        _registeredToken = await _platform.getToken().timeout(_requestTimeout);
+      } catch (error, stackTrace) {
+        _reportPushError(error, stackTrace);
+      }
+    }
     final token = _registeredToken;
     if (token != null && token.isNotEmpty) {
       try {
@@ -497,6 +512,7 @@ class PushNotificationService {
         }
         if (_registeredToken == token) {
           _registeredToken = null;
+          _platformTokenMayBeRegistered = false;
         }
       } catch (error, stackTrace) {
         _reportPushError(error, stackTrace);
@@ -515,6 +531,7 @@ class PushNotificationService {
       try {
         await _platform.deleteToken();
         _registeredToken = null;
+        _platformTokenMayBeRegistered = false;
       } catch (error, stackTrace) {
         _reportPushError(error, stackTrace);
       }
@@ -630,6 +647,8 @@ class PushNotificationService {
     if (normalizedToken.isEmpty || normalizedToken == _registeredToken) {
       return;
     }
+    // 응답을 받지 못해도 서버에는 등록되었을 수 있다.
+    _platformTokenMayBeRegistered = true;
     final response = await _client
         .post(
           Uri.parse(ApiConfig.pushTokenUrl),

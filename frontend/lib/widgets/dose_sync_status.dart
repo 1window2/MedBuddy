@@ -175,7 +175,7 @@ class DoseSyncStatus extends StatelessWidget {
                                   ),
                                 ),
                                 subtitle: Text(
-                                  '${op['schedule_date']} · ${_slot(op['slot_key'] as String)} · ${op['completed'] == true ? (isEnglish ? 'Taken' : '복용') : (isEnglish ? 'Undone' : '복용 취소')}\n${op['state'] == 'blocked' ? (isEnglish ? 'Schedule or access changed. Not saved to server.' : '일정 또는 연동이 변경되어 서버에 저장하지 못했습니다.') : (isEnglish ? 'Saved on this device. Waiting to sync.' : '기기에 저장됨 · 서버 전송 대기')}',
+                                  '${op['schedule_date']} · ${_slot(op['slot_key'] as String)} · ${op['completed'] == true ? (isEnglish ? 'Taken' : '복용') : (isEnglish ? 'Undone' : '복용 완료 취소')}\n${op['state'] == 'blocked' ? (isEnglish ? 'Schedule or access changed. Not saved to server.' : '일정 또는 연동이 변경되어 서버에 저장하지 못했습니다.') : (isEnglish ? 'Saved on this device. Waiting to sync.' : '기기에 저장됨 · 서버 전송 대기')}',
                                 ),
                               ),
                             if (service.operations.isEmpty)

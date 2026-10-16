@@ -2663,7 +2663,8 @@ class _MessagePharmacyContext extends StatelessWidget {
                 text.careDate(hospital.scheduleDate),
                 if (hospital.todayHours.isEmpty) text.hoursUnknown,
               ].join('\n'),
-              style: TextStyle(color: foreground, fontSize: 12, height: 1.4),
+              // 진료과·진료일·운영 시간·주소는 어르신이 그대로 읽고 찾아가는 정보이므로 메시지 본문과 같은 크기로 둔다.
+              style: TextStyle(color: foreground, fontSize: 15, height: 1.4),
             ),
           ],
           if (pharmacy.todayHours.isNotEmpty) ...[
@@ -2672,7 +2673,7 @@ class _MessagePharmacyContext extends StatelessWidget {
               pharmacy.todayHours,
               style: TextStyle(
                 color: foreground.withValues(alpha: 0.84),
-                fontSize: 12,
+                fontSize: 15,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 0,
               ),
@@ -2682,11 +2683,11 @@ class _MessagePharmacyContext extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               pharmacy.address,
-              maxLines: 2,
+              maxLines: 3,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: foreground.withValues(alpha: 0.78),
-                fontSize: 11,
+                fontSize: 15,
                 height: 1.35,
                 fontWeight: FontWeight.w500,
                 letterSpacing: 0,
@@ -2699,7 +2700,7 @@ class _MessagePharmacyContext extends StatelessWidget {
               text.phoneVerified,
               style: TextStyle(
                 color: foreground,
-                fontSize: 11,
+                fontSize: 15,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0,
               ),
@@ -2713,7 +2714,7 @@ class _MessagePharmacyContext extends StatelessWidget {
                   text.informationChecked(hospital.sourceUpdatedAt!),
                 text.hospitalHoursNotice,
               ].join('\n'),
-              style: TextStyle(color: foreground, fontSize: 11, height: 1.4),
+              style: TextStyle(color: foreground, fontSize: 15, height: 1.4),
             ),
           ],
           const SizedBox(height: 8),
@@ -3248,7 +3249,8 @@ class _MessageBubble extends StatelessWidget {
               color: isMine
                   ? Colors.white.withValues(alpha: 0.78)
                   : MedBuddyColors.textMuted,
-              fontSize: 10,
+              // 보낸 시각도 읽을 수 있게 13pt 이상으로 둔다.
+              fontSize: 13,
               fontWeight: FontWeight.w500,
               letterSpacing: 0,
             ),
@@ -3680,7 +3682,7 @@ class _LinkedChatText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get onlyCaregiverCanRequest => isEnglish
       ? 'Only the linked caregiver can send a check request.'
-      : '복약 확인 요청은 연결된 보호자만 보낼 수 있습니다.';
+      : '복약 확인 요청은 연동된 보호자만 보낼 수 있습니다.';
   // 함수이름: scheduleSelectorTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "오늘의 복약 시간대" 문구를 제공한다.
   // 매개변수:
@@ -3745,7 +3747,7 @@ class _LinkedChatText {
           : '남은 복용 기간을 계산하지 못했습니다.';
     }
     final dateLabel =
-        '${endDate.year}.${endDate.month.toString().padLeft(2, '0')}.${endDate.day.toString().padLeft(2, '0')}';
+        '${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}';
     return isEnglish
         ? '$days day(s) remaining · through $dateLabel'
         : '남은 복용 기간 $days일 · $dateLabel까지';

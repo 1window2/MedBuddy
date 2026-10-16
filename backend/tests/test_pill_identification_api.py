@@ -246,6 +246,55 @@ async def test_request_body_limit_counts_streamed_chunks() -> None:
     assert sent[0]["status"] == 413
 
 
+# Function Name: test_json_body_with_nul_is_refused_with_422
+# Description:
+# - A JSON body carrying NUL (as the JSON escape, split across two chunks, or as a raw byte) is
+#   answered with 422 before it can reach PostgreSQL, while a multipart body may carry NUL bytes.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_json_body_with_nul_is_refused_with_422() -> None:
+    async def run(chunks: list[bytes], content_type: bytes) -> int:
+        messages = iter(
+            [
+                {"type": "http.request", "body": chunk, "more_body": index < len(chunks) - 1}
+                for index, chunk in enumerate(chunks)
+            ]
+        )
+
+        async def receive() -> Message:
+            return next(messages)  # type: ignore[return-value]
+
+        async def drain_app(_scope: Scope, app_receive: Receive, send: Send) -> None:
+            while True:
+                message = await app_receive()
+                if not message.get("more_body", False):
+                    break
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b""})
+
+        sent: list[Message] = []
+
+        async def send(message: Message) -> None:
+            sent.append(message)
+
+        scope = _scope()
+        scope["headers"] = [(b"content-type", content_type)]
+        await RequestBodyLimitMiddleware(drain_app, limits={"/limited": 10_000})(
+            scope, receive, send,
+        )
+        return sent[0]["status"]
+
+    json_type = b"application/json; charset=utf-8"
+    assert await run([b'{"body": "a\\u0000b"}'], json_type) == 422
+    assert await run([b'{"body": "a\\u00', b'00b"}'], json_type) == 422
+    assert await run([b'{"body": "a\x00b"}'], json_type) == 422
+    assert await run([b'{"body": "hello"}'], json_type) == 200
+    assert await run([b"--x\r\n\x00\x01binary"], b"multipart/form-data; boundary=x") == 200
+
+
 # Function Name: test_request_body_limit_answers_413_for_streamed_body_on_parsed_route
 # Description:
 # - Posts chunked JSON without Content-Length to a FastAPI route with a body model: a body

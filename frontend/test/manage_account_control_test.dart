@@ -175,6 +175,7 @@ void main() {
       'default_lunch_time',
       'default_evening_time',
       'default_bedtime',
+      'pending_sync',
       'nearby_pharmacy_lab_enabled',
       'linked_medication_chat_lab_enabled',
       'multi_pill_identification_lab_enabled',

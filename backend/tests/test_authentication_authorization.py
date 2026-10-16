@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.routing import APIRoute
 from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
@@ -383,14 +383,15 @@ async def test_registered_principal_quota_uses_stable_identity_and_route_scope(
     assert verifier.tokens == ["rotated-token-one", "rotated-token-two"]
     assert principals[0].user_hash == principals[1].user_hash
     stable_identity = f"user:{principals[0].user_hash}"
-    # 건강 추천은 하루 비용 한도도 함께 세므로 같은 계정으로 한 번 더 기록된다.
-    assert [call[0] for call in rate_limit_store.calls] == [stable_identity] * 3
+    # 약 조회와 건강 추천은 하루 AI 비용 한도도 함께 세므로 같은 계정으로 한 번씩 더 기록된다.
+    assert [call[0] for call in rate_limit_store.calls] == [stable_identity] * 4
     assert all(
         credentials.credentials not in stable_identity
         for credentials in credentials
     )
     assert [call[1] for call in rate_limit_store.calls] == [
         "POST:/api/v1/medication/identify",
+        "daily:ai",
         "GET:/api/v1/medication/health/recommendation",
         "daily:ai",
     ]
@@ -1120,6 +1121,62 @@ def test_verified_firebase_token_creates_principal() -> None:
 
     assert principal.subject == "verified-user"
     assert principal.authentication_disabled is False
+
+
+# Function Name: test_only_account_deletion_accepts_the_token_of_a_deleted_account
+# Description:
+# - A retried account deletion whose first answer was lost arrives with the token of a Firebase
+#   account that is already gone. Only that route accepts it (FastAPI injects the request into the
+#   dependency); every other route still answers 401.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+def test_only_account_deletion_accepts_the_token_of_a_deleted_account() -> None:
+    from fastapi.testclient import TestClient
+
+    from boundaries.oidc_token_verifier_boundary import DeletedIdentityTokenError
+
+    claims = {
+        "uid": "deleted-user",
+        "iss": "https://securetoken.google.com/medbuddy-test",
+        "email": "deleted@example.com",
+        "email_verified": True,
+    }
+
+    class DeletedAccountVerifier:
+        def verifyIdToken(self, token: str) -> dict[str, object]:
+            raise DeletedIdentityTokenError(claims)
+
+    app = FastAPI()
+
+    @app.delete("/api/v1/auth/account-data")
+    def delete_account(
+        principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    ) -> dict[str, str]:
+        return {"subject": principal.subject}
+
+    @app.get("/api/v1/auth/session")
+    def session(
+        principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
+    ) -> dict[str, str]:
+        return {"subject": principal.subject}
+
+    headers = {"Authorization": "Bearer token-of-deleted-account"}
+    with (
+        patch("api.dependencies.settings.AUTH_MODE", "firebase"),
+        patch(
+            "api.dependencies.get_oidc_token_verifier",
+            return_value=DeletedAccountVerifier(),
+        ),
+        TestClient(app) as client,
+    ):
+        deletion = client.delete("/api/v1/auth/account-data", headers=headers)
+        other = client.get("/api/v1/auth/session", headers=headers)
+
+    assert deletion.status_code == 200
+    assert deletion.json() == {"subject": "deleted-user"}
+    assert other.status_code == 401
 
 
 # Function Name: test_firebase_verifier_outage_returns_retryable_service_error

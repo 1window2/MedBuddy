@@ -25,8 +25,15 @@ enum UserFacingErrorContext { general, medicationLookup }
 // - 파일명: user_facing_error_message.dart
 enum _RequestFailureKind {
   signInExpired,
+  accessDenied,
+  linkEnded,
+  linkCodeInvalid,
+  linkCodeUsed,
+  linkToSelf,
   delayed,
   busy,
+  dailyQuotaUsed,
+  sharedDailyBudgetUsed,
   medicationNotFound,
   publicDataUnavailable,
   serverUnavailable,
@@ -70,13 +77,19 @@ class UserFacingErrorMessage {
             _genericMessage(isEnglish);
       }
       // 서버 상세 문구에 섞인 숫자가 상태 코드로 오인되지 않도록 상태 코드만 본다.
-      final kind = _kindForStatusCode(error.statusCode, context);
+      final kind =
+          _kindForDetail(error.statusCode, error.detail) ??
+          _kindForStatusCode(error.statusCode, context);
       if (kind != null) {
         return _messageForKind(kind, isEnglish: isEnglish);
       }
-      return error.message.trim().isNotEmpty
-          ? error.message
-          : _genericMessage(isEnglish);
+      // 한국어 detail은 서버가 사용자에게 보여 주려고 쓴 문구다(예: 저장 약 개수 한도). 영어 detail은
+      // 개발자용 문구이므로 보여 주지 않고, 문의할 때 추적할 수 있도록 상태 코드만 함께 적는다.
+      final detail = error.detail.trim();
+      if (!isEnglish && _isKoreanSentence(detail)) {
+        return detail;
+      }
+      return _genericMessageWithStatus(isEnglish, error.statusCode);
     }
     final transportMessage = _messageForTransportError(
       error,
@@ -136,6 +149,56 @@ class UserFacingErrorMessage {
   // - context (UserFacingErrorContext): 오류 안내의 작업별 문구를 선택할 분류
   // 반환값:
   // - _RequestFailureKind?: 상태 코드에 대응하는 안내 유형. 전용 안내가 없는 코드와 null은 null.
+  static final RegExp _hangul = RegExp(r'[가-힣]');
+  static final RegExp _latin = RegExp(r'[A-Za-z]');
+
+  // 함수이름: _isKoreanSentence
+  // 함수역할: 서버 문구가 한국어 문장인지 판정한다. 약 이름처럼 한글이 일부 섞인 영어 문구는 제외하도록 글자의 대부분이 한글일 때만 참으로 본다.
+  // 매개변수:
+  // - text (String): 판정할 서버 문구
+  // 반환값:
+  // - bool: 한글이 영문자보다 세 배 이상 많으면 true.
+  static bool _isKoreanSentence(String text) {
+    final hangul = _hangul.allMatches(text).length;
+    final latin = _latin.allMatches(text).length;
+    return hangul > 0 && hangul >= latin * 3;
+  }
+
+  // 함수이름: _kindForDetail
+  // 함수역할: 상태 코드만으로는 뜻이 드러나지 않는 서버 응답(해제된 연동, 만료되거나 사용한 연동 코드, 내일에야 풀리는 하루 한도, 모든 사용자가 함께 쓰는 병원 조회 예산)을 서버 문구로 구분한다.
+  // 매개변수:
+  // - statusCode (int?): 실패 응답의 HTTP 상태 코드
+  // - detail (String): 서버가 보낸 detail 문구
+  // 반환값:
+  // - _RequestFailureKind?: 구분한 안내 유형; 해당 없으면 null.
+  static _RequestFailureKind? _kindForDetail(int? statusCode, String detail) {
+    final text = detail.toLowerCase();
+    if (statusCode == 429 && (text.contains('내일') || text.contains('오늘'))) {
+      return _RequestFailureKind.dailyQuotaUsed;
+    }
+    if (statusCode == 503 && text.contains('병원 정보를 조회할 수 있는 횟수')) {
+      return _RequestFailureKind.sharedDailyBudgetUsed;
+    }
+    if (statusCode == 400 && text.contains('cannot link to the same')) {
+      return _RequestFailureKind.linkToSelf;
+    }
+    if ((statusCode == 400 || statusCode == 404) &&
+        (text.contains('patient code is invalid') ||
+            text.contains('patient code was not found'))) {
+      return _RequestFailureKind.linkCodeInvalid;
+    }
+    if (statusCode == 409 && text.contains('patient code was already used')) {
+      return _RequestFailureKind.linkCodeUsed;
+    }
+    if ((statusCode == 403 || statusCode == 404) &&
+        (text.contains('patient-caregiver link') ||
+            text.contains('linked patient was not found') ||
+            text.contains('patient scope is not permitted'))) {
+      return _RequestFailureKind.linkEnded;
+    }
+    return null;
+  }
+
   static _RequestFailureKind? _kindForStatusCode(
     int? statusCode,
     UserFacingErrorContext context,
@@ -145,8 +208,12 @@ class UserFacingErrorMessage {
     }
     final isMedicationLookup =
         context == UserFacingErrorContext.medicationLookup;
-    if (statusCode == 401 || statusCode == 403) {
+    if (statusCode == 401) {
       return _RequestFailureKind.signInExpired;
+    }
+    // 403은 로그인 만료가 아니라 이 요청의 거절이므로 다시 로그인해도 해결되지 않는다.
+    if (statusCode == 403) {
+      return _RequestFailureKind.accessDenied;
     }
     if (statusCode == 408 || statusCode == 504) {
       return _RequestFailureKind.delayed;
@@ -177,8 +244,14 @@ class UserFacingErrorMessage {
     String normalized,
     UserFacingErrorContext context,
   ) {
-    if (_containsAny(normalized, const ['401', '403', 'unauthorized'])) {
+    if (_containsAny(normalized, const ['401', 'unauthorized'])) {
       return _RequestFailureKind.signInExpired;
+    }
+    if (normalized.contains('patient-caregiver link')) {
+      return _RequestFailureKind.linkEnded;
+    }
+    if (normalized.contains('403')) {
+      return _RequestFailureKind.accessDenied;
     }
     if (_containsAny(normalized, const ['timeout', '408', '504'])) {
       return _RequestFailureKind.delayed;
@@ -222,6 +295,34 @@ class UserFacingErrorMessage {
         isEnglish
             ? 'Your sign-in has expired. Please sign in again.'
             : '로그인 정보가 만료되었습니다. 다시 로그인해주세요.',
+      _RequestFailureKind.accessDenied =>
+        isEnglish
+            ? 'This request is not allowed. Check the patient/caregiver link and try again.'
+            : '이 요청을 처리할 수 없습니다. 환자·보호자 연동 상태를 확인해주세요.',
+      _RequestFailureKind.linkEnded =>
+        isEnglish
+            ? 'The patient/caregiver link has ended, so this information is no longer available.'
+            : '환자·보호자 연동이 해제되어 이 정보를 더 이상 볼 수 없습니다.',
+      _RequestFailureKind.linkCodeInvalid =>
+        isEnglish
+            ? 'The code is wrong or has expired. Ask the patient for a new code.'
+            : '코드가 맞지 않거나 만료되었습니다. 환자에게 새 코드를 받아 주세요.',
+      _RequestFailureKind.linkCodeUsed =>
+        isEnglish
+            ? 'This code has already been used. Ask the patient for a new code.'
+            : '이미 사용한 코드입니다. 환자에게 새 코드를 받아 주세요.',
+      _RequestFailureKind.linkToSelf =>
+        isEnglish
+            ? 'You cannot link to your own account.'
+            : '내 계정과는 연동할 수 없습니다.',
+      _RequestFailureKind.dailyQuotaUsed =>
+        isEnglish
+            ? "You have used today's limit for this feature. Please try again tomorrow."
+            : '오늘 사용할 수 있는 횟수를 모두 사용했습니다. 내일 다시 시도해주세요.',
+      _RequestFailureKind.sharedDailyBudgetUsed =>
+        isEnglish
+            ? "Today's hospital lookups are used up. Please try again tomorrow."
+            : '오늘 병원 정보 조회 가능 횟수를 모두 사용했습니다. 내일 다시 시도해주세요.',
       _RequestFailureKind.delayed =>
         isEnglish
             ? 'The response is taking longer than expected. Please try again shortly.'
@@ -251,6 +352,18 @@ class UserFacingErrorMessage {
   // - isEnglish (bool): 영어 표시 문구를 선택할지 여부
   // 반환값:
   // - String: 다시 시도를 권하는 일반 안내 문구.
+  // 함수이름: _genericMessageWithStatus
+  // 함수역할: 개발자용 문구 대신 일반 안내를 보여 주되, 문의를 추적할 수 있게 상태 코드를 괄호로 덧붙인다.
+  // 매개변수:
+  // - isEnglish (bool): 영어 표시 문구를 선택할지 여부
+  // - statusCode (int?): 실패 응답의 HTTP 상태 코드; 모르면 null
+  // 반환값:
+  // - String: 일반 안내 문구.
+  static String _genericMessageWithStatus(bool isEnglish, int? statusCode) {
+    final generic = _genericMessage(isEnglish);
+    return statusCode == null ? generic : '$generic ($statusCode)';
+  }
+
   static String _genericMessage(bool isEnglish) {
     return isEnglish
         ? 'Something went wrong. Please try again.'

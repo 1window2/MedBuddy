@@ -265,7 +265,7 @@ void main() {
 
   // 함수이름: test 콜백
   // 함수역할:
-  // - 하루 횟수나 일 단위가 아닌 복용 지시를 영어 문구로 바꿔 뜻을 달리 전하지 않는지 검증한다.
+  // - 하루 횟수가 아닌 복용 지시는 원문으로 두고, 기간은 저장 일정과 같은 서버 기준 일수로 바꾸는지 검증한다.
   // 매개변수:
   // - 없음.
   // 반환값:
@@ -281,13 +281,14 @@ void main() {
           totalDays: totalDays,
         ).compactDosageGuideLinesForLanguage('en');
 
+    // 기간은 저장 일정과 같이 서버 기준 일수로 보여 준다.
     expect(lines('2일 1회', '2주'), [
       'Daily frequency · 2일 1회',
-      'Duration · 2주',
+      'Duration · 14 days',
     ]);
     expect(lines('주 1회', '1개월'), [
       'Daily frequency · 주 1회',
-      'Duration · 1개월',
+      'Duration · 30 days',
     ]);
     expect(lines('12시간마다', '7일분 (1주)'), [
       'Daily frequency · 12시간마다',

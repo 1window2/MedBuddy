@@ -248,7 +248,7 @@ void main() {
     await tester.tap(find.text('전체 저장하기'));
     await tester.pumpAndSettle();
     expect(find.text('오늘 일정 확인'), findsOneWidget);
-    expect(find.text('저장된 정보 보기'), findsOneWidget);
+    expect(find.text('복약함 보기'), findsOneWidget);
 
     await tester.tap(find.text('오늘 일정 확인'));
     await tester.pumpAndSettle();
@@ -256,7 +256,7 @@ void main() {
 
     await tester.tap(find.text('전체 저장하기'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('저장된 정보 보기'));
+    await tester.tap(find.text('복약함 보기'));
     await tester.pumpAndSettle();
     expect(savedMedicationRequested, isTrue);
   });
@@ -307,7 +307,7 @@ void main() {
     await tester.tap(find.byIcon(Icons.save_outlined));
     await tester.pumpAndSettle();
     expect(find.text('오늘 일정 확인'), findsOneWidget);
-    expect(find.text('저장된 정보 보기'), findsOneWidget);
+    expect(find.text('복약함 보기'), findsOneWidget);
   });
 
   // 함수이름: test 콜백

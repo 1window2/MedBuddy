@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from boundaries.medication_summary_boundary import (
     MISSING_DETAIL_TEXT,
     MedicationSummaryGenerator,
+    gather_summaries_keeping_successes,
 )
 from boundaries.public_drug_api_boundary import (
     read_public_image_url,
@@ -113,9 +114,9 @@ class LocalMedicationCatalog:
             return []
 
         logger.info("[Local DB] approval lookup succeeded.")
-        return list(await asyncio.gather(*(
+        return await gather_summaries_keeping_successes(
             self._build_approval_detail(drug_name, item) for item in approval_items
-        )))
+        )
 
     # 함수이름: _search_catalog
     # 함수역할:

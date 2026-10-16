@@ -91,7 +91,10 @@ class CheckMedicationDetail {
         throw MedicationLookupBusy(Duration(seconds: seconds));
       }
       if (response.statusCode != 200) {
-        final statusMessage = _messageForStatus(response.statusCode);
+        final statusMessage = _messageForStatus(
+          response.statusCode,
+          ApiResponseParser.extractErrorDetail(responseBody),
+        );
         if (statusMessage != null) {
           throw StateError(statusMessage);
         }
@@ -147,14 +150,19 @@ class CheckMedicationDetail {
   }
 
   // 함수이름: _messageForStatus
-  // 함수역할: 인증 만료, 조회 결과 없음, 시간 초과, 과부하와 서버 오류를 구분해 재시도에 필요한 안내를 만든다.
+  // 함수역할: 인증 만료, 요청 거절, 조회 결과 없음, 시간 초과, 과부하, 하루 한도 소진과 서버 오류를 구분해 다음 행동에 필요한 안내를 만든다.
   // 매개변수:
   // - statusCode (int): 오류 안내를 선택할 HTTP 상태 코드
+  // - detail (String?): 서버가 보낸 detail 문구. 하루 한도 429를 순간 과부하와 구분하는 데 쓴다.
   // 반환값:
   // - String?: 상태 코드에 대응하는 전용 안내. 전용 안내가 없는 상태 코드는 null.
-  String? _messageForStatus(int statusCode) {
-    if (statusCode == 401 || statusCode == 403) {
+  String? _messageForStatus(int statusCode, [String? detail]) {
+    if (statusCode == 401) {
       return '로그인 정보가 만료되었습니다. 다시 로그인해주세요.';
+    }
+    // 403은 로그인 만료가 아니라 이 요청의 거절이므로 다시 로그인하라고 안내하지 않는다.
+    if (statusCode == 403) {
+      return '약품 정보를 조회할 수 없습니다. 잠시 후 다시 시도해주세요.';
     }
     if (statusCode == 404) {
       return '일치하는 약 정보를 찾지 못했습니다. OCR 약 이름을 확인해주세요.';
@@ -163,6 +171,10 @@ class CheckMedicationDetail {
       return '약품 정보 서버의 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.';
     }
     if (statusCode == 429) {
+      // 약품 조회는 하루 AI 사용 한도에 포함된다. 그 한도는 내일에야 풀리므로 잠시 후 다시 하라고 하지 않는다.
+      if (detail != null && detail.contains('내일')) {
+        return '오늘 약품 정보를 조회할 수 있는 횟수를 모두 사용했습니다. 내일 다시 시도해주세요.';
+      }
       return '현재 약품 조회 요청이 많습니다. 잠시 후 다시 시도해주세요.';
     }
     if (statusCode >= 500) {

@@ -23,7 +23,7 @@ import kotlin.math.roundToInt
 @RunWith(AndroidJUnit4::class)
 class DoseWidgetLayoutTest {
     // 함수이름: providerKeepsTargetWithinResizeBounds
-    // 함수역할: 기본 높이와 회전별 최소 높이를 분리해 4 x 3 요청이 무시되는 회귀를 막는다.
+    // 함수역할: 기본 높이와 회전별 최소 높이를 분리해 4 x 1 요청이 무시되는 회귀를 막는다.
     // 매개변수: 없음. 반환값: 없음, 잘못된 크기 선언에서 실패한다.
     @Test fun providerKeepsTargetWithinResizeBounds() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -34,11 +34,11 @@ class DoseWidgetLayoutTest {
                 android.R.attr.targetCellWidth, android.R.attr.targetCellHeight,
             ))
             try {
-                val height = (240 * context.resources.displayMetrics.density).roundToInt()
+                val height = (48 * context.resources.displayMetrics.density).roundToInt()
                 assertEquals(height, values.getDimensionPixelSize(0, -1))
-                assertEquals((180 * context.resources.displayMetrics.density).roundToInt(), values.getDimensionPixelSize(1, -1))
+                assertEquals(height, values.getDimensionPixelSize(1, -1))
                 assertEquals(4, values.getInt(2, -1))
-                assertEquals(3, values.getInt(3, -1))
+                assertEquals(1, values.getInt(3, -1))
             } finally { values.recycle() }
         }
     }
@@ -50,14 +50,17 @@ class DoseWidgetLayoutTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val failures = mutableListOf<String>()
         instrumentation.runOnMainSync {
-            for (height in listOf(180, 240, 300, 340, 420)) for (width in listOf(250, 360)) {
+            for (height in listOf(48, 51, 60, 100, 109, 110, 117, 150, 180, 229, 230, 239, 240, 300, 340, 420)) for (width in listOf(250, 360)) {
                 for (scale in listOf(1f, 1.3f, 2f)) for (state in listOf("patient", "caregiver", "signed-out")) for (overdue in listOf(false, true)) {
                     val config = Configuration(instrumentation.targetContext.resources.configuration)
                     config.fontScale = scale
                     val context = ContextThemeWrapper(instrumentation.targetContext.createConfigurationContext(config),
                         android.R.style.Theme_Material_Light_NoActionBar)
                     val known = state != "signed-out"
-                    val views = DoseWidgetLayout.sized(context, sampleViews(context, state), height, known, known && overdue, known)
+                    val views = if (height < DoseWidgetLayout.ROW_LIMIT)
+                        DoseWidgetLayout.row(context, sampleViews(context, state, overdue, R.layout.dose_home_widget_row))
+                    else DoseWidgetLayout.sized(context, sampleViews(context, state, overdue, R.layout.dose_home_widget),
+                        height, known, known && overdue, known)
                     val root = views.apply(context, FrameLayout(context))
                     assertEquals(scale, root.resources.configuration.fontScale, 0.01f)
                     val density = context.resources.displayMetrics.density
@@ -67,14 +70,25 @@ class DoseWidgetLayoutTest {
                     val label = "$state ${width}x$height font=$scale overdue=$overdue"
                     try {
                         assertVisibleContentFits(root, label)
+                        // 어느 높이에서도 버튼이 기록할 시간대와 서버 저장 상태가 함께 보여야 한다.
+                        if (known) {
+                            assertTrue("$label slot hidden", listOf(R.id.widget_heading, R.id.widget_compact_heading,
+                                R.id.widget_tiny_heading).any { shown(root, it) })
+                            assertTrue("$label status hidden", listOf(R.id.widget_status, R.id.widget_tiny_status)
+                                .any { shown(root, it) })
+                        }
+                        // 좁은 한 줄 배치에서도 버튼 문구가 말줄임으로 잘리지 않아야 한다.
+                        val take = root.findViewById<TextView>(R.id.widget_take)
+                        assertTrue("$label button text ellipsized", take.layout == null ||
+                            (0 until take.layout.lineCount).all { take.layout.getEllipsisCount(it) == 0 })
                         for (id in listOf(R.id.widget_dot_0, R.id.widget_dot_1, R.id.widget_dot_2, R.id.widget_dot_3)) {
-                            val dot = root.findViewById<View>(id)
+                            val dot = root.findViewById<View>(id) ?: continue
                             if (!isVisible(dot)) continue
                             assertTrue("$label dot $id clipped", dot.height >= (16 * density).toInt() && dot.width >= (16 * density).toInt())
                         }
                         for (id in listOf(R.id.widget_take, R.id.widget_previous, R.id.widget_next,
                             R.id.widget_refresh, R.id.widget_patient_previous, R.id.widget_patient_next)) {
-                            val button = root.findViewById<View>(id)
+                            val button = root.findViewById<View>(id) ?: continue
                             if (!isVisible(button)) continue
                             assertTrue("$label button $id height", button.height >= (48 * density).toInt())
                             assertTrue("$label button $id width", button.width >= (48 * density).toInt())
@@ -86,6 +100,11 @@ class DoseWidgetLayoutTest {
         assertTrue(failures.joinToString("\n\n"), failures.isEmpty())
     }
 
+    // 함수이름: shown
+    // 함수역할: 한 줄 배치처럼 해당 뷰가 없는 배치를 숨김으로 취급한다.
+    // 매개변수: root 측정한 위젯, id 뷰 ID. 반환값: 뷰가 있고 보이는지 여부.
+    private fun shown(root: View, id: Int): Boolean = root.findViewById<View>(id)?.let { isVisible(it) } ?: false
+
     // 함수이름: isVisible
     // 함수역할: 숨겨진 부모 안의 버튼을 조작 영역 검사에서 제외한다.
     // 매개변수: view 검사 대상. 반환값: 부모까지 모두 표시 상태인지 여부.
@@ -94,10 +113,11 @@ class DoseWidgetLayoutTest {
 
     // 함수이름: sampleViews
     // 함수역할: 네트워크 요청과 복용 기록이 없는 표시 전용 시험 상태를 만든다.
-    // 매개변수: context 리소스 환경, state 상태 이름. 반환값: 대표 내용과 표시 여부.
-    private fun sampleViews(context: Context, state: String): RemoteViews {
+    // 매개변수: context 리소스 환경, state 상태 이름, undo 가장 긴 버튼 문구(복용 완료 취소) 사용 여부,
+    //           layout 기본 또는 한 줄 배치. 반환값: 대표 내용과 표시 여부.
+    private fun sampleViews(context: Context, state: String, undo: Boolean, layout: Int): RemoteViews {
         val known = state != "signed-out"
-        return RemoteViews(context.packageName, R.layout.dose_home_widget).apply {
+        return RemoteViews(context.packageName, layout).apply {
             setTextViewText(R.id.widget_title, if (state == "caregiver") "환자 테스트 이름" else "나의 복약 일정")
             setTextViewText(R.id.widget_date, "9월 23일 (수)")
             setTextViewText(R.id.widget_heading, if (known) "아침 · 미복용" else "로그인이 필요해요")
@@ -105,8 +125,11 @@ class DoseWidgetLayoutTest {
             setTextViewText(R.id.widget_details, if (known) "08:00 · 이름이 긴 아침약 외 2개" else "로그인하면 복약 일정을 볼 수 있어요.")
             setTextViewText(R.id.widget_warning, "놓친 약은 처방·복약지도를 확인하세요")
             setTextViewText(R.id.widget_status, "2/5 · 서버 전송 대기 중")
+            setTextViewText(R.id.widget_tiny_heading, if (state == "caregiver") "환자 테스트 이름 · 아침 08:00" else "아침 08:00")
+            setTextViewText(R.id.widget_tiny_status, "2/5 · 서버 전송 대기 중")
             setTextViewText(R.id.widget_count, "2/5")
-            setTextViewText(R.id.widget_take, if (state == "caregiver") "일정 보기" else if (known) "복용했어요" else "로그인하기")
+            setTextViewText(R.id.widget_take, if (state == "caregiver") "일정 보기" else if (known && undo) "복용 완료 취소"
+                else if (known) "복용했어요" else "로그인하기")
             for (id in listOf(R.id.widget_pager, R.id.widget_status, R.id.widget_refresh))
                 setViewVisibility(id, if (known) View.VISIBLE else View.GONE)
             setViewVisibility(R.id.widget_count, if (state == "patient") View.VISIBLE else View.GONE)

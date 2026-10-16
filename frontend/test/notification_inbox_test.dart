@@ -519,6 +519,30 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: 알림 시각 형식 테스트
+  // 함수역할: 알림 시각이 사용자의 오전/오후·24시간 설정을 따르는지 검증한다. 매개변수: tester. 반환값: 검증 완료.
+  for (final format in ['12h', '24h']) {
+    testWidgets('inbox time follows the $format setting', (tester) async {
+      await store.record(_entry('dose', DateTime(2026, 9, 10, 13, 5)));
+      final control = ManageNotificationInbox(store: store);
+      addTearDown(control.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NotificationInboxUI(
+            control: control,
+            userSetting: UserSetting(timeFormat: format),
+            onOpen: (_) {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.text(format == '12h' ? '9/10 오후 1:05 · 안 읽음' : '9/10 13:05 · 안 읽음'),
+        findsOneWidget,
+      );
+    });
+  }
+
   // 함수이름: 선택 삭제 테스트
   // 함수역할: 선택 중에는 이동·읽음 처리를 하지 않고 선택 당시 항목만 삭제한다. 매개변수: tester. 반환값: 검증 완료.
   testWidgets(

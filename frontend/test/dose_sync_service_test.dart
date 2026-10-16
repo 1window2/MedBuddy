@@ -720,6 +720,169 @@ void main() {
     expect(publications, greaterThan(1));
     expect(notifications, greaterThan(0));
   });
+
+  // 함수이름: 독립 요청 전송 테스트
+  // 함수역할: 서버가 거부한 요청은 같은 날짜·시간대·약의 뒤 요청만 붙잡고 관계없는 요청은 계속 보내는지 검증한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  test('a rejected record holds only later writes for the same dose', () async {
+    final sent = <String>[];
+    // 함수이름: MockClient 콜백
+    // 함수역할: 'rejected' 요청만 409로 거부하고 나머지는 영수증으로 확인한다.
+    // 매개변수: request - 가로챈 요청. 반환값: 대역 응답.
+    final client = MockClient((request) async {
+      final payload = jsonDecode(request.body) as Map<String, dynamic>;
+      final id = payload['operation_id'] as String;
+      sent.add(id);
+      return http.Response(
+        jsonEncode({'operation_id': id, 'data': []}),
+        id == 'rejected' ? 409 : 200,
+      );
+    });
+    addTearDown(client.close);
+    await store.enqueue('patient-a', op('rejected'));
+    await store.enqueue('patient-a', op('same-dose-undo', completed: false));
+    await store.enqueue('patient-a', {
+      ...op('other-slot'),
+      'slot_key': 'evening',
+    });
+    await store.enqueue('patient-a', {
+      ...op('other-medication'),
+      'medication_ids': [92],
+    });
+    await store.enqueue('patient-a', {
+      ...op('other-day'),
+      'schedule_date': '2026-09-20',
+    });
+    final service = DoseSyncService(
+      owner: 'patient-a',
+      client: client,
+      openStore: () async => store,
+      clock: () => now,
+    );
+    addTearDown(service.dispose);
+    await service.drain();
+    expect(sent, ['rejected', 'other-slot', 'other-medication', 'other-day']);
+    expect(
+      service.operations.map((op) => [op['operation_id'], op['state']]),
+      [
+        ['rejected', 'blocked'],
+        ['same-dose-undo', 'pending'],
+      ],
+    );
+    expect(await store.hasUploadableOperation('patient-a'), isFalse);
+    // 보낼 기록이 없으면 재시도를 예약하지 않는다.
+    expect(service.hasScheduledRetry, isFalse);
+  });
+
+  // 함수이름: 재시도 예약 조건 테스트
+  // 함수역할: 전송할 기록이 없으면 재시도를 예약하지 않고, 일시적 실패로 남은 기록이 있을 때만 예약하는지 검증한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  test('a retry is scheduled only while something can be uploaded', () async {
+    var online = false;
+    // 함수이름: MockClient 콜백
+    // 함수역할: 오프라인이면 503, 온라인이면 영수증으로 답한다.
+    // 매개변수: request - 가로챈 요청. 반환값: 대역 응답.
+    final client = MockClient((request) async {
+      final payload = jsonDecode(request.body) as Map<String, dynamic>;
+      return http.Response(
+        jsonEncode({'operation_id': payload['operation_id'], 'data': []}),
+        online ? 200 : 503,
+      );
+    });
+    addTearDown(client.close);
+    final service = DoseSyncService(
+      owner: 'patient-a',
+      client: client,
+      openStore: () async => store,
+      clock: () => now,
+    );
+    addTearDown(service.dispose);
+    await service.drain();
+    expect(service.hasScheduledRetry, isFalse);
+    await store.enqueue('patient-a', op('offline-dose'));
+    await service.drain();
+    expect(service.hasScheduledRetry, isTrue);
+    online = true;
+    await service.drain();
+    expect(service.pendingCount, 0);
+    expect(service.hasScheduledRetry, isFalse);
+  });
+
+  // 함수이름: 채팅 한도 초과 대체 전송 테스트
+  // 함수역할: 채팅 복용 요청이 429를 받으면 채팅 없는 일반 복용 요청으로 바꿔 같은 자리에서 다시 보내는지 검증한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  test('a chat dose over the daily chat quota is sent without the chat link', () async {
+    final requests = <Map<String, dynamic>>[];
+    // 함수이름: MockClient 콜백
+    // 함수역할: link_id가 있는 요청은 채팅 한도 초과(429)로, 나머지는 영수증으로 답한다.
+    // 매개변수: request - 가로챈 요청. 반환값: 대역 응답.
+    final client = MockClient((request) async {
+      final payload = jsonDecode(request.body) as Map<String, dynamic>;
+      requests.add(payload);
+      if (payload.containsKey('link_id')) {
+        return http.Response.bytes(
+          utf8.encode('{"detail":"오늘 보낼 수 있는 채팅 메시지 수를 초과했습니다."}'),
+          429,
+        );
+      }
+      return http.Response(
+        jsonEncode({'operation_id': payload['operation_id'], 'data': []}),
+        200,
+      );
+    });
+    addTearDown(client.close);
+    await store.enqueue('patient-a', {...op('chat-dose'), 'link_id': 7});
+    await store.enqueue('patient-a', op('after-chat', completed: false));
+    final service = DoseSyncService(
+      owner: 'patient-a',
+      client: client,
+      openStore: () async => store,
+      clock: () => now,
+    );
+    addTearDown(service.dispose);
+    await service.drain();
+    expect(requests.map((op) => op['operation_id']), [
+      'chat-dose',
+      'chat-dose_nochat',
+      'after-chat',
+    ]);
+    expect(requests[1].containsKey('link_id'), isFalse);
+    expect(requests[1]['completed'], isTrue);
+    expect(requests[1]['medication_ids'], [91]);
+    expect(service.pendingCount, 0);
+    expect(service.hasScheduledRetry, isFalse);
+  });
+
+  // 함수이름: 분당 한도 429 재시도 테스트
+  // 함수역할: 하루 채팅 한도가 아닌 429(분당 요청 한도 등)는 채팅 기록을 버리지 않고 같은 요청을 나중에 다시 보내는지 검증한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  test('a chat dose refused by a short-term limit keeps its chat link', () async {
+    final requests = <Map<String, dynamic>>[];
+    final client = MockClient((request) async {
+      final payload = jsonDecode(request.body) as Map<String, dynamic>;
+      requests.add(payload);
+      return http.Response.bytes(
+        utf8.encode('{"detail":"요청이 너무 많습니다. 잠시 후 다시 시도해주세요."}'),
+        429,
+      );
+    });
+    addTearDown(client.close);
+    await store.enqueue('patient-a', {...op('chat-dose'), 'link_id': 7});
+    final service = DoseSyncService(
+      owner: 'patient-a',
+      client: client,
+      openStore: () async => store,
+      clock: () => now,
+    );
+    addTearDown(service.dispose);
+    await service.drain();
+
+    expect(requests.map((op) => op['operation_id']), ['chat-dose']);
+    expect(requests.single['link_id'], 7);
+    expect(service.pendingCount, 1);
+    final pending = await store.pending('patient-a');
+    expect(pending.single['link_id'], 7);
+  });
 }
 
 // Class Name: _MidnightStore

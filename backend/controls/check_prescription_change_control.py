@@ -20,6 +20,7 @@ from schemas.prescription_change import (
     PrescriptionMedicationChange,
     PrescriptionScheduleSnapshot,
 )
+from services.medication_dose_rhythm import read_duration_days
 from services.prescription_similarity import (
     PRESCRIPTION_COMPARISON_WINDOW_DAYS,
     PrescriptionSimilarityMedication,
@@ -45,6 +46,15 @@ class CheckPrescriptionChange:
         "daily_frequency",
         "total_days",
     )
+    # 숫자와 단위 외에 아무 지시도 없는 일수·하루 횟수 표기.
+    _PURE_SCHEDULE_PATTERNS = {
+        "total_days": re.compile(
+            r"[0-9]+\s*(?:일분?|주일?|개월|days?|weeks?)?"
+        ),
+        "daily_frequency": re.compile(
+            r"(?:(?:1일|하루)\s*)?[0-9]+\s*회|[0-9]+|[0-9]+\s*times?(?:\s*(?:a\s*day|daily))?"
+        ),
+    }
     _SCHEDULE_COUNT_PATTERNS = {
         "daily_frequency": re.compile(r"(?:1일)?([0-9]+)회"),
         "total_days": re.compile(r"([0-9]+)일"),
@@ -500,14 +510,30 @@ class CheckPrescriptionChange:
     # 함수이름: _normalize_schedule_value
     # 함수역할:
     # - 복약 일정 값의 공백과 대소문자 차이를 제거한다.
-    # - 횟수와 일수의 명확한 단위 표기만 정리하고 용량 단위와 추가 복용 지시는 보존한다.
+    # - 횟수·주기·일수는 일정과 같은 규칙으로 읽어 비교하고, 읽히지 않는 값과 용량은 표기 그대로 비교한다.
     # 매개변수:
     # - value (object): 원본 복약 일정 값
     # - field_name (str): 횟수·기간·용량의 정규화 범위를 구분하는 필드명
     # 반환값:
     # - 비교용 복약 일정 문자열
     def _normalize_schedule_value(self, value: object, field_name: str) -> str:
-        normalized = self._SPACE_PATTERN.sub("", self._read_text(value).lower())
+        text = self._read_text(value)
+        # 숫자와 단위만 있는 표기는 일정과 같은 규칙으로 읽은 값으로 비교한다: "7", "7일분", "1주"는
+        # 모두 7일이고 "3회", "하루 3회", "3 times"는 같은 횟수다. 식전·식후·필요시처럼 지시가 덧붙은
+        # 값은 그 지시도 변화로 알려야 하므로 아래에서 표기 그대로 비교한다.
+        pure_pattern = self._PURE_SCHEDULE_PATTERNS.get(field_name)
+        if pure_pattern is not None and pure_pattern.fullmatch(text.strip().lower()):
+            if field_name == "total_days":
+                days = read_duration_days(text)
+                if days > 0:
+                    return f"days:{days}"
+            else:
+                # 일정용 횟수는 하루 4회로 잘리므로, 비교에는 표기의 횟수를 그대로 쓴다("1일 6회"와 "8회"는 다르다).
+                # 순수 표기에서 마지막 숫자가 횟수다("1일 3회"의 1은 일수다).
+                count = int(re.findall(r"[0-9]+", text)[-1])
+                if count > 0:
+                    return f"daily-count:{count}"
+        normalized = self._SPACE_PATTERN.sub("", text.lower())
         count_pattern = self._SCHEDULE_COUNT_PATTERNS.get(field_name)
         if count_pattern is not None:
             match = count_pattern.fullmatch(normalized)

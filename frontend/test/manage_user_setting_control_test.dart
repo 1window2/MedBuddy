@@ -19,6 +19,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  _pendingSyncMain();
 
   test('홈 일정 설정은 기본값·계정별 복원·서버 왕복을 지원한다', () async {
     expect(const UserSetting().homeScheduleSource, 'self');
@@ -573,5 +574,110 @@ void main() {
     statusCode = 503;
     await control.requestUserSetting();
     expect(control.lastLookupReachedServer, isFalse);
+  });
+}
+
+// 함수이름: _pendingSyncMain
+// 함수역할:
+// - 오프라인 저장의 서버 반영 대기 표시가 재조회·재시작·백그라운드 조회에서 유지되고 재전송되는지 검증한다.
+// 매개변수:
+// - 없음.
+// 반환값:
+// - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
+void _pendingSyncMain() {
+  // 오프라인에서 끈 복약 알림이 다음 서버 조회로 다시 켜지지 않고, 대기한 저장이 재전송되어야 한다.
+  test('오프라인 저장은 다음 조회가 서버 사본으로 덮지 않고 다시 보낸다', () async {
+    SharedPreferences.setMockInitialValues({});
+    var available = false;
+    var stored = const UserSetting(userHash: 'user-a');
+    final puts = <Map<String, dynamic>>[];
+    var gets = 0;
+    // 함수이름: MockClient 콜백
+    // 함수역할: available이 false면 503, 아니면 서버 사본을 조회·저장한다.
+    // 매개변수: request는 가로챈 요청. 반환값: 대역 응답.
+    final client = MockClient((request) async {
+      if (!available) return http.Response('{"detail":"down"}', 503);
+      if (request.method == 'GET') gets++;
+      if (request.method == 'PUT') {
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        puts.add(body);
+        stored = UserSetting.fromJson(body);
+      }
+      return http.Response(
+        jsonEncode({'success': true, 'data': stored.toJson()}),
+        200,
+      );
+    });
+    final foreground = ManageUserSetting(userHash: 'user-a', client: client);
+    addTearDown(foreground.dispose);
+    final saved = await foreground.saveUserSetting(
+      const UserSetting(
+        medicationNotificationsEnabled: false,
+        notificationDetailMode: 'type_only',
+      ),
+    );
+    expect(saved.synchronizedWithServer, isFalse);
+    expect(foreground.hasPendingSave, isTrue);
+
+    // 앱 재시작이나 12시간 작업처럼 새 인스턴스가 서버 연결 없이 읽어도 기기 값을 쓴다.
+    final restartedOffline = ManageUserSetting(
+      userHash: 'user-a',
+      client: client,
+    );
+    addTearDown(restartedOffline.dispose);
+    final offlineRead = await restartedOffline.requestUserSetting();
+    expect(offlineRead.medicationNotificationsEnabled, isFalse);
+    expect(restartedOffline.hasPendingSave, isTrue);
+    expect(restartedOffline.lastLookupReachedServer, isFalse);
+
+    available = true;
+    final worker = ManageUserSetting(userHash: 'user-a', client: client);
+    addTearDown(worker.dispose);
+    final onlineRead = await worker.requestUserSetting();
+    expect(gets, 0);
+    expect(puts, hasLength(1));
+    expect(puts.single['medication_notifications_enabled'], isFalse);
+    expect(puts.single['notification_detail_mode'], 'type_only');
+    expect(onlineRead.medicationNotificationsEnabled, isFalse);
+    expect(worker.hasPendingSave, isFalse);
+    expect(worker.lastLookupReachedServer, isTrue);
+
+    // 반영이 끝나면 다시 서버 사본을 기준으로 읽는다.
+    stored = stored.copyWith(fontSize: 24);
+    final afterSync = await worker.requestUserSetting();
+    expect(gets, 1);
+    expect(puts, hasLength(1));
+    expect(afterSync.fontSize, 24);
+    final preferences = await SharedPreferences.getInstance();
+    expect(preferences.getInt('user_setting_user-a_font_size'), 24);
+    expect(preferences.getString('user_setting_user-a_pending_sync'), isNull);
+  });
+
+  // 대기 표시는 계정별이라 다른 계정의 조회는 평소처럼 서버 사본을 캐시한다.
+  test('서버 반영 대기 표시는 계정별로 적용된다', () async {
+    SharedPreferences.setMockInitialValues({
+      'user_setting_user-a_pending_sync': 'token',
+      'user_setting_user-a_font_size': 24,
+    });
+    final requests = <String>[];
+    // 함수이름: MockClient 콜백
+    // 함수역할: 요청을 기록하고 PUT은 본문을, GET은 user-b의 서버 사본을 돌려준다.
+    // 매개변수: request는 가로챈 요청. 반환값: 대역 응답.
+    final client = MockClient((request) async {
+      requests.add('${request.method} ${request.url.queryParameters['user_hash']}');
+      final setting = request.method == 'PUT'
+          ? jsonDecode(request.body) as Map<String, dynamic>
+          : const UserSetting(userHash: 'user-b', fontSize: 14).toJson();
+      return http.Response(jsonEncode({'success': true, 'data': setting}), 200);
+    });
+    final other = ManageUserSetting(userHash: 'user-b', client: client);
+    addTearDown(other.dispose);
+    expect((await other.requestUserSetting()).fontSize, 14);
+    expect(other.hasPendingSave, isFalse);
+    expect(requests, ['GET user-b']);
+    final owner = ManageUserSetting(userHash: 'user-a', client: client);
+    addTearDown(owner.dispose);
+    expect((await owner.requestUserSetting()).fontSize, 24);
+    expect(requests, ['GET user-b', 'PUT user-a']);
   });
 }

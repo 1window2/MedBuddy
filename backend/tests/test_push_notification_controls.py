@@ -57,6 +57,7 @@ from entities.caregiver_notification_entity import (  # noqa: E402
 from entities.device_push_token_entity import _DevicePushToken  # noqa: E402
 from entities.medication_alarm_entity import _MedicationAlarm  # noqa: E402
 from entities.chat_message_entity import _ChatMessage  # noqa: E402
+from entities.user_account_entity import utc_now  # noqa: E402
 from entities.caregiver_alert_outbox_entity import (  # noqa: E402
     CAREGIVER_ALERT_EVENT_LATE_LINK_COMPLETED,
     CAREGIVER_ALERT_EVENT_DOSE_COMPLETED,
@@ -491,6 +492,45 @@ class PushNotificationControlTest(unittest.TestCase):
             patient_hash="patient-a",
             slot_key="morning",
         )
+
+    # 함수이름: test_outbox_gives_up_a_row_that_keeps_stalling_in_processing
+    # 함수역할:
+    # - 처리 중에 멈춘 행을 다시 가져오는 것도 시도로 세어, 시도 한도에 이르면 보내지 않고 포기하는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
+    def test_outbox_gives_up_a_row_that_keeps_stalling_in_processing(self) -> None:
+        self._completed_slot("evening")
+        row = _CaregiverAlertOutbox(
+            event_key="event-stalled",
+            schedule_date=application_today(),
+            patient_hash="patient-a",
+            slot_key="evening",
+            status=CAREGIVER_ALERT_STATUS_PROCESSING,
+            processing_started_at=utc_now() - timedelta(hours=1),
+            attempt_count=7,
+        )
+        self.db.add(row)
+        self.db.commit()
+
+        with patch(
+            "controls.process_caregiver_alert_outbox_control."
+            "DispatchCaregiverAlert.notifySlotCompleted",
+            return_value=PushDeliveryResult(success_count=1),
+        ) as notify:
+            result = ProcessCaregiverAlertOutbox(
+                self.db,
+                _RecordingPushBoundary(),
+            ).processOne(int(row.id))
+
+        self.db.refresh(row)
+        self.assertEqual(result, "failed")
+        self.assertEqual(row.attempt_count, 8)
+        self.assertEqual(row.status, CAREGIVER_ALERT_STATUS_DEAD_LETTER)
+        self.assertEqual(row.last_error, "StalledProcessing")
+        self.assertIsNone(row.sent_at)
+        notify.assert_not_called()
 
     # 함수이름: test_outbox_retries_after_partial_push_delivery
     # 함수역할:

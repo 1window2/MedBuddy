@@ -19,6 +19,22 @@ class TokenVerificationError(Exception):
     """Raised when an external identity token cannot be trusted."""
 
 
+# Class Name: DeletedIdentityTokenError
+# Role:
+# - Signals a correctly signed, unexpired token whose Firebase account no longer exists.
+# Responsibilities:
+# - Carry the verified claims so that only a retried account deletion can finish with them;
+#   every other request treats the token as rejected.
+# Attributes:
+# - claims (dict[str, object]): Claims verified without the revocation lookup.
+class DeletedIdentityTokenError(TokenVerificationError):
+    """Raised when the token is valid but its Firebase account has been deleted."""
+
+    def __init__(self, claims: dict[str, object]) -> None:
+        super().__init__("The Firebase account of this token has been deleted.")
+        self.claims = claims
+
+
 # Class Name: TokenVerificationUnavailableError
 # Role:
 # - Signals that the identity provider could not complete verification.
@@ -68,14 +84,24 @@ class OIDCTokenVerifier:
                 app=self._app,
                 check_revoked=self._check_revoked,
             )
+        except auth.UserNotFoundError as exc:
+            # The revocation lookup found no account: the signature and expiry were already
+            # checked, so read the claims again without the lookup. A retried account deletion
+            # whose first answer was lost can then finish; other requests still reject the token.
+            try:
+                deleted_claims: Mapping[str, Any] = auth.verify_id_token(
+                    normalized_token,
+                    app=self._app,
+                    check_revoked=False,
+                )
+            except Exception as reread_error:
+                raise TokenVerificationError("Bearer token is invalid.") from reread_error
+            raise DeletedIdentityTokenError(dict(deleted_claims)) from exc
         except (
             auth.ExpiredIdTokenError,
             auth.InvalidIdTokenError,
             auth.RevokedIdTokenError,
             auth.UserDisabledError,
-            # A revocation check on a deleted account is a rejected token, not
-            # an outage; the client must end the session instead of retrying.
-            auth.UserNotFoundError,
             ValueError,
         ) as exc:
             raise TokenVerificationError("Bearer token is invalid.") from exc

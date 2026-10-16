@@ -341,6 +341,38 @@ class StructuredLinkedChatContextTest(unittest.TestCase):
         arguments.update(overrides)
         return self.chat.record_medication_taken(**arguments)
 
+    # 함수이름: test_released_app_records_a_rest_day_dose_from_chat
+    # 함수역할: 복용일 기능을 알리지 않은 앱이 쉬는 날의 주 1회 약을 채팅에서 기록하면 500 대신 기록과 영수증을 만들고,
+    #          복용일 기능을 알린 앱의 같은 요청은 409로 거절되는지 검증한다.
+    # 매개변수: 없음. 반환값: 없음; 불일치 시 단언 실패.
+    def test_released_app_records_a_rest_day_dose_from_chat(self):
+        from core import api_contract
+        weekly = self._save_medication()
+        weekly.daily_frequency = "주 1회"
+        weekly.prescription_date = application_today() - timedelta(days=1)
+        weekly.total_days = "28일"
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as refused:
+            self._record_taken(
+                client_message_id="weekly-new-app", medication_ids=[int(weekly.id)],
+            )
+        self.assertEqual(refused.exception.status_code, 409)
+
+        token = api_contract._client_schedules_by_dose_days.set(False)
+        try:
+            result, _ = self._record_taken(
+                client_message_id="weekly-released-app", medication_ids=[int(weekly.id)],
+            )
+        finally:
+            api_contract._client_schedules_by_dose_days.reset(token)
+        self.assertTrue(result.created)
+        context = result.message.to_response_dict()["context"]
+        self.assertIn(
+            int(weekly.id),
+            [item["medication_id"] for item in context["medication_contexts"]],
+        )
+
     # 함수이름: test_chat_confirmation_updates_only_selected_dose_and_returns_progress
     # 함수역할: 선택 약만 완료되고 미선택 약을 포함한 전체 진행률이 정확히 반환되는지 검증한다.
     # 매개변수: 없음. 반환값: 없음; 불일치 시 단언 실패.

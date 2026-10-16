@@ -168,6 +168,9 @@ Permanent deletion is a server-managed, retryable saga:
 4. Once tombstoned, ordinary requests fail with `410 Gone`; only the deletion
    endpoint may retry. Firebase `user-not-found` is idempotent success, while
    transient provider failure returns `503 Retry-After` without reopening writes.
+   With the revocation check on, a retry after the identity was deleted still
+   reaches the endpoint: a correctly signed token of a deleted account is
+   accepted for the deletion endpoint only and rejected with 401 elsewhere.
 5. After server success, Flutter clears its in-memory medical session before
    provider sign-out. A sign-out failure remains visible and cannot resurrect
    the deleted subject inside the running application.
@@ -260,12 +263,16 @@ only for a date inside the window the search itself accepts (7 days back to
 366 days ahead).
 
 Routes with a real per-request cost carry a daily quota besides the per-minute
-limit: prescription analysis, pill identification and the health
-recommendation share `AI_REQUEST_DAILY_LIMIT` per account, and hospital search
-has `HOSPITAL_SEARCH_DAILY_LIMIT`. One IP address is allowed twenty times the
+limit: prescription analysis, pill identification, medication lookup (whose
+approval summaries come from the AI model) and the health recommendation share
+`AI_REQUEST_DAILY_LIMIT` per account, and hospital search, including a hospital
+shared in chat, has `HOSPITAL_SEARCH_DAILY_LIMIT`. A day ends at midnight in the
+service time zone (Asia/Seoul). One IP address is allowed twenty times the
 account quota, which bounds what scripted accounts can spend from one address.
 The public hospital API budget (`HOSPITAL_API_DAILY_REQUEST_BUDGET`) is still
-shared by all users of one process.
+shared by all users of one process; it is counted per provider operation
+(location, detail, department list), matching the provider's quota, and a spent
+budget is answered with its own message and a wait until local midnight.
 
 The in-app map requests map content through Naver Dynamic Map for the visible
 viewport. This does not expose the MedBuddy public-data credential, but the map

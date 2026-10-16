@@ -208,7 +208,8 @@ class CheckSchedule:
     # - slot_key (str | None): morning, lunch, evening, bedtime 중 복용 시간대 키.
     # - expected_schedule_date (date | None): 요청이 가리키는 복약 날짜; 오늘과 다르면 지연된 요청으로 보고 거부한다.
     # 반환값:
-    # - 갱신된 일정 응답; 날짜가 오늘과 다르면 HTTP 409, 저장 실패 시 롤백하고 HTTP 500.
+    # - 갱신된 일정 응답; 날짜가 오늘과 다르면 HTTP 409, 오늘 일정에 없는 약이면 HTTP 404,
+    #   저장 실패 시 롤백하고 HTTP 500.
     def updateMedicationStatus(
         self,
         medication_id: int,
@@ -230,6 +231,16 @@ class CheckSchedule:
             medication_id,
             normalized_patient_hash,
         )
+        # 시간대 단위 기록과 같은 기준을 적용한다: 오늘 복용 기간이 아니거나(끝났거나 아직 시작 전)
+        # 복용일만 받는 앱에서 쉬는 날인 약은 오늘 일정에 없으므로 기록하지 않는다.
+        if not self.course_policy.is_active_on(medication, today) or (
+            client_schedules_by_dose_days()
+            and not self.course_policy.is_due_on(medication, today)
+        ):
+            raise HTTPException(
+                status_code=404,
+                detail="This medication is not on today's schedule.",
+            )
         slot_keys = self._slot_keys_for_medication(medication)
         target_slot_keys = self._slot_keys_for_update(slot_key, slot_keys)
         # 오늘의 활성 약과 완료 기록을 한 번만 읽고, 이후 판정은 이 목록으로 계산한다.

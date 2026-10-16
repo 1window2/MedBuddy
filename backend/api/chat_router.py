@@ -31,6 +31,7 @@ from api.dependencies import (
 )
 from api.route_support import (
     enforce_chat_daily_quota,
+    enforce_hospital_share_daily_quota,
     get_chat_connection_manager,
     publish_saved_message,
     queue_completion_alerts,
@@ -47,7 +48,13 @@ from core.request_rate_limits import RateLimitRule, RequestRateLimitStore
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 from entities.chat_message_entity import CHAT_MESSAGE_KIND_HOSPITAL_SHARE
-from boundaries.hospital_api_boundary import HospitalApiResponseError, HospitalApiUnavailableError
+from api.hospital_router import HOSPITAL_BUDGET_EXHAUSTED_DETAIL
+from boundaries.hospital_api_boundary import (
+    HospitalApiBudgetExhaustedError,
+    HospitalApiResponseError,
+    HospitalApiUnavailableError,
+)
+from core.application_clock import seconds_until_next_application_day
 from schemas.chat import ChatMedicationTaken, ChatMessageCreate, ChatMessageDelete, ChatReadUpdate
 from services.chat_connection_manager import ChatConnectionManager
 
@@ -262,6 +269,9 @@ async def post_chat_message(
         )
         if existing is not None:
             return await publish_saved_message(link_id, existing, request)
+        await enforce_hospital_share_daily_quota(
+            request=request, user_hash=authorized_user_hash,
+        )
         try:
             async with asyncio.timeout(settings.HOSPITAL_SEARCH_TIMEOUT_SECONDS):
                 hospital_arguments["hospital_context"] = await hospital.requestShareContext(
@@ -269,6 +279,11 @@ async def post_chat_message(
                 )
         except ValueError:
             raise HTTPException(400, "Hospital information could not be verified.") from None
+        except HospitalApiBudgetExhaustedError:
+            raise HTTPException(
+                503, HOSPITAL_BUDGET_EXHAUSTED_DETAIL,
+                headers={"Retry-After": str(seconds_until_next_application_day())},
+            ) from None
         except (HospitalApiUnavailableError, HospitalApiResponseError, TimeoutError):
             raise HTTPException(503, "Hospital information is temporarily unavailable.",
                                 headers={"Retry-After": "5"}) from None

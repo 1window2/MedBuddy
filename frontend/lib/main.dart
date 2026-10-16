@@ -6,6 +6,7 @@ import 'controls/check_caregiver_home_control.dart';
 import 'controls/check_caregiver_medication_control.dart';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -21,6 +22,7 @@ import 'controls/app_language_control.dart';
 import 'controls/authentication_control.dart';
 import 'controls/caregiver_alert_action_control.dart';
 import 'entities/user_setting_entity.dart';
+import 'services/notification_inbox_store.dart';
 import 'services/notification_service.dart';
 import 'services/caregiver_notification_monitor_service.dart';
 import 'composition/caregiver_notification_background_service.dart';
@@ -221,6 +223,7 @@ class _MedBuddyAppState extends State<MedBuddyApp>
     _authenticationControl.addListener(_handleAuthenticationChange);
     _registerNotificationSelectionHandler(_handleNotificationSelection);
     _synchronizeCaregiverNotificationMonitor();
+    unawaited(_rememberStoredAccountForHeldActions());
     if (DoseHomeWidget.supported) {
       _widgetClicks = HomeWidget.widgetClicked.listen(_openHomeWidget);
       unawaited(
@@ -335,7 +338,7 @@ class _MedBuddyAppState extends State<MedBuddyApp>
   }
 
   // Function Name: _prepareSessionEnd
-  // Description: Requires server push-token unregistration while the Firebase identity is still valid, gives doses recorded offline one bounded upload attempt, then suspends dose upload work and cancels local reminders and replenishment work.
+  // Description: Requires server push-token unregistration while the Firebase identity is still valid, gives doses recorded offline one bounded upload attempt, then suspends dose upload work and cancels local reminders and replenishment work. When a local step fails the sign-out is aborted, so push and dose upload work are started again for the account that stays signed in.
   // Parameters:
   // - None.
   // Returns:
@@ -347,9 +350,24 @@ class _MedBuddyAppState extends State<MedBuddyApp>
     // 오프라인에서 기록해 아직 올리지 못한 복용은 토큰이 유효한 지금 한 번 더 올려 본다. 몇 초 안에
     // 끝나지 않으면 기다리지 않으며, 남은 기록은 같은 계정이 이 기기에 다시 로그인할 때 전송된다.
     await _flushPendingDoseRecords();
-    await DoseSyncBackgroundScheduler.suspend();
-    await DoseHomeWidget.clear();
-    await _cancelSessionReminders();
+    try {
+      await DoseSyncBackgroundScheduler.suspend();
+      await DoseHomeWidget.clear();
+      await _cancelSessionReminders();
+    } catch (_) {
+      // 로컬 정리가 실패하면 로그아웃이 중단되어 계정은 로그인 상태로 남는다. 앞에서 멈춘 푸시와 복용 기록
+      // 전송 작업을 되살려, 로그인한 채로 푸시(보호자 미복용 알림 포함)를 받지 못하는 상태가 되지 않게 한다.
+      final session = _authenticationControl.session;
+      if (session != null) {
+        unawaited(_pushNotificationService?.start().catchError((_) {}));
+        unawaited(
+          DoseSyncBackgroundScheduler.register(
+            session.userHash,
+          ).catchError((_) {}),
+        );
+      }
+      rethrow;
+    }
   }
 
   // Function Name: _flushPendingDoseRecords
@@ -420,6 +438,32 @@ class _MedBuddyAppState extends State<MedBuddyApp>
     _navigateForNotificationWhenReady(selection);
   }
 
+  // 함수이름: _rememberStoredAccountForHeldActions
+  // 함수역할: 앱이 세션 없이 시작했을 때, 이 기기에 마지막으로 저장된 계정을 보류 동작의 주인으로 기억한다.
+  //          알림에는 계정이 적혀 있지 않으므로, 다른 계정이 로그인하면 보류한 "복용했어요"를 그 계정에 적용하지 않는다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 저장값을 읽고 나면 끝나는 Future. 읽지 못하면 아무것도 바꾸지 않는다.
+  Future<void> _rememberStoredAccountForHeldActions() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final stored = preferences
+          .getString(NotificationInboxStore.activeUserKey)
+          ?.trim();
+      if (!mounted ||
+          _authenticationControl.session != null ||
+          _endedSessionUserHash != null ||
+          stored == null ||
+          stored.isEmpty) {
+        return;
+      }
+      _endedSessionUserHash = stored;
+    } catch (_) {
+      // 읽지 못하면 이전 동작대로 둔다.
+    }
+  }
+
   // 함수이름: _handleAuthenticationChange
   // 함수역할: 세션에 맞춰 감시 서비스를 교체하고 로그아웃 시 경로 상태를 초기화하며 로그인 후 보류한 알림 이동을 처리한다.
   // 매개변수:
@@ -437,11 +481,14 @@ class _MedBuddyAppState extends State<MedBuddyApp>
     final previousUserHash = _monitoredUserHash;
     _synchronizeCaregiverNotificationMonitor();
     if (_authenticationControl.session == null) {
+      // 보류한 알림·위젯 동작은 세션이 실제로 끝날 때만 버린다. 로그인 시도나 재시도 중에도 세션 없이
+      // 변경 알림이 오므로, 그때 버리면 오프라인에서 누른 "복용했어요"가 다시 시도할 때 사라진다.
+      // 다른 계정이 로그인하면 아래에서 _endedSessionUserHash와 비교해 버린다.
       if (previousUserHash != null && previousUserHash.isNotEmpty) {
         _endedSessionUserHash = previousUserHash;
+        _pendingWidgetUri = null;
+        _pendingNotificationSelection = null;
       }
-      _pendingWidgetUri = null;
-      _pendingNotificationSelection = null;
       _isScheduleRouteOpen = false;
       _openCaregiverScheduleRouteName = null;
       _openLinkedChatRouteName = null;
@@ -536,14 +583,22 @@ class _MedBuddyAppState extends State<MedBuddyApp>
   }
 
   // 함수이름: _synchronizeCaregiverNotificationMonitor
-  // 함수역할: 로그인 hash가 바뀔 때 보호자 알림 감시 대상을 함께 교체한다.
+  // 함수역할: 로그인 hash가 바뀔 때 보호자 알림 감시 대상을 함께 교체한다. 저장된 활성 계정은 세션이 끝날 때만 지운다.
   // 매개변수:
   // - 없음.
   // 반환값:
   // - 없음.
   void _synchronizeCaregiverNotificationMonitor() {
     final userHash = _authenticationControl.session?.userHash.trim();
-    NotificationService.instance.setHistoryUser(userHash);
+    final hasSession = userHash != null && userHash.isNotEmpty;
+    final previousUserHash = _monitoredUserHash;
+    // 저장된 활성 계정은 세션이 실제로 끝났을 때만 지운다. 앱 시작 직후나 첫 연결이 실패해 아직
+    // 세션이 없을 때 지우면, 그 뒤 도착한 보호자 미복용 알림이 이 기기 계정의 것이 아니라고 보고 버려진다.
+    NotificationService.instance.setHistoryUser(
+      userHash,
+      persistSession:
+          hasSession || (previousUserHash != null && previousUserHash.isNotEmpty),
+    );
     if (userHash == _monitoredUserHash) {
       return;
     }
