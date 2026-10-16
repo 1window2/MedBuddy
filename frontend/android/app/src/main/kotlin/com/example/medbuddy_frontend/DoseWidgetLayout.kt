@@ -22,10 +22,10 @@ object DoseWidgetLayout {
     // 반환값: 런처가 실제 크기에 맞춰 선택할 RemoteViews.
     fun responsive(context: Context, base: RemoteViews, row: RemoteViews, options: Bundle,
         known: Boolean, overdue: Boolean, hasPager: Boolean): RemoteViews {
-        fun pick(height: Int) = if (height < ROW_LIMIT) row(context, row)
+        fun pick(height: Int) = if (height < ROW_LIMIT) row(context, row, height, known, overdue)
             else sized(context, base, height, known, overdue, hasPager)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            return RemoteViews(listOf(48, ROW_LIMIT, 180, 230, 300, 340, 420).associate { height ->
+            return RemoteViews(listOf(48, 60, ROW_LIMIT, 180, 230, 300, 340, 420).associate { height ->
                 SizeF(250f, height.toFloat()) to pick(height)
             })
         }
@@ -40,8 +40,9 @@ object DoseWidgetLayout {
     // 함수이름: row
     // 함수역할: 한 줄 배치의 글씨를 글자 배율에 맞춰 줄여 48dp 버튼 높이 안에 두 줄을 넣는다.
     //           배율 2.0에서도 실제 글씨는 기본 배율의 기본 크기보다 크다.
-    // 매개변수: context 글자 배율, base 한 줄 배치 원본. 반환값: 원본을 변경하지 않은 복사본.
-    fun row(context: Context, base: RemoteViews): RemoteViews {
+    // 매개변수: context 글자 배율, base 한 줄 배치 원본, height 높이(dp), known 로그인 여부,
+    //           overdue 놓친 일정 여부. 반환값: 원본을 변경하지 않은 복사본.
+    fun row(context: Context, base: RemoteViews, height: Int, known: Boolean, overdue: Boolean): RemoteViews {
         val views = base.clone()
         val scale = context.resources.configuration.fontScale
         val large = scale > 1.15f
@@ -52,6 +53,8 @@ object DoseWidgetLayout {
             if (veryLarge) 7f else if (large) 10f else 11f)
         views.setTextViewTextSize(R.id.widget_take, TypedValue.COMPLEX_UNIT_SP,
             if (veryLarge) 8f else if (large) 12f else 15f)
+        // 가로 화면 1칸(약 51dp)은 큰 글씨에서 안내 두 줄과 저장 상태가 함께 들어가지 않는다.
+        warning(views, scale, known && overdue, if (veryLarge || (large && height < 60)) 1 else 2)
         return views
     }
 
@@ -114,7 +117,20 @@ object DoseWidgetLayout {
                 views.setViewVisibility(id, if (known) View.VISIBLE else View.GONE)
             for (id in listOf(R.id.widget_content, R.id.widget_pager, R.id.widget_progress, R.id.widget_status))
                 views.setViewVisibility(id, View.GONE)
+            warning(views, scale, known && overdue, if (veryLarge) 1 else 2)
         }
         return views
+    }
+
+    // 함수이름: warning
+    // 함수역할: 본문을 숨긴 낮은 배치에서 놓친 약 안내를 시간대 오른쪽 빈 칸에 표시한다.
+    //           공간이 모자라면(보호자 이름·좁은 폭·큰 글씨) 끝을 말줄임으로 줄인다.
+    // 매개변수: views 대상 배치, scale 글자 배율, shown 놓친 일정 여부, lines 최대 줄 수. 반환값: 없음.
+    private fun warning(views: RemoteViews, scale: Float, shown: Boolean, lines: Int) {
+        views.setTextViewTextSize(R.id.widget_tiny_warning, TypedValue.COMPLEX_UNIT_SP,
+            if (scale > 1.6f) 7f else if (scale > 1.15f) 9f else 11f)
+        // 줄이 넘치면 제목 줄이 48dp를 넘어 복용 버튼을 밀어내므로 호출한 배치가 줄 수를 정한다.
+        views.setInt(R.id.widget_tiny_warning, "setMaxLines", lines)
+        views.setViewVisibility(R.id.widget_tiny_warning, if (shown) View.VISIBLE else View.GONE)
     }
 }

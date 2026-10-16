@@ -50,7 +50,7 @@ class DoseWidgetLayoutTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val failures = mutableListOf<String>()
         instrumentation.runOnMainSync {
-            for (height in listOf(48, 51, 60, 100, 109, 110, 117, 150, 180, 229, 230, 239, 240, 300, 340, 420)) for (width in listOf(250, 360)) {
+            for (height in listOf(48, 51, 59, 60, 100, 109, 110, 117, 150, 180, 229, 230, 239, 240, 300, 340, 420)) for (width in listOf(250, 360)) {
                 for (scale in listOf(1f, 1.3f, 2f)) for (state in listOf("patient", "caregiver", "signed-out")) for (overdue in listOf(false, true)) {
                     val config = Configuration(instrumentation.targetContext.resources.configuration)
                     config.fontScale = scale
@@ -58,7 +58,8 @@ class DoseWidgetLayoutTest {
                         android.R.style.Theme_Material_Light_NoActionBar)
                     val known = state != "signed-out"
                     val views = if (height < DoseWidgetLayout.ROW_LIMIT)
-                        DoseWidgetLayout.row(context, sampleViews(context, state, overdue, R.layout.dose_home_widget_row))
+                        DoseWidgetLayout.row(context, sampleViews(context, state, overdue, R.layout.dose_home_widget_row),
+                        height, known, known && overdue)
                     else DoseWidgetLayout.sized(context, sampleViews(context, state, overdue, R.layout.dose_home_widget),
                         height, known, known && overdue, known)
                     val root = views.apply(context, FrameLayout(context))
@@ -76,6 +77,15 @@ class DoseWidgetLayoutTest {
                                 R.id.widget_tiny_heading).any { shown(root, it) })
                             assertTrue("$label status hidden", listOf(R.id.widget_status, R.id.widget_tiny_status)
                                 .any { shown(root, it) })
+                        }
+                        // 본문을 숨긴 낮은 배치에서도 놓친 약 안내가 보여야 하고, 기본 4열 폭의 본인 위젯은
+                        // 보통·큰 글씨에서 말줄임 없이 다 보여야 한다(가로 화면 1칸의 큰 글씨는 한 줄로 줄인다).
+                        if (known && overdue && height < 180) {
+                            assertTrue("$label missed-dose note hidden", shown(root, R.id.widget_tiny_warning))
+                            val note = root.findViewById<TextView>(R.id.widget_tiny_warning)
+                            if (state == "patient" && width >= 360 && (scale <= 1f || (scale < 2f && height >= 60)))
+                                assertTrue("$label missed-dose note ellipsized", note.layout != null &&
+                                    (0 until note.layout.lineCount).all { note.layout.getEllipsisCount(it) == 0 })
                         }
                         // 좁은 한 줄 배치에서도 버튼 문구가 말줄임으로 잘리지 않아야 한다.
                         val take = root.findViewById<TextView>(R.id.widget_take)
@@ -127,6 +137,7 @@ class DoseWidgetLayoutTest {
             setTextViewText(R.id.widget_status, "2/5 · 서버 전송 대기 중")
             setTextViewText(R.id.widget_tiny_heading, if (state == "caregiver") "환자 테스트 이름 · 아침 08:00" else "아침 08:00")
             setTextViewText(R.id.widget_tiny_status, "2/5 · 서버 전송 대기 중")
+            setTextViewText(R.id.widget_tiny_warning, "놓친 약은 처방·복약지도 확인")
             setTextViewText(R.id.widget_count, "2/5")
             setTextViewText(R.id.widget_take, if (state == "caregiver") "일정 보기" else if (known && undo) "복용 완료 취소"
                 else if (known) "복용했어요" else "로그인하기")

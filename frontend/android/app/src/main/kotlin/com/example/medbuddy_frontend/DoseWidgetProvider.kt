@@ -241,6 +241,8 @@ class DoseWidgetProvider : HomeWidgetProvider() {
                 views.setTextViewText(R.id.widget_tiny_status, status)
                 views.setOnClickPendingIntent(R.id.widget_tiny_heading, open)
                 views.setTextViewText(R.id.widget_warning, tr("놓친 약은 처방·복약지도를 확인하세요", "Check guidance for missed doses"))
+                // 시간대 옆의 좁은 칸에 들어가도록 같은 뜻을 짧게 줄인다.
+                views.setTextViewText(R.id.widget_tiny_warning, tr("놓친 약은 처방·복약지도 확인", "Missed: check guidance"))
                 // 큰 글씨의 요약 배치에서도 전체 약 정보와 주의 문구를 읽어주기로 확인한다.
                 views.setTextViewText(R.id.widget_compact_heading, page.optString("heading"))
                 if (known && !expired) {

@@ -39,9 +39,12 @@ released under that version instead. Changes are listed in the
       3df4dfd build over 0.2.3 with data kept) the widget list shows 4 x 1
       and placed it at 4 columns by 1 row (117 dp); undoing and recording
       lunch from it reached the server and updated the 4 x 3 widget placed
-      earlier, which kept its size. At this height the missed-dose line
-      ("놓친 약은 처방·복약지도를 확인하세요") is not shown, as it already was
-      not below 240 dp with slot paging.
+      earlier, which kept its size. The missed-dose line was not shown at
+      this height; below 180 dp a shortened note ("놓친 약은 처방·복약지도
+      확인") now sits in the free space right of the slot, in full on a
+      patient's 4-column widget at normal and large text and cut with "…"
+      where a caregiver's patient name, a narrower widget or 2x text leaves
+      no room (the layout test pins both).
 - [x] The home-screen widget failed to load on Android 7 to 11 ("Problem
       loading widget"): it called View.setAlpha through RemoteViews, which
       Android allows only from Android 12. Introduced on 2026-09-21, so the
