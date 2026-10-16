@@ -36,6 +36,13 @@ record.
   encrypted device outbox. Stable operation IDs survive chat dismissal and app
   restart. Receipts do not reapply later-undone doses; pending status is distinct
   from server-confirmed state.
+- Foreground and background workers share one unexpired upload lease per account,
+  claimed transactionally in SQLite. Even distinct doses wait because each ACK
+  contains a whole schedule snapshot; parallel ACKs must not undo newer completion.
+  A blocked record only holds later overlapping medicines on the same date and
+  time slot, so unrelated blocked records may be bypassed, but active leases may
+  not. After the two-minute lease expires, retry keeps the operation ID; a worker
+  whose lease was replaced cannot overwrite the cache or remove the new claim.
 - Full-slot transitions reuse the existing caregiver outbox. The initiating
   conversation does not receive a second automatic full-slot message; other
   linked caregivers retain their existing notification flow.
