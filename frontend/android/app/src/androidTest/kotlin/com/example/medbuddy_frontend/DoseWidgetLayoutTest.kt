@@ -23,7 +23,7 @@ import kotlin.math.roundToInt
 @RunWith(AndroidJUnit4::class)
 class DoseWidgetLayoutTest {
     // 함수이름: providerKeepsTargetWithinResizeBounds
-    // 함수역할: 기본 높이와 회전별 최소 높이를 분리해 4 x 3 요청이 무시되는 회귀를 막는다.
+    // 함수역할: 기본 높이와 회전별 최소 높이를 분리해 4 x 2 요청이 무시되는 회귀를 막는다.
     // 매개변수: 없음. 반환값: 없음, 잘못된 크기 선언에서 실패한다.
     @Test fun providerKeepsTargetWithinResizeBounds() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -34,11 +34,11 @@ class DoseWidgetLayoutTest {
                 android.R.attr.targetCellWidth, android.R.attr.targetCellHeight,
             ))
             try {
-                val height = (240 * context.resources.displayMetrics.density).roundToInt()
+                val height = (180 * context.resources.displayMetrics.density).roundToInt()
                 assertEquals(height, values.getDimensionPixelSize(0, -1))
-                assertEquals((180 * context.resources.displayMetrics.density).roundToInt(), values.getDimensionPixelSize(1, -1))
+                assertEquals((110 * context.resources.displayMetrics.density).roundToInt(), values.getDimensionPixelSize(1, -1))
                 assertEquals(4, values.getInt(2, -1))
-                assertEquals(3, values.getInt(3, -1))
+                assertEquals(2, values.getInt(3, -1))
             } finally { values.recycle() }
         }
     }
@@ -50,7 +50,7 @@ class DoseWidgetLayoutTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val failures = mutableListOf<String>()
         instrumentation.runOnMainSync {
-            for (height in listOf(180, 240, 300, 340, 420)) for (width in listOf(250, 360)) {
+            for (height in listOf(110, 150, 180, 229, 230, 239, 240, 300, 340, 420)) for (width in listOf(250, 360)) {
                 for (scale in listOf(1f, 1.3f, 2f)) for (state in listOf("patient", "caregiver", "signed-out")) for (overdue in listOf(false, true)) {
                     val config = Configuration(instrumentation.targetContext.resources.configuration)
                     config.fontScale = scale
@@ -67,6 +67,13 @@ class DoseWidgetLayoutTest {
                     val label = "$state ${width}x$height font=$scale overdue=$overdue"
                     try {
                         assertVisibleContentFits(root, label)
+                        // 어느 높이에서도 버튼이 기록할 시간대와 서버 저장 상태가 함께 보여야 한다.
+                        if (known) {
+                            assertTrue("$label slot hidden", listOf(R.id.widget_heading, R.id.widget_compact_heading,
+                                R.id.widget_tiny_heading).any { isVisible(root.findViewById(it)) })
+                            assertTrue("$label status hidden", listOf(R.id.widget_status, R.id.widget_tiny_status)
+                                .any { isVisible(root.findViewById(it)) })
+                        }
                         for (id in listOf(R.id.widget_dot_0, R.id.widget_dot_1, R.id.widget_dot_2, R.id.widget_dot_3)) {
                             val dot = root.findViewById<View>(id)
                             if (!isVisible(dot)) continue
@@ -105,6 +112,8 @@ class DoseWidgetLayoutTest {
             setTextViewText(R.id.widget_details, if (known) "08:00 · 이름이 긴 아침약 외 2개" else "로그인하면 복약 일정을 볼 수 있어요.")
             setTextViewText(R.id.widget_warning, "놓친 약은 처방·복약지도를 확인하세요")
             setTextViewText(R.id.widget_status, "2/5 · 서버 전송 대기 중")
+            setTextViewText(R.id.widget_tiny_heading, if (state == "caregiver") "환자 테스트 이름 · 아침 08:00" else "아침 08:00")
+            setTextViewText(R.id.widget_tiny_status, "2/5 · 서버 전송 대기 중")
             setTextViewText(R.id.widget_count, "2/5")
             setTextViewText(R.id.widget_take, if (state == "caregiver") "일정 보기" else if (known) "복용했어요" else "로그인하기")
             for (id in listOf(R.id.widget_pager, R.id.widget_status, R.id.widget_refresh))

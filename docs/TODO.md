@@ -22,6 +22,17 @@ released under that version instead. Changes are listed in the
       tall on a 320 px screen. The button now sits below the text inside the
       notice, which uses the full width, and the notice stays 15 s at large
       text. Regression in the home notice large-text test.
+- [x] The home-screen widget started at 4 x 3: 374 dp tall on the Galaxy
+      Note10 (117 dp cells) for a title, one slot line, the save state and a
+      button, so about half of it was empty. Launcher3 also works out the
+      minimum rows from landscape cells (2 rows about 117 dp), so the 180 dp
+      resize floor made it refuse a 4 x 2 request. The widget now asks for
+      4 x 2 (min height 180 dp, resize floor 110 dp); below 180 dp the title
+      line carries the slot and save state, and 230-239 dp (4 x 2 portrait)
+      uses slightly smaller padding and heading. The instrumented layout test
+      covers 110 to 420 dp at three text scales and checks that the slot and
+      save state stay visible; the Android 16 Pixel launcher placed a new
+      widget at 4 x 2.
 - [x] The home-screen widget failed to load on Android 7 to 11 ("Problem
       loading widget"): it called View.setAlpha through RemoteViews, which
       Android allows only from Android 12. Introduced on 2026-09-21, so the

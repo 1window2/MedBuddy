@@ -221,12 +221,19 @@ class DoseWidgetProvider : HomeWidgetProvider() {
             val count = if (state.optBoolean("counts_known", true)) "${state.optInt("done")}/${state.optInt("total")}" else "-"
             views.setTextViewText(R.id.widget_count, if (known) count else "")
             views.setProgressBar(R.id.widget_progress, state.optInt("total", 1).coerceAtLeast(1), state.optInt("done"), false)
-            views.setTextViewText(R.id.widget_status, when {
+            val status = when {
                 pending -> tr("기기에 저장 중", "Saving on device")
                 !known -> tr("로그인 후 일정을 표시합니다", "Sign in to view schedules")
                 expired -> tr("지난 일정은 기록하지 않아요", "Old schedules cannot be recorded")
                 else -> (if (patients.size > 1) "$count · " else "") + state.optString("status")
-            })
+            }
+            views.setTextViewText(R.id.widget_status, status)
+            // 가장 낮은 높이에서는 제목 줄이 시간대와 저장 상태를 대신 보여주므로 보호자 화면의 환자 이름을 앞에 붙인다.
+            val heading = if (expired) tr("일정을 새로고침해주세요", "Refresh your schedule") else page.optString("heading")
+            views.setTextViewText(R.id.widget_tiny_heading,
+                if (state.optString("source") == "patients") "$title · $heading" else heading)
+            views.setTextViewText(R.id.widget_tiny_status, status)
+            views.setOnClickPendingIntent(R.id.widget_tiny_heading, open)
             views.setTextViewText(R.id.widget_warning, tr("놓친 약은 처방·복약지도를 확인하세요", "Check guidance for missed doses"))
             // 큰 글씨의 요약 배치에서도 전체 약 정보와 주의 문구를 읽어주기로 확인한다.
             views.setTextViewText(R.id.widget_compact_heading, page.optString("heading"))
@@ -237,6 +244,8 @@ class DoseWidgetProvider : HomeWidgetProvider() {
                 ).joinToString(". ")
                 views.setContentDescription(R.id.widget_content, description)
                 views.setContentDescription(R.id.widget_compact_heading, description)
+                views.setContentDescription(R.id.widget_tiny_heading,
+                    if (state.optString("source") == "patients") "$title. $description" else description)
             }
             views.setViewVisibility(R.id.widget_warning, if (page.optBoolean("overdue") && !expired) View.VISIBLE else View.GONE)
             views.setViewVisibility(R.id.widget_pager, if (pages.size > 1) View.VISIBLE else View.GONE)

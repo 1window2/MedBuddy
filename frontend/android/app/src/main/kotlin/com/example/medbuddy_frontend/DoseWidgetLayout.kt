@@ -22,7 +22,7 @@ object DoseWidgetLayout {
     fun responsive(context: Context, base: RemoteViews, options: Bundle,
         known: Boolean, overdue: Boolean, hasPager: Boolean): RemoteViews {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            return RemoteViews(listOf(180, 240, 300, 340, 420).associate { height ->
+            return RemoteViews(listOf(110, 180, 230, 300, 340, 420).associate { height ->
                 SizeF(250f, height.toFloat()) to sized(context, base, height, known, overdue, hasPager)
             })
         }
@@ -36,6 +36,7 @@ object DoseWidgetLayout {
 
     // 함수이름: sized
     // 함수역할: 짧은 위젯은 여백과 상세 줄 수를 줄이고 진행 숫자·저장 상태·버튼을 유지한다.
+    //           4 x 2 가로 화면 높이(약 110dp)에서는 제목 줄에 시간대와 저장 상태만 남긴다.
     // 매개변수: context 글자 배율과 밀도, base 원본 표시, height 높이(dp),
     //           known 로그인 여부, overdue 안내 표시 여부, hasPager 시간대 전환 여부.
     // 반환값: 원본을 변경하지 않은 크기별 표시 복사본.
@@ -46,17 +47,20 @@ object DoseWidgetLayout {
         val scale = context.resources.configuration.fontScale
         val large = scale > 1.15f
         val veryLarge = scale > 1.6f
-        val minimal = height < 240
+        val tiny = height < 180
+        val minimal = height < 230
+        // 세로 화면 4 x 2(약 234dp)는 기존 짧은 배치보다 몇 dp 낮아 여백과 제목 글씨만 더 줄인다.
+        val snug = !minimal && height < 240
         val short = height < 300 || (height < 340 && large)
         val compact = height < 340 || large
-        val verticalPadding = if (short) 4 else 16
+        val verticalPadding = if (tiny || snug) 2 else if (short) 4 else 16
         val horizontalPadding = if (short) 12 else 16
         val density = context.resources.displayMetrics.density
         views.setViewPadding(R.id.widget_root,
             (horizontalPadding * density).toInt(), (verticalPadding * density).toInt(),
             (horizontalPadding * density).toInt(), (verticalPadding * density).toInt())
         views.setTextViewTextSize(R.id.widget_heading, TypedValue.COMPLEX_UNIT_SP,
-            if (minimal) 14f else if (short) 18f else 21f)
+            if (minimal || (snug && veryLarge)) 14f else if (snug) 16f else if (short) 18f else 21f)
         views.setTextViewTextSize(R.id.widget_details, TypedValue.COMPLEX_UNIT_SP, if (minimal) 11f else 14f)
         views.setTextViewTextSize(R.id.widget_status, TypedValue.COMPLEX_UNIT_SP,
             if (minimal && veryLarge) 8f else if (minimal) 10f else 11f)
@@ -79,6 +83,17 @@ object DoseWidgetLayout {
         // 런처의 가로 화면 기준 최소 높이에서도 화살표·저장 상태·복용 버튼은 유지한다.
         views.setViewVisibility(R.id.widget_content, if (minimal && hasPager) View.GONE else View.VISIBLE)
         views.setViewVisibility(R.id.widget_compact_heading, if (minimal && hasPager) View.VISIBLE else View.GONE)
+        if (tiny) {
+            // 제목·날짜 자리에 시간대와 저장 상태를 두고 본문·시간대 전환·진행 막대를 숨겨 복용 버튼을 지킨다.
+            views.setTextViewTextSize(R.id.widget_tiny_heading, TypedValue.COMPLEX_UNIT_SP, if (veryLarge) 10f else 14f)
+            views.setTextViewTextSize(R.id.widget_tiny_status, TypedValue.COMPLEX_UNIT_SP, if (veryLarge) 8f else 11f)
+            for (id in listOf(R.id.widget_title, R.id.widget_date))
+                views.setViewVisibility(id, if (known) View.GONE else View.VISIBLE)
+            for (id in listOf(R.id.widget_tiny_heading, R.id.widget_tiny_status))
+                views.setViewVisibility(id, if (known) View.VISIBLE else View.GONE)
+            for (id in listOf(R.id.widget_content, R.id.widget_pager, R.id.widget_progress, R.id.widget_status))
+                views.setViewVisibility(id, View.GONE)
+        }
         return views
     }
 }
