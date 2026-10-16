@@ -98,6 +98,9 @@ class _UserSetting(Base):
         server_default="22:00",
     )
     updated_at = Column(DateTime, nullable=False, default=utc_now, onupdate=utc_now)
+    revision = Column(Integer, nullable=False, default=1, server_default="1")
+    # 조회 이후 다른 저장이 끝났다면 오래된 행을 덮어쓰지 않는다.
+    __mapper_args__ = {"version_id_col": revision}
 
 
 # 클래스명: UserSetting

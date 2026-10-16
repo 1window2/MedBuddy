@@ -899,6 +899,7 @@ def save_user_setting(
         request.default_evening_time,
         request.default_bedtime,
         request.home_schedule_source,
+        expected_revision=request.expected_revision,
     )
 
 

@@ -343,6 +343,7 @@ class CaregiverNotificationUpdate(BaseModel):
 # - reading_speed (float): 음성 읽기 속도 배율.
 # - language (str): 요청한 한국어 또는 영어 콘텐츠 언어.
 class UserSettingUpdate(BaseModel):
+    expected_revision: int | None = Field(default=None, ge=0, strict=True)
     font_size: int = Field(ge=12, le=24)
     reading_speed: float = Field(ge=0.5, le=2.0)
     language: str = Field(pattern=r"^(ko|en)$")

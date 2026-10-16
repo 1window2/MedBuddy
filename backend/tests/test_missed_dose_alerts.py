@@ -439,6 +439,8 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
         config = Config(str(BACKEND_DIR / "alembic.ini"))
         with self.engine.begin() as connection:
             config.attributes["connection"] = connection
+            # The historical fixture also predates version-checked settings writes.
+            connection.exec_driver_sql("ALTER TABLE user_settings DROP COLUMN revision")
             command.stamp(config, "a6e2d903bc71")
             command.upgrade(config, "head")
 

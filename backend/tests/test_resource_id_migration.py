@@ -8,6 +8,7 @@ from alembic import command
 from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
+from alembic.script import ScriptDirectory
 from sqlalchemy import MetaData, create_engine, inspect, select
 from sqlalchemy.orm import Session
 
@@ -26,7 +27,6 @@ ROOT = Path(__file__).resolve().parents[1]
 OLD_REVISION = "b3a7d9e2f601"
 NEW_REVISION = "d19e7c4b2a60"
 CATALOG_REVISION = "c5e1a7f3b902"
-MERGE_REVISION = "f2c8a6d4e901"
 
 
 def migration():
@@ -223,7 +223,7 @@ def test_merge_preserves_applied_histories_data_and_deleted_ids(tmp_path, starti
         command.upgrade(config, "head")
         with engine.connect() as connection:
             verify_database_revision(connection)
-            assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one() == MERGE_REVISION
+            assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one() == ScriptDirectory.from_config(config).get_current_head()
             for table in metadata.sorted_tables:
                 if table.name != "alembic_version":
                     assert connection.execute(select(table)).all() == before[table.name]

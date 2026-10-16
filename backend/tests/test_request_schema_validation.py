@@ -71,6 +71,12 @@ class RequestSchemaValidationTest(unittest.TestCase):
     def test_invalid_user_setting_values_are_rejected_at_request_boundary(
         self,
     ) -> None:
+        for revision in (-1, True, 1.5, "1"):
+            with self.subTest(revision=revision), self.assertRaises(ValidationError):
+                UserSettingUpdate(
+                    font_size=16, reading_speed=1.0, language="ko",
+                    expected_revision=revision,
+                )
         with self.assertRaises(ValidationError):
             UserSettingUpdate(
                 font_size=30,
