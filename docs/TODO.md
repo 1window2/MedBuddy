@@ -48,6 +48,11 @@ released under that version instead. Changes are listed in the
       the signed 012d529 build on 2026-10-16: after undoing lunch the 4 x 1
       widget showed "점심 12:00  놓친 약은 처방·복약지도 확인" on one line with
       "서버 저장 완료" below, nothing cut; recording again cleared it.
+      Final phone check the same evening against the deployed 0c8eb7f
+      backend: saving the text size in the app advanced the server settings
+      revision (1 -> 2 -> 3, font restored to 16), and undoing and recording
+      lunch on the home screen reached the server and updated both 4 x 1
+      widgets; the backend logged no errors.
 - [x] The home-screen widget failed to load on Android 7 to 11 ("Problem
       loading widget"): it called View.setAlpha through RemoteViews, which
       Android allows only from Android 12. Introduced on 2026-09-21, so the
