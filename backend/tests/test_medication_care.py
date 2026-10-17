@@ -3,6 +3,7 @@
 
 from datetime import timedelta
 import json
+from types import SimpleNamespace
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -27,7 +28,7 @@ from schemas.dose_sync import DoseSyncRequest
 from schemas.medication import SavedMedicationCreate
 from schemas.medication_care import DoseHistoryUpdate, RegimenChangeRequest
 from services.medication_course_policy import MedicationCoursePolicy
-from services.medication_dosing_mode import resolve_dosing_mode
+from services.medication_dosing_mode import medication_dosing_mode, resolve_dosing_mode
 from support.db import seed_account, seed_medication
 
 
@@ -200,6 +201,27 @@ def test_replacement_different_drug_clears_old_product_metadata(fk_db: Session) 
 def test_prn_detection(direction: str) -> None:
     assert resolve_dosing_mode("scheduled", direction) == "as_needed"
     assert resolve_dosing_mode("scheduled", "1일 3회") == "scheduled"
+
+
+# 함수이름: test_scheduled_dose_with_extra_prn_dose_stays_scheduled
+# 함수역할: 정기 복용약의 1회량에 붙은 추가 복용 안내 때문에 일정이 사라지지 않는지 확인한다.
+# 매개변수: frequency, dosage, slots: 처방 지시와 선택 시간대, expected: 기대 모드. 반환값: 없음.
+@pytest.mark.parametrize(("frequency", "dosage", "slots", "expected"), [
+    ("1일 3회", "1정 (통증 시 2정)", [], "scheduled"),
+    ("1일 2회 아침 저녁", "1정, 필요시 1정 추가", [], "scheduled"),
+    ("3 times daily", "1 tablet, may repeat if needed", [], "scheduled"),
+    ("", "1정(필요시)", ["morning", "evening"], "scheduled"),
+    ("", "1정(필요시)", [], "as_needed"),
+    ("1일 3회 필요시", "1정", ["morning"], "as_needed"),
+    ("통증 시", "1정", [], "as_needed"),
+])
+def test_scheduled_dose_with_extra_prn_dose_stays_scheduled(
+    frequency: str, dosage: str, slots: list[str], expected: str,
+) -> None:
+    assert resolve_dosing_mode("scheduled", frequency, dosage, has_slots=bool(slots)) == expected
+    row = SimpleNamespace(dosing_mode="scheduled", daily_frequency=frequency, dosage_per_time=dosage,
+                          schedule_slot_keys=json.dumps(slots))
+    assert medication_dosing_mode(row) == expected
 
 
 # 함수이름: test_prn_save_and_legacy_never_schedule_or_missed
@@ -479,6 +501,25 @@ def test_repeated_completion_keeps_reported_actual_time_until_undo(fk_db: Sessio
     assert current["reason"] == "late dose"
     CheckSchedule(fk_db).updateMedicationStatus(med.id, False, "patient-a", "morning")
     assert care.history(principal(), today, today)["items"][0]["actual_taken_at"] is None
+
+
+# 함수이름: test_repeated_legacy_completion_keeps_revision_and_audit
+# 함수역할: 이전 앱의 같은 완료 재전송이 버전과 감사 이력을 늘려 이력 정정을 거짓 충돌시키지 않는지 확인한다.
+# 매개변수: fk_db: 격리 세션. 반환값: 없음.
+def test_repeated_legacy_completion_keeps_revision_and_audit(fk_db: Session) -> None:
+    med = medication(fk_db)
+    care = ManageMedicationCare(fk_db)
+    today = application_today()
+    schedule = CheckSchedule(fk_db)
+    schedule.updateMedicationStatus(med.id, True, "patient-a", "morning")
+    first = care.history(principal(), today, today)["items"][0]
+    audits = fk_db.query(_MedicationCareAudit).count()
+    schedule.updateMedicationStatus(med.id, True, "patient-a", "morning")
+    again = care.history(principal(), today, today)["items"][0]
+    assert again["revision"] == first["revision"]
+    assert fk_db.query(_MedicationCareAudit).count() == audits
+    schedule.updateMedicationStatus(med.id, False, "patient-a", "morning")
+    assert care.history(principal(), today, today)["items"][0]["revision"] == first["revision"] + 1
 
 
 # 함수이름: test_version_copy_does_not_duplicate_prescription_comparison

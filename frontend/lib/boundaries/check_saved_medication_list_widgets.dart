@@ -63,8 +63,14 @@ class _SavedMedicationNameRow extends StatelessWidget {
     // 매일 복용하지 않는 약은 쉬는 날 오늘 일정에 없으므로 다음 복용일을 함께 알려준다.
     final today = MedicationHistoryDates.today(DateTime.now());
     final nextDoseDay = medication.nextDoseDayFrom(today);
+    // 서버 날짜는 기기 자정, today는 UTC 자정이라 시각으로 비교하면 한국에서는 마지막 복용일에
+    // 이미 종료로 보인다. 어느 형식이든 연·월·일만 같은 기준으로 맞춰 비교한다.
+    DateTime calendarDay(DateTime value) =>
+        DateTime(value.year, value.month, value.day);
+    final localToday = calendarDay(today);
     final stopDate = medication.stoppedOn;
-    final stopPending = stopDate != null && stopDate.isAfter(today);
+    final stopPending =
+        stopDate != null && calendarDay(stopDate).isAfter(localToday);
     final replaced = medication.supersededById != null;
     final statusLabel = stopDate != null
         ? replaced
@@ -74,7 +80,8 @@ class _SavedMedicationNameRow extends StatelessWidget {
               : (stopPending
                     ? (text.isEnglish ? 'Stop scheduled' : '복용 중단 예정')
                     : (text.isEnglish ? 'Stopped' : '복용 중단'))
-        : medication.medicationEndDate?.isBefore(today) == true
+        : medication.medicationEndDate != null &&
+              calendarDay(medication.medicationEndDate!).isBefore(localToday)
         ? (text.isEnglish ? 'Course ended' : '복용 종료')
         : null;
     final statusColor = stopPending

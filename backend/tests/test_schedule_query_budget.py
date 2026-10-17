@@ -129,8 +129,8 @@ def seed_slot(db: Session, in_slot: int) -> list[int]:
 # Description:
 # - Completing a slot reads the day once: at most three SELECTs (medications, completion
 #   rows, the outbox event) however many medications share the slot, and at most 14
-#   statements for eight medications. Repeating the same state and unchecking the slot
-#   insert nothing and stay within four statements.
+#   statements for eight medications. Repeating the same state writes nothing; unchecking
+#   the slot writes one batched audit INSERT.
 # Parameters:
 # - fk_engine (Engine): Foreign-key-enforcing test engine.
 # - fk_session_factory (sessionmaker[Session]): Factory bound to the test engine.
@@ -163,11 +163,13 @@ def test_slot_update_statements_stay_within_budget(
     assert len(first) <= in_slot + 6, first
     if in_slot == 8:
         assert len(first) <= 14, first
-    for later in (repeated, unchecked):
-        # One batched audit INSERT preserves corrections without an INSERT per medication.
-        assert len(later) <= 5, later
-        inserts = statements_of_kind(later, "INSERT")
-        assert len(inserts) == 1 and "medication_care_audits" in inserts[0], later
+    # Repeating the same state changes nothing, so it writes no audit or revision.
+    assert len(repeated) <= 4, repeated
+    assert not statements_of_kind(repeated, "INSERT"), repeated
+    # Unchecking writes one batched audit INSERT, not one per medication.
+    assert len(unchecked) <= 5, unchecked
+    inserts = statements_of_kind(unchecked, "INSERT")
+    assert len(inserts) == 1 and "medication_care_audits" in inserts[0], unchecked
 
 
 # Function Name: test_single_medication_update_statements_stay_within_budget

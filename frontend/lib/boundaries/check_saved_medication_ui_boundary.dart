@@ -608,8 +608,13 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
           return switch (_filterMode) {
             _SavedMedicationFilterMode.active => medication.isActiveOn(today),
             _SavedMedicationFilterMode.ended =>
+              // 중단일과 today의 시간대 형식이 달라도 연·월·일만 비교한다.
               (medication.stoppedOn != null &&
-                      !medication.stoppedOn!.isAfter(today)) ||
+                      !DateTime(
+                        medication.stoppedOn!.year,
+                        medication.stoppedOn!.month,
+                        medication.stoppedOn!.day,
+                      ).isAfter(DateTime(today.year, today.month, today.day))) ||
                   (medication.medicationEndDate != null &&
                       medication.medicationEndDate!.isBefore(
                         DateTime(today.year, today.month, today.day),

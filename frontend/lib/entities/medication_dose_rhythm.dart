@@ -16,6 +16,22 @@ bool isAsNeededDoseInstruction(String? value) => RegExp(
   caseSensitive: false,
 ).hasMatch(value ?? '');
 
+// 서버 resolve_dosing_mode와 같은 규칙으로 필요시 복용약을 판정한다. 복용 횟수의 필요시 지시는
+// 필요시로 보고, 1회량에만 있는 필요시 표현("1정 (통증 시 2정)")은 정기 횟수나 선택한 시간대가
+// 없을 때만 필요시로 본다. 정기 복용약의 추가 복용 안내 때문에 일정과 알림이 사라지지 않게 한다.
+bool isAsNeededRegimen({
+  required String dosingMode,
+  String? frequency,
+  String? dosage,
+  bool hasSlots = false,
+}) {
+  if (dosingMode == 'as_needed' || isAsNeededDoseInstruction(frequency)) {
+    return true;
+  }
+  final regular = (frequency ?? '').trim().isNotEmpty || hasSlots;
+  return !regular && isAsNeededDoseInstruction(dosage);
+}
+
 // 기존의 빈 횟수 기본값은 유지하되, 복잡하거나 해석하지 못한 지시는 검토를 요구한다.
 bool requiresDoseScheduleReview(String? value) {
   final text = _normalized(value);

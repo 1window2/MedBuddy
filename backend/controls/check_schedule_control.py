@@ -1246,6 +1246,11 @@ class CheckSchedule:
             )
             self.db.add(completion)
             completion_rows.append(completion)
+        else:
+            # 이전 앱의 재전송처럼 상태가 같으면 버전·감사 이력을 늘리지 않아 이력 정정의 거짓 충돌을 막는다.
+            current = completion.report_status or ("taken" if completion.completed else "unrecorded")
+            if current == ("taken" if completed else "unrecorded") and bool(completion.completed) == completed:
+                return
 
         preserve_report = completed and completion.report_status == "taken"
         apply_completion_report(

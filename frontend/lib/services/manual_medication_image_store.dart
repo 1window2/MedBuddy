@@ -99,6 +99,36 @@ class ManualMedicationImageStore {
     return await imageFile.exists() ? imageFile.path : '';
   }
 
+  // 함수이름: copyImage
+  // 함수역할: 처방 변경으로 새 ID가 생긴 같은 약에 기존 로컬 사진을 복사한다. 이전 기록 행의 사진은 유지한다.
+  // 매개변수:
+  // - patientHash (String): 조회·저장·알림 대상 환자의 소유권 해시
+  // - fromMedicationId (int): 사진이 연결된 이전 저장 복약정보의 식별자
+  // - toMedicationId (int): 새로 생긴 저장 복약정보의 식별자
+  // 반환값:
+  // - Future<void>: 이전 사진이 없거나 대상이 이미 사진을 가지면 아무것도 바꾸지 않는다.
+  Future<void> copyImage({
+    required String patientHash,
+    required int fromMedicationId,
+    required int toMedicationId,
+  }) async {
+    if (toMedicationId <= 0 || toMedicationId == fromMedicationId) return;
+    final source = await findImagePath(
+      patientHash: patientHash,
+      medicationId: fromMedicationId,
+    );
+    if (source.isEmpty) return;
+    final existing = await findImagePath(
+      patientHash: patientHash,
+      medicationId: toMedicationId,
+    );
+    if (existing.isNotEmpty) return;
+    final directory = await _patientDirectory(patientHash);
+    await File(source).copy(
+      '${directory.path}${Platform.pathSeparator}$toMedicationId.jpg',
+    );
+  }
+
   // 함수이름: deleteImage
   // 함수역할: 환자와 저장 약 ID에 연결된 로컬 사진이 존재할 때 삭제한다.
   // 매개변수:

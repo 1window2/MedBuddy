@@ -207,7 +207,7 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
                             final count = _takenCount(snapshot, m.id);
                             return tr(
                               '${m.itemName}\n오늘 $count회 → ${count + 1}회로 기록할까요?',
-                              '${m.itemName}\nRecord ${count + 1} doses today instead of $count?',
+                              '${m.itemName}\nRecord ${_englishDoses(count + 1)} today instead of $count?',
                             );
                           })
                           .join('\n\n'),
@@ -748,7 +748,7 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
                     ),
                   ),
                 Text(
-                  tr('오늘 $count회', '$count doses today'),
+                  tr('오늘 $count회', '${_englishDoses(count)} today'),
                   style: const TextStyle(
                     fontSize: 13,
                     color: MedBuddyColors.textMuted,
@@ -786,3 +786,8 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
           )
           .length;
 }
+
+// 함수이름: _englishDoses
+// 함수역할: 영어 복용 횟수를 단수·복수에 맞춰 표시한다("1 dose", "2 doses").
+// 매개변수: count: 횟수. 반환값: 횟수와 단위.
+String _englishDoses(int count) => count == 1 ? '1 dose' : '$count doses';

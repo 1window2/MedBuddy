@@ -377,6 +377,9 @@ void main() {
       expect(find.byKey(const Key('prn-reminder')), findsNothing);
       final bell = find.byKey(const Key('caregiver-notification-as_needed'));
       expect(bell, findsOneWidget);
+      // 시간대 알림 버튼도 다른 조작 버튼처럼 48dp 터치 영역을 가진다.
+      expect(tester.getSize(bell).width, greaterThanOrEqualTo(48));
+      expect(tester.getSize(bell).height, greaterThanOrEqualTo(48));
       await tester.tap(bell);
       await tester.pumpAndSettle();
       expect(find.text('필요시 복용 알림 설정'), findsOneWidget);

@@ -181,6 +181,32 @@ void main() {
     expect(find.text('약 1'), findsNothing);
   });
 
+  // 서버 날짜(YYYY-MM-DD)는 기기 자정으로 읽히므로, 한국처럼 UTC보다 빠른 시간대에서
+  // 마지막 복용일이 이미 종료로 보이던 회귀를 막는다(TZ=Asia/Seoul에서 실행해 확인).
+  testWidgets('마지막 복용일과 오늘 중단은 기기 날짜로 판단한다', (tester) async {
+    final model = await _pumpSelectionApp(tester, initialFilter: 'all');
+    final today = MedicationHistoryDates.today(DateTime.now());
+    final localToday = DateTime(today.year, today.month, today.day);
+    await model.replaceMedications([
+      _selectionMedication(1).copyWith(
+        prescriptionDate: localToday,
+        createdDate: localToday,
+        totalDays: '1',
+      ),
+      _selectionMedication(2).copyWith(stoppedOn: localToday),
+    ]);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('복용 종료 ·'), findsNothing);
+    expect(find.textContaining('복용 중단 예정'), findsNothing);
+    expect(
+      find.text('복용 중단 · ${MedicationHistoryDates.format(today)}'),
+      findsOneWidget,
+    );
+    await _chooseSavedFilter(tester, 'ended');
+    expect(find.text('약 1'), findsNothing);
+    expect(find.text('약 2'), findsOneWidget);
+  });
+
   testWidgets('복약함 관리 메뉴에서 기록을 지우지 않는 변경 화면을 연다', (tester) async {
     await _pumpSelectionApp(tester);
     await tester.tap(find.byKey(const Key('saved-medication-actions-1')));

@@ -216,10 +216,12 @@ class MedicationSchedule {
   final DateTime? stoppedOn;
   final DateTime? regimenEffectiveFrom;
 
-  bool get isAsNeeded =>
-      dosingMode == 'as_needed' ||
-      isAsNeededDoseInstruction(intakeTime) ||
-      isAsNeededDoseInstruction(dosage);
+  bool get isAsNeeded => isAsNeededRegimen(
+    dosingMode: dosingMode,
+    frequency: intakeTime,
+    dosage: dosage,
+    hasSlots: scheduleSlotKeys.isNotEmpty,
+  );
   bool get needsScheduleReview =>
       !isAsNeeded && requiresDoseScheduleReview(intakeTime);
 

@@ -1368,8 +1368,9 @@ class _CaregiverNotificationButton extends StatelessWidget {
   final VoidCallback onPressed;
 
   @override
+  // 다른 조작 버튼과 같이 48dp 터치 영역을 보장한다.
   Widget build(BuildContext context) => SizedBox.square(
-    dimension: 44,
+    dimension: 48,
     child: isLoading
         ? Padding(
             padding: const EdgeInsets.all(10),

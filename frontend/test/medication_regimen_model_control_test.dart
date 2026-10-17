@@ -49,6 +49,36 @@ void main() {
     expect(copy.toSaveJson().containsKey('regimen_revision'), isFalse);
   });
 
+  // 정기 복용약의 1회량에 붙은 추가 복용 안내 때문에 일정과 알림이 사라지지 않아야 한다(서버와 같은 규칙).
+  for (final (frequency, dosage, slots, expected) in [
+    ('1일 3회', '1정 (통증 시 2정)', <String>[], false),
+    ('1일 2회 아침 저녁', '1정, 필요시 1정 추가', <String>[], false),
+    ('', '1정(필요시)', ['morning', 'evening'], false),
+    ('', '1정(필요시)', <String>[], true),
+    ('1일 3회 필요시', '1정', ['morning'], true),
+  ]) {
+    test('1회량의 필요시 표현은 정기 횟수나 시간대가 없을 때만 필요시로 본다: $frequency / $dosage', () {
+      final detail = MedicationDetail.fromJson({
+        'id': 7,
+        'item_name': 'Test',
+        'dosing_mode': 'scheduled',
+        'daily_frequency': frequency,
+        'dosage_per_time': dosage,
+        'schedule_slot_keys': slots,
+      });
+      expect(detail.isAsNeeded, expected);
+      final schedule = MedicationSchedule.fromScheduleJson({
+        'medication_id': '7',
+        'drug_name': 'Test',
+        'dosing_mode': 'scheduled',
+        'daily_frequency': frequency,
+        'dosage_per_time': dosage,
+        'schedule_slot_keys': slots,
+      });
+      expect(schedule.isAsNeeded, expected);
+    });
+  }
+
   for (final instruction in ['필요시 복용', '통증 시', 'PRN', 'as needed', '증상 있을 때']) {
     test('이전 데이터의 필요시 지시도 자동 일정으로 만들지 않는다: $instruction', () {
       final schedule = MedicationSchedule.fromScheduleJson({
@@ -301,6 +331,25 @@ void main() {
     expect(model.medications, isEmpty);
   });
 
+  test('같은 약의 변경만 기기 사진을 새 약 ID로 이어 붙인다', () async {
+    for (final (action, expected) in [
+      (MedicationRegimenAction.edit, ['patient-a:7>8']),
+      (MedicationRegimenAction.replace, <String>[]),
+      (MedicationRegimenAction.stop, <String>[]),
+    ]) {
+      final control = _PendingControl();
+      final store = _CopyRecordingImageStore();
+      final model = _model(control, [], imageStore: store);
+      addTearDown(model.dispose);
+      final future = model.changeMedicationRegimen(7, _change(action: action));
+      control.response.complete(
+        const MedicationRegimenResult(medicationId: 8, revision: 1),
+      );
+      expect((await future).success, isTrue);
+      expect(store.copies, expected, reason: action.name);
+    }
+  });
+
   test('갱신 실패를 변경 저장 실패로 오해하여 중복 제출하지 않는다', () async {
     final control = _PendingControl();
     final events = <String>[];
@@ -316,8 +365,22 @@ void main() {
   });
 }
 
-MedicationRegimenChange _change() => MedicationRegimenChange(
-  action: MedicationRegimenAction.stop,
+class _CopyRecordingImageStore extends ManualMedicationImageStore {
+  final copies = <String>[];
+  @override
+  Future<void> copyImage({
+    required String patientHash,
+    required int fromMedicationId,
+    required int toMedicationId,
+  }) async {
+    copies.add('$patientHash:$fromMedicationId>$toMedicationId');
+  }
+}
+
+MedicationRegimenChange _change({
+  MedicationRegimenAction action = MedicationRegimenAction.stop,
+}) => MedicationRegimenChange(
+  action: action,
   effectiveDate: DateTime(2026, 10, 18),
   expectedRevision: 0,
 );
@@ -346,6 +409,7 @@ MedBuddySavedMedicationViewModel _model(
   _PendingControl control,
   List<String> events, {
   bool failRefresh = false,
+  ManualMedicationImageStore? imageStore,
 }) {
   final details = CheckMedicationDetail();
   addTearDown(details.dispose);
@@ -353,7 +417,7 @@ MedBuddySavedMedicationViewModel _model(
   return MedBuddySavedMedicationViewModel(
     checkSavedMedication: control,
     checkMedicationDetail: details,
-    manualMedicationImageStore: ManualMedicationImageStore(),
+    manualMedicationImageStore: imageStore ?? ManualMedicationImageStore(),
     patientHash: 'patient-a',
     readEnglishSetting: () => false,
     fetchTodayMedicationSchedule: () async {

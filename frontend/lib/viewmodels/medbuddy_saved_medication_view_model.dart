@@ -177,6 +177,22 @@ class MedBuddySavedMedicationViewModel {
         failure: MedicationRegimenFailure.cancelled,
       );
     }
+    // 같은 약의 용량·주기 변경은 새 ID로 저장되므로 기기에만 있는 사진을 새 항목에도 이어 붙인다.
+    final newMedicationId = result.medicationId;
+    if (result.success &&
+        change.action == MedicationRegimenAction.edit &&
+        newMedicationId != null &&
+        newMedicationId != medicationId) {
+      try {
+        await manualMedicationImageStore.copyImage(
+          patientHash: patientHash,
+          fromMedicationId: medicationId,
+          toMedicationId: newMedicationId,
+        );
+      } catch (_) {
+        // 사진 복사 실패가 이미 서버에 저장된 처방 변경을 실패로 만들지 않게 한다.
+      }
+    }
     if (result.success ||
         result.failure == MedicationRegimenFailure.conflict ||
         result.failure == MedicationRegimenFailure.missing) {

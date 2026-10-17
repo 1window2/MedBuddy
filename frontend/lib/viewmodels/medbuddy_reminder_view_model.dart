@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../controls/as_needed_check_reminder_control.dart';
 import '../controls/set_notification_control.dart';
 import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_schedule_entity.dart';
@@ -501,6 +502,8 @@ class MedBuddyReminderViewModel {
       await notificationService.cancelAllScheduledMedicationReminders();
       return;
     }
+    await _restoreAsNeededCheckReminder(isCurrent);
+    if (!isCurrent()) return;
     if (_medicationReminderSettings.isEmpty) {
       return;
     }
@@ -565,6 +568,30 @@ class MedBuddyReminderViewModel {
         courseSchedules: courseSchedules,
         isCurrent: isCurrent,
       );
+    }
+  }
+
+  // 함수이름: _restoreAsNeededCheckReminder
+  // 함수역할: 저장된 필요시 복용 확인 알림을 다시 예약한다. 일정 화면을 열지 않아도 강제 종료·전체 취소
+  //   뒤 앱 시작이나 일정 갱신 때 되살아나게 한다. 지난 시각이면 아무것도 예약하지 않는다.
+  // 매개변수:
+  // - isCurrent (bool Function()): 계정이 바뀌면 중단할지 확인하는 함수.
+  // 반환값:
+  // - Future<void>: 실패해도 정기 알림 동기화는 계속한다.
+  Future<void> _restoreAsNeededCheckReminder(bool Function() isCurrent) async {
+    final reminder = AsNeededCheckReminderControl(
+      patientHash: patientHash,
+      notifications: notificationService,
+      ensureSession: () {
+        if (!isCurrent()) throw StateError('Account changed.');
+      },
+    );
+    try {
+      await reminder.restore(allowed: true, isEnglish: _isEnglishSetting);
+    } catch (_) {
+      // 알림 기능을 읽지 못해도 정기 알림 동기화는 계속한다.
+    } finally {
+      reminder.dispose();
     }
   }
 

@@ -47,7 +47,8 @@ String medicationHistoryCsv(
       tr('기록 기준', 'Record source'),
       tr('사용자 입력, 실제 복용 증명 아님', 'Self-reported, not proof of ingestion'),
     ],
-    [tr('시간대', 'Time zone'), 'UTC+09:00'],
+    // 아래 표의 복용 '시간대' 열과 구분되도록 시각 기준 행은 '표준시'로 적는다.
+    [tr('표준시', 'Time zone'), 'UTC+09:00'],
     for (final status in MedicationHistoryStatus.values)
       [status.label(isEnglish), '${snapshot.count(status)}'],
     [],

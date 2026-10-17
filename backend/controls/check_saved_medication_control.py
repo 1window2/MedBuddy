@@ -90,6 +90,7 @@ class CheckSavedMedication:
             # 이전 앱이 필요시 지시를 정기 모드로 저장한 경우에도 기존 중복 서명을 확인한다.
             if duplicate_medication is None and resolve_dosing_mode(
                 None, medication.daily_frequency, medication.dosage_per_time,
+                has_slots=bool(medication.schedule_slot_keys),
             ) == "as_needed":
                 duplicate_medication = self.medication_repository.find_daily_duplicate(
                     patient_hash=patient_hash, registration_date=registration_date,

@@ -39,4 +39,28 @@ void main() {
       await directory.delete(recursive: true);
     }
   });
+
+  // 처방 변경으로 새 ID가 생겨도 기기 사진이 새 항목에 이어지고 이전 기록 행의 사진은 남는다.
+  test('처방 변경의 새 약 ID로 사진을 복사하고 이전 사진과 기존 사진을 유지한다', () async {
+    final directory = await Directory.systemTemp.createTemp('medbuddy-photo-copy-');
+    final originalProvider = PathProviderPlatform.instance;
+    PathProviderPlatform.instance = _ImagePaths(directory.path);
+    try {
+      final source = File('${directory.path}/source.png');
+      await source.writeAsBytes(img.encodePng(img.Image(width: 20, height: 10)));
+      const store = ManualMedicationImageStore();
+      final original = await store.saveImage(patientHash: 'patient-a', medicationId: 7,
+          sourcePath: source.path);
+      await store.copyImage(patientHash: 'patient-a', fromMedicationId: 7, toMedicationId: 8);
+      final copied = await store.findImagePath(patientHash: 'patient-a', medicationId: 8);
+      expect(copied, isNotEmpty);
+      expect(await File(copied).readAsBytes(), await File(original).readAsBytes());
+      expect(await store.findImagePath(patientHash: 'patient-a', medicationId: 7), original);
+      await store.copyImage(patientHash: 'patient-a', fromMedicationId: 1, toMedicationId: 9);
+      expect(await store.findImagePath(patientHash: 'patient-a', medicationId: 9), '');
+    } finally {
+      PathProviderPlatform.instance = originalProvider;
+      await directory.delete(recursive: true);
+    }
+  });
 }

@@ -59,10 +59,12 @@ class MedicationDetail {
   final int? supersededById;
   final List<String> scheduleSlotKeys;
 
-  bool get isAsNeeded =>
-      dosingMode == 'as_needed' ||
-      isAsNeededDoseInstruction(dailyFrequency) ||
-      isAsNeededDoseInstruction(dosagePerTime);
+  bool get isAsNeeded => isAsNeededRegimen(
+    dosingMode: dosingMode,
+    frequency: dailyFrequency,
+    dosage: dosagePerTime,
+    hasSlots: scheduleSlotKeys.isNotEmpty,
+  );
 
   // 함수이름: MedicationDetail
   // 함수역할: 약의 품목·효능·복용법·주의사항과 처방 기간 및 원격·기기 사진 정보를 상세 화면용 값으로 보존한다.

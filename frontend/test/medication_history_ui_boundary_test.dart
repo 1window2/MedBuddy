@@ -934,7 +934,7 @@ void main() {
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     expect(server.writes, hasLength(1));
-    expect(find.text('1 doses today'), findsOneWidget);
+    expect(find.text('1 dose today'), findsOneWidget);
   });
 
   testWidgets(
@@ -983,7 +983,7 @@ void main() {
     expect(server.writes, hasLength(3));
     expect(server.paths[1], server.paths[2]);
     expect(server.writes[1], server.writes[2]);
-    expect(find.text('1 doses today'), findsNWidgets(2));
+    expect(find.text('1 dose today'), findsNWidgets(2));
   });
 
   testWidgets('confirmed server rejection does not leave all checks blocked', (
@@ -997,7 +997,7 @@ void main() {
     server.rejectWrite = null;
     await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
     await tester.pumpAndSettle();
-    expect(find.text('1 doses today'), findsOneWidget);
+    expect(find.text('1 dose today'), findsOneWidget);
   });
 
   testWidgets(
@@ -1146,7 +1146,7 @@ void main() {
     expect(server.writes[0], server.writes[1]);
     expect(server.paths.toSet(), hasLength(1));
     expect(control.pendingAsNeededChange, isNull);
-    expect(find.text('1 doses today'), findsOneWidget);
+    expect(find.text('1 dose today'), findsOneWidget);
   });
 
   testWidgets('read-only PRN section cannot record', (tester) async {

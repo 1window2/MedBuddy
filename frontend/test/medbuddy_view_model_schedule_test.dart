@@ -68,6 +68,29 @@ void main() {
     gate.complete(_jsonResponse({'success': true, 'data': []}));
     await Future.wait([first, second]);
   });
+  // 일정 화면을 열지 않아도 앱 단위 알림 동기화가 저장된 필요시 확인 알림을 다시 예약한다
+  // (전체 알림 취소 뒤 계정 데이터 삭제 실패, 강제 종료 뒤 시작).
+  test('reminder sync restores a stored as-needed check reminder', () async {
+    final at = DateTime.now().toUtc().add(const Duration(hours: 3));
+    SharedPreferences.setMockInitialValues({
+      'medbuddy_as_needed_check_patient-a': at.toIso8601String(),
+    });
+    final notifications = RecordingNotificationService();
+    final client = MockClient(
+      (request) async => _jsonResponse({'success': true, 'data': []}),
+    );
+    final vm = MedBuddyViewModel(
+      patientHash: 'patient-a',
+      checkSchedule: CheckSchedule(patientHash: 'patient-a', client: client),
+      setNotification: SetNotification(patientHash: 'patient-a', client: client),
+      notificationService: notifications,
+    );
+    addTearDown(vm.dispose);
+    addTearDown(client.close);
+    await vm.refreshMedicationSchedule();
+    expect(notifications.registeredSlotKeys, contains('as_needed'));
+  });
+
   // Default-time saves refresh read-only alarm state without rescheduling
   // explicit alarms, enabling notifications, or clearing a pending snooze.
   test(

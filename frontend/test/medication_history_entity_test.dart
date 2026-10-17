@@ -294,6 +294,9 @@ void main() {
       expect(csv, contains('테스트 주간약'));
       expect(csv, isNot(contains('테스트 필요시약')));
       expect(csv, isNot(contains('private-scope')));
+      // 시각 기준 행과 복용 시간대 열의 제목이 겹치지 않는다.
+      expect(csv, contains('"표준시","UTC+09:00"'));
+      expect('"시간대"'.allMatches(csv).length, 1);
       expect(
         medicationHistorySummary(snapshot, isEnglish: true),
         contains('not proof of ingestion'),
