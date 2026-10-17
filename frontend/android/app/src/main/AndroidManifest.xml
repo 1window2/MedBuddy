@@ -54,6 +54,15 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.medication_exports"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/medication_export_paths" />
+        </provider>
         <receiver android:name=".DoseWidgetProvider" android:exported="false" android:label="MedBuddy 복약 일정">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />

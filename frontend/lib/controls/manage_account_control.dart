@@ -1,4 +1,5 @@
 import 'package:http/http.dart' as http;
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/api_config.dart';
@@ -161,6 +162,15 @@ class ManageAccount {
       );
     }
     final preferences = await SharedPreferences.getInstance();
+    try {
+      await const MethodChannel(
+        'com.medbuddy/data_export',
+      ).invokeMethod<void>('clearExports');
+    } on MissingPluginException {
+      // Platforms without the Android export channel have no native CSV cache.
+    } on PlatformException {
+      // A cache cleanup failure must not prevent finalized account deletion.
+    }
     // Underscores are valid inside hashes, so match complete setting/reminder
     // keys instead of treating every underscore as an account boundary.
     final exactKeys = <String>{
@@ -221,9 +231,8 @@ class ManageAccount {
        * Returns:
        * - Whether the key belongs to an account-scoped namespace.
        */
-      (key) => _accountScopedKeyPatterns.any(
-        (pattern) => pattern.hasMatch(key),
-      ),
+      (key) =>
+          _accountScopedKeyPatterns.any((pattern) => pattern.hasMatch(key)),
     );
     if (anotherAccountRemains) {
       return;
