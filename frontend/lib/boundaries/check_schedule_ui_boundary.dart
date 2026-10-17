@@ -19,8 +19,11 @@ import '../viewmodels/medbuddy_feature_updates.dart';
 import '../widgets/medbuddy_page_header.dart';
 import '../widgets/dose_sync_status.dart';
 import '../widgets/exact_reminder_notice.dart';
+import '../widgets/as_needed_schedule_section.dart';
+import '../controls/medication_history_control.dart';
 import '../widgets/medication_thumbnail.dart';
 import 'medication_image_viewer_boundary.dart';
+import 'medication_history_ui_boundary.dart';
 
 // 파일명: check_schedule_ui_boundary.dart
 // 역할: 오늘 복약 일정과 시간대별 알림 설정 화면을 구성한다.
@@ -40,6 +43,7 @@ class CheckScheduleUI extends StatefulWidget {
   final Map<String, Set<String>> initialSelectedMedicationSlots;
   final String? initialSlotKey;
   final bool showBackButton;
+  final MedicationHistoryControl? asNeededControl;
 
   // Function Name: CheckScheduleUI
   // Description: Initializes today's per-slot dose completion, reminders, and attachment selection with the supplied configuration.
@@ -52,6 +56,7 @@ class CheckScheduleUI extends StatefulWidget {
     super.key,
     this.initialSlotKey,
     this.showBackButton = true,
+    this.asNeededControl,
   }) : selectionSchedules = null,
        selectionLanguage = 'ko',
        initialSelectedMedicationSlots = const {};
@@ -73,6 +78,7 @@ class CheckScheduleUI extends StatefulWidget {
        selectionLanguage = language,
        initialSelectedMedicationSlots = selectedMedicationSlots,
        initialSlotKey = null,
+       asNeededControl = null,
        showBackButton = true;
 
   // 함수이름: isSelectionMode
@@ -113,9 +119,11 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
 
   final Map<String, GlobalKey> _slotKeys = {
     for (final definition in _slotDefinitions) definition.key: GlobalKey(),
+    'as_needed': GlobalKey(),
   };
   final Set<String> _updatingEntireSlotKeys = <String>{};
   bool _reminderWorkflowActive = false;
+  bool _historyWorkflowActive = false;
   bool _didRevealInitialSlot = false;
   late Set<({String medicationId, String slotKey})> _selectedDoses;
   // 함수이름: initState
@@ -444,6 +452,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
             text: text,
             completedCount: progress.completedCount,
             totalCount: progress.totalCount,
+            onHistoryRequested: () => _openMedicationHistory(viewModel),
             onBackRequested: widget.showBackButton
                 // Function Name: _buildScreen.onBackRequested callback
                 // Description: Closes this route with the selection or cancellation encoded by `Navigator.pop(context)`.
@@ -469,6 +478,32 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     );
   }
 
+  // 함수이름: _openMedicationHistory
+  // 함수역할: 본인 기록을 열고 저장된 정정 결과를 오늘 일정·알림·위젯에 반영한다.
+  // 매개변수: viewModel - 현재 로그인 계정의 화면 상태.
+  // 반환값: 기록 화면이 닫히면 완료되는 Future.
+  Future<void> _openMedicationHistory(MedBuddyViewModel viewModel) async {
+    if (_historyWorkflowActive) return;
+    _historyWorkflowActive = true;
+    try {
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => MedicationHistoryUI(
+            patientHash: viewModel.patientHash,
+            isEnglish: viewModel.userSetting.isEnglish,
+            onChanged: () async {
+              if (!mounted) return;
+              await viewModel.refreshMedicationSchedule();
+            },
+          ),
+        ),
+      );
+    } finally {
+      _historyWorkflowActive = false;
+    }
+  }
+
   // Function Name: _buildContent
   // Description: Selects schedule loading, failure, or empty states and connects completion and reminder actions to slot cards.
   // Parameters:
@@ -481,25 +516,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     List<_ScheduleSlot> slots,
     _ScheduleText text,
   ) {
-    if (viewModel.isTodayScheduleLoading &&
-        viewModel.todayMedicationScheduleList.isEmpty) {
-      return const Center(
-        child: CircularProgressIndicator(color: MedBuddyColors.primary),
-      );
-    }
-
-    if (viewModel.hasTodayScheduleLoadError &&
-        viewModel.todayMedicationScheduleList.isEmpty) {
-      return _ScheduleLoadErrorState(
-        text: text,
-        message: text.scheduleLoadFailed,
-        onRetryRequested: viewModel.refreshMedicationSchedule,
-      );
-    }
-
-    if (viewModel.todayMedicationScheduleList.isEmpty) {
-      return _ScheduleEmptyState(text: text);
-    }
+    final noRegularDoses = viewModel.todayMedicationScheduleList.isEmpty;
 
     return Center(
       child: ConstrainedBox(
@@ -509,8 +526,27 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
           children: [
+            if (noRegularDoses && viewModel.isTodayScheduleLoading)
+              const SizedBox(
+                height: 100,
+                child: Center(
+                  child: CircularProgressIndicator(
+                    color: MedBuddyColors.primary,
+                  ),
+                ),
+              ),
+            if (noRegularDoses && viewModel.hasTodayScheduleLoadError)
+              SizedBox(
+                height: 340,
+                child: _ScheduleLoadErrorState(
+                  text: text,
+                  message: text.scheduleLoadFailed,
+                  onRetryRequested: viewModel.refreshMedicationSchedule,
+                ),
+              ),
             // 켜 둔 복약 알림이 있는데 기기가 정확한 알람을 막고 있으면 허용 방법을 안내한다.
-            if (viewModel.userSetting.medicationNotificationsEnabled &&
+            if (!noRegularDoses &&
+                viewModel.userSetting.medicationNotificationsEnabled &&
                 viewModel.medicationReminderSettings.values.any(
                   (setting) => setting.isEnabled,
                 ))
@@ -519,7 +555,8 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
                 isEnglish: text.isEnglish,
                 margin: const EdgeInsets.only(bottom: 16),
               ),
-            for (final slot in slots) ...[
+            for (final slot
+                in noRegularDoses ? const <_ScheduleSlot>[] : slots) ...[
               KeyedSubtree(
                 key: _slotKeys[slot.key],
                 child: _TimeSlotCard(
@@ -602,6 +639,28 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
               ),
               const SizedBox(height: 12),
             ],
+            Container(
+              key: _slotKeys['as_needed'],
+              child: AsNeededScheduleSection(
+                key: ValueKey('schedule-prn-${viewModel.patientHash}'),
+                patientHash: viewModel.patientHash,
+                isEnglish: text.isEnglish,
+                control: widget.asNeededControl ?? viewModel.asNeededHistory,
+                imageStore: viewModel.manualMedicationImageStore,
+                notificationsAllowed:
+                    viewModel.userSetting.medicationNotificationsEnabled,
+                refreshInProgress: viewModel.isTodayScheduleLoading,
+                emptyState:
+                    noRegularDoses &&
+                        !viewModel.isTodayScheduleLoading &&
+                        !viewModel.hasTodayScheduleLoadError
+                    ? SizedBox(
+                        height: 300,
+                        child: _ScheduleEmptyState(text: text),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ),
           ],
         ),
       ),
@@ -1127,6 +1186,7 @@ class _ScheduleHeader extends StatelessWidget {
   final int completedCount;
   final int totalCount;
   final VoidCallback? onBackRequested;
+  final VoidCallback onHistoryRequested;
 
   // 함수이름: _ScheduleHeader
   // 함수역할: 오늘 날짜와 복약 완료 진행률에 필요한 입력값과 표시 설정을 초기화한다.
@@ -1141,6 +1201,7 @@ class _ScheduleHeader extends StatelessWidget {
     required this.completedCount,
     required this.totalCount,
     required this.onBackRequested,
+    required this.onHistoryRequested,
   });
 
   // Function Name: build
@@ -1190,6 +1251,15 @@ class _ScheduleHeader extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: MedBuddyPageHeader.titleStyle,
                   strutStyle: MedBuddyPageHeader.titleStrutStyle,
+                ),
+              ),
+              IconButton(
+                key: const Key('schedule-history'),
+                tooltip: text.isEnglish ? 'Medication history' : '복용 기록',
+                onPressed: onHistoryRequested,
+                icon: const Icon(
+                  Icons.calendar_month_outlined,
+                  color: Colors.white,
                 ),
               ),
             ],

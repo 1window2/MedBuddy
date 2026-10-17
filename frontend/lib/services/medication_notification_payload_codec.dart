@@ -62,6 +62,7 @@ class MedicationNotificationPayloadCodec {
           'lunch',
           'evening',
           'bedtime',
+          'as_needed',
         }.contains(segments[1].trim().toLowerCase())) {
       final encodedNotificationId = int.tryParse(segments[2]);
       if (encodedNotificationId == null || encodedNotificationId < 0) {
@@ -82,12 +83,16 @@ class MedicationNotificationPayloadCodec {
         slotKey: segments[1].trim().toLowerCase(),
         notificationId: notificationId ?? encodedNotificationId,
         scheduleDate: scheduleDate,
-        action: switch (actionId) {
-          markSlotTakenActionId => MedicationNotificationAction.markSlotTaken,
-          snoozeTenMinutesActionId =>
-            MedicationNotificationAction.snoozeTenMinutes,
-          _ => MedicationNotificationAction.open,
-        },
+        // 필요시 확인 알림은 복용 처리와 다시 알림을 자동 실행하지 않는다.
+        action: segments[1].trim().toLowerCase() == 'as_needed'
+            ? MedicationNotificationAction.open
+            : switch (actionId) {
+                markSlotTakenActionId =>
+                  MedicationNotificationAction.markSlotTaken,
+                snoozeTenMinutesActionId =>
+                  MedicationNotificationAction.snoozeTenMinutes,
+                _ => MedicationNotificationAction.open,
+              },
       );
     }
     if (segments.length == 2 &&

@@ -13,6 +13,7 @@ import '../controls/check_medication_detail_control.dart';
 import '../entities/medication_match_review_entity.dart';
 import '../controls/check_prescription_change_control.dart';
 import '../controls/check_schedule_control.dart';
+import '../controls/medication_history_control.dart';
 import '../controls/check_saved_medication_control.dart';
 import '../controls/check_today_medication_info_control.dart';
 import '../controls/input_prescription_control.dart';
@@ -122,6 +123,11 @@ class MedBuddyViewModel extends ChangeNotifier {
   final ManualMedicationImageStore manualMedicationImageStore;
   final String patientHash;
   final http.Client _apiClient;
+  MedicationHistoryControl? _asNeededHistory;
+
+  // 필요시 복용의 미확인 요청은 화면이 아닌 로그인 세션이 소유한다.
+  MedicationHistoryControl get asNeededHistory => _asNeededHistory ??=
+      MedicationHistoryControl(patientHash: patientHash, client: _apiClient);
   final bool _ownsApiClient;
   bool _isDisposed = false;
   final Map<MedBuddyFeature, MedBuddyFeatureUpdates> _featureUpdates = {
@@ -788,6 +794,8 @@ class MedBuddyViewModel extends ChangeNotifier {
       return;
     }
     _isDisposed = true;
+    _asNeededHistory?.invalidateSession();
+    _asNeededHistory?.dispose();
     _savedMedications.dispose();
     _schedules.dispose();
     _reminders.dispose();

@@ -707,7 +707,11 @@ class NotificationService {
     try {
       for (final activeDate in sortedDates) {
         if (owner != _historyUserHash) return;
-        final body = _buildReminderBody(language);
+        final body = slotKey == 'as_needed'
+            ? (_isEnglish(language)
+                  ? 'Check your as-needed medication and recorded doses.'
+                  : '필요시 약과 오늘 기록한 복용 내역을 확인해 주세요.')
+            : _buildReminderBody(language);
         final scheduledDate = timezone.TZDateTime(
           timezone.local,
           activeDate.year,
@@ -901,7 +905,9 @@ class NotificationService {
   }) async {
     // 예약 도중 계정이 바뀌면 나머지 예약을 새 계정에 남기지 않는다.
     if (owner != _historyUserHash) return null;
-    final title = _isEnglish(language)
+    final title = slotKey == 'as_needed'
+        ? (_isEnglish(language) ? 'As-needed medication check' : '필요시 약 확인')
+        : _isEnglish(language)
         ? '$slotTitle medication schedule'
         : '$slotTitle 복약 일정 확인';
 
@@ -920,7 +926,7 @@ class NotificationService {
           importance: Importance.high,
           priority: Priority.high,
           groupKey: 'medbuddy.reminder.$slotKey',
-          actions: <AndroidNotificationAction>[
+          actions: slotKey == 'as_needed' ? const [] : <AndroidNotificationAction>[
             AndroidNotificationAction(
               markSlotTakenActionId,
               _isEnglish(language) ? 'Taken' : '복용했어요',
