@@ -1,6 +1,6 @@
 @startuml
 allowmixing
-scale max 1920 width
+scale max 8192 width
 left to right direction
 !pragma layout smetana
 
@@ -38,6 +38,11 @@ package "Flutter Frontend" #E8F4FF {
   class ForegroundRecoveryService <<Service>>
   class AuthenticatedApiClient <<Service>>
   class ManageUserSettingUI <<UI>>
+  class NotificationReadinessUI <<UI>>
+  class NotificationReadinessControl <<Control>>
+  class NotificationReadinessSnapshot <<Entity>>
+  class NotificationService <<Service>>
+  class DataUseInfoUI <<UI>>
   class "ManageUserSetting" as FManageUserSetting <<Control>>
   class ManageAccount <<Control>>
   database "SharedPreferences\naccount-scoped settings" as LocalSettings <<Database>>
@@ -94,10 +99,30 @@ end note
 BAuthorizationControl --> DBUserAccount
 
 ManageUserSettingUI --> FManageUserSetting
+ManageUserSettingUI --> NotificationReadinessUI : Medication & Notifications
+ManageUserSettingUI --> DataUseInfoUI : Account / Privacy & Data
+NotificationReadinessUI --> NotificationReadinessControl
+NotificationReadinessControl --> NotificationReadinessSnapshot
+NotificationReadinessControl --> NotificationService : read / explicit permission / test
+note bottom of NotificationReadinessControl
+  등록 약 조회는 callback, 권한 확인은 기존 알림 service에 위임한다.
+  겹친 점검을 합치며 실패·미지원 항목은 성공으로 표시하지 않는다.
+  알림·복약 channel·정확한 알람 권한을 분리하고 자동 요청하지 않는다.
+  테스트 요청과 사용자의 실제 수신 확인을 구분한다.
+  테스트 알림에는 복약 action·화면 payload·알림함 기록이 없다.
+end note
+note bottom of DataUseInfoUI
+  실제 데이터 흐름·외부 AI·공유·캐시·삭제 범위를 설명한다.
+  확정 개인정보처리방침, AI 동의 수집 또는 전송 차단 기능은 아니다.
+end note
 ManageUserSettingUI --> AppLanguageControl
 FManageUserSetting --> BManageUserSetting : GET revision / PUT expected_revision
 FManageUserSetting --> LocalSettings : atomic JSON snapshot; then legacy mirrors
 ManageAccount --> LocalSettings : exact-owner cleanup after server deletion
+note bottom of ManageAccount
+  서버 계정 삭제 확인 뒤 약 기록 CSV 임시 cache 정리도 시도한다.
+  외부 앱이나 상대방이 저장한 사본은 회수하지 못한다.
+end note
 BManageUserSetting --> DBUserSetting : expected revision + ORM version guard
 BManageUserSetting --> FUserSetting : persisted preferences
 note bottom of FManageUserSetting
