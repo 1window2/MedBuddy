@@ -205,6 +205,11 @@ class SetCaregiverNotification:
             patient_hash,
         )
         requested_mode = self._coerce_notification_mode(enabled, alert_option)
+        if normalized_slot_key == "as_needed" and requested_mode == CAREGIVER_NOTIFICATION_MODE_MISSED_DEADLINE:
+            raise HTTPException(
+                status_code=400,
+                detail="As-needed notifications do not support missed deadlines.",
+            )
         self._validate_deadline(
             requested_mode,
             deadline_hour,

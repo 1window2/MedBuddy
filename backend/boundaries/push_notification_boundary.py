@@ -2,6 +2,7 @@
 # 역할: 보호자 알림 유스케이스와 Firebase Cloud Messaging SDK를 분리한다.
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -141,6 +142,16 @@ class FirebasePushNotificationBoundary:
         if not normalized_tokens:
             return PushDeliveryResult(success_count=0)
 
+        event_key = data.get("event_key")
+        # 같은 필요시 복용의 재전송은 기존 알림을 교체하고 다른 복용 알림은 유지한다.
+        prn_notification_key = (
+            event_key
+            if data.get("type") == "caregiver_dose_completed"
+            and data.get("slot_key") == "as_needed"
+            and isinstance(event_key, str)
+            and re.fullmatch(r"[0-9a-f]{64}", event_key)
+            else None
+        )
         success_count = 0
         invalid_tokens: list[str] = []
         retryable_failure_count = 0
@@ -160,8 +171,11 @@ class FirebasePushNotificationBoundary:
                         notification=(None if data.get("type") == "caregiver_slot_missed"
                                       and data.get("action_version") == "1" else messaging.AndroidNotification(
                             channel_id="medbuddy_caregiver_updates",
+                            tag=prn_notification_key,
                         )),
                     ),
+                    apns=(messaging.APNSConfig(headers={"apns-collapse-id": prn_notification_key})
+                          if prn_notification_key is not None else None),
                 ),
                 app=self._app,
             )

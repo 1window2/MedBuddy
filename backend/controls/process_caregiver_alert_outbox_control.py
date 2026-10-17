@@ -18,6 +18,7 @@ from controls.manage_caregiver_alert_control import ManageCaregiverAlert
 from fastapi import HTTPException
 from core.application_clock import application_today
 from entities.caregiver_alert_outbox_entity import (
+    CAREGIVER_ALERT_EVENT_AS_NEEDED_COMPLETED,
     CAREGIVER_ALERT_EVENT_DOSE_COMPLETED,
     CAREGIVER_ALERT_EVENT_LATE_LINK_COMPLETED,
     CAREGIVER_ALERT_EVENT_MISSED_DEADLINE,
@@ -255,6 +256,21 @@ class ProcessCaregiverAlertOutbox:
                     slot_key=slot_key,
                     **recipient_scope,
                 )
+            elif event_type == CAREGIVER_ALERT_EVENT_AS_NEEDED_COMPLETED:
+                if slot_key != "as_needed":
+                    raise ValueError("As-needed outbox event has an invalid slot.")
+                prn_result = self.dispatcher.notifyAsNeededDoseCompletedIfCurrent(
+                    patient_hash=patient_hash, schedule_date=schedule_date,
+                    event_key=str(row.event_key),
+                )
+                if prn_result is None:
+                    # 날짜가 지났거나 복용이 취소·삭제된 이벤트는 재시도하지 않는다.
+                    row.status = CAREGIVER_ALERT_STATUS_DEAD_LETTER
+                    row.processing_started_at = None
+                    row.last_error = "AsNeededDoseNoLongerCurrent"
+                    self.db.commit()
+                    return "skipped"
+                delivery_result = prn_result
             elif event_type == CAREGIVER_ALERT_EVENT_MISSED_DEADLINE:
                 if row.caregiver_hash is None or schedule_date is None:
                     raise ValueError("Missed-dose outbox event is incomplete.")

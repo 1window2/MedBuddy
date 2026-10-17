@@ -25,6 +25,7 @@ CAREGIVER_NOTIFICATION_SLOT_KEYS = (
     "lunch",
     "evening",
     "bedtime",
+    "as_needed",
 )
 
 
@@ -117,6 +118,8 @@ class CaregiverNotification(BaseModel):
         deadline_minute: int | None = None,
     ) -> "CaregiverNotification":
         notification_mode = normalize_notification_mode(notification_option)
+        if self.slot_key == "as_needed" and notification_mode == CAREGIVER_NOTIFICATION_MODE_MISSED_DEADLINE:
+            raise ValueError("As-needed notifications do not support missed deadlines.")
         if notification_mode == CAREGIVER_NOTIFICATION_MODE_MISSED_DEADLINE:
             if deadline_hour is None or deadline_minute is None:
                 raise ValueError("Missed-dose notifications require a deadline.")
@@ -255,6 +258,8 @@ def decode_slot_settings(raw_settings: str | None) -> dict[str, dict[str, object
             )
         except ValueError:
             mode = CAREGIVER_NOTIFICATION_MODE_DISABLED
+        if slot_key == "as_needed" and mode == CAREGIVER_NOTIFICATION_MODE_MISSED_DEADLINE:
+            mode = CAREGIVER_NOTIFICATION_MODE_DISABLED
         deadline_hour = raw_setting.get("deadline_hour")
         deadline_minute = raw_setting.get("deadline_minute")
         if mode != CAREGIVER_NOTIFICATION_MODE_MISSED_DEADLINE:
@@ -288,6 +293,14 @@ def effective_slot_settings(
     except ValueError:
         legacy_mode = alert_option_from_enabled(bool(setting.enabled))
     for slot_key in CAREGIVER_NOTIFICATION_SLOT_KEYS:
+        # 필요시 복용은 기존 정기 알림 설정을 상속하지 않고 명시적으로 동의한 경우만 알린다.
+        if slot_key == "as_needed":
+            slot_settings.setdefault(slot_key, {
+                "notification_type": CAREGIVER_NOTIFICATION_MODE_DISABLED,
+                "deadline_hour": None,
+                "deadline_minute": None,
+            })
+            continue
         slot_settings.setdefault(
             slot_key,
             {

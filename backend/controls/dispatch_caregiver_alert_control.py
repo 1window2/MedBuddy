@@ -30,6 +30,7 @@ from entities.medication_schedule_entity import (
     MEDICATION_SLOT_KOREAN_NAMES,
 )
 from services.push_recipient_resolver import PushRecipientResolver
+from services.as_needed_caregiver_events import load_as_needed_taken_event_keys
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,50 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
         self.link_repository = (
             link_repository or PatientCaregiverLinkRepository(db)
         )
+
+    def notifyAsNeededDoseCompletedIfCurrent(
+        self, *, patient_hash: str, schedule_date: date | None, event_key: str,
+    ) -> PushDeliveryResult | None:
+        """오늘의 유효한 개별 필요시 복용을 현재 연동·설정에 따라 알리고 채팅은 만들지 않는다."""
+        if schedule_date != application_now().date():
+            return None
+        keys = load_as_needed_taken_event_keys(self.db, [patient_hash], schedule_date)
+        if event_key not in keys[patient_hash]:
+            return None
+        resolver = PushRecipientResolver(self.db)
+        prepared_pushes: list[_PreparedPush] = []
+        for caregiver_hash in self._caregivers_for_completed_slot(patient_hash, "as_needed"):
+            if not resolver.caregiver_alerts_enabled(caregiver_hash):
+                continue
+            recipient = resolver.resolve(caregiver_hash)
+            if not recipient.tokens:
+                continue
+            is_english = recipient.language == "en"
+            if recipient.show_details:
+                body = (
+                    "The patient recorded an as-needed dose as taken."
+                    if is_english else "환자가 필요시 약의 복용을 기록했습니다."
+                )
+            else:
+                body = (
+                    "A linked patient's medication status was updated."
+                    if is_english else "연동된 환자의 복약 상태가 변경되었습니다."
+                )
+            prepared_pushes.append(_PreparedPush(
+                tokens=recipient.tokens,
+                title="As-needed dose recorded" if is_english else "필요시 복용 기록",
+                body=body,
+                data={
+                    "type": "caregiver_dose_completed",
+                    "recipient_hash": caregiver_hash,
+                    "language": recipient.language,
+                    "patient_hash": patient_hash,
+                    "slot_key": "as_needed",
+                    "event_key": event_key,
+                    "schedule_date": schedule_date.isoformat(),
+                },
+            ))
+        return self._send_prepared_pushes(prepared_pushes, resolver)
 
     # 함수이름: notifySlotCompleted
     # 함수역할:
@@ -396,7 +441,7 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
                 )
                 .first()
             )
-            if setting is None:
+            if setting is None or (slot_key == "as_needed" and not setting.enabled):
                 continue
             # 시간대 JSON이 없는 기존 행도 설정 화면과 같은 규칙으로 읽는다.
             slot_setting = effective_slot_settings(setting).get(slot_key)

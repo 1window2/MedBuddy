@@ -26,6 +26,7 @@ from entities.user_account_entity import _UserAccount
 from schemas.medication import SavedMedicationCreate
 from schemas.medication_care import DoseHistoryUpdate, RegimenChangeRequest
 from services.medication_care_recording import apply_completion_report, completion_snapshot
+from services.as_needed_caregiver_events import queue_as_needed_taken_event
 from services.medication_course_policy import MedicationCoursePolicy
 from services.medication_dosing_mode import medication_dosing_mode
 
@@ -347,6 +348,7 @@ class ManageMedicationCare:
             ).with_for_update().populate_existing().first()
             if request.expected_revision != (row.revision or 0 if row is not None else 0):
                 raise HTTPException(409, _CONFLICT)
+            was_taken = row is not None and bool(row.completed)
             if row is None:
                 row = _MedicationCompletion(
                     patient_hash=owner, saved_medication_id=medication_id, schedule_date=day, slot_key=slot,
@@ -355,6 +357,12 @@ class ManageMedicationCare:
                 self.db.add(row)
             apply_completion_report(self.db, row, status=request.status, actual_taken_at=request.actual_taken_at, reason=request.reason)
             self.db.flush()
+            prn_outbox_id = None
+            if (
+                day == application_today() and medication_dosing_mode(med) == "as_needed"
+                and request.status == "taken" and not was_taken
+            ):
+                prn_outbox_id = queue_as_needed_taken_event(self.db, row)
             # 오늘만 이전 앱의 전체 완료 표시를 갱신한다. 과거 정정은 오늘 상태를 건드리지 않는다.
             if day == application_today() and medication_dosing_mode(med) == "scheduled":
                 statuses = schedule._slot_statuses_for_medication(med, day)
@@ -368,6 +376,8 @@ class ManageMedicationCare:
                 )
             response = {"success": True, **self._history_item(med, day, slot, row)}
             result = self._commit(owner, request.operation_id, fingerprint, response)
+            if prn_outbox_id is not None:
+                self._completion_events.append({"outbox_id": prn_outbox_id})
             return result
         except (IntegrityError, OperationalError) as exc:
             self.db.rollback()
