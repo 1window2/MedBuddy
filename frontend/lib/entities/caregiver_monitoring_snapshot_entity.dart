@@ -17,6 +17,8 @@ class CaregiverMonitoringSnapshot {
   final PatientCaregiverLink link;
   final Map<String, CaregiverNotification> notificationSettings;
   final List<MedicationSchedule> schedules;
+  final String? asNeededScheduleDate;
+  final List<String>? asNeededTakenEventKeys;
 
   // 함수이름: CaregiverMonitoringSnapshot
   // 함수역할: 환자 연동, 시간대별 알림 설정과 오늘 일정을 동일한 조회 시점의 자료로 묶는다.
@@ -30,6 +32,8 @@ class CaregiverMonitoringSnapshot {
     required this.link,
     required this.notificationSettings,
     required this.schedules,
+    this.asNeededScheduleDate,
+    this.asNeededTakenEventKeys,
   });
 
   // 함수이름: patientHash
@@ -61,13 +65,16 @@ class CaregiverMonitoringSnapshot {
         : Map<String, dynamic>.from(json);
     final rawPatientHash =
         json['patient_hash'] ?? json['patientHash'] ?? linkData['patient_hash'];
-    linkData.putIfAbsent('patient_hash', /* 함수이름: putIfAbsent 콜백
+    linkData.putIfAbsent(
+      'patient_hash',
+      /* 함수이름: putIfAbsent 콜백
      * 함수역할: 연결 응답에서 환자 해시가 빠졌을 때 스냅샷의 환자 해시를 보충한다.
      * 매개변수:
      * - 없음.
      * 반환값:
      * - 스냅샷에 제공된 환자 해시.
-     */() => rawPatientHash);
+     */ () => rawPatientHash,
+    );
     if (!linkData.containsKey('patient_alias') &&
         json.containsKey('patient_alias')) {
       linkData['patient_alias'] = json['patient_alias'];
@@ -90,6 +97,12 @@ class CaregiverMonitoringSnapshot {
       schedules: MedicationSchedule.fromScheduleJsonList(
         json['today_medication_info'],
       ),
+      asNeededScheduleDate: json['as_needed_schedule_date'] as String?,
+      asNeededTakenEventKeys: json['as_needed_taken_event_keys'] is List
+          ? List<String>.unmodifiable(
+              (json['as_needed_taken_event_keys'] as List).whereType<String>(),
+            )
+          : null,
     );
   }
 }

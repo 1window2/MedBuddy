@@ -113,6 +113,22 @@ class _FakePushPlatform extends PushMessagingPlatform {
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  test('필요시 복용 푸시는 전체 완료가 아닌 새 기록으로 안내한다', () {
+    for (final language in ['ko', 'en']) {
+      final text = PushNotificationService.caregiverNotificationTextForTesting(
+        type: 'caregiver_dose_completed',
+        slotKey: 'as_needed',
+        language: language,
+      );
+      expect(
+        text.body,
+        contains(
+          language == 'ko' ? '필요시 약 복용을 기록' : 'recorded taking an as-needed',
+        ),
+      );
+      expect(text.body, isNot(contains(language == 'ko' ? '모두' : 'all')));
+    }
+  });
   // Group: startup and registration retry
   // Description:
   // - A failed token registration must not leave push dead for the whole process: the subscriptions
@@ -210,7 +226,10 @@ void main() {
       expect(posts(), hasLength(1));
       await tester.pump(const Duration(seconds: 1));
       expect(posts(), hasLength(2));
-      expect(jsonDecode(posts().last.body), containsPair('token', 'device-token'));
+      expect(
+        jsonDecode(posts().last.body),
+        containsPair('token', 'device-token'),
+      );
 
       // Nothing is subscribed, prompted or dispatched a second time, and no retry remains.
       for (final stream in [
@@ -232,126 +251,148 @@ void main() {
       unawaited(service.stop(requireServerUnregistration: true));
       await tester.pump();
       expect(requests.last.method, 'DELETE');
-      expect(jsonDecode(requests.last.body), containsPair('token', 'device-token'));
+      expect(
+        jsonDecode(requests.last.body),
+        containsPair('token', 'device-token'),
+      );
       expect(platform.listening, isFalse);
     });
 
     // Function Name: growing delay test
     // Description: While the server keeps failing, attempts are spaced 5 s, 10 s, 20 s and then held
     //   at the configured cap.
-    testWidgets('retries back off up to the cap while registration keeps failing', (
-      tester,
-    ) async {
-      failingPosts = 1000;
-      final service = build(retryMaxDelay: const Duration(seconds: 30));
+    testWidgets(
+      'retries back off up to the cap while registration keeps failing',
+      (tester) async {
+        failingPosts = 1000;
+        final service = build(retryMaxDelay: const Duration(seconds: 30));
 
-      unawaited(service.start());
-      await tester.pump();
-      expect(posts(), hasLength(1));
+        unawaited(service.start());
+        await tester.pump();
+        expect(posts(), hasLength(1));
 
-      for (final (delay, expected) in [(5, 2), (10, 3), (20, 4), (30, 5), (30, 6)]) {
-        await tester.pump(Duration(seconds: delay - 1));
-        expect(posts(), hasLength(expected - 1));
-        await tester.pump(const Duration(seconds: 1));
-        expect(posts(), hasLength(expected));
-      }
-      expect(platform.permissionRequests, 1);
-      expect(platform.subscriptions('listen-foreground'), 1);
+        for (final (delay, expected) in [
+          (5, 2),
+          (10, 3),
+          (20, 4),
+          (30, 5),
+          (30, 6),
+        ]) {
+          await tester.pump(Duration(seconds: delay - 1));
+          expect(posts(), hasLength(expected - 1));
+          await tester.pump(const Duration(seconds: 1));
+          expect(posts(), hasLength(expected));
+        }
+        expect(platform.permissionRequests, 1);
+        expect(platform.subscriptions('listen-foreground'), 1);
 
-      // Stopping cancels the scheduled retry and detaches the subscriptions.
-      unawaited(service.stop());
-      await tester.pump();
-      await tester.pump(const Duration(hours: 1));
-      expect(posts(), hasLength(6));
-      expect(platform.listening, isFalse);
-    });
+        // Stopping cancels the scheduled retry and detaches the subscriptions.
+        unawaited(service.stop());
+        await tester.pump();
+        await tester.pump(const Duration(hours: 1));
+        expect(posts(), hasLength(6));
+        expect(platform.listening, isFalse);
+      },
+    );
 
     // Function Name: resume trigger test
     // Description: retryRegistration (called when the app returns to the foreground) retries at once,
     //   concurrent calls share one attempt, and success cancels the scheduled retry.
-    testWidgets('retryRegistration retries immediately without duplicating the attempt', (
-      tester,
-    ) async {
-      failingPosts = 1;
-      final service = build();
+    testWidgets(
+      'retryRegistration retries immediately without duplicating the attempt',
+      (tester) async {
+        failingPosts = 1;
+        final service = build();
 
-      // Before start there is nothing to retry.
-      await service.retryRegistration();
-      expect(requests, isEmpty);
-      expect(platform.log, isEmpty);
+        // Before start there is nothing to retry.
+        await service.retryRegistration();
+        expect(requests, isEmpty);
+        expect(platform.log, isEmpty);
 
-      unawaited(service.start());
-      await tester.pump();
-      expect(posts(), hasLength(1));
+        unawaited(service.start());
+        await tester.pump();
+        expect(posts(), hasLength(1));
 
-      unawaited(service.retryRegistration());
-      unawaited(service.retryRegistration());
-      // A repeated start behaves like a retry and joins the same attempt.
-      unawaited(service.start());
-      await tester.pump();
-      expect(posts(), hasLength(2));
-      unawaited(service.start());
-      await tester.pump();
-      expect(posts(), hasLength(2));
-      expect(platform.subscriptions('listen-foreground'), 1);
+        unawaited(service.retryRegistration());
+        unawaited(service.retryRegistration());
+        // A repeated start behaves like a retry and joins the same attempt.
+        unawaited(service.start());
+        await tester.pump();
+        expect(posts(), hasLength(2));
+        unawaited(service.start());
+        await tester.pump();
+        expect(posts(), hasLength(2));
+        expect(platform.subscriptions('listen-foreground'), 1);
 
-      await tester.pump(const Duration(hours: 1));
-      expect(posts(), hasLength(2));
-      expect(platform.permissionRequests, 1);
-      unawaited(service.stop());
-      await tester.pump();
-    });
+        await tester.pump(const Duration(hours: 1));
+        expect(posts(), hasLength(2));
+        expect(platform.permissionRequests, 1);
+        unawaited(service.stop());
+        await tester.pump();
+      },
+    );
 
     // Function Name: stale token discard test
     // Description: When the session has ended and the server refuses the unregistration, the device
     //   token is deleted so the ended account's registration stops delivering here. A token the
     //   server did unregister, or a stop that does not ask for it, leaves the device token alone.
-    testWidgets('a token the server could not unregister is discarded on request', (
-      tester,
-    ) async {
-      final service = build();
-      unawaited(service.start());
-      await tester.pump();
-      expect(posts(), hasLength(1));
+    testWidgets(
+      'a token the server could not unregister is discarded on request',
+      (tester) async {
+        final service = build();
+        unawaited(service.start());
+        await tester.pump();
+        expect(posts(), hasLength(1));
 
-      failingDeletes = true;
-      unawaited(service.stop());
-      await tester.pump();
-      expect(platform.log, isNot(contains('delete-token')));
+        failingDeletes = true;
+        unawaited(service.stop());
+        await tester.pump();
+        expect(platform.log, isNot(contains('delete-token')));
 
-      unawaited(service.stop(discardUnregisteredToken: true));
-      await tester.pump();
-      expect(requests.last.method, 'DELETE');
-      expect(platform.subscriptions('delete-token'), 1);
+        unawaited(service.stop(discardUnregisteredToken: true));
+        await tester.pump();
+        expect(requests.last.method, 'DELETE');
+        expect(platform.subscriptions('delete-token'), 1);
 
-      // The token is gone; a further stop has nothing left to unregister or discard.
-      final deletes = requests.where((request) => request.method == 'DELETE').length;
-      unawaited(service.stop(discardUnregisteredToken: true));
-      await tester.pump();
-      expect(requests.where((request) => request.method == 'DELETE'), hasLength(deletes));
-      expect(platform.subscriptions('delete-token'), 1);
-    });
+        // The token is gone; a further stop has nothing left to unregister or discard.
+        final deletes = requests
+            .where((request) => request.method == 'DELETE')
+            .length;
+        unawaited(service.stop(discardUnregisteredToken: true));
+        await tester.pump();
+        expect(
+          requests.where((request) => request.method == 'DELETE'),
+          hasLength(deletes),
+        );
+        expect(platform.subscriptions('delete-token'), 1);
+      },
+    );
 
     // Function Name: unconfirmed registration test
     // Description: A run whose registration never succeeded still unregisters the device token on
     //   stop, because an earlier run may have registered it for the account that is ending.
-    testWidgets('a token registered by an earlier run is unregistered on stop', (tester) async {
-      failingPosts = 100;
-      final service = build();
-      unawaited(service.start());
-      await tester.pump();
-      expect(posts(), hasLength(1));
+    testWidgets(
+      'a token registered by an earlier run is unregistered on stop',
+      (tester) async {
+        failingPosts = 100;
+        final service = build();
+        unawaited(service.start());
+        await tester.pump();
+        expect(posts(), hasLength(1));
 
-      unawaited(service.stop());
-      await tester.pump();
+        unawaited(service.stop());
+        await tester.pump();
 
-      expect(requests.last.method, 'DELETE');
-      expect(requests.last.body, contains('"token"'));
-    });
+        expect(requests.last.method, 'DELETE');
+        expect(requests.last.body, contains('"token"'));
+      },
+    );
 
     // Function Name: unregistered token test
     // Description: A token the server unregistered is not deleted on the device.
-    testWidgets('a token the server unregistered is kept on the device', (tester) async {
+    testWidgets('a token the server unregistered is kept on the device', (
+      tester,
+    ) async {
       final service = build();
       unawaited(service.start());
       await tester.pump();
@@ -381,32 +422,40 @@ void main() {
     });
 
     for (final unavailableToken in <String?>[null, '   ']) {
-      testWidgets('an unavailable token is retried without another prompt: $unavailableToken', (tester) async {
-        platform.token = unavailableToken;
-        final service = build();
-        unawaited(service.start());
-        await tester.pump();
-        expect(posts(), isEmpty);
-        expect(platform.listening, isTrue);
+      testWidgets(
+        'an unavailable token is retried without another prompt: $unavailableToken',
+        (tester) async {
+          platform.token = unavailableToken;
+          final service = build();
+          unawaited(service.start());
+          await tester.pump();
+          expect(posts(), isEmpty);
+          expect(platform.listening, isTrue);
 
-        await tester.pump(const Duration(seconds: 5));
-        expect(platform.tokenReads, 2);
-        expect(posts(), isEmpty);
-        platform.token = 'ready-token';
-        await tester.pump(const Duration(seconds: 10));
-        expect(posts(), hasLength(1));
-        expect(jsonDecode(posts().single.body), containsPair('token', 'ready-token'));
-        expect(platform.permissionRequests, 1);
-        expect(platform.initialMessageReads, 1);
-        expect(platform.subscriptions('listen-foreground'), 1);
-        await tester.pump(const Duration(minutes: 10));
-        expect(platform.tokenReads, 3);
-        unawaited(service.stop());
-        await tester.pump();
-      });
+          await tester.pump(const Duration(seconds: 5));
+          expect(platform.tokenReads, 2);
+          expect(posts(), isEmpty);
+          platform.token = 'ready-token';
+          await tester.pump(const Duration(seconds: 10));
+          expect(posts(), hasLength(1));
+          expect(
+            jsonDecode(posts().single.body),
+            containsPair('token', 'ready-token'),
+          );
+          expect(platform.permissionRequests, 1);
+          expect(platform.initialMessageReads, 1);
+          expect(platform.subscriptions('listen-foreground'), 1);
+          await tester.pump(const Duration(minutes: 10));
+          expect(platform.tokenReads, 3);
+          unawaited(service.stop());
+          await tester.pump();
+        },
+      );
     }
 
-    testWidgets('foreground retry recovers a token that was initially absent', (tester) async {
+    testWidgets('foreground retry recovers a token that was initially absent', (
+      tester,
+    ) async {
       platform.token = null;
       final service = build();
       unawaited(service.start());
@@ -424,40 +473,51 @@ void main() {
     // Function Name: duplicate token test
     // Description: Firebase reports the current token on the refresh stream while the first
     //   registration is still in flight; the same token is sent to the server once.
-    test('a refresh of the token being registered does not register it twice', () async {
-      final allowPost = Completer<void>();
-      final postStarted = Completer<void>();
-      client = MockClient((request) async {
-        requests.add(request);
-        if (request.method == 'POST') {
-          if (!postStarted.isCompleted) postStarted.complete();
-          await allowPost.future;
-        }
-        return http.Response('{}', 200);
-      });
-      final service = build();
+    test(
+      'a refresh of the token being registered does not register it twice',
+      () async {
+        final allowPost = Completer<void>();
+        final postStarted = Completer<void>();
+        client = MockClient((request) async {
+          requests.add(request);
+          if (request.method == 'POST') {
+            if (!postStarted.isCompleted) postStarted.complete();
+            await allowPost.future;
+          }
+          return http.Response('{}', 200);
+        });
+        final service = build();
 
-      final starting = service.start();
-      await postStarted.future;
-      platform.tokenRefresh.add('device-token');
-      await pumpEventQueue();
-      allowPost.complete();
-      await starting;
-      await pumpEventQueue();
-      expect(posts(), hasLength(1));
+        final starting = service.start();
+        await postStarted.future;
+        platform.tokenRefresh.add('device-token');
+        await pumpEventQueue();
+        allowPost.complete();
+        await starting;
+        await pumpEventQueue();
+        expect(posts(), hasLength(1));
 
-      // A different token is registered.
-      platform.tokenRefresh.add('rotated-token');
-      await pumpEventQueue();
-      expect(posts(), hasLength(2));
-      expect(jsonDecode(posts().last.body), containsPair('token', 'rotated-token'));
-      await service.stop();
-      expect(jsonDecode(requests.last.body), containsPair('token', 'rotated-token'));
-    });
+        // A different token is registered.
+        platform.tokenRefresh.add('rotated-token');
+        await pumpEventQueue();
+        expect(posts(), hasLength(2));
+        expect(
+          jsonDecode(posts().last.body),
+          containsPair('token', 'rotated-token'),
+        );
+        await service.stop();
+        expect(
+          jsonDecode(requests.last.body),
+          containsPair('token', 'rotated-token'),
+        );
+      },
+    );
 
     // Function Name: failed refresh test
     // Description: A refreshed token whose registration fails is registered by a later retry.
-    testWidgets('a failed refreshed-token registration is retried', (tester) async {
+    testWidgets('a failed refreshed-token registration is retried', (
+      tester,
+    ) async {
       final service = build();
       unawaited(service.start());
       await tester.pump();
@@ -471,7 +531,10 @@ void main() {
 
       await tester.pump(const Duration(seconds: 5));
       expect(posts(), hasLength(3));
-      expect(jsonDecode(posts().last.body), containsPair('token', 'rotated-token'));
+      expect(
+        jsonDecode(posts().last.body),
+        containsPair('token', 'rotated-token'),
+      );
       await tester.pump(const Duration(hours: 1));
       expect(posts(), hasLength(3));
       unawaited(service.stop());
@@ -481,47 +544,52 @@ void main() {
     // Function Name: stored privacy mode test
     // Description: The content-hidden mode stored on this device is applied by start, so a caregiver
     //   message received right after startup is shown without its details.
-    test('start applies the stored type_only mode to foreground caregiver alerts', () async {
-      SharedPreferences.setMockInitialValues({
-        'user_setting_push-start-user_notification_detail_mode': 'type_only',
-      });
-      const channel = MethodChannel('dexterous.com/flutter/local_notifications');
-      final shown = <Map<dynamic, dynamic>>[];
-      AndroidFlutterLocalNotificationsPlugin.registerWith();
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(channel, (call) async {
-            if (call.method == 'show') {
-              shown.add(Map<dynamic, dynamic>.from(call.arguments as Map));
-            }
-            return call.method == 'initialize' ? true : null;
-          });
-      addTearDown(() {
-        NotificationService.instance.setShowSensitiveDetails(true);
+    test(
+      'start applies the stored type_only mode to foreground caregiver alerts',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'user_setting_push-start-user_notification_detail_mode': 'type_only',
+        });
+        const channel = MethodChannel(
+          'dexterous.com/flutter/local_notifications',
+        );
+        final shown = <Map<dynamic, dynamic>>[];
+        AndroidFlutterLocalNotificationsPlugin.registerWith();
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(channel, null);
-      });
-      NotificationService.instance.setShowSensitiveDetails(true);
-      final service = build();
+            .setMockMethodCallHandler(channel, (call) async {
+              if (call.method == 'show') {
+                shown.add(Map<dynamic, dynamic>.from(call.arguments as Map));
+              }
+              return call.method == 'initialize' ? true : null;
+            });
+        addTearDown(() {
+          NotificationService.instance.setShowSensitiveDetails(true);
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+              .setMockMethodCallHandler(channel, null);
+        });
+        NotificationService.instance.setShowSensitiveDetails(true);
+        final service = build();
 
-      await service.start();
-      // The stored mode is read before any subscription is made.
-      expect(platform.log.first, 'background-handler');
-      platform.messages.add(
-        const RemoteMessage(
-          messageId: 'completed-1',
-          data: {
-            'type': 'caregiver_slot_completed',
-            'slot_key': 'morning',
-            'patient_hash': 'patient-a',
-            'recipient_hash': 'push-start-user',
-          },
-        ),
-      );
-      await pumpEventQueue();
+        await service.start();
+        // The stored mode is read before any subscription is made.
+        expect(platform.log.first, 'background-handler');
+        platform.messages.add(
+          const RemoteMessage(
+            messageId: 'completed-1',
+            data: {
+              'type': 'caregiver_slot_completed',
+              'slot_key': 'morning',
+              'patient_hash': 'patient-a',
+              'recipient_hash': 'push-start-user',
+            },
+          ),
+        );
+        await pumpEventQueue();
 
-      expect(shown.single['body'], '연동된 환자의 복약 상태가 변경되었습니다.');
-      await service.stop();
-    });
+        expect(shown.single['body'], '연동된 환자의 복약 상태가 변경되었습니다.');
+        await service.stop();
+      },
+    );
   });
 
   // Function Name: test callback
@@ -532,18 +600,16 @@ void main() {
   // Returns:
   // - No value; synchronous assertions complete the test.
   test('missed-dose push uses the caregiver schedule copy', () {
-    final korean =
-        PushNotificationService.caregiverNotificationTextForTesting(
-          type: 'caregiver_slot_missed',
-          slotKey: 'evening',
-          language: 'ko',
-        );
-    final english =
-        PushNotificationService.caregiverNotificationTextForTesting(
-          type: 'caregiver_slot_missed',
-          slotKey: 'morning',
-          language: 'en',
-        );
+    final korean = PushNotificationService.caregiverNotificationTextForTesting(
+      type: 'caregiver_slot_missed',
+      slotKey: 'evening',
+      language: 'ko',
+    );
+    final english = PushNotificationService.caregiverNotificationTextForTesting(
+      type: 'caregiver_slot_missed',
+      slotKey: 'morning',
+      language: 'en',
+    );
 
     expect(korean.title, '미복용 일정 확인');
     expect(korean.body, contains('저녁'));

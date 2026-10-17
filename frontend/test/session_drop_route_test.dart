@@ -243,6 +243,7 @@ class _NoopNotificationService implements NotificationService {
     CaregiverAlertContext? alertContext,
     String? historyUserHash,
     bool recordHistory = true,
+    bool onlyAlertOnce = false,
     required int id,
     required String title,
     required String body,

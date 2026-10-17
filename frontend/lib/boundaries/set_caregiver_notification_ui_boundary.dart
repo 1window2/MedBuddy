@@ -46,9 +46,9 @@ class SetCaregiverNotificationUI {
   // 반환값: 제안할 미복용 확인 시각.
   static TimeOfDay defaultDeadline(String slotKey, {TimeOfDay? reminderTime}) {
     final reminder = slotReminderTime(slotKey, reminderTime: reminderTime);
-    final minutes = (reminder.hour * 60 + reminder.minute +
-            _defaultDeadlineDelayMinutes)
-        .clamp(0, 23 * 60 + 59);
+    final minutes =
+        (reminder.hour * 60 + reminder.minute + _defaultDeadlineDelayMinutes)
+            .clamp(0, 23 * 60 + 59);
     return TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60);
   }
 
@@ -82,7 +82,12 @@ class SetCaregiverNotificationUI {
     TimeOfDay? reminderTime,
   }) {
     final isEnglish = isEnglishLanguage(language);
-    var selectedMode = setting.mode;
+    final isAsNeeded = setting.slotKey == 'as_needed';
+    // 필요시 약에는 정해진 복용 시각이 없어 미복용 마감 조건을 제공하지 않는다.
+    var selectedMode =
+        isAsNeeded && setting.mode == CaregiverNotificationMode.missedDeadline
+        ? CaregiverNotificationMode.disabled
+        : setting.mode;
     final reminder = slotReminderTime(
       setting.slotKey,
       reminderTime: reminderTime,
@@ -238,31 +243,32 @@ class SetCaregiverNotificationUI {
                               CaregiverNotificationMode.doseCompleted,
                         ),
                       ),
-                      _NotificationModeOption(
-                        title: isEnglish
-                            ? 'If doses remain unchecked'
-                            : '정해진 시각까지 미복용 시 알림',
-                        description: isEnglish
-                            ? 'Notify me if any scheduled dose is still unchecked at the selected time.'
-                            : '선택한 시각까지 복용하지 않은 약이 남아 있으면 알려줍니다.',
-                        selected:
-                            selectedMode ==
-                            CaregiverNotificationMode.missedDeadline,
-                        // 함수이름: showNotificationPopup.onTap callback
-                        // 함수역할: 보호자의 알림 조건과 미복용 마감 시각 대화상자에서 캡처된 작업 `setDialogState(() => selectedMode = CaregiverNotificationMode.missedDeadline)`을 실행한다.
-                        // 매개변수:
-                        // - 없음.
-                        // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                        onTap: () => setDialogState(
-                          // 함수이름: showNotificationPopup.setDialogState callback
-                          // 함수역할: 보호자의 알림 조건과 미복용 마감 시각 대화상자의 입력·요청 상태를 `selectedMode = CaregiverNotificationMode.missedDeadline`로 갱신한다.
+                      if (!isAsNeeded)
+                        _NotificationModeOption(
+                          title: isEnglish
+                              ? 'If doses remain unchecked'
+                              : '정해진 시각까지 미복용 시 알림',
+                          description: isEnglish
+                              ? 'Notify me if any scheduled dose is still unchecked at the selected time.'
+                              : '선택한 시각까지 복용하지 않은 약이 남아 있으면 알려줍니다.',
+                          selected:
+                              selectedMode ==
+                              CaregiverNotificationMode.missedDeadline,
+                          // 함수이름: showNotificationPopup.onTap callback
+                          // 함수역할: 보호자의 알림 조건과 미복용 마감 시각 대화상자에서 캡처된 작업 `setDialogState(() => selectedMode = CaregiverNotificationMode.missedDeadline)`을 실행한다.
                           // 매개변수:
                           // - 없음.
-                          // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-                          () => selectedMode =
-                              CaregiverNotificationMode.missedDeadline,
+                          // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                          onTap: () => setDialogState(
+                            // 함수이름: showNotificationPopup.setDialogState callback
+                            // 함수역할: 보호자의 알림 조건과 미복용 마감 시각 대화상자의 입력·요청 상태를 `selectedMode = CaregiverNotificationMode.missedDeadline`로 갱신한다.
+                            // 매개변수:
+                            // - 없음.
+                            // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
+                            () => selectedMode =
+                                CaregiverNotificationMode.missedDeadline,
+                          ),
                         ),
-                      ),
                       if (selectedMode ==
                           CaregiverNotificationMode.missedDeadline) ...[
                         const SizedBox(height: 8),
@@ -308,16 +314,18 @@ class SetCaregiverNotificationUI {
                         // 매개변수:
                         // - 없음.
                         // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-                        onPressed: deadlineTooEarly ? null : () {
-                          Navigator.pop(
-                            dialogContext,
-                            setting.updateNotificationSetting(
-                              selectedMode,
-                              deadlineHour: deadline.hour,
-                              deadlineMinute: deadline.minute,
-                            ),
-                          );
-                        },
+                        onPressed: deadlineTooEarly
+                            ? null
+                            : () {
+                                Navigator.pop(
+                                  dialogContext,
+                                  setting.updateNotificationSetting(
+                                    selectedMode,
+                                    deadlineHour: deadline.hour,
+                                    deadlineMinute: deadline.minute,
+                                  ),
+                                );
+                              },
                         style: FilledButton.styleFrom(
                           minimumSize: const Size.fromHeight(52),
                           backgroundColor: MedBuddyColors.primary,

@@ -1228,6 +1228,7 @@ class NotificationService {
     String? historyUserHash,
     bool recordHistory = true,
     CaregiverAlertContext? alertContext,
+    bool onlyAlertOnce = false,
   }) async {
     final owner = historyUserHash ?? _historyUserHash;
     await initialize();
@@ -1245,6 +1246,7 @@ class NotificationService {
         android: AndroidNotificationDetails(
           'medbuddy_caregiver_updates',
           isEnglish ? 'Caregiver medication updates' : '보호자 복약 확인',
+          onlyAlertOnce: onlyAlertOnce,
           channelDescription: isEnglish
               ? 'Medication completion and missed-dose updates for linked patients'
               : '연동된 환자의 복약 완료 및 미복용 상태 알림',

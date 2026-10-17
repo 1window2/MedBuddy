@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
 import '../entities/caregiver_alert_context_entity.dart';
 import '../entities/caregiver_monitoring_snapshot_entity.dart';
+import '../entities/medication_history_entity.dart';
 import '../entities/caregiver_notification_entity.dart';
 import '../entities/json_value_reader.dart';
 import '../entities/medication_schedule_entity.dart';
@@ -334,7 +335,7 @@ class CaregiverNotificationMonitorService {
          * - snapshot (CaregiverMonitoringSnapshot): 활성 여부를 확인할 환자 감시 스냅샷
          * 반환값:
          * - 감시할 수 있는 활성 환자 연결이면 true.
-         */(snapshot) {
+         */ (snapshot) {
           final link = snapshot.link;
           return link.linkStatus &&
               PatientHash.normalizePatientHash(link.caregiverHash) ==
@@ -384,6 +385,7 @@ class CaregiverNotificationMonitorService {
           snapshot.notificationSettings,
           snapshot.schedules,
         );
+        await _checkAsNeededDoses(preferences, patientHash, snapshot);
       } catch (error, stackTrace) {
         allPatientChecksSucceeded = false;
         developer.log(
@@ -416,7 +418,7 @@ class CaregiverNotificationMonitorService {
          * - link (PatientCaregiverLink): 해당 환자·보호자 연동 관계
          * 반환값:
          * - 현재 보호자가 감시할 활성 환자 연결이면 true.
-         */(link) {
+         */ (link) {
           return link.linkStatus &&
               PatientHash.normalizePatientHash(link.caregiverHash) ==
                   normalizedCaregiverHash &&
@@ -424,13 +426,15 @@ class CaregiverNotificationMonitorService {
               PatientHash.normalizePatientHash(link.patientHash) !=
                   normalizedCaregiverHash;
         })
-        .map(/* 함수이름: map 콜백
+        .map(
+          /* 함수이름: map 콜백
          * 함수역할: 활성 연결의 환자 해시를 공통 비교 형식으로 정규화한다.
          * 매개변수:
          * - link (PatientCaregiverLink): 해당 환자·보호자 연동 관계
          * 반환값:
          * - 정규화된 환자 해시.
-         */(link) => PatientHash.normalizePatientHash(link.patientHash))
+         */ (link) => PatientHash.normalizePatientHash(link.patientHash),
+        )
         .toSet()
         .toList(growable: false);
     await _synchronizeLinkedPatients(
@@ -462,13 +466,15 @@ class CaregiverNotificationMonitorService {
               (patientHash) => _checkPatientSafely(preferences, patientHash),
             ),
       );
-      if (results.any(/* 함수이름: any 콜백
+      if (results.any(
+        /* 함수이름: any 콜백
        * 함수역할: 병렬 환자 확인 결과에 실패가 있는지 검사한다.
        * 매개변수:
        * - succeeded (bool): 해당 환자의 감시 확인 성공 여부
        * 반환값:
        * - 해당 환자 확인이 실패했으면 true.
-       */(succeeded) => !succeeded)) {
+       */ (succeeded) => !succeeded,
+      )) {
         allPatientChecksSucceeded = false;
       }
     }
@@ -564,7 +570,7 @@ class CaregiverNotificationMonitorService {
      * - 없음.
      * 반환값:
      * - 현재 확인과 다음 예약이 완료되는 Future.
-     */() async {
+     */ () async {
       await checkNow();
       _scheduleNextCheck();
     });
@@ -627,6 +633,7 @@ class CaregiverNotificationMonitorService {
     List<MedicationSchedule> schedules,
   ) async {
     for (final slotKey in caregiverNotificationSlotKeys) {
+      if (slotKey == 'as_needed') continue;
       final setting =
           settings[slotKey] ??
           CaregiverNotification(
@@ -642,6 +649,52 @@ class CaregiverNotificationMonitorService {
         schedules: schedules,
       );
     }
+  }
+
+  // 필요시 약은 전체 완료가 아니라 새 복용 건마다 알린다. 첫 조회·알림 재활성화는
+  // 기준만 저장하고, 수정되었다가 돌아온 같은 기록은 다시 알리지 않는다.
+  Future<void> _checkAsNeededDoses(
+    SharedPreferences preferences,
+    String patientHash,
+    CaregiverMonitoringSnapshot snapshot,
+  ) async {
+    final keys = snapshot.asNeededTakenEventKeys;
+    final date = snapshot.asNeededScheduleDate;
+    final today = MedicationHistoryDates.format(
+      MedicationHistoryDates.today(_now()),
+    );
+    if (_isDisposed || keys == null || date != today) return;
+    final scope = _preferenceScope(patientHash, 'as_needed');
+    final enabled =
+        snapshot.notificationSettings['as_needed']?.mode ==
+        CaregiverNotificationMode.doseCompleted;
+    final comparable =
+        preferences.getString('$scope.snapshot_date') == date &&
+        preferences.getBool('$scope.prn_enabled') == true &&
+        enabled;
+    final seen = preferences.getString('$scope.snapshot_date') == date
+        ? (preferences.getStringList('$scope.prn_seen') ?? []).toSet()
+        : <String>{};
+    if (monitorCompletionTransitions && comparable) {
+      for (final key in keys.toSet().difference(seen)) {
+        if (_isDisposed || !await _ensureNotificationPermission()) return;
+        final isEnglish = isEnglishLanguage(_languageProvider());
+        await _sendAlert(
+          id: _stableNotificationId('prn|$patientHash|$date|$key'),
+          title: isEnglish ? 'As-needed dose recorded' : '필요시 약 복용 기록',
+          body: isEnglish
+              ? 'The linked patient recorded taking an as-needed medication.'
+              : '연동된 환자가 필요시 약 복용을 기록했습니다.',
+          patientHash: patientHash,
+        );
+        seen.add(key);
+        await preferences.setStringList('$scope.prn_seen', seen.toList());
+      }
+    }
+    seen.addAll(keys);
+    await preferences.setStringList('$scope.prn_seen', seen.toList());
+    await preferences.setString('$scope.snapshot_date', date!);
+    await preferences.setBool('$scope.prn_enabled', enabled);
   }
 
   // 함수이름: _checkSlot
@@ -740,22 +793,26 @@ class CaregiverNotificationMonitorService {
   }) async {
     final wasSlotCompleted =
         previousSnapshot.isNotEmpty &&
-        previousSnapshot.values.every(/* 함수이름: every 콜백
+        previousSnapshot.values.every(
+          /* 함수이름: every 콜백
          * 함수역할: 이전 시간대 상태가 모두 복약 완료인지 검사한다.
          * 매개변수:
          * - value (bool): 저장된 복약 완료 상태 값
          * 반환값:
          * - 해당 이전 상태의 완료 여부.
-         */(value) => value);
+         */ (value) => value,
+        );
     final isSlotCompleted =
         currentSnapshot.isNotEmpty &&
-        currentSnapshot.values.every(/* 함수이름: every 콜백
+        currentSnapshot.values.every(
+          /* 함수이름: every 콜백
          * 함수역할: 현재 시간대 상태가 모두 복약 완료인지 검사한다.
          * 매개변수:
          * - value (bool): 저장된 복약 완료 상태 값
          * 반환값:
          * - 해당 현재 상태의 완료 여부.
-         */(value) => value);
+         */ (value) => value,
+        );
     if (wasSlotCompleted || !isSlotCompleted) {
       return;
     }
@@ -822,25 +879,29 @@ class CaregiverNotificationMonitorService {
       return;
     }
     final slotSchedules = schedules
-        .where(/* 함수이름: where 콜백
+        .where(
+          /* 함수이름: where 콜백
          * 함수역할: 확인 중인 시간대에 포함되는 약 일정만 선택한다.
          * 매개변수:
          * - schedule (MedicationSchedule): 처리할 약 이름·복용량·기간·시간대 일정
          * 반환값:
          * - 일정에 대상 시간대가 포함되면 true.
-         */(schedule) => schedule.slotKeys.contains(slotKey))
+         */ (schedule) => schedule.slotKeys.contains(slotKey),
+        )
         .toList(growable: false);
     if (slotSchedules.isEmpty) {
       return;
     }
     final remainingCount = slotSchedules
-        .where(/* 함수이름: where 콜백
+        .where(
+          /* 함수이름: where 콜백
          * 함수역할: 대상 시간대에 아직 복용하지 않은 약 일정을 선택한다.
          * 매개변수:
          * - schedule (MedicationSchedule): 처리할 약 이름·복용량·기간·시간대 일정
          * 반환값:
          * - 해당 시간대의 복약이 미완료이면 true.
-         */(schedule) => !schedule.isSlotCompleted(slotKey))
+         */ (schedule) => !schedule.isSlotCompleted(slotKey),
+        )
         .length;
     if (remainingCount == 0) {
       await preferences.setString('$scope.deadline_notice', noticeSignature);

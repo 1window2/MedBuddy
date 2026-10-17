@@ -33,6 +33,135 @@ typedef _AlertRecord = ({
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  test('필요시 복용은 새 기록마다 알리고 재조회·정정·재활성화는 중복 알리지 않는다', () async {
+    SharedPreferences.setMockInitialValues({});
+    var keys = <String>['old'];
+    var mode = CaregiverNotificationMode.doseCompleted;
+    var date = '2026-10-17';
+    var linked = true;
+    var deliveryFails = false;
+    final alerts = <String>[];
+    final monitor = CaregiverNotificationMonitorService(
+      caregiverHash: 'caregiver_test',
+      now: () => DateTime.utc(2026, 10, 17, 2),
+      loadMonitoringSnapshots: () async => linked
+          ? [
+              CaregiverMonitoringSnapshot(
+                link: PatientCaregiverLink(
+                  linkId: 1,
+                  caregiverHash: 'caregiver_test',
+                  patientHash: 'patient_test',
+                  linkStatus: true,
+                ),
+                notificationSettings: {
+                  'as_needed': CaregiverNotification(
+                    slotKey: 'as_needed',
+                    mode: mode,
+                  ),
+                },
+                schedules: const [],
+                asNeededScheduleDate: date,
+                asNeededTakenEventKeys: keys,
+              ),
+            ]
+          : [],
+      loadLinks: () async => [],
+      loadSettings: (_) async => {},
+      loadSchedules: (_) async => [],
+      sendAlert:
+          ({
+            required id,
+            required title,
+            required body,
+            required patientHash,
+          }) async {
+            if (deliveryFails) throw StateError('delivery failed');
+            alerts.add(body);
+            expect(patientHash, 'patient_test');
+          },
+      permissionRequester: () async => true,
+    );
+    addTearDown(monitor.dispose);
+    await monitor.checkNow();
+    expect(alerts, isEmpty);
+    keys = ['old', 'dose1'];
+    await monitor.checkNow();
+    await monitor.checkNow();
+    expect(alerts, hasLength(1));
+    keys = ['old'];
+    await monitor.checkNow();
+    keys = ['old', 'dose1', 'dose2'];
+    await monitor.checkNow();
+    expect(alerts, hasLength(2));
+    expect(alerts.every((body) => body.contains('필요시 약 복용을 기록')), isTrue);
+    mode = CaregiverNotificationMode.disabled;
+    keys.add('while-off');
+    await monitor.checkNow();
+    mode = CaregiverNotificationMode.doseCompleted;
+    await monitor.checkNow();
+    expect(alerts, hasLength(2));
+    deliveryFails = true;
+    keys.add('retry');
+    expect(await monitor.checkNow(), isFalse);
+    deliveryFails = false;
+    await monitor.checkNow();
+    expect(alerts, hasLength(3));
+    date = '2026-10-16';
+    keys.add('stale');
+    await monitor.checkNow();
+    expect(alerts, hasLength(3));
+    linked = false;
+    await monitor.checkNow();
+    linked = true;
+    date = '2026-10-17';
+    await monitor.checkNow();
+    expect(alerts, hasLength(3));
+  });
+
+  test('서버 푸시 모드에서는 필요시 복용 로컬 알림을 중복 생성하지 않는다', () async {
+    SharedPreferences.setMockInitialValues({});
+    var keys = <String>[];
+    final monitor = CaregiverNotificationMonitorService(
+      caregiverHash: 'caregiver_test',
+      now: () => DateTime.utc(2026, 10, 17, 2),
+      monitorCompletionTransitions: false,
+      loadMonitoringSnapshots: () async => [
+        CaregiverMonitoringSnapshot(
+          link: PatientCaregiverLink(
+            linkId: 1,
+            caregiverHash: 'caregiver_test',
+            patientHash: 'patient_test',
+            linkStatus: true,
+          ),
+          notificationSettings: const {
+            'as_needed': CaregiverNotification(
+              slotKey: 'as_needed',
+              mode: CaregiverNotificationMode.doseCompleted,
+            ),
+          },
+          schedules: const [],
+          asNeededScheduleDate: '2026-10-17',
+          asNeededTakenEventKeys: keys,
+        ),
+      ],
+      loadLinks: () async => [],
+      loadSettings: (_) async => {},
+      loadSchedules: (_) async => [],
+      sendAlert:
+          ({
+            required id,
+            required title,
+            required body,
+            required patientHash,
+          }) async => fail('Duplicate local alert'),
+      permissionRequester: () async => true,
+    );
+    addTearDown(monitor.dispose);
+    await monitor.checkNow();
+    keys = ['new-dose'];
+    await monitor.checkNow();
+  });
+
   // 함수이름: setUp 콜백
   // 함수역할:
   // - 각 테스트 전에 메모리 설정 저장소를 비워 사용자 캐시를 격리한다.
@@ -916,7 +1045,9 @@ void main() {
     // 함수이름: 서버 전달 구성 테스트
     // 함수역할: 완료·미복용 감시가 모두 꺼져 있으면 시작할 때 연동 상태를 한 번만 확인하고 타이머를 두지 않으며,
     //   멈춤과 재개도 새 확인을 만들지 않는지 검증한다.
-    testWidgets('서버가 알림을 전달하는 구성은 연동 상태를 한 번 확인하고 주기 확인을 하지 않는다', (tester) async {
+    testWidgets('서버가 알림을 전달하는 구성은 연동 상태를 한 번 확인하고 주기 확인을 하지 않는다', (
+      tester,
+    ) async {
       var checks = 0;
       final statusChanges = <bool>[];
       final alerts = <_AlertRecord>[];

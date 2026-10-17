@@ -20,6 +20,16 @@ import 'auth_config.dart';
 import 'notification_service.dart';
 import 'notification_inbox_store.dart';
 
+// 재전송된 필요시 복용 푸시는 FCM 메시지 ID가 달라도 같은 알림으로 묶는다.
+String? _asNeededPushIdentity(RemoteMessage message) {
+  final key = message.data['event_key']?.toString() ?? '';
+  return message.data['type'] == 'caregiver_dose_completed' &&
+          message.data['slot_key'] == 'as_needed' &&
+          RegExp(r'^[0-9a-f]{64}$').hasMatch(key)
+      ? 'as-needed:$key'
+      : null;
+}
+
 // 함수이름: recordPushNotificationHistory
 // 함수역할: 수신 계정을 확인하고 서버에서 표시를 허용한 메시지 미리보기와 푸시 내역을 보관한다.
 // 매개변수: message, 전경 계정·언어·읽음 여부. 반환값: 기록 완료.
@@ -94,7 +104,7 @@ Future<void> recordPushNotificationHistory(
       return;
     }
     final entry = NotificationInboxEntry(
-      id: 'push:${message.messageId ?? message.data['event_id'] ?? '$type:$payload:${message.sentTime?.millisecondsSinceEpoch ?? 0}'}',
+      id: 'push:${_asNeededPushIdentity(message) ?? message.messageId ?? message.data['event_id'] ?? '$type:$payload:${message.sentTime?.millisecondsSinceEpoch ?? 0}'}',
       title: title,
       body: body,
       payload: payload,
@@ -119,7 +129,8 @@ Future<void> recordPushNotificationHistory(
 // 매개변수: message. 반환값: 기록 완료. Firebase API는 사용하지 않는다.
 @pragma('vm:entry-point')
 Future<void> medBuddyPushBackgroundHandler(RemoteMessage message) async {
-  if (message.data['type'] == 'caregiver_slot_missed' && message.data['action_version'] == '1') {
+  if (message.data['type'] == 'caregiver_slot_missed' &&
+      message.data['action_version'] == '1') {
     await CaregiverAlertDeliveryService.display(message.data);
     return;
   }
@@ -304,10 +315,7 @@ class PushNotificationService {
     if (pendingStart != null) {
       await pendingStart;
     }
-    if (!_started ||
-        _stopping ||
-        _isStartComplete ||
-        _startOperation != null) {
+    if (!_started || _stopping || _isStartComplete || _startOperation != null) {
       return;
     }
     await _runStart();
@@ -454,10 +462,7 @@ class PushNotificationService {
     final proposedMilliseconds =
         retryBaseDelay.inMilliseconds * (1 << _retryAttempt.clamp(0, 16));
     final delay = Duration(
-      milliseconds: proposedMilliseconds.clamp(
-        0,
-        retryMaxDelay.inMilliseconds,
-      ),
+      milliseconds: proposedMilliseconds.clamp(0, retryMaxDelay.inMilliseconds),
     );
     _retryAttempt += 1;
     _retryTimer = Timer(delay, () {
@@ -654,8 +659,11 @@ class PushNotificationService {
           Uri.parse(ApiConfig.pushTokenUrl),
           headers: const {'Content-Type': 'application/json'},
           // 알림 동작 버튼은 Android에만 정의되어 있으므로 그 기기만 동작 지원으로 등록한다.
-          body: jsonEncode({'token': normalizedToken, 'platform': _platformName,
-            'supports_caregiver_actions': _isAndroid}),
+          body: jsonEncode({
+            'token': normalizedToken,
+            'platform': _platformName,
+            'supports_caregiver_actions': _isAndroid,
+          }),
         )
         .timeout(_requestTimeout);
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -672,7 +680,8 @@ class PushNotificationService {
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
   Future<void> _showForegroundMessage(RemoteMessage message) async {
     if (message.data['recipient_hash'] != userHash) return;
-    if (message.data['type'] == 'caregiver_slot_missed' && message.data['action_version'] == '1') {
+    if (message.data['type'] == 'caregiver_slot_missed' &&
+        message.data['action_version'] == '1') {
       await CaregiverAlertDeliveryService.display(message.data);
       return;
     }
@@ -720,12 +729,14 @@ class PushNotificationService {
     );
     final title = text.title;
     final body = text.body;
-    final source = message.messageId ?? '$patientHash|$title|$body';
+    final prnIdentity = _asNeededPushIdentity(message);
+    final source = prnIdentity ?? message.messageId ?? '$patientHash|$title|$body';
     await NotificationService.instance.showCaregiverAlert(
       historyUserHash: userHash,
       recordHistory: false,
       id: source.hashCode & 0x7fffffff,
       title: title,
+      onlyAlertOnce: prnIdentity != null,
       body: body,
       patientHash: patientHash,
       language: language,
@@ -764,9 +775,7 @@ class PushNotificationService {
     if (message.data['type'] == 'linked_chat_message') {
       final linkId = int.tryParse(message.data['link_id']?.trim() ?? '');
       if (linkId != null && linkId > 0) {
-        NotificationService.handleNotificationPayload(
-          'chat:$linkId',
-        );
+        NotificationService.handleNotificationPayload('chat:$linkId');
       }
       return;
     }
@@ -803,6 +812,14 @@ class PushNotificationService {
     final isEnglish = isEnglishLanguage(language);
     final slotName = _slotName(slotKey, language);
     final isMissed = type == 'caregiver_slot_missed';
+    if (slotKey == 'as_needed' && !isMissed) {
+      return (
+        title: isEnglish ? 'As-needed dose recorded' : '필요시 약 복용 기록',
+        body: isEnglish
+            ? 'The linked patient recorded taking an as-needed medication.'
+            : '연동된 환자가 필요시 약 복용을 기록했습니다.',
+      );
+    }
     return (
       title: isMissed
           ? (isEnglish ? 'Medication not checked' : '미복용 일정 확인')

@@ -8,6 +8,7 @@ const List<String> caregiverNotificationSlotKeys = [
   'lunch',
   'evening',
   'bedtime',
+  'as_needed',
 ];
 
 // 클래스명: CaregiverNotificationMode

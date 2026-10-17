@@ -351,6 +351,7 @@ class RecordingNotificationService implements NotificationService {
     String? historyUserHash,
     bool recordHistory = true,
     CaregiverAlertContext? alertContext,
+    bool onlyAlertOnce = false,
   }) async {
     caregiverAlerts.add((
       id: id,

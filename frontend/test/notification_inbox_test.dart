@@ -29,6 +29,30 @@ NotificationInboxEntry _entry(String id, DateTime date, {bool chat = false}) =>
 // 함수이름: main
 // 함수역할: 저장·수신·화면 회귀 테스트를 등록한다. 매개변수: 없음. 반환값: 없음.
 void main() {
+  test('필요시 복용 푸시 재전송은 읽음 상태를 보존하고 한 건으로 유지한다', () async {
+    final store = NotificationInboxStore(userHash: 'caregiver');
+    final data = {
+      'type': 'caregiver_dose_completed', 'slot_key': 'as_needed',
+      'recipient_hash': 'caregiver', 'patient_hash': 'patient',
+      'event_key': 'a' * 64,
+    };
+    await recordPushNotificationHistory(RemoteMessage(messageId: 'first', data: data),
+      userHash: 'caregiver', markRead: true);
+    await recordPushNotificationHistory(RemoteMessage(messageId: 'retry', data: data),
+      userHash: 'caregiver');
+    var entries = await store.load();
+    expect(entries, hasLength(1));
+    expect(entries.single.isRead, isTrue);
+    await store.remove([entries.single.id]);
+    await recordPushNotificationHistory(RemoteMessage(messageId: 'retry-again', data: data),
+      userHash: 'caregiver');
+    expect(await store.load(), isEmpty);
+    await recordPushNotificationHistory(RemoteMessage(messageId: 'second-dose',
+      data: {...data, 'event_key': 'b' * 64}), userHash: 'caregiver');
+    entries = await store.load();
+    expect(entries, hasLength(1));
+    expect(entries.single.isRead, isFalse);
+  });
   TestWidgetsFlutterBinding.ensureInitialized();
   late DateTime now;
   late NotificationInboxStore store;
