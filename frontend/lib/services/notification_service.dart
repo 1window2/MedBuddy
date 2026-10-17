@@ -1398,3 +1398,85 @@ class NotificationService {
     return '${characters.take(maximumLength - 1).toString().trimRight()}…';
   }
 }
+
+// 기존 알림 계약과 테스트 대역에 새 의무를 추가하지 않는 준비 점검 전용 기능이다.
+extension NotificationReadinessDiagnostics on NotificationService {
+  // 준비 점검은 권한을 요청하지 않는다. 확인 실패를 허용으로 해석하지 않는다.
+  Future<({bool? notifications, bool? medicationChannel, bool? exactAlarms})>
+  readReadinessPermissions() async {
+    if (kIsWeb) {
+      return (notifications: null, medicationChannel: null, exactAlarms: null);
+    }
+    await initialize();
+    bool? notifications;
+    bool? medicationChannel;
+    bool? exactAlarms;
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final android = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin
+      >();
+      try {
+        notifications = await android?.areNotificationsEnabled();
+      } catch (_) {}
+      try {
+        final channels = await android?.getNotificationChannels();
+        if (channels != null) {
+          for (final channel in channels) {
+            if (channel.id == 'medbuddy_medication_reminders') {
+              medicationChannel = channel.importance != Importance.none;
+              break;
+            }
+          }
+        }
+      } catch (_) {}
+      try {
+        exactAlarms = await android?.canScheduleExactNotifications();
+      } catch (_) {}
+    } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+      final ios = _plugin.resolvePlatformSpecificImplementation<
+        IOSFlutterLocalNotificationsPlugin
+      >();
+      final permissions = await ios?.checkPermissions();
+      notifications = permissions?.isAlertEnabled;
+    }
+    return (
+      notifications: notifications,
+      medicationChannel: medicationChannel,
+      exactAlarms: exactAlarms,
+    );
+  }
+
+  // 복약 채널로 즉시 표시만 시험한다. 복용 동작·이동 payload·알림함 기록은 만들지 않는다.
+  Future<void> showReadinessTestNotification({String language = 'ko'}) async {
+    if (kIsWeb ||
+        (defaultTargetPlatform != TargetPlatform.android &&
+            defaultTargetPlatform != TargetPlatform.iOS)) {
+      throw UnsupportedError('Notification test is unavailable.');
+    }
+    final permissions = await readReadinessPermissions();
+    if (permissions.notifications != true ||
+        (defaultTargetPlatform == TargetPlatform.android &&
+            permissions.medicationChannel != true)) {
+      throw StateError('Notification permission could not be confirmed.');
+    }
+    final english = _isEnglish(language);
+    await _plugin.show(
+      id: -17023,
+      title: english ? 'MedBuddy test notification' : 'MedBuddy 테스트 알림',
+      body: english
+          ? 'Display check only. No medication record is changed.'
+          : '표시 확인용입니다. 복용 기록은 변경되지 않습니다.',
+      notificationDetails: NotificationDetails(
+        android: AndroidNotificationDetails(
+          'medbuddy_medication_reminders',
+          english ? 'Medication reminders' : '복약 알림',
+          importance: Importance.high,
+          priority: Priority.high,
+          tag: 'medbuddy_readiness_test',
+          timeoutAfter: 60000,
+        ),
+        iOS: const DarwinNotificationDetails(),
+      ),
+    );
+  }
+}

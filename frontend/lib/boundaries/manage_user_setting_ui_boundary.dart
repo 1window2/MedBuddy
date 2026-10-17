@@ -12,6 +12,7 @@ import '../widgets/medbuddy_preference_row.dart';
 import '../controls/app_language_control.dart';
 import '../controls/authentication_control.dart';
 import '../controls/manage_account_control.dart';
+import '../controls/notification_readiness_control.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/notification_service.dart';
 import '../services/tts_service.dart';
@@ -20,6 +21,7 @@ import '../widgets/medbuddy_page_header.dart';
 import '../widgets/app_version_label.dart';
 import '../widgets/exact_reminder_notice.dart';
 import 'set_notification_ui_boundary.dart';
+import 'notification_readiness_ui_boundary.dart';
 
 part 'settings_preference_widgets.dart';
 
@@ -74,6 +76,12 @@ class ManageUserSettingUI extends StatefulWidget {
   final VoidCallback? onMedicationScheduleRequested;
   final Future<void> Function()? onDeviceNotificationSettingsRequested;
   final NotificationService? notificationService;
+  // 등록 조회가 아직 끝나지 않았거나 실패했으면 null로 전달한다.
+  final int? registeredMedicationCount;
+  final Future<bool?> Function()? loadHasMedicationForReadiness;
+  final VoidCallback? onMedicationRegistrationRequested;
+  final VoidCallback? onCaregiverSetupRequested;
+  final NotificationReadinessControl? readinessControl;
 
   // 함수이름: ManageUserSettingUI
   // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에 필요한 입력값과 표시 설정을 초기화한다.
@@ -104,6 +112,11 @@ class ManageUserSettingUI extends StatefulWidget {
     this.onMedicationScheduleRequested,
     this.onDeviceNotificationSettingsRequested,
     this.notificationService,
+    this.registeredMedicationCount,
+    this.loadHasMedicationForReadiness,
+    this.onMedicationRegistrationRequested,
+    this.onCaregiverSetupRequested,
+    this.readinessControl,
   });
 
   // 함수이름: createState
@@ -291,32 +304,38 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     required _AccountPresentation accountPresentation,
   }) {
     return switch (_selectedSection) {
-      _SettingSection.overview => _SettingsOverview(
-        text: text,
-        accountPresentation: accountPresentation,
-        medicationAndNotificationSummary: text.medicationAndNotificationSummary(
-          medicationEnabled: _draft.medicationNotificationsEnabled,
-          caregiverEnabled: _draft.caregiverNotificationsEnabled,
-          chatEnabled: _draft.chatNotificationsEnabled,
-        ),
-        displayAndVoiceSummary: text.displayAndVoiceSummary(
-          fontSize: _fontSize,
-          readingSpeed: _readingSpeed,
-          languageMode: _draft.languageMode,
-        ),
-        // 함수이름: _buildSelectedSection.onSectionSelected callback
-        // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에서 캡처된 작업 `setState(() => _selectedSection = section)`을 실행한다.
-        // 매개변수:
-        // - section (콜백 계약에서 추론): 이동할 사용자 설정 분류.
-        // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-        onSectionSelected: (section) {
-          // 함수이름: _buildSelectedSection.setState callback
-          // 함수역할: 접근성·기본 복약 시각·계정 보안 설정의 입력·요청 상태를 `_selectedSection = section`로 갱신한다.
-          // 매개변수:
-          // - 없음.
-          // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-          setState(() => _selectedSection = section);
-        },
+      _SettingSection.overview => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _SettingsOverview(
+            text: text,
+            accountPresentation: accountPresentation,
+            medicationAndNotificationSummary: text
+                .medicationAndNotificationSummary(
+                  medicationEnabled: _draft.medicationNotificationsEnabled,
+                  caregiverEnabled: _draft.caregiverNotificationsEnabled,
+                  chatEnabled: _draft.chatNotificationsEnabled,
+                ),
+            displayAndVoiceSummary: text.displayAndVoiceSummary(
+              fontSize: _fontSize,
+              readingSpeed: _readingSpeed,
+              languageMode: _draft.languageMode,
+            ),
+            // 함수이름: _buildSelectedSection.onSectionSelected callback
+            // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에서 캡처된 작업 `setState(() => _selectedSection = section)`을 실행한다.
+            // 매개변수:
+            // - section (콜백 계약에서 추론): 이동할 사용자 설정 분류.
+            // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+            onSectionSelected: (section) {
+              // 함수이름: _buildSelectedSection.setState callback
+              // 함수역할: 접근성·기본 복약 시각·계정 보안 설정의 입력·요청 상태를 `_selectedSection = section`로 갱신한다.
+              // 매개변수:
+              // - 없음.
+              // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
+              setState(() => _selectedSection = section);
+            },
+          ),
+        ],
       ),
       _SettingSection.medicationAndNotifications =>
         _buildMedicationAndNotificationSettings(text),
@@ -326,6 +345,72 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         accountPresentation,
       ),
     };
+  }
+
+  // 저장되지 않은 알림 설정을 켜진 것으로 표시하지 않되 언어·글씨 미리보기는 유지한다.
+  void _openReadiness() {
+    final isEnglish = _SettingText(_language).isEnglish;
+    final control =
+        widget.readinessControl ??
+        NotificationReadinessControl(
+          notificationService:
+              widget.notificationService ?? NotificationService.instance,
+          openNotificationSettings:
+              widget.onDeviceNotificationSettingsRequested,
+          loadHasMedication:
+              widget.loadHasMedicationForReadiness ??
+              () async {
+                final count = widget.registeredMedicationCount;
+                return count == null ? null : count > 0;
+              },
+        );
+    _openInformationPage(
+      NotificationReadinessUI(
+        control: control,
+        savedSetting: _savedSetting,
+        isEnglish: isEnglish,
+        onMedicationRegistrationRequested:
+            widget.onMedicationRegistrationRequested,
+        onMedicationScheduleRequested: widget.onMedicationScheduleRequested,
+        onCaregiverSetupRequested: widget.onCaregiverSetupRequested,
+        onWidgetRequested: DoseHomeWidget.supported
+            ? () async {
+                final requested = await DoseHomeWidget.pin();
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      requested
+                          ? (isEnglish
+                                ? 'Widget request sent. Confirm it on your home screen.'
+                                : '위젯 추가를 요청했습니다. 홈 화면에서 추가 여부를 확인해주세요.')
+                          : (isEnglish
+                                ? 'Add MedBuddy from your home screen widget list.'
+                                : '홈 화면의 위젯 목록에서 MedBuddy를 추가해주세요.'),
+                    ),
+                  ),
+                );
+              }
+            : null,
+      ),
+    );
+  }
+
+  // 새 안내 화면도 선택한 글씨 크기를 전달받아 큰 글씨 사용자가 같은 배율로 읽는다.
+  void _openInformationPage(Widget page) {
+    final systemScale =
+        MediaQueryData.fromView(View.of(context)).textScaler.scale(16) / 16;
+    final scale = _draft.resolveTextScale(systemScale);
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(scale)),
+          child: page,
+        ),
+      ),
+    );
   }
 
   // 함수이름: _buildMedicationAndNotificationSettings
@@ -340,6 +425,14 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         _SettingsSection(
           title: text.notificationReceptionTitle,
           children: [
+            MedBuddyPreferenceRow(
+              key: const ValueKey('settingsReadinessMenu'),
+              title: text.isEnglish ? 'Setup check' : '사용 준비 점검',
+              description: text.isEnglish
+                  ? 'Medication setup, permissions and a test notification'
+                  : '약 등록, 기기 권한과 테스트 알림 확인',
+              onTap: _openReadiness,
+            ),
             _SettingToggle(
               switchKey: const ValueKey('medicationNotificationsSwitch'),
               title: text.medicationNotificationsTitle,
@@ -378,9 +471,8 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
               // 매개변수:
               // - enabled (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
               // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-              onChanged: (enabled) => _setDraft(
-                _draft.copyWith(chatNotificationsEnabled: enabled),
-              ),
+              onChanged: (enabled) =>
+                  _setDraft(_draft.copyWith(chatNotificationsEnabled: enabled)),
             ),
           ],
         ),
@@ -1937,9 +2029,7 @@ class _MfaEnrollmentDialogState extends State<_MfaEnrollmentDialog> {
                 Text(
                   error,
                   key: const ValueKey('smsMfaError'),
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.error,
-                  ),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
               ],
             ],
@@ -2871,9 +2961,8 @@ class _SettingText {
       isEnglish ? 'SMS two-step verification' : '문자 2단계 인증';
   // 함수이름: smsMfaEnrolled
   // 함수역할: 문자 2단계 인증이 등록된 상태 안내를 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
-  String get smsMfaEnrolled => isEnglish
-      ? 'SMS two-step verification is on.'
-      : '문자 2단계 인증이 켜져 있습니다.';
+  String get smsMfaEnrolled =>
+      isEnglish ? 'SMS two-step verification is on.' : '문자 2단계 인증이 켜져 있습니다.';
   // 함수이름: smsMfaAvailable
   // 함수역할: 문자 2단계 인증을 켤 수 있는 상태 안내를 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
   String get smsMfaAvailable => isEnglish
@@ -2897,9 +2986,8 @@ class _SettingText {
       isEnglish ? 'Six-digit SMS code' : '문자로 받은 6자리 인증번호';
   // 함수이름: smsMfaPhoneLabel
   // 함수역할: 국가번호를 포함한 휴대폰 번호 입력란 이름을 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
-  String get smsMfaPhoneLabel => isEnglish
-      ? 'Phone number with country code'
-      : '국가번호를 포함한 휴대폰 번호';
+  String get smsMfaPhoneLabel =>
+      isEnglish ? 'Phone number with country code' : '국가번호를 포함한 휴대폰 번호';
   // 함수이름: smsMfaVerify
   // 함수역할: 인증번호 확인 버튼 문구를 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
   String get smsMfaVerify => isEnglish ? 'Verify' : '확인';

@@ -584,11 +584,7 @@ class _HomeActionCard extends StatelessWidget {
   // 매개변수:
   // - foreground, secondary, accent (Color): 제목·설명·아이콘에 사용할 색상.
   // 반환값: 고정 높이에 맞춰 축소하지 않는 카드 내부 위젯.
-  Widget _buildCompactContent(
-    Color foreground,
-    Color secondary,
-    Color accent,
-  ) {
+  Widget _buildCompactContent(Color foreground, Color secondary, Color accent) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -638,11 +634,7 @@ class _HomeActionCard extends StatelessWidget {
   // 매개변수:
   // - foreground, secondary, accent (Color): 제목·설명·아이콘 색상.
   // 반환값: 내용 높이만큼 늘어나는 목록형 카드 내부 위젯.
-  Widget _buildListContent(
-    Color foreground,
-    Color secondary,
-    Color accent,
-  ) {
+  Widget _buildListContent(Color foreground, Color secondary, Color accent) {
     return Row(
       children: [
         _ActionIcon(icon: icon, tone: tone, color: accent, size: 48),

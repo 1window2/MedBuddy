@@ -196,7 +196,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     final signature = jsonEncode([
       _chatList?.hasError,
-      _chatList?.links.map((link) => [link.toJson(), _chatList?.peerName(link, isEnglish: false)]).toList(),
+      _chatList?.links
+          .map(
+            (link) => [
+              link.toJson(),
+              _chatList?.peerName(link, isEnglish: false),
+            ],
+          )
+          .toList(),
     ]);
     if (_linkDisplaySignature == signature) return;
     _linkDisplaySignature = signature;
@@ -266,18 +273,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (signature == _widgetCacheSignature) return;
     _widgetCacheSignature = signature;
     unawaited(
-      DoseHomeWidget.publish(
-        owner: control.userHash,
-        patientCache: cache,
-      ).then((value) {
-        if (value == null && _widgetCacheSignature == signature) {
-          _widgetCacheSignature = null;
-        }
-        return value;
-      }).catchError((_) {
-        if (_widgetCacheSignature == signature) _widgetCacheSignature = null;
-        return null;
-      }),
+      DoseHomeWidget.publish(owner: control.userHash, patientCache: cache)
+          .then((value) {
+            if (value == null && _widgetCacheSignature == signature) {
+              _widgetCacheSignature = null;
+            }
+            return value;
+          })
+          .catchError((_) {
+            if (_widgetCacheSignature == signature) {
+              _widgetCacheSignature = null;
+            }
+            return null;
+          }),
     );
   }
 
@@ -798,12 +806,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ? ListTile(
               key: const Key('caregiver-home-source-hint'),
               leading: const Icon(Icons.people_outline),
-              title: Text(viewModel.userSetting.language == 'en'
-                  ? 'View linked patient schedules'
-                  : '연동된 환자 일정 보기'),
-              subtitle: Text(viewModel.userSetting.language == 'en'
-                  ? 'Change Home schedule from “My schedule” to “Linked patients”.'
-                  : '홈 복약 일정을 ‘내 일정’에서 ‘연동된 환자’로 바꿔보세요.'),
+              title: Text(
+                viewModel.userSetting.language == 'en'
+                    ? 'View linked patient schedules'
+                    : '연동된 환자 일정 보기',
+              ),
+              subtitle: Text(
+                viewModel.userSetting.language == 'en'
+                    ? 'Change Home schedule from “My schedule” to “Linked patients”.'
+                    : '홈 복약 일정을 ‘내 일정’에서 ‘연동된 환자’로 바꿔보세요.',
+              ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _openUserSettings(
                 context,
@@ -1107,8 +1119,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 alignment: AlignmentDirectional.centerEnd,
                 child: TextButton(
                   style: TextButton.styleFrom(
-                    foregroundColor:
-                        Theme.of(context).colorScheme.inversePrimary,
+                    foregroundColor: Theme.of(
+                      context,
+                    ).colorScheme.inversePrimary,
                   ),
                   // Function Name: _updateHomeMedicationSlot.onPressed callback
                   // Description: Closes the notice and opens individual-dose review without changing other completion records.
@@ -1202,6 +1215,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           initialSetting: viewModel.userSetting,
           initiallyShowDisplayAndVoice: initiallyShowDisplayAndVoice,
           authenticationControl: authenticationControl,
+          loadHasMedicationForReadiness: () async {
+            await viewModel.fetchSavedMedicationInfo();
+            if (!mounted || viewModel.hasSavedMedicationLoadError) return null;
+            return viewModel.savedMedicationInfoList.isNotEmpty;
+          },
+          onMedicationRegistrationRequested: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ManualMedicationEntryUI(
+                  userSetting: viewModel.userSetting,
+                  onSaveRequested: viewModel.saveManualMedication,
+                ),
+              ),
+            );
+          },
+          onCaregiverSetupRequested: () =>
+              _openPatientCaregiverLink(context, viewModel),
           // 함수이름: _openUserSettings.onMedicationScheduleRequested callback
           // 함수역할: 처방 분석 단계와 앱 탐색 목적지별 활성 화면에서 캡처된 작업 `Navigator.push(context, MaterialPageRoute(builder: (context) => const CheckScheduleUI())); MaterialPageRoute(builder: (context) => const CheckScheduleUI())`을 실행한다.
           // 매개변수:
