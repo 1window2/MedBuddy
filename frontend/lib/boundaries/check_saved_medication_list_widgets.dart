@@ -28,6 +28,7 @@ class _SavedMedicationNameRow extends StatelessWidget {
   final void Function(bool selected) onSelectionChanged;
   final VoidCallback onGuideRequested;
   final VoidCallback onImageRequested;
+  final ValueChanged<MedicationRegimenAction> onRegimenRequested;
 
   // 함수이름: _SavedMedicationNameRow
   // 함수역할: 목록 항목 표시와 동작에 필요한 입력값을 보관한다.
@@ -43,6 +44,7 @@ class _SavedMedicationNameRow extends StatelessWidget {
     required this.onSelectionChanged,
     required this.onGuideRequested,
     required this.onImageRequested,
+    required this.onRegimenRequested,
   });
 
   // 함수이름: build
@@ -59,8 +61,36 @@ class _SavedMedicationNameRow extends StatelessWidget {
         ? text.noInformation
         : medication.itemName.trim();
     // 매일 복용하지 않는 약은 쉬는 날 오늘 일정에 없으므로 다음 복용일을 함께 알려준다.
-    final today = DateTime.now();
+    final today = MedicationHistoryDates.today(DateTime.now());
     final nextDoseDay = medication.nextDoseDayFrom(today);
+    final stopDate = medication.stoppedOn;
+    final stopPending = stopDate != null && stopDate.isAfter(today);
+    final replaced = medication.supersededById != null;
+    final statusLabel = stopDate != null
+        ? replaced
+              ? (stopPending
+                    ? (text.isEnglish ? 'Replacement scheduled' : '처방 교체 예정')
+                    : (text.isEnglish ? 'Replaced' : '처방 교체'))
+              : (stopPending
+                    ? (text.isEnglish ? 'Stop scheduled' : '복용 중단 예정')
+                    : (text.isEnglish ? 'Stopped' : '복용 중단'))
+        : medication.medicationEndDate?.isBefore(today) == true
+        ? (text.isEnglish ? 'Course ended' : '복용 종료')
+        : null;
+    final statusColor = stopPending
+        ? MedBuddyColors.reminderAccent
+        : replaced
+        ? MedBuddyColors.infoBlue
+        : stopDate != null
+        ? MedBuddyColors.danger
+        : MedBuddyColors.textMuted;
+    final statusBackground = stopPending
+        ? MedBuddyColors.warningSurface
+        : replaced
+        ? MedBuddyColors.lavenderSurface
+        : stopDate != null
+        ? MedBuddyColors.dangerSurface
+        : MedBuddyColors.surfaceSubtle;
 
     return Material(
       color: Colors.transparent,
@@ -115,6 +145,42 @@ class _SavedMedicationNameRow extends StatelessWidget {
                         fallback: text.noInformation,
                       ),
                     ],
+                    if (medication.isAsNeeded)
+                      Text(
+                        text.isEnglish ? 'As needed' : '필요시 복용',
+                        key: ValueKey('saved-medication-prn-${medication.id}'),
+                        style: const TextStyle(
+                          color: MedBuddyColors.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    if (statusLabel != null) ...[
+                      const SizedBox(height: 4),
+                      Container(
+                        key: ValueKey(
+                          'saved-medication-status-badge-${medication.id}',
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: statusBackground,
+                          borderRadius: MedBuddyRadii.small,
+                        ),
+                        child: Text(
+                          '$statusLabel · ${_formatMedicationDate(stopDate ?? medication.medicationEndDate)}',
+                          key: ValueKey(
+                            'saved-medication-status-${medication.id}',
+                          ),
+                          style: TextStyle(
+                            color: statusColor,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 4),
                     _MedicationDateLine(
                       label: text.medicationPeriod,
@@ -124,7 +190,9 @@ class _SavedMedicationNameRow extends StatelessWidget {
                     if (nextDoseDay != null) ...[
                       const SizedBox(height: 4),
                       _MedicationDateLine(
-                        key: ValueKey('saved-medication-next-dose-${medication.id}'),
+                        key: ValueKey(
+                          'saved-medication-next-dose-${medication.id}',
+                        ),
                         label: text.nextDoseDay,
                         value: text.nextDoseDayValue(nextDoseDay, today),
                         fallback: text.noInformation,
@@ -133,6 +201,23 @@ class _SavedMedicationNameRow extends StatelessWidget {
                   ],
                 ),
               ),
+              if (!isSelectionMode)
+                PopupMenuButton<MedicationRegimenAction>(
+                  key: ValueKey('saved-medication-actions-${medication.id}'),
+                  tooltip: text.isEnglish ? 'Medication actions' : '약 관리',
+                  enabled:
+                      interactive &&
+                      (medication.id ?? 0) > 0 &&
+                      medication.stoppedOn == null,
+                  onSelected: onRegimenRequested,
+                  itemBuilder: (_) => [
+                    for (final action in MedicationRegimenAction.values)
+                      PopupMenuItem(
+                        value: action,
+                        child: Text(regimenActionLabel(action, text.isEnglish)),
+                      ),
+                  ],
+                ),
               if (!isSelectionMode)
                 Padding(
                   padding: const EdgeInsets.only(left: 4),
@@ -227,7 +312,9 @@ String _formatMedicationPeriod(MedicationDetail medication) {
 
   final endDate = medication.medicationEndDate;
   if (endDate == null ||
-      !endDate.isAfter(DateTime(startDate.year, startDate.month, startDate.day))) {
+      !endDate.isAfter(
+        DateTime(startDate.year, startDate.month, startDate.day),
+      )) {
     return _formatMedicationDate(startDate);
   }
 

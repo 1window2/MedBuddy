@@ -292,6 +292,8 @@ class _SavedMedicationDateCard extends StatelessWidget {
   final void Function(MedicationDetail medication, bool selected)
   onSelectionChanged;
   final void Function(MedicationDetail medication) onGuideRequested;
+  final void Function(MedicationDetail, MedicationRegimenAction)
+  onRegimenRequested;
   final void Function(MedicationDetail medication) onImageRequested;
   final Future<void> Function() onDeleteRequested;
 
@@ -317,6 +319,7 @@ class _SavedMedicationDateCard extends StatelessWidget {
     required this.selectedMedicationIds,
     required this.onSelectionChanged,
     required this.onGuideRequested,
+    required this.onRegimenRequested,
     required this.onImageRequested,
     required this.onDeleteRequested,
   });
@@ -328,7 +331,6 @@ class _SavedMedicationDateCard extends StatelessWidget {
   // 반환값: 같은 날짜의 저장 약 목록과 그룹 삭제에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 12),
@@ -385,10 +387,7 @@ class _SavedMedicationDateCard extends StatelessWidget {
                         ),
                       ),
                       onPressed: enabled ? onDeleteRequested : null,
-                      icon: Icon(
-                        Icons.delete_outline_rounded,
-                        size: 20,
-                      ),
+                      icon: Icon(Icons.delete_outline_rounded, size: 20),
                       label: Text(text.delete),
                     ),
                 ],
@@ -420,6 +419,8 @@ class _SavedMedicationDateCard extends StatelessWidget {
               // - 없음.
               // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
               onGuideRequested: () => onGuideRequested(medication),
+              onRegimenRequested: (action) =>
+                  onRegimenRequested(medication, action),
               // 함수이름: build.onImageRequested callback
               // 함수역할: 같은 날짜의 저장 약 목록과 그룹 삭제에서 캡처된 작업 `onImageRequested(medication)`을 실행한다.
               // 매개변수:
