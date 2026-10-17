@@ -4,11 +4,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
+import 'dart:math';
 
 import 'package:http/http.dart' as http;
 
 import '../entities/json_value_reader.dart';
 import '../entities/medication_detail_entity.dart';
+import '../entities/medication_dose_rhythm.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
@@ -29,6 +31,117 @@ enum MedicationSaveStatus { saved, duplicate, failed }
 // - network: 응답 지연·연결 실패로 서버 응답을 받지 못함.
 // - other: 그 밖의 서버 거절·응답 형식 오류·저장 취소.
 enum MedicationSaveFailureKind { none, limitReached, network, other }
+
+enum MedicationRegimenAction { edit, stop, replace }
+
+enum MedicationRegimenFailure {
+  none,
+  conflict,
+  recordedDate,
+  forbidden,
+  missing,
+  network,
+  invalid,
+  cancelled,
+}
+
+// 같은 확정 요청을 재시도할 때 ID와 본문을 보존해 중복 변경을 막는다.
+class MedicationRegimenChange {
+  final MedicationRegimenAction action;
+  final DateTime effectiveDate;
+  final int expectedRevision;
+  final String operationId;
+  final Map<String, dynamic> changes;
+
+  MedicationRegimenChange({
+    required this.action,
+    required this.effectiveDate,
+    required this.expectedRevision,
+    String? operationId,
+    Map<String, dynamic> changes = const {},
+  }) : operationId = operationId ?? _newOperationId(),
+       changes = Map.unmodifiable({
+         for (final entry in changes.entries)
+           entry.key: entry.value is List
+               ? List.unmodifiable(entry.value as List)
+               : entry.value,
+       });
+
+  Map<String, dynamic> toJson(String patientHash) => {
+    'patient_hash': patientHash,
+    'action': action.name,
+    'effective_date': formatJsonDate(effectiveDate),
+    'expected_revision': expectedRevision,
+    'operation_id': operationId,
+    'changes': changes,
+  };
+
+  static String _newOperationId() {
+    final random = Random.secure();
+    final bytes = List.generate(16, (_) => random.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    final hex = bytes
+        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+        .join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+  }
+}
+
+class MedicationRegimenResult {
+  final MedicationRegimenFailure failure;
+  final int? medicationId;
+  final int? revision;
+  final bool refreshFailed;
+
+  const MedicationRegimenResult({
+    this.failure = MedicationRegimenFailure.none,
+    this.medicationId,
+    this.revision,
+    this.refreshFailed = false,
+  });
+
+  bool get success => failure == MedicationRegimenFailure.none;
+
+  String message(bool english) => switch (failure) {
+    MedicationRegimenFailure.none =>
+      refreshFailed
+          ? (english
+                ? 'Saved. Refresh the pillbox and schedule to check the update.'
+                : '변경은 저장됐습니다. 복약함과 일정을 새로고침해 확인해 주세요.')
+          : (english
+                ? 'Medication plan updated. Earlier records are kept.'
+                : '복약 정보를 변경했습니다. 이전 기록은 유지됩니다.'),
+    MedicationRegimenFailure.conflict =>
+      english
+          ? 'This medication changed on another device. Close this screen, refresh the pillbox, and review the latest plan.'
+          : '다른 기기에서 약 정보가 변경됐습니다. 이 화면을 닫고 복약함을 새로고침한 뒤 최신 정보를 확인해 주세요.',
+    MedicationRegimenFailure.recordedDate =>
+      english
+          ? 'Dose records already exist on or after this date. Choose a later date to keep them.'
+          : '선택한 날짜부터 이미 복용 기록이 있습니다. 기록을 유지하려면 더 나중의 날짜를 선택해 주세요.',
+    MedicationRegimenFailure.forbidden =>
+      english
+          ? 'You no longer have permission to change this medication.'
+          : '이 약을 변경할 권한을 확인할 수 없습니다.',
+    MedicationRegimenFailure.missing =>
+      english
+          ? 'This medication is no longer available. Refresh the pillbox.'
+          : '해당 약을 찾을 수 없습니다. 복약함을 새로고침해 주세요.',
+    MedicationRegimenFailure.network =>
+      english
+          ? 'Could not confirm the result. Retry without changing these fields to avoid duplicate updates.'
+          : '변경 결과를 확인하지 못했습니다. 중복 변경을 막기 위해 같은 내용으로 다시 시도해 주세요.',
+    MedicationRegimenFailure.cancelled =>
+      english
+          ? 'The account changed. Reopen the pillbox.'
+          : '계정이 변경됐습니다. 복약함을 다시 열어 주세요.',
+    MedicationRegimenFailure.invalid =>
+      english
+          ? 'Could not save this change. Check the plan and selected date.'
+          : '변경을 저장하지 못했습니다. 입력 내용과 선택한 날짜를 확인해 주세요.',
+  };
+}
 
 // 클래스명: MedicationSaveResult
 // 역할: 약 저장 상태와 사용자 메시지, 저장된 항목 ID를 함께 전달한다.
@@ -88,8 +201,6 @@ class MedicationSaveResult {
   }
 }
 
-
-
 // 클래스명: CheckSavedMedication
 // 역할: 분석된 약 상세 정보와 OCR 복약 일정을 저장 목록에 반영한다.
 // 주요 책임:
@@ -133,6 +244,15 @@ class CheckSavedMedication {
     MedicationDetail medicationDetail, {
     MedicationSchedule? medicationSchedule,
   }) async {
+    if (!(medicationSchedule?.isAsNeeded ?? medicationDetail.isAsNeeded) &&
+        requiresDoseScheduleReview(
+          medicationSchedule?.intakeTime ?? medicationDetail.dailyFrequency,
+        )) {
+      return const MedicationSaveResult(
+        status: MedicationSaveStatus.failed,
+        message: '복용 주기를 확인하지 못했습니다. 처방·복약지도에 맞는 일정으로 수정해 주세요.',
+      );
+    }
     final savePayload = _buildSaveRequest(medicationDetail, medicationSchedule);
 
     try {
@@ -238,8 +358,71 @@ class CheckSavedMedication {
       medicationDetail.totalDays,
     );
     savePayload['schedule_slot_keys'] =
-        medicationSchedule?.slotKeys ?? const <String>[];
+        medicationSchedule?.slotKeys ?? medicationDetail.scheduleSlotKeys;
+    final isAsNeeded =
+        medicationSchedule?.isAsNeeded ?? medicationDetail.isAsNeeded;
+    savePayload['dosing_mode'] = isAsNeeded ? 'as_needed' : 'scheduled';
+    if (isAsNeeded) savePayload['schedule_slot_keys'] = <String>[];
     return savePayload;
+  }
+
+  // 약 삭제를 사용하지 않고 적용일 이후의 처방만 변경한다.
+  Future<MedicationRegimenResult> changeRegimen(
+    int medicationId,
+    MedicationRegimenChange change,
+  ) async {
+    if (medicationId <= 0 || change.expectedRevision < 0) {
+      return const MedicationRegimenResult(
+        failure: MedicationRegimenFailure.invalid,
+      );
+    }
+    try {
+      final response = await _client
+          .post(
+            Uri.parse('$baseUrl/care/medications/$medicationId/change'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(change.toJson(patientHash)),
+          )
+          .timeout(const Duration(seconds: 30));
+      if (response.statusCode != 200) {
+        final detail = ApiResponseParser.extractErrorDetail(
+          ApiResponseParser.decodeBody(response),
+        );
+        if (response.statusCode == 409 &&
+            detail.contains('already has dose records')) {
+          return const MedicationRegimenResult(
+            failure: MedicationRegimenFailure.recordedDate,
+          );
+        }
+        return MedicationRegimenResult(
+          failure: switch (response.statusCode) {
+            409 => MedicationRegimenFailure.conflict,
+            401 || 403 => MedicationRegimenFailure.forbidden,
+            404 => MedicationRegimenFailure.missing,
+            >= 500 => MedicationRegimenFailure.network,
+            _ => MedicationRegimenFailure.invalid,
+          },
+        );
+      }
+      final data = ApiResponseParser.decodeMap(
+        ApiResponseParser.decodeBody(response),
+      );
+      final id = _readPositiveInt(data['id']);
+      final revision = int.tryParse('${data['revision']}');
+      if (data['success'] != true ||
+          id == null ||
+          revision == null ||
+          revision < 0) {
+        return const MedicationRegimenResult(
+          failure: MedicationRegimenFailure.network,
+        );
+      }
+      return MedicationRegimenResult(medicationId: id, revision: revision);
+    } catch (_) {
+      return const MedicationRegimenResult(
+        failure: MedicationRegimenFailure.network,
+      );
+    }
   }
 
   // Function Name: _readScheduleValue
@@ -344,13 +527,16 @@ class CheckSavedMedication {
           // - 저장된 약의 상세 정보.
           (item) => MedicationDetail.fromJson(Map<String, dynamic>.from(item)),
         )
-        .where(/* Function Name: where callback
+        .where(
+          /* Function Name: where callback
          * Description: Keeps only saved medications with a positive server-assigned ID.
          * Parameters:
          * - item (MedicationDetail): Current response or collection entry being transformed or checked.
          * Returns:
          * - Whether the medication has a usable saved ID.
-         */(item) => item.id != null && item.id! > 0)
+         */
+          (item) => item.id != null && item.id! > 0,
+        )
         .toList(growable: false);
   }
 

@@ -39,6 +39,8 @@ class MedBuddySavedMedicationViewModel {
   bool _hasLoadError = false;
   List<MedicationDetail> _savedMedicationInfoList = [];
   String _statusMessage = '';
+  final Map<int, Future<MedicationRegimenResult>> _regimenRequests = {};
+  final Map<int, String> _regimenOperationIds = {};
 
   // Function Name: MedBuddySavedMedicationViewModel
   // Description: Binds borrowed controls and narrow cross-feature refresh operations.
@@ -101,6 +103,8 @@ class MedBuddySavedMedicationViewModel {
     _isSavedMedicationLoading = false;
     _hasLoadError = false;
     _statusMessage = '';
+    _regimenRequests.clear();
+    _regimenOperationIds.clear();
   }
 
   // Function Name: dispose
@@ -121,6 +125,101 @@ class MedBuddySavedMedicationViewModel {
         ? 'Medication saving was canceled.'
         : '복약 정보 저장이 취소되었습니다.',
   );
+
+  // 동일 약의 중복 조작을 합치고 계정 변경 이후에는 이전 요청의 갱신을 반영하지 않는다.
+  Future<MedicationRegimenResult> changeMedicationRegimen(
+    int medicationId,
+    MedicationRegimenChange change,
+  ) {
+    if (_disposed) {
+      return Future.value(
+        const MedicationRegimenResult(
+          failure: MedicationRegimenFailure.cancelled,
+        ),
+      );
+    }
+    final pending = _regimenRequests[medicationId];
+    if (pending != null) {
+      return _regimenOperationIds[medicationId] == change.operationId
+          ? pending
+          : Future.value(const MedicationRegimenResult(failure: MedicationRegimenFailure.conflict));
+    }
+    final generation = _saveGeneration;
+    final request = _applyRegimenChange(medicationId, change, generation);
+    _regimenRequests[medicationId] = request;
+    _regimenOperationIds[medicationId] = change.operationId;
+    unawaited(
+      request.whenComplete(() {
+        if (identical(_regimenRequests[medicationId], request)) {
+          _regimenRequests.remove(medicationId);
+          _regimenOperationIds.remove(medicationId);
+        }
+      }),
+    );
+    return request;
+  }
+
+  Future<MedicationRegimenResult> _applyRegimenChange(
+    int medicationId,
+    MedicationRegimenChange change,
+    int generation,
+  ) async {
+    MedicationRegimenResult result;
+    try {
+      result = await checkSavedMedication.changeRegimen(medicationId, change);
+    } catch (_) {
+      result = const MedicationRegimenResult(
+        failure: MedicationRegimenFailure.network,
+      );
+    }
+    if (!_isCurrentSave(generation)) {
+      return const MedicationRegimenResult(
+        failure: MedicationRegimenFailure.cancelled,
+      );
+    }
+    if (result.success ||
+        result.failure == MedicationRegimenFailure.conflict ||
+        result.failure == MedicationRegimenFailure.missing) {
+      try {
+        await fetchSavedMedicationInfo();
+        if (!_isCurrentSave(generation)) {
+          return const MedicationRegimenResult(
+            failure: MedicationRegimenFailure.cancelled,
+          );
+        }
+        await fetchTodayMedicationSchedule();
+        if (!_isCurrentSave(generation)) {
+          return const MedicationRegimenResult(
+            failure: MedicationRegimenFailure.cancelled,
+          );
+        }
+        await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
+        if (result.success && _hasLoadError) {
+          result = MedicationRegimenResult(
+            medicationId: result.medicationId,
+            revision: result.revision,
+            refreshFailed: true,
+          );
+        }
+      } catch (_) {
+        if (result.success) {
+          result = MedicationRegimenResult(
+            medicationId: result.medicationId,
+            revision: result.revision,
+            refreshFailed: true,
+          );
+        }
+      }
+    }
+    if (!_isCurrentSave(generation)) {
+      return const MedicationRegimenResult(
+        failure: MedicationRegimenFailure.cancelled,
+      );
+    }
+    _statusMessage = result.message(_isEnglishSetting);
+    _notifyViewModelListeners(MedBuddyFeature.savedMedication);
+    return result;
+  }
 
   // 함수이름: saveMedicationInfo
   // 함수역할: 약 상세 정보와 선택적 복약 스케줄을 저장 API로 전달하고 저장 목록을 갱신한다.
@@ -383,7 +482,8 @@ class MedBuddySavedMedicationViewModel {
      * - result (MedicationSaveResult): 해당 입력 알약의 성공 식별 결과
      * 반환값:
      * - 해당 저장 결과가 실패 상태가 아니면 true.
-     */ (result) => result.status != MedicationSaveStatus.failed,
+     */
+      (result) => result.status != MedicationSaveStatus.failed,
     )) {
       await fetchSavedMedicationInfo();
       if (!_isCurrentSave(generation)) return List.unmodifiable(results);
@@ -512,7 +612,8 @@ class MedBuddySavedMedicationViewModel {
            * - item (MedicationDetail): 현재 변환·검사 중인 응답 또는 목록 항목
            * 반환값:
            * - 삭제된 ID 집합에 속하지 않으면 true.
-           */ (item) => !deletedIds.contains(item.id),
+           */
+            (item) => !deletedIds.contains(item.id),
           )
           .toList(growable: false);
       _notifyViewModelListeners(MedBuddyFeature.savedMedication);
@@ -577,7 +678,8 @@ class MedBuddySavedMedicationViewModel {
            * - item (MedicationDetail): 현재 변환·검사 중인 응답 또는 목록 항목
            * 반환값:
            * - 저장 약 ID 또는 null.
-           */ (item) => item.id,
+           */
+            (item) => item.id,
           )
           .whereType<int>()
           .where(
@@ -587,7 +689,8 @@ class MedBuddySavedMedicationViewModel {
            * - id (int): 플랫폼 알림의 예약·교체·취소 식별자
            * 반환값:
            * - ID가 양수이면 true.
-           */ (id) => id > 0,
+           */
+            (id) => id > 0,
           )
           .toSet();
       final itemsWithImages = await Future.wait(

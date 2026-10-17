@@ -7,6 +7,12 @@ part of 'medbuddy_view_model.dart';
 // Role: Keeps existing screen and prescription call sites stable.
 // Responsibilities: Forward operations without accessing feature-private state.
 extension MedBuddySavedMedicationFacade on MedBuddyViewModel {
+  // 저장 약 변경도 기존 일정·알림 갱신 경로를 함께 사용한다.
+  Future<MedicationRegimenResult> changeMedicationRegimen(
+    int medicationId,
+    MedicationRegimenChange change,
+  ) => _savedMedications.changeMedicationRegimen(medicationId, change);
+
   // Function Name: hasSavedMedicationLoadError
   // Description: Lets screens tell a failed saved-medication list request apart from an empty list.
   // Parameters: None. Returns: Whether the newest finished list request failed.

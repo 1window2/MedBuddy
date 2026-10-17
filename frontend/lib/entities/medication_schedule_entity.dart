@@ -211,6 +211,17 @@ class MedicationSchedule {
   final int doseCycleDays;
   final List<int> doseCycleOffsets;
   final DateTime? doseCycleAnchor;
+  final String dosingMode;
+  final int regimenRevision;
+  final DateTime? stoppedOn;
+  final DateTime? regimenEffectiveFrom;
+
+  bool get isAsNeeded =>
+      dosingMode == 'as_needed' ||
+      isAsNeededDoseInstruction(intakeTime) ||
+      isAsNeededDoseInstruction(dosage);
+  bool get needsScheduleReview =>
+      !isAsNeeded && requiresDoseScheduleReview(intakeTime);
 
   // Function Name: MedicationSchedule
   // Description: Captures a medication course and its OCR provenance, patient ownership, optional catalog details, and per-slot completion state.
@@ -262,6 +273,10 @@ class MedicationSchedule {
     this.doseCycleDays = 1,
     this.doseCycleOffsets = const [0],
     this.doseCycleAnchor,
+    this.dosingMode = 'scheduled',
+    this.regimenRevision = 0,
+    this.stoppedOn,
+    this.regimenEffectiveFrom,
   });
 
   // Function Name: MedicationSchedule.fromAnalysisJson
@@ -272,6 +287,9 @@ class MedicationSchedule {
   // - MedicationSchedule: the initialized instance.
   factory MedicationSchedule.fromAnalysisJson(Map<String, dynamic> json) {
     return MedicationSchedule(
+      dosingMode: json['dosing_mode'] == 'as_needed'
+          ? 'as_needed'
+          : 'scheduled',
       medicationName: readJsonText(json['drug_name']),
       prescriptionDate: readJsonDate(json['prescription_date']),
       prescriptionBatchId: readJsonText(json['prescription_batch_id']),
@@ -363,6 +381,12 @@ class MedicationSchedule {
       doseCycleDays: _readDoseCycleDays(json['dose_cycle_days']),
       doseCycleOffsets: _readDoseCycleOffsets(json['dose_cycle_offsets']),
       doseCycleAnchor: readJsonDate(json['dose_cycle_anchor']),
+      dosingMode: json['dosing_mode'] == 'as_needed'
+          ? 'as_needed'
+          : 'scheduled',
+      regimenRevision: int.tryParse('${json['regimen_revision'] ?? 0}') ?? 0,
+      stoppedOn: readJsonDate(json['stopped_on']),
+      regimenEffectiveFrom: readJsonDate(json['regimen_effective_from']),
     );
   }
 
@@ -397,12 +421,26 @@ class MedicationSchedule {
   // - date (DateTime): Calendar date asked about.
   // Returns:
   // - bool: true on dose days.
-  bool isDoseDay(DateTime date) => isDoseDayOfCycle(
-    cycleDays: doseCycleDays,
-    offsets: doseCycleOffsets,
-    anchor: doseCycleAnchor,
-    date: date,
-  );
+  bool isDoseDay(DateTime date) =>
+      !isAsNeeded &&
+      (regimenEffectiveFrom == null ||
+          !DateTime(date.year, date.month, date.day).isBefore(
+            DateTime(
+              regimenEffectiveFrom!.year,
+              regimenEffectiveFrom!.month,
+              regimenEffectiveFrom!.day,
+            ),
+          )) &&
+      (stoppedOn == null ||
+          DateTime(date.year, date.month, date.day).isBefore(
+            DateTime(stoppedOn!.year, stoppedOn!.month, stoppedOn!.day),
+          )) &&
+      isDoseDayOfCycle(
+        cycleDays: doseCycleDays,
+        offsets: doseCycleOffsets,
+        anchor: doseCycleAnchor,
+        date: date,
+      );
 
   // Function Name: fromScheduleJsonList
   // Description: Accepts a schedule list or a wrapper under schedules or schedule and decodes map entries, returning an empty list for other payload shapes.
@@ -515,6 +553,7 @@ class MedicationSchedule {
   // 반환값:
   // - List<String>: 화면 분류·복용 기록·알림·위젯이 함께 쓰는 복약 시간대 키 목록. 아무 정보도 없으면 기본 시간대 하나.
   List<String> get slotKeys {
+    if (isAsNeeded) return const [];
     if (scheduleSlotKeys.isNotEmpty) {
       return List.unmodifiable(scheduleSlotKeys);
     }
@@ -551,9 +590,7 @@ class MedicationSchedule {
   String dosageLabelForLanguage(String language) {
     final value = dosage.trim();
     if (value.isEmpty) {
-      return _isEnglishLanguage(language)
-          ? 'Dose not available'
-          : '투약량 정보 없음';
+      return _isEnglishLanguage(language) ? 'Dose not available' : '투약량 정보 없음';
     }
     return localizedDoseAmountLabel(value, language);
   }
@@ -565,6 +602,9 @@ class MedicationSchedule {
   // 반환값:
   // - String: 1일 복용 횟수를 현재 언어의 문장형 표시값으로 변환한다.
   String dailyFrequencyLabelForLanguage(String language) {
+    if (isAsNeeded) {
+      return _isEnglishLanguage(language) ? 'As needed' : '필요시 복용';
+    }
     final value = intakeTime.trim();
     if (value.isEmpty) {
       return _isEnglishLanguage(language)
@@ -610,20 +650,26 @@ class MedicationSchedule {
       'medication_status': medicationStatus,
       'slot_statuses': slotStatuses,
       'completed_slot_keys': slotStatuses.entries
-          .where(/* Function Name: where callback
+          .where(
+            /* Function Name: where callback
            * Description: Selects slot-status entries marked completed.
            * Parameters:
            * - entry (MapEntry<String, bool>): Current key-value entry in the map.
            * Returns:
            * - Whether this slot is completed.
-           */(entry) => entry.value)
-          .map(/* Function Name: map callback
+           */
+            (entry) => entry.value,
+          )
+          .map(
+            /* Function Name: map callback
            * Description: Extracts the slot key from a completed status entry.
            * Parameters:
            * - entry (MapEntry<String, bool>): Current key-value entry in the map.
            * Returns:
            * - The completed slot's key.
-           */(entry) => entry.key)
+           */
+            (entry) => entry.key,
+          )
           .toList(growable: false),
       'schedule_slot_keys': slotKeys,
       'patient_id': patientID,
@@ -641,6 +687,10 @@ class MedicationSchedule {
       'dose_cycle_days': doseCycleDays,
       'dose_cycle_offsets': doseCycleOffsets,
       'dose_cycle_anchor': formatJsonDate(doseCycleAnchor),
+      'dosing_mode': isAsNeeded ? 'as_needed' : 'scheduled',
+      'regimen_revision': regimenRevision,
+      'stopped_on': formatJsonDate(stoppedOn),
+      'regimen_effective_from': formatJsonDate(regimenEffectiveFrom),
     };
   }
 
@@ -694,6 +744,10 @@ class MedicationSchedule {
     int? doseCycleDays,
     List<int>? doseCycleOffsets,
     DateTime? doseCycleAnchor,
+    String? dosingMode,
+    int? regimenRevision,
+    DateTime? stoppedOn,
+    DateTime? regimenEffectiveFrom,
   }) {
     return MedicationSchedule(
       createdDate: createdDate ?? this.createdDate,
@@ -718,6 +772,10 @@ class MedicationSchedule {
       doseCycleDays: doseCycleDays ?? this.doseCycleDays,
       doseCycleOffsets: doseCycleOffsets ?? this.doseCycleOffsets,
       doseCycleAnchor: doseCycleAnchor ?? this.doseCycleAnchor,
+      dosingMode: dosingMode ?? this.dosingMode,
+      regimenRevision: regimenRevision ?? this.regimenRevision,
+      stoppedOn: stoppedOn ?? this.stoppedOn,
+      regimenEffectiveFrom: regimenEffectiveFrom ?? this.regimenEffectiveFrom,
     );
   }
 
@@ -790,7 +848,7 @@ class MedicationSchedule {
        * - value (dynamic): Raw completion flag for this time slot.
        * Returns:
        * - No return value.
-       */(key, value) {
+       */ (key, value) {
         final slotKey = readJsonText(key).toLowerCase();
         if (slotKey.isNotEmpty) {
           statuses[slotKey] = readJsonBool(value);
@@ -821,18 +879,20 @@ class MedicationSchedule {
     }
     final requestedSlotKeys = value
         .map(readJsonText)
-        .map(/* 함수이름: map 콜백
+        .map(
+          /* 함수이름: map 콜백
          * 함수역할: 복약 시간대 키를 소문자로 통일한다.
          * 매개변수:
          * - slotKey (String): morning·lunch·evening·bedtime 복약 시간대 키
          * 반환값:
          * - 소문자로 정규화한 시간대 키.
-         */(slotKey) => slotKey.toLowerCase())
+         */
+          (slotKey) => slotKey.toLowerCase(),
+        )
         .where(medicationScheduleSlotKeys.contains)
         .toSet();
     return medicationScheduleSlotKeys
         .where(requestedSlotKeys.contains)
         .toList(growable: false);
   }
-
 }

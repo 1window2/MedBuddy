@@ -52,6 +52,17 @@ class MedicationDetail {
   final String imageUrl;
   final String localImagePath;
   final String aiGuide;
+  final String dosingMode;
+  final int regimenRevision;
+  final DateTime? stoppedOn;
+  final DateTime? regimenEffectiveFrom;
+  final int? supersededById;
+  final List<String> scheduleSlotKeys;
+
+  bool get isAsNeeded =>
+      dosingMode == 'as_needed' ||
+      isAsNeededDoseInstruction(dailyFrequency) ||
+      isAsNeededDoseInstruction(dosagePerTime);
 
   // 함수이름: MedicationDetail
   // 함수역할: 약의 품목·효능·복용법·주의사항과 처방 기간 및 원격·기기 사진 정보를 상세 화면용 값으로 보존한다.
@@ -98,6 +109,12 @@ class MedicationDetail {
     this.imageUrl = '',
     this.localImagePath = '',
     this.aiGuide = '',
+    this.dosingMode = 'scheduled',
+    this.regimenRevision = 0,
+    this.stoppedOn,
+    this.regimenEffectiveFrom,
+    this.supersededById,
+    this.scheduleSlotKeys = const [],
   });
 
   // 함수이름: MedicationDetail.fromJson
@@ -130,6 +147,20 @@ class MedicationDetail {
       imageUrl: safeMedicationImageUrl(json['image_url'] ?? json['itemImage']),
       localImagePath: '',
       aiGuide: readJsonText(json['ai_guide']),
+      dosingMode: json['dosing_mode'] == 'as_needed'
+          ? 'as_needed'
+          : 'scheduled',
+      regimenRevision: int.tryParse('${json['regimen_revision'] ?? 0}') ?? 0,
+      stoppedOn: readJsonDate(json['stopped_on']),
+      regimenEffectiveFrom: readJsonDate(json['regimen_effective_from']),
+      supersededById: _readInt(json['superseded_by_id']),
+      scheduleSlotKeys: json['schedule_slot_keys'] is List
+          ? List<String>.unmodifiable(
+              (json['schedule_slot_keys'] as List).whereType<String>().where(
+                medicationScheduleSlotKeys.contains,
+              ),
+            )
+          : const [],
     );
   }
 
@@ -149,6 +180,8 @@ class MedicationDetail {
       dailyFrequency: schedule.intakeTime,
       totalDays: schedule.medicationTimeLabel,
       imageUrl: safeMedicationImageUrl(schedule.imageUrl),
+      dosingMode: schedule.isAsNeeded ? 'as_needed' : 'scheduled',
+      scheduleSlotKeys: schedule.slotKeys,
     );
   }
 
@@ -197,6 +230,12 @@ class MedicationDetail {
     String? imageUrl,
     String? localImagePath,
     String? aiGuide,
+    String? dosingMode,
+    int? regimenRevision,
+    DateTime? stoppedOn,
+    DateTime? regimenEffectiveFrom,
+    int? supersededById,
+    List<String>? scheduleSlotKeys,
   }) {
     return MedicationDetail(
       id: id ?? this.id,
@@ -219,6 +258,12 @@ class MedicationDetail {
       imageUrl: imageUrl ?? this.imageUrl,
       localImagePath: localImagePath ?? this.localImagePath,
       aiGuide: aiGuide ?? this.aiGuide,
+      dosingMode: dosingMode ?? this.dosingMode,
+      regimenRevision: regimenRevision ?? this.regimenRevision,
+      stoppedOn: stoppedOn ?? this.stoppedOn,
+      regimenEffectiveFrom: regimenEffectiveFrom ?? this.regimenEffectiveFrom,
+      supersededById: supersededById ?? this.supersededById,
+      scheduleSlotKeys: scheduleSlotKeys ?? this.scheduleSlotKeys,
     );
   }
 
@@ -245,8 +290,23 @@ class MedicationDetail {
       'total_days': totalDays,
       'image_url': safeMedicationImageUrl(imageUrl),
       'ai_guide': aiGuide,
+      'dosing_mode': isAsNeeded ? 'as_needed' : 'scheduled',
+      'schedule_slot_keys': isAsNeeded ? <String>[] : scheduleSlotKeys,
     };
   }
+
+  // 서버 저장 요청과 달리 목록 캐시는 변경 이력 식별 정보도 보존한다.
+  Map<String, dynamic> toJson() => {
+    ...toSaveJson(),
+    'id': id,
+    'created_date': formatJsonDate(createdDate),
+    'manufacturer': manufacturer,
+    'precaution': precaution,
+    'regimen_revision': regimenRevision,
+    'stopped_on': formatJsonDate(stoppedOn),
+    'regimen_effective_from': formatJsonDate(regimenEffectiveFrom),
+    'superseded_by_id': supersededById,
+  };
 
   // Function Name: displayName
   // Description: Exposes the trimmed medication name, using the existing Korean review label when it is blank.
@@ -299,23 +359,32 @@ class MedicationDetail {
   // 반환값:
   // - DateTime?: 다음 복용일. 매일 복용하는 약이거나 시작일을 알 수 없거나 남은 복용일이 없으면 null.
   DateTime? nextDoseDayFrom(DateTime referenceDate) {
+    if (isAsNeeded || !isActiveOn(referenceDate)) return null;
     final cycle = readDoseCycle(dailyFrequency);
     final startDate = prescriptionDate ?? createdDate;
     if (cycle.isDaily || startDate == null) {
       return null;
     }
     final dayCount = medicationDayCountFromText(totalDays);
+    final courseEnd = dayCount <= 0
+        ? null
+        : DateTime(
+            startDate.year,
+            startDate.month,
+            startDate.day + dayCount - 1,
+          );
+    final stopEnd = stoppedOn == null
+        ? null
+        : DateTime(stoppedOn!.year, stoppedOn!.month, stoppedOn!.day - 1);
+    final end =
+        stopEnd != null && (courseEnd == null || stopEnd.isBefore(courseEnd))
+        ? stopEnd
+        : courseEnd;
     return nextDoseDay(
       cycle,
       startDate: startDate,
       from: referenceDate,
-      endDate: dayCount <= 0
-          ? null
-          : DateTime(
-              startDate.year,
-              startDate.month,
-              startDate.day + dayCount - 1,
-            ),
+      endDate: end,
     );
   }
 
@@ -326,6 +395,27 @@ class MedicationDetail {
   // 반환값:
   // - bool: 조제일자와 총 투약일을 기준으로 기준 날짜에 복용 중인 약인지 판단한다. 기간 정보가 부족한 기존 저장 데이터는 목록에서 사라지지 않도록 복용 중으로 취급한다.
   bool isActiveOn(DateTime referenceDate) {
+    final day = DateTime(
+      referenceDate.year,
+      referenceDate.month,
+      referenceDate.day,
+    );
+    if (regimenEffectiveFrom != null &&
+        day.isBefore(
+          DateTime(
+            regimenEffectiveFrom!.year,
+            regimenEffectiveFrom!.month,
+            regimenEffectiveFrom!.day,
+          ),
+        )) {
+      return false;
+    }
+    if (stoppedOn != null &&
+        !day.isBefore(
+          DateTime(stoppedOn!.year, stoppedOn!.month, stoppedOn!.day),
+        )) {
+      return false;
+    }
     final startDate = prescriptionDate ?? createdDate;
     final endDate = medicationEndDate;
     if (startDate == null || endDate == null) {
@@ -354,11 +444,12 @@ class MedicationDetail {
   List<String> compactDosageGuideLinesForLanguage(String language) {
     final isEnglish = _isEnglish(language);
     final lines = <String>[];
+    if (isAsNeeded) lines.add(isEnglish ? 'As needed' : '필요시 복용');
     if (dosagePerTime.trim().isNotEmpty) {
       final dosage = _localizedDosageValue(dosagePerTime, language);
       lines.add(isEnglish ? 'Dose per intake · $dosage' : '1회 복용량 · $dosage');
     }
-    if (dailyFrequency.trim().isNotEmpty) {
+    if (!isAsNeeded && dailyFrequency.trim().isNotEmpty) {
       final frequency = _localizedFrequencyValue(dailyFrequency, language);
       lines.add(
         isEnglish ? 'Daily frequency · $frequency' : '복용 횟수 · $frequency',
@@ -514,5 +605,4 @@ class MedicationDetail {
     final count = medicationScheduleCountFromText(value);
     return count == 0 ? null : count;
   }
-
 }

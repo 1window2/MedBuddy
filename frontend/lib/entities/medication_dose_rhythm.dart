@@ -10,6 +10,43 @@ const int maxDoseIntervalDays = 90;
 const int _daysPerWeek = 7;
 const int _daysPerMonth = 30;
 
+// 필요시 지시는 고정 일정으로 추정하지 않고 별도의 복용 유형으로 보존한다.
+bool isAsNeededDoseInstruction(String? value) => RegExp(
+  r'필요\s*(?:할\s*때|시|한\s*경우)|(?:통증|발열|증상)\s*(?:있을\s*때|시)|\bp\.?r\.?n\.?\b|\bas\s+needed\b|\b(?:when|if)\s+needed\b',
+  caseSensitive: false,
+).hasMatch(value ?? '');
+
+// 기존의 빈 횟수 기본값은 유지하되, 복잡하거나 해석하지 못한 지시는 검토를 요구한다.
+bool requiresDoseScheduleReview(String? value) {
+  final text = _normalized(value);
+  if (text.isEmpty || isAsNeededDoseInstruction(text)) return false;
+  if (RegExp(
+    r'감량|증량|교대|씩\s*줄|씩\s*늘|후\s*중단|taper|alternate\s+doses|then',
+  ).hasMatch(text)) {
+    return true;
+  }
+  if (!readDoseCycle(text).isDaily) return false;
+  if (RegExp(r'^(?:\d+|매일|daily|qd|bid|tid|qid)$').hasMatch(text)) return false;
+  if (RegExp(
+    r'^(?:(?:1\s*일|하루|매일)\s*)?(?:\d+|한|두|세|네)\s*(?:회|번)(?:\s*(?:식전|식후|공복|취침\s*전)(?:\s*\d+\s*분)?)?$',
+  ).hasMatch(text)) {
+    return false;
+  }
+  if (RegExp(
+    r'^(?:once|twice|\d+\s+times?)(?:\s+(?:daily|a\s+day|per\s+day))?$',
+  ).hasMatch(text)) {
+    return false;
+  }
+  final hourly = _everyNHours.firstMatch(text);
+  if (hourly != null && hourly.group(0) == text) {
+    final hours = _number(
+      hourly.group(1) ?? hourly.group(2) ?? hourly.group(3),
+    );
+    return hours <= 0 || hours > 24 || 24 % hours != 0;
+  }
+  return true;
+}
+
 // Days of a seven-day cycle used for "N times a week" when the label names no weekdays:
 // spread as evenly as a week allows, counted from the first day of the course.
 const Map<int, List<int>> _weeklySpread = {
@@ -56,9 +93,7 @@ final RegExp _everyNMonths = RegExp(
 final RegExp _timesPerMonth = RegExp(
   '(?:매월|매달|한\\s*달에|(?<![개\\d])(?<!\\d\\s)월)\\s*$_count',
 );
-final RegExp _oncePerMonth = RegExp(
-  r'매월|매달|once\s+(?:a|per)\s+month|monthly',
-);
+final RegExp _oncePerMonth = RegExp(r'매월|매달|once\s+(?:a|per)\s+month|monthly');
 final RegExp _everyOtherDay = RegExp(
   '격일|하루\\s*걸러|이틀\\s*(?:에\\s*$_once|마다)|every\\s+other\\s+day',
 );
