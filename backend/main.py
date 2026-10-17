@@ -52,6 +52,7 @@ from core.request_rate_limits import (
 from entities import health_recommendation_cache_entity  # noqa: F401
 from entities import medication_detail_entity  # noqa: F401
 from entities import medication_completion_entity  # noqa: F401
+from entities import medication_care_entity  # noqa: F401
 from entities import medication_alarm_entity  # noqa: F401
 from entities import caregiver_notification_entity  # noqa: F401
 from entities import caregiver_alert_outbox_entity  # noqa: F401

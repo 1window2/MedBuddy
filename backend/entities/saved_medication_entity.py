@@ -77,6 +77,11 @@ class _SavedMedication(Base):
     daily_frequency = Column(String, nullable=True)
     total_days = Column(String, nullable=True)
     schedule_slot_keys = Column(Text, nullable=False, default="[]", server_default="[]")
+    dosing_mode = Column(String(16), nullable=False, default="scheduled", server_default="scheduled")
+    regimen_revision = Column(Integer, nullable=False, default=0, server_default="0")
+    regimen_effective_from = Column(Date, nullable=True)
+    stopped_on = Column(Date, nullable=True)
+    superseded_by_id = Column(Integer, nullable=True)
     deduplication_key = Column(
         String(64),
         nullable=False,
@@ -116,6 +121,7 @@ def build_saved_medication_deduplication_key(
     daily_frequency: str | None,
     total_days: str | None,
     schedule_slot_keys: object,
+    dosing_mode: str = "scheduled",
 ) -> str:
     normalized_slots = _normalize_schedule_slot_value(schedule_slot_keys)
     signature_parts = [
@@ -129,6 +135,8 @@ def build_saved_medication_deduplication_key(
     normalized_batch_id = _normalize_signature_text(prescription_batch_id)
     if normalized_batch_id:
         signature_parts.append(normalized_batch_id)
+    if dosing_mode == "as_needed":
+        signature_parts.append("dosing_mode:as_needed")
     signature = "\0".join(signature_parts)
     return hashlib.sha256(signature.encode("utf-8")).hexdigest()
 

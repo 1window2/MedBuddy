@@ -65,6 +65,11 @@ class _MedicationCompletion(Base):
     slot_key = Column(String, index=True, nullable=False)
     completed = Column(Boolean, nullable=False, default=True, server_default="1")
     completed_at = Column(DateTime, nullable=True, default=utc_now)
+    report_status = Column(String(16), nullable=True)
+    actual_taken_at = Column(DateTime, nullable=True)
+    recorded_at = Column(DateTime, nullable=True)
+    reason = Column(String(500), nullable=False, default="", server_default="")
+    revision = Column(Integer, nullable=False, default=0, server_default="0")
 
 
 # Class Name: MedicationCompletion
