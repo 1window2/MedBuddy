@@ -10,13 +10,14 @@
 - iOS: deferred until after the Android public-release decision, no earlier than
   October 2026
 
-This document is the release boundary for the v0.2.0 Android beta. Features
+This document tracks the inherited Android beta baseline and the local
+`beta/v0.2.3` additions below. Features
 outside the list below do not enter the release without an explicit scope
 review covering safety, privacy, data integrity, and release operability.
 
 ## Functional Scope Included
 
-The following implemented flows are in v0.2.0 verification:
+The following implemented flows form the inherited beta verification baseline:
 
 1. Prescription and pill-envelope image input, on-device Korean OCR,
    best-effort privacy filtering, bounded medication-name correction, OCR
@@ -93,6 +94,48 @@ production acceptance gates below.
 저장값은 무시하되 글씨 크기·언어·알림 등 기존 사용자 설정은 유지한다.
 
 ## Required Beta Hardening
+
+### Local Care Workflow Additions (2026-10-17)
+
+These are local source additions, not a declaration that they have been released
+or deployed:
+
+- Versioned medication edit, stop and replacement with an effective date,
+  patient-only writes, revision conflicts and idempotent operation receipts.
+  Previous regimen snapshots and reports remain available. The pillbox defaults
+  to all medications, including stopped/replaced courses; deletion is separate.
+- Patient-reported history with taken, skipped and unrecorded states, actual
+  intake versus recording time, audited corrections and read-only linked-caregiver
+  access. Queries and exports cover up to 31 days within the last 90 days.
+  This is a query limit, not a retention/deletion rule or proof of ingestion.
+- Explicit scheduled/PRN dosing. PRN checks are separate events in the patient's
+  daily schedule, including a PRN-only day. Repeated intentional checks require
+  confirmation; failed submissions reuse their event and operation IDs. They do
+  not inflate scheduled progress or enter scheduled missed-dose detection.
+- An optional patient-scoped, one-time local PRN check reminder, default off,
+  without dose actions, snooze or automatic repeats. Linked caregivers instead
+  have an independent, default-off PRN completion subscription and read-only counts.
+- Individual PRN caregiver push through the existing durable outbox. Report,
+  audit, receipt and event are atomic; retry delivery rechecks the current report,
+  link and preferences. Stable event keys deduplicate retries/time corrections
+  and repeated displays. PRN does not emit aggregate completion chat events or
+  missed-deadline alerts. Local/demo polling baselines existing reports.
+- Selected-period CSV sharing through Android's restricted temporary FileProvider.
+  The dialog shows dates and a short health-data notice, not period status totals.
+  Share CSV triggers a fresh authorized read and session checks before closing
+  the dialog and sharing. Period metadata and status counts are included in the
+  CSV; the daily screen's summary remains scoped to the displayed day. CSV excludes
+  internal account identifiers and escapes formulas; chooser opening is not delivery.
+- Settings-only setup/notification readiness checks and a factual data-use guide.
+  Permission requests are explicit, and a test request is separate from confirming
+  receipt. The guide does not replace a final privacy policy, separate consent or
+  provider-side processing controls.
+
+See [Medication Care and History](Medication%20Care%20and%20History.md) for API
+ownership, migration requirements and limits. Apply `c8d3e7a92104` and deploy the
+matching backend before distributing the app. Signed physical-device testing,
+two-device PRN push verification, export chooser/provider checks and production
+acceptance remain required; source tests alone do not establish those outcomes.
 
 Implementation status as of 2026-09-30: P0 controls and release configuration
 are present in source. The source also includes versioned Alembic migrations,

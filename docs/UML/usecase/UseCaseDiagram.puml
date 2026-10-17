@@ -1,5 +1,6 @@
 @startuml
 left to right direction
+skinparam defaultFontName Malgun Gothic
 
 actor "사용자" as U
 actor "환자" as P
@@ -20,6 +21,7 @@ actor "운영체제 위치 서비스" as Location
 actor "운영체제 전화 및 지도 앱" as ExternalApp
 actor "안드로이드 백그라운드\n작업 서비스" as Workmanager
 actor "안드로이드 런처" as HomeWidget
+actor "운영체제 파일 공유 / 클립보드" as FileShare
 actor "국립중앙의료원\n약국 공공데이터 서비스" as PharmacyAPI
 actor "국립중앙의료원\n병·의원 공공데이터 서비스" as HospitalAPI
 actor "공휴일 정보 서비스" as HolidayAPI
@@ -51,6 +53,11 @@ rectangle "메드버디" {
         usecase "UC-08\n개별/시간대 전체 복약\n완료 및 취소" as UC8
         usecase "UC-10\n건강 추천 확인" as UC10
         usecase "UC-12\n환자 복약 알림 설정" as UC12
+        usecase "UC-31\n처방 수정·교체·중단" as UC31
+        usecase "UC-32\n날짜별 복약 기록 조회" as UC32
+        usecase "UC-33\n사용자 복용 보고 정정" as UC33
+        usecase "UC-34\n필요시 복용 기록·확인 알림" as UC34
+        usecase "UC-35\n기간별 복약 기록 CSV 공유" as UC35
     }
 
     package "환자 및 보호자 관리" {
@@ -67,6 +74,8 @@ rectangle "메드버디" {
         usecase "UC-15\n인증 및 세션 생성" as UC15
         usecase "UC-16\n계정 생명주기 관리" as UC16
         usecase "UC-16A\n계정 데이터 내보내기" as UC16A
+        usecase "UC-36\n복약·알림 준비 점검" as UC36
+        usecase "UC-37\n데이터 이용 안내 확인" as UC37
     }
 
     package "운영 및 유지관리" {
@@ -106,6 +115,8 @@ U -- UC26
 U -- UC27
 U -- UC29
 U -- UC30
+U -- UC36
+U -- UC37
 
 P -- UC3P
 P -- UC4P
@@ -116,6 +127,11 @@ P -- UC8
 P -- UC10
 P -- UC12
 P -- UC28
+P -- UC31
+P -- UC32
+P -- UC33
+P -- UC34
+P -- UC35
 
 C -- UC4C
 C -- UC6
@@ -124,6 +140,8 @@ C -- UC9
 C -- UC13
 C -- UC22
 C -- UC28
+C -- UC32
+C -- UC35
 
 FirebaseAuth -- UC14
 FirebaseAuth -- UC15
@@ -168,6 +186,9 @@ ExternalApp -- UC27
 LocalNotification -- UC12
 LocalNotification -- UC22
 LocalNotification -- UC28
+LocalNotification -- UC34
+LocalNotification -- UC36
+FileShare -- UC35
 
 TTS -- UC11
 TTS -- UC14
@@ -183,6 +204,26 @@ note right of UC22
 인증 비활성 개발 mode는 처리 완료된 알림을 조회해 표시한다.
 알림의 '채팅으로 알림'은 기존 UC-28을 사용한다.
 환자의 복약 상태를 변경하지 않는다.
+end note
+
+note right of UC13
+정기 시간대 전체 완료와 필요시 개별 기록을 구분한다.
+필요시 알림은 연동별 명시적 구독이며 기본 꺼짐이다.
+필요시에는 미복약 마감·자동 완료 채팅을 만들지 않는다.
+재전송·시각 정정·같은 기록 재체크는 새 이벤트가 아니다.
+end note
+
+note right of UC32
+최근 90일 중 한 번에 최대 31일을 조회한다.
+환자만 쓰며 활성 연동 보호자는 조회·공유만 한다.
+사용자 보고는 실제 복용의 증명이 아니다.
+end note
+
+note bottom of UC34
+정기 일정 진행률·미복약 판단과 분리한다.
+새 복용은 개별 UUID로 기록하고 추가 복용을 확인한다.
+환자의 로컬 확인 알림은 기본 꺼짐인 일회 예약이다.
+보호자 구독 알림과 별개이며 복용 action·반복·미루기가 없다.
 end note
 
 FCM -- UC28
@@ -211,5 +252,14 @@ UC4P <.. UC25 : <<extend>>
 UC1 <.. UC29 : <<extend>>
 UC20 <.. UC29 : <<extend>>
 UC26 <.. UC29 : <<extend>>
+UC4P <.. UC31 : <<extend>>
+UC3P <.. UC32 : <<extend>>
+UC4C <.. UC32 : <<extend>>
+UC32 <.. UC33 : <<extend>> 환자만 정정
+UC3P <.. UC34 : <<extend>>
+UC34 <.. UC13 : <<extend>> 구독한 보호자
+UC32 <.. UC35 : <<extend>> 공유 확인
+UC14 <.. UC36 : <<extend>>
+UC14 <.. UC37 : <<extend>>
 
 @enduml

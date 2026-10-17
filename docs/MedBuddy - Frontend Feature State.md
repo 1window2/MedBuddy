@@ -41,6 +41,27 @@ Only the latest list request may publish. Confirmed deletion invalidates earlier
 reads; clearing account data or disposing the feature also invalidates late list
 and image completions. Deletions publish a saved-medication update explicitly.
 
+Regimen edit, stop and replacement use the same feature boundary, with a separate
+confirmed `MedicationRegimenEditorUI` and immutable `MedicationRegimenChange`
+with a server revision/operation ID. `CheckSavedMedication.changeRegimen` adapts
+the care API. The feature coalesces the same in-flight operation per medication
+and rejects a different simultaneous intent. Account changes invalidate late
+results. Successful changes refresh the saved list and current schedule before
+reminder reconciliation; failed refresh does not undo a confirmed server write.
+As-needed medications remain in the saved list but do not become automatic slots.
+
+`MedicationHistoryUI` owns an independent patient-scoped `MedicationHistoryControl`.
+It clears
+stale results during reload and invalidates open edits and exports when the
+authenticated session changes. Caregiver access is read-only. Explicit refresh
+callbacks coordinate a confirmed correction with the existing schedule and
+widget flow; the history editor does not replace the durable offline dose queue.
+The same control reads a separate selected range for export without changing the
+day being reviewed. Pure history model/export helpers handle Korea-time dates,
+state totals and CSV escaping; the Android method channel only stages and shares
+the confirmed file. Session checks also apply after export reads and before share.
+See [Medication Care and History](Medication%20Care%20and%20History.md).
+
 ## Schedules
 
 The schedule feature owns courses, loading/error state and request generations.
@@ -54,6 +75,23 @@ The facade coalesces concurrent refreshes and may reuse a successful same-day
 schedule/reminder read for less than 15 seconds on tab revisits. Explicit refresh
 still reads the server, and schedule changes invalidate this reuse window.
 
+### As-needed schedule boundary
+
+`AsNeededScheduleSection` composes a separate history-backed list alongside regular
+slots. `MedBuddyViewModel.asNeededHistory` owns the patient's control for the login
+session, so unresolved PRN submissions survive closing and reopening the schedule.
+They are in-memory retry intentions, not the encrypted `DoseSyncService` queue.
+Each intended intake has an event UUID and a distinct operation UUID; partial
+bulk success removes only acknowledged requests. The section reloads before
+recording and rechecks eligibility/counts after additional-dose confirmation.
+Resume, day rollover and explicit parent refresh reload the PRN data.
+
+The caregiver schedule uses the same section in read-only mode with its own
+patient-scoped control. It cannot write reports, read the patient's device-only
+photos or restore/change the patient's local reminder. Its bell is supplied by
+the parent and opens `SetCaregiverNotificationUI` for the independent `as_needed`
+preference, supporting only Off or completion alerts.
+
 ## Reminders
 
 Reminder settings and read freshness are owned by the reminder feature. Schedule
@@ -61,6 +99,19 @@ lists, schedule freshness and user settings are supplied through read-only
 callbacks, not mutable sibling state. The facade retains the coordination point
 for post-save reconciliation. Reminder save/rollback, privacy and snooze-preserving
 refresh semantics are unchanged. Superseded or disposed loads cannot publish.
+
+`AsNeededCheckReminderControl` owns the separate patient-scoped local PRN reminder
+preference. It requests a single future booking through `NotificationService`,
+not a periodic dose plan. The shared payload codec forces PRN selection to open
+the schedule, with no dose action or snooze. The medication master switch and
+session cleanup cancel it.
+
+PRN caregiver delivery is separate from that local patient reminder. Production
+push carries a stable per-intake event key used for the inbox and foreground
+notification identity; it does not claim that all regular slots are complete.
+`CaregiverNotificationMonitorService` compares server-supplied PRN event keys in
+local/demo mode. Initial snapshots and re-enabling establish a baseline, and
+already-seen identities remain seen after report corrections.
 
 ## User settings and application flows
 
@@ -93,6 +144,20 @@ deduplication while reading the isolated settings value.
 After confirmed server-side account deletion, `ManageAccount` also removes that
 account's snapshot, latest-intent and server-revision keys alongside pending state.
 Other accounts' keys and local state after a failed deletion remain intact.
+
+Confirmed account deletion also attempts to remove temporary Android medication
+export files. The FileProvider is restricted to that cache directory; external
+copies are outside the app's control. Settings groups the notification-readiness
+check under Medication & Notifications and the factual data-use guide under
+Account > Privacy & Data, distinct from finalized publication policies.
+
+`NotificationReadinessUI` delegates device checks to `NotificationReadinessControl`
+and the existing `NotificationService`, while registration/schedule/widget/link
+entry points stay in UI callbacks. Concurrent checks share one read; unavailable
+checks remain unknown. Opening the screen does not request permissions. Test
+notifications carry no dose/navigation payload or inbox record, and user-confirmed
+receipt is distinct from requesting one. `DataUseInfoUI` is explanatory only:
+it does not collect AI consent or enforce a transmission gate.
 
 At the native scheduling boundary, date-specific plans are reconciled with
 pending notifications instead of cancelling and rebuilding every slot. Unchanged
