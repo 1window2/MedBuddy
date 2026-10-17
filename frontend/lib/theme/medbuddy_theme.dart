@@ -121,6 +121,15 @@ class MedBuddySpacing {
   static const double contentMaxWidth = 720;
 }
 
+// 약 등록과 변경 화면의 항목 제목을 같은 크기와 굵기로 유지한다.
+class MedBuddyTextStyles {
+  static const formSectionTitle = TextStyle(
+    color: MedBuddyColors.textStrong,
+    fontSize: 17,
+    fontWeight: FontWeight.w700,
+  );
+}
+
 // 클래스명: MedBuddyShadows
 // 역할: 카드 UI의 기본 및 강조 그림자 스타일을 제공한다.
 // 주요 책임:

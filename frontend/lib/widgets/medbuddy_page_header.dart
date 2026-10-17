@@ -39,6 +39,7 @@ class MedBuddyPageHeader extends StatelessWidget {
     this.titleKey,
     this.titleMaxLines,
     this.subtitleMaxLines,
+    this.bottom,
     super.key,
   });
 
@@ -54,6 +55,7 @@ class MedBuddyPageHeader extends StatelessWidget {
   // 사용자 입력인 채팅 별칭만 줄 수를 제한하고 화면 제목은 필요한 만큼 줄바꿈한다.
   final int? titleMaxLines;
   final int? subtitleMaxLines;
+  final Widget? bottom;
 
   // 함수이름: build
   // 함수역할: 일정 화면의 색상·21px 제목·하단 라운드를 적용하고 좁은 화면의 도구는 아래 줄에 배치한다.
@@ -181,6 +183,7 @@ class MedBuddyPageHeader extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: actions,
                       ),
+                    ?bottom,
                   ],
                 );
               },

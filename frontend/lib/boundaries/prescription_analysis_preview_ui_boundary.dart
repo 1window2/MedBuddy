@@ -16,6 +16,7 @@ import 'medication_candidate_dialog.dart';
 import '../entities/recognized_text_region_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../widgets/medbuddy_notice.dart';
+import '../widgets/medication_dosing_mode_selector.dart';
 import '../theme/medbuddy_theme.dart';
 
 part 'prescription_preview_image_widgets.dart';
@@ -239,9 +240,7 @@ class _PrescriptionAnalysisPreviewUIState
                           ],
                         ] else if (recognitionNotice.isNotEmpty) ...[
                           const SizedBox(height: 14),
-                          _RecognitionNoticeBanner(
-                            message: recognitionNotice,
-                          ),
+                          _RecognitionNoticeBanner(message: recognitionNotice),
                           const SizedBox(height: 20),
                         ] else
                           const SizedBox(height: 26),
@@ -534,9 +533,7 @@ class _MedicationLookupReviewBanner extends StatelessWidget {
   // 매개변수:
   // - message (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
   // 반환값: 입력 설정이 반영된 _MedicationLookupReviewBanner 인스턴스.
-  const _MedicationLookupReviewBanner({
-    required this.message,
-  });
+  const _MedicationLookupReviewBanner({required this.message});
 
   // 함수이름: build
   // 함수역할: 현재 입력값과 상태를 반영해 상세조회 미확인 약의 수정·재조회 안내 화면을 구성한다.
