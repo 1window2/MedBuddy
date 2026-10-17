@@ -53,6 +53,21 @@ released under that version instead. Changes are listed in the
       revision (1 -> 2 -> 3, font restored to 16), and undoing and recording
       lunch on the home screen reached the server and updated both 4 x 1
       widgets; the backend logged no errors.
+- [x] Medication care additions on the phone (2026-10-17, signed cc18a35 build
+      over 0.2.3 with data kept, backend cc18a35 with migration c8d3e7a92104
+      rehearsed on a restored copy; the 22 existing medications all stayed
+      scheduled): manual as-needed registration (QA-TEST-023-PRN) left home
+      progress at -/-; one dose recorded from the schedule ("오늘 1회") reached
+      the server as an `as_needed:<UUID>` taken record; the extra-dose
+      confirmation cancelled cleanly; the history showed the actual and
+      recorded times; CSV export opened the share sheet with
+      medbuddy_history_2026-10-17_2026-10-17.csv (closed without sending); a
+      dose edit of QA-TEST-022-WEEKLY2 (1 -> 2 tablets) stopped the old row and
+      linked the new one with the course and next dose kept; the readiness
+      check read every permission correctly and posted the test notification;
+      the data-use guidance opened; widgets drew after the update; no backend
+      errors. The edited row read "처방 교체" for a plain dose edit; superseded
+      rows now read "처방 변경" for edits and replacements alike.
 - [x] The home-screen widget failed to load on Android 7 to 11 ("Problem
       loading widget"): it called View.setAlpha through RemoteViews, which
       Android allows only from Android 12. Introduced on 2026-09-21, so the

@@ -93,6 +93,17 @@ void main() {
           find.byKey(const Key('saved-medication-status-1')),
         );
         expect(label.style?.color, scenario.color);
+        // 용량만 바꾼 수정도 다음 항목이 연결되므로 '교체'가 아닌 '변경'으로 표시한다.
+        if (scenario.replaced) {
+          expect(
+            label.data,
+            startsWith(
+              language == 'en'
+                  ? (scenario.future ? 'Change scheduled' : 'Changed')
+                  : (scenario.future ? '처방 변경 예정' : '처방 변경'),
+            ),
+          );
+        }
         expect(
           label.data,
           contains(

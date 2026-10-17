@@ -83,7 +83,8 @@ String medicationHistoryCsv(
       tr('적용 시작일', 'Effective start date'),
       tr('중단일 (이날부터)', 'Stopped from'),
       tr('처방 기간', 'Course duration'),
-      tr('교체된 처방', 'Replaced course'),
+      // 정보 수정과 새 처방 교체 모두 다음 항목으로 이어지므로 '변경'으로 적는다.
+      tr('변경된 처방', 'Changed course'),
     ],
     for (final item in snapshot.medications.where(
       (item) => periodMedicationIds.contains(item.id),

@@ -75,8 +75,9 @@ class _SavedMedicationNameRow extends StatelessWidget {
     final statusLabel = stopDate != null
         ? replaced
               ? (stopPending
-                    ? (text.isEnglish ? 'Replacement scheduled' : '처방 교체 예정')
-                    : (text.isEnglish ? 'Replaced' : '처방 교체'))
+                    // 서버는 정보 수정과 새 처방 교체 모두 다음 항목을 연결하므로 두 경우에 맞는 '변경'으로 표시한다.
+                    ? (text.isEnglish ? 'Change scheduled' : '처방 변경 예정')
+                    : (text.isEnglish ? 'Changed' : '처방 변경'))
               : (stopPending
                     ? (text.isEnglish ? 'Stop scheduled' : '복용 중단 예정')
                     : (text.isEnglish ? 'Stopped' : '복용 중단'))
