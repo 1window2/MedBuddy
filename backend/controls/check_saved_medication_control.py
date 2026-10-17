@@ -24,6 +24,7 @@ from entities.saved_medication_entity import (
 from schemas.medication import SavedMedicationCreate
 from repositories.saved_medication_repository import SavedMedicationRepository
 from services.medication_course_policy import MedicationCoursePolicy
+from services.medication_dosing_mode import medication_dosing_mode, resolve_dosing_mode
 from services.saved_medication_retention import SavedMedicationRetentionPolicy
 
 logger = logging.getLogger(__name__)
@@ -86,6 +87,14 @@ class CheckSavedMedication:
                 registration_date=registration_date,
                 deduplication_key=deduplication_key,
             )
+            # 이전 앱이 필요시 지시를 정기 모드로 저장한 경우에도 기존 중복 서명을 확인한다.
+            if duplicate_medication is None and resolve_dosing_mode(
+                None, medication.daily_frequency, medication.dosage_per_time,
+            ) == "as_needed":
+                duplicate_medication = self.medication_repository.find_daily_duplicate(
+                    patient_hash=patient_hash, registration_date=registration_date,
+                    deduplication_key=self._build_deduplication_key(medication, include_dosing_mode=False),
+                )
             if duplicate_medication is not None:
                 return {
                     "success": False,
@@ -119,6 +128,7 @@ class CheckSavedMedication:
                 dosage_per_time=medication.dosage_per_time,
                 daily_frequency=medication.daily_frequency,
                 total_days=medication.total_days,
+                dosing_mode=medication_dosing_mode(medication),
                 schedule_slot_keys=encode_medication_schedule_slot_keys(
                     medication.schedule_slot_keys
                 ),
@@ -289,6 +299,11 @@ class CheckSavedMedication:
             "dosage_per_time": medication.dosage_per_time,
             "daily_frequency": medication.daily_frequency,
             "total_days": medication.total_days,
+            "dosing_mode": medication_dosing_mode(medication),
+            "regimen_revision": medication.regimen_revision or 0,
+            "regimen_effective_from": medication.regimen_effective_from.isoformat() if medication.regimen_effective_from else None,
+            "stopped_on": medication.stopped_on.isoformat() if medication.stopped_on else None,
+            "superseded_by_id": medication.superseded_by_id,
             "schedule_slot_keys": decode_medication_schedule_slot_keys(
                 medication.schedule_slot_keys
             ),
@@ -344,6 +359,8 @@ class CheckSavedMedication:
     def _build_deduplication_key(
         self,
         medication: SavedMedicationCreate,
+        *,
+        include_dosing_mode: bool = True,
     ) -> str:
         normalized_slot_keys = decode_medication_schedule_slot_keys(
             encode_medication_schedule_slot_keys(medication.schedule_slot_keys)
@@ -360,4 +377,5 @@ class CheckSavedMedication:
             daily_frequency=medication.daily_frequency,
             total_days=medication.total_days,
             schedule_slot_keys=normalized_slot_keys,
+            dosing_mode=medication_dosing_mode(medication) if include_dosing_mode else "scheduled",
         )

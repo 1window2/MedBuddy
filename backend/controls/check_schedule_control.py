@@ -38,6 +38,9 @@ from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient
 from entities.saved_medication_entity import _SavedMedication
 from repositories.saved_medication_repository import SavedMedicationRepository
 from services.medication_course_policy import MedicationCoursePolicy
+from services.medication_dosing_mode import medication_dosing_mode
+from services.medication_care_recording import apply_completion_report
+from entities.medication_care_entity import _MedicationCareAudit
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +82,7 @@ class CheckSchedule:
         self.course_policy = course_policy or MedicationCoursePolicy()
         self.completion_event_boundary = completion_event_boundary
         self._pending_completion_events: list[dict[str, str | int]] = []
+        self._pending_care_audits: list[dict[str, object]] = []
 
     # 함수이름: requestTodayMedicationSchedule
     # 함수역할:
@@ -134,7 +138,7 @@ class CheckSchedule:
                 if client_schedules_by_dose_days()
                 else self.course_policy.is_active_on
             )
-            active = [med for med in medications if is_listed(med, today)]
+            active = [med for med in medications if medication_dosing_mode(med) == "scheduled" and is_listed(med, today)]
             if not active:
                 continue
             rows = (
@@ -181,7 +185,7 @@ class CheckSchedule:
         window_medications = [
             medication
             for medication in medications
-            if self.course_policy.is_active_during(
+            if medication_dosing_mode(medication) == "scheduled" and self.course_policy.is_active_during(
                 medication,
                 window_start,
                 window_end,
@@ -220,6 +224,7 @@ class CheckSchedule:
         expected_schedule_date: date | None = None,
     ) -> dict[str, object]:
         self._pending_completion_events.clear()
+        self._pending_care_audits.clear()
         normalized_patient_hash = normalize_patient_hash(patient_hash)
         today = application_today()
         if expected_schedule_date is not None and expected_schedule_date != today:
@@ -233,7 +238,7 @@ class CheckSchedule:
         )
         # 시간대 단위 기록과 같은 기준을 적용한다: 오늘 복용 기간이 아니거나(끝났거나 아직 시작 전)
         # 복용일만 받는 앱에서 쉬는 날인 약은 오늘 일정에 없으므로 기록하지 않는다.
-        if not self.course_policy.is_active_on(medication, today) or (
+        if medication_dosing_mode(medication) == "as_needed" or not self.course_policy.is_active_on(medication, today) or (
             client_schedules_by_dose_days()
             and not self.course_policy.is_due_on(medication, today)
         ):
@@ -294,6 +299,7 @@ class CheckSchedule:
             )
             medication.medication_status = self._all_slots_completed(slot_statuses)
             medication.medication_status_date = today
+            self._flush_care_audits()
             self.db.flush()
             completion_events = self._queue_slot_completion_events(
                 patient_hash=normalized_patient_hash,
@@ -352,6 +358,7 @@ class CheckSchedule:
         allow_historical: bool = False,
     ) -> dict[str, object]:
         self._pending_completion_events.clear()
+        self._pending_care_audits.clear()
         normalized_patient_hash = normalize_patient_hash(patient_hash)
         normalized_slot_key = slot_key.strip().lower()
         if normalized_slot_key not in MEDICATION_SCHEDULE_SLOT_KEYS:
@@ -455,6 +462,7 @@ class CheckSchedule:
                 if today == current_day:
                     medication.medication_status = self._all_slots_completed(slot_statuses)
                     medication.medication_status_date = today
+            self._flush_care_audits()
             self.db.flush()
             # Historical uploads are records, not a new "just taken" alert.
             completion_events = self._queue_slot_completion_events(
@@ -867,7 +875,7 @@ class CheckSchedule:
                     patient_hash
                 )
             )
-            if is_listed(medication, schedule_date)
+            if medication_dosing_mode(medication) == "scheduled" and is_listed(medication, schedule_date)
         ]
         completion_scope = active_medications
         if include is not None and all(
@@ -969,6 +977,10 @@ class CheckSchedule:
             target_date,
             completion_rows,
         )
+        course_end = self.course_policy.read_end_date(medication, target_date)
+        visible_duration = schedule.medication_time
+        if course_end is not None and (medication.stopped_on or medication.regimen_effective_from):
+            visible_duration = str(max(0, (course_end - schedule.created_date).days + 1))
         return {
             "medication_id": schedule.medication_id,
             "drug_name": schedule.medication_name,
@@ -981,7 +993,14 @@ class CheckSchedule:
             "schedule_date": target_date.isoformat(),
             "patient_hash": schedule.patient_id,
             "patient_id": schedule.patient_id,
-            "total_days": schedule.medication_time,
+            "total_days": visible_duration,
+            "dosing_mode": medication_dosing_mode(medication),
+            "regimen_revision": medication.regimen_revision or 0,
+            "regimen_effective_from": medication.regimen_effective_from.isoformat() if medication.regimen_effective_from else None,
+            "stopped_on": medication.stopped_on.isoformat() if medication.stopped_on else None,
+            "superseded_by_id": medication.superseded_by_id,
+            "course_end_date": course_end.isoformat() if course_end else None,
+            "skipped_slot_keys": [row.slot_key for row in (completion_rows or []) if row.report_status == "skipped"],
             "efficacy": medication.efficacy,
             "use_method": medication.use_method,
             "warning_message": medication.warning_message,
@@ -1219,8 +1238,8 @@ class CheckSchedule:
                 patient_hash=patient_hash,
                 medicine_name=medication.item_name or "",
                 time_slot=slot_key,
-                completed=completed,
-                completed_at=utc_now() if completed else None,
+                completed=False,
+                completed_at=None,
             ).insertMedicationCompletion(
                 saved_medication_id=int(medication.id),
                 schedule_date=schedule_date,
@@ -1228,8 +1247,21 @@ class CheckSchedule:
             self.db.add(completion)
             completion_rows.append(completion)
 
-        completion.completed = completed
-        completion.completed_at = utc_now() if completed else None
+        preserve_report = completed and completion.report_status == "taken"
+        apply_completion_report(
+            self.db, completion, status="taken" if completed else "unrecorded", source="completion",
+            actual_taken_at=completion.actual_taken_at if preserve_report else None,
+            reason=(completion.reason or "") if preserve_report else "",
+            audit_rows=self._pending_care_audits,
+        )
+
+    # 함수이름: _flush_care_audits
+    # 함수역할: 통합 완료·취소의 약별 감사 이력을 한 번의 INSERT로 저장한다.
+    # 매개변수: 없음. 반환값: 없음. 기존 요청 트랜잭션과 함께 롤백된다.
+    def _flush_care_audits(self) -> None:
+        if self._pending_care_audits:
+            self.db.execute(_MedicationCareAudit.__table__.insert(), self._pending_care_audits)
+            self._pending_care_audits.clear()
 
     # Function Name: _all_slots_completed
     # Description:

@@ -441,6 +441,13 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
             config.attributes["connection"] = connection
             # The historical fixture also predates version-checked settings writes.
             connection.exec_driver_sql("ALTER TABLE user_settings DROP COLUMN revision")
+            # Keep the historical fixture older than the care-history migration too.
+            connection.exec_driver_sql("DROP TABLE medication_care_audits")
+            connection.exec_driver_sql("DROP TABLE medication_care_operations")
+            for column in ("report_status", "actual_taken_at", "recorded_at", "reason", "revision"):
+                connection.exec_driver_sql(f"ALTER TABLE medication_completions DROP COLUMN {column}")
+            for column in ("dosing_mode", "regimen_revision", "regimen_effective_from", "stopped_on", "superseded_by_id"):
+                connection.exec_driver_sql(f"ALTER TABLE saved_medications DROP COLUMN {column}")
             command.stamp(config, "a6e2d903bc71")
             command.upgrade(config, "head")
 

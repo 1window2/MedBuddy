@@ -216,7 +216,9 @@ class CheckPrescriptionChange:
         dated_rows = [
             (self._effective_prescription_date(row), row)
             for row in rows
+            # 약 수정용 복사본을 원본 처방 묶음에 다시 넣으면 동일 약을 두 번 비교하게 된다.
             if self._effective_prescription_date(row) is not None
+            and getattr(row, "regimen_effective_from", None) is None
         ]
         reference_date = current_date or application_today()
         previous_rows = [

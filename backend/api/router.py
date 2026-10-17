@@ -115,6 +115,7 @@ from schemas.prescription_change import (
     PrescriptionChangeRequest,
     PrescriptionChangeResponse,
 )
+from api.medication_care_router import router as medication_care_router
 
 _authenticated_app_dependencies = [
     Depends(verify_app_check_token),
@@ -125,6 +126,7 @@ _authenticated_app_dependencies = [
 _INTERNAL_VALUE_ERRORS = (json.JSONDecodeError, ValidationError)
 
 router = APIRouter(dependencies=_authenticated_app_dependencies)
+router.include_router(medication_care_router)
 auth_router = APIRouter(
     prefix="/api/v1/auth",
     tags=["Authentication"],

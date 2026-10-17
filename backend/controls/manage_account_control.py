@@ -16,6 +16,7 @@ from entities.dose_sync_operation_entity import _DoseSyncOperation
 from entities.health_recommendation_cache_entity import _HealthRecommendationCache
 from entities.medication_alarm_entity import _MedicationAlarm
 from entities.medication_completion_entity import _MedicationCompletion
+from entities.medication_care_entity import _MedicationCareAudit, _MedicationCareOperation
 from entities.patient_caregiver_link_entity import (
     _PatientCaregiverLink,
     _PatientLinkCode,
@@ -162,6 +163,10 @@ class ManageAccount:
                 ],
                 "medication_completions": [
                     self._row_to_dict(row) for row in completions
+                ],
+                "medication_care_audits": [
+                    self._row_to_dict(row) for row in self.db.query(_MedicationCareAudit)
+                    .filter(_MedicationCareAudit.patient_hash == normalized_user_hash).all()
                 ],
                 "notification_settings": [
                     self._row_to_dict(row)
@@ -316,6 +321,8 @@ class ManageAccount:
             _MedicationCompletion,
             _MedicationCompletion.patient_hash == normalized_user_hash,
         )
+        self._delete(_MedicationCareAudit, _MedicationCareAudit.patient_hash == normalized_user_hash)
+        self._delete(_MedicationCareOperation, _MedicationCareOperation.patient_hash == normalized_user_hash)
         # Offline dose receipts hold dates, slots and medication IDs. The
         # production tombstone keeps the account row, so no cascade removes
         # them; the response shape stays unchanged.

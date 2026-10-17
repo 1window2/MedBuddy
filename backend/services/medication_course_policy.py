@@ -15,6 +15,7 @@ from services.medication_dose_rhythm import (
     read_doses_per_dose_day,
     read_duration_days,
 )
+from services.medication_dosing_mode import medication_dosing_mode
 
 _SCHEDULE_COUNT_PATTERN = re.compile(r"-?\d+")
 _FREQUENCY_COUNT_PATTERN = re.compile(
@@ -91,6 +92,8 @@ class MedicationCoursePolicy:
     # Returns:
     # - True when the medication belongs on that day's schedule.
     def is_due_on(self, medication: Any, target_date: date) -> bool:
+        if medication_dosing_mode(medication) == "as_needed":
+            return False
         if not self.is_active_on(medication, target_date):
             return False
         cycle = self.read_dose_cycle(medication)
@@ -167,7 +170,9 @@ class MedicationCoursePolicy:
     # - Parsed medication course start date.
     def read_start_date(self, medication: Any, fallback_date: date) -> date:
         recorded_date = self._read_recorded_start_date(medication)
-        return fallback_date if recorded_date is None else recorded_date
+        start = fallback_date if recorded_date is None else recorded_date
+        effective_from = getattr(medication, "regimen_effective_from", None)
+        return max(start, effective_from) if isinstance(effective_from, date) else start
 
     # Function Name: read_end_date
     # Description:
@@ -185,14 +190,17 @@ class MedicationCoursePolicy:
         fallback: date | None = None,
     ) -> date | None:
         total_days = self.read_total_days(getattr(medication, "total_days", None))
+        stopped_on = getattr(medication, "stopped_on", None)
+        stopped_end = stopped_on - timedelta(days=1) if isinstance(stopped_on, date) else None
         if total_days <= 0:
-            return None
+            return stopped_end
         start_date = self._read_recorded_start_date(medication)
         if start_date is None:
             start_date = fallback
         if start_date is None:
-            return None
-        return start_date + timedelta(days=total_days - 1)
+            return stopped_end
+        end = start_date + timedelta(days=total_days - 1)
+        return min(end, stopped_end) if stopped_end is not None else end
 
     # Function Name: read_slot_keys
     # Description:

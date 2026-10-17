@@ -2,7 +2,7 @@
 # 역할: 약품 조회·저장·복약 상태·알림·사용자 설정·연동 코드와 처방 분석의 요청·응답 계약을 정의한다.
 
 from datetime import date, timedelta
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import (
     AliasChoices,
@@ -153,6 +153,7 @@ class SavedMedicationCreate(BaseModel):
         max_length=_MAX_SHORT_TEXT_LENGTH,
     )
     schedule_slot_keys: list[str] = Field(default_factory=list, max_length=4)
+    dosing_mode: Literal["scheduled", "as_needed"] = "scheduled"
     image_url: Optional[str] = Field(default=None, max_length=_MAX_URL_LENGTH)
     ai_guide: Optional[str] = Field(
         default=None,

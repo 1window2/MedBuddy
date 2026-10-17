@@ -48,6 +48,7 @@ from repositories.patient_caregiver_link_repository import (
 from repositories.pharmacy_catalog_repository import PharmacyCatalogRepository
 from repositories.saved_medication_repository import SavedMedicationRepository
 from services.medication_course_policy import MedicationCoursePolicy
+from services.medication_dosing_mode import medication_dosing_mode
 
 
 # 함수이름: utc_iso
@@ -813,7 +814,7 @@ class ManageLinkedChat:
         medications = [
             medication
             for medication in self._active_medications(patient_hash, today)
-            if not due_only or self.course_policy.is_due_on(medication, today)
+            if medication_dosing_mode(medication) == "scheduled" and (not due_only or self.course_policy.is_due_on(medication, today))
         ]
         medication_ids = [int(item.id) for item in medications if item.id is not None]
         completion_rows = (
