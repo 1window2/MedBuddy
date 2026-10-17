@@ -21,6 +21,7 @@ import '../widgets/medbuddy_page_header.dart';
 import '../widgets/app_version_label.dart';
 import '../widgets/exact_reminder_notice.dart';
 import 'set_notification_ui_boundary.dart';
+import 'data_use_info_ui_boundary.dart';
 import 'notification_readiness_ui_boundary.dart';
 
 part 'settings_preference_widgets.dart';
@@ -842,6 +843,22 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _AccountWelcomePanel(presentation: accountPresentation, compact: true),
+        const SizedBox(height: 24),
+        _SettingsSection(
+          title: text.isEnglish ? 'Privacy & Data' : '개인정보 및 데이터',
+          children: [
+            MedBuddyPreferenceRow(
+              key: const ValueKey('settingsDataUseMenu'),
+              title: text.isEnglish ? 'Data use guide' : '데이터 이용 안내',
+              description: text.isEnglish
+                  ? 'Device, server and external AI processing'
+                  : '기기·서버·외부 AI에서 처리하는 정보',
+              onTap: () => _openInformationPage(
+                DataUseInfoUI(isEnglish: text.isEnglish),
+              ),
+            ),
+          ],
+        ),
         if (hasMfaSettings) ...[
           const SizedBox(height: 18),
           ListenableBuilder(
