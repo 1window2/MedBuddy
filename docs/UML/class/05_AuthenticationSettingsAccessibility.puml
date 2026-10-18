@@ -43,6 +43,8 @@ package "Flutter Frontend" #E8F4FF {
   class NotificationReadinessSnapshot <<Entity>>
   class NotificationService <<Service>>
   class DataUseInfoUI <<UI>>
+  class MedBuddyViewModel <<Control>>
+  class MedBuddyUserSettingViewModel <<Control>>
   class "ManageUserSetting" as FManageUserSetting <<Control>>
   class ManageAccount <<Control>>
   database "SharedPreferences\naccount-scoped settings" as LocalSettings <<Database>>
@@ -98,7 +100,13 @@ note bottom of AccountOperationLocks
 end note
 BAuthorizationControl --> DBUserAccount
 
-ManageUserSettingUI --> FManageUserSetting
+ManageUserSettingUI --> MedBuddyViewModel : 주입된 설정 저장 callback
+MedBuddyViewModel *-- MedBuddyUserSettingViewModel
+MedBuddyUserSettingViewModel --> FManageUserSetting
+note bottom of MedBuddyUserSettingViewModel
+  설정 조회·수동 저장·기기 언어 동기화를 같은 순서로 처리한다.
+  종료된 계정의 늦은 응답은 다른 계정에 반영하지 않는다.
+end note
 ManageUserSettingUI --> NotificationReadinessUI : Medication & Notifications
 ManageUserSettingUI --> DataUseInfoUI : Account / Privacy & Data
 NotificationReadinessUI --> NotificationReadinessControl
@@ -150,7 +158,7 @@ note bottom of FUserSetting
   신규 일정 기본 시각과 홈 조회 대상을 저장한다.
 end note
 
-ManageUserSettingUI --> FRequestVoiceGuide
+ManageUserSettingUI --> TTSService : 기기 내 음성 미리듣기
 FRequestVoiceGuide --> BRequestVoiceGuide : guide text API
 FRequestVoiceGuide --> TTSService : on-device speech
 @enduml

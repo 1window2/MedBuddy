@@ -40,6 +40,7 @@ box "Flutter Frontend"
     control "MedBuddyViewModel" as ViewModel
     control "LinkedChatHistoryViewModel" as ChatHistory
     control "LinkedChatComposerViewModel" as ChatComposer
+    control "LinkedChatDoseRecorder" as ChatDose
     control "Frontend Controller\nInputPrescription\nCheckMedicationDetail\nCheckSchedule\nCheckSavedMedication\nIdentifyPillBatch\nCheckNearbyPharmacy\nManageLinkedChat 등" as FrontControl
     participant "Frontend Service\nPrescriptionLocalOcrService\nPrescriptionFrameAnalyzer\nPrescriptionCameraOrientationService\nPrescriptionImageCropService\nDeviceLocationBoundary\nNotificationService\nCaregiverPatientLocalStateService\nLinkedChatRealtimeService 등" as FrontService
     participant "AuthenticatedApiClient" as ApiClient
@@ -477,9 +478,9 @@ opt 사용자가 분석 약을 저장하는 경우
         FrontControl -> ApiClient : POST /save\n처방 분석 batch id 포함
         ApiClient -> Router : 저장 약 생성 요청
         Router -> BackControl : CheckSavedMedication.saveMedicationDetail()
-        BackControl -> Database : saved_medications 중복 확인 및 저장
+        BackControl -> Database : saved_medications 중복 확인\n신규 약은 계정 저장 한도 검사 후 저장
         Database --> BackControl : 저장 결과
-        BackControl --> Router : 저장, 중복 또는 실패 상태
+        BackControl --> Router : 저장, 중복 또는 실패 상태\n한도 초과 시 409와 정리 안내
         Router --> ApiClient : 저장 결과
         ApiClient --> ViewModel : MedicationSaveResult
     end
@@ -574,7 +575,8 @@ opt 사용자가 낱알 약 식별을 선택하는 경우
     end
     User -> UI : 실제 약과 일치하는 후보 확인
     UI --> User : showMedicationScheduleReview()로 일정 검토 화면 출력
-    User -> UI : 복용 시작일, 기간, 횟수, 용량과 시간대 확인 또는 수정
+    User -> UI : 복용 시작일, 기간, 복용 주기, 복용일의 횟수·용량·시간대 확인 또는 수정
+    UI -> UI : 실제 복용일과 기간 내 복용일 수 안내\n선택 주기를 공통 저장 정보에 보존
     UI -> FrontControl : ResolveDuplicatePillSelectionControl로 동일 품목 확인
     FrontControl --> UI : 중복 품목과 사진 수
     opt 동일 품목 사진이 2개 이상인 경우
@@ -588,6 +590,7 @@ end
 
 Patient -> UI : 오늘 복약 일정 선택
 note over FrontControl,BackControl : X-MedBuddy-Client-Features: dose-days selects the dose-day schedule.\nOlder clients keep the legacy daily view. Caregiver missed-dose checks always use dose days.\nFrequency cycles and duration units are preserved through review, save and reminder planning.
+note over UI,ViewModel : 복약함은 비매일 약의 복용 주기와 다음 복용일을 표시한다.\n월간은 현재 30일 주기이며 달력의 같은 날짜로 추정하지 않는다.
 UI -> ViewModel : fetchTodayMedicationSchedule()
 ViewModel -> FrontControl : CheckSchedule.requestTodayMedicationSchedule()
 FrontControl -> ApiClient : GET /schedule/today
@@ -672,7 +675,7 @@ end
 
 == 6. 환자 복약 알림 설정 ==
 
-Patient -> UI : 환경설정의 복약 알림 설정\n또는 시간대 알림 아이콘 선택
+Patient -> UI : 오늘 일정의 시간대 알림 아이콘 선택\n환경설정에서는 '시간대별 세부 설정'으로 오늘 일정에 진입
 UI --> Patient : 현재 활성 상태와 알림 시간 출력
 note right of UI
   일정 알림 아이콘은 활성 상태와 무관하게 설정창을 연다.
@@ -780,9 +783,9 @@ UI -> FrontControl : LinkPatientCaregiver.requestPatientCaregiverLink(code)
 FrontControl -> ApiClient : POST /link/register
 ApiClient -> Router : 연결 등록 요청
 Router -> BackControl : LinkPatientCaregiver.requestPatientCaregiverLink()
-BackControl -> Database : 코드 유효기간, 사용 여부,\n자기 연결 및 기존 연결 검증
+BackControl -> Database : 코드 유효기간, 사용 여부,\n자기 연결 및 기존 연결 검증\n신규·재활성 연결은 양쪽 활성 연결 한도 검사
 
-alt 유효한 연결 코드
+alt 유효한 코드이며 연결 한도 충족 또는 이미 활성인 연결
     Database --> BackControl : 유효한 PatientLinkCode
     BackControl -> Database : patient_caregiver_links 저장 및 코드 사용 처리
     Database --> BackControl : PatientCaregiverLink
@@ -790,7 +793,7 @@ alt 유효한 연결 코드
     Router --> ApiClient : 연결 정보
     ApiClient --> FrontControl : PatientCaregiverLink
     FrontControl --> UI : 연결 성공 상태 출력
-else 만료, 재사용, 자기 연결 또는 잘못된 코드
+else 만료, 재사용, 자기 연결, 잘못된 코드 또는 연결 한도 초과
     Database --> BackControl : 검증 실패
     BackControl --> Router : 연결 오류
     Router --> ApiClient : 오류 응답
@@ -1067,10 +1070,10 @@ end
 == 11. 복약정보 직접 등록 ==
 
 User -> UI : 약 정보 입력에서 직접 등록 선택
-UI --> User : 약명, 용량·단위, 복용기간, 시간대와 선택 사진 입력 화면
+UI --> User : 약명, 용량·단위, 복용기간, 복용 주기·시간대와 선택 사진 입력 화면
 User -> UI : 필수 정보 입력 및 저장 선택
 note over UI,ViewModel : Save work captures account and save generation.\nClear/dispose blocks subsequent requests, photo attachment and refresh.\nAn already accepted server write is not undone by cancelling the local flow.
-UI -> UI : 필수값, 날짜 범위와 시간대 검증
+UI -> UI : 필수값, 날짜 범위와 시간대 검증\n매일·격일·주 1회·월 1회의 복용일 안내
 UI -> ViewModel : saveManualMedication(entry)
 ViewModel -> FrontControl : MedicationSchedule로 약 상세정보 보완 요청
 FrontControl -> ApiClient : 입력 약의 상세정보 보완 조회
@@ -1085,12 +1088,13 @@ ViewModel -> FrontControl : 기존 복약정보 저장 요청
 FrontControl -> ApiClient : 기존 POST /save 계약 재사용
 ApiClient -> Router : 직접 입력 복약정보 저장 요청
 Router -> BackControl : CheckSavedMedication.saveMedicationDetail()
-BackControl -> Database : 같은 환자·등록일·복용과정 중복 검증 후 저장
+BackControl -> Database : 같은 환자·등록일·복용과정 중복 검증\n신규 약은 계정 저장 한도 검사 후 주기와 함께 저장
 Database --> BackControl : 저장 또는 중복 결과
 BackControl --> Router : 저장 또는 중복 결과
 Router --> ApiClient : 저장 응답
 ApiClient --> FrontControl : 저장 약 ID를 포함한 MedicationSaveResult
 FrontControl --> ViewModel : MedicationSaveResult
+note over BackControl,UI : 한도 초과는 저장 실패로 안내하며 사진을 연결하지 않는다.\n중복 결과는 기존 ID를 재사용한다.
 opt 저장 성공 또는 중복 결과에 ID가 있고 사진을 선택한 경우
     ViewModel -> FrontService : ManualMedicationImageStore.saveImage(patientHash, medicationId, sourcePath)
     FrontService --> ViewModel : 기기 전용 사진 경로 또는 사진 저장 실패
@@ -1208,14 +1212,23 @@ note right of ChatHistory
   Disposed callbacks and wrong-link events never publish to the new session.
 end note
 FrontService -> ApiClient : buildAuthenticationHeaders(streamUri)
-ApiClient --> FrontService : ID Token, API contract, 조건부 App Check Token
+ApiClient --> FrontService : ID Token, API contract, 조건부 App Check Token\nX-MedBuddy-Client-Features: dose-days, chat-close-codes
 FrontService -> Router : 인증 header와 WSS /chat/links/{linkId}/stream
 Router -> BackService : ID Token과 API contract 검증
 opt Backend에서 App Check 요구
     Router -> AppCheckVerifier : App Check Token 검증
 end
 Router -> BackControl : 연결 참가자 권한 재검증
-BackControl --> FrontService : WebSocket 연결 승인
+alt 인증·활성 연결·접속 한도 검증 성공
+    Router -> BackService : ChatConnectionManager에 연결 등록
+    Router --> FrontService : WebSocket 연결 승인 및 chat_ready
+else 연결 요청 거절
+    alt chat-close-codes를 선언한 현재 Client
+        Router --> FrontService : accept 후 거절 사유의 close code 전달\n인증 갱신·대기·중단을 구분하며 연결 Registry에는 등록하지 않음
+    else 기능을 선언하지 않은 구형 Client
+        Router --> FrontService : accept 이전 거절 (HTTP 403)
+    end
+end
 
 opt 메시지에 약 문맥 첨부
     User -> UI : 대화할 약 선택 화면 열기
@@ -1255,12 +1268,14 @@ opt 선택 약 또는 이전 메시지의 약 카드 상세보기
 end
 opt 환자가 선택한 약에 먹었어요 선택
     Patient -> UI : 먹었어요
-    UI -> DoseSync : 선택한 약·시간대·날짜·linkId로 record()
+    UI -> ChatDose : 선택 약·시간대·날짜 전체 검증 후 record()
+    ChatDose -> DoseSync : 계정의 영속 큐로 복용 기록\n운영에서는 ViewModel에 연결된 DoseSync 사용
     DoseSync -> DoseStore : 시간대별 요청을 기기에 먼저 저장
     DoseSync --> UI : 기기 저장 및 전송 대기\n성공한 시간대만 선택에서 제거
     DoseSync -> Router : 인증된 completion-operations 요청
-    Router -> BackControl : SyncDose.apply() -> ManageLinkedChat.record_medication_taken()
-    BackControl -> Database : 환자 본인·연결·일정 검증\n복약 변경과 채팅 영수증을 한 Transaction에 저장
+    Router -> BackControl : SyncDose.apply()\n활성 연결이면 ManageLinkedChat.record_medication_taken()
+    BackControl -> Database : 환자 본인·일정 검증\n복약 변경·처리 영수증·선택적 채팅을 한 Transaction에 저장
+    note over BackControl,Database : 영속 기록 후 연결이 사라져 404이면 채팅 없이 본인 복용만 반영한다.\n다른 참여자 권한 오류는 우회하지 않는다.
     note over UI,Database : 이미 선택한 시간대를 다시 묻지 않는다.\n일반 채팅 문구나 보호자 메시지는 복용 기록을 변경하지 않는다.\n요청 재전송은 중복 채팅·복용 기록을 만들지 않는다.
 end
 opt 나머지 역할별 추천 문구 사용
@@ -1308,6 +1323,14 @@ opt 환자가 시간대의 모든 약을 완료
 end
 note over UI,FrontControl : 정상 실시간 연결·이력 조회 중에는 반복 조회하지 않는다.\n장애 중 현재 대화방만 12초 보완 조회하며 백그라운드에서 중지한다.\n복귀·재연결 시 마지막 확인 메시지까지 페이지를 이어 읽는다.
 note over UI,Router : The stream closes on token expiry (4440) or inactive link (4404).\nThe client refreshes credentials for 4440 and stops on 4404; 4429 backs off.\nA 4401 gets one token refresh before ending the session.
+opt 전송 실패 후 연결 확인 또는 이력 복구 중 접근 거절
+    UI -> ChatHistory : 실패한 전송별 한 번 이력 갱신
+    ChatHistory -> FrontControl : requestHistory(linkId)
+    FrontControl --> ChatHistory : 연결 해제 / 접근 권한 상실 (403 또는 404)
+    ChatHistory -> FrontService : 실시간 연결과 반복 보완 조회 중지
+    ChatHistory --> UI : linkUnavailable
+    UI --> User : 입력창 대신 연동 해제 안내
+end
 note over UI,FrontControl : 조회·실시간 수신은 이전 대화를 읽던 스크롤을 유지한다.\n오래된 조회 응답으로 이미 받은 읽음 표시를 지우지 않는다.
 ref over UI,Database : ChatReadState.puml: 역할 확인 알림 진입 / 미확인 경계 / 최신 위치
 UI -> FrontControl : 앱 전경·현재 채팅·최신 위치일 때만 markRead(throughMessageId)
@@ -1316,6 +1339,7 @@ ApiClient -> Router : 읽음 범위 갱신
 Router -> Database : 상대 메시지 read_at 일괄 갱신
 
 opt 사용자가 메시지를 선택하고 삭제 범위를 확인
+    User -> UI : 길게 눌러 선택 시작, 선택 중 행을 눌러 선택·해제
     UI -> FrontControl : deleteMessages(linkId, messageIds, scope)
     FrontControl -> ApiClient : POST /chat/links/{linkId}/messages/delete
     ApiClient -> Router : 인증된 메시지 선택과 범위

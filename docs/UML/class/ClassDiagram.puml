@@ -168,6 +168,7 @@ package "Flutter Frontend" {
             + linkId: int
             + userHash: String
             + messages: List<ChatMessage> {readOnly}
+            + linkUnavailable: bool {readOnly}
             + initialize(): Future<void>
             + refresh(showLoading, catchUp): Future<void>
             + loadOlderMessages(): Future<void>
@@ -185,6 +186,14 @@ package "Flutter Frontend" {
             + resetRetry(): void
             + createClientMessageId(): String
             + dispose(): void
+        }
+
+        class LinkedChatDoseRecorder <<ViewModel: 채팅의 선택 복약 기록>> {
+            + linkId: int
+            + currentUserHash: String
+            + {static} plan(selected, selectedDate, contexts): ChatDosePlan
+            + loadScheduleContexts(viewModel): Future<List<ChatScheduleContext>>
+            + record(request, viewModel): Future<ChatMessage?>
         }
 
         class "LinkPatientCaregiverUI" as LinkPatientCaregiverUI <<UI: 환자-보호자 연결>> {
@@ -838,6 +847,10 @@ package "Flutter Frontend" {
             + medicationStatus: bool
             + slotStatuses: Map<String, bool>
             + scheduleSlotKeys: List<String>
+            + doseCycleDays: int
+            + doseCycleOffsets: List<int>
+            + doseCycleAnchor: DateTime?
+            + isDoseDay(date): bool
             + fromAnalysisJson(json): MedicationSchedule
             + fromScheduleJson(json): MedicationSchedule
             + toJson(): Map
@@ -857,6 +870,8 @@ package "Flutter Frontend" {
             + storageMethod: String
             + imageUrl: String
             + aiGuide: String
+            + dailyFrequency: String
+            + nextDoseDayFrom(referenceDate): DateTime?
             + fromJson(json): MedicationDetail
         }
 
@@ -962,10 +977,27 @@ package "Flutter Frontend" {
             + startDate: DateTime
             + endDate: DateTime
             + scheduleSlotKeys: List<String>
+            + doseDays: String
             + localImagePath: String
             + totalDays: int
             + dosage: String
+            + toMedicationSchedule(): MedicationSchedule
         }
+
+        class "DoseCycle" as FDoseCycle <<Entity: 기기 복용일 계산>> {
+            + cycleDays: int
+            + offsets: List<int>
+            + weekdayAnchored: bool
+            + isDaily: bool {readOnly}
+            + includes(startDate, targetDate): bool
+        }
+
+        note right of FDoseCycle
+            medication_dose_rhythm.dart의 module-level 함수가
+            주기 해석·횟수 문구 구성·다음 복용일·안내를 제공한다.
+            별도 Service 객체가 아니며 서버 DoseCycle과 같은 규칙이다.
+            월간은 30일 주기로 계산한다.
+        end note
 
         class DeviceCoordinate <<Entity: provider-neutral WGS84>> {
             + latitude: double
@@ -1156,7 +1188,7 @@ package "FastAPI Backend" {
 
         class "MedicationSummaryGenerator" as MedicationSummaryGenerator <<Boundary: 허가정보 요약>> {
             + model_name: str
-            + summarize_advanced_item(item): MedicationDetail
+            + summarize_advanced_item(drug_name, advanced_item): MedicationDetail
         }
 
         class "CheckSavedMedication" as BCheckSavedMedication <<Control: 저장 약 관리>> {
@@ -1493,6 +1525,7 @@ package "FastAPI Backend" {
 
         class "SavedMedicationRepository" as SavedMedicationRepository <<Repository: 저장 복약정보 조회>> {
             - db: Session
+            + count_by_patient(patient_hash): int
             + list_by_patient(patient_hash): list
             + list_schedule_medications_for_patients(patient_hashes): list
             + list_all(): list
@@ -1926,6 +1959,16 @@ package "FastAPI Backend" {
             + operation_id: String
             + payload: JSON
         }
+        class "CatalogRefreshState" as DBCatalogRefreshState <<ORM: catalog_refresh_state>> {
+            + name: String(64)
+            + last_attempt_at: DateTime?
+            + last_success_at: DateTime?
+        }
+        note right of DBCatalogRefreshState
+            scripts/catalog_refresh_schedule.py의 module-level 함수가 사용한다.
+            의약품·약국 주기 갱신의 시도·성공 시점을 공용 DB에 보존해
+            재시작 후 남은 갱신 간격과 실패 후 대기를 이어간다.
+        end note
         class "ChatNotificationJob" as DBChatNotificationJob <<ORM: chat_notification_jobs>> {
             + message_id: Integer
             + recipient_hash: String
@@ -2126,6 +2169,8 @@ PillIdentificationUI o-- FIdentifyPillBatch
 PillIdentificationUI o-- FResolveDuplicatePillSelection
 PillIdentificationUI ..> MedicationScheduleReviewBoundary
 ManualMedicationEntryUI ..> FManualMedicationEntry
+FManualMedicationEntry ..> FMedicationSchedule : 복용 주기를 포함한 변환
+FMedicationDetail ..> FDoseCycle : 다음 복용일
 PrescriptionAnalysisPreviewUI ..> MedicationScheduleReviewBoundary
 PrescriptionAnalysisPreviewUI ..> MedicationCandidateDialog
 PrescriptionAnalysisPreviewUI ..> MedicationMatchReview
@@ -2211,7 +2256,7 @@ DoseHomeWidget --> DoseOutboxStore
 DoseHomeWidget --> NotificationService : 기기 완료 후 날짜별 예약·재알림 취소
 CaregiverNotificationBackgroundScheduler ..> DoseHomeWidget : 서버 조회 함수 주입
 CaregiverNotificationBackgroundScheduler ..> FCheckCaregiverMedication : background 일괄 조회
-LinkedChatUI ..> DoseSyncService : 선택 약·시간대 기록
+LinkedChatUI ..> DoseSyncService : 계정의 동기화 상태 표시
 
 MedBuddyApp ..> CaregiverAlertActionControl
 CaregiverAlertActionControl ..> AuthenticatedApiClient
@@ -2245,6 +2290,18 @@ LinkedChatRealtimeService ..|> LinkedChatSessionTransport
 LinkedChatRealtimeService ..> AuthenticatedApiClient
 LinkedChatUI *-- LinkedChatHistoryViewModel : identity-keyed account/link/patient session
 LinkedChatUI *-- LinkedChatComposerViewModel : outgoing request owner
+LinkedChatUI *-- LinkedChatDoseRecorder : 선택 복약 검증·기록
+LinkedChatDoseRecorder --> MedBuddyViewModel : 같은 계정의 DoseSync 접근
+LinkedChatDoseRecorder --> DoseSyncService : 영속 기록·멱등 전송
+LinkedChatDoseRecorder --> FManageLinkedChat : 일정 문맥 / 큐 없는 경우의 fallback
+note right of LinkedChatRealtimeService
+    chat-close-codes 기능을 선언한 연결은 거절 원인을 close code로 받는다.
+    인증 갱신·한도 대기·연결 중단을 구분하고 chat_ready 후 재시도 간격을 초기화한다.
+end note
+note right of LinkedChatHistoryViewModel
+    이력 조회가 403/404이면 연결 사용 불가 상태로 전환한다.
+    반복 조회와 실시간 연결을 멈추고 UI는 입력창 대신 안내를 표시한다.
+end note
 note right of LinkedChatUI
     입력 중에는 StatefulBuilder의 입력 행만 갱신한다.
     대화 목록·말풍선은 입력 한 글자마다 재구성하지 않는다.
@@ -2375,6 +2432,10 @@ BCheckSavedMedication *-- MedicationCoursePolicy
 BCheckSavedMedication *-- SavedMedicationRetentionPolicy
 BCheckSavedMedication --> DBSavedMedication
 BCheckSavedMedication o-- SavedMedicationRepository
+note right of BCheckSavedMedication
+    기존 중복 약은 기존 ID를 반환한다.
+    신규 저장은 계정 저장 약 한도를 검사하고 초과 시 409로 거절한다.
+end note
 
 BCheckSchedule *-- MedicationCoursePolicy
 MedicationCoursePolicy ..> BDoseCycle
@@ -2464,6 +2525,10 @@ BLinkPatientCaregiver --> DBPatientCaregiverLink
 BLinkPatientCaregiver --> DBPatientLinkCode
 BLinkPatientCaregiver --> DBCaregiverNotification
 BLinkPatientCaregiver o-- PatientCaregiverLinkRepository
+note right of BLinkPatientCaregiver
+    신규·재활성 연결은 환자와 보호자의 활성 연결 한도를 검사한다.
+    이미 활성인 같은 연결은 한도로 거절하지 않는다.
+end note
 BCheckCaregiverMonitoring o-- PatientCaregiverLinkRepository
 BCheckCaregiverMonitoring *-- BCheckTodayMedicationInfo
 BCheckCaregiverMonitoring *-- BSetCaregiverNotification

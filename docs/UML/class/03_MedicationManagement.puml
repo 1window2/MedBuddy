@@ -47,6 +47,8 @@ package "Flutter Frontend" #E8F4FF {
   class MedBuddyReminderViewModel <<Control>>
   class DoseSyncService <<Service>>
   class NotificationService <<Service>>
+  class MedicationReminderRefreshFactory <<Service>>
+  class MedicationReminderRefreshService <<Service>>
   class MedicationNotificationPayloadCodec <<Service>>
   class MedicationNotificationSelection <<Entity>>
   class ManualMedicationImageStore <<Service>>
@@ -55,6 +57,7 @@ package "Flutter Frontend" #E8F4FF {
   class "CheckMedicationDetail" as FCheckMedicationDetail <<Control>>
   class "MedicationSchedule" as FMedicationSchedule <<Entity>>
   class "MedicationDetail" as FMedicationDetail <<Entity>>
+  class "DoseCycle" as FDoseCycle <<Entity>>
 }
 
 package "FastAPI Backend" #EAF8F0 {
@@ -107,6 +110,16 @@ MedBuddyScheduleViewModel --> DoseSyncService : 기기 선저장·멱등 전송
 MedBuddySavedMedicationViewModel --> FCheckSavedMedication
 MedBuddyViewModel --> FCheckMedicationDetail
 MedBuddyReminderViewModel --> NotificationService : 알림 계획 조정
+MedicationReminderRefreshFactory --> MedicationReminderRefreshService : 읽기 함수 조립
+MedicationReminderRefreshFactory --> DoseSyncService : 당일 영속 대기 기록을 겹친 일정
+MedicationReminderRefreshService --> NotificationService : 복용일별 예약 보충
+FMedicationDetail --> FDoseCycle : 다음 복용일 안내
+note bottom of MedicationReminderRefreshService
+  복용 기간과 주기에 맞는 날에만 예약한다.
+  오늘 복용 완료와 미전송 기록은 Factory가 조립한 일정에 반영된다.
+  불안정한 조회는 기존 예약을 유지하고 재시도한다.
+  오늘 복용일이 아니어도 기존 알림 설정을 끄지 않는다.
+end note
 NotificationService --> MedicationNotificationPayloadCodec : shared wire validation
 MedicationNotificationPayloadCodec --> MedicationNotificationSelection
 note bottom of MedicationNotificationPayloadCodec
@@ -181,6 +194,10 @@ BCheckSavedMedication --> MedicationCoursePolicy
 BCheckSavedMedication --> SavedMedicationRetentionPolicy
 BCheckSavedMedication --> SavedMedicationRepository
 BCheckSavedMedication --> DBSavedMedication
+note bottom of BCheckSavedMedication
+  새 약은 계정 저장 한도를 검사한다. 중복 약은 기존 ID를 반환한다.
+  직접 등록·낱알 일정 검토도 복용 주기와 시간대를 보존한다.
+end note
 
 BCheckMedicationDetail --> LocalMedicationCatalog
 BCheckMedicationDetail --> MedicationTextNormalizer
