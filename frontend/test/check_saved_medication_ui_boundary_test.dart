@@ -283,7 +283,8 @@ void main() {
   // 매개변수: tester. 반환값: 없음; 기대와 다르면 실패한다.
   testWidgets('매일 복용하지 않는 약은 다음 복용일을 표시한다', (tester) async {
     await _pumpFilterApp(tester, nonDaily: true);
-    final now = DateTime.now();
+    // UTC 날짜가 한국 날짜와 다른 시간(한국 0~9시)에도 같은 기준일로 기대값을 만든다.
+    final now = _koreaToday();
     final tomorrow = DateTime(now.year, now.month, now.day + 1);
     const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
     final tomorrowText =
@@ -1553,6 +1554,13 @@ Future<void> _applySavedFilter(WidgetTester tester) async {
 }
 
 // 함수이름: _pumpFilterApp
+// 함수이름: _koreaToday
+// 함수역할: 앱의 복약 기준인 한국 날짜를 기기 자정 값으로 돌려준다. 매개변수: 없음. 반환값: 오늘 날짜.
+DateTime _koreaToday() {
+  final day = MedicationHistoryDates.today(DateTime.now());
+  return DateTime(day.year, day.month, day.day);
+}
+
 // 함수역할: 오늘 기준의 복용 중·종료·예정 약과 접근성 설정으로 필터 화면을 준비한다.
 // 매개변수: tester, onlyEnded, language, textScale, small. 반환값: 화면 로딩 완료.
 Future<void> _pumpFilterApp(
@@ -1573,7 +1581,8 @@ Future<void> _pumpFilterApp(
   SharedPreferences.setMockInitialValues({});
   // 함수역할: 위치나 실제 저장 정보에 접근하지 않고 복용 기간별 목록을 반환한다.
   final client = MockClient((request) async {
-    final today = DateTime.now();
+    // 앱은 기기 시간대와 무관하게 한국 날짜로 판단하므로 기준일도 한국 날짜로 만든다.
+    final today = _koreaToday();
     return http.Response(
       jsonEncode({
         'success': true,
