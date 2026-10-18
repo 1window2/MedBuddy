@@ -16,6 +16,25 @@ released under that version instead. Changes are listed in the
       queries per patient and slot. Negligible at beta size; it grows with
       users. Remembering "complete at the deadline" would change what happens
       when a dose is undone after the deadline, so it needs a decision.
+- [ ] Left open by the 2026-10-18 behaviour-preserving refactor round (five
+      reviewers, two supervisors, three implementers; production code about
+      1,070 lines smaller, tests 1,908 -> 1,919 backend and 2,222 -> 2,250 app):
+      - Owner decisions: `recordAsNeededDose` in
+        medication_history_ui_boundary.dart has no caller (added 2026-10-17)
+        and keeps a "new record" editor path alive; the as-needed slot header
+        strip could share `MedicationSlotHeaderStrip`; the OCR-region matching
+        in `InputPrescription` (~270 lines) could move to its own file.
+      - Seen but not changed (not refactors): the redacted caregiver text uses
+        a curly apostrophe in caregiver_alert_delivery_service.dart and a
+        straight one elsewhere; history dates and the notification time zone
+        hard-code Korea time while dose sync and the widget follow
+        APPLICATION_UTC_OFFSET_MINUTES; some language checks use `== 'en'`
+        and others the shared prefix rule; regimen-editor messages hard-code
+        "3650"; on-screen date formats differ between screens; the
+        notification inbox key uses the untrimmed account hash while account
+        deletion trims it; manage_linked_chat_control.py relabels an aware
+        `read_at` with `replace(tzinfo=UTC)` (harmless while it comes from
+        `utc_now()`).
 - [x] The home dose-record notice at 2x text: the "View" button took the
       notice's width (Flutter reserves the action's width, or 40% when the
       action wraps), so the safety text was about 110 px wide and 1,200 px
