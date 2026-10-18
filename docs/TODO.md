@@ -35,6 +35,19 @@ released under that version instead. Changes are listed in the
         deletion trims it; manage_linked_chat_control.py relabels an aware
         `read_at` with `replace(tzinfo=UTC)` (harmless while it comes from
         `utc_now()`).
+      - Checked after the refactor on 2026-10-19 (backend f7c16d0 deployed,
+        same migration head; signed f7c16d0 build on the Android 14 emulator
+        with the guest account, because the phone's wireless debugging was
+        unreachable): shared undo dialog (keep, undo, back), 4 x 1 widget
+        take/undo and open-schedule, a reminder tapped and its "taken" action
+        used with the app process killed (both opened the app and the action
+        recorded the dose), caregiver schedule header, slot strips and 48 dp
+        alert buttons, inbox select-all (1, all 17, none), settings save
+        (server revision created at 1, then 2), the regimen confirm dialog
+        (cancel; a same-day change after a recorded and undone dose is still
+        refused, as designed), and history date navigation. No defects; the
+        one backend error was a provider ReadTimeout on /identify answered
+        with 500, unchanged from before the refactor.
 - [x] The home dose-record notice at 2x text: the "View" button took the
       notice's width (Flutter reserves the action's width, or 40% when the
       action wraps), so the safety text was about 110 px wide and 1,200 px
