@@ -3,7 +3,6 @@ import '../controls/check_today_medication_info_control.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../services/dose_sync_service.dart';
 import '../services/user_facing_error_message.dart';
-import 'medbuddy_feature_updates.dart';
 import 'medbuddy_schedule_slot_policy.dart';
 
 // 파일명: medbuddy_schedule_view_model.dart
@@ -75,8 +74,8 @@ class MedBuddyScheduleViewModel {
   // Description: Exposes schedule-local feedback. Parameters: None. Returns: Feedback.
   String get statusMessage => _statusMessage;
   // Function Name: _notifyViewModelListeners
-  // Description: Publishes feature changes while alive. Parameters: feature: Tag. Returns: None.
-  void _notifyViewModelListeners(MedBuddyFeature feature) {
+  // Description: Publishes feature changes while alive. Parameters: None. Returns: None.
+  void _notifyViewModelListeners() {
     if (!_disposed) _onChanged(_statusMessage);
   }
 
@@ -106,7 +105,7 @@ class MedBuddyScheduleViewModel {
       _lastTodayScheduleLoadSucceeded = false;
       _hasTodayScheduleLoadError = true;
     }
-    _notifyViewModelListeners(MedBuddyFeature.schedule);
+    _notifyViewModelListeners();
   }
 
   // Function Name: clear
@@ -137,7 +136,7 @@ class MedBuddyScheduleViewModel {
     _isTodayScheduleLoading = false;
     _hasTodayScheduleLoadError = false;
     _lastTodayScheduleLoadSucceeded = true;
-    _notifyViewModelListeners(MedBuddyFeature.schedule);
+    _notifyViewModelListeners();
   }
 
   // 함수이름: fetchTodayMedicationSchedule
@@ -187,7 +186,7 @@ class MedBuddyScheduleViewModel {
     _activeTodayScheduleLoadEpoch = loadEpoch;
     _isTodayScheduleLoading = true;
     _hasTodayScheduleLoadError = false;
-    _notifyViewModelListeners(MedBuddyFeature.schedule);
+    _notifyViewModelListeners();
 
     final requestDay = doseScheduleDay(doseSync?.clock() ?? DateTime.now());
     try {
@@ -247,7 +246,7 @@ class MedBuddyScheduleViewModel {
       if (_activeTodayScheduleLoadEpoch == loadEpoch) {
         _activeTodayScheduleLoadEpoch = null;
         _isTodayScheduleLoading = false;
-        _notifyViewModelListeners(MedBuddyFeature.schedule);
+        _notifyViewModelListeners();
       }
     }
   }
@@ -340,20 +339,20 @@ class MedBuddyScheduleViewModel {
             (schedule) => updatedById[schedule.medicationID] ?? schedule,
           )
           .toList(growable: false);
-      _notifyViewModelListeners(MedBuddyFeature.schedule);
+      _notifyViewModelListeners();
       return true;
     } on StateError catch (error) {
       _statusMessage = UserFacingErrorMessage.resolve(
         error,
         isEnglish: _isEnglishSetting,
       );
-      _notifyViewModelListeners(MedBuddyFeature.schedule);
+      _notifyViewModelListeners();
       return false;
     } catch (_) {
       _statusMessage = _isEnglishSetting
           ? 'Could not update the entire medication slot.'
           : '시간대 전체 복약 상태를 업데이트하지 못했습니다.';
-      _notifyViewModelListeners(MedBuddyFeature.schedule);
+      _notifyViewModelListeners();
       return false;
     }
   }
@@ -385,7 +384,7 @@ class MedBuddyScheduleViewModel {
         if (current == null ||
             (slotKey != null && !current.slotKeys.contains(slotKey))) {
           _statusMessage = _reloadBeforeRecordingMessage;
-          _notifyViewModelListeners(MedBuddyFeature.schedule);
+          _notifyViewModelListeners();
           return false;
         }
         target = current;
@@ -419,20 +418,20 @@ class MedBuddyScheduleViewModel {
                 : item,
           )
           .toList(growable: false);
-      _notifyViewModelListeners(MedBuddyFeature.schedule);
+      _notifyViewModelListeners();
       return true;
     } on StateError catch (error) {
       _statusMessage = UserFacingErrorMessage.resolve(
         error,
         isEnglish: _isEnglishSetting,
       );
-      _notifyViewModelListeners(MedBuddyFeature.schedule);
+      _notifyViewModelListeners();
       return false;
     } catch (_) {
       _statusMessage = _isEnglishSetting
           ? 'Could not update the medication status.'
           : '복약 상태를 업데이트하지 못했습니다.';
-      _notifyViewModelListeners(MedBuddyFeature.schedule);
+      _notifyViewModelListeners();
       return false;
     }
   }
@@ -489,13 +488,13 @@ class MedBuddyScheduleViewModel {
                 ? 'Saved on this device. Waiting to sync.'
                 : '기기에 기록했습니다. 서버 전송 대기 중입니다.')
           : _reloadBeforeRecordingMessage;
-      if (!saved) _notifyViewModelListeners(MedBuddyFeature.schedule);
+      if (!saved) _notifyViewModelListeners();
       return saved;
     } catch (_) {
       _statusMessage = _isEnglishSetting
           ? 'Could not save the dose on this device.'
           : '기기에 복용 기록을 저장하지 못했습니다. 다시 시도해주세요.';
-      _notifyViewModelListeners(MedBuddyFeature.schedule);
+      _notifyViewModelListeners();
       return false;
     }
   }

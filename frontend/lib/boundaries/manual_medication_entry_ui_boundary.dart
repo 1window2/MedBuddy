@@ -9,6 +9,7 @@ import '../widgets/medbuddy_page_header.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../controls/check_saved_medication_control.dart';
+import '../entities/json_value_reader.dart';
 import '../entities/manual_medication_entry_entity.dart';
 import '../entities/medication_dose_rhythm.dart';
 import '../widgets/medication_dosing_mode_selector.dart';
@@ -258,7 +259,7 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
         Row(
           children: [
             Expanded(
-              child: _SectionTitle(
+              child: MedicationEntrySectionTitle(
                 title: _text.photoTitle,
                 optional: _text.optional,
               ),
@@ -438,10 +439,10 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
   Widget _buildDateSection() {
     return MedicationEntryPeriodFields(
       title: _text.periodTitle,
-      startButton: _DateButton(
+      startButton: MedicationEntryDateButton(
         key: const Key('manual-medication-start-date'),
         label: _text.startDate,
-        value: _formatDate(_startDate),
+        value: formatJsonDate(_startDate)!,
         // 함수이름: _buildDateSection.onPressed callback
         // 함수역할: 허용 범위 안의 시작·종료 날짜를 선택하고 시작일 이후로 종료일을 보정한다.
         // 매개변수:
@@ -449,10 +450,10 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
         // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
         onPressed: _isSaving ? null : () => _selectDate(true),
       ),
-      endButton: _DateButton(
+      endButton: MedicationEntryDateButton(
         key: const Key('manual-medication-end-date'),
         label: _text.endDate,
-        value: _formatDate(_endDate),
+        value: formatJsonDate(_endDate)!,
         // 함수이름: _buildDateSection.onPressed callback
         // 함수역할: 허용 범위 안의 시작·종료 날짜를 선택하고 시작일 이후로 종료일을 보정한다.
         // 매개변수:
@@ -475,7 +476,7 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _SectionTitle(title: _text.doseDaysTitle),
+        MedicationEntrySectionTitle(title: _text.doseDaysTitle),
         const SizedBox(height: 8),
         Text(
           _text.doseDaysDescription,
@@ -525,7 +526,7 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _SectionTitle(title: _text.slotTitle),
+        MedicationEntrySectionTitle(title: _text.slotTitle),
         const SizedBox(height: 8),
         Text(
           _text.slotDescription,
@@ -749,7 +750,7 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
         : _startDate;
     final lastDate = selectsStartDate
         ? latestMedicationStartDate(DateTime.now())
-        : _latestEndDate(_startDate);
+        : latestMedicationEndDate(_startDate);
     final selectedDate = await showDatePicker(
       context: context,
       initialDate: currentDate.isBefore(firstDate)
@@ -775,7 +776,7 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
           _endDate = _startDate;
         }
         // 서버는 최대 복용 기간을 넘는 일정을 받지 않으므로 종료일을 그 안으로 맞춘다.
-        final latestEndDate = _latestEndDate(_startDate);
+        final latestEndDate = latestMedicationEndDate(_startDate);
         if (_endDate.isAfter(latestEndDate)) {
           _endDate = latestEndDate;
         }
@@ -877,19 +878,6 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
     Navigator.pop(context, true);
   }
 
-  // 함수이름: _latestEndDate
-  // 함수역할: 시작일을 포함해 최대 복용 기간을 채우는 마지막 날짜를 달력 날짜로 계산한다.
-  // 매개변수:
-  // - startDate (DateTime): 복용 기간의 시작일.
-  // 반환값: DateTime: 허용 범위 또는 시각 제거 규칙을 반영한 날짜.
-  static DateTime _latestEndDate(DateTime startDate) {
-    return DateTime(
-      startDate.year,
-      startDate.month,
-      startDate.day + maxMedicationCourseDays - 1,
-    );
-  }
-
   // 함수이름: _dateOnly
   // 함수역할: 시·분·초를 버리고 같은 연·월·일의 자정 날짜를 만든다.
   // 매개변수:
@@ -897,90 +885,6 @@ class _ManualMedicationEntryUIState extends State<ManualMedicationEntryUI> {
   // 반환값: DateTime: 허용 범위 또는 시각 제거 규칙을 반영한 날짜.
   static DateTime _dateOnly(DateTime value) {
     return DateTime(value.year, value.month, value.day);
-  }
-
-  // 함수이름: _formatDate
-  // 함수역할: 날짜를 다른 화면과 같은 4자리 연도와 두 자리 월·일의 하이픈 구분 형식(2026-10-01)으로 표시한다.
-  // 매개변수:
-  // - value (DateTime): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  static String _formatDate(DateTime value) {
-    return '${value.year.toString().padLeft(4, '0')}-'
-        '${value.month.toString().padLeft(2, '0')}-'
-        '${value.day.toString().padLeft(2, '0')}';
-  }
-}
-
-// 클래스명: _SectionTitle
-// 역할: 직접 입력 폼의 항목 그룹 제목을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 직접 입력 폼의 항목 그룹 제목 위젯을 구성한다.
-// 속성:
-// - title (String): 화면·구역·항목에 표시할 제목.
-// - optional (String?): 입력란·선택지·명령을 구분해 표시할 문구.
-class _SectionTitle extends StatelessWidget {
-  final String title;
-  final String? optional;
-
-  // 함수이름: _SectionTitle
-  // 함수역할: 직접 입력 폼의 항목 그룹 제목에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - title (String): 화면·구역·항목에 표시할 제목.
-  // - optional (String?): 입력란·선택지·명령을 구분해 표시할 문구.
-  // 반환값: 입력 설정이 반영된 _SectionTitle 인스턴스.
-  const _SectionTitle({required this.title, this.optional});
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 직접 입력 폼의 항목 그룹 제목 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 직접 입력 폼의 항목 그룹 제목에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
-    return MedicationEntrySectionTitle(title: title, optional: optional);
-  }
-}
-
-// 클래스명: _DateButton
-// 역할: 복용 날짜 선택과 현재 날짜 표시를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 복용 날짜 선택과 현재 날짜 표시 위젯을 구성한다.
-// 속성:
-// - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
-// - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-// - onPressed (VoidCallback?): 해당 항목의 명시된 주 동작을 실행할 콜백.
-class _DateButton extends StatelessWidget {
-  final String label;
-  final String value;
-  final VoidCallback? onPressed;
-
-  // 함수이름: _DateButton
-  // 함수역할: 복용 날짜 선택과 현재 날짜 표시에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - key (Key?): 위젯을 구분하고 상태를 유지할 식별 키.
-  // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
-  // - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-  // - onPressed (VoidCallback?): 해당 항목의 명시된 주 동작을 실행할 콜백.
-  // 반환값: 입력 설정이 반영된 _DateButton 인스턴스.
-  const _DateButton({
-    super.key,
-    required this.label,
-    required this.value,
-    required this.onPressed,
-  });
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 복용 날짜 선택과 현재 날짜 표시 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 복용 날짜 선택과 현재 날짜 표시에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
-    return MedicationEntryDateButton(
-      label: label,
-      value: value,
-      onPressed: onPressed,
-    );
   }
 }
 

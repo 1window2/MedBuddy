@@ -44,8 +44,7 @@ class DoseWidgetProvider : HomeWidgetProvider() {
                 val id = intent.data?.getQueryParameter("widget")?.toIntOrNull() ?: return
                 val key = intent.data?.getQueryParameter("context") ?: return
                 val patient = intent.data?.getQueryParameter("patient") ?: return
-                val ids = AppWidgetManager.getInstance(context).getAppWidgetIds(
-                    ComponentName(context, DoseWidgetProvider::class.java))
+                val ids = widgetIds(context)
                 if (id !in ids || key != state.optString("navigation_key") ||
                     System.currentTimeMillis() >= state.optLong("expires") ||
                     patients(state).none { it.optString("patient_key") == patient }) return
@@ -62,8 +61,7 @@ class DoseWidgetProvider : HomeWidgetProvider() {
                 val state = patientState(json(data.getString(STATE, "{}")), data, id)
                 val slot = intent.data?.getQueryParameter("slot") ?: return
                 val key = intent.data?.getQueryParameter("context") ?: return
-                val ids = AppWidgetManager.getInstance(context).getAppWidgetIds(
-                    ComponentName(context, DoseWidgetProvider::class.java))
+                val ids = widgetIds(context)
                 if (id !in ids || key != state.optString("navigation_key") ||
                     System.currentTimeMillis() >= state.optLong("expires") ||
                     pages(state).none { it.optString("slot") == slot } ||
@@ -210,11 +208,12 @@ class DoseWidgetProvider : HomeWidgetProvider() {
                 dateFormat.timeZone = SimpleTimeZone(state.optInt("utc_offset_minutes", 540) * 60000, "dose")
                 views.setTextViewText(R.id.widget_date, if (!expired && state.has("date_label"))
                     state.optString("date_label") else dateFormat.format(Date()))
-                views.setTextViewText(R.id.widget_heading, when {
+                val heading = when {
                     !known -> tr("로그인이 필요해요", "Please sign in")
                     expired -> tr("일정을 새로고침해주세요", "Refresh your schedule")
                     else -> page.optString("heading")
-                })
+                }
+                views.setTextViewText(R.id.widget_heading, heading)
                 views.setTextViewText(R.id.widget_details, when {
                     !known -> tr("로그인하면 복약 일정을 볼 수 있어요.", "Sign in to view your medication schedule.")
                     !expired -> page.optString("details")
@@ -231,16 +230,13 @@ class DoseWidgetProvider : HomeWidgetProvider() {
                 }
                 views.setTextViewText(R.id.widget_status, status)
                 // 가장 낮은 높이에서는 제목 줄이 시간대와 저장 상태를 대신 보여주므로 보호자 화면의 환자 이름을 앞에 붙인다.
-                val heading = when {
-                    !known -> tr("로그인이 필요해요", "Please sign in")
-                    expired -> tr("일정을 새로고침해주세요", "Refresh your schedule")
-                    else -> page.optString("heading")
-                }
                 views.setTextViewText(R.id.widget_tiny_heading,
                     if (state.optString("source") == "patients") "$title · $heading" else heading)
                 views.setTextViewText(R.id.widget_tiny_status, status)
                 views.setOnClickPendingIntent(R.id.widget_tiny_heading, open)
-                views.setTextViewText(R.id.widget_warning, tr("놓친 약은 처방·복약지도를 확인하세요", "Check guidance for missed doses"))
+                // 보이는 경고 문구와 화면 읽기 설명이 같은 안내를 쓰도록 한 번만 만든다.
+                val missedGuidance = tr("놓친 약은 처방·복약지도를 확인하세요", "Check guidance for missed doses")
+                views.setTextViewText(R.id.widget_warning, missedGuidance)
                 // 시간대 옆의 좁은 칸에 들어가도록 같은 뜻을 짧게 줄인다.
                 views.setTextViewText(R.id.widget_tiny_warning, tr("놓친 약은 처방·복약지도 확인", "Missed: check guidance"))
                 // 큰 글씨의 요약 배치에서도 전체 약 정보와 주의 문구를 읽어주기로 확인한다.
@@ -248,7 +244,7 @@ class DoseWidgetProvider : HomeWidgetProvider() {
                 if (known && !expired) {
                     val description = listOfNotNull(
                         page.optString("heading"), page.optString("details"),
-                        if (page.optBoolean("overdue")) tr("놓친 약은 처방·복약지도를 확인하세요", "Check guidance for missed doses") else null,
+                        if (page.optBoolean("overdue")) missedGuidance else null,
                     ).joinToString(". ")
                     views.setContentDescription(R.id.widget_content, description)
                     views.setContentDescription(R.id.widget_compact_heading, description)
@@ -341,15 +337,8 @@ class DoseWidgetProvider : HomeWidgetProvider() {
             result.put("navigation_key", root.optString("navigation_key") + ":" + patient.optString("patient_key"))
             return result
         }
-        private fun patientAction(context: Context, id: Int, patient: String, key: String): PendingIntent {
-            val intent = Intent(context, DoseWidgetProvider::class.java).apply {
-                action = ACTION
-                data = Uri.Builder().scheme("medbuddy-widget").authority("patient")
-                    .appendQueryParameter("widget", id.toString()).appendQueryParameter("patient", patient)
-                    .appendQueryParameter("context", key).build()
-            }
-            return PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        }
+        private fun patientAction(context: Context, id: Int, patient: String, key: String) = broadcast(context, "patient",
+            listOf("widget" to id.toString(), "patient" to patient, "context" to key))
         // 함수이름: pages / 함수역할: 표시 가능한 시간대 페이지를 읽는다.
         // 매개변수: state 위젯 상태. 반환값: 시간대 순서의 표시 데이터.
         private fun pages(state: JSONObject): List<JSONObject> {
@@ -358,25 +347,26 @@ class DoseWidgetProvider : HomeWidgetProvider() {
         }
         private fun json(value: String?) = runCatching { JSONObject(value ?: "{}") }.getOrDefault(JSONObject())
         private fun queue(data: SharedPreferences) = runCatching { JSONArray(data.getString(JOURNAL, "[]")) }.getOrDefault(JSONArray())
-        private fun action(context: Context, kind: String, token: String, widget: Int = -1): PendingIntent {
-            val intent = Intent(context, DoseWidgetProvider::class.java).apply {
-                action = ACTION
-                data = Uri.Builder().scheme("medbuddy-widget").authority(kind).appendQueryParameter("token", token)
-                    .appendQueryParameter("widget", widget.toString()).build()
-                addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
-            }
-            return PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        }
+        private fun action(context: Context, kind: String, token: String, widget: Int = -1) = broadcast(context, kind,
+            listOf("token" to token, "widget" to widget.toString()), foreground = true)
         // 함수이름: pageAction
         // 함수역할: 복약을 기록하지 않는 조회 전환 요청을 위젯별로 만든다.
         // 매개변수: context 실행 환경, id 위젯 번호, slot 대상 시간대, key 계정·날짜 구분용 토큰.
         // 반환값: 홈 화면에서 즉시 처리하는 페이지 선택 요청.
-        private fun pageAction(context: Context, id: Int, slot: String, key: String): PendingIntent {
+        private fun pageAction(context: Context, id: Int, slot: String, key: String) = broadcast(context, "page",
+            listOf("widget" to id.toString(), "slot" to slot, "context" to key))
+        // 함수이름: broadcast
+        // 함수역할: 이 Provider가 받는 위젯 버튼 요청을 만든다. 쿼리 매개변수는 받은 순서대로 붙여 같은 요청의 주소를 유지한다.
+        // 매개변수: context 실행 환경, kind 요청 종류(주소의 호스트), params 쿼리 이름·값 목록,
+        //   foreground 즉시 처리할 요청이면 전면 수신 플래그를 붙일지 여부.
+        // 반환값: 같은 주소의 이전 요청을 갱신하는 변경 불가 PendingIntent.
+        private fun broadcast(context: Context, kind: String, params: List<Pair<String, String>>, foreground: Boolean = false): PendingIntent {
             val intent = Intent(context, DoseWidgetProvider::class.java).apply {
                 action = ACTION
-                data = Uri.Builder().scheme("medbuddy-widget").authority("page")
-                    .appendQueryParameter("widget", id.toString()).appendQueryParameter("slot", slot)
-                    .appendQueryParameter("context", key).build()
+                data = Uri.Builder().scheme("medbuddy-widget").authority(kind).apply {
+                    for ((name, value) in params) appendQueryParameter(name, value)
+                }.build()
+                if (foreground) addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
             }
             return PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         }
@@ -391,6 +381,11 @@ class DoseWidgetProvider : HomeWidgetProvider() {
             loader.ensureInitializationComplete(context.applicationContext, null)
             DoseWidgetRefreshScheduler.enqueue(WorkManager.getInstance(context))
         }
+        // 함수이름: widgetIds
+        // 함수역할: 홈 화면에 놓인 이 Provider의 위젯 번호를 읽는다.
+        // 매개변수: context 실행 환경. 반환값: 현재 설치된 위젯 번호 배열.
+        private fun widgetIds(context: Context) = AppWidgetManager.getInstance(context).getAppWidgetIds(
+            ComponentName(context, DoseWidgetProvider::class.java))
         private fun renderAll(context: Context) {
             val manager = AppWidgetManager.getInstance(context)
             val ids = manager.getAppWidgetIds(ComponentName(context, DoseWidgetProvider::class.java))

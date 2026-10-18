@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../services/dose_home_widget_service.dart';
 
+import '../widgets/medbuddy_confirm_dialog.dart';
 import '../widgets/medbuddy_preference_row.dart';
 
 import '../controls/app_language_control.dart';
@@ -1369,45 +1370,16 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
 
     final text = _SettingText(_language);
     if (widget.authenticationControl.isAnonymous) {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        // Function Name: _handleSignOutRequested.builder callback
-        // Description: Composes accessibility, default medication times, and account security settings with the current parent constraints for the active layout.
-        // Parameters:
-        // - dialogContext (BuildContext): Dialog or sheet context for closing the route and reading theme data.
-        // Returns: Widget subtree for the described layout or fallback.
-        builder: (dialogContext) => AlertDialog(
-          title: Text(text.guestSignOutTitle),
-          content: Text(text.guestSignOutMessage),
-          actions: [
-            TextButton(
-              style: TextButton.styleFrom(
-                foregroundColor: MedBuddyColors.textStrong,
-              ),
-              // 함수이름: _handleSignOutRequested.onPressed callback
-              // 함수역할: `Navigator.pop(dialogContext, false)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-              // 매개변수:
-              // - 없음.
-              // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: Text(text.cancel),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: MedBuddyColors.danger,
-              ),
-              // 함수이름: _handleSignOutRequested.onPressed callback
-              // 함수역할: `Navigator.pop(dialogContext, true)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-              // 매개변수:
-              // - 없음.
-              // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: Text(text.delete),
-            ),
-          ],
-        ),
+      final confirmed = await showMedBuddyConfirmDialog(
+        context,
+        title: text.guestSignOutTitle,
+        message: text.guestSignOutMessage,
+        cancelLabel: text.cancel,
+        confirmLabel: text.delete,
+        cancelForeground: MedBuddyColors.textStrong,
+        destructive: true,
       );
-      if (confirmed != true || !mounted) {
+      if (!confirmed || !mounted) {
         return;
       }
     }
@@ -1473,42 +1445,15 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   // Returns: Future<void> completing when the requested interaction or refresh finishes.
   Future<void> _confirmAccountDeletion() async {
     final text = _SettingText(_language);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      // 함수이름: _confirmAccountDeletion.builder callback
-      // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에 현재 부모의 레이아웃 제약을 적용해 현재 배치를 구성한다.
-      // 매개변수:
-      // - dialogContext (BuildContext): 현재 대화상자·하단 시트의 화면 종료와 테마 참조 위치.
-      // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-      builder: (dialogContext) => AlertDialog(
-        title: Text(text.deleteAccount),
-        content: Text(text.deleteAccountMessage),
-        actions: [
-          TextButton(
-            // 함수이름: _confirmAccountDeletion.onPressed callback
-            // 함수역할: `Navigator.pop(dialogContext, false)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-            // 매개변수:
-            // - 없음.
-            // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(text.cancel),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: MedBuddyColors.danger,
-            ),
-            // 함수이름: _confirmAccountDeletion.onPressed callback
-            // 함수역할: `Navigator.pop(dialogContext, true)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-            // 매개변수:
-            // - 없음.
-            // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(text.delete),
-          ),
-        ],
-      ),
+    final confirmed = await showMedBuddyConfirmDialog(
+      context,
+      title: text.deleteAccount,
+      message: text.deleteAccountMessage,
+      cancelLabel: text.cancel,
+      confirmLabel: text.delete,
+      destructive: true,
     );
-    if (confirmed != true || !mounted) {
+    if (!confirmed || !mounted) {
       return;
     }
 

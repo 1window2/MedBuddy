@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../entities/json_value_reader.dart';
 import '../entities/medication_dose_rhythm.dart';
 import '../widgets/medication_dosing_mode_selector.dart';
 import '../entities/medication_schedule_entity.dart';
@@ -8,6 +9,7 @@ import '../entities/medication_schedule_limits.dart';
 import '../entities/medication_slot_label.dart';
 import '../entities/user_setting_entity.dart';
 import '../widgets/medbuddy_notice.dart';
+import '../widgets/medication_entry_fields.dart';
 import '../theme/medbuddy_theme.dart';
 
 // 파일명: medication_schedule_review_ui_boundary.dart
@@ -194,7 +196,10 @@ class _MedicationScheduleReviewSheetState
                   ),
                 ),
                 const SizedBox(height: 14),
-                _PillScheduleSafetyNotice(text: text),
+                MedBuddyNotice(
+                  icon: Icons.warning_amber_rounded,
+                  message: text.pillSafetyNotice,
+                ),
                 if (_validationMessage.isNotEmpty) ...[
                   const SizedBox(height: 14),
                   _ScheduleValidationNotice(message: _validationMessage),
@@ -390,7 +395,7 @@ class _MedicationScheduleReviewCard extends StatelessWidget {
           const SizedBox(height: 8),
           _ScheduleSummaryRow(
             label: text.startDate,
-            value: _formatDate(medicationSchedule.prescriptionDate),
+            value: formatJsonDate(medicationSchedule.prescriptionDate) ?? '',
             emptyValue: text.reviewNeeded,
           ),
           _ScheduleSummaryRow(
@@ -500,36 +505,6 @@ class _ScheduleSummaryRow extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-// 클래스명: _PillScheduleSafetyNotice
-// 역할: 알약 사진만으로 복약 일정을 확정할 수 없다는 안내를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 알약 사진만으로 복약 일정을 확정할 수 없다는 안내 위젯을 구성한다.
-// 속성:
-// - text (_MedicationScheduleReviewText): 해당 화면 구역의 언어별 표시 문구.
-class _PillScheduleSafetyNotice extends StatelessWidget {
-  final _MedicationScheduleReviewText text;
-
-  // 함수이름: _PillScheduleSafetyNotice
-  // 함수역할: 알약 사진만으로 복약 일정을 확정할 수 없다는 안내에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - text (_MedicationScheduleReviewText): 해당 화면 구역의 언어별 표시 문구.
-  // 반환값: 입력 설정이 반영된 _PillScheduleSafetyNotice 인스턴스.
-  const _PillScheduleSafetyNotice({required this.text});
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 알약 사진만으로 복약 일정을 확정할 수 없다는 안내 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 알약 사진만으로 복약 일정을 확정할 수 없다는 안내에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
-    return MedBuddyNotice(
-      icon: Icons.warning_amber_rounded,
-      message: text.pillSafetyNotice,
     );
   }
 }
@@ -720,7 +695,7 @@ class _MedicationScheduleEditorDialogState
               key: const Key('schedule-edit-start-date'),
               contentPadding: EdgeInsets.zero,
               title: Text(text.startDate),
-              subtitle: Text(_formatDate(_startDate)),
+              subtitle: Text(formatJsonDate(_startDate) ?? ''),
               trailing: const Icon(Icons.calendar_today_outlined),
               onTap: _selectStartDate,
             ),
@@ -764,19 +739,12 @@ class _MedicationScheduleEditorDialogState
                 ),
               ),
               const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  // 목록에 없는 지시로 저장된 약은 그 지시를 그대로 고를 수 있게 한다.
-                  for (final doseDays in {...doseDayChoices, _doseDays})
-                    ChoiceChip(
-                      key: Key('schedule-edit-dose-days-$doseDays'),
-                      label: Text(text.doseDaysValue(doseDays)),
-                      selected: _doseDays == doseDays,
-                      onSelected: (_) => setState(() => _doseDays = doseDays),
-                    ),
-                ],
+              // 목록에 없는 지시로 저장된 약은 그 지시를 그대로 고를 수 있게 한다.
+              MedicationEntryCycleChoices(
+                keyPrefix: 'schedule-edit-dose-days',
+                value: _doseDays,
+                label: text.doseDaysValue,
+                onChanged: (doseDays) => setState(() => _doseDays = doseDays),
               ),
               if (_doseDays.isNotEmpty &&
                   !requiresDoseScheduleReview(_doseDays)) ...[
@@ -854,23 +822,11 @@ class _MedicationScheduleEditorDialogState
                 ),
               ),
               const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final slotKey in medicationScheduleSlotKeys)
-                    FilterChip(
-                      key: Key('schedule-edit-slot-$slotKey'),
-                      label: Text(text.slotLabel(slotKey)),
-                      selected: _selectedSlotKeys.contains(slotKey),
-                      // 함수이름: build.onSelected callback
-                      // 함수역할: 시간대 선택을 변경하고 선택 수로 복용 횟수와 빈 선택 오류를 갱신한다.
-                      // 매개변수:
-                      // - selected (콜백 계약에서 추론): 현재 선택 집합에 포함되는지 여부.
-                      // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                      onSelected: (selected) => _toggleSlot(slotKey, selected),
-                    ),
-                ],
+              MedicationEntrySlotChoices(
+                keyPrefix: 'schedule-edit-slot',
+                values: _selectedSlotKeys,
+                label: text.slotLabel,
+                onChanged: _toggleSlot,
               ),
             ],
             if (_showSlotValidationError) ...[
@@ -1102,20 +1058,6 @@ bool _isScheduleComplete(MedicationSchedule schedule) {
               frequency >= 1 &&
               frequency <= 4 &&
               schedule.slotKeys.length == frequency));
-}
-
-// 함수이름: _formatDate
-// 함수역할: 날짜를 연-월-일로 표시하고 날짜가 없으면 빈 문자열을 사용한다.
-// 매개변수:
-// - date (DateTime?): 표시·비교 기준이 되는 날짜 또는 이전·현재 값.
-// 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-String _formatDate(DateTime? date) {
-  if (date == null) {
-    return '';
-  }
-  return '${date.year.toString().padLeft(4, '0')}-'
-      '${date.month.toString().padLeft(2, '0')}-'
-      '${date.day.toString().padLeft(2, '0')}';
 }
 
 // 클래스명: _MedicationScheduleReviewText

@@ -151,8 +151,6 @@ class MedBuddyViewModel extends ChangeNotifier {
   AnalysisProgressStep get analysisProgressStep =>
       _prescriptions.analysisProgressStep;
 
-  bool get isPrescriptionAnalyzing => _prescriptions.isPrescriptionAnalyzing;
-
   bool get isLoading => _prescriptions.isLoading;
 
   int? get savingMedicationIndex => _prescriptions.savingMedicationIndex;
@@ -218,9 +216,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   String get prescriptionStatusMessage =>
       _prescriptions.statusMessage.isNotEmpty
       ? _prescriptions.statusMessage
-      : (_isEnglishSetting
-            ? 'Take a prescription photo or choose an image.'
-            : '처방전을 촬영하거나 이미지를 선택해주세요.');
+      : _prescriptions.idlePrompt;
 
   // Function Name: reminderStatusMessage
   // Description: Exposes reminder feedback independently of background feature updates.
@@ -236,9 +232,7 @@ class MedBuddyViewModel extends ChangeNotifier {
     if (_statusMessage.isNotEmpty) {
       return _statusMessage;
     }
-    return _isEnglishSetting
-        ? 'Take a prescription photo or choose an image.'
-        : '처방전을 촬영하거나 이미지를 선택해주세요.';
+    return _prescriptions.idlePrompt;
   }
 
   String get analysisErrorMessage => _prescriptions.analysisErrorMessage;
@@ -265,8 +259,7 @@ class MedBuddyViewModel extends ChangeNotifier {
   // - 없음.
   // 반환값:
   // - bool: 사용자 언어 코드를 정규화해 영어 계열 표시를 선택해야 하는지 확인한다.
-  bool get _isEnglishSetting =>
-      userSetting.language.trim().toLowerCase().startsWith('en');
+  bool get _isEnglishSetting => userSetting.isEnglish;
 
   List<MedicationSchedule> get recognizedMedicationScheduleList =>
       _prescriptions.recognizedMedicationScheduleList;

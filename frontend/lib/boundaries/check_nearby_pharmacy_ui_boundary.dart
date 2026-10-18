@@ -12,6 +12,7 @@ import '../controls/check_nearby_hospital_control.dart';
 import '../controls/check_nearby_pharmacy_control.dart';
 import '../controls/check_nearby_care_control.dart';
 import '../entities/device_coordinate_entity.dart';
+import '../entities/json_value_reader.dart';
 import '../entities/nearby_care_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/pharmacy_favorite_service.dart';
@@ -2926,13 +2927,7 @@ class _NearbyPharmacyText {
   // Parameters:
   // - value (DateTime): Input to validate, normalize, display, or pass through a selection callback.
   // Returns: The formatted display text or identifier described above.
-  String searchDate(DateTime value) {
-    final formatted =
-        '${value.year.toString().padLeft(4, '0')}-'
-        '${value.month.toString().padLeft(2, '0')}-'
-        '${value.day.toString().padLeft(2, '0')}';
-    return formatted;
-  }
+  String searchDate(DateTime value) => formatJsonDate(value)!;
 
   // 함수이름: phone
   // 함수역할: 현재 언어와 입력값에 맞춰 "Call" 문구를 제공한다.

@@ -19,7 +19,7 @@ import '../services/user_facing_error_message.dart';
 import 'check_medication_detail_ui_boundary.dart';
 import 'set_caregiver_notification_ui_boundary.dart';
 import 'medication_history_ui_boundary.dart';
-import '../widgets/medbuddy_page_header.dart';
+import '../widgets/medication_schedule_header.dart';
 import '../widgets/medication_thumbnail.dart';
 import '../widgets/as_needed_schedule_section.dart';
 
@@ -271,9 +271,15 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
       backgroundColor: MedBuddyColors.pageBackground,
       body: Column(
         children: [
-          _CaregiverScheduleHeader(
-            isEnglish: _isEnglish,
-            patientLabel: _patientLabel,
+          MedicationScheduleHeader(
+            title: _isEnglish
+                ? "Patient's Medication Schedule"
+                : '환자 오늘의 복약 일정',
+            subtitle: _patientLabel,
+            backTooltip: _isEnglish ? 'Back' : '뒤로가기',
+            historyKey: const Key('caregiver-schedule-history'),
+            historyTooltip: _isEnglish ? 'Medication history' : '복용 기록',
+            progressLabel: _isEnglish ? 'Medication progress' : '복용 진행률',
             completedCount: progress.completedCount,
             totalCount: progress.totalCount,
             onHistory: _openMedicationHistory,
@@ -1011,162 +1017,6 @@ class _CaregiverSynchronizationBanner extends StatelessWidget {
   }
 }
 
-// 클래스명: _CaregiverScheduleHeader
-// 역할: 연동 환자 이름과 복약 완료 수·진행률을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 연동 환자 이름과 복약 완료 수·진행률 위젯을 구성한다.
-// 속성:
-// - isEnglish (bool): 영어 문구를 선택할지 여부; false이면 한국어.
-// - patientLabel (String): 환자 식별에 사용할 별칭.
-// - completedCount (int): 완료한 복약 횟수.
-// - totalCount (int): 예정된 전체 복약 횟수 또는 처리 항목 수.
-class _CaregiverScheduleHeader extends StatelessWidget {
-  final bool isEnglish;
-  final String patientLabel;
-  final int completedCount;
-  final int totalCount;
-  final VoidCallback onBack;
-  final VoidCallback onHistory;
-
-  // 함수이름: _CaregiverScheduleHeader
-  // 함수역할: 연동 환자 이름과 복약 완료 수·진행률에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - isEnglish (bool): 영어 문구를 선택할지 여부; false이면 한국어.
-  // - patientLabel (String): 환자 식별에 사용할 별칭.
-  // - completedCount (int): 완료한 복약 횟수.
-  // - totalCount (int): 예정된 전체 복약 횟수 또는 처리 항목 수.
-  // - onBack (VoidCallback): 이전 단계로 이동하거나 현재 화면을 닫을 때 실행할 콜백.
-  // 반환값: 입력 설정이 반영된 _CaregiverScheduleHeader 인스턴스.
-  const _CaregiverScheduleHeader({
-    required this.isEnglish,
-    required this.patientLabel,
-    required this.completedCount,
-    required this.totalCount,
-    required this.onBack,
-    required this.onHistory,
-  });
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 연동 환자 이름과 복약 완료 수·진행률 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 연동 환자 이름과 복약 완료 수·진행률에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
-    final progress = totalCount == 0 ? 0.0 : completedCount / totalCount;
-    return Container(
-      width: double.infinity,
-      decoration: const BoxDecoration(
-        color: MedBuddyColors.topBar,
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
-      ),
-      padding: EdgeInsets.fromLTRB(
-        20,
-        MediaQuery.paddingOf(context).top + 12,
-        20,
-        18,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              IconButton(
-                tooltip: isEnglish ? 'Back' : '뒤로가기',
-                onPressed: onBack,
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      isEnglish
-                          ? "Patient's Medication Schedule"
-                          : '환자 오늘의 복약 일정',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: MedBuddyPageHeader.titleStyle,
-                      strutStyle: MedBuddyPageHeader.titleStrutStyle,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      patientLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: MedBuddyColors.onPrimaryMuted,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                key: const Key('caregiver-schedule-history'),
-                tooltip: isEnglish ? 'Medication history' : '복용 기록',
-                onPressed: onHistory,
-                icon: const Icon(
-                  Icons.calendar_month_outlined,
-                  color: Colors.white,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Container(
-            margin: const EdgeInsets.only(left: 12, right: 4),
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.12),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
-              borderRadius: MedBuddyRadii.control,
-            ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        isEnglish ? 'Medication progress' : '복용 진행률',
-                        style: const TextStyle(
-                          color: MedBuddyColors.onPrimaryMuted,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      '$completedCount/$totalCount',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                ClipRRect(
-                  borderRadius: MedBuddyRadii.pill,
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 7,
-                    color: MedBuddyColors.successSurface,
-                    backgroundColor: Colors.white.withValues(alpha: 0.18),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // 클래스명: _CaregiverTimeSlotCard
 // 역할: 시간대별 환자 약 목록과 보호자 알림 설정을 담당한다.
 // 주요 책임:
@@ -1259,57 +1109,20 @@ class _CaregiverTimeSlotCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          Container(
-            decoration: BoxDecoration(
-              color: style.tint,
-              border: Border(left: BorderSide(color: style.color, width: 5)),
-            ),
-            padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: style.color,
-                    borderRadius: MedBuddyRadii.control,
-                  ),
-                  child: Icon(style.icon, color: Colors.white, size: 23),
-                ),
-                const SizedBox(width: 11),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        slot.title(isEnglish),
-                        style: const TextStyle(
-                          color: MedBuddyColors.textStrong,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      Text(
-                        _alertTimingLabel,
-                        key: ValueKey('caregiver-alert-time-${slot.key}'),
-                        style: TextStyle(
-                          color: style.color,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                _CaregiverNotificationButton(
-                  slot: slot,
-                  isEnglish: isEnglish,
-                  isLoading: isNotificationLoading,
-                  enabled: isAlertEnabled,
-                  onPressed: onNotification,
-                ),
-              ],
-            ),
+          MedicationSlotHeaderStrip(
+            style: style,
+            title: slot.title(isEnglish),
+            status: _alertTimingLabel,
+            statusKey: ValueKey('caregiver-alert-time-${slot.key}'),
+            trailing: [
+              _CaregiverNotificationButton(
+                slot: slot,
+                isEnglish: isEnglish,
+                isLoading: isNotificationLoading,
+                enabled: isAlertEnabled,
+                onPressed: onNotification,
+              ),
+            ],
           ),
           if (medications.isEmpty)
             // 환자 일정 화면과 같은 한 줄 빈 시간대 표시를 사용한다.

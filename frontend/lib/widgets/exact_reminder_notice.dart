@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../services/notification_service.dart';
 import '../theme/medbuddy_theme.dart';
+import 'medbuddy_notice.dart';
 
 // 클래스명: ExactReminderNotice
 // 역할: 정확한 알람이 허용되지 않은 동안에만 보이는 안내와 시스템 설정으로 가는 버튼을 담당한다.
@@ -149,55 +150,21 @@ class _ExactReminderNoticeState extends State<ExactReminderNotice>
               "'알람 및 리마인더'를 허용하면 정한 시각에 맞춰 알려 드립니다.";
     return Padding(
       padding: widget.margin,
-      child: Container(
+      child: MedBuddyNotice(
         key: const Key('exact-reminder-notice'),
-        width: double.infinity,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: MedBuddyColors.warningSurface,
-          borderRadius: MedBuddyRadii.small,
-          border: Border.all(color: MedBuddyColors.warningBorder),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(
-                  Icons.alarm_outlined,
-                  color: MedBuddyColors.reminderAccent,
-                  size: 20,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    message,
-                    style: const TextStyle(
-                      color: MedBuddyColors.reminderAccent,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      height: 1.4,
-                      letterSpacing: 0,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            OutlinedButton(
-              key: const Key('exact-reminder-allow'),
-              onPressed: _requesting ? null : _requestPermission,
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size.fromHeight(48),
-                foregroundColor: MedBuddyColors.primaryDark,
-              ),
-              child: Text(
-                widget.isEnglish ? 'Allow on-time reminders' : '정확한 시각에 알림 받기',
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ],
+        icon: Icons.alarm_outlined,
+        message: message,
+        action: OutlinedButton(
+          key: const Key('exact-reminder-allow'),
+          onPressed: _requesting ? null : _requestPermission,
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size.fromHeight(48),
+            foregroundColor: MedBuddyColors.primaryDark,
+          ),
+          child: Text(
+            widget.isEnglish ? 'Allow on-time reminders' : '정확한 시각에 알림 받기',
+            textAlign: TextAlign.center,
+          ),
         ),
       ),
     );

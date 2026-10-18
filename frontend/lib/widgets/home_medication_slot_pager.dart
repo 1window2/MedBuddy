@@ -7,6 +7,7 @@ import '../entities/medication_schedule_entity.dart';
 import '../entities/medication_slot_label.dart';
 import '../theme/medbuddy_theme.dart';
 import 'home_medication_preview.dart';
+import 'medbuddy_confirm_dialog.dart';
 
 class HomeMedicationSlotPager extends StatefulWidget {
   final List<MedicationSchedule> schedules;
@@ -351,32 +352,16 @@ class _HomeMedicationSlotPagerState extends State<HomeMedicationSlotPager> {
   // 반환값: 사용자가 "복용 완료 취소"를 고르면 true, 닫거나 유지를 고르면 false.
   Future<bool> _confirmUndo(String slot) async {
     final label = _slotLabel(slot);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      // 함수이름: _confirmUndo.builder 콜백
-      // 함수역할: 시간대 전체 복용 완료 취소 확인 창을 구성한다.
-      // 매개변수: context: 대화상자 위젯 트리 위치. 반환값: 확인 창.
-      builder: (context) => AlertDialog(
-        key: const Key('home-slot-undo-confirmation'),
-        content: Text(
-          widget.isEnglish
-              ? 'Undo the $label doses marked as taken?'
-              : '$label 복용 완료 기록을 모두 취소할까요?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(widget.isEnglish ? 'Keep' : '그대로 두기'),
-          ),
-          FilledButton(
-            key: const Key('home-slot-undo-confirm'),
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(widget.isEnglish ? 'Undo completion' : '복용 완료 취소'),
-          ),
-        ],
-      ),
+    return showMedBuddyConfirmDialog(
+      context,
+      message: widget.isEnglish
+          ? 'Undo the $label doses marked as taken?'
+          : '$label 복용 완료 기록을 모두 취소할까요?',
+      cancelLabel: widget.isEnglish ? 'Keep' : '그대로 두기',
+      confirmLabel: widget.isEnglish ? 'Undo completion' : '복용 완료 취소',
+      dialogKey: const Key('home-slot-undo-confirmation'),
+      confirmKey: const Key('home-slot-undo-confirm'),
     );
-    return confirmed == true;
   }
 
   Future<void> _updateSlot(String slot, {required bool completed}) async {

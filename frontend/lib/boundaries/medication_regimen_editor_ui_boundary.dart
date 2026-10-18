@@ -10,6 +10,7 @@ import '../entities/medication_schedule_entity.dart';
 import '../entities/medication_schedule_limits.dart';
 import '../entities/medication_slot_label.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/medbuddy_confirm_dialog.dart';
 import '../widgets/medbuddy_page_header.dart';
 import '../widgets/medication_dosing_mode_selector.dart';
 import '../widgets/medication_entry_fields.dart';
@@ -486,11 +487,7 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
     final first = _effectiveDate.isAfter(_courseStart)
         ? _effectiveDate
         : _courseStart;
-    final last = DateTime(
-      _courseStart.year,
-      _courseStart.month,
-      _courseStart.day + maxMedicationCourseDays - 1,
-    );
+    final last = latestMedicationEndDate(_courseStart);
     if (first.isAfter(last)) {
       setState(
         () => _error = _text(
@@ -546,11 +543,7 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
         _effectiveDate = selected;
         if (widget.action == MedicationRegimenAction.replace) {
           if (_endDate.isBefore(selected)) _endDate = selected;
-          final last = DateTime(
-            selected.year,
-            selected.month,
-            selected.day + maxMedicationCourseDays - 1,
-          );
+          final last = latestMedicationEndDate(selected);
           if (_endDate.isAfter(last)) _endDate = last;
         }
         _error = null;
@@ -616,30 +609,19 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
         _busy = true;
         _error = null;
       });
-      final confirmed = await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          scrollable: true,
-          title: Text(_title),
-          content: Text(
+      final confirmed = await showMedBuddyConfirmDialog(
+        context,
+        title: _title,
+        message:
             '${widget.medication.displayName}\n$_dateLabel: ${formatJsonDate(_effectiveDate)}\n\n${_stopping ? _text('이 날부터 복용 일정과 알림에서 제외합니다.', 'Remove this medication from scheduled doses and reminders from this date.') : '${_name.text.trim()} · $_doseText\n${_asNeeded ? _text('필요시 복용', 'As needed') : composeDoseFrequency(_doseDays, _slots.length)}\n${_text('복용 종료일', 'End date')}: ${formatJsonDate(_endDate)} · ${_text('총 $_courseDays일', '$_courseDays day(s)')}'}\n\n${_text('기존 복용 기록은 삭제하지 않습니다. 처방·복약지도에 따른 변경이 맞나요?', 'Earlier records will not be deleted. Does this match your prescription or professional instructions?')}',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: Text(_text('취소', 'Cancel')),
-            ),
-            FilledButton(
-              key: const Key('regimen-confirm'),
-              onPressed: () => Navigator.pop(context, true),
-              child: Text(_text('확인 후 적용', 'Confirm change')),
-            ),
-          ],
-        ),
+        cancelLabel: _text('취소', 'Cancel'),
+        confirmLabel: _text('확인 후 적용', 'Confirm change'),
+        confirmKey: const Key('regimen-confirm'),
+        barrierDismissible: false,
+        scrollable: true,
       );
       if (!mounted) return;
-      if (confirmed != true) {
+      if (!confirmed) {
         setState(() => _busy = false);
         return;
       }

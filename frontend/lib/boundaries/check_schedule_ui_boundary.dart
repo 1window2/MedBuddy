@@ -17,6 +17,8 @@ import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 import '../viewmodels/medbuddy_feature_updates.dart';
 import '../widgets/medbuddy_page_header.dart';
+import '../widgets/medbuddy_select_all_bar.dart';
+import '../widgets/medication_schedule_header.dart';
 import '../widgets/dose_sync_status.dart';
 import '../widgets/exact_reminder_notice.dart';
 import '../widgets/as_needed_schedule_section.dart';
@@ -269,11 +271,15 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
       onBackRequested: () => Navigator.pop(context),
     );
-    final selectionControl = _ScheduleSelectionControl(
-      text: text,
+    final selectableCount = _selectableDoses.length;
+    final selectionControl = MedBuddySelectAllBar(
+      tileKey: const Key('schedule-medication-select-all'),
+      label: text.selectAll,
+      countLabel: text.selectedMedicationCount(_selectedDoses.length),
+      countKey: const Key('schedule-medication-selection-count'),
       selectedCount: _selectedDoses.length,
-      totalCount: _selectableDoses.length,
-      onToggleAll: _toggleAllMedicationSelections,
+      totalCount: selectableCount,
+      onToggleAll: selectableCount == 0 ? null : _toggleAllMedicationSelections,
     );
     return Scaffold(
       backgroundColor: MedBuddyColors.surface,
@@ -448,12 +454,16 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       backgroundColor: MedBuddyColors.pageBackground,
       body: Column(
         children: [
-          _ScheduleHeader(
-            text: text,
+          MedicationScheduleHeader(
+            title: text.title,
+            backTooltip: text.back,
+            historyKey: const Key('schedule-history'),
+            historyTooltip: text.isEnglish ? 'Medication history' : '복용 기록',
+            progressLabel: text.progress,
             completedCount: progress.completedCount,
             totalCount: progress.totalCount,
-            onHistoryRequested: () => _openMedicationHistory(viewModel),
-            onBackRequested: widget.showBackButton
+            onHistory: () => _openMedicationHistory(viewModel),
+            onBack: widget.showBackButton
                 // Function Name: _buildScreen.onBackRequested callback
                 // Description: Closes this route with the selection or cancellation encoded by `Navigator.pop(context)`.
                 // Parameters:
@@ -1173,149 +1183,6 @@ class _HealthRecommendationFooter extends StatelessWidget {
   }
 }
 
-// Class Name: _ScheduleHeader
-// Role: Represents today's date and dose completion progress.
-// Responsibilities:
-// - Composes today's date and dose completion progress using the display values and actions supplied by its parent.
-// Attributes:
-// - completedCount (int): Number of completed doses.
-// - totalCount (int): Total scheduled doses or operation items.
-// - onBackRequested (VoidCallback?): Callback for back navigation or closing the current screen.
-class _ScheduleHeader extends StatelessWidget {
-  final _ScheduleText text;
-  final int completedCount;
-  final int totalCount;
-  final VoidCallback? onBackRequested;
-  final VoidCallback onHistoryRequested;
-
-  // 함수이름: _ScheduleHeader
-  // 함수역할: 오늘 날짜와 복약 완료 진행률에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - text (_ScheduleText): 해당 화면 구역의 언어별 표시 문구.
-  // - completedCount (int): 완료한 복약 횟수.
-  // - totalCount (int): 예정된 전체 복약 횟수 또는 처리 항목 수.
-  // - onBackRequested (VoidCallback?): 이전 단계로 이동하거나 현재 화면을 닫을 때 실행할 콜백.
-  // 반환값: 입력 설정이 반영된 _ScheduleHeader 인스턴스.
-  const _ScheduleHeader({
-    required this.text,
-    required this.completedCount,
-    required this.totalCount,
-    required this.onBackRequested,
-    required this.onHistoryRequested,
-  });
-
-  // Function Name: build
-  // Description: Renders today's date and dose completion progress from the current configuration and state.
-  // Parameters:
-  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-  // Returns: Widget tree for today's date and dose completion progress.
-  @override
-  Widget build(BuildContext context) {
-    final progress = totalCount == 0 ? 0.0 : completedCount / totalCount;
-
-    return Container(
-      width: double.infinity,
-      decoration: const BoxDecoration(
-        color: MedBuddyColors.topBar,
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
-      ),
-      padding: EdgeInsets.fromLTRB(
-        20,
-        MediaQuery.of(context).padding.top + 12,
-        20,
-        18,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (onBackRequested != null) ...[
-                IconButton(
-                  tooltip: text.back,
-                  onPressed: onBackRequested,
-                  icon: const Icon(
-                    Icons.arrow_back,
-                    color: Colors.white,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 8),
-              ] else
-                const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  text.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: MedBuddyPageHeader.titleStyle,
-                  strutStyle: MedBuddyPageHeader.titleStrutStyle,
-                ),
-              ),
-              IconButton(
-                key: const Key('schedule-history'),
-                tooltip: text.isEnglish ? 'Medication history' : '복용 기록',
-                onPressed: onHistoryRequested,
-                icon: const Icon(
-                  Icons.calendar_month_outlined,
-                  color: Colors.white,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Container(
-            margin: const EdgeInsets.only(left: 12, right: 4),
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.12),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
-              borderRadius: MedBuddyRadii.control,
-            ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        text.progress,
-                        style: const TextStyle(
-                          color: MedBuddyColors.onPrimaryMuted,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      '$completedCount/$totalCount',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                ClipRRect(
-                  borderRadius: MedBuddyRadii.pill,
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 7,
-                    color: MedBuddyColors.successSurface,
-                    backgroundColor: Colors.white.withValues(alpha: 0.18),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // 클래스명: _ScheduleSelectionHeader
 // 역할: 채팅에 첨부할 약 선택 화면의 제목과 뒤로가기를 담당한다.
 // 주요 책임:
@@ -1355,80 +1222,6 @@ class _ScheduleSelectionHeader extends StatelessWidget {
       ),
     );
   }
-}
-
-// 클래스명: _ScheduleSelectionControl
-// 역할: 알림함과 같은 전체·일부·미선택 체크박스와 선택 개수를 표시한다.
-class _ScheduleSelectionControl extends StatelessWidget {
-  final _ScheduleText text;
-  final int selectedCount;
-  final int totalCount;
-  final VoidCallback onToggleAll;
-
-  const _ScheduleSelectionControl({
-    required this.text,
-    required this.selectedCount,
-    required this.totalCount,
-    required this.onToggleAll,
-  });
-
-  // 함수역할: 전체 선택 체크박스와 개수를 나란히 배치하고 큰 글씨에서는 줄바꿈한다.
-  @override
-  Widget build(BuildContext context) => Material(
-    color: MedBuddyColors.surfaceSubtle,
-    shape: const Border(bottom: BorderSide(color: MedBuddyColors.divider)),
-    child: CheckboxListTile(
-      key: const Key('schedule-medication-select-all'),
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: MedBuddySpacing.pageHorizontal,
-        vertical: 8,
-      ),
-      controlAffinity: ListTileControlAffinity.leading,
-      activeColor: MedBuddyColors.primary,
-      checkColor: MedBuddyColors.surface,
-      checkboxShape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(4),
-      ),
-      tristate: true,
-      value: selectedCount == 0
-          ? false
-          : selectedCount == totalCount
-          ? true
-          : null,
-      onChanged: totalCount == 0 ? null : (_) => onToggleAll(),
-      title: Wrap(
-        alignment: WrapAlignment.spaceBetween,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: 16,
-        runSpacing: 4,
-        children: [
-          Text(
-            text.selectAll,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              height: 1.35,
-              letterSpacing: 0,
-              color: MedBuddyColors.textStrong,
-            ),
-          ),
-          Text(
-            text.selectedMedicationCount(selectedCount),
-            key: const Key('schedule-medication-selection-count'),
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              height: 1.35,
-              letterSpacing: 0,
-              color: selectedCount == 0
-                  ? MedBuddyColors.textMuted
-                  : MedBuddyColors.primaryDark,
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
 }
 
 // 클래스명: _ScheduleSelectionFooter
@@ -1605,88 +1398,50 @@ class _TimeSlotCard extends StatelessWidget {
         borderRadius: MedBuddyRadii.card,
         child: Column(
           children: [
-            Container(
-              decoration: BoxDecoration(
-                color: style.tint,
-                border: Border(left: BorderSide(color: style.color, width: 5)),
-              ),
-              padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
-              child: Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: style.color,
-                      borderRadius: MedBuddyRadii.control,
-                    ),
-                    child: Icon(style.icon, color: Colors.white, size: 23),
+            MedicationSlotHeaderStrip(
+              style: style,
+              title: slotTitle,
+              status: isSelectionMode
+                  ? null
+                  : reminderSetting.isEnabled &&
+                        userSetting.medicationNotificationsEnabled
+                  ? '${text.isEnglish ? 'Reminder' : '복약 알림'} ${userSetting.formatTime(reminderSetting.hour, reminderSetting.minute)}'
+                  : (text.isEnglish ? 'Reminder off' : '복약 알림 꺼짐'),
+              statusKey: ValueKey('patient-alert-time-${slot.key}'),
+              trailing: [
+                if (!isSelectionMode) ...[
+                  _ReminderIconButton(
+                    text: text,
+                    slotTitle: slotTitle,
+                    // 전체 복약 알림이 꺼져 있으면 옆 문구와 같이 꺼진 상태로 표시한다.
+                    isEnabled:
+                        reminderSetting.isEnabled &&
+                        userSetting.medicationNotificationsEnabled,
+                    onPressed: onReminderRequested,
                   ),
-                  const SizedBox(width: 11),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          slotTitle,
-                          style: const TextStyle(
-                            color: MedBuddyColors.textStrong,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        if (!isSelectionMode)
-                          Text(
-                            reminderSetting.isEnabled &&
-                                    userSetting.medicationNotificationsEnabled
-                                ? '${text.isEnglish ? 'Reminder' : '복약 알림'} ${userSetting.formatTime(reminderSetting.hour, reminderSetting.minute)}'
-                                : (text.isEnglish
-                                      ? 'Reminder off'
-                                      : '복약 알림 꺼짐'),
-                            key: ValueKey('patient-alert-time-${slot.key}'),
-                            style: TextStyle(
-                              color: style.color,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  if (!isSelectionMode) ...[
-                    _ReminderIconButton(
+                  if (slot.medications.isNotEmpty) ...[
+                    const SizedBox(width: 2),
+                    _SlotCompletionToggleButton(
                       text: text,
+                      slotKey: slot.key,
+                      accent: style.color,
                       slotTitle: slotTitle,
-                      // 전체 복약 알림이 꺼져 있으면 옆 문구와 같이 꺼진 상태로 표시한다.
-                      isEnabled:
-                          reminderSetting.isEnabled &&
-                          userSetting.medicationNotificationsEnabled,
-                      onPressed: onReminderRequested,
+                      isCompleted: isEntireSlotCompleted,
+                      isUpdating: isEntireSlotUpdating,
+                      onPressed: onEntireSlotStatusChanged == null
+                          ? null
+                          // Function Name: build.onPressed callback
+                          // Description: Supplies `onEntireSlotStatusChanged!(!isEntireSlotCompleted)` from the captured state of a dose slot's medication list, reminder control, and whole-slot completion action.
+                          // Parameters:
+                          // - None.
+                          // Returns: The value of `onEntireSlotStatusChanged!(!isEntireSlotCompleted)`.
+                          : () => onEntireSlotStatusChanged!(
+                              !isEntireSlotCompleted,
+                            ),
                     ),
-                    if (slot.medications.isNotEmpty) ...[
-                      const SizedBox(width: 2),
-                      _SlotCompletionToggleButton(
-                        text: text,
-                        slotKey: slot.key,
-                        accent: style.color,
-                        slotTitle: slotTitle,
-                        isCompleted: isEntireSlotCompleted,
-                        isUpdating: isEntireSlotUpdating,
-                        onPressed: onEntireSlotStatusChanged == null
-                            ? null
-                            // Function Name: build.onPressed callback
-                            // Description: Supplies `onEntireSlotStatusChanged!(!isEntireSlotCompleted)` from the captured state of a dose slot's medication list, reminder control, and whole-slot completion action.
-                            // Parameters:
-                            // - None.
-                            // Returns: The value of `onEntireSlotStatusChanged!(!isEntireSlotCompleted)`.
-                            : () => onEntireSlotStatusChanged!(
-                                !isEntireSlotCompleted,
-                              ),
-                      ),
-                    ],
                   ],
                 ],
-              ),
+              ],
             ),
             if (slot.medications.isEmpty)
               // 빈 시간대는 머리글의 알림 설정은 유지하고 본문을 한 줄로 줄인다.

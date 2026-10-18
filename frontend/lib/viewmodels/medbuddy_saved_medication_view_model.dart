@@ -12,7 +12,6 @@ import '../entities/medication_match_review_entity.dart';
 import '../services/app_temp_file.dart';
 import '../services/manual_medication_image_store.dart';
 import '../services/user_facing_error_message.dart';
-import 'medbuddy_feature_updates.dart';
 import 'saved_medication_batch_delete_result.dart';
 
 // 파일명: medbuddy_saved_medication_view_model.dart
@@ -88,8 +87,8 @@ class MedBuddySavedMedicationViewModel {
 
   // Function Name: _notifyViewModelListeners
   // Description: Publishes only this feature's feedback while alive.
-  // Parameters: feature: Existing operation tag. Returns: None.
-  void _notifyViewModelListeners(MedBuddyFeature feature) {
+  // Parameters: None. Returns: None.
+  void _notifyViewModelListeners() {
     if (!_disposed) _onChanged(_statusMessage);
   }
 
@@ -233,7 +232,7 @@ class MedBuddySavedMedicationViewModel {
       );
     }
     _statusMessage = result.message(_isEnglishSetting);
-    _notifyViewModelListeners(MedBuddyFeature.savedMedication);
+    _notifyViewModelListeners();
     return result;
   }
 
@@ -257,7 +256,7 @@ class MedBuddySavedMedicationViewModel {
     _statusMessage = _isEnglishSetting
         ? 'Saving ${medicationInfo.itemName}...'
         : '${medicationInfo.itemName} 저장 중...';
-    _notifyViewModelListeners(MedBuddyFeature.savedMedication);
+    _notifyViewModelListeners();
 
     final result = await checkSavedMedication.saveMedicationDetail(
       medicationInfo,
@@ -269,7 +268,7 @@ class MedBuddySavedMedicationViewModel {
       _statusMessage = _isEnglishSetting
           ? 'Could not save medication information.'
           : result.message;
-      _notifyViewModelListeners(MedBuddyFeature.savedMedication);
+      _notifyViewModelListeners();
       return result;
     }
 
@@ -306,7 +305,7 @@ class MedBuddySavedMedicationViewModel {
       await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
     }
     if (!_isCurrentSave(generation)) return result;
-    _notifyViewModelListeners(MedBuddyFeature.savedMedication);
+    _notifyViewModelListeners();
     return result;
   }
 
@@ -508,7 +507,7 @@ class MedBuddySavedMedicationViewModel {
       await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
     }
     if (!_isCurrentSave(generation)) return List.unmodifiable(results);
-    _notifyViewModelListeners(MedBuddyFeature.savedMedication);
+    _notifyViewModelListeners();
     return List<MedicationSaveResult>.unmodifiable(results);
   }
 
@@ -523,7 +522,7 @@ class MedBuddySavedMedicationViewModel {
     final generation = ++_loadGeneration;
     _isSavedMedicationLoading = true;
     _hasLoadError = false;
-    _notifyViewModelListeners(MedBuddyFeature.savedMedication);
+    _notifyViewModelListeners();
 
     List<MedicationDetail>? fetchedMedicationList;
     try {
@@ -553,7 +552,7 @@ class MedBuddySavedMedicationViewModel {
     } finally {
       if (!_disposed && generation == _loadGeneration) {
         _isSavedMedicationLoading = false;
-        _notifyViewModelListeners(MedBuddyFeature.savedMedication);
+        _notifyViewModelListeners();
       }
     }
 
@@ -632,7 +631,7 @@ class MedBuddySavedMedicationViewModel {
             (item) => !deletedIds.contains(item.id),
           )
           .toList(growable: false);
-      _notifyViewModelListeners(MedBuddyFeature.savedMedication);
+      _notifyViewModelListeners();
       await fetchTodayMedicationSchedule();
       await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
     }
@@ -780,7 +779,7 @@ class MedBuddySavedMedicationViewModel {
         .toList(growable: false);
     if (!hasChangedImagePath) return;
     _savedMedicationInfoList = reconciledMedicationList;
-    _notifyViewModelListeners(MedBuddyFeature.savedMedication);
+    _notifyViewModelListeners();
   }
 
   // 함수이름: _deleteLocalMedicationImage

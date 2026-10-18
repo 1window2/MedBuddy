@@ -736,9 +736,9 @@ class _MedicationScheduleEditDialogState
           : widget.medicationSchedule.medicationTime.toString(),
     );
     _prescriptionDateController = TextEditingController(
-      text: _formatDate(
+      text: formatJsonDate(
         widget.medicationSchedule.prescriptionDate ?? DateTime.now(),
-      ),
+      )!,
     );
     _selectedSlotKeys = widget.medicationSchedule.slotKeys.toSet();
     _asNeeded = widget.medicationSchedule.isAsNeeded;
@@ -920,50 +920,44 @@ class _MedicationScheduleEditDialogState
                   autofocus:
                       widget.initialField ==
                       _MedicationScheduleEditField.scheduleSlots,
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final slotKey in medicationScheduleSlotKeys)
-                        FilterChip(
-                          key: Key('ocr-edit-slot-$slotKey'),
-                          label: Text(text.slotLabel(slotKey)),
-                          selected: _selectedSlotKeys.contains(slotKey),
-                          // 함수이름: build.onSelected callback
-                          // 함수역할: 실제 복약 시간대와 표시 횟수를 함께 갱신한다.
-                          // 매개변수:
-                          // - selected (콜백 계약에서 추론): 현재 선택 집합에 포함되는지 여부.
-                          // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                          onSelected: (selected) {
-                            // 함수이름: build.setState callback
-                            // 함수역할: OCR 약명·조제일·용량·횟수·일수·시간대 편집의 입력·요청 상태를 `_showSlotValidationError = false`로 갱신한다.
-                            // 매개변수:
-                            // - 없음.
-                            // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-                            setState(() {
-                              if (selected) {
-                                _selectedSlotKeys.add(slotKey);
-                              } else {
-                                _selectedSlotKeys.remove(slotKey);
-                              }
-                              // "주 1회" 같은 지시를 시간대 개수로 덮어쓰면 매일 복용으로 바뀐다.
-                              if (_selectedSlotKeys.isNotEmpty &&
-                                  !requiresDoseScheduleReview(
-                                    _frequencyController.text,
-                                  ) &&
-                                  readDoseCycle(
-                                    _frequencyController.text,
-                                  ).isDaily) {
-                                _frequencyController.text =
-                                    _canonicalDailyFrequency(
-                                      _selectedSlotKeys.length,
-                                    );
-                              }
-                              _showSlotValidationError = false;
-                            });
-                          },
-                        ),
-                    ],
+                  child: MedicationEntrySlotChoices(
+                    keyPrefix: 'ocr-edit-slot',
+                    values: _selectedSlotKeys,
+                    label: text.slotLabel,
+                    // 함수이름: build.onChanged callback
+                    // 함수역할: 실제 복약 시간대와 표시 횟수를 함께 갱신한다.
+                    // 매개변수:
+                    // - slotKey (String): 선택을 바꾼 복약 시간대 키.
+                    // - selected (콜백 계약에서 추론): 현재 선택 집합에 포함되는지 여부.
+                    // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                    onChanged: (slotKey, selected) {
+                      // 함수이름: build.setState callback
+                      // 함수역할: OCR 약명·조제일·용량·횟수·일수·시간대 편집의 입력·요청 상태를 `_showSlotValidationError = false`로 갱신한다.
+                      // 매개변수:
+                      // - 없음.
+                      // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
+                      setState(() {
+                        if (selected) {
+                          _selectedSlotKeys.add(slotKey);
+                        } else {
+                          _selectedSlotKeys.remove(slotKey);
+                        }
+                        // "주 1회" 같은 지시를 시간대 개수로 덮어쓰면 매일 복용으로 바뀐다.
+                        if (_selectedSlotKeys.isNotEmpty &&
+                            !requiresDoseScheduleReview(
+                              _frequencyController.text,
+                            ) &&
+                            readDoseCycle(
+                              _frequencyController.text,
+                            ).isDaily) {
+                          _frequencyController.text =
+                              _canonicalDailyFrequency(
+                                _selectedSlotKeys.length,
+                              );
+                        }
+                        _showSlotValidationError = false;
+                      });
+                    },
                   ),
                 ),
               ],
@@ -1136,12 +1130,12 @@ class _MedicationScheduleEditDialogState
       return;
     }
     // 함수이름: _selectPrescriptionDate.setState callback
-    // 함수역할: OCR 약명·조제일·용량·횟수·일수·시간대 편집의 입력·요청 상태를 `_prescriptionDateController.text = _formatDate(selectedDate)`로 갱신한다.
+    // 함수역할: OCR 약명·조제일·용량·횟수·일수·시간대 편집의 입력·요청 상태를 `_prescriptionDateController.text = formatJsonDate(selectedDate)!`로 갱신한다.
     // 매개변수:
     // - 없음.
     // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
     setState(() {
-      _prescriptionDateController.text = _formatDate(selectedDate);
+      _prescriptionDateController.text = formatJsonDate(selectedDate)!;
     });
   }
 
@@ -1261,17 +1255,6 @@ class _MedicationScheduleEditDialogState
       return null;
     }
     return parsedDate;
-  }
-
-  // 함수이름: _formatDate
-  // 함수역할: 날짜를 네 자리 연도와 두 자리 월·일의 연-월-일 형식으로 표시한다.
-  // 매개변수:
-  // - value (DateTime): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String _formatDate(DateTime value) {
-    return '${value.year.toString().padLeft(4, '0')}-'
-        '${value.month.toString().padLeft(2, '0')}-'
-        '${value.day.toString().padLeft(2, '0')}';
   }
 }
 
@@ -1642,14 +1625,7 @@ class _PreviewText {
   // 매개변수:
   // - date (DateTime?): 표시·비교 기준이 되는 날짜 또는 이전·현재 값.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String dateValue(DateTime? date) {
-    if (date == null) {
-      return noInformation;
-    }
-    return '${date.year.toString().padLeft(4, '0')}-'
-        '${date.month.toString().padLeft(2, '0')}-'
-        '${date.day.toString().padLeft(2, '0')}';
-  }
+  String dateValue(DateTime? date) => formatJsonDate(date) ?? noInformation;
 
   // 함수이름: slotSummary
   // 함수역할: 시간대 키를 현재 언어의 이름으로 변환해 구분자로 묶는다.

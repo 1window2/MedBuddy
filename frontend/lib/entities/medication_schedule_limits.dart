@@ -32,3 +32,12 @@ DateTime earliestMedicationStartDate() => DateTime(2000);
 // - Local midnight of the day that is 365 days after the day of now.
 DateTime latestMedicationStartDate(DateTime now) =>
     DateTime(now.year, now.month, now.day + _latestStartDateOffsetDays);
+
+// Function Name: latestMedicationEndDate
+// Description: Provides the last calendar day of the longest course the server accepts when the course starts on the given day, counting the start day itself.
+// Parameters:
+// - start (DateTime): First day of the course.
+// Returns:
+// - Local midnight of the day maxMedicationCourseDays - 1 days after the day of start.
+DateTime latestMedicationEndDate(DateTime start) =>
+    DateTime(start.year, start.month, start.day + maxMedicationCourseDays - 1);

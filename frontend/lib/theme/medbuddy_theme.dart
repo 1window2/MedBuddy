@@ -13,7 +13,6 @@ class MedBuddyColors {
   static const Color primaryDark = Color(0xFF0A6347);
   static const Color topBar = Color(0xFF0E7C5A);
   static const Color onPrimaryMuted = Color(0xFFD9EEE4);
-  static const Color progressTrack = Color(0xFF0A5A40);
   static const Color mint = Color(0xFFD6EEE3);
   static const Color successBorder = Color(0xFFB9DCCB);
   static const Color successSurface = Color(0xFFEAF5EF);

@@ -6,6 +6,7 @@ import '../entities/notification_inbox_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/medbuddy_page_header.dart';
+import '../widgets/medbuddy_select_all_bar.dart';
 
 // 클래스명: NotificationInboxUI
 // 역할: 알림함 화면. 목록과 저장 명령은 Control에 위임한다.
@@ -270,67 +271,17 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
                         ],
                 ),
                 if (_selecting)
-                  Material(
-                    color: MedBuddyColors.surfaceSubtle,
-                    shape: const Border(
-                      bottom: BorderSide(color: MedBuddyColors.divider),
-                    ),
-                    child: CheckboxListTile(
-                      key: const Key('inbox-select-all'),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: MedBuddySpacing.pageHorizontal,
-                        vertical: 8,
-                      ),
-                      controlAffinity: ListTileControlAffinity.leading,
-                      activeColor: MedBuddyColors.primary,
-                      checkColor: MedBuddyColors.surface,
-                      checkboxShape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      value:
-                          entries.isNotEmpty &&
-                              selected.length == entries.length
-                          ? true
-                          : (selected.isEmpty ? false : null),
-                      tristate: true,
-                      onChanged: _busy || entries.isEmpty
-                          ? null
-                          : (_) => _toggleAll(),
-                      // 큰 글씨에서는 개수만 다음 줄로 이동해 선택 문구를 자르지 않는다.
-                      title: Wrap(
-                        alignment: WrapAlignment.spaceBetween,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        spacing: 16,
-                        runSpacing: 4,
-                        children: [
-                          Text(
-                            _english ? 'Select all' : '전체 선택',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              height: 1.35,
-                              letterSpacing: 0,
-                              color: MedBuddyColors.textStrong,
-                            ),
-                          ),
-                          Text(
-                            _english
-                                ? '${selected.length} selected'
-                                : '${selected.length}개 선택',
-                            key: const Key('inbox-selection-count'),
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              height: 1.35,
-                              letterSpacing: 0,
-                              color: selected.isEmpty
-                                  ? MedBuddyColors.textMuted
-                                  : MedBuddyColors.primaryDark,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                  // 큰 글씨에서는 개수만 다음 줄로 이동해 선택 문구를 자르지 않는다.
+                  MedBuddySelectAllBar(
+                    tileKey: const Key('inbox-select-all'),
+                    label: _english ? 'Select all' : '전체 선택',
+                    countLabel: _english
+                        ? '${selected.length} selected'
+                        : '${selected.length}개 선택',
+                    countKey: const Key('inbox-selection-count'),
+                    selectedCount: selected.length,
+                    totalCount: entries.length,
+                    onToggleAll: _busy || entries.isEmpty ? null : _toggleAll,
                   ),
                 if (control.hasError)
                   Padding(

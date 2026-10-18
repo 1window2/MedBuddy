@@ -14,7 +14,6 @@ import '../entities/prescription_flow_entity.dart';
 import '../entities/prescription_change_entity.dart';
 import '../entities/recognized_text_region_entity.dart';
 import '../services/user_facing_error_message.dart';
-import 'medbuddy_feature_updates.dart';
 import 'medbuddy_saved_medication_view_model.dart';
 
 // 파일명: medbuddy_prescription_view_model.dart
@@ -313,9 +312,19 @@ class MedBuddyPrescriptionViewModel {
   // Function Name: statusMessage
   // Description: Exposes prescription-only feedback. Parameters: None. Returns: Feedback.
   String get statusMessage => _statusMessage;
+  // 함수이름: idlePrompt
+  // 함수역할:
+  // - 처방전 입력을 기다리는 동안 보여 줄 현재 언어의 촬영·선택 안내 문구를 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - String: 영어 설정이면 영어 안내, 아니면 한국어 안내.
+  String get idlePrompt => _isEnglishSetting
+      ? 'Take a prescription photo or choose an image.'
+      : '처방전을 촬영하거나 이미지를 선택해주세요.';
   // Function Name: _notifyViewModelListeners
-  // Description: Publishes live prescription state. Parameters: feature: Tag. Returns: None.
-  void _notifyViewModelListeners(MedBuddyFeature feature) {
+  // Description: Publishes live prescription state. Parameters: None. Returns: None.
+  void _notifyViewModelListeners() {
     if (!_disposed) _onChanged(_statusMessage);
   }
 
@@ -353,10 +362,8 @@ class MedBuddyPrescriptionViewModel {
     _clearPrescriptionRecognitionCounts();
     _analysisProgressStep = AnalysisProgressStep.prescriptionRecognition;
     _prescriptionFlowState = PrescriptionFlowState.idle;
-    _statusMessage = _isEnglishSetting
-        ? 'Take a prescription photo or choose an image.'
-        : '처방전을 촬영하거나 이미지를 선택해주세요.';
-    _notifyViewModelListeners(MedBuddyFeature.prescription);
+    _statusMessage = idlePrompt;
+    _notifyViewModelListeners();
   }
 
   // 함수이름: requestCapturedPrescriptionImage
@@ -479,7 +486,7 @@ class MedBuddyPrescriptionViewModel {
     _statusMessage = _isEnglishSetting
         ? 'The OCR result was updated.'
         : 'OCR 인식 결과를 수정했습니다.';
-    _notifyViewModelListeners(MedBuddyFeature.prescription);
+    _notifyViewModelListeners();
   }
 
   // 함수이름: addRecognizedMedicationSchedule
@@ -537,7 +544,7 @@ class MedBuddyPrescriptionViewModel {
     _statusMessage = _isEnglishSetting
         ? 'The missing medication was added.'
         : '누락된 약을 추가했습니다.';
-    _notifyViewModelListeners(MedBuddyFeature.prescription);
+    _notifyViewModelListeners();
   }
 
   // 함수이름: returnToPrescriptionPreview
@@ -559,7 +566,7 @@ class MedBuddyPrescriptionViewModel {
         ? 'Review the recognized medication information.'
         : '인식된 약 정보를 다시 확인해주세요.';
     _prescriptionFlowState = PrescriptionFlowState.previewReady;
-    _notifyViewModelListeners(MedBuddyFeature.prescription);
+    _notifyViewModelListeners();
   }
 
   // 함수이름: requestPrescriptionAnalysis
@@ -615,7 +622,7 @@ class MedBuddyPrescriptionViewModel {
     _analyzedMedicationList = _orderedAnalyzedMedications();
     _prescriptionChangeRadar = null;
     _isPrescriptionChangeLoading = false;
-    _notifyViewModelListeners(MedBuddyFeature.prescription);
+    _notifyViewModelListeners();
 
     try {
       final analysisBatch = await _analyzeMedicationSchedules(
@@ -662,7 +669,7 @@ class MedBuddyPrescriptionViewModel {
         _statusMessage = _isEnglishSetting
             ? '$unverifiedCount medication item(s) could not be verified. Review and retry them.'
             : '$unverifiedCount개 약은 확인이 필요합니다. 후보를 처방전과 비교하거나 약명을 수정해주세요.';
-        _notifyViewModelListeners(MedBuddyFeature.prescription);
+        _notifyViewModelListeners();
         return;
       }
 
@@ -670,18 +677,7 @@ class MedBuddyPrescriptionViewModel {
       _statusMessage = _isEnglishSetting
           ? 'Prescription analysis completed.'
           : '처방전 분석이 완료되었습니다.';
-      _notifyViewModelListeners(MedBuddyFeature.prescription);
-    } on StateError catch (error) {
-      if (!_isCurrentPrescriptionOperation(operationId)) {
-        return;
-      }
-      _showAnalysisFailure(
-        UserFacingErrorMessage.resolve(
-          error,
-          isEnglish: _isEnglishSetting,
-          context: UserFacingErrorContext.medicationLookup,
-        ),
-      );
+      _notifyViewModelListeners();
     } catch (error) {
       if (!_isCurrentPrescriptionOperation(operationId)) {
         return;
@@ -821,7 +817,7 @@ class MedBuddyPrescriptionViewModel {
       _analysisErrorMessage = '';
       _prescriptionFlowState = PrescriptionFlowState.analysisSucceeded;
     }
-    _notifyViewModelListeners(MedBuddyFeature.prescription);
+    _notifyViewModelListeners();
   }
 
   // 함수이름: continueWithVerifiedMedicationAnalysis
@@ -843,7 +839,7 @@ class MedBuddyPrescriptionViewModel {
     _statusMessage = _isEnglishSetting
         ? 'Continuing with verified medications. $excludedCount unverified item(s) were excluded.'
         : '확인된 약으로 계속합니다. 미확인 약 $excludedCount개는 결과에서 제외했습니다.';
-    _notifyViewModelListeners(MedBuddyFeature.prescription);
+    _notifyViewModelListeners();
     return true;
   }
 
@@ -905,7 +901,7 @@ class MedBuddyPrescriptionViewModel {
     }
     _prescriptionChangeRadar = radar;
     _isPrescriptionChangeLoading = false;
-    _notifyViewModelListeners(MedBuddyFeature.prescription);
+    _notifyViewModelListeners();
   }
 
   // 함수이름: showMedicationAnalysisResult
@@ -929,11 +925,11 @@ class MedBuddyPrescriptionViewModel {
         _recognizedMedicationScheduleList.length) {
       _prescriptionChangeRadar = null;
       _isPrescriptionChangeLoading = false;
-      _notifyViewModelListeners(MedBuddyFeature.prescription);
+      _notifyViewModelListeners();
       return;
     }
     _isPrescriptionChangeLoading = true;
-    _notifyViewModelListeners(MedBuddyFeature.prescription);
+    _notifyViewModelListeners();
     unawaited(
       _refreshPrescriptionChangeRadar(
         _prescriptionOperationId,
@@ -959,14 +955,14 @@ class MedBuddyPrescriptionViewModel {
       _statusMessage = _isEnglishSetting
           ? 'Another medication is being saved.'
           : '다른 복약 정보를 저장하고 있습니다.';
-      _notifyViewModelListeners(MedBuddyFeature.prescription);
+      _notifyViewModelListeners();
       return false;
     }
     if (_completedMedicationSaveIndexes.contains(medicationIndex)) {
       _statusMessage = _isEnglishSetting
           ? 'This medication is already saved.'
           : '이미 추가된 약입니다.';
-      _notifyViewModelListeners(MedBuddyFeature.prescription);
+      _notifyViewModelListeners();
       return true;
     }
 
@@ -986,7 +982,7 @@ class MedBuddyPrescriptionViewModel {
       _statusMessage = savedMedications.statusMessage;
       if (result.isCompleted) {
         _completedMedicationSaveIndexes.add(medicationIndex);
-        _notifyViewModelListeners(MedBuddyFeature.prescription);
+        _notifyViewModelListeners();
       }
       return result.isCompleted;
     } finally {
@@ -1009,14 +1005,14 @@ class MedBuddyPrescriptionViewModel {
       _statusMessage = _isEnglishSetting
           ? 'Another medication is being saved.'
           : '다른 복약 정보를 저장하고 있습니다.';
-      _notifyViewModelListeners(MedBuddyFeature.prescription);
+      _notifyViewModelListeners();
       return false;
     }
     if (_analyzedMedicationList.isEmpty) {
       _statusMessage = _isEnglishSetting
           ? 'There are no analysis results to save.'
           : '저장할 분석 결과가 없습니다.';
-      _notifyViewModelListeners(MedBuddyFeature.prescription);
+      _notifyViewModelListeners();
       return false;
     }
 
@@ -1024,7 +1020,7 @@ class MedBuddyPrescriptionViewModel {
     _statusMessage = _isEnglishSetting
         ? 'Saving all medication schedules...'
         : '전체 복약 일정을 저장 중입니다...';
-    _notifyViewModelListeners(MedBuddyFeature.prescription);
+    _notifyViewModelListeners();
 
     var savedCount = 0;
     var duplicateCount = 0;
@@ -1038,7 +1034,7 @@ class MedBuddyPrescriptionViewModel {
         }
 
         _savingMedicationIndex = index;
-        _notifyViewModelListeners(MedBuddyFeature.prescription);
+        _notifyViewModelListeners();
 
         final analyzedMedication = _analyzedMedicationList[index];
         final result = await savedMedications.saveMedicationInfo(
@@ -1072,7 +1068,7 @@ class MedBuddyPrescriptionViewModel {
       if (_isCurrentPrescriptionOperation(operationId)) {
         _savingMedicationIndex = null;
         _isAllMedicationSaving = false;
-        _notifyViewModelListeners(MedBuddyFeature.prescription);
+        _notifyViewModelListeners();
       }
     }
   }
@@ -1146,7 +1142,7 @@ class MedBuddyPrescriptionViewModel {
             _prescriptionOperationId == requestGeneration &&
             _prescriptionFlowState == PrescriptionFlowState.idle) {
           _statusMessage = cancelledMessage;
-          _notifyViewModelListeners(MedBuddyFeature.prescription);
+          _notifyViewModelListeners();
         }
         return;
       }
@@ -1156,7 +1152,7 @@ class MedBuddyPrescriptionViewModel {
       if (result == null) {
         _statusMessage = cancelledMessage;
         _prescriptionFlowState = PrescriptionFlowState.idle;
-        _notifyViewModelListeners(MedBuddyFeature.prescription);
+        _notifyViewModelListeners();
         return;
       }
 
@@ -1180,14 +1176,7 @@ class MedBuddyPrescriptionViewModel {
           : (_isEnglishSetting
                 ? 'Prescription recognition completed. Review the recognized information.'
                 : '처방전 인식이 완료되었습니다. 인식 내역을 확인해주세요.');
-      _notifyViewModelListeners(MedBuddyFeature.prescription);
-    } on StateError catch (error) {
-      if (!beginRecognition()) {
-        return;
-      }
-      _showAnalysisFailure(
-        UserFacingErrorMessage.resolve(error, isEnglish: _isEnglishSetting),
-      );
+      _notifyViewModelListeners();
     } catch (error) {
       if (!beginRecognition()) {
         return;
@@ -1270,7 +1259,7 @@ class MedBuddyPrescriptionViewModel {
     _statusMessage = _isEnglishSetting
         ? 'Recognizing the prescription...'
         : '처방전을 인식 중입니다...';
-    _notifyViewModelListeners(MedBuddyFeature.prescription);
+    _notifyViewModelListeners();
   }
 
   // 함수이름: _clearPrescriptionRecognitionCounts
@@ -1321,7 +1310,7 @@ class MedBuddyPrescriptionViewModel {
     _analysisErrorMessage = message;
     _statusMessage = message;
     _prescriptionFlowState = PrescriptionFlowState.analysisFailed;
-    _notifyViewModelListeners(MedBuddyFeature.prescription);
+    _notifyViewModelListeners();
   }
 
   // 함수이름: _setSavingMedicationIndex
@@ -1332,7 +1321,7 @@ class MedBuddyPrescriptionViewModel {
   // - 없음.
   void _setSavingMedicationIndex(int? value) {
     _savingMedicationIndex = value;
-    _notifyViewModelListeners(MedBuddyFeature.prescription);
+    _notifyViewModelListeners();
   }
 
   // 함수이름: _buildBulkSaveMessage

@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../entities/json_value_reader.dart';
 import '../entities/medication_dose_rhythm.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/medication_schedule_limits.dart';
@@ -15,8 +16,10 @@ import '../entities/medication_match_review_entity.dart';
 import 'medication_candidate_dialog.dart';
 import '../entities/recognized_text_region_entity.dart';
 import '../entities/user_setting_entity.dart';
+import '../widgets/medbuddy_confirm_dialog.dart';
 import '../widgets/medbuddy_notice.dart';
 import '../widgets/medication_dosing_mode_selector.dart';
+import '../widgets/medication_entry_fields.dart';
 import '../theme/medbuddy_theme.dart';
 
 part 'prescription_preview_image_widgets.dart';
@@ -225,7 +228,8 @@ class _PrescriptionAnalysisPreviewUIState
                         ),
                         if (widget.isMedicationLookupReview) ...[
                           const SizedBox(height: 14),
-                          _MedicationLookupReviewBanner(
+                          MedBuddyNotice(
+                            key: const Key('medication-lookup-review-banner'),
                             message: text.lookupReviewGuide(
                               widget.medicationScheduleList.length -
                                   widget.verifiedScheduleIndexes.length,
@@ -434,41 +438,16 @@ class _PrescriptionAnalysisPreviewUIState
     final unverifiedCount =
         widget.medicationScheduleList.length -
         widget.verifiedScheduleIndexes.length;
-    final shouldContinue = await showDialog<bool>(
-      context: context,
-      // 함수이름: _confirmVerifiedOnlyContinue.builder callback
-      // 함수역할: OCR 복약 표 검토·수정·추가와 분석 재개에 Key을 적용해 현재 배치를 구성한다.
-      // 매개변수:
-      // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-      // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-      builder: (context) => AlertDialog(
-        title: Text(text.continueWithVerifiedTitle),
-        content: Text(text.continueWithVerifiedWarning(unverifiedCount)),
-        actions: [
-          TextButton(
-            key: const Key('cancel-verified-only-continue'),
-            // 함수이름: _confirmVerifiedOnlyContinue.onPressed callback
-            // 함수역할: `Navigator.pop(context, false)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-            // 매개변수:
-            // - 없음.
-            // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(text.cancel),
-          ),
-          FilledButton(
-            key: const Key('confirm-verified-only-continue'),
-            // 함수이름: _confirmVerifiedOnlyContinue.onPressed callback
-            // 함수역할: `Navigator.pop(context, true)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-            // 매개변수:
-            // - 없음.
-            // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(text.continueLabel),
-          ),
-        ],
-      ),
+    final shouldContinue = await showMedBuddyConfirmDialog(
+      context,
+      title: text.continueWithVerifiedTitle,
+      message: text.continueWithVerifiedWarning(unverifiedCount),
+      cancelLabel: text.cancel,
+      confirmLabel: text.continueLabel,
+      cancelKey: const Key('cancel-verified-only-continue'),
+      confirmKey: const Key('confirm-verified-only-continue'),
     );
-    if (shouldContinue == true && mounted) {
+    if (shouldContinue && mounted) {
       widget.onVerifiedOnlyContinueRequested?.call();
     }
   }
@@ -516,35 +495,5 @@ class _PrescriptionAnalysisPreviewUIState
     setState(() => _isAnalysisRequested = true);
     ScaffoldMessenger.maybeOf(context)?.hideCurrentSnackBar();
     widget.onAnalysisRequested();
-  }
-}
-
-// 클래스명: _MedicationLookupReviewBanner
-// 역할: 상세조회 미확인 약의 수정·재조회 안내를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 상세조회 미확인 약의 수정·재조회 안내 위젯을 구성한다.
-// 속성:
-// - message (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
-class _MedicationLookupReviewBanner extends StatelessWidget {
-  final String message;
-
-  // 함수이름: _MedicationLookupReviewBanner
-  // 함수역할: 상세조회 미확인 약의 수정·재조회 안내에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - message (String): 현재 작업 결과·오류·상태에 대한 표시 문구.
-  // 반환값: 입력 설정이 반영된 _MedicationLookupReviewBanner 인스턴스.
-  const _MedicationLookupReviewBanner({required this.message});
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 상세조회 미확인 약의 수정·재조회 안내 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 상세조회 미확인 약의 수정·재조회 안내에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
-    return MedBuddyNotice(
-      key: const Key('medication-lookup-review-banner'),
-      message: message,
-    );
   }
 }

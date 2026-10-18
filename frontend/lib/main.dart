@@ -805,6 +805,7 @@ class _MedBuddyAppState extends State<MedBuddyApp>
       });
       return;
     }
+    final navigator = _navigatorKey.currentState!;
     if (selection.caregiverAlert != null &&
         selection.action != MedicationNotificationAction.open) {
       _handleCaregiverActionWhenReady(selection);
@@ -812,31 +813,10 @@ class _MedBuddyAppState extends State<MedBuddyApp>
     }
     if (selection.destination == MedicationNotificationDestination.schedule) {
       if (selection.action != MedicationNotificationAction.open) {
-        _handleMedicationNotificationActionWhenReady(selection);
+        unawaited(_performMedicationNotificationAction(navigator, selection));
         return;
       }
-      final navigator = _navigatorKey.currentState;
-      if (navigator != null) {
-        _openSchedule(navigator, initialSlotKey: selection.slotKey);
-      } else {
-        WidgetsBinding.instance.addPostFrameCallback(
-          /* 함수이름: addPostFrameCallback 콜백
-         * 함수역할: 내비게이터가 준비된 다음 프레임에 선택한 복약 시간대 화면을 연다.
-         * 매개변수:
-         * - _ (Duration): 콜백 계약으로 전달되지만 사용하지 않는 이벤트 값.
-         * 반환값:
-         * - 없음.
-         */
-          (_) {
-            if (mounted && _navigatorKey.currentState != null) {
-              _openSchedule(
-                _navigatorKey.currentState!,
-                initialSlotKey: selection.slotKey,
-              );
-            }
-          },
-        );
-      }
+      _openSchedule(navigator, initialSlotKey: selection.slotKey);
       return;
     }
     if (selection.destination == MedicationNotificationDestination.linkedChat) {
@@ -844,54 +824,14 @@ class _MedBuddyAppState extends State<MedBuddyApp>
       if (linkId == null || linkId < 1) {
         return;
       }
-      final navigator = _navigatorKey.currentState;
-      if (navigator != null) {
-        _openLinkedChat(navigator, linkId);
-        return;
-      }
-      WidgetsBinding.instance.addPostFrameCallback(
-        /* 함수이름: addPostFrameCallback 콜백
-       * 함수역할: 다음 프레임에 화면이 유지되어 있으면 선택한 가족 채팅을 연다.
-       * 매개변수:
-       * - _ (Duration): 콜백 계약으로 전달되지만 사용하지 않는 이벤트 값.
-       * 반환값:
-       * - 없음.
-       */
-        (_) {
-          if (mounted && _navigatorKey.currentState != null) {
-            _openLinkedChat(_navigatorKey.currentState!, linkId);
-          }
-        },
-      );
+      _openLinkedChat(navigator, linkId);
       return;
     }
     final patientHash = selection.patientHash?.trim() ?? '';
     if (patientHash.isEmpty) {
       return;
     }
-    final navigator = _navigatorKey.currentState;
-    if (navigator != null) {
-      _openCaregiverSchedule(navigator, patientHash);
-      return;
-    }
-    WidgetsBinding.instance.addPostFrameCallback(
-      /* 함수이름: addPostFrameCallback 콜백
-     * 함수역할: 다음 프레임까지 화면과 내비게이터가 유효하면 선택한 환자 복약 화면을 연다.
-     * 매개변수:
-     * - _ (Duration): 콜백 계약으로 전달되지만 사용하지 않는 이벤트 값.
-     * 반환값:
-     * - 없음.
-     */
-      (_) {
-        if (!mounted) {
-          return;
-        }
-        final mountedNavigator = _navigatorKey.currentState;
-        if (mountedNavigator != null) {
-          _openCaregiverSchedule(mountedNavigator, patientHash);
-        }
-      },
-    );
+    _openCaregiverSchedule(navigator, patientHash);
   }
 
   final Set<String> _caregiverActionsInFlight = {};
@@ -972,36 +912,6 @@ class _MedBuddyAppState extends State<MedBuddyApp>
     );
   }
 
-  // Function Name: _handleMedicationNotificationActionWhenReady
-  // Description: Defers lock-screen medication actions until the navigator and provider context exist, then starts the existing schedule or snooze operation.
-  // Parameters:
-  // - selection (MedicationNotificationSelection): Parsed notification destination and action arguments.
-  // Returns:
-  // - No return value.
-  void _handleMedicationNotificationActionWhenReady(
-    MedicationNotificationSelection selection,
-  ) {
-    final navigator = _navigatorKey.currentState;
-    if (navigator == null) {
-      WidgetsBinding.instance.addPostFrameCallback(
-        /* Function Name: addPostFrameCallback callback
-       * Description: Retries a medication-notification action after the next frame while the app state remains mounted.
-       * Parameters:
-       * - _ (Duration): Unused event value supplied by the enclosing callback contract.
-       * Returns:
-       * - No return value.
-       */
-        (_) {
-          if (mounted) {
-            _handleMedicationNotificationActionWhenReady(selection);
-          }
-        },
-      );
-      return;
-    }
-    unawaited(_performMedicationNotificationAction(navigator, selection));
-  }
-
   // Function Name: _performMedicationNotificationAction
   // Description: Marks an entire slot taken or schedules a ten-minute snooze, then reports success and offers undo only for a completed status update.
   // Parameters:
@@ -1019,7 +929,7 @@ class _MedBuddyAppState extends State<MedBuddyApp>
     }
     final viewModel = navigator.context.read<MedBuddyViewModel>();
     final language = viewModel.userSetting.language;
-    final isEnglish = language.trim().toLowerCase().startsWith('en');
+    final isEnglish = viewModel.userSetting.isEnglish;
     var succeeded = false;
     var canReview = false;
 

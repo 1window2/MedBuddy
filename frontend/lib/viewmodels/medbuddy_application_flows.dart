@@ -26,17 +26,8 @@ extension MedBuddyApplicationFlows on MedBuddyViewModel {
   // - 없음.
   // 반환값:
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
-  Future<void> refreshMedicationOverview() async {
-    await Future.wait([
-      loadMedicationReminderSettings(notifyAfterLoad: false),
-      fetchTodayMedicationInfo(),
-    ]);
-    await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
-    _scheduleRefreshedAt =
-        _schedules.lastLoadSucceeded && _reminders.lastLoadSucceeded
-        ? DateTime.now()
-        : null;
-  }
+  Future<void> refreshMedicationOverview() =>
+      _refreshScheduleAndReminders(fetchTodayMedicationInfo);
 
   // 함수이름: refreshMedicationSchedule
   // 함수역할: 알림 설정과 오늘 전체 일정을 함께 조회하고 최신 일정으로 알림 예약을 동기화한다.
@@ -62,16 +53,28 @@ extension MedBuddyApplicationFlows on MedBuddyViewModel {
     }
     // 실패 화면의 명시적 재시도는 별도 알림 조회가 끝나기 전에도 허용한다.
     late final Future<void> refresh;
-    refresh = _refreshMedicationSchedule().whenComplete(() {
+    refresh = _refreshScheduleAndReminders(
+      fetchTodayMedicationSchedule,
+    ).whenComplete(() {
       if (identical(_scheduleRefresh, refresh)) _scheduleRefresh = null;
     });
     return _scheduleRefresh = refresh;
   }
 
-  Future<void> _refreshMedicationSchedule() async {
+  // 함수이름: _refreshScheduleAndReminders
+  // 함수역할:
+  // - 알림 설정과 fetch가 고른 오늘 일정을 함께 조회하고, 일정이 최신이면 로컬 알림 예약을 동기화한다.
+  // - 두 조회가 모두 성공했을 때만 최근 조회 재사용 기준 시각을 남기고, 아니면 지운다.
+  // 매개변수:
+  // - fetch (Future<void> Function()): 오늘 복약 요약 또는 전체 일정을 불러올 조회 함수.
+  // 반환값:
+  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  Future<void> _refreshScheduleAndReminders(
+    Future<void> Function() fetch,
+  ) async {
     await Future.wait([
       loadMedicationReminderSettings(notifyAfterLoad: false),
-      fetchTodayMedicationSchedule(),
+      fetch(),
     ]);
     await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
     _scheduleRefreshedAt =

@@ -764,4 +764,192 @@ void main() {
       'provider-sign-out',
     ]);
   });
+
+  // Function Name: testWidgets callback
+  // Description:
+  // - Expected behavior: a schedule notification delivered while the app is still starting, before
+  //   the root navigator exists, opens the dose screen once the first frame is built.
+  // Parameters:
+  // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
+  // Returns:
+  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  testWidgets('a cold-start schedule notification opens the dose screen', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final navigatorKey = GlobalKey<NavigatorState>();
+    NavigatorState? navigatorAtDelivery;
+    var delivered = false;
+
+    await tester.pumpWidget(
+      MedBuddyApp(
+        navigatorKey: navigatorKey,
+        // Function Name: notificationSelectionRegistrar callback
+        // Description:
+        // - Deliver the launch notification as soon as the application registers its handler.
+        // Parameters:
+        // - handler (MedicationNotificationSelectionHandler?): Selection handler registered by the
+        //   application; null when it is removed.
+        // Returns:
+        // - No value; the callback completes after delivering the selection once.
+        notificationSelectionRegistrar: (handler) {
+          if (handler == null || delivered) return;
+          delivered = true;
+          navigatorAtDelivery = navigatorKey.currentState;
+          handler(
+            const MedicationNotificationSelection(
+              destination: MedicationNotificationDestination.schedule,
+              slotKey: 'morning',
+            ),
+          );
+        },
+        viewModelFactory: () => MedBuddyViewModel(
+          checkSchedule: _EmptyCheckSchedule(),
+          setNotification: EmptySetNotification(),
+          manageUserSetting: ManageUserSetting(useRemotePersistence: false),
+          notificationService: RecordingNotificationService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(delivered, isTrue);
+    expect(navigatorAtDelivery, isNull);
+    expect(find.byType(CheckScheduleUI), findsOneWidget);
+    expect(
+      tester.widget<CheckScheduleUI>(find.byType(CheckScheduleUI)).initialSlotKey,
+      'morning',
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 30));
+  });
+
+  // Function Name: testWidgets callback
+  // Description:
+  // - Expected behavior: a "taken" notification action delivered before the root navigator exists
+  //   records the whole dose slot once the first frame is built.
+  // Parameters:
+  // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
+  // Returns:
+  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  testWidgets('a cold-start taken action records the dose slot', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final navigatorKey = GlobalKey<NavigatorState>();
+    final schedule = _RecordingCheckSchedule();
+    NavigatorState? navigatorAtDelivery;
+    var delivered = false;
+
+    await tester.pumpWidget(
+      MedBuddyApp(
+        navigatorKey: navigatorKey,
+        // Function Name: notificationSelectionRegistrar callback
+        // Description:
+        // - Deliver the launch notification action as soon as the application registers its handler.
+        // Parameters:
+        // - handler (MedicationNotificationSelectionHandler?): Selection handler registered by the
+        //   application; null when it is removed.
+        // Returns:
+        // - No value; the callback completes after delivering the selection once.
+        notificationSelectionRegistrar: (handler) {
+          if (handler == null || delivered) return;
+          delivered = true;
+          navigatorAtDelivery = navigatorKey.currentState;
+          handler(
+            MedicationNotificationSelection(
+              destination: MedicationNotificationDestination.schedule,
+              slotKey: 'evening',
+              notificationId: 29,
+              action: MedicationNotificationAction.markSlotTaken,
+              scheduleDate: DateTime.now(),
+            ),
+          );
+        },
+        viewModelFactory: () => MedBuddyViewModel(
+          checkSchedule: schedule,
+          setNotification: EmptySetNotification(),
+          manageUserSetting: ManageUserSetting(useRemotePersistence: false),
+          notificationService: RecordingNotificationService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(delivered, isTrue);
+    expect(navigatorAtDelivery, isNull);
+    expect(schedule.updatedSlotKey, 'evening');
+    expect(schedule.updatedStatus, isTrue);
+    expect(find.byType(CheckScheduleUI), findsNothing);
+  });
+
+  // Function Name: testWidgets callback
+  // Description:
+  // - Expected behavior: a notification delivered before the root navigator exists is dropped when
+  //   another account signs in before the first frame, for both an open and a "taken" action.
+  // Parameters:
+  // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
+  // Returns:
+  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  for (final action in [
+    MedicationNotificationAction.open,
+    MedicationNotificationAction.markSlotTaken,
+  ]) {
+    testWidgets(
+      'a cold-start ${action.name} notification is dropped after an account change',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final navigatorKey = GlobalKey<NavigatorState>();
+        final schedule = _RecordingCheckSchedule();
+        final authenticationControl = AuthenticationControl.development();
+        addTearDown(authenticationControl.dispose);
+        final firstAccount = authenticationControl.session!.userHash;
+        var delivered = false;
+
+        await tester.pumpWidget(
+          MedBuddyApp(
+            navigatorKey: navigatorKey,
+            authenticationControl: authenticationControl,
+            sessionReminderCleanup: () async {},
+            // Function Name: notificationSelectionRegistrar callback
+            // Description:
+            // - Deliver the launch notification, then sign another account in before the first
+            //   frame runs the deferred navigation.
+            // Parameters:
+            // - handler (MedicationNotificationSelectionHandler?): Selection handler registered by
+            //   the application; null when it is removed.
+            // Returns:
+            // - No value; the callback completes after the selection and the account change.
+            notificationSelectionRegistrar: (handler) {
+              if (handler == null || delivered) return;
+              delivered = true;
+              handler(
+                MedicationNotificationSelection(
+                  destination: MedicationNotificationDestination.schedule,
+                  slotKey: 'evening',
+                  notificationId: 29,
+                  action: action,
+                  scheduleDate: DateTime.now(),
+                ),
+              );
+              authenticationControl.establishSessionForTest('another-account');
+            },
+            viewModelFactory: () => MedBuddyViewModel(
+              checkSchedule: schedule,
+              setNotification: EmptySetNotification(),
+              manageUserSetting: ManageUserSetting(useRemotePersistence: false),
+              notificationService: RecordingNotificationService(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(delivered, isTrue);
+        expect(authenticationControl.session?.userHash, isNot(firstAccount));
+        expect(find.byType(CheckScheduleUI), findsNothing);
+        expect(navigatorKey.currentState?.canPop(), isFalse);
+        expect(schedule.updatedSlotKey, isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(seconds: 30));
+      },
+    );
+  }
 }
