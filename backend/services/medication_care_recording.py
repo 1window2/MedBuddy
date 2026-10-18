@@ -1,23 +1,14 @@
 # 파일명: medication_care_recording.py
 # 역할: 기존 완료 API와 날짜별 정정 API의 복용 기록·감사 이력을 일관되게 저장한다.
 
-from datetime import UTC, datetime
+from datetime import datetime
 import json
 
 from sqlalchemy.orm import Session
 
 from entities.medication_care_entity import _MedicationCareAudit
 from entities.medication_completion_entity import _MedicationCompletion
-from entities.user_account_entity import utc_now
-
-
-# 함수이름: iso_utc
-# 함수역할: DB의 UTC naive 시각을 명시적인 UTC ISO 문자열로 응답한다.
-# 매개변수: value: DB 시각. 반환값: ISO 문자열 또는 None.
-def iso_utc(value: datetime | None) -> str | None:
-    if value is None:
-        return None
-    return value.replace(tzinfo=UTC).isoformat() if value.tzinfo is None else value.astimezone(UTC).isoformat()
+from entities.user_account_entity import as_naive_utc, utc_isoformat, utc_now
 
 
 # 함수이름: completion_snapshot
@@ -29,8 +20,8 @@ def completion_snapshot(row: _MedicationCompletion) -> dict[str, object]:
         "schedule_date": row.schedule_date.isoformat(),
         "slot_key": row.slot_key,
         "status": row.report_status or ("taken" if row.completed else "unrecorded"),
-        "actual_taken_at": iso_utc(row.actual_taken_at),
-        "recorded_at": iso_utc(row.recorded_at or row.completed_at),
+        "actual_taken_at": utc_isoformat(row.actual_taken_at),
+        "recorded_at": utc_isoformat(row.recorded_at or row.completed_at),
         "reason": row.reason or "",
         "revision": row.revision or 0,
     }
@@ -51,9 +42,7 @@ def apply_completion_report(
     row.completed = status == "taken"
     row.completed_at = now if row.completed else None
     row.actual_taken_at = (
-        actual_taken_at.replace(tzinfo=UTC).replace(tzinfo=None)
-        if actual_taken_at is not None and actual_taken_at.tzinfo is None
-        else actual_taken_at.astimezone(UTC).replace(tzinfo=None) if actual_taken_at else None
+        as_naive_utc(actual_taken_at) if actual_taken_at is not None else None
     )
     row.recorded_at = now
     row.reason = reason

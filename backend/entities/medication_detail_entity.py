@@ -1,12 +1,28 @@
 # File Name: medication_detail_entity.py
 # Role: Defines medication detail fields, API aliases and localized voice-guide text extraction.
 
+import re
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import Column, DateTime, Integer, String, Text, func
 
 from core.database import Base
+
+_CATALOG_NAME_WHITESPACE = re.compile(r"\s+")
+
+
+# Function Name: normalize_catalog_item_name
+# Description:
+# - Builds the catalog key stored in normalized_item_name: all whitespace removed and lowercased.
+# - The catalog sync writes this key and the local lookups read the indexed column with it, so
+#   every writer and reader must use this one rule.
+# Parameters:
+# - name (str): Medication name before catalog-key normalization.
+# Returns:
+# - Normalized catalog name; an empty string when the name has only whitespace.
+def normalize_catalog_item_name(name: str) -> str:
+    return _CATALOG_NAME_WHITESPACE.sub("", name).strip().lower()
 
 
 # Class Name: MedicationDetail

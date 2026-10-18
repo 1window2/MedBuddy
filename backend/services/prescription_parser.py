@@ -129,6 +129,24 @@ def normalize_text(text: str) -> str:
     return " ".join(text.split())
 
 
+# Function Name: strip_markdown_json_fence
+# Description:
+# - Removes optional Markdown JSON fences and surrounding whitespace from AI model output.
+# Parameters:
+# - response_text (str): Raw AI response text before JSON fence removal and decoding.
+# Returns:
+# - Trimmed JSON text ready for decoding.
+def strip_markdown_json_fence(response_text: str) -> str:
+    cleaned_text = response_text.strip()
+    if cleaned_text.startswith("```json"):
+        cleaned_text = cleaned_text[7:]
+    if cleaned_text.startswith("```"):
+        cleaned_text = cleaned_text[3:]
+    if cleaned_text.endswith("```"):
+        cleaned_text = cleaned_text[:-3]
+    return cleaned_text.strip()
+
+
 # Function Name: normalize_date
 # Description:
 # - Locate the first year-month-day pattern and validate it as an actual calendar date.

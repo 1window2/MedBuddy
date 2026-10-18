@@ -15,20 +15,11 @@ from sqlalchemy import (
 )
 
 from core.database import Base
-from entities.user_account_entity import _UserAccount, utc_now  # noqa: F401
-
-
-# Function Name: _as_naive_utc
-# Description:
-# - Converts aware timestamps to UTC and removes timezone metadata; naive timestamps are already treated as UTC.
-# Parameters:
-# - value (datetime): Timestamp to normalize; naive inputs are already treated as UTC.
-# Returns:
-# - Naive UTC datetime.
-def _as_naive_utc(value: datetime) -> datetime:
-    if value.tzinfo is None:
-        return value
-    return value.astimezone(UTC).replace(tzinfo=None)
+from entities.user_account_entity import (  # noqa: F401
+    _UserAccount,
+    as_naive_utc,
+    utc_now,
+)
 
 
 # 클래스명: _PatientCaregiverLink
@@ -123,8 +114,8 @@ class PatientLinkCode(BaseModel):
     # Returns:
     # - True when the expiration is at or before the comparison time.
     def isExpired(self, now: datetime | None = None) -> bool:
-        comparison_time = _as_naive_utc(now) if now is not None else utc_now()
-        return _as_naive_utc(self.expires_at) <= comparison_time
+        comparison_time = as_naive_utc(now) if now is not None else utc_now()
+        return as_naive_utc(self.expires_at) <= comparison_time
 
     # Function Name: to_response_dict
     # Description:
@@ -134,7 +125,7 @@ class PatientLinkCode(BaseModel):
     # Returns:
     # - Patient scope, code and ISO-formatted expiration.
     def to_response_dict(self) -> dict[str, str]:
-        expires_at_utc = _as_naive_utc(self.expires_at).replace(tzinfo=UTC)
+        expires_at_utc = as_naive_utc(self.expires_at).replace(tzinfo=UTC)
         return {
             "patient_hash": self.patient_hash,
             "patient_code": self.code,

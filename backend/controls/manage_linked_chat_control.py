@@ -4,7 +4,7 @@
 """활성 환자·보호자 연동 안에서 채팅 기록을 관리한다."""
 
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, timedelta
 
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
@@ -39,7 +39,7 @@ from entities.medication_schedule_entity import (
 )
 from entities.patient_caregiver_link_entity import _PatientCaregiverLink
 from entities.saved_medication_entity import _SavedMedication
-from entities.user_account_entity import utc_now
+from entities.user_account_entity import utc_isoformat, utc_now
 from entities.user_setting_entity import _UserSetting
 from repositories.chat_message_repository import ChatMessageRepository
 from repositories.patient_caregiver_link_repository import (
@@ -49,21 +49,6 @@ from repositories.pharmacy_catalog_repository import PharmacyCatalogRepository
 from repositories.saved_medication_repository import SavedMedicationRepository
 from services.medication_course_policy import MedicationCoursePolicy
 from services.medication_dosing_mode import medication_dosing_mode
-
-
-# 함수이름: utc_iso
-# 함수역할:
-# - 시간대 유무와 관계없이 날짜 시각을 UTC ISO 문자열로 변환한다.
-# 매개변수:
-# - value (datetime | None): UTC ISO 문자열로 변환할 시각. 시간대 정보가 없으면 UTC로 간주하고, None은 그대로 반환한다.
-# 반환값:
-# - UTC 오프셋을 포함한 ISO 시각 문자열 또는 입력이 없을 때 None.
-def utc_iso(value: datetime | None) -> str | None:
-    """시간대 유무와 관계없이 날짜 시각을 UTC ISO 문자열로 변환한다."""
-    if value is None:
-        return None
-    utc_value = value.replace(tzinfo=UTC) if value.tzinfo is None else value
-    return utc_value.astimezone(UTC).isoformat()
 
 
 # 클래스명: ChatSendResult
@@ -979,7 +964,7 @@ class ManageLinkedChat:
                     "today_hours": self._pharmacy_today_hours(pharmacy),
                     "latitude": pharmacy.latitude,
                     "longitude": pharmacy.longitude,
-                    "source_updated_at": utc_iso(pharmacy.source_updated_at),
+                    "source_updated_at": utc_isoformat(pharmacy.source_updated_at),
                 }
             }
         raise HTTPException(status_code=400, detail="Unsupported chat message kind.")

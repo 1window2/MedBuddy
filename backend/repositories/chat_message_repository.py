@@ -5,7 +5,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import func
+from sqlalchemy import ColumnElement, func
 from sqlalchemy.orm import Session
 
 from entities.chat_message_entity import _ChatMessage
@@ -134,12 +134,7 @@ class ChatMessageRepository:
     ) -> tuple[int, int | None]:
         """상대가 보낸 미확인 메시지를 지정한 메시지까지 읽음 처리한다."""
         query = self.db.query(_ChatMessage).filter(
-            _ChatMessage.link_id == link_id,
-            _ChatMessage.sender_hash != reader_hash,
-            _ChatMessage.read_at.is_(None),
-            _ChatMessage.deleted_for_everyone_at.is_(None),
-            (_ChatMessage.patient_deleted_at if is_patient
-             else _ChatMessage.caregiver_deleted_at).is_(None),
+            *self._unread_incoming_filters(link_id, reader_hash, is_patient)
         )
         if through_message_id is not None:
             query = query.filter(_ChatMessage.id <= through_message_id)
@@ -173,14 +168,30 @@ class ChatMessageRepository:
     ) -> tuple[int, int | None]:
         count, first_id = (
             self.db.query(func.count(_ChatMessage.id), func.min(_ChatMessage.id))
-            .filter(
-                _ChatMessage.link_id == link_id,
-                _ChatMessage.sender_hash != reader_hash,
-                _ChatMessage.read_at.is_(None),
-                _ChatMessage.deleted_for_everyone_at.is_(None),
-                (_ChatMessage.patient_deleted_at if is_patient
-                 else _ChatMessage.caregiver_deleted_at).is_(None),
-            )
+            .filter(*self._unread_incoming_filters(link_id, reader_hash, is_patient))
             .one()
         )
         return int(count), int(first_id) if first_id is not None else None
+
+    # 함수이름: _unread_incoming_filters
+    # 함수역할:
+    # - 읽음 처리와 미확인 집계가 같은 기준을 쓰도록 상대가 보낸 미확인 메시지 조건을 만든다.
+    # - 모두에게 삭제된 메시지와 읽는 사람 쪽에서 숨긴 메시지는 제외한다.
+    # 매개변수:
+    # - link_id (int): 환자와 보호자 간 연동 ID.
+    # - reader_hash (str): 메시지를 읽는 참여자의 소유권 해시.
+    # - is_patient (bool): 환자 기준 삭제 여부를 확인할지; False이면 보호자 기준.
+    # 반환값:
+    # - 쿼리 filter에 그대로 펼쳐 넣을 SQL 조건 다섯 개.
+    @staticmethod
+    def _unread_incoming_filters(
+        link_id: int, reader_hash: str, is_patient: bool,
+    ) -> tuple[ColumnElement[bool], ...]:
+        return (
+            _ChatMessage.link_id == link_id,
+            _ChatMessage.sender_hash != reader_hash,
+            _ChatMessage.read_at.is_(None),
+            _ChatMessage.deleted_for_everyone_at.is_(None),
+            (_ChatMessage.patient_deleted_at if is_patient
+             else _ChatMessage.caregiver_deleted_at).is_(None),
+        )

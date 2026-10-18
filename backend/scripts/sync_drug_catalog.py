@@ -10,7 +10,6 @@ import json
 import logging
 import math
 from pathlib import Path
-import re
 import sys
 from typing import Any, Iterator
 from uuid import uuid4
@@ -30,7 +29,11 @@ from boundaries.public_drug_api_boundary import (
 from boundaries.pill_identification_boundary import MFDSPillAPI
 from core.database import SessionLocal
 from entities import medication_detail_entity  # noqa: F401
-from entities.medication_detail_entity import _DrugApprovalInfo, _DrugBasicInfo
+from entities.medication_detail_entity import (
+    _DrugApprovalInfo,
+    _DrugBasicInfo,
+    normalize_catalog_item_name,
+)
 from entities.pill_identification_entity import (
     PillCatalogReconciliationReport,
     PillIdentificationReference,
@@ -134,8 +137,6 @@ def _exclusive_catalog_sync_lock(db: Session) -> Iterator[None]:
 # Attributes:
 # - db (Session): SQLAlchemy Session used for persistence operations.
 class _DrugCatalogStore:
-    _WHITESPACE_PATTERN = re.compile(r"\s+")
-
     # Function Name: __init__
     # Description:
     # - Binds catalog upserts, pruning and reconciliation counts to one shared transaction session.
@@ -454,7 +455,7 @@ class _DrugCatalogStore:
     # - Normalized lowercase name without whitespace.
     @classmethod
     def normalize_name(cls, name: str) -> str:
-        return cls._WHITESPACE_PATTERN.sub("", name).strip().lower()
+        return normalize_catalog_item_name(name)
 
     # Function Name: _resolve_basic_target
     # Description:

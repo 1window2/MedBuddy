@@ -25,6 +25,7 @@ from services.prescription_parser import (
     INFO_UNAVAILABLE,
     PrescriptionAnalysisFormatError,
     normalize_prescription_candidates,
+    strip_markdown_json_fence,
 )
 
 logger = logging.getLogger(__name__)
@@ -188,7 +189,7 @@ class InputPrescription:
         self,
         response_text: str,
     ) -> dict[str, object]:
-        cleaned_text = self._clean_response_text(response_text)
+        cleaned_text = strip_markdown_json_fence(response_text)
 
         try:
             raw_data = json.loads(cleaned_text)
@@ -261,23 +262,6 @@ class InputPrescription:
         for candidate in candidates.candidates:
             analysis_result.addMedicationCandidate(candidate)
         return analysis_result
-
-    # Function Name: _clean_response_text
-    # Description:
-    # - Removes markdown fences and surrounding whitespace from model output.
-    # Parameters:
-    # - response_text (str): Raw Gemini response text.
-    # Returns:
-    # - JSON-only string.
-    def _clean_response_text(self, response_text: str) -> str:
-        cleaned_text = response_text.strip()
-        if cleaned_text.startswith("```json"):
-            cleaned_text = cleaned_text[7:]
-        if cleaned_text.startswith("```"):
-            cleaned_text = cleaned_text[3:]
-        if cleaned_text.endswith("```"):
-            cleaned_text = cleaned_text[:-3]
-        return cleaned_text.strip()
 
     # Function Name: _apply_secondary_masking
     # Description:

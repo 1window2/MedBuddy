@@ -4,9 +4,9 @@
 import logging
 import re
 import sqlite3
-from datetime import timedelta
+from datetime import datetime, timedelta
 
-from sqlalchemy import case, or_, update
+from sqlalchemy import ColumnElement, case, or_, update
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import DBAPIError
 
@@ -96,6 +96,37 @@ class ProcessCaregiverAlertOutbox:
             push_boundary=push_boundary,
         )
 
+    # 함수이름: _claimable_condition
+    # 함수역할:
+    # - 대기·실패 상태로 재시도 시각이 된 요청과 처리 중에 시간 제한을 넘겨 멈춘 요청을 고르는 조건을 만든다.
+    # - 후보 조회와 선점 갱신이 같은 기준을 쓰게 한다.
+    # 매개변수:
+    # - now (datetime): 재시도 가능 시각과 처리 중 시간 제한을 비교할 기준 UTC 시각.
+    # 반환값:
+    # - 지금 선점할 수 있는 아웃박스 행을 고르는 SQL 조건.
+    @staticmethod
+    def _claimable_condition(now: datetime) -> ColumnElement[bool]:
+        stale_before = now - _PROCESSING_TIMEOUT
+        return or_(
+            (
+                _CaregiverAlertOutbox.status.in_(
+                    (
+                        CAREGIVER_ALERT_STATUS_PENDING,
+                        CAREGIVER_ALERT_STATUS_FAILED,
+                    )
+                )
+                & (_CaregiverAlertOutbox.available_at <= now)
+            ),
+            (
+                _CaregiverAlertOutbox.status
+                == CAREGIVER_ALERT_STATUS_PROCESSING
+            )
+            & (
+                _CaregiverAlertOutbox.processing_started_at
+                <= stale_before
+            ),
+        )
+
     # 함수이름: processDue
     # 함수역할:
     # - 지금 처리 가능한 알림 요청을 제한된 개수만큼 전송한다.
@@ -105,32 +136,11 @@ class ProcessCaregiverAlertOutbox:
     # - 처리 결과별 요청 개수
     def processDue(self, limit: int = 50) -> dict[str, int]:
         now = utc_now()
-        stale_before = now - _PROCESSING_TIMEOUT
         candidate_ids = [
             int(row.id)
             for row in (
                 self.db.query(_CaregiverAlertOutbox.id)
-                .filter(
-                    or_(
-                        (
-                            _CaregiverAlertOutbox.status.in_(
-                                (
-                                    CAREGIVER_ALERT_STATUS_PENDING,
-                                    CAREGIVER_ALERT_STATUS_FAILED,
-                                )
-                            )
-                            & (_CaregiverAlertOutbox.available_at <= now)
-                        ),
-                        (
-                            _CaregiverAlertOutbox.status
-                            == CAREGIVER_ALERT_STATUS_PROCESSING
-                        )
-                        & (
-                            _CaregiverAlertOutbox.processing_started_at
-                            <= stale_before
-                        ),
-                    )
-                )
+                .filter(self._claimable_condition(now))
                 .order_by(_CaregiverAlertOutbox.created_at.asc())
                 .limit(max(1, min(limit, 200)))
                 .all()
@@ -153,30 +163,11 @@ class ProcessCaregiverAlertOutbox:
     # - 전송 결과를 나타내는 sent, failed 또는 skipped 문자열.
     def processOne(self, outbox_id: int) -> str:
         now = utc_now()
-        stale_before = now - _PROCESSING_TIMEOUT
         claim = self.db.execute(
             update(_CaregiverAlertOutbox)
             .where(
                 _CaregiverAlertOutbox.id == outbox_id,
-                or_(
-                    (
-                        _CaregiverAlertOutbox.status.in_(
-                            (
-                                CAREGIVER_ALERT_STATUS_PENDING,
-                                CAREGIVER_ALERT_STATUS_FAILED,
-                            )
-                        )
-                        & (_CaregiverAlertOutbox.available_at <= now)
-                    ),
-                    (
-                        _CaregiverAlertOutbox.status
-                        == CAREGIVER_ALERT_STATUS_PROCESSING
-                    )
-                    & (
-                        _CaregiverAlertOutbox.processing_started_at
-                        <= stale_before
-                    ),
-                ),
+                self._claimable_condition(now),
             )
             .values(
                 status=CAREGIVER_ALERT_STATUS_PROCESSING,

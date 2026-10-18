@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -361,6 +362,87 @@ class SetNotificationTest(unittest.TestCase):
         )
         row = self.db.query(_MedicationAlarm).one()
         self.assertEqual((row.hour, row.minute, row.enabled), (9, 15, False))
+
+    # Function Name: test_conflict_without_a_reloadable_row_is_a_conflict_error
+    # Description:
+    # - When the unique-constraint conflict leaves no row to reload, both the save and the
+    #   disable recovery paths answer HTTP 409 with the same conflict detail.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_conflict_without_a_reloadable_row_is_a_conflict_error(self) -> None:
+        conflict = IntegrityError("INSERT", {}, Exception("unique"))
+        for name, call in (
+            ("save", lambda: self.control.saveNotificationSetting("patient-a", "morning", 9, 15)),
+            ("disable", lambda: self.control.disableAlarmSetting("patient-a", "morning")),
+        ):
+            with self.subTest(path=name):
+                with (
+                    patch.object(self.control, "_find_setting", return_value=None),
+                    patch.object(self.db, "commit", side_effect=conflict),
+                    self.assertRaises(HTTPException) as context,
+                ):
+                    call()
+
+                self.assertEqual(context.exception.status_code, 409)
+                self.assertEqual(
+                    context.exception.detail,
+                    "Medication alarm conflict could not be resolved.",
+                )
+
+    # Function Name: test_failed_conflict_recovery_is_a_sanitized_server_error
+    # Description:
+    # - When the commit of the reloaded row fails during conflict recovery, the save path
+    #   answers HTTP 500 "could not be saved" and the disable path "could not be disabled",
+    #   each logging its own recovery-failure line with the error type only.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_failed_conflict_recovery_is_a_sanitized_server_error(self) -> None:
+        self.db.add(
+            _MedicationAlarm(
+                patient_hash="patient-a",
+                slot_key="morning",
+                hour=6,
+                minute=0,
+                enabled=False,
+            )
+        )
+        self.db.commit()
+        cases = (
+            (
+                "save",
+                lambda: self.control.saveNotificationSetting("patient-a", "morning", 9, 15),
+                "Medication alarm could not be saved.",
+                "Medication alarm conflict recovery failed: RuntimeError",
+            ),
+            (
+                "disable",
+                lambda: self.control.disableAlarmSetting("patient-a", "morning"),
+                "Medication alarm could not be disabled.",
+                "Medication alarm disable conflict recovery failed: RuntimeError",
+            ),
+        )
+        for name, call, detail, log_line in cases:
+            with self.subTest(path=name):
+                commit_failures = [
+                    IntegrityError("INSERT", {}, Exception("unique")),
+                    RuntimeError("sensitive"),
+                ]
+                with (
+                    self._miss_first_lookup(),
+                    patch.object(self.db, "commit", side_effect=commit_failures),
+                    self.assertLogs("controls.set_notification_control", "ERROR") as logs,
+                    self.assertRaises(HTTPException) as context,
+                ):
+                    call()
+
+                self.assertEqual(context.exception.status_code, 500)
+                self.assertEqual(context.exception.detail, detail)
+                self.assertIn(log_line, "\n".join(logs.output))
+                self.assertNotIn("sensitive", "\n".join(logs.output))
 
 
 if __name__ == "__main__":

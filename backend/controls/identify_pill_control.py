@@ -11,6 +11,7 @@ from boundaries.pill_identification_boundary import (
     MFDSPillCatalogBoundary,
     PillVisionBoundary,
 )
+from core.bounded_thread_work import run_thread_keeping_capacity
 from entities.pill_identification_entity import (
     MAX_RETURNED_PILL_CANDIDATES,
     MultiplePillIdentificationResult,
@@ -178,7 +179,9 @@ class IdentifyPill:
     ) -> PillIdentificationResult:
         """동점인 정답 후보가 기본 표시 개수 때문에 누락되지 않게 한다."""
 
-        ranked_candidates = await self._rank_candidates_with_capacity(
+        ranked_candidates = await run_thread_keeping_capacity(
+            self._ranking_semaphore,
+            self._rank_candidates,
             features,
             catalog,
             MAX_RETURNED_PILL_CANDIDATES + 1,
@@ -197,63 +200,6 @@ class IdentifyPill:
             requires_confirmation=True,
             has_more_candidates=len(eligible) > MAX_RETURNED_PILL_CANDIDATES,
         )
-
-    # Function Name: _rank_candidates_with_capacity
-    # Description:
-    # - Keeps shared CPU capacity reserved until a detached worker exits.
-    # Parameters:
-    # - features (PillVisualFeatures): Observed shape, colors, imprints, score lines and image quality.
-    # - catalog (tuple[PillCatalogEntry, ...]): Immutable MFDS pill-reference catalog used for ranking.
-    # - ranking_limit (int): Maximum matches retained by this ranking operation.
-    # Returns:
-    # - Ranked candidates after acquiring the shared capacity permit; caller cancellation retains the permit until the worker completes.
-    async def _rank_candidates_with_capacity(
-        self,
-        features: PillVisualFeatures,
-        catalog: tuple[PillCatalogEntry, ...],
-        ranking_limit: int,
-    ) -> list[PillIdentificationCandidate]:
-        """Keeps shared CPU capacity reserved until a detached worker exits."""
-
-        await self._ranking_semaphore.acquire()
-        worker = asyncio.create_task(
-            asyncio.to_thread(
-                self._rank_candidates,
-                features,
-                catalog,
-                ranking_limit,
-            )
-        )
-        release_on_exit = True
-        try:
-            try:
-                return await asyncio.shield(worker)
-            except asyncio.CancelledError:
-                worker.add_done_callback(self._release_ranking_capacity)
-                release_on_exit = False
-                raise
-        finally:
-            if release_on_exit:
-                self._ranking_semaphore.release()
-
-    # Function Name: _release_ranking_capacity
-    # Description:
-    # - Consumes a detached ranking result and releases its shared slot.
-    # Parameters:
-    # - worker (asyncio.Task[list[PillIdentificationCandidate]]): Background ranking task that retains the concurrency permit until completion.
-    # Returns:
-    # - None.
-    def _release_ranking_capacity(
-        self,
-        worker: asyncio.Task[list[PillIdentificationCandidate]],
-    ) -> None:
-        """Consumes a detached ranking result and releases its shared slot."""
-
-        try:
-            worker.exception()
-        except asyncio.CancelledError:
-            pass
-        self._ranking_semaphore.release()
 
     # Function Name: _rank_candidates
     # Description:

@@ -473,10 +473,7 @@ async def get_registered_principal(
             else:
                 register_scope(db, principal.user_hash)
         except AccountDeletionPendingError as exc:
-            is_account_deletion_retry = (
-                request.method.upper() == "DELETE"
-                and request.url.path == "/api/v1/auth/account-data"
-            )
+            is_account_deletion_retry = _is_account_deletion_request(request)
             if not is_account_deletion_retry:
                 raise HTTPException(
                     status_code=410,
@@ -492,6 +489,14 @@ async def get_registered_principal(
 
         # Step 3: Yield the principal; the scope handles every cleanup path.
         yield principal
+
+
+# App Check first, then the registered account: the route-level guard shared by the app's
+# authenticated routers. Each router copies it into its own dependency list.
+AUTHENTICATED_APP_DEPENDENCIES = (
+    Depends(verify_app_check_token),
+    Depends(get_registered_principal),
+)
 
 
 # 함수이름: get_authenticated_app_principal

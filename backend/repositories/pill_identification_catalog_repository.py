@@ -1,7 +1,7 @@
 # File Name: pill_identification_catalog_repository.py
 # Role: Persists public MFDS pill-identification metadata in the shared DB.
 
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -11,6 +11,7 @@ from entities.pill_identification_entity import (
     PillCatalogEntry,
     PillIdentificationReference,
 )
+from entities.user_account_entity import utc_now
 
 
 # Function Name: open_pill_catalog_session
@@ -107,7 +108,7 @@ class PillIdentificationCatalogRepository:
         if oldest_update is None:
             return False
 
-        cutoff = datetime.now(UTC).replace(tzinfo=None) - max_age
+        cutoff = utc_now() - max_age
         return oldest_update >= cutoff
 
     # Function Name: list_item_sequences

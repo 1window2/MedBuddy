@@ -8,9 +8,8 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.dependencies import (
+    AUTHENTICATED_APP_DEPENDENCIES,
     get_check_nearby_pharmacy,
-    get_registered_principal,
-    verify_app_check_token,
 )
 from boundaries.pharmacy_api_boundary import (
     PharmacyApiResponseError,
@@ -22,12 +21,7 @@ from controls.check_nearby_pharmacy_control import (
 )
 from schemas.pharmacy import NearbyPharmacyItem, NearbyPharmacyResponse
 
-router = APIRouter(
-    dependencies=[
-        Depends(verify_app_check_token),
-        Depends(get_registered_principal),
-    ]
-)
+router = APIRouter(dependencies=list(AUTHENTICATED_APP_DEPENDENCIES))
 
 
 # Function Name: get_nearby_pharmacies

@@ -1,7 +1,6 @@
 # 파일명: data_maintenance.py
 # 역할: 만료 데이터와 관계가 끊긴 데이터를 주기적으로 정리한다.
 
-import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 
@@ -142,6 +141,9 @@ class DataMaintenanceService:
 # - service (DataMaintenanceService): 일괄 정리 서비스.
 # - _task / _stop_event: 반복 태스크와 종료 신호.
 class PeriodicDataMaintenanceRunner(BackgroundLoopRunner):
+    _cycle_logger = logger
+    _cycle_failure_message = "Periodic data cleanup cycle failed: %s"
+
     # 함수이름: __init__
     # 함수역할:
     # - 정리 세션 생성기와 서비스를 저장하고 반복 태스크의 종료 이벤트를 준비한다.
@@ -159,30 +161,15 @@ class PeriodicDataMaintenanceRunner(BackgroundLoopRunner):
         self.service = service or DataMaintenanceService()
         super().__init__()
 
-    # 함수이름: _run_loop
+    # 함수이름: _cycle_interval_seconds
     # 함수역할:
-    # - 정리를 별도 스레드에서 한 번 실행한 뒤 설정된 간격이나 종료 신호까지 기다린다.
-    # - 세션 생성·롤백·종료까지 실패한 주기도 기록만 하고 같은 간격으로 다음 주기를 이어간다.
+    # - 정리 주기 사이에 기다릴 설정 간격을 주기마다 설정에서 다시 읽는다.
     # 매개변수:
     # - 없음.
     # 반환값:
-    # - 없음; 종료 이벤트가 설정되면 반복을 마친다.
-    async def _run_loop(self) -> None:
-        while not self._stop_event.is_set():
-            try:
-                await asyncio.to_thread(self._run_once)
-            except Exception as exc:
-                logger.error(
-                    "Periodic data cleanup cycle failed: %s",
-                    type(exc).__name__,
-                )
-            try:
-                await asyncio.wait_for(
-                    self._stop_event.wait(),
-                    timeout=settings.PERIODIC_MAINTENANCE_INTERVAL_SECONDS,
-                )
-            except TimeoutError:
-                continue
+    # - PERIODIC_MAINTENANCE_INTERVAL_SECONDS 설정값(초).
+    def _cycle_interval_seconds(self) -> float:
+        return settings.PERIODIC_MAINTENANCE_INTERVAL_SECONDS
 
     # 함수이름: _run_once
     # 함수역할:

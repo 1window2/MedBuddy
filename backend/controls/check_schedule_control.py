@@ -6,9 +6,6 @@ import logging
 from datetime import date, timedelta
 
 from fastapi import HTTPException
-from sqlalchemy.dialects.postgresql import insert as postgresql_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from boundaries.medication_completion_event_boundary import (
@@ -37,6 +34,9 @@ from entities.patient_caregiver_link_entity import _PatientCaregiverLink
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient_hash
 from entities.saved_medication_entity import _SavedMedication
 from repositories.saved_medication_repository import SavedMedicationRepository
+from services.caregiver_alert_outbox_insert import (
+    insert_caregiver_alert_outbox_if_absent,
+)
 from services.medication_course_policy import MedicationCoursePolicy
 from services.medication_dosing_mode import medication_dosing_mode
 from services.medication_care_recording import apply_completion_report
@@ -681,19 +681,11 @@ class CheckSchedule:
         if caregiver_hash is not None:
             values["caregiver_hash"] = caregiver_hash
             values["event_type"] = CAREGIVER_ALERT_EVENT_LATE_LINK_COMPLETED
-        dialect_name = self.db.get_bind().dialect.name
-        if dialect_name == "postgresql":
-            statement = postgresql_insert(_CaregiverAlertOutbox).values(**values)
-            self.db.execute(
-                statement.on_conflict_do_nothing(index_elements=["event_key"])
-            )
-        elif dialect_name == "sqlite":
-            statement = sqlite_insert(_CaregiverAlertOutbox).values(**values)
-            self.db.execute(
-                statement.on_conflict_do_nothing(index_elements=["event_key"])
-            )
-        else:
-            self._insert_outbox_with_savepoint(values)
+        insert_caregiver_alert_outbox_if_absent(
+            self.db,
+            values,
+            duplicate_logger=logger,
+        )
 
         outbox_row = (
             self.db.query(_CaregiverAlertOutbox)
@@ -713,22 +705,6 @@ class CheckSchedule:
             outbox_row.available_at = utc_now()
             outbox_row.last_error = None
         return outbox_row
-
-    # 함수이름: _insert_outbox_with_savepoint
-    # 함수역할:
-    # - PostgreSQL과 SQLite가 아닌 DB에서도 중복 삽입 오류를 현재 작업 범위로 제한한다.
-    # - 고유 키 충돌 후 바깥 복약 상태 트랜잭션을 계속 사용할 수 있게 유지한다.
-    # 매개변수:
-    # - values (dict[str, str]): 추가할 완료 이벤트의 중복 키·환자·시간대 필드.
-    # 반환값:
-    # - 없음.
-    def _insert_outbox_with_savepoint(self, values: dict[str, str | date]) -> None:
-        try:
-            with self.db.begin_nested():
-                self.db.add(_CaregiverAlertOutbox(**values))
-                self.db.flush()
-        except IntegrityError:
-            logger.debug("A duplicate caregiver alert outbox event was reused.")
 
     # 함수이름: _notify_completion_event_boundary
     # 함수역할:

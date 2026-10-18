@@ -6,9 +6,8 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.dependencies import (
+    AUTHENTICATED_APP_DEPENDENCIES,
     get_check_nearby_hospital,
-    get_registered_principal,
-    verify_app_check_token,
 )
 from boundaries.hospital_api_boundary import (
     HospitalApiBudgetExhaustedError,
@@ -24,7 +23,7 @@ from schemas.hospital import HospitalSearchMode, NearbyHospitalResponse
 # 모든 사용자가 함께 쓰는 병원 API 하루 예산이 바닥났을 때의 안내. 채팅의 병원 공유도 같은 문구를 쓴다.
 HOSPITAL_BUDGET_EXHAUSTED_DETAIL = "오늘 병원 정보를 조회할 수 있는 횟수를 모두 사용했습니다. 내일 다시 시도해주세요."
 
-router = APIRouter(dependencies=[Depends(verify_app_check_token), Depends(get_registered_principal)])
+router = APIRouter(dependencies=list(AUTHENTICATED_APP_DEPENDENCIES))
 
 
 # 기존 인증·앱 검증을 유지하고 외부 장애는 키가 없는 고정 문구로 응답한다.
