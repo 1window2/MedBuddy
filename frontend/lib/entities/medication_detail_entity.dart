@@ -332,7 +332,7 @@ class MedicationDetail {
     if (normalizedName.isNotEmpty) {
       return normalizedName;
     }
-    return _isEnglish(language) ? 'Medication name needs review' : '약품명 확인 필요';
+    return isEnglishLanguage(language) ? 'Medication name needs review' : '약품명 확인 필요';
   }
 
   // 함수이름: medicationEndDate
@@ -444,7 +444,7 @@ class MedicationDetail {
   // 반환값:
   // - List<String>: 약 상세 카드의 복용량, 횟수, 기간, 시점을 앱 언어에 맞게 구성한다.
   List<String> compactDosageGuideLinesForLanguage(String language) {
-    final isEnglish = _isEnglish(language);
+    final isEnglish = isEnglishLanguage(language);
     final lines = <String>[];
     if (isAsNeeded) lines.add(isEnglish ? 'As needed' : '필요시 복용');
     if (dosagePerTime.trim().isNotEmpty) {
@@ -483,7 +483,7 @@ class MedicationDetail {
   // 반환값:
   // - String: 줄바꿈으로 이은 음성 안내 문구.
   String voiceGuideTextForLanguage(String language) {
-    final labels = _isEnglish(language)
+    final labels = isEnglishLanguage(language)
         ? const ['Medication', 'How to take', 'Warning']
         : const ['약 이름', '복용 방법', '주의사항'];
     final values = [itemName.trim(), usageMethod.trim(), warning.trim()];
@@ -518,7 +518,7 @@ class MedicationDetail {
   // - String: 영문 하루 횟수 문구 또는 바꾸지 않은 원문.
   static String _localizedFrequencyValue(String value, String language) {
     final normalizedValue = value.trim();
-    if (!_isEnglish(language)) {
+    if (!isEnglishLanguage(language)) {
       return normalizedValue;
     }
     return englishDailyFrequencyLabel(normalizedValue) ?? normalizedValue;
@@ -534,7 +534,7 @@ class MedicationDetail {
   // - String: 영문 복용 일수 문구 또는 바꾸지 않은 원문.
   static String _localizedDurationValue(String value, String language) {
     final normalizedValue = value.trim();
-    if (!_isEnglish(language)) {
+    if (!isEnglishLanguage(language)) {
       return normalizedValue;
     }
     return englishDurationLabel(medicationDayCountFromText(normalizedValue)) ??
@@ -549,7 +549,7 @@ class MedicationDetail {
   // 반환값:
   // - String: 지원하는 식전·식후·공복·취침 전 문구만 영어로 변환하고 그 외 복용 시점은 그대로 유지한다.
   static String _localizedTiming(String timing, String language) {
-    if (!_isEnglish(language)) {
+    if (!isEnglishLanguage(language)) {
       return timing;
     }
     return switch (timing) {
@@ -561,16 +561,6 @@ class MedicationDetail {
       '취침 전' => 'at bedtime',
       _ => timing,
     };
-  }
-
-  // 함수이름: _isEnglish
-  // 함수역할: 언어 코드가 영어 표시 대상인지 앱 공통 기준으로 확인한다.
-  // 매개변수:
-  // - language (String): 표시·음성 안내에 사용할 언어 코드
-  // 반환값:
-  // - bool: 앱 공통 기준으로 영어이면 true.
-  static bool _isEnglish(String language) {
-    return isEnglishLanguage(language);
   }
 
   // Function Name: _readDosageTiming

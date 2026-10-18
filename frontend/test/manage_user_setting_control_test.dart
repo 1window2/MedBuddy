@@ -575,6 +575,76 @@ void main() {
     await control.requestUserSetting();
     expect(control.lastLookupReachedServer, isFalse);
   });
+
+  // Function Name: test callback
+  // Description:
+  // - Expected behavior: a failed remote save of a full non-default setting writes exactly the
+  //   account-scoped preference keys below, built from the trimmed user hash.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the stored key set is checked and fails the test on mismatch.
+  test('failed save writes exactly the scoped user setting keys', () async {
+    SharedPreferences.setMockInitialValues({});
+    final control = ManageUserSetting(
+      baseUrl: 'http://localhost',
+      userHash: ' usr_pin ',
+      // Function Name: MockClient callback
+      // Description:
+      // - Rejects the remote save so the pending-sync marker stays stored.
+      // Parameters:
+      // - request (http.Request): Intercepted settings save request.
+      // Returns:
+      // - HTTP 500 with a FastAPI error body.
+      client: MockClient((_) async => http.Response('{"detail":"down"}', 500)),
+    );
+    addTearDown(control.dispose);
+
+    final result = await control.saveUserSetting(
+      const UserSetting(
+        fontSize: 20,
+        readingSpeed: 1.2,
+        language: 'en',
+        languageMode: 'system',
+        timeFormat: '12h',
+        homeScheduleSource: 'patients',
+        medicationNotificationsEnabled: false,
+        caregiverNotificationsEnabled: false,
+        chatNotificationsEnabled: false,
+        notificationDetailMode: 'type_only',
+        defaultMorningTime: '07:10',
+        defaultLunchTime: '12:20',
+        defaultEveningTime: '18:30',
+        defaultBedtime: '22:40',
+      ),
+    );
+
+    expect(result.synchronizedWithServer, isFalse);
+    final preferences = await SharedPreferences.getInstance();
+    expect(
+      preferences.getKeys().where((key) => key.startsWith('user_setting_')).toSet(),
+      {
+        'user_setting_usr_pin_font_size',
+        'user_setting_usr_pin_reading_speed',
+        'user_setting_usr_pin_language',
+        'user_setting_usr_pin_language_mode',
+        'user_setting_usr_pin_time_format',
+        'user_setting_usr_pin_home_schedule_source',
+        'user_setting_usr_pin_medication_notifications_enabled',
+        'user_setting_usr_pin_caregiver_notifications_enabled',
+        'user_setting_usr_pin_chat_notifications_enabled',
+        'user_setting_usr_pin_notification_detail_mode',
+        'user_setting_usr_pin_default_morning_time',
+        'user_setting_usr_pin_default_lunch_time',
+        'user_setting_usr_pin_default_evening_time',
+        'user_setting_usr_pin_default_bedtime',
+        'user_setting_usr_pin_pending_sync',
+        'user_setting_usr_pin_latest_intent',
+        'user_setting_usr_pin_server_revision',
+        'user_setting_usr_pin_snapshot',
+      },
+    );
+  });
 }
 
 // 함수이름: _pendingSyncMain

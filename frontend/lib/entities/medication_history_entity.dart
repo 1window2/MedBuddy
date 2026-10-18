@@ -1,6 +1,7 @@
 // 파일명: medication_history_entity.dart
 // 역할: 날짜별 사용자 복약 보고·정정 의도와 서버 응답을 검증한다.
 import 'medication_slot_label.dart';
+import 'medication_schedule_entity.dart';
 
 // 복약 이력의 날짜는 서버 일정과 같은 한국 시간 기준이며 실제 시각은 UTC로 보관한다.
 // 클래스명: MedicationHistoryDates
@@ -208,7 +209,7 @@ class MedicationHistoryEntry {
           (key.startsWith('as_needed:') &&
               MedicationHistoryChange.isUuid(key.substring(10)));
     }
-    return const {'morning', 'lunch', 'evening', 'bedtime'}.contains(key);
+    return medicationScheduleSlotKeys.contains(key);
   }
 }
 

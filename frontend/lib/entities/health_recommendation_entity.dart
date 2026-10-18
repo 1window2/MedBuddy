@@ -1,6 +1,7 @@
 // 파일명: health_recommendation_entity.dart
 // 역할: 건강 관리 추천 API 응답을 화면에서 사용할 모델로 변환한다.
 
+import 'json_value_reader.dart';
 import 'user_setting_entity.dart';
 
 // 클래스명: HealthRecommendation
@@ -48,13 +49,13 @@ class HealthRecommendation {
   }) {
     final isEnglish = isEnglishLanguage(language);
     return HealthRecommendation(
-      dietRecommendation: _readString(
+      dietRecommendation: readJsonTextOr(
         json['diet_recommendation'] ?? json['dietRecommendation'],
         isEnglish
             ? 'Diet recommendation is unavailable.'
             : '식사 추천 정보를 불러오지 못했습니다.',
       ),
-      exerciseRecommendation: _readString(
+      exerciseRecommendation: readJsonTextOr(
         json['exercise_recommendation'] ?? json['exerciseRecommendation'],
         isEnglish
             ? 'Exercise recommendation is unavailable.'
@@ -67,18 +68,6 @@ class HealthRecommendation {
         json['medication_names'] ?? json['medicationNames'],
       ),
     );
-  }
-
-  // 함수이름: _readString
-  // 함수역할: 공백을 정리한 값이 비어 있으면 호출자가 지정한 대체 문자열을 사용한다.
-  // 매개변수:
-  // - value (dynamic): 반환 타입의 값으로 해석할 변환 전 응답 필드
-  // - fallback (String): 값이 없거나 해석 불가할 때 사용할 대체값
-  // 반환값:
-  // - String: 공백 정리한 유효 문자열 또는 지정한 대체 문자열.
-  static String _readString(dynamic value, String fallback) {
-    final text = value?.toString().trim() ?? '';
-    return text.isEmpty ? fallback : text;
   }
 
   // 함수이름: _readStringList

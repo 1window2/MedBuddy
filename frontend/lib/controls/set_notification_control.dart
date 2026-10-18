@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:developer' as developer;
 
 import 'package:http/http.dart' as http;
 
@@ -87,49 +86,39 @@ class SetNotification {
   // Returns:
   // - MedicationAlarm list decoded from the backend response.
   Future<List<MedicationAlarm>> requestMedicationAlarm() async {
-    try {
-      final response = await _client
-          .get(_buildNotificationUri('notification/settings'))
-          .timeout(const Duration(seconds: 30));
-      final responseBody = ApiResponseParser.decodeBody(response);
-
-      if (response.statusCode != 200) {
-        throw ApiResponseParser.httpFailure(
+    return ApiResponseParser.guardRequest(
+      operation: 'Medication alarms lookup failed',
+      logName: 'SetNotification',
+      logMessage: 'Medication alarms lookup failed.',
+      request: () async {
+        final response = await _client
+            .get(_buildNotificationUri('notification/settings'))
+            .timeout(const Duration(seconds: 30));
+        final responseBody = ApiResponseParser.requireOkBody(
           'Medication alarms lookup failed',
           response,
-          responseBody,
         );
-      }
 
-      final decodedData = ApiResponseParser.decodeMap(responseBody);
-      final rawSettings = decodedData['data'];
-      if (rawSettings is! List) {
-        // 형식이 다른 응답을 "알림 없음"으로 읽으면 모든 시간대가 꺼진 것으로 저장된다.
-        throw StateError('Medication alarms response is not a list.');
-      }
-      return rawSettings
-          .whereType<Map>()
-          .map(
-            // Function Name: map callback
-            // Description: Parses each server reminder entry into a medication alarm.
-            // Parameters:
-            // - item (Map): Current response or collection entry being transformed or checked.
-            // Returns:
-            // - The reminder's slot, time, and enabled state.
-            (item) => MedicationAlarm.fromJson(Map<String, dynamic>.from(item)),
-          )
-          .toList(growable: false);
-    } on StateError {
-      rethrow;
-    } catch (error, stackTrace) {
-      developer.log(
-        'Medication alarms lookup failed.',
-        name: 'SetNotification',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      throw ApiResponseParser.transportFailure('Medication alarms lookup failed', error);
-    }
+        final decodedData = ApiResponseParser.decodeMap(responseBody);
+        final rawSettings = decodedData['data'];
+        if (rawSettings is! List) {
+          // 형식이 다른 응답을 "알림 없음"으로 읽으면 모든 시간대가 꺼진 것으로 저장된다.
+          throw StateError('Medication alarms response is not a list.');
+        }
+        return rawSettings
+            .whereType<Map>()
+            .map(
+              // Function Name: map callback
+              // Description: Parses each server reminder entry into a medication alarm.
+              // Parameters:
+              // - item (Map): Current response or collection entry being transformed or checked.
+              // Returns:
+              // - The reminder's slot, time, and enabled state.
+              (item) => MedicationAlarm.fromJson(Map<String, dynamic>.from(item)),
+            )
+            .toList(growable: false);
+      },
+    );
   }
 
   // Function Name: saveNotificationSetting
@@ -146,36 +135,26 @@ class SetNotification {
     required int minute,
   }) async {
     final normalizedSlotKey = _normalizeSlotKey(slotKey);
-    try {
-      final response = await _client
-          .put(
-            _buildNotificationUri('notification/settings/$normalizedSlotKey'),
-            headers: const {'Content-Type': 'application/json'},
-            body: jsonEncode({'hour': hour, 'minute': minute}),
-          )
-          .timeout(const Duration(seconds: 30));
-      final responseBody = ApiResponseParser.decodeBody(response);
-
-      if (response.statusCode != 200) {
-        throw ApiResponseParser.httpFailure(
+    return ApiResponseParser.guardRequest(
+      operation: 'Medication alarm save failed',
+      logName: 'SetNotification',
+      logMessage: 'Medication alarm save failed.',
+      request: () async {
+        final response = await _client
+            .put(
+              _buildNotificationUri('notification/settings/$normalizedSlotKey'),
+              headers: const {'Content-Type': 'application/json'},
+              body: jsonEncode({'hour': hour, 'minute': minute}),
+            )
+            .timeout(const Duration(seconds: 30));
+        final responseBody = ApiResponseParser.requireOkBody(
           'Medication alarm save failed',
           response,
-          responseBody,
         );
-      }
 
-      return _decodeSetting(responseBody);
-    } on StateError {
-      rethrow;
-    } catch (error, stackTrace) {
-      developer.log(
-        'Medication alarm save failed.',
-        name: 'SetNotification',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      throw ApiResponseParser.transportFailure('Medication alarm save failed', error);
-    }
+        return _decodeSetting(responseBody);
+      },
+    );
   }
 
   // Function Name: registerNotification
@@ -233,42 +212,32 @@ class SetNotification {
     if (hour == null && minute != null) {
       throw StateError('Alarm hour is required when minute is provided.');
     }
-    try {
-      final response = await _client
-          .patch(
-            _buildNotificationUri(
-              'notification/settings/$normalizedSlotKey/disable',
-            ),
-            headers: hour == null
-                ? null
-                : const {'Content-Type': 'application/json'},
-            body: hour == null
-                ? null
-                : jsonEncode({'hour': hour, 'minute': minute ?? 0}),
-          )
-          .timeout(const Duration(seconds: 30));
-      final responseBody = ApiResponseParser.decodeBody(response);
-
-      if (response.statusCode != 200) {
-        throw ApiResponseParser.httpFailure(
+    return ApiResponseParser.guardRequest(
+      operation: 'Medication alarm disable failed',
+      logName: 'SetNotification',
+      logMessage: 'Medication alarm disable failed.',
+      request: () async {
+        final response = await _client
+            .patch(
+              _buildNotificationUri(
+                'notification/settings/$normalizedSlotKey/disable',
+              ),
+              headers: hour == null
+                  ? null
+                  : const {'Content-Type': 'application/json'},
+              body: hour == null
+                  ? null
+                  : jsonEncode({'hour': hour, 'minute': minute ?? 0}),
+            )
+            .timeout(const Duration(seconds: 30));
+        final responseBody = ApiResponseParser.requireOkBody(
           'Medication alarm disable failed',
           response,
-          responseBody,
         );
-      }
 
-      return _decodeSetting(responseBody);
-    } on StateError {
-      rethrow;
-    } catch (error, stackTrace) {
-      developer.log(
-        'Medication alarm disable failed.',
-        name: 'SetNotification',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      throw ApiResponseParser.transportFailure('Medication alarm disable failed', error);
-    }
+        return _decodeSetting(responseBody);
+      },
+    );
   }
 
   // Function Name: _decodeSetting

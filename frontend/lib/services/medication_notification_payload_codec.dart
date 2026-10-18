@@ -2,6 +2,7 @@
 // Role: Validates notification wire payloads without initializing a platform plugin.
 
 import '../entities/caregiver_alert_context_entity.dart';
+import '../entities/caregiver_notification_entity.dart';
 import '../entities/medication_notification_selection_entity.dart';
 
 // Class Name: MedicationNotificationPayloadCodec
@@ -22,6 +23,20 @@ class MedicationNotificationPayloadCodec {
   static const String snoozeTenMinutesActionId = 'medbuddy_snooze_10_minutes';
   static const String caregiverSnoozeActionId = 'medbuddy_caregiver_snooze';
   static const String caregiverChatActionId = 'medbuddy_caregiver_chat';
+  static const String caregiverPayloadPrefix = 'caregiver:';
+
+  // Function Name: caregiverPayload
+  // Description: Builds the legacy caregiver route that opens a linked patient's schedule; the caller trims the hash first where it needs to.
+  // Parameters: patientHash (String): Patient hash, URI-encoded into the payload as given.
+  // Returns: The payload "caregiver:<encoded patientHash>".
+  static String caregiverPayload(String patientHash) =>
+      '$caregiverPayloadPrefix${Uri.encodeComponent(patientHash)}';
+
+  // Function Name: chatPayload
+  // Description: Builds the route that opens one linked chat conversation.
+  // Parameters: linkId (int): Patient-caregiver link ID of the conversation.
+  // Returns: The payload "chat:<linkId>".
+  static String chatPayload(int linkId) => 'chat:$linkId';
 
   // Function Name: decode
   // Description: Parses scoped destinations and only accepts actions supported by that payload type.
@@ -57,13 +72,9 @@ class MedicationNotificationPayloadCodec {
     final segments = payload?.split(':') ?? const <String>[];
     if ((segments.length == 3 || segments.length == 4) &&
         segments[0] == 'schedule' &&
-        const {
-          'morning',
-          'lunch',
-          'evening',
-          'bedtime',
-          'as_needed',
-        }.contains(segments[1].trim().toLowerCase())) {
+        caregiverNotificationSlotKeys.contains(
+          segments[1].trim().toLowerCase(),
+        )) {
       final encodedNotificationId = int.tryParse(segments[2]);
       if (encodedNotificationId == null || encodedNotificationId < 0) {
         return null;
@@ -129,6 +140,6 @@ class MedicationNotificationPayloadCodec {
   static bool isSessionPayload(String? payload) =>
       payload?.startsWith('schedule:') == true ||
       payload?.startsWith('caregiver-v1:') == true ||
-      payload?.startsWith('caregiver:') == true ||
+      payload?.startsWith(caregiverPayloadPrefix) == true ||
       payload?.startsWith('chat:') == true;
 }

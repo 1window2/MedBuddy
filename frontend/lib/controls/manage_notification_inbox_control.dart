@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../entities/caregiver_alert_context_entity.dart';
 import '../entities/notification_inbox_entity.dart';
+import '../services/medication_notification_payload_codec.dart';
 import '../services/notification_inbox_store.dart';
 import 'manage_chat_list_control.dart';
 
@@ -116,7 +117,9 @@ class ManageNotificationInbox extends ChangeNotifier {
   // 매개변수: entry는 검사할 알림. 반환값: 보호자 복약 알림 여부.
   bool _isCaregiverEntry(NotificationInboxEntry entry) =>
       entry.category == NotificationInboxCategory.medication &&
-      (entry.payload.startsWith('caregiver:') ||
+      (entry.payload.startsWith(
+            MedicationNotificationPayloadCodec.caregiverPayloadPrefix,
+          ) ||
           entry.payload.startsWith('caregiver-v1:'));
 
   // 함수이름: _caregiverEntryPatientHash
@@ -128,7 +131,11 @@ class ManageNotificationInbox extends ChangeNotifier {
       return CaregiverAlertContext.fromPayload(entry.payload)?.patientHash;
     }
     try {
-      return Uri.decodeComponent(entry.payload.substring('caregiver:'.length));
+      return Uri.decodeComponent(
+        entry.payload.substring(
+          MedicationNotificationPayloadCodec.caregiverPayloadPrefix.length,
+        ),
+      );
     } on ArgumentError {
       return null;
     }

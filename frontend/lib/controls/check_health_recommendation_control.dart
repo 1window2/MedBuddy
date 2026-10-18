@@ -1,8 +1,6 @@
 // 파일명: check_health_recommendation_control.dart
 // 역할: 건강 관리 추천의 서버 조회, 언어별 캐시와 오류 처리를 수행한다.
 
-import 'dart:developer' as developer;
-
 import 'package:http/http.dart' as http;
 
 import '../entities/health_recommendation_entity.dart';
@@ -59,51 +57,43 @@ class CheckHealthRecommendation {
   Future<HealthRecommendation> requestHealthRecommendation({
     String language = 'ko',
   }) async {
-    try {
-      final response = await _client
-          .get(_buildHealthUri('health/recommendation', language))
-          .timeout(const Duration(seconds: 45));
-      final responseBody = ApiResponseParser.decodeBody(response);
+    // 원래 예외를 함께 전달해 호출자가 응답 지연·연결 실패 같은 원인을 구분할 수 있게 한다.
+    return ApiResponseParser.guardRequest(
+      operation: 'Health recommendation failed',
+      logName: 'CheckHealthRecommendation',
+      logMessage: 'Health recommendation request failed.',
+      request: () async {
+        final response = await _client
+            .get(_buildHealthUri('health/recommendation', language))
+            .timeout(const Duration(seconds: 45));
+        final responseBody = ApiResponseParser.decodeBody(response);
 
-      if (response.statusCode != 200) {
-        final detail = ApiResponseParser.extractErrorDetail(responseBody);
-        // 다른 404(주소 오류 등)는 약이 없는 상태로 안내하지 않는다.
-        if (response.statusCode == 404 && detail == '오늘 복용 중인 약 정보가 없습니다.') {
-          throw NoActiveMedicationsError();
+        if (response.statusCode != 200) {
+          final detail = ApiResponseParser.extractErrorDetail(responseBody);
+          // 다른 404(주소 오류 등)는 약이 없는 상태로 안내하지 않는다.
+          if (response.statusCode == 404 && detail == '오늘 복용 중인 약 정보가 없습니다.') {
+            throw NoActiveMedicationsError();
+          }
+          throw ApiResponseParser.httpFailure(
+            'Health recommendation failed',
+            response,
+            responseBody,
+          );
         }
-        throw ApiResponseParser.httpFailure(
-          'Health recommendation failed',
-          response,
-          responseBody,
-        );
-      }
 
-      final decodedData = ApiResponseParser.decodeMap(responseBody);
-      final rawRecommendation = decodedData['data'];
-      if (rawRecommendation is Map) {
-        return HealthRecommendation.fromJson(
-          Map<String, dynamic>.from(rawRecommendation),
-          language: language,
+        final decodedData = ApiResponseParser.decodeMap(responseBody);
+        final rawRecommendation = decodedData['data'];
+        if (rawRecommendation is Map) {
+          return HealthRecommendation.fromJson(
+            Map<String, dynamic>.from(rawRecommendation),
+            language: language,
+          );
+        }
+        throw StateError(
+          'Server response did not include health recommendation.',
         );
-      }
-      throw StateError(
-        'Server response did not include health recommendation.',
-      );
-    } on StateError {
-      rethrow;
-    } catch (error, stackTrace) {
-      developer.log(
-        'Health recommendation request failed.',
-        name: 'CheckHealthRecommendation',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      // 원래 예외를 함께 전달해 호출자가 응답 지연·연결 실패 같은 원인을 구분할 수 있게 한다.
-      throw ApiResponseParser.transportFailure(
-        'Health recommendation failed',
-        error,
-      );
-    }
+      },
+    );
   }
 
   // Function Name: _buildHealthUri

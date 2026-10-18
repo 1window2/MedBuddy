@@ -725,7 +725,7 @@ class CaregiverNotificationMonitorService {
     }
 
     final now = _now();
-    final dateKey = _dateKey(now);
+    final dateKey = formatJsonDate(now)!;
     final currentSnapshot = _buildSnapshot(schedules, slotKey);
     final previousDate = preferences.getString('$scope.snapshot_date');
     final previousMode = preferences.getString('$scope.mode');
@@ -1036,14 +1036,6 @@ class CaregiverNotificationMonitorService {
     return '${CaregiverPatientLocalStateService.alertKeyPrefix}'
         '$normalizedCaregiver.$patientHash.$slotKey';
   }
-
-  // 함수이름: _dateKey
-  // 함수역할: 감시 시각의 날짜를 연·월·일 두 자리 규칙의 YYYY-MM-DD 서명으로 만든다.
-  // 매개변수:
-  // - dateTime (DateTime): 달력 날짜 계산 또는 비교의 기준 시각
-  // 반환값:
-  // - String: 감시 시각의 날짜를 연·월·일 두 자리 규칙의 YYYY-MM-DD 서명으로 만든다.
-  String _dateKey(DateTime dateTime) => formatJsonDate(dateTime)!;
 
   // 함수이름: _stableNotificationId
   // 함수역할: 알림 구분 문자열을 FNV 방식으로 접어 보호자 알림용 300000~899999 범위의 안정 ID를 만든다.

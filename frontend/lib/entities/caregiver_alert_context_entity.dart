@@ -1,6 +1,8 @@
 // Role: Versioned, non-secret context for an original missed case and its delivery.
 import 'dart:convert';
 
+import 'medication_schedule_entity.dart';
+
 // Function Name: fnv1a31
 // Description: Folds a string with 32-bit FNV-1a masked to 31 bits, so notification IDs derived from it stay the same across isolates and app restarts. Callers map the result into their own ID range.
 // Parameters:
@@ -46,7 +48,7 @@ class CaregiverAlertContext {
         alert == null || source == null || link == null || date == null ||
         !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value('schedule_date')) ||
         date.toIso8601String().split('T').first != value('schedule_date') ||
-        !const {'morning', 'lunch', 'evening', 'bedtime'}.contains(value('slot_key')) ||
+        !medicationScheduleSlotKeys.contains(value('slot_key')) ||
         value('patient_hash').isEmpty || value('recipient_hash').isEmpty ||
         !RegExp(r'^[a-f0-9]{64}$').hasMatch(value('event_id')) ||
         !RegExp(r'^[a-f0-9]{64}$').hasMatch(value('source_event_id'))) {

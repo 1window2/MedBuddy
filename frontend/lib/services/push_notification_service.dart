@@ -18,7 +18,9 @@ import 'caregiver_alert_delivery_service.dart';
 import 'api_config.dart';
 import 'auth_config.dart';
 import 'notification_service.dart';
+import 'medication_notification_payload_codec.dart';
 import 'notification_inbox_store.dart';
+import 'user_setting_preference_keys.dart';
 
 // 재전송된 필요시 복용 푸시는 FCM 메시지 ID가 달라도 같은 알림으로 묶는다.
 String? _asNeededPushIdentity(RemoteMessage message) {
@@ -62,7 +64,7 @@ Future<void> recordPushNotificationHistory(
     if (type == 'linked_chat_message') {
       final linkId = int.tryParse(message.data['link_id']?.toString() ?? '');
       if (linkId == null || linkId < 1) return;
-      payload = 'chat:$linkId';
+      payload = MedicationNotificationPayloadCodec.chatPayload(linkId);
       title = english ? 'New family message' : '새 가족 메시지';
       // 빈 message_preview는 서버의 내용 숨김 결정이므로 notification 본문으로 우회하지 않는다.
       final preview = message.data.containsKey('message_preview')
@@ -80,10 +82,10 @@ Future<void> recordPushNotificationHistory(
     }.contains(type)) {
       final patient = message.data['patient_hash']?.toString().trim() ?? '';
       if (patient.isEmpty) return;
-      payload = 'caregiver:${Uri.encodeComponent(patient)}';
+      payload = MedicationNotificationPayloadCodec.caregiverPayload(patient);
       final showDetails =
           preferences.getString(
-            'user_setting_${active.trim()}_notification_detail_mode',
+            UserSettingPreference.notificationDetailMode.keyFor(active.trim()),
           ) !=
           'type_only';
       final deliveredTitle = message.notification?.title?.trim() ?? '';
@@ -367,7 +369,9 @@ class PushNotificationService {
         // 설정 조회가 끝나기 전에 도착한 보호자 알림이 세부 내용을 다시 만들지 않게 한다.
         final preferences = await SharedPreferences.getInstance();
         if (preferences.getString(
-              'user_setting_${userHash.trim()}_notification_detail_mode',
+              UserSettingPreference.notificationDetailMode.keyFor(
+                userHash.trim(),
+              ),
             ) ==
             'type_only') {
           NotificationService.instance.setShowSensitiveDetails(false);
@@ -775,7 +779,9 @@ class PushNotificationService {
     if (message.data['type'] == 'linked_chat_message') {
       final linkId = int.tryParse(message.data['link_id']?.trim() ?? '');
       if (linkId != null && linkId > 0) {
-        NotificationService.handleNotificationPayload('chat:$linkId');
+        NotificationService.handleNotificationPayload(
+          MedicationNotificationPayloadCodec.chatPayload(linkId),
+        );
       }
       return;
     }
@@ -784,7 +790,7 @@ class PushNotificationService {
       return;
     }
     NotificationService.handleNotificationPayload(
-      'caregiver:${Uri.encodeComponent(patientHash)}',
+      MedicationNotificationPayloadCodec.caregiverPayload(patientHash),
     );
   }
 

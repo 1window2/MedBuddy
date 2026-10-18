@@ -447,39 +447,30 @@ class CheckSavedMedication {
   // 반환값:
   // - Future<List<MedicationDetail>>: 성공적으로 조회한 목록. 확인 실패 시 StateError.
   Future<List<MedicationDetail>> requestSavedMedicationInfo() async {
-    try {
-      final response = await _client
-          .get(_buildMedicationUri('list'))
-          .timeout(const Duration(seconds: 30));
+    // 원래 예외를 함께 전달해 화면이 응답 지연·연결 실패 같은 원인별 안내를 고를 수 있게 한다.
+    return ApiResponseParser.guardRequest(
+      operation: '저장된 복약 정보를 불러오지 못했습니다',
+      logName: 'CheckSavedMedication',
+      logMessage: 'Saved medication list request failed.',
+      request: () async {
+        final response = await _client
+            .get(_buildMedicationUri('list'))
+            .timeout(const Duration(seconds: 30));
 
-      final responseBody = ApiResponseParser.decodeBody(response);
-      if (response.statusCode != 200) {
-        throw ApiResponseParser.httpFailure(
+        final responseBody = ApiResponseParser.requireOkBody(
           '저장된 복약 정보 조회 실패',
           response,
-          responseBody,
         );
-      }
 
-      final decodedData = ApiResponseParser.decodeMap(responseBody);
-      // 조회 실패를 약이 없는 상태로 표시하지 않도록 응답을 검증한다.
-      if (decodedData['success'] != true || decodedData['data'] is! List) {
-        throw StateError('저장된 복약 정보 응답을 확인하지 못했습니다.');
-      }
+        final decodedData = ApiResponseParser.decodeMap(responseBody);
+        // 조회 실패를 약이 없는 상태로 표시하지 않도록 응답을 검증한다.
+        if (decodedData['success'] != true || decodedData['data'] is! List) {
+          throw StateError('저장된 복약 정보 응답을 확인하지 못했습니다.');
+        }
 
-      return _decodeSavedMedicationInfoList(decodedData['data']);
-    } on StateError {
-      rethrow;
-    } catch (error, stackTrace) {
-      developer.log(
-        'Saved medication list request failed.',
-        name: 'CheckSavedMedication',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      // 원래 예외를 함께 전달해 화면이 응답 지연·연결 실패 같은 원인별 안내를 고를 수 있게 한다.
-      throw ApiResponseParser.transportFailure('저장된 복약 정보를 불러오지 못했습니다', error);
-    }
+        return _decodeSavedMedicationInfoList(decodedData['data']);
+      },
+    );
   }
 
   // Function Name: requestDelete

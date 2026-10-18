@@ -49,36 +49,26 @@ class CheckSchedule {
   // Returns:
   // - Today's medication schedule list; invalid or unsuccessful envelopes raise StateError.
   Future<List<MedicationSchedule>> requestTodayMedicationSchedule() async {
-    try {
-      final response = await _client
-          .get(_buildScheduleUri('schedule/today'))
-          .timeout(const Duration(seconds: 30));
-      final responseBody = ApiResponseParser.decodeBody(response);
-
-      if (response.statusCode != 200) {
-        throw ApiResponseParser.httpFailure(
+    return ApiResponseParser.guardRequest(
+      operation: 'Schedule lookup failed',
+      logName: 'CheckSchedule',
+      logMessage: 'Today medication schedule request failed.',
+      request: () async {
+        final response = await _client
+            .get(_buildScheduleUri('schedule/today'))
+            .timeout(const Duration(seconds: 30));
+        final responseBody = ApiResponseParser.requireOkBody(
           'Schedule lookup failed',
           response,
-          responseBody,
         );
-      }
 
-      final decodedData = ApiResponseParser.decodeMap(responseBody);
-      if (decodedData['success'] != true || decodedData['data'] is! List) {
-        throw StateError('Schedule response could not be verified.');
-      }
-      return MedicationSchedule.fromScheduleJsonList(decodedData['data']);
-    } on StateError {
-      rethrow;
-    } catch (error, stackTrace) {
-      developer.log(
-        'Today medication schedule request failed.',
-        name: 'CheckSchedule',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      throw ApiResponseParser.transportFailure('Schedule lookup failed', error);
-    }
+        final decodedData = ApiResponseParser.decodeMap(responseBody);
+        if (decodedData['success'] != true || decodedData['data'] is! List) {
+          throw StateError('Schedule response could not be verified.');
+        }
+        return MedicationSchedule.fromScheduleJsonList(decodedData['data']);
+      },
+    );
   }
 
   // Function Name: requestMedicationScheduleWindow
@@ -94,37 +84,25 @@ class CheckSchedule {
     if (days < 1 || days > 14) {
       throw ArgumentError.value(days, 'days', 'Must be between 1 and 14.');
     }
-    try {
-      final response = await _client
-          .get(_buildScheduleUri('schedule/window', {'days': '$days'}))
-          .timeout(const Duration(seconds: 30));
-      final responseBody = ApiResponseParser.decodeBody(response);
-      if (response.statusCode != 200) {
-        throw ApiResponseParser.httpFailure(
+    return ApiResponseParser.guardRequest(
+      operation: 'Schedule window lookup failed',
+      logName: 'CheckSchedule',
+      logMessage: 'Medication schedule window request failed.',
+      request: () async {
+        final response = await _client
+            .get(_buildScheduleUri('schedule/window', {'days': '$days'}))
+            .timeout(const Duration(seconds: 30));
+        final responseBody = ApiResponseParser.requireOkBody(
           'Schedule window lookup failed',
           response,
-          responseBody,
         );
-      }
-      final decodedData = ApiResponseParser.decodeMap(responseBody);
-      if (decodedData['success'] != true || decodedData['data'] is! List) {
-        throw StateError('Schedule window response could not be verified.');
-      }
-      return MedicationSchedule.fromScheduleJsonList(decodedData['data']);
-    } on StateError {
-      rethrow;
-    } catch (error, stackTrace) {
-      developer.log(
-        'Medication schedule window request failed.',
-        name: 'CheckSchedule',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      throw ApiResponseParser.transportFailure(
-        'Schedule window lookup failed',
-        error,
-      );
-    }
+        final decodedData = ApiResponseParser.decodeMap(responseBody);
+        if (decodedData['success'] != true || decodedData['data'] is! List) {
+          throw StateError('Schedule window response could not be verified.');
+        }
+        return MedicationSchedule.fromScheduleJsonList(decodedData['data']);
+      },
+    );
   }
 
   // Function Name: updateMedicationStatus
@@ -140,47 +118,37 @@ class CheckSchedule {
     bool medicationStatus, {
     String? slotKey,
   }) async {
-    try {
-      final response = await _client
-          .patch(
-            _buildScheduleUri('schedule/$medicationId/status'),
-            headers: const {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'medication_status': medicationStatus,
-              if (slotKey != null && slotKey.trim().isNotEmpty)
-                'slot_key': slotKey.trim().toLowerCase(),
-            }),
-          )
-          .timeout(const Duration(seconds: 30));
-      final responseBody = ApiResponseParser.decodeBody(response);
-
-      if (response.statusCode != 200) {
-        throw ApiResponseParser.httpFailure(
+    return ApiResponseParser.guardRequest(
+      operation: 'Status update failed',
+      logName: 'CheckSchedule',
+      logMessage: 'Medication status update failed.',
+      request: () async {
+        final response = await _client
+            .patch(
+              _buildScheduleUri('schedule/$medicationId/status'),
+              headers: const {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'medication_status': medicationStatus,
+                if (slotKey != null && slotKey.trim().isNotEmpty)
+                  'slot_key': slotKey.trim().toLowerCase(),
+              }),
+            )
+            .timeout(const Duration(seconds: 30));
+        final responseBody = ApiResponseParser.requireOkBody(
           'Status update failed',
           response,
-          responseBody,
         );
-      }
 
-      final decodedData = ApiResponseParser.decodeMap(responseBody);
-      final rawSchedule = decodedData['data'];
-      if (rawSchedule is Map) {
-        return MedicationSchedule.fromScheduleJson(
-          Map<String, dynamic>.from(rawSchedule),
-        );
-      }
-      throw StateError('Server response did not include an updated schedule.');
-    } on StateError {
-      rethrow;
-    } catch (error, stackTrace) {
-      developer.log(
-        'Medication status update failed.',
-        name: 'CheckSchedule',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      throw ApiResponseParser.transportFailure('Status update failed', error);
-    }
+        final decodedData = ApiResponseParser.decodeMap(responseBody);
+        final rawSchedule = decodedData['data'];
+        if (rawSchedule is Map) {
+          return MedicationSchedule.fromScheduleJson(
+            Map<String, dynamic>.from(rawSchedule),
+          );
+        }
+        throw StateError('Server response did not include an updated schedule.');
+      },
+    );
   }
 
   // Function Name: updateMedicationSlotStatus
@@ -211,14 +179,10 @@ class CheckSchedule {
             }),
           )
           .timeout(const Duration(seconds: 30));
-      final responseBody = ApiResponseParser.decodeBody(response);
-      if (response.statusCode != 200) {
-        throw ApiResponseParser.httpFailure(
-          'Slot status update failed',
-          response,
-          responseBody,
-        );
-      }
+      final responseBody = ApiResponseParser.requireOkBody(
+        'Slot status update failed',
+        response,
+      );
       final decodedData = ApiResponseParser.decodeMap(responseBody);
       return MedicationSchedule.fromScheduleJsonList(decodedData['data']);
     } on ArgumentError {

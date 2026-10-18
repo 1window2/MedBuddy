@@ -1,5 +1,3 @@
-import 'dart:developer' as developer;
-
 import 'package:http/http.dart' as http;
 
 import '../entities/medication_schedule_entity.dart';
@@ -50,45 +48,32 @@ class CheckTodayMedicationInfo {
   // Returns:
   // - MedicationSchedule list; invalid or unsuccessful envelopes raise StateError.
   Future<List<MedicationSchedule>> requestTodayMedicationInfo() async {
-    try {
-      final response = await _client
-          .get(_buildTodayInfoUri())
-          .timeout(const Duration(seconds: 30));
-      final responseBody = ApiResponseParser.decodeBody(response);
-
-      if (response.statusCode != 200) {
-        throw ApiResponseParser.httpFailure(
+    return ApiResponseParser.guardRequest(
+      operation: 'Today medication info lookup failed',
+      logName: 'CheckTodayMedicationInfo',
+      logMessage: 'Today medication info request failed.',
+      request: () async {
+        final response = await _client
+            .get(_buildTodayInfoUri())
+            .timeout(const Duration(seconds: 30));
+        final responseBody = ApiResponseParser.requireOkBody(
           'Today medication info lookup failed',
           response,
-          responseBody,
         );
-      }
 
-      final decodedData = ApiResponseParser.decodeMap(responseBody);
-      final data = decodedData['data'];
-      final schedules = data is Map
-          ? data['schedules'] ?? data['schedule']
-          : data;
-      if (decodedData['success'] != true || schedules is! List) {
-        throw StateError(
-          'Today medication info response could not be verified.',
-        );
-      }
-      return MedicationSchedule.fromScheduleJsonList(schedules);
-    } on StateError {
-      rethrow;
-    } catch (error, stackTrace) {
-      developer.log(
-        'Today medication info request failed.',
-        name: 'CheckTodayMedicationInfo',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      throw ApiResponseParser.transportFailure(
-        'Today medication info lookup failed',
-        error,
-      );
-    }
+        final decodedData = ApiResponseParser.decodeMap(responseBody);
+        final data = decodedData['data'];
+        final schedules = data is Map
+            ? data['schedules'] ?? data['schedule']
+            : data;
+        if (decodedData['success'] != true || schedules is! List) {
+          throw StateError(
+            'Today medication info response could not be verified.',
+          );
+        }
+        return MedicationSchedule.fromScheduleJsonList(schedules);
+      },
+    );
   }
 
   // Function Name: _buildTodayInfoUri

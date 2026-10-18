@@ -8,6 +8,7 @@ import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/check_nearby_hospital_control.dart';
 import 'package:medbuddy_frontend/entities/device_coordinate_entity.dart';
 import 'package:medbuddy_frontend/entities/nearby_care_entity.dart';
+import 'package:medbuddy_frontend/services/api_response_parser.dart';
 import 'package:medbuddy_frontend/services/device_location_service.dart';
 import 'package:medbuddy_frontend/services/pharmacy_favorite_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -402,6 +403,65 @@ void main() {
         hospitals: true,
       ).loadFavoriteIds(),
       isEmpty,
+    );
+  });
+
+  // Function Name: test callback
+  // Description:
+  // - Expected behavior: the shared nearby request wraps a connection error, reports a rejected status
+  //   with its detail, and passes a malformed-body StateError through unwrapped.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the three failures are checked and fails the test on mismatch.
+  test('nearby request failures keep their message, status and cause', () async {
+    // Function Name: search
+    // Description:
+    // - Runs one explicit-area hospital search against a stubbed transport.
+    // Parameters:
+    // - handler (MockClientHandler): Stubbed HTTP response or failure.
+    // Returns:
+    // - Future that completes with the error thrown by the search.
+    Future<Object?> search(MockClientHandler handler) async {
+      final control = CheckNearbyHospital(client: MockClient(handler));
+      addTearDown(control.dispose);
+      try {
+        await control.requestNearbyCareSearch(searchArea: _area);
+      } catch (error) {
+        return error;
+      }
+      fail('The nearby search should have failed.');
+    }
+
+    expect(
+      await search((_) async => throw http.ClientException('down')),
+      isA<ApiRequestException>()
+          .having((error) => error.message, 'message', 'Nearby care request failed.')
+          .having((error) => error.statusCode, 'statusCode', isNull)
+          .having((error) => error.cause, 'cause', isA<http.ClientException>()),
+    );
+    expect(
+      await search(
+        (_) async => http.Response(jsonEncode({'detail': 'boom'}), 500),
+      ),
+      isA<ApiRequestException>()
+          .having(
+            (error) => error.message,
+            'message',
+            'Nearby care request failed (500): boom',
+          )
+          .having((error) => error.statusCode, 'statusCode', 500),
+    );
+    expect(
+      await search((_) async => http.Response('[]', 200)),
+      allOf(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          'Server response format was invalid.',
+        ),
+        isNot(isA<ApiRequestException>()),
+      ),
     );
   });
 }

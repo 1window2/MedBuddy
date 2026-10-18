@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'medication_alarm_entity.dart';
 import 'medication_schedule_entity.dart';
+import 'medication_slot_label.dart';
 import 'user_setting_entity.dart';
 
 const doseWidgetUtcOffset = int.fromEnvironment(
@@ -159,10 +160,7 @@ class DoseWidgetState {
           });
     // 완료 기록은 로컬 전송 대기 상태에도 반영되어 다음 시간대로 바로 넘어간다.
     final slot = pendingSlots.firstOrNull;
-    final labels = english
-        ? ['Morning', 'Lunch', 'Evening', 'Bedtime']
-        : ['아침', '점심', '저녁', '취침 전'];
-    String label(String key) => labels[medicationScheduleSlotKeys.indexOf(key)];
+    String label(String key) => medicationSlotLabel(key, isEnglish: english);
     final takes = <String, Map<String, dynamic>>{};
     final cancels = <String, Map<String, dynamic>>{};
     final pages = <Map<String, dynamic>>[];

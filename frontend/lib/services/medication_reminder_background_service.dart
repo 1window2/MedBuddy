@@ -291,7 +291,8 @@ class MedicationReminderRefreshService {
     required String requestDay,
     required DateTime now,
   }) {
-    if (doseScheduleDay(now) != requestDay || _dateKey(now) != requestDay) {
+    if (doseScheduleDay(now) != requestDay ||
+        formatJsonDate(now)! != requestDay) {
       return false;
     }
     final slotSchedules = todaySchedules.where(
@@ -340,7 +341,7 @@ class MedicationReminderRefreshService {
       while (!candidateDate.isAfter(boundedEndDate)) {
         // A medication that is not taken every day ("주 1회", "격일") is reminded on its dose days only.
         if (schedule.isDoseDay(candidateDate)) {
-          activeDateKeys[_dateKey(candidateDate)] = candidateDate;
+          activeDateKeys[formatJsonDate(candidateDate)!] = candidateDate;
         }
         // Calendar arithmetic, so a daylight-saving change cannot repeat or skip a date.
         candidateDate = DateTime(
@@ -352,7 +353,7 @@ class MedicationReminderRefreshService {
     }
 
     if (slotCompletedToday) {
-      activeDateKeys.remove(_dateKey(today));
+      activeDateKeys.remove(formatJsonDate(today)!);
     }
     return activeDateKeys.values.toList(growable: false)..sort();
   }
@@ -372,14 +373,6 @@ class MedicationReminderRefreshService {
       fallback: isEnglish ? 'Schedule' : '일정',
     );
   }
-
-  // Function Name: _dateKey
-  // Description: Formats a local calendar date as a zero-padded YYYY-MM-DD key for dated reminder names.
-  // Parameters:
-  // - date (DateTime): Timestamp used for calendar-date calculation or comparison.
-  // Returns:
-  // - String: Formats a local calendar date as a zero-padded YYYY-MM-DD key for dated reminder names.
-  static String _dateKey(DateTime date) => formatJsonDate(date)!;
 
   // Function Name: dispose
   // Description: Releases the control resources owned by the live composition through its injected cleanup callback.

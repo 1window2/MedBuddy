@@ -28,10 +28,14 @@ class NotificationInboxStore {
     }
   }
 
-  // 함수이름: prefix
-  // 함수역할: 계정 범위를 키에 구분한다. 매개변수: 없음. 반환값: 인코딩된 접두사.
-  String get prefix =>
+  // 함수이름: prefixFor
+  // 함수역할: 계정 범위를 키에 구분한다. 계정 삭제도 이 접두사로 지운다. 매개변수: userHash - 계정 해시(정규화하지 않음). 반환값: 인코딩된 접두사.
+  static String prefixFor(String userHash) =>
       'notification_inbox_v1.${Uri.encodeComponent(userHash)}.';
+
+  // 함수이름: prefix
+  // 함수역할: 이 저장소 계정의 키 접두사를 prefixFor로 만든다. 매개변수: 없음. 반환값: 인코딩된 접두사.
+  String get prefix => prefixFor(userHash);
 
   // 함수이름: _preferences
   // 함수역할: 다른 isolate가 저장한 최신 값을 읽는다. 매개변수: 없음. 반환값: 갱신된 저장소.

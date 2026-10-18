@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/set_notification_control.dart';
 import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
+import 'package:medbuddy_frontend/services/api_response_parser.dart';
 
 // Function Name: main
 // Description:
@@ -425,4 +426,155 @@ void main() {
     );
     expect(patientASetting.legacyNotificationId, 1001);
   });
+
+  // Pins how each alarm request reports transport, status and contract failures.
+  final alarmRequests =
+      <(String, Future<Object?> Function(SetNotification control))>[
+        (
+          'Medication alarms lookup failed',
+          // Function Name: alarm lookup request
+          // Description:
+          // - Runs the alarm list lookup for the failure pinning cases.
+          // Parameters:
+          // - control (SetNotification): Control under test.
+          // Returns:
+          // - Future of the decoded alarm list.
+          (control) => control.requestMedicationAlarm(),
+        ),
+        (
+          'Medication alarm save failed',
+          // Function Name: alarm save request
+          // Description:
+          // - Runs one alarm save for the failure pinning cases.
+          // Parameters:
+          // - control (SetNotification): Control under test.
+          // Returns:
+          // - Future of the saved alarm.
+          (control) => control.saveNotificationSetting(
+            slotKey: 'morning',
+            hour: 8,
+            minute: 30,
+          ),
+        ),
+        (
+          'Medication alarm disable failed',
+          // Function Name: alarm disable request
+          // Description:
+          // - Runs one alarm disable for the failure pinning cases.
+          // Parameters:
+          // - control (SetNotification): Control under test.
+          // Returns:
+          // - Future of the disabled alarm.
+          (control) => control.disableAlarmSetting('morning'),
+        ),
+      ];
+  for (final (operation, run) in alarmRequests) {
+    // Function Name: test callback
+    // Description:
+    // - Expected behavior: a connection error becomes a transport failure that keeps the original cause.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>; completes after the failure is checked and fails the test on mismatch.
+    test('$operation wraps a connection error as a transport failure', () async {
+      final control = SetNotification(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        // Function Name: MockClient callback
+        // Description:
+        // - Fails the request before any response is received.
+        // Parameters:
+        // - request (http.Request): Intercepted alarm request.
+        // Returns:
+        // - Never returns; throws http.ClientException.
+        client: MockClient((_) async => throw http.ClientException('down')),
+      );
+
+      await expectLater(
+        run(control),
+        throwsA(
+          isA<ApiRequestException>()
+              .having((error) => error.message, 'message', '$operation.')
+              .having((error) => error.statusCode, 'statusCode', isNull)
+              .having(
+                (error) => error.cause,
+                'cause',
+                isA<http.ClientException>(),
+              ),
+        ),
+      );
+    });
+
+    // Function Name: test callback
+    // Description:
+    // - Expected behavior: a rejected status becomes an HTTP failure with the server detail.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>; completes after the failure is checked and fails the test on mismatch.
+    test('$operation reports status and server detail', () async {
+      final control = SetNotification(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        // Function Name: MockClient callback
+        // Description:
+        // - Rejects the request with a FastAPI error body.
+        // Parameters:
+        // - request (http.Request): Intercepted alarm request.
+        // Returns:
+        // - HTTP 500 with detail "boom".
+        client: MockClient(
+          (_) async => http.Response(jsonEncode({'detail': 'boom'}), 500),
+        ),
+      );
+
+      await expectLater(
+        run(control),
+        throwsA(
+          isA<ApiRequestException>()
+              .having((error) => error.message, 'message', '$operation (500): boom')
+              .having((error) => error.statusCode, 'statusCode', 500),
+        ),
+      );
+    });
+
+    // Function Name: test callback
+    // Description:
+    // - Expected behavior: a contract StateError from a 200 response passes through unwrapped.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Future<void>; completes after the failure is checked and fails the test on mismatch.
+    test('$operation passes a malformed body StateError through', () async {
+      final control = SetNotification(
+        baseUrl: 'http://localhost',
+        patientHash: 'patient-a',
+        // Function Name: MockClient callback
+        // Description:
+        // - Answers with a JSON list instead of an object.
+        // Parameters:
+        // - request (http.Request): Intercepted alarm request.
+        // Returns:
+        // - HTTP 200 with body "[]".
+        client: MockClient((_) async => http.Response('[]', 200)),
+      );
+
+      await expectLater(
+        run(control),
+        throwsA(
+          isA<StateError>()
+              .having(
+                (error) => error.message,
+                'message',
+                'Server response format was invalid.',
+              )
+              .having(
+                (error) => error,
+                'type',
+                isNot(isA<ApiRequestException>()),
+              ),
+        ),
+      );
+    });
+  }
 }

@@ -7,6 +7,7 @@ import 'dart:math';
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 
+import '../entities/dose_widget_state.dart';
 import '../entities/medication_schedule_entity.dart';
 import 'api_config.dart';
 import 'dose_outbox_store.dart';
@@ -14,18 +15,7 @@ import 'dose_outbox_store.dart';
 // 함수이름: doseScheduleDay
 // 함수역할: 표시 시간대와 별개로 서버와 같은 기준 날짜를 계산한다.
 // 매개변수: now - 현재 시각. 반환값: 기본 UTC+09:00의 YYYY-MM-DD 날짜.
-String doseScheduleDay(DateTime now) => now
-    .toUtc()
-    .add(
-      const Duration(
-        minutes: int.fromEnvironment(
-          'APPLICATION_UTC_OFFSET_MINUTES',
-          defaultValue: 540,
-        ),
-      ),
-    )
-    .toIso8601String()
-    .substring(0, 10);
+String doseScheduleDay(DateTime now) => doseWidgetDay(now);
 
 // 함수이름: projectDoseOperations
 // 함수역할: 서버가 확인한 일정 위에 아직 전송하지 못한 그날의 복용 기록을 순서대로 덮어, 기기에서 본 복용 상태를 만든다.

@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:developer' as developer;
 
 import 'package:http/http.dart' as http;
 
@@ -50,33 +49,23 @@ class LinkPatientCaregiver {
   // Returns:
   // - Active links for the current user hash.
   Future<List<PatientCaregiverLink>> requestLinkScreen() async {
-    try {
-      final response = await _client
-          .get(_buildLinkUri('link/list'))
-          .timeout(const Duration(seconds: 30));
-      final responseBody = ApiResponseParser.decodeBody(response);
-
-      if (response.statusCode != 200) {
-        throw ApiResponseParser.httpFailure(
+    return ApiResponseParser.guardRequest(
+      operation: 'Link lookup failed',
+      logName: 'LinkPatientCaregiver',
+      logMessage: 'Patient-caregiver link lookup failed.',
+      request: () async {
+        final response = await _client
+            .get(_buildLinkUri('link/list'))
+            .timeout(const Duration(seconds: 30));
+        final responseBody = ApiResponseParser.requireOkBody(
           'Link lookup failed',
           response,
-          responseBody,
         );
-      }
 
-      final decodedData = ApiResponseParser.decodeMap(responseBody);
-      return _decodeLinkList(decodedData['data']);
-    } on StateError {
-      rethrow;
-    } catch (error, stackTrace) {
-      developer.log(
-        'Patient-caregiver link lookup failed.',
-        name: 'LinkPatientCaregiver',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      throw ApiResponseParser.transportFailure('Link lookup failed', error);
-    }
+        final decodedData = ApiResponseParser.decodeMap(responseBody);
+        return _decodeLinkList(decodedData['data']);
+      },
+    );
   }
 
   // Function Name: generatePatientHash
@@ -86,44 +75,31 @@ class LinkPatientCaregiver {
   // Returns:
   // - Generated patient code.
   Future<PatientLinkCode> generatePatientHash() async {
-    try {
-      final response = await _client
-          .post(
-            Uri.parse('$baseUrl/link/code'),
-            headers: const {'Content-Type': 'application/json'},
-            body: jsonEncode({'patient_hash': userHash}),
-          )
-          .timeout(const Duration(seconds: 30));
-      final responseBody = ApiResponseParser.decodeBody(response);
-
-      if (response.statusCode != 200) {
-        throw ApiResponseParser.httpFailure(
+    return ApiResponseParser.guardRequest(
+      operation: 'Patient code creation failed',
+      logName: 'LinkPatientCaregiver',
+      logMessage: 'Patient code request failed.',
+      request: () async {
+        final response = await _client
+            .post(
+              Uri.parse('$baseUrl/link/code'),
+              headers: const {'Content-Type': 'application/json'},
+              body: jsonEncode({'patient_hash': userHash}),
+            )
+            .timeout(const Duration(seconds: 30));
+        final responseBody = ApiResponseParser.requireOkBody(
           'Patient code creation failed',
           response,
-          responseBody,
         );
-      }
 
-      final decodedData = ApiResponseParser.decodeMap(responseBody);
-      final rawData = decodedData['data'];
-      if (rawData is Map) {
-        return PatientLinkCode.fromJson(Map<String, dynamic>.from(rawData));
-      }
-      throw StateError('Server response did not include a patient code.');
-    } on StateError {
-      rethrow;
-    } catch (error, stackTrace) {
-      developer.log(
-        'Patient code request failed.',
-        name: 'LinkPatientCaregiver',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      throw ApiResponseParser.transportFailure(
-        'Patient code creation failed',
-        error,
-      );
-    }
+        final decodedData = ApiResponseParser.decodeMap(responseBody);
+        final rawData = decodedData['data'];
+        if (rawData is Map) {
+          return PatientLinkCode.fromJson(Map<String, dynamic>.from(rawData));
+        }
+        throw StateError('Server response did not include a patient code.');
+      },
+    );
   }
 
   // Function Name: requestPatientCaregiverLink
@@ -135,44 +111,31 @@ class LinkPatientCaregiver {
   Future<PatientCaregiverLink> requestPatientCaregiverLink(
     String patientCode,
   ) async {
-    try {
-      final response = await _client
-          .post(
-            Uri.parse('$baseUrl/link/register'),
-            headers: const {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'caregiver_hash': userHash,
-              'patient_code': patientCode,
-            }),
-          )
-          .timeout(const Duration(seconds: 30));
-      final responseBody = ApiResponseParser.decodeBody(response);
-
-      if (response.statusCode != 200) {
-        throw ApiResponseParser.httpFailure(
+    return ApiResponseParser.guardRequest(
+      operation: 'Patient registration failed',
+      logName: 'LinkPatientCaregiver',
+      logMessage: 'Patient registration failed.',
+      request: () async {
+        final response = await _client
+            .post(
+              Uri.parse('$baseUrl/link/register'),
+              headers: const {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'caregiver_hash': userHash,
+                'patient_code': patientCode,
+              }),
+            )
+            .timeout(const Duration(seconds: 30));
+        final responseBody = ApiResponseParser.requireOkBody(
           'Patient registration failed',
           response,
-          responseBody,
         );
-      }
 
-      return _decodeSingleLink(
-        ApiResponseParser.decodeMap(responseBody)['data'],
-      );
-    } on StateError {
-      rethrow;
-    } catch (error, stackTrace) {
-      developer.log(
-        'Patient registration failed.',
-        name: 'LinkPatientCaregiver',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      throw ApiResponseParser.transportFailure(
-        'Patient registration failed',
-        error,
-      );
-    }
+        return _decodeSingleLink(
+          ApiResponseParser.decodeMap(responseBody)['data'],
+        );
+      },
+    );
   }
 
   // 함수이름: savePatientAlias
@@ -186,39 +149,27 @@ class LinkPatientCaregiver {
     required int linkId,
     required String patientAlias,
   }) async {
-    try {
-      final response = await _client
-          .patch(
-            _buildLinkUri('link/$linkId/patient-alias'),
-            headers: const {'Content-Type': 'application/json'},
-            body: jsonEncode({'patient_alias': patientAlias}),
-          )
-          .timeout(const Duration(seconds: 30));
-      final responseBody = ApiResponseParser.decodeBody(response);
-      if (response.statusCode != 200) {
-        throw ApiResponseParser.httpFailure(
+    return ApiResponseParser.guardRequest(
+      operation: 'Patient alias save failed',
+      logName: 'LinkPatientCaregiver',
+      logMessage: '환자 표시 이름 서버 저장에 실패했습니다.',
+      request: () async {
+        final response = await _client
+            .patch(
+              _buildLinkUri('link/$linkId/patient-alias'),
+              headers: const {'Content-Type': 'application/json'},
+              body: jsonEncode({'patient_alias': patientAlias}),
+            )
+            .timeout(const Duration(seconds: 30));
+        final responseBody = ApiResponseParser.requireOkBody(
           'Patient alias save failed',
           response,
-          responseBody,
         );
-      }
-      return _decodeSingleLink(
-        ApiResponseParser.decodeMap(responseBody)['data'],
-      );
-    } on StateError {
-      rethrow;
-    } catch (error, stackTrace) {
-      developer.log(
-        '환자 표시 이름 서버 저장에 실패했습니다.',
-        name: 'LinkPatientCaregiver',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      throw ApiResponseParser.transportFailure(
-        'Patient alias save failed',
-        error,
-      );
-    }
+        return _decodeSingleLink(
+          ApiResponseParser.decodeMap(responseBody)['data'],
+        );
+      },
+    );
   }
 
   // 함수이름: saveCaregiverAlias
@@ -229,39 +180,27 @@ class LinkPatientCaregiver {
     required int linkId,
     required String caregiverAlias,
   }) async {
-    try {
-      final response = await _client
-          .patch(
-            _buildLinkUri('link/$linkId/caregiver-alias'),
-            headers: const {'Content-Type': 'application/json'},
-            body: jsonEncode({'caregiver_alias': caregiverAlias}),
-          )
-          .timeout(const Duration(seconds: 30));
-      final responseBody = ApiResponseParser.decodeBody(response);
-      if (response.statusCode != 200) {
-        throw ApiResponseParser.httpFailure(
+    return ApiResponseParser.guardRequest(
+      operation: 'Caregiver alias save failed',
+      logName: 'LinkPatientCaregiver',
+      logMessage: '보호자 표시 이름 서버 저장에 실패했습니다.',
+      request: () async {
+        final response = await _client
+            .patch(
+              _buildLinkUri('link/$linkId/caregiver-alias'),
+              headers: const {'Content-Type': 'application/json'},
+              body: jsonEncode({'caregiver_alias': caregiverAlias}),
+            )
+            .timeout(const Duration(seconds: 30));
+        final responseBody = ApiResponseParser.requireOkBody(
           'Caregiver alias save failed',
           response,
-          responseBody,
         );
-      }
-      return _decodeSingleLink(
-        ApiResponseParser.decodeMap(responseBody)['data'],
-      );
-    } on StateError {
-      rethrow;
-    } catch (error, stackTrace) {
-      developer.log(
-        '보호자 표시 이름 서버 저장에 실패했습니다.',
-        name: 'LinkPatientCaregiver',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      throw ApiResponseParser.transportFailure(
-        'Caregiver alias save failed',
-        error,
-      );
-    }
+        return _decodeSingleLink(
+          ApiResponseParser.decodeMap(responseBody)['data'],
+        );
+      },
+    );
   }
 
   // Function Name: requestUnlink
@@ -271,34 +210,24 @@ class LinkPatientCaregiver {
   // Returns:
   // - Updated patient-caregiver link.
   Future<PatientCaregiverLink> requestUnlink(int linkId) async {
-    try {
-      final response = await _client
-          .delete(_buildLinkUri('link/$linkId'))
-          .timeout(const Duration(seconds: 30));
-      final responseBody = ApiResponseParser.decodeBody(response);
-
-      if (response.statusCode != 200) {
-        throw ApiResponseParser.httpFailure(
+    return ApiResponseParser.guardRequest(
+      operation: 'Unlink failed',
+      logName: 'LinkPatientCaregiver',
+      logMessage: 'Patient-caregiver unlink failed.',
+      request: () async {
+        final response = await _client
+            .delete(_buildLinkUri('link/$linkId'))
+            .timeout(const Duration(seconds: 30));
+        final responseBody = ApiResponseParser.requireOkBody(
           'Unlink failed',
           response,
-          responseBody,
         );
-      }
 
-      return _decodeSingleLink(
-        ApiResponseParser.decodeMap(responseBody)['data'],
-      );
-    } on StateError {
-      rethrow;
-    } catch (error, stackTrace) {
-      developer.log(
-        'Patient-caregiver unlink failed.',
-        name: 'LinkPatientCaregiver',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      throw ApiResponseParser.transportFailure('Unlink failed', error);
-    }
+        return _decodeSingleLink(
+          ApiResponseParser.decodeMap(responseBody)['data'],
+        );
+      },
+    );
   }
 
   // Function Name: _decodeSingleLink

@@ -312,9 +312,9 @@ class MedicationSchedule {
             json['rawDrugName'] ??
             json['rawMedicationName'],
       ),
-      nameConfidence: _readDouble(
+      nameConfidence: readJsonDouble(
         json['name_confidence'] ?? json['nameConfidence'],
-      ),
+      ) ?? 0,
       nameCorrectionSource: readJsonText(
         json['name_correction_source'] ?? json['nameCorrectionSource'],
       ),
@@ -374,9 +374,9 @@ class MedicationSchedule {
             json['rawDrugName'] ??
             json['rawMedicationName'],
       ),
-      nameConfidence: _readDouble(
+      nameConfidence: readJsonDouble(
         json['name_confidence'] ?? json['nameConfidence'],
-      ),
+      ) ?? 0,
       nameCorrectionSource: readJsonText(
         json['name_correction_source'] ?? json['nameCorrectionSource'],
       ),
@@ -494,7 +494,7 @@ class MedicationSchedule {
     if (medicationName.trim().isNotEmpty) {
       return medicationName.trim();
     }
-    return _isEnglishLanguage(language)
+    return isEnglishLanguage(language)
         ? 'Medication name unavailable'
         : '약품명 확인 필요';
   }
@@ -545,7 +545,7 @@ class MedicationSchedule {
   // 반환값:
   // - int: 하루 복용 횟수. 읽을 수 없으면 0.
   int get dailyFrequencyCount {
-    return _readInt(intakeTime);
+    return medicationScheduleCountFromText(intakeTime);
   }
 
   // 함수이름: slotKeys
@@ -592,7 +592,7 @@ class MedicationSchedule {
   String dosageLabelForLanguage(String language) {
     final value = dosage.trim();
     if (value.isEmpty) {
-      return _isEnglishLanguage(language) ? 'Dose not available' : '투약량 정보 없음';
+      return isEnglishLanguage(language) ? 'Dose not available' : '투약량 정보 없음';
     }
     return localizedDoseAmountLabel(value, language);
   }
@@ -605,15 +605,15 @@ class MedicationSchedule {
   // - String: 1일 복용 횟수를 현재 언어의 문장형 표시값으로 변환한다.
   String dailyFrequencyLabelForLanguage(String language) {
     if (isAsNeeded) {
-      return _isEnglishLanguage(language) ? 'As needed' : '필요시 복용';
+      return isEnglishLanguage(language) ? 'As needed' : '필요시 복용';
     }
     final value = intakeTime.trim();
     if (value.isEmpty) {
-      return _isEnglishLanguage(language)
+      return isEnglishLanguage(language)
           ? 'Frequency not available'
           : '복용 횟수 정보 없음';
     }
-    if (!_isEnglishLanguage(language)) {
+    if (!isEnglishLanguage(language)) {
       return value;
     }
     return englishDailyFrequencyLabel(value) ?? value;
@@ -627,11 +627,11 @@ class MedicationSchedule {
   // - String: 총 복용 일수를 현재 언어에 맞는 표시값으로 변환한다.
   String durationLabelForLanguage(String language) {
     if (medicationTime <= 0) {
-      return _isEnglishLanguage(language)
+      return isEnglishLanguage(language)
           ? 'Duration not available'
           : '복용 기간 정보 없음';
     }
-    if (!_isEnglishLanguage(language)) {
+    if (!isEnglishLanguage(language)) {
       return '$medicationTime일';
     }
     return englishDurationLabel(medicationTime)!;
@@ -792,42 +792,6 @@ class MedicationSchedule {
       return medicationStatus;
     }
     return slotStatuses[slotKey.trim().toLowerCase()] ?? false;
-  }
-
-  // Function Name: _readInt
-  // Description: Extracts the daily dose count from frequency text through the shared frequency parser.
-  // Parameters:
-  // - value (dynamic): Raw response field to decode into the documented return type.
-  // Returns:
-  // - int: The daily dose count, or zero when none can be read.
-  static int _readInt(dynamic value) {
-    return medicationScheduleCountFromText(value);
-  }
-
-  // 함수이름: _isEnglishLanguage
-  // 함수역할: 언어 코드의 공백과 대소문자를 정리한 뒤 en 접두사로 영어 계열을 판정한다.
-  // 매개변수:
-  // - language (String): 표시·음성 안내에 사용할 언어 코드
-  // 반환값:
-  // - bool: 언어 코드의 공백과 대소문자를 정리한 뒤 en 접두사로 영어 계열을 판정한다.
-  static bool _isEnglishLanguage(String language) {
-    return isEnglishLanguage(language);
-  }
-
-  // Function Name: _readDouble
-  // Description: Converts numeric input or a numeric string to a double, using zero when conversion fails.
-  // Parameters:
-  // - value (dynamic): Raw response field to decode into the documented return type.
-  // Returns:
-  // - double: Converts numeric input or a numeric string to a double, using zero when conversion fails.
-  static double _readDouble(dynamic value) {
-    if (value is double) {
-      return value;
-    }
-    if (value is int) {
-      return value.toDouble();
-    }
-    return double.tryParse(readJsonText(value)) ?? 0;
   }
 
   // Function Name: _readSlotStatuses
