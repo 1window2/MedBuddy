@@ -142,7 +142,7 @@ class InputPrescriptionUI extends StatelessWidget {
                       20,
                       useCompactDashboard ? 10 : 16,
                       20,
-                      useCompactDashboard ? 12 : 32,
+                      useCompactDashboard ? 8 : 32,
                     ),
                     child: Center(
                       child: ConstrainedBox(
@@ -303,12 +303,13 @@ class InputPrescriptionUI extends StatelessWidget {
                                       mainAxisSpacing: useCompactDashboard
                                           ? 10
                                           : 14,
-                                      // Reserve room for two-line titles and descriptions in narrow cards.
+                                      // 138dp holds a two-line title and a two-line description up to
+                                      // 1.1x text (about 137dp); wider cards keep that height on 411dp phones.
                                       childAspectRatio: useCompactDashboard
                                           ? ((constraints.maxWidth - 10) /
                                                     2 /
-                                                    144)
-                                                .clamp(1.0, 1.25)
+                                                    138)
+                                                .clamp(1.0, 1.35)
                                           : 1,
                                       children: homeActions,
                                     ),
@@ -317,7 +318,7 @@ class InputPrescriptionUI extends StatelessWidget {
                               },
                             ),
                             if (caregiverScheduleHint != null) ...[
-                              SizedBox(height: useCompactDashboard ? 10 : 14),
+                              SizedBox(height: useCompactDashboard ? 4 : 14),
                               caregiverScheduleHint!,
                             ],
                           ],
@@ -408,7 +409,7 @@ class _HomeHeader extends StatelessWidget {
       color: MedBuddyColors.pageBackground,
       padding: EdgeInsets.fromLTRB(
         22,
-        MediaQuery.of(context).padding.top + 18,
+        MediaQuery.of(context).padding.top + 10,
         20,
         4,
       ),

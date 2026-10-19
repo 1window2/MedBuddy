@@ -1,11 +1,12 @@
 // 파일명: home_linked_patient_hint.dart
-// 역할: 보호자 계정 홈의 "연동된 환자 일정 보기" 안내를 기능 카드와 같은 모양의 낮은 카드로 그린다.
+// 역할: 보호자 계정 홈의 "연동된 환자 일정 보기" 안내를 테두리 없이 글자 높이에 맞춘 행으로 그린다.
 import 'package:flutter/material.dart';
 import '../theme/medbuddy_theme.dart';
 
 // 클래스명: HomeLinkedPatientHint
 // 역할: 홈 일정을 연동된 환자 기준으로 바꾸는 설정으로 안내한다. 홈이 스크롤 없이 한 화면에
-//   들어가도록 제목과 짧은 설명을 두 줄로 두고, 큰 글씨에서는 줄바꿈으로 높이를 늘린다.
+//   들어가도록 배경·테두리 없이 제목과 짧은 설명 두 줄 높이만 차지하고, 누르는 영역은 48dp를
+//   유지한다. 큰 글씨에서는 줄바꿈으로 높이를 늘린다.
 class HomeLinkedPatientHint extends StatelessWidget {
   final bool isEnglish;
   final VoidCallback onTap;
@@ -20,24 +21,19 @@ class HomeLinkedPatientHint extends StatelessWidget {
   });
 
   // 함수이름: build
-  // 함수역할: 아이콘·제목·설명·화살표를 한 행에 놓은 48dp 이상의 누를 수 있는 카드를 만든다.
-  // 매개변수: context: 위젯 트리 위치. 반환값: 안내 카드 위젯.
+  // 함수역할: 아이콘·제목·설명·화살표를 한 행에 놓은 48dp 이상의 누를 수 있는 행을 만든다.
+  // 매개변수: context: 위젯 트리 위치. 반환값: 안내 행 위젯.
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: MedBuddyColors.surface,
-      borderRadius: MedBuddyRadii.largeCard,
+      type: MaterialType.transparency,
       child: InkWell(
         key: const Key('caregiver-home-source-hint'),
-        borderRadius: MedBuddyRadii.largeCard,
+        borderRadius: MedBuddyRadii.control,
         onTap: onTap,
         child: Container(
           constraints: const BoxConstraints(minHeight: 48),
-          padding: const EdgeInsets.fromLTRB(14, 9, 10, 9),
-          decoration: BoxDecoration(
-            borderRadius: MedBuddyRadii.largeCard,
-            border: Border.all(color: MedBuddyColors.cardBorder),
-          ),
+          padding: const EdgeInsets.fromLTRB(4, 2, 0, 2),
           child: Row(
             children: [
               const Icon(
