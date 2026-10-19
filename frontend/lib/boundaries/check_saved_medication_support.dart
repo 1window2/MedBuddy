@@ -641,8 +641,8 @@ class _SavedMedicationText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   // 서버는 삭제한 약의 복용 기록도 지우므로, 기록을 남기려면 중단을 쓰도록 미리 알린다.
   String deleteMessage(int count) => isEnglish
-      ? 'Delete $count medication${count == 1 ? '' : 's'}?\nIts dose records are deleted too and cannot be restored. To keep the records, use "Stop as prescribed" instead.'
-      : '선택한 약 $count개를 삭제할까요?\n이 약의 복용 기록도 함께 삭제되며 되돌릴 수 없습니다. 기록을 남기려면 \'처방에 따른 복용 중단\'을 이용하세요.';
+      ? 'Delete $count medication${count == 1 ? '' : 's'}?\n${count == 1 ? 'Its' : 'Their'} dose records are deleted too and cannot be restored. To keep the records, use "Stop as prescribed" instead.'
+      : '선택한 약 $count개를 삭제할까요?\n${count == 1 ? '이 약의' : '이 약들의'} 복용 기록도 함께 삭제되며 되돌릴 수 없습니다. 기록을 남기려면 \'처방에 따른 복용 중단\'을 이용하세요.';
   // 함수이름: deleteAction
   // 함수역할: 삭제 확인 버튼의 "삭제" 문구를 제공한다.
   // 매개변수:
