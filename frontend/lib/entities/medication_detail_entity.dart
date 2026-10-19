@@ -1,6 +1,7 @@
 // 파일명: medication_detail_entity.dart
 // 역할: 서버와 화면 사이에서 사용하는 약 상세 정보 모델을 정의한다.
 
+import 'calendar_days.dart';
 import 'medication_dose_rhythm.dart';
 import 'medication_image_url_entity.dart';
 import 'medication_schedule_entity.dart';
@@ -347,11 +348,9 @@ class MedicationDetail {
     if (startDate == null || dayCount <= 0) {
       return null;
     }
-    return DateTime(
-      startDate.year,
-      startDate.month,
-      startDate.day,
-    ).add(Duration(days: dayCount - 1));
+    // Calendar days, not 24-hour steps: a daylight-saving change inside the course
+    // would otherwise end it at 23:00 of the previous day.
+    return addCalendarDays(startDate, dayCount - 1);
   }
 
   // 함수이름: nextDoseDayFrom
@@ -370,14 +369,10 @@ class MedicationDetail {
     final dayCount = medicationDayCountFromText(totalDays);
     final courseEnd = dayCount <= 0
         ? null
-        : DateTime(
-            startDate.year,
-            startDate.month,
-            startDate.day + dayCount - 1,
-          );
+        : addCalendarDays(startDate, dayCount - 1);
     final stopEnd = stoppedOn == null
         ? null
-        : DateTime(stoppedOn!.year, stoppedOn!.month, stoppedOn!.day - 1);
+        : addCalendarDays(stoppedOn!, -1);
     final end =
         stopEnd != null && (courseEnd == null || stopEnd.isBefore(courseEnd))
         ? stopEnd

@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
+import 'package:medbuddy_frontend/entities/calendar_days.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
 import 'package:medbuddy_frontend/controls/manage_account_control.dart';
@@ -1669,7 +1670,8 @@ void main() {
     final notificationService = RecordingNotificationService();
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final start = today.subtract(const Duration(days: 3));
+    // 서머타임 전환일을 지나도 날짜가 어긋나지 않게 달력 날짜로 계산한다.
+    final start = addCalendarDays(today, -3);
     String isoDate(DateTime date) => date.toIso8601String().split('T').first;
     final requests = <String>[];
     // 함수이름: MockClient 콜백
@@ -1730,8 +1732,8 @@ void main() {
 
     expect(saved, isTrue);
     expect(notificationService.registeredActiveDates.single, [
-      today.add(const Duration(days: 4)),
-      today.add(const Duration(days: 11)),
+      addCalendarDays(today, 4),
+      addCalendarDays(today, 11),
     ]);
 
     // 앞으로 14일 안에도 약이 없는 시간대는 저장 요청 없이 거절한다.
