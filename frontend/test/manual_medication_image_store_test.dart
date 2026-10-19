@@ -40,6 +40,33 @@ void main() {
     }
   });
 
+  // 늦게 끝난 목록 조회는 조회 시작 뒤 저장한 새 약 사진을 고아로 지우지 않는다.
+  test('목록 조회 시작 뒤 저장한 사진은 고아 사진 정리에서 남긴다', () async {
+    final directory = await Directory.systemTemp.createTemp('medbuddy-photo-orphan-');
+    final originalProvider = PathProviderPlatform.instance;
+    PathProviderPlatform.instance = _ImagePaths(directory.path);
+    try {
+      final source = File('${directory.path}/source.png');
+      await source.writeAsBytes(img.encodePng(img.Image(width: 20, height: 10)));
+      const store = ManualMedicationImageStore();
+      final old = await store.saveImage(patientHash: 'patient-a', medicationId: 1,
+          sourcePath: source.path);
+      await File(old).setLastModified(DateTime.now().subtract(const Duration(minutes: 5)));
+      final listRequestedAt = DateTime.now().subtract(const Duration(seconds: 1));
+      final fresh = await store.saveImage(patientHash: 'patient-a', medicationId: 2,
+          sourcePath: source.path);
+      await store.removeOrphanImages(patientHash: 'patient-a', activeMedicationIds: {},
+          keepWrittenAfter: listRequestedAt);
+      expect(await File(old).exists(), isFalse);
+      expect(await File(fresh).exists(), isTrue);
+      await store.removeOrphanImages(patientHash: 'patient-a', activeMedicationIds: {});
+      expect(await File(fresh).exists(), isFalse);
+    } finally {
+      PathProviderPlatform.instance = originalProvider;
+      await directory.delete(recursive: true);
+    }
+  });
+
   // 처방 변경으로 새 ID가 생겨도 기기 사진이 새 항목에 이어지고 이전 기록 행의 사진은 남는다.
   test('처방 변경의 새 약 ID로 사진을 복사하고 이전 사진과 기존 사진을 유지한다', () async {
     final directory = await Directory.systemTemp.createTemp('medbuddy-photo-copy-');

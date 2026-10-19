@@ -296,6 +296,10 @@ void main() {
       expect(csv, isNot(contains('private-scope')));
       // 시각 기준 행과 복용 시간대 열의 제목이 겹치지 않는다.
       expect(csv, contains('"표준시","UTC+09:00"'));
+      // 시각이 없는 칸은 수식 방지 접두사 없이 '-'로 남는다.
+      expect(csv, isNot(contains('"\'-"')));
+      expect(medicationHistoryCsvCell('-'), '"-"');
+      expect(medicationHistoryCsvCell('-1+2'), '"\'-1+2"');
       expect('"시간대"'.allMatches(csv).length, 1);
       expect(
         medicationHistorySummary(snapshot, isEnglish: true),

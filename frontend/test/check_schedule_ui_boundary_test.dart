@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show SemanticsNode;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -1487,6 +1488,40 @@ void main() {
   // 함수이름: 복용 실행 취소 테스트
   // 함수역할: tester로 완료 안내의 실행 취소를 누르면 취소 기록이 완료 기록 뒤에 저장되고 화면이
   //   미복용으로 돌아가는지 검증한다. 반환값: 검증 완료.
+  // 화면 낭독기는 약 이름과 복용 여부를 읽고, 동작은 힌트로 안내해야 한다.
+  testWidgets('복용 체크는 약 이름·복용 여부·동작을 화면 낭독기에 알린다', (tester) async {
+    final semantics = tester.ensureSemantics();
+    final checkSchedule = _MorningDoseCheckSchedule();
+    final harness = await _pumpDoseSchedule(tester, checkSchedule);
+    SemanticsNode toggle() => tester.getSemantics(
+      find.byKey(const ValueKey('scheduleMedicationStatusToggle_91')),
+    );
+    expect(
+      toggle(),
+      isSemantics(
+        label: '테스트정',
+        hint: '복용 완료',
+        hasCheckedState: true,
+        isChecked: false,
+      ),
+    );
+
+    await tester.tap(find.byTooltip('복용 완료'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      toggle(),
+      isSemantics(
+        label: '테스트정',
+        hint: '복용 완료 취소',
+        hasCheckedState: true,
+        isChecked: true,
+      ),
+    );
+    await _closeDoseSchedule(tester, harness);
+    semantics.dispose();
+  });
+
   testWidgets('완료 안내의 실행 취소는 취소 기록을 이어서 저장한다', (tester) async {
     final checkSchedule = _MorningDoseCheckSchedule();
     final harness = await _pumpDoseSchedule(tester, checkSchedule);
@@ -1600,7 +1635,17 @@ void main() {
       isTrue,
     );
 
+    // 시간대 전체 해제는 홈과 같이 먼저 확인한다. 유지를 고르면 아무것도 바꾸지 않는다.
     await tester.tap(wholeSlotButton);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('schedule-slot-undo-confirmation')), findsOneWidget);
+    expect(find.text('아침 복용 완료 기록을 모두 취소할까요?'), findsOneWidget);
+    await tester.tap(find.text('그대로 두기'));
+    await tester.pumpAndSettle();
+    expect(harness.queued, hasLength(1));
+    await tester.tap(wholeSlotButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('schedule-slot-undo-confirm')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 

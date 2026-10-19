@@ -236,6 +236,40 @@ void main() {
   }
 
   // 같은 목록은 갱신하지 않고 연동 변경만 화면에 알린다.
+  // 자정 전에 받은 현황이 다음 날 홈에 "오늘의 복약 진행률"로 남지 않아야 한다.
+  test('자정이 지나면 어제 받은 보호자 현황을 오늘 진행률로 보여주지 않는다', () async {
+    final client = MockClient((request) async => http.Response(jsonEncode({
+      'success': true,
+      'data': {
+        'caregiver_hash': 'owner',
+        'patients': [{
+          'link': _link.toJson(),
+          'notification_settings': [],
+          'today_medication_info': {'schedules': [{
+            'medication_id': '1', 'medication_name': 'Scheduled medicine',
+            'schedule_slot_keys': ['morning'],
+          }]},
+        }],
+      },
+    }), 200, headers: {'content-type': 'application/json; charset=utf-8'}));
+    // 한국 시각 23:59:30(UTC 14:59:30)에 조회하고 30초 뒤 자정을 넘긴다.
+    var now = DateTime.utc(2026, 10, 19, 14, 59, 30);
+    final api = CheckCaregiverMedication(
+      caregiverHash: 'owner', baseUrl: 'http://medbuddy.test', client: client,
+    );
+    final control = CheckCaregiverHome(userHash: 'owner', control: api, clock: () => now);
+    addTearDown(control.dispose);
+    addTearDown(client.close);
+    control.updateLinks([_link]);
+    await control.refresh();
+    expect(control.snapshotFor(1)?.schedules, hasLength(1));
+    now = DateTime.utc(2026, 10, 19, 15, 0, 1);
+    expect(control.snapshotFor(1), isNull);
+    expect(control.widgetCache['patients'][0]['schedules'], isNull);
+    await control.refresh();
+    expect(control.snapshotFor(1)?.schedules, hasLength(1));
+  });
+
   test('동일한 연동 목록의 변경 알림을 생략한다', () {
     final control = CheckCaregiverHome(userHash: 'owner');
     addTearDown(control.dispose);

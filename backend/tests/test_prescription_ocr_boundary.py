@@ -285,3 +285,30 @@ def test_text_prompt_preserves_the_privacy_boundary() -> None:
 
     assert "원본 이미지나 제거된 개인정보를 추측하지 말고" in prompt
     assert "반드시 지정된 JSON 스키마로만 반환하세요" in prompt
+
+
+# Function Name: test_empty_ai_reply_is_an_upstream_format_error
+# Description:
+# - An empty or safety-blocked Gemini reply raises the format error the route maps to 502,
+#   not a plain ValueError that it answered as a 400 with internal English text.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_empty_ai_reply_is_an_upstream_format_error() -> None:
+    from services.prescription_parser import PrescriptionAnalysisFormatError
+
+    client = _RecordingGeminiClient()
+    _FakeGeminiResponse.text = "   "
+    try:
+        with pytest.raises(PrescriptionAnalysisFormatError):
+            await GeminiPrescriptionTextClient().generate_text_content(
+                client=client,  # type: ignore[arg-type]
+                model_name="test-model",
+                prompt="extract",
+                masked_text="masked text",
+                response_schema={},
+            )
+    finally:
+        _FakeGeminiResponse.text = "{}"

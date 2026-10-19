@@ -3,10 +3,10 @@
 
 name: Data Maintenance
 
+# No schedule while self-hosted: a scheduled trigger on a disabled job only created a
+# skipped run every day. Restore `schedule: - cron: "15 18 * * *"` with the job.
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "15 18 * * *"
 
 permissions:
   contents: read

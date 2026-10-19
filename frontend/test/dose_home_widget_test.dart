@@ -821,6 +821,16 @@ void main() {
   // 모든 시간이 지난 경우에도 마지막 시간대로 건너뛰지 않고 남은 일정 순서를 지킨다.
   // 함수이름: 지난 시간대 순서 유지 테스트
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // 알림 직후의 복용은 제때 복용이므로 서버의 미복용 기준과 같은 유예 시간이 지나야 안내한다.
+  test('a slot becomes overdue only after the missed-dose grace', () async {
+    // 한국 시각 08:10과 08:30(UTC 23:10, 23:30 전날).
+    final early = await state(at: DateTime.utc(2026, 9, 20, 23, 10));
+    expect(early.view['heading'], '아침 08:00');
+    expect(early.view['overdue'], isFalse);
+    final late = await state(at: DateTime.utc(2026, 9, 20, 23, 30));
+    expect(late.view['overdue'], isTrue);
+  });
+
   test('overdue slots retain their order and warning', () async {
     final late = DateTime.utc(2026, 9, 21, 14);
     final morning = await state(at: late);

@@ -288,10 +288,10 @@ class SetCaregiverNotificationUI {
                             isEnglish
                                 ? (deadlineTooEarly
                                       ? 'Choose $reminderLabel or later. The $reminderLabel medication reminder has not gone off before then, so the dose is not late yet and you would be told it was missed.'
-                                      : 'The check time must be $reminderLabel, the medication reminder time, or later. Before the reminder the dose is not late yet.')
+                                      : 'The check time must be $reminderLabel, the medication reminder time, or later. Before the reminder the dose is not late yet. Alerts are sent no earlier than $missedDoseGraceMinutes minutes after the reminder.')
                                 : (deadlineTooEarly
                                       ? '$reminderLabel 이후로 정해 주세요. 복약 알림($reminderLabel)이 울리기 전에는 아직 복용할 시간이 아니어서, 먹기 전인 약을 미복용으로 알리게 됩니다.'
-                                      : '확인 시각은 복약 알림 시각($reminderLabel)이거나 그 이후여야 합니다. 알림이 울리기 전에는 아직 복용할 시간이 아닙니다.'),
+                                      : '확인 시각은 복약 알림 시각($reminderLabel)이거나 그 이후여야 합니다. 알림이 울리기 전에는 아직 복용할 시간이 아닙니다. 미복용 알림은 복약 알림 $missedDoseGraceMinutes분 뒤부터 보냅니다.'),
                             key: const Key('caregiver-deadline-guidance'),
                             style: TextStyle(
                               color: deadlineTooEarly

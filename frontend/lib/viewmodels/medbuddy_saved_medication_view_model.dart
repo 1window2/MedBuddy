@@ -525,6 +525,8 @@ class MedBuddySavedMedicationViewModel {
     _notifyViewModelListeners();
 
     List<MedicationDetail>? fetchedMedicationList;
+    // 이 시각 이후 저장된 사진은 받은 목록에 없을 수 있으므로 고아 사진 정리에서 제외한다.
+    final listRequestedAt = DateTime.now();
     try {
       fetchedMedicationList = await checkSavedMedication
           .requestSavedMedicationInfo();
@@ -558,7 +560,11 @@ class MedBuddySavedMedicationViewModel {
 
     if (fetchedMedicationList != null) {
       unawaited(
-        _refreshLocalMedicationImages(fetchedMedicationList, generation),
+        _refreshLocalMedicationImages(
+          fetchedMedicationList,
+          generation,
+          listRequestedAt,
+        ),
       );
     }
   }
@@ -679,11 +685,13 @@ class MedBuddySavedMedicationViewModel {
   // 함수역할: 저장 약 ID별 기기 사진을 조회해 상세 모델에 붙이고 고아 사진을 정리하며 사진 처리 실패 시 원래 목록을 유지한다.
   // 매개변수:
   // - medicationList (List<MedicationDetail>): 사진 경로를 연결할 저장 약 목록
+  // - listRequestedAt (DateTime?): 목록 조회를 시작한 시각. 이후에 쓴 사진은 고아로 지우지 않는다.
   // 반환값:
   // - Future<List<MedicationDetail>>: 저장 약 ID별 기기 사진을 조회해 상세 모델에 붙이고 고아 사진을 정리하며 사진 처리 실패 시 원래 목록을 유지한다.
   Future<List<MedicationDetail>> _attachLocalMedicationImages(
-    List<MedicationDetail> medicationList,
-  ) async {
+    List<MedicationDetail> medicationList, {
+    DateTime? listRequestedAt,
+  }) async {
     try {
       final activeIds = medicationList
           .map(
@@ -730,6 +738,7 @@ class MedBuddySavedMedicationViewModel {
       await manualMedicationImageStore.removeOrphanImages(
         patientHash: patientHash,
         activeMedicationIds: activeIds,
+        keepWrittenAfter: listRequestedAt,
       );
       return itemsWithImages;
     } catch (_) {
@@ -742,14 +751,18 @@ class MedBuddySavedMedicationViewModel {
   // 함수역할: 비동기로 찾은 사진 경로를 현재 목록의 같은 저장 ID에만 반영해 늦은 사진 조회가 삭제된 항목을 복원하지 않게 한다. 이어 붙여 둔 경로 중 파일이 사라진 것은 비우고, 달라진 경로가 없으면 알림을 보내지 않는다.
   // 매개변수:
   // - fetchedMedicationList (List<MedicationDetail>): 사진 경로를 연결할 저장 약 목록
+  // - generation (int): 이 목록을 요청한 조회 세대. 새 조회가 시작되면 결과를 버린다.
+  // - listRequestedAt (DateTime): 목록 조회를 시작한 시각. 이후에 쓴 사진은 지우지 않는다.
   // 반환값:
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
   Future<void> _refreshLocalMedicationImages(
     List<MedicationDetail> fetchedMedicationList,
     int generation,
+    DateTime listRequestedAt,
   ) async {
     final itemsWithImages = await _attachLocalMedicationImages(
       fetchedMedicationList,
+      listRequestedAt: listRequestedAt,
     );
     if (_disposed || generation != _loadGeneration) return;
     // 사진 조회가 실패하면 받은 목록이 그대로 돌아오므로 이어 붙여 둔 경로를 지우지 않는다.

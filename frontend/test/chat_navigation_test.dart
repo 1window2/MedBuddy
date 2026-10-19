@@ -635,8 +635,10 @@ void main() {
     );
     addTearDown(control.dispose);
     await control.refresh(includeMessages: true);
+    final chatRoutes = LinkedChatRouteObserver();
     await tester.pumpWidget(
       MaterialApp(
+        navigatorObservers: [chatRoutes],
         home: ChatListUI(
           control: control,
           userSetting: const UserSetting(),
@@ -662,6 +664,13 @@ void main() {
     expect(room.linkId, 2);
     expect(room.patientHash, 'patient-2');
     expect(room.currentUserHash, 'caregiver');
+    // 채팅 알림이 같은 대화를 다시 쌓지 않도록 목록에서 연 대화도 같은 경로 이름으로 추적된다.
+    expect(chatRoutes.isOpen(2), isTrue);
+    expect(chatRoutes.isOpen(1), isFalse);
+    expect(
+      ModalRoute.of(tester.element(find.byType(LinkedChatUI)))?.settings.name,
+      linkedChatRouteName(2),
+    );
     await tester.pumpWidget(const SizedBox.shrink());
     // 기존 실시간 연결의 네트워크 제한 시간을 소진해 테스트 타이머를 정리한다.
     await tester.pump(const Duration(seconds: 20));

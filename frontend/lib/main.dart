@@ -15,6 +15,7 @@ import 'package:home_widget/home_widget.dart';
 import 'boundaries/check_caregiver_medication_ui_boundary.dart';
 import 'boundaries/check_schedule_ui_boundary.dart';
 import 'boundaries/linked_chat_entry_ui_boundary.dart';
+import 'boundaries/linked_chat_ui_boundary.dart';
 import 'boundaries/authentication_gate.dart';
 import 'boundaries/authentication_ui_boundary.dart';
 import 'composition/linked_chat_notification_monitor_factory.dart';
@@ -168,7 +169,6 @@ class _MedBuddyAppState extends State<MedBuddyApp>
     with WidgetsBindingObserver {
   static const String _scheduleRouteName = '/schedule';
   static const String _caregiverScheduleRoutePrefix = '/caregiver-schedule/';
-  static const String _linkedChatRoutePrefix = '/linked-chat/';
 
   late final GlobalKey<NavigatorState> _navigatorKey;
   late final AuthenticationControl _authenticationControl;
@@ -179,7 +179,9 @@ class _MedBuddyAppState extends State<MedBuddyApp>
   final _notificationScheduleSlot = ValueNotifier<String?>(null);
   final _notificationChatLatest = ValueNotifier<int>(0);
   String? _openCaregiverScheduleRouteName;
-  String? _openLinkedChatRouteName;
+  // Every linked-chat screen on the stack, wherever it was opened, so a chat
+  // notification returns to an open conversation instead of stacking a copy.
+  final _linkedChatRoutes = LinkedChatRouteObserver();
   MedicationNotificationSelection? _pendingNotificationSelection;
   // 직전에 끝난 세션의 계정. 로그아웃 중 보류한 알림 동작을 다른 계정에 넘기지 않는 데 쓴다.
   String? _endedSessionUserHash;
@@ -491,7 +493,6 @@ class _MedBuddyAppState extends State<MedBuddyApp>
       }
       _isScheduleRouteOpen = false;
       _openCaregiverScheduleRouteName = null;
-      _openLinkedChatRouteName = null;
       _removeRoutesAboveRoot();
       return;
     }
@@ -1167,8 +1168,8 @@ class _MedBuddyAppState extends State<MedBuddyApp>
     if (session == null) {
       return;
     }
-    final routeName = '$_linkedChatRoutePrefix$linkId';
-    if (_openLinkedChatRouteName == routeName) {
+    final routeName = linkedChatRouteName(linkId);
+    if (_linkedChatRoutes.isOpen(linkId)) {
       _notificationChatLatest.value++;
       navigator.popUntil(
         // 함수이름: popUntil 콜백
@@ -1181,43 +1182,30 @@ class _MedBuddyAppState extends State<MedBuddyApp>
       );
       return;
     }
-    _openLinkedChatRouteName = routeName;
-    navigator
-        .push(
-          MaterialPageRoute<void>(
-            settings: RouteSettings(name: routeName),
-            builder: /* 함수이름: builder 콜백
-             * 함수역할: 연동 정보를 조회해 환자·보호자 역할과 상대 이름을 확인한 뒤 채팅을 연다.
-             * 매개변수:
-             * - context (BuildContext): 화면 트리의 의존성을 조회할 BuildContext
-             * 반환값:
-             * - 선택한 가족 연결의 채팅 화면.
-             */ (context) => LinkedChatEntryUI(
-              key: ValueKey('${session.userHash}:$linkId'),
-              latestMessageRequest: _notificationChatLatest,
-              linkId: linkId,
-              currentUserHash: session.userHash,
-              userSetting: context
-                  .read<MedBuddyViewModel>()
-                  .userSetting
-                  .copyWith(
-                    userHash: session.userHash,
-                    language: _appLanguageControl.language,
-                  ),
-            ),
-          ),
-        )
-        .whenComplete(/* 함수이름: whenComplete 콜백
-         * 함수역할: 닫힌 채팅이 현재 추적 중인 경로일 때 열린 채팅 경로 표시를 지운다.
+    navigator.push(
+      MaterialPageRoute<void>(
+        settings: RouteSettings(name: routeName),
+        builder: /* 함수이름: builder 콜백
+         * 함수역할: 연동 정보를 조회해 환자·보호자 역할과 상대 이름을 확인한 뒤 채팅을 연다.
          * 매개변수:
-         * - 없음.
+         * - context (BuildContext): 화면 트리의 의존성을 조회할 BuildContext
          * 반환값:
-         * - 없음.
-         */ () {
-          if (_openLinkedChatRouteName == routeName) {
-            _openLinkedChatRouteName = null;
-          }
-        });
+         * - 선택한 가족 연결의 채팅 화면.
+         */ (context) => LinkedChatEntryUI(
+          key: ValueKey('${session.userHash}:$linkId'),
+          latestMessageRequest: _notificationChatLatest,
+          linkId: linkId,
+          currentUserHash: session.userHash,
+          userSetting: context
+              .read<MedBuddyViewModel>()
+              .userSetting
+              .copyWith(
+                userHash: session.userHash,
+                language: _appLanguageControl.language,
+              ),
+        ),
+      ),
+    );
   }
 
   // 함수이름: build
@@ -1251,6 +1239,7 @@ class _MedBuddyAppState extends State<MedBuddyApp>
           final session = authentication.session;
           final application = MaterialApp(
             navigatorKey: _navigatorKey,
+            navigatorObservers: [_linkedChatRoutes],
             title: 'MedBuddy',
             debugShowCheckedModeBanner: false,
             locale: Locale(appLanguage.language),

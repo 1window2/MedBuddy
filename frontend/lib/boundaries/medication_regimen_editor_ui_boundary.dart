@@ -520,11 +520,20 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
       ? _text('필수 항목입니다.', 'Required.')
       : null;
 
+  // 확인창의 복용 주기 문구. 저장 문구("주 1회, 1일 2회")는 한국어라 영어 화면에서는 같은 뜻으로 바꿔 보여준다.
+  String get _frequencySummary {
+    final count = _slots.length;
+    if (!_english) return composeDoseFrequency(_doseDays, count);
+    final perDay = count == 1 ? 'once a day' : '$count times a day';
+    if (_doseDays.isEmpty) return 'Daily, $perDay';
+    return count <= 1 ? _doseDaysLabel(_doseDays) : '${_doseDaysLabel(_doseDays)}, $perDay';
+  }
+
   String _doseDaysLabel(String value) => switch (value) {
     '' => _text('매일', 'Daily'),
     '격일' => _text('격일', 'Every other day'),
     '주 1회' => _text('주 1회', 'Weekly'),
-    '월 1회' => _text('월 1회', 'Every 30 days'),
+    '월 1회' => _text('월 1회', 'Once a month'),
     _ => value,
   };
 
@@ -613,7 +622,7 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
         context,
         title: _title,
         message:
-            '${widget.medication.displayName}\n$_dateLabel: ${formatJsonDate(_effectiveDate)}\n\n${_stopping ? _text('이 날부터 복용 일정과 알림에서 제외합니다.', 'Remove this medication from scheduled doses and reminders from this date.') : '${_name.text.trim()} · $_doseText\n${_asNeeded ? _text('필요시 복용', 'As needed') : composeDoseFrequency(_doseDays, _slots.length)}\n${_text('복용 종료일', 'End date')}: ${formatJsonDate(_endDate)} · ${_text('총 $_courseDays일', '$_courseDays day(s)')}'}\n\n${_text('기존 복용 기록은 삭제하지 않습니다. 처방·복약지도에 따른 변경이 맞나요?', 'Earlier records will not be deleted. Does this match your prescription or professional instructions?')}',
+            '${widget.medication.displayName}\n$_dateLabel: ${formatJsonDate(_effectiveDate)}\n\n${_stopping ? _text('이 날부터 복용 일정과 알림에서 제외합니다.', 'Remove this medication from scheduled doses and reminders from this date.') : '${_name.text.trim()} · $_doseText\n${_asNeeded ? _text('필요시 복용', 'As needed') : _frequencySummary}\n${_text('복용 종료일', 'End date')}: ${formatJsonDate(_endDate)} · ${_text('총 $_courseDays일', '$_courseDays day(s)')}'}\n\n${_text('기존 복용 기록은 삭제하지 않습니다. 처방·복약지도에 따른 변경이 맞나요?', 'Earlier records will not be deleted. Does this match your prescription or professional instructions?')}',
         cancelLabel: _text('취소', 'Cancel'),
         confirmLabel: _text('확인 후 적용', 'Confirm change'),
         confirmKey: const Key('regimen-confirm'),

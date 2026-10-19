@@ -150,6 +150,14 @@ void main() {
     await _toggleSavedAll(tester);
     await tester.tap(find.byKey(const Key('saved-medication-delete-selected')));
     await tester.pumpAndSettle();
+    // 삭제하면 복용 기록도 지워진다는 사실과 기록을 남기는 중단 방법을 알리고, 다른 대화상자와
+    // 같이 취소를 왼쪽에 둔다.
+    expect(find.textContaining('복용 기록도 함께 삭제'), findsOneWidget);
+    expect(find.textContaining('처방에 따른 복용 중단'), findsOneWidget);
+    expect(
+      tester.getCenter(find.widgetWithText(OutlinedButton, '취소')).dx,
+      lessThan(tester.getCenter(find.widgetWithText(OutlinedButton, '삭제')).dx),
+    );
     await tester.tap(find.widgetWithText(OutlinedButton, '삭제'));
     await tester.pumpAndSettle();
     expect(model.deletedIds, [1]);

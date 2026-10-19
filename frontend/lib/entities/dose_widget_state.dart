@@ -237,10 +237,12 @@ class DoseWidgetState {
             : completed
             ? tr('복용 완료 취소', 'Undo completion')
             : tr('복용했어요', 'Taken'),
+        // 서버의 미복용 기준과 같이 복약 시각 뒤 유예 시간이 지나야 놓친 복약 안내를 띄운다.
         'overdue':
             !readOnly &&
             !completed &&
-            minute(pageSlot) < local.hour * 60 + local.minute,
+            minute(pageSlot) + missedDoseGraceMinutes <=
+                local.hour * 60 + local.minute,
       });
     }
     final take = takes[slot];
@@ -288,7 +290,8 @@ class DoseWidgetState {
       'overdue':
           !readOnly &&
           slot != null &&
-          minute(slot) < local.hour * 60 + local.minute,
+          minute(slot) + missedDoseGraceMinutes <=
+              local.hour * 60 + local.minute,
       'pages': pages,
       // 날짜·계정이 바뀌면 이전 위젯의 조회 위치를 재사용하지 않는다.
       'navigation_key':

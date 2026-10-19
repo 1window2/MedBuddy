@@ -322,6 +322,49 @@ def test_account_export_leaves_out_the_name_the_other_participant_set(db_session
     assert caregiver_link["patient_alias"] == "caregiver's private name"
 
 
+# Function Name: test_account_export_leaves_out_the_other_participants_choices
+# Description:
+# - The export keeps each side's own "deleted for me" time and alert settings and returns the
+#   user's own settings; neither side sees the other's deletion marker or the caregiver's
+#   alert configuration through the patient's export.
+# Parameters:
+# - db_session (Session): Isolated SQLAlchemy session supplied by the test fixture.
+# Returns:
+# - None.
+def test_account_export_leaves_out_the_other_participants_choices(db_session) -> None:
+    from entities.caregiver_notification_entity import _CaregiverNotification
+    from entities.patient_caregiver_link_entity import _PatientCaregiverLink
+    from entities.user_setting_entity import _UserSetting
+
+    control = ManageAccount(db_session)
+    patient = control.ensureAccount("patient-privacy", commit=True)
+    caregiver = control.ensureAccount("caregiver-privacy", commit=True)
+    link = _PatientCaregiverLink(patient_hash=patient, caregiver_hash=caregiver, linked=True)
+    db_session.add(link)
+    db_session.flush()
+    hidden = datetime(2026, 10, 1, 9, 0)
+    db_session.add_all([
+        _ChatMessage(
+            link_id=link.id, sender_hash=patient, client_message_id="m-1", body="hello",
+            message_kind="text", caregiver_deleted_at=hidden,
+        ),
+        _CaregiverNotification(caregiver_hash=caregiver, patient_hash=patient, enabled=True),
+        _UserSetting(user_hash=patient, font_size=20, reading_speed=1.0, language="ko"),
+    ])
+    db_session.commit()
+
+    patient_data = control.exportAccountData(patient)["data"]
+    caregiver_data = control.exportAccountData(caregiver)["data"]
+
+    assert "caregiver_deleted_at" not in patient_data["chat_messages"][0]
+    assert "patient_deleted_at" in patient_data["chat_messages"][0]
+    assert patient_data["caregiver_notification_settings"] == []
+    assert [row["font_size"] for row in patient_data["user_settings"]] == [20]
+    assert caregiver_data["chat_messages"] == []
+    assert len(caregiver_data["caregiver_notification_settings"]) == 1
+    assert caregiver_data["user_settings"] == []
+
+
 # Class Name: _FailOnceIdentityDeletionBoundary
 # Role: Identity-deletion double that fails once and records subjects across the subsequent
 #   retry.

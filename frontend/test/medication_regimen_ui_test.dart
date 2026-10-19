@@ -176,6 +176,30 @@ void main() {
     });
   }
 
+  // 영어 화면의 확인창은 저장용 한국어 주기 문구("격일, 1일 2회")를 그대로 보여주지 않는다.
+  testWidgets('영어 변경 확인창은 복용 주기를 영어로 보여준다', (tester) async {
+    await _open(
+      tester,
+      MedicationRegimenEditorUI(
+        medication: _medication(),
+        action: MedicationRegimenAction.edit,
+        isEnglish: true,
+        onSubmit: (_) async =>
+            const MedicationRegimenResult(medicationId: 8, revision: 5),
+      ),
+    );
+    await tester.enterText(find.byKey(const Key('regimen-dosage')), '2');
+    await _tap(tester, 'regimen-submit');
+    final dialog = find.byKey(const Key('regimen-confirm'));
+    expect(dialog, findsOneWidget);
+    final texts = tester
+        .widgetList<Text>(find.descendant(of: find.byType(AlertDialog), matching: find.byType(Text)))
+        .map((text) => text.data ?? '')
+        .join('\n');
+    expect(texts, contains('a day'));
+    expect(RegExp(r'\d회').hasMatch(texts), isFalse, reason: texts);
+  });
+
   testWidgets('교체는 수량과 단위 및 필요시 모드를 새 처방으로 전송한다', (tester) async {
     MedicationRegimenChange? submitted;
     await _open(

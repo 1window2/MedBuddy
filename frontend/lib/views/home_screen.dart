@@ -1033,9 +1033,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       alarm.minute,
     );
     // 두 시간은 조기 기록 안내를 표시하는 기준이며 복용 가능 시간을 뜻하지 않는다.
+    // 알림 직후의 기록은 제때 복용이므로 서버의 미복용 기준과 같은 유예 시간이 지난 뒤에만 안내한다.
     final needsTimingGuidance =
         completed &&
-        (pressedAt.isAfter(scheduledAt) ||
+        (!pressedAt.isBefore(
+              scheduledAt.add(
+                const Duration(minutes: missedDoseGraceMinutes),
+              ),
+            ) ||
             scheduledAt.difference(pressedAt) > const Duration(hours: 2));
     // Function Name: _updateHomeMedicationSlot.setState callback
     // Description: Updates the local input or request state for the active screen selected by prescription flow and navigation destination: `_updatingHomeMedicationSlotKey = slotKey`.

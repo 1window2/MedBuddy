@@ -53,6 +53,22 @@ void main() {
     expect(entries, hasLength(1));
     expect(entries.single.isRead, isFalse);
   });
+  // 서버가 같은 채팅 메시지를 다시 보내면 FCM 메시지 ID는 바뀌어도 event_id는 같다.
+  test('채팅 푸시 재전송은 서버 event_id로 한 건만 남긴다', () async {
+    final store = NotificationInboxStore(userHash: 'caregiver');
+    final data = {
+      'type': 'linked_chat_message', 'recipient_hash': 'caregiver',
+      'link_id': '3', 'event_id': 'chat:3:10', 'message_preview': '약 드셨어요?',
+    };
+    await recordPushNotificationHistory(RemoteMessage(messageId: 'fcm-1', data: data),
+      userHash: 'caregiver');
+    await recordPushNotificationHistory(RemoteMessage(messageId: 'fcm-2', data: data),
+      userHash: 'caregiver');
+    expect(await store.load(), hasLength(1));
+    await recordPushNotificationHistory(RemoteMessage(messageId: 'fcm-3',
+      data: {...data, 'event_id': 'chat:3:11'}), userHash: 'caregiver');
+    expect(await store.load(), hasLength(2));
+  });
   TestWidgetsFlutterBinding.ensureInitialized();
   late DateTime now;
   late NotificationInboxStore store;

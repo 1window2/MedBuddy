@@ -154,11 +154,13 @@ class ManualMedicationImageStore {
   // 매개변수:
   // - patientHash (String): 조회·저장·알림 대상 환자의 소유권 해시
   // - activeMedicationIds (Set<int>): 사진을 유지할 현재 저장 약 ID 집합
+  // - keepWrittenAfter (DateTime?): 이 시각 이후에 쓴 사진은 목록이 아직 모르는 새 약일 수 있어 유지한다.
   // 반환값:
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
   Future<void> removeOrphanImages({
     required String patientHash,
     required Set<int> activeMedicationIds,
+    DateTime? keepWrittenAfter,
   }) async {
     final directory = await _patientDirectory(patientHash, create: false);
     if (!await directory.exists()) {
@@ -171,6 +173,11 @@ class ManualMedicationImageStore {
       final fileName = entry.uri.pathSegments.last;
       final medicationId = int.tryParse(fileName.split('.').first);
       if (medicationId == null || !activeMedicationIds.contains(medicationId)) {
+        // 목록 조회를 시작한 뒤 저장한 사진(새 직접 등록·용량 변경 사본)은 늦게 끝난 조회가 지우지 않는다.
+        if (keepWrittenAfter != null &&
+            !(await entry.lastModified()).isBefore(keepWrittenAfter)) {
+          continue;
+        }
         await entry.delete();
       }
     }

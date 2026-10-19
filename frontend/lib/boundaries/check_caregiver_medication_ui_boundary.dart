@@ -1253,48 +1253,55 @@ class _CaregiverMedicationRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isCompleted = schedule.isSlotCompleted(slotKey);
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 4, 14, 4),
-        child: Row(
-          children: [
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      schedule.displayNameForLanguage(isEnglish ? 'en' : 'ko'),
-                      softWrap: true,
-                      style: TextStyle(
-                        color: isCompleted
-                            ? MedBuddyColors.textLight
-                            : MedBuddyColors.textStrong,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        decoration: isCompleted
-                            ? TextDecoration.lineThrough
-                            : null,
+    // 취소선만으로는 화면 낭독기가 복용 여부를 알 수 없으므로 상태를 값으로 함께 읽게 한다.
+    return Semantics(
+      container: true,
+      value: isCompleted
+          ? (isEnglish ? 'Taken' : '복용 완료')
+          : (isEnglish ? 'Not taken yet' : '미복용'),
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 4, 14, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        schedule.displayNameForLanguage(isEnglish ? 'en' : 'ko'),
+                        softWrap: true,
+                        style: TextStyle(
+                          color: isCompleted
+                              ? MedBuddyColors.textLight
+                              : MedBuddyColors.textStrong,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          decoration: isCompleted
+                              ? TextDecoration.lineThrough
+                              : null,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      schedule.dosageLabelForLanguage(isEnglish ? 'en' : 'ko'),
-                      style: const TextStyle(
-                        color: MedBuddyColors.textSubtle,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                      const SizedBox(height: 2),
+                      Text(
+                        schedule.dosageLabelForLanguage(isEnglish ? 'en' : 'ko'),
+                        style: const TextStyle(
+                          color: MedBuddyColors.textSubtle,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 10),
-            MedicationThumbnail(imageUrl: schedule.imageUrl),
-          ],
+              const SizedBox(width: 10),
+              MedicationThumbnail(imageUrl: schedule.imageUrl),
+            ],
+          ),
         ),
       ),
     );

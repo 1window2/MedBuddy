@@ -16,6 +16,7 @@ import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 import '../viewmodels/medbuddy_feature_updates.dart';
+import '../widgets/medbuddy_confirm_dialog.dart';
 import '../widgets/medbuddy_page_header.dart';
 import '../widgets/medbuddy_select_all_bar.dart';
 import '../widgets/medication_schedule_header.dart';
@@ -787,6 +788,22 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     if (_updatingEntireSlotKeys.contains(slot.key) ||
         slot.medications.isEmpty) {
       return;
+    }
+    // Undoing a whole slot asks first, with the same wording as the home card, so a second tap
+    // on the same button cannot silently cancel every dose just recorded.
+    if (!medicationStatus) {
+      final label = text.slotTitle(slot.key);
+      final confirmed = await showMedBuddyConfirmDialog(
+        context,
+        message: text.isEnglish
+            ? 'Undo the $label doses marked as taken?'
+            : '$label 복용 완료 기록을 모두 취소할까요?',
+        cancelLabel: text.isEnglish ? 'Keep' : '그대로 두기',
+        confirmLabel: text.isEnglish ? 'Undo completion' : '복용 완료 취소',
+        dialogKey: const Key('schedule-slot-undo-confirmation'),
+        confirmKey: const Key('schedule-slot-undo-confirm'),
+      );
+      if (!confirmed || !mounted) return;
     }
     // Function Name: _handleEntireSlotStatusChange.setState callback
     // Description: Connects today's per-slot dose completion, reminders, and attachment selection to the captured operation `_updatingEntireSlotKeys.add(slot.key)`.
@@ -1567,54 +1584,65 @@ class _MedicationScheduleRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Tooltip(
-            message: isSelectionMode
+          // A screen reader announces the medicine and whether it is taken (or selected),
+          // and the action as a hint; the tooltip alone read "복용 완료" for an untaken dose.
+          Semantics(
+            container: true,
+            checked: isSelectionMode ? isSelected : isCompleted,
+            label: schedule.displayNameForLanguage(text.language),
+            hint: isSelectionMode
                 ? text.selectMedication
                 : (isCompleted ? text.undoComplete : text.complete),
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: isSelectionMode
-                  ? onSelectionRequested
-                  : isStatusUpdating
-                  ? null
-                  // 함수이름: build.onTap callback
-                  // 함수역할: 약 한 건의 시간대 체크 상태와 상세·첨부 선택에서 캡처된 작업 `onStatusChanged(!isCompleted)`을 실행한다.
-                  // 매개변수:
-                  // - 없음.
-                  // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                  : () => onStatusChanged(!isCompleted),
-              // 어르신이 누르기 쉽게 체크 표시 주변까지 최소 48dp 터치 영역을 둔다.
-              child: SizedBox(
-                key: ValueKey(
-                  'scheduleMedicationStatusToggle_${schedule.medicationID}',
-                ),
-                width: 48,
-                height: 48,
-                child: Center(
-                  child: isStatusUpdating && !isSelectionMode
-                      ? const SizedBox(
-                          width: 25,
-                          height: 25,
-                          child: Padding(
-                            padding: EdgeInsets.all(3),
-                            child: CircularProgressIndicator(strokeWidth: 2),
+            child: Tooltip(
+              excludeFromSemantics: true,
+              message: isSelectionMode
+                  ? text.selectMedication
+                  : (isCompleted ? text.undoComplete : text.complete),
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: isSelectionMode
+                    ? onSelectionRequested
+                    : isStatusUpdating
+                    ? null
+                    // 함수이름: build.onTap callback
+                    // 함수역할: 약 한 건의 시간대 체크 상태와 상세·첨부 선택에서 캡처된 작업 `onStatusChanged(!isCompleted)`을 실행한다.
+                    // 매개변수:
+                    // - 없음.
+                    // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                    : () => onStatusChanged(!isCompleted),
+                // 어르신이 누르기 쉽게 체크 표시 주변까지 최소 48dp 터치 영역을 둔다.
+                child: SizedBox(
+                  key: ValueKey(
+                    'scheduleMedicationStatusToggle_${schedule.medicationID}',
+                  ),
+                  width: 48,
+                  height: 48,
+                  child: Center(
+                    child: isStatusUpdating && !isSelectionMode
+                        ? const SizedBox(
+                            width: 25,
+                            height: 25,
+                            child: Padding(
+                              padding: EdgeInsets.all(3),
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        : Icon(
+                            isSelectionMode
+                                ? isSelected
+                                      ? Icons.check_circle
+                                      : Icons.circle_outlined
+                                : isCompleted
+                                ? Icons.check_circle_outline
+                                : Icons.circle_outlined,
+                            color: isSelectionMode
+                                ? MedBuddyColors.primary
+                                : isCompleted
+                                ? MedBuddyColors.primary
+                                : MedBuddyColors.outline,
+                            size: 25,
                           ),
-                        )
-                      : Icon(
-                          isSelectionMode
-                              ? isSelected
-                                    ? Icons.check_circle
-                                    : Icons.circle_outlined
-                              : isCompleted
-                              ? Icons.check_circle_outline
-                              : Icons.circle_outlined,
-                          color: isSelectionMode
-                              ? MedBuddyColors.primary
-                              : isCompleted
-                              ? MedBuddyColors.primary
-                              : MedBuddyColors.outline,
-                          size: 25,
-                        ),
+                  ),
                 ),
               ),
             ),
@@ -1747,8 +1775,8 @@ class _ReminderIconButton extends StatelessWidget {
             customBorder: const CircleBorder(),
             onTap: onPressed,
             child: SizedBox(
-              width: 44,
-              height: 44,
+              width: 48,
+              height: 48,
               child: Icon(
                 isEnabled
                     ? Icons.notifications_active_outlined
@@ -1830,8 +1858,8 @@ class _SlotCompletionToggleButton extends StatelessWidget {
             customBorder: const CircleBorder(),
             onTap: isUpdating ? null : onPressed,
             child: SizedBox(
-              width: 44,
-              height: 44,
+              width: 48,
+              height: 48,
               child: Center(
                 child: isUpdating
                     ? SizedBox(

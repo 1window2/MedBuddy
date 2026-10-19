@@ -3,6 +3,10 @@
 
 import 'json_value_reader.dart';
 
+// 복약 시각이 지나고 이 시간이 지나기 전의 기록은 제때 복용으로 보고 놓친 복약 안내를 띄우지 않는다.
+// 서버가 보호자 미복용 알림을 미루는 CAREGIVER_MISSED_DOSE_GRACE_MINUTES 기본값과 같다.
+const int missedDoseGraceMinutes = 30;
+
 // 클래스명: MedicationAlarm
 // 역할: 환자와 복약 시간대에 속한 알림 시각 및 활성화 상태를 표현한다.
 // 주요 책임:

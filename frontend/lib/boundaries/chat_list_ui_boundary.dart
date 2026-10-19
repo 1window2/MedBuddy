@@ -212,6 +212,8 @@ class ChatListUI extends StatelessWidget {
   ) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
+        // 채팅 알림이 같은 대화를 다시 쌓지 않도록 알림 경로와 같은 이름을 쓴다.
+        settings: RouteSettings(name: linkedChatRouteName(link.linkId!)),
         // 함수이름: 채팅 경로 builder
         // 함수역할: 선택한 연동의 기존 채팅 UI를 구성한다.
         // 매개변수: context: 경로 문맥. 반환값: 복약 맥락 채팅 화면.

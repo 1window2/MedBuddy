@@ -1013,6 +1013,8 @@ class _LinkPatientCaregiverUIState extends State<LinkPatientCaregiverUI> {
               : _text.caregiverPeer);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
+        // 채팅 알림이 같은 대화를 다시 쌓지 않도록 알림 경로와 같은 이름을 쓴다.
+        settings: RouteSettings(name: linkedChatRouteName(linkId)),
         // 함수이름: _openLinkedChat.builder callback
         // 함수역할: 환자 코드 발급·등록과 연동 목록에 현재 부모의 레이아웃 제약을 적용해 현재 배치를 구성한다.
         // 매개변수:

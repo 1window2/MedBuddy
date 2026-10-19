@@ -11,6 +11,21 @@ released under that version instead. Changes are listed in the
 
 ### Open on this line
 
+- [ ] Offline after Korean midnight, no dose can be recorded until the server
+      has answered once that day: recording needs today's schedule from the
+      server, and the 14-day window is fetched but not kept on the device.
+      Building today's list on the device (courses, cycles, stop and change
+      dates, as-needed exclusion) and reconciling it with the server later is
+      a change to the core dose path, left for a separate line (found in the
+      2026-10-19 final review, MAJOR).
+- [ ] Final-review items left as they are: the as-needed extra-dose
+      confirmation could show the last dose time; a reminder worker already
+      running at sign-out may re-arm the old account's reminders (race, not
+      reproduced); a course length of 0 or less sent directly to the API has
+      no end (the app sends 1-3650); a failed local reminder save turns the
+      reminder off by design rather than restoring it; keep at least one
+      database dump off the production host.
+
 - [ ] The missed-dose scan re-reads every slot that was completed before its
       deadline on each 15-second pass for the rest of the day, two to four
       queries per patient and slot. Negligible at beta size; it grows with
@@ -576,9 +591,10 @@ Defects and limits recorded during the v0.2.0 audits:
 
 Platform and pipeline items reviewed for v0.2.1 and deferred:
 
-- [ ] The two disabled scheduled workflows (`data-maintenance.yml`,
-      `sync-drug-catalog.yml`) still create a skipped run on every schedule
-      tick.
+- [x] The two disabled scheduled workflows (`data-maintenance.yml`,
+      `sync-drug-catalog.yml`) created a skipped run on every schedule tick;
+      their schedules were removed on 2026-10-19 (manual dispatch stays, and
+      each file names the cron to restore with the job).
 - [ ] Both CI workflows report a job named `build`. Making the names unique
       changes the required-check names and needs a branch-protection change by
       the owner.

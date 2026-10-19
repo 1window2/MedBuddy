@@ -226,12 +226,14 @@ class _FakeImageStore extends ManualMedicationImageStore {
   // Parameters:
   // - patientHash (String): Account scope of the photos; not used by this fake.
   // - activeMedicationIds (Set<int>): IDs whose photos must be kept.
+  // - keepWrittenAfter (DateTime?): Photos written after this time are kept.
   // Returns:
   // - Future<void>; completes when the scope is recorded.
   @override
   Future<void> removeOrphanImages({
     required String patientHash,
     required Set<int> activeMedicationIds,
+    DateTime? keepWrittenAfter,
   }) async {
     orphanScopes.add(Set<int>.of(activeMedicationIds));
   }

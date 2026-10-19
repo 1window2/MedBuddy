@@ -6,7 +6,8 @@ import 'medication_history_entity.dart';
 // 함수역할: 셀의 수식·따옴표·구분자를 처리한 CSV 문자열을 반환한다.
 String medicationHistoryCsvCell(String value) {
   var safe = value.replaceAll('\u0000', '');
-  if (RegExp(r'^\s*[=+@-]').hasMatch(safe) ||
+  // 시각이 없는 칸의 '-' 하나는 수식이 될 수 없으므로 그대로 둔다(엑셀에 "'-"로 보이지 않게).
+  if ((safe != '-' && RegExp(r'^\s*[=+@-]').hasMatch(safe)) ||
       safe.startsWith('\t') ||
       safe.startsWith('\r') ||
       safe.startsWith('\n')) {

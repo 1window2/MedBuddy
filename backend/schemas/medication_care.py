@@ -15,7 +15,8 @@ from entities.medication_schedule_entity import normalize_medication_schedule_sl
 # 속성: 약 이름·복용량·기간·확인 시간대·복용 모드.
 class RegimenChanges(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    item_name: str | None = Field(default=None, min_length=1, max_length=200)
+    # 저장과 같은 이름 길이를 허용해, 저장된 긴 이름의 약도 그대로 변경할 수 있게 한다.
+    item_name: str | None = Field(default=None, min_length=1, max_length=500)
     dosage_per_time: str | None = Field(default=None, max_length=300)
     daily_frequency: str | None = Field(default=None, max_length=300)
     total_days: str | None = Field(default=None, max_length=300)

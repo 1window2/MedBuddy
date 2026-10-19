@@ -32,6 +32,13 @@ String? _asNeededPushIdentity(RemoteMessage message) {
       : null;
 }
 
+// 서버 재시도는 FCM 메시지 ID가 매번 바뀌므로 서버가 보낸 고정 event_id를 먼저 쓴다.
+// 같은 채팅 메시지·보호자 알림이 알림함과 시스템 알림에 두 번 쌓이지 않게 한다.
+String? _serverEventIdentity(RemoteMessage message) {
+  final eventId = message.data['event_id']?.toString().trim() ?? '';
+  return eventId.isEmpty ? null : eventId;
+}
+
 // 함수이름: recordPushNotificationHistory
 // 함수역할: 수신 계정을 확인하고 서버에서 표시를 허용한 메시지 미리보기와 푸시 내역을 보관한다.
 // 매개변수: message, 전경 계정·언어·읽음 여부. 반환값: 기록 완료.
@@ -106,7 +113,7 @@ Future<void> recordPushNotificationHistory(
       return;
     }
     final entry = NotificationInboxEntry(
-      id: 'push:${_asNeededPushIdentity(message) ?? message.messageId ?? message.data['event_id'] ?? '$type:$payload:${message.sentTime?.millisecondsSinceEpoch ?? 0}'}',
+      id: 'push:${_asNeededPushIdentity(message) ?? _serverEventIdentity(message) ?? message.messageId ?? '$type:$payload:${message.sentTime?.millisecondsSinceEpoch ?? 0}'}',
       title: title,
       body: body,
       payload: payload,
@@ -700,7 +707,10 @@ class PushNotificationService {
       if (linkId == null || linkId < 1) {
         return;
       }
-      final source = message.messageId ?? 'linked-chat|$linkId';
+      final source =
+          _serverEventIdentity(message) ??
+          message.messageId ??
+          'linked-chat|$linkId';
       final notificationBody = message.notification?.body?.trim() ?? '';
       final dataPreview = message.data['message_preview']?.trim() ?? '';
       await NotificationService.instance.showLinkedChatAlert(
@@ -734,7 +744,11 @@ class PushNotificationService {
     final title = text.title;
     final body = text.body;
     final prnIdentity = _asNeededPushIdentity(message);
-    final source = prnIdentity ?? message.messageId ?? '$patientHash|$title|$body';
+    final source =
+        prnIdentity ??
+        _serverEventIdentity(message) ??
+        message.messageId ??
+        '$patientHash|$title|$body';
     await NotificationService.instance.showCaregiverAlert(
       historyUserHash: userHash,
       recordHistory: false,
