@@ -38,6 +38,7 @@ import '../entities/prescription_flow_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/notification_service.dart';
 import '../services/foreground_recovery_service.dart';
+import '../widgets/home_linked_patient_hint.dart';
 import '../widgets/dose_sync_status.dart';
 import '../services/notification_inbox_store.dart';
 import '../controls/manage_notification_inbox_control.dart';
@@ -798,20 +799,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           viewModel.userSetting.homeScheduleSource == 'self' &&
               _chatList?.hasError == false &&
               (_caregiverHome?.links.isNotEmpty ?? false)
-          ? ListTile(
-              key: const Key('caregiver-home-source-hint'),
-              leading: const Icon(Icons.people_outline),
-              title: Text(
-                viewModel.userSetting.language == 'en'
-                    ? 'View linked patient schedules'
-                    : '연동된 환자 일정 보기',
-              ),
-              subtitle: Text(
-                viewModel.userSetting.language == 'en'
-                    ? 'Change Home schedule from “My schedule” to “Linked patients”.'
-                    : '홈 복약 일정을 ‘내 일정’에서 ‘연동된 환자’로 바꿔보세요.',
-              ),
-              trailing: const Icon(Icons.chevron_right),
+          ? HomeLinkedPatientHint(
+              isEnglish: viewModel.userSetting.language == 'en',
               onTap: () => _openUserSettings(
                 context,
                 viewModel,

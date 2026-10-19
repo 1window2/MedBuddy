@@ -129,9 +129,10 @@ class InputPrescriptionUI extends StatelessWidget {
                       MediaQuery.textScalerOf(context).scale(16) / 16;
                   final useCompactDashboard =
                       viewportConstraints.maxWidth >= 350;
+                  // 기본 글씨의 흔한 휴대폰에서 보호자 안내까지 스크롤 없이 보이도록 세로 간격을 줄인다.
                   final dashboardActionSpacing = useCompactDashboard
                       ? viewportConstraints.maxHeight >= 600
-                            ? 20.0
+                            ? 14.0
                             : 12.0
                       : 20.0;
 
@@ -316,7 +317,7 @@ class InputPrescriptionUI extends StatelessWidget {
                               },
                             ),
                             if (caregiverScheduleHint != null) ...[
-                              SizedBox(height: dashboardActionSpacing),
+                              SizedBox(height: useCompactDashboard ? 10 : 14),
                               caregiverScheduleHint!,
                             ],
                           ],

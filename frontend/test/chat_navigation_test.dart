@@ -299,7 +299,7 @@ void main() {
       );
       expect(model.userSetting.homeScheduleSource, source);
       if (source == 'self') {
-        expect(find.text('홈 복약 일정을 ‘내 일정’에서 ‘연동된 환자’로 바꿔보세요.'), findsOneWidget);
+        expect(find.text('홈 일정을 ‘연동된 환자’로 바꿔요.'), findsOneWidget);
         await tester.ensureVisible(
           find.byKey(const Key('caregiver-home-source-hint')),
         );
