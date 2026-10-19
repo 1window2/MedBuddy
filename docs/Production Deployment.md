@@ -273,9 +273,32 @@ issuance, quota headroom, or physical-device acceptance. Those gates stay open.
 
 ## Start or Update Production
 
+### Settings ordering rollout (`ab29d71c4e60`)
+
+The current head adds `user_settings.revision`, initializing existing rows to
+`1` without changing their preferences. A missing settings row has API revision
+`0`. Back up first and apply `alembic upgrade head` before starting the updated
+backend, then distribute the matching client. Do not stamp past the migration.
+
+New clients send `expected_revision`; writes use an atomic version check and
+return HTTP 409 with `settings_revision_conflict` and the current revision when
+stale. The app retries only its latest pending intent, at most three times,
+retaining it locally on failure. Its preference snapshot stores the full payload,
+pending token and revision together; foreground controllers serialize local
+state changes per account without holding the queue during HTTP calls. Current
+background jobs only read this snapshot and do not perform remote settings writes;
+adding cross-isolate writers would require a shared transactional coordinator.
+Even an unchanged-value save advances the
+revision, so a timed-out older request cannot undo it. Legacy clients that omit
+the field remain supported and advance the revision, but their own delayed
+writes are not protected. An older backend does not enforce this safeguard.
+
+Rehearse upgrade/downgrade on a copy. Stop the new backend before downgrading;
+removing the column also removes the server ordering guarantee.
+
 ### Delayed-request rollout (`d19e7c4b2a60`)
 
-The integrated head is `f2c8a6d4e901`, a no-op merge of the existing catalogue
+The preceding integrated head is `f2c8a6d4e901`, a no-op merge of the existing catalogue
 refresh revision `c5e1a7f3b902` and resource-ID revision `d19e7c4b2a60`. Upgrade
 to `head` from either branch through Alembic; do not rewrite already-applied
 revisions or stamp past either parent's schema work.
@@ -331,6 +354,34 @@ in chat and the national catalog. Stop the updated backend before rollback and
 pair the older schema with the older backend; do not leave the new API serving
 against a downgraded schema. A full database restore has separate data-loss
 implications and is not equivalent to this schema rollback.
+
+### Before every update: backup and rollback images
+
+The update applies migrations as it starts, so take these two steps first:
+
+1. Back up the database and check the dump. Use a custom-format dump with a
+   checksum written next to it, for example inside the `postgres` container:
+   `pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc > medbuddy-<UTC time>.dump`,
+   then `sha256sum` it and verify the checksum. Record the row counts of
+   `user_accounts`, `user_settings`, `saved_medications`,
+   `patient_caregiver_links` and `medication_completions` to compare after the
+   update. Keep at least one recent dump off the production host (another disk
+   or machine); a dump on the same disk is lost with that disk.
+2. Tag the running images so the previous release can be started again:
+   `docker tag medbuddy-beta-<service>:latest medbuddy-beta-<service>:rollback-<short sha>`
+   for `backend`, `catalog-refresh`, `catalog-bootstrap` and `database-migrate`.
+
+A migration with schema changes is rehearsed first on a restored copy: create a
+scratch database, `pg_restore` the dump into it, run
+`docker compose ... run --rm -T -e DATABASE_NAME=<scratch> database-migrate`,
+check the result, run the migration's downgrade and upgrade once more, and drop
+the scratch database.
+
+To roll back: stop the backend; if the update added a migration, run
+`alembic downgrade <previous head>` with the new image first (see the rollout
+notes above for what a downgrade removes); then start the `rollback-<sha>`
+images. Restore the dump only when data itself must be returned to the backup
+point, because it discards everything written since.
 
 ### Deployment command
 
@@ -463,7 +514,7 @@ docker compose --env-file deploy/.env -f compose.self-hosted.yml \
   exec -T backend alembic current
 ```
 
-The reported head must be `f2c8a6d4e901` for this source revision. The
+The reported head must be `ab29d71c4e60` for this source revision. The
 v0.2.0 tail adds the shared pharmacy catalog (`8f2c6d4a1b90`), pharmacy schedule provenance and holiday
 cache (`b6d14f8c2a70`), and structured chat message/context columns
 (`b4e7c2d9a160`), then merges the catalog/chat migration branches

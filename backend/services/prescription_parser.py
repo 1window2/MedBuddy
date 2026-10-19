@@ -12,6 +12,17 @@ from entities.prescription_analysis_entity import (
 )
 
 
+# Class Name: PrescriptionAnalysisFormatError
+# Role: Marks an AI analysis reply that is not the agreed JSON object.
+# Responsibilities:
+# - Lets the route answer with an upstream error (502) instead of a client error, because the
+#   request was valid and a retry can succeed.
+# Attributes:
+# - None beyond ValueError.
+class PrescriptionAnalysisFormatError(ValueError):
+    """The AI analysis reply is not the agreed JSON object."""
+
+
 INFO_UNAVAILABLE = "\uc815\ubcf4 \uc5c6\uc74c"
 MAX_MEDICATION_NAME_LENGTH = 200
 
@@ -118,6 +129,24 @@ def normalize_text(text: str) -> str:
     return " ".join(text.split())
 
 
+# Function Name: strip_markdown_json_fence
+# Description:
+# - Removes optional Markdown JSON fences and surrounding whitespace from AI model output.
+# Parameters:
+# - response_text (str): Raw AI response text before JSON fence removal and decoding.
+# Returns:
+# - Trimmed JSON text ready for decoding.
+def strip_markdown_json_fence(response_text: str) -> str:
+    cleaned_text = response_text.strip()
+    if cleaned_text.startswith("```json"):
+        cleaned_text = cleaned_text[7:]
+    if cleaned_text.startswith("```"):
+        cleaned_text = cleaned_text[3:]
+    if cleaned_text.endswith("```"):
+        cleaned_text = cleaned_text[:-3]
+    return cleaned_text.strip()
+
+
 # Function Name: normalize_date
 # Description:
 # - Locate the first year-month-day pattern and validate it as an actual calendar date.
@@ -148,7 +177,9 @@ def normalize_prescription_candidates(
     data: dict[str, Any],
 ) -> tuple[str, str, MedicationCandidateList, int]:
     if not isinstance(data, dict):
-        raise ValueError("Prescription analysis response must be a JSON object.")
+        raise PrescriptionAnalysisFormatError(
+            "Prescription analysis response must be a JSON object."
+        )
 
     prescription_date = _read_first_text(data, PRESCRIPTION_DATE_KEYS)
     normalized_date = normalize_date(prescription_date or "")

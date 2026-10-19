@@ -37,6 +37,13 @@ def control() -> CheckPrescriptionChange:
         ("total_days", "7", "7일"),
         ("total_days", "7일", "7"),
         ("total_days", "7일", " 7 일 "),
+        # Bare quantities are read with the schedule's own rules.
+        ("total_days", "7", "7일분"),
+        ("total_days", "7", "1주"),
+        ("total_days", "7일", "7 days"),
+        ("total_days", "30일", "1개월"),
+        ("daily_frequency", "3회", "하루 3회"),
+        ("daily_frequency", "3", "3 times"),
         ("dosage_per_time", "5 mg", "5MG"),
     ],
 )
@@ -69,6 +76,9 @@ def test_equivalent_schedule_labels_are_unchanged(
         ("daily_frequency", "2회", "필요시 2회"),
         ("daily_frequency", "2", "2일"),
         ("daily_frequency", "2", "2~3회"),
+        # Counts above the schedule's four slots are still compared as written.
+        ("daily_frequency", "1일 4회", "1일 6회"),
+        ("daily_frequency", "6회", "8"),
         ("daily_frequency", "2", "1일2"),
         ("daily_frequency", "", "2회"),
         ("daily_frequency", "2회", ""),

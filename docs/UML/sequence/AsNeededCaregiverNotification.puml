@@ -1,0 +1,109 @@
+@startuml
+title As-Needed Checks, Local Reminder and Caregiver Delivery
+hide footbox
+skinparam defaultFontName Malgun Gothic
+skinparam maxMessageSize 110
+skinparam sequenceMessageAlign center
+
+actor Patient
+actor Caregiver
+boundary "AsNeededScheduleSection /\ncaregiver settings" as UI
+control "MedicationHistoryControl /\nAsNeededCheckReminderControl" as Front
+boundary "Authenticated care / settings API" as API
+control "ManageMedicationCare /\nSetCaregiverNotification" as Care
+database "Reports + Audit + Receipt\nCaregiver outbox + Preferences" as DB
+control "ProcessCaregiverAlertOutbox /\nDispatchCaregiverAlert" as Delivery
+participant "FCM / caregiver client" as Push
+participant "Patient NotificationService" as Local
+
+== Independent caregiver subscription ==
+Caregiver -> UI: PRN bell in linked patient's read-only schedule
+UI -> API: Set as_needed preference: Off / dose_completed
+API -> Care: Verify active link and caregiver scope
+Care -> DB: Save explicit per-pair preference
+note over UI,DB
+  Default Off, never inherited from a regular slot.
+  Missed-deadline mode is rejected. No patient recording or local reminder control.
+end note
+
+== Patient reports an individual intake ==
+Patient -> UI: Check PRN medication / bulk check
+UI -> Front: Reload today's history and server eligibility
+Front -> API: GET /care/history for today
+API --> Front: Current counts + active PRN medications
+Front --> UI: Fresh state
+opt Additional intake for an already checked medication
+  UI --> Patient: Confirm displayed count increase
+  Patient -> UI: Confirm
+  UI -> Front: Reload; verify same date, eligibility and counts
+end
+UI -> Front: Retain one event UUID + operation UUID per intended intake
+loop Each unresolved item (bulk is not atomic)
+  Front -> API: PUT report: as_needed:<UUID>, taken, current time, revision
+  API -> Care: update_history(...)
+  Care -> Care: Check patient scope, account, date, eligibility and revision
+  Care -> DB: Check operation receipt / request fingerprint
+  alt Successful identical retry
+    DB --> Care: Original response; no second record/event
+  else Valid new report
+    Care -> DB: Save completion report + audit
+    opt Today's transition from non-taken to taken
+      Care -> DB: queue_as_needed_taken_event(): insert or reuse unique event key
+    end
+    Care -> DB: Commit report + audit + event + operation receipt atomically
+  end
+  Care --> API: ACK and any committed outbox ID
+  API --> Front: Acknowledge saved report
+  Front -> Front: Remove only resolved intention; uncertain retry keeps same IDs
+end
+note over Front,DB
+  New intentional intake = new event UUID. Corrections retain the original UUID.
+  Event key = hash(patient, medication, scheduled date, report slot UUID).
+  Time/revision edits and uncheck/recheck do not create another event.
+  Past reports do not queue new alerts. PRN does not change scheduled progress.
+end note
+
+== Durable caregiver push ==
+API -> Delivery: Request processing after commit
+note over DB,Delivery: Existing outbox worker also recovers/retries due events.
+Delivery -> DB: Claim as_needed_dose_completed
+Delivery -> DB: Recheck current date, still-taken report, active link,
+Delivery -> DB: explicit PRN preference, master switch and push recipients
+alt Record no longer current (date passed, undone or deleted)
+  Delivery -> DB: Dead letter / AsNeededDoseNoLongerCurrent; do not send
+else Valid report
+  opt Eligible recipient with token
+    Delivery -> Push: caregiver_dose_completed / as_needed / event_key
+    Push -> Push: Verify recipient; event-key inbox + foreground identity
+    Push --> Caregiver: Individual intake recorded; open linked schedule
+  end
+  alt Transient delivery failure
+    Delivery -> DB: Retry same event; bounded backoff then terminal state
+  else No retryable failures
+    Delivery -> DB: Mark processed; this is not proof the user saw an alert
+  end
+end
+note over Delivery,Push
+  No automatic completion chat, missed deadline or aggregate slot claim.
+  Android push tag reuses event_key; distinct intakes remain distinct.
+  Repeated display is deduplicated, not guaranteed exactly-once delivery.
+end note
+
+== Patient's separate optional local reminder ==
+Patient -> UI: Enable PRN check at next selected time
+UI -> Front: Save one future booking (default Off)
+Front -> Local: Explicit permission + date-specific reminder
+Local --> Patient: Neutral check reminder; open schedule only
+note over Front,Local
+  Patient-scoped preference; no automatic repeat, dose action or snooze.
+  Medication master switch and session cleanup cancel the booking.
+end note
+
+== Local/demo caregiver monitoring ==
+note over UI,Push
+  CaregiverNotificationMonitorService reads today's event keys and preferences.
+  First snapshot / re-enable establishes a baseline, including alerts-off reports.
+  Only newly seen identities notify; previously seen corrections do not replay.
+  This fallback does not establish production remote-delivery acceptance.
+end note
+@enduml

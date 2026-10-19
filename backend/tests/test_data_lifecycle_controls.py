@@ -287,6 +287,84 @@ def test_manage_account_exports_and_deletes_owned_data(db_session) -> None:
     assert db_session.query(_HealthRecommendationCache).count() == 0
 
 
+# Function Name: test_account_export_leaves_out_the_name_the_other_participant_set
+# Description:
+# - Each display name of a link is returned only to the participant who set it; the account
+#   export of the patient leaves out the name the caregiver gave the patient, and the other way
+#   round.
+# Parameters:
+# - db_session (Session): Isolated SQLAlchemy session supplied by the test fixture.
+# Returns:
+# - None.
+def test_account_export_leaves_out_the_name_the_other_participant_set(db_session) -> None:
+    from entities.patient_caregiver_link_entity import _PatientCaregiverLink
+
+    control = ManageAccount(db_session)
+    patient = control.ensureAccount("patient-export", commit=True)
+    caregiver = control.ensureAccount("caregiver-export", commit=True)
+    db_session.add(
+        _PatientCaregiverLink(
+            patient_hash=patient,
+            caregiver_hash=caregiver,
+            linked=True,
+            patient_alias="caregiver's private name",
+            caregiver_alias="patient's private name",
+        )
+    )
+    db_session.commit()
+
+    patient_link = control.exportAccountData(patient)["data"]["caregiver_links"][0]
+    caregiver_link = control.exportAccountData(caregiver)["data"]["caregiver_links"][0]
+
+    assert "patient_alias" not in patient_link
+    assert patient_link["caregiver_alias"] == "patient's private name"
+    assert "caregiver_alias" not in caregiver_link
+    assert caregiver_link["patient_alias"] == "caregiver's private name"
+
+
+# Function Name: test_account_export_leaves_out_the_other_participants_choices
+# Description:
+# - The export keeps each side's own "deleted for me" time and alert settings and returns the
+#   user's own settings; neither side sees the other's deletion marker or the caregiver's
+#   alert configuration through the patient's export.
+# Parameters:
+# - db_session (Session): Isolated SQLAlchemy session supplied by the test fixture.
+# Returns:
+# - None.
+def test_account_export_leaves_out_the_other_participants_choices(db_session) -> None:
+    from entities.caregiver_notification_entity import _CaregiverNotification
+    from entities.patient_caregiver_link_entity import _PatientCaregiverLink
+    from entities.user_setting_entity import _UserSetting
+
+    control = ManageAccount(db_session)
+    patient = control.ensureAccount("patient-privacy", commit=True)
+    caregiver = control.ensureAccount("caregiver-privacy", commit=True)
+    link = _PatientCaregiverLink(patient_hash=patient, caregiver_hash=caregiver, linked=True)
+    db_session.add(link)
+    db_session.flush()
+    hidden = datetime(2026, 10, 1, 9, 0)
+    db_session.add_all([
+        _ChatMessage(
+            link_id=link.id, sender_hash=patient, client_message_id="m-1", body="hello",
+            message_kind="text", caregiver_deleted_at=hidden,
+        ),
+        _CaregiverNotification(caregiver_hash=caregiver, patient_hash=patient, enabled=True),
+        _UserSetting(user_hash=patient, font_size=20, reading_speed=1.0, language="ko"),
+    ])
+    db_session.commit()
+
+    patient_data = control.exportAccountData(patient)["data"]
+    caregiver_data = control.exportAccountData(caregiver)["data"]
+
+    assert "caregiver_deleted_at" not in patient_data["chat_messages"][0]
+    assert "patient_deleted_at" in patient_data["chat_messages"][0]
+    assert patient_data["caregiver_notification_settings"] == []
+    assert [row["font_size"] for row in patient_data["user_settings"]] == [20]
+    assert caregiver_data["chat_messages"] == []
+    assert len(caregiver_data["caregiver_notification_settings"]) == 1
+    assert caregiver_data["user_settings"] == []
+
+
 # Class Name: _FailOnceIdentityDeletionBoundary
 # Role: Identity-deletion double that fails once and records subjects across the subsequent
 #   retry.

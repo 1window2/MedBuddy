@@ -29,6 +29,7 @@ from entities.medication_completion_entity import (  # noqa: E402
 )
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH  # noqa: E402
 from entities.saved_medication_entity import (  # noqa: E402
+    _normalize_schedule_slot_value,
     _SavedMedication,
     build_saved_medication_deduplication_key,
 )
@@ -288,6 +289,32 @@ class CheckSavedMedicationTest(unittest.TestCase):
             actual_key,
             hashlib.sha256(legacy_signature.encode("utf-8")).hexdigest(),
         )
+
+    # Function Name: test_schedule_slot_value_normalization_is_stable
+    # Description:
+    # - Pins the slot text that feeds the stored deduplication hash: JSON text and list-like
+    #   inputs keep only supported slots in the fixed order without duplicates, and invalid
+    #   JSON, non-list JSON, None and other values become an empty list.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
+    def test_schedule_slot_value_normalization_is_stable(self) -> None:
+        cases = (
+            ('["Bedtime"," morning ","x"]', '["morning","bedtime"]'),
+            ("", "[]"),
+            ("null", "[]"),
+            ("{bad", "[]"),
+            ('"morning"', "[]"),
+            (["LUNCH", "lunch"], '["lunch"]'),
+            (("evening",), '["evening"]'),
+            ({"bedtime"}, '["bedtime"]'),
+            (None, "[]"),
+            (5, "[]"),
+        )
+        for value, expected in cases:
+            with self.subTest(value=value):
+                self.assertEqual(_normalize_schedule_slot_value(value), expected)
 
     # Function Name: test_save_allows_same_medication_with_different_period
     # Description:

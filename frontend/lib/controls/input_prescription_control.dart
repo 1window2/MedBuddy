@@ -270,11 +270,7 @@ class InputPrescription {
         throw StateError('Prescription analysis was cancelled.');
       }
       failureStage = 'response parsing';
-      final responseBody = ApiResponseParser.decodeBody(response);
-
-      if (response.statusCode != 200) {
-        throw ApiResponseParser.httpFailure('분석 실패', response, responseBody);
-      }
+      final responseBody = ApiResponseParser.requireOkBody('분석 실패', response);
 
       final decodedData = ApiResponseParser.decodeMap(responseBody);
       final prescriptionDate =

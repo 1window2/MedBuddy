@@ -1493,6 +1493,10 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('09:00 - 19:00'), findsOneWidget);
+      // 공유된 병원 정보는 메시지 본문과 같은 크기로 읽힌다.
+      for (final value in ['09:00 - 19:00', '서울특별시 마포구']) {
+        expect(tester.widget<Text>(find.text(value)).style!.fontSize, 15);
+      }
       expect(find.byIcon(Icons.call_outlined), findsOneWidget);
       expect(find.byIcon(Icons.directions_outlined), findsOneWidget);
       expect(tester.takeException(), isNull);

@@ -31,8 +31,9 @@ class _NearbyCareFilterSheetState extends State<_NearbyCareFilterSheet> {
   // 날짜 선택 취소는 기존 초안을 유지한다. 과거 조회일도 달력 범위 안으로 제한한다.
   Future<void> _pickDate() async {
     final today = DateUtils.dateOnly(widget.now());
-    final first = today.subtract(const Duration(days: 7));
-    final last = today.add(const Duration(days: 366));
+    // 24시간 단위로 더하면 서머타임 전환일을 지날 때 범위가 하루 어긋나므로 달력 날짜로 계산한다.
+    final first = DateUtils.addDaysToDate(today, -7);
+    final last = DateUtils.addDaysToDate(today, 366);
     final date = _date ?? today;
     final selected = await showDatePicker(
       context: context,

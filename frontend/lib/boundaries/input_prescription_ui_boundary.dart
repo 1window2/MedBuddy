@@ -129,9 +129,10 @@ class InputPrescriptionUI extends StatelessWidget {
                       MediaQuery.textScalerOf(context).scale(16) / 16;
                   final useCompactDashboard =
                       viewportConstraints.maxWidth >= 350;
+                  // 기본 글씨의 흔한 휴대폰에서 보호자 안내까지 스크롤 없이 보이도록 세로 간격을 줄인다.
                   final dashboardActionSpacing = useCompactDashboard
                       ? viewportConstraints.maxHeight >= 600
-                            ? 20.0
+                            ? 14.0
                             : 12.0
                       : 20.0;
 
@@ -141,7 +142,7 @@ class InputPrescriptionUI extends StatelessWidget {
                       20,
                       useCompactDashboard ? 10 : 16,
                       20,
-                      useCompactDashboard ? 12 : 32,
+                      useCompactDashboard ? 8 : 32,
                     ),
                     child: Center(
                       child: ConstrainedBox(
@@ -302,12 +303,13 @@ class InputPrescriptionUI extends StatelessWidget {
                                       mainAxisSpacing: useCompactDashboard
                                           ? 10
                                           : 14,
-                                      // Reserve room for two-line titles and descriptions in narrow cards.
+                                      // 138dp holds a two-line title and a two-line description up to
+                                      // 1.1x text (about 137dp); wider cards keep that height on 411dp phones.
                                       childAspectRatio: useCompactDashboard
                                           ? ((constraints.maxWidth - 10) /
                                                     2 /
-                                                    144)
-                                                .clamp(1.0, 1.25)
+                                                    138)
+                                                .clamp(1.0, 1.35)
                                           : 1,
                                       children: homeActions,
                                     ),
@@ -316,7 +318,7 @@ class InputPrescriptionUI extends StatelessWidget {
                               },
                             ),
                             if (caregiverScheduleHint != null) ...[
-                              SizedBox(height: dashboardActionSpacing),
+                              SizedBox(height: useCompactDashboard ? 4 : 14),
                               caregiverScheduleHint!,
                             ],
                           ],
@@ -407,7 +409,7 @@ class _HomeHeader extends StatelessWidget {
       color: MedBuddyColors.pageBackground,
       padding: EdgeInsets.fromLTRB(
         22,
-        MediaQuery.of(context).padding.top + 18,
+        MediaQuery.of(context).padding.top + 10,
         20,
         4,
       ),
@@ -584,11 +586,7 @@ class _HomeActionCard extends StatelessWidget {
   // 매개변수:
   // - foreground, secondary, accent (Color): 제목·설명·아이콘에 사용할 색상.
   // 반환값: 고정 높이에 맞춰 축소하지 않는 카드 내부 위젯.
-  Widget _buildCompactContent(
-    Color foreground,
-    Color secondary,
-    Color accent,
-  ) {
+  Widget _buildCompactContent(Color foreground, Color secondary, Color accent) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -638,11 +636,7 @@ class _HomeActionCard extends StatelessWidget {
   // 매개변수:
   // - foreground, secondary, accent (Color): 제목·설명·아이콘 색상.
   // 반환값: 내용 높이만큼 늘어나는 목록형 카드 내부 위젯.
-  Widget _buildListContent(
-    Color foreground,
-    Color secondary,
-    Color accent,
-  ) {
+  Widget _buildListContent(Color foreground, Color secondary, Color accent) {
     return Row(
       children: [
         _ActionIcon(icon: icon, tone: tone, color: accent, size: 48),
@@ -811,7 +805,7 @@ class _HomeText {
   // 함수역할: 환경설정 범위를 표시한다. 매개변수: 없음. 반환값: 설명.
   String get userSettingsSubtitle => isEnglish
       ? 'Adjust text, language and notifications'
-      : '글씨 크기·언어·알림을 설정해요';
+      : '글자 크기·언어·알림을 설정해요';
   // 함수이름: prescriptionAnalysis
   // 함수역할: 처방전·알약 식별·직접 등록을 포함하는 홈 진입점의 이름을 번역한다.
   // 매개변수: 없음. 반환값: 현재 언어의 카드 제목.
@@ -949,6 +943,7 @@ class _HomeEncouragementPanel extends StatelessWidget {
         onStatusUpdateRequested: onStatusUpdateRequested,
         isCompletionLoading: isCompletionLoading,
         onDetailsRequested: onTap,
+        timeFormatter: userSetting.formatTime,
       ),
     );
   }

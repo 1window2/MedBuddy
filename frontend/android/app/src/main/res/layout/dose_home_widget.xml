@@ -15,6 +15,20 @@
             <TextView android:id="@+id/widget_date" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:includeFontPadding="false"
                 android:textColor="#595D65" android:textSize="14sp" android:maxLines="1" android:ellipsize="end" />
+            <!-- 낮은 높이에서는 시간대 오른쪽의 빈 칸에 놓친 약 안내를 둔다. -->
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="horizontal" android:gravity="center_vertical">
+                <TextView android:id="@+id/widget_tiny_heading" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:includeFontPadding="false" android:visibility="gone"
+                    android:textColor="#25272B" android:textSize="14sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" />
+                <TextView android:id="@+id/widget_tiny_warning" android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:paddingStart="8dp"
+                    android:includeFontPadding="false" android:visibility="gone"
+                    android:textColor="#765710" android:textSize="11sp" android:maxLines="2" android:ellipsize="end" />
+            </LinearLayout>
+            <TextView android:id="@+id/widget_tiny_status" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:includeFontPadding="false" android:visibility="gone"
+                android:textColor="#595D65" android:textSize="11sp" android:maxLines="1" android:ellipsize="end" />
         </LinearLayout>
         <ImageButton android:id="@+id/widget_patient_next" android:layout_width="48dp" android:layout_height="48dp"
             android:src="@drawable/dose_widget_next" android:padding="10dp" android:visibility="gone"

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import 'package:http/http.dart' as http;
 
@@ -49,6 +50,7 @@ class ApiRequestException extends StateError {
 // - Convert JSON response bodies into Map<String, dynamic>.
 // - Extract a server-provided error detail when an API request fails.
 // - Build the typed failure for rejected responses and transport errors.
+// - Guard API requests so StateErrors pass through and other errors are logged and wrapped.
 class ApiResponseParser {
   // Function Name: ApiResponseParser._
   // Description: Prevents instances of the shared static HTTP-response decoding utility.
@@ -129,5 +131,50 @@ class ApiResponseParser {
   // - ApiRequestException: Failure carrying the original exception as its cause.
   static ApiRequestException transportFailure(String operation, Object cause) {
     return ApiRequestException(operation, cause: cause);
+  }
+
+  // Function Name: requireOkBody
+  // Description: Decodes the response body as UTF-8 and rejects every status other than 200 with the typed HTTP failure.
+  // Parameters:
+  // - operation (String): Failure label of the request without a trailing period.
+  // - response (http.Response): Response whose status is checked and whose body is decoded.
+  // Returns:
+  // - String: The decoded body of a 200 response; any other status throws the ApiRequestException built by httpFailure.
+  static String requireOkBody(String operation, http.Response response) {
+    final responseBody = decodeBody(response);
+    if (response.statusCode != 200) {
+      throw httpFailure(operation, response, responseBody);
+    }
+    return responseBody;
+  }
+
+  // Function Name: guardRequest
+  // Description: Runs one API request, rethrows any StateError unchanged (typed failures and contract errors), and logs every other error before rethrowing it as the transport failure of the operation.
+  // Parameters:
+  // - operation (String): Failure label of the request without a trailing period.
+  // - logName (String): developer.log channel of the calling control.
+  // - logMessage (String): developer.log message written for a transport failure.
+  // - request (Future<T> Function()): Request, status check and decoding to run inside the guard.
+  // Returns:
+  // - Future<T>: The request result; a StateError is rethrown and any other error becomes an ApiRequestException carrying it as the cause.
+  static Future<T> guardRequest<T>({
+    required String operation,
+    required String logName,
+    required String logMessage,
+    required Future<T> Function() request,
+  }) async {
+    try {
+      return await request();
+    } on StateError {
+      rethrow;
+    } catch (error, stackTrace) {
+      developer.log(
+        logMessage,
+        name: logName,
+        error: error,
+        stackTrace: stackTrace,
+      );
+      throw transportFailure(operation, error);
+    }
   }
 }

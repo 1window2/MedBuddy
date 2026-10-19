@@ -11,6 +11,7 @@ import redis.asyncio as redis
 from boundaries.medication_summary_boundary import FAILED_SUMMARY_TEXT
 from core.config import settings
 from entities.medication_detail_entity import MedicationDetail
+from entities.medication_lookup_result import MedicationLookupResult
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +80,9 @@ class MedicationDetailCache:
 
         try:
             cached_items = json.loads(cached_data)
-            if not isinstance(cached_items, list):
+            if not isinstance(cached_items, list) or any(
+                not isinstance(item, dict) for item in cached_items
+            ):
                 return None
 
             medication_details = [
@@ -90,7 +93,6 @@ class MedicationDetailCache:
                     }
                 )
                 for item in cached_items
-                if isinstance(item, dict)
             ]
         except Exception as exc:
             logger.warning(
@@ -106,26 +108,26 @@ class MedicationDetailCache:
 
     # Function Name: set
     # Description:
-    # - Stores MedicationDetail values in Redis.
+    # - Stores complete MedicationDetail lookup results in Redis; partial candidate lists are retried.
     # - Cache failures are logged but do not fail the use case; a failed Redis command starts the cool-down.
     # Parameters:
     # - drug_name (str): Search keyword used as cache key suffix.
-    # - medication_details (list[MedicationDetail]): MedicationDetail list to cache.
+    # - result (MedicationLookupResult): MedicationDetail list and summary completeness to cache.
     # Returns:
     # - None.
     async def set(
         self,
         drug_name: str,
-        medication_details: list[MedicationDetail],
+        result: MedicationLookupResult,
     ) -> None:
-        if not medication_details or self._is_cooling_down():
+        if not result.is_complete or not result.details or self._is_cooling_down():
             return
 
         try:
             payload = json.dumps(
                 [
                     detail.getMedicationDetail()
-                    for detail in medication_details
+                    for detail in result.details
                 ],
                 ensure_ascii=False,
             )
@@ -159,13 +161,13 @@ class MedicationDetailCache:
 
     # Function Name: _cache_key
     # Description:
-    # - Places a medication query in the drug_info Redis namespace.
+    # - Uses the versioned drug_info namespace so old potentially partial lists are never reused.
     # Parameters:
     # - drug_name (str): Medication name to search or serialize.
     # Returns:
     # - Redis key for the supplied drug name.
     def _cache_key(self, drug_name: str) -> str:
-        return f"drug_info:{drug_name}"
+        return f"drug_info:v2:{drug_name}"
 
     # Function Name: _is_cooling_down
     # Description:

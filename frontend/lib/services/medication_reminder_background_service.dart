@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 
+import '../entities/calendar_days.dart';
 import '../entities/json_value_reader.dart';
 import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_schedule_entity.dart';
@@ -291,7 +292,8 @@ class MedicationReminderRefreshService {
     required String requestDay,
     required DateTime now,
   }) {
-    if (doseScheduleDay(now) != requestDay || _dateKey(now) != requestDay) {
+    if (doseScheduleDay(now) != requestDay ||
+        formatJsonDate(now)! != requestDay) {
       return false;
     }
     final slotSchedules = todaySchedules.where(
@@ -315,8 +317,11 @@ class MedicationReminderRefreshService {
     bool slotCompletedToday = false,
   }) {
     final today = DateTime(now.year, now.month, now.day);
-    final lastReservableDate = today.add(
-      const Duration(days: maximumReminderDatesPerSlot - 1),
+    // Calendar days, so a daylight-saving change cannot move the window or the
+    // course end to 23:00 of the previous day and drop the last reminder date.
+    final lastReservableDate = addCalendarDays(
+      today,
+      maximumReminderDatesPerSlot - 1,
     );
     final activeDateKeys = <String, DateTime>{};
 
@@ -330,7 +335,7 @@ class MedicationReminderRefreshService {
       );
       final courseDays = schedule.medicationTime;
       final endDate = courseDays > 0
-          ? startDate.add(Duration(days: courseDays - 1))
+          ? addCalendarDays(startDate, courseDays - 1)
           : lastReservableDate;
       var candidateDate = startDate.isAfter(today) ? startDate : today;
       final boundedEndDate = endDate.isBefore(lastReservableDate)
@@ -340,19 +345,15 @@ class MedicationReminderRefreshService {
       while (!candidateDate.isAfter(boundedEndDate)) {
         // A medication that is not taken every day ("주 1회", "격일") is reminded on its dose days only.
         if (schedule.isDoseDay(candidateDate)) {
-          activeDateKeys[_dateKey(candidateDate)] = candidateDate;
+          activeDateKeys[formatJsonDate(candidateDate)!] = candidateDate;
         }
         // Calendar arithmetic, so a daylight-saving change cannot repeat or skip a date.
-        candidateDate = DateTime(
-          candidateDate.year,
-          candidateDate.month,
-          candidateDate.day + 1,
-        );
+        candidateDate = addCalendarDays(candidateDate, 1);
       }
     }
 
     if (slotCompletedToday) {
-      activeDateKeys.remove(_dateKey(today));
+      activeDateKeys.remove(formatJsonDate(today)!);
     }
     return activeDateKeys.values.toList(growable: false)..sort();
   }
@@ -372,14 +373,6 @@ class MedicationReminderRefreshService {
       fallback: isEnglish ? 'Schedule' : '일정',
     );
   }
-
-  // Function Name: _dateKey
-  // Description: Formats a local calendar date as a zero-padded YYYY-MM-DD key for dated reminder names.
-  // Parameters:
-  // - date (DateTime): Timestamp used for calendar-date calculation or comparison.
-  // Returns:
-  // - String: Formats a local calendar date as a zero-padded YYYY-MM-DD key for dated reminder names.
-  static String _dateKey(DateTime date) => formatJsonDate(date)!;
 
   // Function Name: dispose
   // Description: Releases the control resources owned by the live composition through its injected cleanup callback.

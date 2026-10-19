@@ -29,6 +29,46 @@ NotificationInboxEntry _entry(String id, DateTime date, {bool chat = false}) =>
 // 함수이름: main
 // 함수역할: 저장·수신·화면 회귀 테스트를 등록한다. 매개변수: 없음. 반환값: 없음.
 void main() {
+  test('필요시 복용 푸시 재전송은 읽음 상태를 보존하고 한 건으로 유지한다', () async {
+    final store = NotificationInboxStore(userHash: 'caregiver');
+    final data = {
+      'type': 'caregiver_dose_completed', 'slot_key': 'as_needed',
+      'recipient_hash': 'caregiver', 'patient_hash': 'patient',
+      'event_key': 'a' * 64,
+    };
+    await recordPushNotificationHistory(RemoteMessage(messageId: 'first', data: data),
+      userHash: 'caregiver', markRead: true);
+    await recordPushNotificationHistory(RemoteMessage(messageId: 'retry', data: data),
+      userHash: 'caregiver');
+    var entries = await store.load();
+    expect(entries, hasLength(1));
+    expect(entries.single.isRead, isTrue);
+    await store.remove([entries.single.id]);
+    await recordPushNotificationHistory(RemoteMessage(messageId: 'retry-again', data: data),
+      userHash: 'caregiver');
+    expect(await store.load(), isEmpty);
+    await recordPushNotificationHistory(RemoteMessage(messageId: 'second-dose',
+      data: {...data, 'event_key': 'b' * 64}), userHash: 'caregiver');
+    entries = await store.load();
+    expect(entries, hasLength(1));
+    expect(entries.single.isRead, isFalse);
+  });
+  // 서버가 같은 채팅 메시지를 다시 보내면 FCM 메시지 ID는 바뀌어도 event_id는 같다.
+  test('채팅 푸시 재전송은 서버 event_id로 한 건만 남긴다', () async {
+    final store = NotificationInboxStore(userHash: 'caregiver');
+    final data = {
+      'type': 'linked_chat_message', 'recipient_hash': 'caregiver',
+      'link_id': '3', 'event_id': 'chat:3:10', 'message_preview': '약 드셨어요?',
+    };
+    await recordPushNotificationHistory(RemoteMessage(messageId: 'fcm-1', data: data),
+      userHash: 'caregiver');
+    await recordPushNotificationHistory(RemoteMessage(messageId: 'fcm-2', data: data),
+      userHash: 'caregiver');
+    expect(await store.load(), hasLength(1));
+    await recordPushNotificationHistory(RemoteMessage(messageId: 'fcm-3',
+      data: {...data, 'event_id': 'chat:3:11'}), userHash: 'caregiver');
+    expect(await store.load(), hasLength(2));
+  });
   TestWidgetsFlutterBinding.ensureInitialized();
   late DateTime now;
   late NotificationInboxStore store;
@@ -518,6 +558,30 @@ void main() {
     expect(control.entries, isEmpty);
     expect(tester.takeException(), isNull);
   });
+
+  // 함수이름: 알림 시각 형식 테스트
+  // 함수역할: 알림 시각이 사용자의 오전/오후·24시간 설정을 따르는지 검증한다. 매개변수: tester. 반환값: 검증 완료.
+  for (final format in ['12h', '24h']) {
+    testWidgets('inbox time follows the $format setting', (tester) async {
+      await store.record(_entry('dose', DateTime(2026, 9, 10, 13, 5)));
+      final control = ManageNotificationInbox(store: store);
+      addTearDown(control.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NotificationInboxUI(
+            control: control,
+            userSetting: UserSetting(timeFormat: format),
+            onOpen: (_) {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.text(format == '12h' ? '9/10 오후 1:05 · 안 읽음' : '9/10 13:05 · 안 읽음'),
+        findsOneWidget,
+      );
+    });
+  }
 
   // 함수이름: 선택 삭제 테스트
   // 함수역할: 선택 중에는 이동·읽음 처리를 하지 않고 선택 당시 항목만 삭제한다. 매개변수: tester. 반환값: 검증 완료.

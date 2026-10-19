@@ -2,12 +2,11 @@
 // 역할: 보호자별 환자 복약 시간대의 알림 조건과 마감 시각을 표현한다.
 
 import 'json_value_reader.dart';
+import 'medication_schedule_entity.dart';
 
 const List<String> caregiverNotificationSlotKeys = [
-  'morning',
-  'lunch',
-  'evening',
-  'bedtime',
+  ...medicationScheduleSlotKeys,
+  'as_needed',
 ];
 
 // 클래스명: CaregiverNotificationMode
@@ -146,7 +145,7 @@ class CaregiverNotification {
         : CaregiverNotificationMode.fromValue(rawMode);
 
     return CaregiverNotification(
-      notificationId: _readInt(
+      notificationId: readJsonTruncatedInt(
         json['notification_id'] ??
             json['notificationId'] ??
             json['setting_id'] ??
@@ -167,8 +166,10 @@ class CaregiverNotification {
           ? 'morning'
           : readJsonText(json['slot_key'] ?? json['slotKey']),
       mode: mode,
-      deadlineHour: _readInt(json['deadline_hour'] ?? json['deadlineHour']),
-      deadlineMinute: _readInt(
+      deadlineHour: readJsonTruncatedInt(
+        json['deadline_hour'] ?? json['deadlineHour'],
+      ),
+      deadlineMinute: readJsonTruncatedInt(
         json['deadline_minute'] ?? json['deadlineMinute'],
       ),
     );
@@ -249,21 +250,5 @@ class CaregiverNotification {
           ? null
           : deadlineMinute ?? this.deadlineMinute,
     );
-  }
-
-  // Function Name: _readInt
-  // Description: Reads an integer or numeric string, truncating other numeric inputs, and uses null when parsing fails.
-  // Parameters:
-  // - value (dynamic): Raw response field to decode into the documented return type.
-  // Returns:
-  // - int?: Reads an integer or numeric string, truncating other numeric inputs, and uses null when parsing fails.
-  static int? _readInt(dynamic value) {
-    if (value is int) {
-      return value;
-    }
-    if (value is num) {
-      return value.toInt();
-    }
-    return int.tryParse(value?.toString() ?? '');
   }
 }

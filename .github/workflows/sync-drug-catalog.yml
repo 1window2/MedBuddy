@@ -3,10 +3,10 @@
 
 name: Synchronize Drug Catalog
 
+# No schedule while self-hosted: a scheduled trigger on a disabled job only created a
+# skipped run every week. Restore `schedule: - cron: "30 18 * * 0"` with the job.
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "30 18 * * 0"
 
 permissions:
   contents: read

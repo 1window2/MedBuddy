@@ -121,7 +121,7 @@ def test_merge_preserves_both_independently_applied_heads(tmp_path: Path) -> Non
     from alembic.script import ScriptDirectory
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["f2c8a6d4e901"]
+    assert scripts.get_heads() == ["c8d3e7a92104"]
     assert set(scripts.get_revision("f2c8a6d4e901").down_revision) == {
         "c5e1a7f3b902", "d19e7c4b2a60",
     }
@@ -484,5 +484,35 @@ def test_home_schedule_source_migration_preserves_settings(tmp_path: Path) -> No
         command.upgrade(config, "head")
         with engine.connect() as connection:
             assert connection.execute(select(current.c.font_size)).scalar_one() == 20
+    finally:
+        engine.dispose()
+
+
+# 함수역할: 기존 설정을 유지하면서 버전 열을 추가하고 되돌렸다 다시 적용한다.
+def test_user_setting_revision_migration_preserves_existing_values(tmp_path: Path) -> None:
+    url = f"sqlite:///{(tmp_path / 'setting-revision.db').as_posix()}"
+    config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    config.attributes["database_url"] = url
+    command.upgrade(config, "f2c8a6d4e901")
+    engine = create_engine(url)
+    metadata = MetaData()
+    users = Table("user_accounts", metadata, autoload_with=engine)
+    settings = Table("user_settings", metadata, autoload_with=engine)
+    now = datetime(2026, 10, 16)
+    try:
+        with engine.begin() as connection:
+            connection.execute(users.insert().values(user_hash="owner", created_at=now, updated_at=now))
+            connection.execute(settings.insert().values(
+                user_hash="owner", font_size=20, medication_notifications_enabled=False, updated_at=now,
+            ))
+        for _ in range(2):
+            command.upgrade(config, "head")
+            current = Table("user_settings", MetaData(), autoload_with=engine)
+            with engine.connect() as connection:
+                row = connection.execute(select(current)).mappings().one()
+                assert row["revision"] == 1
+                assert row["font_size"] == 20
+                assert row["medication_notifications_enabled"] is False
+            command.downgrade(config, "f2c8a6d4e901")
     finally:
         engine.dispose()

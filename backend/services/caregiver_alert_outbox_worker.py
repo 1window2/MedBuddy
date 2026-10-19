@@ -1,7 +1,6 @@
 # 파일명: caregiver_alert_outbox_worker.py
 # 역할: 서버가 실행되는 동안 보호자 알림 아웃박스를 짧은 간격으로 처리한다.
 
-import asyncio
 import logging
 from collections.abc import Callable
 
@@ -30,6 +29,9 @@ logger = logging.getLogger(__name__)
 # - interval_seconds (int): 조회 간격(초).
 # - _task / _stop_event: 반복 작업과 종료 신호.
 class CaregiverAlertOutboxWorker(BackgroundLoopRunner):
+    _cycle_logger = logger
+    _cycle_failure_message = "Caregiver alert outbox worker cycle failed: %s"
+
     # 함수이름: __init__
     # 함수역할:
     # - 주기별 세션과 푸시 경계 생성기를 보관하고 반복 작업의 종료 신호를 초기화한다.
@@ -50,30 +52,15 @@ class CaregiverAlertOutboxWorker(BackgroundLoopRunner):
         self.interval_seconds = interval_seconds
         super().__init__()
 
-    # 함수이름: _run_loop
+    # 함수이름: _cycle_interval_seconds
     # 함수역할:
-    # - 동기 아웃박스 처리를 별도 스레드에 맡긴 뒤 설정된 간격 또는 종료 신호까지 대기한다.
-    # - 세션 생성·롤백·종료까지 실패한 주기도 기록만 하고 같은 간격으로 다음 주기를 이어간다.
+    # - 아웃박스 처리 주기 사이에 기다릴 설정 간격을 돌려준다.
     # 매개변수:
     # - 없음.
     # 반환값:
-    # - 없음; 종료 이벤트가 설정되면 반복을 마친다.
-    async def _run_loop(self) -> None:
-        while not self._stop_event.is_set():
-            try:
-                await asyncio.to_thread(self._run_once)
-            except Exception as exc:
-                logger.error(
-                    "Caregiver alert outbox worker cycle failed: %s",
-                    type(exc).__name__,
-                )
-            try:
-                await asyncio.wait_for(
-                    self._stop_event.wait(),
-                    timeout=self.interval_seconds,
-                )
-            except TimeoutError:
-                continue
+    # - interval_seconds에 저장된 대기 시간(초).
+    def _cycle_interval_seconds(self) -> float:
+        return self.interval_seconds
 
     # 함수이름: _run_once
     # 함수역할:

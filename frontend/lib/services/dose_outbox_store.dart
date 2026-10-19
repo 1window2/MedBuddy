@@ -248,7 +248,9 @@ class DoseOutboxStore {
   }
 
   // 함수이름: claim
-  // 함수역할: 가장 이른 요청을 선점한다. 취소 요청이 미확인 복용 요청을 앞지르지 않는다.
+  // 함수역할: 지금 보낼 수 있는 가장 이른 요청을 선점한다. 같은 날짜·시간대·약의 앞선 요청이 남아 있으면
+  //   (보류·선점 중 포함) 그 뒤 요청은 기다리게 해 취소 요청이 미확인 복용 요청을 앞지르지 않게 하고,
+  //   서로 관계없는 요청은 앞선 요청의 보류와 상관없이 보낸다.
   // 매개변수: owner - 계정, lease - 작업 소유자, now - 현재 밀리초 시각.
   // 반환값: 처리할 요청 또는 null. 선점 만료 후에도 같은 요청 ID로 재시도한다.
   Future<Map<String, dynamic>?> claim(
@@ -257,50 +259,116 @@ class DoseOutboxStore {
     int now,
   ) async {
     final token = await ownerKey(owner);
-    final row = await db.transaction<Map<String, Object?>?>((tx) async {
+    return db.transaction<Map<String, dynamic>?>((tx) async {
       final active = await tx.query(
         'metadata',
         where: 'name = ?',
         whereArgs: ['active'],
       );
       if (active.isEmpty || active.single['value'] != token) return null;
-      final rows = await tx.query(
-        'operations',
-        where: 'owner = ?',
-        whereArgs: [token],
-        orderBy: 'seq',
-        limit: 1,
-      );
-      if (rows.isEmpty) return null;
-      final first = rows.single;
-      if (first['state'] == 'blocked' || (first['lease_until'] as int) > now) {
-        return null;
-      }
+      final ready = await _readyOperations(tx, token, now: now);
+      if (ready.isEmpty) return null;
+      final first = ready.first;
       await tx.update(
         'operations',
         {'lease': lease, 'lease_until': now + 120000},
         where: 'id = ?',
-        whereArgs: [first['id']],
+        whereArgs: [first.row['id']],
       );
-      return first;
+      return first.payload;
     });
-    return row == null ? null : _decrypt(row['payload'] as String, token);
   }
 
   // 함수이름: hasUploadableOperation
-  // 함수역할: 복호화 없이 지금 전송을 시도할 기록이 있는지 확인한다. claim과 같이 가장 이른
-  //   요청이 서버 거부로 보류 중이면 사용자가 다시 시도할 때까지 보낼 것이 없다고 본다.
+  // 함수역할: 지금 또는 다른 작업자의 선점이 끝난 뒤 전송을 시도할 기록이 있는지 확인한다. 서버 거부로
+  //   보류된 기록과, 같은 날짜·시간대·약에서 보류된 기록 뒤에 기다리는 기록은 사용자가 다시 시도할 때까지 보낼 것이 없다고 본다.
   // 매개변수: owner - 계정. 반환값: 전송할 기록이 있으면 true.
   Future<bool> hasUploadableOperation(String owner) async {
-    final rows = await db.query(
+    final token = await ownerKey(owner);
+    return (await _readyOperations(db, token)).isNotEmpty;
+  }
+
+  // 함수이름: _readyOperations
+  // 함수역할: 오래된 순으로 요청을 복호화해, 보류되지 않았고 같은 날짜·시간대·약의 앞선 요청이 남아 있지 않은 요청만 고른다.
+  // 매개변수: executor - DB 또는 트랜잭션, token - 계정 키, now - 주어지면 다른 작업자가 선점 중인 요청도 제외할 현재 밀리초 시각.
+  // 반환값: 전송 가능한 요청의 원본 행과 복호화한 본문 목록(오래된 순).
+  Future<List<({Map<String, Object?> row, Map<String, dynamic> payload})>>
+  _readyOperations(DatabaseExecutor executor, String token, {int? now}) async {
+    final rows = await executor.query(
       'operations',
-      columns: ['state'],
       where: 'owner = ?',
-      whereArgs: [await ownerKey(owner)],
+      whereArgs: [token],
       orderBy: 'seq',
-      limit: 1,
     );
-    return rows.isNotEmpty && rows.single['state'] != 'blocked';
+    // ACK는 전체 일정이므로 같은 계정의 전송은 선점이 끝난 뒤 시작해 응답 역전을 막는다.
+    // now가 없는 재시도 확인은 선점 중인 기록도 계속 전송 대기로 센다.
+    if (now != null && rows.any((row) => (row['lease_until'] as int) > now)) {
+      return [];
+    }
+    final earlier = <Map<String, dynamic>>[];
+    final ready = <({Map<String, Object?> row, Map<String, dynamic> payload})>[];
+    for (final row in rows) {
+      final payload = await _decrypt(row['payload'] as String, token);
+      final waiting = earlier.any(
+        /* 함수이름: any 콜백
+         * 함수역할: 앞선 요청이 같은 날짜·시간대·약을 다루는지 확인한다.
+         * 매개변수: prior - 앞선 요청 본문.
+         * 반환값: 순서를 지켜야 하면 true.
+         */
+        (prior) => sharesDoseOrder(prior, payload),
+      );
+      earlier.add(payload);
+      if (waiting || row['state'] == 'blocked') continue;
+      ready.add((row: row, payload: payload));
+    }
+    return ready;
+  }
+
+  // 함수이름: sharesDoseOrder
+  // 함수역할: 두 복용 요청의 전송 순서가 결과를 바꾸는지 판단한다. 같은 날짜·시간대에서 약이 하나라도 겹치면 순서를 지킨다.
+  // 매개변수: first, second - 복용 요청 본문.
+  // 반환값: 앞선 요청이 끝날 때까지 뒤 요청을 기다리게 해야 하면 true.
+  @visibleForTesting
+  static bool sharesDoseOrder(
+    Map<String, dynamic> first,
+    Map<String, dynamic> second,
+  ) {
+    if (first['schedule_date'] != second['schedule_date'] ||
+        first['slot_key'] != second['slot_key']) {
+      return false;
+    }
+    final firstIds = {...(first['medication_ids'] as List? ?? const [])};
+    return (second['medication_ids'] as List? ?? const []).any(
+      firstIds.contains,
+    );
+  }
+
+  // 함수이름: replaceClaimed
+  // 함수역할: 선점한 요청을 같은 대기열 위치에서 새 본문으로 바꾸고 선점을 풀어 바로 다시 보낼 수 있게 한다.
+  //   채팅 한도 초과로 거절된 채팅 복용 요청을 채팅 없는 일반 복용 기록으로 바꿀 때 쓴다.
+  // 매개변수: owner - 계정, id - 기존 요청 ID, lease - 작업 소유자, operation - 새 요청 본문(새 operation_id 포함).
+  // 반환값: 바꿨으면 true, 다른 작업자가 선점했거나 이미 처리되어 없으면 false.
+  Future<bool> replaceClaimed(
+    String owner,
+    String id,
+    String lease,
+    Map<String, dynamic> operation,
+  ) async {
+    final token = await ownerKey(owner);
+    final encrypted = await _encrypt(operation, token);
+    final changed = await db.update(
+      'operations',
+      {
+        'id': operation['operation_id'],
+        'payload': encrypted,
+        'state': 'pending',
+        'lease': null,
+        'lease_until': 0,
+      },
+      where: 'owner = ? AND id = ? AND lease = ?',
+      whereArgs: [token, id, lease],
+    );
+    return changed > 0;
   }
 
   Future<void> finish(

@@ -1,5 +1,157 @@
 # MedBuddy Release TODO
 
+## v0.2.3 development line
+
+v0.2.3 starts from `v0.2.2-beta` on `beta/v0.2.3`. It collects small
+corrections and improvements found by reviewing the released code and by using
+the app, leaving out the switches that belong to a public release (Google Play,
+App Check enforcement). If it reaches a state worth publishing as 1.0.0, it is
+released under that version instead. Changes are listed in the
+[v0.2.3 notes](releases/v0.2.3-beta.md).
+
+### Open on this line
+
+- [ ] Offline after Korean midnight, no dose can be recorded until the server
+      has answered once that day: recording needs today's schedule from the
+      server, and the 14-day window is fetched but not kept on the device.
+      Building today's list on the device (courses, cycles, stop and change
+      dates, as-needed exclusion) and reconciling it with the server later is
+      a change to the core dose path, left for a separate line (found in the
+      2026-10-19 final review, MAJOR).
+- [ ] Final-review items left as they are: the as-needed extra-dose
+      confirmation could show the last dose time; a reminder worker already
+      running at sign-out may re-arm the old account's reminders (race, not
+      reproduced); a course length of 0 or less sent directly to the API has
+      no end (the app sends 1-3650); a failed local reminder save turns the
+      reminder off by design rather than restoring it; keep at least one
+      database dump off the production host.
+
+- [ ] The missed-dose scan re-reads every slot that was completed before its
+      deadline on each 15-second pass for the rest of the day, two to four
+      queries per patient and slot. Negligible at beta size; it grows with
+      users. Remembering "complete at the deadline" would change what happens
+      when a dose is undone after the deadline, so it needs a decision.
+- [ ] Left open by the 2026-10-18 behaviour-preserving refactor round (five
+      reviewers, two supervisors, three implementers; production code about
+      1,070 lines smaller, tests 1,908 -> 1,919 backend and 2,222 -> 2,250 app):
+      - Owner decisions: `recordAsNeededDose` in
+        medication_history_ui_boundary.dart has no caller (added 2026-10-17)
+        and keeps a "new record" editor path alive; the as-needed slot header
+        strip could share `MedicationSlotHeaderStrip`; the OCR-region matching
+        in `InputPrescription` (~270 lines) could move to its own file.
+      - Seen but not changed (not refactors): the redacted caregiver text uses
+        a curly apostrophe in caregiver_alert_delivery_service.dart and a
+        straight one elsewhere; history dates and the notification time zone
+        hard-code Korea time while dose sync and the widget follow
+        APPLICATION_UTC_OFFSET_MINUTES; some language checks use `== 'en'`
+        and others the shared prefix rule; regimen-editor messages hard-code
+        "3650"; on-screen date formats differ between screens; the
+        notification inbox key uses the untrimmed account hash while account
+        deletion trims it; manage_linked_chat_control.py relabels an aware
+        `read_at` with `replace(tzinfo=UTC)` (harmless while it comes from
+        `utc_now()`).
+      - Checked after the refactor on 2026-10-19 (backend f7c16d0 deployed,
+        same migration head; signed f7c16d0 build on the Android 14 emulator
+        with the guest account, because the phone's wireless debugging was
+        unreachable): shared undo dialog (keep, undo, back), 4 x 1 widget
+        take/undo and open-schedule, a reminder tapped and its "taken" action
+        used with the app process killed (both opened the app and the action
+        recorded the dose), caregiver schedule header, slot strips and 48 dp
+        alert buttons, inbox select-all (1, all 17, none), settings save
+        (server revision created at 1, then 2), the regimen confirm dialog
+        (cancel; a same-day change after a recorded and undone dose is still
+        refused, as designed), and history date navigation. No defects; the
+        one backend error was a provider ReadTimeout on /identify answered
+        with 500, unchanged from before the refactor.
+- [x] The home dose-record notice at 2x text: the "View" button took the
+      notice's width (Flutter reserves the action's width, or 40% when the
+      action wraps), so the safety text was about 110 px wide and 1,200 px
+      tall on a 320 px screen. The button now sits below the text inside the
+      notice, which uses the full width, and the notice stays 15 s at large
+      text. Regression in the home notice large-text test.
+- [x] The home-screen widget started at 4 x 3: 374 dp tall on the Galaxy
+      Note10 (117 dp cells) for a title, one slot line, the save state and a
+      button, so about half of it was empty. Launcher3 also works out the
+      minimum rows from landscape cells (2 rows about 117 dp), so the 180 dp
+      resize floor made it refuse a smaller request. The widget now asks for
+      4 x 1 (min and resize height 48 dp, under one landscape row of about
+      51 dp). Below 110 dp (one Pixel row) a one-row layout shows the slot,
+      the save state and the dose button; 110-179 dp (one Samsung row, two
+      landscape rows) moves the slot and save state into the title line;
+      230-239 dp (4 x 2 portrait) uses slightly smaller padding and heading.
+      The instrumented layout test covers 48 to 420 dp at three text scales
+      and checks that the slot and save state stay visible and the button
+      text is not cut; the Android 16 Pixel launcher placed new widgets at
+      4 x 1 and 4 x 2. On the Galaxy Note10 (One UI, Android 12, signed
+      3df4dfd build over 0.2.3 with data kept) the widget list shows 4 x 1
+      and placed it at 4 columns by 1 row (117 dp); undoing and recording
+      lunch from it reached the server and updated the 4 x 3 widget placed
+      earlier, which kept its size. The missed-dose line was not shown at
+      this height; below 180 dp a shortened note ("놓친 약은 처방·복약지도
+      확인") now sits in the free space right of the slot, in full on a
+      patient's 4-column widget at normal and large text and cut with "…"
+      where a caregiver's patient name, a narrower widget or 2x text leaves
+      no room (the layout test pins both). Checked on the Galaxy Note10 with
+      the signed 012d529 build on 2026-10-16: after undoing lunch the 4 x 1
+      widget showed "점심 12:00  놓친 약은 처방·복약지도 확인" on one line with
+      "서버 저장 완료" below, nothing cut; recording again cleared it.
+      Final phone check the same evening against the deployed 0c8eb7f
+      backend: saving the text size in the app advanced the server settings
+      revision (1 -> 2 -> 3, font restored to 16), and undoing and recording
+      lunch on the home screen reached the server and updated both 4 x 1
+      widgets; the backend logged no errors.
+- [x] Medication care additions on the phone (2026-10-17, signed cc18a35 build
+      over 0.2.3 with data kept, backend cc18a35 with migration c8d3e7a92104
+      rehearsed on a restored copy; the 22 existing medications all stayed
+      scheduled): manual as-needed registration (QA-TEST-023-PRN) left home
+      progress at -/-; one dose recorded from the schedule ("오늘 1회") reached
+      the server as an `as_needed:<UUID>` taken record; the extra-dose
+      confirmation cancelled cleanly; the history showed the actual and
+      recorded times; CSV export opened the share sheet with
+      medbuddy_history_2026-10-17_2026-10-17.csv (closed without sending); a
+      dose edit of QA-TEST-022-WEEKLY2 (1 -> 2 tablets) stopped the old row and
+      linked the new one with the course and next dose kept; the readiness
+      check read every permission correctly and posted the test notification;
+      the data-use guidance opened; widgets drew after the update; no backend
+      errors. The edited row read "처방 교체" for a plain dose edit; superseded
+      rows now read "처방 변경" for edits and replacements alike.
+- [x] The home-screen widget failed to load on Android 7 to 11 ("Problem
+      loading widget"): it called View.setAlpha through RemoteViews, which
+      Android allows only from Android 12. Introduced on 2026-09-21, so the
+      released 0.2.0 to 0.2.2 apps are affected on those versions. It now
+      dims the patient buttons with setImageAlpha. Checked on Android 11 and
+      Android 16 emulators (widget drawn, "taken" stored); a test rejects
+      Android 12-only widget calls.
+- [x] Android 16 (debug build, emulator, local server): notification
+      permission request, the exact-alarm notice and system screen, 15
+      reminders upgraded to exact alarms, the notification at its minute with
+      the app in the background, all reminders reserved again after a reboot
+      without opening the app, and the widget.
+- [x] Prescription analysis end to end with a synthetic prescription (fictional
+      patient and clinic) on the Android 14 emulator against production,
+      2026-10-15: on-device OCR read every row, the privacy filter greyed out
+      the patient name, resident number and phone number, names were corrected
+      to catalogue names, and the server analysis returned candidates for all
+      three rows after the summary fix below. A real prescription on a phone is
+      still open.
+- [x] A wrong link code shows "코드가 맞지 않거나 만료되었습니다…" (signed
+      build, emulator, production).
+- [ ] Device check of the 0.2.3 changes. On October 15 the signed build of
+      `ded59c3` was installed over 0.2.2 on the Android 14 emulator (guest
+      account) against the production server, which runs this branch: the
+      update kept the data; undoing a whole slot on home asks first and "keep"
+      leaves the record; the medication box shows its new title, subtitle and
+      dates, a tap on a row selects it, and the delete confirmation names the
+      count (cancelled); the link list's buttons are 48 dp; the patient-code
+      dialog and the settings use the new wording; started offline, the app
+      showed the session error with a retry, and after the network returned the
+      retry restored the same account. Not checked on a device: the phone, two
+      devices, caregiver alerts after an offline start, and the error guidance.
+- Decided: the home-screen widget's undo button keeps undoing a slot in one
+  tap. A widget cannot show a confirmation, and the button is disabled while a
+  record is being saved, so a double tap does not reach the undo. The in-app
+  slot undo asks for confirmation.
+
 ## v0.2.2 release candidate
 
 v0.2.2 is the hardening line before a 1.0.0 release decision. An external scan
@@ -39,7 +191,10 @@ closed by any code on this branch:
       address, not across many addresses. See the App Check section below.
 - [ ] The public hospital API budget (800 requests per day and process) is
       shared by all users, and one specialty search can cost up to 41
-      requests. Needs a larger provider quota.
+      requests. Needs a larger provider quota (the operating account is
+      requested on the public data portal by registering a use case). Since
+      0.2.3 the budget is counted per provider operation, as the provider's
+      quota is, which roughly triples the usable calls without a new quota.
 - [ ] Device verification of this branch on a physical phone; the lists
       below under "without a device check" still apply as well. The
       `beta-android` environment allows `beta/v0.2.2` since October 12.
@@ -208,8 +363,9 @@ Physical acceptance that was not performed for v0.2.0:
 - [ ] The first launch after the application day changes.
 - [ ] Prescription capture with the on-device privacy filter, and saving
       several identified pills, on a physical device.
-- [ ] Android 16 background work. Android 14 was exercised on an emulator
-      only.
+- [ ] Android 16 background work on a physical phone. Exercised on an
+      Android 16 emulator on 2026-10-15 (reminders, exact alarms, reboot,
+      widget); see the v0.2.3 section.
 - [ ] Native map-marker recovery after a partially failed marker addition.
 
 Introduced in v0.2.1 and not yet checked on a device:
@@ -435,9 +591,10 @@ Defects and limits recorded during the v0.2.0 audits:
 
 Platform and pipeline items reviewed for v0.2.1 and deferred:
 
-- [ ] The two disabled scheduled workflows (`data-maintenance.yml`,
-      `sync-drug-catalog.yml`) still create a skipped run on every schedule
-      tick.
+- [x] The two disabled scheduled workflows (`data-maintenance.yml`,
+      `sync-drug-catalog.yml`) created a skipped run on every schedule tick;
+      their schedules were removed on 2026-10-19 (manual dispatch stays, and
+      each file names the cron to restore with the job).
 - [ ] Both CI workflows report a job named `build`. Making the names unique
       changes the required-check names and needs a branch-protection change by
       the owner.

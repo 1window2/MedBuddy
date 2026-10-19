@@ -2,13 +2,15 @@ import importlib.util
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
+from uuid import uuid4
 
 import pytest
 from alembic import command
 from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
-from sqlalchemy import MetaData, create_engine, inspect, select
+from alembic.script import ScriptDirectory
+from sqlalchemy import MetaData, Table, create_engine, inspect, select
 from sqlalchemy.orm import Session
 
 from controls.check_saved_medication_control import CheckSavedMedication
@@ -17,7 +19,6 @@ from controls.manage_linked_chat_control import ManageLinkedChat
 from core.application_clock import application_today
 from core.schema_initialization import verify_database_revision
 from entities.chat_message_entity import _ChatMessage
-from entities.medication_completion_entity import _MedicationCompletion
 from entities.patient_caregiver_link_entity import _PatientCaregiverLink
 from support.db import seed_account, seed_medication
 
@@ -26,7 +27,6 @@ ROOT = Path(__file__).resolve().parents[1]
 OLD_REVISION = "b3a7d9e2f601"
 NEW_REVISION = "d19e7c4b2a60"
 CATALOG_REVISION = "c5e1a7f3b902"
-MERGE_REVISION = "f2c8a6d4e901"
 
 
 def migration():
@@ -52,21 +52,41 @@ def snapshot(connection):
     }
 
 
+def historical_medications(db: Session) -> Table:
+    # 최신 ORM 필드가 없는 과거 스키마는 당시 테이블 정의로만 읽고 쓴다.
+    return Table("saved_medications", MetaData(), autoload_with=db.connection())
+
+
+def seed_historical_medication(db: Session, **overrides: object) -> int:
+    values = {
+        "patient_hash": "patient-a", "created_date": application_today(),
+        "item_name": "test-tablet", "daily_frequency": "1",
+        "total_days": "7", "schedule_slot_keys": '["morning"]',
+        "medication_status": False, "deduplication_key": uuid4().hex,
+    }
+    values.update(overrides)
+    result = db.execute(historical_medications(db).insert().values(**values))
+    medication_id = int(result.inserted_primary_key[0])
+    db.commit()
+    return medication_id
+
+
 def seed_history(engine):
     with Session(engine) as db:
         seed_account(db, "patient-a", "caregiver-a", "unrelated-owner")
-        medication = seed_medication(db, daily_frequency="1", schedule_slot_keys='["morning"]')
+        medication_id = seed_historical_medication(db)
         link = _PatientCaregiverLink(patient_hash="patient-a", caregiver_hash="caregiver-a", linked=True)
         db.add(link)
-        db.add(_MedicationCompletion(
-            saved_medication_id=medication.id, patient_hash="patient-a",
+        completions = Table("medication_completions", MetaData(), autoload_with=db.connection())
+        db.execute(completions.insert().values(
+            saved_medication_id=medication_id, patient_hash="patient-a",
             schedule_date=application_today(), slot_key="morning", completed=True,
         ))
         db.commit()
         result = ManageLinkedChat(db).send_message(
             link_id=link.id, sender_hash="patient-a", client_message_id="migration_message", body="synthetic",
         )
-        return medication.id, link.id, result.message.message_id
+        return medication_id, link.id, result.message.message_id
 
 
 def test_existing_database_upgrade_preserves_rows_and_prevents_id_reuse(tmp_path):
@@ -85,6 +105,8 @@ def test_existing_database_upgrade_preserves_rows_and_prevents_id_reuse(tmp_path
                 assert snapshot(connection) == before
                 assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
                 assert connection.exec_driver_sql("PRAGMA integrity_check").scalar() == "ok"
+        # 현재 컨트롤은 최신 스키마에서 검증하되 위의 과거 왕복 이력 비교는 유지한다.
+        command.upgrade(config, "head")
         with Session(engine) as db:
             db.connection().exec_driver_sql("PRAGMA foreign_keys=ON")
             CheckSavedMedication(db).requestDelete(medication_id, "patient-a")
@@ -151,17 +173,18 @@ def test_upgrade_cannot_recover_ids_deleted_before_autoincrement(tmp_path):
         _, link_id, _ = seed_history(engine)
         with Session(engine) as db:
             db.connection().exec_driver_sql("PRAGMA foreign_keys=ON")
-            deleted_medication_id = seed_medication(db, item_name="old-highest").id
+            deleted_medication_id = seed_historical_medication(db, item_name="old-highest")
             deleted_message_id = ManageLinkedChat(db).send_message(
                 link_id=link_id, sender_hash="patient-a", client_message_id="old_highest", body="synthetic",
             ).message.message_id
-            CheckSavedMedication(db).requestDelete(deleted_medication_id, "patient-a")
+            medications = historical_medications(db)
+            db.execute(medications.delete().where(medications.c.id == deleted_medication_id))
             db.query(_ChatMessage).filter_by(id=deleted_message_id).delete()
             db.commit()
         command.upgrade(config, NEW_REVISION)
         with Session(engine) as db:
             # 삭제 이력은 소급 복원할 수 없으므로 적용 전 동기화 완료와 실패·보류 항목 확인이 필요하다.
-            assert seed_medication(db, item_name="after-upgrade").id == deleted_medication_id
+            assert seed_historical_medication(db, item_name="after-upgrade") == deleted_medication_id
             assert ManageLinkedChat(db).send_message(
                 link_id=link_id, sender_hash="patient-a", client_message_id="after_upgrade", body="synthetic",
             ).message.message_id == deleted_message_id
@@ -200,14 +223,15 @@ def test_merge_preserves_applied_histories_data_and_deleted_ids(tmp_path, starti
 
         def delete_highest_ids():
             with Session(engine) as db:
-                medication = seed_medication(db, id=900, item_name="deleted-highest")
+                medication_id = seed_historical_medication(db, id=900, item_name="deleted-highest")
                 message = _ChatMessage(
                     id=900, link_id=link_id, sender_hash="patient-a",
                     client_message_id="deleted_highest", body="synthetic",
                 )
                 db.add(message)
                 db.commit()
-                db.delete(medication)
+                medications = historical_medications(db)
+                db.execute(medications.delete().where(medications.c.id == medication_id))
                 db.delete(message)
                 db.commit()
 
@@ -223,7 +247,7 @@ def test_merge_preserves_applied_histories_data_and_deleted_ids(tmp_path, starti
         command.upgrade(config, "head")
         with engine.connect() as connection:
             verify_database_revision(connection)
-            assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one() == MERGE_REVISION
+            assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one() == ScriptDirectory.from_config(config).get_current_head()
             for table in metadata.sorted_tables:
                 if table.name != "alembic_version":
                     assert connection.execute(select(table)).all() == before[table.name]

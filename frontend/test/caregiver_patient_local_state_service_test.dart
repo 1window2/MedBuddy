@@ -94,7 +94,7 @@ void main() {
     );
 
     expect(label, '환자 LPHA');
-    expect(CaregiverPatientLocalStateService.fallbackLabel(''), '연결된 환자');
+    expect(CaregiverPatientLocalStateService.fallbackLabel(''), '연동된 환자');
   });
 
   // 함수이름: test 콜백

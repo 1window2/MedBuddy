@@ -13,7 +13,6 @@ class MedBuddyColors {
   static const Color primaryDark = Color(0xFF0A6347);
   static const Color topBar = Color(0xFF0E7C5A);
   static const Color onPrimaryMuted = Color(0xFFD9EEE4);
-  static const Color progressTrack = Color(0xFF0A5A40);
   static const Color mint = Color(0xFFD6EEE3);
   static const Color successBorder = Color(0xFFB9DCCB);
   static const Color successSurface = Color(0xFFEAF5EF);
@@ -119,6 +118,15 @@ class MedBuddySpacing {
   static const double section = 24;
   static const double item = 12;
   static const double contentMaxWidth = 720;
+}
+
+// 약 등록과 변경 화면의 항목 제목을 같은 크기와 굵기로 유지한다.
+class MedBuddyTextStyles {
+  static const formSectionTitle = TextStyle(
+    color: MedBuddyColors.textStrong,
+    fontSize: 17,
+    fontWeight: FontWeight.w700,
+  );
 }
 
 // 클래스명: MedBuddyShadows

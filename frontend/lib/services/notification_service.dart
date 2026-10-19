@@ -8,6 +8,7 @@ import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart' show StringCharacters;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as timezone_data;
 import 'package:timezone/timezone.dart' as timezone;
@@ -16,6 +17,7 @@ import '../entities/json_value_reader.dart';
 import '../entities/medication_alarm_entity.dart';
 import '../entities/caregiver_alert_context_entity.dart';
 import '../entities/medication_notification_selection_entity.dart';
+import '../entities/medication_schedule_entity.dart';
 import '../entities/notification_inbox_entity.dart';
 import '../entities/user_setting_entity.dart';
 import 'medication_notification_payload_codec.dart';
@@ -81,6 +83,10 @@ class NotificationService {
   final Set<int> _armedReminderIds = <int>{};
   // 정확한 알람이 허용되지 않아 부정확 알람으로 예약한 날짜를 계획 서명에 표시하는 값.
   static const String _inexactScheduleMarker = 'inexact';
+  // Android 알림 채널 ID. 채널 생성·표시·취소 필터·준비 상태 확인이 같은 값을 써야 한다.
+  static const String _medicationChannelId = 'medbuddy_medication_reminders';
+  static const String _caregiverChannelId = 'medbuddy_caregiver_updates';
+  static const String _chatChannelId = 'medbuddy_linked_chat';
 
   // 예약·미루기·취소의 호출 순서를 지켜 늦은 예약이 취소를 되돌리지 않게 한다.
   Future<void> _serializeReminder(Future<void> Function() action) {
@@ -273,8 +279,8 @@ class NotificationService {
     final preferences = await preferencesLoader();
     await preferences.reload();
     final plans = <String, Map<String, dynamic>>{};
-    for (final slotKey in const ['morning', 'lunch', 'evening', 'bedtime']) {
-      final rawPlan = preferences.getString(_reminderPlanKey(owner, slotKey));
+    for (final slotKey in medicationScheduleSlotKeys) {
+      final rawPlan = preferences.getString(reminderPlanKey(owner, slotKey));
       // 부정확 알람이 없는 계획은 해석하지 않고 넘어간다.
       if (rawPlan == null || !rawPlan.contains(_inexactScheduleMarker)) continue;
       try {
@@ -341,17 +347,17 @@ class NotificationService {
       }
       if (changed && owner == _historyUserHash) {
         await preferences.setString(
-          _reminderPlanKey(owner, plan.key),
+          reminderPlanKey(owner, plan.key),
           jsonEncode(plan.value),
         );
       }
     }
   }
 
-  // 함수이름: _reminderPlanKey
-  // 함수역할: 계정과 시간대별 예약 계획을 저장하는 기기 저장소 키를 만든다.
+  // 함수이름: reminderPlanKey
+  // 함수역할: 계정과 시간대별 예약 계획을 저장하는 기기 저장소 키를 만든다. 계정 삭제도 이 키로 지운다.
   // 매개변수: owner - 계정 해시(없으면 guest), slotKey - 복약 시간대 키. 반환값: 저장소 키.
-  String _reminderPlanKey(String? owner, String slotKey) =>
+  static String reminderPlanKey(String? owner, String slotKey) =>
       'medbuddy_reminder_plan_${owner ?? "guest"}_$slotKey';
 
   // 함수이름: _decodeReminderSignature
@@ -549,19 +555,19 @@ class NotificationService {
       }
       const channels = <AndroidNotificationChannel>[
         AndroidNotificationChannel(
-          'medbuddy_medication_reminders',
+          _medicationChannelId,
           '복약 알림',
           description: 'MedBuddy 복약 시간 알림',
           importance: Importance.high,
         ),
         AndroidNotificationChannel(
-          'medbuddy_caregiver_updates',
+          _caregiverChannelId,
           '보호자 복약 확인',
           description: '연동된 환자의 복약 완료 및 미복용 상태 알림',
           importance: Importance.high,
         ),
         AndroidNotificationChannel(
-          'medbuddy_linked_chat',
+          _chatChannelId,
           '가족 채팅',
           description: '연동된 환자와 보호자의 새 채팅 메시지 알림',
           importance: Importance.high,
@@ -666,7 +672,7 @@ class NotificationService {
     final preferences = await preferencesLoader();
     await preferences.reload();
     if (owner != _historyUserHash) return;
-    final planKey = _reminderPlanKey(owner, slotKey);
+    final planKey = reminderPlanKey(owner, slotKey);
     Map<String, dynamic> previous = {};
     try {
       previous = Map<String, dynamic>.from(jsonDecode(preferences.getString(planKey) ?? '{}'));
@@ -686,7 +692,7 @@ class NotificationService {
         activeDate.month,
         activeDate.day,
       );
-      uniqueDates[_dateKey(normalizedDate)] = normalizedDate;
+      uniqueDates[formatJsonDate(normalizedDate)!] = normalizedDate;
     }
     final sortedDates = uniqueDates.values.toList(growable: false)..sort();
     final desiredIds = {
@@ -706,7 +712,11 @@ class NotificationService {
     try {
       for (final activeDate in sortedDates) {
         if (owner != _historyUserHash) return;
-        final body = _buildReminderBody(language);
+        final body = slotKey == 'as_needed'
+            ? (isEnglishLanguage(language)
+                  ? 'Check your as-needed medication and recorded doses.'
+                  : '필요시 약과 오늘 기록한 복용 내역을 확인해 주세요.')
+            : _buildReminderBody(language);
         final scheduledDate = timezone.TZDateTime(
           timezone.local,
           activeDate.year,
@@ -831,14 +841,6 @@ class NotificationService {
     }
   }
 
-  // 함수이름: _dateKey
-  // 함수역할: 알림 날짜별 약명과 안정 ID에 사용할 YYYY-MM-DD 달력 날짜 키를 만든다.
-  // 매개변수:
-  // - date (DateTime): 달력 날짜 계산 또는 비교의 기준 시각
-  // 반환값:
-  // - String: 알림 날짜별 약명과 안정 ID에 사용할 YYYY-MM-DD 달력 날짜 키를 만든다.
-  String _dateKey(DateTime date) => formatJsonDate(date)!;
-
   // 함수이름: _notificationIdForDate
   // 함수역할: 시간대와 복용 날짜마다 충돌 가능성이 낮은 고정 알림 ID를 생성한다.
   // 매개변수:
@@ -848,7 +850,7 @@ class NotificationService {
   // 반환값:
   // - int: 시간대와 복용 날짜마다 충돌 가능성이 낮은 고정 알림 ID를 생성한다.
   int _notificationIdForDate(int baseId, String slotKey, DateTime date) {
-    final hash = fnv1a31('$baseId|$slotKey|${_dateKey(date)}');
+    final hash = fnv1a31('$baseId|$slotKey|${formatJsonDate(date)!}');
     return 100000 + (hash % 2000000000);
   }
 
@@ -861,18 +863,10 @@ class NotificationService {
   String _buildReminderBody(String language) {
     // Android retains this text until delivery. A name snapshot cannot tell us
     // which doses are still pending then, even when sensitive details are on.
-    return _isEnglish(language)
+    return isEnglishLanguage(language)
         ? 'Check your medication schedule and recorded completion status.'
         : '복약 일정과 복용 완료 기록을 확인해 주세요.';
   }
-
-  // 함수이름: _isEnglish
-  // 함수역할: 언어 코드의 공백과 대소문자를 정리한 뒤 en 접두사로 영어 계열을 판정한다.
-  // 매개변수:
-  // - language (String): 표시·음성 안내에 사용할 언어 코드
-  // 반환값:
-  // - bool: 언어 코드의 공백과 대소문자를 정리한 뒤 en 접두사로 영어 계열을 판정한다.
-  bool _isEnglish(String language) => isEnglishLanguage(language);
 
   // Function Name: _scheduleWithMode
   // Description: Schedules a localized zoned reminder with the chosen Android precision mode, completion and snooze actions, and a slot-aware navigation payload.
@@ -900,7 +894,9 @@ class NotificationService {
   }) async {
     // 예약 도중 계정이 바뀌면 나머지 예약을 새 계정에 남기지 않는다.
     if (owner != _historyUserHash) return null;
-    final title = _isEnglish(language)
+    final title = slotKey == 'as_needed'
+        ? (isEnglishLanguage(language) ? 'As-needed medication check' : '필요시 약 확인')
+        : isEnglishLanguage(language)
         ? '$slotTitle medication schedule'
         : '$slotTitle 복약 일정 확인';
 
@@ -911,23 +907,23 @@ class NotificationService {
       scheduledDate: scheduledDate,
       notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
-          'medbuddy_medication_reminders',
-          _isEnglish(language) ? 'Medication reminders' : '복약 알림',
-          channelDescription: _isEnglish(language)
+          _medicationChannelId,
+          isEnglishLanguage(language) ? 'Medication reminders' : '복약 알림',
+          channelDescription: isEnglishLanguage(language)
               ? 'MedBuddy medication time reminders'
               : 'MedBuddy 복약 시간 알림',
           importance: Importance.high,
           priority: Priority.high,
-          groupKey: 'medbuddy.reminder.$slotKey',
-          actions: <AndroidNotificationAction>[
+          groupKey: _reminderGroupKey(slotKey),
+          actions: slotKey == 'as_needed' ? const [] : <AndroidNotificationAction>[
             AndroidNotificationAction(
               markSlotTakenActionId,
-              _isEnglish(language) ? 'Taken' : '복용했어요',
+              isEnglishLanguage(language) ? 'Taken' : '복용했어요',
               showsUserInterface: true,
             ),
             AndroidNotificationAction(
               snoozeTenMinutesActionId,
-              _isEnglish(language) ? 'Remind in 10 min' : '10분 후 다시 알림',
+              isEnglishLanguage(language) ? 'Remind in 10 min' : '10분 후 다시 알림',
               showsUserInterface: true,
             ),
           ],
@@ -936,14 +932,14 @@ class NotificationService {
       ),
       androidScheduleMode: scheduleMode,
       payload:
-          'schedule:$slotKey:$id:${_dateKey(scheduleDate ?? scheduledDate)}',
+          'schedule:$slotKey:$id:${formatJsonDate(scheduleDate ?? scheduledDate)!}',
     );
     return NotificationInboxEntry(
       id: 'reminder:$id:${scheduledDate.millisecondsSinceEpoch}',
       title: title,
       body: body,
       payload:
-          'schedule:$slotKey:$id:${_dateKey(scheduleDate ?? scheduledDate)}',
+          'schedule:$slotKey:$id:${formatJsonDate(scheduleDate ?? scheduledDate)!}',
       category: NotificationInboxCategory.medication,
       occurredAt: scheduledDate,
     );
@@ -1028,7 +1024,7 @@ class NotificationService {
     required DateTime date,
   }) => _serializeReminder(() async {
     if (owner.trim().isEmpty ||
-        !const ['morning', 'lunch', 'evening', 'bedtime'].contains(slotKey)) {
+        !medicationScheduleSlotKeys.contains(slotKey)) {
       return;
     }
     final preferences = await SharedPreferences.getInstance();
@@ -1048,7 +1044,7 @@ class NotificationService {
     // Android가 표시 중인 알림의 payload를 반환하지 않아 날짜별 ID로 구분한다.
     for (final notification in await _plugin.getActiveNotifications()) {
       if (notification.id == id &&
-          notification.channelId == 'medbuddy_medication_reminders') {
+          notification.channelId == _medicationChannelId) {
         if (!await stillActive()) return;
         await _plugin.cancel(id: id, tag: notification.tag);
       }
@@ -1082,8 +1078,8 @@ class NotificationService {
       for (final notification in activeNotifications) {
         final notificationId = notification.id;
         final androidMatch =
-            notification.channelId == 'medbuddy_medication_reminders' &&
-            (notification.groupKey == 'medbuddy.reminder.$slotKey' ||
+            notification.channelId == _medicationChannelId &&
+            (notification.groupKey == _reminderGroupKey(slotKey) ||
                 (notification.groupKey == null &&
                     legacyIds.contains(notificationId)));
         if (notificationId != null &&
@@ -1104,7 +1100,7 @@ class NotificationService {
   // 매개변수: id - 방금 취소한 알림 ID. 반환값: 완료. 표시 저장 실패는 다음 실행에서 다시 시도한다.
   Future<void> _rememberLegacyReminderCancelled(int id) async {
     final legacyIds = {
-      for (final slotKey in const ['morning', 'lunch', 'evening', 'bedtime'])
+      for (final slotKey in medicationScheduleSlotKeys)
         MedicationAlarm.legacyNotificationIdForSlot(slotKey),
     };
     if (!legacyIds.contains(id)) return;
@@ -1149,18 +1145,14 @@ class NotificationService {
       if (notificationId != null &&
           (isSessionNotificationPayload(notification.payload) ||
               const {
-                'medbuddy_medication_reminders',
-                'medbuddy_caregiver_updates',
-                'medbuddy_linked_chat',
+                _medicationChannelId,
+                _caregiverChannelId,
+                _chatChannelId,
               }.contains(notification.channelId))) {
         await _plugin.cancel(id: notificationId, tag: notification.tag);
       }
     }
-    for (final slotKey in const ['morning', 'lunch', 'evening', 'bedtime']) {
-      final legacyId = MedicationAlarm.legacyNotificationIdForSlot(slotKey);
-      await _plugin.cancel(id: legacyId);
-      await _rememberLegacyReminderCancelled(legacyId);
-    }
+    await _cancelLegacySlotReminders();
     if (_pendingSelection != null) {
       _pendingSelection = null;
     }
@@ -1190,17 +1182,35 @@ class NotificationService {
     for (final notification in activeNotifications) {
       final id = notification.id;
       if (id != null &&
-          (notification.channelId == 'medbuddy_medication_reminders' ||
+          (notification.channelId == _medicationChannelId ||
               (notification.payload ?? '').startsWith('schedule:'))) {
         await _plugin.cancel(id: id, tag: notification.tag);
       }
     }
-    for (final slotKey in const ['morning', 'lunch', 'evening', 'bedtime']) {
+    await _cancelLegacySlotReminders();
+  }
+
+  // 함수이름: _cancelLegacySlotReminders
+  // 함수역할: 시간대별 구형 고정 ID 알림을 취소하고, 취소한 ID를 기기에 기록해 이후 동기화가 같은 취소를 반복하지 않게 한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 네 시간대의 취소와 기록을 마치면 완료되는 Future.
+  Future<void> _cancelLegacySlotReminders() async {
+    for (final slotKey in medicationScheduleSlotKeys) {
       final legacyId = MedicationAlarm.legacyNotificationIdForSlot(slotKey);
       await _plugin.cancel(id: legacyId);
       await _rememberLegacyReminderCancelled(legacyId);
     }
   }
+
+  // 함수이름: _reminderGroupKey
+  // 함수역할: 복약 알림을 시간대별로 묶는 Android 그룹 키를 만든다. 예약과 시간대 취소 필터가 같은 값을 써야 한다.
+  // 매개변수:
+  // - slotKey (String): 복약 시간대 키
+  // 반환값:
+  // - String: 'medbuddy.reminder.<slotKey>' 형식의 그룹 키.
+  String _reminderGroupKey(String slotKey) => 'medbuddy.reminder.$slotKey';
 
   // 함수이름: showCaregiverAlert
   // 함수역할: 환자의 복약 체크 변화를 보호자 기기의 즉시 로컬 알림으로 표시한다.
@@ -1221,10 +1231,11 @@ class NotificationService {
     String? historyUserHash,
     bool recordHistory = true,
     CaregiverAlertContext? alertContext,
+    bool onlyAlertOnce = false,
   }) async {
     final owner = historyUserHash ?? _historyUserHash;
     await initialize();
-    final isEnglish = _isEnglish(language);
+    final isEnglish = isEnglishLanguage(language);
     final visibleBody = _showSensitiveDetails
         ? body
         : isEnglish
@@ -1236,8 +1247,9 @@ class NotificationService {
       body: visibleBody,
       notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
-          'medbuddy_caregiver_updates',
+          _caregiverChannelId,
           isEnglish ? 'Caregiver medication updates' : '보호자 복약 확인',
+          onlyAlertOnce: onlyAlertOnce,
           channelDescription: isEnglish
               ? 'Medication completion and missed-dose updates for linked patients'
               : '연동된 환자의 복약 완료 및 미복용 상태 알림',
@@ -1254,7 +1266,7 @@ class NotificationService {
       ),
       payload: alertContext?.payload ?? (patientHash == null || patientHash.trim().isEmpty
           ? null
-          : 'caregiver:${Uri.encodeComponent(patientHash.trim())}'),
+          : MedicationNotificationPayloadCodec.caregiverPayload(patientHash.trim())),
     );
     if (recordHistory && patientHash != null && patientHash.trim().isNotEmpty) {
       await _recordInbox(
@@ -1268,7 +1280,8 @@ class NotificationService {
               ? 'Medication update'
               : '복약 상태 알림',
           body: visibleBody,
-          payload: alertContext?.payload ?? 'caregiver:${Uri.encodeComponent(patientHash.trim())}',
+          payload: alertContext?.payload ??
+              MedicationNotificationPayloadCodec.caregiverPayload(patientHash.trim()),
           category: NotificationInboxCategory.medication,
           occurredAt: DateTime.now(),
         ),
@@ -1306,14 +1319,14 @@ class NotificationService {
       language: language,
     );
     await initialize();
-    final isEnglish = _isEnglish(language);
+    final isEnglish = isEnglishLanguage(language);
     await _plugin.show(
       id: id,
       title: isEnglish ? 'New family message' : '새 가족 메시지',
       body: body,
       notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
-          'medbuddy_linked_chat',
+          _chatChannelId,
           isEnglish ? 'Family chat' : '가족 채팅',
           channelDescription: isEnglish
               ? 'New chat messages between linked patients and caregivers'
@@ -1325,7 +1338,7 @@ class NotificationService {
       ),
       // A dose-check request is still a chat message. Open its conversation;
       // the patient chooses whether to record a dose from there.
-      payload: 'chat:$linkId',
+      payload: MedicationNotificationPayloadCodec.chatPayload(linkId),
     );
     if (recordHistory) {
       await _recordInbox(
@@ -1334,7 +1347,7 @@ class NotificationService {
           id: 'chat:$linkId:$id',
           title: isEnglish ? 'New family message' : '새 가족 메시지',
           body: body,
-          payload: 'chat:$linkId',
+          payload: MedicationNotificationPayloadCodec.chatPayload(linkId),
           category: NotificationInboxCategory.chat,
           occurredAt: DateTime.now(),
         ),
@@ -1351,20 +1364,22 @@ class NotificationService {
     bool showSensitiveDetails = true,
     String language = 'ko',
   }) {
-    final preview = _linkedChatMessagePreview(messagePreview);
+    final preview = linkedChatMessagePreview(messagePreview);
     if (showSensitiveDetails && preview.isNotEmpty) return preview;
     return isEnglishLanguage(language)
         ? 'You received a new message from a linked family member.'
         : '연동된 가족에게 새 메시지가 도착했습니다.';
   }
 
-  // 함수이름: _linkedChatMessagePreview
-  // 함수역할: 채팅 알림 본문을 한 줄로 정리하고 시스템 알림에 적합한 길이로 제한한다.
+  // 함수이름: linkedChatMessagePreview
+  // 함수역할: 채팅 알림 본문을 한 줄로 정리하고 시스템 알림에 적합한 길이로 제한한다. 길이는 사용자가 보는 글자(문자소) 단위로 세어
+  //   이모지·결합 문자를 중간에서 자르지 않는다.
   // 매개변수:
   // - value (String?): 알림 길이에 맞게 공백 정리·축약할 채팅 본문
   // 반환값:
-  // - String: 채팅 알림 본문을 한 줄로 정리하고 시스템 알림에 적합한 길이로 제한한다.
-  static String _linkedChatMessagePreview(String? value) {
+  // - String: 120자 이하의 한 줄 본문. 길면 119자 뒤에 말줄임표를 붙인다.
+  @visibleForTesting
+  static String linkedChatMessagePreview(String? value) {
     const maximumLength = 120;
     final normalized = (value ?? '')
         .trim()
@@ -1380,9 +1395,92 @@ class NotificationService {
           (part) => part.isNotEmpty,
         )
         .join(' ');
-    if (normalized.length <= maximumLength) {
+    final characters = normalized.characters;
+    if (characters.length <= maximumLength) {
       return normalized;
     }
-    return '${normalized.substring(0, maximumLength - 1).trimRight()}…';
+    return '${characters.take(maximumLength - 1).toString().trimRight()}…';
+  }
+}
+
+// 기존 알림 계약과 테스트 대역에 새 의무를 추가하지 않는 준비 점검 전용 기능이다.
+extension NotificationReadinessDiagnostics on NotificationService {
+  // 준비 점검은 권한을 요청하지 않는다. 확인 실패를 허용으로 해석하지 않는다.
+  Future<({bool? notifications, bool? medicationChannel, bool? exactAlarms})>
+  readReadinessPermissions() async {
+    if (kIsWeb) {
+      return (notifications: null, medicationChannel: null, exactAlarms: null);
+    }
+    await initialize();
+    bool? notifications;
+    bool? medicationChannel;
+    bool? exactAlarms;
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final android = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin
+      >();
+      try {
+        notifications = await android?.areNotificationsEnabled();
+      } catch (_) {}
+      try {
+        final channels = await android?.getNotificationChannels();
+        if (channels != null) {
+          for (final channel in channels) {
+            if (channel.id == NotificationService._medicationChannelId) {
+              medicationChannel = channel.importance != Importance.none;
+              break;
+            }
+          }
+        }
+      } catch (_) {}
+      try {
+        exactAlarms = await android?.canScheduleExactNotifications();
+      } catch (_) {}
+    } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+      final ios = _plugin.resolvePlatformSpecificImplementation<
+        IOSFlutterLocalNotificationsPlugin
+      >();
+      final permissions = await ios?.checkPermissions();
+      notifications = permissions?.isAlertEnabled;
+    }
+    return (
+      notifications: notifications,
+      medicationChannel: medicationChannel,
+      exactAlarms: exactAlarms,
+    );
+  }
+
+  // 복약 채널로 즉시 표시만 시험한다. 복용 동작·이동 payload·알림함 기록은 만들지 않는다.
+  Future<void> showReadinessTestNotification({String language = 'ko'}) async {
+    if (kIsWeb ||
+        (defaultTargetPlatform != TargetPlatform.android &&
+            defaultTargetPlatform != TargetPlatform.iOS)) {
+      throw UnsupportedError('Notification test is unavailable.');
+    }
+    final permissions = await readReadinessPermissions();
+    if (permissions.notifications != true ||
+        (defaultTargetPlatform == TargetPlatform.android &&
+            permissions.medicationChannel != true)) {
+      throw StateError('Notification permission could not be confirmed.');
+    }
+    final english = isEnglishLanguage(language);
+    await _plugin.show(
+      id: -17023,
+      title: english ? 'MedBuddy test notification' : 'MedBuddy 테스트 알림',
+      body: english
+          ? 'Display check only. No medication record is changed.'
+          : '표시 확인용입니다. 복용 기록은 변경되지 않습니다.',
+      notificationDetails: NotificationDetails(
+        android: AndroidNotificationDetails(
+          NotificationService._medicationChannelId,
+          english ? 'Medication reminders' : '복약 알림',
+          importance: Importance.high,
+          priority: Priority.high,
+          tag: 'medbuddy_readiness_test',
+          timeoutAfter: 60000,
+        ),
+        iOS: const DarwinNotificationDetails(),
+      ),
+    );
   }
 }

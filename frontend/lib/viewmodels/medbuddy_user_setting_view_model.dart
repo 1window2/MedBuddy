@@ -5,7 +5,6 @@ import '../controls/manage_user_setting_control.dart';
 import '../entities/user_setting_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../services/notification_service.dart';
-import 'medbuddy_feature_updates.dart';
 
 // Class Name: MedBuddyUserSettingViewModel
 // Role: Settings state owner.
@@ -50,8 +49,8 @@ class MedBuddyUserSettingViewModel {
   // Description: Reads current display locale. Parameters: None. Returns: English selection.
   bool get _isEnglishSetting => _readEnglish();
   // Function Name: _notifyViewModelListeners
-  // Description: Publishes settings-only changes. Parameters: feature: Tag. Returns: None.
-  void _notifyViewModelListeners(MedBuddyFeature feature) {
+  // Description: Publishes settings-only changes. Parameters: None. Returns: None.
+  void _notifyViewModelListeners() {
     if (!_disposed) _onChanged();
   }
 
@@ -86,12 +85,17 @@ class MedBuddyUserSettingViewModel {
       if (_disposed) return;
       _userSetting = setting;
       _settingLoaded = true;
+      // A save left pending by an earlier run is kept on the device; resume
+      // retries must resend it instead of treating the cache as server state.
+      _hasUnsynchronizedSetting =
+          manageUserSetting.useRemotePersistence &&
+          manageUserSetting.hasPendingSave;
       notificationService.setShowSensitiveDetails(
         _userSetting.showNotificationDetails,
       );
       await refreshMedicationOverview();
     } finally {
-      _notifyViewModelListeners(MedBuddyFeature.userSetting);
+      _notifyViewModelListeners();
     }
   }
 
@@ -243,7 +247,7 @@ class MedBuddyUserSettingViewModel {
       // This read preserves explicit alarms and must not replace native snoozes.
       await loadMedicationReminderSettings();
     }
-    _notifyViewModelListeners(MedBuddyFeature.userSetting);
+    _notifyViewModelListeners();
     return saveResult;
   }
 }

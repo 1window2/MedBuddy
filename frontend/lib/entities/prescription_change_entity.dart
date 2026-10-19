@@ -249,7 +249,7 @@ class PrescriptionChangeRadar {
           (readJsonInt(json['comparison_window_days']) ?? 0) == 0
           ? 90
           : readJsonInt(json['comparison_window_days']) ?? 0,
-      similarityScore: _readDouble(json['similarity_score']),
+      similarityScore: readJsonDouble(json['similarity_score']),
       matchBasis: readJsonText(json['match_basis']),
       previousPrescriptionDate: readJsonDate(
         json['previous_prescription_date'],
@@ -361,17 +361,4 @@ List<String> _readStringList(dynamic value) {
        * - 설명 문자열이 비어 있지 않으면 true.
        */(item) => item.isNotEmpty)
       .toList(growable: false);
-}
-
-// 함수이름: _readDouble
-// 함수역할: 선택적 JSON 값을 실수로 변환한다.
-// 매개변수:
-// - value (dynamic): 실수로 변환할 값
-// 반환값:
-// - 변환된 실수 또는 변환할 수 없으면 null
-double? _readDouble(dynamic value) {
-  if (value is num) {
-    return value.toDouble();
-  }
-  return double.tryParse(readJsonText(value));
 }

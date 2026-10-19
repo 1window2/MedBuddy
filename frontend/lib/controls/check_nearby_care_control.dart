@@ -1,8 +1,6 @@
 // File Name: check_nearby_care_control.dart
 // Role: Shares authenticated nearby-care search, location and external-action ownership.
 
-import 'dart:developer' as developer;
-
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
@@ -148,76 +146,64 @@ abstract class CheckNearbyCare {
       },
     );
 
-    try {
-      final response = await _client
-          .get(uri)
-          .timeout(const Duration(seconds: 25));
-      final responseBody = ApiResponseParser.decodeBody(response);
-      if (response.statusCode != 200) {
-        throw ApiResponseParser.httpFailure(
+    return ApiResponseParser.guardRequest(
+      operation: 'Nearby care request failed',
+      logName: 'CheckNearbyCare',
+      logMessage: 'Nearby care request failed.',
+      request: () async {
+        final response = await _client
+            .get(uri)
+            .timeout(const Duration(seconds: 25));
+        final responseBody = ApiResponseParser.requireOkBody(
           'Nearby care request failed',
           response,
-          responseBody,
         );
-      }
-      final decoded = ApiResponseParser.decodeMap(responseBody);
-      final rawItems = decoded['data'];
-      if (rawItems is! List) {
-        throw StateError('Server response did not include nearby care data.');
-      }
-      final pharmacies = rawItems
-          .whereType<Map>()
-          .map(
-            // 함수이름: map 콜백
-            // 함수역할: 주변 약국 응답 항목을 약국 정보 모델로 변환한다.
-            // 매개변수:
-            // - item (Map): 현재 변환·검사 중인 응답 또는 목록 항목
-            // 반환값:
-            // - 위치와 영업 정보를 담은 약국 모델.
-            (item) => NearbyCarePlace.fromJson(Map<String, dynamic>.from(item)),
-          )
-          .where(
-            /* 함수이름: where 콜백
-           * 함수역할: 식별자와 이름이 모두 있는 약국만 검색 결과에 남긴다.
-           * 매개변수:
-           * - item (NearbyCarePlace): 현재 변환·검사 중인 응답 또는 목록 항목
-           * 반환값:
-           * - 두 필수 필드가 비어 있지 않으면 true.
-           */
-            (item) => item.placeId.isNotEmpty && item.name.isNotEmpty,
-          )
-          .toList(growable: false);
-      return NearbyCareSearchResult(
-        searchArea: area,
-        data: pharmacies,
-        searchMode: searchMode,
-        targetDateTime:
-            DateTime.tryParse(decoded['target_datetime']?.toString() ?? '') ??
-            effectiveTarget,
-        catalogUpdatedAt: DateTime.tryParse(
-          decoded['catalog_updated_at']?.toString() ?? '',
-        ),
-        catalogIsStale: decoded['catalog_is_stale'] == true,
-        holidayScheduleStatus:
-            decoded['holiday_schedule_status']?.toString() ??
-            NearbyCareSearchResult.holidayScheduleNotApplicable,
-        searchTruncated: decoded['search_truncated'] == true,
-        regionScopeUncertain: decoded['region_scope_uncertain'] == true,
-      );
-    } on StateError {
-      rethrow;
-    } catch (error, stackTrace) {
-      developer.log(
-        'Nearby care request failed.',
-        name: 'CheckNearbyCare',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      throw ApiResponseParser.transportFailure(
-        'Nearby care request failed',
-        error,
-      );
-    }
+        final decoded = ApiResponseParser.decodeMap(responseBody);
+        final rawItems = decoded['data'];
+        if (rawItems is! List) {
+          throw StateError('Server response did not include nearby care data.');
+        }
+        final pharmacies = rawItems
+            .whereType<Map>()
+            .map(
+              // 함수이름: map 콜백
+              // 함수역할: 주변 약국 응답 항목을 약국 정보 모델로 변환한다.
+              // 매개변수:
+              // - item (Map): 현재 변환·검사 중인 응답 또는 목록 항목
+              // 반환값:
+              // - 위치와 영업 정보를 담은 약국 모델.
+              (item) => NearbyCarePlace.fromJson(Map<String, dynamic>.from(item)),
+            )
+            .where(
+              /* 함수이름: where 콜백
+             * 함수역할: 식별자와 이름이 모두 있는 약국만 검색 결과에 남긴다.
+             * 매개변수:
+             * - item (NearbyCarePlace): 현재 변환·검사 중인 응답 또는 목록 항목
+             * 반환값:
+             * - 두 필수 필드가 비어 있지 않으면 true.
+             */
+              (item) => item.placeId.isNotEmpty && item.name.isNotEmpty,
+            )
+            .toList(growable: false);
+        return NearbyCareSearchResult(
+          searchArea: area,
+          data: pharmacies,
+          searchMode: searchMode,
+          targetDateTime:
+              DateTime.tryParse(decoded['target_datetime']?.toString() ?? '') ??
+              effectiveTarget,
+          catalogUpdatedAt: DateTime.tryParse(
+            decoded['catalog_updated_at']?.toString() ?? '',
+          ),
+          catalogIsStale: decoded['catalog_is_stale'] == true,
+          holidayScheduleStatus:
+              decoded['holiday_schedule_status']?.toString() ??
+              NearbyCareSearchResult.holidayScheduleNotApplicable,
+          searchTruncated: decoded['search_truncated'] == true,
+          regionScopeUncertain: decoded['region_scope_uncertain'] == true,
+        );
+      },
+    );
   }
 
   // 함수이름: requestSearchArea

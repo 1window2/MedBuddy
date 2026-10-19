@@ -3,6 +3,7 @@
 
 from datetime import timedelta
 from typing import Any
+from uuid import UUID
 
 import pytest
 from sqlalchemy import create_engine, event
@@ -16,6 +17,7 @@ from entities.medication_completion_entity import _MedicationCompletion
 from entities.patient_caregiver_link_entity import _PatientCaregiverLink
 from entities.saved_medication_entity import _SavedMedication
 from entities.user_account_entity import _UserAccount
+from services.as_needed_caregiver_events import as_needed_taken_event_key
 
 
 # 함수이름: test_batch_preserves_schedules_with_bounded_queries
@@ -38,6 +40,7 @@ def test_batch_preserves_schedules_with_bounded_queries(count: int) -> None:
     try:
         with sessionmaker(bind=engine)() as db:
             today = application_today()
+            expected_prn_keys = {}
             db.add(_UserAccount(user_hash="caregiver"))
             for index in range(count):
                 owner = f"patient-{index}"
@@ -59,6 +62,18 @@ def test_batch_preserves_schedules_with_bounded_queries(count: int) -> None:
                     patient_hash=owner, saved_medication_id=medication.id,
                     schedule_date=today, slot_key="evening", completed=False,
                 ))
+                prn = _SavedMedication(
+                    patient_hash=owner, item_name="as-needed", dosing_mode="as_needed",
+                    prescription_date=today, total_days="7", daily_frequency="PRN",
+                )
+                db.add(prn)
+                db.flush()
+                record_slot = f"as_needed:{UUID(int=index + 1)}"
+                db.add(_MedicationCompletion(
+                    patient_hash=owner, saved_medication_id=prn.id,
+                    schedule_date=today, slot_key=record_slot, completed=True, report_status="taken",
+                ))
+                expected_prn_keys[owner] = [as_needed_taken_event_key(owner, prn.id, today, record_slot)]
                 db.add(_SavedMedication(
                     patient_hash=owner, item_name="expired",
                     prescription_date=today - timedelta(days=10), total_days="1",
@@ -77,7 +92,12 @@ def test_batch_preserves_schedules_with_bounded_queries(count: int) -> None:
             result = CheckCaregiverMonitoring(db).requestMonitoringSnapshot(
                 "caregiver", include_all_schedules=True,
             )
-            assert len(selects) == 2 + 2 * ((count + 399) // 400)
+            assert len(selects) == 3 + 2 * ((count + 399) // 400)
+            assert {
+                row["patient_hash"]: row["as_needed_taken_event_keys"]
+                for row in result["data"]["patients"]
+            } == expected_prn_keys
+            assert all(row["as_needed_schedule_date"] == today.isoformat() for row in result["data"]["patients"])
             assert not any("saved_medications.interaction" in sql for sql in selects)
             assert not any("saved_medications.ai_guide" in sql for sql in selects)
             actual = {

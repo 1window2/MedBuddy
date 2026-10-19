@@ -12,6 +12,7 @@ from services.medication_name_matching import (
     MedicationTextNormalizer,
 )
 from entities.medication_detail_entity import MedicationDetail
+from entities.medication_lookup_result import MedicationLookupResult
 from services.medication_match_safety import can_auto_match, match_conflict
 from services.prescription_medication_name_verifier import (
     _CatalogMedicationName, _MedicationNameFallbackRequest,
@@ -125,7 +126,7 @@ def control_with_results(results):
     control = object.__new__(CheckMedicationDetail)
     control.text_normalizer = MedicationTextNormalizer()
     control.name_matcher = MedicationNameMatcher()
-    control._fetch_drug_info = AsyncMock(return_value=results)
+    control._fetch_drug_info = AsyncMock(return_value=MedicationLookupResult(results))
     return control
 
 
@@ -174,14 +175,16 @@ def test_local_and_cached_wrong_strength_cannot_skip_public_lookup(source):
     wrong = [detail('테스트정500mg')]
     control.name_matcher = MedicationNameMatcher()
     control.local_medication_catalog = SimpleNamespace(
-        fetch_drug_info=AsyncMock(return_value=wrong if source == 'local' else []))
+        fetch_drug_info=AsyncMock(return_value=MedicationLookupResult(
+            wrong if source == 'local' else [])))
     control.medication_cache = SimpleNamespace(
         get=AsyncMock(return_value=wrong if source == 'cache' else None),
         set=AsyncMock())
-    control._fetch_public_drug_info = AsyncMock(return_value=[])
+    control._fetch_public_drug_info = AsyncMock(return_value=MedicationLookupResult())
     control._enrich_missing_image_urls = AsyncMock(side_effect=lambda items: items)
     result = asyncio.run(control._fetch_drug_info('테스트정', reference='테스트정100mg'))
-    assert result == []
+    assert result.details == []
+    assert result.is_complete
     control._fetch_public_drug_info.assert_awaited_once()
     assert control.medication_cache.set.call_args.args[0] == '테스트정100mg|테스트정'
 

@@ -19,6 +19,10 @@ from sqlalchemy import (
 )
 from core.application_clock import application_today
 from core.database import Base
+from entities.medication_schedule_entity import (
+    decode_medication_schedule_slot_keys,
+    normalize_medication_schedule_slot_keys,
+)
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
 from entities.user_account_entity import _UserAccount  # noqa: F401
 
@@ -77,6 +81,11 @@ class _SavedMedication(Base):
     daily_frequency = Column(String, nullable=True)
     total_days = Column(String, nullable=True)
     schedule_slot_keys = Column(Text, nullable=False, default="[]", server_default="[]")
+    dosing_mode = Column(String(16), nullable=False, default="scheduled", server_default="scheduled")
+    regimen_revision = Column(Integer, nullable=False, default=0, server_default="0")
+    regimen_effective_from = Column(Date, nullable=True)
+    stopped_on = Column(Date, nullable=True)
+    superseded_by_id = Column(Integer, nullable=True)
     deduplication_key = Column(
         String(64),
         nullable=False,
@@ -116,6 +125,7 @@ def build_saved_medication_deduplication_key(
     daily_frequency: str | None,
     total_days: str | None,
     schedule_slot_keys: object,
+    dosing_mode: str = "scheduled",
 ) -> str:
     normalized_slots = _normalize_schedule_slot_value(schedule_slot_keys)
     signature_parts = [
@@ -129,6 +139,8 @@ def build_saved_medication_deduplication_key(
     normalized_batch_id = _normalize_signature_text(prescription_batch_id)
     if normalized_batch_id:
         signature_parts.append(normalized_batch_id)
+    if dosing_mode == "as_needed":
+        signature_parts.append("dosing_mode:as_needed")
     signature = "\0".join(signature_parts)
     return hashlib.sha256(signature.encode("utf-8")).hexdigest()
 
@@ -152,19 +164,10 @@ def _normalize_signature_text(value: str | None) -> str:
 # 반환값:
 # - 결정적 비교용 시간대 JSON; 잘못된 입력은 빈 목록 JSON.
 def _normalize_schedule_slot_value(value: object) -> str:
-    decoded: object = value
-    if isinstance(value, str):
-        try:
-            decoded = json.loads(value)
-        except (TypeError, ValueError, json.JSONDecodeError):
-            decoded = []
-    if not isinstance(decoded, (list, tuple, set)):
-        decoded = []
-    requested = {str(item).strip().lower() for item in decoded}
-    ordered = [
-        slot_key
-        for slot_key in ("morning", "lunch", "evening", "bedtime")
-        if slot_key in requested
-    ]
-    return json.dumps(ordered, ensure_ascii=True, separators=(",", ":"))
+    slots = (
+        decode_medication_schedule_slot_keys(value)
+        if isinstance(value, str)
+        else normalize_medication_schedule_slot_keys(value)
+    )
+    return json.dumps(slots, ensure_ascii=True, separators=(",", ":"))
 

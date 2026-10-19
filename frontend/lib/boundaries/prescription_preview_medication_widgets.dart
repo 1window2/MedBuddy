@@ -79,7 +79,6 @@ class _PreviewMedicationTable extends StatelessWidget {
   // 반환값: 인식된 모든 약의 수정 가능한 가로 스크롤 표에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -189,10 +188,7 @@ class _PreviewMedicationTable extends StatelessWidget {
   // - scheduleIndex (int): 대상 약품·사진·행의 0부터 시작하는 목록 위치.
   // - schedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
   // 반환값: TableRow: 복약 표의 열 제목 또는 편집 가능한 약품 한 행.
-  TableRow _buildMedicationRow(
-    int scheduleIndex,
-    MedicationSchedule schedule,
-  ) {
+  TableRow _buildMedicationRow(int scheduleIndex, MedicationSchedule schedule) {
     final isVerified = verifiedScheduleIndexes.contains(scheduleIndex);
     return TableRow(
       decoration: isVerified
@@ -275,6 +271,18 @@ class _PreviewMedicationTable extends StatelessWidget {
                 isVerified: isVerified,
               ),
               // 매일 복용하지 않는 약은 일정이 달라지므로 표에서도 바로 알아볼 수 있게 한다.
+              if (schedule.isAsNeeded || schedule.needsScheduleReview) ...[
+                const SizedBox(height: 4),
+                _CorrectionBadge(
+                  key: Key('ocr-table-dosing-mode-$scheduleIndex'),
+                  label: schedule.isAsNeeded
+                      ? (previewText.isEnglish ? 'As needed' : '필요시 복용')
+                      : (previewText.isEnglish
+                            ? 'Schedule needs review'
+                            : '복용 일정 확인 필요'),
+                  isWarning: !schedule.isAsNeeded,
+                ),
+              ],
               if (!readDoseCycle(schedule.intakeTime).isDaily) ...[
                 const SizedBox(height: 4),
                 _CorrectionBadge(
@@ -473,10 +481,7 @@ class _TableValueText extends StatelessWidget {
   // - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
   // - isVerified (bool): 현재 약품이나 일정이 확인된 값인지 여부.
   // 반환값: 입력 설정이 반영된 _TableValueText 인스턴스.
-  const _TableValueText({
-    required this.value,
-    this.isVerified = false,
-  });
+  const _TableValueText({required this.value, this.isVerified = false});
 
   // 함수이름: build
   // 함수역할: 현재 입력값과 상태를 반영해 검증 상태를 구분하는 복약 표 값 화면을 구성한다.
@@ -541,10 +546,7 @@ class _MedicationNameTableValue extends StatelessWidget {
         : schedule.hasNameCorrection
         ? _CorrectionBadge(label: previewText.corrected)
         : schedule.isNameReviewRequired
-        ? _CorrectionBadge(
-            label: previewText.reviewNeeded,
-            isWarning: true,
-          )
+        ? _CorrectionBadge(label: previewText.reviewNeeded, isWarning: true)
         : null;
 
     return Column(
@@ -709,6 +711,7 @@ class _MedicationScheduleEditDialogState
   late Set<String> _selectedSlotKeys;
   bool _showSlotValidationError = false;
   bool _restoreOriginalName = false;
+  late bool _asNeeded;
 
   // 함수이름: initState
   // 함수역할: OCR 약명·용량·횟수·일수·날짜와 시간대 선택을 편집용 입력 상태로 복사한다.
@@ -733,11 +736,12 @@ class _MedicationScheduleEditDialogState
           : widget.medicationSchedule.medicationTime.toString(),
     );
     _prescriptionDateController = TextEditingController(
-      text: _formatDate(
+      text: formatJsonDate(
         widget.medicationSchedule.prescriptionDate ?? DateTime.now(),
-      ),
+      )!,
     );
     _selectedSlotKeys = widget.medicationSchedule.slotKeys.toSet();
+    _asNeeded = widget.medicationSchedule.isAsNeeded;
   }
 
   // 함수이름: dispose
@@ -841,23 +845,39 @@ class _MedicationScheduleEditDialogState
                 textInputAction: TextInputAction.next,
                 decoration: InputDecoration(labelText: text.dosage),
               ),
-              TextFormField(
-                key: const Key('ocr-edit-frequency'),
-                controller: _frequencyController,
-                autofocus:
-                    widget.initialField ==
-                    _MedicationScheduleEditField.dailyFrequency,
-                inputFormatters: [LengthLimitingTextInputFormatter(40)],
-                textInputAction: TextInputAction.next,
-                decoration: InputDecoration(
-                  labelText: text.dailyFrequency,
-                  // 매일 복용하지 않는 지시는 어떤 날에 일정이 생기는지 저장 전에 알려 준다.
-                  helperText: _doseRhythmNotice,
-                  helperMaxLines: 8,
-                ),
-                onChanged: _updateDailyFrequency,
-                validator: _validateDailyFrequency,
+              const SizedBox(height: 12),
+              MedicationDosingModeSelector(
+                keyPrefix: 'ocr-edit',
+                isAsNeeded: _asNeeded,
+                isEnglish: text.isEnglish,
+                onChanged: (value) => setState(() {
+                  _asNeeded = value;
+                  _showSlotValidationError = false;
+                  if (!value &&
+                      isAsNeededDoseInstruction(_frequencyController.text)) {
+                    _frequencyController.clear();
+                    _selectedSlotKeys.clear();
+                  }
+                }),
               ),
+              if (!_asNeeded)
+                TextFormField(
+                  key: const Key('ocr-edit-frequency'),
+                  controller: _frequencyController,
+                  autofocus:
+                      widget.initialField ==
+                      _MedicationScheduleEditField.dailyFrequency,
+                  inputFormatters: [LengthLimitingTextInputFormatter(40)],
+                  textInputAction: TextInputAction.next,
+                  decoration: InputDecoration(
+                    labelText: text.dailyFrequency,
+                    // 매일 복용하지 않는 지시는 어떤 날에 일정이 생기는지 저장 전에 알려 준다.
+                    helperText: _doseRhythmNotice,
+                    helperMaxLines: 8,
+                  ),
+                  onChanged: _updateDailyFrequency,
+                  validator: _validateDailyFrequency,
+                ),
               TextFormField(
                 key: const Key('ocr-edit-days'),
                 controller: _daysController,
@@ -881,67 +901,66 @@ class _MedicationScheduleEditDialogState
                 // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
                 onFieldSubmitted: (_) => _submit(),
               ),
-              const SizedBox(height: 18),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  text.scheduleSlots,
-                  style: TextStyle(
-                    color: MedBuddyColors.textStrong,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0,
+              if (!_asNeeded) ...[
+                const SizedBox(height: 18),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    text.scheduleSlots,
+                    style: TextStyle(
+                      color: MedBuddyColors.textStrong,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Focus(
-                autofocus:
-                    widget.initialField ==
-                    _MedicationScheduleEditField.scheduleSlots,
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final slotKey in medicationScheduleSlotKeys)
-                      FilterChip(
-                        key: Key('ocr-edit-slot-$slotKey'),
-                        label: Text(text.slotLabel(slotKey)),
-                        selected: _selectedSlotKeys.contains(slotKey),
-                        // 함수이름: build.onSelected callback
-                        // 함수역할: 실제 복약 시간대와 표시 횟수를 함께 갱신한다.
-                        // 매개변수:
-                        // - selected (콜백 계약에서 추론): 현재 선택 집합에 포함되는지 여부.
-                        // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                        onSelected: (selected) {
-                          // 함수이름: build.setState callback
-                          // 함수역할: OCR 약명·조제일·용량·횟수·일수·시간대 편집의 입력·요청 상태를 `_showSlotValidationError = false`로 갱신한다.
-                          // 매개변수:
-                          // - 없음.
-                          // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-                          setState(() {
-                            if (selected) {
-                              _selectedSlotKeys.add(slotKey);
-                            } else {
-                              _selectedSlotKeys.remove(slotKey);
-                            }
-                            // "주 1회" 같은 지시를 시간대 개수로 덮어쓰면 매일 복용으로 바뀐다.
-                            if (_selectedSlotKeys.isNotEmpty &&
-                                readDoseCycle(
-                                  _frequencyController.text,
-                                ).isDaily) {
-                              _frequencyController.text =
-                                  _canonicalDailyFrequency(
-                                    _selectedSlotKeys.length,
-                                  );
-                            }
-                            _showSlotValidationError = false;
-                          });
-                        },
-                      ),
-                  ],
+                const SizedBox(height: 8),
+                Focus(
+                  autofocus:
+                      widget.initialField ==
+                      _MedicationScheduleEditField.scheduleSlots,
+                  child: MedicationEntrySlotChoices(
+                    keyPrefix: 'ocr-edit-slot',
+                    values: _selectedSlotKeys,
+                    label: text.slotLabel,
+                    // 함수이름: build.onChanged callback
+                    // 함수역할: 실제 복약 시간대와 표시 횟수를 함께 갱신한다.
+                    // 매개변수:
+                    // - slotKey (String): 선택을 바꾼 복약 시간대 키.
+                    // - selected (콜백 계약에서 추론): 현재 선택 집합에 포함되는지 여부.
+                    // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                    onChanged: (slotKey, selected) {
+                      // 함수이름: build.setState callback
+                      // 함수역할: OCR 약명·조제일·용량·횟수·일수·시간대 편집의 입력·요청 상태를 `_showSlotValidationError = false`로 갱신한다.
+                      // 매개변수:
+                      // - 없음.
+                      // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
+                      setState(() {
+                        if (selected) {
+                          _selectedSlotKeys.add(slotKey);
+                        } else {
+                          _selectedSlotKeys.remove(slotKey);
+                        }
+                        // "주 1회" 같은 지시를 시간대 개수로 덮어쓰면 매일 복용으로 바뀐다.
+                        if (_selectedSlotKeys.isNotEmpty &&
+                            !requiresDoseScheduleReview(
+                              _frequencyController.text,
+                            ) &&
+                            readDoseCycle(
+                              _frequencyController.text,
+                            ).isDaily) {
+                          _frequencyController.text =
+                              _canonicalDailyFrequency(
+                                _selectedSlotKeys.length,
+                              );
+                        }
+                        _showSlotValidationError = false;
+                      });
+                    },
+                  ),
                 ),
-              ),
+              ],
               if (_showSlotValidationError) ...[
                 const SizedBox(height: 8),
                 Align(
@@ -1032,9 +1051,11 @@ class _MedicationScheduleEditDialogState
   // 함수역할: 해석하지 못한 횟수로 기존 시간대가 조용히 저장되는 것을 막는다. 손대지 않은 OCR 횟수("8시간마다" 등)는 다른 항목 수정을 막지 않도록 그대로 통과시키고, "주 1회"·"격일"처럼 복용하는 날을 읽을 수 있는 지시는 받아들인다.
   // 매개변수: value 횟수 입력. 반환값: 잘못된 입력 안내 또는 null.
   String? _validateDailyFrequency(String? value) =>
-      _isDailyFrequencyUntouched(value ?? '') ||
-          _readDailyFrequency(value ?? '') != null ||
-          !readDoseCycle(value).isDaily
+      _asNeeded ||
+          (!requiresDoseScheduleReview(value) &&
+              (_isDailyFrequencyUntouched(value ?? '') ||
+                  _readDailyFrequency(value ?? '') != null ||
+                  !readDoseCycle(value).isDaily))
       ? null
       : widget.previewText.invalidDailyFrequency;
 
@@ -1109,12 +1130,12 @@ class _MedicationScheduleEditDialogState
       return;
     }
     // 함수이름: _selectPrescriptionDate.setState callback
-    // 함수역할: OCR 약명·조제일·용량·횟수·일수·시간대 편집의 입력·요청 상태를 `_prescriptionDateController.text = _formatDate(selectedDate)`로 갱신한다.
+    // 함수역할: OCR 약명·조제일·용량·횟수·일수·시간대 편집의 입력·요청 상태를 `_prescriptionDateController.text = formatJsonDate(selectedDate)!`로 갱신한다.
     // 매개변수:
     // - 없음.
     // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
     setState(() {
-      _prescriptionDateController.text = _formatDate(selectedDate);
+      _prescriptionDateController.text = formatJsonDate(selectedDate)!;
     });
   }
 
@@ -1124,7 +1145,7 @@ class _MedicationScheduleEditDialogState
   // - 없음.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
   void _submit() {
-    final hasSelectedSlot = _selectedSlotKeys.isNotEmpty;
+    final hasSelectedSlot = _asNeeded || _selectedSlotKeys.isNotEmpty;
     if (!hasSelectedSlot) {
       // 함수이름: _submit.setState callback
       // 함수역할: OCR 약명·조제일·용량·횟수·일수·시간대 편집의 입력·요청 상태를 `_showSlotValidationError = true`로 갱신한다.
@@ -1153,14 +1174,19 @@ class _MedicationScheduleEditDialogState
       widget.medicationSchedule.copyWith(
         medicationName: medicationName,
         dosage: _dosageController.text.trim(),
-        intakeTime: frequencyCount == null
+        intakeTime: _asNeeded
+            ? '필요시 복용'
+            : frequencyCount == null
             ? frequencyText
             : _canonicalDailyFrequency(frequencyCount),
         medicationTime: int.tryParse(_daysController.text.trim()) ?? 0,
         prescriptionDate: _parseDate(_prescriptionDateController.text.trim()),
-        scheduleSlotKeys: medicationScheduleSlotKeys
-            .where(_selectedSlotKeys.contains)
-            .toList(growable: false),
+        dosingMode: _asNeeded ? 'as_needed' : 'scheduled',
+        scheduleSlotKeys: _asNeeded
+            ? []
+            : medicationScheduleSlotKeys
+                  .where(_selectedSlotKeys.contains)
+                  .toList(growable: false),
         rawMedicationName: widget.isNewSchedule || restoresOriginalName
             ? ''
             : widget.medicationSchedule.rawMedicationName,
@@ -1229,17 +1255,6 @@ class _MedicationScheduleEditDialogState
       return null;
     }
     return parsedDate;
-  }
-
-  // 함수이름: _formatDate
-  // 함수역할: 날짜를 네 자리 연도와 두 자리 월·일의 연-월-일 형식으로 표시한다.
-  // 매개변수:
-  // - value (DateTime): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String _formatDate(DateTime value) {
-    return '${value.year.toString().padLeft(4, '0')}-'
-        '${value.month.toString().padLeft(2, '0')}-'
-        '${value.day.toString().padLeft(2, '0')}';
   }
 }
 
@@ -1610,14 +1625,7 @@ class _PreviewText {
   // 매개변수:
   // - date (DateTime?): 표시·비교 기준이 되는 날짜 또는 이전·현재 값.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String dateValue(DateTime? date) {
-    if (date == null) {
-      return noInformation;
-    }
-    return '${date.year.toString().padLeft(4, '0')}-'
-        '${date.month.toString().padLeft(2, '0')}-'
-        '${date.day.toString().padLeft(2, '0')}';
-  }
+  String dateValue(DateTime? date) => formatJsonDate(date) ?? noInformation;
 
   // 함수이름: slotSummary
   // 함수역할: 시간대 키를 현재 언어의 이름으로 변환해 구분자로 묶는다.

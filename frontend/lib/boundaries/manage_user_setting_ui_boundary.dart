@@ -7,11 +7,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../services/dose_home_widget_service.dart';
 
+import '../widgets/medbuddy_confirm_dialog.dart';
 import '../widgets/medbuddy_preference_row.dart';
 
 import '../controls/app_language_control.dart';
 import '../controls/authentication_control.dart';
 import '../controls/manage_account_control.dart';
+import '../controls/notification_readiness_control.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/notification_service.dart';
 import '../services/tts_service.dart';
@@ -20,6 +22,8 @@ import '../widgets/medbuddy_page_header.dart';
 import '../widgets/app_version_label.dart';
 import '../widgets/exact_reminder_notice.dart';
 import 'set_notification_ui_boundary.dart';
+import 'data_use_info_ui_boundary.dart';
+import 'notification_readiness_ui_boundary.dart';
 
 part 'settings_preference_widgets.dart';
 
@@ -74,6 +78,12 @@ class ManageUserSettingUI extends StatefulWidget {
   final VoidCallback? onMedicationScheduleRequested;
   final Future<void> Function()? onDeviceNotificationSettingsRequested;
   final NotificationService? notificationService;
+  // 등록 조회가 아직 끝나지 않았거나 실패했으면 null로 전달한다.
+  final int? registeredMedicationCount;
+  final Future<bool?> Function()? loadHasMedicationForReadiness;
+  final VoidCallback? onMedicationRegistrationRequested;
+  final VoidCallback? onCaregiverSetupRequested;
+  final NotificationReadinessControl? readinessControl;
 
   // 함수이름: ManageUserSettingUI
   // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에 필요한 입력값과 표시 설정을 초기화한다.
@@ -104,6 +114,11 @@ class ManageUserSettingUI extends StatefulWidget {
     this.onMedicationScheduleRequested,
     this.onDeviceNotificationSettingsRequested,
     this.notificationService,
+    this.registeredMedicationCount,
+    this.loadHasMedicationForReadiness,
+    this.onMedicationRegistrationRequested,
+    this.onCaregiverSetupRequested,
+    this.readinessControl,
   });
 
   // 함수이름: createState
@@ -291,32 +306,38 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     required _AccountPresentation accountPresentation,
   }) {
     return switch (_selectedSection) {
-      _SettingSection.overview => _SettingsOverview(
-        text: text,
-        accountPresentation: accountPresentation,
-        medicationAndNotificationSummary: text.medicationAndNotificationSummary(
-          medicationEnabled: _draft.medicationNotificationsEnabled,
-          caregiverEnabled: _draft.caregiverNotificationsEnabled,
-          chatEnabled: _draft.chatNotificationsEnabled,
-        ),
-        displayAndVoiceSummary: text.displayAndVoiceSummary(
-          fontSize: _fontSize,
-          readingSpeed: _readingSpeed,
-          languageMode: _draft.languageMode,
-        ),
-        // 함수이름: _buildSelectedSection.onSectionSelected callback
-        // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에서 캡처된 작업 `setState(() => _selectedSection = section)`을 실행한다.
-        // 매개변수:
-        // - section (콜백 계약에서 추론): 이동할 사용자 설정 분류.
-        // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-        onSectionSelected: (section) {
-          // 함수이름: _buildSelectedSection.setState callback
-          // 함수역할: 접근성·기본 복약 시각·계정 보안 설정의 입력·요청 상태를 `_selectedSection = section`로 갱신한다.
-          // 매개변수:
-          // - 없음.
-          // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-          setState(() => _selectedSection = section);
-        },
+      _SettingSection.overview => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _SettingsOverview(
+            text: text,
+            accountPresentation: accountPresentation,
+            medicationAndNotificationSummary: text
+                .medicationAndNotificationSummary(
+                  medicationEnabled: _draft.medicationNotificationsEnabled,
+                  caregiverEnabled: _draft.caregiverNotificationsEnabled,
+                  chatEnabled: _draft.chatNotificationsEnabled,
+                ),
+            displayAndVoiceSummary: text.displayAndVoiceSummary(
+              fontSize: _fontSize,
+              readingSpeed: _readingSpeed,
+              languageMode: _draft.languageMode,
+            ),
+            // 함수이름: _buildSelectedSection.onSectionSelected callback
+            // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에서 캡처된 작업 `setState(() => _selectedSection = section)`을 실행한다.
+            // 매개변수:
+            // - section (콜백 계약에서 추론): 이동할 사용자 설정 분류.
+            // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+            onSectionSelected: (section) {
+              // 함수이름: _buildSelectedSection.setState callback
+              // 함수역할: 접근성·기본 복약 시각·계정 보안 설정의 입력·요청 상태를 `_selectedSection = section`로 갱신한다.
+              // 매개변수:
+              // - 없음.
+              // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
+              setState(() => _selectedSection = section);
+            },
+          ),
+        ],
       ),
       _SettingSection.medicationAndNotifications =>
         _buildMedicationAndNotificationSettings(text),
@@ -326,6 +347,72 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         accountPresentation,
       ),
     };
+  }
+
+  // 저장되지 않은 알림 설정을 켜진 것으로 표시하지 않되 언어·글씨 미리보기는 유지한다.
+  void _openReadiness() {
+    final isEnglish = _SettingText(_language).isEnglish;
+    final control =
+        widget.readinessControl ??
+        NotificationReadinessControl(
+          notificationService:
+              widget.notificationService ?? NotificationService.instance,
+          openNotificationSettings:
+              widget.onDeviceNotificationSettingsRequested,
+          loadHasMedication:
+              widget.loadHasMedicationForReadiness ??
+              () async {
+                final count = widget.registeredMedicationCount;
+                return count == null ? null : count > 0;
+              },
+        );
+    _openInformationPage(
+      NotificationReadinessUI(
+        control: control,
+        savedSetting: _savedSetting,
+        isEnglish: isEnglish,
+        onMedicationRegistrationRequested:
+            widget.onMedicationRegistrationRequested,
+        onMedicationScheduleRequested: widget.onMedicationScheduleRequested,
+        onCaregiverSetupRequested: widget.onCaregiverSetupRequested,
+        onWidgetRequested: DoseHomeWidget.supported
+            ? () async {
+                final requested = await DoseHomeWidget.pin();
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      requested
+                          ? (isEnglish
+                                ? 'Widget request sent. Confirm it on your home screen.'
+                                : '위젯 추가를 요청했습니다. 홈 화면에서 추가 여부를 확인해주세요.')
+                          : (isEnglish
+                                ? 'Add MedBuddy from your home screen widget list.'
+                                : '홈 화면의 위젯 목록에서 MedBuddy를 추가해주세요.'),
+                    ),
+                  ),
+                );
+              }
+            : null,
+      ),
+    );
+  }
+
+  // 새 안내 화면도 선택한 글씨 크기를 전달받아 큰 글씨 사용자가 같은 배율로 읽는다.
+  void _openInformationPage(Widget page) {
+    final systemScale =
+        MediaQueryData.fromView(View.of(context)).textScaler.scale(16) / 16;
+    final scale = _draft.resolveTextScale(systemScale);
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(scale)),
+          child: page,
+        ),
+      ),
+    );
   }
 
   // 함수이름: _buildMedicationAndNotificationSettings
@@ -340,6 +427,14 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         _SettingsSection(
           title: text.notificationReceptionTitle,
           children: [
+            MedBuddyPreferenceRow(
+              key: const ValueKey('settingsReadinessMenu'),
+              title: text.isEnglish ? 'Setup check' : '사용 준비 점검',
+              description: text.isEnglish
+                  ? 'Medication setup, permissions and a test notification'
+                  : '약 등록, 기기 권한과 테스트 알림 확인',
+              onTap: _openReadiness,
+            ),
             _SettingToggle(
               switchKey: const ValueKey('medicationNotificationsSwitch'),
               title: text.medicationNotificationsTitle,
@@ -378,9 +473,8 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
               // 매개변수:
               // - enabled (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
               // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-              onChanged: (enabled) => _setDraft(
-                _draft.copyWith(chatNotificationsEnabled: enabled),
-              ),
+              onChanged: (enabled) =>
+                  _setDraft(_draft.copyWith(chatNotificationsEnabled: enabled)),
             ),
           ],
         ),
@@ -635,7 +729,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                 ),
                 _SettingOption(
                   value: 'patients',
-                  label: text.isEnglish ? 'Linked patients' : '연결된 환자',
+                  label: text.isEnglish ? 'Linked patients' : '연동된 환자',
                 ),
               ],
               onSelected: (value) =>
@@ -750,6 +844,22 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _AccountWelcomePanel(presentation: accountPresentation, compact: true),
+        const SizedBox(height: 24),
+        _SettingsSection(
+          title: text.isEnglish ? 'Privacy & Data' : '개인정보 및 데이터',
+          children: [
+            MedBuddyPreferenceRow(
+              key: const ValueKey('settingsDataUseMenu'),
+              title: text.isEnglish ? 'Data use guide' : '데이터 이용 안내',
+              description: text.isEnglish
+                  ? 'Device, server and external AI processing'
+                  : '기기·서버·외부 AI에서 처리하는 정보',
+              onTap: () => _openInformationPage(
+                DataUseInfoUI(isEnglish: text.isEnglish),
+              ),
+            ),
+          ],
+        ),
         if (hasMfaSettings) ...[
           const SizedBox(height: 18),
           ListenableBuilder(
@@ -761,6 +871,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
             // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
             // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
             builder: (context, _) => _MfaSettingsPanel(
+              text: text,
               enabled: widget.authenticationControl.hasEnrolledSmsMfa,
               available: widget.authenticationControl.canEnrollSmsMfa,
               onEnrollRequested: _showMfaEnrollment,
@@ -1259,45 +1370,16 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
 
     final text = _SettingText(_language);
     if (widget.authenticationControl.isAnonymous) {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        // Function Name: _handleSignOutRequested.builder callback
-        // Description: Composes accessibility, default medication times, and account security settings with the current parent constraints for the active layout.
-        // Parameters:
-        // - dialogContext (BuildContext): Dialog or sheet context for closing the route and reading theme data.
-        // Returns: Widget subtree for the described layout or fallback.
-        builder: (dialogContext) => AlertDialog(
-          title: Text(text.guestSignOutTitle),
-          content: Text(text.guestSignOutMessage),
-          actions: [
-            TextButton(
-              style: TextButton.styleFrom(
-                foregroundColor: MedBuddyColors.textStrong,
-              ),
-              // 함수이름: _handleSignOutRequested.onPressed callback
-              // 함수역할: `Navigator.pop(dialogContext, false)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-              // 매개변수:
-              // - 없음.
-              // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: Text(text.cancel),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: MedBuddyColors.danger,
-              ),
-              // 함수이름: _handleSignOutRequested.onPressed callback
-              // 함수역할: `Navigator.pop(dialogContext, true)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-              // 매개변수:
-              // - 없음.
-              // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: Text(text.delete),
-            ),
-          ],
-        ),
+      final confirmed = await showMedBuddyConfirmDialog(
+        context,
+        title: text.guestSignOutTitle,
+        message: text.guestSignOutMessage,
+        cancelLabel: text.cancel,
+        confirmLabel: text.delete,
+        cancelForeground: MedBuddyColors.textStrong,
+        destructive: true,
       );
-      if (confirmed != true || !mounted) {
+      if (!confirmed || !mounted) {
         return;
       }
     }
@@ -1349,8 +1431,10 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       // Parameters:
       // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
       // Returns: Widget subtree for the described layout or fallback.
-      builder: (context) =>
-          _MfaEnrollmentDialog(control: widget.authenticationControl),
+      builder: (context) => _MfaEnrollmentDialog(
+        control: widget.authenticationControl,
+        text: _SettingText(_language),
+      ),
     );
   }
 
@@ -1361,42 +1445,15 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   // Returns: Future<void> completing when the requested interaction or refresh finishes.
   Future<void> _confirmAccountDeletion() async {
     final text = _SettingText(_language);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      // 함수이름: _confirmAccountDeletion.builder callback
-      // 함수역할: 접근성·기본 복약 시각·계정 보안 설정에 현재 부모의 레이아웃 제약을 적용해 현재 배치를 구성한다.
-      // 매개변수:
-      // - dialogContext (BuildContext): 현재 대화상자·하단 시트의 화면 종료와 테마 참조 위치.
-      // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-      builder: (dialogContext) => AlertDialog(
-        title: Text(text.deleteAccount),
-        content: Text(text.deleteAccountMessage),
-        actions: [
-          TextButton(
-            // 함수이름: _confirmAccountDeletion.onPressed callback
-            // 함수역할: `Navigator.pop(dialogContext, false)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-            // 매개변수:
-            // - 없음.
-            // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(text.cancel),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: MedBuddyColors.danger,
-            ),
-            // 함수이름: _confirmAccountDeletion.onPressed callback
-            // 함수역할: `Navigator.pop(dialogContext, true)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-            // 매개변수:
-            // - 없음.
-            // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(text.delete),
-          ),
-        ],
-      ),
+    final confirmed = await showMedBuddyConfirmDialog(
+      context,
+      title: text.deleteAccount,
+      message: text.deleteAccountMessage,
+      cancelLabel: text.cancel,
+      confirmLabel: text.delete,
+      destructive: true,
     );
-    if (confirmed != true || !mounted) {
+    if (!confirmed || !mounted) {
       return;
     }
 
@@ -1769,6 +1826,7 @@ class _SettingsMenuTile extends StatelessWidget {
 // - available (bool): Whether the choice, action, or feature is enabled.
 // - onEnrollRequested (VoidCallback): Callback starting SMS multi-factor enrollment.
 class _MfaSettingsPanel extends StatelessWidget {
+  final _SettingText text;
   final bool enabled;
   final bool available;
   final VoidCallback onEnrollRequested;
@@ -1776,11 +1834,13 @@ class _MfaSettingsPanel extends StatelessWidget {
   // Function Name: _MfaSettingsPanel
   // Description: Initializes SMS multi-factor enrollment state and security actions with the supplied configuration.
   // Parameters:
+  // - text (_SettingText): Localized labels for the panel.
   // - enabled (bool): Whether the choice, action, or feature is enabled.
   // - available (bool): Whether the choice, action, or feature is enabled.
   // - onEnrollRequested (VoidCallback): Callback starting SMS multi-factor enrollment.
   // Returns: Initialized _MfaSettingsPanel instance.
   const _MfaSettingsPanel({
+    required this.text,
     required this.enabled,
     required this.available,
     required this.onEnrollRequested,
@@ -1804,9 +1864,9 @@ class _MfaSettingsPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'SMS two-step verification',
-            style: TextStyle(
+          Text(
+            text.smsMfaTitle,
+            style: const TextStyle(
               color: MedBuddyColors.textStrong,
               fontSize: 18,
               fontWeight: FontWeight.w700,
@@ -1815,10 +1875,10 @@ class _MfaSettingsPanel extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             enabled
-                ? 'An SMS second factor is enrolled.'
+                ? text.smsMfaEnrolled
                 : available
-                ? 'Protect this account with a verified phone number.'
-                : 'Available for verified email or Google accounts.',
+                ? text.smsMfaAvailable
+                : text.smsMfaUnavailable,
             style: const TextStyle(color: MedBuddyColors.textMuted),
           ),
           if (available && !enabled) ...[
@@ -1826,7 +1886,7 @@ class _MfaSettingsPanel extends StatelessWidget {
             OutlinedButton.icon(
               onPressed: onEnrollRequested,
               icon: const Icon(Icons.security_outlined),
-              label: const Text('Enable SMS MFA'),
+              label: Text(text.smsMfaEnable),
             ),
           ],
         ],
@@ -1843,13 +1903,15 @@ class _MfaSettingsPanel extends StatelessWidget {
 // - control (AuthenticationControl): Controller handling this screen's queries and update requests.
 class _MfaEnrollmentDialog extends StatefulWidget {
   final AuthenticationControl control;
+  final _SettingText text;
 
   // Function Name: _MfaEnrollmentDialog
   // Description: Initializes phone-number entry and SMS multi-factor enrollment with the supplied configuration.
   // Parameters:
   // - control (AuthenticationControl): Controller handling this screen's queries and update requests.
+  // - text (_SettingText): Localized labels for the dialog.
   // Returns: Initialized _MfaEnrollmentDialog instance.
-  const _MfaEnrollmentDialog({required this.control});
+  const _MfaEnrollmentDialog({required this.control, required this.text});
 
   // Function Name: createState
   // Description: Creates the state object that coordinates phone-number entry and SMS multi-factor enrollment.
@@ -1899,19 +1961,40 @@ class _MfaEnrollmentDialogState extends State<_MfaEnrollmentDialog> {
         final awaitingCode =
             widget.control.smsChallengePurpose ==
             SmsChallengePurpose.mfaEnrollment;
+        final text = widget.text;
+        // Show the control's failure in the dialog language instead of leaving the user without feedback.
+        final error = widget.control.errorMessageForLanguage(
+          isEnglish: text.isEnglish,
+        );
         return AlertDialog(
-          title: Text(awaitingCode ? 'Verify phone' : 'Enable SMS MFA'),
-          content: TextField(
-            controller: awaitingCode ? _codeController : _phoneController,
-            autofocus: true,
-            keyboardType: TextInputType.phone,
-            maxLength: awaitingCode ? 6 : null,
-            decoration: InputDecoration(
-              labelText: awaitingCode
-                  ? 'Six-digit SMS code'
-                  : 'International phone number',
-              hintText: awaitingCode ? null : '+821012345678',
-            ),
+          title: Text(
+            awaitingCode ? text.smsMfaVerifyPhone : text.smsMfaEnable,
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: awaitingCode ? _codeController : _phoneController,
+                autofocus: true,
+                keyboardType: TextInputType.phone,
+                maxLength: awaitingCode ? 6 : null,
+                decoration: InputDecoration(
+                  labelText: awaitingCode
+                      ? text.smsMfaCodeLabel
+                      : text.smsMfaPhoneLabel,
+                  hintText: awaitingCode ? null : '+821012345678',
+                ),
+              ),
+              if (error != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  error,
+                  key: const ValueKey('smsMfaError'),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
+            ],
           ),
           actions: [
             TextButton(
@@ -1926,7 +2009,7 @@ class _MfaEnrollmentDialogState extends State<_MfaEnrollmentDialog> {
                       widget.control.cancelSmsChallenge();
                       Navigator.pop(context);
                     },
-              child: const Text('Cancel'),
+              child: Text(text.cancel),
             ),
             FilledButton(
               onPressed: widget.control.isBusy
@@ -1950,7 +2033,9 @@ class _MfaEnrollmentDialogState extends State<_MfaEnrollmentDialog> {
                         Navigator.pop(context);
                       }
                     },
-              child: Text(awaitingCode ? 'Verify' : 'Send code'),
+              child: Text(
+                awaitingCode ? text.smsMfaVerify : text.smsMfaSendCode,
+              ),
             ),
           ],
         );
@@ -2329,13 +2414,13 @@ class _SettingText {
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get fontSizeTitle => isEnglish ? 'Text Size' : '글씨크기';
+  String get fontSizeTitle => isEnglish ? 'Text Size' : '글자 크기';
   // 함수이름: readingSpeedTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "읽기속도" 문구를 제공한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get readingSpeedTitle => isEnglish ? 'Reading Speed' : '읽기속도';
+  String get readingSpeedTitle => isEnglish ? 'Reading Speed' : '읽기 속도';
   // 함수이름: languageTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "Language" 문구를 제공한다.
   // 매개변수:
@@ -2446,14 +2531,14 @@ class _SettingText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get caregiverNotificationsTitle =>
-      isEnglish ? 'Caregiver updates' : '보호자 알림';
+      isEnglish ? 'Caregiver alerts' : '보호자 알림';
   // 함수이름: caregiverNotificationsDescription
   // 함수역할: 보호자 알림의 수신 대상을 간단히 설명한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get caregiverNotificationsDescription =>
-      isEnglish ? 'Linked patients\' medication status' : '연결된 환자의 복약 상태';
+      isEnglish ? 'Linked patients\' medication status' : '연동된 환자의 복약 상태';
   // 함수이름: chatNotificationsTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "채팅 알림" 문구를 제공한다.
   // 매개변수:
@@ -2832,4 +2917,74 @@ class _SettingText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get deleteAccountFailed =>
       isEnglish ? 'Could not delete account data.' : '계정 데이터를 삭제하지 못했습니다.';
+  // 함수이름: smsMfaTitle
+  // 함수역할: 문자 2단계 인증 영역 제목을 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  String get smsMfaTitle =>
+      isEnglish ? 'SMS two-step verification' : '문자 2단계 인증';
+  // 함수이름: smsMfaEnrolled
+  // 함수역할: 문자 2단계 인증이 등록된 상태 안내를 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  String get smsMfaEnrolled =>
+      isEnglish ? 'SMS two-step verification is on.' : '문자 2단계 인증이 켜져 있습니다.';
+  // 함수이름: smsMfaAvailable
+  // 함수역할: 문자 2단계 인증을 켤 수 있는 상태 안내를 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  String get smsMfaAvailable => isEnglish
+      ? 'Protect this account with a verified phone number.'
+      : '확인된 휴대폰 번호로 계정을 한 번 더 보호합니다.';
+  // 함수이름: smsMfaUnavailable
+  // 함수역할: 문자 2단계 인증을 쓸 수 없는 계정 안내를 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  String get smsMfaUnavailable => isEnglish
+      ? 'Available for verified email or Google accounts.'
+      : '이메일 인증을 마친 계정이나 Google 계정에서 사용할 수 있습니다.';
+  // 함수이름: smsMfaEnable
+  // 함수역할: 문자 2단계 인증 켜기 버튼·창 제목을 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  String get smsMfaEnable =>
+      isEnglish ? 'Turn on SMS verification' : '문자 인증 켜기';
+  // 함수이름: smsMfaVerifyPhone
+  // 함수역할: 인증번호 입력 단계의 창 제목을 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  String get smsMfaVerifyPhone => isEnglish ? 'Verify phone' : '휴대폰 번호 확인';
+  // 함수이름: smsMfaCodeLabel
+  // 함수역할: 문자 인증번호 입력란 이름을 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  String get smsMfaCodeLabel =>
+      isEnglish ? 'Six-digit SMS code' : '문자로 받은 6자리 인증번호';
+  // 함수이름: smsMfaPhoneLabel
+  // 함수역할: 국가번호를 포함한 휴대폰 번호 입력란 이름을 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  String get smsMfaPhoneLabel =>
+      isEnglish ? 'Phone number with country code' : '국가번호를 포함한 휴대폰 번호';
+  // 함수이름: smsMfaVerify
+  // 함수역할: 인증번호 확인 버튼 문구를 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  String get smsMfaVerify => isEnglish ? 'Verify' : '확인';
+  // 함수이름: smsMfaSendCode
+  // 함수역할: 인증번호 보내기 버튼 문구를 제공한다. 매개변수: 없음. 반환값: 언어별 문구.
+  String get smsMfaSendCode => isEnglish ? 'Send code' : '인증번호 보내기';
 }
+
+// 함수이름: buildSmsMfaEnrollmentDialogForTesting
+// 함수역할: 출시 빌드에서 꺼져 있는 문자 2단계 인증 창을 테스트에서 직접 띄울 수 있게 만든다.
+// 매개변수:
+// - control (AuthenticationControl): 인증번호 요청·확인과 오류를 제공할 인증 컨트롤.
+// - language (String): 창 문구 언어 코드.
+// 반환값: 문자 2단계 인증 등록 창 위젯.
+@visibleForTesting
+Widget buildSmsMfaEnrollmentDialogForTesting({
+  required AuthenticationControl control,
+  required String language,
+}) => _MfaEnrollmentDialog(control: control, text: _SettingText(language));
+
+// 함수이름: buildSmsMfaSettingsPanelForTesting
+// 함수역할: 출시 빌드에서 꺼져 있는 문자 2단계 인증 설정 영역을 테스트에서 직접 표시할 수 있게 만든다.
+// 매개변수:
+// - enabled (bool): 이미 등록됐는지 여부.
+// - available (bool): 이 계정에서 등록할 수 있는지 여부.
+// - language (String): 문구 언어 코드.
+// 반환값: 문자 2단계 인증 설정 영역 위젯.
+@visibleForTesting
+Widget buildSmsMfaSettingsPanelForTesting({
+  required bool enabled,
+  required bool available,
+  required String language,
+}) => _MfaSettingsPanel(
+  text: _SettingText(language),
+  enabled: enabled,
+  available: available,
+  onEnrollRequested: () {},
+);

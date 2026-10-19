@@ -80,6 +80,20 @@ void main() {
   // Android 14 default: exact alarms are refused until the user allows "Alarms & reminders".
   var exactDenied = false;
 
+  test('as-needed check has neutral copy and no take or snooze action', () async {
+    final now = DateTime.now();
+    final next = now.add(const Duration(days: 1));
+    await NotificationService.instance.registerNotification(
+      id: 84005, slotKey: 'as_needed', slotTitle: '필요시 약', hour: 12, minute: 0,
+      medicationNames: const [], activeDates: [next],
+    );
+    expect(scheduled, hasLength(1));
+    expect(scheduled.single['title'], '필요시 약 확인');
+    expect(scheduled.single['body'], '필요시 약과 오늘 기록한 복용 내역을 확인해 주세요.');
+    final details = scheduled.single['platformSpecifics'] as Map;
+    expect(details['actions'], isEmpty);
+  });
+
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     NotificationService.instance.setHistoryUser(null, persistSession: false);
@@ -133,6 +147,27 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
     debugDefaultTargetPlatformOverride = null;
+  });
+
+  // Function Name: chat preview truncation test
+  // Description: Verifies a long chat preview is cut by user-visible characters, so an emoji or
+  //   combined character at the limit is kept whole, and short previews are only whitespace-normalized.
+  // Parameters: None. Returns: Completion; a failed expectation fails the test.
+  test('chat preview truncation never splits an emoji', () {
+    expect(
+      NotificationService.linkedChatMessagePreview('  hello \n  there '),
+      'hello there',
+    );
+    const family = '👨‍👩‍👧';
+    final long = '${'a' * 118}$family${'b' * 10}';
+    final preview = NotificationService.linkedChatMessagePreview(long);
+    expect(preview, '${'a' * 118}$family…');
+    final exact = '${'a' * 119}$family';
+    expect(NotificationService.linkedChatMessagePreview(exact), exact);
+    expect(
+      NotificationService.linkedChatMessagePreview('${'a' * 119}👍👍'),
+      '${'a' * 119}…',
+    );
   });
 
   test('completed widget dose cancels its dated snooze without losing other reminders', () async {

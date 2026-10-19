@@ -141,7 +141,7 @@ class _TodayMedicationControlStub:
 # - 없음.
 # 반환값:
 # - 없음 (None).
-def test_monitoring_snapshot_batches_links_settings_and_active_schedules() -> None:
+def test_monitoring_snapshot_batches_links_settings_and_active_schedules(fk_db) -> None:
     """활성 환자 전체를 한 번 조회하고 필요한 일정만 포함하는지 검증한다."""
     links = [
         _PatientCaregiverLink(
@@ -165,7 +165,7 @@ def test_monitoring_snapshot_batches_links_settings_and_active_schedules() -> No
     notification_control = _NotificationControlStub()
     today_control = _TodayMedicationControlStub()
     control = CheckCaregiverMonitoring(
-        db=None,  # type: ignore[arg-type]
+        db=fk_db,
         link_repository=link_repository,  # type: ignore[arg-type]
         notification_control=notification_control,  # type: ignore[arg-type]
         today_medication_control=today_control,  # type: ignore[arg-type]
@@ -187,7 +187,7 @@ def test_monitoring_snapshot_batches_links_settings_and_active_schedules() -> No
     assert patients[1]["today_medication_info"]["schedules"] == []
 
 
-def test_home_snapshot_includes_disabled_patients_without_medication_details() -> None:
+def test_home_snapshot_includes_disabled_patients_without_medication_details(fk_db) -> None:
     """홈 일괄 조회는 알림 비활성 환자도 포함하되 저장 약 상세는 조회하지 않는다."""
     links = [
         _PatientCaregiverLink(id=i, patient_hash=patient,
@@ -197,7 +197,7 @@ def test_home_snapshot_includes_disabled_patients_without_medication_details() -
     repository = _LinkRepositoryStub(links)
     settings = _NotificationControlStub()
     today = _TodayMedicationControlStub()
-    control = CheckCaregiverMonitoring(None, repository, settings, today)
+    control = CheckCaregiverMonitoring(fk_db, repository, settings, today)
     result = control.requestMonitoringSnapshot("caregiver-a", include_all_schedules=True)
     assert repository.requested_caregiver_hashes == ["caregiver-a"]
     assert len(settings.requests) == 1

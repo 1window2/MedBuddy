@@ -1,6 +1,6 @@
 @startuml
 allowmixing
-scale max 1920 width
+scale max 8192 width
 left to right direction
 !pragma layout smetana
 
@@ -9,7 +9,7 @@ title Medication Management - Key Classes
 skinparam backgroundColor white
 skinparam shadowing false
 skinparam linetype ortho
-skinparam defaultFontName SansSerif
+skinparam defaultFontName Malgun Gothic
 skinparam defaultFontSize 15
 skinparam ArrowColor #64748B
 skinparam ArrowThickness 2
@@ -34,6 +34,13 @@ package "Flutter Frontend" #E8F4FF {
   class CheckScheduleUI <<UI>>
   class CheckSavedMedicationUI <<UI>>
   class CheckMedicationDetailUI <<UI>>
+  class MedicationRegimenEditorUI <<UI>>
+  class MedicationHistoryUI <<UI>>
+  class AsNeededScheduleSection <<UI>>
+  class MedicationHistoryControl <<Control>>
+  class AsNeededCheckReminderControl <<Control>>
+  class MedicationHistorySnapshot <<Entity>>
+  class MedicationHistoryChange <<Entity>>
   class MedBuddyViewModel <<Control>>
   class MedBuddyScheduleViewModel <<Control>>
   class MedBuddySavedMedicationViewModel <<Control>>
@@ -54,6 +61,9 @@ package "Flutter Frontend" #E8F4FF {
 }
 
 package "FastAPI Backend" #EAF8F0 {
+  class ManageMedicationCare <<Control>>
+  class AuthorizationControl <<Control>>
+  note "medication_care_recording.py\napply_completion_report()" as ReportRecording
   class "CheckSchedule" as BCheckSchedule <<Control>>
   class "CheckSavedMedication" as BCheckSavedMedication <<Control>>
   class "CheckMedicationDetail" as BCheckMedicationDetail <<Control>>
@@ -65,14 +75,32 @@ package "FastAPI Backend" #EAF8F0 {
   class MedicationNameMatcher <<Service>>
   class MedicationDetailCache <<Boundary>>
   class MedicationSummaryGenerator <<Boundary>>
+  class MedicationLookupResult <<Entity>> {
+    + details : list<MedicationDetail>
+    + is_complete : bool
+  }
   database "saved_medications" as DBSavedMedication <<Database>>
   database "medication_completions" as DBMedicationCompletion <<Database>>
+  database "medication_care_audits\nmedication_care_operations" as DBCareMetadata <<Database>>
 }
 
 cloud "MFDS Drug APIs" as MFDS
+boundary "Android FileProvider\nmedication_exports cache" as ExportProvider
 
 CheckScheduleUI --> MedBuddyViewModel
 CheckSavedMedicationUI --> MedBuddyViewModel
+CheckSavedMedicationUI --> MedicationRegimenEditorUI : confirmed change
+MedicationRegimenEditorUI --> MedBuddyViewModel : onSubmit callback
+CheckScheduleUI --> MedicationHistoryUI : dated review
+CheckScheduleUI *-- AsNeededScheduleSection
+MedBuddyViewModel *-- MedicationHistoryControl : asNeededHistory / login session
+MedicationHistoryUI --> MedicationHistoryControl : screen-owned history control
+AsNeededScheduleSection --> MedicationHistoryControl : borrowed patient / owned read-only scope
+MedicationHistoryControl --> MedicationHistorySnapshot
+MedicationHistoryControl --> MedicationHistoryChange : stable event + operation UUID
+AsNeededScheduleSection --> AsNeededCheckReminderControl : patient only
+AsNeededCheckReminderControl --> NotificationService : one future check; default off
+MedicationHistoryUI --> ExportProvider : confirmed CSV / temporary content URI
 CheckMedicationDetailUI --> MedBuddyViewModel
 MedBuddyViewModel *-- MedBuddyScheduleViewModel
 MedBuddyViewModel *-- MedBuddySavedMedicationViewModel
@@ -117,6 +145,37 @@ end note
 
 FCheckSchedule --> BCheckSchedule : schedule API
 FCheckSavedMedication --> BCheckSavedMedication : saved medication API
+FCheckSavedMedication --> ManageMedicationCare : POST regimen change
+MedicationHistoryControl --> ManageMedicationCare : GET history / patient-only PUT
+ManageMedicationCare --> AuthorizationControl : owner / active linked reader
+ManageMedicationCare --> MedicationCoursePolicy
+ManageMedicationCare --> BCheckSavedMedication : snapshot adapter
+ManageMedicationCare --> DBSavedMedication : versioned edit / stop / replace
+ManageMedicationCare --> DBMedicationCompletion : current reports / due slots
+ManageMedicationCare --> DBCareMetadata : atomic audit + operation receipt
+ManageMedicationCare --> ReportRecording
+BCheckSchedule --> ReportRecording : existing completion / undo paths
+ReportRecording --> DBMedicationCompletion
+ReportRecording --> DBCareMetadata : before / after audit
+note bottom of ManageMedicationCare
+  Old regimen and reports survive a new effective snapshot.
+  Same operation replays; changed content/revision conflicts.
+  History: at most 31 days within the last 90 Korea dates.
+  PRN uses as_needed:<UUID>, never automatic scheduled slots.
+  Today's new PRN taken transition queues a caregiver event
+  in the same transaction (see caregiver class diagram).
+end note
+note bottom of MedicationHistoryControl
+  Session change clears data, open edits and export access.
+  Server ACK is required; no second durable offline queue.
+  PRN bulk retry keeps only unresolved in-memory intentions.
+end note
+note bottom of ExportProvider
+  Pure export helpers quote cells and escape formula prefixes.
+  Only medications represented in the selected period are exported.
+  Chooser opening is not delivery; unsupported sharing offers
+  CSV-text copying only after separate consent.
+end note
 FCheckMedicationDetail --> BCheckMedicationDetail : detail API
 
 BCheckSchedule --> MedicationCoursePolicy
@@ -145,6 +204,9 @@ BCheckMedicationDetail --> MedicationTextNormalizer
 BCheckMedicationDetail --> MedicationNameMatcher
 BCheckMedicationDetail --> MedicationDetailCache
 BCheckMedicationDetail --> MedicationSummaryGenerator
+BCheckMedicationDetail ..> MedicationLookupResult : checks completeness before auto-selection
+LocalMedicationCatalog ..> MedicationLookupResult : returns successful details + completeness
+MedicationDetailCache ..> MedicationLookupResult : accepts only complete results
 LocalMedicationCatalog --> MedicationNameMatcher
 LocalMedicationCatalog --> MedicationSummaryGenerator
 MedicationNameMatcher --> MedicationTextNormalizer
@@ -154,6 +216,20 @@ note bottom of LocalMedicationCatalog
   Refresh/deletion races do not attach old guidance to a changed catalog row.
   Optional caching failure does not hide generated details.
   Connection-local in-memory SQLite skips summary persistence.
+end note
+note right of MedicationLookupResult
+  Partial AI failure keeps successful summaries.
+  Incomplete results require explicit product confirmation,
+  even when only one exact-name candidate remains.
+  Completeness survives ranking, enrichment and fallback.
+  All candidate summaries failing is a lookup error.
+  This internal value does not change the API schema.
+end note
+note bottom of MedicationDetailCache
+  Only nonempty, complete lookup results are cached for 7 days.
+  Partial lists are retried on the next lookup.
+  drug_info:v2: bypasses potentially partial legacy entries.
+  An unreadable candidate invalidates the whole cache entry.
 end note
 BCheckMedicationDetail --> MFDS
 

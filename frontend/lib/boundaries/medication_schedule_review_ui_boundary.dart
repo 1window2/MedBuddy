@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../entities/json_value_reader.dart';
 import '../entities/medication_dose_rhythm.dart';
+import '../widgets/medication_dosing_mode_selector.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/medication_schedule_limits.dart';
 import '../entities/medication_slot_label.dart';
 import '../entities/user_setting_entity.dart';
 import '../widgets/medbuddy_notice.dart';
+import '../widgets/medication_entry_fields.dart';
 import '../theme/medbuddy_theme.dart';
 
 // 파일명: medication_schedule_review_ui_boundary.dart
@@ -193,7 +196,10 @@ class _MedicationScheduleReviewSheetState
                   ),
                 ),
                 const SizedBox(height: 14),
-                _PillScheduleSafetyNotice(text: text),
+                MedBuddyNotice(
+                  icon: Icons.warning_amber_rounded,
+                  message: text.pillSafetyNotice,
+                ),
                 if (_validationMessage.isNotEmpty) ...[
                   const SizedBox(height: 14),
                   _ScheduleValidationNotice(message: _validationMessage),
@@ -389,7 +395,7 @@ class _MedicationScheduleReviewCard extends StatelessWidget {
           const SizedBox(height: 8),
           _ScheduleSummaryRow(
             label: text.startDate,
-            value: _formatDate(medicationSchedule.prescriptionDate),
+            value: formatJsonDate(medicationSchedule.prescriptionDate) ?? '',
             emptyValue: text.reviewNeeded,
           ),
           _ScheduleSummaryRow(
@@ -403,7 +409,13 @@ class _MedicationScheduleReviewCard extends StatelessWidget {
           ),
           _ScheduleSummaryRow(
             label: text.dailyFrequency,
-            value: frequency <= 0 ? '' : text.frequencyValue(frequency),
+            value: medicationSchedule.isAsNeeded
+                ? (text.isEnglish ? 'As needed' : '필요시 복용')
+                : medicationSchedule.needsScheduleReview
+                ? ''
+                : frequency <= 0
+                ? ''
+                : text.frequencyValue(frequency),
             emptyValue: text.reviewNeeded,
           ),
           _ScheduleSummaryRow(
@@ -413,11 +425,12 @@ class _MedicationScheduleReviewCard extends StatelessWidget {
                 : text.durationValue(medicationSchedule.medicationTime),
             emptyValue: text.reviewNeeded,
           ),
-          _ScheduleSummaryRow(
-            label: text.scheduleSlots,
-            value: slotLabels,
-            emptyValue: text.reviewNeeded,
-          ),
+          if (!medicationSchedule.isAsNeeded)
+            _ScheduleSummaryRow(
+              label: text.scheduleSlots,
+              value: slotLabels,
+              emptyValue: text.reviewNeeded,
+            ),
         ],
       ),
     );
@@ -492,36 +505,6 @@ class _ScheduleSummaryRow extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-// 클래스명: _PillScheduleSafetyNotice
-// 역할: 알약 사진만으로 복약 일정을 확정할 수 없다는 안내를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 알약 사진만으로 복약 일정을 확정할 수 없다는 안내 위젯을 구성한다.
-// 속성:
-// - text (_MedicationScheduleReviewText): 해당 화면 구역의 언어별 표시 문구.
-class _PillScheduleSafetyNotice extends StatelessWidget {
-  final _MedicationScheduleReviewText text;
-
-  // 함수이름: _PillScheduleSafetyNotice
-  // 함수역할: 알약 사진만으로 복약 일정을 확정할 수 없다는 안내에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - text (_MedicationScheduleReviewText): 해당 화면 구역의 언어별 표시 문구.
-  // 반환값: 입력 설정이 반영된 _PillScheduleSafetyNotice 인스턴스.
-  const _PillScheduleSafetyNotice({required this.text});
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 알약 사진만으로 복약 일정을 확정할 수 없다는 안내 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 알약 사진만으로 복약 일정을 확정할 수 없다는 안내에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
-    return MedBuddyNotice(
-      icon: Icons.warning_amber_rounded,
-      message: text.pillSafetyNotice,
     );
   }
 }
@@ -618,6 +601,7 @@ class _MedicationScheduleEditorDialogState
   late int _frequencyCount;
   // 복용하는 날의 지시. 빈 문자열은 매일 복용이다.
   late String _doseDays;
+  late bool _asNeeded;
   late Set<String> _selectedSlotKeys;
   bool _showSlotValidationError = false;
 
@@ -643,6 +627,7 @@ class _MedicationScheduleEditorDialogState
         .clamp(1, 4)
         .toInt();
     _doseDays = _doseDaysOf(widget.medicationSchedule.intakeTime);
+    _asNeeded = widget.medicationSchedule.isAsNeeded;
     _selectedSlotKeys = widget.medicationSchedule.slotKeys.toSet();
     if (_selectedSlotKeys.isEmpty ||
         _selectedSlotKeys.length != _frequencyCount) {
@@ -710,7 +695,7 @@ class _MedicationScheduleEditorDialogState
               key: const Key('schedule-edit-start-date'),
               contentPadding: EdgeInsets.zero,
               title: Text(text.startDate),
-              subtitle: Text(_formatDate(_startDate)),
+              subtitle: Text(formatJsonDate(_startDate) ?? ''),
               trailing: const Icon(Icons.calendar_today_outlined),
               onTap: _selectStartDate,
             ),
@@ -733,77 +718,83 @@ class _MedicationScheduleEditorDialogState
                   : null,
             ),
             const SizedBox(height: 16),
-            Text(
-              text.doseDays,
-              style: const TextStyle(
-                color: MedBuddyColors.textStrong,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0,
-              ),
+            MedicationDosingModeSelector(
+              keyPrefix: 'schedule-edit',
+              isAsNeeded: _asNeeded,
+              isEnglish: text.isEnglish,
+              onChanged: (value) => setState(() {
+                _asNeeded = value;
+                _showSlotValidationError = false;
+              }),
             ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                // 목록에 없는 지시로 저장된 약은 그 지시를 그대로 고를 수 있게 한다.
-                for (final doseDays in {...doseDayChoices, _doseDays})
-                  ChoiceChip(
-                    key: Key('schedule-edit-dose-days-$doseDays'),
-                    label: Text(text.doseDaysValue(doseDays)),
-                    selected: _doseDays == doseDays,
-                    onSelected: (_) => setState(() => _doseDays = doseDays),
-                  ),
-              ],
-            ),
-            if (_doseDays.isNotEmpty) ...[
-              const SizedBox(height: 8),
+            if (!_asNeeded) ...[
+              const SizedBox(height: 16),
               Text(
-                describeDoseCycle(
-                  readDoseCycle(_doseDays),
-                  isEnglish: text.isEnglish,
-                  startDate: _startDate,
-                  courseDays: int.tryParse(_daysController.text.trim()) ?? 0,
-                ),
-                key: const Key('schedule-edit-dose-days-notice'),
+                text.doseDays,
                 style: const TextStyle(
-                  color: MedBuddyColors.textMuted,
-                  fontSize: 12,
-                  height: 1.4,
+                  color: MedBuddyColors.textStrong,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
                   letterSpacing: 0,
                 ),
               ),
-            ],
-            const SizedBox(height: 16),
-            Text(
-              text.dailyFrequency,
-              style: const TextStyle(
-                color: MedBuddyColors.textStrong,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0,
+              const SizedBox(height: 8),
+              // 목록에 없는 지시로 저장된 약은 그 지시를 그대로 고를 수 있게 한다.
+              MedicationEntryCycleChoices(
+                keyPrefix: 'schedule-edit-dose-days',
+                value: _doseDays,
+                label: text.doseDaysValue,
+                onChanged: (doseDays) => setState(() => _doseDays = doseDays),
               ),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (var count = 1; count <= 4; count++)
-                  ChoiceChip(
-                    key: Key('schedule-edit-frequency-$count'),
-                    label: Text(text.frequencyValue(count)),
-                    selected: _frequencyCount == count,
-                    // 함수이름: build.onSelected callback
-                    // 함수역할: 복용 횟수에 맞는 기본 시간대 집합으로 교체하고 시간대 검증 오류를 지운다.
-                    // 매개변수:
-                    // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
-                    // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                    onSelected: (_) => _setFrequency(count),
+              if (_doseDays.isNotEmpty &&
+                  !requiresDoseScheduleReview(_doseDays)) ...[
+                const SizedBox(height: 8),
+                Text(
+                  describeDoseCycle(
+                    readDoseCycle(_doseDays),
+                    isEnglish: text.isEnglish,
+                    startDate: _startDate,
+                    courseDays: int.tryParse(_daysController.text.trim()) ?? 0,
                   ),
+                  key: const Key('schedule-edit-dose-days-notice'),
+                  style: const TextStyle(
+                    color: MedBuddyColors.textMuted,
+                    fontSize: 12,
+                    height: 1.4,
+                    letterSpacing: 0,
+                  ),
+                ),
               ],
-            ),
+              const SizedBox(height: 16),
+              Text(
+                text.dailyFrequency,
+                style: const TextStyle(
+                  color: MedBuddyColors.textStrong,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (var count = 1; count <= 4; count++)
+                    ChoiceChip(
+                      key: Key('schedule-edit-frequency-$count'),
+                      label: Text(text.frequencyValue(count)),
+                      selected: _frequencyCount == count,
+                      // 함수이름: build.onSelected callback
+                      // 함수역할: 복용 횟수에 맞는 기본 시간대 집합으로 교체하고 시간대 검증 오류를 지운다.
+                      // 매개변수:
+                      // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
+                      // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                      onSelected: (_) => _setFrequency(count),
+                    ),
+                ],
+              ),
+            ],
             const SizedBox(height: 16),
             TextFormField(
               key: const Key('schedule-edit-days'),
@@ -819,35 +810,25 @@ class _MedicationScheduleEditorDialogState
               onChanged: (_) => setState(() {}),
               validator: _validateDuration,
             ),
-            const SizedBox(height: 16),
-            Text(
-              text.scheduleSlots,
-              style: const TextStyle(
-                color: MedBuddyColors.textStrong,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0,
+            if (!_asNeeded) ...[
+              const SizedBox(height: 16),
+              Text(
+                text.scheduleSlots,
+                style: const TextStyle(
+                  color: MedBuddyColors.textStrong,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final slotKey in medicationScheduleSlotKeys)
-                  FilterChip(
-                    key: Key('schedule-edit-slot-$slotKey'),
-                    label: Text(text.slotLabel(slotKey)),
-                    selected: _selectedSlotKeys.contains(slotKey),
-                    // 함수이름: build.onSelected callback
-                    // 함수역할: 시간대 선택을 변경하고 선택 수로 복용 횟수와 빈 선택 오류를 갱신한다.
-                    // 매개변수:
-                    // - selected (콜백 계약에서 추론): 현재 선택 집합에 포함되는지 여부.
-                    // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                    onSelected: (selected) => _toggleSlot(slotKey, selected),
-                  ),
-              ],
-            ),
+              const SizedBox(height: 8),
+              MedicationEntrySlotChoices(
+                keyPrefix: 'schedule-edit-slot',
+                values: _selectedSlotKeys,
+                label: text.slotLabel,
+                onChanged: _toggleSlot,
+              ),
+            ],
             if (_showSlotValidationError) ...[
               const SizedBox(height: 8),
               Text(
@@ -976,8 +957,10 @@ class _MedicationScheduleEditorDialogState
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
   void _submit() {
     final hasValidSlots =
-        _selectedSlotKeys.isNotEmpty &&
-        _selectedSlotKeys.length == _frequencyCount;
+        _asNeeded ||
+        (_selectedSlotKeys.isNotEmpty &&
+            _selectedSlotKeys.length == _frequencyCount &&
+            !requiresDoseScheduleReview(_doseDays));
     if (!hasValidSlots) {
       // 함수이름: _submit.setState callback
       // 함수역할: 단일 약품의 기간·용량·횟수·시간대 수정의 입력·요청 상태를 `_showSlotValidationError = true`로 갱신한다.
@@ -996,11 +979,16 @@ class _MedicationScheduleEditorDialogState
         medicationName: _nameController.text.trim(),
         prescriptionDate: _startDate,
         dosage: _dosageController.text.trim(),
-        intakeTime: composeDoseFrequency(_doseDays, _frequencyCount),
+        intakeTime: _asNeeded
+            ? '필요시 복용'
+            : composeDoseFrequency(_doseDays, _frequencyCount),
+        dosingMode: _asNeeded ? 'as_needed' : 'scheduled',
         medicationTime: int.parse(_daysController.text.trim()),
-        scheduleSlotKeys: medicationScheduleSlotKeys
-            .where(_selectedSlotKeys.contains)
-            .toList(growable: false),
+        scheduleSlotKeys: _asNeeded
+            ? []
+            : medicationScheduleSlotKeys
+                  .where(_selectedSlotKeys.contains)
+                  .toList(growable: false),
         nameConfidence: 1,
         nameCorrectionSource: 'user_review',
       ),
@@ -1014,6 +1002,8 @@ class _MedicationScheduleEditorDialogState
 // - frequency (String): 저장된 복용 횟수 문구.
 // 반환값: String: 복용하는 날의 지시. 매일 복용이면 빈 문자열.
 String _doseDaysOf(String frequency) {
+  if (isAsNeededDoseInstruction(frequency)) return '';
+  if (requiresDoseScheduleReview(frequency)) return frequency;
   final cycle = readDoseCycle(frequency);
   if (cycle.isDaily) return '';
   for (final choice in doseDayChoices.skip(1)) {
@@ -1042,9 +1032,13 @@ MedicationSchedule _normalizeSchedule(MedicationSchedule schedule) {
     prescriptionDate: schedule.prescriptionDate ?? DateTime.now(),
     dosage: schedule.dosage.trim().isEmpty ? '1정' : schedule.dosage.trim(),
     // 매일 복용이 아닌 지시("주 1회" 등)는 횟수만 남기면 매일 복용으로 바뀌므로 함께 보존한다.
-    intakeTime: composeDoseFrequency(_doseDaysOf(schedule.intakeTime), frequency),
+    intakeTime: schedule.isAsNeeded
+        ? '필요시 복용'
+        : schedule.needsScheduleReview
+        ? schedule.intakeTime
+        : composeDoseFrequency(_doseDaysOf(schedule.intakeTime), frequency),
     medicationTime: schedule.medicationTime <= 0 ? 1 : schedule.medicationTime,
-    scheduleSlotKeys: slots,
+    scheduleSlotKeys: schedule.isAsNeeded ? [] : slots,
   );
 }
 
@@ -1058,24 +1052,12 @@ bool _isScheduleComplete(MedicationSchedule schedule) {
   return schedule.medicationName.trim().isNotEmpty &&
       schedule.prescriptionDate != null &&
       schedule.dosage.trim().isNotEmpty &&
-      frequency >= 1 &&
-      frequency <= 4 &&
       isValidMedicationCourseDays(schedule.medicationTime) &&
-      schedule.slotKeys.length == frequency;
-}
-
-// 함수이름: _formatDate
-// 함수역할: 날짜를 연-월-일로 표시하고 날짜가 없으면 빈 문자열을 사용한다.
-// 매개변수:
-// - date (DateTime?): 표시·비교 기준이 되는 날짜 또는 이전·현재 값.
-// 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-String _formatDate(DateTime? date) {
-  if (date == null) {
-    return '';
-  }
-  return '${date.year.toString().padLeft(4, '0')}-'
-      '${date.month.toString().padLeft(2, '0')}-'
-      '${date.day.toString().padLeft(2, '0')}';
+      (schedule.isAsNeeded ||
+          (!schedule.needsScheduleReview &&
+              frequency >= 1 &&
+              frequency <= 4 &&
+              schedule.slotKeys.length == frequency));
 }
 
 // 클래스명: _MedicationScheduleReviewText

@@ -9,6 +9,7 @@ import '../controls/authentication_control.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/foreground_recovery_service.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/medbuddy_confirm_dialog.dart';
 
 // Class Name: AuthenticationUI
 // Role: Represents sign-in methods and the account creation form.
@@ -599,39 +600,14 @@ class _AuthenticationUIState extends State<AuthenticationUI>
   // Returns: Future<void> completing when the requested interaction or refresh finishes.
   Future<void> _continueAsGuest() async {
     final text = _AuthenticationText(_languageControl.language);
-    final accepted = await showDialog<bool>(
-      context: context,
-      // Function Name: _continueAsGuest.builder callback
-      // Description: Composes sign-in methods and the account creation form with the current parent constraints for the active layout.
-      // Parameters:
-      // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-      // Returns: Widget subtree for the described layout or fallback.
-      builder: (context) => AlertDialog(
-        title: Text(text.guestConfirmationTitle),
-        content: Text(text.guestConfirmationMessage),
-        actions: [
-          TextButton(
-            // Function Name: _continueAsGuest.onPressed callback
-            // Description: Closes this route with the selection or cancellation encoded by `Navigator.pop(context, false)`.
-            // Parameters:
-            // - None.
-            // Returns: No callback payload; any selection is delivered through the route result.
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(text.cancel),
-          ),
-          FilledButton(
-            // Function Name: _continueAsGuest.onPressed callback
-            // Description: Closes this route with the selection or cancellation encoded by `Navigator.pop(context, true)`.
-            // Parameters:
-            // - None.
-            // Returns: No callback payload; any selection is delivered through the route result.
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(text.continueLabel),
-          ),
-        ],
-      ),
+    final accepted = await showMedBuddyConfirmDialog(
+      context,
+      title: text.guestConfirmationTitle,
+      message: text.guestConfirmationMessage,
+      cancelLabel: text.cancel,
+      confirmLabel: text.continueLabel,
     );
-    if (accepted == true && mounted) {
+    if (accepted && mounted) {
       await widget.control.signInAnonymously();
     }
   }

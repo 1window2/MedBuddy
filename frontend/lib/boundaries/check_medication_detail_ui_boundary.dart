@@ -280,6 +280,11 @@ class _CheckMedicationDetailUIState extends State<CheckMedicationDetailUI>
         // - None.
         // Returns: No payload; applies the captured state changes.
         setState(() => _isSpeaking = false);
+        // 설정 화면의 음성 미리보기처럼 읽기 실패를 조용히 넘기지 않고 하단 안내로 알린다.
+        final text = _MedicationDetailText(widget.userSetting.language);
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(text.readAloudFailed)));
       }
     }
   }
@@ -1031,11 +1036,11 @@ class _MedicationDetailText {
   String get risksAndSideEffects =>
       isEnglish ? 'Important warnings and side effects' : '주요 주의사항 및 부작용';
   // 함수이름: checklist
-  // 함수역할: 현재 언어와 입력값에 맞춰 "간편한 가이드 (Checklist)" 문구를 제공한다.
+  // 함수역할: 현재 언어와 입력값에 맞춰 "간편한 확인 목록" 문구를 제공한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get checklist => isEnglish ? 'Quick checklist' : '간편한 가이드 (Checklist)';
+  String get checklist => isEnglish ? 'Quick checklist' : '간편한 확인 목록';
   // 함수이름: noInformation
   // 함수역할: 현재 언어와 입력값에 맞춰 "정보 없음" 문구를 제공한다.
   // 매개변수:
@@ -1054,4 +1059,12 @@ class _MedicationDetailText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get readAloud => isEnglish ? 'Read aloud' : '큰 소리로 읽어주세요';
+  // 함수이름: readAloudFailed
+  // 함수역할: 현재 언어로 "음성 안내를 재생하지 못했습니다." 문구를 제공한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  String get readAloudFailed => isEnglish
+      ? 'Could not play the voice guide. Check the device volume and try again.'
+      : '음성 안내를 재생하지 못했습니다. 기기 소리를 확인한 뒤 다시 눌러 주세요.';
 }

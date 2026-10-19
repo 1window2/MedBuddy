@@ -6,6 +6,7 @@ import logging
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.exc import StaleDataError
 
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH, normalize_patient_hash
 from entities.user_setting_entity import UserSetting, _UserSetting
@@ -45,7 +46,9 @@ class ManageUserSetting:
         normalized_user_hash = normalize_patient_hash(user_hash)
         row = self._find_setting(normalized_user_hash)
         setting = self._to_entity(row) if row else UserSetting(user_hash=normalized_user_hash)
-        return self._success_response("User setting lookup succeeded.", setting)
+        return self._success_response(
+            "User setting lookup succeeded.", setting, row.revision if row else 0,
+        )
 
     # 함수이름: saveUserSetting
     # 함수역할:
@@ -65,6 +68,7 @@ class ManageUserSetting:
     # - default_lunch_time (str): HH:MM 형식의 기본 점심 알림 시각.
     # - default_evening_time (str): HH:MM 형식의 기본 저녁 알림 시각.
     # - default_bedtime (str): HH:MM 형식의 기본 취침 전 알림 시각.
+    # - expected_revision (int | None): 저장 기준 서버 버전. 구형 클라이언트는 생략한다.
     # 반환값:
     # - 저장된 사용자 설정을 담은 성공 응답.
     def saveUserSetting(
@@ -84,6 +88,8 @@ class ManageUserSetting:
         default_evening_time: str = "18:00",
         default_bedtime: str = "22:00",
         home_schedule_source: str | None = None,
+        *,
+        expected_revision: int | None = None,
     ) -> dict[str, object]:
         if home_schedule_source is not None:
             home_schedule_source = home_schedule_source.strip().lower()
@@ -107,9 +113,14 @@ class ManageUserSetting:
 
         try:
             row = self._find_setting(normalized_user_hash)
+            current_revision = row.revision if row else 0
+            if expected_revision is not None and expected_revision != current_revision:
+                raise self._revision_conflict(current_revision)
             if row is None:
                 row = _UserSetting(user_hash=normalized_user_hash)
                 self.db.add(row)
+            # 값이 같아도 새 저장 의도를 확정해 이전 요청의 뒤늦은 변경을 차단한다.
+            row.revision = current_revision + 1
             next_setting = self._to_entity(row).updateUserSetting(
                 normalized_font_size,
                 normalized_reading_speed,
@@ -135,9 +146,13 @@ class ManageUserSetting:
             return self._success_response(
                 "User setting was saved.",
                 self._to_entity(row),
+                row.revision,
             )
-        except IntegrityError:
+        except (IntegrityError, StaleDataError):
             self.db.rollback()
+            if expected_revision is not None:
+                current = self._find_setting(normalized_user_hash)
+                raise self._revision_conflict(current.revision if current else 0)
             return self._update_existing_setting_after_conflict(
                 normalized_user_hash,
                 normalized_font_size,
@@ -177,7 +192,15 @@ class ManageUserSetting:
         return (
             self.db.query(_UserSetting)
             .filter(_UserSetting.user_hash == user_hash)
+            .populate_existing()
             .first()
+        )
+
+    # 함수역할: 서버 버전이 바뀐 저장을 거절하고 최신 의도만 재시도할 기준을 반환한다.
+    def _revision_conflict(self, revision: int) -> HTTPException:
+        return HTTPException(
+            status_code=409,
+            detail={"code": "settings_revision_conflict", "revision": revision},
         )
 
     # 함수이름: _update_existing_setting_after_conflict
@@ -221,6 +244,7 @@ class ManageUserSetting:
         row.font_size = font_size
         row.reading_speed = reading_speed
         row.language = language
+        row.revision += 1
         next_setting = self._to_entity(row).updateUserSetting(
             font_size,
             reading_speed,
@@ -238,9 +262,17 @@ class ManageUserSetting:
             home_schedule_source,
         )
         self._apply_extended_setting(row, next_setting)
-        self.db.commit()
+        try:
+            self.db.commit()
+        except StaleDataError as exc:
+            # 재조회 뒤에도 또 다른 저장이 먼저 끝났으면 500 대신 해결 불가 충돌로 알린다.
+            self.db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail="User setting conflict could not be resolved.",
+            ) from exc
         self.db.refresh(row)
-        return self._success_response("User setting was saved.", self._to_entity(row))
+        return self._success_response("User setting was saved.", self._to_entity(row), row.revision)
 
     # Function Name: _validate_font_size
     # Description:
@@ -411,15 +443,18 @@ class ManageUserSetting:
     # Parameters:
     # - message (str): User-facing operation status message.
     # - setting (UserSetting): Complete accessibility, language, notification and reminder-time state.
+    # - revision (int): Committed preference version, or zero before the first save.
     # Returns:
     # - Success envelope containing the complete user settings.
     def _success_response(
         self,
         message: str,
         setting: UserSetting,
+        revision: int = 0,
     ) -> dict[str, object]:
         return {
             "success": True,
             "message": message,
             "data": setting.getUserSetting(),
+            "revision": revision,
         }

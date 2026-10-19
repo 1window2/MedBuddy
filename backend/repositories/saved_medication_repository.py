@@ -64,7 +64,10 @@ class SavedMedicationRepository:
                 _SavedMedication.prescription_date, _SavedMedication.medication_status,
                 _SavedMedication.medication_status_date, _SavedMedication.image_url,
                 _SavedMedication.efficacy, _SavedMedication.use_method,
-                _SavedMedication.warning_message, raiseload=True,
+                _SavedMedication.warning_message,
+                _SavedMedication.dosing_mode, _SavedMedication.regimen_revision,
+                _SavedMedication.regimen_effective_from, _SavedMedication.stopped_on,
+                _SavedMedication.superseded_by_id, raiseload=True,
             ))
             .filter(_SavedMedication.patient_hash.in_(patient_hashes))
             .order_by(_SavedMedication.id.asc())

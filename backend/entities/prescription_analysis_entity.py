@@ -21,28 +21,6 @@ class PrescriptionText:
     raw_text: str
     medication_only_text: str = ""
 
-    # Function Name: rawText
-    # Description:
-    # - Reads the stored source OCR text before medication-name normalization.
-    # Parameters:
-    # - None.
-    # Returns:
-    # - Source OCR text before medication-name normalization.
-    @property
-    def rawText(self) -> str:
-        return self.raw_text
-
-    # Function Name: medicationOnlyText
-    # Description:
-    # - Reads the stored privacy-filtered text restricted to medication information.
-    # Parameters:
-    # - None.
-    # Returns:
-    # - Privacy-filtered text restricted to medication information.
-    @property
-    def medicationOnlyText(self) -> str:
-        return self.medication_only_text
-
     # Function Name: removeSensitiveInfoByRegex
     # Description:
     # - Masks resident registration numbers in the prescription text.

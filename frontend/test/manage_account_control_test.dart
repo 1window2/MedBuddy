@@ -2,6 +2,7 @@
 // 역할: 계정 데이터 삭제의 서버 우선 순서와 사용자별 로컬 캐시 보존 규칙을 검증한다.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,6 +18,35 @@ import 'package:medbuddy_frontend/controls/manage_account_control.dart';
 // - No value; the test framework executes the registered cases.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  // 함수역할: 서버가 삭제를 승인한 뒤에만 복약 CSV 임시 파일을 정리한다.
+  test('계정 삭제 성공 후에만 내보내기 캐시를 정리한다', () async {
+    SharedPreferences.setMockInitialValues({});
+    const channel = MethodChannel('com.medbuddy/data_export');
+    final calls = <String>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          calls.add(call.method);
+          return null;
+        });
+    try {
+      final rejected = ManageAccount(
+        userHash: 'usr_export_test',
+        client: MockClient((_) async => http.Response('failure', 500)),
+      );
+      await expectLater(rejected.deleteAccountData(), throwsStateError);
+      expect(calls, isEmpty);
+      final accepted = ManageAccount(
+        userHash: 'usr_export_test',
+        client: MockClient((_) async => http.Response('{"success":true}', 200)),
+      );
+      await accepted.deleteAccountData();
+      expect(calls, ['clearExports']);
+    } finally {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    }
+  });
 
   // Function Name: test callback
   // Description:
@@ -74,6 +104,9 @@ void main() {
   test('서버 삭제 실패 시 로컬 캐시를 보존한다', () async {
     SharedPreferences.setMockInitialValues({
       'user_setting_usr_test_font_size': 'large',
+      'user_setting_usr_test_server_revision': 7,
+      'user_setting_usr_test_latest_intent': 'pending-intent',
+      'user_setting_usr_test_snapshot': '{"setting":{}}',
     });
     final control = ManageAccount(
       userHash: 'usr_test',
@@ -91,6 +124,15 @@ void main() {
 
     final preferences = await SharedPreferences.getInstance();
     expect(preferences.getString('user_setting_usr_test_font_size'), 'large');
+    expect(preferences.getInt('user_setting_usr_test_server_revision'), 7);
+    expect(
+      preferences.getString('user_setting_usr_test_latest_intent'),
+      'pending-intent',
+    );
+    expect(
+      preferences.getString('user_setting_usr_test_snapshot'),
+      '{"setting":{}}',
+    );
   });
 
   // Function Name: test callback
@@ -175,6 +217,10 @@ void main() {
       'default_lunch_time',
       'default_evening_time',
       'default_bedtime',
+      'pending_sync',
+      'server_revision',
+      'latest_intent',
+      'snapshot',
       'nearby_pharmacy_lab_enabled',
       'linked_medication_chat_lab_enabled',
       'multi_pill_identification_lab_enabled',
@@ -342,6 +388,9 @@ void main() {
   final otherAccountEvidence = <String, Object>{
     'user_setting_usr_other_language': 'ko',
     'user_setting_usr_other_default_bedtime': '22:00',
+    'user_setting_usr_other_server_revision': 7,
+    'user_setting_usr_other_latest_intent': 'other-intent',
+    'user_setting_usr_other_snapshot': '{"setting":{}}',
     'medbuddy_medication_reminder_patient_usr_other_usr_other_lunch': '{}',
     'medbuddy_reminder_plan_usr_other_evening': '{}',
     'medbuddy.favorite_pharmacy_ids.usr_other': <String>['pharmacy-1'],
@@ -357,24 +406,21 @@ void main() {
     // Description: Keeps the unscoped legacy keys while another account's data remains on the device, because that account may still rely on them.
     // Parameters: None.
     // Returns: Future<void>; completes when the legacy keys and the other account's key are intact.
-    test(
-      'unscoped legacy keys stay while another account remains: '
-      '${evidence.key}',
-      () async {
-        final preserved = <String, Object>{
-          ...legacyPreferences(),
-          evidence.key: evidence.value,
-        };
-        SharedPreferences.setMockInitialValues({
-          ...scopedPreferences('usr_test'),
-          ...preserved,
-        });
-        final preferences = await deleteAccount('usr_test');
-        expect(preferences.getKeys(), preserved.keys.toSet());
-        for (final entry in preserved.entries) {
-          expect(preferences.get(entry.key), entry.value, reason: entry.key);
-        }
-      },
-    );
+    test('unscoped legacy keys stay while another account remains: '
+        '${evidence.key}', () async {
+      final preserved = <String, Object>{
+        ...legacyPreferences(),
+        evidence.key: evidence.value,
+      };
+      SharedPreferences.setMockInitialValues({
+        ...scopedPreferences('usr_test'),
+        ...preserved,
+      });
+      final preferences = await deleteAccount('usr_test');
+      expect(preferences.getKeys(), preserved.keys.toSet());
+      for (final entry in preserved.entries) {
+        expect(preferences.get(entry.key), entry.value, reason: entry.key);
+      }
+    });
   }
 }

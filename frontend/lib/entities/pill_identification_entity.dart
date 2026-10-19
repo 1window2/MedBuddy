@@ -1,5 +1,6 @@
 // File Name: pill_identification_entity.dart
 // Role: Validates pill-identification features, ranked candidates, and spatial multi-pill observations.
+import 'json_value_reader.dart';
 import 'medication_image_url_entity.dart';
 
 // Class Name: PillVisualFeatures
@@ -65,13 +66,13 @@ class PillVisualFeatures {
   // - PillVisualFeatures: the decoded record after field validation and default handling.
   factory PillVisualFeatures.fromJson(Map<String, dynamic> json) {
     return PillVisualFeatures(
-      shape: _readString(json['shape'], fallback: 'unknown'),
+      shape: readJsonTextOr(json['shape'], 'unknown'),
       colors: _readStrings(json['colors']),
-      frontImprint: _readString(json['front_imprint']),
-      backImprint: _readString(json['back_imprint']),
-      frontLine: _readString(json['front_line'], fallback: 'unknown'),
-      backLine: _readString(json['back_line'], fallback: 'unknown'),
-      quality: _readString(json['quality'], fallback: 'usable'),
+      frontImprint: readJsonText(json['front_imprint']),
+      backImprint: readJsonText(json['back_imprint']),
+      frontLine: readJsonTextOr(json['front_line'], 'unknown'),
+      backLine: readJsonTextOr(json['back_line'], 'unknown'),
+      quality: readJsonTextOr(json['quality'], 'usable'),
       qualityIssues: _readStrings(json['quality_issues']),
       samePill: _readRequiredBool(json['same_pill'], 'same_pill'),
       sideConsistencyConfidence: _readRequiredScore(
@@ -145,14 +146,14 @@ class PillIdentificationCandidate {
   // - PillIdentificationCandidate: the decoded record after field validation and default handling.
   factory PillIdentificationCandidate.fromJson(Map<String, dynamic> json) {
     return PillIdentificationCandidate(
-      itemSeq: _readString(json['item_seq']),
-      itemName: _readString(json['item_name']),
-      manufacturer: _readString(json['entp_name']),
+      itemSeq: readJsonText(json['item_seq']),
+      itemName: readJsonText(json['item_name']),
+      manufacturer: readJsonText(json['entp_name']),
       imageUrl: safeMedicationImageUrl(json['image_url']),
-      shape: _readString(json['shape']),
+      shape: readJsonText(json['shape']),
       colors: _readStrings(json['colors']),
-      printFront: _readString(json['print_front']),
-      printBack: _readString(json['print_back']),
+      printFront: readJsonText(json['print_front']),
+      printBack: readJsonText(json['print_back']),
       matchScore: _readScore(json['match_score']),
       matchedAttributes: _readStrings(json['matched_attributes']),
     );
@@ -474,18 +475,6 @@ double _readRequiredScore(dynamic value, String fieldName) {
     throw FormatException('$fieldName must be between 0 and 1.');
   }
   return score;
-}
-
-// Function Name: _readString
-// Description: Uses trimmed text when nonempty and otherwise preserves the caller-supplied fallback.
-// Parameters:
-// - value (dynamic): Raw response field to decode into the documented return type.
-// - fallback (String): Fallback for absent or unparseable input.
-// Returns:
-// - String: trimmed nonblank text, or the supplied fallback.
-String _readString(dynamic value, {String fallback = ''}) {
-  final text = value?.toString().trim() ?? '';
-  return text.isEmpty ? fallback : text;
 }
 
 // Function Name: _readStrings

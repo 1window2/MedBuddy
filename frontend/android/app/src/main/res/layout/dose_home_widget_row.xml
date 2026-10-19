@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 파일명: dose_home_widget_row.xml
+     역할: 1칸 높이(가로 화면 약 51dp, 세로 화면 약 109dp 미만) 위젯의 한 줄 배치.
+     시간대와 저장 상태, 복용 버튼만 두고 같은 뷰 ID를 써서 기본 배치와 같은 채우기 코드를 공유한다. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="horizontal" android:gravity="center_vertical"
+    android:paddingHorizontal="12dp" android:paddingVertical="1dp"
+    android:background="@drawable/dose_widget_background">
+    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+        android:orientation="vertical" android:paddingEnd="8dp">
+        <!-- 놓친 일정이면 시간대 오른쪽의 빈 칸에 안내를 둔다. -->
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:gravity="center_vertical">
+            <TextView android:id="@+id/widget_tiny_heading" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:includeFontPadding="false"
+                android:text="로그인이 필요해요"
+                android:textColor="#25272B" android:textSize="14sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" />
+            <TextView android:id="@+id/widget_tiny_warning" android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_weight="1" android:paddingStart="8dp"
+                android:includeFontPadding="false" android:visibility="gone"
+                android:textColor="#765710" android:textSize="11sp" android:maxLines="2" android:ellipsize="end" />
+        </LinearLayout>
+        <TextView android:id="@+id/widget_tiny_status" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:includeFontPadding="false"
+            android:textColor="#595D65" android:textSize="11sp" android:maxLines="1" android:ellipsize="end" />
+    </LinearLayout>
+    <Button android:id="@+id/widget_take" android:layout_width="0dp" android:layout_height="48dp"
+        android:layout_weight="1" android:minWidth="48dp"
+        android:includeFontPadding="false"
+        android:background="@drawable/dose_widget_button" android:textColor="#FFFFFF" android:textSize="15sp"
+        android:textStyle="bold" android:textAllCaps="false" android:text="로그인하기"
+        android:maxLines="1" android:ellipsize="end" android:paddingHorizontal="4dp" android:paddingVertical="2dp" />
+</LinearLayout>

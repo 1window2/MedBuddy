@@ -139,7 +139,7 @@ void main() {
     final changesBefore = fixture.changes;
     expect(await fixture.viewModel.synchronizeDeviceLanguage(), isTrue);
     expect(fixture.server.puts, [
-      {...followsDevice.toJson(), 'language': 'en'},
+      {...followsDevice.toJson(), 'language': 'en', 'expected_revision': 0},
     ]);
     expect(fixture.viewModel.userSetting.language, 'en');
     expect(fixture.viewModel.userSetting.languageMode, 'system');
@@ -238,7 +238,10 @@ void main() {
     );
     final result = await fixture.viewModel.saveUserSetting(edited);
     expect(result.synchronizedWithServer, isTrue);
-    expect(fixture.server.puts.single, edited.toJson());
+    expect(fixture.server.puts.single, {
+      ...edited.toJson(),
+      'expected_revision': 0,
+    });
     expect(fixture.viewModel.userSetting.toJson(), edited.toJson());
     expect(fixture.notifications.cancelAllScheduledMedicationRemindersCount, 1);
     expect(fixture.notifications.showSensitiveDetails, isFalse);
@@ -395,7 +398,10 @@ void main() {
     expect(await Future.wait([locale, resume]), [true, true]);
     expect((await manual).synchronizedWithServer, isTrue);
     expect(fixture.server.putAttempts, 3);
-    expect(fixture.server.puts.map((setting) => setting['language']), ['en', 'ko']);
+    expect(fixture.server.puts.map((setting) => setting['language']), [
+      'en',
+      'ko',
+    ]);
     expect(fixture.server.stored.toJson(), edited.toJson());
     expect(fixture.viewModel.userSetting.toJson(), edited.toJson());
   });
@@ -498,7 +504,10 @@ void main() {
         [true, true],
       );
       expect(fixture.server.putAttempts, 4);
-      expect(fixture.server.puts.single, edited.toJson());
+      expect(fixture.server.puts.single, {
+        ...edited.toJson(),
+        'expected_revision': 0,
+      });
       expect(fixture.server.gets, 1);
       expect(fixture.viewModel.userSetting.toJson(), edited.toJson());
       expect(
@@ -628,5 +637,38 @@ void main() {
       'ko',
     ]);
     expect(fixture.viewModel.userSetting.language, 'ko');
+  });
+
+  // 재시작 전에 서버에 반영하지 못한 설정은 시작 조회가 서버 사본으로 바꾸지 않고, 복귀 때 다시 보낸다.
+  test('재시작 전에 남은 미반영 설정은 시작 조회 뒤 복귀 때 다시 저장한다', () async {
+    final fixed = followsDevice.copyWith(languageMode: 'ko');
+    final first = _Fixture(_SettingServer(fixed));
+    addTearDown(first.dispose);
+    await first.viewModel.loadUserSetting();
+    first.server.available = false;
+    final edited = fixed.copyWith(medicationNotificationsEnabled: false);
+    expect(
+      (await first.viewModel.saveUserSetting(edited)).synchronizedWithServer,
+      isFalse,
+    );
+
+    final restarted = _Fixture(first.server);
+    addTearDown(restarted.dispose);
+    await restarted.viewModel.loadUserSetting();
+    expect(
+      restarted.viewModel.userSetting.medicationNotificationsEnabled,
+      isFalse,
+    );
+    expect(first.server.gets, 1);
+
+    first.server.available = true;
+    expect(
+      await restarted.viewModel.synchronizeDeviceLanguage(
+        retryRemoteLookup: true,
+      ),
+      isTrue,
+    );
+    expect(first.server.stored.medicationNotificationsEnabled, isFalse);
+    expect(restarted.control.hasPendingSave, isFalse);
   });
 }

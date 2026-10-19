@@ -219,6 +219,26 @@ class _FailingAnalysis:
         raise self.error
 
 
+# Function Name: test_invalid_ai_reply_is_an_upstream_error
+# Description:
+# - An AI reply that is not the agreed JSON object is answered with 502 and a retry hint, not
+#   with 400: the request itself was valid.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_invalid_ai_reply_is_an_upstream_error() -> None:
+    from services.prescription_parser import PrescriptionAnalysisFormatError
+
+    response = await _analyze(
+        _FailingAnalysis(PrescriptionAnalysisFormatError("AI returned an invalid JSON response."))
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "처방전 분석 결과를 해석하지 못했습니다. 다시 시도해주세요."
+
+
 # Function Name: test_parser_errors_are_not_returned_to_the_client
 # Description:
 # - A message a control raises on purpose is returned with HTTP 400, while a JSON or validation

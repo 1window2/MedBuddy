@@ -17,7 +17,11 @@ from controls.process_caregiver_alert_outbox_control import (
 )
 from core.config import settings
 from core.database import SessionLocal
-from core.request_rate_limits import RateLimitRule
+from core.request_rate_limits import (
+    DAILY_QUOTA_EXCEEDED_DETAIL,
+    RateLimitRule,
+    resolve_daily_quota,
+)
 from services.chat_connection_manager import ChatConnectionManager
 
 logger = logging.getLogger(__name__)
@@ -107,6 +111,33 @@ async def enforce_chat_daily_quota(
         request_scope="POST:/api/v1/chat/messages:daily",
         rule=RateLimitRule(settings.CHAT_MESSAGE_DAILY_LIMIT, 86_400),
         exceeded_detail="오늘 보낼 수 있는 채팅 메시지 수를 초과했습니다.",
+    )
+
+
+# 함수이름: enforce_hospital_share_daily_quota
+# 함수역할:
+# - 채팅에서 병원을 공유할 때도 공공 병원 API를 조회하므로, 병원 검색과 같은 계정별 하루 한도를 소비한다.
+#   채팅 한도만 적용하면 한 계정이 임의의 병원 ID로 전체 사용자가 함께 쓰는 하루 조회 예산을 소진할 수 있다.
+# 매개변수:
+# - request (Request): 애플리케이션 공유 상태에 접근할 FastAPI 요청.
+# - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+# 반환값:
+# - 없음. 제한 초과 시 HTTP 429를 발생시킨다.
+async def enforce_hospital_share_daily_quota(
+    *,
+    request: Request,
+    user_hash: str,
+) -> None:
+    quota = resolve_daily_quota("GET", "/api/v1/hospitals/nearby")
+    if not settings.RATE_LIMIT_ENABLED or quota is None:
+        return
+    rule, scope = quota
+    await enforce_user_quota(
+        request,
+        user_hash=user_hash,
+        request_scope=scope,
+        rule=rule,
+        exceeded_detail=DAILY_QUOTA_EXCEEDED_DETAIL,
     )
 
 

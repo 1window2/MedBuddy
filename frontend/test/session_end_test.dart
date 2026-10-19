@@ -14,6 +14,7 @@ import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/main.dart';
 import 'package:medbuddy_frontend/services/dose_outbox_store.dart';
 import 'package:medbuddy_frontend/services/dose_sync_background_service.dart';
+import 'package:medbuddy_frontend/services/notification_inbox_store.dart';
 import 'package:medbuddy_frontend/services/notification_service.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -44,17 +45,18 @@ class _EmptyCheckSchedule extends CheckSchedule {
 class _RecordingWorkPlatform extends DoseSyncWorkPlatform {
   // Function Name: _RecordingWorkPlatform
   // Description: Binds the outbox and the event log.
-  // Parameters: store, events - see the class attributes. Returns: The recording platform.
-  _RecordingWorkPlatform(this.store, this.events);
+  // Parameters: store, events - see the class attributes; failStore - make openStore throw. Returns: The recording platform.
+  _RecordingWorkPlatform(this.store, this.events, {this.failStore = false});
 
   final DoseOutboxStore store;
   final List<String> events;
+  final bool failStore;
 
   @override
   bool get supported => true;
 
   @override
-  Future<void> registerOneOff(String owner) async {}
+  Future<void> registerOneOff(String owner) async => events.add('work-registered');
 
   @override
   Future<void> registerPeriodic(String owner) async {}
@@ -63,7 +65,10 @@ class _RecordingWorkPlatform extends DoseSyncWorkPlatform {
   Future<void> cancelAll() async => events.add('work-cancelled');
 
   @override
-  Future<DoseOutboxStore> openStore() async => store;
+  Future<DoseOutboxStore> openStore() async {
+    if (failStore) throw StateError('keystore unavailable');
+    return store;
+  }
 }
 
 // Function Name: _viewModel
@@ -206,6 +211,44 @@ void main() {
     await harness.close();
   });
 
+  // A local cleanup step that fails aborts the sign-out. The account stays signed in, so the dose
+  // upload work that was already cancelled is registered again.
+  testWidgets('an aborted sign-out restores the dose upload work', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final events = <String>[];
+    final viewModel = _viewModel();
+    final harness = await attachTestDoseSync(viewModel);
+    DoseSyncBackgroundScheduler.platform = _RecordingWorkPlatform(
+      harness.store,
+      events,
+      failStore: true,
+    );
+    final authenticationControl = AuthenticationControl.development();
+    addTearDown(authenticationControl.dispose);
+
+    await tester.pumpWidget(
+      MedBuddyApp(
+        authenticationControl: authenticationControl,
+        sessionReminderCleanup: () async => events.add('reminders-cancelled'),
+        viewModelFactory: () => viewModel,
+      ),
+    );
+    await tester.pump();
+    events.clear();
+
+    await expectLater(
+      authenticationControl.signOutForTest(() async => events.add('provider-sign-out')),
+      throwsA(anything),
+    );
+    await tester.pump();
+
+    expect(authenticationControl.session, isNotNull);
+    expect(events, ['work-cancelled', 'work-registered']);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await harness.close();
+  });
+
   // A notification tapped while nobody is signed in may belong to the account that just signed
   // out. It is carried out when the same account signs in again and dropped for another account.
   for (final sameAccount in [true, false]) {
@@ -244,6 +287,56 @@ void main() {
 
         authenticationControl.establishSessionForTest(
           sameAccount ? firstAccount : 'another-account',
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byType(CheckScheduleUI),
+          sameAccount ? findsOneWidget : findsNothing,
+        );
+      },
+    );
+  }
+
+  // A reminder action tapped while the app starts without a session survives a sign-in attempt,
+  // which notifies listeners before any session exists, and is carried out only for the account
+  // stored on the device.
+  for (final sameAccount in [true, false]) {
+    testWidgets(
+      'an action held at start survives a sign-in attempt and is ${sameAccount ? "applied to the stored" : "dropped for another"} account',
+      (tester) async {
+        MedicationNotificationSelectionHandler? selectionHandler;
+        final authenticationControl = AuthenticationControl.development();
+        addTearDown(authenticationControl.dispose);
+        final storedAccount = authenticationControl.session!.userHash;
+        await authenticationControl.signOutForTest(() async {});
+        SharedPreferences.setMockInitialValues({
+          NotificationInboxStore.activeUserKey: storedAccount,
+        });
+
+        await tester.pumpWidget(
+          MedBuddyApp(
+            authenticationControl: authenticationControl,
+            notificationSelectionRegistrar: (handler) => selectionHandler = handler,
+            sessionReminderCleanup: () async {},
+            viewModelFactory: _viewModel,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        selectionHandler!(
+          const MedicationNotificationSelection(
+            destination: MedicationNotificationDestination.schedule,
+            slotKey: 'morning',
+          ),
+        );
+        await tester.pumpAndSettle();
+        await authenticationControl.runAuthOperationForTest(() async {});
+        await tester.pumpAndSettle();
+        expect(find.byType(CheckScheduleUI), findsNothing);
+
+        authenticationControl.establishSessionForTest(
+          sameAccount ? storedAccount : 'another-account',
         );
         await tester.pumpAndSettle();
 

@@ -68,6 +68,66 @@ String? englishDailyFrequencyLabel(String value) {
   return count == 1 ? 'once daily' : '$count times daily';
 }
 
+// Function Name: localizedDoseAmountLabel
+// Description: Formats a dose that is a number (integer, decimal or fraction such as "1/2") followed by a Korean count unit (정, 캡슐, 포, 방울). Korean keeps the unit attached to the number; English uses tablet, capsule, packet or drop, singular for one unit or less ("1 tablet", "1/2 tablet") and plural above one ("2 tablets"). Any other text, including unitless numbers and international units such as mg or mL, is returned trimmed as written. Saved schedules and medication details share this helper so a dose reads the same on every screen.
+// Parameters:
+// - value (String): Stored dose-per-intake text.
+// - language (String): Language code used for display or speech guidance.
+// Returns:
+// - String: The localized dose, or the trimmed original text when it is not a recognized count dose.
+String localizedDoseAmountLabel(String value, String language) {
+  final text = value.trim();
+  final match = RegExp(
+    r'^(\d+(?:[.,]\d+)?|\d+/\d+)\s*(정|캡슐|포|방울)$',
+  ).firstMatch(text);
+  if (match == null) {
+    return text;
+  }
+  final amount = match.group(1)!;
+  final unit = match.group(2)!;
+  if (!isEnglishLanguage(language)) {
+    return '$amount$unit';
+  }
+  final englishUnit = switch (unit) {
+    '캡슐' => 'capsule',
+    '포' => 'packet',
+    '방울' => 'drop',
+    _ => 'tablet',
+  };
+  return _doseAmountValue(amount) <= 1
+      ? '$amount $englishUnit'
+      : '$amount ${englishUnit}s';
+}
+
+// Function Name: _doseAmountValue
+// Description: Reads the numeric value of a dose amount written as an integer, a decimal with a point or comma, or a fraction.
+// Parameters:
+// - amount (String): Amount text matched by localizedDoseAmountLabel.
+// Returns:
+// - double: The amount, or NaN when it cannot be evaluated (for example a zero denominator).
+double _doseAmountValue(String amount) {
+  final fraction = amount.split('/');
+  if (fraction.length == 2) {
+    final numerator = double.tryParse(fraction.first) ?? double.nan;
+    final denominator = double.tryParse(fraction.last) ?? 0;
+    return denominator == 0 ? double.nan : numerator / denominator;
+  }
+  return double.tryParse(amount.replaceAll(',', '.')) ?? double.nan;
+}
+
+// Function Name: englishDurationLabel
+// Description: Formats a course length in days for English display. Course text is converted to days the way the server schedules it (weeks times seven, months times thirty), so every screen shows the same day count.
+// Parameters:
+// - days (int): Course length in days.
+// Returns:
+// - String?: "1 day" or "N days", or null when the length is not positive.
+String? englishDurationLabel(int days) {
+  if (days <= 0) {
+    return null;
+  }
+  return days == 1 ? '1 day' : '$days days';
+}
+
 // Function Name: medicationDayCountFromText
 // Description: Preserves integer input or reads the course length in days from duration text the way the server does: the first number with its unit, so "7일분 (1주)" is seven days, "2주" fourteen and "1개월" thirty; zero when no number can be read.
 // Parameters:
@@ -151,6 +211,19 @@ class MedicationSchedule {
   final int doseCycleDays;
   final List<int> doseCycleOffsets;
   final DateTime? doseCycleAnchor;
+  final String dosingMode;
+  final int regimenRevision;
+  final DateTime? stoppedOn;
+  final DateTime? regimenEffectiveFrom;
+
+  bool get isAsNeeded => isAsNeededRegimen(
+    dosingMode: dosingMode,
+    frequency: intakeTime,
+    dosage: dosage,
+    hasSlots: scheduleSlotKeys.isNotEmpty,
+  );
+  bool get needsScheduleReview =>
+      !isAsNeeded && requiresDoseScheduleReview(intakeTime);
 
   // Function Name: MedicationSchedule
   // Description: Captures a medication course and its OCR provenance, patient ownership, optional catalog details, and per-slot completion state.
@@ -202,6 +275,10 @@ class MedicationSchedule {
     this.doseCycleDays = 1,
     this.doseCycleOffsets = const [0],
     this.doseCycleAnchor,
+    this.dosingMode = 'scheduled',
+    this.regimenRevision = 0,
+    this.stoppedOn,
+    this.regimenEffectiveFrom,
   });
 
   // Function Name: MedicationSchedule.fromAnalysisJson
@@ -212,6 +289,9 @@ class MedicationSchedule {
   // - MedicationSchedule: the initialized instance.
   factory MedicationSchedule.fromAnalysisJson(Map<String, dynamic> json) {
     return MedicationSchedule(
+      dosingMode: json['dosing_mode'] == 'as_needed'
+          ? 'as_needed'
+          : 'scheduled',
       medicationName: readJsonText(json['drug_name']),
       prescriptionDate: readJsonDate(json['prescription_date']),
       prescriptionBatchId: readJsonText(json['prescription_batch_id']),
@@ -232,9 +312,9 @@ class MedicationSchedule {
             json['rawDrugName'] ??
             json['rawMedicationName'],
       ),
-      nameConfidence: _readDouble(
+      nameConfidence: readJsonDouble(
         json['name_confidence'] ?? json['nameConfidence'],
-      ),
+      ) ?? 0,
       nameCorrectionSource: readJsonText(
         json['name_correction_source'] ?? json['nameCorrectionSource'],
       ),
@@ -294,15 +374,21 @@ class MedicationSchedule {
             json['rawDrugName'] ??
             json['rawMedicationName'],
       ),
-      nameConfidence: _readDouble(
+      nameConfidence: readJsonDouble(
         json['name_confidence'] ?? json['nameConfidence'],
-      ),
+      ) ?? 0,
       nameCorrectionSource: readJsonText(
         json['name_correction_source'] ?? json['nameCorrectionSource'],
       ),
       doseCycleDays: _readDoseCycleDays(json['dose_cycle_days']),
       doseCycleOffsets: _readDoseCycleOffsets(json['dose_cycle_offsets']),
       doseCycleAnchor: readJsonDate(json['dose_cycle_anchor']),
+      dosingMode: json['dosing_mode'] == 'as_needed'
+          ? 'as_needed'
+          : 'scheduled',
+      regimenRevision: int.tryParse('${json['regimen_revision'] ?? 0}') ?? 0,
+      stoppedOn: readJsonDate(json['stopped_on']),
+      regimenEffectiveFrom: readJsonDate(json['regimen_effective_from']),
     );
   }
 
@@ -337,12 +423,26 @@ class MedicationSchedule {
   // - date (DateTime): Calendar date asked about.
   // Returns:
   // - bool: true on dose days.
-  bool isDoseDay(DateTime date) => isDoseDayOfCycle(
-    cycleDays: doseCycleDays,
-    offsets: doseCycleOffsets,
-    anchor: doseCycleAnchor,
-    date: date,
-  );
+  bool isDoseDay(DateTime date) =>
+      !isAsNeeded &&
+      (regimenEffectiveFrom == null ||
+          !DateTime(date.year, date.month, date.day).isBefore(
+            DateTime(
+              regimenEffectiveFrom!.year,
+              regimenEffectiveFrom!.month,
+              regimenEffectiveFrom!.day,
+            ),
+          )) &&
+      (stoppedOn == null ||
+          DateTime(date.year, date.month, date.day).isBefore(
+            DateTime(stoppedOn!.year, stoppedOn!.month, stoppedOn!.day),
+          )) &&
+      isDoseDayOfCycle(
+        cycleDays: doseCycleDays,
+        offsets: doseCycleOffsets,
+        anchor: doseCycleAnchor,
+        date: date,
+      );
 
   // Function Name: fromScheduleJsonList
   // Description: Accepts a schedule list or a wrapper under schedules or schedule and decodes map entries, returning an empty list for other payload shapes.
@@ -394,7 +494,7 @@ class MedicationSchedule {
     if (medicationName.trim().isNotEmpty) {
       return medicationName.trim();
     }
-    return _isEnglishLanguage(language)
+    return isEnglishLanguage(language)
         ? 'Medication name unavailable'
         : '약품명 확인 필요';
   }
@@ -445,7 +545,7 @@ class MedicationSchedule {
   // 반환값:
   // - int: 하루 복용 횟수. 읽을 수 없으면 0.
   int get dailyFrequencyCount {
-    return _readInt(intakeTime);
+    return medicationScheduleCountFromText(intakeTime);
   }
 
   // 함수이름: slotKeys
@@ -455,6 +555,7 @@ class MedicationSchedule {
   // 반환값:
   // - List<String>: 화면 분류·복용 기록·알림·위젯이 함께 쓰는 복약 시간대 키 목록. 아무 정보도 없으면 기본 시간대 하나.
   List<String> get slotKeys {
+    if (isAsNeeded) return const [];
     if (scheduleSlotKeys.isNotEmpty) {
       return List.unmodifiable(scheduleSlotKeys);
     }
@@ -483,40 +584,17 @@ class MedicationSchedule {
   }
 
   // Function Name: dosageLabelForLanguage
-  // Description: Localizes recognized Korean dose units for English display while retaining unparsed text, fractions, and international units such as mg and mL.
+  // Description: Localizes recognized Korean dose units through the shared dose helper while retaining unparsed text, unitless amounts and international units such as mg and mL.
   // Parameters:
   // - language (String): Language code used for display or speech guidance.
   // Returns:
-  // - String: Localizes recognized Korean dose units for English display while retaining unparsed text, fractions, and international units such as mg and mL.
+  // - String: The localized dose, the original text when it is not a recognized count dose, or a "not available" label when it is empty.
   String dosageLabelForLanguage(String language) {
     final value = dosage.trim();
-    final isEnglish = _isEnglishLanguage(language);
     if (value.isEmpty) {
-      return isEnglish ? 'Dose not available' : '투약량 정보 없음';
+      return isEnglishLanguage(language) ? 'Dose not available' : '투약량 정보 없음';
     }
-
-    final match = RegExp(
-      r'^(\d+(?:[.,]\d+)?|\d+/\d+)\s*(정|캡슐|포|방울)?$',
-    ).firstMatch(value);
-    if (match == null) {
-      return value;
-    }
-
-    final amount = match.group(1) ?? value;
-    final detectedUnit = match.group(2);
-    if (detectedUnit == null) {
-      return value;
-    }
-    if (!isEnglish) {
-      return '$amount$detectedUnit';
-    }
-    final unit = switch (detectedUnit) {
-      '캡슐' => 'capsule',
-      '포' => 'sachet',
-      '방울' => 'drop',
-      _ => 'tablet',
-    };
-    return '$amount $unit';
+    return localizedDoseAmountLabel(value, language);
   }
 
   // 함수이름: dailyFrequencyLabelForLanguage
@@ -526,13 +604,16 @@ class MedicationSchedule {
   // 반환값:
   // - String: 1일 복용 횟수를 현재 언어의 문장형 표시값으로 변환한다.
   String dailyFrequencyLabelForLanguage(String language) {
+    if (isAsNeeded) {
+      return isEnglishLanguage(language) ? 'As needed' : '필요시 복용';
+    }
     final value = intakeTime.trim();
     if (value.isEmpty) {
-      return _isEnglishLanguage(language)
+      return isEnglishLanguage(language)
           ? 'Frequency not available'
           : '복용 횟수 정보 없음';
     }
-    if (!_isEnglishLanguage(language)) {
+    if (!isEnglishLanguage(language)) {
       return value;
     }
     return englishDailyFrequencyLabel(value) ?? value;
@@ -546,14 +627,14 @@ class MedicationSchedule {
   // - String: 총 복용 일수를 현재 언어에 맞는 표시값으로 변환한다.
   String durationLabelForLanguage(String language) {
     if (medicationTime <= 0) {
-      return _isEnglishLanguage(language)
+      return isEnglishLanguage(language)
           ? 'Duration not available'
           : '복용 기간 정보 없음';
     }
-    if (!_isEnglishLanguage(language)) {
+    if (!isEnglishLanguage(language)) {
       return '$medicationTime일';
     }
-    return medicationTime == 1 ? '1 day' : '$medicationTime days';
+    return englishDurationLabel(medicationTime)!;
   }
 
   // Function Name: toJson
@@ -571,20 +652,26 @@ class MedicationSchedule {
       'medication_status': medicationStatus,
       'slot_statuses': slotStatuses,
       'completed_slot_keys': slotStatuses.entries
-          .where(/* Function Name: where callback
+          .where(
+            /* Function Name: where callback
            * Description: Selects slot-status entries marked completed.
            * Parameters:
            * - entry (MapEntry<String, bool>): Current key-value entry in the map.
            * Returns:
            * - Whether this slot is completed.
-           */(entry) => entry.value)
-          .map(/* Function Name: map callback
+           */
+            (entry) => entry.value,
+          )
+          .map(
+            /* Function Name: map callback
            * Description: Extracts the slot key from a completed status entry.
            * Parameters:
            * - entry (MapEntry<String, bool>): Current key-value entry in the map.
            * Returns:
            * - The completed slot's key.
-           */(entry) => entry.key)
+           */
+            (entry) => entry.key,
+          )
           .toList(growable: false),
       'schedule_slot_keys': slotKeys,
       'patient_id': patientID,
@@ -602,6 +689,10 @@ class MedicationSchedule {
       'dose_cycle_days': doseCycleDays,
       'dose_cycle_offsets': doseCycleOffsets,
       'dose_cycle_anchor': formatJsonDate(doseCycleAnchor),
+      'dosing_mode': isAsNeeded ? 'as_needed' : 'scheduled',
+      'regimen_revision': regimenRevision,
+      'stopped_on': formatJsonDate(stoppedOn),
+      'regimen_effective_from': formatJsonDate(regimenEffectiveFrom),
     };
   }
 
@@ -655,6 +746,10 @@ class MedicationSchedule {
     int? doseCycleDays,
     List<int>? doseCycleOffsets,
     DateTime? doseCycleAnchor,
+    String? dosingMode,
+    int? regimenRevision,
+    DateTime? stoppedOn,
+    DateTime? regimenEffectiveFrom,
   }) {
     return MedicationSchedule(
       createdDate: createdDate ?? this.createdDate,
@@ -679,6 +774,10 @@ class MedicationSchedule {
       doseCycleDays: doseCycleDays ?? this.doseCycleDays,
       doseCycleOffsets: doseCycleOffsets ?? this.doseCycleOffsets,
       doseCycleAnchor: doseCycleAnchor ?? this.doseCycleAnchor,
+      dosingMode: dosingMode ?? this.dosingMode,
+      regimenRevision: regimenRevision ?? this.regimenRevision,
+      stoppedOn: stoppedOn ?? this.stoppedOn,
+      regimenEffectiveFrom: regimenEffectiveFrom ?? this.regimenEffectiveFrom,
     );
   }
 
@@ -693,42 +792,6 @@ class MedicationSchedule {
       return medicationStatus;
     }
     return slotStatuses[slotKey.trim().toLowerCase()] ?? false;
-  }
-
-  // Function Name: _readInt
-  // Description: Extracts the daily dose count from frequency text through the shared frequency parser.
-  // Parameters:
-  // - value (dynamic): Raw response field to decode into the documented return type.
-  // Returns:
-  // - int: The daily dose count, or zero when none can be read.
-  static int _readInt(dynamic value) {
-    return medicationScheduleCountFromText(value);
-  }
-
-  // 함수이름: _isEnglishLanguage
-  // 함수역할: 언어 코드의 공백과 대소문자를 정리한 뒤 en 접두사로 영어 계열을 판정한다.
-  // 매개변수:
-  // - language (String): 표시·음성 안내에 사용할 언어 코드
-  // 반환값:
-  // - bool: 언어 코드의 공백과 대소문자를 정리한 뒤 en 접두사로 영어 계열을 판정한다.
-  static bool _isEnglishLanguage(String language) {
-    return isEnglishLanguage(language);
-  }
-
-  // Function Name: _readDouble
-  // Description: Converts numeric input or a numeric string to a double, using zero when conversion fails.
-  // Parameters:
-  // - value (dynamic): Raw response field to decode into the documented return type.
-  // Returns:
-  // - double: Converts numeric input or a numeric string to a double, using zero when conversion fails.
-  static double _readDouble(dynamic value) {
-    if (value is double) {
-      return value;
-    }
-    if (value is int) {
-      return value.toDouble();
-    }
-    return double.tryParse(readJsonText(value)) ?? 0;
   }
 
   // Function Name: _readSlotStatuses
@@ -751,7 +814,7 @@ class MedicationSchedule {
        * - value (dynamic): Raw completion flag for this time slot.
        * Returns:
        * - No return value.
-       */(key, value) {
+       */ (key, value) {
         final slotKey = readJsonText(key).toLowerCase();
         if (slotKey.isNotEmpty) {
           statuses[slotKey] = readJsonBool(value);
@@ -782,18 +845,20 @@ class MedicationSchedule {
     }
     final requestedSlotKeys = value
         .map(readJsonText)
-        .map(/* 함수이름: map 콜백
+        .map(
+          /* 함수이름: map 콜백
          * 함수역할: 복약 시간대 키를 소문자로 통일한다.
          * 매개변수:
          * - slotKey (String): morning·lunch·evening·bedtime 복약 시간대 키
          * 반환값:
          * - 소문자로 정규화한 시간대 키.
-         */(slotKey) => slotKey.toLowerCase())
+         */
+          (slotKey) => slotKey.toLowerCase(),
+        )
         .where(medicationScheduleSlotKeys.contains)
         .toSet();
     return medicationScheduleSlotKeys
         .where(requestedSlotKeys.contains)
         .toList(growable: false);
   }
-
 }

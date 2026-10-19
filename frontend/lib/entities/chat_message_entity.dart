@@ -161,7 +161,6 @@ class ChatMedicationContext {
     if (value is! List) {
       return const [];
     }
-    const supportedKeys = {'morning', 'lunch', 'evening', 'bedtime'};
     return value
         .map(
           /* 함수이름: map 콜백
@@ -173,7 +172,7 @@ class ChatMedicationContext {
          */
           (item) => item?.toString().trim().toLowerCase() ?? '',
         )
-        .where(supportedKeys.contains)
+        .where(medicationScheduleSlotKeys.contains)
         .toSet()
         .toList(growable: false);
   }
@@ -232,8 +231,7 @@ class ChatScheduleContext {
   // - ChatScheduleContext: 필드 검증과 기본값 처리를 거쳐 복원한 레코드.
   factory ChatScheduleContext.fromJson(Map<String, dynamic> json) {
     final slotKey = readJsonText(json['slot_key']).toLowerCase();
-    const supportedKeys = {'morning', 'lunch', 'evening', 'bedtime'};
-    if (!supportedKeys.contains(slotKey)) {
+    if (!medicationScheduleSlotKeys.contains(slotKey)) {
       throw const FormatException('채팅 복약 시간대 정보가 올바르지 않습니다.');
     }
     final rawMedications = json['medications'];
@@ -344,8 +342,8 @@ class ChatPharmacyContext extends ChatPlaceContext {
       address: readJsonText(json['address']),
       telephone: readJsonText(json['telephone']),
       todayHours: readJsonText(json['today_hours']),
-      latitude: ChatMessage._readDouble(json['latitude']),
-      longitude: ChatMessage._readDouble(json['longitude']),
+      latitude: readJsonDouble(json['latitude']) ?? 0,
+      longitude: readJsonDouble(json['longitude']) ?? 0,
       sourceUpdatedAt: DateTime.tryParse(
         readJsonText(json['source_updated_at']),
       ),
@@ -623,19 +621,6 @@ class ChatMessage {
       hiddenForMe: hidden,
       deletedForEveryone: deleted,
     );
-  }
-
-  // 함수이름: _readDouble
-  // 함수역할: 숫자 또는 숫자 문자열을 실수로 변환하고 실패하면 0을 사용한다.
-  // 매개변수:
-  // - value (dynamic): 반환 타입의 값으로 해석할 변환 전 응답 필드
-  // 반환값:
-  // - double: 숫자 또는 숫자 문자열을 실수로 변환하고 실패하면 0을 사용한다.
-  static double _readDouble(dynamic value) {
-    if (value is num) {
-      return value.toDouble();
-    }
-    return double.tryParse(readJsonText(value)) ?? 0;
   }
 
   // 함수이름: attachedMedicationContexts

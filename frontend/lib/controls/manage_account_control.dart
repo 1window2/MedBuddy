@@ -1,8 +1,15 @@
 import 'package:http/http.dart' as http;
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../entities/medication_schedule_entity.dart';
 import '../services/api_config.dart';
+import '../services/caregiver_alert_delivery_service.dart';
 import '../services/caregiver_patient_local_state_service.dart';
+import '../services/notification_inbox_store.dart';
+import '../services/notification_service.dart';
+import '../services/pharmacy_favorite_service.dart';
+import '../services/user_setting_preference_keys.dart';
 import 'manage_user_setting_control.dart';
 
 // 파일명: manage_account_control.dart
@@ -66,27 +73,12 @@ class AccountDeletionFailure extends StateError {
 // - userHash (String): Current user hash defining ownership, display, or persistence scope.
 // - client (http.Client): HTTP transport; constructor documentation specifies ownership for injected clients.
 class ManageAccount {
-  static const List<String> _slotKeys = [
-    'morning',
-    'lunch',
-    'evening',
-    'bedtime',
-  ];
-  static const List<String> _scopedSettingNames = [
-    'font_size',
-    'reading_speed',
-    'language',
-    'language_mode',
-    'time_format',
-    'home_schedule_source',
-    'medication_notifications_enabled',
-    'caregiver_notifications_enabled',
-    'chat_notifications_enabled',
-    'notification_detail_mode',
-    'default_morning_time',
-    'default_lunch_time',
-    'default_evening_time',
-    'default_bedtime',
+  static final List<String> _scopedSettingNames = [
+    // Every current account-scoped setting, including the marker of a settings
+    // change that has not reached the server yet, the synchronization metadata
+    // and the authoritative local snapshot.
+    for (final preference in UserSettingPreference.values)
+      preference.storageSuffix,
     // Retired account-scoped settings may still exist after an upgrade.
     'nearby_pharmacy_lab_enabled',
     'linked_medication_chat_lab_enabled',
@@ -97,19 +89,20 @@ class ManageAccount {
   // so they are named exactly and never matched by prefix.
   static final List<String> _unscopedLegacyKeys = [
     ...ManageUserSetting.legacyUnscopedKeys,
-    for (final slot in _slotKeys) 'medbuddy_medication_reminder_$slot',
+    for (final slot in medicationScheduleSlotKeys)
+      'medbuddy_medication_reminder_$slot',
   ];
   // Every namespace whose key carries an owner hash. A key of one of these
   // shapes that survives the cleanup below belongs to another account.
   static final List<RegExp> _accountScopedKeyPatterns = [
     RegExp('^user_setting_.+_(?:${_scopedSettingNames.join('|')})\$'),
     RegExp(
-      '^medbuddy_medication_reminder_patient_.+_(?:${_slotKeys.join('|')})\$',
+      '^medbuddy_medication_reminder_patient_.+_(?:${medicationScheduleSlotKeys.join('|')})\$',
     ),
     // The plan written without a signed-in owner is device state, not an account.
     RegExp(
-      '^medbuddy_reminder_plan_(?!guest_(?:${_slotKeys.join('|')})\$)'
-      '.+_(?:${_slotKeys.join('|')})\$',
+      '^medbuddy_reminder_plan_(?!guest_(?:${medicationScheduleSlotKeys.join('|')})\$)'
+      '.+_(?:${medicationScheduleSlotKeys.join('|')})\$',
     ),
     RegExp(r'^medbuddy\.favorite_(?:pharmacy|hospital)_ids\..+$'),
     RegExp(
@@ -120,7 +113,7 @@ class ManageAccount {
       ').+\$',
     ),
     RegExp(r'^notification_inbox_v1\..+$'),
-    RegExp(r'^caregiver_delivery_.+_[a-f0-9]{64}$'),
+    CaregiverAlertDeliveryService.markerKeyPattern,
   ];
 
   final String userHash;
@@ -155,18 +148,33 @@ class ManageAccount {
       );
     }
     final preferences = await SharedPreferences.getInstance();
+    try {
+      await const MethodChannel(
+        'com.medbuddy/data_export',
+      ).invokeMethod<void>('clearExports');
+    } on MissingPluginException {
+      // Platforms without the Android export channel have no native CSV cache.
+    } on PlatformException {
+      // A cache cleanup failure must not prevent finalized account deletion.
+    }
     // Underscores are valid inside hashes, so match complete setting/reminder
     // keys instead of treating every underscore as an account boundary.
     final exactKeys = <String>{
       for (final setting in _scopedSettingNames)
         'user_setting_${normalizedUserHash}_$setting',
-      for (final slot in _slotKeys) ...{
+      for (final slot in medicationScheduleSlotKeys) ...{
         'medbuddy_medication_reminder_patient_${normalizedUserHash}_$slot',
         'medbuddy_medication_reminder_patient_${normalizedUserHash}_${normalizedUserHash}_$slot',
-        'medbuddy_reminder_plan_${normalizedUserHash}_$slot',
+        NotificationService.reminderPlanKey(normalizedUserHash, slot),
       },
-      'medbuddy.favorite_pharmacy_ids.$normalizedUserHash',
-      'medbuddy.favorite_hospital_ids.$normalizedUserHash',
+      PharmacyFavoriteService.storageKeyFor(
+        normalizedUserHash,
+        hospitals: false,
+      ),
+      PharmacyFavoriteService.storageKeyFor(
+        normalizedUserHash,
+        hospitals: true,
+      ),
       '${CaregiverPatientLocalStateService.linkedPatientsKeyPrefix}'
           '$normalizedUserHash',
     };
@@ -177,12 +185,13 @@ class ManageAccount {
           '$normalizedUserHash.',
       '${CaregiverPatientLocalStateService.alertKeyPrefix}'
           '$normalizedUserHash.',
-      'notification_inbox_v1.${Uri.encodeComponent(normalizedUserHash)}.',
+      NotificationInboxStore.prefixFor(normalizedUserHash),
     ];
     // Delivery markers end in a 64-hex event ID; match the whole key so a
     // hash that merely extends this one keeps its own markers.
+    // An empty event ID gives the marker prefix of this account.
     final deliveryMarker = RegExp(
-      '^${RegExp.escape('caregiver_delivery_${normalizedUserHash}_')}'
+      '^${RegExp.escape(CaregiverAlertDeliveryService.markerKeyFor(normalizedUserHash, ''))}'
       r'[a-f0-9]{64}$',
     );
     final userScopedKeys = preferences
@@ -215,9 +224,8 @@ class ManageAccount {
        * Returns:
        * - Whether the key belongs to an account-scoped namespace.
        */
-      (key) => _accountScopedKeyPatterns.any(
-        (pattern) => pattern.hasMatch(key),
-      ),
+      (key) =>
+          _accountScopedKeyPatterns.any((pattern) => pattern.hasMatch(key)),
     );
     if (anotherAccountRemains) {
       return;

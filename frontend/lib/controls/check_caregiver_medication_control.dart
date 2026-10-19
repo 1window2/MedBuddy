@@ -1,6 +1,5 @@
 // File Name: check_caregiver_medication_control.dart
 // Role: Retrieves medication lists and monitoring snapshots for a caregiver's linked patients.
-import 'dart:developer' as developer;
 
 import 'package:http/http.dart' as http;
 
@@ -110,72 +109,60 @@ class CheckCaregiverMedication {
   }
 
   Future<List<CaregiverMonitoringSnapshot>> _requestSnapshot(String resource) async {
-    try {
-      final response = await _client
-          .get(
-            Uri.parse('$baseUrl/caregiver/$resource').replace(
-              queryParameters: {
-                'caregiver_hash': PatientHash.normalizePatientHash(
-                  caregiverHash,
-                ),
-              },
-            ),
-          )
-          .timeout(const Duration(seconds: 30));
-      final responseBody = ApiResponseParser.decodeBody(response);
-      if (response.statusCode != 200) {
-        throw ApiResponseParser.httpFailure(
+    return ApiResponseParser.guardRequest(
+      operation: 'Caregiver monitoring lookup failed',
+      logName: 'CheckCaregiverMedication',
+      logMessage: '보호자 통합 알림 자료 요청에 실패했습니다.',
+      request: () async {
+        final response = await _client
+            .get(
+              Uri.parse('$baseUrl/caregiver/$resource').replace(
+                queryParameters: {
+                  'caregiver_hash': PatientHash.normalizePatientHash(
+                    caregiverHash,
+                  ),
+                },
+              ),
+            )
+            .timeout(const Duration(seconds: 30));
+        final responseBody = ApiResponseParser.requireOkBody(
           'Caregiver monitoring lookup failed',
           response,
-          responseBody,
         );
-      }
 
-      final responseMap = ApiResponseParser.decodeMap(responseBody);
-      final rawData = responseMap['data'];
-      final rawPatients = rawData is Map ? rawData['patients'] : null;
-      if (rawPatients is! List) {
-        throw StateError(
-          'Server response did not include caregiver monitoring data.',
-        );
-      }
-      if (resource == 'schedules' && rawData['caregiver_hash'] != caregiverHash) {
-        throw StateError('Caregiver schedule response scope mismatch.');
-      }
-      final snapshots = rawPatients
-          .whereType<Map>()
-          .map(
-            // 함수이름: map 콜백
-            // 함수역할: 보호자 모니터링 응답 항목의 키를 문자열로 맞춰 환자별 스냅샷으로 변환한다.
-            // 매개변수:
-            // - item (Map): 현재 변환·검사 중인 응답 또는 목록 항목
-            // 반환값:
-            // - 환자 연결·설정·일정을 담은 모니터링 스냅샷.
-            (item) => CaregiverMonitoringSnapshot.fromJson(
-              Map<String, dynamic>.from(item),
-            ),
-          )
-          .toList(growable: false);
-      if (snapshots.any((s) => !s.link.linkStatus ||
-          (s.link.linkId ?? 0) <= 0 || s.link.caregiverHash != caregiverHash ||
-          s.patientHash.isEmpty || s.patientHash == caregiverHash)) {
-        throw StateError('Caregiver schedule response scope mismatch.');
-      }
-      return snapshots;
-    } on StateError {
-      rethrow;
-    } catch (error, stackTrace) {
-      developer.log(
-        '보호자 통합 알림 자료 요청에 실패했습니다.',
-        name: 'CheckCaregiverMedication',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      throw ApiResponseParser.transportFailure(
-        'Caregiver monitoring lookup failed',
-        error,
-      );
-    }
+        final responseMap = ApiResponseParser.decodeMap(responseBody);
+        final rawData = responseMap['data'];
+        final rawPatients = rawData is Map ? rawData['patients'] : null;
+        if (rawPatients is! List) {
+          throw StateError(
+            'Server response did not include caregiver monitoring data.',
+          );
+        }
+        if (resource == 'schedules' && rawData['caregiver_hash'] != caregiverHash) {
+          throw StateError('Caregiver schedule response scope mismatch.');
+        }
+        final snapshots = rawPatients
+            .whereType<Map>()
+            .map(
+              // 함수이름: map 콜백
+              // 함수역할: 보호자 모니터링 응답 항목의 키를 문자열로 맞춰 환자별 스냅샷으로 변환한다.
+              // 매개변수:
+              // - item (Map): 현재 변환·검사 중인 응답 또는 목록 항목
+              // 반환값:
+              // - 환자 연결·설정·일정을 담은 모니터링 스냅샷.
+              (item) => CaregiverMonitoringSnapshot.fromJson(
+                Map<String, dynamic>.from(item),
+              ),
+            )
+            .toList(growable: false);
+        if (snapshots.any((s) => !s.link.linkStatus ||
+            (s.link.linkId ?? 0) <= 0 || s.link.caregiverHash != caregiverHash ||
+            s.patientHash.isEmpty || s.patientHash == caregiverHash)) {
+          throw StateError('Caregiver schedule response scope mismatch.');
+        }
+        return snapshots;
+      },
+    );
   }
 
   // Function Name: requestPatientMedicationInfo
@@ -187,68 +174,56 @@ class CheckCaregiverMedication {
   Future<CaregiverMedicationInfo> requestPatientMedicationInfo({
     required String patientHash,
   }) async {
-    try {
-      final normalizedPatientHash = PatientHash.normalizePatientHash(
-        patientHash,
-      );
-      final response = await _client
-          .get(
-            Uri.parse(
-              '$baseUrl/caregiver/medications/'
-              '${Uri.encodeComponent(normalizedPatientHash)}',
-            ).replace(
-              queryParameters: {
-                'caregiver_hash': PatientHash.normalizePatientHash(
-                  caregiverHash,
-                ),
-              },
-            ),
-          )
-          .timeout(const Duration(seconds: 30));
-      final responseBody = ApiResponseParser.decodeBody(response);
-      if (response.statusCode != 200) {
-        throw ApiResponseParser.httpFailure(
+    return ApiResponseParser.guardRequest(
+      operation: 'Caregiver medication lookup failed',
+      logName: 'CheckCaregiverMedication',
+      logMessage: 'Caregiver medication request failed.',
+      request: () async {
+        final normalizedPatientHash = PatientHash.normalizePatientHash(
+          patientHash,
+        );
+        final response = await _client
+            .get(
+              Uri.parse(
+                '$baseUrl/caregiver/medications/'
+                '${Uri.encodeComponent(normalizedPatientHash)}',
+              ).replace(
+                queryParameters: {
+                  'caregiver_hash': PatientHash.normalizePatientHash(
+                    caregiverHash,
+                  ),
+                },
+              ),
+            )
+            .timeout(const Duration(seconds: 30));
+        final responseBody = ApiResponseParser.requireOkBody(
           'Caregiver medication lookup failed',
           response,
-          responseBody,
         );
-      }
 
-      final responseMap = ApiResponseParser.decodeMap(responseBody);
-      final rawData = responseMap['data'];
-      if (rawData is! Map) {
-        throw StateError('Server response did not include medication data.');
-      }
-      final data = Map<String, dynamic>.from(rawData);
-      final todayMedicationInfo = data['today_medication_info'];
-      final rawTodaySchedules = todayMedicationInfo is Map
-          ? todayMedicationInfo['schedules']
-          : todayMedicationInfo;
-      return (
-        caregiverHash: readJsonText(
-          data['caregiver_hash'] ?? data['guardian_hash'],
-        ),
-        patientHash: readJsonText(data['patient_hash']),
-        // No screen reads the saved medication list, so the response field is not decoded on each poll.
-        savedMedications: const <MedicationDetail>[],
-        todayMedicationScheduleList: MedicationSchedule.fromScheduleJsonList(
-          rawTodaySchedules,
-        ),
-      );
-    } on StateError {
-      rethrow;
-    } catch (error, stackTrace) {
-      developer.log(
-        'Caregiver medication request failed.',
-        name: 'CheckCaregiverMedication',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      throw ApiResponseParser.transportFailure(
-        'Caregiver medication lookup failed',
-        error,
-      );
-    }
+        final responseMap = ApiResponseParser.decodeMap(responseBody);
+        final rawData = responseMap['data'];
+        if (rawData is! Map) {
+          throw StateError('Server response did not include medication data.');
+        }
+        final data = Map<String, dynamic>.from(rawData);
+        final todayMedicationInfo = data['today_medication_info'];
+        final rawTodaySchedules = todayMedicationInfo is Map
+            ? todayMedicationInfo['schedules']
+            : todayMedicationInfo;
+        return (
+          caregiverHash: readJsonText(
+            data['caregiver_hash'] ?? data['guardian_hash'],
+          ),
+          patientHash: readJsonText(data['patient_hash']),
+          // No screen reads the saved medication list, so the response field is not decoded on each poll.
+          savedMedications: const <MedicationDetail>[],
+          todayMedicationScheduleList: MedicationSchedule.fromScheduleJsonList(
+            rawTodaySchedules,
+          ),
+        );
+      },
+    );
   }
 
   // Function Name: dispose

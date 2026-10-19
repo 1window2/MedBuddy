@@ -3,6 +3,7 @@
 
 import logging
 from datetime import date, datetime
+from typing import Any
 
 from sqlalchemy import and_, inspect as sqlalchemy_inspect, or_
 from sqlalchemy.orm import Session
@@ -15,6 +16,7 @@ from entities.dose_sync_operation_entity import _DoseSyncOperation
 from entities.health_recommendation_cache_entity import _HealthRecommendationCache
 from entities.medication_alarm_entity import _MedicationAlarm
 from entities.medication_completion_entity import _MedicationCompletion
+from entities.medication_care_entity import _MedicationCareAudit, _MedicationCareOperation
 from entities.patient_caregiver_link_entity import (
     _PatientCaregiverLink,
     _PatientLinkCode,
@@ -122,14 +124,13 @@ class ManageAccount:
             .all()
         )
         links = self.link_repository.list_for_user(normalized_user_hash)
+        patient_link_ids = {
+            row.id for row in links if str(row.patient_hash) == normalized_user_hash
+        }
+        # 보호자 알림 설정은 그 보호자만 조회·변경하는 설정이므로 본인이 보호자인 행만 내보낸다.
         caregiver_settings = (
             self.db.query(_CaregiverNotification)
-            .filter(
-                or_(
-                    _CaregiverNotification.patient_hash == normalized_user_hash,
-                    _CaregiverNotification.caregiver_hash == normalized_user_hash,
-                )
-            )
+            .filter(_CaregiverNotification.caregiver_hash == normalized_user_hash)
             .all()
         )
         chat_messages = (
@@ -162,22 +163,72 @@ class ManageAccount:
                 "medication_completions": [
                     self._row_to_dict(row) for row in completions
                 ],
+                "medication_care_audits": [
+                    self._row_to_dict(row) for row in self.db.query(_MedicationCareAudit)
+                    .filter(_MedicationCareAudit.patient_hash == normalized_user_hash).all()
+                ],
                 "notification_settings": [
                     self._row_to_dict(row)
                     for row in self.db.query(_MedicationAlarm)
                     .filter(_MedicationAlarm.patient_hash == normalized_user_hash)
                     .all()
                 ],
-                "caregiver_links": [self._row_to_dict(row) for row in links],
+                "caregiver_links": [
+                    self._link_to_export_dict(row, normalized_user_hash)
+                    for row in links
+                ],
                 "caregiver_notification_settings": [
                     self._row_to_dict(row) for row in caregiver_settings
                 ],
                 "chat_messages": [
-                    self._row_to_dict(row) for row in chat_messages
+                    self._chat_message_to_export_dict(row, patient_link_ids)
+                    for row in chat_messages
+                ],
+                "user_settings": [
+                    self._row_to_dict(row)
+                    for row in self.db.query(_UserSetting)
+                    .filter(_UserSetting.user_hash == normalized_user_hash)
+                    .all()
                 ],
                 "saved_medication_ids": medication_ids,
             },
         }
+
+    # Function Name: _link_to_export_dict
+    # Description:
+    # - Exports a link row without the display name the other participant set: each display name
+    #   is returned only to the participant who set it, and the export is no exception. The
+    #   patient sets caregiver_alias; the caregiver sets patient_alias.
+    # Parameters:
+    # - row (Any): Patient-caregiver link row.
+    # - user_hash (str): Account the export is for.
+    # Returns:
+    # - The row as a dictionary without the other participant's display name.
+    def _link_to_export_dict(self, row: Any, user_hash: str) -> dict[str, Any]:
+        exported = self._row_to_dict(row)
+        if str(row.patient_hash) == user_hash:
+            exported.pop("patient_alias", None)
+        if str(row.caregiver_hash) == user_hash:
+            exported.pop("caregiver_alias", None)
+        return exported
+
+    # Function Name: _chat_message_to_export_dict
+    # Description:
+    # - Exports a chat message without the other participant's "deleted for me" time: that
+    #   marker is their own choice, like the display names above, and is not returned to the
+    #   other side. The patient's marker stays for the patient, the caregiver's for the caregiver.
+    # Parameters:
+    # - row (Any): Chat message row.
+    # - patient_link_ids (set[int]): Links in which the exporting account is the patient.
+    # Returns:
+    # - The row as a dictionary without the other participant's deletion time.
+    def _chat_message_to_export_dict(self, row: Any, patient_link_ids: set[int]) -> dict[str, Any]:
+        exported = self._row_to_dict(row)
+        if row.link_id in patient_link_ids:
+            exported.pop("caregiver_deleted_at", None)
+        else:
+            exported.pop("patient_deleted_at", None)
+        return exported
 
     # Function Name: deleteAccountData
     # Description:
@@ -294,6 +345,8 @@ class ManageAccount:
             _MedicationCompletion,
             _MedicationCompletion.patient_hash == normalized_user_hash,
         )
+        self._delete(_MedicationCareAudit, _MedicationCareAudit.patient_hash == normalized_user_hash)
+        self._delete(_MedicationCareOperation, _MedicationCareOperation.patient_hash == normalized_user_hash)
         # Offline dose receipts hold dates, slots and medication IDs. The
         # production tombstone keeps the account row, so no cascade removes
         # them; the response shape stays unchanged.

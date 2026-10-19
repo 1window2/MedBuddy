@@ -5,6 +5,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -529,6 +530,82 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(updates, 0);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 기대 동작: 만료된 환자 코드는 흐리게 표시하고 복사를 막으며, "새 코드 만들기"로 같은 발급 흐름을 다시 실행한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  testWidgets('만료된 환자 코드는 새 코드 만들기를 제공한다', (tester) async {
+    _useLinkScreenViewport(tester);
+    final control = _FakeLinkPatientCaregiver('patient-a');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkPatientCaregiverUI(
+          initialUserHash: 'patient-a',
+          controlFactory: (_) => control,
+        ),
+      ),
+    );
+    await tester.pump();
+    control.linkRequests.single.complete(const []);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('환자 코드 생성'));
+    await tester.pump();
+    control.codeRequests.single.complete(
+      PatientLinkCode(
+        code: 'OLD12345',
+        patientHash: 'patient-a',
+        expiresAt: DateTime.utc(2000),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('코드가 만료되었어요. 새 코드를 만들어 주세요.'), findsOneWidget);
+    expect(find.textContaining('남은 시간'), findsNothing);
+    final code = tester.widget<Text>(
+      find.byKey(const ValueKey('patientCodeValue')),
+    );
+    expect(code.style!.decoration, TextDecoration.lineThrough);
+    await tester.tap(find.text('OLD12345'));
+    await tester.pump();
+    expect(find.text('코드를 복사했습니다.'), findsNothing);
+    // 닫기 버튼은 최소 48dp 터치 영역을 가진다.
+    expect(
+      tester.getSize(
+        find.descendant(
+          of: find.byType(Dialog),
+          matching: find.byType(IconButton),
+        ),
+      ),
+      const Size(48, 48),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('patientCodeRegenerate')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(control.linkRequests, hasLength(2));
+    control.linkRequests.last.complete(const []);
+    await tester.pump();
+    await tester.pump();
+    expect(control.codeRequests, hasLength(2));
+    control.codeRequests.last.complete(
+      PatientLinkCode(
+        code: 'NEW12345',
+        patientHash: 'patient-a',
+        expiresAt: DateTime.utc(2100),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('NEW12345'), findsOneWidget);
+    expect(find.text('(코드를 누르면 복사됩니다)'), findsOneWidget);
+    expect(find.byKey(const ValueKey('patientCodeRegenerate')), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
@@ -1337,6 +1414,15 @@ void main() {
     control.linkRequests.single.complete(const []);
     await tester.pumpAndSettle();
 
+    // 역할 안내는 13pt 이상이며 큰 글씨에서도 줄임표로 잘리지 않는다.
+    for (final role in ['약을 복용하는 환자', '복약을 확인하는 보호자']) {
+      final roleText = find.text(role);
+      expect(tester.widget<Text>(roleText).style!.fontSize, 13);
+      expect(
+        tester.renderObject<RenderParagraph>(roleText).didExceedMaxLines,
+        isFalse,
+      );
+    }
     final generateButton = find.text('환자 코드 생성');
     await tester.ensureVisible(generateButton);
     await tester.pumpAndSettle();

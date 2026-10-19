@@ -4,9 +4,6 @@
 import hashlib
 from datetime import date, datetime, time, timedelta
 
-from sqlalchemy.dialects.postgresql import insert as postgresql_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from controls.check_schedule_control import CheckSchedule
@@ -23,6 +20,9 @@ from entities.caregiver_notification_entity import (
     effective_slot_settings,
 )
 from entities.patient_caregiver_link_entity import _PatientCaregiverLink
+from services.caregiver_alert_outbox_insert import (
+    insert_caregiver_alert_outbox_if_absent,
+)
 
 
 def missed_event_key(caregiver_hash: str, patient_hash: str, schedule_date, slot_key: str) -> str:
@@ -137,7 +137,8 @@ class QueueMissedDoseAlerts:
                     pending_by_patient_slot[pending_key] = is_incomplete
                 if not is_incomplete:
                     continue
-                if self._insert_event(
+                if insert_caregiver_alert_outbox_if_absent(
+                    self.db,
                     {
                         "event_key": event_key,
                         "event_type": CAREGIVER_ALERT_EVENT_MISSED_DEADLINE,
@@ -236,33 +237,3 @@ class QueueMissedDoseAlerts:
             reminded_at + timedelta(minutes=settings.CAREGIVER_MISSED_DOSE_GRACE_MINUTES),
             datetime.combine(day, time(hour=23, minute=59), tzinfo=current_time.tzinfo),
         )
-
-    # Function Name: _insert_event
-    # Description: Inserts an outbox event without failing on an existing event key.
-    # Parameters:
-    # - values: Validated outbox column values for one missed-dose event.
-    # Returns:
-    # - True only when this call created a new row.
-    def _insert_event(self, values: dict[str, object]) -> bool:
-        dialect_name = self.db.get_bind().dialect.name
-        if dialect_name == "postgresql":
-            result = self.db.execute(
-                postgresql_insert(_CaregiverAlertOutbox)
-                .values(**values)
-                .on_conflict_do_nothing(index_elements=["event_key"])
-            )
-            return result.rowcount == 1
-        if dialect_name == "sqlite":
-            result = self.db.execute(
-                sqlite_insert(_CaregiverAlertOutbox)
-                .values(**values)
-                .on_conflict_do_nothing(index_elements=["event_key"])
-            )
-            return result.rowcount == 1
-        try:
-            with self.db.begin_nested():
-                self.db.add(_CaregiverAlertOutbox(**values))
-                self.db.flush()
-            return True
-        except IntegrityError:
-            return False

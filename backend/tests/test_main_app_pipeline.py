@@ -85,6 +85,9 @@ EXPECTED_API_ROUTES = frozenset({
     ("GET", "/api/v1/chat/links/{link_id}/unread-count"),
     ("GET", "/api/v1/hospitals/nearby"),
     ("POST", "/api/v1/medication/analyze-prescription-text"),
+    ("GET", "/api/v1/medication/care/history"),
+    ("PUT", "/api/v1/medication/care/history/{medication_id}/{schedule_date}/{slot_key}"),
+    ("POST", "/api/v1/medication/care/medications/{medication_id}/change"),
     ("GET", "/api/v1/medication/caregiver-alerts/local-deliveries"),
     ("POST", "/api/v1/medication/caregiver-alerts/{alert_id}/snooze"),
     ("GET", "/api/v1/medication/caregiver-notification/settings/{patient_hash}"),
@@ -351,6 +354,11 @@ class _Pipeline:
 # - monkeypatch (pytest.MonkeyPatch): Restores the module's clock after the test.
 # Returns:
 # - The fixed instant in seconds since the epoch.
+# Seconds from the fixed quota clock to the next midnight in Asia/Seoul (UTC+9), where daily
+# quotas end.
+_SECONDS_TO_LOCAL_MIDNIGHT = 86_400 - (int(_QUOTA_CLOCK_SECONDS) + 9 * 3_600) % 86_400
+
+
 @pytest.fixture
 def quota_clock(monkeypatch: pytest.MonkeyPatch) -> float:
     monkeypatch.setattr(
@@ -818,6 +826,59 @@ async def test_quota_store_rejects_only_after_the_limit_is_exceeded(quota_clock:
     assert redis.calls["eval"] == 4
 
 
+# Function Name: test_medication_lookup_shares_the_ai_daily_quota
+# Description:
+# - The medication lookup summarises public approval records with the AI model, so it counts
+#   against the same daily AI quota as prescription analysis and pill identification.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+def test_medication_lookup_shares_the_ai_daily_quota() -> None:
+    lookup = request_rate_limits.resolve_daily_quota("POST", "/api/v1/medication/identify")
+    analysis = request_rate_limits.resolve_daily_quota(
+        "POST", "/api/v1/medication/analyze-prescription-text",
+    )
+
+    assert lookup is not None and analysis is not None
+    assert lookup == analysis
+
+
+# Function Name: test_daily_quota_window_ends_at_local_midnight
+# Description:
+# - A daily quota follows the service's calendar day (Asia/Seoul): one minute before local
+#   midnight the wait is one minute, and just after midnight a new counter starts. With the UTC
+#   day the window used to end at 09:00 local time while the refusal said "tomorrow".
+# Parameters:
+# - monkeypatch (pytest.MonkeyPatch): Replaces the quota clock.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_daily_quota_window_ends_at_local_midnight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 2026-10-12 23:59:00 in Seoul is 14:59:00 UTC.
+    before_midnight = 1_791_817_140.0
+    clock = {"now": before_midnight}
+    monkeypatch.setattr(
+        request_rate_limits,
+        "time",
+        SimpleNamespace(time=lambda: clock["now"], monotonic=time.monotonic),
+    )
+    redis = FakeRedis()
+    store = RequestRateLimitStore(redis_url="redis://unused", redis_client=redis)
+    rule = RateLimitRule(1, 86_400)
+
+    first = await store.consume(identity="user:a", request_scope="daily:ai", rule=rule)
+    refused = await store.consume(identity="user:a", request_scope="daily:ai", rule=rule)
+    clock["now"] = before_midnight + 90
+    next_day = await store.consume(identity="user:a", request_scope="daily:ai", rule=rule)
+
+    assert first == (True, 60)
+    assert refused == (False, 60)
+    assert next_day == (True, 86_400 - 30)
+
+
 # Function Name: test_quota_storage_outage_returns_503_before_any_route_work
 # Description:
 # - With Redis required and down, the IP middleware answers 503 with Retry-After.
@@ -1240,7 +1301,7 @@ async def test_chat_daily_quota_is_enforced_over_http(
     assert [response.status_code for response in responses] == [200, 200, 429], [
         response.text for response in responses
     ]
-    assert responses[2].headers["retry-after"] == str(86_400 - int(_QUOTA_CLOCK_SECONDS) % 86_400)
+    assert responses[2].headers["retry-after"] == str(_SECONDS_TO_LOCAL_MIDNIGHT)
     assert [scope for scope, _ in pipeline.store.user_calls("user-a")] == [
         "POST:/api/v1/chat/links/{link_id}/messages",
         "POST:/api/v1/chat/messages:daily",
@@ -1371,7 +1432,7 @@ async def test_costly_routes_have_a_daily_quota_per_account_and_per_address(
         response.text for response in responses
     ]
     assert responses[2].json()["detail"] == DAILY_QUOTA_EXCEEDED_DETAIL
-    assert responses[2].headers["retry-after"] == str(86_400 - int(_QUOTA_CLOCK_SECONDS) % 86_400)
+    assert responses[2].headers["retry-after"] == str(_SECONDS_TO_LOCAL_MIDNIGHT)
     assert other_account.status_code == 200
     assert hospital_api.fetchNearbyPage.await_count == 3
     assert ("daily:hospital-search", RateLimitRule(40, 86_400)) in pipeline.store.ip_calls()

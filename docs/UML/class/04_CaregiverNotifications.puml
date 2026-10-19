@@ -1,6 +1,6 @@
 @startuml
 allowmixing
-scale max 1920 width
+scale max 8192 width
 left to right direction
 !pragma layout smetana
 
@@ -9,7 +9,7 @@ title Patient-Caregiver Link and Notifications - Key Classes
 skinparam backgroundColor white
 skinparam shadowing false
 skinparam linetype ortho
-skinparam defaultFontName SansSerif
+skinparam defaultFontName Malgun Gothic
 skinparam defaultFontSize 15
 skinparam ArrowColor #64748B
 skinparam ArrowThickness 2
@@ -45,6 +45,10 @@ package "Flutter Frontend" #E8F4FF {
   class ManageLinkedChat <<Control>>
   class LinkPatientCaregiverUI <<UI>>
   class CheckCaregiverMedicationUI <<UI>>
+  class AsNeededScheduleSection <<UI>>
+  class MedicationHistoryUI <<UI>>
+  class SetCaregiverNotificationUI <<UI>>
+  class CaregiverNotificationMonitorService <<Service>>
   class "LinkPatientCaregiver" as FLinkPatientCaregiver <<Control>>
   class ManageCaregiverPatientLocalState <<Control>>
   class "CheckCaregiverMedication" as FCheckCaregiverMedication <<Control>>
@@ -65,6 +69,10 @@ package "FastAPI Backend" #EAF8F0 {
   class "LinkPatientCaregiver" as BLinkPatientCaregiver <<Control>>
   class "CheckCaregiverMedication" as BCheckCaregiverMedication <<Control>>
   class "CheckSchedule" as BCheckSchedule <<Control>>
+  class ManageMedicationCare <<Control>>
+  class CheckCaregiverMonitoring <<Control>>
+  class "SetCaregiverNotification" as BSetCaregiverNotification <<Control>>
+  note "as_needed_caregiver_events.py\nstable report keys / atomic event queue" as AsNeededEvents
   class "ManageLinkedChat" as BManageLinkedChat <<Control>>
   class QueueMissedDoseAlerts <<Control>>
   class DispatchCaregiverAlert <<Control>>
@@ -150,6 +158,25 @@ note top of LinkedChatUI
 end note
 LinkPatientCaregiverUI --> ManageCaregiverPatientLocalState
 CheckCaregiverMedicationUI --> FCheckCaregiverMedication
+CheckCaregiverMedicationUI *-- AsNeededScheduleSection : read-only counts / photos
+CheckCaregiverMedicationUI --> MedicationHistoryUI : read-only linked history
+CheckCaregiverMedicationUI --> SetCaregiverNotificationUI : PRN bell / independent subscription
+SetCaregiverNotificationUI --> FSetCaregiverNotification
+FSetCaregiverNotification --> BSetCaregiverNotification : authorized link settings API
+BSetCaregiverNotification --> DBCaregiverNotification
+CaregiverNotificationMonitorService --> CheckCaregiverMonitoring : local/demo snapshot API
+CheckCaregiverMonitoring --> AsNeededEvents : today's keys, including alerts-off baseline
+CaregiverNotificationMonitorService --> NotificationService : newly seen PRN identities only
+note bottom of AsNeededScheduleSection
+  보호자에게 복용 체크·일괄 기록·환자 확인 알림은 제공하지 않는다.
+  PRN 알림은 연동별 기본 꺼짐이며 정기 시간대 설정을 상속하지 않는다.
+  꺼짐 / 체크완료만 허용하고 미복약 마감 시각은 거부한다.
+end note
+note bottom of CaregiverNotificationMonitorService
+  첫 조회와 재활성화는 기준값만 저장한다.
+  이미 본 기록은 시각 정정·해제 후 재체크해도 다시 알리지 않는다.
+  정기 일정 전체 완료율과 별개이며 운영 push의 대체 보장은 아니다.
+end note
 CheckCaregiverMedicationUI --> FSetCaregiverNotification
 CheckCaregiverMedicationUI --> ManageCaregiverPatientLocalState
 ManageCaregiverPatientLocalState --> CaregiverPatientLocalStateService
@@ -171,6 +198,9 @@ end note
 
 BCheckCaregiverMedication --> BLinkPatientCaregiver : verifies relationship
 BCheckSchedule --> DBCaregiverAlertOutbox : completion event
+ManageMedicationCare --> AsNeededEvents : today's PRN taken transition
+AsNeededEvents --> DBCaregiverAlertOutbox : as_needed_dose_completed / unique event key
+DispatchCaregiverAlert --> AsNeededEvents : current date + still-taken report
 DBCaregiverAlertOutbox --> ProcessCaregiverAlertOutbox
 CaregiverAlertOutboxWorker --> ProcessCaregiverAlertOutbox : retry due events
 CaregiverAlertOutboxWorker --> QueueMissedDoseAlerts : 서버 미복약 검사
@@ -179,7 +209,7 @@ QueueMissedDoseAlerts --> DBPatientCaregiverLink
 QueueMissedDoseAlerts --> DBCaregiverNotification
 QueueMissedDoseAlerts --> DBCaregiverAlertOutbox : missed_deadline
 ProcessCaregiverAlertOutbox --> DispatchCaregiverAlert
-ProcessCaregiverAlertOutbox --> BManageLinkedChat : 완료 chat record 저장, 직접 방송 없음
+ProcessCaregiverAlertOutbox --> BManageLinkedChat : 정기 시간대 완료 chat만 저장, 직접 방송 없음
 DispatchCaregiverAlert --> BCheckSchedule : 미복약 전송 전 재검증
 DispatchCaregiverAlert --> DBCaregiverNotification
 DispatchCaregiverAlert --> DBDevicePushToken
@@ -212,6 +242,14 @@ note bottom of DispatchCaregiverAlert
   개발 mode도 서버가 미복약을 판단하며, 기기는
   localDeliveries()에서 유효한 sent 요청을 조회해 표시한다.
   일반 채팅 알림 큐와 보호자 Outbox는 별개이다.
+  PRN은 현재 기록·연동·명시적 구독·사용자 알림 설정을 재검증한다.
+  PRN push는 개별 복용을 알리며 전체 완료·미복약·자동 chat이 아니다.
+end note
+note bottom of PushNotificationService
+  PRN event_key는 환자·약·예정일·기록 UUID로 고정된다.
+  시각·revision은 키에 포함하지 않으며 서버 outbox가 중복 생성되지 않는다.
+  수신자 검증 후 같은 키로 알림함과 전경 알림을 갱신한다.
+  서버 Android tag도 같은 키를 써 재전송 표시 중복을 줄인다.
 end note
 note bottom of NotificationInboxStore
   Per-account device history, not a server mailbox.

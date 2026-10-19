@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
+import 'package:medbuddy_frontend/entities/calendar_days.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
 import 'package:medbuddy_frontend/controls/manage_account_control.dart';
@@ -68,6 +69,29 @@ void main() {
     gate.complete(_jsonResponse({'success': true, 'data': []}));
     await Future.wait([first, second]);
   });
+  // 일정 화면을 열지 않아도 앱 단위 알림 동기화가 저장된 필요시 확인 알림을 다시 예약한다
+  // (전체 알림 취소 뒤 계정 데이터 삭제 실패, 강제 종료 뒤 시작).
+  test('reminder sync restores a stored as-needed check reminder', () async {
+    final at = DateTime.now().toUtc().add(const Duration(hours: 3));
+    SharedPreferences.setMockInitialValues({
+      'medbuddy_as_needed_check_patient-a': at.toIso8601String(),
+    });
+    final notifications = RecordingNotificationService();
+    final client = MockClient(
+      (request) async => _jsonResponse({'success': true, 'data': []}),
+    );
+    final vm = MedBuddyViewModel(
+      patientHash: 'patient-a',
+      checkSchedule: CheckSchedule(patientHash: 'patient-a', client: client),
+      setNotification: SetNotification(patientHash: 'patient-a', client: client),
+      notificationService: notifications,
+    );
+    addTearDown(vm.dispose);
+    addTearDown(client.close);
+    await vm.refreshMedicationSchedule();
+    expect(notifications.registeredSlotKeys, contains('as_needed'));
+  });
+
   // Default-time saves refresh read-only alarm state without rescheduling
   // explicit alarms, enabling notifications, or clearing a pending snooze.
   test(
@@ -267,7 +291,7 @@ void main() {
   }
 
   test(
-    'a dose the server rejects stays queued and holds later doses until removed',
+    'a dose the server rejects stays queued without holding other days',
     () async {
       final client = MockClient(
         (request) async => _twoMorningSchedulesResponse(),
@@ -323,9 +347,14 @@ void main() {
         isTrue,
       );
       await harness.service.drain();
-      // 거부된 기록이 맨 앞에 있는 동안 뒤의 기록은 전송하지 않지만 기기에는 남아 있다.
-      expect(harness.uploads, hasLength(attempts));
-      expect(await harness.pending(), hasLength(2));
+      // 거부된 기록은 같은 날짜·시간대·약의 뒤 기록만 붙잡는다. 다른 날짜의 오늘 기록은 바로 전송한다.
+      expect(harness.uploads, hasLength(attempts + 1));
+      final uploaded = jsonDecode(harness.uploads.last.body) as Map;
+      expect(uploaded['schedule_date'], today);
+      expect(uploaded['medication_ids'], [7, 8]);
+      final remaining = await harness.pending();
+      expect(remaining.single['schedule_date'], '2026-09-09');
+      expect(remaining.single['state'], 'blocked');
       expect(viewModel.todayMedicationProgress.completedCount, 2);
 
       await harness.service.discardRejected(
@@ -333,9 +362,7 @@ void main() {
       );
 
       expect(await harness.pending(), isEmpty);
-      final uploaded = jsonDecode(harness.uploads.last.body) as Map;
-      expect(uploaded['schedule_date'], today);
-      expect(uploaded['medication_ids'], [7, 8]);
+      expect(harness.uploads, hasLength(attempts + 1));
       expect(viewModel.todayMedicationProgress.completedCount, 2);
     },
   );
@@ -1643,7 +1670,8 @@ void main() {
     final notificationService = RecordingNotificationService();
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final start = today.subtract(const Duration(days: 3));
+    // 서머타임 전환일을 지나도 날짜가 어긋나지 않게 달력 날짜로 계산한다.
+    final start = addCalendarDays(today, -3);
     String isoDate(DateTime date) => date.toIso8601String().split('T').first;
     final requests = <String>[];
     // 함수이름: MockClient 콜백
@@ -1704,8 +1732,8 @@ void main() {
 
     expect(saved, isTrue);
     expect(notificationService.registeredActiveDates.single, [
-      today.add(const Duration(days: 4)),
-      today.add(const Duration(days: 11)),
+      addCalendarDays(today, 4),
+      addCalendarDays(today, 11),
     ]);
 
     // 앞으로 14일 안에도 약이 없는 시간대는 저장 요청 없이 거절한다.

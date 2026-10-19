@@ -69,9 +69,11 @@ DoseWidgetProvider --> DoseWidgetLayout : 내용·클릭 동작을 유지한 크
 note right of DoseWidgetLayout
   Android 12 이상은 높이별 RemoteViews를 제공한다.
   이전 버전은 런처의 회전별 높이에 맞춘다.
-  기본 240dp와 최소 축소 180dp를 분리해
-  지원 런처에 요청한 4 x 3 초기 크기를 유지한다.
+  기본·최소 축소 높이 48dp로
+  지원 런처에 요청한 4 x 1 초기 크기를 유지한다.
   작은 높이는 요약 배치로 전환하고 기록 권한은 바꾸지 않는다.
+  110dp 미만은 한 줄 배치, 180dp 미만은 제목 줄에
+  시간대와 저장 상태만 남긴다.
 end note
 
 note bottom of DoseWidgetStore
@@ -87,6 +89,14 @@ end note
 note bottom of DoseSyncService
   기기 영속 저장 이후 표시 콜백은 변경을 합쳐 비동기로 발행한다.
   느린 위젯 갱신이 복용 기록 저장·서버 전송을 막지 않는다.
+end note
+note bottom of DoseOutboxStore
+  SQLite 트랜잭션에서 계정별 유효한 전송 선점을 하나만 허용한다.
+  ACK가 전체 일정이므로 약·시간대가 달라도 전경·백그라운드는 기다린다.
+  BLOCKED 기록은 같은 날짜·시간대에 약이 겹치는 후속 기록만 막는다.
+  관련 없는 기록은 우회하되 유효한 선점은 우회하지 않는다.
+  2분 만료 후 같은 작업 ID로 재선점하며 옛 작업자의 ACK는 거절한다.
+  현재 선점 소유자만 캐시 갱신과 큐 제거를 함께 확정한다.
 end note
 note bottom of SyncDose
   영수증·복약 변경·선택적 채팅을 함께 커밋한다.

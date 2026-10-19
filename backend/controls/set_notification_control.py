@@ -155,11 +155,12 @@ class SetNotification:
             }
         except IntegrityError:
             self.db.rollback()
-            return self._update_existing_alarm_after_conflict(
+            return self._apply_after_conflict(
                 normalized_patient_hash,
                 normalized_slot_key,
-                hour,
-                minute,
+                enabled=True,
+                hour=hour,
+                minute=minute,
             )
         except Exception as exc:
             self.db.rollback()
@@ -228,9 +229,10 @@ class SetNotification:
             }
         except IntegrityError:
             self.db.rollback()
-            return self._disable_existing_alarm_after_conflict(
+            return self._apply_after_conflict(
                 normalized_patient_hash,
                 normalized_slot_key,
+                enabled=False,
                 hour=hour,
                 minute=minute,
             )
@@ -297,22 +299,26 @@ class SetNotification:
         if minute < 0 or minute > 59:
             raise HTTPException(status_code=400, detail="Alarm minute is invalid.")
 
-    # Function Name: _update_existing_alarm_after_conflict
+    # Function Name: _apply_after_conflict
     # Description:
-    # - Reloads a concurrently created alarm and applies the requested enabled time.
+    # - Reloads an alarm another request created concurrently and commits the requested state:
+    #   enabled with the requested time for a save, or disabled with an optionally chosen time.
     # Parameters:
     # - patient_hash (str): Patient ownership scope for the operation.
     # - slot_key (str): Medication time-slot key: morning, lunch, evening or bedtime.
-    # - hour (int): Local alarm hour on a 24-hour clock.
-    # - minute (int): Local alarm minute.
+    # - enabled (bool): True for the save path, False for the disable path.
+    # - hour (int | None): Local alarm hour on a 24-hour clock; None keeps the stored hour.
+    # - minute (int | None): Local alarm minute; None keeps the stored minute.
     # Returns:
-    # - Saved alarm response, or HTTP 409/500 when recovery cannot complete.
-    def _update_existing_alarm_after_conflict(
+    # - Saved or disabled alarm response, or HTTP 409/500 when recovery cannot complete.
+    def _apply_after_conflict(
         self,
         patient_hash: str,
         slot_key: str,
-        hour: int,
-        minute: int,
+        *,
+        enabled: bool,
+        hour: int | None,
+        minute: int | None,
     ) -> dict[str, object]:
         setting = self._find_setting(patient_hash, slot_key)
         if setting is None:
@@ -323,7 +329,7 @@ class SetNotification:
         try:
             self._apply_alarm_state(
                 setting,
-                enabled=True,
+                enabled=enabled,
                 hour=hour,
                 minute=minute,
             )
@@ -331,61 +337,28 @@ class SetNotification:
             self.db.refresh(setting)
             return {
                 "success": True,
-                "message": "Medication alarm was saved.",
+                "message": (
+                    "Medication alarm was saved."
+                    if enabled
+                    else "Medication alarm was disabled."
+                ),
                 "data": self._to_response_dict(setting),
             }
         except Exception as exc:
             self.db.rollback()
             logger.error(
-                "Medication alarm conflict recovery failed: %s",
+                "Medication alarm conflict recovery failed: %s"
+                if enabled
+                else "Medication alarm disable conflict recovery failed: %s",
                 type(exc).__name__,
             )
             raise HTTPException(
                 status_code=500,
-                detail="Medication alarm could not be saved.",
-            ) from exc
-
-    # Function Name: _disable_existing_alarm_after_conflict
-    # Description:
-    # - Reloads a concurrently created alarm and commits its disabled state.
-    # Parameters:
-    # - patient_hash (str): Patient ownership scope for the operation.
-    # - slot_key (str): Medication time-slot key: morning, lunch, evening or bedtime.
-    # - hour (int | None): Newly chosen hour to keep with the disabled alarm, if any.
-    # - minute (int | None): Newly chosen minute, if any.
-    # Returns:
-    # - Disabled alarm response, or HTTP 409/500 when recovery fails.
-    def _disable_existing_alarm_after_conflict(
-        self,
-        patient_hash: str,
-        slot_key: str,
-        hour: int | None = None,
-        minute: int | None = None,
-    ) -> dict[str, object]:
-        setting = self._find_setting(patient_hash, slot_key)
-        if setting is None:
-            raise HTTPException(
-                status_code=409,
-                detail="Medication alarm conflict could not be resolved.",
-            )
-        try:
-            self._apply_alarm_state(setting, enabled=False, hour=hour, minute=minute)
-            self.db.commit()
-            self.db.refresh(setting)
-            return {
-                "success": True,
-                "message": "Medication alarm was disabled.",
-                "data": self._to_response_dict(setting),
-            }
-        except Exception as exc:
-            self.db.rollback()
-            logger.error(
-                "Medication alarm disable conflict recovery failed: %s",
-                type(exc).__name__,
-            )
-            raise HTTPException(
-                status_code=500,
-                detail="Medication alarm could not be disabled.",
+                detail=(
+                    "Medication alarm could not be saved."
+                    if enabled
+                    else "Medication alarm could not be disabled."
+                ),
             ) from exc
 
     # Function Name: _find_preferences

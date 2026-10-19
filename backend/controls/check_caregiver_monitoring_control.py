@@ -4,6 +4,9 @@
 
 from sqlalchemy.orm import Session
 
+from core.application_clock import application_today
+from services.as_needed_caregiver_events import load_as_needed_taken_event_keys
+
 from controls.check_today_medication_info_control import CheckTodayMedicationInfo
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
 from controls.set_caregiver_notification_control import SetCaregiverNotification
@@ -46,6 +49,7 @@ class CheckCaregiverMonitoring:
         notification_control: SetCaregiverNotification | None = None,
         today_medication_control: CheckTodayMedicationInfo | None = None,
     ) -> None:
+        self.db = db
         self.link_repository = (
             link_repository or PatientCaregiverLinkRepository(db)
         )
@@ -75,6 +79,9 @@ class CheckCaregiverMonitoring:
             normalized_caregiver_hash
         )
         patient_hashes = [str(link.patient_hash) for link in links]
+        as_needed_date = application_today()
+        # 비활성 환자도 현재 기준값을 제공해 설정 변경 시 과거 복용이 새 이벤트가 되지 않게 한다.
+        as_needed_keys = load_as_needed_taken_event_keys(self.db, patient_hashes, as_needed_date)
         settings_by_patient = (
             self.notification_control.loadCaregiverNotificationSettingsForPatients(
                 normalized_caregiver_hash,
@@ -93,12 +100,16 @@ class CheckCaregiverMonitoring:
             schedule_owners
         )
         patients = [
-            self._build_patient_snapshot(
-                link,
-                settings_by_patient.get(str(link.patient_hash), []),
-                include_all_schedules=include_all_schedules,
-                today_response=today_by_patient.get(str(link.patient_hash)),
-            )
+            {
+                **self._build_patient_snapshot(
+                    link,
+                    settings_by_patient.get(str(link.patient_hash), []),
+                    include_all_schedules=include_all_schedules,
+                    today_response=today_by_patient.get(str(link.patient_hash)),
+                ),
+                "as_needed_schedule_date": as_needed_date.isoformat(),
+                "as_needed_taken_event_keys": as_needed_keys[str(link.patient_hash)],
+            }
             for link in links
         ]
         return {

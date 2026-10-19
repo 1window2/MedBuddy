@@ -18,7 +18,26 @@ import 'caregiver_alert_delivery_service.dart';
 import 'api_config.dart';
 import 'auth_config.dart';
 import 'notification_service.dart';
+import 'medication_notification_payload_codec.dart';
 import 'notification_inbox_store.dart';
+import 'user_setting_preference_keys.dart';
+
+// 재전송된 필요시 복용 푸시는 FCM 메시지 ID가 달라도 같은 알림으로 묶는다.
+String? _asNeededPushIdentity(RemoteMessage message) {
+  final key = message.data['event_key']?.toString() ?? '';
+  return message.data['type'] == 'caregiver_dose_completed' &&
+          message.data['slot_key'] == 'as_needed' &&
+          RegExp(r'^[0-9a-f]{64}$').hasMatch(key)
+      ? 'as-needed:$key'
+      : null;
+}
+
+// 서버 재시도는 FCM 메시지 ID가 매번 바뀌므로 서버가 보낸 고정 event_id를 먼저 쓴다.
+// 같은 채팅 메시지·보호자 알림이 알림함과 시스템 알림에 두 번 쌓이지 않게 한다.
+String? _serverEventIdentity(RemoteMessage message) {
+  final eventId = message.data['event_id']?.toString().trim() ?? '';
+  return eventId.isEmpty ? null : eventId;
+}
 
 // 함수이름: recordPushNotificationHistory
 // 함수역할: 수신 계정을 확인하고 서버에서 표시를 허용한 메시지 미리보기와 푸시 내역을 보관한다.
@@ -52,7 +71,7 @@ Future<void> recordPushNotificationHistory(
     if (type == 'linked_chat_message') {
       final linkId = int.tryParse(message.data['link_id']?.toString() ?? '');
       if (linkId == null || linkId < 1) return;
-      payload = 'chat:$linkId';
+      payload = MedicationNotificationPayloadCodec.chatPayload(linkId);
       title = english ? 'New family message' : '새 가족 메시지';
       // 빈 message_preview는 서버의 내용 숨김 결정이므로 notification 본문으로 우회하지 않는다.
       final preview = message.data.containsKey('message_preview')
@@ -70,10 +89,10 @@ Future<void> recordPushNotificationHistory(
     }.contains(type)) {
       final patient = message.data['patient_hash']?.toString().trim() ?? '';
       if (patient.isEmpty) return;
-      payload = 'caregiver:${Uri.encodeComponent(patient)}';
+      payload = MedicationNotificationPayloadCodec.caregiverPayload(patient);
       final showDetails =
           preferences.getString(
-            'user_setting_${active.trim()}_notification_detail_mode',
+            UserSettingPreference.notificationDetailMode.keyFor(active.trim()),
           ) !=
           'type_only';
       final deliveredTitle = message.notification?.title?.trim() ?? '';
@@ -94,7 +113,7 @@ Future<void> recordPushNotificationHistory(
       return;
     }
     final entry = NotificationInboxEntry(
-      id: 'push:${message.messageId ?? message.data['event_id'] ?? '$type:$payload:${message.sentTime?.millisecondsSinceEpoch ?? 0}'}',
+      id: 'push:${_asNeededPushIdentity(message) ?? _serverEventIdentity(message) ?? message.messageId ?? '$type:$payload:${message.sentTime?.millisecondsSinceEpoch ?? 0}'}',
       title: title,
       body: body,
       payload: payload,
@@ -119,7 +138,8 @@ Future<void> recordPushNotificationHistory(
 // 매개변수: message. 반환값: 기록 완료. Firebase API는 사용하지 않는다.
 @pragma('vm:entry-point')
 Future<void> medBuddyPushBackgroundHandler(RemoteMessage message) async {
-  if (message.data['type'] == 'caregiver_slot_missed' && message.data['action_version'] == '1') {
+  if (message.data['type'] == 'caregiver_slot_missed' &&
+      message.data['action_version'] == '1') {
     await CaregiverAlertDeliveryService.display(message.data);
     return;
   }
@@ -219,6 +239,9 @@ class PushNotificationService {
   StreamSubscription<RemoteMessage>? _foregroundMessageSubscription;
   StreamSubscription<RemoteMessage>? _openedMessageSubscription;
   String? _registeredToken;
+  // 이 기기 토큰이 서버에 등록되어 있을 수 있는지 여부. 이전 실행에서 등록했을 수 있으므로 true로
+  // 시작하고, 서버 해제나 기기 토큰 폐기가 끝나면 false가 된다.
+  bool _platformTokenMayBeRegistered = true;
   bool _started = false;
   bool _stopping = false;
   // 시작 단계별 완료 여부. 재시도는 끝내지 못한 단계만 다시 수행한다.
@@ -301,10 +324,7 @@ class PushNotificationService {
     if (pendingStart != null) {
       await pendingStart;
     }
-    if (!_started ||
-        _stopping ||
-        _isStartComplete ||
-        _startOperation != null) {
+    if (!_started || _stopping || _isStartComplete || _startOperation != null) {
       return;
     }
     await _runStart();
@@ -356,7 +376,9 @@ class PushNotificationService {
         // 설정 조회가 끝나기 전에 도착한 보호자 알림이 세부 내용을 다시 만들지 않게 한다.
         final preferences = await SharedPreferences.getInstance();
         if (preferences.getString(
-              'user_setting_${userHash.trim()}_notification_detail_mode',
+              UserSettingPreference.notificationDetailMode.keyFor(
+                userHash.trim(),
+              ),
             ) ==
             'type_only') {
           NotificationService.instance.setShowSensitiveDetails(false);
@@ -451,10 +473,7 @@ class PushNotificationService {
     final proposedMilliseconds =
         retryBaseDelay.inMilliseconds * (1 << _retryAttempt.clamp(0, 16));
     final delay = Duration(
-      milliseconds: proposedMilliseconds.clamp(
-        0,
-        retryMaxDelay.inMilliseconds,
-      ),
+      milliseconds: proposedMilliseconds.clamp(0, retryMaxDelay.inMilliseconds),
     );
     _retryAttempt += 1;
     _retryTimer = Timer(delay, () {
@@ -479,6 +498,18 @@ class PushNotificationService {
     _retryTimer = null;
     await _startOperation;
     await _awaitPendingTokenRegistrations();
+    // 이번 실행에서 등록을 마치지 못했어도(오프라인으로 시작했거나 등록이 계속 실패) 이전 실행에서 등록한
+    // 이 기기 토큰이 서버에 남아 있을 수 있다. 그대로 두면 끝난 계정의 푸시(채팅 미리보기 포함)가 이 기기에
+    // 계속 표시되므로, 기기에서 토큰을 읽어 같은 방법으로 해제한다. 서버는 등록되지 않은 토큰의 해제도
+    // 성공으로 답한다.
+    if ((_registeredToken == null || _registeredToken!.isEmpty) &&
+        _platformTokenMayBeRegistered) {
+      try {
+        _registeredToken = await _platform.getToken().timeout(_requestTimeout);
+      } catch (error, stackTrace) {
+        _reportPushError(error, stackTrace);
+      }
+    }
     final token = _registeredToken;
     if (token != null && token.isNotEmpty) {
       try {
@@ -497,6 +528,7 @@ class PushNotificationService {
         }
         if (_registeredToken == token) {
           _registeredToken = null;
+          _platformTokenMayBeRegistered = false;
         }
       } catch (error, stackTrace) {
         _reportPushError(error, stackTrace);
@@ -515,6 +547,7 @@ class PushNotificationService {
       try {
         await _platform.deleteToken();
         _registeredToken = null;
+        _platformTokenMayBeRegistered = false;
       } catch (error, stackTrace) {
         _reportPushError(error, stackTrace);
       }
@@ -630,13 +663,18 @@ class PushNotificationService {
     if (normalizedToken.isEmpty || normalizedToken == _registeredToken) {
       return;
     }
+    // 응답을 받지 못해도 서버에는 등록되었을 수 있다.
+    _platformTokenMayBeRegistered = true;
     final response = await _client
         .post(
           Uri.parse(ApiConfig.pushTokenUrl),
           headers: const {'Content-Type': 'application/json'},
           // 알림 동작 버튼은 Android에만 정의되어 있으므로 그 기기만 동작 지원으로 등록한다.
-          body: jsonEncode({'token': normalizedToken, 'platform': _platformName,
-            'supports_caregiver_actions': _isAndroid}),
+          body: jsonEncode({
+            'token': normalizedToken,
+            'platform': _platformName,
+            'supports_caregiver_actions': _isAndroid,
+          }),
         )
         .timeout(_requestTimeout);
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -653,7 +691,8 @@ class PushNotificationService {
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
   Future<void> _showForegroundMessage(RemoteMessage message) async {
     if (message.data['recipient_hash'] != userHash) return;
-    if (message.data['type'] == 'caregiver_slot_missed' && message.data['action_version'] == '1') {
+    if (message.data['type'] == 'caregiver_slot_missed' &&
+        message.data['action_version'] == '1') {
       await CaregiverAlertDeliveryService.display(message.data);
       return;
     }
@@ -668,7 +707,10 @@ class PushNotificationService {
       if (linkId == null || linkId < 1) {
         return;
       }
-      final source = message.messageId ?? 'linked-chat|$linkId';
+      final source =
+          _serverEventIdentity(message) ??
+          message.messageId ??
+          'linked-chat|$linkId';
       final notificationBody = message.notification?.body?.trim() ?? '';
       final dataPreview = message.data['message_preview']?.trim() ?? '';
       await NotificationService.instance.showLinkedChatAlert(
@@ -701,12 +743,18 @@ class PushNotificationService {
     );
     final title = text.title;
     final body = text.body;
-    final source = message.messageId ?? '$patientHash|$title|$body';
+    final prnIdentity = _asNeededPushIdentity(message);
+    final source =
+        prnIdentity ??
+        _serverEventIdentity(message) ??
+        message.messageId ??
+        '$patientHash|$title|$body';
     await NotificationService.instance.showCaregiverAlert(
       historyUserHash: userHash,
       recordHistory: false,
       id: source.hashCode & 0x7fffffff,
       title: title,
+      onlyAlertOnce: prnIdentity != null,
       body: body,
       patientHash: patientHash,
       language: language,
@@ -746,7 +794,7 @@ class PushNotificationService {
       final linkId = int.tryParse(message.data['link_id']?.trim() ?? '');
       if (linkId != null && linkId > 0) {
         NotificationService.handleNotificationPayload(
-          'chat:$linkId',
+          MedicationNotificationPayloadCodec.chatPayload(linkId),
         );
       }
       return;
@@ -756,7 +804,7 @@ class PushNotificationService {
       return;
     }
     NotificationService.handleNotificationPayload(
-      'caregiver:${Uri.encodeComponent(patientHash)}',
+      MedicationNotificationPayloadCodec.caregiverPayload(patientHash),
     );
   }
 
@@ -784,6 +832,14 @@ class PushNotificationService {
     final isEnglish = isEnglishLanguage(language);
     final slotName = _slotName(slotKey, language);
     final isMissed = type == 'caregiver_slot_missed';
+    if (slotKey == 'as_needed' && !isMissed) {
+      return (
+        title: isEnglish ? 'As-needed dose recorded' : '필요시 약 복용 기록',
+        body: isEnglish
+            ? 'The linked patient recorded taking an as-needed medication.'
+            : '연동된 환자가 필요시 약 복용을 기록했습니다.',
+      );
+    }
     return (
       title: isMissed
           ? (isEnglish ? 'Medication not checked' : '미복용 일정 확인')

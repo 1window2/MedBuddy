@@ -6,6 +6,7 @@ import 'controls/check_caregiver_home_control.dart';
 import 'controls/check_caregiver_medication_control.dart';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -14,6 +15,7 @@ import 'package:home_widget/home_widget.dart';
 import 'boundaries/check_caregiver_medication_ui_boundary.dart';
 import 'boundaries/check_schedule_ui_boundary.dart';
 import 'boundaries/linked_chat_entry_ui_boundary.dart';
+import 'boundaries/linked_chat_ui_boundary.dart';
 import 'boundaries/authentication_gate.dart';
 import 'boundaries/authentication_ui_boundary.dart';
 import 'composition/linked_chat_notification_monitor_factory.dart';
@@ -21,6 +23,7 @@ import 'controls/app_language_control.dart';
 import 'controls/authentication_control.dart';
 import 'controls/caregiver_alert_action_control.dart';
 import 'entities/user_setting_entity.dart';
+import 'services/notification_inbox_store.dart';
 import 'services/notification_service.dart';
 import 'services/caregiver_notification_monitor_service.dart';
 import 'composition/caregiver_notification_background_service.dart';
@@ -166,7 +169,6 @@ class _MedBuddyAppState extends State<MedBuddyApp>
     with WidgetsBindingObserver {
   static const String _scheduleRouteName = '/schedule';
   static const String _caregiverScheduleRoutePrefix = '/caregiver-schedule/';
-  static const String _linkedChatRoutePrefix = '/linked-chat/';
 
   late final GlobalKey<NavigatorState> _navigatorKey;
   late final AuthenticationControl _authenticationControl;
@@ -177,7 +179,9 @@ class _MedBuddyAppState extends State<MedBuddyApp>
   final _notificationScheduleSlot = ValueNotifier<String?>(null);
   final _notificationChatLatest = ValueNotifier<int>(0);
   String? _openCaregiverScheduleRouteName;
-  String? _openLinkedChatRouteName;
+  // Every linked-chat screen on the stack, wherever it was opened, so a chat
+  // notification returns to an open conversation instead of stacking a copy.
+  final _linkedChatRoutes = LinkedChatRouteObserver();
   MedicationNotificationSelection? _pendingNotificationSelection;
   // 직전에 끝난 세션의 계정. 로그아웃 중 보류한 알림 동작을 다른 계정에 넘기지 않는 데 쓴다.
   String? _endedSessionUserHash;
@@ -221,6 +225,7 @@ class _MedBuddyAppState extends State<MedBuddyApp>
     _authenticationControl.addListener(_handleAuthenticationChange);
     _registerNotificationSelectionHandler(_handleNotificationSelection);
     _synchronizeCaregiverNotificationMonitor();
+    unawaited(_rememberStoredAccountForHeldActions());
     if (DoseHomeWidget.supported) {
       _widgetClicks = HomeWidget.widgetClicked.listen(_openHomeWidget);
       unawaited(
@@ -335,7 +340,7 @@ class _MedBuddyAppState extends State<MedBuddyApp>
   }
 
   // Function Name: _prepareSessionEnd
-  // Description: Requires server push-token unregistration while the Firebase identity is still valid, gives doses recorded offline one bounded upload attempt, then suspends dose upload work and cancels local reminders and replenishment work.
+  // Description: Requires server push-token unregistration while the Firebase identity is still valid, gives doses recorded offline one bounded upload attempt, then suspends dose upload work and cancels local reminders and replenishment work. When a local step fails the sign-out is aborted, so push and dose upload work are started again for the account that stays signed in.
   // Parameters:
   // - None.
   // Returns:
@@ -347,9 +352,24 @@ class _MedBuddyAppState extends State<MedBuddyApp>
     // 오프라인에서 기록해 아직 올리지 못한 복용은 토큰이 유효한 지금 한 번 더 올려 본다. 몇 초 안에
     // 끝나지 않으면 기다리지 않으며, 남은 기록은 같은 계정이 이 기기에 다시 로그인할 때 전송된다.
     await _flushPendingDoseRecords();
-    await DoseSyncBackgroundScheduler.suspend();
-    await DoseHomeWidget.clear();
-    await _cancelSessionReminders();
+    try {
+      await DoseSyncBackgroundScheduler.suspend();
+      await DoseHomeWidget.clear();
+      await _cancelSessionReminders();
+    } catch (_) {
+      // 로컬 정리가 실패하면 로그아웃이 중단되어 계정은 로그인 상태로 남는다. 앞에서 멈춘 푸시와 복용 기록
+      // 전송 작업을 되살려, 로그인한 채로 푸시(보호자 미복용 알림 포함)를 받지 못하는 상태가 되지 않게 한다.
+      final session = _authenticationControl.session;
+      if (session != null) {
+        unawaited(_pushNotificationService?.start().catchError((_) {}));
+        unawaited(
+          DoseSyncBackgroundScheduler.register(
+            session.userHash,
+          ).catchError((_) {}),
+        );
+      }
+      rethrow;
+    }
   }
 
   // Function Name: _flushPendingDoseRecords
@@ -420,6 +440,32 @@ class _MedBuddyAppState extends State<MedBuddyApp>
     _navigateForNotificationWhenReady(selection);
   }
 
+  // 함수이름: _rememberStoredAccountForHeldActions
+  // 함수역할: 앱이 세션 없이 시작했을 때, 이 기기에 마지막으로 저장된 계정을 보류 동작의 주인으로 기억한다.
+  //          알림에는 계정이 적혀 있지 않으므로, 다른 계정이 로그인하면 보류한 "복용했어요"를 그 계정에 적용하지 않는다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 저장값을 읽고 나면 끝나는 Future. 읽지 못하면 아무것도 바꾸지 않는다.
+  Future<void> _rememberStoredAccountForHeldActions() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final stored = preferences
+          .getString(NotificationInboxStore.activeUserKey)
+          ?.trim();
+      if (!mounted ||
+          _authenticationControl.session != null ||
+          _endedSessionUserHash != null ||
+          stored == null ||
+          stored.isEmpty) {
+        return;
+      }
+      _endedSessionUserHash = stored;
+    } catch (_) {
+      // 읽지 못하면 이전 동작대로 둔다.
+    }
+  }
+
   // 함수이름: _handleAuthenticationChange
   // 함수역할: 세션에 맞춰 감시 서비스를 교체하고 로그아웃 시 경로 상태를 초기화하며 로그인 후 보류한 알림 이동을 처리한다.
   // 매개변수:
@@ -437,14 +483,16 @@ class _MedBuddyAppState extends State<MedBuddyApp>
     final previousUserHash = _monitoredUserHash;
     _synchronizeCaregiverNotificationMonitor();
     if (_authenticationControl.session == null) {
+      // 보류한 알림·위젯 동작은 세션이 실제로 끝날 때만 버린다. 로그인 시도나 재시도 중에도 세션 없이
+      // 변경 알림이 오므로, 그때 버리면 오프라인에서 누른 "복용했어요"가 다시 시도할 때 사라진다.
+      // 다른 계정이 로그인하면 아래에서 _endedSessionUserHash와 비교해 버린다.
       if (previousUserHash != null && previousUserHash.isNotEmpty) {
         _endedSessionUserHash = previousUserHash;
+        _pendingWidgetUri = null;
+        _pendingNotificationSelection = null;
       }
-      _pendingWidgetUri = null;
-      _pendingNotificationSelection = null;
       _isScheduleRouteOpen = false;
       _openCaregiverScheduleRouteName = null;
-      _openLinkedChatRouteName = null;
       _removeRoutesAboveRoot();
       return;
     }
@@ -536,14 +584,22 @@ class _MedBuddyAppState extends State<MedBuddyApp>
   }
 
   // 함수이름: _synchronizeCaregiverNotificationMonitor
-  // 함수역할: 로그인 hash가 바뀔 때 보호자 알림 감시 대상을 함께 교체한다.
+  // 함수역할: 로그인 hash가 바뀔 때 보호자 알림 감시 대상을 함께 교체한다. 저장된 활성 계정은 세션이 끝날 때만 지운다.
   // 매개변수:
   // - 없음.
   // 반환값:
   // - 없음.
   void _synchronizeCaregiverNotificationMonitor() {
     final userHash = _authenticationControl.session?.userHash.trim();
-    NotificationService.instance.setHistoryUser(userHash);
+    final hasSession = userHash != null && userHash.isNotEmpty;
+    final previousUserHash = _monitoredUserHash;
+    // 저장된 활성 계정은 세션이 실제로 끝났을 때만 지운다. 앱 시작 직후나 첫 연결이 실패해 아직
+    // 세션이 없을 때 지우면, 그 뒤 도착한 보호자 미복용 알림이 이 기기 계정의 것이 아니라고 보고 버려진다.
+    NotificationService.instance.setHistoryUser(
+      userHash,
+      persistSession:
+          hasSession || (previousUserHash != null && previousUserHash.isNotEmpty),
+    );
     if (userHash == _monitoredUserHash) {
       return;
     }
@@ -750,6 +806,7 @@ class _MedBuddyAppState extends State<MedBuddyApp>
       });
       return;
     }
+    final navigator = _navigatorKey.currentState!;
     if (selection.caregiverAlert != null &&
         selection.action != MedicationNotificationAction.open) {
       _handleCaregiverActionWhenReady(selection);
@@ -757,31 +814,10 @@ class _MedBuddyAppState extends State<MedBuddyApp>
     }
     if (selection.destination == MedicationNotificationDestination.schedule) {
       if (selection.action != MedicationNotificationAction.open) {
-        _handleMedicationNotificationActionWhenReady(selection);
+        unawaited(_performMedicationNotificationAction(navigator, selection));
         return;
       }
-      final navigator = _navigatorKey.currentState;
-      if (navigator != null) {
-        _openSchedule(navigator, initialSlotKey: selection.slotKey);
-      } else {
-        WidgetsBinding.instance.addPostFrameCallback(
-          /* 함수이름: addPostFrameCallback 콜백
-         * 함수역할: 내비게이터가 준비된 다음 프레임에 선택한 복약 시간대 화면을 연다.
-         * 매개변수:
-         * - _ (Duration): 콜백 계약으로 전달되지만 사용하지 않는 이벤트 값.
-         * 반환값:
-         * - 없음.
-         */
-          (_) {
-            if (mounted && _navigatorKey.currentState != null) {
-              _openSchedule(
-                _navigatorKey.currentState!,
-                initialSlotKey: selection.slotKey,
-              );
-            }
-          },
-        );
-      }
+      _openSchedule(navigator, initialSlotKey: selection.slotKey);
       return;
     }
     if (selection.destination == MedicationNotificationDestination.linkedChat) {
@@ -789,54 +825,14 @@ class _MedBuddyAppState extends State<MedBuddyApp>
       if (linkId == null || linkId < 1) {
         return;
       }
-      final navigator = _navigatorKey.currentState;
-      if (navigator != null) {
-        _openLinkedChat(navigator, linkId);
-        return;
-      }
-      WidgetsBinding.instance.addPostFrameCallback(
-        /* 함수이름: addPostFrameCallback 콜백
-       * 함수역할: 다음 프레임에 화면이 유지되어 있으면 선택한 가족 채팅을 연다.
-       * 매개변수:
-       * - _ (Duration): 콜백 계약으로 전달되지만 사용하지 않는 이벤트 값.
-       * 반환값:
-       * - 없음.
-       */
-        (_) {
-          if (mounted && _navigatorKey.currentState != null) {
-            _openLinkedChat(_navigatorKey.currentState!, linkId);
-          }
-        },
-      );
+      _openLinkedChat(navigator, linkId);
       return;
     }
     final patientHash = selection.patientHash?.trim() ?? '';
     if (patientHash.isEmpty) {
       return;
     }
-    final navigator = _navigatorKey.currentState;
-    if (navigator != null) {
-      _openCaregiverSchedule(navigator, patientHash);
-      return;
-    }
-    WidgetsBinding.instance.addPostFrameCallback(
-      /* 함수이름: addPostFrameCallback 콜백
-     * 함수역할: 다음 프레임까지 화면과 내비게이터가 유효하면 선택한 환자 복약 화면을 연다.
-     * 매개변수:
-     * - _ (Duration): 콜백 계약으로 전달되지만 사용하지 않는 이벤트 값.
-     * 반환값:
-     * - 없음.
-     */
-      (_) {
-        if (!mounted) {
-          return;
-        }
-        final mountedNavigator = _navigatorKey.currentState;
-        if (mountedNavigator != null) {
-          _openCaregiverSchedule(mountedNavigator, patientHash);
-        }
-      },
-    );
+    _openCaregiverSchedule(navigator, patientHash);
   }
 
   final Set<String> _caregiverActionsInFlight = {};
@@ -917,36 +913,6 @@ class _MedBuddyAppState extends State<MedBuddyApp>
     );
   }
 
-  // Function Name: _handleMedicationNotificationActionWhenReady
-  // Description: Defers lock-screen medication actions until the navigator and provider context exist, then starts the existing schedule or snooze operation.
-  // Parameters:
-  // - selection (MedicationNotificationSelection): Parsed notification destination and action arguments.
-  // Returns:
-  // - No return value.
-  void _handleMedicationNotificationActionWhenReady(
-    MedicationNotificationSelection selection,
-  ) {
-    final navigator = _navigatorKey.currentState;
-    if (navigator == null) {
-      WidgetsBinding.instance.addPostFrameCallback(
-        /* Function Name: addPostFrameCallback callback
-       * Description: Retries a medication-notification action after the next frame while the app state remains mounted.
-       * Parameters:
-       * - _ (Duration): Unused event value supplied by the enclosing callback contract.
-       * Returns:
-       * - No return value.
-       */
-        (_) {
-          if (mounted) {
-            _handleMedicationNotificationActionWhenReady(selection);
-          }
-        },
-      );
-      return;
-    }
-    unawaited(_performMedicationNotificationAction(navigator, selection));
-  }
-
   // Function Name: _performMedicationNotificationAction
   // Description: Marks an entire slot taken or schedules a ten-minute snooze, then reports success and offers undo only for a completed status update.
   // Parameters:
@@ -964,7 +930,7 @@ class _MedBuddyAppState extends State<MedBuddyApp>
     }
     final viewModel = navigator.context.read<MedBuddyViewModel>();
     final language = viewModel.userSetting.language;
-    final isEnglish = language.trim().toLowerCase().startsWith('en');
+    final isEnglish = viewModel.userSetting.isEnglish;
     var succeeded = false;
     var canReview = false;
 
@@ -1202,8 +1168,8 @@ class _MedBuddyAppState extends State<MedBuddyApp>
     if (session == null) {
       return;
     }
-    final routeName = '$_linkedChatRoutePrefix$linkId';
-    if (_openLinkedChatRouteName == routeName) {
+    final routeName = linkedChatRouteName(linkId);
+    if (_linkedChatRoutes.isOpen(linkId)) {
       _notificationChatLatest.value++;
       navigator.popUntil(
         // 함수이름: popUntil 콜백
@@ -1216,43 +1182,30 @@ class _MedBuddyAppState extends State<MedBuddyApp>
       );
       return;
     }
-    _openLinkedChatRouteName = routeName;
-    navigator
-        .push(
-          MaterialPageRoute<void>(
-            settings: RouteSettings(name: routeName),
-            builder: /* 함수이름: builder 콜백
-             * 함수역할: 연동 정보를 조회해 환자·보호자 역할과 상대 이름을 확인한 뒤 채팅을 연다.
-             * 매개변수:
-             * - context (BuildContext): 화면 트리의 의존성을 조회할 BuildContext
-             * 반환값:
-             * - 선택한 가족 연결의 채팅 화면.
-             */ (context) => LinkedChatEntryUI(
-              key: ValueKey('${session.userHash}:$linkId'),
-              latestMessageRequest: _notificationChatLatest,
-              linkId: linkId,
-              currentUserHash: session.userHash,
-              userSetting: context
-                  .read<MedBuddyViewModel>()
-                  .userSetting
-                  .copyWith(
-                    userHash: session.userHash,
-                    language: _appLanguageControl.language,
-                  ),
-            ),
-          ),
-        )
-        .whenComplete(/* 함수이름: whenComplete 콜백
-         * 함수역할: 닫힌 채팅이 현재 추적 중인 경로일 때 열린 채팅 경로 표시를 지운다.
+    navigator.push(
+      MaterialPageRoute<void>(
+        settings: RouteSettings(name: routeName),
+        builder: /* 함수이름: builder 콜백
+         * 함수역할: 연동 정보를 조회해 환자·보호자 역할과 상대 이름을 확인한 뒤 채팅을 연다.
          * 매개변수:
-         * - 없음.
+         * - context (BuildContext): 화면 트리의 의존성을 조회할 BuildContext
          * 반환값:
-         * - 없음.
-         */ () {
-          if (_openLinkedChatRouteName == routeName) {
-            _openLinkedChatRouteName = null;
-          }
-        });
+         * - 선택한 가족 연결의 채팅 화면.
+         */ (context) => LinkedChatEntryUI(
+          key: ValueKey('${session.userHash}:$linkId'),
+          latestMessageRequest: _notificationChatLatest,
+          linkId: linkId,
+          currentUserHash: session.userHash,
+          userSetting: context
+              .read<MedBuddyViewModel>()
+              .userSetting
+              .copyWith(
+                userHash: session.userHash,
+                language: _appLanguageControl.language,
+              ),
+        ),
+      ),
+    );
   }
 
   // 함수이름: build
@@ -1286,6 +1239,7 @@ class _MedBuddyAppState extends State<MedBuddyApp>
           final session = authentication.session;
           final application = MaterialApp(
             navigatorKey: _navigatorKey,
+            navigatorObservers: [_linkedChatRoutes],
             title: 'MedBuddy',
             debugShowCheckedModeBanner: false,
             locale: Locale(appLanguage.language),

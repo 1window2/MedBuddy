@@ -27,6 +27,7 @@ from controls.queue_missed_dose_alerts_control import (  # noqa: E402
 from core.database import Base  # noqa: E402
 from entities.caregiver_alert_outbox_entity import (  # noqa: E402
     CAREGIVER_ALERT_EVENT_MISSED_DEADLINE,
+    CAREGIVER_ALERT_STATUS_DEAD_LETTER,
     CAREGIVER_ALERT_STATUS_SENT,
     _CaregiverAlertOutbox,
 )
@@ -227,8 +228,10 @@ class MissedDoseAlertTest(unittest.TestCase):
             )
 
         self.db.refresh(row)
-        self.assertEqual(outcome, "sent")
-        self.assertEqual(row.status, CAREGIVER_ALERT_STATUS_SENT)
+        self.assertEqual(outcome, "skipped")
+        self.assertEqual(row.status, CAREGIVER_ALERT_STATUS_DEAD_LETTER)
+        self.assertEqual(row.last_error, "MissedDoseNoLongerCurrent")
+        self.assertIsNone(row.sent_at)
         self.assertEqual(push.calls, [])
 
 
@@ -277,12 +280,18 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
         values.update(overrides)
         return ManageLinkedChat(self.db).send_message(**values)
 
-    def deliver(self, row_id):
+    def deliver(self, row_id, outcome="sent"):
         push = _RecordingPushBoundary()
         with patch("controls.process_caregiver_alert_outbox_control.utc_now",
                    return_value=self.now + timedelta(minutes=10)):
-            outcome = ProcessCaregiverAlertOutbox(self.db, push).processOne(row_id)
-        self.assertEqual(outcome, "sent")
+            result = ProcessCaregiverAlertOutbox(self.db, push).processOne(row_id)
+        # An alert that is no longer needed is given up, not recorded as sent.
+        self.assertEqual(result, outcome)
+        if outcome == "skipped":
+            row = self.db.get(_CaregiverAlertOutbox, row_id)
+            self.db.refresh(row)
+            self.assertEqual(row.status, CAREGIVER_ALERT_STATUS_DEAD_LETTER)
+            self.assertEqual(row.last_error, "MissedDoseNoLongerCurrent")
         return push.calls
 
     def test_repeat_snooze_is_one_new_row_without_completion_or_setting_changes(self):
@@ -316,7 +325,7 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
         receipt = self.snooze()
         self.complete()
         self.assertFalse(self.snooze()["created"])
-        self.assertEqual(self.deliver(receipt["data"]["alert_id"]), [])
+        self.assertEqual(self.deliver(receipt["data"]["alert_id"], outcome="skipped"), [])
 
     def test_completed_source_rejects_both_new_actions(self):
         self.complete()
@@ -332,7 +341,7 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
                    return_value=self.current_time + timedelta(days=1)):
             with self.assertRaises(HTTPException):
                 self.chat()
-            self.assertEqual(self.deliver(child), [])
+            self.assertEqual(self.deliver(child, outcome="skipped"), [])
         self.root.schedule_date -= timedelta(days=1)
         self.db.commit()
         with self.assertRaises(HTTPException):
@@ -345,7 +354,7 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
         for action in (self.snooze, self.chat):
             with self.assertRaises(HTTPException):
                 action()
-        self.assertEqual(self.deliver(child), [])
+        self.assertEqual(self.deliver(child, outcome="skipped"), [])
 
     def test_owner_and_slot_cannot_be_forged(self):
         with self.assertRaises(HTTPException):
@@ -371,7 +380,7 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
         child = self.snooze()["data"]["alert_id"]
         self.db.add(_UserSetting(user_hash="caregiver-a", caregiver_notifications_enabled=False))
         self.db.commit()
-        self.assertEqual(self.deliver(child), [])
+        self.assertEqual(self.deliver(child, outcome="skipped"), [])
 
     def test_no_active_tokens_means_no_fcm(self):
         child = self.snooze()["data"]["alert_id"]
@@ -430,6 +439,15 @@ class CaregiverMissedActionTest(MissedDoseAlertTest):
         config = Config(str(BACKEND_DIR / "alembic.ini"))
         with self.engine.begin() as connection:
             config.attributes["connection"] = connection
+            # The historical fixture also predates version-checked settings writes.
+            connection.exec_driver_sql("ALTER TABLE user_settings DROP COLUMN revision")
+            # Keep the historical fixture older than the care-history migration too.
+            connection.exec_driver_sql("DROP TABLE medication_care_audits")
+            connection.exec_driver_sql("DROP TABLE medication_care_operations")
+            for column in ("report_status", "actual_taken_at", "recorded_at", "reason", "revision"):
+                connection.exec_driver_sql(f"ALTER TABLE medication_completions DROP COLUMN {column}")
+            for column in ("dosing_mode", "regimen_revision", "regimen_effective_from", "stopped_on", "superseded_by_id"):
+                connection.exec_driver_sql(f"ALTER TABLE saved_medications DROP COLUMN {column}")
             command.stamp(config, "a6e2d903bc71")
             command.upgrade(config, "head")
 

@@ -2,6 +2,7 @@
 # Role: Configures environment-specific database connections and request-scoped SQLAlchemy sessions.
 from collections.abc import Generator
 from sqlalchemy import create_engine, event
+from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 from core.config import settings
@@ -75,3 +76,40 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+
+# Function Name: escape_like_literal
+# Description:
+# - Escapes backslash, percent and underscore so a text matches literally in SQL LIKE; callers
+#   add their own wildcards and pass escape="\\".
+# Parameters:
+# - text (str): Literal text to embed in a LIKE pattern.
+# Returns:
+# - Escaped text.
+def escape_like_literal(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+# Function Name: isolated_worker_session_policy
+# Description:
+# - Captures an Engine-only session factory from a request session so worker threads open their
+#   own sessions instead of borrowing a request-session connection.
+# - Also reports whether the engine is connection-local in-memory SQLite, where a worker session
+#   would see a different, empty database.
+# Parameters:
+# - db (Session | None): Request session whose bind supplies the engine; None has no engine.
+# Returns:
+# - tuple[sessionmaker | None, bool]: Worker session factory, or None without an engine, and
+#   whether the engine is in-memory SQLite.
+def isolated_worker_session_policy(
+    db: Session | None,
+) -> tuple[sessionmaker | None, bool]:
+    bind = db.get_bind() if db is not None else None
+    engine = bind.engine if isinstance(bind, Connection) else bind
+    worker_session_factory = sessionmaker(bind=engine) if engine is not None else None
+    uses_memory_sqlite = (
+        engine is not None
+        and engine.dialect.name == "sqlite"
+        and engine.url.database in {None, "", ":memory:"}
+    )
+    return worker_session_factory, uses_memory_sqlite

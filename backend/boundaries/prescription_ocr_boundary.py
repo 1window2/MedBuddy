@@ -9,6 +9,8 @@ from typing import Any
 from google import genai
 from google.genai import types
 
+from services.prescription_parser import PrescriptionAnalysisFormatError
+
 logger = logging.getLogger(__name__)
 
 # Class Name: GeminiPrescriptionTextClient
@@ -53,7 +55,9 @@ class GeminiPrescriptionTextClient:
         )
         response_text = response.text
         if not response_text or not response_text.strip():
-            raise ValueError("OCR text service returned an empty response.")
+            # An empty or safety-blocked reply is an upstream failure, not a bad request: the
+            # route answers 502 with a retry message instead of a 400 with this internal text.
+            raise PrescriptionAnalysisFormatError("OCR text service returned an empty response.")
         return response_text
 
 

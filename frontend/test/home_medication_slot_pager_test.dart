@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
+import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 import 'package:medbuddy_frontend/widgets/home_medication_slot_pager.dart';
 
@@ -115,7 +116,7 @@ void main() {
             }
             expect(_page(slots[index]), findsOneWidget);
             _expectActiveDot(tester, slots[index], slots: slots);
-            if (!caregiver) expect(find.text('복용 취소'), findsOneWidget);
+            if (!caregiver) expect(find.text('복용 완료 취소'), findsOneWidget);
           }
           await tester.drag(_pager, const Offset(-180, 0));
           await tester.pumpAndSettle();
@@ -243,7 +244,7 @@ void main() {
     expect(find.text('아침 저녁약'), findsOneWidget);
     expect(find.text('아침 · 복용 완료'), findsOneWidget);
     expect(tester.widget<FilledButton>(_completion).onPressed, isNotNull);
-    expect(find.text('복용 취소'), findsOneWidget);
+    expect(find.text('복용 완료 취소'), findsOneWidget);
     final height = tester.getSize(_pager).height;
     expect(height, lessThan(110));
     expect(find.byType(TabBar), findsNothing);
@@ -261,6 +262,7 @@ void main() {
     expect(find.text('저녁 · 미복용'), findsOneWidget);
     await tester.tap(_completion);
     await tester.pumpAndSettle();
+    await _confirmUndoIfAsked(tester);
     expect(recorded, ['evening:true']);
 
     await tester.drag(_pager, const Offset(-180, 0));
@@ -496,6 +498,55 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('임의로 추가 복용하지 말고'), findsNothing);
   });
+  // 함수이름: 오전/오후 표시 테스트
+  // 함수역할: 사용자 시각 형식 함수를 받으면 요약의 알림 시각을 그 형식으로 표시하는지 검증한다.
+  // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료.
+  testWidgets('알림 시각은 사용자의 오전/오후 설정을 따른다', (tester) async {
+    await _show(
+      tester,
+      initialSlot: 'evening',
+      alarms: const {
+        'evening': MedicationAlarm(
+          slotKey: 'evening',
+          hour: 18,
+          minute: 55,
+          enabled: true,
+        ),
+      },
+      timeFormatter: const UserSetting(timeFormat: '12h').formatTime,
+    );
+    expect(find.text('오후 6:55 · 아침 저녁약'), findsOneWidget);
+    expect(find.text('18:55 · 아침 저녁약'), findsNothing);
+  });
+
+  // 함수이름: 시간대 전체 취소 확인 테스트
+  // 함수역할: 기록 직후 같은 버튼을 다시 눌러도 확인 없이 시간대 전체 기록이 취소되지 않는지 검증한다.
+  // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료.
+  testWidgets('복용 완료 취소는 확인 후에만 저장하고 그대로 두기를 고르면 유지한다', (tester) async {
+    final writes = <String>[];
+    await _show(
+      tester,
+      onUpdate: (slot, completed) async {
+        writes.add('$slot:$completed');
+        return true;
+      },
+    );
+    expect(find.text('복용 완료 취소'), findsOneWidget);
+    await tester.tap(_completion);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('home-slot-undo-confirmation')), findsOneWidget);
+    expect(find.text('아침 복용 완료 기록을 모두 취소할까요?'), findsOneWidget);
+    await tester.tap(find.text('그대로 두기'));
+    await tester.pumpAndSettle();
+    expect(writes, isEmpty);
+    expect(find.text('아침 · 복용 완료'), findsOneWidget);
+    await tester.tap(_completion);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('home-slot-undo-confirm')));
+    await tester.pumpAndSettle();
+    expect(writes, ['morning:false']);
+  });
+
   // 함수이름: 기록 후 전환·취소 테스트
   // 함수역할: 다음 일정으로 이동한 뒤 이전 기록을 취소해도 같은 약의 다른 시간대가 바뀌지 않는지 검증한다.
   // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료.
@@ -525,6 +576,7 @@ void main() {
     await _show(tester, medicines: medicines, onUpdate: save);
     await tester.tap(_completion);
     await tester.pumpAndSettle();
+    await _confirmUndoIfAsked(tester);
     await _show(tester, medicines: medicines, onUpdate: save);
     expect(_page('lunch'), findsOneWidget);
     expect(find.text('복용했어요'), findsOneWidget);
@@ -532,10 +584,11 @@ void main() {
     await tester.drag(_pager, const Offset(180, 0));
     await tester.pumpAndSettle();
     expect(find.text('아침 · 복용 완료'), findsOneWidget);
-    expect(find.text('복용 취소'), findsOneWidget);
+    expect(find.text('복용 완료 취소'), findsOneWidget);
     _expectActiveDot(tester, 'morning', slots: ['morning', 'lunch']);
     await tester.tap(_completion);
     await tester.pumpAndSettle();
+    await _confirmUndoIfAsked(tester);
     await _show(tester, medicines: medicines, onUpdate: save);
     expect(_page('morning'), findsOneWidget);
     expect(find.text('아침 · 미복용'), findsOneWidget);
@@ -572,17 +625,20 @@ void main() {
     await _show(tester, medicines: medicines, onUpdate: save);
     await tester.tap(_completion);
     await tester.pumpAndSettle();
+    await _confirmUndoIfAsked(tester);
     await _show(tester, medicines: medicines, onUpdate: save);
     expect(_page('bedtime'), findsOneWidget);
     await tester.tap(_completion);
     await tester.pumpAndSettle();
+    await _confirmUndoIfAsked(tester);
     await _show(tester, medicines: medicines, onUpdate: save);
     expect(_page('bedtime'), findsOneWidget);
     expect(find.text('취침 전 · 복용 완료'), findsOneWidget);
-    expect(find.text('복용 취소'), findsOneWidget);
+    expect(find.text('복용 완료 취소'), findsOneWidget);
     expect(medicines.single.isSlotCompleted('evening'), isTrue);
     await tester.tap(_completion);
     await tester.pumpAndSettle();
+    await _confirmUndoIfAsked(tester);
     await _show(tester, medicines: medicines, onUpdate: save);
     expect(medicines.single.isSlotCompleted('morning'), isTrue);
     expect(medicines.single.isSlotCompleted('evening'), isTrue);
@@ -595,9 +651,10 @@ void main() {
     // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료.
     testWidgets('저장 실패 시 완료·취소 상태와 시간대를 그대로 유지한다: $slot', (tester) async {
       await _show(tester, initialSlot: slot, onUpdate: (_, _) async => false);
-      final label = slot == 'morning' ? '복용 취소' : '복용했어요';
+      final label = slot == 'morning' ? '복용 완료 취소' : '복용했어요';
       await tester.tap(_completion);
       await tester.pumpAndSettle();
+      await _confirmUndoIfAsked(tester);
       expect(_page(slot), findsOneWidget);
       expect(find.text(label), findsOneWidget);
       expect(tester.widget<FilledButton>(_completion).onPressed, isNotNull);
@@ -632,6 +689,16 @@ void main() {
 //   onUpdate/onDetails: 기록·조회 대역, isLoading/hasError: 조회 상태,
 //   language/scale/compact: 언어·글씨 배율·간결한 배치, initialSlot: 초기 시간대.
 // 반환값: 화면 구성과 한 프레임 갱신을 완료하는 Future<void>.
+// 함수이름: _confirmUndoIfAsked
+// 함수역할: 시간대 전체 복용 완료 취소 확인 창이 열렸으면 취소를 확정한다. 창이 없으면 아무것도 하지 않는다.
+// 매개변수: tester: 화면 조작 도구. 반환값: 비동기 조작 완료.
+Future<void> _confirmUndoIfAsked(WidgetTester tester) async {
+  final confirm = find.byKey(const Key('home-slot-undo-confirm'));
+  if (confirm.evaluate().isEmpty) return;
+  await tester.tap(confirm);
+  await tester.pumpAndSettle();
+}
+
 Future<void> _show(
   WidgetTester tester, {
   ThemeData? theme,
@@ -645,6 +712,7 @@ Future<void> _show(
   double scale = 1,
   String initialSlot = 'morning',
   Map<String, MedicationAlarm>? alarms,
+  String Function(int hour, int minute)? timeFormatter,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -669,6 +737,7 @@ Future<void> _show(
             onStatusUpdateRequested: onUpdate,
             showDetailsButton: onUpdate == null && onDetails != null,
             onDetailsRequested: onDetails,
+            timeFormatter: timeFormatter,
           ),
         ),
       ),

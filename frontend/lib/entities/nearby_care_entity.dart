@@ -157,15 +157,15 @@ class NearbyCarePlace {
               (json['departments'] as List).whereType<String>(),
             )
           : const [],
-      institutionType: _readNullableString(json['institution_type']),
+      institutionType: readJsonTextOrNull(json['institution_type']),
       name: readJsonText(json['name']),
       address: readJsonText(json['address']),
       telephone: readJsonText(json['telephone']),
-      latitude: _readDouble(json['latitude']),
-      longitude: _readDouble(json['longitude']),
-      distanceKm: _readDouble(json['distance_km']),
-      todayOpenTime: _readNullableString(json['today_open_time']),
-      todayCloseTime: _readNullableString(json['today_close_time']),
+      latitude: readJsonDouble(json['latitude']) ?? 0,
+      longitude: readJsonDouble(json['longitude']) ?? 0,
+      distanceKm: readJsonDouble(json['distance_km']) ?? 0,
+      todayOpenTime: readJsonTextOrNull(json['today_open_time']),
+      todayCloseTime: readJsonTextOrNull(json['today_close_time']),
       isOpenNow: json['is_open_now'] is bool
           ? json['is_open_now'] as bool
           : null,
@@ -180,10 +180,10 @@ class NearbyCarePlace {
       isOfficialLateNight:
           json['is_official_late_night'] is bool &&
           json['is_official_late_night'] as bool,
-      designationSourceName: _readNullableString(
+      designationSourceName: readJsonTextOrNull(
         json['designation_source_name'],
       ),
-      designationSourceUrl: _readNullableString(json['designation_source_url']),
+      designationSourceUrl: readJsonTextOrNull(json['designation_source_url']),
       designationVerifiedAt: readJsonDate(json['designation_verified_at']),
       designationIsStale:
           json['designation_is_stale'] is bool &&
@@ -217,30 +217,6 @@ class NearbyCarePlace {
       return '${(distanceKm * 1000).round()}m';
     }
     return '${distanceKm.toStringAsFixed(distanceKm < 10 ? 1 : 0)}km';
-  }
-
-  // 함수이름: _readNullableString
-  // 함수역할: 입력의 공백을 정리하고 없거나 비어 있으면 null로 처리한다.
-  // 매개변수:
-  // - value (dynamic): 반환 타입의 값으로 해석할 변환 전 응답 필드
-  // 반환값:
-  // - String?: 공백 정리한 문자열; 없거나 비어 있으면 null.
-  static String? _readNullableString(dynamic value) {
-    final normalized = readJsonText(value);
-    return normalized.isEmpty ? null : normalized;
-  }
-
-  // 함수이름: _readDouble
-  // 함수역할: 숫자 또는 숫자 문자열을 실수로 변환하고 실패하면 0을 사용한다.
-  // 매개변수:
-  // - value (dynamic): 반환 타입의 값으로 해석할 변환 전 응답 필드
-  // 반환값:
-  // - double: 숫자 또는 숫자 문자열을 실수로 변환하고 실패하면 0을 사용한다.
-  static double _readDouble(dynamic value) {
-    if (value is num) {
-      return value.toDouble();
-    }
-    return double.tryParse(value?.toString() ?? '') ?? 0;
   }
 }
 

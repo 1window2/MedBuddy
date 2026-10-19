@@ -2,10 +2,14 @@
 // 역할: 일정 조회·알림 설정의 저장과 취소·기존 화면 배치·복약 완료를 검증한다.
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show SemanticsNode;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:medbuddy_frontend/controls/medication_history_control.dart';
 import 'package:medbuddy_frontend/boundaries/check_schedule_ui_boundary.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/boundaries/health_recommendation_ui_boundary.dart';
@@ -26,6 +30,38 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'support/dose_sync_harness.dart';
 import 'support/fake_controls.dart';
 import 'support/fake_notification_service.dart';
+
+// 일정의 정기 약과 필요시 약 조회를 모두 격리해 실제 서버에 접근하지 않는다.
+MedicationHistoryControl _historyControl({bool withPrn = false}) {
+  final control = MedicationHistoryControl(
+    patientHash: 'test-patient',
+    sessionKeyProvider: () => 'test-user',
+    client: MockClient(
+      (request) async => http.Response(
+        jsonEncode({
+          'start_date': request.url.queryParameters['start_date'],
+          'end_date': request.url.queryParameters['end_date'],
+          'items': [],
+          'medications': withPrn
+              ? [
+                  {
+                    'id': 2,
+                    'item_name': 'Test PRN',
+                    'dosing_mode': 'as_needed',
+                    'can_record_as_needed': true,
+                    'dosage_per_time': '1 tablet',
+                  },
+                ]
+              : [],
+        }),
+        200,
+        headers: {'content-type': 'application/json'},
+      ),
+    ),
+  );
+  addTearDown(control.dispose);
+  return control;
+}
 
 // Class Name: _FailOnceCheckSchedule
 // Role: Schedule stub that fails its first read and then permits a successful retry.
@@ -422,7 +458,7 @@ Future<MedBuddyViewModel> _pumpReminderSchedule(
           ).copyWith(textScaler: TextScaler.linear(textScale)),
           child: child!,
         ),
-        home: const CheckScheduleUI(),
+        home: CheckScheduleUI(asNeededControl: _historyControl()),
       ),
     ),
   );
@@ -476,7 +512,10 @@ Future<DoseSyncHarness> _pumpDoseSchedule(
           ).copyWith(accessibleNavigation: accessibleNavigation),
           child: child!,
         ),
-        home: CheckScheduleUI(showBackButton: showBackButton),
+        home: CheckScheduleUI(
+          showBackButton: showBackButton,
+          asNeededControl: _historyControl(),
+        ),
       ),
     ),
   );
@@ -636,7 +675,9 @@ void main() {
     await tester.pumpWidget(
       ChangeNotifierProvider<MedBuddyViewModel>.value(
         value: viewModel,
-        child: const MaterialApp(home: CheckScheduleUI()),
+        child: MaterialApp(
+          home: CheckScheduleUI(asNeededControl: _historyControl()),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -672,7 +713,9 @@ void main() {
     await tester.pumpWidget(
       ChangeNotifierProvider<MedBuddyViewModel>.value(
         value: viewModel,
-        child: const MaterialApp(home: CheckScheduleUI()),
+        child: MaterialApp(
+          home: CheckScheduleUI(asNeededControl: _historyControl()),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -686,6 +729,47 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  for (final hasRegular in [false, true]) {
+    testWidgets(
+      'PRN is visible without adding planned progress regular=$hasRegular',
+      (tester) async {
+        final viewModel = MedBuddyViewModel(
+          checkSchedule: hasRegular
+              ? _ActiveCheckSchedule()
+              : EmptyCheckSchedule(),
+          setNotification: EmptySetNotification(),
+        );
+        addTearDown(viewModel.dispose);
+        await tester.pumpWidget(
+          ChangeNotifierProvider<MedBuddyViewModel>.value(
+            value: viewModel,
+            child: MaterialApp(
+              home: CheckScheduleUI(
+                asNeededControl: _historyControl(withPrn: true),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('schedule-prn-take-2')),
+          200,
+        );
+        expect(find.text('Test PRN'), findsOneWidget);
+        expect(find.text('오늘 복용할 약이 없습니다'), findsNothing);
+        expect(
+          viewModel.todayMedicationProgress.totalCount,
+          hasRegular ? 1 : 0,
+        );
+        expect(
+          viewModel.todayMedicationScheduleList.any((item) => item.isAsNeeded),
+          isFalse,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   // 함수이름: testWidgets 콜백
   // 함수역할:
@@ -704,7 +788,9 @@ void main() {
     await tester.pumpWidget(
       ChangeNotifierProvider<MedBuddyViewModel>.value(
         value: viewModel,
-        child: const MaterialApp(home: CheckScheduleUI()),
+        child: MaterialApp(
+          home: CheckScheduleUI(asNeededControl: _historyControl()),
+        ),
       ),
     );
     await tester.pump();
@@ -774,7 +860,7 @@ void main() {
             ).copyWith(textScaler: const TextScaler.linear(1.3)),
             child: child!,
           ),
-          home: const CheckScheduleUI(),
+          home: CheckScheduleUI(asNeededControl: _historyControl()),
         ),
       ),
     );
@@ -805,7 +891,9 @@ void main() {
     await tester.pumpWidget(
       ChangeNotifierProvider<MedBuddyViewModel>.value(
         value: viewModel,
-        child: const MaterialApp(home: CheckScheduleUI()),
+        child: MaterialApp(
+          home: CheckScheduleUI(asNeededControl: _historyControl()),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -1141,29 +1229,30 @@ void main() {
 
   // 켜 둔 알림이 있는데 기기가 정확한 알람을 막고 있으면 일정 화면에서 허용 방법을 안내하고, 꺼 둔 경우에는 안내하지 않는다.
   for (final enabled in [true, false]) {
-    testWidgets('exact-alarm notice follows the reminder switch (enabled=$enabled)', (
-      tester,
-    ) async {
-      final notificationService = RecordingNotificationService()
-        ..exactRemindersAllowed = false;
-      await _pumpReminderSchedule(
-        tester,
-        _MutableSetNotification(enabled: enabled),
-        notificationService: notificationService,
-      );
+    testWidgets(
+      'exact-alarm notice follows the reminder switch (enabled=$enabled)',
+      (tester) async {
+        final notificationService = RecordingNotificationService()
+          ..exactRemindersAllowed = false;
+        await _pumpReminderSchedule(
+          tester,
+          _MutableSetNotification(enabled: enabled),
+          notificationService: notificationService,
+        );
 
-      expect(
-        find.byKey(const Key('exact-reminder-notice')),
-        enabled ? findsOneWidget : findsNothing,
-      );
-      if (!enabled) return;
-      // 허용하고 돌아오면 예약을 정확한 알람으로 바꾸고 안내를 지운다.
-      notificationService.exactPermissionAfterRequest = true;
-      await tester.tap(find.byKey(const Key('exact-reminder-allow')));
-      await tester.pumpAndSettle();
-      expect(notificationService.exactRescheduleCount, 1);
-      expect(find.byKey(const Key('exact-reminder-notice')), findsNothing);
-    });
+        expect(
+          find.byKey(const Key('exact-reminder-notice')),
+          enabled ? findsOneWidget : findsNothing,
+        );
+        if (!enabled) return;
+        // 허용하고 돌아오면 예약을 정확한 알람으로 바꾸고 안내를 지운다.
+        notificationService.exactPermissionAfterRequest = true;
+        await tester.tap(find.byKey(const Key('exact-reminder-allow')));
+        await tester.pumpAndSettle();
+        expect(notificationService.exactRescheduleCount, 1);
+        expect(find.byKey(const Key('exact-reminder-notice')), findsNothing);
+      },
+    );
   }
 
   // 함수이름: 알림 설정 큰 글씨 테스트
@@ -1232,7 +1321,10 @@ void main() {
                 ).copyWith(textScaler: const TextScaler.linear(2)),
                 child: child!,
               ),
-              home: CheckScheduleUI(showBackButton: showBackButton),
+              home: CheckScheduleUI(
+                showBackButton: showBackButton,
+                asNeededControl: _historyControl(),
+              ),
             ),
           ),
         );
@@ -1311,7 +1403,9 @@ void main() {
     await tester.pumpWidget(
       ChangeNotifierProvider<MedBuddyViewModel>.value(
         value: model,
-        child: const MaterialApp(home: CheckScheduleUI()),
+        child: MaterialApp(
+          home: CheckScheduleUI(asNeededControl: _historyControl()),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -1394,6 +1488,40 @@ void main() {
   // 함수이름: 복용 실행 취소 테스트
   // 함수역할: tester로 완료 안내의 실행 취소를 누르면 취소 기록이 완료 기록 뒤에 저장되고 화면이
   //   미복용으로 돌아가는지 검증한다. 반환값: 검증 완료.
+  // 화면 낭독기는 약 이름과 복용 여부를 읽고, 동작은 힌트로 안내해야 한다.
+  testWidgets('복용 체크는 약 이름·복용 여부·동작을 화면 낭독기에 알린다', (tester) async {
+    final semantics = tester.ensureSemantics();
+    final checkSchedule = _MorningDoseCheckSchedule();
+    final harness = await _pumpDoseSchedule(tester, checkSchedule);
+    SemanticsNode toggle() => tester.getSemantics(
+      find.byKey(const ValueKey('scheduleMedicationStatusToggle_91')),
+    );
+    expect(
+      toggle(),
+      isSemantics(
+        label: '테스트정',
+        hint: '복용 완료',
+        hasCheckedState: true,
+        isChecked: false,
+      ),
+    );
+
+    await tester.tap(find.byTooltip('복용 완료'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      toggle(),
+      isSemantics(
+        label: '테스트정',
+        hint: '복용 완료 취소',
+        hasCheckedState: true,
+        isChecked: true,
+      ),
+    );
+    await _closeDoseSchedule(tester, harness);
+    semantics.dispose();
+  });
+
   testWidgets('완료 안내의 실행 취소는 취소 기록을 이어서 저장한다', (tester) async {
     final checkSchedule = _MorningDoseCheckSchedule();
     final harness = await _pumpDoseSchedule(tester, checkSchedule);
@@ -1430,11 +1558,26 @@ void main() {
     // 저장소가 닫혀 기록할 수 없는 상태를 만든다.
     await harness.store.db.close();
 
+    // 약별 복용 완료 체크는 최소 48dp 터치 영역을 가진다.
+    final toggle = tester.getSize(
+      find.descendant(
+        of: find.byTooltip('복용 완료'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    expect(toggle.width, greaterThanOrEqualTo(48));
+    expect(toggle.height, greaterThanOrEqualTo(48));
+
     await tester.tap(find.byTooltip('복용 완료'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('복약 상태를 변경하지 못했습니다.'), findsOneWidget);
+    // 실패 안내는 성공 안내(5초)보다 먼저 사라지지 않는다.
+    expect(
+      tester.widget<SnackBar>(find.byType(SnackBar)).duration,
+      greaterThanOrEqualTo(const Duration(seconds: 5)),
+    );
     expect(find.byTooltip('복용 완료'), findsOneWidget);
     expect(find.byTooltip('복용 완료 취소'), findsNothing);
     expect(harness.queued, isEmpty);
@@ -1492,7 +1635,17 @@ void main() {
       isTrue,
     );
 
+    // 시간대 전체 해제는 홈과 같이 먼저 확인한다. 유지를 고르면 아무것도 바꾸지 않는다.
     await tester.tap(wholeSlotButton);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('schedule-slot-undo-confirmation')), findsOneWidget);
+    expect(find.text('아침 복용 완료 기록을 모두 취소할까요?'), findsOneWidget);
+    await tester.tap(find.text('그대로 두기'));
+    await tester.pumpAndSettle();
+    expect(harness.queued, hasLength(1));
+    await tester.tap(wholeSlotButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('schedule-slot-undo-confirm')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 

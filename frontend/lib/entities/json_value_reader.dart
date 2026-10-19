@@ -18,6 +18,54 @@ String readJsonText(dynamic value) => value?.toString().trim() ?? '';
 int? readJsonInt(dynamic value) =>
     value is int ? value : int.tryParse(readJsonText(value));
 
+// Function Name: readJsonTruncatedInt
+// Description: Reads an integer field sent as a number or numeric text, truncating a fractional number toward zero.
+// Parameters:
+// - value (dynamic): Raw JSON field value.
+// Returns:
+// - The integer, the truncated value of another number, or null when the value is absent or not numeric text.
+int? readJsonTruncatedInt(dynamic value) {
+  if (value is int) {
+    return value;
+  }
+  if (value is num) {
+    return value.toInt();
+  }
+  return int.tryParse(readJsonText(value));
+}
+
+// Function Name: readJsonDouble
+// Description: Reads a decimal field sent as a number or numeric text.
+// Parameters:
+// - value (dynamic): Raw JSON field value.
+// Returns:
+// - The number as a double, or null when the value is absent or not numeric text.
+double? readJsonDouble(dynamic value) =>
+    value is num ? value.toDouble() : double.tryParse(readJsonText(value));
+
+// Function Name: readJsonTextOr
+// Description: Converts a field value to trimmed text and substitutes the caller's fallback when nothing is left.
+// Parameters:
+// - value (dynamic): Raw JSON field value.
+// - fallback (String): Text used when the value is absent or blank.
+// Returns:
+// - The trimmed text, or the fallback when it is empty.
+String readJsonTextOr(dynamic value, String fallback) {
+  final text = readJsonText(value);
+  return text.isEmpty ? fallback : text;
+}
+
+// Function Name: readJsonTextOrNull
+// Description: Converts a field value to trimmed text and treats an absent or blank value as missing.
+// Parameters:
+// - value (dynamic): Raw JSON field value.
+// Returns:
+// - The trimmed text, or null when it is empty.
+String? readJsonTextOrNull(dynamic value) {
+  final text = readJsonText(value);
+  return text.isEmpty ? null : text;
+}
+
 // Function Name: readJsonBool
 // Description: Reads a flag sent as a boolean, a number or true/1/yes text.
 // Parameters:

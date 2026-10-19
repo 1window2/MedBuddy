@@ -9,8 +9,11 @@ import '../widgets/medbuddy_preference_row.dart';
 import 'package:provider/provider.dart';
 
 import 'check_medication_detail_ui_boundary.dart';
+import 'medication_regimen_editor_ui_boundary.dart';
+import '../controls/check_saved_medication_control.dart';
 import 'medication_registration_flow.dart';
 import '../entities/medication_detail_entity.dart';
+import '../entities/medication_history_entity.dart';
 import '../entities/medication_image_url_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
@@ -98,7 +101,8 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
   _SavedMedicationSortMode _sortMode = _SavedMedicationSortMode.registeredDate;
   _SavedMedicationSortDirection _sortDirection =
       _SavedMedicationSortDirection.descending;
-  _SavedMedicationFilterMode _filterMode = _SavedMedicationFilterMode.active;
+  // 복약함은 보관 목록이므로 중단·종료된 약도 삭제 전까지 기본 목록에 남긴다.
+  _SavedMedicationFilterMode _filterMode = _SavedMedicationFilterMode.all;
 
   // Function Name: initState
   // Description: Requests saved medications from the view model after the first frame.
@@ -536,11 +540,47 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
         // 함수역할: 약 사진을 연다. 매개변수: medication은 대상 약. 반환값: 없음.
         onImageRequested: (medication) =>
             _showMedicationImage(medication: medication, text: text),
+        onRegimenRequested: (medication, action) =>
+            _editRegimen(medication, action, viewModel),
         // 함수역할: 날짜 묶음 삭제를 확인한다. 매개변수: 없음. 반환값: 삭제 처리 완료.
         onDeleteRequested: () => _confirmAndDeleteMedicationGroup(
           viewModel: viewModel,
           group: groups[index],
           text: text,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _editRegimen(
+    MedicationDetail medication,
+    MedicationRegimenAction action,
+    MedBuddyViewModel viewModel,
+  ) async {
+    if (medication.id == null || _isDeleting) return;
+    final result = await Navigator.of(context).push<MedicationRegimenResult>(
+      MaterialPageRoute(
+        builder: (_) => MedicationRegimenEditorUI(
+          medication: medication,
+          action: action,
+          isEnglish: isEnglishLanguage(viewModel.userSetting.language),
+          onSubmit: (change) =>
+              viewModel.changeMedicationRegimen(medication.id!, change),
+        ),
+      ),
+    );
+    if (!mounted || result == null) return;
+    // 중단 직후 약이 사라져 삭제로 오해하지 않도록 결과를 전체 목록에서 보여준다.
+    if (action == MedicationRegimenAction.stop) {
+      setState(() {
+        _filterMode = _SavedMedicationFilterMode.all;
+        _selectedMedicationIds.clear();
+      });
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          result.message(isEnglishLanguage(viewModel.userSetting.language)),
         ),
       ),
     );
@@ -554,7 +594,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
   List<MedicationDetail> _filterMedicationList(
     List<MedicationDetail> medications,
   ) {
-    final today = DateTime.now();
+    final today = MedicationHistoryDates.today(DateTime.now());
     return medications
         // 함수이름: _filterMedicationList.where callback
         // 함수역할: 저장 약품의 날짜별 조회·필터·선택 삭제에 대해 `switch (_filterMode) {_SavedMedicationFilterMode.active => medication.isActiveOn(today), _SavedMedicationFilterMode.ended ...` 조건으로 컬렉션 항목을 판별한다.
@@ -568,10 +608,17 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
           return switch (_filterMode) {
             _SavedMedicationFilterMode.active => medication.isActiveOn(today),
             _SavedMedicationFilterMode.ended =>
-              medication.medicationEndDate != null &&
-                  medication.medicationEndDate!.isBefore(
-                    DateTime(today.year, today.month, today.day),
-                  ),
+              // 중단일과 today의 시간대 형식이 달라도 연·월·일만 비교한다.
+              (medication.stoppedOn != null &&
+                      !DateTime(
+                        medication.stoppedOn!.year,
+                        medication.stoppedOn!.month,
+                        medication.stoppedOn!.day,
+                      ).isAfter(DateTime(today.year, today.month, today.day))) ||
+                  (medication.medicationEndDate != null &&
+                      medication.medicationEndDate!.isBefore(
+                        DateTime(today.year, today.month, today.day),
+                      )),
             _SavedMedicationFilterMode.all => true,
           };
         })
@@ -633,7 +680,8 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
         context: context,
         barrierColor: Colors.black.withAlpha(115),
         // 함수역할: 기존 삭제 확인을 표시한다. 매개변수: context. 반환값: 확인 창.
-        builder: (context) => _DeleteConfirmationDialog(text: text),
+        builder: (context) =>
+            _DeleteConfirmationDialog(text: text, count: ids.length),
       );
       if (!mounted || shouldDelete != true) return;
       // 확인 중 조회 결과가 바뀌어도 숨겨진 약을 삭제하지 않는다.

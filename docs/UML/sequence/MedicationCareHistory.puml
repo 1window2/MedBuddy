@@ -1,0 +1,120 @@
+@startuml
+title Medication Lifecycle and Reported Intake History
+hide footbox
+skinparam defaultFontName Malgun Gothic
+skinparam maxMessageSize 120
+skinparam sequenceMessageAlign center
+actor Patient
+actor Caregiver
+boundary "Pillbox / History" as UI
+control "Saved-medication feature /\nMedicationHistoryControl" as Front
+boundary "medication_care_router" as API
+control "ManageMedicationCare" as Care
+participant "AuthorizationControl /\naccount + medication locks" as Auth
+database "saved_medications / medication_completions\nmedication_care_audits / medication_care_operations" as DB
+participant "Schedule / Notifications / Widget" as Schedule
+boundary "Android FileProvider / share chooser" as Share
+
+== Versioned regimen change ==
+Patient -> UI: Edit / stop / replace + effective date
+UI -> UI: Confirm prescription instructions and change
+UI -> Front: Immutable change / expected revision / operation UUID
+Front -> API: POST /care/medications/{id}/change
+API -> Care: change_medication(principal, id, request)
+Care -> Auth: Patient-only scope; active account; lock owned medication
+Care -> DB: Check receipt and request fingerprint
+alt Identical successful retry
+  DB --> Care: Original response; no second change
+else New operation
+  Care -> Care: Check expected revision, effective date and recorded-dose boundary
+  alt Valid edit / replacement
+    Care -> DB: End old regimen before effective date; add new snapshot
+    Care -> DB: Commit snapshots + audit + receipt atomically
+  else Valid stop
+    Care -> DB: Preserve earlier reports, including today's existing reports
+    Care -> DB: Commit stop + audit + receipt atomically
+  else Invalid date / stale revision / records at or after changed boundary
+    Care --> API: Reject; rollback; conflict requires reload or later date
+  end
+end
+opt Successful response (new change or identical retry)
+  Care --> API: Medication ID + revision
+  API --> Front: Acknowledged result
+  Front -> Schedule: Refresh saved list and schedule, then reconcile reminders
+  Front --> UI: Saved; distinguish failed refresh from failed mutation
+end
+note over Care,DB
+  MedicationCoursePolicy applies effective dates and course boundaries.
+  Renaming clears old product-specific guidance and image.
+  PRN remains saved but never produces automatic scheduled slots.
+end note
+
+== Dated review and correction ==
+Patient -> UI: Open dated history
+Caregiver -> UI: Open linked patient's history (read-only)
+UI -> Front: load(range)
+Front -> API: GET /care/history (dates, patient scope)
+API -> Care: history(...)
+Care -> Auth: Owner or active linked caregiver; active account
+Care -> Care: At most 31 days within last 90 Korea dates
+Care -> DB: Read persisted reports and due scheduled slots
+Care --> API: Current reports + medications + PRN eligibility
+API --> Front: Taken / skipped / unrecorded; actual / recorded times
+Front --> UI: Session-validated snapshot
+Patient -> UI: Correct report; PRN retains original event UUID
+UI -> Front: save(change) with expected revision + stable operation UUID
+Front -> API: PUT /care/history/{id}/{date}/{slot}
+API -> Care: update_history(...)
+Care -> Auth: Require patient write access
+Care -> DB: Replay identical receipt or validate current report revision
+Care -> Care: Validate date / slot / actual time; reject future time
+Care -> DB: apply_completion_report(): report + before/after audit + receipt
+Care -> DB: Commit; today's transitions use existing caregiver outbox
+Care --> API: Confirm current report
+API --> Front: ACK; clear stale snapshot
+Front --> UI: Saved only after ACK
+UI -> Schedule: Refresh after acknowledged change
+note over Front,DB
+  Existing completion / undo / chat / offline-sync paths share report state.
+  History corrections are online, not another durable offline queue.
+  Actual time does not move the scheduled date; legacy actual time stays unknown.
+  Skipped is incomplete and does not cancel scheduled reminders.
+end note
+
+== Selected-period export ==
+Patient -> UI: Open export (also available to linked reader)
+UI --> Patient: Start/end dates, range limit and short health-data notice
+Patient -> UI: Choose start/end dates; no export fetch yet
+note over UI,Front
+  Daily-screen status summary stays scoped to the displayed day.
+  Export dialog does not show period summaries or status counts.
+end note
+Patient -> UI: Select Share CSV
+UI -> Front: readRangeForExport(range)
+Front -> API: GET selected range; server rechecks current access
+alt Read fails
+  API --> Front: Error
+  Front --> UI: Keep dialog open with retry error; no sharing
+else Snapshot loaded
+  API --> Front: Current selected-period snapshot
+  Front -> Front: Verify session after read
+  Front --> UI: Export snapshot
+  opt Same session and dialog route still active
+    UI -> UI: Close export dialog with confirmed result
+    UI -> UI: Recheck session; generate CSV with period/status totals
+    UI -> UI: Quote cells and escape formula prefixes
+    alt Android sharing supported
+      UI -> Share: UTF-8 CSV via restricted temporary content URI
+      Share --> UI: Chooser opened, not delivery confirmation
+    else Native sharing unsupported
+      UI --> Patient: Separate consent to copy CSV text
+    end
+  end
+end
+note over UI,Share
+  Summary metadata and status totals are in CSV, not the export dialog.
+  No internal account IDs or unrelated medications in CSV.
+  Cancelling sends nothing through MedBuddy; external copies cannot be recalled.
+  Session changes invalidate open edits and exports.
+end note
+@enduml

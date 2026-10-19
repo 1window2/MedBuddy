@@ -2,7 +2,7 @@
 # Role: Stores and searches the normalized nationwide pharmacy catalogue.
 
 import math
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import bindparam, func, select, update
 from sqlalchemy.engine import Row
@@ -20,8 +20,25 @@ from entities.pharmacy_catalog_entity import (
     PharmacyHolidayScheduleRecord,
     PharmacySearchCacheRecord,
 )
+from entities.user_account_entity import utc_now
 
 _SEARCH_CACHE_MAX_AGE = timedelta(hours=24)
+
+
+# Function Name: _holiday_month_window
+# Description:
+# - Computes the date range of one calendar month so the holiday reader and writer use the
+#   same bounds.
+# Parameters:
+# - year (int): Calendar year of the holiday month.
+# - month (int): Calendar month, from 1 through 12.
+# Returns:
+# - tuple[date, date]: The first day of the month and the first day of the next month, as an
+#   inclusive start and an exclusive end; ValueError for a month outside 1 through 12.
+def _holiday_month_window(year: int, month: int) -> tuple[date, date]:
+    start = date(year, month, 1)
+    end = date(year + (month == 12), 1 if month == 12 else month + 1, 1)
+    return start, end
 
 
 # Function Name: match_official_designation
@@ -97,7 +114,7 @@ class PharmacyCatalogRepository:
         if row is not None:
             return self._to_entry(row)
         cached = self.db.get(PharmacySearchCacheRecord, pharmacy_id)
-        cutoff = datetime.now(UTC).replace(tzinfo=None) - _SEARCH_CACHE_MAX_AGE
+        cutoff = utc_now() - _SEARCH_CACHE_MAX_AGE
         if cached is None or cached.fetched_at <= cutoff:
             return None
         return PharmacyCatalogEntry(
@@ -113,7 +130,7 @@ class PharmacyCatalogRepository:
     # 매개변수: pharmacies 서버가 공공 API에서 조회·검증한 결과. 반환값: 없음.
     def cache_search_results(self, pharmacies: list[NearbyPharmacy]) -> None:
         """중복 검색은 같은 행을 갱신하며 카탈로그 개수·갱신 시각은 바꾸지 않는다."""
-        now = datetime.now(UTC).replace(tzinfo=None)
+        now = utc_now()
         try:
             self.db.query(PharmacySearchCacheRecord).filter(
                 PharmacySearchCacheRecord.fetched_at <= now - _SEARCH_CACHE_MAX_AGE,
@@ -350,7 +367,7 @@ class PharmacyCatalogRepository:
         fetch = self.db.get(PharmacyHolidayFetchRecord, value)
         if fetch is None:
             return None
-        cutoff = datetime.now(UTC).replace(tzinfo=None) - max_age
+        cutoff = utc_now() - max_age
         if fetch.fetched_at < cutoff:
             return None
         rows = (
@@ -403,7 +420,7 @@ class PharmacyCatalogRepository:
                 fetch = PharmacyHolidayFetchRecord(schedule_date=value)
                 self.db.add(fetch)
             fetch.row_count = len(schedules)
-            fetch.fetched_at = datetime.now(UTC).replace(tzinfo=None)
+            fetch.fetched_at = utc_now()
             self.db.commit()
         except Exception:
             self.db.rollback()
@@ -429,11 +446,10 @@ class PharmacyCatalogRepository:
         fetch = self.db.get(KoreanHolidayMonthFetchRecord, month_key)
         if fetch is None:
             return None
-        cutoff = datetime.now(UTC).replace(tzinfo=None) - max_age
+        cutoff = utc_now() - max_age
         if fetch.fetched_at < cutoff:
             return None
-        start = date(year, month, 1)
-        end = date(year + (month == 12), 1 if month == 12 else month + 1, 1)
+        start, end = _holiday_month_window(year, month)
         rows = (
             self.db.query(KoreanHolidayRecord)
             .filter(
@@ -460,8 +476,7 @@ class PharmacyCatalogRepository:
         holidays: frozenset[date],
     ) -> None:
         month_key = f"{year:04d}-{month:02d}"
-        start = date(year, month, 1)
-        end = date(year + (month == 12), 1 if month == 12 else month + 1, 1)
+        start, end = _holiday_month_window(year, month)
         try:
             (
                 self.db.query(KoreanHolidayRecord)
@@ -478,7 +493,7 @@ class PharmacyCatalogRepository:
                 fetch = KoreanHolidayMonthFetchRecord(month_key=month_key)
                 self.db.add(fetch)
             fetch.row_count = len(holidays)
-            fetch.fetched_at = datetime.now(UTC).replace(tzinfo=None)
+            fetch.fetched_at = utc_now()
             self.db.commit()
         except Exception:
             self.db.rollback()

@@ -153,13 +153,15 @@ class _MedicationImageDialog extends StatelessWidget {
 // - 부모가 전달한 표시값과 동작을 반영해 약품 삭제 확정·취소 선택 위젯을 구성한다.
 class _DeleteConfirmationDialog extends StatelessWidget {
   final _SavedMedicationText text;
+  final int count;
 
   // 함수이름: _DeleteConfirmationDialog
   // 함수역할: 약품 삭제 확정·취소 선택에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - text (_SavedMedicationText): 해당 화면 구역의 언어별 표시 문구.
+  // - count (int): 삭제할 약 개수. 확인 문구에 표시한다.
   // 반환값: 입력 설정이 반영된 _DeleteConfirmationDialog 인스턴스.
-  const _DeleteConfirmationDialog({required this.text});
+  const _DeleteConfirmationDialog({required this.text, required this.count});
 
   // 함수이름: build
   // 함수역할: 현재 입력값과 상태를 반영해 약품 삭제 확정·취소 선택 화면을 구성한다.
@@ -192,7 +194,7 @@ class _DeleteConfirmationDialog extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              text.deleteMessage,
+              text.deleteMessage(count),
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: MedBuddyColors.textStrong,
@@ -204,28 +206,7 @@ class _DeleteConfirmationDialog extends StatelessWidget {
             const SizedBox(height: 26),
             Row(
               children: [
-                Expanded(
-                  child: OutlinedButton(
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(56),
-                      foregroundColor: MedBuddyColors.danger,
-                      side: const BorderSide(color: MedBuddyColors.outline),
-                      textStyle: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                    // 함수이름: build.onPressed callback
-                    // 함수역할: `Navigator.pop(context, true)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-                    // 매개변수:
-                    // - 없음.
-                    // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-                    onPressed: () => Navigator.pop(context, true),
-                    child: Text(text.yes),
-                  ),
-                ),
-                const SizedBox(width: 14),
+                // 다른 확인 대화상자와 같이 취소를 왼쪽, 삭제를 오른쪽에 둔다.
                 Expanded(
                   child: OutlinedButton(
                     style: OutlinedButton.styleFrom(
@@ -244,7 +225,29 @@ class _DeleteConfirmationDialog extends StatelessWidget {
                     // - 없음.
                     // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
                     onPressed: () => Navigator.pop(context, false),
-                    child: Text(text.no),
+                    child: Text(text.cancelAction),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(56),
+                      foregroundColor: MedBuddyColors.danger,
+                      side: const BorderSide(color: MedBuddyColors.outline),
+                      textStyle: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                    // 함수이름: build.onPressed callback
+                    // 함수역할: `Navigator.pop(context, true)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
+                    // 매개변수:
+                    // - 없음.
+                    // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
+                    onPressed: () => Navigator.pop(context, true),
+                    child: Text(text.deleteAction),
                   ),
                 ),
               ],
@@ -259,7 +262,7 @@ class _DeleteConfirmationDialog extends StatelessWidget {
 // 클래스명: _SavedMedicationGroup
 // 역할: 같은 날짜에 속한 약품 묶음을 담당한다.
 // 주요 책임:
-// - 그룹 날짜를 연/월/일로 표시하고 날짜가 없으면 오늘을 사용한다.
+// - 그룹 날짜를 연-월-일로 표시하고 날짜가 없으면 오늘을 사용한다.
 // - 선택 날짜 기준으로 약품을 묶고 지정한 오름차순·내림차순으로 그룹을 정렬한다.
 // 속성:
 // - date (DateTime?): 표시·비교 기준이 되는 날짜 또는 이전·현재 값.
@@ -277,13 +280,13 @@ class _SavedMedicationGroup {
   const _SavedMedicationGroup({required this.date, required this.medications});
 
   // 함수이름: displayDate
-  // 함수역할: 그룹 날짜를 연/월/일로 표시하고 날짜가 없으면 오늘을 사용한다.
+  // 함수역할: 그룹 날짜를 다른 검토 화면과 같은 연-월-일(2026-10-01)로 표시하고 날짜가 없으면 오늘을 사용한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get displayDate {
     final value = date ?? DateTime.now();
-    return '${value.year}/${_twoDigits(value.month)}/${_twoDigits(value.day)}';
+    return '${value.year}-${_twoDigits(value.month)}-${_twoDigits(value.day)}';
   }
 
   // 함수이름: fromMedicationList
@@ -400,15 +403,15 @@ class _SavedMedicationText {
   bool get isEnglish => isEnglishLanguage(language);
 
   // 함수이름: title
-  // 함수역할: 현재 언어와 입력값에 맞춰 "저장된 복약 정보" 문구를 제공한다.
+  // 함수역할: 현재 언어와 입력값에 맞춰 "복약함" 문구를 제공한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get title => isEnglish ? 'Saved Medication' : '저장된 복약 정보';
+  String get title => isEnglish ? 'Medications' : '복약함';
 
-  // 함수역할: 복약함 제목 아래 표시할 간단한 설명을 반환한다. 매개변수: 없음.
+  // 함수역할: 복약함 제목 아래 표시할 간단한 설명을 반환한다. 목록에 없는 복용 기록은 약속하지 않는다. 매개변수: 없음.
   String get subtitle =>
-      isEnglish ? 'View saved medication.' : '약과 복용 기록을 확인합니다.';
+      isEnglish ? 'View saved medication.' : '저장한 약과 복용 기간을 확인합니다.';
 
   // 함수이름: selectionTitle
   // 함수역할: 삭제 선택의 제목을 제공한다. 매개변수: 없음. 반환값: 번역된 제목.
@@ -632,23 +635,24 @@ class _SavedMedicationText {
   }
 
   // 함수이름: deleteMessage
-  // 함수역할: 현재 언어와 입력값에 맞춰 "해당 복약 정보를 삭제하시겠습니까?\n되돌릴 수 없습니다." 문구를 제공한다.
+  // 함수역할: 삭제할 약 개수와 함께 복용 기록도 지워진다는 사실과 기록을 남기는 중단 방법을 안내한다.
+  // 매개변수:
+  // - count (int): 삭제할 약 개수.
+  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // 서버는 삭제한 약의 복용 기록도 지우므로, 기록을 남기려면 중단을 쓰도록 미리 알린다.
+  String deleteMessage(int count) => isEnglish
+      ? 'Delete $count medication${count == 1 ? '' : 's'}?\n${count == 1 ? 'Its' : 'Their'} dose records are deleted too and cannot be restored. To keep the records, use "Stop as prescribed" instead.'
+      : '선택한 약 $count개를 삭제할까요?\n${count == 1 ? '이 약의' : '이 약들의'} 복용 기록도 함께 삭제되며 되돌릴 수 없습니다. 기록을 남기려면 \'처방에 따른 복용 중단\'을 이용하세요.';
+  // 함수이름: deleteAction
+  // 함수역할: 삭제 확인 버튼의 "삭제" 문구를 제공한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get deleteMessage => isEnglish
-      ? 'Delete this medication information?\nThis action cannot be undone.'
-      : '해당 복약 정보를 삭제하시겠습니까?\n되돌릴 수 없습니다.';
-  // 함수이름: yes
-  // 함수역할: 현재 언어와 입력값에 맞춰 "Yes" 문구를 제공한다.
+  String get deleteAction => isEnglish ? 'Delete' : '삭제';
+  // 함수이름: cancelAction
+  // 함수역할: 삭제 확인 취소 버튼의 "취소" 문구를 제공한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get yes => isEnglish ? 'Yes' : '예';
-  // 함수이름: no
-  // 함수역할: 현재 언어와 입력값에 맞춰 "아니오" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get no => isEnglish ? 'No' : '아니오';
+  String get cancelAction => isEnglish ? 'Cancel' : '취소';
 }

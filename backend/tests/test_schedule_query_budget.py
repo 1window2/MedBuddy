@@ -129,8 +129,8 @@ def seed_slot(db: Session, in_slot: int) -> list[int]:
 # Description:
 # - Completing a slot reads the day once: at most three SELECTs (medications, completion
 #   rows, the outbox event) however many medications share the slot, and at most 14
-#   statements for eight medications. Repeating the same state and unchecking the slot
-#   insert nothing and stay within four statements.
+#   statements for eight medications. Repeating the same state writes nothing; unchecking
+#   the slot writes one batched audit INSERT.
 # Parameters:
 # - fk_engine (Engine): Foreign-key-enforcing test engine.
 # - fk_session_factory (sessionmaker[Session]): Factory bound to the test engine.
@@ -163,16 +163,20 @@ def test_slot_update_statements_stay_within_budget(
     assert len(first) <= in_slot + 6, first
     if in_slot == 8:
         assert len(first) <= 14, first
-    for later in (repeated, unchecked):
-        assert len(later) <= 4, later
-        assert statements_of_kind(later, "INSERT") == [], later
+    # Repeating the same state changes nothing, so it writes no audit or revision.
+    assert len(repeated) <= 4, repeated
+    assert not statements_of_kind(repeated, "INSERT"), repeated
+    # Unchecking writes one batched audit INSERT, not one per medication.
+    assert len(unchecked) <= 5, unchecked
+    inserts = statements_of_kind(unchecked, "INSERT")
+    assert len(inserts) == 1 and "medication_care_audits" in inserts[0], unchecked
 
 
 # Function Name: test_single_medication_update_statements_stay_within_budget
 # Description:
 # - Completing one medication in one slot loads the medication and the day once, also when
-#   seven other medications share the slot: at most three SELECTs and five statements
-#   (one INSERT for the completion row, one UPDATE for the medication's status date).
+#   seven other medications share the slot: at most three SELECTs and six statements
+#   (completion INSERT, one batched audit INSERT, medication status-date UPDATE).
 # Parameters:
 # - fk_engine (Engine): Foreign-key-enforcing test engine.
 # - fk_session_factory (sessionmaker[Session]): Factory bound to the test engine.
@@ -196,7 +200,7 @@ def test_single_medication_update_statements_stay_within_budget(
 
     assert response["data"]["slot_statuses"] == {"morning": False, "evening": True}
     assert len(statements_of_kind(statements, "SELECT")) <= 3, statements
-    assert len(statements) <= 5, statements
+    assert len(statements) <= 6, statements
 
 
 # Function Name: test_schedule_reads_use_two_statements

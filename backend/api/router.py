@@ -4,6 +4,8 @@
 import asyncio
 import json
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 from fastapi import (
@@ -21,8 +23,7 @@ from pydantic import BaseModel, Field, ValidationError
 from api.dependencies import (
     get_authenticated_principal,
     get_recently_authenticated_principal,
-    verify_app_check_token,
-    get_registered_principal,
+    AUTHENTICATED_APP_DEPENDENCIES,
     get_authorization_control,
     get_check_medication_detail,
     get_check_prescription_change,
@@ -70,10 +71,12 @@ from controls.check_today_medication_info_control import CheckTodayMedicationInf
 from controls.check_caregiver_medication_control import CheckCaregiverMedication
 from controls.check_caregiver_monitoring_control import CheckCaregiverMonitoring
 from controls.input_prescription_control import (
+    MAX_PRESCRIPTION_TEXT_LENGTH,
     InputPrescription,
     PrescriptionAnalysisTimeoutError,
 )
 from controls.identify_pill_control import IdentifyPill
+from services.prescription_parser import PrescriptionAnalysisFormatError
 from controls.manage_user_setting_control import ManageUserSetting
 from controls.manage_account_control import ManageAccount
 from controls.manage_push_token_control import ManagePushToken
@@ -113,20 +116,18 @@ from schemas.prescription_change import (
     PrescriptionChangeRequest,
     PrescriptionChangeResponse,
 )
+from api.medication_care_router import router as medication_care_router
 
-_authenticated_app_dependencies = [
-    Depends(verify_app_check_token),
-    Depends(get_registered_principal),
-]
 # ValueError subclasses raised by parsing libraries rather than by a control on purpose. Their
 # text quotes positions or input values, so it is logged by type and never returned to the client.
 _INTERNAL_VALUE_ERRORS = (json.JSONDecodeError, ValidationError)
 
-router = APIRouter(dependencies=_authenticated_app_dependencies)
+router = APIRouter(dependencies=list(AUTHENTICATED_APP_DEPENDENCIES))
+router.include_router(medication_care_router)
 auth_router = APIRouter(
     prefix="/api/v1/auth",
     tags=["Authentication"],
-    dependencies=_authenticated_app_dependencies,
+    dependencies=list(AUTHENTICATED_APP_DEPENDENCIES),
 )
 logger = logging.getLogger(__name__)
 
@@ -172,21 +173,99 @@ def _resolve_caregiver_patient_scope(
     )
 
 
-# 함수이름: _pill_input_or_availability_error
-# 함수역할:
-# - 낱알 식별 경로 두 곳이 같은 기준으로 응답하도록 사진 품질 오류와 일시적 이용 불가를 HTTP 오류로 바꾼다.
-# 매개변수:
-# - exc (Exception): 사진 품질 오류, 카탈로그 이용 불가 또는 시각 분석 서비스 이용 불가.
-# 반환값:
-# - 사진 품질 오류는 422, 이용 불가는 Retry-After가 붙은 503 응답 예외.
-def _pill_input_or_availability_error(exc: Exception) -> HTTPException:
-    if isinstance(exc, PillImageQualityError):
-        return HTTPException(status_code=422, detail=str(exc))
-    return HTTPException(
-        status_code=503,
-        detail=str(exc),
-        headers={"Retry-After": "5"},
-    )
+# Function Name: _internal_failures_as_http_errors
+# Description:
+# - Wraps a route body: an HTTPException passes through unchanged, and any other failure becomes
+#   HTTP 500 with a fixed detail while only the error type name is logged.
+# - With client_value_errors, a ValueError a control raises on purpose becomes HTTP 400 with its
+#   own text; the parsing-library subclasses in _INTERNAL_VALUE_ERRORS still become HTTP 500.
+# Parameters:
+# - log_message (str): Error log format with one %s for the error type name.
+# - detail (str): Client-facing detail of the HTTP 500 response.
+# - client_value_errors (bool): Whether an intended ValueError is answered with HTTP 400.
+# Returns:
+# - Iterator[None]: Context for the route body; raises HTTPException when the body fails.
+@contextmanager
+def _internal_failures_as_http_errors(
+    log_message: str,
+    detail: str,
+    *,
+    client_value_errors: bool = False,
+) -> Iterator[None]:
+    try:
+        yield
+    except HTTPException:
+        raise
+    except Exception as exc:
+        if (
+            client_value_errors
+            and isinstance(exc, ValueError)
+            and not isinstance(exc, _INTERNAL_VALUE_ERRORS)
+        ):
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        logger.error(log_message, type(exc).__name__)
+        raise HTTPException(status_code=500, detail=detail) from exc
+
+
+# Function Name: _pill_identification_errors
+# Description:
+# - Maps failures of both pill-identification routes to HTTP errors in one order: HTTPException
+#   passes through, a photo-quality error becomes 422, a catalog or vision outage becomes 503
+#   with Retry-After: 5, an invalid vision response 502, a timeout 504, and anything else a
+#   sanitized 500 whose log line names only the error type.
+# Parameters:
+# - log_message (str): Error log format with one %s for the error type name.
+# - invalid_response_detail (str): Detail of the HTTP 502 response.
+# - timeout_detail (str): Detail of the HTTP 504 response.
+# - failure_detail (str): Detail of the HTTP 500 response.
+# Returns:
+# - Iterator[None]: Context for the route body; raises HTTPException when the body fails.
+@contextmanager
+def _pill_identification_errors(
+    log_message: str,
+    *,
+    invalid_response_detail: str,
+    timeout_detail: str,
+    failure_detail: str,
+) -> Iterator[None]:
+    try:
+        yield
+    except HTTPException:
+        raise
+    except (
+        PillImageQualityError,
+        PillCatalogUnavailableError,
+        PillVisionUnavailableError,
+    ) as exc:
+        if isinstance(exc, PillImageQualityError):
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+            headers={"Retry-After": "5"},
+        ) from exc
+    except PillVisionResponseError as exc:
+        raise HTTPException(status_code=502, detail=invalid_response_detail) from exc
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail=timeout_detail) from exc
+    except Exception as exc:
+        logger.error(log_message, type(exc).__name__)
+        raise HTTPException(status_code=500, detail=failure_detail) from exc
+
+
+# Function Name: _read_pill_image
+# Description:
+# - Reads at most one byte beyond the pill-image limit so oversized uploads are rejected before analysis.
+# Parameters:
+# - upload (UploadFile): Uploaded pill image read under the per-image byte limit.
+# - too_large_detail (str): Detail of the HTTP 413 response for an oversized image.
+# Returns:
+# - Image bytes, or HTTP 413 when the upload exceeds the limit.
+async def _read_pill_image(upload: UploadFile, too_large_detail: str) -> bytes:
+    content = await upload.read(MAX_PILL_IMAGE_BYTES + 1)
+    if len(content) > MAX_PILL_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail=too_large_detail)
+    return content
 
 
 # 클래스명: OCRParseRequest
@@ -197,7 +276,7 @@ def _pill_input_or_availability_error(exc: Exception) -> HTTPException:
 # 속성:
 # - text (str): 프론트엔드에서 정제한 비식별 OCR 텍스트
 class OCRParseRequest(BaseModel):
-    text: str = Field(min_length=1, max_length=100_000)
+    text: str = Field(min_length=1, max_length=MAX_PRESCRIPTION_TEXT_LENGTH)
 
 
 # Function Name: get_auth_session
@@ -356,19 +435,15 @@ async def identify_medication(
     if not request.extracted_text:
         raise HTTPException(status_code=400, detail="추출된 텍스트가 없습니다.")
 
-    try:
+    with _internal_failures_as_http_errors(
+        "Identify API internal error: %s",
+        "서버 내부 오류가 발생했습니다.",
+        client_value_errors=True,
+    ):
         return await check_medication_detail.requestMedicationDetail(
             request.extracted_text,
             **({'original_text': request.original_text} if request.original_text else {}),
         )
-    except _INTERNAL_VALUE_ERRORS as exc:
-        logger.error("Identify API internal error: %s", type(exc).__name__)
-        raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다.") from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        logger.error("Identify API internal error: %s", type(exc).__name__)
-        raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다.") from exc
 
 
 # Function Name: check_prescription_change
@@ -393,7 +468,10 @@ def check_prescription_change(
         get_check_prescription_change
     ),
 ) -> PrescriptionChangeResponse:
-    try:
+    with _internal_failures_as_http_errors(
+        "Prescription change comparison failed: %s",
+        "처방 변화를 비교하지 못했습니다.",
+    ):
         authorized_patient_hash = authorization.resolvePatientScope(
             principal,
             request.patient_hash,
@@ -401,17 +479,6 @@ def check_prescription_change(
         return check_prescription_change_control.request_prescription_change(
             request.model_copy(update={"patient_hash": authorized_patient_hash})
         )
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error(
-            "Prescription change comparison failed: %s",
-            type(exc).__name__,
-        )
-        raise HTTPException(
-            status_code=500,
-            detail="처방 변화를 비교하지 못했습니다.",
-        ) from exc
 
 
 # Function Name: save_medication
@@ -458,7 +525,10 @@ def get_saved_medications(
     authorization: AuthorizationControl = Depends(get_authorization_control),
     check_saved_medication: CheckSavedMedication = Depends(get_check_saved_medication),
 ) -> dict[str, object]:
-    try:
+    with _internal_failures_as_http_errors(
+        "Saved medication lookup failed: %s",
+        "저장된 복약 정보를 불러오지 못했습니다.",
+    ):
         authorized_patient_hash = authorization.resolvePatientScope(
             principal,
             patient_hash,
@@ -467,14 +537,6 @@ def get_saved_medications(
         return check_saved_medication.requestSavedMedicationInfo(
             authorized_patient_hash
         )
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error("Saved medication lookup failed: %s", type(exc).__name__)
-        raise HTTPException(
-            status_code=500,
-            detail="저장된 복약 정보를 불러오지 못했습니다.",
-        ) from exc
 
 
 # Function Name: get_today_medication_schedule
@@ -494,24 +556,16 @@ def get_today_medication_schedule(
     authorization: AuthorizationControl = Depends(get_authorization_control),
     check_schedule: CheckSchedule = Depends(get_check_schedule),
 ) -> dict[str, object]:
-    try:
+    with _internal_failures_as_http_errors(
+        "Today medication schedule lookup failed: %s",
+        "오늘의 복약 일정을 불러오지 못했습니다.",
+    ):
         authorized_patient_hash = authorization.resolvePatientScope(
             principal,
             patient_hash,
             allow_caregiver=True,
         )
         return check_schedule.requestTodayMedicationSchedule(authorized_patient_hash)
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error(
-            "Today medication schedule lookup failed: %s",
-            type(exc).__name__,
-        )
-        raise HTTPException(
-            status_code=500,
-            detail="오늘의 복약 일정을 불러오지 못했습니다.",
-        ) from exc
 
 
 # Function Name: get_medication_schedule_window
@@ -533,7 +587,10 @@ def get_medication_schedule_window(
     authorization: AuthorizationControl = Depends(get_authorization_control),
     check_schedule: CheckSchedule = Depends(get_check_schedule),
 ) -> dict[str, object]:
-    try:
+    with _internal_failures_as_http_errors(
+        "Medication schedule window lookup failed: %s",
+        "복약 알림 일정을 불러오지 못했습니다.",
+    ):
         authorized_patient_hash = authorization.resolvePatientScope(
             principal,
             patient_hash,
@@ -543,17 +600,6 @@ def get_medication_schedule_window(
             authorized_patient_hash,
             days,
         )
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error(
-            "Medication schedule window lookup failed: %s",
-            type(exc).__name__,
-        )
-        raise HTTPException(
-            status_code=500,
-            detail="복약 알림 일정을 불러오지 못했습니다.",
-        ) from exc
 
 
 # Function Name: get_today_medication_info
@@ -575,7 +621,10 @@ def get_today_medication_info(
         get_check_today_medication_info
     ),
 ) -> dict[str, object]:
-    try:
+    with _internal_failures_as_http_errors(
+        "Today medication info lookup failed: %s",
+        "오늘의 복약 정보를 불러오지 못했습니다.",
+    ):
         authorized_patient_hash = authorization.resolvePatientScope(
             principal,
             patient_hash,
@@ -584,17 +633,6 @@ def get_today_medication_info(
         return check_today_medication_info.requestTodayMedicationInfo(
             authorized_patient_hash
         )
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error(
-            "Today medication info lookup failed: %s",
-            type(exc).__name__,
-        )
-        raise HTTPException(
-            status_code=500,
-            detail="오늘의 복약 정보를 불러오지 못했습니다.",
-        ) from exc
 
 
 # Function Name: update_medication_slot_status
@@ -897,6 +935,7 @@ def save_user_setting(
         request.default_evening_time,
         request.default_bedtime,
         request.home_schedule_source,
+        expected_revision=request.expected_revision,
     )
 
 
@@ -953,7 +992,10 @@ async def get_health_recommendation(
             if authorization.db is not None:
                 authorization.db.rollback()
 
-    try:
+    with _internal_failures_as_http_errors(
+        "Health recommendation failed: %s",
+        "건강 관리 추천을 생성하지 못했습니다.",
+    ):
         authorized_patient_hash = await run_request_database_work(
             resolve_recommendation_owner,
         )
@@ -964,14 +1006,6 @@ async def get_health_recommendation(
                 principal, authorized_patient_hash,
             ),
         )
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error("Health recommendation failed: %s", type(exc).__name__)
-        raise HTTPException(
-            status_code=500,
-            detail="건강 관리 추천을 생성하지 못했습니다.",
-        ) from exc
 
 
 # 함수이름: get_caregiver_notification_settings
@@ -1328,31 +1362,23 @@ async def analyze_masked_prescription_text(
     request: OCRParseRequest,
     input_prescription: InputPrescription = Depends(get_input_prescription),
 ) -> dict[str, object]:
-    try:
-        return await input_prescription.requestPrescriptionText(request.text)
-    except PrescriptionAnalysisTimeoutError as exc:
-        logger.warning("De-identified prescription text analysis timed out.")
-        raise HTTPException(status_code=504, detail=str(exc)) from exc
-    except _INTERNAL_VALUE_ERRORS as exc:
-        logger.error(
-            "De-identified prescription text analysis failed: %s",
-            type(exc).__name__,
-        )
-        raise HTTPException(
-            status_code=500,
-            detail="비식별 처방전 텍스트 분석 중 서버 오류가 발생했습니다.",
-        ) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        logger.error(
-            "De-identified prescription text analysis failed: %s",
-            type(exc).__name__,
-        )
-        raise HTTPException(
-            status_code=500,
-            detail="비식별 처방전 텍스트 분석 중 서버 오류가 발생했습니다.",
-        ) from exc
+    with _internal_failures_as_http_errors(
+        "De-identified prescription text analysis failed: %s",
+        "비식별 처방전 텍스트 분석 중 서버 오류가 발생했습니다.",
+        client_value_errors=True,
+    ):
+        try:
+            return await input_prescription.requestPrescriptionText(request.text)
+        except PrescriptionAnalysisTimeoutError as exc:
+            logger.warning("De-identified prescription text analysis timed out.")
+            raise HTTPException(status_code=504, detail=str(exc)) from exc
+        except PrescriptionAnalysisFormatError as exc:
+            # 요청은 올바랐고 AI 응답이 약속한 형식이 아니었다. 다시 시도하면 될 수 있는 상류 오류다.
+            logger.warning("De-identified prescription text analysis returned an invalid reply.")
+            raise HTTPException(
+                status_code=502,
+                detail="처방전 분석 결과를 해석하지 못했습니다. 다시 시도해주세요.",
+            ) from exc
 
 
 # Function Name: identify_loose_pill
@@ -1375,59 +1401,22 @@ async def identify_loose_pill(
 ) -> PillIdentificationResponse:
     """Returns MFDS candidates for one pill; user confirmation remains mandatory."""
 
-    # Function Name: read_bounded
-    # Description:
-    # - Reads at most one byte beyond the pill-image limit so oversized uploads are rejected before analysis.
-    # Parameters:
-    # - upload (UploadFile): Uploaded pill image read under the per-image byte limit.
-    # Returns:
-    # - Image bytes, or HTTP 413 when the upload exceeds the limit.
-    async def read_bounded(upload: UploadFile) -> bytes:
-        content = await upload.read(MAX_PILL_IMAGE_BYTES + 1)
-        if len(content) > MAX_PILL_IMAGE_BYTES:
-            raise HTTPException(
-                status_code=413,
-                detail="Each pill image must be 10 MB or smaller.",
-            )
-        return content
-
-    try:
-        uploads = [read_bounded(front)]
+    with _pill_identification_errors(
+        "Loose-pill identification failed: %s",
+        invalid_response_detail="The pill visual-analysis service returned an invalid response.",
+        timeout_detail="Pill identification timed out. Please try again.",
+        failure_detail="The pill could not be identified due to a server error.",
+    ):
+        too_large_detail = "Each pill image must be 10 MB or smaller."
+        uploads = [_read_pill_image(front, too_large_detail)]
         if back is not None:
-            uploads.append(read_bounded(back))
+            uploads.append(_read_pill_image(back, too_large_detail))
         images = await asyncio.gather(*uploads)
         result = await identify_pill.requestPillIdentification(
             images[0],
             images[1] if len(images) > 1 else None,
         )
         return PillIdentificationResponse.from_domain(result)
-    except HTTPException:
-        raise
-    except (
-        PillImageQualityError,
-        PillCatalogUnavailableError,
-        PillVisionUnavailableError,
-    ) as exc:
-        raise _pill_input_or_availability_error(exc) from exc
-    except PillVisionResponseError as exc:
-        raise HTTPException(
-            status_code=502,
-            detail="The pill visual-analysis service returned an invalid response.",
-        ) from exc
-    except TimeoutError as exc:
-        raise HTTPException(
-            status_code=504,
-            detail="Pill identification timed out. Please try again.",
-        ) from exc
-    except Exception as exc:
-        logger.error(
-            "Loose-pill identification failed: %s",
-            type(exc).__name__,
-        )
-        raise HTTPException(
-            status_code=500,
-            detail="The pill could not be identified due to a server error.",
-        ) from exc
 
 
 # Function Name: identify_multiple_loose_pills
@@ -1448,39 +1437,15 @@ async def identify_multiple_loose_pills(
 ) -> MultiplePillIdentificationResponse:
     """Returns independent MFDS candidate lists for one multi-pill photo."""
 
-    try:
-        content = await image.read(MAX_PILL_IMAGE_BYTES + 1)
-        if len(content) > MAX_PILL_IMAGE_BYTES:
-            raise HTTPException(
-                status_code=413,
-                detail="The pill image must be 10 MB or smaller.",
-            )
+    with _pill_identification_errors(
+        "Multiple-pill identification failed: %s",
+        invalid_response_detail="The multiple-pill analysis returned an invalid response.",
+        timeout_detail="Multiple-pill identification timed out. Please try again.",
+        failure_detail="The pills could not be identified due to a server error.",
+    ):
+        content = await _read_pill_image(
+            image,
+            "The pill image must be 10 MB or smaller.",
+        )
         result = await identify_pill.requestMultiplePillIdentification(content)
         return MultiplePillIdentificationResponse.from_domain(result)
-    except HTTPException:
-        raise
-    except (
-        PillImageQualityError,
-        PillCatalogUnavailableError,
-        PillVisionUnavailableError,
-    ) as exc:
-        raise _pill_input_or_availability_error(exc) from exc
-    except PillVisionResponseError as exc:
-        raise HTTPException(
-            status_code=502,
-            detail="The multiple-pill analysis returned an invalid response.",
-        ) from exc
-    except TimeoutError as exc:
-        raise HTTPException(
-            status_code=504,
-            detail="Multiple-pill identification timed out. Please try again.",
-        ) from exc
-    except Exception as exc:
-        logger.error(
-            "Multiple-pill identification failed: %s",
-            type(exc).__name__,
-        )
-        raise HTTPException(
-            status_code=500,
-            detail="The pills could not be identified due to a server error.",
-        ) from exc

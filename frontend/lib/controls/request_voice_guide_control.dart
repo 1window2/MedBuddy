@@ -178,15 +178,10 @@ class RequestVoiceGuide {
             body: requestBody,
           )
           .timeout(const Duration(seconds: 15));
-      final responseBody = ApiResponseParser.decodeBody(response);
-
-      if (response.statusCode != 200) {
-        throw ApiResponseParser.httpFailure(
-          'Voice guide request failed',
-          response,
-          responseBody,
-        );
-      }
+      final responseBody = ApiResponseParser.requireOkBody(
+        'Voice guide request failed',
+        response,
+      );
 
       final decodedData = ApiResponseParser.decodeMap(responseBody);
       final rawData = decodedData['data'];

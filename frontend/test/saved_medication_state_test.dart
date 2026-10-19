@@ -47,11 +47,12 @@ class _GatedImageStore extends ManualMedicationImageStore {
   }
 
   // Function Name: removeOrphanImages
-  // Description: Skips device cleanup. Parameters: patientHash, activeMedicationIds. Returns: Completion.
+  // Description: Skips device cleanup. Parameters: patientHash, activeMedicationIds, keepWrittenAfter. Returns: Completion.
   @override
   Future<void> removeOrphanImages({
     required String patientHash,
     required Set<int> activeMedicationIds,
+    DateTime? keepWrittenAfter,
   }) async {}
 }
 

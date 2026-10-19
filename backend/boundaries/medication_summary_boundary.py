@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import math
+from collections.abc import Awaitable, Iterable
 from typing import Any
 
 from google import genai
@@ -16,8 +17,38 @@ from boundaries.public_drug_api_boundary import (
 )
 from core.config import settings
 from entities.medication_detail_entity import MedicationDetail
+from entities.medication_lookup_result import MedicationLookupResult
 
 logger = logging.getLogger(__name__)
+
+
+# Function Name: gather_summaries_keeping_successes
+# Description:
+# - Waits for the AI summaries of several candidate medications and keeps the ones that
+#   succeeded. A failed summary drops only its own candidate: without this, one candidate whose
+#   approval text the AI could not summarise made the whole lookup fail, and the user lost the
+#   candidates that were ready (seen with a provider error on one of three "포사맥스" products).
+#   A medication without a summary is still never returned.
+# Parameters:
+# - summaries (Iterable[Awaitable[MedicationDetail]]): Summary calls, one per candidate.
+# Returns:
+# - Successful summaries in their original order with completeness preserved; raises the first
+#   error when none succeeded. A partial result must not authorize automatic product selection.
+async def gather_summaries_keeping_successes(
+    summaries: Iterable[Awaitable[MedicationDetail]],
+) -> MedicationLookupResult:
+    results = await asyncio.gather(*summaries, return_exceptions=True)
+    succeeded = [result for result in results if isinstance(result, MedicationDetail)]
+    failures = [result for result in results if isinstance(result, BaseException)]
+    if failures and not succeeded:
+        raise failures[0]
+    if failures:
+        logger.warning(
+            "Dropped %s of %s medication candidates whose summary failed.",
+            len(failures),
+            len(results),
+        )
+    return MedicationLookupResult(succeeded, is_complete=not failures)
 
 # Text earlier versions wrote into a summary field the AI had not returned. The generator no
 # longer writes it; the detail cache treats a stored snapshot that still holds it as a miss.

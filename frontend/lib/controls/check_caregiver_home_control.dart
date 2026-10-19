@@ -15,6 +15,7 @@ class CheckCaregiverHome extends ChangeNotifier {
   final String userHash;
   final CheckCaregiverMedication _control;
   final bool _ownsControl;
+  final DateTime Function() _clock;
   List<PatientCaregiverLink> _links = const [];
   Map<int, CaregiverMonitoringSnapshot> _snapshots = const {};
   bool _isLoading = false;
@@ -28,13 +29,13 @@ class CheckCaregiverHome extends ChangeNotifier {
 
   // 현재 연동만 위젯에 전달하며 자정을 지난 응답은 오늘 일정으로 바꾸지 않는다.
   Map<String, dynamic> get widgetCache => {
-    'date': doseWidgetDay(DateTime.now()),
+    'date': doseWidgetDay(_clock()),
     'failed': _hasError,
     'patients': [
       for (final link in _links)
         {
           'link': link.toJson(),
-          'schedules': _snapshotDay == doseWidgetDay(DateTime.now())
+          'schedules': _snapshotDay == doseWidgetDay(_clock())
               ? _snapshots[link.linkId]?.schedules
                     .map((s) => s.toJson())
                     .toList()
@@ -44,14 +45,19 @@ class CheckCaregiverHome extends ChangeNotifier {
   };
 
   // 함수역할: 계정과 기존 환자 조회 기능을 연결한다. 주입 Control은 호출자가 소유한다.
+  // clock은 자정 경계 시험용이며 기본값은 기기 현재 시각이다.
   CheckCaregiverHome({
     required this.userHash,
     CheckCaregiverMedication? control,
+    DateTime Function()? clock,
   }) : _control = control ?? CheckCaregiverMedication(caregiverHash: userHash),
-       _ownsControl = control == null;
+       _ownsControl = control == null,
+       _clock = clock ?? DateTime.now;
 
   List<PatientCaregiverLink> get links => List.unmodifiable(_links);
-  CaregiverMonitoringSnapshot? snapshotFor(int? linkId) => _snapshots[linkId];
+  // 위젯 캐시와 같이 자정을 지난 현황은 오늘 진행률로 보이지 않게 비워 둔다.
+  CaregiverMonitoringSnapshot? snapshotFor(int? linkId) =>
+      _snapshotDay == doseWidgetDay(_clock()) ? _snapshots[linkId] : null;
 
   // 함수역할: 활성 보호자 연동만 유지하고 해제되거나 바뀐 관계의 진행 중 응답을 무효화한다.
   // 매개변수: 최신 연동 목록. 반환값: 없음.
@@ -90,16 +96,18 @@ class CheckCaregiverHome extends ChangeNotifier {
   Future<void> refresh() async {
     if (_disposed || _isLoading || _links.isEmpty) return;
     final generation = _generation;
-    final day = doseWidgetDay(DateTime.now());
+    final day = doseWidgetDay(_clock());
     _isLoading = true;
     notifyListeners();
     try {
       _hasError = false;
       // 홈 전용 일괄 조회는 알림이 꺼진 환자도 포함하고 약 상세는 제외한다.
       final received = await _control.requestScheduleSnapshot(links: _links);
-      if (_disposed ||
-          generation != _generation ||
-          day != doseWidgetDay(DateTime.now())) {
+      if (_disposed || generation != _generation) return;
+      // 조회 중 자정이 지나면 받은 현황은 어제 것이므로 표시하지 않고 비운다.
+      if (day != doseWidgetDay(_clock())) {
+        _snapshots = {};
+        _snapshotDay = null;
         return;
       }
       _snapshots = {

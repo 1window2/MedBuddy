@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/check_saved_medication_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/check_medication_detail_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/medication_regimen_editor_ui_boundary.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/boundaries/pill_identification_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
@@ -19,6 +20,7 @@ import 'package:medbuddy_frontend/controls/input_prescription_control.dart';
 import 'package:medbuddy_frontend/controls/manage_user_setting_control.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
+import 'package:medbuddy_frontend/entities/medication_history_entity.dart';
 import 'package:medbuddy_frontend/widgets/medbuddy_page_header.dart';
 import 'package:medbuddy_frontend/widgets/medication_thumbnail.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
@@ -56,6 +58,189 @@ class _CancelledGalleryInputPrescription extends InputPrescription {
 // 함수역할: 등록·정렬·선택 삭제와 작은 화면 접근성 회귀 검사를 등록한다.
 // 매개변수: 없음. 반환값: 없음; 각 테스트가 기대 동작을 검증한다.
 void main() {
+  for (final language in ['ko', 'en']) {
+    testWidgets('중단과 교체 상태는 큰 글씨에서도 색과 상태명으로 구분한다 $language', (tester) async {
+      final model = await _pumpSelectionApp(
+        tester,
+        initialFilter: 'all',
+        small: true,
+        textScale: 2,
+        language: language,
+      );
+      final today = MedicationHistoryDates.today(DateTime.now());
+      for (final scenario in [
+        (replaced: false, future: false, color: MedBuddyColors.danger),
+        (replaced: true, future: false, color: MedBuddyColors.infoBlue),
+        (replaced: false, future: true, color: MedBuddyColors.reminderAccent),
+        (replaced: true, future: true, color: MedBuddyColors.reminderAccent),
+      ]) {
+        await model.replaceMedications([
+          _selectionMedication(1).copyWith(
+            stoppedOn: today.add(Duration(days: scenario.future ? 1 : 0)),
+            supersededById: scenario.replaced ? 2 : null,
+          ),
+        ]);
+        await tester.pumpAndSettle();
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('saved-medication-status-1')),
+          120,
+          scrollable: find.descendant(
+            of: find.byKey(const Key('saved-medication-scroll')),
+            matching: find.byType(Scrollable),
+          ).first,
+        );
+        final label = tester.widget<Text>(
+          find.byKey(const Key('saved-medication-status-1')),
+        );
+        expect(label.style?.color, scenario.color);
+        // 용량만 바꾼 수정도 다음 항목이 연결되므로 '교체'가 아닌 '변경'으로 표시한다.
+        if (scenario.replaced) {
+          expect(
+            label.data,
+            startsWith(
+              language == 'en'
+                  ? (scenario.future ? 'Change scheduled' : 'Changed')
+                  : (scenario.future ? '처방 변경 예정' : '처방 변경'),
+            ),
+          );
+        }
+        expect(
+          label.data,
+          contains(
+            MedicationHistoryDates.format(
+              today.add(Duration(days: scenario.future ? 1 : 0)),
+            ),
+          ),
+        );
+        expect(
+          find.byKey(const Key('saved-medication-status-badge-1')),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+      }
+    });
+  }
+
+  testWidgets('기본 복약함은 중단한 약의 정보와 중단일을 삭제 전까지 보여준다', (tester) async {
+    final model = await _pumpSelectionApp(tester, initialFilter: 'all');
+    final today = MedicationHistoryDates.today(DateTime.now());
+    await model.replaceMedications([
+      _selectionMedication(1).copyWith(stoppedOn: today),
+      _selectionMedication(2),
+    ]);
+    await tester.pumpAndSettle();
+    expect(find.text('조회 조건: 전체'), findsOneWidget);
+    expect(find.text('약 1'), findsOneWidget);
+    expect(
+      find.text('복용 중단 · ${MedicationHistoryDates.format(today)}'),
+      findsOneWidget,
+    );
+    expect(model.deletedIds, isEmpty);
+    await tester.tap(find.text('약 1'));
+    await tester.pumpAndSettle();
+    expect(find.byType(CheckMedicationDetailUI), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    await _chooseSavedFilter(tester, 'active');
+    expect(find.text('약 1'), findsNothing);
+    await _chooseSavedFilter(tester, 'ended');
+    expect(find.text('약 1'), findsOneWidget);
+    expect(find.text('약 2'), findsNothing);
+    await _startSavedSelection(tester);
+    await _toggleSavedAll(tester);
+    await tester.tap(find.byKey(const Key('saved-medication-delete-selected')));
+    await tester.pumpAndSettle();
+    // 삭제하면 복용 기록도 지워진다는 사실과 기록을 남기는 중단 방법을 알리고, 다른 대화상자와
+    // 같이 취소를 왼쪽에 둔다.
+    expect(find.textContaining('복용 기록도 함께 삭제'), findsOneWidget);
+    expect(find.textContaining('처방에 따른 복용 중단'), findsOneWidget);
+    expect(
+      tester.getCenter(find.widgetWithText(OutlinedButton, '취소')).dx,
+      lessThan(tester.getCenter(find.widgetWithText(OutlinedButton, '삭제')).dx),
+    );
+    await tester.tap(find.widgetWithText(OutlinedButton, '삭제'));
+    await tester.pumpAndSettle();
+    expect(model.deletedIds, [1]);
+    expect(find.text('약 1'), findsNothing);
+  });
+
+  testWidgets('복용 중 필터에서 중단해도 결과 약을 전체 목록에 남긴다', (tester) async {
+    final model = await _pumpSelectionApp(tester);
+    await tester.tap(find.byKey(const Key('saved-medication-actions-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('처방에 따른 복용 중단'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('regimen-submit')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('regimen-confirm')));
+    await tester.pumpAndSettle();
+    expect(find.text('조회 조건: 전체'), findsOneWidget);
+    expect(find.text('약 1'), findsOneWidget);
+    expect(find.byKey(const Key('saved-medication-status-1')), findsOneWidget);
+    expect(model.deletedIds, isEmpty);
+    expect(model.control.medications.first.stoppedOn, isNotNull);
+  });
+
+  testWidgets('미래 중단은 중단 예정으로 표시하고 종료 필터에서 제외한다', (tester) async {
+    final model = await _pumpSelectionApp(tester, initialFilter: 'all');
+    final tomorrow = MedicationHistoryDates.today(
+      DateTime.now(),
+    ).add(const Duration(days: 1));
+    await model.replaceMedications([
+      _selectionMedication(1).copyWith(stoppedOn: tomorrow),
+    ]);
+    await tester.pumpAndSettle();
+    expect(
+      find.text('복용 중단 예정 · ${MedicationHistoryDates.format(tomorrow)}'),
+      findsOneWidget,
+    );
+    await _chooseSavedFilter(tester, 'active');
+    expect(find.text('약 1'), findsOneWidget);
+    await _chooseSavedFilter(tester, 'ended');
+    expect(find.text('약 1'), findsNothing);
+  });
+
+  // 서버 날짜(YYYY-MM-DD)는 기기 자정으로 읽히므로, 한국처럼 UTC보다 빠른 시간대에서
+  // 마지막 복용일이 이미 종료로 보이던 회귀를 막는다(TZ=Asia/Seoul에서 실행해 확인).
+  testWidgets('마지막 복용일과 오늘 중단은 기기 날짜로 판단한다', (tester) async {
+    final model = await _pumpSelectionApp(tester, initialFilter: 'all');
+    final today = MedicationHistoryDates.today(DateTime.now());
+    final localToday = DateTime(today.year, today.month, today.day);
+    await model.replaceMedications([
+      _selectionMedication(1).copyWith(
+        prescriptionDate: localToday,
+        createdDate: localToday,
+        totalDays: '1',
+      ),
+      _selectionMedication(2).copyWith(stoppedOn: localToday),
+    ]);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('복용 종료 ·'), findsNothing);
+    expect(find.textContaining('복용 중단 예정'), findsNothing);
+    expect(
+      find.text('복용 중단 · ${MedicationHistoryDates.format(today)}'),
+      findsOneWidget,
+    );
+    await _chooseSavedFilter(tester, 'ended');
+    expect(find.text('약 1'), findsNothing);
+    expect(find.text('약 2'), findsOneWidget);
+  });
+
+  testWidgets('복약함 관리 메뉴에서 기록을 지우지 않는 변경 화면을 연다', (tester) async {
+    await _pumpSelectionApp(tester);
+    await tester.tap(find.byKey(const Key('saved-medication-actions-1')));
+    await tester.pumpAndSettle();
+    expect(find.text('정보 수정'), findsOneWidget);
+    expect(find.text('처방에 따른 복용 중단'), findsOneWidget);
+    expect(find.text('새 처방으로 교체'), findsOneWidget);
+    await tester.tap(find.text('정보 수정'));
+    await tester.pumpAndSettle();
+    expect(find.byType(MedicationRegimenEditorUI), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(CheckSavedMedicationUI), findsOneWidget);
+  });
+
   testWidgets('약 상세를 연속으로 눌러도 한 번 뒤로가면 목록으로 돌아온다', (tester) async {
     await _pumpSelectionApp(tester);
     final medication = find.text('약 1');
@@ -106,7 +291,8 @@ void main() {
   // 매개변수: tester. 반환값: 없음; 기대와 다르면 실패한다.
   testWidgets('매일 복용하지 않는 약은 다음 복용일을 표시한다', (tester) async {
     await _pumpFilterApp(tester, nonDaily: true);
-    final now = DateTime.now();
+    // UTC 날짜가 한국 날짜와 다른 시간(한국 0~9시)에도 같은 기준일로 기대값을 만든다.
+    final now = _koreaToday();
     final tomorrow = DateTime(now.year, now.month, now.day + 1);
     const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
     final tomorrowText =
@@ -129,10 +315,10 @@ void main() {
     // "4주"는 일정과 같은 규칙으로 28일로 읽는다.
     String twoDigits(int value) => value.toString().padLeft(2, '0');
     String fullDate(DateTime day) =>
-        '${day.year}/${twoDigits(day.month)}/${twoDigits(day.day)}';
+        '${day.year}-${twoDigits(day.month)}-${twoDigits(day.day)}';
     final end = DateTime(now.year, now.month, now.day + 27);
     final endText = end.year == now.year
-        ? '${twoDigits(end.month)}/${twoDigits(end.day)}'
+        ? '${twoDigits(end.month)}-${twoDigits(end.day)}'
         : fullDate(end);
     expect(find.text('복용기간: ${fullDate(now)} ~ $endText'), findsOneWidget);
     expect(
@@ -207,12 +393,12 @@ void main() {
     );
     expect(header.prominent, isTrue);
     expect(header.onBackRequested, isNull);
-    expect(tester.getTopLeft(find.text('저장된 복약 정보')).dx, 32);
-    final title = tester.widget<Text>(find.text('저장된 복약 정보'));
+    expect(tester.getTopLeft(find.text('복약함')).dx, 32);
+    final title = tester.widget<Text>(find.text('복약함'));
     expect(title.style!.fontSize, 21);
     expect(title.style!.color, Colors.white);
     expect(
-      (tester.getTopLeft(find.text('저장된 복약 정보')).dy -
+      (tester.getTopLeft(find.text('복약함')).dy -
               tester
                   .getTopLeft(
                     find.byKey(const ValueKey('saved-medication-select')),
@@ -221,7 +407,7 @@ void main() {
           .abs(),
       lessThan(1),
     );
-    expect(find.text('약과 복용 기록을 확인합니다.'), findsOneWidget);
+    expect(find.text('저장한 약과 복용 기간을 확인합니다.'), findsOneWidget);
   });
 
   // 함수이름: 전체·일부 선택 테스트
@@ -276,6 +462,40 @@ void main() {
     );
   });
 
+  // 함수이름: 선택 모드 행 누르기 테스트
+  // 함수역할: 선택 모드에서 체크박스가 아닌 약 행을 눌러도 선택이 바뀌고 확인 창에 개수와 삭제·취소가 보이는지 확인한다.
+  // 매개변수: tester. 반환값: 검증 완료.
+  testWidgets('선택 모드에서 약 행을 누르면 선택이 바뀌고 삭제 확인에 개수를 표시한다', (tester) async {
+    final model = await _pumpSelectionApp(tester);
+    await _startSavedSelection(tester);
+    expect(find.text('0개 선택'), findsOneWidget);
+    await tester.tap(find.text('약 1'));
+    await tester.pumpAndSettle();
+    expect(find.text('1개 선택'), findsOneWidget);
+    expect(
+      tester
+          .widget<Checkbox>(
+            find.byKey(const ValueKey('saved-medication-checkbox-1')),
+          )
+          .value,
+      isTrue,
+    );
+    await tester.tap(find.text('약 2'));
+    await tester.pumpAndSettle();
+    expect(find.text('2개 선택'), findsOneWidget);
+    await tester.tap(find.text('약 2'));
+    await tester.pumpAndSettle();
+    expect(find.text('1개 선택'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('saved-medication-delete-selected')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('선택한 약 1개를 삭제할까요?'), findsOneWidget);
+    expect(_dialogButton('취소'), findsOneWidget);
+    expect(find.text('아니오'), findsNothing);
+    await tester.tap(_dialogButton('취소'));
+    await tester.pumpAndSettle();
+    expect(model.deletedIds, isEmpty);
+  });
+
   // 함수이름: 필터별 삭제 범위 테스트
   // 함수역할: 조건이 바뀔 때 선택을 비우고 최종 표시 조건 외의 약은 삭제하지 않는다.
   // 매개변수: tester. 반환값: 검증 완료.
@@ -318,7 +538,7 @@ void main() {
       _selectionMedication(3, offsetDays: -30),
     ]);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('예'));
+    await tester.tap(_dialogButton('삭제'));
     await tester.pumpAndSettle();
     expect(model.deletedIds, [1]);
     expect(
@@ -382,7 +602,7 @@ void main() {
     await _toggleSavedAll(tester);
     await tester.tap(find.byKey(const Key('saved-medication-delete-selected')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('예'));
+    await tester.tap(_dialogButton('삭제'));
     await tester.pumpAndSettle();
     expect(_allSelection(tester).onChanged, isNull);
     expect(
@@ -495,7 +715,9 @@ void main() {
           canPop: value == 0,
           // 함수역할: 닫히지 않은 뒤로가기를 홈 탭 이동으로 처리한다. 매개변수: didPop, _. 반환값: 없음.
           onPopInvokedWithResult: (didPop, _) {
-            if (!didPop && !cabinetHandlesBack && value != 0) tabIndex.value = 0;
+            if (!didPop && !cabinetHandlesBack && value != 0) {
+              tabIndex.value = 0;
+            }
           },
           child: IndexedStack(
             index: value,
@@ -1136,13 +1358,12 @@ void main() {
     );
     addTearDown(viewModel.dispose);
     await viewModel.saveUserSetting(
-        viewModel.userSetting
-          .updateUserSetting(
-            fontSize: UserSetting.fontSizeFromOption('medium'),
-            readingSpeed: UserSetting.readingSpeedFromOption('medium'),
-            language: 'en',
-          ),
-      );
+      viewModel.userSetting.updateUserSetting(
+        fontSize: UserSetting.fontSizeFromOption('medium'),
+        readingSpeed: UserSetting.readingSpeedFromOption('medium'),
+        language: 'en',
+      ),
+    );
 
     await tester.pumpWidget(
       ChangeNotifierProvider.value(
@@ -1157,7 +1378,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(deleteButton);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Yes'));
+    await tester.tap(_dialogButton('Delete'));
     await tester.pumpAndSettle();
 
     expect(find.text('Deleted: 1. Failed: 1.'), findsOneWidget);
@@ -1286,13 +1507,12 @@ void main() {
     );
     addTearDown(viewModel.dispose);
     await viewModel.saveUserSetting(
-        viewModel.userSetting
-          .updateUserSetting(
-            fontSize: UserSetting.fontSizeFromOption('large'),
-            readingSpeed: UserSetting.readingSpeedFromOption('medium'),
-            language: 'en',
-          ),
-      );
+      viewModel.userSetting.updateUserSetting(
+        fontSize: UserSetting.fontSizeFromOption('large'),
+        readingSpeed: UserSetting.readingSpeedFromOption('medium'),
+        language: 'en',
+      ),
+    );
 
     await tester.pumpWidget(
       ChangeNotifierProvider.value(
@@ -1318,7 +1538,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Saved Medication'), findsOneWidget);
+    expect(find.text('Medications'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
@@ -1342,6 +1562,13 @@ Future<void> _applySavedFilter(WidgetTester tester) async {
 }
 
 // 함수이름: _pumpFilterApp
+// 함수이름: _koreaToday
+// 함수역할: 앱의 복약 기준인 한국 날짜를 기기 자정 값으로 돌려준다. 매개변수: 없음. 반환값: 오늘 날짜.
+DateTime _koreaToday() {
+  final day = MedicationHistoryDates.today(DateTime.now());
+  return DateTime(day.year, day.month, day.day);
+}
+
 // 함수역할: 오늘 기준의 복용 중·종료·예정 약과 접근성 설정으로 필터 화면을 준비한다.
 // 매개변수: tester, onlyEnded, language, textScale, small. 반환값: 화면 로딩 완료.
 Future<void> _pumpFilterApp(
@@ -1351,6 +1578,7 @@ Future<void> _pumpFilterApp(
   String language = 'ko',
   double textScale = 1,
   bool small = false,
+  String initialFilter = 'active',
 }) async {
   tester.view.physicalSize = small
       ? const Size(320, 640)
@@ -1361,7 +1589,8 @@ Future<void> _pumpFilterApp(
   SharedPreferences.setMockInitialValues({});
   // 함수역할: 위치나 실제 저장 정보에 접근하지 않고 복용 기간별 목록을 반환한다.
   final client = MockClient((request) async {
-    final today = DateTime.now();
+    // 앱은 기기 시간대와 무관하게 한국 날짜로 판단하므로 기준일도 한국 날짜로 만든다.
+    final today = _koreaToday();
     return http.Response(
       jsonEncode({
         'success': true,
@@ -1419,13 +1648,12 @@ Future<void> _pumpFilterApp(
   );
   addTearDown(viewModel.dispose);
   await viewModel.saveUserSetting(
-      viewModel.userSetting
-        .updateUserSetting(
-          fontSize: UserSetting.fontSizeFromOption('large'),
-          readingSpeed: UserSetting.readingSpeedFromOption('medium'),
-          language: language,
-        ),
-    );
+    viewModel.userSetting.updateUserSetting(
+      fontSize: UserSetting.fontSizeFromOption('large'),
+      readingSpeed: UserSetting.readingSpeedFromOption('medium'),
+      language: language,
+    ),
+  );
   await tester.pumpWidget(
     ChangeNotifierProvider.value(
       value: viewModel,
@@ -1442,6 +1670,8 @@ Future<void> _pumpFilterApp(
     ),
   );
   await tester.pumpAndSettle();
+  // 기존 필터별 회귀 검사는 상태를 명시적으로 선택해 시작한다.
+  if (initialFilter != 'all') await _chooseSavedFilter(tester, initialFilter);
 }
 
 // 함수이름: _emptySavedMedicationResponse
@@ -1611,6 +1841,24 @@ class _SelectionTestControl extends CheckSavedMedication {
   // 함수역할: 외부 요청 없는 조회 목록을 받는다. 매개변수: medications. 반환값: 테스트 제어기.
   _SelectionTestControl(this.medications);
 
+  @override
+  Future<MedicationRegimenResult> changeRegimen(
+    int medicationId,
+    MedicationRegimenChange change,
+  ) async {
+    medications = [
+      for (final medication in medications)
+        if (medication.id == medicationId)
+          medication.copyWith(
+            stoppedOn: change.effectiveDate,
+            regimenRevision: 1,
+          )
+        else
+          medication,
+    ];
+    return MedicationRegimenResult(medicationId: medicationId, revision: 1);
+  }
+
   // 함수이름: requestSavedMedicationInfo
   // 함수역할: 파싱을 거치지 않아 잘못된 ID도 UI에서 검증하며, 지정된 실패가 있으면 그 오류를 던진다.
   // 매개변수: 없음. 반환값: 현재 약 목록.
@@ -1714,6 +1962,7 @@ Future<_SelectionTestViewModel> _pumpSelectionApp(
   bool small = false,
   Object? loadFailure,
   Widget? home,
+  String initialFilter = 'active',
 }) async {
   tester.view.physicalSize = small
       ? const Size(320, 640)
@@ -1736,13 +1985,12 @@ Future<_SelectionTestViewModel> _pumpSelectionApp(
   addTearDown(model.dispose);
   model.control.loadFailure = loadFailure;
   await model.saveUserSetting(
-      model.userSetting
-        .updateUserSetting(
-          fontSize: UserSetting.fontSizeFromOption('medium'),
-          readingSpeed: UserSetting.readingSpeedFromOption('medium'),
-          language: language,
-        ),
-    );
+    model.userSetting.updateUserSetting(
+      fontSize: UserSetting.fontSizeFromOption('medium'),
+      readingSpeed: UserSetting.readingSpeedFromOption('medium'),
+      language: language,
+    ),
+  );
   await tester.pumpWidget(
     ChangeNotifierProvider<MedBuddyViewModel>.value(
       value: model,
@@ -1779,6 +2027,9 @@ Future<_SelectionTestViewModel> _pumpSelectionApp(
     await tester.tap(find.text('목록 열기'));
     await tester.pumpAndSettle();
   }
+  if (initialFilter != 'all' && loadFailure == null && home == null) {
+    await _chooseSavedFilter(tester, initialFilter);
+  }
   return model;
 }
 
@@ -1809,12 +2060,18 @@ Future<void> _toggleSavedAll(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+// 함수이름: _dialogButton
+// 함수역할: 화면의 같은 이름 버튼과 구분해 삭제 확인 창 안의 버튼만 찾는다.
+// 매개변수: label: 버튼 문구. 반환값: 확인 창 안의 버튼 문구 Finder.
+Finder _dialogButton(String label) =>
+    find.descendant(of: find.byType(Dialog), matching: find.text(label));
+
 // 함수이름: _deleteSavedSelection
 // 함수역할: 하단 삭제 요청과 한국어 확인을 수행한다. 매개변수: tester. 반환값: 삭제 완료.
 Future<void> _deleteSavedSelection(WidgetTester tester) async {
   await tester.tap(find.byKey(const Key('saved-medication-delete-selected')));
   await tester.pumpAndSettle();
-  await tester.tap(find.text('예'));
+  await tester.tap(_dialogButton('삭제'));
   await tester.pumpAndSettle();
 }
 

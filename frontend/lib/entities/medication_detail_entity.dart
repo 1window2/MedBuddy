@@ -1,6 +1,7 @@
 // 파일명: medication_detail_entity.dart
 // 역할: 서버와 화면 사이에서 사용하는 약 상세 정보 모델을 정의한다.
 
+import 'calendar_days.dart';
 import 'medication_dose_rhythm.dart';
 import 'medication_image_url_entity.dart';
 import 'medication_schedule_entity.dart';
@@ -52,6 +53,19 @@ class MedicationDetail {
   final String imageUrl;
   final String localImagePath;
   final String aiGuide;
+  final String dosingMode;
+  final int regimenRevision;
+  final DateTime? stoppedOn;
+  final DateTime? regimenEffectiveFrom;
+  final int? supersededById;
+  final List<String> scheduleSlotKeys;
+
+  bool get isAsNeeded => isAsNeededRegimen(
+    dosingMode: dosingMode,
+    frequency: dailyFrequency,
+    dosage: dosagePerTime,
+    hasSlots: scheduleSlotKeys.isNotEmpty,
+  );
 
   // 함수이름: MedicationDetail
   // 함수역할: 약의 품목·효능·복용법·주의사항과 처방 기간 및 원격·기기 사진 정보를 상세 화면용 값으로 보존한다.
@@ -98,6 +112,12 @@ class MedicationDetail {
     this.imageUrl = '',
     this.localImagePath = '',
     this.aiGuide = '',
+    this.dosingMode = 'scheduled',
+    this.regimenRevision = 0,
+    this.stoppedOn,
+    this.regimenEffectiveFrom,
+    this.supersededById,
+    this.scheduleSlotKeys = const [],
   });
 
   // 함수이름: MedicationDetail.fromJson
@@ -130,6 +150,20 @@ class MedicationDetail {
       imageUrl: safeMedicationImageUrl(json['image_url'] ?? json['itemImage']),
       localImagePath: '',
       aiGuide: readJsonText(json['ai_guide']),
+      dosingMode: json['dosing_mode'] == 'as_needed'
+          ? 'as_needed'
+          : 'scheduled',
+      regimenRevision: int.tryParse('${json['regimen_revision'] ?? 0}') ?? 0,
+      stoppedOn: readJsonDate(json['stopped_on']),
+      regimenEffectiveFrom: readJsonDate(json['regimen_effective_from']),
+      supersededById: _readInt(json['superseded_by_id']),
+      scheduleSlotKeys: json['schedule_slot_keys'] is List
+          ? List<String>.unmodifiable(
+              (json['schedule_slot_keys'] as List).whereType<String>().where(
+                medicationScheduleSlotKeys.contains,
+              ),
+            )
+          : const [],
     );
   }
 
@@ -149,6 +183,8 @@ class MedicationDetail {
       dailyFrequency: schedule.intakeTime,
       totalDays: schedule.medicationTimeLabel,
       imageUrl: safeMedicationImageUrl(schedule.imageUrl),
+      dosingMode: schedule.isAsNeeded ? 'as_needed' : 'scheduled',
+      scheduleSlotKeys: schedule.slotKeys,
     );
   }
 
@@ -197,6 +233,12 @@ class MedicationDetail {
     String? imageUrl,
     String? localImagePath,
     String? aiGuide,
+    String? dosingMode,
+    int? regimenRevision,
+    DateTime? stoppedOn,
+    DateTime? regimenEffectiveFrom,
+    int? supersededById,
+    List<String>? scheduleSlotKeys,
   }) {
     return MedicationDetail(
       id: id ?? this.id,
@@ -219,6 +261,12 @@ class MedicationDetail {
       imageUrl: imageUrl ?? this.imageUrl,
       localImagePath: localImagePath ?? this.localImagePath,
       aiGuide: aiGuide ?? this.aiGuide,
+      dosingMode: dosingMode ?? this.dosingMode,
+      regimenRevision: regimenRevision ?? this.regimenRevision,
+      stoppedOn: stoppedOn ?? this.stoppedOn,
+      regimenEffectiveFrom: regimenEffectiveFrom ?? this.regimenEffectiveFrom,
+      supersededById: supersededById ?? this.supersededById,
+      scheduleSlotKeys: scheduleSlotKeys ?? this.scheduleSlotKeys,
     );
   }
 
@@ -245,8 +293,23 @@ class MedicationDetail {
       'total_days': totalDays,
       'image_url': safeMedicationImageUrl(imageUrl),
       'ai_guide': aiGuide,
+      'dosing_mode': isAsNeeded ? 'as_needed' : 'scheduled',
+      'schedule_slot_keys': isAsNeeded ? <String>[] : scheduleSlotKeys,
     };
   }
+
+  // 서버 저장 요청과 달리 목록 캐시는 변경 이력 식별 정보도 보존한다.
+  Map<String, dynamic> toJson() => {
+    ...toSaveJson(),
+    'id': id,
+    'created_date': formatJsonDate(createdDate),
+    'manufacturer': manufacturer,
+    'precaution': precaution,
+    'regimen_revision': regimenRevision,
+    'stopped_on': formatJsonDate(stoppedOn),
+    'regimen_effective_from': formatJsonDate(regimenEffectiveFrom),
+    'superseded_by_id': supersededById,
+  };
 
   // Function Name: displayName
   // Description: Exposes the trimmed medication name, using the existing Korean review label when it is blank.
@@ -270,26 +333,24 @@ class MedicationDetail {
     if (normalizedName.isNotEmpty) {
       return normalizedName;
     }
-    return _isEnglish(language) ? 'Medication name needs review' : '약품명 확인 필요';
+    return isEnglishLanguage(language) ? 'Medication name needs review' : '약품명 확인 필요';
   }
 
   // 함수이름: medicationEndDate
-  // 함수역할: 조제일과 양수 투약일을 기준으로 시작일을 포함한 복용 종료일을 계산하고 기간이 부족하면 null을 제공한다.
+  // 함수역할: 조제일(없으면 서버와 같이 등록일)과 양수 투약일을 기준으로 시작일을 포함한 복용 종료일을 계산하고 기간이 부족하면 null을 제공한다.
   // 매개변수:
   // - 없음.
   // 반환값:
   // - DateTime?: 조제일과 양수 투약일을 기준으로 시작일을 포함한 복용 종료일을 계산하고 기간이 부족하면 null을 제공한다.
   DateTime? get medicationEndDate {
-    final startDate = prescriptionDate;
+    final startDate = prescriptionDate ?? createdDate;
     final dayCount = medicationDayCountFromText(totalDays);
     if (startDate == null || dayCount <= 0) {
       return null;
     }
-    return DateTime(
-      startDate.year,
-      startDate.month,
-      startDate.day,
-    ).add(Duration(days: dayCount - 1));
+    // Calendar days, not 24-hour steps: a daylight-saving change inside the course
+    // would otherwise end it at 23:00 of the previous day.
+    return addCalendarDays(startDate, dayCount - 1);
   }
 
   // 함수이름: nextDoseDayFrom
@@ -299,34 +360,60 @@ class MedicationDetail {
   // 반환값:
   // - DateTime?: 다음 복용일. 매일 복용하는 약이거나 시작일을 알 수 없거나 남은 복용일이 없으면 null.
   DateTime? nextDoseDayFrom(DateTime referenceDate) {
+    if (isAsNeeded || !isActiveOn(referenceDate)) return null;
     final cycle = readDoseCycle(dailyFrequency);
     final startDate = prescriptionDate ?? createdDate;
     if (cycle.isDaily || startDate == null) {
       return null;
     }
     final dayCount = medicationDayCountFromText(totalDays);
+    final courseEnd = dayCount <= 0
+        ? null
+        : addCalendarDays(startDate, dayCount - 1);
+    final stopEnd = stoppedOn == null
+        ? null
+        : addCalendarDays(stoppedOn!, -1);
+    final end =
+        stopEnd != null && (courseEnd == null || stopEnd.isBefore(courseEnd))
+        ? stopEnd
+        : courseEnd;
     return nextDoseDay(
       cycle,
       startDate: startDate,
       from: referenceDate,
-      endDate: dayCount <= 0
-          ? null
-          : DateTime(
-              startDate.year,
-              startDate.month,
-              startDate.day + dayCount - 1,
-            ),
+      endDate: end,
     );
   }
 
   // 함수이름: isActiveOn
-  // 함수역할: 조제일자와 총 투약일을 기준으로 기준 날짜에 복용 중인 약인지 판단한다. 기간 정보가 부족한 기존 저장 데이터는 목록에서 사라지지 않도록 복용 중으로 취급한다.
+  // 함수역할: 조제일자(없으면 서버와 같이 등록일자)와 총 투약일을 기준으로 기준 날짜에 복용 중인 약인지 판단한다. 기간 정보가 부족한 기존 저장 데이터는 목록에서 사라지지 않도록 복용 중으로 취급한다.
   // 매개변수:
   // - referenceDate (DateTime): 달력 날짜 계산 또는 비교의 기준 시각
   // 반환값:
   // - bool: 조제일자와 총 투약일을 기준으로 기준 날짜에 복용 중인 약인지 판단한다. 기간 정보가 부족한 기존 저장 데이터는 목록에서 사라지지 않도록 복용 중으로 취급한다.
   bool isActiveOn(DateTime referenceDate) {
-    final startDate = prescriptionDate;
+    final day = DateTime(
+      referenceDate.year,
+      referenceDate.month,
+      referenceDate.day,
+    );
+    if (regimenEffectiveFrom != null &&
+        day.isBefore(
+          DateTime(
+            regimenEffectiveFrom!.year,
+            regimenEffectiveFrom!.month,
+            regimenEffectiveFrom!.day,
+          ),
+        )) {
+      return false;
+    }
+    if (stoppedOn != null &&
+        !day.isBefore(
+          DateTime(stoppedOn!.year, stoppedOn!.month, stoppedOn!.day),
+        )) {
+      return false;
+    }
+    final startDate = prescriptionDate ?? createdDate;
     final endDate = medicationEndDate;
     if (startDate == null || endDate == null) {
       return true;
@@ -352,13 +439,14 @@ class MedicationDetail {
   // 반환값:
   // - List<String>: 약 상세 카드의 복용량, 횟수, 기간, 시점을 앱 언어에 맞게 구성한다.
   List<String> compactDosageGuideLinesForLanguage(String language) {
-    final isEnglish = _isEnglish(language);
+    final isEnglish = isEnglishLanguage(language);
     final lines = <String>[];
+    if (isAsNeeded) lines.add(isEnglish ? 'As needed' : '필요시 복용');
     if (dosagePerTime.trim().isNotEmpty) {
       final dosage = _localizedDosageValue(dosagePerTime, language);
       lines.add(isEnglish ? 'Dose per intake · $dosage' : '1회 복용량 · $dosage');
     }
-    if (dailyFrequency.trim().isNotEmpty) {
+    if (!isAsNeeded && dailyFrequency.trim().isNotEmpty) {
       final frequency = _localizedFrequencyValue(dailyFrequency, language);
       lines.add(
         isEnglish ? 'Daily frequency · $frequency' : '복용 횟수 · $frequency',
@@ -390,7 +478,7 @@ class MedicationDetail {
   // 반환값:
   // - String: 줄바꿈으로 이은 음성 안내 문구.
   String voiceGuideTextForLanguage(String language) {
-    final labels = _isEnglish(language)
+    final labels = isEnglishLanguage(language)
         ? const ['Medication', 'How to take', 'Warning']
         : const ['약 이름', '복용 방법', '주의사항'];
     final values = [itemName.trim(), usageMethod.trim(), warning.trim()];
@@ -405,33 +493,14 @@ class MedicationDetail {
   }
 
   // 함수이름: _localizedDosageValue
-  // 함수역할: 영문 표시에서 숫자와 정·캡슐·포·방울 단위를 단복수에 맞게 바꾸고 인식하지 못한 용량은 원문으로 보존한다.
+  // 함수역할: 저장 일정과 같은 공용 함수로 정·캡슐·포·방울 단위의 복용량을 표시 언어에 맞게 바꾸고 인식하지 못한 용량은 원문으로 보존한다.
   // 매개변수:
   // - value (String): 표시 언어로 바꿀 1회 복용량 원문
   // - language (String): 표시·음성 안내에 사용할 언어 코드
   // 반환값:
-  // - String: 영문 표시에서 숫자와 정·캡슐·포·방울 단위를 단복수에 맞게 바꾸고 인식하지 못한 용량은 원문으로 보존한다.
+  // - String: 표시 언어의 복용량 또는 앞뒤 공백을 지운 원문.
   static String _localizedDosageValue(String value, String language) {
-    final normalizedValue = value.trim();
-    if (!_isEnglish(language)) {
-      return normalizedValue;
-    }
-    final match = RegExp(
-      r'^(\d+(?:\.\d+)?)\s*(정|캡슐|포|방울)$',
-    ).firstMatch(normalizedValue);
-    if (match == null) {
-      return normalizedValue;
-    }
-    final amount = match.group(1)!;
-    final isSingular = double.tryParse(amount) == 1;
-    final unit = switch (match.group(2)) {
-      '정' => isSingular ? 'tablet' : 'tablets',
-      '캡슐' => isSingular ? 'capsule' : 'capsules',
-      '포' => isSingular ? 'packet' : 'packets',
-      '방울' => isSingular ? 'drop' : 'drops',
-      _ => '',
-    };
-    return '$amount $unit'.trim();
+    return localizedDoseAmountLabel(value, language);
   }
 
   // 함수이름: _localizedFrequencyValue
@@ -444,15 +513,15 @@ class MedicationDetail {
   // - String: 영문 하루 횟수 문구 또는 바꾸지 않은 원문.
   static String _localizedFrequencyValue(String value, String language) {
     final normalizedValue = value.trim();
-    if (!_isEnglish(language)) {
+    if (!isEnglishLanguage(language)) {
       return normalizedValue;
     }
     return englishDailyFrequencyLabel(normalizedValue) ?? normalizedValue;
   }
 
   // 함수이름: _localizedDurationValue
-  // 함수역할: 영문 표시에서 "7일"·"7일분"·숫자만 있는 복용 일수만 day·days 문구로 바꾼다.
-  //   "2주"·"1개월"처럼 일 단위가 아닌 기간은 뜻이 바뀌지 않도록 원문 그대로 둔다.
+  // 함수역할: 영문 표시에서 복용 기간을 저장 일정과 같이 서버 기준 일수(주는 7일, 개월은 30일)로 바꿔 day·days 문구로 보여 준다.
+  //   일수를 읽을 수 없는 기간은 원문 그대로 둔다.
   // 매개변수:
   // - value (String): 표시 언어로 바꿀 복용 기간 원문
   // - language (String): 표시·음성 안내에 사용할 언어 코드
@@ -460,18 +529,11 @@ class MedicationDetail {
   // - String: 영문 복용 일수 문구 또는 바꾸지 않은 원문.
   static String _localizedDurationValue(String value, String language) {
     final normalizedValue = value.trim();
-    if (!_isEnglish(language)) {
+    if (!isEnglishLanguage(language)) {
       return normalizedValue;
     }
-    final dayCount = RegExp(
-      r'^(\d+)\s*(?:(?:일(?:분|간)?|days?)(?:\s*\(.*\))?)?$',
-      caseSensitive: false,
-    ).firstMatch(normalizedValue);
-    final days = int.tryParse(dayCount?.group(1) ?? '') ?? 0;
-    if (days <= 0) {
-      return normalizedValue;
-    }
-    return days == 1 ? '1 day' : '$days days';
+    return englishDurationLabel(medicationDayCountFromText(normalizedValue)) ??
+        normalizedValue;
   }
 
   // 함수이름: _localizedTiming
@@ -482,7 +544,7 @@ class MedicationDetail {
   // 반환값:
   // - String: 지원하는 식전·식후·공복·취침 전 문구만 영어로 변환하고 그 외 복용 시점은 그대로 유지한다.
   static String _localizedTiming(String timing, String language) {
-    if (!_isEnglish(language)) {
+    if (!isEnglishLanguage(language)) {
       return timing;
     }
     return switch (timing) {
@@ -494,16 +556,6 @@ class MedicationDetail {
       '취침 전' => 'at bedtime',
       _ => timing,
     };
-  }
-
-  // 함수이름: _isEnglish
-  // 함수역할: 언어 코드가 영어 표시 대상인지 앱 공통 기준으로 확인한다.
-  // 매개변수:
-  // - language (String): 표시·음성 안내에 사용할 언어 코드
-  // 반환값:
-  // - bool: 앱 공통 기준으로 영어이면 true.
-  static bool _isEnglish(String language) {
-    return isEnglishLanguage(language);
   }
 
   // Function Name: _readDosageTiming
@@ -540,5 +592,4 @@ class MedicationDetail {
     final count = medicationScheduleCountFromText(value);
     return count == 0 ? null : count;
   }
-
 }

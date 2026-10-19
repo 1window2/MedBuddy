@@ -1,6 +1,12 @@
 // File Name: medication_alarm_entity.dart
 // Role: Defines a patient-scoped medication alarm model.
 
+import 'json_value_reader.dart';
+
+// 복약 시각이 지나고 이 시간이 지나기 전의 기록은 제때 복용으로 보고 놓친 복약 안내를 띄우지 않는다.
+// 서버가 보호자 미복용 알림을 미루는 CAREGIVER_MISSED_DOSE_GRACE_MINUTES 기본값과 같다.
+const int missedDoseGraceMinutes = 30;
+
 // 클래스명: MedicationAlarm
 // 역할: 환자와 복약 시간대에 속한 알림 시각 및 활성화 상태를 표현한다.
 // 주요 책임:
@@ -64,8 +70,8 @@ class MedicationAlarm {
     return MedicationAlarm(
       patientHash: json['patient_hash']?.toString() ?? '',
       slotKey: slotKey,
-      hour: _readInt(json['hour'], defaultHourFor(slotKey)),
-      minute: _readInt(json['minute'], 0),
+      hour: readJsonTruncatedInt(json['hour']) ?? defaultHourFor(slotKey),
+      minute: readJsonTruncatedInt(json['minute']) ?? 0,
       enabled: json['is_enabled'] == true || json['enabled'] == true,
     );
   }
@@ -218,22 +224,5 @@ class MedicationAlarm {
       hash = (hash * 31 + codeUnit) & 0x7fffffff;
     }
     return hash;
-  }
-
-  // Function Name: _readInt
-  // Description: Reads an integer or numeric string, truncating other numeric inputs, and uses the supplied fallback when parsing fails.
-  // Parameters:
-  // - value (dynamic): Raw response field to decode into the documented return type.
-  // - fallback (int): Fallback for absent or unparseable input.
-  // Returns:
-  // - int: Reads an integer or numeric string, truncating other numeric inputs, and uses the supplied fallback when parsing fails.
-  static int _readInt(dynamic value, int fallback) {
-    if (value is int) {
-      return value;
-    }
-    if (value is num) {
-      return value.toInt();
-    }
-    return int.tryParse(value?.toString() ?? '') ?? fallback;
   }
 }

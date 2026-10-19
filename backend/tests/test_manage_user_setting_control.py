@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine
+from sqlalchemy import event
 from sqlalchemy.orm import sessionmaker
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -30,6 +31,100 @@ from entities.user_setting_entity import _UserSetting  # noqa: E402
 # - db (Session): 이 테스트의 DB 상태만 보관하는 SQLAlchemy 세션.
 # - control (ManageUserSetting): 운영 상태와 분리하여 검증할 유스케이스 control.
 class ManageUserSettingTest(unittest.TestCase):
+    # 함수역할: 최신 저장 뒤 늦게 도착한 요청은 거절하고 알림 끄기를 유지한다.
+    def test_late_save_cannot_overwrite_newer_setting(self) -> None:
+        self.assertEqual(self.control.requestUserSetting("user-a")["revision"], 0)
+        saved = self.control.saveUserSetting(
+            "user-a", 16, 1.0, "ko",
+            medication_notifications_enabled=False, expected_revision=0,
+        )
+        self.assertEqual(saved["revision"], 1)
+        with self.assertRaises(HTTPException) as error:
+            self.control.saveUserSetting(
+                "user-a", 16, 1.0, "ko",
+                medication_notifications_enabled=True, expected_revision=0,
+            )
+        self.assertEqual(error.exception.status_code, 409)
+        self.assertEqual(error.exception.detail, {
+            "code": "settings_revision_conflict", "revision": 1,
+        })
+        self.assertFalse(self.control.requestUserSetting("user-a")["data"]["medication_notifications_enabled"])
+        self.assertEqual(self.control.requestUserSetting("user-b")["revision"], 0)
+
+    # 함수역할: 같은 값 저장도 새 버전이며 구형 앱 저장 후에는 버전 기반 요청을 다시 확인한다.
+    def test_identical_and_legacy_saves_advance_revision(self) -> None:
+        first = self.control.saveUserSetting("user-a", 16, 1.0, "ko", expected_revision=0)
+        same = self.control.saveUserSetting("user-a", 16, 1.0, "ko", expected_revision=first["revision"])
+        self.assertEqual(same["revision"], 2)
+        legacy = self.control.saveUserSetting("user-a", 20, 1.0, "ko")
+        self.assertEqual(legacy["revision"], 3)
+        with self.assertRaises(HTTPException) as error:
+            self.control.saveUserSetting("user-a", 16, 1.0, "ko", expected_revision=2)
+        self.assertEqual(error.exception.status_code, 409)
+        retried = self.control.saveUserSetting("user-a", 24, 1.0, "ko", expected_revision=3)
+        self.assertEqual(retried["revision"], 4)
+        self.assertEqual(retried["data"]["font_size"], 24)
+
+    # 함수역할: 버전 확인과 커밋 사이에 다른 세션이 저장해도 SQL 조건으로 오래된 변경을 거절한다.
+    def test_concurrent_update_after_revision_check_is_rejected(self) -> None:
+        self.control.saveUserSetting("user-a", 16, 1.0, "ko", expected_revision=0)
+        other_db = sessionmaker(bind=self.engine)()
+        self.extra_sessions.append(other_db)
+        other = ManageUserSetting(other_db)
+
+        def save_newer(session, context, instances):
+            other.saveUserSetting(
+                "user-a", 20, 1.0, "ko",
+                medication_notifications_enabled=False, expected_revision=1,
+            )
+
+        event.listen(self.db, "before_flush", save_newer, once=True)
+        with self.assertRaises(HTTPException) as error:
+            self.control.saveUserSetting("user-a", 24, 1.0, "ko", expected_revision=1)
+        self.assertEqual(error.exception.status_code, 409)
+        actual = self.control.requestUserSetting("user-a")
+        self.assertEqual(actual["revision"], 2)
+        self.assertEqual(actual["data"]["font_size"], 20)
+        self.assertFalse(actual["data"]["medication_notifications_enabled"])
+
+    # 함수역할: 구형 앱 저장의 재시도 중에도 다른 저장이 먼저 끝나면 500 대신 409로 끝낸다.
+    def test_legacy_save_losing_twice_returns_conflict(self) -> None:
+        self.control.saveUserSetting("user-a", 16, 1.0, "ko")
+        other_db = sessionmaker(bind=self.engine)()
+        self.extra_sessions.append(other_db)
+        other = ManageUserSetting(other_db)
+        flushes = []
+
+        def save_newer(session, context, instances):
+            flushes.append(1)
+            if len(flushes) <= 2:
+                other.saveUserSetting("user-a", 18 + len(flushes), 1.0, "ko")
+
+        event.listen(self.db, "before_flush", save_newer)
+        with self.assertRaises(HTTPException) as error:
+            self.control.saveUserSetting("user-a", 24, 1.0, "ko")
+        event.remove(self.db, "before_flush", save_newer)
+        self.assertEqual(error.exception.status_code, 409)
+        actual = self.control.requestUserSetting("user-a")
+        self.assertEqual(actual["revision"], 3)
+        self.assertEqual(actual["data"]["font_size"], 20)
+
+    # 함수역할: 처음 저장하는 두 요청도 한 요청만 생성하고 나머지는 충돌로 반환한다.
+    def test_concurrent_initial_save_is_rejected(self) -> None:
+        other_db = sessionmaker(bind=self.engine)()
+        self.extra_sessions.append(other_db)
+
+        def save_newer(session, context, instances):
+            ManageUserSetting(other_db).saveUserSetting(
+                "user-a", 20, 1.0, "ko", expected_revision=0,
+            )
+
+        event.listen(self.db, "before_flush", save_newer, once=True)
+        with self.assertRaises(HTTPException) as error:
+            self.control.saveUserSetting("user-a", 24, 1.0, "ko", expected_revision=0)
+        self.assertEqual(error.exception.status_code, 409)
+        self.assertEqual(self.control.requestUserSetting("user-a")["data"]["font_size"], 20)
+
     # 함수역할: 홈 선택을 계정별로 저장하며 구형 앱 저장에서도 보존하는지 검증한다.
     def test_home_schedule_source_persists_and_preserves_legacy_requests(self) -> None:
         self.assertEqual(self.control.requestUserSetting("user-a")["data"]["home_schedule_source"], "self")
@@ -55,6 +150,7 @@ class ManageUserSettingTest(unittest.TestCase):
     # Returns:
     # - None.
     def setUp(self) -> None:
+        self.extra_sessions = []
         self.engine = create_engine(
             "sqlite:///:memory:",
             connect_args={"check_same_thread": False},
@@ -76,6 +172,8 @@ class ManageUserSettingTest(unittest.TestCase):
     # Returns:
     # - None.
     def tearDown(self) -> None:
+        for session in self.extra_sessions:
+            session.close()
         self.db.close()
         self.engine.dispose()
 

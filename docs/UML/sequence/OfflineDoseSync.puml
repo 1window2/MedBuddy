@@ -15,28 +15,41 @@ Local --> Sync: Durable save
 Sync --> UI: Local state + pending indicator
 note over Sync,Local: Display callbacks are coalesced after durable save.\nWidget publication does not delay recording or upload.
 Sync -> Worker: Schedule connected work
-note over Local, Worker: Queue survives process death; account-scoped leases serialize senders
+note over Local, Worker: Queue survives process death. Foreground and background share SQLite claims.\nOnly one unexpired upload lease per owner, even for distinct doses:\nevery ACK contains a whole schedule snapshot.
 Worker -> Sync: Restore authenticated session and drain
-Sync -> Local: Claim earliest pending operation
-Sync -> API: Same operation ID on every retry
-API -> DB: Begin transaction; insert unique receipt
-alt New valid operation
-  opt Stored chat-linked dose now has no active link (404)
-    API -> API: Keep own dose; omit chat (other authorization failures still reject)
+Sync -> Local: Transaction: check active account and claim earliest eligible operation
+alt Same owner already has an unexpired lease
+  Local --> Sync: No claim; keep pending and retry later
+else Eligible operation; no unexpired owner lease
+  Local --> Sync: Operation + 2-minute lease ownership
+  note over Sync,Local: BLOCKED records hold later overlapping medication IDs on the same date/slot.\nUnrelated BLOCKED records may be bypassed; active leases may not.\nExpired claims retry the same operation ID under new lease ownership.
+  Sync -> API: Same operation ID on every retry
+  API -> DB: Begin transaction; insert unique receipt
+  alt Accepted operation
+    alt New valid operation
+      opt Stored chat-linked dose now has no active link (404)
+        API -> API: Keep own dose; omit chat (other authorization failures still reject)
+      end
+      API -> DB: Update original day's dose + optional chat + current-day alert outbox
+      API -> DB: Commit
+    else Previously accepted operation
+      API -> DB: Read receipt; do not reapply dose
+    end
+    API --> Sync: Receipt + today's authoritative schedule
+    Sync -> Local: Verify owner, operation ID and lease in transaction
+    alt Still owns the claim
+      Local -> Local: Cache snapshot + advance local revision + remove claimed operation
+      Local --> Sync: Acknowledged
+      Sync --> UI: Remove this operation's pending indicator
+    else Claim already reassigned or removed
+      Local --> Sync: Ignore old ACK; preserve newer cache and pending work
+    end
+  else Date / ownership / schedule rejected
+    API -> DB: Rollback
+    API --> Sync: Rejection
+    Sync -> Local: If still owns claim: mark BLOCKED and release lease
+    note over Sync,Local: Retain for review; only dependent same-dose changes remain paused.
   end
-  API -> DB: Update original day's dose + optional chat + current-day alert outbox
-  API -> DB: Commit
-else Previously accepted operation
-  API -> DB: Read receipt; do not reapply dose
-else Date / ownership / schedule rejected
-  API -> DB: Rollback
-  API --> Sync: Rejection
-  Sync -> Local: Retain for review; pause later changes
-end
-opt New acceptance or previously accepted receipt
-  API --> Sync: Receipt + today's authoritative schedule
-  Sync -> Local: Atomically cache response and remove claimed operation
-  Sync --> UI: Remove pending indicator
 end
 note over Sync,API
   Current clients declare dose-days: only dates belonging to the course's

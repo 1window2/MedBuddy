@@ -120,7 +120,9 @@ class Settings(BaseSettings):
     HOSPITAL_DETAIL_REQUEST_BUDGET: int = Field(default=12, ge=1, le=30)
     HOSPITAL_SEARCH_TIMEOUT_SECONDS: float = Field(default=22, gt=0, le=24)
     HOSPITAL_CALENDAR_TIMEOUT_SECONDS: float = Field(default=2, gt=0, le=3)
-    HOSPITAL_API_DAILY_REQUEST_BUDGET: int = Field(default=800, ge=1, le=10000)
+    # 제공기관 오퍼레이션(위치·상세·진료과 목록)마다 따로 적용하는 하루 호출 예산. 개발계정 할당량은
+    # 오퍼레이션당 하루 1,000건이며, 운영계정으로 늘어난 할당량도 설정할 수 있게 상한을 넉넉히 둔다.
+    HOSPITAL_API_DAILY_REQUEST_BUDGET: int = Field(default=800, ge=1, le=1_000_000)
     PILL_IMAGE_API_ENABLED: bool = True
     PILL_IMAGE_API_TIMEOUT_SECONDS: float = Field(default=8.0, gt=0, le=120)
     PUBLIC_API_MAX_CONCURRENCY: int = Field(default=6, ge=1, le=20)
@@ -237,7 +239,7 @@ class Settings(BaseSettings):
         le=100_000,
         description=(
             "Requests one account may send per day to the routes that call the "
-            "generative AI provider (prescription analysis, pill identification, "
+            "generative AI provider (prescription analysis, pill identification, medication lookup, "
             "health recommendation). One IP address is allowed twenty times this."
         ),
     )

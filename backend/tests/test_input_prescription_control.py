@@ -1053,8 +1053,8 @@ class InputPrescriptionMedicationNameVerificationTest(unittest.TestCase):
             ocr_service_boundary=ocr_boundary,
         )
 
-        with self.assertRaisesRegex(ValueError, "100,000 characters"):
-            asyncio.run(self.control.requestPrescriptionText("x" * 100_001))
+        with self.assertRaisesRegex(ValueError, "20,000 characters"):
+            asyncio.run(self.control.requestPrescriptionText("x" * 20_001))
 
         self.assertEqual(ocr_boundary.call_count, 0)
 

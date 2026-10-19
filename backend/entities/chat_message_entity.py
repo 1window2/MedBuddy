@@ -3,7 +3,7 @@
 
 """환자·보호자 채팅 메시지의 저장 모델과 응답 모델을 정의한다."""
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import (
@@ -20,7 +20,11 @@ from sqlalchemy import (
 from core.database import Base
 from entities.medication_image_url_entity import safe_medication_image_url
 from entities.patient_caregiver_link_entity import _PatientCaregiverLink  # noqa: F401
-from entities.user_account_entity import _UserAccount, utc_now  # noqa: F401
+from entities.user_account_entity import (  # noqa: F401
+    _UserAccount,
+    utc_isoformat,
+    utc_now,
+)
 
 
 CHAT_MESSAGE_KIND_TEXT = "text"
@@ -202,12 +206,10 @@ class ChatMessage(BaseModel):
             "body": self.body,
             "message_kind": self.message_kind,
             "context": self.context_payload,
-            "created_at": _as_utc_isoformat(self.created_at),
+            "created_at": utc_isoformat(self.created_at),
             "medication_context": medication_context,
             "medication_contexts": medication_contexts,
-            "read_at": (
-                _as_utc_isoformat(self.read_at) if self.read_at is not None else None
-            ),
+            "read_at": utc_isoformat(self.read_at),
             "hidden_for_me": self.hidden_for_me,
             "deleted_for_everyone": self.deleted_for_everyone,
         }
@@ -282,19 +284,3 @@ class ChatMessage(BaseModel):
                 }
             )
         return contexts or ([fallback] if fallback is not None else [])
-
-
-# 함수이름: _as_utc_isoformat
-# 함수역할:
-# - 데이터베이스 시각을 명시적인 UTC ISO 문자열로 변환한다.
-# 매개변수:
-# - value (datetime): 변환할 시각
-# 반환값:
-# - UTC ISO 8601 문자열
-def _as_utc_isoformat(value: datetime) -> str:
-    """DB의 시간대 없는 UTC 값을 명시적인 UTC ISO 문자열로 바꾼다."""
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=UTC)
-    else:
-        value = value.astimezone(UTC)
-    return value.isoformat()

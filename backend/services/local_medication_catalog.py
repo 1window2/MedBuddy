@@ -4,28 +4,30 @@
 import asyncio
 import json
 import logging
-import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import or_, text
-from sqlalchemy.engine import Connection
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
 from boundaries.medication_summary_boundary import (
     MISSING_DETAIL_TEXT,
     MedicationSummaryGenerator,
+    gather_summaries_keeping_successes,
 )
 from boundaries.public_drug_api_boundary import (
     read_public_image_url,
     read_public_item_name,
     read_public_item_sequence,
 )
+from core.database import escape_like_literal, isolated_worker_session_policy
 from entities.medication_detail_entity import (
     MedicationDetail,
     _DrugApprovalInfo,
     _DrugBasicInfo,
+    normalize_catalog_item_name,
 )
+from entities.medication_lookup_result import MedicationLookupResult
 from services.medication_name_matching import MedicationNameMatcher
 
 logger = logging.getLogger(__name__)
@@ -53,7 +55,6 @@ PARTIAL_SUMMARY_RETRY_AFTER = timedelta(hours=24)
 # Note: File-backed catalog reads and conditional summary writes own Engine-bound worker sessions.
 # Connection-local in-memory SQLite retains only the read fallback; its optional summary writes are skipped.
 class LocalMedicationCatalog:
-    _WHITESPACE_PATTERN = re.compile(r"\s+")
     _FUZZY_ANCHOR_LENGTH = 3
     _FUZZY_CANDIDATE_LIMIT = 30
     # The weekly catalog sync keeps row locks until its single commit; the optional summary
@@ -79,16 +80,10 @@ class LocalMedicationCatalog:
         self.summary_generator = summary_generator
         self.name_matcher = name_matcher or MedicationNameMatcher()
         # Workers retain the engine, never a borrowed request-session operation.
-        bind = db.get_bind() if db is not None else None
-        engine = bind.engine if isinstance(bind, Connection) else bind
-        self._worker_session_factory = (
-            sessionmaker(bind=engine) if engine is not None else None
-        )
-        self._uses_memory_sqlite = (
-            engine is not None
-            and engine.dialect.name == "sqlite"
-            and engine.url.database in {None, "", ":memory:"}
-        )
+        (
+            self._worker_session_factory,
+            self._uses_memory_sqlite,
+        ) = isolated_worker_session_policy(db)
 
     # 함수이름: fetch_drug_info
     # 함수역할:
@@ -96,10 +91,10 @@ class LocalMedicationCatalog:
     # 매개변수:
     # - drug_name (str): 검색 또는 직렬화할 약품명.
     # 반환값:
-    # - 약품 상세 목록; DB나 일치 결과가 없으면 빈 목록.
-    async def fetch_drug_info(self, drug_name: str) -> list[MedicationDetail]:
+    # - 약품 상세 목록과 후보 요약 완결 여부; DB나 일치 결과가 없으면 빈 결과.
+    async def fetch_drug_info(self, drug_name: str) -> MedicationLookupResult:
         if self.db is None:
-            return []
+            return MedicationLookupResult()
 
         basic_items, approval_items = await self._search_catalog(drug_name)
         if basic_items:
@@ -107,15 +102,15 @@ class LocalMedicationCatalog:
                 "[Local DB] e약은요 lookup succeeded (%s items).",
                 len(basic_items),
             )
-            return await self._build_basic_details(basic_items)
+            return MedicationLookupResult(await self._build_basic_details(basic_items))
 
         if not approval_items:
-            return []
+            return MedicationLookupResult()
 
         logger.info("[Local DB] approval lookup succeeded.")
-        return list(await asyncio.gather(*(
+        return await gather_summaries_keeping_successes(
             self._build_approval_detail(drug_name, item) for item in approval_items
-        )))
+        )
 
     # 함수이름: _search_catalog
     # 함수역할:
@@ -173,7 +168,7 @@ class LocalMedicationCatalog:
     # 반환값:
     # - 이름 유사도 임계값을 통과한 e약은요 후보 목록
     def _search_basic(self, drug_name: str, limit: int = 3) -> list[_DrugBasicInfo]:
-        keyword = self._normalize_name(drug_name)
+        keyword = normalize_catalog_item_name(drug_name)
         if not keyword:
             return []
 
@@ -212,7 +207,7 @@ class LocalMedicationCatalog:
         drug_name: str,
         limit: int = 3,
     ) -> list[_DrugApprovalInfo]:
-        keyword = self._normalize_name(drug_name)
+        keyword = normalize_catalog_item_name(drug_name)
         if not keyword:
             return []
 
@@ -255,7 +250,7 @@ class LocalMedicationCatalog:
         return or_(
             *(
                 model.normalized_item_name.like(
-                    self._like_pattern(fragment, prefix="%", suffix="%"),
+                    f"%{escape_like_literal(fragment)}%",
                     escape="\\",
                 )
                 for fragment in search_fragments
@@ -666,33 +661,3 @@ class LocalMedicationCatalog:
         text_value = "" if value is None else str(value).strip()
         return not text_value or text_value == MISSING_DETAIL_TEXT
 
-    # Function Name: _normalize_name
-    # Description:
-    # - Removes all whitespace and lowercases medication names for indexed local lookup.
-    # Parameters:
-    # - name (str): Medication name before catalog-key normalization.
-    # Returns:
-    # - Normalized catalog name.
-    @classmethod
-    def _normalize_name(cls, name: str) -> str:
-        return cls._WHITESPACE_PATTERN.sub("", name).strip().lower()
-
-    # Function Name: _like_pattern
-    # Description:
-    # - Escapes client wildcard characters before adding caller-selected SQL LIKE prefixes and suffixes.
-    # Parameters:
-    # - keyword (str): Literal medication-name fragment for a database search.
-    # - prefix (str): Caller-selected SQL LIKE prefix wildcard.
-    # - suffix (str): Caller-selected SQL LIKE suffix wildcard.
-    # Returns:
-    # - Escaped LIKE pattern for literal medication-name matching.
-    def _like_pattern(
-        self,
-        keyword: str,
-        prefix: str = "",
-        suffix: str = "",
-    ) -> str:
-        escaped_keyword = (
-            keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        )
-        return f"{prefix}{escaped_keyword}{suffix}"

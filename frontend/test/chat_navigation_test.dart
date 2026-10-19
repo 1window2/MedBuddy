@@ -299,7 +299,7 @@ void main() {
       );
       expect(model.userSetting.homeScheduleSource, source);
       if (source == 'self') {
-        expect(find.text('홈 복약 일정을 ‘내 일정’에서 ‘연결된 환자’로 바꿔보세요.'), findsOneWidget);
+        expect(find.text('홈 일정을 ‘연동된 환자’로 바꿔요.'), findsOneWidget);
         await tester.ensureVisible(
           find.byKey(const Key('caregiver-home-source-hint')),
         );
@@ -328,7 +328,7 @@ void main() {
         );
         // Only an explicit selection changes the draft; navigation never saves it.
         for (final (value, label) in [
-          ('patients', '연결된 환자'),
+          ('patients', '연동된 환자'),
           ('self', '내 일정'),
         ]) {
           await tester.ensureVisible(sourceSelector);
@@ -377,7 +377,7 @@ void main() {
         source == 'self' ? findsNothing : findsOneWidget,
       );
       if (source == 'patients') {
-        expect(find.text('연결된 환자가 없습니다.'), findsOneWidget);
+        expect(find.text('연동된 환자가 없습니다.'), findsOneWidget);
         expect(find.byKey(const Key('caregiver-home-link')), findsOneWidget);
       }
       expect(tester.takeException(), isNull);
@@ -635,8 +635,10 @@ void main() {
     );
     addTearDown(control.dispose);
     await control.refresh(includeMessages: true);
+    final chatRoutes = LinkedChatRouteObserver();
     await tester.pumpWidget(
       MaterialApp(
+        navigatorObservers: [chatRoutes],
         home: ChatListUI(
           control: control,
           userSetting: const UserSetting(),
@@ -662,6 +664,13 @@ void main() {
     expect(room.linkId, 2);
     expect(room.patientHash, 'patient-2');
     expect(room.currentUserHash, 'caregiver');
+    // 채팅 알림이 같은 대화를 다시 쌓지 않도록 목록에서 연 대화도 같은 경로 이름으로 추적된다.
+    expect(chatRoutes.isOpen(2), isTrue);
+    expect(chatRoutes.isOpen(1), isFalse);
+    expect(
+      ModalRoute.of(tester.element(find.byType(LinkedChatUI)))?.settings.name,
+      linkedChatRouteName(2),
+    );
     await tester.pumpWidget(const SizedBox.shrink());
     // 기존 실시간 연결의 네트워크 제한 시간을 소진해 테스트 타이머를 정리한다.
     await tester.pump(const Duration(seconds: 20));
@@ -757,6 +766,11 @@ void main() {
             final paragraph = element.renderObject! as RenderParagraph;
             expect(paragraph.didExceedMaxLines, isFalse);
             expect(paragraph.size.height, greaterThan(0));
+            // 탭 이름은 13pt 이상으로 읽힌다.
+            expect(
+              (element.widget as Text).style!.fontSize,
+              greaterThanOrEqualTo(13),
+            );
           }
           for (final destination in MedBuddyDestination.values) {
             final rect = tester.getRect(

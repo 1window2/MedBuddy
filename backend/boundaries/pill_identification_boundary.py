@@ -10,7 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import timedelta
 from io import BytesIO
-from typing import Any, TypeVar
+from typing import Any
 from urllib.parse import urlsplit
 
 import cv2
@@ -21,6 +21,7 @@ from google.genai import types
 from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy.orm import Session
 
+from core.bounded_thread_work import run_thread_keeping_capacity
 from core.config import settings
 from entities.medication_image_url_entity import safe_medication_image_url
 from entities.pill_identification_entity import (
@@ -36,9 +37,6 @@ from repositories.pill_identification_catalog_repository import (
 )
 
 logger = logging.getLogger(__name__)
-
-_CatalogIOResult = TypeVar("_CatalogIOResult")
-_PreprocessingResult = TypeVar("_PreprocessingResult")
 
 MAX_PILL_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_PILL_IMAGE_PIXELS = 24_000_000
@@ -857,7 +855,8 @@ class PillVisionBoundary:
             async with asyncio.timeout(self.timeout_seconds):
                 async with self._analysis_semaphore:
                     # A timed-out decode keeps its capacity slot until the thread really exits.
-                    processed = await self._run_preprocessing_with_capacity(
+                    processed = await run_thread_keeping_capacity(
+                        self._preprocessing_semaphore,
                         self.image_processing_boundary.preprocessMultiplePillImage,
                         image,
                     )
@@ -1000,7 +999,12 @@ class PillVisionBoundary:
             processed_back,
             front_pill_count,
             back_pill_count,
-        ) = await self._preprocess_images_with_capacity(front_image, back_image)
+        ) = await run_thread_keeping_capacity(
+            self._preprocessing_semaphore,
+            self._preprocess_images,
+            front_image,
+            back_image,
+        )
         local_counts = tuple(
             count
             for count in (front_pill_count, back_pill_count)
@@ -1127,75 +1131,6 @@ class PillVisionBoundary:
             image
         )
         return assessment.image, assessment.detected_pill_count
-
-    # 함수이름: _preprocess_images_with_capacity
-    # 함수역할:
-    # - 전처리 용량을 예약하고 스레드 작업을 취소로부터 보호하여 호출이 취소돼도 실제 작업 종료까지 슬롯을 유지한다.
-    # 매개변수:
-    # - front_image (bytes): 앞면 원본 이미지 바이트.
-    # - back_image (bytes | None): 선택 뒷면 원본 이미지 바이트.
-    # 반환값:
-    # - 앞·뒷면 정규화 이미지와 개수; 호출 취소는 정리 콜백을 등록한 뒤 전파한다.
-    async def _preprocess_images_with_capacity(
-        self,
-        front_image: bytes,
-        back_image: bytes | None,
-    ) -> tuple[bytes, bytes | None, int | None, int | None]:
-        return await self._run_preprocessing_with_capacity(
-            self._preprocess_images,
-            front_image,
-            back_image,
-        )
-
-    # Function Name: _run_preprocessing_with_capacity
-    # Description:
-    # - Runs one image-decoding operation in a worker thread under the shared decode capacity.
-    # - Shields the thread from cancellation, so a cancelled or timed-out call keeps its slot until
-    #   the thread has really finished; single-pill and multi-pill requests share this limit.
-    # Parameters:
-    # - operation (Callable[..., _PreprocessingResult]): Blocking preprocessing function to run.
-    # - arguments (bytes | None): Original image bytes passed to the operation.
-    # Returns:
-    # - The operation's result; cancellation propagates after the cleanup callback is registered.
-    async def _run_preprocessing_with_capacity(
-        self,
-        operation: Callable[..., _PreprocessingResult],
-        *arguments: bytes | None,
-    ) -> _PreprocessingResult:
-        """Keeps decode capacity reserved until a timed-out worker really exits."""
-
-        await self._preprocessing_semaphore.acquire()
-        worker = asyncio.create_task(asyncio.to_thread(operation, *arguments))
-        release_on_exit = True
-        try:
-            try:
-                return await asyncio.shield(worker)
-            except asyncio.CancelledError:
-                worker.add_done_callback(self._release_preprocessing_capacity)
-                release_on_exit = False
-                raise
-        finally:
-            if release_on_exit:
-                self._preprocessing_semaphore.release()
-
-    # 함수이름: _release_preprocessing_capacity
-    # 함수역할:
-    # - 호출자와 분리된 전처리 작업의 예외를 회수하고 예약된 디코딩 용량을 해제한다.
-    # 매개변수:
-    # - worker (asyncio.Task[object]): 취소된 호출에서 계속 실행되어 완료된 전처리 태스크.
-    # 반환값:
-    # - 없음; 전처리 세마포어 슬롯을 하나 반환한다.
-    def _release_preprocessing_capacity(
-        self,
-        worker: asyncio.Task[object],
-    ) -> None:
-        """Consumes a detached worker result and releases its capacity slot."""
-
-        try:
-            worker.exception()
-        except asyncio.CancelledError:
-            pass
-        self._preprocessing_semaphore.release()
 
     # Function Name: _has_usable_low_quality_features
     # Description:
@@ -1978,7 +1913,8 @@ class MFDSPillCatalogBoundary:
                 return self._catalog or ()
 
             try:
-                is_fresh, persisted_catalog = await self._run_cache_io(
+                is_fresh, persisted_catalog = await run_thread_keeping_capacity(
+                    self._cache_io_semaphore,
                     self._load_persisted_catalog,
                 )
             except Exception as exc:
@@ -2041,7 +1977,8 @@ class MFDSPillCatalogBoundary:
                 return self._catalog or ()
 
             try:
-                await self._run_cache_io(
+                await run_thread_keeping_capacity(
+                    self._cache_io_semaphore,
                     # Function Name: catalog persistence lambda
                     # Description:
                     # - Capture the downloaded catalog for the zero-argument persistence worker.
@@ -2059,52 +1996,6 @@ class MFDSPillCatalogBoundary:
             self._set_memory_catalog(catalog)
             self._last_refresh_failure_at = 0.0
             return self._catalog or ()
-
-    # Function Name: _run_cache_io
-    # Description:
-    # - Run one persistence operation in a shielded worker and retain its single I/O slot until actual completion after cancellation.
-    # Parameters:
-    # - operation (Callable[[], _CatalogIOResult]): Zero-argument blocking catalog read or write to run off the event loop.
-    # Returns:
-    # - The operation's result; exceptions propagate and caller cancellation registers deferred slot release.
-    async def _run_cache_io(
-        self,
-        operation: Callable[[], _CatalogIOResult],
-    ) -> _CatalogIOResult:
-        """Keeps persistence capacity reserved until a timed-out worker exits."""
-
-        await self._cache_io_semaphore.acquire()
-        worker = asyncio.create_task(asyncio.to_thread(operation))
-        release_on_exit = True
-        try:
-            try:
-                return await asyncio.shield(worker)
-            except asyncio.CancelledError:
-                worker.add_done_callback(self._release_cache_io_capacity)
-                release_on_exit = False
-                raise
-        finally:
-            if release_on_exit:
-                self._cache_io_semaphore.release()
-
-    # Function Name: _release_cache_io_capacity
-    # Description:
-    # - Consume a detached persistence worker's exception and release its reserved cache-I/O slot.
-    # Parameters:
-    # - worker (asyncio.Task[_CatalogIOResult]): Completed persistence task detached by a cancelled caller.
-    # Returns:
-    # - None; returns one permit to the persistence semaphore.
-    def _release_cache_io_capacity(
-        self,
-        worker: asyncio.Task[_CatalogIOResult],
-    ) -> None:
-        """Consumes a detached persistence result and releases its capacity slot."""
-
-        try:
-            worker.exception()
-        except asyncio.CancelledError:
-            pass
-        self._cache_io_semaphore.release()
 
     # Function Name: invalidateMemoryCache
     # Description:

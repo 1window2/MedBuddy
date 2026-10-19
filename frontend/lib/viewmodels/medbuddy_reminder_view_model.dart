@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../controls/as_needed_check_reminder_control.dart';
 import '../controls/set_notification_control.dart';
 import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_schedule_entity.dart';
@@ -7,7 +8,6 @@ import '../entities/medication_slot_label.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/notification_service.dart';
 import '../services/medication_reminder_background_service.dart';
-import 'medbuddy_feature_updates.dart';
 import 'medbuddy_schedule_slot_policy.dart';
 
 // 파일명: medbuddy_reminder_view_model.dart
@@ -74,8 +74,8 @@ class MedBuddyReminderViewModel {
   // Description: Exposes reminder-only feedback. Parameters: None. Returns: Feedback.
   String get statusMessage => _statusMessage;
   // Function Name: _notifyViewModelListeners
-  // Description: Publishes live feature state. Parameters: feature: Tag. Returns: None.
-  void _notifyViewModelListeners(MedBuddyFeature feature) {
+  // Description: Publishes live feature state. Parameters: None. Returns: None.
+  void _notifyViewModelListeners() {
     if (!_disposed) _onChanged(_statusMessage);
   }
 
@@ -130,7 +130,7 @@ class MedBuddyReminderViewModel {
     }
 
     if (notifyAfterLoad && !_disposed && generation == _loadGeneration) {
-      _notifyViewModelListeners(MedBuddyFeature.reminder);
+      _notifyViewModelListeners();
     }
   }
 
@@ -191,7 +191,7 @@ class MedBuddyReminderViewModel {
       _statusMessage = _isEnglishSetting
           ? 'Turn on medication notifications in Settings first.'
           : '환경설정에서 내 복약 알림을 먼저 켜주세요.';
-      _notifyViewModelListeners(MedBuddyFeature.reminder);
+      _notifyViewModelListeners();
       return false;
     }
     // 오늘 복용할 약이 없는 시간대라도 앞으로 14일 안에 복용하는 날이 있으면(주 1회 약의 쉬는 날 등)
@@ -204,7 +204,7 @@ class MedBuddyReminderViewModel {
         _statusMessage = _isEnglishSetting
             ? 'There is no medication in this time slot.'
             : '이 시간대에 복용할 약이 없습니다.';
-        _notifyViewModelListeners(MedBuddyFeature.reminder);
+        _notifyViewModelListeners();
         return false;
       }
     }
@@ -217,7 +217,7 @@ class MedBuddyReminderViewModel {
       _statusMessage = _isEnglishSetting
           ? 'Could not request notification permission.'
           : '알림 권한을 요청하지 못했습니다.';
-      _notifyViewModelListeners(MedBuddyFeature.reminder);
+      _notifyViewModelListeners();
       return false;
     }
     if (_disposed) return false;
@@ -225,7 +225,7 @@ class MedBuddyReminderViewModel {
       _statusMessage = _isEnglishSetting
           ? 'Notification permission was not allowed.'
           : '알림 권한이 허용되지 않았습니다.';
-      _notifyViewModelListeners(MedBuddyFeature.reminder);
+      _notifyViewModelListeners();
       return false;
     }
 
@@ -263,7 +263,7 @@ class MedBuddyReminderViewModel {
       _statusMessage = _isEnglishSetting
           ? '$slotTitle reminder is set for $displayTime.'
           : '$slotTitle 알림이 $displayTime으로 설정되었습니다.';
-      _notifyViewModelListeners(MedBuddyFeature.reminder);
+      _notifyViewModelListeners();
       return true;
     } on StateError {
       if (_disposed) return false;
@@ -275,7 +275,7 @@ class MedBuddyReminderViewModel {
       _statusMessage = _isEnglishSetting
           ? 'Could not set the $slotTitle reminder.'
           : '$slotTitle 알림을 설정하지 못했습니다.';
-      _notifyViewModelListeners(MedBuddyFeature.reminder);
+      _notifyViewModelListeners();
       return false;
     } catch (_) {
       if (_disposed) return false;
@@ -287,7 +287,7 @@ class MedBuddyReminderViewModel {
       _statusMessage = _isEnglishSetting
           ? 'Could not set the $slotTitle reminder.'
           : '$slotTitle 알림을 설정하지 못했습니다.';
-      _notifyViewModelListeners(MedBuddyFeature.reminder);
+      _notifyViewModelListeners();
       return false;
     }
   }
@@ -349,20 +349,20 @@ class MedBuddyReminderViewModel {
         _statusMessage = _isEnglishSetting
             ? 'The reminder is off, but its time could not be updated.'
             : '알림은 꺼졌지만 시각을 변경하지 못했습니다.';
-        _notifyViewModelListeners(MedBuddyFeature.reminder);
+        _notifyViewModelListeners();
         return false;
       }
       _statusMessage = _isEnglishSetting
           ? '$slotTitle reminder has been turned off.'
           : '$slotTitle 알림이 해제되었습니다.';
-      _notifyViewModelListeners(MedBuddyFeature.reminder);
+      _notifyViewModelListeners();
       return true;
     } catch (_) {
       if (_disposed) return false;
       _statusMessage = _isEnglishSetting
           ? 'Could not turn off the $slotTitle reminder.'
           : '$slotTitle 알림을 해제하지 못했습니다.';
-      _notifyViewModelListeners(MedBuddyFeature.reminder);
+      _notifyViewModelListeners();
       return false;
     }
   }
@@ -501,6 +501,8 @@ class MedBuddyReminderViewModel {
       await notificationService.cancelAllScheduledMedicationReminders();
       return;
     }
+    await _restoreAsNeededCheckReminder(isCurrent);
+    if (!isCurrent()) return;
     if (_medicationReminderSettings.isEmpty) {
       return;
     }
@@ -568,6 +570,30 @@ class MedBuddyReminderViewModel {
     }
   }
 
+  // 함수이름: _restoreAsNeededCheckReminder
+  // 함수역할: 저장된 필요시 복용 확인 알림을 다시 예약한다. 일정 화면을 열지 않아도 강제 종료·전체 취소
+  //   뒤 앱 시작이나 일정 갱신 때 되살아나게 한다. 지난 시각이면 아무것도 예약하지 않는다.
+  // 매개변수:
+  // - isCurrent (bool Function()): 계정이 바뀌면 중단할지 확인하는 함수.
+  // 반환값:
+  // - Future<void>: 실패해도 정기 알림 동기화는 계속한다.
+  Future<void> _restoreAsNeededCheckReminder(bool Function() isCurrent) async {
+    final reminder = AsNeededCheckReminderControl(
+      patientHash: patientHash,
+      notifications: notificationService,
+      ensureSession: () {
+        if (!isCurrent()) throw StateError('Account changed.');
+      },
+    );
+    try {
+      await reminder.restore(allowed: true, isEnglish: _isEnglishSetting);
+    } catch (_) {
+      // 알림 기능을 읽지 못해도 정기 알림 동기화는 계속한다.
+    } finally {
+      reminder.dispose();
+    }
+  }
+
   // 함수이름: _loadScheduleWindowOrNull
   // 함수역할: 앞으로 14일의 복약 기간 일정을 읽는다. 조회 경계가 없거나 조회에 실패하면 null을 돌려
   //   호출자가 오늘 일정으로 대신 판단하게 한다.
@@ -632,7 +658,7 @@ class MedBuddyReminderViewModel {
           _statusMessage = _isEnglishSetting
               ? 'The schedule loaded, but reminders could not be synchronized.'
               : '복약 일정은 불러왔지만 알림을 동기화하지 못했습니다.';
-          _notifyViewModelListeners(MedBuddyFeature.reminder);
+          _notifyViewModelListeners();
         })
         .whenComplete(() {
           if (identical(_synchronization, synchronization)) {

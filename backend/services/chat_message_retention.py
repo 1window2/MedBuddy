@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from core.config import settings
 from entities.chat_message_entity import _ChatMessage
+from entities.user_account_entity import as_naive_utc
 
 
 # 클래스명: ChatMessageRetentionPolicy
@@ -50,7 +51,7 @@ class ChatMessageRetentionPolicy:
         now: datetime | None = None,
         commit: bool = True,
     ) -> int:
-        comparison_time = _as_naive_utc(now or datetime.now(UTC))
+        comparison_time = as_naive_utc(now or datetime.now(UTC))
         cutoff = comparison_time - timedelta(days=self.retention_days)
         deleted_count = (
             db.query(_ChatMessage)
@@ -60,17 +61,3 @@ class ChatMessageRetentionPolicy:
         if commit:
             db.commit()
         return int(deleted_count)
-
-
-# 함수이름: _as_naive_utc
-# 함수역할:
-# - 시간대가 있는 시각은 UTC로 변환한 뒤 시간대 정보를 제거하여 DB 저장값과 비교 가능하게 한다.
-# 매개변수:
-# - value (datetime): DB 보관 기한과 비교할 기준 시각.
-# 반환값:
-# - 시간대 정보가 없는 datetime; 원래 naive 값은 그대로 반환한다.
-def _as_naive_utc(value: datetime) -> datetime:
-    """시간대가 있는 시각을 DB 비교용 UTC 시각으로 정규화한다."""
-    if value.tzinfo is None:
-        return value
-    return value.astimezone(UTC).replace(tzinfo=None)

@@ -84,6 +84,9 @@ void main() {
       '0.5정',
     );
     await tester.enterText(find.byKey(const Key('schedule-edit-days')), '5');
+    await tester.ensureVisible(
+      find.byKey(const Key('schedule-edit-frequency-2')),
+    );
     await tester.tap(find.byKey(const Key('schedule-edit-frequency-2')));
     await tester.tap(find.byKey(const Key('schedule-edit-apply')));
     await tester.pumpAndSettle();

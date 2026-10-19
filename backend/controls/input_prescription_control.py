@@ -23,10 +23,16 @@ from services.prescription_medication_name_verifier import (
 )
 from services.prescription_parser import (
     INFO_UNAVAILABLE,
+    PrescriptionAnalysisFormatError,
     normalize_prescription_candidates,
+    strip_markdown_json_fence,
 )
 
 logger = logging.getLogger(__name__)
+
+# 한 장의 처방전·약봉투 OCR 텍스트는 수천 자 안쪽이다. 이보다 긴 요청은 그대로 AI 모델에 보내면 비용만
+# 커지므로 받지 않는다.
+MAX_PRESCRIPTION_TEXT_LENGTH = 20_000
 
 
 # Class Name: PrescriptionAnalysisTimeoutError
@@ -158,8 +164,10 @@ class InputPrescription:
         normalized_text = masked_text.strip()
         if not normalized_text:
             raise ValueError("Masked prescription text is empty.")
-        if len(normalized_text) > 100_000:
-            raise ValueError("Masked prescription text exceeds 100,000 characters.")
+        if len(normalized_text) > MAX_PRESCRIPTION_TEXT_LENGTH:
+            raise ValueError(
+                f"Masked prescription text exceeds {MAX_PRESCRIPTION_TEXT_LENGTH:,} characters."
+            )
         try:
             response_text = await self.ocr_service_boundary.extractPrescriptionTextData(
                 normalized_text
@@ -181,7 +189,7 @@ class InputPrescription:
         self,
         response_text: str,
     ) -> dict[str, object]:
-        cleaned_text = self._clean_response_text(response_text)
+        cleaned_text = strip_markdown_json_fence(response_text)
 
         try:
             raw_data = json.loads(cleaned_text)
@@ -190,7 +198,9 @@ class InputPrescription:
                 "Prescription analysis JSON decoding failed: response_length=%d",
                 len(response_text),
             )
-            raise ValueError("AI returned an invalid JSON response.") from exc
+            raise PrescriptionAnalysisFormatError(
+                "AI returned an invalid JSON response."
+            ) from exc
 
         masked_data = self._apply_secondary_masking(raw_data)
         (
@@ -252,23 +262,6 @@ class InputPrescription:
         for candidate in candidates.candidates:
             analysis_result.addMedicationCandidate(candidate)
         return analysis_result
-
-    # Function Name: _clean_response_text
-    # Description:
-    # - Removes markdown fences and surrounding whitespace from model output.
-    # Parameters:
-    # - response_text (str): Raw Gemini response text.
-    # Returns:
-    # - JSON-only string.
-    def _clean_response_text(self, response_text: str) -> str:
-        cleaned_text = response_text.strip()
-        if cleaned_text.startswith("```json"):
-            cleaned_text = cleaned_text[7:]
-        if cleaned_text.startswith("```"):
-            cleaned_text = cleaned_text[3:]
-        if cleaned_text.endswith("```"):
-            cleaned_text = cleaned_text[:-3]
-        return cleaned_text.strip()
 
     # Function Name: _apply_secondary_masking
     # Description:

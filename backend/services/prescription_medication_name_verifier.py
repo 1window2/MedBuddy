@@ -5,7 +5,6 @@ import asyncio
 import json
 import logging
 import math
-import re
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import Any
@@ -13,11 +12,16 @@ from typing import Any
 from google import genai
 from google.genai import types
 from sqlalchemy import or_
-from sqlalchemy.engine import Connection
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
-from entities.medication_detail_entity import _DrugApprovalInfo, _DrugBasicInfo
+from core.database import escape_like_literal, isolated_worker_session_policy
+from entities.medication_detail_entity import (
+    _DrugApprovalInfo,
+    _DrugBasicInfo,
+    normalize_catalog_item_name,
+)
 from services.medication_match_safety import match_conflict
+from services.prescription_parser import strip_markdown_json_fence
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +98,6 @@ class _MedicationNameFallbackRequest:
 # - ai_timeout_seconds (float): 카탈로그 후보 내 AI 보정의 최대 허용 시간(초).
 # Note: Async file-backed/PostgreSQL reads own Engine-bound worker sessions; only the in-memory fallback and sync verify() borrow db.
 class PrescriptionMedicationNameVerifier:
-    _WHITESPACE_PATTERN = re.compile(r"\s+")
     _MAX_CANDIDATES = 48
     _MAX_AI_CATALOG_CANDIDATES = 8
     _MAX_CANDIDATE_FRAGMENTS = 16
@@ -144,16 +147,10 @@ class PrescriptionMedicationNameVerifier:
             raise ValueError("AI fallback timeout must be greater than zero.")
         self.db = db
         self.ai_timeout_seconds = ai_timeout_seconds
-        bind = db.get_bind() if db is not None else None
-        engine = bind.engine if isinstance(bind, Connection) else bind
-        self._worker_session_factory = (
-            sessionmaker(bind=engine) if engine is not None else None
-        )
-        self._uses_memory_sqlite = (
-            engine is not None
-            and engine.dialect.name == "sqlite"
-            and engine.url.database in {None, "", ":memory:"}
-        )
+        (
+            self._worker_session_factory,
+            self._uses_memory_sqlite,
+        ) = isolated_worker_session_policy(db)
 
     # 함수이름: verify_many
     # 함수역할:
@@ -272,7 +269,7 @@ class PrescriptionMedicationNameVerifier:
     # Returns:
     # - Name verification with canonical name, confidence and source.
     def verify(self, raw_name: str) -> MedicationNameVerification:
-        normalized_raw_name = self._normalize_name(raw_name)
+        normalized_raw_name = normalize_catalog_item_name(raw_name or "")
         if self.db is None or not normalized_raw_name:
             return MedicationNameVerification(
                 raw_name=raw_name,
@@ -319,7 +316,7 @@ class PrescriptionMedicationNameVerifier:
         for index, verification in enumerate(verifications):
             if verification.source != "unverified":
                 continue
-            normalized_name = self._normalize_name(raw_names[index])
+            normalized_name = normalize_catalog_item_name(raw_names[index] or "")
             if not normalized_name:
                 continue
             candidates = self._find_similar_catalog_names(normalized_name)
@@ -385,7 +382,7 @@ class PrescriptionMedicationNameVerifier:
                 ),
                 timeout=self.ai_timeout_seconds,
             )
-            response_data = json.loads(self._clean_json_response(response.text))
+            response_data = json.loads(strip_markdown_json_fence(response.text))
         except Exception as exc:
             logger.warning(
                 "Medication name AI fallback failed: %s",
@@ -624,7 +621,7 @@ class PrescriptionMedicationNameVerifier:
         for model in (_DrugBasicInfo, _DrugApprovalInfo):
             fragment_filters = [
                 model.normalized_item_name.like(
-                    self._like_pattern(fragment),
+                    f"%{escape_like_literal(fragment)}%",
                     escape="\\",
                 )
                 for fragment in fragments
@@ -695,19 +692,6 @@ class PrescriptionMedicationNameVerifier:
             for index in range(self._MAX_CANDIDATE_FRAGMENTS)
         ]
 
-    # Function Name: _like_pattern
-    # Description:
-    # - Escapes SQL LIKE metacharacters before surrounding a name fragment with substring wildcards.
-    # Parameters:
-    # - fragment (str): Literal catalog-name substring to match.
-    # Returns:
-    # - Literal-fragment substring pattern.
-    def _like_pattern(self, fragment: str) -> str:
-        escaped_fragment = (
-            fragment.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        )
-        return f"%{escaped_fragment}%"
-
     # Function Name: _prefix_upper_bound
     # Description:
     # - Increments the last incrementable Unicode code point to bound a catalog prefix range.
@@ -753,7 +737,7 @@ class PrescriptionMedicationNameVerifier:
             if selected_name == candidate.item_name:
                 return candidate
 
-        normalized_selected_name = self._normalize_name(selected_name)
+        normalized_selected_name = normalize_catalog_item_name(selected_name or "")
         for candidate in candidates:
             if normalized_selected_name == candidate.normalized_name:
                 return candidate
@@ -864,33 +848,6 @@ class PrescriptionMedicationNameVerifier:
             * self._HANGUL_FINAL_COUNT
             + final_index
         )
-
-    # Function Name: _normalize_name
-    # Description:
-    # - Removes whitespace and lowercases OCR/catalog names for stable matching.
-    # Parameters:
-    # - name (str): Medication name before catalog-key normalization.
-    # Returns:
-    # - Normalized medication name, or an empty string for missing input.
-    def _normalize_name(self, name: str) -> str:
-        return self._WHITESPACE_PATTERN.sub("", name or "").strip().lower()
-
-    # Function Name: _clean_json_response
-    # Description:
-    # - Removes optional Markdown JSON fences from an AI correction response.
-    # Parameters:
-    # - response_text (str): Raw AI response text before JSON fence removal and decoding.
-    # Returns:
-    # - Trimmed JSON text ready for decoding.
-    def _clean_json_response(self, response_text: str) -> str:
-        cleaned_text = response_text.strip()
-        if cleaned_text.startswith("```json"):
-            cleaned_text = cleaned_text[7:]
-        if cleaned_text.startswith("```"):
-            cleaned_text = cleaned_text[3:]
-        if cleaned_text.endswith("```"):
-            cleaned_text = cleaned_text[:-3]
-        return cleaned_text.strip()
 
     # Function Name: _safe_float
     # Description:

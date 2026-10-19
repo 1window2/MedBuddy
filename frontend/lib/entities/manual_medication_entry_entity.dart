@@ -45,6 +45,7 @@ class ManualMedicationEntry {
   final List<String> scheduleSlotKeys;
   final String doseDays;
   final String localImagePath;
+  final String dosingMode;
 
   // 함수이름: ManualMedicationEntry
   // 함수역할: 직접 입력한 약명·복용량·단위·기간·시간대와 선택적 기기 사진 경로를 보존한다.
@@ -68,6 +69,7 @@ class ManualMedicationEntry {
     required this.scheduleSlotKeys,
     this.doseDays = '',
     this.localImagePath = '',
+    this.dosingMode = 'scheduled',
   });
 
   // 함수이름: totalDays
@@ -97,7 +99,10 @@ class ManualMedicationEntry {
   // 반환값:
   // - MedicationSchedule: 직접 입력값을 복약 일정으로 변환하고 시작일·총 일수·시간대를 보존하며 약명 출처를 manual_entry로 표시한다.
   MedicationSchedule toMedicationSchedule() {
-    final slots = List<String>.of(scheduleSlotKeys, growable: false);
+    final isAsNeeded = dosingMode == 'as_needed';
+    final slots = isAsNeeded
+        ? <String>[]
+        : List<String>.of(scheduleSlotKeys, growable: false);
     return MedicationSchedule(
       prescriptionDate: DateTime(
         startDate.year,
@@ -107,7 +112,10 @@ class ManualMedicationEntry {
       medicationName: medicationName.trim(),
       dosage: dosage,
       // 매일 복용하지 않는 약은 복용 주기를 횟수 문구에 함께 담아 복용일에만 일정과 알림을 만든다.
-      intakeTime: composeDoseFrequency(doseDays, slots.length),
+      intakeTime: isAsNeeded
+          ? '필요시 복용'
+          : composeDoseFrequency(doseDays, slots.length),
+      dosingMode: dosingMode,
       medicationTime: totalDays,
       scheduleSlotKeys: slots,
       rawMedicationName: medicationName.trim(),

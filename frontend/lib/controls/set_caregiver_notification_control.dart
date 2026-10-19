@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:developer' as developer;
 
 import 'package:http/http.dart' as http;
 
@@ -50,35 +49,22 @@ class SetCaregiverNotification {
   // - 시간대 키로 조회할 수 있는 CaregiverNotification map
   Future<Map<String, CaregiverNotification>>
   requestCaregiverNotificationSettings({required String patientHash}) async {
-    try {
-      final response = await _client
-          .get(_buildCaregiverNotificationSlotsUri(patientHash))
-          .timeout(const Duration(seconds: 30));
-      final responseBody = ApiResponseParser.decodeBody(response);
-
-      if (response.statusCode != 200) {
-        throw ApiResponseParser.httpFailure(
+    return ApiResponseParser.guardRequest(
+      operation: 'Caregiver notification lookup failed',
+      logName: 'SetCaregiverNotification',
+      logMessage: 'Caregiver notification lookup failed.',
+      request: () async {
+        final response = await _client
+            .get(_buildCaregiverNotificationSlotsUri(patientHash))
+            .timeout(const Duration(seconds: 30));
+        final responseBody = ApiResponseParser.requireOkBody(
           'Caregiver notification lookup failed',
           response,
-          responseBody,
         );
-      }
 
-      return _decodeSettings(responseBody);
-    } on StateError {
-      rethrow;
-    } catch (error, stackTrace) {
-      developer.log(
-        'Caregiver notification lookup failed.',
-        name: 'SetCaregiverNotification',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      throw ApiResponseParser.transportFailure(
-        'Caregiver notification lookup failed',
-        error,
-      );
-    }
+        return _decodeSettings(responseBody);
+      },
+    );
   }
 
   // 함수이름: saveCaregiverNotificationSetting
@@ -98,45 +84,32 @@ class SetCaregiverNotification {
     int? deadlineHour,
     int? deadlineMinute,
   }) async {
-    try {
-      final response = await _client
-          .put(
-            _buildCaregiverNotificationUri(patientHash, slotKey: slotKey),
-            headers: const {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'notification_enabled':
-                  mode != CaregiverNotificationMode.disabled,
-              'notification_type': mode.wireValue,
-              'deadline_hour': deadlineHour,
-              'deadline_minute': deadlineMinute,
-            }),
-          )
-          .timeout(const Duration(seconds: 30));
-      final responseBody = ApiResponseParser.decodeBody(response);
-
-      if (response.statusCode != 200) {
-        throw ApiResponseParser.httpFailure(
+    return ApiResponseParser.guardRequest(
+      operation: 'Caregiver notification save failed',
+      logName: 'SetCaregiverNotification',
+      logMessage: 'Caregiver notification save failed.',
+      request: () async {
+        final response = await _client
+            .put(
+              _buildCaregiverNotificationUri(patientHash, slotKey: slotKey),
+              headers: const {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'notification_enabled':
+                    mode != CaregiverNotificationMode.disabled,
+                'notification_type': mode.wireValue,
+                'deadline_hour': deadlineHour,
+                'deadline_minute': deadlineMinute,
+              }),
+            )
+            .timeout(const Duration(seconds: 30));
+        final responseBody = ApiResponseParser.requireOkBody(
           'Caregiver notification save failed',
           response,
-          responseBody,
         );
-      }
 
-      return _decodeSetting(responseBody);
-    } on StateError {
-      rethrow;
-    } catch (error, stackTrace) {
-      developer.log(
-        'Caregiver notification save failed.',
-        name: 'SetCaregiverNotification',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      throw ApiResponseParser.transportFailure(
-        'Caregiver notification save failed',
-        error,
-      );
-    }
+        return _decodeSetting(responseBody);
+      },
+    );
   }
 
   // Function Name: _decodeSetting

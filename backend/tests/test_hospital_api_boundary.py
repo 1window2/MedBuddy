@@ -11,7 +11,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from boundaries.hospital_api_boundary import (
-    HospitalApiResponseError, HospitalApiUnavailableError,
+    HospitalApiBudgetExhaustedError, HospitalApiResponseError, HospitalApiUnavailableError,
     NationalEmergencyMedicalCenterHospitalAPI,
 )
 from core.config import settings
@@ -200,13 +200,36 @@ async def test_daily_budget_cache_reuse_and_reset(monkeypatch):
         api = NationalEmergencyMedicalCenterHospitalAPI(client=client, clock=lambda: tick[0], date_clock=lambda: day[0])
         await api.fetchDetails("A1")
         await api.fetchDetails("A1")
-        with pytest.raises(HospitalApiUnavailableError):
+        with pytest.raises(HospitalApiBudgetExhaustedError):
             await api.fetchDetails("A2")
         assert len(calls) == 1
         day[0] = date(2026, 9, 29)
         tick[0] += settings.PUBLIC_API_FAILURE_CACHE_SECONDS + 1
         await api.fetchDetails("A2")
         assert len(calls) == 2
+
+
+@pytest.mark.anyio
+async def test_daily_budget_is_counted_per_provider_operation(monkeypatch):
+    """제공기관 할당량은 오퍼레이션별이므로 상세 조회 예산을 다 써도 위치 조회는 계속된다."""
+    monkeypatch.setattr(settings, "HOSPITAL_API_DAILY_REQUEST_BUDGET", 1)
+
+    def handle(request):
+        if "HPID" in request.url.params:
+            return httpx.Response(200, content=envelope(detail(request.url.params["HPID"])))
+        return httpx.Response(200, content=envelope(location()))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        api = NationalEmergencyMedicalCenterHospitalAPI(
+            client=client, clock=lambda: 0.0, date_clock=lambda: date(2026, 9, 28),
+        )
+        await api.fetchDetails("A1")
+        with pytest.raises(HospitalApiBudgetExhaustedError):
+            await api.fetchDetails("A2")
+        page = await api.fetchNearbyPage(latitude=37.5, longitude=127, page_no=1, page_size=30)
+        assert page is not None
+        with pytest.raises(HospitalApiBudgetExhaustedError):
+            await api.fetchNearbyPage(latitude=37.6, longitude=127, page_no=1, page_size=30)
 
 
 @pytest.mark.parametrize("payload,error", [

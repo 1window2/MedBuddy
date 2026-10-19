@@ -346,6 +346,7 @@ class SetCaregiverNotificationTest(unittest.TestCase):
         }
 
         for name, (columns, expected) in legacy_rows.items():
+            expected = {**expected, "as_needed": ("disabled", None, None)}
             with self.subTest(row=name):
                 self.db.query(_CaregiverNotification).delete()
                 row = _CaregiverNotification(

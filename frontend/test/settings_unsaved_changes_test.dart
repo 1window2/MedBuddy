@@ -38,7 +38,7 @@ void main() {
     await _tap(tester, 'settings-save-and-leave');
     expect(saved!.homeScheduleSource, 'patients');
     await _tap(tester, 'settingsDisplayAndVoiceMenu');
-    expect(find.text('연결된 환자'), findsOneWidget);
+    expect(find.text('연동된 환자'), findsOneWidget);
   });
 
   testWidgets('계속 편집과 변경 취소는 저장하지 않으며 시스템 뒤로가기도 확인한다', (tester) async {

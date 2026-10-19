@@ -6,6 +6,12 @@
 >
 > A Flutter and FastAPI medication assistant that analyzes prescriptions and loose-pill photos, supports direct medication entry, enriches medication information with Korean public data and Gemini, and helps patients and caregivers manage schedules, reminders, linked medication context, and nearby-pharmacy and chat flows.
 
+## User Guide
+
+- [Read the Korean user guide on GitHub](docs/user-guide/README.md).
+- [Open the illustrated Korean PDF guide](docs/user-guide/MedBuddy_User_Guide_ko.pdf).
+- The guide covers the v0.2.3 beta interface; [capture and version notes](docs/user-guide/SOURCE_NOTES.md) distinguish refreshed screens from unchanged earlier captures.
+
 ## Key Features
 
 ### Home and Notification Inbox
@@ -78,7 +84,7 @@
 
 ## Roadmap
 
-1. **v0.2.2 release-candidate hardening and carried-over verification:** v0.2.1-beta is published as a limited off-Play pre-release. Remaining physical reboot/offline recovery, two-device caregiver/chat checks, and measured recognition validation are tracked in the [release TODO](docs/TODO.md).
+1. **v0.2.3 polish line and carried-over verification:** v0.2.2-beta is published as a limited off-Play pre-release; v0.2.3 collects small corrections and improvements and may become the 1.0.0 candidate. Remaining physical reboot/offline recovery, two-device caregiver/chat checks, and measured recognition validation are tracked in the [release TODO](docs/TODO.md).
 2. **Android production verification:** Validate the dedicated
    FastAPI/PostgreSQL/Redis production host behind Cloudflare Tunnel, complete
    backup and restore rehearsal, and finish authenticated two-device, Wi-Fi,

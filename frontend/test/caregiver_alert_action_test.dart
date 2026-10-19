@@ -102,6 +102,37 @@ void main() {
     expect(calls, 2);
   });
 
+  // Function Name: delivery marker pruning test
+  // Description: Verifies delivery markers carry their date, markers older than the retention are pruned on the next delivery,
+  //   undated legacy markers still suppress a duplicate and are dated for later pruning, and unrelated keys are kept.
+  // Parameters: None. Returns: Completion; a failed expectation fails the test.
+  test('delivery markers are dated and pruned after the retention period', () async {
+    var now = DateTime.utc(2026, 9, 21, 3);
+    CaregiverAlertDeliveryService.clock = () => now;
+    addTearDown(() => CaregiverAlertDeliveryService.clock = DateTime.now);
+    final legacyKey = 'caregiver_delivery_caregiver-a_${'3'.padLeft(64, '0')}';
+    SharedPreferences.setMockInitialValues({
+      NotificationInboxStore.activeUserKey: 'caregiver-a',
+      legacyKey: true,
+      'caregiver_delivery_note': 'keep',
+    });
+    Future<void> show(CaregiverAlertContext alert, String title, String body, String language) async {}
+    expect(await CaregiverAlertDeliveryService.display(context(delivery: 3).toData(), presenter: show), isFalse);
+    expect(await CaregiverAlertDeliveryService.display(context().toData(), presenter: show), isTrue);
+    final preferences = await SharedPreferences.getInstance();
+    final firstKey = 'caregiver_delivery_caregiver-a_${'1'.padLeft(64, '0')}';
+    expect(preferences.get(firstKey), now.millisecondsSinceEpoch);
+    expect(preferences.get(legacyKey), now.millisecondsSinceEpoch);
+
+    now = now.add(const Duration(days: 8));
+    expect(await CaregiverAlertDeliveryService.display(context(delivery: 2).toData(), presenter: show), isTrue);
+    await preferences.reload();
+    expect(preferences.containsKey(firstKey), isFalse);
+    expect(preferences.containsKey(legacyKey), isFalse);
+    expect(preferences.get('caregiver_delivery_caregiver-a_${'2'.padLeft(64, '0')}'), now.millisecondsSinceEpoch);
+    expect(preferences.getString('caregiver_delivery_note'), 'keep');
+  });
+
   test('failed display remains retryable and local privacy is respected', () async {
     SharedPreferences.setMockInitialValues({NotificationInboxStore.activeUserKey: 'caregiver-a',
       'user_setting_caregiver-a_notification_detail_mode': 'type_only'});

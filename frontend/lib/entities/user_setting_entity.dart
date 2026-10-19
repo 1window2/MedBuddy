@@ -111,9 +111,10 @@ class UserSetting {
     final language = normalizeAppLanguage(readJsonText(json['language']));
     return UserSetting(
       userHash: readJsonText(json['user_hash'] ?? json['userHash']),
-      fontSize: _readInt(json['font_size'] ?? json['fontSize']) ?? 16,
+      fontSize:
+          readJsonTruncatedInt(json['font_size'] ?? json['fontSize']) ?? 16,
       readingSpeed:
-          _readDouble(json['reading_speed'] ?? json['readingSpeed']) ?? 1.0,
+          readJsonDouble(json['reading_speed'] ?? json['readingSpeed']) ?? 1.0,
       language: language,
       languageMode: _normalizedLanguageMode(
         readJsonText(json['language_mode'] ?? json['languageMode']),
@@ -441,44 +442,6 @@ class UserSetting {
       'fast' => 1.2,
       _ => 1.0,
     };
-  }
-
-  // Function Name: _readInt
-  // Description: Reads an integer or numeric string, truncating other numeric inputs, and uses null when parsing fails.
-  // Parameters:
-  // - value (dynamic): Raw response field to decode into the documented return type.
-  // Returns:
-  // - int?: Reads an integer or numeric string, truncating other numeric inputs, and uses null when parsing fails.
-  static int? _readInt(dynamic value) {
-    if (value is int) {
-      return value;
-    }
-    if (value is num) {
-      return value.toInt();
-    }
-    if (value is String) {
-      return int.tryParse(value);
-    }
-    return null;
-  }
-
-  // Function Name: _readDouble
-  // Description: Converts numeric input or a numeric string to a double, using null when conversion fails.
-  // Parameters:
-  // - value (dynamic): Raw response field to decode into the documented return type.
-  // Returns:
-  // - double?: Converts numeric input or a numeric string to a double, using null when conversion fails.
-  static double? _readDouble(dynamic value) {
-    if (value is double) {
-      return value;
-    }
-    if (value is num) {
-      return value.toDouble();
-    }
-    if (value is String) {
-      return double.tryParse(value);
-    }
-    return null;
   }
 
   // 함수이름: _readBool

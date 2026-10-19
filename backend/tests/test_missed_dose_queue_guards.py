@@ -8,14 +8,20 @@
 # The patient has no saved lunch alarm, so the lunch reminder time is the product default 12:00
 # and the grace period of 30 minutes ends before the baseline deadline.
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from unittest.mock import MagicMock
 
 import pytest
+from sqlalchemy.dialects import postgresql, sqlite
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from controls.queue_missed_dose_alerts_control import (
     QueueMissedDoseAlerts,
     missed_event_key,
+)
+from services.caregiver_alert_outbox_insert import (
+    insert_caregiver_alert_outbox_if_absent,
 )
 from core.application_clock import application_now
 from core.config import settings
@@ -443,3 +449,114 @@ def test_grace_period_is_configurable(
 
     assert queue.queueDue(now=due_time.replace(hour=11, minute=59)) == 0
     assert queue.queueDue(now=due_time.replace(hour=12, minute=0)) == 1
+
+
+# Function Name: _outbox_values
+# Description:
+# - Builds the column values of one missed-dose outbox event for the insert tests.
+# Parameters:
+# - None.
+# Returns:
+# - dict[str, object]: Event key, type, caregiver, patient, day and slot of one event.
+def _outbox_values() -> dict[str, object]:
+    return {
+        "event_key": "insert-test-key",
+        "event_type": CAREGIVER_ALERT_EVENT_MISSED_DEADLINE,
+        "caregiver_hash": CAREGIVER_HASH,
+        "patient_hash": PATIENT_HASH,
+        "schedule_date": date(2026, 10, 18),
+        "slot_key": "lunch",
+    }
+
+
+# Function Name: _session_for_dialect
+# Description:
+# - Builds a mock session whose bound engine reports the given dialect name.
+# Parameters:
+# - dialect_name (str): Dialect name the session's bind reports.
+# Returns:
+# - MagicMock: Session double recording execute, add, flush and begin_nested calls.
+def _session_for_dialect(dialect_name: str) -> MagicMock:
+    db = MagicMock()
+    db.get_bind.return_value.dialect.name = dialect_name
+    return db
+
+
+# Function Name: _insert_outbox_event
+# Description:
+# - Runs the shared caregiver alert outbox insert for one event on the given session.
+# Parameters:
+# - db (MagicMock): Session double used for the insert.
+# Returns:
+# - bool: True only when the insert reports a newly created row.
+def _insert_outbox_event(db: MagicMock) -> bool:
+    return insert_caregiver_alert_outbox_if_absent(db, _outbox_values())
+
+
+# Function Name: test_outbox_insert_ignores_an_existing_event_key_on_postgresql_and_sqlite
+# Description:
+# - On PostgreSQL and SQLite the insert is one INSERT ... ON CONFLICT (event_key) DO NOTHING
+#   statement, and only a row count of one reports a newly created row.
+# Parameters:
+# - dialect_name (str): Dialect of the session's bind.
+# - dialect (Dialect): SQLAlchemy dialect used to compile the executed statement.
+# Returns:
+# - None.
+@pytest.mark.parametrize(
+    ("dialect_name", "dialect"),
+    [("postgresql", postgresql.dialect()), ("sqlite", sqlite.dialect())],
+)
+def test_outbox_insert_ignores_an_existing_event_key_on_postgresql_and_sqlite(
+    dialect_name: str,
+    dialect: object,
+) -> None:
+    for rowcount, created in ((1, True), (0, False)):
+        db = _session_for_dialect(dialect_name)
+        db.execute.return_value.rowcount = rowcount
+
+        assert _insert_outbox_event(db) is created
+
+        statement = db.execute.call_args.args[0]
+        compiled = str(statement.compile(dialect=dialect))
+        assert compiled.startswith("INSERT INTO caregiver_alert_outbox")
+        assert "ON CONFLICT (event_key) DO NOTHING" in compiled
+        db.add.assert_not_called()
+
+
+# Function Name: test_outbox_insert_uses_a_savepoint_on_other_databases
+# Description:
+# - On other databases the row is added and flushed inside a savepoint; a unique-key
+#   violation reports no new row instead of failing the scan, and is logged at DEBUG level only
+#   when the caller passes a logger.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+def test_outbox_insert_uses_a_savepoint_on_other_databases() -> None:
+    db = _session_for_dialect("mysql")
+
+    assert _insert_outbox_event(db) is True
+    db.begin_nested.assert_called_once()
+    added = db.add.call_args.args[0]
+    assert isinstance(added, _CaregiverAlertOutbox)
+    assert added.event_key == "insert-test-key"
+    db.flush.assert_called_once()
+    db.execute.assert_not_called()
+
+    duplicate = _session_for_dialect("mysql")
+    duplicate.begin_nested.side_effect = IntegrityError("INSERT", {}, Exception("unique"))
+
+    assert _insert_outbox_event(duplicate) is False
+
+    duplicate_logger = MagicMock()
+    assert (
+        insert_caregiver_alert_outbox_if_absent(
+            duplicate,
+            _outbox_values(),
+            duplicate_logger=duplicate_logger,
+        )
+        is False
+    )
+    duplicate_logger.debug.assert_called_once_with(
+        "A duplicate caregiver alert outbox event was reused."
+    )

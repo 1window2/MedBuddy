@@ -4,14 +4,31 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/check_caregiver_medication_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_caregiver_medication_control.dart';
+import 'package:medbuddy_frontend/controls/medication_history_control.dart';
 import 'package:medbuddy_frontend/controls/set_caregiver_notification_control.dart';
 import 'package:medbuddy_frontend/entities/caregiver_notification_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
+import 'package:medbuddy_frontend/widgets/medbuddy_page_header.dart';
+import 'medication_history_fixtures.dart';
+
+// 정기 일정이 없이 필요시 약만 있는 환자도 같은 조회 화면으로 확인한다.
+class _AsNeededOnlyCaregiverControl extends _FakeCaregiverMedicationControl {
+  @override
+  Future<CaregiverMedicationInfo> requestPatientMedicationInfo({
+    required String patientHash,
+  }) async => (
+    caregiverHash: 'caregiver-a',
+    patientHash: patientHash,
+    savedMedications: const <MedicationDetail>[],
+    todayMedicationScheduleList: const <MedicationSchedule>[],
+  );
+}
 
 // 클래스명: _FakeCaregiverMedicationControl
 // 역할: 아침만 완료한 환자 일정을 제공하는 보호자 조회 대역.
@@ -85,14 +102,16 @@ class _FakeCaregiverNotificationControl extends SetCaregiverNotification {
   requestCaregiverNotificationSettings({required String patientHash}) async {
     return {
       for (final slotKey in caregiverNotificationSlotKeys)
-        slotKey: slotKey == 'morning' && morning != null ? morning! : CaregiverNotification(
-          caregiverHash: 'caregiver-a',
-          patientHash: patientHash,
-          slotKey: slotKey,
-          mode: slotKey == 'morning'
-              ? CaregiverNotificationMode.doseCompleted
-              : CaregiverNotificationMode.disabled,
-        ),
+        slotKey: slotKey == 'morning' && morning != null
+            ? morning!
+            : CaregiverNotification(
+                caregiverHash: 'caregiver-a',
+                patientHash: patientHash,
+                slotKey: slotKey,
+                mode: slotKey == 'morning'
+                    ? CaregiverNotificationMode.doseCompleted
+                    : CaregiverNotificationMode.disabled,
+              ),
     };
   }
 }
@@ -171,6 +190,7 @@ class _CountingCaregiverNotificationControl extends SetCaregiverNotification {
   bool holdRequests = false;
   final List<Completer<void>> pendingRequests = [];
   final List<CaregiverNotificationMode> savedModes = [];
+  final List<String> savedSlots = [];
 
   // 함수이름: _CountingCaregiverNotificationControl
   // 함수역할:
@@ -234,6 +254,7 @@ class _CountingCaregiverNotificationControl extends SetCaregiverNotification {
     int? deadlineMinute,
   }) async {
     savedModes.add(mode);
+    savedSlots.add(slotKey);
     return CaregiverNotification(
       caregiverHash: 'caregiver-a',
       patientHash: patientHash,
@@ -286,6 +307,131 @@ Future<void> _pumpCaregiverScreen(
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  for (final onlyAsNeeded in [false, true]) {
+    testWidgets('보호자 필요시 약 조회와 자동 갱신은 읽기 전용이다 only=$onlyAsNeeded', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(480, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      var count = 1;
+      var reads = 0;
+      var forbidden = false;
+      final notifications = _CountingCaregiverNotificationControl();
+      final history = MedicationHistoryControl(
+        patientHash: 'patient-a',
+        readOnly: true,
+        now: () => historyTestNow,
+        sessionKeyProvider: () => 'caregiver-a',
+        client: MockClient((request) async {
+          expect(request.method, 'GET');
+          expect(request.url.queryParameters['patient_hash'], 'patient-a');
+          reads++;
+          if (forbidden) {
+            return historyTestResponse({'detail': 'Unlinked'}, 403);
+          }
+          final body = historyTestBody(
+            start: '2026-10-17',
+            end: '2026-10-17',
+            items: [
+              for (var i = 0; i < count; i++)
+                historyTestEntry(
+                  id: 2,
+                  name: '테스트 필요시약',
+                  date: '2026-10-17',
+                  mode: 'as_needed',
+                  slot:
+                      'as_needed:12345678-1234-4234-8234-${i.toString().padLeft(12, '0')}',
+                  status: 'taken',
+                  revision: 1,
+                ),
+            ],
+          );
+          (body['medications'] as List).last['can_record_as_needed'] = true;
+          return historyTestResponse(body);
+        }),
+      );
+      addTearDown(history.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CheckCaregiverMedicationUI(
+            caregiverHash: 'caregiver-a',
+            patientHash: 'patient-a',
+            control: onlyAsNeeded
+                ? _AsNeededOnlyCaregiverControl()
+                : _FakeCaregiverMedicationControl(),
+            notificationControl: notifications,
+            historyControl: history,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const Key('schedule-as-needed')));
+      await tester.pumpAndSettle();
+      expect(find.text('필요시 복용'), findsOneWidget);
+      expect(find.text('테스트 필요시약'), findsOneWidget);
+      expect(find.text('오늘 1회'), findsOneWidget);
+      expect(find.byKey(const Key('schedule-prn-thumbnail-2')), findsOneWidget);
+      expect(find.byKey(const Key('schedule-prn-take-2')), findsNothing);
+      expect(find.byKey(const Key('prn-reminder')), findsNothing);
+      final bell = find.byKey(const Key('caregiver-notification-as_needed'));
+      expect(bell, findsOneWidget);
+      // 시간대 알림 버튼도 다른 조작 버튼처럼 48dp 터치 영역을 가진다.
+      expect(tester.getSize(bell).width, greaterThanOrEqualTo(48));
+      expect(tester.getSize(bell).height, greaterThanOrEqualTo(48));
+      await tester.tap(bell);
+      await tester.pumpAndSettle();
+      expect(find.text('필요시 복용 알림 설정'), findsOneWidget);
+      expect(find.text('정해진 시각까지 미복용 시 알림'), findsNothing);
+      await tester.tap(find.text('복용 확인 즉시 알림'));
+      await tester.tap(find.byKey(const Key('caregiver-notification-save')));
+      await tester.pumpAndSettle();
+      expect(notifications.savedSlots, ['as_needed']);
+      expect(notifications.savedModes, [
+        CaregiverNotificationMode.doseCompleted,
+      ]);
+      expect(
+        find.descendant(
+          of: bell,
+          matching: find.byIcon(Icons.notifications_active_outlined),
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(bell);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('끄기'));
+      await tester.tap(find.byKey(const Key('caregiver-notification-save')));
+      await tester.pumpAndSettle();
+      expect(notifications.savedModes.last, CaregiverNotificationMode.disabled);
+      expect(
+        find.descendant(
+          of: bell,
+          matching: find.byIcon(Icons.notifications_none_outlined),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('schedule-entire-slot-toggle-as_needed')),
+        findsNothing,
+      );
+      expect(find.text(onlyAsNeeded ? '0/0' : '1/3'), findsOneWidget);
+      final beforeRefresh = reads;
+      count = 2;
+      await tester.pump(const Duration(seconds: 15));
+      await tester.pumpAndSettle();
+      expect(reads, greaterThan(beforeRefresh));
+      expect(find.text('오늘 2회'), findsOneWidget);
+      forbidden = true;
+      await tester.pump(const Duration(seconds: 15));
+      await tester.pumpAndSettle();
+      expect(find.text('테스트 필요시약'), findsNothing);
+      expect(find.byKey(const Key('schedule-prn-error')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
   // Show caregiver alert rules, not fabricated medication times, in both
   // languages and clock formats. Large text must remain readable.
   for (final language in ['en', 'ko']) {
@@ -293,27 +439,47 @@ void main() {
       for (final mode in CaregiverNotificationMode.values) {
         testWidgets('alert label $language $format $mode', (tester) async {
           final setting = UserSetting(language: language, timeFormat: format);
-          await tester.pumpWidget(MaterialApp(
-            builder: (context, child) => MediaQuery(
-              data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(2)),
-              child: child!,
+          await tester.pumpWidget(
+            MaterialApp(
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: const TextScaler.linear(2)),
+                child: child!,
+              ),
+              home: CheckCaregiverMedicationUI(
+                caregiverHash: 'caregiver-a',
+                patientHash: 'patient-a',
+                userSetting: setting,
+                control: _FakeCaregiverMedicationControl(),
+                notificationControl: _FakeCaregiverNotificationControl(
+                  morning: CaregiverNotification(
+                    slotKey: 'morning',
+                    mode: mode,
+                    deadlineHour: 2,
+                    deadlineMinute: 38,
+                  ),
+                ),
+              ),
             ),
-            home: CheckCaregiverMedicationUI(
-              caregiverHash: 'caregiver-a', patientHash: 'patient-a',
-              userSetting: setting,
-              control: _FakeCaregiverMedicationControl(),
-              notificationControl: _FakeCaregiverNotificationControl(morning: CaregiverNotification(
-                slotKey: 'morning', mode: mode, deadlineHour: 2, deadlineMinute: 38,
-              )),
-            ),
-          ));
+          );
           await tester.pump();
           final expected = switch (mode) {
-            CaregiverNotificationMode.disabled => language == 'en' ? 'Caregiver alerts off' : '보호자 알림 꺼짐',
-            CaregiverNotificationMode.doseCompleted => language == 'en' ? 'Alert on completion' : '복용 완료 시 알림',
-            CaregiverNotificationMode.missedDeadline => '${language == 'en' ? 'Missed-dose alert' : '미복용 알림'} ${setting.formatTime(2, 38)}',
+            CaregiverNotificationMode.disabled =>
+              language == 'en' ? 'Caregiver alerts off' : '보호자 알림 꺼짐',
+            CaregiverNotificationMode.doseCompleted =>
+              language == 'en' ? 'Alert on completion' : '복용 완료 시 알림',
+            CaregiverNotificationMode.missedDeadline =>
+              '${language == 'en' ? 'Missed-dose alert' : '미복용 알림'} ${setting.formatTime(2, 38)}',
           };
-          expect(tester.widget<Text>(find.byKey(const ValueKey('caregiver-alert-time-morning'))).data, expected);
+          expect(
+            tester
+                .widget<Text>(
+                  find.byKey(const ValueKey('caregiver-alert-time-morning')),
+                )
+                .data,
+            expected,
+          );
           expect(tester.takeException(), isNull);
           await tester.pumpWidget(const SizedBox.shrink());
         });
@@ -355,8 +521,16 @@ void main() {
       final cardBounds = tester.getRect(card);
       expect(cardBounds.left, (width - contentWidth) / 2 + 20);
       expect(cardBounds.width, contentWidth - 40);
+      final refreshButton = find.byTooltip('새로고침');
+      final refreshBounds = tester.getRect(refreshButton);
+      expect(cardBounds.top - refreshBounds.bottom, inInclusiveRange(8, 12));
+      expect(refreshButton.hitTestable(), findsOneWidget);
       expect(tester.getSize(medicationRow).width, cardBounds.width);
+      expect(tester.getSize(medicationRow).height, inInclusiveRange(56, 64));
       expect(tester.getTopLeft(medicationName).dx, cardBounds.left + 18);
+      expect(tester.widget<Text>(find.text('아침')).style!.fontSize, 18);
+      final dosage = find.text('1').first;
+      expect(tester.widget<Text>(dosage).style!.fontWeight, FontWeight.w600);
       expect(find.byIcon(Icons.check_circle_outline), findsNothing);
       expect(find.byIcon(Icons.radio_button_unchecked), findsNothing);
       expect(tester.takeException(), isNull);
@@ -407,7 +581,7 @@ void main() {
       find.byKey(const ValueKey('caregiver-notification-morning')),
       findsOneWidget,
     );
-    expect(find.byIcon(Icons.notifications_active), findsOneWidget);
+    expect(find.byIcon(Icons.notifications_active_outlined), findsOneWidget);
     for (final slotLabel in const ['아침', '점심', '저녁']) {
       await tester.scrollUntilVisible(
         find.text(slotLabel),
@@ -450,6 +624,104 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
+  });
+
+  testWidgets('보호자 헤더는 환자 일정의 배경과 진행률 스타일을 따른다', (tester) async {
+    await _pumpCaregiverScreen(
+      tester,
+      control: _FakeCaregiverMedicationControl(),
+      notificationControl: _FakeCaregiverNotificationControl(),
+    );
+
+    expect(
+      tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
+      MedBuddyColors.pageBackground,
+    );
+    final title = find.text('환자 오늘의 복약 일정');
+    expect(tester.widget<Text>(title).style, MedBuddyPageHeader.titleStyle);
+    expect(
+      tester.widget<Text>(title).strutStyle,
+      MedBuddyPageHeader.titleStrutStyle,
+    );
+    final header = tester
+        .widgetList<Container>(
+          find.ancestor(of: title, matching: find.byType(Container)),
+        )
+        .firstWhere(
+          (container) =>
+              container.decoration is BoxDecoration &&
+              (container.decoration! as BoxDecoration).color ==
+                  MedBuddyColors.topBar,
+        );
+    expect(
+      (header.decoration! as BoxDecoration).borderRadius,
+      const BorderRadius.vertical(bottom: Radius.circular(24)),
+    );
+
+    final progress = tester.widget<LinearProgressIndicator>(
+      find.byType(LinearProgressIndicator),
+    );
+    expect(progress.value, closeTo(1 / 3, 0.001));
+    expect(progress.minHeight, 7);
+    expect(progress.color, MedBuddyColors.successSurface);
+    expect(progress.backgroundColor, Colors.white.withValues(alpha: 0.18));
+    final panel = tester
+        .widgetList<Container>(
+          find.ancestor(
+            of: find.byType(LinearProgressIndicator),
+            matching: find.byType(Container),
+          ),
+        )
+        .firstWhere(
+          (container) =>
+              container.decoration is BoxDecoration &&
+              (container.decoration! as BoxDecoration).border != null,
+        );
+    expect(
+      (panel.decoration! as BoxDecoration).color,
+      Colors.white.withValues(alpha: 0.12),
+    );
+    expect(find.byKey(const Key('caregiver-schedule-history')), findsOneWidget);
+    expect(find.byIcon(Icons.check_circle_outline), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('보호자 전체 알림이 꺼지면 종 아이콘과 안내도 함께 꺼진다', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CheckCaregiverMedicationUI(
+          caregiverHash: 'caregiver-a',
+          patientHash: 'patient-a',
+          userSetting: const UserSetting(caregiverNotificationsEnabled: false),
+          control: _FakeCaregiverMedicationControl(),
+          notificationControl: _FakeCaregiverNotificationControl(),
+        ),
+      ),
+    );
+    await tester.pump();
+    final button = find.byKey(const ValueKey('caregiver-notification-morning'));
+    expect(
+      find.descendant(
+        of: button,
+        matching: find.byIcon(Icons.notifications_none_outlined),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.notifications_active_outlined), findsNothing);
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const ValueKey('caregiver-alert-time-morning')),
+          )
+          .data,
+      '보호자 알림 꺼짐',
+    );
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    expect(find.text('아침 알림 설정'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   // 함수이름: testWidgets 콜백

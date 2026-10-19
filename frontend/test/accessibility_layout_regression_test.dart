@@ -172,7 +172,7 @@ void main() {
         await tester.pumpAndSettle();
         await _openDisplayAndVoiceSettings(tester);
 
-        expect(find.text('글씨크기'), findsOneWidget);
+        expect(find.text('글자 크기'), findsOneWidget);
         expect(find.widgetWithText(FilledButton, '저장하기'), findsOneWidget);
         expect(
           find.widgetWithText(FilledButton, '저장하기').hitTestable(),
@@ -391,7 +391,7 @@ void main() {
           expect(
             firstActionRect.top - dashboardRect.bottom,
             moreOrLessEquals(
-              viewportSize.height >= 900 ? 20 : 12,
+              viewportSize.height >= 900 ? 14 : 12,
               epsilon: 0.1,
             ),
           );

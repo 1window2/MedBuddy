@@ -134,7 +134,7 @@ class _CaregiverHomeSummaryUIState extends State<CaregiverHomeSummaryUI> {
                 ? _errorMessage
                 : loading
                 ? (isEnglish ? 'Loading status' : '복약 현황 확인 중')
-                : (isEnglish ? 'No linked patients.' : '연결된 환자가 없습니다.'),
+                : (isEnglish ? 'No linked patients.' : '연동된 환자가 없습니다.'),
           ),
           if (!loading && !failed && onLinkRequested != null) ...[
             const SizedBox(height: 16),
@@ -142,7 +142,7 @@ class _CaregiverHomeSummaryUIState extends State<CaregiverHomeSummaryUI> {
               key: const Key('caregiver-home-link'),
               onPressed: onLinkRequested,
               icon: const Icon(Icons.person_add_alt),
-              label: Text(isEnglish ? 'Link a patient' : '환자 연결'),
+              label: Text(isEnglish ? 'Link a patient' : '환자 연동'),
             ),
           ],
         ],

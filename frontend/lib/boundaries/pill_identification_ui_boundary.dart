@@ -315,7 +315,10 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _SafetyNotice(text: text),
+                    MedBuddyNotice(
+                      message: text.safetyNotice,
+                      padding: const EdgeInsets.all(16),
+                    ),
                     const SizedBox(height: 22),
                     Text(
                       hasVisibleResults
@@ -2036,36 +2039,6 @@ class _MultiplePillBoxPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _MultiplePillBoxPainter oldDelegate) =>
       oldDelegate.observations != observations;
-}
-
-// Class Name: _SafetyNotice
-// Role: Represents the safety limitations of identifying pills from appearance.
-// Responsibilities:
-// - Composes the safety limitations of identifying pills from appearance using the display values and actions supplied by its parent.
-// Attributes:
-// - text (_PillIdentificationText): Localized labels used by this section.
-class _SafetyNotice extends StatelessWidget {
-  final _PillIdentificationText text;
-
-  // Function Name: _SafetyNotice
-  // Description: Initializes the safety limitations of identifying pills from appearance with the supplied configuration.
-  // Parameters:
-  // - text (_PillIdentificationText): Localized labels used by this section.
-  // Returns: Initialized _SafetyNotice instance.
-  const _SafetyNotice({required this.text});
-
-  // Function Name: build
-  // Description: Renders the safety limitations of identifying pills from appearance from the current configuration and state.
-  // Parameters:
-  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-  // Returns: Widget tree for the safety limitations of identifying pills from appearance.
-  @override
-  Widget build(BuildContext context) {
-    return MedBuddyNotice(
-      message: text.safetyNotice,
-      padding: const EdgeInsets.all(16),
-    );
-  }
 }
 
 // Class Name: _PillImageSlot

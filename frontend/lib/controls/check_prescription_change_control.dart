@@ -96,10 +96,7 @@ class CheckPrescriptionChange {
         )
         .timeout(const Duration(seconds: 15));
 
-    final responseBody = ApiResponseParser.decodeBody(response);
-    if (response.statusCode != 200) {
-      throw ApiResponseParser.httpFailure('처방 변화 조회 실패', response, responseBody);
-    }
+    final responseBody = ApiResponseParser.requireOkBody('처방 변화 조회 실패', response);
     return PrescriptionChangeRadar.fromJson(
       ApiResponseParser.decodeMap(responseBody),
     );
