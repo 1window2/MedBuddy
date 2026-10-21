@@ -499,7 +499,8 @@ class NotificationService {
       final launchDetails = await _plugin.getNotificationAppLaunchDetails();
       await _plugin.initialize(
         settings: const InitializationSettings(
-          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+          // 상태 표시줄 아이콘은 투명도로만 그려지므로 불투명한 앱 아이콘 대신 흰 실루엣을 쓴다.
+          android: AndroidInitializationSettings('@drawable/ic_stat_medbuddy'),
           iOS: DarwinInitializationSettings(
             requestAlertPermission: false,
             requestBadgePermission: false,
