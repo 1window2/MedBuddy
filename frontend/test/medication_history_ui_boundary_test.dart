@@ -1387,6 +1387,19 @@ void main() {
       );
       // 달력 머리의 현황은 그 달의 정기 복용만 센다.
       expect(find.text('2/4'), findsOneWidget);
+      // 기록이 있는 날과 없는 날의 날짜 숫자는 같은 높이에 놓인다.
+      expect(
+        tester
+            .getRect(
+              find.descendant(of: day('2026-10-16'), matching: find.text('16')),
+            )
+            .top,
+        tester
+            .getRect(
+              find.descendant(of: day('2026-10-17'), matching: find.text('17')),
+            )
+            .top,
+      );
     });
 
     testWidgets('a tapped day opens its records and back returns to the month', (

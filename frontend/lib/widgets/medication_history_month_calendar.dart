@@ -312,15 +312,18 @@ class MedicationHistoryMonthCalendar extends StatelessWidget {
                           ],
                         ],
                       ),
-                      if (summary != null && summary.scheduled > 0)
-                        Text(
-                          '${summary.taken}/${summary.scheduled}',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: colour,
-                          ),
+                      // Days without a count keep an empty line so every day number
+                      // in a week sits at the same height.
+                      Text(
+                        summary != null && summary.scheduled > 0
+                            ? '${summary.taken}/${summary.scheduled}'
+                            : ' ',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: colour,
                         ),
+                      ),
                     ],
                   ),
                 ),
