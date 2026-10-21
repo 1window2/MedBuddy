@@ -3,15 +3,15 @@
 ## Status
 
 - Scope review: 2026-09-30
-- Stable functional baseline: `v0.2.2-beta`
-- Active development branch: `beta/v0.2.3`
-- Target release tag: `v0.2.3-beta`
+- Stable functional baseline: `v0.2.3-beta`
+- Active development branch: `beta/v0.2.4`
+- Target release tag: `v0.2.4-beta`
 - Target platform: Android
 - iOS: deferred until after the Android public-release decision, no earlier than
   October 2026
 
 This document tracks the inherited Android beta baseline and the local
-`beta/v0.2.3` additions below. Features
+`beta/v0.2.4` additions below. Features
 outside the list below do not enter the release without an explicit scope
 review covering safety, privacy, data integrity, and release operability.
 

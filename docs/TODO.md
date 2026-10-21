@@ -1,5 +1,23 @@
 # MedBuddy Release TODO
 
+## v0.2.4 development line
+
+v0.2.4 starts from `v0.2.3-beta` on `beta/v0.2.4` and is to be finished by
+2026-11-20 for the graduation exhibition (2026-11-26 to 11-27). It takes the
+items of the 2026-10-20 team meeting and the items still open on the v0.2.3
+line below. Changes are listed in the [v0.2.4 notes](releases/v0.2.4-beta.md).
+
+### From the 2026-10-20 meeting
+
+- [ ] As-needed doses: decide whether a dose recorded by mistake can be
+      undone (the meeting leaned to "not needed").
+- [ ] A calendar for checking past days' doses.
+- [ ] Dose record export.
+- [ ] The launcher icon is enlarged and cropped by the Samsung launcher (the
+      wordmark is cut at both edges); shrink it.
+- [ ] UML: bring the diagrams from 0.2.2 and part of 0.2.3 up to date.
+- [ ] User guide, poster, and feedback gathered until the deadline.
+
 ## v0.2.3 development line
 
 v0.2.3 starts from `v0.2.2-beta` on `beta/v0.2.3`. It collects small
