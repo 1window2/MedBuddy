@@ -10,7 +10,7 @@
 
 - [Read the Korean user guide on GitHub](docs/user-guide/README.md).
 - [Open the illustrated Korean PDF guide](docs/user-guide/MedBuddy_User_Guide_ko.pdf).
-- The guide covers the v0.2.3 beta interface; [capture and version notes](docs/user-guide/SOURCE_NOTES.md) distinguish refreshed screens from unchanged earlier captures.
+- The guide covers the v0.2.3 beta interface; its text was brought up to the v0.2.4 line on 2026-10-21 while the PDF and screenshots still await a rebuild. [Capture and version notes](docs/user-guide/SOURCE_NOTES.md) list what changed.
 
 ## Key Features
 

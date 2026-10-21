@@ -14,8 +14,10 @@ line below. Changes are listed in the [v0.2.4 notes](releases/v0.2.4-beta.md).
       leaned to "not needed").
 - [ ] A calendar for checking past days' doses.
 - [ ] Dose record export.
-- [ ] The launcher icon is enlarged and cropped by the Samsung launcher (the
-      wordmark is cut at both edges); shrink it.
+- [x] The launcher icon is enlarged and cropped by the Samsung launcher (the
+      wordmark is cut at both edges); shrink it. Now an adaptive icon with the
+      mark only (the user agreed to drop the wordmark), plus a transparent
+      status-bar icon for reminders and pushes. Check on the Galaxy Note10.
 - [ ] UML: bring the diagrams from 0.2.2 and part of 0.2.3 up to date.
 - [ ] User guide, poster, and feedback gathered until the deadline.
 
@@ -354,11 +356,14 @@ closed by any code on this branch:
       Manual registration offered no rhythm at all until October 12, so a
       weekly medication entered by hand was scheduled every day; found while
       using the signed build on the phone.
-- [ ] "As needed" directions are scheduled like daily ones, on the slots the
-      user confirmed.
-- [ ] A dose of a medication that is not taken every day can be recorded
+- [x] "As needed" directions are scheduled like daily ones, on the slots the
+      user confirmed. Resolved in v0.2.3: an as-needed medicine leaves the fixed
+      schedule and its doses are recorded from the schedule's as-needed card.
+- [x] A dose of a medication that is not taken every day can be recorded
       only on its dose day; the day after, it is no longer on the schedule, so
-      a weekly dose taken a day late cannot be recorded. The medication box
+      a weekly dose taken a day late cannot be recorded. Since v0.2.3 it can be
+      recorded in the dose history on its dose day with the actual time of the
+      next day (the scheduled date is kept). The medication box
       shows the next dose day of such a medication, so that its absence from
       today's schedule is explained.
 - [ ] A weekly prescription often prints the number of doses as its total
