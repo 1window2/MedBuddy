@@ -139,6 +139,7 @@ Future<MedicationHistoryControl> _pumpHistory(
   double textScale = 1,
   FutureOr<void> Function()? onChanged,
   Stream<String?>? sessionChanges,
+  bool openToday = true,
 }) async {
   final control = MedicationHistoryControl(
     patientHash: 'test-patient',
@@ -170,6 +171,23 @@ Future<MedicationHistoryControl> _pumpHistory(
     ),
   );
   await tester.pumpAndSettle();
+  // 화면은 한 달 달력에서 시작하므로 기존 하루 기록 검증은 오늘을 눌러 들어간 뒤 진행한다.
+  if (openToday) {
+    final today = find.byKey(const ValueKey('history-month-day-2026-10-17'));
+    await tester.scrollUntilVisible(
+      today,
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byType(ListView),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(today);
+    await tester.pumpAndSettle();
+  }
   return control;
 }
 
@@ -501,7 +519,8 @@ void main() {
       await _chooseExportDate(tester, 'end', DateTime(2026, 10, 16));
       expect(find.textContaining('2026-10-11'), findsOneWidget);
       expect(find.text('2026-10-16'), findsOneWidget);
-      expect(server.reads, hasLength(1));
+      // 달력의 한 달 조회와 오늘 조회 뒤로는 날짜를 골라도 다시 읽지 않는다.
+    expect(server.reads, hasLength(2));
       expect(control.snapshot, same(original));
       expect(control.requestedRange!.days, 1);
       await tester.tap(find.text('Cancel'));
@@ -1303,6 +1322,178 @@ void main() {
   }
 
   // 기존 필요시 이벤트 정정은 새 복용을 만들지 않고 원래 키와 버전을 사용한다.
+  // 한 달 달력: 날짜별 정기 복용 기록 수·색, 필요시 표시, 날짜 진입과 복귀, 조회 가능 기간.
+  group('month calendar', () {
+    _HistoryServer monthServer() {
+      final server = _HistoryServer();
+      server.items
+        ..clear()
+        ..addAll([
+          historyTestEntry(date: '2026-10-16', status: 'taken', revision: 1),
+          historyTestEntry(date: '2026-10-16', slot: 'evening'),
+          historyTestEntry(
+            date: '2026-10-15',
+            status: 'taken',
+            revision: 1,
+          ),
+          historyTestEntry(date: '2026-10-14'),
+          historyTestEntry(
+            id: 2,
+            name: '테스트 필요시약',
+            date: '2026-10-14',
+            slot: 'as_needed:12345678-1234-4234-8234-123456789012',
+            mode: 'as_needed',
+            status: 'taken',
+            revision: 1,
+          ),
+        ]);
+      return server;
+    }
+
+    Finder day(String date) => find.byKey(ValueKey('history-month-day-$date'));
+
+    testWidgets('opens on the current month with one read and day summaries', (
+      tester,
+    ) async {
+      final server = monthServer();
+      await _pumpHistory(tester, server, openToday: false);
+      expect(find.byKey(const Key('history-month-calendar')), findsOneWidget);
+      expect(find.text('October 2026'), findsOneWidget);
+      expect(server.reads, hasLength(1));
+      expect(server.reads.single.queryParameters['start_date'], '2026-10-01');
+      expect(server.reads.single.queryParameters['end_date'], '2026-10-17');
+      expect(
+        find.descendant(of: day('2026-10-16'), matching: find.text('1/2')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: day('2026-10-15'), matching: find.text('1/1')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: day('2026-10-14'), matching: find.text('0/1')),
+        findsOneWidget,
+      );
+      expect(
+        find.bySemanticsLabel(
+          RegExp(r'^Day 14, 0 of 1 recorded as taken, as-needed 1$'),
+        ),
+        findsOneWidget,
+      );
+      // 오늘 뒤의 날짜는 누를 수 없다.
+      expect(
+        tester.widget<InkWell>(day('2026-10-18')).onTap,
+        isNull,
+      );
+      // 달력 머리의 현황은 그 달의 정기 복용만 센다.
+      expect(find.text('2/4'), findsOneWidget);
+    });
+
+    testWidgets('a tapped day opens its records and back returns to the month', (
+      tester,
+    ) async {
+      final server = monthServer();
+      await _pumpHistory(tester, server, openToday: false);
+      await tester.tap(day('2026-10-16'));
+      await tester.pumpAndSettle();
+      expect(find.text('2026-10-16 (Fri)'), findsOneWidget);
+      expect(server.reads.last.queryParameters['start_date'], '2026-10-16');
+      expect(server.reads.last.queryParameters['end_date'], '2026-10-16');
+      expect(find.byKey(const Key('history-month-calendar')), findsNothing);
+
+      await tester.tap(find.byKey(const Key('history-open-month')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('history-month-calendar')), findsOneWidget);
+      expect(server.reads, hasLength(3));
+
+      // 하루 기록에서의 시스템 뒤로 가기도 화면을 닫지 않고 달력으로 돌아간다.
+      await tester.tap(day('2026-10-15'));
+      await tester.pumpAndSettle();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('history-month-calendar')), findsOneWidget);
+    });
+
+    testWidgets('earlier months stop at the 90-day history window', (
+      tester,
+    ) async {
+      final server = monthServer();
+      await _pumpHistory(tester, server, openToday: false);
+      for (final title in ['September 2026', 'August 2026', 'July 2026']) {
+        await tester.tap(find.byKey(const Key('history-previous-month')));
+        await tester.pumpAndSettle();
+        expect(find.text(title), findsOneWidget);
+      }
+      expect(server.reads.last.queryParameters['start_date'], '2026-07-20');
+      expect(server.reads.last.queryParameters['end_date'], '2026-07-31');
+      expect(
+        tester
+            .widget<IconButton>(find.byKey(const Key('history-previous-month')))
+            .onPressed,
+        isNull,
+      );
+      expect(tester.widget<InkWell>(day('2026-07-19')).onTap, isNull);
+      expect(tester.widget<InkWell>(day('2026-07-20')).onTap, isNotNull);
+      await tester.tap(find.byKey(const Key('history-next-month')));
+      await tester.pumpAndSettle();
+      expect(find.text('August 2026'), findsOneWidget);
+    });
+
+    testWidgets('a failed month read offers a retry', (tester) async {
+      final server = monthServer()..failRead = true;
+      await _pumpHistory(tester, server, openToday: false);
+      expect(find.byKey(const Key('history-month-error')), findsOneWidget);
+      server.failRead = false;
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('history-month-error')), findsNothing);
+      expect(
+        find.descendant(of: day('2026-10-16'), matching: find.text('1/2')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('export from the month starts with the visible month', (
+      tester,
+    ) async {
+      await _pumpHistory(tester, monthServer(), openToday: false);
+      await tester.tap(find.byTooltip('Export'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('2026-10-01'), findsWidgets);
+      expect(find.text('2026-10-17'), findsWidgets);
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('the month fits a narrow screen at large Korean text', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await _pumpHistory(
+        tester,
+        monthServer(),
+        isEnglish: false,
+        textScale: 2,
+        openToday: false,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('history-month-legend')),
+        200,
+        scrollable: find
+            .descendant(
+              of: find.byType(ListView),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   testWidgets('record summary counts scheduled doses only, not PRN doses', (
     tester,
   ) async {
@@ -1456,7 +1647,8 @@ void main() {
     );
     await _chooseExportDate(tester, 'end', null);
     expect(find.text('2026-10-16'), findsOneWidget);
-    expect(server.reads, hasLength(1));
+    // 달력의 한 달 조회와 오늘 조회 뒤로는 날짜를 골라도 다시 읽지 않는다.
+    expect(server.reads, hasLength(2));
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
   });

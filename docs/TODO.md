@@ -12,7 +12,9 @@ line below. Changes are listed in the [v0.2.4 notes](releases/v0.2.4-beta.md).
 - [x] As-needed doses: a dose recorded by mistake can be undone from the
       save notice (decided with the user on 2026-10-21; the meeting had
       leaned to "not needed").
-- [ ] A calendar for checking past days' doses.
+- [x] A calendar for checking past days' doses: the medication history
+      opens on a month calendar with per-day recorded counts (2026-10-21;
+      try it on the phone and drop it before the merge if it does not fit).
 - [ ] Dose record export.
 - [x] The launcher icon is enlarged and cropped by the Samsung launcher (the
       wordmark is cut at both edges); shrink it. Now an adaptive icon with the

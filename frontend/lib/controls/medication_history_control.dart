@@ -173,6 +173,11 @@ class MedicationHistoryControl extends ChangeNotifier {
   // 날짜별 화면은 그대로 두고 공유할 기간만 별도로 읽는다.
   Future<MedicationHistorySnapshot> readRangeForExport(
     MedicationHistoryRange range,
+  ) => readRange(range);
+
+  // 함수역할: 화면의 하루 기록은 그대로 둔 채 한 달 달력이나 내보내기용 기간을 서버에서 읽는다.
+  Future<MedicationHistorySnapshot> readRange(
+    MedicationHistoryRange range,
   ) async {
     ensureSession();
     if (busy) throw const MedicationHistoryBusy();
