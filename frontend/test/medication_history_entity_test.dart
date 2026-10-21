@@ -222,6 +222,38 @@ void main() {
     );
   });
 
+  // 같은 날 여러 번 먹은 필요시 약은 임의 UUID가 아니라 복용 시각 순서로 보이고 내보내진다.
+  test('same-day PRN doses are ordered by the time they were taken', () {
+    Map<String, dynamic> dose(String uuid, String? taken, {String? recorded}) => {
+      ...historyTestEntry(
+        id: 2,
+        date: '2026-10-17',
+        slot: 'as_needed:$uuid',
+        mode: 'as_needed',
+        status: taken == null ? 'unrecorded' : 'taken',
+        revision: 1,
+      ),
+      'actual_taken_at': taken,
+      'recorded_at': recorded ?? taken,
+    };
+    final items = MedicationHistorySnapshot.fromJson(
+      historyTestBody(
+        items: [
+          dose('ffffffff-1234-4234-8234-123456789012', '2026-10-17T00:30:00Z'),
+          dose('00000000-1234-4234-8234-123456789012', '2026-10-17T05:10:00Z'),
+          dose('88888888-1234-4234-8234-123456789012', null),
+          dose('77777777-1234-4234-8234-123456789012', '2026-10-17T03:00:00Z'),
+        ],
+      ),
+    ).items.where((item) => item.isAsNeeded).toList();
+    expect(items.map((item) => item.slotKey.substring(10, 18)), [
+      'ffffffff',
+      '77777777',
+      '00000000',
+      '88888888',
+    ]);
+  });
+
   // 건너뜀만 이유를 가지며 그 외 상태에 실제 복용 시각이 남지 않는다.
   test('reason length and mutually exclusive status fields are validated', () {
     final entry = MedicationHistoryEntry.fromJson(historyTestEntry());

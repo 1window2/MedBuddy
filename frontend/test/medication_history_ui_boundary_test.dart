@@ -921,6 +921,74 @@ void main() {
     },
   );
 
+  testWidgets('undo right after a PRN dose marks only that record unrecorded', (
+    tester,
+  ) async {
+    final server = _HistoryServer();
+    await _pumpAsNeeded(tester, server);
+    await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
+    await tester.pumpAndSettle();
+    expect(find.text('1 dose today'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('prn-undo-record')));
+    await tester.pumpAndSettle();
+    expect(server.writes, hasLength(2));
+    expect(server.paths[1], server.paths[0]);
+    expect(server.writes[1]['status'], 'unrecorded');
+    expect(server.writes[1]['expected_revision'], 1);
+    expect(server.writes[1]['actual_taken_at'], isNull);
+    expect(
+      server.writes[1]['operation_id'],
+      isNot(server.writes[0]['operation_id']),
+    );
+    expect(find.text('Dose record undone.'), findsOneWidget);
+    expect(find.text('1 dose today'), findsNothing);
+    // 되돌린 뒤 다시 누르면 추가 복용 확인 없이 첫 복용으로 기록한다.
+    ScaffoldMessenger.of(tester.element(find.byType(ListView))).clearSnackBars();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(server.writes, hasLength(3));
+    expect(server.paths[2], isNot(server.paths[0]));
+  });
+
+  testWidgets('undo leaves an earlier dose of the same day as it was', (
+    tester,
+  ) async {
+    final server = _HistoryServer();
+    await _pumpAsNeeded(tester, server);
+    await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
+    await tester.pumpAndSettle();
+    ScaffoldMessenger.of(tester.element(find.byType(ListView))).clearSnackBars();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('prn-confirm-additional')));
+    await tester.pumpAndSettle();
+    expect(find.text('2 doses today'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('prn-undo-record')));
+    await tester.pumpAndSettle();
+    expect(server.writes, hasLength(3));
+    expect(server.paths[2], server.paths[1]);
+    expect(server.writes[2]['status'], 'unrecorded');
+    expect(find.text('1 dose today'), findsOneWidget);
+  });
+
+  testWidgets('a failed PRN undo explains where to correct the record', (
+    tester,
+  ) async {
+    final server = _HistoryServer();
+    await _pumpAsNeeded(tester, server);
+    await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
+    await tester.pumpAndSettle();
+    server.failWriteNumber = 2;
+    await tester.tap(find.byKey(const Key('prn-undo-record')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('could not be undone'), findsOneWidget);
+    expect(find.text('Dose record undone.'), findsNothing);
+    expect(find.text('1 dose today'), findsOneWidget);
+  });
+
   testWidgets('repeat dose cancellation does not change the count', (
     tester,
   ) async {
@@ -1047,7 +1115,8 @@ void main() {
         .position
         .pixels;
     expect(after, closeTo(before, 2));
-    await tester.pump(const Duration(seconds: 4));
+    // 실행 취소가 있는 저장 알림은 일반 복용과 같이 5초 동안 보인다.
+    await tester.pump(const Duration(seconds: 6));
     await tester.pumpAndSettle();
     expect(
       find.byKey(const Key('schedule-prn-take-2')).hitTestable(),
@@ -1234,6 +1303,37 @@ void main() {
   }
 
   // 기존 필요시 이벤트 정정은 새 복용을 만들지 않고 원래 키와 버전을 사용한다.
+  testWidgets('record summary counts scheduled doses only, not PRN doses', (
+    tester,
+  ) async {
+    final server = _HistoryServer();
+    server.items
+      ..clear()
+      ..addAll([
+        historyTestEntry(date: '2026-10-17'),
+        historyTestEntry(
+          id: 2,
+          name: '테스트 필요시약',
+          date: '2026-10-17',
+          slot: 'as_needed:12345678-1234-4234-8234-123456789012',
+          mode: 'as_needed',
+          status: 'taken',
+          revision: 1,
+        ),
+      ]);
+    await _pumpHistory(tester, server);
+    // 머리의 현황은 예정 복용 1건만 세고, 필요시 복용은 자기 카드에서만 센다.
+    expect(find.text('1/2'), findsNothing);
+    expect(
+      tester
+          .widget<LinearProgressIndicator>(
+            find.byType(LinearProgressIndicator).first,
+          )
+          .value,
+      0,
+    );
+  });
+
   testWidgets('editing an existing PRN event preserves its original slot key', (
     tester,
   ) async {
@@ -1254,11 +1354,21 @@ void main() {
       );
     await _pumpHistory(tester, server);
     await _openEditor(tester);
+    // 필요시 복용에는 건너뛸 예정 복용이 없으므로 취소와 복용만 고를 수 있다.
+    expect(find.byType(RadioListTile<MedicationHistoryStatus>), findsNWidgets(2));
+    expect(
+      find.widgetWithText(RadioListTile<MedicationHistoryStatus>, 'Skipped'),
+      findsNothing,
+    );
     await tester.tap(
-      find.widgetWithText(RadioListTile<MedicationHistoryStatus>, 'Unrecorded'),
+      find.widgetWithText(
+        RadioListTile<MedicationHistoryStatus>,
+        'Cancel record (recorded by mistake)',
+      ),
     );
     await _confirmSave(tester);
     await tester.pumpAndSettle();
+    expect(server.writes.single['status'], 'unrecorded');
     expect(server.paths.single, endsWith('/2/2026-10-17/$key'));
     expect(server.writes.single['expected_revision'], 3);
     expect(server.items, hasLength(1));

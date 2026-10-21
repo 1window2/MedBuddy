@@ -828,9 +828,13 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
   );
 
   // 일정 화면과 같은 진행률·시간대 색상을 사용하되 실제 복용의 증명으로 표시하지 않는다.
+  // 필요시 복용은 정해진 횟수가 없으므로 일정 화면처럼 현황의 분모·분자에 넣지 않는다.
   Widget _progress(MedicationHistorySnapshot snapshot) {
-    final total = snapshot.items.length;
-    final taken = snapshot.count(MedicationHistoryStatus.taken);
+    final scheduled = snapshot.items.where((item) => !item.isAsNeeded);
+    final total = scheduled.length;
+    final taken = scheduled
+        .where((item) => item.status == MedicationHistoryStatus.taken)
+        .length;
     return Container(
       margin: const EdgeInsets.only(top: 16, bottom: 8),
       padding: const EdgeInsets.all(14),
@@ -1366,14 +1370,30 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
                           },
                           child: Column(
                             children: [
+                              // 필요시 복용에는 건너뛸 예정 복용이 없으므로 건너뜀은 이미 그렇게 저장된
+                              // 기록에만 보이고, 미기록은 잘못 누른 기록의 취소로 안내한다.
                               for (final status
                                   in MedicationHistoryStatus.values)
-                                RadioListTile<MedicationHistoryStatus>(
-                                  value: status,
-                                  enabled: !_fieldsLocked,
-                                  contentPadding: EdgeInsets.zero,
-                                  title: Text(status.label(widget.isEnglish)),
-                                ),
+                                if (!widget.entry!.isAsNeeded ||
+                                    status != MedicationHistoryStatus.skipped ||
+                                    widget.entry!.status ==
+                                        MedicationHistoryStatus.skipped)
+                                  RadioListTile<MedicationHistoryStatus>(
+                                    value: status,
+                                    enabled: !_fieldsLocked,
+                                    contentPadding: EdgeInsets.zero,
+                                    title: Text(
+                                      widget.entry!.isAsNeeded &&
+                                              status ==
+                                                  MedicationHistoryStatus
+                                                      .unrecorded
+                                          ? tr(
+                                              '기록 취소 (잘못 기록함)',
+                                              'Cancel record (recorded by mistake)',
+                                            )
+                                          : status.label(widget.isEnglish),
+                                    ),
+                                  ),
                             ],
                           ),
                         ),
@@ -1407,10 +1427,15 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
                       ],
                       if (_status == MedicationHistoryStatus.skipped) ...[
                         Text(
-                          tr(
-                            '건너뛴 기록은 복용 완료로 처리되지 않으며 기존 복약·미복약 알림은 유지됩니다.',
-                            'Skipped doses are not marked as taken. Existing dose reminders and missed-dose alerts remain active.',
-                          ),
+                          widget.entry?.isAsNeeded == true
+                              ? tr(
+                                  '건너뛴 기록은 복용 완료로 처리되지 않습니다.',
+                                  'Skipped doses are not marked as taken.',
+                                )
+                              : tr(
+                                  '건너뛴 기록은 복용 완료로 처리되지 않으며 기존 복약·미복약 알림은 유지됩니다.',
+                                  'Skipped doses are not marked as taken. Existing dose reminders and missed-dose alerts remain active.',
+                                ),
                           key: const Key('history-skipped-notice'),
                         ),
                         const SizedBox(height: 12),

@@ -9,8 +9,9 @@ line below. Changes are listed in the [v0.2.4 notes](releases/v0.2.4-beta.md).
 
 ### From the 2026-10-20 meeting
 
-- [ ] As-needed doses: decide whether a dose recorded by mistake can be
-      undone (the meeting leaned to "not needed").
+- [x] As-needed doses: a dose recorded by mistake can be undone from the
+      save notice (decided with the user on 2026-10-21; the meeting had
+      leaned to "not needed").
 - [ ] A calendar for checking past days' doses.
 - [ ] Dose record export.
 - [ ] The launcher icon is enlarged and cropped by the Samsung launcher (the

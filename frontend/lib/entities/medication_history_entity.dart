@@ -314,6 +314,15 @@ class MedicationHistorySnapshot {
       if (date != 0) return date;
       final name = a.itemName.compareTo(b.itemName);
       if (name != 0) return name;
+      // 필요시 복용의 슬롯 키는 임의 UUID이므로 같은 날 여러 번 먹은 기록은 복용 시각 순서로 둔다.
+      if (a.isAsNeeded && b.isAsNeeded) {
+        final aTime = a.actualTakenAt ?? a.recordedAt;
+        final bTime = b.actualTakenAt ?? b.recordedAt;
+        if (aTime != null && bTime != null && aTime != bTime) {
+          return aTime.compareTo(bTime);
+        }
+        if ((aTime == null) != (bTime == null)) return aTime == null ? 1 : -1;
+      }
       return a.slotKey.compareTo(b.slotKey);
     });
     return MedicationHistorySnapshot(

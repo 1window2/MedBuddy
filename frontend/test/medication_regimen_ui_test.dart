@@ -369,7 +369,10 @@ void main() {
       await _open(
         tester,
         MedicationRegimenEditorUI(
-          medication: _medication(),
+          // 처방일을 고정 시계 기준으로 둬야 실제 날짜가 지나도 시작일이 밀리지 않는다.
+          medication: _medication().copyWith(
+            prescriptionDate: DateTime(2026, 10, 15),
+          ),
           action: MedicationRegimenAction.replace,
           clock: () => DateTime.utc(2026, 10, 17),
           onSubmit: (value) async {

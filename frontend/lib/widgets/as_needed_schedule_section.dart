@@ -238,6 +238,7 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
       _saveError = null;
     });
     var saved = false;
+    final recordedKeys = <String>{};
     try {
       // 다른 화면에서 정정한 횟수를 다시 읽고 확인한 내용만 한 의도로 고정한다.
       final resuming = _control.pendingAsNeededChanges.isNotEmpty;
@@ -297,6 +298,10 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
           ),
         );
       }
+      // 실행 취소는 이번 동작으로 만든 기록만 되돌리도록 기록 키를 저장 전에 고정한다.
+      recordedKeys.addAll(
+        _control.pendingAsNeededChanges.map((change) => change.entry.key),
+      );
       // 일괄 저장 중 일부만 성공해도 남은 요청 ID를 유지해 성공한 약을 중복 기록하지 않는다.
       while (_control.pendingAsNeededChanges.isNotEmpty) {
         final change = _control.pendingAsNeededChanges.first;
@@ -341,7 +346,73 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
         _saveError == null &&
         !_control.sessionInvalidated) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(tr('복용 기록을 저장했어요.', 'Dose recorded.'))),
+        SnackBar(
+          content: Text(tr('복용 기록을 저장했어요.', 'Dose recorded.')),
+          duration: const Duration(seconds: 5),
+          persist: false,
+          action: SnackBarAction(
+            key: const Key('prn-undo-record'),
+            label: tr('실행 취소', 'Undo'),
+            onPressed: () => unawaited(_undo(recordedKeys)),
+          ),
+        ),
+      );
+    }
+  }
+
+  // 함수이름: _undo
+  // 함수역할: 잘못 누른 필요시 복용을 바로 되돌린다. 이번 동작으로 만든 기록만 최신 버전으로 다시 읽어
+  //   '미기록'으로 바꾸며, 다른 화면에서 이미 정정한 기록은 건드리지 않는다. 이미 보낸 보호자 알림은
+  //   회수되지 않지만 보호자 화면의 횟수는 다음 조회에서 바로잡힌다.
+  // 매개변수: keys: 되돌릴 기록 키. 반환값: 없음.
+  Future<void> _undo(Set<String> keys) async {
+    if (_readOnly || _locked || keys.isEmpty) return;
+    setState(() {
+      _recording = true;
+      _saveError = null;
+    });
+    var undone = false;
+    try {
+      await _readToday();
+      if (!mounted) return;
+      final entries = _control.snapshot!.items
+          .where(
+            (entry) =>
+                keys.contains(entry.key) &&
+                entry.isAsNeeded &&
+                entry.status == MedicationHistoryStatus.taken,
+          )
+          .toList();
+      for (final entry in entries) {
+        await _control.save(
+          MedicationHistoryChange(
+            entry: entry,
+            status: MedicationHistoryStatus.unrecorded,
+            operationId: MedicationHistoryControl.newOperationId(),
+          ),
+        );
+        undone = true;
+        if (!mounted) return;
+      }
+    } catch (_) {
+      if (mounted && !_control.sessionInvalidated) {
+        _saveError = tr(
+          '복용 기록을 취소하지 못했어요. 복약 기록에서 해당 기록을 \'미기록\'으로 바꿔 주세요.',
+          'The dose could not be undone. Change it to "Not recorded" in the dose history.',
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _recording = false);
+        await _load();
+      }
+    }
+    if (mounted && undone && _saveError == null && !_control.sessionInvalidated) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(tr('복용 기록을 취소했어요.', 'Dose record undone.')),
+          duration: const Duration(seconds: 2),
+        ),
       );
     }
   }
