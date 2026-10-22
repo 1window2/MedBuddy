@@ -502,6 +502,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
         MaterialPageRoute(
           builder: (_) => MedicationHistoryUI(
             patientHash: viewModel.patientHash,
+            currentUserHash: viewModel.patientHash,
             isEnglish: viewModel.userSetting.isEnglish,
             onChanged: () async {
               if (!mounted) return;

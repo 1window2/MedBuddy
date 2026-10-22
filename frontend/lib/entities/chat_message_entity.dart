@@ -2,6 +2,7 @@
 // 역할: 환자·보호자 채팅 메시지와 읽음 상태를 표현한다.
 
 import 'json_value_reader.dart';
+import 'medication_history_entity.dart';
 import 'medication_schedule_entity.dart';
 
 // 클래스명: ChatMessageKind
@@ -18,7 +19,8 @@ enum ChatMessageKind {
   medicationDiscomfort,
   pharmacyShare,
   pharmacyPhoneVerified,
-  hospitalShare;
+  hospitalShare,
+  medicationHistoryShare;
 
   // 함수이름: wireName
   // 함수역할: 현재 메시지 유형을 REST·WebSocket에서 공유하는 snake_case 전송값으로 변환한다.
@@ -35,6 +37,7 @@ enum ChatMessageKind {
     ChatMessageKind.pharmacyShare => 'pharmacy_share',
     ChatMessageKind.pharmacyPhoneVerified => 'pharmacy_phone_verified',
     ChatMessageKind.hospitalShare => 'hospital_share',
+    ChatMessageKind.medicationHistoryShare => 'medication_history_share',
   };
 
   // 함수이름: fromWireName
@@ -394,6 +397,57 @@ class ChatHospitalContext extends ChatPlaceContext {
   }
 }
 
+// 공유 당시의 날짜 범위와 집계만 보존하며 현재 기록으로 해석하지 않는다.
+class ChatMedicationHistoryContext {
+  final DateTime startDate;
+  final DateTime endDate;
+  final int takenCount;
+  final int skippedCount;
+  final int unrecordedCount;
+
+  const ChatMedicationHistoryContext._({
+    required this.startDate,
+    required this.endDate,
+    required this.takenCount,
+    required this.skippedCount,
+    required this.unrecordedCount,
+  });
+
+  factory ChatMedicationHistoryContext.fromJson(Map<String, dynamic> json) {
+    final start = MedicationHistoryDates.parse(json['start_date']);
+    final end = MedicationHistoryDates.parse(json['end_date']);
+    final days = end.difference(start).inDays + 1;
+    if (start.year < 1 || end.year < 1 || days < 1 || days > 31) {
+      throw const FormatException('공유 복약 기록의 날짜 범위가 올바르지 않습니다.');
+    }
+    int count(String key) {
+      final value = json[key];
+      if (value is! int || value < 0) {
+        throw const FormatException('공유 복약 기록의 집계가 올바르지 않습니다.');
+      }
+      return value;
+    }
+
+    return ChatMedicationHistoryContext._(
+      startDate: start,
+      endDate: end,
+      takenCount: count('taken_count'),
+      skippedCount: count('skipped_count'),
+      unrecordedCount: count('unrecorded_count'),
+    );
+  }
+
+  // 손상된 첨부는 숨기되 메시지 본문과 나머지 대화는 유지한다.
+  static ChatMedicationHistoryContext? tryParse(Object? value) {
+    if (value is! Map<String, dynamic>) return null;
+    try {
+      return ChatMedicationHistoryContext.fromJson(value);
+    } on FormatException {
+      return null;
+    }
+  }
+}
+
 // 클래스명: ChatDeletionScope
 // 역할: 메시지를 본인에게만 숨길지 모든 참여자에게 삭제할지 구분한다.
 // 주요 책임:
@@ -435,6 +489,7 @@ class ChatMessage {
   final ChatScheduleContext? scheduleContext;
   final ChatPharmacyContext? pharmacyContext;
   final ChatHospitalContext? hospitalContext;
+  final ChatMedicationHistoryContext? historyContext;
   final int? remainingDays;
   final DateTime? courseEndDate;
   final bool showSafetyGuidance;
@@ -477,6 +532,7 @@ class ChatMessage {
     this.scheduleContext,
     this.pharmacyContext,
     this.hospitalContext,
+    this.historyContext,
     this.remainingDays,
     this.courseEndDate,
     this.showSafetyGuidance = false,
@@ -559,6 +615,10 @@ class ChatMessage {
             )
           : null,
       remainingDays: readJsonInt(context['remaining_days']),
+      historyContext:
+          json['hidden_for_me'] == true || json['deleted_for_everyone'] == true
+          ? null
+          : ChatMedicationHistoryContext.tryParse(context['history_context']),
       courseEndDate: DateTime.tryParse(
         readJsonText(context['course_end_date']),
       ),
@@ -614,6 +674,7 @@ class ChatMessage {
       scheduleContext: redact ? null : scheduleContext,
       pharmacyContext: redact ? null : pharmacyContext,
       hospitalContext: redact ? null : hospitalContext,
+      historyContext: redact ? null : historyContext,
       remainingDays: redact ? null : remainingDays,
       courseEndDate: redact ? null : courseEndDate,
       showSafetyGuidance: !redact && showSafetyGuidance,

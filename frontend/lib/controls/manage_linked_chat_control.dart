@@ -261,6 +261,8 @@ class ManageLinkedChat {
     String? pharmacyId,
     String? hospitalId,
     String? hospitalScheduleDate,
+    String? historyStartDate,
+    String? historyEndDate,
     int? sourceAlertId,
   }) async {
     final normalizedMedicationIds = medicationIds
@@ -296,6 +298,8 @@ class ManageLinkedChat {
             'pharmacy_id': ?pharmacyId,
             'hospital_id': ?hospitalId,
             'hospital_schedule_date': ?hospitalScheduleDate,
+            'history_start_date': ?historyStartDate,
+            'history_end_date': ?historyEndDate,
             'source_alert_id': ?sourceAlertId,
           }),
         )

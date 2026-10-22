@@ -10,11 +10,13 @@ import 'package:provider/provider.dart';
 import 'check_schedule_ui_boundary.dart';
 import 'check_medication_detail_ui_boundary.dart';
 import 'check_nearby_pharmacy_ui_boundary.dart';
+import 'medication_history_ui_boundary.dart';
 import 'nearby_care_options_sheet.dart';
 import '../controls/manage_linked_chat_control.dart';
 import '../entities/chat_message_entity.dart';
 import '../entities/chat_message_draft_entity.dart';
 import '../entities/medication_image_url_entity.dart';
+import '../entities/medication_history_entity.dart';
 import '../entities/nearby_care_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/medication_slot_label.dart';
@@ -1162,6 +1164,42 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     return _text.caregiverSuggestedMessage(_peerName, medicationNames);
   }
 
+  bool get _canOpenMedicationHistory =>
+      !_history.linkUnavailable &&
+      !_isLoading &&
+      !_isSelectingMessages &&
+      !_isDeletingMessages &&
+      _configuration.currentUserHash.isNotEmpty &&
+      _configuration.patientHash.isNotEmpty;
+
+  // 진입 직전에도 현재 대화의 삭제·연동 상태를 확인하며 최신 자료의 권한은 이력 API가 검증한다.
+  Future<void> _openMedicationHistory(ChatMessage message) async {
+    if (!mounted || !_isChatVisible || !_canOpenMedicationHistory) return;
+    final current = _messages
+        .where((item) => item.messageId == message.messageId)
+        .firstOrNull;
+    final history = current?.historyContext;
+    if (current == null ||
+        current.hiddenForMe ||
+        current.deletedForEveryone ||
+        history == null) {
+      return;
+    }
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => MedicationHistoryUI(
+          patientHash: _configuration.patientHash,
+          readOnly: true,
+          isEnglish: _configuration.userSetting.isEnglish,
+          sharedRange: MedicationHistoryRange(
+            history.startDate,
+            history.endDate,
+          ),
+        ),
+      ),
+    );
+  }
+
   // 함수이름: _openPatientSchedule
   // 함수역할: 환자가 채팅의 시간대 카드를 누르면 같은 시간대가 보이는 오늘 일정으로 이동한다.
   // 매개변수:
@@ -1784,6 +1822,9 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
                                 userSetting: _configuration.userSetting,
                                 loadingMedicationId: _loadingMedicationId,
                                 onMedicationPressed: _openMedicationDetail,
+                                onHistoryPressed: _canOpenMedicationHistory
+                                    ? _openMedicationHistory
+                                    : null,
                                 onSchedulePressed: _isPatient
                                     ? _openPatientSchedule
                                     : null,
@@ -3105,6 +3146,94 @@ class _MedicationThumbnail extends StatelessWidget {
   }
 }
 
+// 공유 당시 집계는 읽기 전용으로 표시하고 최신 기록 이동만 제공한다.
+class _MessageMedicationHistoryContext extends StatelessWidget {
+  final ChatMedicationHistoryContext history;
+  final bool isMine;
+  final _LinkedChatText text;
+  final VoidCallback? onPressed;
+
+  const _MessageMedicationHistoryContext({
+    required this.history,
+    required this.isMine,
+    required this.text,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = isMine ? Colors.white : MedBuddyColors.textStrong;
+    final secondary = isMine ? Colors.white70 : MedBuddyColors.textMuted;
+    final range = MedicationHistoryRange(history.startDate, history.endDate);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: const Key('chat-medication-history-card'),
+        onTap: onPressed,
+        borderRadius: MedBuddyRadii.control,
+        child: DefaultTextStyle(
+          style: TextStyle(color: foreground, fontSize: 15, letterSpacing: 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.history_rounded, size: 20, color: foreground),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      text.medicationHistory,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(range.label),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 12,
+                runSpacing: 6,
+                children: [
+                  Text(
+                    '${MedicationHistoryStatus.taken.label(text.isEnglish)} ${history.takenCount}',
+                  ),
+                  Text(
+                    '${MedicationHistoryStatus.skipped.label(text.isEnglish)} ${history.skippedCount}',
+                  ),
+                  Text(
+                    '${MedicationHistoryStatus.unrecorded.label(text.isEnglish)} ${history.unrecordedCount}',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  key: const Key('chat-view-latest-history'),
+                  onPressed: onPressed,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: foreground,
+                    disabledForegroundColor: secondary,
+                    side: BorderSide(color: secondary),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 10,
+                    ),
+                  ),
+                  icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                  label: Text(text.viewLatestRecords),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // 클래스명: _MessageBubble
 // 역할: 발신자 구분·메시지 시각·텍스트·첨부 본문을 담당한다.
 // 주요 책임:
@@ -3121,6 +3250,7 @@ class _MessageBubble extends StatelessWidget {
   final _LinkedChatText text;
   final UserSetting userSetting;
   final ValueChanged<ChatMedicationContext> onMedicationPressed;
+  final ValueChanged<ChatMessage>? onHistoryPressed;
   final ValueChanged<ChatScheduleContext>? onSchedulePressed;
   final ValueChanged<ChatPlaceContext> onPharmacyCallRequested;
   final ValueChanged<ChatPlaceContext> onPharmacyDirectionsRequested;
@@ -3148,6 +3278,7 @@ class _MessageBubble extends StatelessWidget {
     required this.text,
     required this.userSetting,
     required this.onMedicationPressed,
+    required this.onHistoryPressed,
     required this.onSchedulePressed,
     required this.onPharmacyCallRequested,
     required this.onPharmacyDirectionsRequested,
@@ -3180,6 +3311,19 @@ class _MessageBubble extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (message.historyContext != null &&
+              !message.hiddenForMe &&
+              !message.deletedForEveryone) ...[
+            _MessageMedicationHistoryContext(
+              history: message.historyContext!,
+              isMine: isMine,
+              text: text,
+              onPressed: onHistoryPressed == null
+                  ? null
+                  : () => onHistoryPressed!(message),
+            ),
+            const SizedBox(height: 8),
+          ],
           for (final medication in message.attachedMedicationContexts) ...[
             _MessageMedicationContext(
               medication: medication,
@@ -3370,6 +3514,10 @@ class _LinkedChatText {
   // - 없음.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
   bool get isEnglish => isEnglishLanguage(language);
+
+  String get medicationHistory => isEnglish ? 'Medication history' : '복약 기록';
+  String get viewLatestRecords =>
+      isEnglish ? 'View latest records' : '최신 기록 보기';
 
   String get findNearbyCare =>
       isEnglish ? 'Find hospitals or pharmacies' : '병원·약국 찾기';
