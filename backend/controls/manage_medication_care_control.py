@@ -99,16 +99,22 @@ class ManageMedicationCare:
             return None
         if receipt.request_hash != fingerprint:
             raise HTTPException(409, "The operation ID was already used for a different request.")
+        if receipt.response_redacted:
+            raise HTTPException(410, "The medication for this operation has been deleted.")
         return json.loads(receipt.response_json)
 
     # 함수이름: _commit
     # 함수역할: 변경 결과와 재전송 영수증을 함께 커밋한다.
     # 매개변수: owner: 환자, operation_id: UUID, fingerprint: 서명, response: 응답.
     # 반환값: 성공 응답.
-    def _commit(self, owner: str, operation_id: UUID, fingerprint: str, response: dict[str, object]) -> dict[str, object]:
+    def _commit(
+        self, owner: str, operation_id: UUID, fingerprint: str, response: dict[str, object],
+        *, medication_id: int, replacement_medication_id: int | None = None,
+    ) -> dict[str, object]:
         self.db.add(_MedicationCareOperation(
             patient_hash=owner, operation_id=str(operation_id), request_hash=fingerprint,
             response_json=json.dumps(response, ensure_ascii=False),
+            medication_id=medication_id, replacement_medication_id=replacement_medication_id,
         ))
         self.db.commit()
         return response
@@ -189,7 +195,11 @@ class ManageMedicationCare:
                 before_json=json.dumps(before, ensure_ascii=False),
                 after_json=json.dumps({"previous": self.saved._to_response_dict(medication), "current": self.saved._to_response_dict(result)}, ensure_ascii=False),
             ))
-            return self._commit(owner, request.operation_id, fingerprint, response)
+            return self._commit(
+                owner, request.operation_id, fingerprint, response,
+                medication_id=medication_id,
+                replacement_medication_id=replacement.id if replacement else None,
+            )
         except (IntegrityError, OperationalError) as exc:
             self.db.rollback()
             raise HTTPException(409 if isinstance(exc, IntegrityError) else 503, _CONFLICT if isinstance(exc, IntegrityError) else ACCOUNT_BUSY_DETAIL) from exc
@@ -392,7 +402,9 @@ class ManageMedicationCare:
                     previous_slot_completion_states=before_states, alertable=True,
                 )
             response = {"success": True, **self._history_item(med, day, slot, row)}
-            result = self._commit(owner, request.operation_id, fingerprint, response)
+            result = self._commit(
+                owner, request.operation_id, fingerprint, response, medication_id=medication_id,
+            )
             if prn_outbox_id is not None:
                 self._completion_events.append({"outbox_id": prn_outbox_id})
             return result

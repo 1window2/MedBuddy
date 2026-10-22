@@ -25,6 +25,7 @@ from schemas.medication import SavedMedicationCreate
 from repositories.saved_medication_repository import SavedMedicationRepository
 from services.medication_course_policy import MedicationCoursePolicy
 from services.medication_dosing_mode import medication_dosing_mode, resolve_dosing_mode
+from services.medication_care_receipts import redact_medication_care_receipts
 from services.saved_medication_retention import SavedMedicationRetentionPolicy
 
 logger = logging.getLogger(__name__)
@@ -247,11 +248,13 @@ class CheckSavedMedication:
     ) -> dict[str, object]:
         try:
             medication = self._get_existing_medication(medication_id, patient_hash)
+            redact_medication_care_receipts(self.db, medication.patient_hash, medication.id)
             self._delete_medication_completions(medication)
             self.db.delete(medication)
             self.db.commit()
             return {"success": True, "message": "Medication was deleted from pillbox."}
         except HTTPException:
+            self.db.rollback()
             raise
         except Exception as exc:
             self.db.rollback()
@@ -326,10 +329,10 @@ class CheckSavedMedication:
         patient_hash: str,
     ) -> _SavedMedication:
         normalized_patient_hash = normalize_patient_hash(patient_hash)
-        medication = self.medication_repository.find_owned_by_id(
-            medication_id,
-            normalized_patient_hash,
-        )
+        medication = self.db.query(_SavedMedication).filter(
+            _SavedMedication.id == medication_id,
+            _SavedMedication.patient_hash == normalized_patient_hash,
+        ).with_for_update().populate_existing().first()
         if medication is None:
             raise HTTPException(status_code=404, detail="Medication was not found.")
         return medication

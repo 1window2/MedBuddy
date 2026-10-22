@@ -1,7 +1,7 @@
 # 파일명: medication_care_entity.py
 # 역할: 약 변경·복용 기록의 재전송 영수증과 수정 이력을 환자 범위로 보관한다.
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, false
 
 from core.database import Base
 from entities.user_account_entity import utc_now
@@ -19,6 +19,10 @@ class _MedicationCareOperation(Base):
     operation_id = Column(String(36), nullable=False)
     request_hash = Column(String(64), nullable=False)
     response_json = Column(Text, nullable=False)
+    # 약 삭제 후에도 작업 번호를 유지하므로 약에 대한 삭제 연쇄 외래 키는 두지 않는다.
+    medication_id = Column(Integer, nullable=True, index=True)
+    replacement_medication_id = Column(Integer, nullable=True, index=True)
+    response_redacted = Column(Boolean, nullable=False, default=False, server_default=false())
     created_at = Column(DateTime, nullable=False, default=utc_now)
 
 
