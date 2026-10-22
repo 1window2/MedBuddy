@@ -7,19 +7,22 @@ from dataclasses import dataclass
 from datetime import UTC, date, timedelta
 
 from fastapi import HTTPException
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 from controls.manage_caregiver_alert_control import ManageCaregiverAlert
 
 from core.api_contract import client_schedules_by_dose_days
+from core.account_database_lock import ACCOUNT_BUSY_DETAIL, lock_account_operations
 from core.application_clock import application_today
 from controls.check_schedule_control import CheckSchedule
+from controls.manage_medication_care_control import ManageMedicationCare
 from entities.chat_notification_job_entity import ChatNotificationJob
 from entities.chat_message_entity import (
     CHAT_MEDICATION_DOSAGE_MAX_LENGTH,
     CHAT_MEDICATION_NAME_MAX_LENGTH,
     CHAT_MESSAGE_KIND_HOSPITAL_SHARE,
     CHAT_MESSAGE_KIND_MEDICATION_DISCOMFORT,
+    CHAT_MESSAGE_KIND_MEDICATION_HISTORY_SHARE,
     CHAT_MESSAGE_KIND_MEDICATION_SHORTAGE,
     CHAT_MESSAGE_KIND_PHARMACY_PHONE_VERIFIED,
     CHAT_MESSAGE_KIND_PHARMACY_SHARE,
@@ -39,7 +42,7 @@ from entities.medication_schedule_entity import (
 )
 from entities.patient_caregiver_link_entity import _PatientCaregiverLink
 from entities.saved_medication_entity import _SavedMedication
-from entities.user_account_entity import utc_isoformat, utc_now
+from entities.user_account_entity import _UserAccount, utc_isoformat, utc_now
 from entities.user_setting_entity import _UserSetting
 from repositories.chat_message_repository import ChatMessageRepository
 from repositories.patient_caregiver_link_repository import (
@@ -301,7 +304,10 @@ class ManageLinkedChat:
         }
 
     # 병원 조회 전에 연동 권한·중복을 확인하고 읽기 트랜잭션을 끝낸다.
-    def find_sent_message(self, *, link_id: int, sender_hash: str, client_message_id: str) -> ChatSendResult | None:
+    def find_sent_message(
+        self, *, link_id: int, sender_hash: str, client_message_id: str,
+        message_kind: str = CHAT_MESSAGE_KIND_TEXT,
+    ) -> ChatSendResult | None:
         """중복 전송을 외부 조회 전에 확인하고 읽기 트랜잭션을 반환한다."""
         try:
             link = self.require_active_link(link_id=link_id, user_hash=sender_hash)
@@ -310,12 +316,60 @@ class ManageLinkedChat:
             )
             if existing is None:
                 return None
+            self._validate_history_retry(existing, message_kind=message_kind)
             return ChatSendResult(
                 message=self._message_for_user(existing, link, sender_hash),
                 recipient_hash=self._other_participant(link, sender_hash), created=False,
             )
         finally:
             self.db.rollback()
+
+    @staticmethod
+    def _validate_history_retry(
+        existing: _ChatMessage, *, message_kind: str, body: str | None = None,
+        history_start_date: date | None = None, history_end_date: date | None = None,
+    ) -> None:
+        """이력 공유 요청 ID를 다른 기간·본문·메시지 유형에 재사용하지 못하게 한다."""
+        if CHAT_MESSAGE_KIND_MEDICATION_HISTORY_SHARE not in (existing.message_kind, message_kind):
+            return
+        context = (existing.context_payload or {}).get("history_context")
+        # 모두 삭제한 메시지는 검증할 원본도 지워졌으므로 재생성하지 않는다.
+        if (
+            existing.deleted_for_everyone_at is not None
+            or existing.message_kind != message_kind
+            or existing.body != body
+            or not isinstance(context, dict)
+            or history_start_date is None or history_end_date is None
+            or context.get("start_date") != history_start_date.isoformat()
+            or context.get("end_date") != history_end_date.isoformat()
+        ):
+            raise HTTPException(409, "The message request ID was already used for a different or deleted history share.")
+
+    def _lock_history_share_link(self, *, link_id: int, sender_hash: str) -> _PatientCaregiverLink:
+        """양쪽 계정의 해제·삭제 작업과 공유 저장을 직렬화하고 권한을 재검증한다."""
+        if self.db.new or self.db.dirty or self.db.deleted:
+            raise RuntimeError("History sharing requires a clean database session.")
+        link = self.require_active_link(link_id=link_id, user_hash=sender_hash)
+        participants = (str(link.patient_hash), str(link.caregiver_hash))
+        # 인증 단계의 단일 계정 잠금을 먼저 풀어 서로 다른 발신자의 잠금 순서 역전을 막는다.
+        self.db.rollback()
+        try:
+            lock_account_operations(self.db, participants)
+            self.db.expire_all()
+            for owner in participants:
+                account = self.db.get(_UserAccount, owner)
+                if account is None or account.deletion_requested_at is not None:
+                    raise HTTPException(410, "This MedBuddy account has been deleted.")
+            link = self.require_active_link(link_id=link_id, user_hash=sender_hash)
+            if (str(link.patient_hash), str(link.caregiver_hash)) != participants:
+                raise HTTPException(404, "Active patient-caregiver chat was not found.")
+            return link
+        except OperationalError as exc:
+            self.db.rollback()
+            raise HTTPException(503, ACCOUNT_BUSY_DETAIL, headers={"Retry-After": "5"}) from exc
+        except BaseException:
+            self.db.rollback()
+            raise
 
     # 함수이름: send_message
     # 함수역할:
@@ -348,10 +402,26 @@ class ManageLinkedChat:
         allow_internal: bool = False,
         source_alert_id: int | None = None,
         hospital_context: dict[str, object] | None = None,
+        history_start_date: date | None = None,
+        history_end_date: date | None = None,
     ) -> ChatSendResult:
         """메시지를 한 번만 저장하고 상대 사용자 식별자를 반환한다."""
-        link = self.require_active_link(link_id=link_id, user_hash=sender_hash)
+        link = (
+            self._lock_history_share_link(link_id=link_id, sender_hash=sender_hash)
+            if message_kind == CHAT_MESSAGE_KIND_MEDICATION_HISTORY_SHARE
+            else self.require_active_link(link_id=link_id, user_hash=sender_hash)
+        )
         recipient_hash = self._other_participant(link, sender_hash)
+        # 내부 호출도 HTTP 요청과 같은 문맥 조합을 검증한 뒤 중복 여부를 확인한다.
+        if message_kind == CHAT_MESSAGE_KIND_MEDICATION_HISTORY_SHARE:
+            if history_start_date is None or history_end_date is None:
+                raise HTTPException(400, "History sharing requires start and end dates.")
+            if medication_ids or any(value is not None for value in (
+                medication_id, slot_key, pharmacy_id, hospital_context, source_alert_id,
+            )):
+                raise HTTPException(400, "History sharing cannot be combined with other contexts.")
+        elif history_start_date is not None or history_end_date is not None:
+            raise HTTPException(400, "History dates require a medication history share message.")
         alert = None
         if source_alert_id is None and client_message_id.startswith("missed_chat_"):
             raise HTTPException(400, "This client message namespace requires a caregiver alert.")
@@ -371,6 +441,10 @@ class ManageLinkedChat:
             client_message_id=client_message_id,
         )
         if existing is not None:
+            self._validate_history_retry(
+                existing, message_kind=message_kind, body=body,
+                history_start_date=history_start_date, history_end_date=history_end_date,
+            )
             return ChatSendResult(
                 message=self._message_for_user(existing, link, sender_hash),
                 recipient_hash=recipient_hash,
@@ -405,6 +479,8 @@ class ManageLinkedChat:
             pharmacy_id=pharmacy_id,
             allow_internal=allow_internal,
             hospital_context=hospital_context,
+            history_start_date=history_start_date,
+            history_end_date=history_end_date,
         )
         if alert is not None:
             context_payload["schedule_context"]["schedule_date"] = alert.schedule_date.isoformat()
@@ -441,6 +517,7 @@ class ManageLinkedChat:
                 else None
             ),
         )
+        saved_message = None
         try:
             self.message_repository.add(row)
             if not allow_internal:
@@ -448,10 +525,17 @@ class ManageLinkedChat:
                 self.db.add(ChatNotificationJob(
                     message_id=row.id, recipient_hash=recipient_hash,
                 ))
+            if message_kind == CHAT_MESSAGE_KIND_MEDICATION_HISTORY_SHARE:
+                # 커밋 직후 해제 작업이 행을 지워도 저장 당시의 응답을 안전하게 반환한다.
+                self.db.flush()
+                saved_message = ChatMessage.from_row(row)
             self.db.commit()
-            self.db.refresh(row)
+            if saved_message is None:
+                self.db.refresh(row)
         except IntegrityError:
             self.db.rollback()
+            if message_kind == CHAT_MESSAGE_KIND_MEDICATION_HISTORY_SHARE:
+                link = self._lock_history_share_link(link_id=link_id, sender_hash=sender_hash)
             existing = self.message_repository.find_client_request(
                 link_id=link_id,
                 sender_hash=sender_hash,
@@ -459,13 +543,17 @@ class ManageLinkedChat:
             )
             if existing is None:
                 raise
+            self._validate_history_retry(
+                existing, message_kind=message_kind, body=body,
+                history_start_date=history_start_date, history_end_date=history_end_date,
+            )
             return ChatSendResult(
                 message=self._message_for_user(existing, link, sender_hash),
                 recipient_hash=recipient_hash,
                 created=False,
             )
         return ChatSendResult(
-            message=ChatMessage.from_row(row),
+            message=saved_message or ChatMessage.from_row(row),
             recipient_hash=recipient_hash,
             created=True,
         )
@@ -906,10 +994,16 @@ class ManageLinkedChat:
         pharmacy_id: str | None,
         allow_internal: bool,
         hospital_context: dict[str, object] | None = None,
+        history_start_date: date | None = None,
+        history_end_date: date | None = None,
     ) -> dict[str, object] | None:
         """메시지 유형별 입력을 검증하고 서버가 신뢰할 스냅샷만 생성한다."""
         if message_kind == CHAT_MESSAGE_KIND_TEXT:
             return None
+        if message_kind == CHAT_MESSAGE_KIND_MEDICATION_HISTORY_SHARE:
+            return {"history_context": ManageMedicationCare(self.db).history_share_context(
+                str(link.patient_hash), history_start_date, history_end_date,
+            )}
         if message_kind == CHAT_MESSAGE_KIND_HOSPITAL_SHARE:
             if hospital_context is None:
                 raise HTTPException(400, "Verified hospital information is required.")

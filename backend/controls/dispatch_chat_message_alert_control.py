@@ -9,7 +9,7 @@ from boundaries.push_notification_boundary import (
     PushDeliveryResult,
     PushNotificationBoundary,
 )
-from entities.chat_message_entity import _ChatMessage
+from entities.chat_message_entity import CHAT_MESSAGE_KIND_MEDICATION_HISTORY_SHARE, _ChatMessage
 from entities.medication_schedule_entity import (
     MEDICATION_SLOT_ENGLISH_NAMES,
     MEDICATION_SLOT_KOREAN_NAMES,
@@ -108,6 +108,9 @@ class DispatchChatMessageAlert:
             if is_english
             else "연동된 가족에게 새 메시지가 도착했습니다."
         )
+        # 공유 본문에 기간·건수·건강 정보가 있더라도 잠금 화면에는 일반 안내만 보낸다.
+        if message_kind == CHAT_MESSAGE_KIND_MEDICATION_HISTORY_SHARE:
+            message_preview = fallback_body
         show_details = recipient.show_details
         notification_body = (message_preview or fallback_body) if show_details else fallback_body
         # Firebase 호출이 느려도 풀 연결과 읽기 트랜잭션을 잡고 있지 않도록 먼저 반환한다.

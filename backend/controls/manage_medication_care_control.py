@@ -1,6 +1,7 @@
 # 파일명: manage_medication_care_control.py
 # 역할: 환자 권한·버전을 검증하고 약 변경 및 날짜별 사용자 복용 보고를 처리한다.
 
+from collections import Counter
 from datetime import date, timedelta
 import hashlib
 import json
@@ -248,6 +249,22 @@ class ManageMedicationCare:
     def history(self, principal: AuthenticatedPrincipal, start: date, end: date, patient_hash: str | None = None) -> dict[str, object]:
         self._validate_range(start, end)
         owner = self._scope(principal, patient_hash, write=False)
+        return self._history_for_patient(owner, start, end)
+
+    def history_share_context(self, patient_hash: str, start: date, end: date) -> dict[str, object]:
+        """호출자가 활성 연동으로 권한을 확인한 환자의 이력을 건수로만 요약한다."""
+        self._validate_range(start, end)
+        history = self._history_for_patient(patient_hash, start, end)
+        # CSV와 같은 전체 항목을 세므로 필요시 기록도 포함하며 복약률로 해석하지 않는다.
+        counts = Counter(item["status"] for item in history["items"])
+        return {
+            "start_date": history["start_date"], "end_date": history["end_date"],
+            "taken_count": counts["taken"], "skipped_count": counts["skipped"],
+            "unrecorded_count": counts["unrecorded"],
+        }
+
+    def _history_for_patient(self, owner: str, start: date, end: date) -> dict[str, object]:
+        """권한과 기간 검증을 마친 조회·공유에 동일한 이력 항목을 제공한다."""
         medications = self.saved.medication_repository.list_by_patient(owner)
         by_id = {med.id: med for med in medications}
         rows = self.db.query(_MedicationCompletion).filter(

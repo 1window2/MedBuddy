@@ -266,6 +266,7 @@ async def post_chat_message(
         existing = await run_request_database_work(
             chat.find_sent_message, link_id=link_id, sender_hash=authorized_user_hash,
             client_message_id=payload.client_message_id,
+            message_kind=payload.message_kind,
         )
         if existing is not None:
             return await publish_saved_message(link_id, existing, request)
@@ -299,6 +300,8 @@ async def post_chat_message(
         slot_key=payload.slot_key,
         pharmacy_id=payload.pharmacy_id,
         source_alert_id=payload.source_alert_id,
+        history_start_date=payload.history_start_date,
+        history_end_date=payload.history_end_date,
         **hospital_arguments,
     )
     return await publish_saved_message(link_id, result, request)
