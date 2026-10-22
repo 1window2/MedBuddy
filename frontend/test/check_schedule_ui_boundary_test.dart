@@ -29,12 +29,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/dose_sync_harness.dart';
 import 'support/fake_controls.dart';
+import 'support/fake_as_needed_pending_store.dart';
 import 'support/fake_notification_service.dart';
 
 // 일정의 정기 약과 필요시 약 조회를 모두 격리해 실제 서버에 접근하지 않는다.
 MedicationHistoryControl _historyControl({bool withPrn = false}) {
   final control = MedicationHistoryControl(
     patientHash: 'test-patient',
+    pendingStore: FakeAsNeededPendingStore(),
     sessionKeyProvider: () => 'test-user',
     client: MockClient(
       (request) async => http.Response(
@@ -1638,7 +1640,10 @@ void main() {
     // 시간대 전체 해제는 홈과 같이 먼저 확인한다. 유지를 고르면 아무것도 바꾸지 않는다.
     await tester.tap(wholeSlotButton);
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('schedule-slot-undo-confirmation')), findsOneWidget);
+    expect(
+      find.byKey(const Key('schedule-slot-undo-confirmation')),
+      findsOneWidget,
+    );
     expect(find.text('아침 복용 완료 기록을 모두 취소할까요?'), findsOneWidget);
     await tester.tap(find.text('그대로 두기'));
     await tester.pumpAndSettle();

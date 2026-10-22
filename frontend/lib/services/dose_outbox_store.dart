@@ -10,6 +10,7 @@ import '../entities/dose_widget_state.dart';
 import '../entities/user_setting_entity.dart';
 
 part 'dose_widget_store.dart';
+part 'dose_history_pending_store.dart';
 
 // 클래스명: DoseOutboxStore
 // 역할: 계정별 기록과 캐시를 암호화하고 저장·전송·응답 반영 순서를 보장한다.
@@ -89,6 +90,17 @@ class DoseOutboxStore {
       )) {
         final owner = row['owner'] as String;
         lost[owner] = (lost[owner] ?? 0) + (row['count'] as int);
+      }
+      for (final row in await tx.query(
+        'metadata',
+        where: 'name LIKE ?',
+        whereArgs: ['history-pending-count:%'],
+      )) {
+        final owner = (row['name'] as String).substring(
+          'history-pending-count:'.length,
+        );
+        lost[owner] =
+            (lost[owner] ?? 0) + (int.tryParse(row['value'] as String) ?? 0);
       }
       await tx.delete('operations');
       await tx.delete('metadata');
@@ -564,6 +576,11 @@ class DoseOutboxStore {
         'metadata',
         where: 'name = ?',
         whereArgs: ['$_lostPrefix$token'],
+      );
+      await tx.delete(
+        'metadata',
+        where: 'name IN (?, ?)',
+        whereArgs: ['history-pending:$token', 'history-pending-count:$token'],
       );
     });
   }

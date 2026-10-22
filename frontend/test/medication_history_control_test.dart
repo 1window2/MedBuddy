@@ -1,6 +1,7 @@
 // 파일명: medication_history_control_test.dart
 // 역할: 인증·기간·동시 요청·세션 변경·재시도 계약을 검증한다.
 import 'dart:async';
+import 'support/fake_as_needed_pending_store.dart';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -27,6 +28,7 @@ MedicationHistoryControl _control(
   Duration timeout = const Duration(seconds: 25),
 }) => MedicationHistoryControl(
   patientHash: 'scoped-patient',
+  pendingStore: FakeAsNeededPendingStore(),
   client: client,
   now: () => historyTestNow,
   sessionKeyProvider: session ?? () => 'test-session',

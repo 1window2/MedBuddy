@@ -1,6 +1,7 @@
 // 파일명: medication_history_ui_boundary_test.dart
 // 역할: 기록 정정·권한·내보내기·작은 화면의 실제 위젯 흐름을 검증한다.
 import 'dart:async';
+import 'support/fake_as_needed_pending_store.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -143,6 +144,7 @@ Future<MedicationHistoryControl> _pumpHistory(
 }) async {
   final control = MedicationHistoryControl(
     patientHash: 'test-patient',
+    pendingStore: FakeAsNeededPendingStore(),
     readOnly: readOnly,
     client: MockClient(server.respond),
     now: () => historyTestNow,
@@ -241,6 +243,7 @@ Future<MedicationHistoryControl> _pumpAsNeeded(
 }) async {
   final control = MedicationHistoryControl(
     patientHash: 'test-patient',
+    pendingStore: FakeAsNeededPendingStore(),
     readOnly: readOnly,
     client: MockClient(server.respond),
     now: now ?? () => historyTestNow,
@@ -520,7 +523,7 @@ void main() {
       expect(find.textContaining('2026-10-11'), findsOneWidget);
       expect(find.text('2026-10-16'), findsOneWidget);
       // 달력의 한 달 조회와 오늘 조회 뒤로는 날짜를 골라도 다시 읽지 않는다.
-    expect(server.reads, hasLength(2));
+      expect(server.reads, hasLength(2));
       expect(control.snapshot, same(original));
       expect(control.requestedRange!.days, 1);
       await tester.tap(find.text('Cancel'));
@@ -962,7 +965,9 @@ void main() {
     expect(find.text('Dose record undone.'), findsOneWidget);
     expect(find.text('1 dose today'), findsNothing);
     // 되돌린 뒤 다시 누르면 추가 복용 확인 없이 첫 복용으로 기록한다.
-    ScaffoldMessenger.of(tester.element(find.byType(ListView))).clearSnackBars();
+    ScaffoldMessenger.of(
+      tester.element(find.byType(ListView)),
+    ).clearSnackBars();
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
     await tester.pumpAndSettle();
@@ -978,7 +983,9 @@ void main() {
     await _pumpAsNeeded(tester, server);
     await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
     await tester.pumpAndSettle();
-    ScaffoldMessenger.of(tester.element(find.byType(ListView))).clearSnackBars();
+    ScaffoldMessenger.of(
+      tester.element(find.byType(ListView)),
+    ).clearSnackBars();
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
     await tester.pumpAndSettle();
@@ -1331,11 +1338,7 @@ void main() {
         ..addAll([
           historyTestEntry(date: '2026-10-16', status: 'taken', revision: 1),
           historyTestEntry(date: '2026-10-16', slot: 'evening'),
-          historyTestEntry(
-            date: '2026-10-15',
-            status: 'taken',
-            revision: 1,
-          ),
+          historyTestEntry(date: '2026-10-15', status: 'taken', revision: 1),
           historyTestEntry(date: '2026-10-14'),
           historyTestEntry(
             id: 2,
@@ -1381,10 +1384,7 @@ void main() {
         findsOneWidget,
       );
       // 오늘 뒤의 날짜는 누를 수 없다.
-      expect(
-        tester.widget<InkWell>(day('2026-10-18')).onTap,
-        isNull,
-      );
+      expect(tester.widget<InkWell>(day('2026-10-18')).onTap, isNull);
       // 달력 머리의 현황은 그 달의 정기 복용만 센다.
       expect(find.text('2/4'), findsOneWidget);
       // 기록이 있는 날과 없는 날의 날짜 숫자는 같은 높이에 놓인다.
@@ -1402,30 +1402,31 @@ void main() {
       );
     });
 
-    testWidgets('a tapped day opens its records and back returns to the month', (
-      tester,
-    ) async {
-      final server = monthServer();
-      await _pumpHistory(tester, server, openToday: false);
-      await tester.tap(day('2026-10-16'));
-      await tester.pumpAndSettle();
-      expect(find.text('2026-10-16 (Fri)'), findsOneWidget);
-      expect(server.reads.last.queryParameters['start_date'], '2026-10-16');
-      expect(server.reads.last.queryParameters['end_date'], '2026-10-16');
-      expect(find.byKey(const Key('history-month-calendar')), findsNothing);
+    testWidgets(
+      'a tapped day opens its records and back returns to the month',
+      (tester) async {
+        final server = monthServer();
+        await _pumpHistory(tester, server, openToday: false);
+        await tester.tap(day('2026-10-16'));
+        await tester.pumpAndSettle();
+        expect(find.text('2026-10-16 (Fri)'), findsOneWidget);
+        expect(server.reads.last.queryParameters['start_date'], '2026-10-16');
+        expect(server.reads.last.queryParameters['end_date'], '2026-10-16');
+        expect(find.byKey(const Key('history-month-calendar')), findsNothing);
 
-      await tester.tap(find.byKey(const Key('history-open-month')));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('history-month-calendar')), findsOneWidget);
-      expect(server.reads, hasLength(3));
+        await tester.tap(find.byKey(const Key('history-open-month')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('history-month-calendar')), findsOneWidget);
+        expect(server.reads, hasLength(3));
 
-      // 하루 기록에서의 시스템 뒤로 가기도 화면을 닫지 않고 달력으로 돌아간다.
-      await tester.tap(day('2026-10-15'));
-      await tester.pumpAndSettle();
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('history-month-calendar')), findsOneWidget);
-    });
+        // 하루 기록에서의 시스템 뒤로 가기도 화면을 닫지 않고 달력으로 돌아간다.
+        await tester.tap(day('2026-10-15'));
+        await tester.pumpAndSettle();
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('history-month-calendar')), findsOneWidget);
+      },
+    );
 
     testWidgets('earlier months stop at the 90-day history window', (
       tester,
@@ -1559,7 +1560,10 @@ void main() {
     await _pumpHistory(tester, server);
     await _openEditor(tester);
     // 필요시 복용에는 건너뛸 예정 복용이 없으므로 취소와 복용만 고를 수 있다.
-    expect(find.byType(RadioListTile<MedicationHistoryStatus>), findsNWidgets(2));
+    expect(
+      find.byType(RadioListTile<MedicationHistoryStatus>),
+      findsNWidgets(2),
+    );
     expect(
       find.widgetWithText(RadioListTile<MedicationHistoryStatus>, 'Skipped'),
       findsNothing,

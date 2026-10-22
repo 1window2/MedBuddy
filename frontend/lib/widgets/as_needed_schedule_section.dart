@@ -132,12 +132,15 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
   }
 
   Future<void> _readToday() async {
+    await _control.restorePendingAsNeeded();
     await _control.load(MedicationHistoryRange(_control.today, _control.today));
-    _control.pendingAsNeededChanges.removeWhere(
-      (change) => _control.snapshot!.items.any(
-        (entry) => entry.key == change.entry.key && entry.revision > 0,
-      ),
-    );
+    await _control.removePendingAsNeeded({
+      for (final change in _control.pendingAsNeededChanges)
+        if (_control.snapshot!.items.any(
+          (entry) => entry.key == change.entry.key && entry.revision > 0,
+        ))
+          change.operationId,
+    });
     unawaited(_loadPhotos(_control.snapshot!));
     if (mounted) setState(() {});
   }
@@ -241,6 +244,7 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
     final recordedKeys = <String>{};
     try {
       // 다른 화면에서 정정한 횟수를 다시 읽고 확인한 내용만 한 의도로 고정한다.
+      await _control.restorePendingAsNeeded();
       final resuming = _control.pendingAsNeededChanges.isNotEmpty;
       await _readToday();
       if (!mounted) return;
@@ -278,24 +282,26 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
         if (snapshot.range.end != _control.today) {
           throw const FormatException('Date changed.');
         }
-        _control.pendingAsNeededChanges.addAll(
-          medications.map(
-            (m) => MedicationHistoryChange(
-              entry: MedicationHistoryEntry(
-                medicationId: m.id,
-                itemName: m.itemName,
-                scheduleDate: _control.today,
-                slotKey:
-                    'as_needed:${MedicationHistoryControl.newOperationId()}',
-                status: MedicationHistoryStatus.unrecorded,
-                revision: 0,
-                dosingMode: 'as_needed',
-              ),
-              status: MedicationHistoryStatus.taken,
-              operationId: MedicationHistoryControl.newOperationId(),
-              actualTakenAt: now,
-            ),
-          ),
+        await _control.stageAsNeededChanges(
+          medications
+              .map(
+                (m) => MedicationHistoryChange(
+                  entry: MedicationHistoryEntry(
+                    medicationId: m.id,
+                    itemName: m.itemName,
+                    scheduleDate: _control.today,
+                    slotKey:
+                        'as_needed:${MedicationHistoryControl.newOperationId()}',
+                    status: MedicationHistoryStatus.unrecorded,
+                    revision: 0,
+                    dosingMode: 'as_needed',
+                  ),
+                  status: MedicationHistoryStatus.taken,
+                  operationId: MedicationHistoryControl.newOperationId(),
+                  actualTakenAt: now,
+                ),
+              )
+              .toList(),
         );
       }
       // 실행 취소는 이번 동작으로 만든 기록만 되돌리도록 기록 키를 저장 전에 고정한다.
@@ -312,8 +318,16 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
       }
     } catch (failure) {
       if (failure is ApiRequestException &&
-          const {401, 403, 404, 409, 422}.contains(failure.statusCode)) {
-        _control.pendingAsNeededChanges.clear();
+          const {401, 403, 404, 409, 410, 422}.contains(failure.statusCode)) {
+        try {
+          await _control.removePendingAsNeeded(
+            _control.pendingAsNeededChanges
+                .map((change) => change.operationId)
+                .toSet(),
+          );
+        } catch (_) {
+          // 저장소나 계정이 바뀌면 미확인 의도를 지운 것으로 처리하지 않는다.
+        }
       }
       if (mounted && !_control.sessionInvalidated) {
         _saveError = _control.pendingAsNeededChanges.isEmpty
@@ -407,7 +421,10 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
         await _load();
       }
     }
-    if (mounted && undone && _saveError == null && !_control.sessionInvalidated) {
+    if (mounted &&
+        undone &&
+        _saveError == null &&
+        !_control.sessionInvalidated) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(tr('복용 기록을 취소했어요.', 'Dose record undone.')),

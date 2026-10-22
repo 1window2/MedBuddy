@@ -13,6 +13,7 @@ import '../services/api_config.dart';
 import '../services/api_response_parser.dart';
 import '../services/auth_config.dart';
 import '../services/authenticated_api_client.dart';
+import '../services/as_needed_pending_store.dart';
 
 // 클래스명: MedicationHistorySessionChanged
 // 역할: 화면을 연 세션이 바뀌어 더 이상 자료를 읽거나 저장할 수 없음을 나타낸다.
@@ -43,8 +44,10 @@ class MedicationHistoryControl extends ChangeNotifier {
     String? Function()? sessionKeyProvider,
     Stream<String?>? sessionChanges,
     this.requestTimeout = const Duration(seconds: 25),
+    AsNeededPendingStore? pendingStore,
   }) : patientHash = patientHash.trim(),
        _ownsClient = client == null,
+       _pendingStore = pendingStore ?? AsNeededPendingStore(),
        _now = now ?? DateTime.now {
     if (this.patientHash.isEmpty) {
       throw ArgumentError.value(
@@ -88,6 +91,8 @@ class MedicationHistoryControl extends ChangeNotifier {
   late final http.Client _client;
   final bool _ownsClient;
   final DateTime Function() _now;
+  final AsNeededPendingStore _pendingStore;
+  bool _pendingRestored = false;
   late final String? Function() _sessionKeyProvider;
   late final String? _sessionKey;
   StreamSubscription<String?>? _sessionSubscription;
@@ -108,6 +113,58 @@ class MedicationHistoryControl extends ChangeNotifier {
   }
 
   MedicationHistoryRange? requestedRange;
+
+  // 재시작 뒤에도 새 요청을 만들기 전에 같은 계정의 미확인 의도를 먼저 복원한다.
+  Future<void> restorePendingAsNeeded() async {
+    ensureSession();
+    if (readOnly || _pendingRestored) return;
+    try {
+      final changes = await _pendingStore.read(patientHash);
+      ensureSession();
+      final existing = pendingAsNeededChanges
+          .map((change) => change.operationId)
+          .toSet();
+      pendingAsNeededChanges.addAll(
+        changes.where((change) => !existing.contains(change.operationId)),
+      );
+      _pendingRestored = true;
+    } catch (failure) {
+      if (!_disposed && !_invalidated) {
+        error = failure;
+        notifyListeners();
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> stageAsNeededChanges(
+    List<MedicationHistoryChange> changes,
+  ) async {
+    ensureSession();
+    if (readOnly) throw StateError('Caregiver history is read-only.');
+    for (final change in changes) {
+      change.validate(now);
+      if (!change.entry.isAsNeeded || change.entry.revision != 0) {
+        throw const FormatException('Only new as-needed doses can be staged.');
+      }
+    }
+    final staged = await _pendingStore.stage(patientHash, changes);
+    ensureSession();
+    pendingAsNeededChanges
+      ..clear()
+      ..addAll(staged);
+    _pendingRestored = true;
+  }
+
+  Future<void> removePendingAsNeeded(Set<String> operationIds) async {
+    if (operationIds.isEmpty) return;
+    ensureSession();
+    await _pendingStore.remove(patientHash, operationIds);
+    ensureSession();
+    pendingAsNeededChanges.removeWhere(
+      (change) => operationIds.contains(change.operationId),
+    );
+  }
 
   // 함수역할: 조회 또는 저장 중인지 알려 UI의 중복 명령을 막는다.
   bool get busy => loading || saving;
@@ -232,6 +289,15 @@ class MedicationHistoryControl extends ChangeNotifier {
     notifyListeners();
     try {
       final entry = change.entry;
+      final isNewAsNeeded = entry.isAsNeeded && entry.revision == 0;
+      if (isNewAsNeeded) {
+        await stageAsNeededChanges([change]);
+        if (!pendingAsNeededChanges.any(
+          (pending) => pending.operationId == change.operationId,
+        )) {
+          throw const MedicationHistoryBusy();
+        }
+      }
       final uri = Uri.parse(baseUrl).replace(
         pathSegments: [
           ...Uri.parse(baseUrl).pathSegments,
@@ -257,6 +323,7 @@ class MedicationHistoryControl extends ChangeNotifier {
       if (body['success'] != true) {
         throw const FormatException('History correction was not acknowledged.');
       }
+      if (isNewAsNeeded) await removePendingAsNeeded({change.operationId});
       // 갱신 전 데이터는 내보내기에 사용하지 않고 서버에서 다시 읽는다.
       snapshot = null;
     } finally {
