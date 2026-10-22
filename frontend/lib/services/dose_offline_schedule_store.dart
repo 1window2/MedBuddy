@@ -43,6 +43,84 @@ extension DoseOfflineScheduleStore on DoseOutboxStore {
     });
   }
 
+  // 처방 변경 요청 직전에 일일·기간 일정을 암호문 그대로 꺼내 둔 뒤 비운다. 요청이 서버에서
+  // 적용되지 않았으면 그사이 다른 기록이 없을 때만 되돌려, 오프라인에서 실패한 변경 때문에
+  // 오늘 기록할 일정이 사라지지 않게 한다.
+  Future<DoseScheduleBackup?> suspendDoseSchedules(String owner) async {
+    final token = await ownerKey(owner);
+    return db.transaction((tx) async {
+      final active = await tx.query(
+        'metadata',
+        where: 'name = ?',
+        whereArgs: ['active'],
+      );
+      if (active.firstOrNull?['value'] != token) return null;
+      Future<String?> raw(String name) async {
+        final rows = await tx.query(
+          'metadata',
+          where: 'name = ?',
+          whereArgs: [name],
+        );
+        return rows.firstOrNull?['value'] as String?;
+      }
+
+      final cache = await raw('cache:$token');
+      final window = await raw('offline_schedule:$token');
+      final revision = int.tryParse('${await raw('revision:$token')}') ?? 0;
+      await tx.delete(
+        'metadata',
+        where: 'name IN (?, ?)',
+        whereArgs: ['cache:$token', 'offline_schedule:$token'],
+      );
+      await tx.insert('metadata', {
+        'name': 'revision:$token',
+        'value': '${revision + 1}',
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      return DoseScheduleBackup._(token, cache, window, revision + 1);
+    });
+  }
+
+  // 꺼내 둔 뒤 같은 계정에 다른 기록이 없었을 때만 되돌린다. 되돌리지 못하면 false.
+  Future<bool> restoreDoseSchedules(
+    String owner,
+    DoseScheduleBackup backup,
+  ) async {
+    final token = await ownerKey(owner);
+    if (token != backup._token) return false;
+    return db.transaction((tx) async {
+      final active = await tx.query(
+        'metadata',
+        where: 'name = ?',
+        whereArgs: ['active'],
+      );
+      final revisions = await tx.query(
+        'metadata',
+        where: 'name = ?',
+        whereArgs: ['revision:$token'],
+      );
+      final revision = int.tryParse('${revisions.firstOrNull?['value']}') ?? 0;
+      if (active.firstOrNull?['value'] != token ||
+          revision != backup._revision) {
+        return false;
+      }
+      for (final (name, value) in [
+        ('cache:$token', backup._cache),
+        ('offline_schedule:$token', backup._window),
+      ]) {
+        if (value == null) continue;
+        await tx.insert('metadata', {
+          'name': name,
+          'value': value,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+      await tx.insert('metadata', {
+        'name': 'revision:$token',
+        'value': '${revision + 1}',
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      return true;
+    });
+  }
+
   Future<void> invalidateDoseSchedules(String owner) async {
     final token = await ownerKey(owner);
     await db.transaction((tx) async {
@@ -189,4 +267,19 @@ extension DoseOfflineScheduleStore on DoseOutboxStore {
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     });
   }
+}
+
+// 처방 변경 요청 동안 비워 둔 일정의 암호문과, 비운 직후의 캐시 버전.
+class DoseScheduleBackup {
+  const DoseScheduleBackup._(
+    this._token,
+    this._cache,
+    this._window,
+    this._revision,
+  );
+
+  final String _token;
+  final String? _cache;
+  final String? _window;
+  final int _revision;
 }

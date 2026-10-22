@@ -167,7 +167,9 @@ class _NotificationDeviceSettingsState extends State<NotificationDeviceSettings>
         _permissionToggle(
           key: 'deviceNotificationSettingsRow',
           title: _text('알림 허용', 'Allow notifications'),
-          value: snapshot?.notifications,
+          // 앱 알림은 허용됐어도 복약 알림 채널이 꺼져 있으면 복약 알림은 오지 않는다. 사용자는
+          // 부제목보다 스위치를 먼저 읽으므로 이때는 꺼짐으로 보인다(누르면 휴대폰 설정이 열린다).
+          value: channelBlocked ? false : snapshot?.notifications,
           supported: control.supportsNotifications,
           description: channelBlocked
               ? _text(

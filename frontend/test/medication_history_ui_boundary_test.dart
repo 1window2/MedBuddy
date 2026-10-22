@@ -1037,6 +1037,27 @@ void main() {
     expect(store.batches['test-patient'], isEmpty);
   });
 
+  // 기기 저장소를 열지 못해도 필요시 목록과 횟수는 보이고, 중복될 수 있는 새 기록만 막는다.
+  testWidgets('PRN list stays visible when the pending store fails', (
+    tester,
+  ) async {
+    final server = _HistoryServer();
+    final store = FakeAsNeededPendingStore()..failRead = true;
+    await _pumpAsNeeded(tester, server, pendingStore: store);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('schedule-prn-take-2')),
+      200,
+    );
+    await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
+    await tester.pumpAndSettle();
+    expect(server.writes, isEmpty);
+    expect(find.textContaining('Device storage could not be opened'), findsOneWidget);
+    store.failRead = false;
+    await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
+    await tester.pumpAndSettle();
+    expect(server.writes, hasLength(1));
+  });
+
   testWidgets('a failed PRN undo explains where to correct the record', (
     tester,
   ) async {
@@ -1665,7 +1686,7 @@ void main() {
     },
   );
 
-  testWidgets('export validates date order and inclusive 31-day limit', (
+  testWidgets('export validates date order and allows up to 90 days for CSV', (
     tester,
   ) async {
     final server = _HistoryServer();
@@ -1680,16 +1701,14 @@ void main() {
           .onPressed,
       isNull,
     );
-    await _chooseExportDate(tester, 'start', DateTime(2026, 9, 15));
-    expect(
-      find.text('Select up to 31 days within the last 90 days.'),
-      findsOneWidget,
-    );
+    // CSV는 31일씩 나눠 읽으므로 31일을 넘는 기간도 고를 수 있다.
+    await _chooseExportDate(tester, 'start', DateTime(2026, 7, 20));
+    expect(find.byKey(const Key('history-export-error')), findsNothing);
     expect(
       tester
           .widget<FilledButton>(find.byKey(const Key('history-export-share')))
           .onPressed,
-      isNull,
+      isNotNull,
     );
     await _chooseExportDate(tester, 'start', DateTime(2026, 9, 16));
     expect(find.byKey(const Key('history-export-error')), findsNothing);

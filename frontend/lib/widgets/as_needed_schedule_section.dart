@@ -55,6 +55,9 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
   bool _reminderOpen = false;
   bool _reloadRequested = false;
   MedicationHistorySnapshot? _lastSnapshot;
+  // 기기의 미확인 기록 저장소를 열지 못하면 목록과 횟수는 서버 기준으로 보여 주되, 보내지 못한
+  // 기록과 겹칠 수 있는 새 기록은 막는다.
+  bool _pendingStoreUnavailable = false;
   final Map<int, String> _photos = {};
   String? _saveError;
   String tr(String ko, String en) => widget.isEnglish ? en : ko;
@@ -131,16 +134,28 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
     });
   }
 
+  Future<void> _restorePending() async {
+    try {
+      await _control.restorePendingAsNeeded();
+      _pendingStoreUnavailable = false;
+    } catch (_) {
+      if (_control.sessionInvalidated) rethrow;
+      _pendingStoreUnavailable = true;
+    }
+  }
+
   Future<void> _readToday() async {
-    await _control.restorePendingAsNeeded();
+    await _restorePending();
     await _control.load(MedicationHistoryRange(_control.today, _control.today));
-    await _control.removePendingAsNeeded({
-      for (final change in _control.pendingAsNeededChanges)
-        if (_control.snapshot!.items.any(
-          (entry) => entry.key == change.entry.key && entry.revision > 0,
-        ))
-          change.operationId,
-    });
+    if (!_pendingStoreUnavailable) {
+      await _control.removePendingAsNeeded({
+        for (final change in _control.pendingAsNeededChanges)
+          if (_control.snapshot!.items.any(
+            (entry) => entry.key == change.entry.key && entry.revision > 0,
+          ))
+            change.operationId,
+      });
+    }
     unawaited(_loadPhotos(_control.snapshot!));
     if (mounted) setState(() {});
   }
@@ -245,7 +260,14 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
     var resumedEarlierDay = false;
     try {
       // 다른 화면에서 정정한 횟수를 다시 읽고 확인한 내용만 한 의도로 고정한다.
-      await _control.restorePendingAsNeeded();
+      await _restorePending();
+      if (_pendingStoreUnavailable) {
+        _saveError = tr(
+          '기기 저장소를 열 수 없어 지금은 기록할 수 없어요. 앱을 다시 시작해 주세요.',
+          'Device storage could not be opened, so doses cannot be recorded now. Restart the app.',
+        );
+        return;
+      }
       final resuming = _control.pendingAsNeededChanges.isNotEmpty;
       await _readToday();
       if (!mounted) return;

@@ -53,15 +53,15 @@ String medicationHistoryCsv(
     for (final status in MedicationHistoryStatus.values)
       [status.label(isEnglish), '${snapshot.count(status)}'],
     [],
+    // 필요시 복용에는 예정일이 없어 기록한 날을 같은 열에 적는다. 내부 기록 버전은 내보내지 않는다.
     [
-      tr('예정일', 'Scheduled date'),
+      tr('날짜 (필요시는 기록일)', 'Date (record date for as-needed)'),
       tr('약 이름', 'Medication'),
       tr('시간대', 'Dose slot'),
       tr('상태', 'Status'),
       tr('실제 복용 시각', 'Actual taken time'),
       tr('기록 시각', 'Recorded time'),
       tr('건너뛴 이유', 'Skip reason'),
-      tr('기록 버전', 'Revision'),
     ],
     for (final item in snapshot.items)
       [
@@ -72,7 +72,6 @@ String medicationHistoryCsv(
         MedicationHistoryDates.timestamp(item.actualTakenAt),
         MedicationHistoryDates.timestamp(item.recordedAt),
         item.reason,
-        '${item.revision}',
       ],
     [],
     [tr('조회 기간의 약 목록', 'Medications in the selected period')],

@@ -29,6 +29,9 @@ class MedBuddySavedMedicationViewModel {
   final bool Function() _readEnglishSetting;
   final Future<void> Function() fetchTodayMedicationSchedule;
   final Future<void> Function()? invalidateSchedule;
+  // 처방 변경 요청 동안 일정을 비우되, 변경이 서버에 적용되지 않으면 되돌릴 수 있게 한다.
+  final Future<Object?> Function()? suspendSchedule;
+  final Future<void> Function(Object? backup)? restoreSchedule;
   final Future<void> Function()
   _synchronizeMedicationReminderSchedulesIfScheduleIsFresh;
   final void Function(String) _onChanged;
@@ -54,6 +57,8 @@ class MedBuddySavedMedicationViewModel {
     required bool Function() readEnglishSetting,
     required this.fetchTodayMedicationSchedule,
     this.invalidateSchedule,
+    this.suspendSchedule,
+    this.restoreSchedule,
     required Future<void> Function() synchronizeReminders,
     required void Function(String) onChanged,
   }) : _readEnglishSetting = readEnglishSetting,
@@ -173,6 +178,11 @@ class MedBuddySavedMedicationViewModel {
     try {
       result = await _changingRegimen(
         () => checkSavedMedication.changeRegimen(medicationId, change),
+        // 충돌·대상 없음은 서버 상태가 이미 달라졌다는 뜻이므로 일정을 다시 받는다.
+        applied: (result) =>
+            result.success ||
+            result.failure == MedicationRegimenFailure.conflict ||
+            result.failure == MedicationRegimenFailure.missing,
       );
     } catch (_) {
       result = const MedicationRegimenResult(
@@ -271,6 +281,7 @@ class MedBuddySavedMedicationViewModel {
         medicationInfo,
         medicationSchedule: medicationSchedule,
       ),
+      applied: (result) => result.status != MedicationSaveStatus.failed,
     );
     // 서버가 이미 저장한 결과는 유지하되 종료된 계정의 사진·일정 작업은 시작하지 않는다.
     if (!_isCurrentSave(generation)) return result;
@@ -623,6 +634,7 @@ class MedBuddySavedMedicationViewModel {
           }
         }),
       ),
+      applied: (results) => results.any((deleted) => deleted),
     );
     final deletedIds = <int>{};
     for (var index = 0; index < uniqueIds.length; index += 1) {
@@ -660,16 +672,37 @@ class MedBuddySavedMedicationViewModel {
     );
   }
 
-  // 응답 유실도 서버에서는 변경됐을 수 있다. 변경 전·후에 일일/기간 캐시를 함께 무효화한다.
-  Future<T> _changingRegimen<T>(Future<T> Function() action) async {
+  // 응답 유실도 서버에서는 변경됐을 수 있다. 변경 중에는 일일/기간 캐시를 비우고, 적용된
+  // 변경(또는 예외로 결과를 모르는 경우) 뒤에는 그대로 비운다. 적용되지 않은 실패 뒤에는 비우기
+  // 전 일정을 되돌려, 오프라인에서 실패한 수정 때문에 오늘 기록할 일정이 사라지지 않게 한다.
+  // 응답만 잃고 실제로 적용된 변경이라도 서버가 바뀐 처방의 오프라인 기록을 거부한다.
+  Future<T> _changingRegimen<T>(
+    Future<T> Function() action, {
+    required bool Function(T result) applied,
+  }) async {
     final generation = _saveGeneration;
+    final suspend = suspendSchedule;
     final invalidate = invalidateSchedule;
-    if (invalidate != null) await invalidate();
+    Object? backup;
+    // 콜백이 없으면 기다리지 않는다. 기다리면 그사이 계정 전환이 끼어들 수 있다.
+    if (suspend != null) {
+      backup = await suspend();
+    } else if (invalidate != null) {
+      await invalidate();
+    }
     if (!_isCurrentSave(generation)) throw StateError('Account changed.');
+    var changed = true;
     try {
-      return await action();
+      final result = await action();
+      changed = applied(result);
+      return result;
     } finally {
-      await invalidateSchedule?.call();
+      final restore = restoreSchedule;
+      if (!changed && restore != null) {
+        await restore(backup);
+      } else {
+        await invalidateSchedule?.call();
+      }
     }
   }
 

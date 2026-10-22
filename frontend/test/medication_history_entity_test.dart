@@ -254,6 +254,17 @@ void main() {
     ]);
   });
 
+  // 내보낸 표는 내부 기록 버전을 빼고, 필요시 복용에도 맞는 날짜 열 이름을 쓴다.
+  test('CSV record table drops the internal revision column', () {
+    final csv = medicationHistoryCsv(
+      MedicationHistorySnapshot.fromJson(historyTestBody()),
+      isEnglish: false,
+    );
+    expect(csv, contains('"날짜 (필요시는 기록일)","약 이름","시간대","상태"'));
+    expect(csv, isNot(contains('기록 버전')));
+    expect(csv, isNot(contains('"예정일"')));
+  });
+
   // 건너뜀만 이유를 가지며 그 외 상태에 실제 복용 시각이 남지 않는다.
   test('reason length and mutually exclusive status fields are validated', () {
     final entry = MedicationHistoryEntry.fromJson(historyTestEntry());

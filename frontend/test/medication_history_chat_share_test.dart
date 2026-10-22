@@ -288,6 +288,36 @@ void main() {
     expect(server.posts.single['history_end_date'], '2026-10-17');
   });
 
+  // CSV는 90일까지 되지만 채팅 공유는 서버가 31일만 받으므로 그보다 긴 기간이면 채팅만 막는다.
+  testWidgets('a period over 31 days keeps CSV but not chat sharing', (
+    tester,
+  ) async {
+    final server = _Server();
+    await _pump(tester, server);
+    await tester.tap(find.byTooltip('Export'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('history-export-start')));
+    await tester.pumpAndSettle();
+    Navigator.of(
+      tester.element(find.byType(DatePickerDialog)),
+    ).pop(DateTime(2026, 8, 1));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<FilledButton>(find.byKey(const Key('history-share-chat')))
+          .onPressed,
+      isNull,
+    );
+    expect(
+      tester
+          .widget<FilledButton>(find.byKey(const Key('history-export-share')))
+          .onPressed,
+      isNotNull,
+    );
+    expect(find.textContaining('Chat sharing covers up to 31 days'), findsOneWidget);
+    expect(server.posts, isEmpty);
+  });
+
   testWidgets('cancel and empty recipients never send', (tester) async {
     final server = _Server()..noLinks = true;
     await _pump(tester, server);

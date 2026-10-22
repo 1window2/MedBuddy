@@ -228,9 +228,42 @@ class MedicationHistoryControl extends ChangeNotifier {
   }
 
   // 날짜별 화면은 그대로 두고 공유할 기간만 별도로 읽는다.
+  // 31일을 넘는 CSV 기간은 최신 구간부터 31일씩 나눠 읽어 한 스냅샷으로 합친다.
   Future<MedicationHistorySnapshot> readRangeForExport(
     MedicationHistoryRange range,
-  ) => readRange(range);
+  ) async {
+    range.validate(now, maxDays: MedicationHistoryRange.maximumExportDays);
+    if (range.days <= MedicationHistoryRange.maximumReadDays) {
+      return readRange(range);
+    }
+    final items = <MedicationHistoryEntry>[];
+    final medications = <int, MedicationHistoryMedication>{};
+    var end = range.end;
+    while (!end.isBefore(range.start)) {
+      final chunkStart = DateTime.utc(
+        end.year,
+        end.month,
+        end.day - MedicationHistoryRange.maximumReadDays + 1,
+      );
+      final chunk = await readRange(
+        MedicationHistoryRange(
+          chunkStart.isBefore(range.start) ? range.start : chunkStart,
+          end,
+        ),
+      );
+      // 구간마다 최신 날짜부터 정렬돼 있으므로 최신 구간부터 이어 붙이면 전체 순서가 유지된다.
+      items.addAll(chunk.items);
+      for (final medication in chunk.medications) {
+        medications.putIfAbsent(medication.id, () => medication);
+      }
+      end = DateTime.utc(chunkStart.year, chunkStart.month, chunkStart.day - 1);
+    }
+    return MedicationHistorySnapshot(
+      range: range,
+      items: items,
+      medications: medications.values.toList(),
+    );
+  }
 
   // 함수역할: 화면의 하루 기록은 그대로 둔 채 한 달 달력이나 내보내기용 기간을 서버에서 읽는다.
   Future<MedicationHistorySnapshot> readRange(

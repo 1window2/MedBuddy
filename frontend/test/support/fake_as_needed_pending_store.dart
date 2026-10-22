@@ -6,10 +6,13 @@ class FakeAsNeededPendingStore extends AsNeededPendingStore {
   final Map<String, List<MedicationHistoryChange>> batches = {};
   bool failStage = false;
   bool failRemove = false;
+  bool failRead = false;
 
   @override
-  Future<List<MedicationHistoryChange>> read(String owner) async =>
-      List.of(batches[owner] ?? []);
+  Future<List<MedicationHistoryChange>> read(String owner) async {
+    if (failRead) throw StateError('Storage unavailable');
+    return List.of(batches[owner] ?? []);
+  }
 
   @override
   Future<List<MedicationHistoryChange>> stage(

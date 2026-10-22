@@ -163,13 +163,14 @@ void main() {
         expect(control.permissionRequests, 0);
         if (state.notifications == true && state.medicationChannel == false) {
           expect(find.textContaining('복약 알림 꺼짐'), findsOneWidget);
+          // 복약 알림이 오지 않으므로 스위치도 꺼짐으로 보인다.
           expect(
             tester
                 .widget<SwitchListTile>(
                   find.byKey(const ValueKey('deviceNotificationSettingsRow')),
                 )
                 .value,
-            isTrue,
+            isFalse,
           );
         }
       },

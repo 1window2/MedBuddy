@@ -213,6 +213,25 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     await reload();
   }
 
+  // 처방 변경 요청 전에 일정을 비우되 되돌릴 수 있게 보관한다.
+  Future<DoseScheduleBackup?> suspendSchedule() async {
+    await initialize();
+    final backup = await _store!.suspendDoseSchedules(owner);
+    await reload();
+    return backup;
+  }
+
+  // 변경이 서버에 적용되지 않았을 때 보관한 일정을 되돌린다. 그사이 다른 기록이 있었으면
+  // 이전처럼 비운 상태로 둔다. 서버는 처방이 바뀐 뒤의 오프라인 기록을 거부하므로,
+  // 응답만 잃은 변경이 실제로 적용됐어도 잘못된 기록은 남지 않는다.
+  Future<void> restoreSchedule(DoseScheduleBackup? backup) async {
+    await initialize();
+    if (backup == null || !await _store!.restoreDoseSchedules(owner, backup)) {
+      await _store!.invalidateDoseSchedules(owner);
+    }
+    await reload();
+  }
+
   Future<void> _refreshScheduleWindow() async {
     final loader = loadScheduleWindow;
     if (loader == null || _disposed) return;

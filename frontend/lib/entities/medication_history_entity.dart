@@ -91,11 +91,15 @@ class MedicationHistoryRange {
     return !value.isBefore(start) && !value.isAfter(end);
   }
 
-  // 함수역할: 현재 시각 기준 미래·역순·조회 기간 초과를 예외로 거부한다.
-  void validate(DateTime now) {
+  // 함수역할: 현재 시각 기준 미래·역순·조회 기간 초과를 예외로 거부한다. 서버 조회와 채팅 공유는
+  //   한 번에 31일, CSV 내보내기는 31일씩 나눠 읽어 보관 기간 전체(90일)까지 허용한다.
+  static const maximumReadDays = 31;
+  static const maximumExportDays = 90;
+
+  void validate(DateTime now, {int maxDays = maximumReadDays}) {
     final today = MedicationHistoryDates.today(now);
     if (days < 1 ||
-        days > 31 ||
+        days > maxDays ||
         end.isAfter(today) ||
         start.isBefore(today.subtract(const Duration(days: 89)))) {
       throw const FormatException(

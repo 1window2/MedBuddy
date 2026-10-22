@@ -93,6 +93,43 @@ void main() {
     await store.db.close();
   });
 
+  // 처방 변경 요청이 실패하면 비워 둔 일정을 되돌려, 오프라인에서 실패한 수정 때문에
+  // 오늘과 이후의 기록할 일정이 사라지지 않게 한다.
+  test('a failed medication change restores the suspended schedule and window', () async {
+    await seed([course(1), course(2)]);
+    final backup = await sync.suspendSchedule();
+    expect(sync.hasCache, isFalse);
+    expect(await store.readOfflineScheduleWindow('owner'), isNull);
+    await sync.restoreSchedule(backup);
+    expect(sync.hasCache, isTrue);
+    expect(sync.schedules.map((s) => s.medicationID), ['1', '2']);
+    // 되돌린 14일 일정으로 다음 날도 오프라인 기록이 가능하다.
+    now = DateTime.utc(2026, 10, 22, 3);
+    await sync.reload();
+    expect(sync.hasCache, isTrue);
+    expect(sync.schedules.map((s) => s.medicationID), ['1', '2']);
+  });
+
+  test('a restore does not overwrite a schedule saved in between', () async {
+    await seed([course(1), course(2)]);
+    final backup = await sync.suspendSchedule();
+    await sync.cacheSchedules([course(2)], scheduleDate: '2026-10-21');
+    await sync.restoreSchedule(backup);
+    // 그사이 다른 기록이 있으면 되돌리지 않고 이전처럼 비운다.
+    expect(sync.hasCache, isFalse);
+    expect(await store.readOfflineScheduleWindow('owner'), isNull);
+  });
+
+  test('a restore never crosses into another account', () async {
+    await seed([course(1)]);
+    final backup = await sync.suspendSchedule();
+    await store.activate('other');
+    await sync.restoreSchedule(backup);
+    await store.activate('owner');
+    await sync.reload();
+    expect(sync.hasCache, isFalse);
+  });
+
   test(
     'next day offline clears yesterday checks and enqueues the new day with regimen versions',
     () async {

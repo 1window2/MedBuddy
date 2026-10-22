@@ -15,11 +15,11 @@ line below. Changes are listed in the [v0.2.4 notes](releases/v0.2.4-beta.md).
 - [x] A calendar for checking past days' doses: the medication history
       opens on a month calendar with per-day recorded counts (2026-10-21;
       try it on the phone and drop it before the merge if it does not fit).
-- [ ] Dose record export: CSV and, since 2026-10-22, a counts-only summary
+- [x] Dose record export: CSV and, since 2026-10-22, a counts-only summary
       shared into a linked chat; the export starts with the visible month.
-      Still open for the team: whether one export should cover more than 31
-      days (a one- to three-month visit interval needs several files) and
-      whether the CSV columns should drop internal names such as 기록 버전.
+      Since 2026-10-23 a CSV covers up to 90 days (read in 31-day parts) and
+      drops the internal revision column; chat sharing stays at 31 days.
+      See the [decision log](MedBuddy%20-%20Decision%20Log.md).
 - [x] The launcher icon is enlarged and cropped by the Samsung launcher (the
       wordmark is cut at both edges); shrink it. Now an adaptive icon with the
       mark only (the user agreed to drop the wordmark), plus a transparent
@@ -54,22 +54,21 @@ recovery, docs) were reviewed on 2026-10-23. Corrected on top:
       screen, is back; the deployment guide names the current migration head
       and the rollback behaviour of redacted receipts.
 
-### Decisions for a person
+### Decisions taken on 2026-10-23
 
-- [ ] Offline medication edits: changing, deleting or stopping a medication
-      clears today's schedule and the offline window before the request, so
-      a failed attempt while offline leaves nothing to record until the
-      server answers. Clearing first guarantees no stale schedule after a
-      lost response; clearing only after a confirmed change keeps the
-      schedule usable offline. Which matters more for the exhibition?
-- [ ] The as-needed card now needs the local pending store; if the store
-      cannot be opened, the card cannot load. Falling back to server-only
-      would allow a duplicate dose if an unsent intent exists.
-- [ ] The phone-settings switch shows on when app notifications are allowed
-      but the medication channel is off (the subtitle says medication alerts
-      are off). Keep, or show it off?
-- [ ] `main` has no "require a pull request" rule; a collaborator pushed and
-      reverted a commit directly on 2026-10-22 (no content change remains).
+Recorded with reasons and how to undo them in the
+[decision log](MedBuddy%20-%20Decision%20Log.md):
+
+- [x] A failed medication change keeps the offline schedule (restored unless
+      something else was stored meanwhile; the server refuses offline doses of
+      a changed regimen).
+- [x] The as-needed card stays visible when the local pending store fails;
+      only new doses are refused until it opens.
+- [x] The phone notification switch shows off when the medication channel is
+      off.
+- [x] CSV export up to 90 days with tidier columns; chat sharing stays at 31.
+- [x] `main` requires a pull request (ruleset "Protect Main": no approvals,
+      merge commits only, no bypass), set by the owner on 2026-10-23.
 
 ## v0.2.3 development line
 

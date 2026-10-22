@@ -317,6 +317,43 @@ void main() {
     expect(events, ['schedule', 'reminders']);
   });
 
+  // 서버에 적용되지 않은 변경 뒤에는 비워 둔 기기 일정을 되돌리고, 적용됐거나 충돌한
+  // 변경 뒤에는 그대로 비운다.
+  for (final (label, result, expected) in [
+    (
+      'network failure restores',
+      const MedicationRegimenResult(failure: MedicationRegimenFailure.network),
+      ['suspend', 'restore:backup'],
+    ),
+    (
+      'invalid request restores',
+      const MedicationRegimenResult(failure: MedicationRegimenFailure.invalid),
+      ['suspend', 'restore:backup'],
+    ),
+    (
+      'success invalidates',
+      const MedicationRegimenResult(medicationId: 8, revision: 1),
+      ['suspend', 'invalidate', 'schedule', 'reminders'],
+    ),
+    (
+      'conflict invalidates',
+      const MedicationRegimenResult(failure: MedicationRegimenFailure.conflict),
+      ['suspend', 'invalidate', 'schedule', 'reminders'],
+    ),
+  ]) {
+    test('the device schedule after a regimen change: $label', () async {
+      final control = _PendingControl();
+      final events = <String>[];
+      final model = _model(control, events, trackSchedule: true);
+      addTearDown(model.dispose);
+      final pending = model.changeMedicationRegimen(7, _change());
+      await Future<void>.delayed(Duration.zero);
+      control.response.complete(result);
+      await pending;
+      expect(events, expected);
+    });
+  }
+
   test('계정 초기화 이후 완료된 변경은 이전 계정 갱신을 실행하지 않는다', () async {
     final control = _PendingControl();
     final events = <String>[];
@@ -412,6 +449,7 @@ MedBuddySavedMedicationViewModel _model(
   List<String> events, {
   bool failRefresh = false,
   ManualMedicationImageStore? imageStore,
+  bool trackSchedule = false,
 }) {
   final details = CheckMedicationDetail();
   addTearDown(details.dispose);
@@ -426,6 +464,18 @@ MedBuddySavedMedicationViewModel _model(
       events.add('schedule');
       if (failRefresh) throw StateError('failed');
     },
+    invalidateSchedule: trackSchedule
+        ? () async => events.add('invalidate')
+        : null,
+    suspendSchedule: trackSchedule
+        ? () async {
+            events.add('suspend');
+            return 'backup';
+          }
+        : null,
+    restoreSchedule: trackSchedule
+        ? (backup) async => events.add('restore:$backup')
+        : null,
     synchronizeReminders: () async {
       events.add('reminders');
     },

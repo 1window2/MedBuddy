@@ -411,6 +411,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     String? exportError;
 
     // 날짜 선택은 공유 창 안에서만 바꾸고 날짜별 기록 화면은 유지한다.
+    // CSV는 31일씩 나눠 읽어 최근 90일 전체를 담을 수 있고, 채팅 공유는 서버가 한 번에 31일만 받는다.
     String? rangeError() {
       if (exportRange.start.isAfter(exportRange.end)) {
         return tr(
@@ -419,14 +420,28 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
         );
       }
       try {
-        exportRange.validate(control.now);
+        exportRange.validate(
+          control.now,
+          maxDays: MedicationHistoryRange.maximumExportDays,
+        );
         return null;
       } on FormatException {
         return tr(
-          '최근 90일 중 최대 31일까지 선택해 주세요.',
-          'Select up to 31 days within the last 90 days.',
+          '최근 90일 안에서 선택해 주세요.',
+          'Select dates within the last 90 days.',
         );
       }
+    }
+
+    String? chatRangeError() {
+      final error = rangeError();
+      if (error != null) return error;
+      return exportRange.days > MedicationHistoryRange.maximumReadDays
+          ? tr(
+              '채팅 공유는 최대 31일까지예요. CSV는 90일까지 공유할 수 있어요.',
+              'Chat sharing covers up to 31 days; a CSV can cover up to 90.',
+            )
+          : null;
     }
 
     Future<void> pickExportDate(
@@ -480,7 +495,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     ) async {
       if (selectingDate ||
           preparingExport ||
-          rangeError() != null ||
+          (destination == _HistoryShareDestination.chat
+                  ? chatRangeError()
+                  : rangeError()) !=
+              null ||
           !_isCurrent(control)) {
         return;
       }
@@ -579,17 +597,29 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
                             ),
                             const SizedBox(height: 12),
                             Text(
-                              tr(
-                                '최근 90일 · 최대 31일',
-                                'Last 90 days · Up to 31 days',
-                              ),
+                              _chatShare == null
+                                  ? tr(
+                                      '최근 90일 · 최대 90일',
+                                      'Last 90 days · Up to 90 days',
+                                    )
+                                  : tr(
+                                      '최근 90일 · CSV 최대 90일 · 채팅 최대 31일',
+                                      'Last 90 days · CSV up to 90 days · Chat up to 31 days',
+                                    ),
                               style: Theme.of(context).textTheme.bodySmall,
                             ),
-                            if (rangeError() != null || exportError != null)
+                            if (rangeError() != null ||
+                                (_chatShare != null &&
+                                    chatRangeError() != null) ||
+                                exportError != null)
                               Padding(
                                 padding: const EdgeInsets.only(top: 8),
                                 child: Text(
-                                  rangeError() ?? exportError!,
+                                  rangeError() ??
+                                      (_chatShare == null
+                                          ? null
+                                          : chatRangeError()) ??
+                                      exportError!,
                                   key: const Key('history-export-error'),
                                   style: const TextStyle(
                                     color: MedBuddyColors.danger,
@@ -632,7 +662,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
                                 onPressed:
                                     selectingDate ||
                                         preparingExport ||
-                                        rangeError() != null
+                                        chatRangeError() != null
                                     ? null
                                     : () => prepareExport(
                                         context,
