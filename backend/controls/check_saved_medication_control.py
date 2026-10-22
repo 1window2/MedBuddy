@@ -80,7 +80,9 @@ class CheckSavedMedication:
     ) -> dict[str, object]:
         try:
             patient_hash = normalize_patient_hash(medication.patient_hash)
-            self.retention_policy.cleanup_expired_medications(self.db, patient_hash)
+            # 계정 잠금은 최종 저장까지 유지하고 정리 실패도 저장과 함께 롤백한다.
+            self.retention_policy.cleanup_expired_medications(self.db, patient_hash, commit=False)
+            self.db.flush()
             registration_date = application_today()
             deduplication_key = self._build_deduplication_key(medication)
             duplicate_medication = self.medication_repository.find_daily_duplicate(
@@ -98,6 +100,7 @@ class CheckSavedMedication:
                     deduplication_key=self._build_deduplication_key(medication, include_dosing_mode=False),
                 )
             if duplicate_medication is not None:
+                self.db.commit()
                 return {
                     "success": False,
                     "duplicate": True,
