@@ -689,6 +689,22 @@ class MedBuddyViewModel extends ChangeNotifier {
   }
 
   DoseSyncService? doseSync;
+
+  // 서버 연결 없이도 로그아웃 전에 저장된 알림 시각과 유효한 기간 일정으로 예약을 복구한다.
+  Future<void> restoreSessionReminders(bool Function() isCurrent) async {
+    final window = await doseSync?.offlineWindow();
+    if (_isDisposed || !isCurrent()) return;
+    await _reminders.restoreAfterAbortedSignOut(
+      isCurrent: () => !_isDisposed && isCurrent(),
+      courses: window == null
+          ? null
+          : MedicationSchedule.fromScheduleJsonList(window['courses']),
+      lastAllowedDate: window == null
+          ? null
+          : DateTime.tryParse('${window['end']}'),
+    );
+  }
+
   Future<void>? _scheduleRefresh;
   DateTime? _scheduleRefreshedAt;
   String? _widgetConfigurationSignature;
