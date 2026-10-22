@@ -23,7 +23,8 @@ cloudflared
 FastAPI
     |
     +-- PostgreSQL
-    +-- Redis
+    +-- Redis cache (allkeys-lru)
+    +-- Redis request counters (noeviction)
 ```
 
 The production ingress is Cloudflare Tunnel only.
@@ -394,10 +395,11 @@ docker compose \
   up -d --build --wait
 ```
 
-The five long-running production services must remain running or healthy:
+The six long-running production services must remain running or healthy:
 
 - `postgres`
 - `redis`
+- `rate-limit-redis`
 - `catalog-refresh`
 - `backend`
 - `cloudflared`
@@ -407,6 +409,70 @@ API or catalog jobs start. It must exit with code 0; migration failure still
 blocks startup. The independent `catalog-bootstrap` service seeds empty
 medication and pharmacy catalogs and retries failures. Its successful exit
 enables the periodic refresh worker, but does not gate the API or tunnel.
+
+`REDIS_URL` remains the evictable cache. `RATE_LIMIT_REDIS_URL` must point to a
+separate Redis server, not another logical database on the cache server. Compose
+provides `rate-limit-redis` with `noeviction`, AOF and its own persistent volume.
+Memory exhaustion or an unavailable counter store rejects protected requests
+with 503 instead of falling back to local counters. `/ready` also verifies the
+counter server's `maxmemory-policy`; its Redis account needs `CONFIG GET` access.
+Development may omit the new URL and retain the existing local fallback.
+The dormant Cloud Run workflow also needs a dedicated `RATE_LIMIT_REDIS_URL`
+secret/environment binding before it can be re-enabled; do not reuse its cache
+secret. This change does not modify any live service configuration.
+
+The Redis split itself requires no application data migration. Keep the old Redis volume intact.
+Moving counters starts new quota windows: coordinate rollout of all API workers,
+and plan for this one-time quota reset. Do not point old and new workers at
+different counter stores while both serve traffic. Monitor counter memory/OOM
+errors and increase capacity rather than enabling eviction or flushing counters.
+
+### Medication receipt migration
+
+The same application update also includes Alembic revision `e6b4d2a9f031`, after
+`c8d3e7a92104`. Back up PostgreSQL and run the normal `database-migrate` step
+before starting the updated API and workers. Do not deploy the new receipt model
+against the old schema. The migration links retry receipts to their medications
+and removes stored health information when the medication no longer exists or
+its ownership cannot be established. Existing receipts are processed in batches.
+
+Deleting a medication, including automatic retention cleanup, now clears the
+associated retry response in the same transaction. Minimal idempotency markers
+remain; a retry for a redacted response returns 410 instead of returning old
+health information or creating a new dose. A schema downgrade cannot restore
+redacted response contents. Retention cleanup during registration is committed
+with the medication save, so a failed save rolls both operations back.
+
+Before production acceptance, run the PostgreSQL integration tests against a
+dedicated disposable test database, including retention/save/account-deletion
+concurrency. Set `MEDBUDDY_RUN_POSTGRES_INTEGRATION=1` only with that test database,
+never the live service database. SQLite-only test results do not establish
+PostgreSQL lock behavior. Separately verify Redis memory-exhaustion rejection and
+FCM/APNs delivery/retry behavior on deployment devices; mocked tests are not a
+substitute for these environment checks.
+
+### Prescription text privacy guard
+
+The server rechecks OCR text before both the prescription control and the external
+OCR adapter. It removes labelled patient-information sections (including wrapped
+values), fully masks recognized resident IDs, phone numbers and email addresses,
+and keeps medication rows and explicitly labelled prescription/dispensing dates.
+Existing device redaction placeholders are accepted. Ambiguous mixed patient/drug
+rows, unlabelled date-like metadata, recognizable addresses or names with patient
+honorifics are rejected with a generic 400 response before a provider call. No
+input text is added to logs. Existing post-response masking remains in place.
+
+This is defense in depth, **not a guarantee of anonymity**. A bare unlabelled name
+can be indistinguishable from a medicine name; unusual identifiers, OCR mistakes
+and unsupported document layouts can escape these deterministic rules. The guard
+does not guess that every short Korean word is a name. Keep device-side masking
+and user preview, avoid sending patient metadata, and request a medication-only
+selection when the guard refuses ambiguous content. It can conservatively omit
+unlabelled header information after a patient label until a medicine section is
+recognized. Server tests use synthetic text and mocked providers, not real patient
+data or a live Gemini request.
+
+### Runtime readiness
 
 `/ready` checks core database/schema, authentication and required Redis readiness.
 `/ready/catalogs` separately checks that all four shared catalogs contain rows;
