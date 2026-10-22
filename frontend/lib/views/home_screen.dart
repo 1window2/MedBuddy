@@ -1215,15 +1215,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           initialSetting: viewModel.userSetting,
           initiallyShowDisplayAndVoice: initiallyShowDisplayAndVoice,
           authenticationControl: authenticationControl,
-          loadHasMedicationForReadiness: () async {
-            await viewModel.fetchSavedMedicationInfo();
-            if (!mounted || viewModel.hasSavedMedicationLoadError) return null;
-            return viewModel.savedMedicationInfoList.isNotEmpty;
-          },
-          onMedicationRegistrationRequested: () =>
-              _openManualMedicationEntry(context, viewModel),
-          onCaregiverSetupRequested: () =>
-              _openPatientCaregiverLink(context, viewModel),
           // 함수이름: _openUserSettings.onMedicationScheduleRequested callback
           // 함수역할: 처방 분석 단계와 앱 탐색 목적지별 활성 화면에서 캡처된 작업 `Navigator.push(context, MaterialPageRoute(builder: (context) => const CheckScheduleUI())); MaterialPageRoute(builder: (context) => const CheckScheduleUI())`을 실행한다.
           // 매개변수:

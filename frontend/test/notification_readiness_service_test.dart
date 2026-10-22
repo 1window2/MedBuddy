@@ -1,7 +1,5 @@
 // 파일명: notification_readiness_service_test.dart
 // 역할: 실제 플러그인 경계에서 권한 상태와 복약에 영향 없는 테스트 알림을 검증한다.
-import 'dart:async';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -12,10 +10,14 @@ import 'package:medbuddy_frontend/services/notification_service.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const channel = MethodChannel('dexterous.com/flutter/local_notifications');
+  const settingsChannel = MethodChannel('com.medbuddy.app/settings');
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
   final service = NotificationService.instance;
   final calls = <MethodCall>[];
+  final settingsCalls = <MethodCall>[];
+  bool exactSettingsSupported = true;
+  bool settingsFail = false;
   bool? permission = true;
   bool? exact = true;
   int importance = Importance.high.value;
@@ -33,6 +35,17 @@ void main() {
     missingChannel = false;
     failShow = false;
     calls.clear();
+    settingsCalls.clear();
+    exactSettingsSupported = true;
+    settingsFail = false;
+    messenger.setMockMethodCallHandler(settingsChannel, (call) async {
+      settingsCalls.add(call);
+      if (settingsFail) throw PlatformException(code: 'settings_unavailable');
+      if (call.method == 'supportsExactReminderSettings') {
+        return exactSettingsSupported;
+      }
+      return null;
+    });
     messenger.setMockMethodCallHandler(channel, (call) async {
       calls.add(call);
       switch (call.method) {
@@ -71,6 +84,7 @@ void main() {
   tearDown(() {
     NotificationService.setNotificationSelectionHandler(null);
     messenger.setMockMethodCallHandler(channel, null);
+    messenger.setMockMethodCallHandler(settingsChannel, null);
     debugDefaultTargetPlatformOverride = null;
   });
 
@@ -165,24 +179,41 @@ void main() {
     expect(calls, isEmpty);
   });
 
-  test('등록 조회 오류는 약 없음이 아니며 동시 점검을 합친다', () async {
-    final gate = Completer<bool?>();
-    var reads = 0;
-    final control = NotificationReadinessControl(
-      notificationService: service,
-      loadHasMedication: () {
-        reads++;
-        return gate.future;
-      },
-    );
+  test('동시에 요청한 기기 권한 조회를 합친다', () async {
+    exact = false;
+    final control = NotificationReadinessControl(notificationService: service);
     final first = control.refresh();
     final second = control.refresh();
-    await pumpEventQueue();
-    expect(reads, 1);
-    gate.completeError(StateError('offline'));
     final state = await first;
     expect(identical(state, await second), isTrue);
-    expect(state.hasMedication, isNull);
     expect(state.notifications, isTrue);
+    expect(
+      calls.where((call) => call.method == 'areNotificationsEnabled'),
+      hasLength(1),
+    );
+  });
+
+  test('켜진 정확한 알림도 권한 요청이 아닌 시스템 설정으로 연결한다', () async {
+    final control = NotificationReadinessControl(notificationService: service);
+    await control.openExactSettings();
+    expect(settingsCalls.single.method, 'openExactReminderSettings');
+    expect(calls.where((call) => call.method.startsWith('request')), isEmpty);
+  });
+
+  test('구형 Android의 정확한 시간 권한 변경 지원 여부를 전달한다', () async {
+    exact = false;
+    exactSettingsSupported = false;
+    final control = NotificationReadinessControl(notificationService: service);
+    final snapshot = await control.refresh();
+    expect(snapshot.exactAlarmsEditable, isFalse);
+  });
+
+  test('시스템 설정 이동 실패를 성공으로 바꾸지 않는다', () async {
+    settingsFail = true;
+    final control = NotificationReadinessControl(notificationService: service);
+    await expectLater(
+      control.openExactSettings(),
+      throwsA(isA<PlatformException>()),
+    );
   });
 }
