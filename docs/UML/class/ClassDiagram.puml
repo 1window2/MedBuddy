@@ -13,6 +13,12 @@ package "Flutter Frontend" {
 
     package "UI Layer" {
 
+        class MedicationRegimenEditorUI <<UI: 적용일별 처방 변경>>
+        class MedicationHistoryUI <<UI: 날짜별 기록·정정·CSV 공유>>
+        class AsNeededScheduleSection <<UI: 필요시 체크 / 보호자 읽기 전용>>
+        class NotificationReadinessUI <<UI: 복약·알림 준비 점검>>
+        class DataUseInfoUI <<UI: 데이터 이용 안내>>
+
         interface "AuthenticationGateState" as AuthenticationGateState <<State contract>> {
             + isInitializing: bool
             + isAuthenticated: bool
@@ -244,6 +250,29 @@ package "Flutter Frontend" {
 
     package "Business Layer" {
 
+        class MedicationHistoryControl <<Controller: 세션 범위 복약 기록>> {
+            + patientHash: String
+            + readOnly: bool
+            + snapshot: MedicationHistorySnapshot?
+            + load(range): Future<void>
+            + readRangeForExport(range): Future<MedicationHistorySnapshot>
+            + save(change): Future<void>
+            + invalidateSession(): void
+        }
+        class AsNeededCheckReminderControl <<Controller: 일회 확인 알림>> {
+            + scheduledAt: DateTime?
+            + enabled: bool {readOnly}
+            + restore(allowed, isEnglish): Future<void>
+            + save(date, isEnglish): Future<void>
+        }
+        class NotificationReadinessControl <<Controller: 명시적 권한 점검>> {
+            + refresh(): Future<NotificationReadinessSnapshot>
+            + requestNotificationPermission(): Future<void>
+            + requestExactPermission(): Future<void>
+            + openSystemSettings(): Future<void>
+            + sendTest(language): Future<void>
+        }
+
         class "AuthenticationControl" as FAuthenticationControl <<Controller: 인증 상태 관리>> {
             + apiClient: AuthenticatedApiClient
             + isBusy: bool
@@ -374,6 +403,7 @@ package "Flutter Frontend" {
             + saveMedicationDetail(detail): Future<MedicationSaveResult>
             + requestSavedMedicationInfo(): Future<List<MedicationDetail>>
             + requestDelete(id): Future<bool>
+            + changeRegimen(id, change): Future<MedicationRegimenResult>
         }
 
         class "CheckSchedule" as FCheckSchedule <<Controller: 복약 일정 관리>> {
@@ -821,6 +851,12 @@ package "Flutter Frontend" {
 
     package "Data Layer" {
 
+        class MedicationHistorySnapshot <<Entity: 조회 기간의 보고와 약>> {
+            + range: MedicationHistoryRange
+            + items: List<MedicationHistoryEntry>
+            + medications: List<MedicationHistoryMedication>
+        }
+
         class "CaregiverAlertContext" as CaregiverAlertContext <<Entity: 검증할 미복약 알림 문맥>> {
             + alertId: int
             + sourceAlertId: int
@@ -850,6 +886,8 @@ package "Flutter Frontend" {
             + doseCycleDays: int
             + doseCycleOffsets: List<int>
             + doseCycleAnchor: DateTime?
+            + dosingMode: String
+            + isAsNeeded: bool {readOnly}
             + isDoseDay(date): bool
             + fromAnalysisJson(json): MedicationSchedule
             + fromScheduleJson(json): MedicationSchedule
@@ -871,6 +909,11 @@ package "Flutter Frontend" {
             + imageUrl: String
             + aiGuide: String
             + dailyFrequency: String
+            + dosingMode: String
+            + regimenRevision: int
+            + regimenEffectiveFrom: DateTime?
+            + stoppedOn: DateTime?
+            + supersededById: int?
             + nextDoseDayFrom(referenceDate): DateTime?
             + fromJson(json): MedicationDetail
         }
@@ -978,6 +1021,7 @@ package "Flutter Frontend" {
             + endDate: DateTime
             + scheduleSlotKeys: List<String>
             + doseDays: String
+            + dosingMode: String
             + localImagePath: String
             + totalDays: int
             + dosage: String
@@ -1152,7 +1196,7 @@ package "FastAPI Backend" {
         }
         note right of MedicationMatchSafety
             자동 교정·캐시·공공 API 결과도 원문 기준으로 검사한다.
-            정규화한 단일 제품명만 자동 확인한다.
+            후보 요약이 완결된 경우에만 정규화한 단일 제품명을 자동 확인한다.
             유사 후보는 requires_confirmation=true, data=[]로 반환한다.
             치료상 대체 가능성을 판단하지 않는다.
         end note
@@ -1168,14 +1212,24 @@ package "FastAPI Backend" {
         class "MedicationDetailCache" as MedicationDetailCache <<Boundary: Redis Cache>> {
             - redis_client: Redis
             + get(drug_name): list<MedicationDetail>
-            + set(drug_name, details): void
+            + set(drug_name, result): void
             + close(): void
         }
 
         class "LocalMedicationCatalog" as LocalMedicationCatalog <<Service: Local 약품 Catalog>> {
             - db: Session
-            + fetch_drug_info(drug_name): list<MedicationDetail>
+            + fetch_drug_info(drug_name): MedicationLookupResult
         }
+
+        class MedicationLookupResult <<Entity: 후보 요약 완결성>> {
+            + details: list<MedicationDetail>
+            + is_complete: bool
+        }
+        note right of MedicationLookupResult
+            일부 요약 실패 시 성공한 후보를 보존하되 자동 확정하지 않는다.
+            모든 후보 요약 실패는 조회 오류이다. 전체 Catalog 검색 완료를 뜻하지 않는다.
+            Redis에는 비어 있지 않은 완결 결과만 저장한다.
+        end note
 
         class MedicationTextNormalizer <<Service: pure search variants>> {
             + normalize_raw_text(raw_text): str
@@ -1197,6 +1251,21 @@ package "FastAPI Backend" {
             + requestSavedMedicationInfo(patient_hash): dict
             + requestDelete(patient_hash, drug_id): dict
         }
+
+        class ManageMedicationCare <<Control: 처방 버전·보고 정정>> {
+            - db: Session
+            + change_medication(principal, medication_id, request): dict
+            + history(principal, start, end, patient_hash): dict
+            + update_history(principal, medication_id, day, slot, request): dict
+            + consumeCompletionEvents(): list
+        }
+        note right of ManageMedicationCare
+            변경 적용일 전 기록과 이전 약 스냅샷을 보존한다.
+            환자만 변경하며 활성 연동 보호자는 조회·공유만 한다.
+            버전·작업 영수증을 확인하고 기록·감사·Outbox를 함께 커밋한다.
+            medication_care_recording / as_needed_caregiver_events는
+            module-level 함수이며 별도 Class가 아니다.
+        end note
 
         class "CheckSchedule" as BCheckSchedule <<Control: 복약 일정 및 완료>> {
             - db: Session
@@ -1321,7 +1390,8 @@ package "FastAPI Backend" {
             /caregiver/monitoring은 활성 알림 정책으로 제한한다.
             홈·위젯 조회에 약 상세는 포함하지 않는다.
             환자 400명 단위로 일정 필드와 오늘 완료 기록을 일괄 조회한다.
-            400명 이하는 연결·설정·일정·완료 기록을 최대 4회 조회한다.
+            400명 이하는 필요시 이벤트 키를 포함해 최대 5회 조회한다.
+            알림 OFF 환자의 필요시 기록도 감시 기준값에 포함한다.
         end note
 
         class "SetNotification" as BSetNotification <<Control: 환자 알림 저장>> {
@@ -1340,7 +1410,7 @@ package "FastAPI Backend" {
         class "ManageUserSetting" as BManageUserSetting <<Control: 사용자 설정 관리>> {
             - db: Session
             + requestUserSetting(user_hash): dict
-            + saveUserSetting(user_hash, font_size, speed, language): dict
+            + saveUserSetting(user_hash, font_size, reading_speed, language, expected_revision): dict
         }
 
         class "ManageAccount" as BManageAccount <<Control: 계정 Data Lifecycle>> {
@@ -1422,6 +1492,7 @@ package "FastAPI Backend" {
         class "DispatchCaregiverAlert" as DispatchCaregiverAlert <<Control: 보호자 완료·미복약 알림>> {
             - db: Session
             + notifySlotCompleted(patient_hash, slot_key): PushDeliveryResult
+            + notifyAsNeededDoseCompletedIfCurrent(patient_hash, schedule_date, event_key): PushDeliveryResult?
             + notifySlotMissed(caregiver_hash, patient_hash, slot_key, schedule_date): PushDeliveryResult
         }
 
@@ -1871,6 +1942,11 @@ package "FastAPI Backend" {
             + side_effect: Text?
             + storage_method: Text?
             + schedule_slot_keys: Text
+            + dosing_mode: String(16)
+            + regimen_revision: Integer
+            + regimen_effective_from: Date?
+            + stopped_on: Date?
+            + superseded_by_id: Integer?
             + medication_status: Boolean
         }
 
@@ -1881,6 +1957,26 @@ package "FastAPI Backend" {
             + schedule_date: Date
             + slot_key: String
             + completed: Boolean
+            + report_status: String(16)?
+            + actual_taken_at: DateTime?
+            + recorded_at: DateTime?
+            + reason: String(500)
+            + revision: Integer
+        }
+
+        class "_MedicationCareAudit" as DBMedicationCareAudit <<ORM: medication_care_audits>> {
+            + patient_hash: String
+            + medication_id: Integer
+            + kind: String(32)
+            + before_json: Text
+            + after_json: Text
+            + recorded_at: DateTime
+        }
+        class "_MedicationCareOperation" as DBMedicationCareOperation <<ORM: medication_care_operations>> {
+            + patient_hash: String
+            + operation_id: String(36)
+            + request_hash: String(64)
+            + response_json: Text
         }
 
         class "_MedicationAlarm" as DBMedicationAlarm <<ORM: notification_settings>> {
@@ -1933,11 +2029,13 @@ package "FastAPI Backend" {
             + caregiver_notifications_enabled: Boolean
             + chat_notifications_enabled: Boolean
             + notification_detail_mode: String
+            + revision: Integer
         }
 
         note right of DBUserSetting
             신규 일정의 기본 시각도 사용자 설정에 저장한다.
             기존 복약 일정의 시각을 일괄 변경하지 않는다.
+            expected_revision과 ORM version guard로 오래된 저장을 거절한다.
         end note
 
         class "_DevicePushToken" as DBDevicePushToken <<ORM: device_push_tokens>> {
@@ -2659,4 +2757,62 @@ MedBuddyApp --> LinkedChatEntryUI
 LinkedChatEntryUI --> ManageChatList : 현재 계정의 활성 연결·역할
 LinkedChatEntryUI --> LinkedChatUI : 최신 위치 또는 기존 초안 유지
 
+CheckSavedMedicationUI ..> MedicationRegimenEditorUI
+MedicationRegimenEditorUI ..> MedBuddyViewModel : 저장 callback
+FCheckSavedMedication ..> ManageMedicationCare : 인증된 처방 변경 API
+CheckScheduleUI ..> MedicationHistoryUI
+CheckCaregiverMedicationUI ..> MedicationHistoryUI : 읽기 전용
+CheckScheduleUI *-- AsNeededScheduleSection
+CheckCaregiverMedicationUI *-- AsNeededScheduleSection : 읽기 전용·구독
+MedBuddyViewModel *-- MedicationHistoryControl : asNeededHistory
+MedicationHistoryUI --> MedicationHistoryControl
+AsNeededScheduleSection --> MedicationHistoryControl
+AsNeededScheduleSection --> AsNeededCheckReminderControl : 환자만
+AsNeededCheckReminderControl --> NotificationService
+MedicationHistoryControl --> MedicationHistorySnapshot
+MedicationHistoryControl ..> AuthenticatedApiClient
+MedicationHistoryControl ..> ManageMedicationCare : 인증된 기록 API
+ManageMedicationCare --> BAuthorizationControl
+ManageMedicationCare --> BCheckSavedMedication
+ManageMedicationCare --> BCheckSchedule
+ManageMedicationCare --> MedicationCoursePolicy
+ManageMedicationCare --> DBSavedMedication
+ManageMedicationCare --> DBMedicationCompletion
+ManageMedicationCare --> DBMedicationCareAudit
+ManageMedicationCare --> DBMedicationCareOperation
+ManageMedicationCare --> DBCaregiverAlertOutbox : 당일 새 완료 전환
+DBUserAccount "1" -- "0..*" DBMedicationCareAudit : {FK, CASCADE}
+DBUserAccount "1" -- "0..*" DBMedicationCareOperation : {FK, CASCADE}
+DBSavedMedication "1" -- "0..*" DBMedicationCareAudit : {FK, CASCADE}
+LocalMedicationCatalog ..> MedicationLookupResult
+MedicationDetailCache ..> MedicationLookupResult
+BCheckMedicationDetail ..> MedicationLookupResult
+ManageUserSettingUI ..> NotificationReadinessUI
+ManageUserSettingUI ..> DataUseInfoUI
+NotificationReadinessUI --> NotificationReadinessControl
+NotificationReadinessControl --> NotificationService
+note bottom of MedicationHistoryControl
+    날짜별 조회·정정·CSV는 세션 변경 시 무효화한다.
+    정정·필요시 체크는 서버 확인이 필요하며 별도 영속 오프라인 큐가 아니다.
+    CSV는 확인한 기간을 다시 조회한 뒤 Android 임시 파일 공유 또는 동의한 복사를 사용한다.
+end note
+note bottom of FManageUserSetting
+    계정별 단일 JSON에 설정·미전송 의도·서버 버전을 함께 보존한다.
+    최신 의도만 응답을 반영하고 충돌 시 버전을 갱신해 제한적으로 재시도한다.
+    계정별 로컬 잠금은 HTTP 대기까지 보유하지 않는다.
+end note
+note bottom of DoseOutboxStore
+    같은 계정의 활성 업로드 lease는 복용 대상이 달라도 하나만 허용한다.
+    ACK 시 계정·요청·lease 소유권을 확인한 뒤 캐시와 큐를 원자적으로 갱신한다.
+    오래된 ACK는 버리고 거절된 기록은 같은 복용에 의존하는 후속 요청만 막는다.
+end note
+note bottom of DispatchCaregiverAlert
+    필요시 알림은 개별 기록 키로 중복을 막고 전송 직전 기록·날짜·연동·구독을 재검증한다.
+    기본 꺼짐이며 정기 미복약 마감·자동 완료 채팅·snooze action을 만들지 않는다.
+end note
+note bottom of NotificationReadinessControl
+    점검만으로 권한을 요청하지 않는다. 명시적 동작으로 기존 권한·재예약 경로를 사용한다.
+    테스트 요청 성공은 실제 수신 확인이 아니다. 데이터 이용 안내는 동의 수집 기능이 아니다.
+    NotificationReadinessDiagnostics는 Dart extension이며 독립 Class가 아니다.
+end note
 @enduml

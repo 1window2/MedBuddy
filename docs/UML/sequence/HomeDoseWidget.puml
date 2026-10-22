@@ -9,6 +9,12 @@ participant "Completion API" as API
 participant "Linked-patient schedule Control" as Schedules
 participant "NotificationService" as Notifications
 
+note over Widget,Callback
+The provider requests 4 x 1 with a 48 dp minimum height; launcher sizing is authoritative.
+Compact heights use a single-row layout without changing record permissions.
+Scheduled doses drive progress; PRN recording remains in the app's separate section.
+end note
+
 User -> Callback: Set home schedule source (self / patients)
 Callback -> Store: Persist shared source; invalidate incompatible actions
 alt Linked patients (read-only)
