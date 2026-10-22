@@ -9,6 +9,8 @@ title Prescription Analysis - Key Classes
 skinparam backgroundColor white
 skinparam shadowing false
 skinparam linetype ortho
+skinparam nodesep 60
+skinparam ranksep 85
 skinparam defaultFontName SansSerif
 skinparam defaultFontSize 15
 skinparam ArrowColor #64748B
@@ -46,6 +48,7 @@ package "Flutter Frontend" #E8F4FF {
 package "FastAPI Backend" #EAF8F0 {
   class "InputPrescription" as BInputPrescription <<Control>>
   class OCRServiceBoundary <<Service>>
+  note "prescription_privacy.py\ndeidentify_prescription_text()" as PrescriptionPrivacy
   class "PrescriptionMedicationNameVerifier" as MedicationNameVerifier <<Service>>
   class "MedicationSchedule" as BMedicationSchedule <<Entity>>
   class "CheckMedicationDetail" as BCheckMedicationDetail <<Control>>
@@ -65,9 +68,16 @@ PrescriptionPrivacyFilter -right-> PrescriptionAnalysisPreviewUI : masked OCR re
 PrescriptionAnalysisPreviewUI -right-> FInputPrescription : confirmed rows
 FInputPrescription -down-> BInputPrescription : authenticated API
 BInputPrescription -right-> OCRServiceBoundary : structures text
+BInputPrescription --> PrescriptionPrivacy : 서버 입력 재검사
+OCRServiceBoundary --> PrescriptionPrivacy : 외부 제공자 호출 직전 재검사
+note bottom of PrescriptionPrivacy
+  개인정보 구역을 제외하고 직접 식별자를 가린다.
+  약 정보와 안전하게 분리할 수 없으면 AI 호출 전에 거절한다.
+  기기 검토를 대체하거나 모든 개인정보 제거를 보증하지 않는다.
+end note
 OCRServiceBoundary -right-> Gemini
-BInputPrescription -right-> MedicationNameVerifier : verifies medication names
-BInputPrescription -right-> BMedicationSchedule : response DTO
+BInputPrescription -down-> MedicationNameVerifier : verifies medication names
+BInputPrescription -down-> BMedicationSchedule : response DTO
 MedicationNameVerifier --> MatchSafety : rejects incompatible OCR / AI correction
 PrescriptionAnalysisPreviewUI --> MedBuddyPrescriptionViewModel : review and confirm one row
 PrescriptionAnalysisPreviewUI --> MedicationCandidateDialog : explicit candidate choice

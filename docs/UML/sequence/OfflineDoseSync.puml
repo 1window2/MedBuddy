@@ -1,5 +1,6 @@
 @startuml
 title Offline Medication Completion Sync
+skinparam defaultFontName Malgun Gothic
 actor Patient
 participant "Home / Schedule / Chat" as UI
 participant DoseSyncService as Sync
@@ -7,9 +8,37 @@ database "Encrypted device outbox" as Local
 participant "Android WorkManager" as Worker
 participant "Completion API" as API
 database "Server DB" as DB
+participant "CheckSchedule / OfflineScheduleWindow" as Window
+
+== 서버 확인 기간과 오프라인 날짜 전환 ==
+UI -> Sync: 당일 서버 일정 수신
+Sync -> Local: 계정·revision 검사; 당일 캐시 저장 + 이전 기간 캐시 폐기
+Sync -> Window: requestOfflineScheduleWindow(expectedStartDay)
+Window -> API: GET /schedule/window?days=14
+API --> Window: 과정 목록 + window_start / window_end
+Window -> Window: 요청 시작일과 14일 종료일 일치 검사
+alt 기간 응답 검증 성공, 같은 계정·날짜·캐시 revision
+  Window --> Sync: 확인된 과정 목록
+  Sync -> Local: 암호화된 최대 14일 창 저장
+else 조회 실패 또는 기간·세션·revision 불일치
+  note over Sync,Local: 기간을 임의 연장하거나 늦은 응답으로 새 캐시를 덮지 않는다.
+end
+UI -> Sync: 오프라인 복귀 / 앱·위젯의 날짜 전환
+Sync -> Local: 같은 계정의 기간 창 조회
+Sync -> Window: project(window, today)
+alt 기간 안의 유효한 날짜
+  Window --> Sync: 복용 기간·주기에 맞는 정기 일정; 완료 상태 초기화
+  Sync -> Local: 오늘 캐시와 revision을 함께 갱신
+  Sync --> UI: 오늘 일정 + 같은 날짜의 미전송 기록 겹치기
+else 만료·잘못된 창 또는 시각 역행
+  Sync --> UI: 이전 날짜를 오늘로 바꾸지 않음; 서버 갱신 필요
+end
+
+== 복용 기록 영속 저장·전송 ==
 
 Patient -> UI: Taken / undo
 UI -> Sync: Explicit IDs, slot, original date, state
+note over Sync,Local: 선택한 약의 처방 revision을 모두 알면 요청에 함께 보존한다.
 Sync -> Local: Persist operation ID + encrypted payload
 Local --> Sync: Durable save
 Sync --> UI: Local state + pending indicator
@@ -24,9 +53,14 @@ else Eligible operation; no unexpired owner lease
   Local --> Sync: Operation + 2-minute lease ownership
   note over Sync,Local: BLOCKED records hold later overlapping medication IDs on the same date/slot.\nUnrelated BLOCKED records may be bypassed; active leases may not.\nExpired claims retry the same operation ID under new lease ownership.
   Sync -> API: Same operation ID on every retry
-  API -> DB: Begin transaction; insert unique receipt
+  API -> DB: Begin transaction; check existing receipt
   alt Accepted operation
     alt New valid operation
+      opt 요청에 regimen_revisions 포함
+        API -> DB: 소유 약 잠금 후 현재 처방 버전 비교
+        note over API,DB: 버전 불일치는 409; 복용을 추측해 적용하지 않는다.
+      end
+      API -> DB: Insert unique receipt
       opt Stored chat-linked dose now has no active link (404)
         API -> API: Keep own dose; omit chat (other authorization failures still reject)
       end
@@ -44,7 +78,7 @@ else Eligible operation; no unexpired owner lease
     else Claim already reassigned or removed
       Local --> Sync: Ignore old ACK; preserve newer cache and pending work
     end
-  else Date / ownership / schedule rejected
+  else Date / ownership / schedule / regimen revision rejected
     API -> DB: Rollback
     API --> Sync: Rejection
     Sync -> Local: If still owns claim: mark BLOCKED and release lease
@@ -56,4 +90,9 @@ note over Sync,API
   dose cycle are scheduled and accepted. A non-dose day is not a course end.
 end note
 note over API, DB: Historical sync never checks today's dose or emits a fresh completion alert
+note over UI,Local
+  약 변경·삭제 전후 당일 및 기간 캐시를 무효화해 응답 유실에도 이전 처방을 살리지 않는다.
+  새 필요시 복용의 대기는 별도 저장소 확장이며 이 자동 전송 흐름에 섞지 않는다.
+  로그아웃 준비 실패 복구는 OverallSystemSequenceDiagram.puml의 1A를 따른다.
+end note
 @enduml
