@@ -8,7 +8,7 @@ import unittest
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from threading import Barrier, Lock, Thread
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine, event
@@ -928,7 +928,8 @@ class CheckScheduleTest(unittest.TestCase):
             outcome = worker.processOne(outbox_id)
 
         self.assertEqual(outcome, "sent")
-        notify.assert_called_once_with(patient_hash="patient-a", slot_key="morning")
+        notify.assert_called_once_with(patient_hash="patient-a", slot_key="morning", event_key=ANY)
+        self.assertRegex(notify.call_args.kwargs["event_key"], r"^[0-9a-f]{64}$")
         self.db.refresh(outbox_row)
         self.assertEqual(outbox_row.status, CAREGIVER_ALERT_STATUS_SENT)
 

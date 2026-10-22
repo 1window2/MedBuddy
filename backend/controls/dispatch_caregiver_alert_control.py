@@ -139,6 +139,7 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
     # - patient_hash (str): 복약을 완료한 환자의 식별 hash
     # - slot_key (str): 완료된 복약 시간대
     # - only_caregiver_hash (str | None): 지정하면 구독한 보호자 가운데 이 보호자에게만 보낸다.
+    # - event_key (str | None): 아웃박스 요청의 고정 식별자. 재시도에도 같은 기기 알림을 사용한다.
     # 반환값:
     # - 전체 보호자 기기의 성공, 영구 실패 토큰, 재시도 가능한 실패 집계
     def notifySlotCompleted(
@@ -147,6 +148,7 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
         patient_hash: str,
         slot_key: str,
         only_caregiver_hash: str | None = None,
+        event_key: str | None = None,
     ) -> PushDeliveryResult:
         resolver = PushRecipientResolver(self.db)
         caregiver_hashes = self._caregivers_for_completed_slot(
@@ -192,6 +194,7 @@ class DispatchCaregiverAlert(MedicationCompletionEventBoundary):
                         "language": recipient.language,
                         "patient_hash": patient_hash,
                         "slot_key": slot_key,
+                        **({"event_key": event_key} if event_key is not None else {}),
                     },
                 )
             )
