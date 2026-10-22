@@ -57,14 +57,53 @@ def test_preserves_medication_and_explicit_prescription_dates(safe: str) -> None
     assert deidentify_prescription_text(safe) == safe
 
 
+@pytest.mark.parametrize(("private_line", "leftover"), [
+    ("서울특별시 종로구 사직로 100", None),
+    ("서울특별시 종로구", None),
+    ("홍길동님", None),
+    ("홍길동 님", None),
+    ("36세 / 남", None),
+    ("101동 202호", None),
+    ("1990-01-01", "[REDACTED]"),
+])
+def test_identifying_lines_without_medication_are_left_out(private_line, leftover) -> None:
+    # 약 정보가 없는 식별 줄은 요청 전체를 거부하지 않고 그 줄(날짜는 값)만 빼고 보낸다.
+    safe = deidentify_prescription_text(f"{_MEDICATION}\n{private_line}")
+    assert safe == (_MEDICATION if leftover is None else f"{_MEDICATION}\n{leftover}")
+    for private in ("홍길동", "종로구", "사직로", "1990", "36세", "202호"):
+        assert private not in safe
+    assert deidentify_prescription_text(safe) == safe
+
+
+@pytest.mark.parametrize(("source", "expected"), [
+    # 약봉투: 환자 이름 줄, 약국 주소·전화, 필요시 용법.
+    (
+        "홍길동 님\n행복약국\n서울특별시 강남구 테헤란로 123\n02-123-4567\n"
+        "타이레놀정500mg 1정 1일 3회 3일분\n아프면 1정씩 복용",
+        "행복약국\n[REDACTED]\n타이레놀정500mg 1정 1일 3회 3일분\n아프면 1정씩 복용",
+    ),
+    # 처방전 양식의 교부 연월일과 투약 기간.
+    (
+        "교부 연월일 및 번호 2026년 10월 22일 제 00123 호\n"
+        "아목시실린캡슐 1캡슐 12시간 간격으로 1캡슐\n투약기간 2026.10.22~2026.10.28",
+        "교부 연월일 및 번호 2026년 10월 22일 제 00123 호\n"
+        "아목시실린캡슐 1캡슐 12시간 간격으로 1캡슐\n투약기간 2026.10.22~2026.10.28",
+    ),
+    ("알렌드론산정 70mg 1주 1회 4주 소요", "알렌드론산정 70mg 1주 1회 4주 소요"),
+    ("세티리진정 1정 아침저녁으로 1정씩", "세티리진정 1정 아침저녁으로 1정씩"),
+    ("이부프로펜정 필요하면 1정, 통증이 심하면 2정", "이부프로펜정 필요하면 1정, 통증이 심하면 2정"),
+    ("다음 진료일 2026-11-01\n" + _MEDICATION, "다음 진료일 2026-11-01\n" + _MEDICATION),
+])
+def test_realistic_prescription_and_bag_text_is_analysed(source: str, expected: str) -> None:
+    assert deidentify_prescription_text(source) == expected
+
+
 _UNSAFE = [
     f"환자명 홍길동 {_MEDICATION}",
     f"환자명 홍길동 {_DATE}\n{_MEDICATION}",
-    f"{_MEDICATION}\n서울특별시 종로구 사직로 100",
-    f"{_MEDICATION}\n서울특별시 종로구",
-    f"{_MEDICATION}\n홍길동님",
-    f"{_MEDICATION}\n36세 / 남",
-    f"{_MEDICATION}\n1990-01-01",
+    f"홍길동님 {_MEDICATION}",
+    f"서울특별시 종로구 사직로 100 {_MEDICATION}",
+    f"36세 / 남 {_MEDICATION}",
     f"{_MEDICATION}\x00",
     "환자명\n홍길동\n생년월일\n1990-01-01",
     "환자명 홍길동\n타이레놀\n1정 1일 3회",

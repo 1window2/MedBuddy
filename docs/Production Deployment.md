@@ -443,6 +443,12 @@ health information or creating a new dose. A schema downgrade cannot restore
 redacted response contents. Retention cleanup during registration is committed
 with the medication save, so a failed save rolls both operations back.
 
+Rolling back the backend image (with or without `alembic downgrade c8d3e7a92104`)
+leaves redacted receipts in place, and the older code does not know the redaction
+flag: a retry of such a request is answered with an empty `{}` success body instead
+of 410. Released apps treat that as an unconfirmed save and ask the user to check
+the record. Prefer fixing forward over rolling back once receipts were redacted.
+
 Before production acceptance, run the PostgreSQL integration tests against a
 dedicated disposable test database, including retention/save/account-deletion
 concurrency. Set `MEDBUDDY_RUN_POSTGRES_INTEGRATION=1` only with that test database,
@@ -457,17 +463,23 @@ The server rechecks OCR text before both the prescription control and the extern
 OCR adapter. It removes labelled patient-information sections (including wrapped
 values), fully masks recognized resident IDs, phone numbers and email addresses,
 and keeps medication rows and explicitly labelled prescription/dispensing dates.
-Existing device redaction placeholders are accepted. Ambiguous mixed patient/drug
-rows, unlabelled date-like metadata, recognizable addresses or names with patient
-honorifics are rejected with a generic 400 response before a provider call. No
+Existing device redaction placeholders are accepted. Lines without medication
+information that hold a recognizable address, a name with a patient honorific
+(for example a pharmacy bag's "홍길동 님") or an age/sex pair are left out, and
+dates without a prescription label (조제·처방일, 교부 연월일, 복용·투약 기간, 다음
+진료일) are masked, so ordinary prescriptions and bags are still analysed. Only a
+line that mixes such patient information with a medication row, or a labelled
+patient section that cannot be separated from the medication list, is rejected
+with a generic 400 response before a provider call. Dosing text such as "아프면
+1정", "12시간 간격으로 1캡슐" or "4주 소요" is not mistaken for an address or label. No
 input text is added to logs. Existing post-response masking remains in place.
 
 This is defense in depth, **not a guarantee of anonymity**. A bare unlabelled name
 can be indistinguishable from a medicine name; unusual identifiers, OCR mistakes
 and unsupported document layouts can escape these deterministic rules. The guard
 does not guess that every short Korean word is a name. Keep device-side masking
-and user preview, avoid sending patient metadata, and request a medication-only
-selection when the guard refuses ambiguous content. It can conservatively omit
+and user preview, avoid sending patient metadata, and ask the user to retake or
+crop the photo to the medication list when the guard refuses ambiguous content. It can conservatively omit
 unlabelled header information after a patient label until a medicine section is
 recognized. Server tests use synthetic text and mocked providers, not real patient
 data or a live Gemini request.
@@ -580,7 +592,9 @@ docker compose --env-file deploy/.env -f compose.self-hosted.yml \
   exec -T backend alembic current
 ```
 
-The reported head must be `ab29d71c4e60` for this source revision. The
+The reported head must be `e6b4d2a9f031` for this source revision (after
+`c8d3e7a92104`, the medication care migration, and `ab29d71c4e60`, the settings
+revision migration). The
 v0.2.0 tail adds the shared pharmacy catalog (`8f2c6d4a1b90`), pharmacy schedule provenance and holiday
 cache (`b6d14f8c2a70`), and structured chat message/context columns
 (`b4e7c2d9a160`), then merges the catalog/chat migration branches
