@@ -744,8 +744,13 @@ ChatMessage _deletionMessage({
   createdAt: DateTime.now().toUtc().subtract(Duration(hours: hours)),
 );
 
-ChatMessage _historyShareMessage({String sender = 'patient-a'}) {
-  final end = MedicationHistoryDates.today(DateTime.now());
+ChatMessage _historyShareMessage({
+  String sender = 'patient-a',
+  int endDaysAgo = 0,
+}) {
+  final end = MedicationHistoryDates.today(
+    DateTime.now(),
+  ).subtract(Duration(days: endDaysAgo));
   return ChatMessage.fromJson({
     'message_id': 71,
     'link_id': 17,
@@ -857,6 +862,91 @@ void main() {
       });
     }
   }
+
+  // 90일 보관 기간이 지난 공유는 열면 실패할 화면 대신 안내만 보이고, 미기록의 의미를 함께 적는다.
+  testWidgets('an expired history share explains why it cannot be opened', (
+    tester,
+  ) async {
+    final control = _RetryChatControl(
+      historyMessages: [_historyShareMessage(endDaysAgo: 94)],
+    );
+    final realtime = _FakeRealtimeService();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkedChatUI(
+          linkId: 17,
+          currentUserHash: 'patient-a',
+          patientHash: 'patient-a',
+          userSetting: UserSetting(language: 'ko'),
+          control: control,
+          realtimeService: realtime,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('chat-history-expired')), findsOneWidget);
+    expect(
+      find.byKey(const Key('chat-history-unrecorded-notice')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<OutlinedButton>(
+            find.byKey(const Key('chat-view-latest-history')),
+          )
+          .onPressed,
+      isNull,
+    );
+    await tester.tap(find.byKey(const Key('chat-medication-history-card')));
+    await tester.pumpAndSettle();
+    expect(find.byType(MedicationHistoryUI), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await realtime.dispose();
+    control.dispose();
+  });
+
+  // 화면 전환과 동시에 채팅이 가려진 것으로 처리되어 두 번째 누름은 무시된다(회귀 방지).
+  testWidgets('a quick second tap on a history card opens one screen', (
+    tester,
+  ) async {
+    final control = _RetryChatControl(
+      historyMessages: [_historyShareMessage()],
+    );
+    final realtime = _FakeRealtimeService();
+    await http.runWithClient(
+      () async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: LinkedChatUI(
+              linkId: 17,
+              currentUserHash: 'patient-a',
+              patientHash: 'patient-a',
+              userSetting: UserSetting(language: 'ko'),
+              control: control,
+              realtimeService: realtime,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('chat-view-latest-history')));
+        await tester.tap(
+          find.byKey(const Key('chat-view-latest-history')),
+          warnIfMissed: false,
+        );
+        await tester.pumpAndSettle();
+        expect(find.byType(MedicationHistoryUI), findsOneWidget);
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+        expect(find.byType(MedicationHistoryUI), findsNothing);
+      },
+      () => MockClient(
+        (request) async => http.Response('{"detail":"Access revoked"}', 403),
+      ),
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+    await realtime.dispose();
+    control.dispose();
+  });
 
   for (final caregiver in [false, true]) {
     testWidgets(

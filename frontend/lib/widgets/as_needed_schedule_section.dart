@@ -242,6 +242,7 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
     });
     var saved = false;
     final recordedKeys = <String>{};
+    var resumedEarlierDay = false;
     try {
       // 다른 화면에서 정정한 횟수를 다시 읽고 확인한 내용만 한 의도로 고정한다.
       await _control.restorePendingAsNeeded();
@@ -308,6 +309,10 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
       recordedKeys.addAll(
         _control.pendingAsNeededChanges.map((change) => change.entry.key),
       );
+      // 재시작 전에 확인하지 못한 지난날의 기록을 이어 보낸 경우, 이번 탭은 오늘의 새 복용이 아니다.
+      resumedEarlierDay = _control.pendingAsNeededChanges.any(
+        (change) => change.entry.scheduleDate != _control.today,
+      );
       // 일괄 저장 중 일부만 성공해도 남은 요청 ID를 유지해 성공한 약을 중복 기록하지 않는다.
       while (_control.pendingAsNeededChanges.isNotEmpty) {
         final change = _control.pendingAsNeededChanges.first;
@@ -360,16 +365,28 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
         _saveError == null &&
         !_control.sessionInvalidated) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(tr('복용 기록을 저장했어요.', 'Dose recorded.')),
-          duration: const Duration(seconds: 5),
-          persist: false,
-          action: SnackBarAction(
-            key: const Key('prn-undo-record'),
-            label: tr('실행 취소', 'Undo'),
-            onPressed: () => unawaited(_undo(recordedKeys)),
-          ),
-        ),
+        resumedEarlierDay
+            // 지난날 기록은 오늘 목록에서 되돌릴 수 없으므로 실행 취소 대신 다시 누르라고 알린다.
+            ? SnackBar(
+                key: const Key('prn-earlier-record-sent'),
+                content: Text(
+                  tr(
+                    '이전에 저장하지 못한 복용 기록을 보냈어요. 오늘 복용했다면 다시 눌러 기록해 주세요.',
+                    'A dose that could not be saved earlier was sent. If you took one today, tap again to record it.',
+                  ),
+                ),
+                duration: const Duration(seconds: 6),
+              )
+            : SnackBar(
+                content: Text(tr('복용 기록을 저장했어요.', 'Dose recorded.')),
+                duration: const Duration(seconds: 5),
+                persist: false,
+                action: SnackBarAction(
+                  key: const Key('prn-undo-record'),
+                  label: tr('실행 취소', 'Undo'),
+                  onPressed: () => unawaited(_undo(recordedKeys)),
+                ),
+              ),
       );
     }
   }

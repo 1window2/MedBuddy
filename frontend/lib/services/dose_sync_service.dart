@@ -281,10 +281,14 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   // Parameters: schedules - server snapshot; scheduleDate - day at request start;
   //   expectedRevision - optional guard against intervening sync receipts.
   // Returns: Completion, or StateError if the snapshot has already expired.
+  //   awaitScheduleWindow - wait for the 14-day offline window that the store
+  //   replaces with every same-day snapshot; a background worker must, because
+  //   its process may end before an unawaited refresh finishes.
   Future<void> cacheSchedules(
     List<MedicationSchedule> schedules, {
     required String scheduleDate,
     int? expectedRevision,
+    bool awaitScheduleWindow = false,
   }) async {
     await initialize();
     if (scheduleDate != doseScheduleDay(clock())) {
@@ -309,7 +313,12 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     // The next reload must not report this same snapshot as a new change.
     _fingerprint = _stateFingerprint(cache);
     await _publishState();
-    unawaited(refreshScheduleWindow());
+    final window = refreshScheduleWindow();
+    if (awaitScheduleWindow) {
+      await window;
+    } else {
+      unawaited(window);
+    }
   }
 
   Future<void> _publishState() async {

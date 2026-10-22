@@ -218,6 +218,24 @@ class _NotificationDeviceSettingsState extends State<NotificationDeviceSettings>
             ),
           ),
         ),
+        if (canTest)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              _text(
+                '한 번의 테스트는 이후 예약 알림이나 보호자 알림 수신을 보장하지 않습니다. '
+                    '소리, 방해 금지, 절전 설정과 앱 강제 종료도 알림에 영향을 줄 수 있습니다.',
+                'One test does not guarantee future scheduled reminders or caregiver alerts. '
+                    'Sound, Do Not Disturb, battery restrictions and force-stopping the app can affect alerts.',
+              ),
+              key: const ValueKey('notificationSettingsTestLimitations'),
+              style: const TextStyle(
+                color: MedBuddyColors.textMuted,
+                fontSize: 13,
+                height: 1.4,
+              ),
+            ),
+          ),
         if (!canTest && !_refreshing)
           Padding(
             padding: const EdgeInsets.only(top: 8),

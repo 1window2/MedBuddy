@@ -15,13 +15,61 @@ line below. Changes are listed in the [v0.2.4 notes](releases/v0.2.4-beta.md).
 - [x] A calendar for checking past days' doses: the medication history
       opens on a month calendar with per-day recorded counts (2026-10-21;
       try it on the phone and drop it before the merge if it does not fit).
-- [ ] Dose record export.
+- [ ] Dose record export: CSV and, since 2026-10-22, a counts-only summary
+      shared into a linked chat; the export starts with the visible month.
+      Still open for the team: whether one export should cover more than 31
+      days (a one- to three-month visit interval needs several files) and
+      whether the CSV columns should drop internal names such as 기록 버전.
 - [x] The launcher icon is enlarged and cropped by the Samsung launcher (the
       wordmark is cut at both edges); shrink it. Now an adaptive icon with the
       mark only (the user agreed to drop the wordmark), plus a transparent
-      status-bar icon for reminders and pushes. Check on the Galaxy Note10.
+      status-bar icon for reminders and pushes. Checked on the Galaxy Note10
+      (One UI) and the Pixel launcher on 2026-10-22.
 - [ ] UML: bring the diagrams from 0.2.2 and part of 0.2.3 up to date.
 - [ ] User guide, poster, and feedback gathered until the deadline.
+
+### Review of the 2026-10-22 collaborator commits
+
+Seventeen commits (history sharing in chat, offline schedule window, persisted
+as-needed intents, receipt redaction with migration `e6b4d2a9f031`, separate
+rate-limit Redis, prescription privacy guard, settings rework, sign-out abort
+recovery, docs) were reviewed on 2026-10-23. Corrected on top:
+
+- [x] The prescription privacy guard rejected ordinary prescriptions and bags
+      ("아프면 1정", "12시간 간격으로 1캡슐", "4주 소요", 교부 연월일, a
+      pharmacy address, "홍길동 님"). It now leaves such lines out or masks
+      the date and rejects only a line that mixes patient data with a
+      medication row. Must be in place before this backend is deployed.
+- [x] The 12-hour background reminder refresh replaced today's schedule
+      without fetching the 14-day offline window, which deleted it; it now
+      fetches and waits for the window.
+- [x] A chat history card older than the 90-day history opened into an
+      error with a retry that could not succeed; it now says it has expired.
+      The card notes that unrecorded does not mean not taken, and the share
+      dialog says the chat receives counts only.
+- [x] Resending an earlier day's unconfirmed as-needed dose after a restart
+      offered an undo that silently did nothing; it now asks to tap again for
+      today's dose.
+- [x] The test-notification limits note, dropped with the setup-check
+      screen, is back; the deployment guide names the current migration head
+      and the rollback behaviour of redacted receipts.
+
+### Decisions for a person
+
+- [ ] Offline medication edits: changing, deleting or stopping a medication
+      clears today's schedule and the offline window before the request, so
+      a failed attempt while offline leaves nothing to record until the
+      server answers. Clearing first guarantees no stale schedule after a
+      lost response; clearing only after a confirmed change keeps the
+      schedule usable offline. Which matters more for the exhibition?
+- [ ] The as-needed card now needs the local pending store; if the store
+      cannot be opened, the card cannot load. Falling back to server-only
+      would allow a duplicate dose if an unsent intent exists.
+- [ ] The phone-settings switch shows on when app notifications are allowed
+      but the medication channel is off (the subtitle says medication alerts
+      are off). Keep, or show it off?
+- [ ] `main` has no "require a pull request" rule; a collaborator pushed and
+      reverted a commit directly on 2026-10-22 (no content change remains).
 
 ## v0.2.3 development line
 
@@ -34,13 +82,14 @@ released under that version instead. Changes are listed in the
 
 ### Open on this line
 
-- [ ] Offline after Korean midnight, no dose can be recorded until the server
+- [x] Offline after Korean midnight, no dose can be recorded until the server
       has answered once that day: recording needs today's schedule from the
       server, and the 14-day window is fetched but not kept on the device.
-      Building today's list on the device (courses, cycles, stop and change
-      dates, as-needed exclusion) and reconciling it with the server later is
-      a change to the core dose path, left for a separate line (found in the
-      2026-10-19 final review, MAJOR).
+      Resolved on the v0.2.4 line (82b14b0, with the background refresh fix
+      of 2026-10-23): the window is kept encrypted per account, today is
+      projected from it after midnight, and the server refuses offline doses
+      whose regimen revision changed. To be checked on a device; see the
+      offline-edit decision under v0.2.4.
 - [ ] Final-review items left as they are: the as-needed extra-dose
       confirmation could show the last dose time; a reminder worker already
       running at sign-out may re-arm the old account's reminders (race, not

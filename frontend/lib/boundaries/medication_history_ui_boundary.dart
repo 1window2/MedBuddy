@@ -602,11 +602,18 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
                                 child: LinearProgressIndicator(),
                               ),
                             const SizedBox(height: 16),
+                            // 채팅 공유는 서버가 기간과 상태별 횟수만 만들어 보내므로 CSV와 구분해 알린다.
                             Text(
-                              tr(
-                                '약 이름·복용 시각·건너뛴 이유가 포함됩니다. 공유 대상을 확인해 주세요.',
-                                'Includes medication names, taken times and skip reasons. Check who you share with.',
-                              ),
+                              key: const Key('history-share-privacy-notice'),
+                              _chatShare == null
+                                  ? tr(
+                                      '약 이름·복용 시각·건너뛴 이유가 포함됩니다. 공유 대상을 확인해 주세요.',
+                                      'Includes medication names, taken times and skip reasons. Check who you share with.',
+                                    )
+                                  : tr(
+                                      'CSV에는 약 이름·복용 시각·건너뛴 이유가 포함되고, 채팅에는 기간과 상태별 횟수만 보냅니다. 공유 대상을 확인해 주세요.',
+                                      'The CSV includes medication names, taken times and skip reasons; the chat gets only the period and the counts. Check who you share with.',
+                                    ),
                             ),
                           ],
                         ),

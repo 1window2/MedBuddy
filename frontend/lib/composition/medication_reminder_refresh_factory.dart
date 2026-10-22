@@ -63,6 +63,11 @@ class MedicationReminderRefreshFactory {
       client: resolvedClient,
       openStore: openDoseStore,
       clock: clock,
+      // 오늘 일정을 저장하면 기기의 14일 일정이 교체되므로, 같은 작업에서 새 기간을 받아 둔다.
+      // 없으면 자정 뒤 오프라인에서 기록할 일정이 사라진다.
+      loadScheduleWindow: () => scheduleControl.requestOfflineScheduleWindow(
+        expectedStartDay: doseScheduleDay(clock()),
+      ),
     );
     final resolvedNotificationService =
         notificationService ?? NotificationService.instance;
@@ -83,6 +88,7 @@ class MedicationReminderRefreshFactory {
           schedules,
           scheduleDate: requestDay,
           expectedRevision: revision,
+          awaitScheduleWindow: true,
         );
         // 조회 중 전송이 끝났으면 최신 수신 결과를 쓰고, 읽는 도중 다시 바뀌면 재시도한다.
         final projectedRevision = await doseSync.cacheRevision();

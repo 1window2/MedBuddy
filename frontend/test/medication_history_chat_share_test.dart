@@ -172,6 +172,13 @@ Future<void> _openShare(WidgetTester tester) async {
   expect(chatButton.left, csvButton.left);
   expect(chatButton.width, csvButton.width);
   expect(csvButton.top - chatButton.bottom, greaterThanOrEqualTo(8));
+  // 채팅에는 횟수만 간다는 점을 CSV 내용과 구분해 알린다.
+  expect(
+    tester
+        .widget<Text>(find.byKey(const Key('history-share-privacy-notice')))
+        .data,
+    contains('the chat gets only the period and the counts'),
+  );
   await tester.ensureVisible(find.byKey(const Key('history-share-chat')));
   await tester.tap(find.byKey(const Key('history-share-chat')));
   await tester.pumpAndSettle();

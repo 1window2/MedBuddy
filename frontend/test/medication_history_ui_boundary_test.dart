@@ -240,10 +240,11 @@ Future<MedicationHistoryControl> _pumpAsNeeded(
   Duration requestTimeout = const Duration(seconds: 25),
   double leadingHeight = 0,
   ManualMedicationImageStore imageStore = const ManualMedicationImageStore(),
+  FakeAsNeededPendingStore? pendingStore,
 }) async {
   final control = MedicationHistoryControl(
     patientHash: 'test-patient',
-    pendingStore: FakeAsNeededPendingStore(),
+    pendingStore: pendingStore ?? FakeAsNeededPendingStore(),
     readOnly: readOnly,
     client: MockClient(server.respond),
     now: now ?? () => historyTestNow,
@@ -998,6 +999,42 @@ void main() {
     expect(server.paths[2], server.paths[1]);
     expect(server.writes[2]['status'], 'unrecorded');
     expect(find.text('1 dose today'), findsOneWidget);
+  });
+
+  // 재시작 전에 확인하지 못한 어제 기록을 이어 보내면, 오늘 목록에서 되돌릴 수 없는 실행 취소 대신
+  // 오늘 복용은 다시 누르라고 안내한다.
+  testWidgets('resending an earlier day\'s PRN dose asks for a new tap today', (
+    tester,
+  ) async {
+    final server = _HistoryServer();
+    final store = FakeAsNeededPendingStore()
+      ..batches['test-patient'] = [
+        MedicationHistoryChange(
+          entry: MedicationHistoryEntry(
+            medicationId: 2,
+            itemName: '테스트 필요시약',
+            scheduleDate: DateTime.utc(2026, 10, 16),
+            slotKey: 'as_needed:12345678-1234-4234-8234-123456789012',
+            status: MedicationHistoryStatus.unrecorded,
+            revision: 0,
+            dosingMode: 'as_needed',
+          ),
+          status: MedicationHistoryStatus.taken,
+          operationId: '22345678-1234-4234-8234-123456789012',
+          actualTakenAt: DateTime.utc(2026, 10, 16, 3),
+        ),
+      ];
+    await _pumpAsNeeded(tester, server, pendingStore: store);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('schedule-prn-take-2')),
+      200,
+    );
+    await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
+    await tester.pumpAndSettle();
+    expect(server.paths.single, contains('/2/2026-10-16/as_needed:'));
+    expect(find.byKey(const Key('prn-earlier-record-sent')), findsOneWidget);
+    expect(find.byKey(const Key('prn-undo-record')), findsNothing);
+    expect(store.batches['test-patient'], isEmpty);
   });
 
   testWidgets('a failed PRN undo explains where to correct the record', (

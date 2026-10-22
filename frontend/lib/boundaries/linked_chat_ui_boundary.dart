@@ -3165,11 +3165,17 @@ class _MessageMedicationHistoryContext extends StatelessWidget {
     final foreground = isMine ? Colors.white : MedBuddyColors.textStrong;
     final secondary = isMine ? Colors.white70 : MedBuddyColors.textMuted;
     final range = MedicationHistoryRange(history.startDate, history.endDate);
+    // 기록은 최근 90일만 열 수 있으므로 그보다 오래된 공유는 실패할 화면 대신 안내를 보인다.
+    final today = MedicationHistoryDates.today(DateTime.now());
+    final expired = range.start.isBefore(
+      DateTime.utc(today.year, today.month, today.day - 89),
+    );
+    final open = expired ? null : onPressed;
     return Material(
       color: Colors.transparent,
       child: InkWell(
         key: const Key('chat-medication-history-card'),
-        onTap: onPressed,
+        onTap: open,
         borderRadius: MedBuddyRadii.control,
         child: DefaultTextStyle(
           style: TextStyle(color: foreground, fontSize: 15, letterSpacing: 0),
@@ -3207,12 +3213,28 @@ class _MessageMedicationHistoryContext extends StatelessWidget {
                   ),
                 ],
               ),
+              if (history.unrecordedCount > 0) ...[
+                const SizedBox(height: 4),
+                Text(
+                  text.historyUnrecordedNotice,
+                  key: const Key('chat-history-unrecorded-notice'),
+                  style: TextStyle(color: secondary, fontSize: 13),
+                ),
+              ],
+              if (expired) ...[
+                const SizedBox(height: 4),
+                Text(
+                  text.historyExpired,
+                  key: const Key('chat-history-expired'),
+                  style: TextStyle(color: secondary, fontSize: 13),
+                ),
+              ],
               const SizedBox(height: 8),
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   key: const Key('chat-view-latest-history'),
-                  onPressed: onPressed,
+                  onPressed: open,
                   style: OutlinedButton.styleFrom(
                     foregroundColor: foreground,
                     disabledForegroundColor: secondary,
@@ -3518,6 +3540,12 @@ class _LinkedChatText {
   String get medicationHistory => isEnglish ? 'Medication history' : '복약 기록';
   String get viewLatestRecords =>
       isEnglish ? 'View latest records' : '최신 기록 보기';
+  String get historyUnrecordedNotice => isEnglish
+      ? 'Unrecorded does not mean not taken.'
+      : '미기록은 복용하지 않았다는 뜻이 아니에요.';
+  String get historyExpired => isEnglish
+      ? 'Records older than 90 days can no longer be opened.'
+      : '90일이 지난 기록은 더 이상 열 수 없어요.';
 
   String get findNearbyCare =>
       isEnglish ? 'Find hospitals or pharmacies' : '병원·약국 찾기';
