@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 
 import '../entities/dose_widget_state.dart';
 import '../entities/medication_schedule_entity.dart';
+import '../entities/offline_schedule_window.dart';
 import 'api_config.dart';
 import 'dose_outbox_store.dart';
 
@@ -68,6 +69,9 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   final Future<void> Function() scheduleWork;
   final DateTime Function() clock;
   final Future<void> Function()? onStateChanged;
+  final Future<List<MedicationSchedule>> Function()? loadScheduleWindow;
+  Future<void>? _refreshingWindow;
+  bool _windowRefreshAgain = false;
   DoseOutboxStore? _store;
   Future<void>? _initializing;
   bool _activationRequested = false;
@@ -96,6 +100,7 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     Future<void> Function()? scheduleWork,
     DateTime Function()? clock,
     this.onStateChanged,
+    this.loadScheduleWindow,
   }) : openStore = openStore ?? DoseOutboxStore.open,
        scheduleWork = scheduleWork ?? (() async {}),
        clock = clock ?? DateTime.now;
@@ -115,9 +120,10 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> initialize({bool activate = false}) {
     // 첫 열기가 실패한 뒤의 재시도도 처음 요청한 계정 활성화를 수행해야 한다.
     _activationRequested = _activationRequested || activate;
-    return _initializing ??= _initialize(
-      _activationRequested,
-    ).catchError((Object error, StackTrace stackTrace) {
+    return _initializing ??= _initialize(_activationRequested).catchError((
+      Object error,
+      StackTrace stackTrace,
+    ) {
       // 일시적인 저장소 오류 뒤에도 다음 요청에서 다시 열 수 있게 한다.
       _initializing = null;
       Error.throwWithStackTrace(error, stackTrace);
@@ -141,8 +147,11 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> reload() async {
+    await prepareOfflineCache(_store!, owner: owner, now: clock());
     final cache = await _store!.readCache(owner);
-    _cacheDate = cache?['date'] as String? ?? '';
+    _cacheDate = (await _store!.isActive(owner))
+        ? (cache?['date'] as String? ?? '')
+        : '';
     _confirmed = MedicationSchedule.fromScheduleJsonList(cache?['schedules']);
     _operations = await _store!.pending(owner);
     _lostRecordCount = await _store!.lostOperationCount(owner);
@@ -169,6 +178,104 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     return _store!.cacheRevision(owner);
   }
 
+  // 앱과 위젯이 같은 기간·복용 주기 규칙으로 오늘 일정을 만든다.
+  static Future<void> prepareOfflineCache(
+    DoseOutboxStore store, {
+    String? owner,
+    required DateTime now,
+  }) => store.prepareOfflineScheduleDay(
+    owner: owner,
+    day: doseScheduleDay(now),
+    project: (window) => OfflineScheduleWindow.project(
+      window,
+      doseScheduleDay(now),
+    )?.map((course) => course.toJson()).toList(),
+  );
+
+  Future<void> refreshScheduleWindow() {
+    final pending = _refreshingWindow;
+    if (pending != null) {
+      _windowRefreshAgain = true;
+      return pending;
+    }
+    return _refreshingWindow = _refreshScheduleWindow().whenComplete(() {
+      _refreshingWindow = null;
+      if (_windowRefreshAgain && !_disposed) {
+        _windowRefreshAgain = false;
+        unawaited(refreshScheduleWindow());
+      }
+    });
+  }
+
+  Future<void> invalidateSchedule() async {
+    await initialize();
+    await _store!.invalidateDoseSchedules(owner);
+    await reload();
+  }
+
+  Future<void> _refreshScheduleWindow() async {
+    final loader = loadScheduleWindow;
+    if (loader == null || _disposed) return;
+    try {
+      await initialize();
+      final day = doseScheduleDay(clock());
+      final revision = await _store!.cacheRevision(owner);
+      final courses = await loader();
+      if (_disposed || day != doseScheduleDay(clock())) return;
+      await cacheScheduleWindow(
+        courses,
+        startDay: day,
+        expectedRevision: revision,
+      );
+    } catch (_) {
+      // 네트워크 실패는 이미 받은 기간을 늘리거나 기존 일정 조회를 실패로 바꾸지 않는다.
+    }
+  }
+
+  Future<void> cacheScheduleWindow(
+    List<MedicationSchedule> courses, {
+    required String startDay,
+    required int expectedRevision,
+  }) async {
+    await initialize();
+    if (_disposed || startDay != doseScheduleDay(clock())) return;
+    final start = DateTime.parse(startDay);
+    await _store!.saveOfflineScheduleWindow(owner, {
+      'start': startDay,
+      'end': DateTime(
+        start.year,
+        start.month,
+        start.day + OfflineScheduleWindow.maximumDays - 1,
+      ).toIso8601String().substring(0, 10),
+      'courses': courses.map((course) => course.toJson()).toList(),
+    }, expectedRevision: expectedRevision);
+  }
+
+  Future<Map<String, dynamic>?> offlineWindow() async {
+    await initialize();
+    final window = await _store!.readOfflineScheduleWindow(owner);
+    return window != null &&
+            OfflineScheduleWindow.project(window, doseScheduleDay(clock())) !=
+                null
+        ? window
+        : null;
+  }
+
+  Future<bool> resumeAfterAbortedSignOut(bool Function() isCurrent) async {
+    await initialize();
+    if (_disposed || !isCurrent()) return false;
+    if (!await _store!.restoreDoseSession(
+      owner,
+      isCurrent: () => !_disposed && isCurrent(),
+    )) {
+      return false;
+    }
+    await reload();
+    if (_disposed || !isCurrent()) return false;
+    _scheduleRetry();
+    return true;
+  }
+
   // Function Name: cacheSchedules
   // Description: Cache a same-day read without relabeling it across async work.
   // Parameters: schedules - server snapshot; scheduleDate - day at request start;
@@ -187,7 +294,7 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
       'date': scheduleDate,
       'schedules': schedules.map((s) => s.toJson()).toList(),
     };
-    final saved = await _store!.saveCache(
+    final saved = await _store!.saveAuthoritativeDoseCache(
       owner,
       cache,
       expectedRevision: expectedRevision,
@@ -202,6 +309,7 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     // The next reload must not report this same snapshot as a new change.
     _fingerprint = _stateFingerprint(cache);
     await _publishState();
+    unawaited(refreshScheduleWindow());
   }
 
   Future<void> _publishState() async {
@@ -245,6 +353,7 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     List<String> medicationNames = const [],
   }) async {
     await initialize();
+    await reload();
     final today = doseScheduleDay(clock());
     if (_disposed ||
         medicationIds.isEmpty ||
@@ -254,6 +363,11 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     }
     final id =
         'dose_${clock().microsecondsSinceEpoch}_${Random.secure().nextInt(0x7fffffff).toRadixString(16)}';
+    final revisions = <String, int>{
+      for (final schedule in _confirmed)
+        if (medicationIds.contains(int.tryParse(schedule.medicationID)))
+          schedule.medicationID: schedule.regimenRevision,
+    };
     await _store!.enqueue(owner, {
       'operation_id': id,
       'schedule_date': scheduleDate ?? today,
@@ -262,6 +376,8 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
       'completed': completed,
       'link_id': ?linkId,
       'medication_names': medicationNames,
+      if (revisions.length == medicationIds.toSet().length)
+        'regimen_revisions': revisions,
     });
     _operations = await _store!.pending(owner);
     if (!_disposed) notifyListeners();

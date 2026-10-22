@@ -11,6 +11,7 @@ import '../entities/user_setting_entity.dart';
 
 part 'dose_widget_store.dart';
 part 'dose_history_pending_store.dart';
+part 'dose_offline_schedule_store.dart';
 
 // 클래스명: DoseOutboxStore
 // 역할: 계정별 기록과 캐시를 암호화하고 저장·전송·응답 반영 순서를 보장한다.
@@ -318,7 +319,8 @@ class DoseOutboxStore {
       return [];
     }
     final earlier = <Map<String, dynamic>>[];
-    final ready = <({Map<String, Object?> row, Map<String, dynamic> payload})>[];
+    final ready =
+        <({Map<String, Object?> row, Map<String, dynamic> payload})>[];
     for (final row in rows) {
       final payload = await _decrypt(row['payload'] as String, token);
       final waiting = earlier.any(
@@ -581,6 +583,11 @@ class DoseOutboxStore {
         'metadata',
         where: 'name IN (?, ?)',
         whereArgs: ['history-pending:$token', 'history-pending-count:$token'],
+      );
+      await tx.delete(
+        'metadata',
+        where: 'name = ?',
+        whereArgs: ['offline_schedule:$token'],
       );
     });
   }

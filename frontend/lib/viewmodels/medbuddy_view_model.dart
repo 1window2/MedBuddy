@@ -456,6 +456,11 @@ class MedBuddyViewModel extends ChangeNotifier {
       patientHash: this.patientHash,
       readEnglishSetting: () => _isEnglishSetting,
       fetchTodayMedicationSchedule: fetchTodayMedicationSchedule,
+      invalidateSchedule: () async {
+        if (_isDisposed) return;
+        _schedules.clear();
+        await doseSync?.invalidateSchedule();
+      },
       synchronizeReminders:
           _synchronizeMedicationReminderSchedulesIfScheduleIsFresh,
       onChanged: _onSavedMedicationChanged,

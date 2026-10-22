@@ -80,6 +80,16 @@ class CheckSchedule {
   //   invalid or unsuccessful envelopes raise StateError.
   Future<List<MedicationSchedule>> requestMedicationScheduleWindow({
     int days = 14,
+  }) => _requestScheduleWindow(days: days);
+
+  // 오프라인 저장용 응답은 서버가 명시한 조회 기간까지 확인해 기기 시각으로 임의 연장하지 않는다.
+  Future<List<MedicationSchedule>> requestOfflineScheduleWindow({
+    required String expectedStartDay,
+  }) => _requestScheduleWindow(days: 14, expectedStartDay: expectedStartDay);
+
+  Future<List<MedicationSchedule>> _requestScheduleWindow({
+    required int days,
+    String? expectedStartDay,
   }) async {
     if (days < 1 || days > 14) {
       throw ArgumentError.value(days, 'days', 'Must be between 1 and 14.');
@@ -99,6 +109,20 @@ class CheckSchedule {
         final decodedData = ApiResponseParser.decodeMap(responseBody);
         if (decodedData['success'] != true || decodedData['data'] is! List) {
           throw StateError('Schedule window response could not be verified.');
+        }
+        if (expectedStartDay != null) {
+          final start = DateTime.parse(expectedStartDay);
+          final end = DateTime(
+            start.year,
+            start.month,
+            start.day + days - 1,
+          ).toIso8601String().substring(0, 10);
+          if (decodedData['window_start'] != expectedStartDay ||
+              decodedData['window_end'] != end) {
+            throw StateError(
+              'The medication schedule window has expired. Please refresh.',
+            );
+          }
         }
         return MedicationSchedule.fromScheduleJsonList(decodedData['data']);
       },
@@ -146,7 +170,9 @@ class CheckSchedule {
             Map<String, dynamic>.from(rawSchedule),
           );
         }
-        throw StateError('Server response did not include an updated schedule.');
+        throw StateError(
+          'Server response did not include an updated schedule.',
+        );
       },
     );
   }

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from controls.check_schedule_control import CheckSchedule
 from controls.manage_linked_chat_control import ChatSendResult, ManageLinkedChat
 from entities.dose_sync_operation_entity import _DoseSyncOperation
+from entities.saved_medication_entity import _SavedMedication
 from schemas.dose_sync import DoseSyncRequest
 
 
@@ -29,12 +30,23 @@ class SyncDose:
         self, patient_hash: str, request: DoseSyncRequest,
     ) -> tuple[list[dict[str, str | int]], ChatSendResult | None]:
         payload = request.model_dump(mode="json")
+        if request.regimen_revisions is None:
+            payload.pop("regimen_revisions", None)
         key = (patient_hash, request.operation_id)
         existing = self.db.get(_DoseSyncOperation, key)
         if existing is not None:
             self._verify(existing, payload)
             return [], None
         try:
+            if request.regimen_revisions is not None:
+                # 오프라인에서 본 처방 버전과 현재 처방이 다르면 새 복용 상태를 추측해 반영하지 않는다.
+                medications = self.db.query(_SavedMedication).filter(
+                    _SavedMedication.patient_hash == patient_hash,
+                    _SavedMedication.id.in_(request.medication_ids),
+                ).order_by(_SavedMedication.id).with_for_update().all()
+                actual = {int(row.id): int(row.regimen_revision or 0) for row in medications}
+                if actual != request.regimen_revisions:
+                    raise HTTPException(status_code=409, detail="Medication regimen changed. Refresh the schedule before confirming.")
             # 영수증을 먼저 선점하여 동시에 재전송돼도 한 요청만 반영한다.
             self.db.add(_DoseSyncOperation(patient_hash=patient_hash, operation_id=request.operation_id, payload=payload))
             self.db.flush()

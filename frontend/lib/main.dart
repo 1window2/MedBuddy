@@ -1319,6 +1319,10 @@ class _MedBuddyAppState extends State<MedBuddyApp>
                         DoseSyncBackgroundScheduler.register(session.userHash),
                     onStateChanged: () =>
                         DoseHomeWidget.publish(owner: session.userHash),
+                    loadScheduleWindow: () =>
+                        viewModel.checkSchedule.requestOfflineScheduleWindow(
+                          expectedStartDay: doseScheduleDay(DateTime.now()),
+                        ),
                   ),
                 );
               }

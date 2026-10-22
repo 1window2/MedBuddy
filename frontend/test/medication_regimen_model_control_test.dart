@@ -306,6 +306,8 @@ void main() {
     final first = model.changeMedicationRegimen(7, change);
     final duplicate = model.changeMedicationRegimen(7, change);
     expect(identical(first, duplicate), isTrue);
+    // 기기 일정 무효화가 끝나야 서버 변경 요청이 시작된다.
+    await Future<void>.delayed(Duration.zero);
     expect(control.changes, 1);
     control.response.complete(
       const MedicationRegimenResult(medicationId: 8, revision: 1),

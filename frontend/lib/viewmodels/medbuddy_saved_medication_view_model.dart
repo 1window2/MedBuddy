@@ -28,6 +28,7 @@ class MedBuddySavedMedicationViewModel {
   final String patientHash;
   final bool Function() _readEnglishSetting;
   final Future<void> Function() fetchTodayMedicationSchedule;
+  final Future<void> Function()? invalidateSchedule;
   final Future<void> Function()
   _synchronizeMedicationReminderSchedulesIfScheduleIsFresh;
   final void Function(String) _onChanged;
@@ -52,6 +53,7 @@ class MedBuddySavedMedicationViewModel {
     required this.patientHash,
     required bool Function() readEnglishSetting,
     required this.fetchTodayMedicationSchedule,
+    this.invalidateSchedule,
     required Future<void> Function() synchronizeReminders,
     required void Function(String) onChanged,
   }) : _readEnglishSetting = readEnglishSetting,
@@ -141,7 +143,11 @@ class MedBuddySavedMedicationViewModel {
     if (pending != null) {
       return _regimenOperationIds[medicationId] == change.operationId
           ? pending
-          : Future.value(const MedicationRegimenResult(failure: MedicationRegimenFailure.conflict));
+          : Future.value(
+              const MedicationRegimenResult(
+                failure: MedicationRegimenFailure.conflict,
+              ),
+            );
     }
     final generation = _saveGeneration;
     final request = _applyRegimenChange(medicationId, change, generation);
@@ -165,7 +171,9 @@ class MedBuddySavedMedicationViewModel {
   ) async {
     MedicationRegimenResult result;
     try {
-      result = await checkSavedMedication.changeRegimen(medicationId, change);
+      result = await _changingRegimen(
+        () => checkSavedMedication.changeRegimen(medicationId, change),
+      );
     } catch (_) {
       result = const MedicationRegimenResult(
         failure: MedicationRegimenFailure.network,
@@ -258,9 +266,11 @@ class MedBuddySavedMedicationViewModel {
         : '${medicationInfo.itemName} 저장 중...';
     _notifyViewModelListeners();
 
-    final result = await checkSavedMedication.saveMedicationDetail(
-      medicationInfo,
-      medicationSchedule: medicationSchedule,
+    final result = await _changingRegimen(
+      () => checkSavedMedication.saveMedicationDetail(
+        medicationInfo,
+        medicationSchedule: medicationSchedule,
+      ),
     );
     // 서버가 이미 저장한 결과는 유지하되 종료된 계정의 사진·일정 작업은 시작하지 않는다.
     if (!_isCurrentSave(generation)) return result;
@@ -597,20 +607,22 @@ class MedBuddySavedMedicationViewModel {
       );
     }
 
-    final deleteResults = await Future.wait(
-      uniqueIds.map(/* 함수이름: map 콜백
+    final deleteResults = await _changingRegimen(
+      () => Future.wait(
+        uniqueIds.map(/* 함수이름: map 콜백
        * 함수역할: 저장된 약을 개별 삭제하고 예외를 해당 항목의 삭제 실패로 격리한다.
        * 매개변수:
        * - savedMedicationId (int): 대상 저장 복약정보의 식별자
        * 반환값:
        * - 해당 약 삭제 성공 여부를 완료하는 Future.
        */ (savedMedicationId) async {
-        try {
-          return await checkSavedMedication.requestDelete(savedMedicationId);
-        } catch (_) {
-          return false;
-        }
-      }),
+          try {
+            return await checkSavedMedication.requestDelete(savedMedicationId);
+          } catch (_) {
+            return false;
+          }
+        }),
+      ),
     );
     final deletedIds = <int>{};
     for (var index = 0; index < uniqueIds.length; index += 1) {
@@ -646,6 +658,19 @@ class MedBuddySavedMedicationViewModel {
       successCount: deletedIds.length,
       failureCount: uniqueIds.length - deletedIds.length,
     );
+  }
+
+  // 응답 유실도 서버에서는 변경됐을 수 있다. 변경 전·후에 일일/기간 캐시를 함께 무효화한다.
+  Future<T> _changingRegimen<T>(Future<T> Function() action) async {
+    final generation = _saveGeneration;
+    final invalidate = invalidateSchedule;
+    if (invalidate != null) await invalidate();
+    if (!_isCurrentSave(generation)) throw StateError('Account changed.');
+    try {
+      return await action();
+    } finally {
+      await invalidateSchedule?.call();
+    }
   }
 
   // 함수이름: _carryOverLocalImagePaths

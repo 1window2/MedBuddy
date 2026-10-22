@@ -898,22 +898,14 @@ class _MidnightStore extends DoseOutboxStore {
   // Returns: A store that retains normal database behavior.
   _MidnightStore(super.db, super.key, this.onSaved);
 
-  // Function Name: saveCache
-  // Description: Save normally, then simulate midnight before returning.
-  // Parameters: owner/cache/expectedRevision - unchanged persistence inputs.
-  // Returns: The underlying revision guard's result.
+  // Function Name: pending
+  // Description: Simulate midnight at the first read after the encrypted cache commit.
+  // Parameters: owner - unchanged account scope.
+  // Returns: The real pending operations.
   @override
-  Future<bool> saveCache(
-    String owner,
-    Map<String, dynamic> cache, {
-    int? expectedRevision,
-  }) async {
-    final saved = await super.saveCache(
-      owner,
-      cache,
-      expectedRevision: expectedRevision,
-    );
-    onSaved();
-    return saved;
+  Future<List<Map<String, dynamic>>> pending(String owner) async {
+    final operations = await super.pending(owner);
+    if (await readCache(owner) != null) onSaved();
+    return operations;
   }
 }
