@@ -205,13 +205,18 @@ def _verify_catalog_database() -> None:
 # - None.
 async def _ping_required_redis() -> None:
     redis = Redis.from_url(
-        settings.REDIS_URL,
+        settings.rate_limit_redis_url,
+        decode_responses=True,
         socket_connect_timeout=0.3,
         socket_timeout=0.3,
     )
     try:
         if not await redis.ping():
             raise RuntimeError("Redis readiness ping was rejected.")
+        # 연결만 살아 있어도 카운터가 퇴거되면 제한을 우회할 수 있어 정책도 확인한다.
+        configuration = await redis.config_get("maxmemory-policy")
+        if configuration.get("maxmemory-policy") != "noeviction":
+            raise RuntimeError("Rate-limit Redis requires maxmemory-policy=noeviction.")
     finally:
         await redis.aclose()
 
@@ -320,7 +325,7 @@ def create_app() -> FastAPI:
         openapi_url=None if settings.APP_ENV == "production" else "/openapi.json",
     )
     rate_limit_store = RequestRateLimitStore(
-        redis_url=settings.REDIS_URL,
+        redis_url=settings.rate_limit_redis_url,
         require_redis=settings.RATE_LIMIT_REQUIRE_REDIS,
     )
     app.state.request_rate_limit_store = rate_limit_store

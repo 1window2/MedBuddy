@@ -40,6 +40,26 @@ services:
       retries: 10
     networks: [backend]
 
+  rate-limit-redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - 128mb
+      - --maxmemory-policy
+      - noeviction
+    volumes:
+      - rate_limit_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [backend]
+
   database-migrate:
     build:
       context: ./backend
@@ -168,6 +188,7 @@ services:
       DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
       AUTO_CREATE_SCHEMA: "false"
       REDIS_URL: redis://redis:6379/0
+      RATE_LIMIT_REDIS_URL: redis://rate-limit-redis:6379/0
       RATE_LIMIT_ENABLED: "true"
       RATE_LIMIT_REQUIRE_REDIS: "true"
       PILL_IDENTIFICATION_CATALOG_ALLOW_INLINE_REFRESH: "false"
@@ -183,6 +204,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rate-limit-redis:
         condition: service_healthy
     secrets:
       - source: firebase_admin
@@ -253,3 +276,4 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  rate_limit_redis_data:

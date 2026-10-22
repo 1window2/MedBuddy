@@ -31,6 +31,7 @@ async def test_default_test_redis_cannot_open_a_network_connection(monkeypatch):
 
 def test_test_settings_never_inherit_the_developer_redis_url():
     assert settings.REDIS_URL == "redis://127.0.0.1:1/0"
+    assert settings.RATE_LIMIT_REDIS_URL == "redis://127.0.0.1:1/0"
 
 
 def test_default_http_clients_cannot_open_network_connections():

@@ -89,6 +89,7 @@ def _isolate_test_environment() -> None:
     # A closed local port: the rate-limit store falls back to its in-memory counters at once
     # instead of writing test keys into a developer's running Redis.
     os.environ["REDIS_URL"] = _UNREACHABLE_REDIS_URL
+    os.environ["RATE_LIMIT_REDIS_URL"] = _UNREACHABLE_REDIS_URL
     os.environ.setdefault("GEMINI_API_KEY", _PLACEHOLDER_API_KEY)
     os.environ.setdefault("PUBLIC_DATA_API_KEY", _PLACEHOLDER_API_KEY)
     if _uses_external_database():
