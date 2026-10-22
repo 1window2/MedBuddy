@@ -346,7 +346,10 @@ void main() {
     await _open(
       tester,
       MedicationRegimenEditorUI(
-        medication: _medication(),
+        // 고정 시계를 쓰는 테스트는 처방일도 그 시계 기준으로 둬야 실제 날짜가 지나도 결과가 같다.
+        medication: _medication().copyWith(
+          prescriptionDate: DateTime(2026, 10, 15),
+        ),
         action: MedicationRegimenAction.replace,
         clock: () => DateTime.utc(2026, 10, 17),
         onSubmit: (_) async => const MedicationRegimenResult(),
@@ -439,7 +442,10 @@ void main() {
     await _open(
       tester,
       MedicationRegimenEditorUI(
-        medication: _medication(),
+        // 고정 시계를 쓰는 테스트는 처방일도 그 시계 기준으로 둬야 실제 날짜가 지나도 결과가 같다.
+        medication: _medication().copyWith(
+          prescriptionDate: DateTime(2026, 10, 15),
+        ),
         action: MedicationRegimenAction.replace,
         clock: () => DateTime.utc(2026, 10, 17),
         onSubmit: (value) async {
