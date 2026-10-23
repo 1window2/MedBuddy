@@ -1073,6 +1073,39 @@ void main() {
     expect(find.text('1 dose today'), findsOneWidget);
   });
 
+  // 복용 간격이 정해진 약을 다시 먹기 전에 오늘 마지막 복용 시각과 지난 시간을 함께 보여 준다.
+  testWidgets('another PRN dose shows when the last one was taken', (
+    tester,
+  ) async {
+    final server = _HistoryServer();
+    server.items.add({
+      ...historyTestEntry(
+        id: 2,
+        name: '테스트 필요시약',
+        date: '2026-10-17',
+        slot: 'as_needed:12345678-1234-4234-8234-123456789012',
+        mode: 'as_needed',
+        status: 'taken',
+        revision: 1,
+      ),
+      'actual_taken_at': '2026-10-17T03:30:00Z',
+      'recorded_at': '2026-10-17T03:31:00Z',
+    });
+    await _pumpAsNeeded(tester, server);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('schedule-prn-take-2')),
+      200,
+    );
+    await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('instead of 1'), findsOneWidget);
+    // 12:30(한국 시간)에 먹었고 지금은 15:00이다.
+    expect(find.textContaining('Last dose at 12:30 (2 h 30 min ago)'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(server.writes, isEmpty);
+  });
+
   testWidgets('repeat dose cancellation does not change the count', (
     tester,
   ) async {

@@ -223,9 +223,10 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
                     : medications
                           .map((m) {
                             final count = _takenCount(snapshot, m.id);
+                            final last = _lastTakenText(snapshot, m.id);
                             return tr(
-                              '${m.itemName}\n오늘 $count회 → ${count + 1}회로 기록할까요?',
-                              '${m.itemName}\nRecord ${_englishDoses(count + 1)} today instead of $count?',
+                              '${m.itemName}\n오늘 $count회 → ${count + 1}회로 기록할까요?${last == null ? '' : '\n$last'}',
+                              '${m.itemName}\nRecord ${_englishDoses(count + 1)} today instead of $count?${last == null ? '' : '\n$last'}',
                             );
                           })
                           .join('\n\n'),
@@ -901,6 +902,40 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
         ],
       ),
     );
+  }
+
+  // 함수이름: _lastTakenText
+  // 함수역할: 복용 간격이 정해진 필요시 약을 다시 먹기 전에 확인하도록 오늘 마지막 복용 시각과
+  //   지난 시간을 한국 시간으로 알린다. 실제 복용 시각이 없으면 기록한 시각을 쓴다.
+  // 매개변수: snapshot: 오늘 기록, medicationId: 약 ID. 반환값: 안내 문구, 복용 기록이 없으면 null.
+  String? _lastTakenText(MedicationHistorySnapshot snapshot, int medicationId) {
+    DateTime? last;
+    for (final entry in snapshot.items) {
+      if (entry.medicationId != medicationId ||
+          !entry.isAsNeeded ||
+          entry.status != MedicationHistoryStatus.taken) {
+        continue;
+      }
+      final time = entry.actualTakenAt ?? entry.recordedAt;
+      if (time != null && (last == null || time.isAfter(last))) last = time;
+    }
+    if (last == null) return null;
+    final wall = MedicationHistoryDates.wallTime(last);
+    final clock =
+        '${wall.hour.toString().padLeft(2, '0')}:${wall.minute.toString().padLeft(2, '0')}';
+    final elapsed = _control.now.difference(last);
+    if (elapsed.isNegative) {
+      return tr('마지막 복용 $clock', 'Last dose at $clock');
+    }
+    final hours = elapsed.inHours;
+    final minutes = elapsed.inMinutes % 60;
+    final ago = hours > 0
+        ? tr(
+            minutes > 0 ? '$hours시간 $minutes분 전' : '$hours시간 전',
+            minutes > 0 ? '$hours h $minutes min ago' : '$hours h ago',
+          )
+        : tr('${elapsed.inMinutes}분 전', '${elapsed.inMinutes} min ago');
+    return tr('마지막 복용 $clock ($ago)', 'Last dose at $clock ($ago)');
   }
 
   int _takenCount(MedicationHistorySnapshot snapshot, int medicationId) =>

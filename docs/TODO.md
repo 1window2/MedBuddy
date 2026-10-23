@@ -89,8 +89,8 @@ released under that version instead. Changes are listed in the
       projected from it after midnight, and the server refuses offline doses
       whose regimen revision changed. To be checked on a device; see the
       offline-edit decision under v0.2.4.
-- [ ] Final-review items left as they are: the as-needed extra-dose
-      confirmation could show the last dose time; a reminder worker already
+- [ ] Final-review items left as they are (the as-needed extra-dose
+      confirmation shows the last dose time since 2026-10-23): a reminder worker already
       running at sign-out may re-arm the old account's reminders (race, not
       reproduced); a course length of 0 or less sent directly to the API has
       no end (the app sends 1-3650); a failed local reminder save turns the
