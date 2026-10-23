@@ -934,6 +934,9 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
             minutes > 0 ? '$hours시간 $minutes분 전' : '$hours시간 전',
             minutes > 0 ? '$hours h $minutes min ago' : '$hours h ago',
           )
+        : elapsed.inMinutes < 1
+        // 1분이 안 됐으면 "0분 전" 대신 "방금 전"으로 적는다.
+        ? tr('방금 전', 'just now')
         : tr('${elapsed.inMinutes}분 전', '${elapsed.inMinutes} min ago');
     return tr('마지막 복용 $clock ($ago)', 'Last dose at $clock ($ago)');
   }

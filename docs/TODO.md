@@ -54,6 +54,28 @@ recovery, docs) were reviewed on 2026-10-23. Corrected on top:
       screen, is back; the deployment guide names the current migration head
       and the rollback behaviour of redacted receipts.
 
+### Device check on 2026-10-23 (Android 14 emulator, guest caregiver, production)
+
+- [x] With backend `cf5bc86` deployed: a caregiver shared the linked patient's
+      October summary into their chat (recipient choice, counts 복용함 9 ·
+      건너뜀 0 · 미기록 6 with the unrecorded note), and "최신 기록 보기"
+      opened that period read-only. The caregiver's patient history opens on
+      the month calendar.
+- [x] Offline after midnight with the app left running: a three-day course
+      registered online was still listed after moving the clock to the next
+      morning in airplane mode, and was gone on the day after its last day,
+      so today was projected from the stored window. A cold start while
+      offline stops at the session retry screen, as already recorded; the
+      clock and network were restored and the course deleted.
+- [x] As-needed dose on signed `ade1eaf`: the save notice's undo removed the
+      dose, and the confirmation for another dose showed "오늘 1회 → 2회" with
+      the last dose time; under a minute it now reads "방금 전".
+- [x] Signed `cf5bc86`: share dialog limits (CSV 90 days, chat 31), an 81-day
+      CSV, the switch off when only the medication channel is off, and a
+      failed offline stop keeping today's schedule.
+- [ ] Not checked: the Galaxy Note10 (unreachable), two devices at once, and
+      the new status-bar icon on Samsung.
+
 ### Decisions taken on 2026-10-23
 
 Recorded with reasons and how to undo them in the

@@ -1106,6 +1106,26 @@ void main() {
     expect(server.writes, isEmpty);
   });
 
+  testWidgets('a PRN dose taken under a minute ago reads just now', (
+    tester,
+  ) async {
+    final server = _HistoryServer();
+    await _pumpAsNeeded(tester, server);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('schedule-prn-take-2')),
+      200,
+    );
+    await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
+    await tester.pumpAndSettle();
+    ScaffoldMessenger.of(tester.element(find.byType(ListView))).clearSnackBars();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Last dose at 15:00 (just now)'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('repeat dose cancellation does not change the count', (
     tester,
   ) async {
