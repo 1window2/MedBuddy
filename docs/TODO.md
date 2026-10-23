@@ -73,8 +73,20 @@ recovery, docs) were reviewed on 2026-10-23. Corrected on top:
 - [x] Signed `cf5bc86`: share dialog limits (CSV 90 days, chat 31), an 81-day
       CSV, the switch off when only the medication channel is off, and a
       failed offline stop keeping today's schedule.
-- [ ] Not checked: the Galaxy Note10 (unreachable), two devices at once, and
-      the new status-bar icon on Samsung.
+- [x] Galaxy Note10 (patient) with the emulator (caregiver), app `ade1eaf`:
+      the Samsung launcher and status-bar icons show the new mark; the patient
+      saw the caregiver's shared summary card and opened its period. An
+      as-needed dose could not be saved at first ("목록이나 횟수가 바뀌었거나
+      연결하지 못했어요"): the phone's clock ran about 0.7 s ahead of the
+      server, so "now" arrived as a future dose time and was refused (422).
+      Fixed on the server in `33827f0` (60 s tolerance, stored as the receipt
+      time) and deployed. Afterwards a dose saved, the caregiver got exactly
+      one alert per dose, the second-dose confirmation showed the last dose
+      time ("0분 전" on this build; "방금 전" from `78725bd`), and undo brought
+      both the patient's and the caregiver's count back to 1. Signed
+      `78725bd` (versionCode 25) installed over it with `-r`, session kept:
+      the confirmation read "1시간 4분 전", then "방금 전" right after a dose.
+      The test medication was deleted.
 
 ### Decisions taken on 2026-10-23
 
