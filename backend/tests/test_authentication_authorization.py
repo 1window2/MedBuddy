@@ -120,6 +120,7 @@ def _production_api_settings(**overrides: object) -> Settings:
         "FIREBASE_APP_CHECK_REQUIRED": True,
         "RATE_LIMIT_ENABLED": True,
         "RATE_LIMIT_REQUIRE_REDIS": True,
+        "RATE_LIMIT_REDIS_URL": "redis://rate-limit-redis:6379/0",
         "PILL_IDENTIFICATION_CATALOG_ALLOW_INLINE_REFRESH": False,
         "DATABASE_URL": "postgresql+psycopg://example/test",
         "AUTO_CREATE_SCHEMA": False,

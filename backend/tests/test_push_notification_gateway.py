@@ -17,14 +17,18 @@ def gateway():
     return boundary
 
 
-def test_prn_retry_reuses_platform_identifiers_but_new_dose_is_distinct(gateway):
+@pytest.mark.parametrize(("kind", "slot"), [
+    ("caregiver_dose_completed", "as_needed"),
+    *[("caregiver_slot_completed", slot) for slot in ("morning", "lunch", "evening", "bedtime")],
+])
+def test_completion_retry_reuses_platform_identifiers_but_new_event_is_distinct(gateway, kind, slot):
     partial = SimpleNamespace(success_count=1, responses=[
         SimpleNamespace(success=True),
         SimpleNamespace(success=False, exception=messaging.QuotaExceededError("retry")),
     ])
     success = SimpleNamespace(success_count=2, responses=[SimpleNamespace(success=True)] * 2)
     payload = {
-        "type": "caregiver_dose_completed", "slot_key": "as_needed", "event_key": "a1" * 32,
+        "type": kind, "slot_key": slot, "event_key": "a1" * 32,
         "patient_hash": "patient-a", "recipient_hash": "caregiver-a",
         "schedule_date": "2026-10-17", "language": "ko",
     }
@@ -54,8 +58,11 @@ def test_prn_retry_reuses_platform_identifiers_but_new_dose_is_distinct(gateway)
 
 
 @pytest.mark.parametrize("event_key", [None, "", "a" * 63, "a" * 65, "A" * 64, "g" * 64, "a" * 64 + "\n", " " + "a" * 64])
-def test_invalid_or_missing_prn_key_leaves_platform_identifiers_unset(gateway, event_key):
-    payload = {"type": "caregiver_dose_completed", "slot_key": "as_needed"}
+@pytest.mark.parametrize(("kind", "slot"), [
+    ("caregiver_dose_completed", "as_needed"), ("caregiver_slot_completed", "morning"),
+])
+def test_invalid_or_missing_completion_key_leaves_platform_identifiers_unset(gateway, event_key, kind, slot):
+    payload = {"type": kind, "slot_key": slot}
     if event_key is not None:
         payload["event_key"] = event_key
     response = SimpleNamespace(success_count=1, responses=[SimpleNamespace(success=True)])
@@ -70,6 +77,8 @@ def test_invalid_or_missing_prn_key_leaves_platform_identifiers_unset(gateway, e
 
 @pytest.mark.parametrize("payload", [
     {"type": "caregiver_slot_completed", "slot_key": "as_needed"},
+    {"type": "caregiver_slot_completed", "slot_key": "unknown"},
+    {"type": "caregiver_slot_completed"},
     {"type": "caregiver_dose_completed", "slot_key": "morning"},
     {"type": "caregiver_dose_completed"},
     {"type": "caregiver_slot_missed", "slot_key": "as_needed"},

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Background layer of the adaptive launcher icon. -->
+    <color name="ic_launcher_background">#FFFFFF</color>
+    <!-- Accent of reminder and push notifications (MedBuddyColors.primary). -->
+    <color name="medbuddy_notification">#0E7C5A</color>
+</resources>

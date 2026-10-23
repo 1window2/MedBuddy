@@ -1570,6 +1570,8 @@ package "FastAPI Backend" {
             연결 Registry와 방송 대상은 프로세스 메모리에 있다.
             Redis는 Cache·요청 제한 공유 Counter이며
             채팅 DB나 WebSocket broker가 아니다.
+            운영 요청 제한은 Cache와 다른 Redis 서버를 사용하고
+            시작 시 연결과 noeviction 정책을 확인한다.
             Broadcasts use independent bounded writes.
             Failed sockets are removed before push fallback.
         end note
@@ -2404,6 +2406,9 @@ FAnalyzedMedication *-- FMedicationSchedule
 FAnalyzedMedication *-- FMedicationDetail
 
 BInputPrescription o-- OCRServiceBoundary
+note "prescription_privacy.py의 deidentify_prescription_text()를\nInputPrescription과 OCRServiceBoundary에서 각각 적용한다.\n개인정보를 안전하게 분리할 수 없으면 외부 AI 호출 전에 거절한다." as PrescriptionPrivacyGuard
+PrescriptionPrivacyGuard .. BInputPrescription
+PrescriptionPrivacyGuard .. OCRServiceBoundary
 OCRServiceBoundary --> GeminiPrescriptionTextClient
 BInputPrescription *-- MedicationNameVerifier
 BInputPrescription ..> BMedicationSchedule

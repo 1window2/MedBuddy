@@ -214,6 +214,8 @@ class Settings(BaseSettings):
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT_REQUIRE_REDIS: bool = False
     REDIS_URL: str = "redis://localhost:6379"
+    # 운영 호출 제한은 캐시의 키 퇴거 정책과 독립된 Redis에 저장한다.
+    RATE_LIMIT_REDIS_URL: str = ""
     CHAT_MESSAGE_DAILY_LIMIT: int = Field(default=500, ge=50, le=10_000)
     SAVED_MEDICATION_MAX_PER_ACCOUNT: int = Field(
         default=300,
@@ -418,6 +420,32 @@ class Settings(BaseSettings):
             raise ValueError("APPLICATION_TIME_ZONE must be a valid IANA time zone.") from exc
         return normalized_time_zone
 
+    @field_validator("RATE_LIMIT_REDIS_URL")
+    @classmethod
+    def validate_rate_limit_redis_url(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            return normalized
+        try:
+            parsed = urlparse(normalized)
+            valid = (
+                parsed.scheme in {"redis", "rediss"}
+                and bool(parsed.hostname)
+                and (parsed.port is None or 1 <= parsed.port <= 65535)
+                and not parsed.query
+                and not parsed.fragment
+            )
+        except ValueError:
+            valid = False
+        if not valid:
+            raise ValueError("RATE_LIMIT_REDIS_URL must be a Redis URL without query or fragment.")
+        return normalized
+
+    @property
+    def rate_limit_redis_url(self) -> str:
+        # 기존 로컬 실행은 별도 설정 없이 메모리 대체 동작을 그대로 사용한다.
+        return self.RATE_LIMIT_REDIS_URL or self.REDIS_URL
+
     # Function Name: validate_security_configuration
     # Description:
     # - Validate production requirements by runtime role, including credentials, authentication, Redis quotas, catalog refresh mode and PostgreSQL migrations.
@@ -460,6 +488,15 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "Production API requires RATE_LIMIT_REQUIRE_REDIS=true."
                 )
+            if not self.RATE_LIMIT_REDIS_URL:
+                raise ValueError("Production API requires RATE_LIMIT_REDIS_URL.")
+            cache_url = urlparse(self.REDIS_URL)
+            rate_url = urlparse(self.RATE_LIMIT_REDIS_URL)
+            # Redis DB 번호나 계정만 달라도 메모리 퇴거 정책은 같은 서버 전체에 적용된다.
+            if (cache_url.hostname, cache_url.port or 6379) == (
+                rate_url.hostname, rate_url.port or 6379
+            ):
+                raise ValueError("RATE_LIMIT_REDIS_URL must use a separate Redis server from REDIS_URL.")
             if self.PILL_IDENTIFICATION_CATALOG_ALLOW_INLINE_REFRESH:
                 raise ValueError(
                     "Production API requires "

@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.ClipData
 import android.content.pm.ActivityInfo
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
@@ -37,12 +38,23 @@ class MainActivity : FlutterActivity() {
         // 반환값: Unit; 설정 화면을 연 뒤 result.success(null)로 완료를 알린다.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, settingsChannel)
             .setMethodCallHandler { call, result ->
-                if (call.method != "openNotificationSettings") {
-                    result.notImplemented()
-                    return@setMethodCallHandler
+                try {
+                    when (call.method) {
+                        "openNotificationSettings" -> {
+                            openNotificationSettings()
+                            result.success(null)
+                        }
+                        "supportsExactReminderSettings" ->
+                            result.success(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+                        "openExactReminderSettings" -> {
+                            openExactReminderSettings()
+                            result.success(null)
+                        }
+                        else -> result.notImplemented()
+                    }
+                } catch (_: Exception) {
+                    result.error("settings_unavailable", "Could not open notification settings.", null)
                 }
-                openNotificationSettings()
-                result.success(null)
             }
         // Function Name: prescriptionCameraChannel.setMethodCallHandler callback
         // Description: Dispatches camera rotation enable/restore requests and rejects unsupported methods.
@@ -169,5 +181,14 @@ class MainActivity : FlutterActivity() {
             // 매개변수: 앞선 실패 원인인 Throwable; 본문에서는 사용하지 않는다.
             // 반환값: Unit; 대체 화면도 열 수 없으면 해당 예외는 호출자에게 전달된다.
             .getOrElse { startActivity(fallbackIntent) }
+    }
+
+    // 이미 허용된 권한도 변경할 수 있도록 권한 요청 대신 설정 화면을 직접 연다.
+    private fun openExactReminderSettings() {
+        check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+        val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+            data = Uri.parse("package:$packageName")
+        }
+        startActivity(intent)
     }
 }

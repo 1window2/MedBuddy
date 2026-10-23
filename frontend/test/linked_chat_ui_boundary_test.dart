@@ -8,12 +8,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/linked_chat_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/medication_history_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/check_schedule_ui_boundary.dart';
 import 'package:medbuddy_frontend/entities/nearby_care_entity.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/controls/manage_linked_chat_control.dart';
 import 'package:medbuddy_frontend/controls/set_notification_control.dart';
 import 'package:medbuddy_frontend/entities/chat_message_entity.dart';
+import 'package:medbuddy_frontend/entities/medication_history_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
@@ -212,6 +214,8 @@ class _RetryChatControl extends ManageLinkedChat {
     String? pharmacyId,
     String? hospitalId,
     String? hospitalScheduleDate,
+    String? historyStartDate,
+    String? historyEndDate,
   }) async {
     sendAttempts += 1;
     clientMessageIds.add(clientMessageId);
@@ -740,6 +744,35 @@ ChatMessage _deletionMessage({
   createdAt: DateTime.now().toUtc().subtract(Duration(hours: hours)),
 );
 
+ChatMessage _historyShareMessage({
+  String sender = 'patient-a',
+  int endDaysAgo = 0,
+}) {
+  final end = MedicationHistoryDates.today(
+    DateTime.now(),
+  ).subtract(Duration(days: endDaysAgo));
+  return ChatMessage.fromJson({
+    'message_id': 71,
+    'link_id': 17,
+    'sender_hash': sender,
+    'client_message_id': 'history-71',
+    'body': 'Shared records',
+    'message_kind': 'medication_history_share',
+    'created_at': '2026-10-21T01:15:00Z',
+    'context': {
+      'history_context': {
+        'start_date': MedicationHistoryDates.format(
+          end.subtract(const Duration(days: 6)),
+        ),
+        'end_date': MedicationHistoryDates.format(end),
+        'taken_count': 123456,
+        'skipped_count': 2345,
+        'unrecorded_count': 6789,
+      },
+    },
+  });
+}
+
 // 함수이름: main
 // 함수역할:
 // - 복약 대화 삭제, 재시도 식별자, 빠른 답장과 복약 카드 이동 검증 사례와 테스트 대역을 등록한다.
@@ -748,6 +781,407 @@ ChatMessage _deletionMessage({
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  for (final language in ['ko', 'en']) {
+    for (final mine in [false, true]) {
+      testWidgets('history card wraps large text $language/$mine', (
+        tester,
+      ) async {
+        final message = _historyShareMessage(
+          sender: mine ? 'patient-a' : 'caregiver-a',
+        );
+        final control = _RetryChatControl(historyMessages: [message]);
+        final realtime = _FakeRealtimeService();
+        await tester.binding.setSurfaceSize(const Size(360, 1100));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MediaQuery(
+              data: const MediaQueryData(
+                size: Size(360, 1100),
+                textScaler: TextScaler.linear(1.6),
+              ),
+              child: LinkedChatUI(
+                linkId: 17,
+                currentUserHash: 'patient-a',
+                patientHash: 'patient-a',
+                userSetting: UserSetting(language: language),
+                control: control,
+                realtimeService: realtime,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final english = language == 'en';
+        expect(
+          find.text(english ? 'Medication history' : '복약 기록'),
+          findsOneWidget,
+        );
+        expect(
+          find.text('${english ? 'Taken' : '복용함'} 123456'),
+          findsOneWidget,
+        );
+        expect(
+          find.text('${english ? 'Skipped' : '건너뜀'} 2345'),
+          findsOneWidget,
+        );
+        expect(
+          find.text('${english ? 'Unrecorded' : '미기록'} 6789'),
+          findsOneWidget,
+        );
+        expect(
+          find.text('${english ? 'At sharing' : '공유 당시'}: 2026-10-21 10:15'),
+          findsNothing,
+        );
+        final localTime = message.createdAt.toLocal();
+        expect(
+          find.text(
+            UserSetting(
+              language: language,
+            ).formatTime(localTime.hour, localTime.minute),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.text(english ? 'View latest records' : '최신 기록 보기'),
+          findsOneWidget,
+        );
+        final card = find.byKey(const Key('chat-medication-history-card'));
+        expect(
+          find.descendant(of: card, matching: find.byType(Wrap)),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: card, matching: find.byType(Checkbox)),
+          findsNothing,
+        );
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await realtime.dispose();
+        control.dispose();
+      });
+    }
+  }
+
+  // 90일 보관 기간이 지난 공유는 열면 실패할 화면 대신 안내만 보이고, 미기록의 의미를 함께 적는다.
+  testWidgets('an expired history share explains why it cannot be opened', (
+    tester,
+  ) async {
+    final control = _RetryChatControl(
+      historyMessages: [_historyShareMessage(endDaysAgo: 94)],
+    );
+    final realtime = _FakeRealtimeService();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkedChatUI(
+          linkId: 17,
+          currentUserHash: 'patient-a',
+          patientHash: 'patient-a',
+          userSetting: UserSetting(language: 'ko'),
+          control: control,
+          realtimeService: realtime,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('chat-history-expired')), findsOneWidget);
+    expect(
+      find.byKey(const Key('chat-history-unrecorded-notice')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<OutlinedButton>(
+            find.byKey(const Key('chat-view-latest-history')),
+          )
+          .onPressed,
+      isNull,
+    );
+    await tester.tap(find.byKey(const Key('chat-medication-history-card')));
+    await tester.pumpAndSettle();
+    expect(find.byType(MedicationHistoryUI), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await realtime.dispose();
+    control.dispose();
+  });
+
+  // 화면 전환과 동시에 채팅이 가려진 것으로 처리되어 두 번째 누름은 무시된다(회귀 방지).
+  testWidgets('a quick second tap on a history card opens one screen', (
+    tester,
+  ) async {
+    final control = _RetryChatControl(
+      historyMessages: [_historyShareMessage()],
+    );
+    final realtime = _FakeRealtimeService();
+    await http.runWithClient(
+      () async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: LinkedChatUI(
+              linkId: 17,
+              currentUserHash: 'patient-a',
+              patientHash: 'patient-a',
+              userSetting: UserSetting(language: 'ko'),
+              control: control,
+              realtimeService: realtime,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('chat-view-latest-history')));
+        await tester.tap(
+          find.byKey(const Key('chat-view-latest-history')),
+          warnIfMissed: false,
+        );
+        await tester.pumpAndSettle();
+        expect(find.byType(MedicationHistoryUI), findsOneWidget);
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+        expect(find.byType(MedicationHistoryUI), findsNothing);
+      },
+      () => MockClient(
+        (request) async => http.Response('{"detail":"Access revoked"}', 403),
+      ),
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+    await realtime.dispose();
+    control.dispose();
+  });
+
+  for (final caregiver in [false, true]) {
+    testWidgets(
+      'history card opens read-only shared range caregiver=$caregiver',
+      (tester) async {
+        final message = _historyShareMessage();
+        final history = message.historyContext!;
+        final control = _RetryChatControl(historyMessages: [message]);
+        final realtime = _FakeRealtimeService();
+        final reads = <Uri>[];
+        await http.runWithClient(
+          () async {
+            await tester.pumpWidget(
+              MaterialApp(
+                home: LinkedChatUI(
+                  linkId: 17,
+                  currentUserHash: caregiver ? 'caregiver-a' : 'patient-a',
+                  patientHash: 'patient-a',
+                  userSetting: UserSetting(language: caregiver ? 'en' : 'ko'),
+                  control: control,
+                  realtimeService: realtime,
+                ),
+              ),
+            );
+            await tester.pumpAndSettle();
+            await tester.tap(
+              caregiver
+                  ? find.byKey(const Key('chat-view-latest-history'))
+                  : find.text('복약 기록'),
+            );
+            await tester.pumpAndSettle();
+            final screen = tester.widget<MedicationHistoryUI>(
+              find.byType(MedicationHistoryUI),
+            );
+            expect(screen.patientHash, 'patient-a');
+            expect(screen.readOnly, isTrue);
+            expect(screen.isEnglish, caregiver);
+            expect(screen.sharedRange!.start, history.startDate);
+            expect(screen.sharedRange!.end, history.endDate);
+            expect(reads, hasLength(1));
+            expect(reads.single.path, endsWith('/care/history'));
+            expect(reads.single.queryParameters, {
+              'patient_hash': 'patient-a',
+              'start_date': MedicationHistoryDates.format(history.startDate),
+              'end_date': MedicationHistoryDates.format(history.endDate),
+            });
+            expect(tester.takeException(), isNull);
+            await tester.pumpWidget(const SizedBox.shrink());
+          },
+          () => MockClient((request) async {
+            expect(request.method, 'GET');
+            reads.add(request.url);
+            return http.Response('{"detail":"Access revoked"}', 403);
+          }),
+        );
+        await realtime.dispose();
+        control.dispose();
+      },
+    );
+  }
+
+  testWidgets('revoked history card blocks both current and stale callbacks', (
+    tester,
+  ) async {
+    final control = _RemovableLinkChatControl(
+      historyMessages: [_historyShareMessage()],
+    );
+    final realtime = _FakeRealtimeService();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkedChatUI(
+          linkId: 17,
+          currentUserHash: 'patient-a',
+          patientHash: 'patient-a',
+          control: control,
+          realtimeService: realtime,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final button = find.byKey(const Key('chat-view-latest-history'));
+    final staleCallback = tester.widget<OutlinedButton>(button).onPressed!;
+    control.linkRemoved = true;
+    realtime._states.add(LinkedChatConnectionState.connected);
+    await tester.pumpAndSettle();
+    expect(tester.widget<OutlinedButton>(button).onPressed, isNull);
+    expect(
+      tester
+          .widget<InkWell>(
+            find.byKey(const Key('chat-medication-history-card')),
+          )
+          .onTap,
+      isNull,
+    );
+    staleCallback();
+    await tester.pumpAndSettle();
+    expect(find.byType(MedicationHistoryUI), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await realtime.dispose();
+    control.dispose();
+  });
+
+  for (final scope in ['me', 'everyone']) {
+    testWidgets(
+      'deleted history card cannot reopen from stale callback: $scope',
+      (tester) async {
+        final control = _RetryChatControl(
+          historyMessages: [_historyShareMessage()],
+        );
+        final realtime = _FakeRealtimeService();
+        await tester.pumpWidget(
+          MaterialApp(
+            home: LinkedChatUI(
+              linkId: 17,
+              currentUserHash: 'patient-a',
+              patientHash: 'patient-a',
+              control: control,
+              realtimeService: realtime,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final staleCallback = tester
+            .widget<OutlinedButton>(
+              find.byKey(const Key('chat-view-latest-history')),
+            )
+            .onPressed!;
+        realtime._events.add({
+          'type': 'chat_messages_deleted',
+          'link_id': 17,
+          'message_ids': [71],
+          'scope': scope,
+        });
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('chat-medication-history-card')),
+          findsNothing,
+        );
+        expect(find.text('Shared records'), findsNothing);
+        staleCallback();
+        await tester.pumpAndSettle();
+        expect(find.byType(MedicationHistoryUI), findsNothing);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await realtime.dispose();
+        control.dispose();
+      },
+    );
+  }
+
+  testWidgets(
+    'selection and replaced account block captured history navigation',
+    (tester) async {
+      final control = _RetryChatControl(
+        historyMessages: [_historyShareMessage()],
+      );
+      final realtime = _FakeRealtimeService();
+      final nextControl = _RetryChatControl();
+      final nextRealtime = _FakeRealtimeService();
+      Widget app(
+        String user,
+        ManageLinkedChat chat,
+        LinkedChatRealtimeService stream,
+      ) => MaterialApp(
+        home: LinkedChatUI(
+          linkId: 17,
+          currentUserHash: user,
+          patientHash: 'patient-a',
+          control: chat,
+          realtimeService: stream,
+        ),
+      );
+      await tester.pumpWidget(app('patient-a', control, realtime));
+      await tester.pumpAndSettle();
+      final button = find.byKey(const Key('chat-view-latest-history'));
+      final staleCallback = tester.widget<OutlinedButton>(button).onPressed!;
+      await tester.longPress(find.text('Shared records'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<OutlinedButton>(button).onPressed, isNull);
+      staleCallback();
+      await tester.pumpAndSettle();
+      expect(find.byType(MedicationHistoryUI), findsNothing);
+      await tester.pumpWidget(app('caregiver-b', nextControl, nextRealtime));
+      await tester.pumpAndSettle();
+      staleCallback();
+      await tester.pumpAndSettle();
+      expect(find.byType(MedicationHistoryUI), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await realtime.dispose();
+      await nextRealtime.dispose();
+      control.dispose();
+      nextControl.dispose();
+    },
+  );
+
+  testWidgets(
+    'malformed history card retains body without a navigation action',
+    (tester) async {
+      final message = ChatMessage.fromJson({
+        'message_id': 71,
+        'link_id': 17,
+        'sender_hash': 'patient-a',
+        'client_message_id': 'invalid-history-71',
+        'body': 'Shared records',
+        'created_at': '2026-10-21T01:15:00Z',
+        'message_kind': 'medication_history_share',
+        'context': {
+          'history_context': {'taken_count': 'invalid'},
+        },
+      });
+      final control = _RetryChatControl(historyMessages: [message]);
+      final realtime = _FakeRealtimeService();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LinkedChatUI(
+            linkId: 17,
+            currentUserHash: 'patient-a',
+            patientHash: 'patient-a',
+            control: control,
+            realtimeService: realtime,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Shared records'), findsOneWidget);
+      expect(find.byKey(const Key('chat-view-latest-history')), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await realtime.dispose();
+      control.dispose();
+    },
+  );
+
   // 함수이름: 입력 갱신 회귀 테스트
   // 함수역할: 입력 시 기존 목록·말풍선은 유지되고 전송 가능 여부만 바뀌는지 검사한다.
   // 매개변수: tester: 위젯 테스트 도구. 반환값: 검증 완료.
@@ -2067,43 +2501,44 @@ void main() {
   // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
   // 반환값:
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  testWidgets('a chat whose link was removed replaces the composer with a notice', (
-    tester,
-  ) async {
-    final control = _RemovableLinkChatControl(
-      historyMessages: [_deletionMessage()],
-    );
-    final realtime = _FakeRealtimeService();
-    await tester.pumpWidget(
-      MaterialApp(
-        home: LinkedChatUI(
-          linkId: 17,
-          currentUserHash: 'patient-a',
-          patientHash: 'patient-a',
-          userSetting: const UserSetting(language: 'ko'),
-          control: control,
-          realtimeService: realtime,
+  testWidgets(
+    'a chat whose link was removed replaces the composer with a notice',
+    (tester) async {
+      final control = _RemovableLinkChatControl(
+        historyMessages: [_deletionMessage()],
+      );
+      final realtime = _FakeRealtimeService();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LinkedChatUI(
+            linkId: 17,
+            currentUserHash: 'patient-a',
+            patientHash: 'patient-a',
+            userSetting: const UserSetting(language: 'ko'),
+            control: control,
+            realtimeService: realtime,
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('chatSendButton')), findsOneWidget);
-    expect(find.byKey(const Key('chat-link-unavailable')), findsNothing);
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('chatSendButton')), findsOneWidget);
+      expect(find.byKey(const Key('chat-link-unavailable')), findsNothing);
 
-    // 연결 상태가 다시 알려지면 기록을 따라잡는 조회가 일어나고, 그 조회가 404로 거절된다.
-    control.linkRemoved = true;
-    realtime._states.add(LinkedChatConnectionState.connected);
-    await tester.pumpAndSettle();
+      // 연결 상태가 다시 알려지면 기록을 따라잡는 조회가 일어나고, 그 조회가 404로 거절된다.
+      control.linkRemoved = true;
+      realtime._states.add(LinkedChatConnectionState.connected);
+      await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('chat-link-unavailable')), findsOneWidget);
-    expect(find.byKey(const ValueKey('chatSendButton')), findsNothing);
-    expect(find.text('연동 해제됨'), findsOneWidget);
-    expect(find.text('Message 1'), findsOneWidget);
+      expect(find.byKey(const Key('chat-link-unavailable')), findsOneWidget);
+      expect(find.byKey(const ValueKey('chatSendButton')), findsNothing);
+      expect(find.text('연동 해제됨'), findsOneWidget);
+      expect(find.text('Message 1'), findsOneWidget);
 
-    await tester.pumpWidget(const SizedBox.shrink());
-    await realtime.dispose();
-    control.dispose();
-  });
+      await tester.pumpWidget(const SizedBox.shrink());
+      await realtime.dispose();
+      control.dispose();
+    },
+  );
 
   // 함수이름: testWidgets 콜백
   // 함수역할:

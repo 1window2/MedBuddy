@@ -59,7 +59,8 @@ box "FastAPI Backend"
     participant "Backend Service / Boundary\nOIDCTokenVerifier\nOCRServiceBoundary\nLLMService\nPublicDrug / Pill / Pharmacy Boundary\nChatConnectionManager" as BackService
     participant "PillIdentificationCatalogRepository" as Repository
     database "Application Database\nSQLAlchemy" as Database
-    database "Redis\nCache / 요청 제한 공유 Counter" as Redis
+    database "Redis Cache\nREDIS_URL" as Redis
+    database "Rate-limit Redis\nRATE_LIMIT_REDIS_URL" as RateRedis
 end box
 
 == 1. 앱 실행 및 사용자 접근 ==
@@ -70,6 +71,12 @@ note over Router,Database
 Backend는 Worker 시작 전에 Alembic revision과 필수 table/column을 검증한다.
 자동 초기화는 빈 DB에만 migration을 적용하며 기존 DB를 임의 보정하지 않는다.
 핵심 서비스 시작과 Catalog 준비 상태는 분리하며 Catalog 실패로 채팅·일정을 막지 않는다.
+end note
+BackService -> RateRedis : 운영 필수 요청 제한 저장소 PING / maxmemory-policy 확인
+note over BackService,RateRedis
+  운영 API는 Cache와 다른 Redis 서버 주소·포트를 요구한다.
+  DB 번호만 분리할 수 없으며 noeviction이 아니거나 확인에 실패하면 준비를 거절한다.
+  요청 제한 Counter는 채팅 Database나 WebSocket 방송 broker가 아니다.
 end note
 
 User -> UI : MedBuddyApp 실행
@@ -207,12 +214,27 @@ alt token cleanup succeeds
     AuthControl -> FrontService : suspend dose upload, clear widget and cancel reminders
     FrontService -> Workmanager : cancel medication reminder refresh task
     FrontService -> LocalNotification : cancel every schedule:* notification
-    AuthControl -> FirebaseAuth : signOut()
-    FirebaseAuth --> AuthControl : provider session cleared
-    AuthControl --> UI : show sign-in screen
+    alt 세션 종료 준비와 로컬 정리 성공
+        AuthControl -> FirebaseAuth : signOut()
+        FirebaseAuth --> AuthControl : provider session cleared
+        AuthControl --> UI : show sign-in screen
+    else 준비 중 로컬 정리 실패
+        ref over UI,FrontService : 아래 동일 세션 복구 후 로그아웃 중단
+    end
 else token cleanup fails
     FrontService --> AuthControl : error
     AuthControl --> UI : keep authenticated session and show retryable error
+end
+opt Push 해제 또는 로컬 정리 단계가 실패하고 캡처한 세션·세대가 여전히 동일
+    UI -> DoseSync : resumeAfterAbortedSignOut(isCurrent)
+    DoseSync -> DoseStore : 다른 계정이 활성화되지 않았는지 확인 후 복약 세션 복원
+    DoseSync -> DoseSync : 캐시·대기 요청 재조회와 재시도 예약
+    UI -> FrontService : 위젯 재발행; restoreSessionReminders(isCurrent)
+    FrontService -> LocalNotification : 기존 설정·확인된 기간 안에서만 알림 복원
+    UI -> Workmanager : 복약 전송·알림 보충 작업 각각 재등록
+    UI -> FrontService : PushNotificationService.start()
+    UI --> User : 로그인 유지; 원래 실패 안내와 재시도
+    note over UI,DoseStore : 한 복원 단계가 실패해도 나머지는 각각 시도한다.\n계정·세션이 바뀌면 이전 계정 복구를 중지한다.\nPRN 대기는 보존하지만 정기 큐의 4초 전송 시도에 섞지 않는다.
 end
 
 == 1B. Permanent account deletion ==
@@ -309,7 +331,12 @@ FrontService --> FrontControl : LocalPrescriptionOcrResult\nmaskedText, regions
 FrontControl -> ApiClient : POST /analyze-prescription-text\n비식별 Text만 전송
 ApiClient -> Router : 처방 Text 분석 요청
 Router -> BackControl : InputPrescription.requestPrescriptionText(maskedText)
+BackControl -> BackControl : deidentify_prescription_text(): 개인정보 구역·식별자 재검사
+break 안전하게 분리할 수 없는 개인정보·약 정보
+    BackControl --> UI : 외부 AI 호출 전 거절; 약 목록 재선택 안내
+end
 BackControl -> BackService : OCRServiceBoundary.extractPrescriptionTextData()
+BackService -> BackService : 외부 제공자 호출 직전 같은 개인정보 검사 재적용
 BackService -> Gemini : Structured Output 요청
 Gemini --> BackService : 구조화된 처방 정보
 BackService --> BackControl : 약명, 용량, 횟수, 복용일수
@@ -648,7 +675,9 @@ opt 신규 시간대 완료 Outbox가 생성된 경우
     BackControl -> Database : 활성 연결별 멱등 자동 완료 chat record 저장
     Database --> BackControl : 생성 또는 기존 기록
     note over BackControl,Database : 자동 완료 기록 저장 자체는 WebSocket broadcast를 호출하지 않는다.
-    OutboxControl -> BackControl : DispatchCaregiverAlert.notifySlotCompleted()
+    OutboxControl -> OutboxControl : Outbox ID·생성 시각으로 고정 completion event_key 계산
+    OutboxControl -> BackControl : DispatchCaregiverAlert.notifySlotCompleted(event_key)
+    note over OutboxControl,FrontService : 재시도는 같은 키, 다른 완료 이벤트는 다른 키를 사용한다.\nAndroid tag·APNs collapse ID·기기 알림함·계정별 성공 표시 표식으로 중복을 줄인다.\n정확히 한 번 전달되거나 사용자가 읽었다는 보장은 아니다.
     BackControl -> Database : 활성 연결, dose_completed 설정,\n활성 기기 Push Token 조회
     Database --> BackControl : 보호자 알림 대상
 
@@ -872,7 +901,7 @@ opt 보호자 홈 또는 감시 자료 갱신
 end
 
 opt 내 일정이 선택되어 있고 활성 연결 환자가 있음
-    UI --> Caregiver : 주요 동작 아래 연결된 환자 일정 보기 안내
+    UI --> Caregiver : 주요 동작 아래 연동된 환자 일정 보기 안내
     Caregiver -> UI : 안내 선택
     UI -> UI : 환경설정의 화면 및 음성으로 이동\n홈 조회 대상은 사용자가 직접 변경
 end
@@ -1189,6 +1218,8 @@ end
 
 == 13. 복약 맥락 채팅 ==
 
+ref over UI,Database : MedicationCareHistory.puml: 기간 요약 공유 / 양쪽 계정 잠금 / 현재 권한의 최신 읽기 전용 조회
+
 User -> UI : 활성 환자-보호자 연결의 채팅 선택
 UI -> ChatHistory : initialize immutable account/link session
 ChatHistory -> FrontControl : ManageLinkedChat.requestHistory(linkId)
@@ -1312,7 +1343,7 @@ loop 서버 ChatNotificationWorker 주기 (HTTP 요청과 독립)
     end
     ChatPushControl -> Database : 완료·억제 또는 실패 재시도 상태 저장\n만료·한도 도달 시 dead 보존
 end
-note over Router,BackService : 일반 채팅은 메시지와 ChatNotificationJob을 같은 Transaction에 저장한다.\n별도 Worker가 재시도하며 caregiver 완료·미복약 Outbox와는 구분한다.\nWebSocket Registry는 프로세스 메모리이고 Redis는 요청 제한 Counter로 사용한다.
+note over Router,BackService : 일반 채팅은 메시지와 ChatNotificationJob을 같은 Transaction에 저장한다.\n별도 Worker가 재시도하며 caregiver 완료·미복약 Outbox와는 구분한다.\nWebSocket Registry는 프로세스 메모리이며 요청 제한 Redis는 조회 Cache와 분리한다.\n복약 기록 공유 Push는 기간·건수·약명 없는 일반 안내만 사용한다.
 opt 환자가 시간대의 모든 약을 완료
     ref over OutboxControl,Database : Flow 5의 Outbox 처리에서 자동 완료 chat record 생성
     note over BackControl,Database : publish_slot_completion()은 직접 WebSocket broadcast하지 않는다.

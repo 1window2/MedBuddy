@@ -1,6 +1,7 @@
 // 파일명: medication_history_control_test.dart
 // 역할: 인증·기간·동시 요청·세션 변경·재시도 계약을 검증한다.
 import 'dart:async';
+import 'support/fake_as_needed_pending_store.dart';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -27,6 +28,7 @@ MedicationHistoryControl _control(
   Duration timeout = const Duration(seconds: 25),
 }) => MedicationHistoryControl(
   patientHash: 'scoped-patient',
+  pendingStore: FakeAsNeededPendingStore(),
   client: client,
   now: () => historyTestNow,
   sessionKeyProvider: session ?? () => 'test-session',
@@ -84,10 +86,11 @@ void main() {
       addTearDown(control.dispose);
       await control.load(_range);
       final original = control.snapshot;
+      // CSV는 보관 기간(최근 90일) 밖으로 나가면 요청 전에 거부한다.
       await expectLater(
         control.readRangeForExport(
           MedicationHistoryRange(
-            DateTime.utc(2026, 9, 1),
+            DateTime.utc(2026, 7, 1),
             DateTime.utc(2026, 10, 17),
           ),
         ),
@@ -98,6 +101,62 @@ void main() {
       expect(control.busy, isFalse);
     },
   );
+
+  test('a CSV longer than 31 days is read in 31-day parts and merged', () async {
+    final reads = <Uri>[];
+    final control = _control(
+      MockClient((request) async {
+        reads.add(request.url);
+        final start = request.url.queryParameters['start_date']!;
+        final end = request.url.queryParameters['end_date']!;
+        return historyTestResponse(
+          historyTestBody(
+            start: start,
+            end: end,
+            items: [
+              historyTestEntry(date: end),
+              historyTestEntry(date: start, slot: 'evening'),
+            ],
+          ),
+        );
+      }),
+    );
+    addTearDown(control.dispose);
+    final range = MedicationHistoryRange(
+      DateTime.utc(2026, 7, 20),
+      DateTime.utc(2026, 10, 17),
+    );
+    final merged = await control.readRangeForExport(range);
+    expect(
+      reads.map(
+        (uri) =>
+            '${uri.queryParameters['start_date']}~${uri.queryParameters['end_date']}',
+      ),
+      [
+        '2026-09-17~2026-10-17',
+        '2026-08-17~2026-09-16',
+        '2026-07-20~2026-08-16',
+      ],
+    );
+    expect(merged.range.start, range.start);
+    expect(merged.range.end, range.end);
+    expect(merged.items, hasLength(6));
+    expect(
+      merged.items.map((item) => MedicationHistoryDates.format(item.scheduleDate)),
+      [
+        '2026-10-17',
+        '2026-09-17',
+        '2026-09-16',
+        '2026-08-17',
+        '2026-08-16',
+        '2026-07-20',
+      ],
+    );
+    expect(merged.medications.map((item) => item.id).toSet(), hasLength(
+      merged.medications.length,
+    ));
+    expect(control.busy, isFalse);
+  });
 
   test(
     'export blocks competing work and discards results after a session change',

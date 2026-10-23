@@ -54,6 +54,15 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- FCM notifications shown while the app is in the background use these. Android
+             draws the status-bar icon from its transparency, so the opaque launcher icon would
+             appear as a plain white square. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_medbuddy" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/medbuddy_notification" />
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.medication_exports"

@@ -50,6 +50,7 @@ def test_rest_chat_operations_leave_event_loop_responsive(operation: str) -> Non
             client_message_id="test_message", body="Hello", medication_id=None,
             medication_ids=[1], message_ids=[1], scope="me", message_kind="text",
             slot_key="morning", pharmacy_id=None, source_alert_id=None,
+            history_start_date=None, history_end_date=None,
             schedule_date="2026-09-26", through_message_id=1,
         )
         kwargs = dict(link_id=1, payload=payload, request=object(), user_hash="patient",

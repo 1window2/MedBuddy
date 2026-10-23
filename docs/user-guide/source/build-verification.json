@@ -1,0 +1,74 @@
+{
+  "version": "0.2.4 (개발 브랜치, 2026-10-22 기준)",
+  "pages": 218,
+  "chapters": 10,
+  "subsections": 83,
+  "steps": 306,
+  "prior_steps_preserved": 303,
+  "pdf_internal_links_verified": 204,
+  "pdf_bookmarks_verified": 93,
+  "markdown_pdf_page_links_verified": 303,
+  "markdown_local_anchors_verified": 307,
+  "all_step_text_verified": true,
+  "visual_review": {
+    "status": "reviewed",
+    "renderer": "Poppler pdftoppm",
+    "all_pages_dpi": 60,
+    "contact_sheets": 14,
+    "detail_dpi": 110,
+    "detail_pages": [
+      68,
+      76,
+      77,
+      115,
+      184,
+      186,
+      189,
+      191,
+      192,
+      199,
+      212
+    ],
+    "checks": [
+      "clipping",
+      "overlap",
+      "missing images",
+      "page numbering",
+      "screen and explanation match"
+    ]
+  },
+  "clean_rebuild": {
+    "passed": true,
+    "pdf_sha256_identical": true,
+    "markdown_sha256_identical": true,
+    "inputs": [
+      "README.md",
+      "MedBuddy_User_Guide_ko.pdf",
+      "assets/",
+      "source/layout.json",
+      "source/assets.sha256.json",
+      "source/pdf-images.json",
+      "tools/"
+    ],
+    "external_dependencies": [
+      "Python 3.12",
+      "tools/requirements.txt",
+      "NanumBarunGothic.ttf",
+      "NanumBarunGothicBold.ttf",
+      "Poppler for rendering"
+    ],
+    "previous_workspace_or_raw_image_archive_required": false
+  },
+  "reused_embedded_images": 148,
+  "additional_raw_source_images": 0,
+  "additional_capture_files": 7,
+  "additional_capture_bytes": 944062,
+  "pdf_sha256": "bf49185db493409dd7547dd063ec1bcecf0ab7d8737a33f7f7a36bb8b45788bd",
+  "markdown_sha256": "13c176af2d95e3dc9b1e001cd31c57ca01a60afada0c2a4d8d60114af36deea8",
+  "source_layout_sha256": "8e2e68838a5be92fb5a0d27e3a3e8db53bdd02e12dca45fabbd6c19b40f951c8",
+  "fonts": {
+    "NanumBarunGothic.ttf": "9b872773134e2e4d8c0b17021266786576db06c843ede0d0b523b214a450756c",
+    "NanumBarunGothicBold.ttf": "39bba4cd9bd2986143825c8654abbb62443914ab33b346c0c929a916f5d98bf2"
+  },
+  "scope": "Documentation verification only; no app tests or emulator operations."
+}

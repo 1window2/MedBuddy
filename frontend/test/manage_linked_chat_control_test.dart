@@ -36,6 +36,98 @@ http.Response _jsonResponse(Object body, int statusCode) {
 void main() {
   const baseUrl = 'https://api.example.test/api/v1/chat';
 
+  test('history share sends range only and restores server snapshot', () async {
+    final control = ManageLinkedChat(
+      userHash: 'patient-a',
+      chatUrlBuilder: (path) => '$baseUrl$path',
+      client: MockClient((request) async {
+        expect(request.method, 'POST');
+        expect(request.url.path, '/api/v1/chat/links/17/messages');
+        expect(jsonDecode(request.body), {
+          'client_message_id': 'history_001',
+          'body': '복약 기록 공유',
+          'message_kind': 'medication_history_share',
+          'history_start_date': '2026-10-01',
+          'history_end_date': '2026-10-07',
+        });
+        return _jsonResponse({
+          'data': {
+            'message_id': 5,
+            'link_id': 17,
+            'sender_hash': 'patient-a',
+            'client_message_id': 'history_001',
+            'body': '복약 기록 공유',
+            'message_kind': 'medication_history_share',
+            'created_at': '2026-10-07T01:00:00Z',
+            'context': {
+              'history_context': {
+                'start_date': '2026-10-01',
+                'end_date': '2026-10-07',
+                'taken_count': 12,
+                'skipped_count': 1,
+                'unrecorded_count': 3,
+              },
+            },
+          },
+        }, 200);
+      }),
+    );
+    addTearDown(control.dispose);
+    final message = await control.sendMessage(
+      linkId: 17,
+      clientMessageId: 'history_001',
+      body: '복약 기록 공유',
+      messageKind: ChatMessageKind.medicationHistoryShare,
+      historyStartDate: '2026-10-01',
+      historyEndDate: '2026-10-07',
+    );
+    expect(message.messageKind, ChatMessageKind.medicationHistoryShare);
+    expect(message.historyContext!.takenCount, 12);
+    expect(message.historyContext!.endDate, DateTime.utc(2026, 10, 7));
+  });
+
+  test(
+    'malformed history attachment preserves the entire history page',
+    () async {
+      final control = ManageLinkedChat(
+        userHash: 'patient-a',
+        client: MockClient(
+          (request) async => _jsonResponse({
+            'data': [
+              for (var id = 1; id <= 3; id++)
+                {
+                  'message_id': id,
+                  'link_id': 17,
+                  'sender_hash': 'patient-a',
+                  'client_message_id': 'history_$id',
+                  'body': 'Shared records $id',
+                  'message_kind': 'medication_history_share',
+                  'created_at': '2026-10-07T01:00:00Z',
+                  'context': {
+                    'history_context': {
+                      'start_date': '2026-10-01',
+                      'end_date': '2026-10-07',
+                      'taken_count': id == 2 ? 'invalid' : 0,
+                      'skipped_count': 0,
+                      'unrecorded_count': 0,
+                    },
+                  },
+                },
+            ],
+          }, 200),
+        ),
+      );
+      addTearDown(control.dispose);
+      final page = await control.requestHistory(linkId: 17);
+      expect(page, hasLength(3));
+      expect(ChatHistoryPage.rowCountOf(page), 3);
+      expect(page[0].historyContext, isNotNull);
+      expect(page[1].historyContext, isNull);
+      expect(page[1].body, 'Shared records 2');
+      expect(page[2].historyContext, isNotNull);
+    },
+  );
+
   // 집계 조회는 읽음 변경 없이 서버 개수와 첫 메시지 ID를 보존한다.
   test(
     'unread summary uses read-only endpoint and preserves exact count',

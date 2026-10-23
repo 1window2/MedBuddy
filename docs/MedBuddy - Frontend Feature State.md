@@ -147,16 +147,19 @@ Other accounts' keys and local state after a failed deletion remain intact.
 
 Confirmed account deletion also attempts to remove temporary Android medication
 export files. The FileProvider is restricted to that cache directory; external
-copies are outside the app's control. Settings groups the notification-readiness
-check under Medication & Notifications and the factual data-use guide under
-Account > Privacy & Data, distinct from finalized publication policies.
+copies are outside the app's control. Settings shows the phone's notification and
+on-time reminder switches with a test notification at the top of Medication &
+Notifications (there is no separate setup-check screen since 2026-10-22), and the
+factual data-use guide under Account > Privacy & Data, distinct from finalized
+publication policies.
 
-`NotificationReadinessUI` delegates device checks to `NotificationReadinessControl`
-and the existing `NotificationService`, while registration/schedule/widget/link
-entry points stay in UI callbacks. Concurrent checks share one read; unavailable
-checks remain unknown. Opening the screen does not request permissions. Test
-notifications carry no dose/navigation payload or inbox record, and user-confirmed
-receipt is distinct from requesting one. `DataUseInfoUI` is explanatory only:
+`NotificationDeviceSettings` delegates device checks to
+`NotificationReadinessControl` and the existing `NotificationService`. Its switches
+show the state the phone reports and open the phone's settings instead of changing
+a value. Concurrent checks share one read; unavailable checks remain unknown.
+Opening Settings does not request permissions. Test notifications carry no
+dose/navigation payload or inbox record, and a note says that one test does not
+guarantee later reminders. `DataUseInfoUI` is explanatory only:
 it does not collect AI consent or enforce a transmission gate.
 
 At the native scheduling boundary, date-specific plans are reconciled with

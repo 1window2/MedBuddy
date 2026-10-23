@@ -1,9 +1,11 @@
 # Class Diagram Guide
 
 이 폴더에는 주요 책임과 계약을 보여주는 전체 구조 및 발표용 단계별 클래스 다이어그램을 함께 관리한다.
-같은 이름의 `.puml`은 설계 원본이고 `.png`는 이전 시점의 렌더링 이미지다.
-이번 `main`의 `v0.2.2-beta`(`9ab3a07`) 현행화는 `.md`와 `.puml`만 갱신했다.
-PNG는 갱신하지 않았으므로 현재 구현 확인에는 텍스트 원본을 기준으로 한다.
+같은 이름의 `.puml`은 설계 원본이고 `.png`는 그 렌더링 이미지다.
+2026-10-22 개발 브랜치 기준으로 변경된 원본 12개와 대응 PNG를 PlantUML 1.2026.8로
+로컬에서 재생성·검사했다. 변경하지 않은 그림은 기존 원본과 PNG를 유지한다.
+이 문서와 그림은 개발 브랜치의 설계이며 운영 배포·출시 완료를 뜻하지 않는다.
+원본과 그림이 다르면 텍스트 원본을 기준으로 하고 대응 PNG도 함께 갱신한다.
 
 ## Files
 
@@ -25,7 +27,7 @@ PNG는 갱신하지 않았으므로 현재 구현 확인에는 텍스트 원본�
 - `05_AuthenticationSettingsAccessibility.puml` / `05_AuthenticationSettingsAccessibility.png`
   - 인증, 사용자 설정 저장, 언어 및 음성 안내 구조를 보여준다.
   - Firebase 인증과 App Check 적용 조건, 전경 Session 복구를 구분한다.
-  - 설정의 준비 점검·명시적 권한 요청과 설명 전용 데이터 이용 안내를 구분한다.
+  - '복약 및 알림'에 통합한 기기 권한·테스트 설정과 설명 전용 데이터 이용 안내를 구분한다.
 - `06_DoseSyncAndWidget.puml` / `06_DoseSyncAndWidget.png`
   - 암호화된 복약 전송 큐와 서버 처리 영수증, 홈 위젯의 연결 구조를 보여준다.
   - 본인 복용 기록과 연결 환자의 읽기 전용 조회를 분리한다.
@@ -35,6 +37,83 @@ PNG는 갱신하지 않았으므로 현재 구현 확인에는 텍스트 원본�
 
 ## Usage
 
+### 2026-10-22 개발 브랜치 기준
+
+현재 개발 브랜치의 구현을 반영한 설계이며 출시·배포 완료를 뜻하지 않는다.
+기존 유스케이스의 CSV 공유와 채팅 공유 설명은 유지하고 다음 책임 경계를 보완했다.
+
+- **기록 공유:** `ShareMedicationHistory`는 같은 환자의 활성 대화만 선택하고 세션을 확인한다.
+  서버 `ManageLinkedChat`은 양쪽 계정 잠금 뒤 삭제 상태·현재 연결을 재검증하고,
+  `ManageMedicationCare`가 계산한 기간·상태별 건수를 메시지와 Push 작업에 함께 저장한다.
+  같은 요청은 원래 요약을 돌려주며 최신 기록은 현재 권한으로 다시 읽는다. 공유 상세는
+  환자에게도 읽기 전용이고 Push에는 건강정보를 포함하지 않는다. 공유 요청 ID는 Control
+  생존 범위에만 남으며 기기 영속 큐는 아니다.
+- **필요시 대기:** `AsNeededPendingStore`와 `DoseHistoryPendingStore` 확장은 새 필요시
+  복용 의도·UUID·확정 시각을 기존 암호화 DB에 보관한다. 같은 계정의 미확정 의도를 먼저
+  복원하고 ACK 확인 후 제거한다. 정기 자동 전송 큐 및 기존 기록 정정과는 구분한다.
+- **오프라인 일정:** `OfflineScheduleWindow`와 `DoseOfflineScheduleStore` 확장은 서버의
+  시작일·종료일을 확인한 최대 14일 안에서만 앱·위젯의 정기 일정을 계산한다. 전날 완료를
+  복사하지 않으며 계정·날짜·캐시 revision을 검사한다. 처방 변경·삭제 전후 캐시를 무효화해
+  응답 유실에도 이전 처방을 살리지 않으며 변경된 처방 revision은 서버가 거절한다.
+- **세션 종료 실패:** 로그아웃 준비 중 실패하면 캡처한 동일 세션·세대에만 저장소·위젯·알림·
+  background 작업·Push 복구를 각각 시도한다. 실패한 복구를 성공으로 간주하지 않는다.
+- **삭제·원자성:** 약 삭제와 만료 정리는 원본·교체 약 관련 복약 관리 영수증의 건강정보 응답을
+  같은 트랜잭션에서 비운다. 요청 ID·서명·표식은 재전송 방지용으로 남기며 동일 요청은 410이다.
+  새 약 저장의 만료 정리도 해당 저장 트랜잭션에 포함되어 실패하면 함께 롤백한다.
+- **보호자 Push:** 정기 완료는 Outbox ID·생성 시각으로 만든 키를 서버 재시도·OS 표시·알림함에
+  재사용한다. 계정별 성공 표시 표식은 재시작 후에도 중복을 줄이지만 정확히 한 번 전달 보장은 아니다.
+- **보안 경계:** 처방 텍스트는 서버 제어와 제공자 호출 직전 모두 비식별 검사를 거치며 안전한
+  분리가 어려우면 AI 호출 전 거절한다. 운영 요청 제한 Redis는 조회 Cache와 다른 서버를 쓰고
+  시작 시 `noeviction`을 확인한다. 모든 개인정보 제거 보증이나 분산 채팅 broker는 아니다.
+- **설정:** 독립 `NotificationReadinessUI`는 제거되고 `NotificationDeviceSettings`가
+  '복약 및 알림'에 포함된다. `NotificationReadinessControl` 이름은 유지하되 약 등록 점검은 없다.
+
+흐름은 [복약 기록·공유](../sequence/MedicationCareHistory.puml),
+[필요시 대기·알림](../sequence/AsNeededCaregiverNotification.puml),
+[오프라인 일정·전송](../sequence/OfflineDoseSync.puml),
+[전체 시퀀스의 로그아웃 복구](../sequence/OverallSystemSequenceDiagram.puml)와
+[자연어 유스케이스](../usecase/UseCaseDescription.md)를 함께 확인한다.
+새 다이어그램은 추가하지 않았다. 세부 클래스는 기능별 그림이 기준이며 전체 클래스 그림은
+기존 통합 기준선에 보안 경계만 보완한다.
+
+### PNG 재생성·검사
+
+2026-10-22에 다음 12개 원본과 같은 이름의 PNG를 갱신했다. 외부 렌더링 서버에는
+원본을 전송하지 않았다. 전체 17개 원본의 구문 검사와 12개 PNG의 읽기·크기·내용 검사를
+수행했고, 각 이미지를 열어 빈 화면·오류 이미지·눈에 띄는 겹침을 확인했다.
+`00`의 한글 글꼴 누락은 Malgun Gothic으로, `02`의 겹친 관계선 라벨은 간격·배치로 보정했다.
+전체 클래스와 전체 시퀀스는 기존 `4096*4096` 축소 기준을 유지하므로 세부 내용은
+기능별 그림과 원본을 함께 확인한다. 이 검사는 애플리케이션 테스트나 PostgreSQL CI 통과를 뜻하지 않는다.
+
+같은 그림을 재생성하려면 Java와 PlantUML 1.2026.8을 준비하고 `JAVA_HOME`,
+`PLANTUML_JAR`를 각 개발 환경의 경로로 설정한다. 저장소 루트에서 실행한다.
+
+```powershell
+$root = Join-Path (Get-Location) 'docs/UML'
+$files = @(
+  'class/00_SystemOverview.puml',
+  'class/02_PrescriptionAnalysis.puml',
+  'class/03_MedicationManagement.puml',
+  'class/04_CaregiverNotifications.puml',
+  'class/05_AuthenticationSettingsAccessibility.puml',
+  'class/06_DoseSyncAndWidget.puml',
+  'class/ClassDiagram.puml',
+  'sequence/AsNeededCaregiverNotification.puml',
+  'sequence/MedicationCareHistory.puml',
+  'sequence/OfflineDoseSync.puml',
+  'sequence/OverallSystemSequenceDiagram.puml',
+  'usecase/UseCaseDiagram.puml'
+) | ForEach-Object { Join-Path $root $_ }
+& (Join-Path $env:JAVA_HOME 'bin/java.exe') `
+  '-Djava.awt.headless=true' '-DPLANTUML_LIMIT_SIZE=12000' `
+  -jar $env:PLANTUML_JAR `
+  -charset UTF-8 -tpng -failfast2 -nberr @files
+```
+
+렌더러 종료 코드는 0이며, 생성 PNG 12개는 대응 원본보다 새 파일임을 확인했다.
+
+### 기존 설계 기준선
+
 기존 v0.2.2의 취소·Session 격리, 설정·알림 저장 직렬화, 미전송 복용 기록 반영,
 연결 해제 확인, 비매일 일정, SQLite ID 보존과 Push 등록 버전 검증을 유지한다.
 추가로 직접 등록·낱알 일정 검토의 복용 주기 선택, 복약함의 다음 복용일,
@@ -42,7 +121,7 @@ PNG는 갱신하지 않았으므로 현재 구현 확인에는 텍스트 원본�
 `LinkedChatDoseRecorder`가 선택 복약 기록을 맡고, 설정 저장은 독립 설정
 ViewModel에 위임한다. 보조 그림도 이 책임과 전체 Sequence에 맞춘다.
 모든 DTO·helper를 나열하지 않으며 module-level 함수와 Dart extension을
-독립 클래스처럼 표현하지 않는다. 기존 PNG와 원본의 동기화는 이번 범위에서 제외한다.
+독립 클래스처럼 표현하지 않는다. 이번에 변경한 원본과 PNG는 위 재생성 목록대로 동기화했다.
 
 2026-10-17의 `beta/v0.2.3` 복약 관리 확장은 기능별 `03`, `04`, `05`와
 [유스케이스](../usecase/UseCaseDiagram.puml),
@@ -53,7 +132,7 @@ ViewModel에 위임한다. 보조 그림도 이 책임과 전체 Sequence에 맞
 [복약 관리·기록 문서](../../Medication%20Care%20and%20History.md)를 따른다.
 큰 그림의 글자와 하단을 보존하려면 로컬 PlantUML 실행 시 JVM 옵션
 `-DPLANTUML_LIMIT_SIZE=12000`과 `-charset UTF-8`을 사용한다.
-이번 기능별 클래스 PNG는 축소로 글자가 뭉개지지 않도록 원래 배치 크기를 보존한다.
+기능별 클래스 PNG는 각 원본에 지정된 배치·축소 크기를 따른다.
 
 홈은 약 등록·식별, 건강 관리 추천 / 근처 운영 병원·약국, 환경설정을 2×2로 표시한다.
 병원·약국 선택창에서 탐색 대상을 고르고 병원은 진료과목과 조회 조건을 분리한다.
@@ -119,7 +198,7 @@ PRN 이벤트 키는 정기 진행률과 분리해 한 번에 읽고 알림을 �
 저장 전 복약 조합이 바뀌면 409로 재조회를 요청한다. 사용자 데이터 변경 API의 잠금은 유지한다.
 
 `MedBuddyViewModel`은 기존 화면 API를 유지하면서 처방·저장 약·일정·알림·설정·건강 추천의
-독립 ViewModel에 상태 관리를 위임한다. 홈의 '연결된 환자 일정 보기'는 화면 및 음성 설정으로
+독립 ViewModel에 상태 관리를 위임한다. 홈의 '연동된 환자 일정 보기'는 화면 및 음성 설정으로
 이동할 뿐 선택값을 자동 변경하지 않는다. 알림을 모두 끈 연결 환자도 홈·위젯에서 조회한다.
 미복약 판단은 모든 인증 mode에서 서버가 담당하며, 개발 mode의 기기는 처리 완료된 요청을 조회한다.
 '10분 후 다시 알림'은 전달 건별 child Outbox, '채팅으로 알림'은 원본 건별 기존 채팅 요청을 재사용한다.
@@ -127,7 +206,7 @@ PRN 이벤트 키는 정기 진행률과 분리해 한 번에 읽고 알림을 �
 
 발표에서는 `00`부터 필요한 기능 다이어그램까지 순서대로 사용하고,
 전체 `ClassDiagram`은 상세 설명이나 부록에 배치한다. 구조 변경은 `.puml`에 먼저
-반영한다. 이미지가 필요한 경우에는 별도로 승인된 렌더링 작업에서 갱신 여부를 확인한다.
+반영하고 대응 PNG도 함께 재생성·검사한다. 이번 갱신 대상과 검사 결과는 위에 명시했다.
 
 아래 PNG 재생성 기록은 과거 작업 이력이며 이번 현행화의 산출물 상태가 아니다.
 

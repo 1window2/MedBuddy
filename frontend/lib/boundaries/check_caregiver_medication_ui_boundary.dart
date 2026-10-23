@@ -324,6 +324,7 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
         MaterialPageRoute(
           builder: (_) => MedicationHistoryUI(
             patientHash: widget.patientHash,
+            currentUserHash: widget.caregiverHash,
             readOnly: true,
             isEnglish: _isEnglish,
           ),

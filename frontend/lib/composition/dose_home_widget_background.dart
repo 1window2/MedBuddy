@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import '../controls/check_caregiver_medication_control.dart';
 import '../controls/check_schedule_control.dart';
 import '../services/dose_home_widget_service.dart';
+import '../services/dose_sync_service.dart';
 
 // 함수이름: installDoseHomeWidgetReaders
 // 함수역할: 위젯 서비스가 Control을 직접 만들지 않도록 오늘 일정과 연동 환자 일정을 읽는 함수를 넣는다.
@@ -15,6 +16,14 @@ import '../services/dose_home_widget_service.dart';
 // 반환값:
 // - 없음.
 void installDoseHomeWidgetReaders() {
+  DoseHomeWidget.readScheduleWindow = (owner, client) {
+    return CheckSchedule(
+      patientHash: owner,
+      client: client,
+    ).requestOfflineScheduleWindow(
+      expectedStartDay: doseScheduleDay(DateTime.now()),
+    );
+  };
   DoseHomeWidget.readTodaySchedules = (owner, client) {
     return CheckSchedule(
       patientHash: owner,

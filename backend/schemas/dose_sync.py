@@ -18,6 +18,7 @@ class DoseSyncRequest(BaseModel):
     medication_ids: list[Annotated[int, Field(gt=0)]] = Field(min_length=1, max_length=100)
     completed: bool
     link_id: Annotated[int, Field(gt=0)] | None = None
+    regimen_revisions: dict[Annotated[int, Field(gt=0)], Annotated[int, Field(ge=0)]] | None = Field(default=None, max_length=100)
 
     @model_validator(mode="after")
     # 함수이름: validate_chat
@@ -27,4 +28,6 @@ class DoseSyncRequest(BaseModel):
         if self.link_id is not None and not self.completed:
             raise ValueError("Chat receipts record completion only.")
         self.medication_ids = sorted(set(self.medication_ids))
+        if self.regimen_revisions is not None and set(self.regimen_revisions) != set(self.medication_ids):
+            raise ValueError("Regimen revisions must cover exactly the selected medications.")
         return self

@@ -152,6 +152,15 @@ class FirebasePushNotificationBoundary:
             and re.fullmatch(r"[0-9a-f]{64}", event_key)
             else None
         )
+        # 정기 완료도 개별 아웃박스 이벤트 키로만 묶어 다른 완료 요청은 별도로 표시한다.
+        notification_key = prn_notification_key or (
+            event_key
+            if data.get("type") == "caregiver_slot_completed"
+            and data.get("slot_key") in ("morning", "lunch", "evening", "bedtime")
+            and isinstance(event_key, str)
+            and re.fullmatch(r"[0-9a-f]{64}", event_key)
+            else None
+        )
         success_count = 0
         invalid_tokens: list[str] = []
         retryable_failure_count = 0
@@ -171,11 +180,11 @@ class FirebasePushNotificationBoundary:
                         notification=(None if data.get("type") == "caregiver_slot_missed"
                                       and data.get("action_version") == "1" else messaging.AndroidNotification(
                             channel_id="medbuddy_caregiver_updates",
-                            tag=prn_notification_key,
+                            tag=notification_key,
                         )),
                     ),
-                    apns=(messaging.APNSConfig(headers={"apns-collapse-id": prn_notification_key})
-                          if prn_notification_key is not None else None),
+                    apns=(messaging.APNSConfig(headers={"apns-collapse-id": notification_key})
+                          if notification_key is not None else None),
                 ),
                 app=self._app,
             )

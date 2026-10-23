@@ -38,6 +38,9 @@ package "Flutter Frontend" #E8F4FF {
   class MedicationHistoryUI <<UI>>
   class AsNeededScheduleSection <<UI>>
   class MedicationHistoryControl <<Control>>
+  class AsNeededPendingStore <<Service>>
+  class DoseOutboxStore <<Service>>
+  note "dose_history_pending_store.dart\nDoseHistoryPendingStore extension\n독립 객체가 아닌 암호화 저장소 확장" as HistoryPending
   class AsNeededCheckReminderControl <<Control>>
   class MedicationHistorySnapshot <<Entity>>
   class MedicationHistoryChange <<Entity>>
@@ -64,6 +67,7 @@ package "FastAPI Backend" #EAF8F0 {
   class ManageMedicationCare <<Control>>
   class AuthorizationControl <<Control>>
   note "medication_care_recording.py\napply_completion_report()" as ReportRecording
+  note "medication_care_receipts.py\nredact_medication_care_receipts()" as ReceiptRedaction
   class "CheckSchedule" as BCheckSchedule <<Control>>
   class "CheckSavedMedication" as BCheckSavedMedication <<Control>>
   class "CheckMedicationDetail" as BCheckMedicationDetail <<Control>>
@@ -98,6 +102,9 @@ MedicationHistoryUI --> MedicationHistoryControl : screen-owned history control
 AsNeededScheduleSection --> MedicationHistoryControl : borrowed patient / owned read-only scope
 MedicationHistoryControl --> MedicationHistorySnapshot
 MedicationHistoryControl --> MedicationHistoryChange : stable event + operation UUID
+MedicationHistoryControl --> AsNeededPendingStore : 새 필요시 요청 선저장·복원·ACK 제거
+AsNeededPendingStore --> DoseOutboxStore
+HistoryPending ..> DoseOutboxStore : 계정별 미확정 요청; 정기 큐와 분리
 AsNeededScheduleSection --> AsNeededCheckReminderControl : patient only
 AsNeededCheckReminderControl --> NotificationService : one future check; default off
 MedicationHistoryUI --> ExportProvider : confirmed CSV / temporary content URI
@@ -108,6 +115,7 @@ MedBuddyViewModel *-- MedBuddyReminderViewModel
 MedBuddyScheduleViewModel --> FCheckSchedule
 MedBuddyScheduleViewModel --> DoseSyncService : 기기 선저장·멱등 전송
 MedBuddySavedMedicationViewModel --> FCheckSavedMedication
+MedBuddySavedMedicationViewModel --> DoseSyncService : 변경·삭제 전후 일정 무효화 callback
 MedBuddyViewModel --> FCheckMedicationDetail
 MedBuddyReminderViewModel --> NotificationService : 알림 계획 조정
 MedicationReminderRefreshFactory --> MedicationReminderRefreshService : 읽기 함수 조립
@@ -167,8 +175,10 @@ note bottom of ManageMedicationCare
 end note
 note bottom of MedicationHistoryControl
   Session change clears data, open edits and export access.
-  Server ACK is required; no second durable offline queue.
-  PRN bulk retry keeps only unresolved in-memory intentions.
+  서버 ACK 뒤에만 저장 성공으로 표시한다.
+  새 PRN 의도는 이벤트·작업 UUID와 확정 시각을 기기에 보존한다.
+  재시작 후 같은 계정에서 먼저 복원하며 새 의도로 덮지 않는다.
+  기존 기록 정정은 영속 큐가 아니며 PRN 대기는 자동 background 전송하지 않는다.
 end note
 note bottom of ExportProvider
   Pure export helpers quote cells and escape formula prefixes.
@@ -194,9 +204,19 @@ BCheckSavedMedication --> MedicationCoursePolicy
 BCheckSavedMedication --> SavedMedicationRetentionPolicy
 BCheckSavedMedication --> SavedMedicationRepository
 BCheckSavedMedication --> DBSavedMedication
+BCheckSavedMedication --> ReceiptRedaction : 약 잠금 후 명시적 삭제
+SavedMedicationRetentionPolicy --> ReceiptRedaction : 만료 재검사 후 삭제
+ReceiptRedaction --> DBCareMetadata : 원본·교체 약 영수증 응답 비우기
+note bottom of ReceiptRedaction
+  삭제와 같은 트랜잭션에서 응답 JSON·약 참조를 비운다.
+  요청 ID·서명·비식별화 표식만 남겨 재생성을 막는다.
+  같은 요청 재전송은 410이며 삭제 전 건강정보를 반환하지 않는다.
+end note
 note bottom of BCheckSavedMedication
   새 약은 계정 저장 한도를 검사한다. 중복 약은 기존 ID를 반환한다.
   직접 등록·낱알 일정 검토도 복용 주기와 시간대를 보존한다.
+  한 저장 요청의 만료 정리와 신규 저장·한도 검사는 같은 트랜잭션이다.
+  저장 실패는 정리도 롤백하며 사전 중복 확인 응답은 정리를 커밋한다.
 end note
 
 BCheckMedicationDetail --> LocalMedicationCatalog

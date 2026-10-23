@@ -30,7 +30,6 @@ void main() {
             supportsNotifications: false,
             supportsExactAlarms: false,
             supportsSystemSettings: false,
-            loadHasMedication: () async => true,
           ),
         ),
       ),
@@ -59,19 +58,20 @@ void main() {
       find.byKey(const ValueKey('settingsMedicationAndNotificationsMenu')),
     );
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('settingsReadinessMenu')), findsOneWidget);
+    expect(find.byKey(const ValueKey('settingsReadinessMenu')), findsNothing);
     expect(find.byKey(const ValueKey('settingsDataUseMenu')), findsNothing);
-    await tester.tap(find.byKey(const ValueKey('settingsReadinessMenu')));
+    expect(find.byType(NotificationDeviceSettings), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('notificationSettingsSendTest')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('settingsBackButton')));
     await tester.pumpAndSettle();
-    expect(find.byType(NotificationReadinessUI), findsOneWidget);
-    expect(find.text('약 등록과 알림 수신 상태를 점검합니다.'), findsOneWidget);
-    await tester.tap(find.byTooltip('뒤로').last);
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('settingsReadinessMenu')), findsOneWidget);
+    expect(find.byType(NotificationDeviceSettings), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('설정에서 점검을 선택했을 때만 열고 뒤로가기 뒤 다시 열지 않는다', (tester) async {
+  testWidgets('기기 알림은 복약 및 알림 안에만 표시하고 별도 화면을 열지 않는다', (tester) async {
     final auth = AuthenticationControl.development();
     addTearDown(auth.dispose);
     await tester.pumpWidget(
@@ -84,7 +84,6 @@ void main() {
             supportsNotifications: false,
             supportsExactAlarms: false,
             supportsSystemSettings: false,
-            loadHasMedication: () async => true,
           ),
           onExtendedSettingSaveRequested: (setting) async =>
               UserSettingSaveResult(
@@ -96,20 +95,19 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.byType(NotificationReadinessUI), findsNothing);
+    expect(find.byType(NotificationDeviceSettings), findsNothing);
     await tester.tap(
       find.byKey(const ValueKey('settingsMedicationAndNotificationsMenu')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('settingsReadinessMenu')));
+    expect(find.byType(NotificationDeviceSettings), findsOneWidget);
+    expect(find.text('Setup check'), findsNothing);
+    expect(find.text('Send test notification'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('settingsBackButton')));
     await tester.pumpAndSettle();
-    expect(find.byType(NotificationReadinessUI), findsOneWidget);
-    expect(find.text('Setup check'), findsOneWidget);
-    await tester.tap(find.byTooltip('Back').last);
-    await tester.pumpAndSettle();
-    expect(find.byType(NotificationReadinessUI), findsNothing);
+    expect(find.byType(NotificationDeviceSettings), findsNothing);
     await tester.pump(const Duration(seconds: 1));
-    expect(find.byType(NotificationReadinessUI), findsNothing);
+    expect(find.byType(NotificationDeviceSettings), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

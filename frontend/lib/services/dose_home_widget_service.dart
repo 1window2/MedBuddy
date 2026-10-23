@@ -118,6 +118,7 @@ class DoseHomeWidget {
   static DoseHomeWidgetPlatform platform = const DoseHomeWidgetPlatform();
   // 서버 조회 함수. 앱 시작과 두 백그라운드 진입점에서 조립 계층이 채우며, 비어 있으면 서버 조회를 실패로 처리한다.
   static DoseWidgetTodayScheduleReader? readTodaySchedules;
+  static DoseWidgetTodayScheduleReader? readScheduleWindow;
   static DoseWidgetPatientSnapshotReader? readPatientSnapshots;
   static bool get supported => platform.supported;
   // 이 실행 환경에서 재알림을 이미 취소한 시간대. 키는 "계정|날짜"이며 현재 것만 보관한다.
@@ -162,6 +163,11 @@ class DoseHomeWidget {
   }) async {
     if (!supported) return null;
     final store = await platform.openStore();
+    await DoseSyncService.prepareOfflineCache(
+      store,
+      owner: owner,
+      now: DateTime.now(),
+    );
     final actions = await _journalActions();
     final handled = <String>[];
     for (final entry in actions) {
@@ -184,9 +190,7 @@ class DoseHomeWidget {
       expectedPatientRevision: expectedPatientRevision,
     );
     if (state == null && owner != null) return null;
-    await platform.saveState(
-      jsonEncode({...?state?.view, 'handled': handled}),
-    );
+    await platform.saveState(jsonEncode({...?state?.view, 'handled': handled}));
     await platform.updateWidget();
     if (state != null) {
       // 서버 응답을 기다리지 않고, 기기에 확정한 완료 기록으로 재알림을 취소한다.
@@ -305,6 +309,9 @@ class DoseHomeWidget {
         owner: owner,
         client: client,
         openStore: () async => store,
+        loadScheduleWindow: readScheduleWindow == null
+            ? null
+            : () => readScheduleWindow!(owner, client!),
       );
       var changed = false;
       if (upload) {
@@ -373,6 +380,7 @@ class DoseHomeWidget {
               scheduleDate: day,
               expectedRevision: revision,
             );
+            await sync.refreshScheduleWindow();
             changed = changed || await sync.cacheRevision() != revision;
           }
         } catch (_) {

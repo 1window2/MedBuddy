@@ -499,7 +499,8 @@ class NotificationService {
       final launchDetails = await _plugin.getNotificationAppLaunchDetails();
       await _plugin.initialize(
         settings: const InitializationSettings(
-          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+          // 상태 표시줄 아이콘은 투명도로만 그려지므로 불투명한 앱 아이콘 대신 흰 실루엣을 쓴다.
+          android: AndroidInitializationSettings('@drawable/ic_stat_medbuddy'),
           iOS: DarwinInitializationSettings(
             requestAlertPermission: false,
             requestBadgePermission: false,
@@ -1403,9 +1404,27 @@ class NotificationService {
   }
 }
 
-// 기존 알림 계약과 테스트 대역에 새 의무를 추가하지 않는 준비 점검 전용 기능이다.
+// 기존 알림 계약과 테스트 대역에 새 의무를 추가하지 않는 기기 알림 확인 기능이다.
 extension NotificationReadinessDiagnostics on NotificationService {
-  // 준비 점검은 권한을 요청하지 않는다. 확인 실패를 허용으로 해석하지 않는다.
+  Future<bool> supportsExactReminderSettings() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return false;
+    return await NotificationService._settingsChannel.invokeMethod<bool>(
+          'supportsExactReminderSettings',
+        ) ??
+        false;
+  }
+
+  // 켜짐·꺼짐 모두 운영체제 화면에서 변경하고 앱 복귀 시 실제 상태를 다시 읽는다.
+  Future<void> openExactReminderSettings() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      throw UnsupportedError('Exact reminder settings are unavailable.');
+    }
+    await NotificationService._settingsChannel.invokeMethod<void>(
+      'openExactReminderSettings',
+    );
+  }
+
+  // 상태 조회는 권한을 요청하지 않는다. 확인 실패를 허용으로 해석하지 않는다.
   Future<({bool? notifications, bool? medicationChannel, bool? exactAlarms})>
   readReadinessPermissions() async {
     if (kIsWeb) {

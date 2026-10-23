@@ -168,6 +168,11 @@ extension DoseWidgetStore on DoseOutboxStore {
             'medication_ids': ids,
             'completed': completing,
             'medication_names': candidate['names'],
+            'regimen_revisions': {
+              for (final schedule in projected)
+                if (ids.contains(int.tryParse(schedule.medicationID)))
+                  schedule.medicationID: schedule.regimenRevision,
+            },
           };
           await tx.insert('operations', {
             'id': actionToken,

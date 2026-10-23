@@ -26,6 +26,34 @@ class CaregiverAlertDeliveryService {
   @visibleForTesting
   static DateTime Function() clock = DateTime.now;
 
+  // 정기 완료 알림의 성공한 표시만 계정별로 보존해 재수신·재시작 후 반복 표시를 막는다.
+  // 표시 실패는 기록하지 않아 같은 이벤트의 다음 전송에서 다시 표시할 수 있다.
+  static Future<bool> presentCompletionOnce({
+    required String recipientHash,
+    required String eventKey,
+    required Future<void> Function() present,
+  }) async {
+    if (recipientHash.isEmpty || !RegExp(r'^[0-9a-f]{64}$').hasMatch(eventKey)) {
+      return false;
+    }
+    final key = markerKeyFor(recipientHash, eventKey);
+    if (!_presenting.add(key)) return false;
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.reload();
+      if (preferences.getString(NotificationInboxStore.activeUserKey) != recipientHash ||
+          preferences.get(key) != null) {
+        return false;
+      }
+      await present();
+      await preferences.setInt(key, clock().millisecondsSinceEpoch);
+      await _pruneMarkers(preferences);
+      return true;
+    } finally {
+      _presenting.remove(key);
+    }
+  }
+
   // Function Name: display
   // Description: Shows a missed-dose delivery for the signed-in recipient once, honoring the lock-screen detail setting, then records a dated delivery marker and prunes expired ones.
   // Parameters:

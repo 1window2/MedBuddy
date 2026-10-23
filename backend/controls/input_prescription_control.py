@@ -27,6 +27,7 @@ from services.prescription_parser import (
     normalize_prescription_candidates,
     strip_markdown_json_fence,
 )
+from services.prescription_privacy import deidentify_prescription_text
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +169,7 @@ class InputPrescription:
             raise ValueError(
                 f"Masked prescription text exceeds {MAX_PRESCRIPTION_TEXT_LENGTH:,} characters."
             )
+        normalized_text = deidentify_prescription_text(normalized_text)
         try:
             response_text = await self.ocr_service_boundary.extractPrescriptionTextData(
                 normalized_text

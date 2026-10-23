@@ -18,6 +18,58 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  for (final language in ['ko', 'en']) {
+    for (final hasMfa in [false, true]) {
+      testWidgets('계정은 보안과 데이터 안내 뒤에 로그아웃과 삭제를 배치한다 $language $hasMfa', (
+        tester,
+      ) async {
+        final auth = _AccountOrderAuthentication(hasMfa);
+        addTearDown(auth.dispose);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ManageUserSettingUI(
+              initialSetting: UserSetting(language: language),
+              authenticationControl: auth,
+              onExtendedSettingSaveRequested: (setting) async => _saveResult(),
+              onSignOutRequested: () async {},
+              onDeleteAccountRequested: () async {},
+            ),
+          ),
+        );
+        await _openAccount(tester);
+        final data = find.byKey(const ValueKey('settingsDataUseMenu'));
+        final signOut = find.widgetWithIcon(OutlinedButton, Icons.logout);
+        final delete = find.widgetWithIcon(
+          OutlinedButton,
+          Icons.delete_forever_outlined,
+        );
+        if (hasMfa) {
+          expect(
+            tester
+                .getBottomLeft(
+                  find.text(
+                    language == 'en'
+                        ? 'SMS two-step verification'
+                        : '문자 2단계 인증',
+                  ),
+                )
+                .dy,
+            lessThan(tester.getTopLeft(data).dy),
+          );
+        }
+        expect(
+          tester.getBottomLeft(data).dy,
+          lessThan(tester.getTopLeft(signOut).dy),
+        );
+        expect(
+          tester.getBottomLeft(signOut).dy,
+          lessThan(tester.getTopLeft(delete).dy),
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
   // 함수이름: testWidgets 콜백
   // 함수역할:
   // - 기대 동작: 문자 2단계 인증 영역과 등록 창이 한국어로 표시되고, 인증번호 요청 실패 시 컨트롤의 오류를 창 안에 보여준다.
@@ -737,8 +789,7 @@ void main() {
             // 함수이름: 설정 저장 대역
             // 함수역할: 실제 저장 없이 성공 결과를 반환한다.
             // 매개변수: setting은 편집한 설정 전체. 반환값: 저장 결과.
-            onExtendedSettingSaveRequested:
-                (setting) async => _saveResult(),
+            onExtendedSettingSaveRequested: (setting) async => _saveResult(),
           ),
         ),
       );
@@ -923,6 +974,30 @@ void main() {
     await _requestDeletion(tester, 'ko');
     expect(attempts, 2);
   });
+}
+
+// 실제 인증 요청 없이 보안 메뉴 유무에 따른 계정 화면 순서를 검증한다.
+class _AccountOrderAuthentication extends ChangeNotifier
+    implements AuthenticationControl {
+  @override
+  final bool phoneAuthenticationEnabled;
+
+  _AccountOrderAuthentication(this.phoneAuthenticationEnabled);
+
+  @override
+  bool get hasEnrolledSmsMfa => false;
+  @override
+  bool get canEnrollSmsMfa => false;
+  @override
+  bool get isAnonymous => false;
+  @override
+  String? get signedInDisplayName => 'Test';
+  @override
+  String? get signedInEmail => 'test@example.com';
+  @override
+  String? get signedInPhoneNumber => null;
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 // 함수이름: _pumpForDeletion

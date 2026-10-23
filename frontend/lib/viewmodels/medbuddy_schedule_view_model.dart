@@ -177,6 +177,8 @@ class MedBuddyScheduleViewModel {
     if (doseSync != null) {
       try {
         cacheRevision = await doseSync!.cacheRevision();
+        await doseSync!.reload();
+        cacheRevision = await doseSync!.cacheRevision();
       } catch (_) {
         // Online reads remain available when local persistence is unavailable.
       }
