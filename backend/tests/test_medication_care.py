@@ -1,7 +1,7 @@
 # 파일명: test_medication_care.py
 # 역할: 약 버전·필요시 복용·사용자 복용 보고의 권한과 기존 일정 호환성을 검증한다.
 
-from datetime import timedelta
+from datetime import UTC, timedelta
 import json
 from types import SimpleNamespace
 from uuid import uuid4
@@ -419,6 +419,18 @@ def test_history_bounds_and_future_actual_time(fk_db: Session) -> None:
     with pytest.raises(HTTPException) as error:
         care.update_history(principal(), med.id, today, "morning", report(actual_taken_at=application_now() + timedelta(minutes=2)))
     assert error.value.status_code == 422
+
+
+# 함수이름: test_history_accepts_device_clock_slightly_ahead
+# 함수역할: 기기 시계가 서버보다 몇 초 빠른 '지금 복용'을 받아들이고 서버 시각으로 저장한다.
+# 매개변수: fk_db: 격리 세션. 반환값: 없음.
+def test_history_accepts_device_clock_slightly_ahead(fk_db: Session) -> None:
+    med = medication(fk_db)
+    care = ManageMedicationCare(fk_db)
+    sent = application_now() + timedelta(seconds=5)
+    care.update_history(principal(), med.id, application_today(), "morning", report(actual_taken_at=sent))
+    stored = fk_db.query(_MedicationCompletion).filter_by(saved_medication_id=med.id).one().actual_taken_at
+    assert stored is not None and stored < sent.astimezone(UTC).replace(tzinfo=None)
 
 
 # 함수이름: test_scope_and_revoked_caregiver

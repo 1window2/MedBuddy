@@ -32,6 +32,7 @@ from services.medication_course_policy import MedicationCoursePolicy
 from services.medication_dosing_mode import medication_dosing_mode
 
 _CONFLICT = "This record has changed. Refresh it before trying again."
+_CLIENT_CLOCK_SKEW = timedelta(seconds=60)
 
 
 # 클래스명: ManageMedicationCare
@@ -354,11 +355,15 @@ class ManageMedicationCare:
                     raise HTTPException(422, "This PRN medication was not active on the selected date.")
             elif (not self.policy.is_due_on(med, day) and not correct_existing) or slot not in self.policy.read_slot_keys(med.schedule_slot_keys, med.daily_frequency):
                 raise HTTPException(422, "This medication has no scheduled dose in the selected date and slot.")
-            if request.actual_taken_at is not None:
+            actual_taken_at = request.actual_taken_at
+            if actual_taken_at is not None:
                 now = application_now()
-                actual = request.actual_taken_at.astimezone(now.tzinfo)
-                if actual > now or actual.date() < application_today() - timedelta(days=89):
+                actual = actual_taken_at.astimezone(now.tzinfo)
+                # 기기 시계가 서버보다 조금 빠르면 '지금 복용'도 미래가 되므로 재인증 시각과 같은 허용치를 둔다.
+                if actual > now + _CLIENT_CLOCK_SKEW or actual.date() < application_today() - timedelta(days=89):
                     raise HTTPException(422, "The actual dose time must be within the last 90 days and not in the future.")
+                # 허용치 안의 미래 시각은 서버가 받은 시각으로 저장해 기록이 미래에 놓이지 않게 한다.
+                actual_taken_at = min(actual, now)
             # 실제 복용 시각이 예정일과 달라도 예정일은 옮기지 않는다. 다음 날 복용도 사용자 보고로 남긴다.
             from controls.check_schedule_control import CheckSchedule
             schedule = CheckSchedule(self.db)
@@ -382,7 +387,7 @@ class ManageMedicationCare:
                     completed=bool(med.medication_status and med.medication_status_date == day), completed_at=None,
                 )
                 self.db.add(row)
-            apply_completion_report(self.db, row, status=request.status, actual_taken_at=request.actual_taken_at, reason=request.reason)
+            apply_completion_report(self.db, row, status=request.status, actual_taken_at=actual_taken_at, reason=request.reason)
             self.db.flush()
             prn_outbox_id = None
             if (
