@@ -96,7 +96,9 @@ class DoseWidgetProvider : HomeWidgetProvider() {
                         .put("slot", page.optString("slot")).toString())
                 }
                 if (!edit.commit()) {
-                    Toast.makeText(context, "기록을 저장하지 못했습니다", Toast.LENGTH_SHORT).show()
+                    val message = if (state.optString("language") == "en")
+                        "Could not save the record" else "기록을 저장하지 못했습니다"
+                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                     return
                 }
             }

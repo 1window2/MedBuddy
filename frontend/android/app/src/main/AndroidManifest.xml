@@ -72,7 +72,7 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/medication_export_paths" />
         </provider>
-        <receiver android:name=".DoseWidgetProvider" android:exported="false" android:label="MedBuddy 복약 일정">
+        <receiver android:name=".DoseWidgetProvider" android:exported="false" android:label="@string/dose_widget_label">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
