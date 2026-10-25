@@ -18,6 +18,7 @@ import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
 import 'package:medbuddy_frontend/controls/input_prescription_control.dart';
 import 'package:medbuddy_frontend/controls/manage_user_setting_control.dart';
+import 'package:medbuddy_frontend/entities/calendar_days.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_history_entity.dart';
@@ -1603,17 +1604,13 @@ Future<void> _pumpFilterApp(
             },
           {
             ..._savedMedicationJson(request, 2, '종료약'),
-            'prescription_date': today
-                .subtract(const Duration(days: 30))
-                .toIso8601String(),
+            'prescription_date': addCalendarDays(today, -30).toIso8601String(),
             'total_days': '7',
           },
           if (nonDaily) ...[
             {
               ..._savedMedicationJson(request, 4, '격일약'),
-              'prescription_date': today
-                  .subtract(const Duration(days: 1))
-                  .toIso8601String(),
+              'prescription_date': addCalendarDays(today, -1).toIso8601String(),
               'daily_frequency': '격일',
               'total_days': '14',
             },
@@ -1627,9 +1624,7 @@ Future<void> _pumpFilterApp(
           if (!onlyEnded)
             {
               ..._savedMedicationJson(request, 3, '예정약'),
-              'prescription_date': today
-                  .add(const Duration(days: 5))
-                  .toIso8601String(),
+              'prescription_date': addCalendarDays(today, 5).toIso8601String(),
               'total_days': '7',
             },
         ],
@@ -1938,17 +1933,19 @@ class _SelectionTestViewModel extends MedBuddyViewModel {
 // 함수이름: _selectionMedication
 // 함수역할: 현재 날짜 기준의 복용 중·종료·예정 약을 만든다.
 // 매개변수: id는 저장 ID, offsetDays는 시작일 차이. 반환값: 14일 복용 약.
-MedicationDetail _selectionMedication(int? id, {int offsetDays = 0}) =>
-    MedicationDetail(
-      id: id,
-      itemName: '약 $id',
-      efficacy: '',
-      usageMethod: '',
-      warning: '',
-      createdDate: DateTime.now(),
-      prescriptionDate: DateTime.now().add(Duration(days: offsetDays)),
-      totalDays: '14',
-    );
+MedicationDetail _selectionMedication(int? id, {int offsetDays = 0}) {
+  final now = DateTime.now();
+  return MedicationDetail(
+    id: id,
+    itemName: '약 $id',
+    efficacy: '',
+    usageMethod: '',
+    warning: '',
+    createdDate: now,
+    prescriptionDate: addCalendarDays(now, offsetDays),
+    totalDays: '14',
+  );
+}
 
 // 함수이름: _pumpSelectionApp
 // 함수역할: 선택 회귀 검사를 위한 루트 또는 하위 화면을 준비한다.
