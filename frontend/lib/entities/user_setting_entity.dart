@@ -3,6 +3,22 @@
 
 import 'json_value_reader.dart';
 
+// 클래스명: UserSettingDestination
+// 역할: 설정값 변경 없이 특정 설정 항목을 표시하기 위한 화면 이동 목적지다.
+enum UserSettingDestination {
+  notifications,
+  notificationReception,
+  defaultTimes,
+  notificationPrivacy,
+  fontSize,
+  language,
+  timeFormat,
+  readingSpeed,
+  homeScheduleSource,
+  homeWidget,
+  account,
+}
+
 // 함수이름: isEnglishLanguage
 // 함수역할: 앞뒤 공백과 대소문자를 무시하고 en으로 시작하는 언어 코드를 영어 표시로 판정하는 앱 공통 기준을 제공한다.
 // 매개변수:

@@ -30,6 +30,9 @@ import 'package:medbuddy_frontend/widgets/medbuddy_page_header.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_feature_updates.dart';
 import 'package:medbuddy_frontend/views/home_screen.dart';
+import 'package:medbuddy_frontend/boundaries/feature_search_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/manual_medication_entry_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/link_patient_caregiver_ui_boundary.dart';
 
 // 함수이름: _emptyResponse
 // 함수역할: 실제 통신을 막는 응답을 제공한다. 매개변수: request: 요청. 반환값: 빈 성공 응답.
@@ -190,6 +193,104 @@ void _viewport(WidgetTester tester, double width) {
 // 함수이름: main
 // 함수역할: 대화 조회와 동적 탐색 테스트를 등록한다. 매개변수: 없음. 반환값: 없음.
 void main() {
+  // 홈의 두 일정 모드에서 실제 검색 진입과 기존 설정·등록·연동 경로를 검증한다.
+  for (final source in ['self', 'patients']) {
+    testWidgets('기능 찾기는 $source 홈에서도 동일한 안전한 이동을 제공한다', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      _viewport(tester, 390);
+      final links = _Links();
+      final model = _ViewModel()
+        ..setting = UserSetting(homeScheduleSource: source);
+      final api = _HomeMonitoring();
+      final auth = AuthenticationControl.development();
+      final language = AppLanguageControl(loadPersisted: false);
+      addTearDown(model.dispose);
+      addTearDown(api.dispose);
+      addTearDown(auth.dispose);
+      addTearDown(language.dispose);
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<MedBuddyViewModel>.value(value: model),
+            ChangeNotifierProvider<AuthenticationControl>.value(value: auth),
+            ChangeNotifierProvider<AppLanguageControl>.value(value: language),
+          ],
+          child: MaterialApp(
+            theme: MedBuddyTheme.light(),
+            home: HomeScreen(
+              chatListFactory: (hash) => ManageChatList(
+                userHash: hash,
+                linkControl: links,
+                chatControl: _History(),
+              ),
+              caregiverHomeFactory: (hash) =>
+                  CheckCaregiverHome(userHash: hash, control: api),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final search = find.byKey(const ValueKey('homeFeatureSearchButton'));
+      expect(
+        tester.getCenter(search).dx,
+        lessThan(
+          tester
+              .getCenter(find.byKey(const ValueKey('homeNotificationsButton')))
+              .dx,
+        ),
+      );
+      await tester.tap(search);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('featureSearchInput')),
+        '글씨 크게',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('feature-fontSize')));
+      await tester.pumpAndSettle();
+      expect(find.byType(FeatureSearchUI), findsNothing);
+      expect(
+        find.byKey(const ValueKey('fontSizeSelector')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(model.userSetting.fontSize, const UserSetting().fontSize);
+      await tester.tap(find.byKey(const ValueKey('settingsBackButton')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('settingsBackButton')));
+      await tester.pumpAndSettle();
+      await tester.tap(search);
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('featureSearchInput')))
+            .controller!
+            .text,
+        isEmpty,
+      );
+      await tester.enterText(
+        find.byKey(const Key('featureSearchInput')),
+        '약 추가',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('feature-manualMedication')));
+      await tester.pumpAndSettle();
+      expect(find.byType(ManualMedicationEntryUI), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.tap(search);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('featureSearchInput')),
+        '가족 채팅',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('feature-chat')));
+      await tester.pumpAndSettle();
+      expect(find.byType(LinkPatientCaregiverUI), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
   // 저장 설정이 연동 조회보다 늦게 복원되어도 환자 조회와 위젯 발행 출처를 갱신한다.
   testWidgets(
     'late home source restoration refreshes linked patient schedules',

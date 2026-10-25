@@ -141,6 +141,7 @@ Future<MedicationHistoryControl> _pumpHistory(
   FutureOr<void> Function()? onChanged,
   Stream<String?>? sessionChanges,
   bool openToday = true,
+  bool initiallyShowExport = false,
 }) async {
   final control = MedicationHistoryControl(
     patientHash: 'test-patient',
@@ -169,6 +170,7 @@ Future<MedicationHistoryControl> _pumpHistory(
         isEnglish: isEnglish,
         control: control,
         onChanged: onChanged,
+        initiallyShowExport: initiallyShowExport,
       ),
     ),
   );
@@ -271,9 +273,9 @@ Future<MedicationHistoryControl> _pumpAsNeeded(
             AsNeededScheduleSection(
               patientHash: 'test-patient',
               isEnglish: isEnglish,
+              readOnly: readOnly,
               control: control,
               imageStore: imageStore,
-              readOnly: readOnly,
               emptyState: const Text('No medication today'),
             ),
           ],
@@ -306,6 +308,42 @@ void main() {
     }
   }
 
+  // 검색 바로가기는 최초 성공 조회 뒤 확인창만 열고 실제 전송·기록 변경을 하지 않는다.
+  testWidgets('공유 바로가기는 확인창만 한 번 열고 취소할 수 있다', (tester) async {
+    final server = _HistoryServer();
+    await _pumpHistory(
+      tester,
+      server,
+      openToday: false,
+      initiallyShowExport: true,
+    );
+    expect(find.byKey(const Key('history-export-start')), findsOneWidget);
+    expect(server.writes, isEmpty);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Refresh'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('history-export-start')), findsNothing);
+    expect(server.writes, isEmpty);
+  });
+
+  for (final readOnly in [false, true]) {
+    testWidgets('공유 바로가기는 조회 실패 또는 읽기 전용이면 자동으로 열지 않는다: $readOnly', (
+      tester,
+    ) async {
+      final server = _HistoryServer()..failRead = !readOnly;
+      await _pumpHistory(
+        tester,
+        server,
+        openToday: false,
+        readOnly: readOnly,
+        initiallyShowExport: true,
+      );
+      expect(find.byKey(const Key('history-export-start')), findsNothing);
+      expect(server.writes, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+  }
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() {
     SharedPreferences.setMockInitialValues({});

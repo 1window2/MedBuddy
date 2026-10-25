@@ -32,6 +32,7 @@ class MedicationHistoryUI extends StatefulWidget {
     this.currentUserHash,
     this.chatShareControl,
     this.sharedRange,
+    this.initiallyShowExport = false,
   });
 
   final String patientHash;
@@ -43,6 +44,8 @@ class MedicationHistoryUI extends StatefulWidget {
   final ShareMedicationHistory? chatShareControl;
   // 채팅에서 연 상세 화면은 공유 기간의 최신 자료만 읽기 전용으로 조회한다.
   final MedicationHistoryRange? sharedRange;
+  // 기능 검색에서 공유를 선택해도 전송은 하지 않고 기존 기간·대상 확인창만 연다.
+  final bool initiallyShowExport;
 
   // 함수역할: 조회·정정·내보내기 수명을 관리할 화면 상태를 만든다.
   @override
@@ -123,9 +126,19 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     final bound = _control;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && identical(bound, _control)) {
-        unawaited(_reload());
+        unawaited(_loadInitial(bound));
       }
     });
+  }
+
+  // 함수이름: _loadInitial
+  // 함수역할: 최초 조회가 성공하고 같은 계정 화면일 때만 요청된 내보내기 확인창을 연다.
+  Future<void> _loadInitial(MedicationHistoryControl bound) async {
+    await _reload();
+    if (!_isCurrent(bound) || !widget.initiallyShowExport || _readOnly) return;
+    if ((_showMonth ? _monthSnapshot : _control.snapshot) != null) {
+      await _export();
+    }
   }
 
   String get _recordNotice => tr(

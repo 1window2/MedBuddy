@@ -47,6 +47,7 @@ class InputPrescriptionUI extends StatelessWidget {
   final VoidCallback? onHealthRecommendationRequested;
   final VoidCallback? onUserSettingRequested;
   final VoidCallback? onNotificationsRequested;
+  final VoidCallback? onFeatureSearchRequested;
   final int unreadNotificationCount;
 
   // Function Name: InputPrescriptionUI
@@ -95,6 +96,7 @@ class InputPrescriptionUI extends StatelessWidget {
     required this.onHealthRecommendationRequested,
     required this.onUserSettingRequested,
     this.onNotificationsRequested,
+    this.onFeatureSearchRequested,
     this.unreadNotificationCount = 0,
   });
 
@@ -116,6 +118,7 @@ class InputPrescriptionUI extends StatelessWidget {
             _HomeHeader(
               text: text,
               onNotificationsPressed: onNotificationsRequested,
+              onSearchPressed: onFeatureSearchRequested,
               unreadCount: unreadNotificationCount,
             ),
             Expanded(
@@ -382,6 +385,7 @@ class InputPrescriptionUI extends StatelessWidget {
 class _HomeHeader extends StatelessWidget {
   final _HomeText text;
   final VoidCallback? onNotificationsPressed;
+  final VoidCallback? onSearchPressed;
   final int unreadCount;
 
   // 함수이름: _HomeHeader
@@ -394,6 +398,7 @@ class _HomeHeader extends StatelessWidget {
   const _HomeHeader({
     required this.text,
     required this.onNotificationsPressed,
+    required this.onSearchPressed,
     required this.unreadCount,
   });
 
@@ -455,7 +460,20 @@ class _HomeHeader extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 8),
+              if (onSearchPressed != null) ...[
+                IconButton(
+                  key: const ValueKey('homeFeatureSearchButton'),
+                  tooltip: text.isEnglish ? 'Find a feature' : '기능 찾기',
+                  onPressed: onSearchPressed,
+                  style: IconButton.styleFrom(
+                    foregroundColor: MedBuddyColors.primaryDark,
+                    minimumSize: const Size.square(48),
+                  ),
+                  icon: const Icon(Icons.search, size: 26),
+                ),
+                const SizedBox(width: 4),
+              ],
               Badge(
                 isLabelVisible: unreadCount > 0,
                 label: Text(

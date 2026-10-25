@@ -69,6 +69,7 @@ typedef ExtendedUserSettingSaver =
 class ManageUserSettingUI extends StatefulWidget {
   final UserSetting initialSetting;
   final bool initiallyShowDisplayAndVoice;
+  final UserSettingDestination? initialDestination;
   final AuthenticationControl authenticationControl;
   final Future<void> Function()? onSignOutRequested;
   final Future<void> Function()? onDeleteAccountRequested;
@@ -100,6 +101,7 @@ class ManageUserSettingUI extends StatefulWidget {
     super.key,
     required this.initialSetting,
     this.initiallyShowDisplayAndVoice = false,
+    this.initialDestination,
     required this.authenticationControl,
     this.onSignOutRequested,
     this.onDeleteAccountRequested,
@@ -151,6 +153,12 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   TTSService? _ownedTtsService;
   NotificationReadinessControl? _ownedNotificationControl;
   _SettingSection _selectedSection = _SettingSection.overview;
+  final _initialTargetKey = GlobalKey();
+
+  // 함수이름: _targetKey
+  // 함수역할: 검색으로 요청한 설정 한 곳에만 최초 스크롤 위치를 연결한다.
+  Key? _targetKey(UserSettingDestination target) =>
+      widget.initialDestination == target ? _initialTargetKey : null;
 
   // 함수이름: initState
   // 함수역할: 현재 설정을 편집용 초안으로 복사하고 주입된 음성 재생기가 없으면 TTS를 준비한다.
@@ -162,6 +170,22 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     super.initState();
     if (widget.initiallyShowDisplayAndVoice) {
       _selectedSection = _SettingSection.displayAndVoice;
+    }
+    if (widget.initialDestination case final target?) {
+      _selectedSection = switch (target) {
+        UserSettingDestination.notifications ||
+        UserSettingDestination.notificationReception ||
+        UserSettingDestination.defaultTimes ||
+        UserSettingDestination.notificationPrivacy =>
+          _SettingSection.medicationAndNotifications,
+        UserSettingDestination.account => _SettingSection.account,
+        _ => _SettingSection.displayAndVoice,
+      };
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final targetContext = _initialTargetKey.currentContext;
+        if (!mounted || targetContext == null) return;
+        unawaited(Scrollable.ensureVisible(targetContext, alignment: 0.05));
+      });
     }
     _savedSetting = _editableCopy(widget.initialSetting);
     _draft = _savedSetting;
@@ -376,6 +400,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _SettingsSection(
+          key: _targetKey(UserSettingDestination.notifications),
           title: text.isEnglish ? 'Phone settings' : '휴대폰 설정',
           children: [
             NotificationDeviceSettings(
@@ -386,6 +411,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         ),
         const SizedBox(height: 24),
         _SettingsSection(
+          key: _targetKey(UserSettingDestination.notificationReception),
           title: text.notificationReceptionTitle,
           children: [
             MedBuddySettingToggle(
@@ -433,6 +459,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         ),
         const SizedBox(height: 24),
         _SettingsSection(
+          key: _targetKey(UserSettingDestination.defaultTimes),
           title: text.defaultMedicationTimeTitle,
           description: text.defaultMedicationTimeDescription,
           children: [
@@ -455,6 +482,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         ),
         const SizedBox(height: 24),
         _SettingsSection(
+          key: _targetKey(UserSettingDestination.notificationPrivacy),
           title: text.notificationDisplayTitle,
           children: [
             MedBuddyPreferenceRow(
@@ -604,7 +632,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     required List<_SettingOption> options,
     required ValueChanged<String> onSelected,
   }) {
-    return MedBuddyPreferenceRow(
+    final row = MedBuddyPreferenceRow(
       key: ValueKey('${preferenceKey}Selector'),
       title: title,
       value: options
@@ -622,6 +650,9 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         onSelected(value);
       },
     );
+    return widget.initialDestination?.name == preferenceKey
+        ? KeyedSubtree(key: _initialTargetKey, child: row)
+        : row;
   }
 
   // 함수이름: _buildDisplayAndVoiceSettings
@@ -692,6 +723,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         ),
         const SizedBox(height: 24),
         _SettingsSection(
+          key: _targetKey(UserSettingDestination.homeWidget),
           title: text.isEnglish ? 'Home screen' : '홈 화면',
           children: [
             _buildSettingChoice(

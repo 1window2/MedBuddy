@@ -43,6 +43,11 @@ import '../widgets/dose_sync_status.dart';
 import '../services/notification_inbox_store.dart';
 import '../controls/manage_notification_inbox_control.dart';
 import '../boundaries/notification_inbox_ui_boundary.dart';
+import '../boundaries/feature_search_ui_boundary.dart';
+import '../boundaries/medication_history_ui_boundary.dart';
+import '../boundaries/medication_capture_options_ui_boundary.dart';
+import '../boundaries/data_use_info_ui_boundary.dart';
+import '../entities/feature_search_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 import '../viewmodels/medbuddy_feature_updates.dart';
@@ -110,6 +115,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   bool _isForeground = true;
+  bool _featureSearchOpen = false;
   // 약통 탭이 시스템 뒤로가기를 직접 처리하는 중인지 여부.
   bool _cabinetHandlesBack = false;
   String? _updatingHomeMedicationSlotKey;
@@ -925,7 +931,234 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       unreadNotificationCount: _notificationInbox?.unreadCount ?? 0,
       onNotificationsRequested: () =>
           _openNotificationInbox(context, viewModel),
+      onFeatureSearchRequested: () => _openFeatureSearch(viewModel),
     );
+  }
+
+  // 함수이름: _openFeatureSearch
+  // 함수역할: 검색이 끝난 뒤에도 같은 계정인지 확인하고 기존 진입점으로 이동한다.
+  // 매개변수: viewModel은 검색을 시작한 세션의 화면 모델. 반환값: 이동 화면 종료.
+  Future<void> _openFeatureSearch(MedBuddyViewModel viewModel) async {
+    if (_featureSearchOpen) return;
+    _featureSearchOpen = true;
+    final owner = viewModel.patientHash;
+    AppFeature? feature;
+    try {
+      feature = await Navigator.push<AppFeature>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => FeatureSearchUI(
+            isEnglish: viewModel.userSetting.isEnglish,
+            widgetSupported: DoseHomeWidget.supported,
+          ),
+        ),
+      );
+    } finally {
+      _featureSearchOpen = false;
+    }
+    if (!mounted ||
+        feature == null ||
+        !identical(context.read<MedBuddyViewModel>(), viewModel) ||
+        viewModel.patientHash != owner) {
+      return;
+    }
+    final settingDestination = switch (feature) {
+      AppFeature.notifications => UserSettingDestination.notifications,
+      AppFeature.notificationReception =>
+        UserSettingDestination.notificationReception,
+      AppFeature.defaultTimes => UserSettingDestination.defaultTimes,
+      AppFeature.notificationPrivacy =>
+        UserSettingDestination.notificationPrivacy,
+      AppFeature.fontSize => UserSettingDestination.fontSize,
+      AppFeature.language => UserSettingDestination.language,
+      AppFeature.timeFormat => UserSettingDestination.timeFormat,
+      AppFeature.readingSpeed => UserSettingDestination.readingSpeed,
+      AppFeature.homeSchedule => UserSettingDestination.homeScheduleSource,
+      AppFeature.homeWidget => UserSettingDestination.homeWidget,
+      AppFeature.account => UserSettingDestination.account,
+      _ => null,
+    };
+    if (settingDestination != null) {
+      await _openUserSettings(
+        context,
+        viewModel,
+        initialDestination: settingDestination,
+      );
+      return;
+    }
+    switch (feature) {
+      case AppFeature.manualMedication:
+        _openManualMedicationEntry(context, viewModel);
+      case AppFeature.schedule:
+        _selectDestination(MedBuddyDestination.schedule);
+      case AppFeature.asNeeded:
+        await Navigator.push<void>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const CheckScheduleUI(initialSlotKey: 'as_needed'),
+          ),
+        );
+      case AppFeature.medicationCabinet:
+        _selectDestination(MedBuddyDestination.medicationCabinet);
+      case AppFeature.medicationHistory:
+      case AppFeature.historySharing:
+        await Navigator.push<void>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => MedicationHistoryUI(
+              patientHash: owner,
+              currentUserHash: owner,
+              isEnglish: viewModel.userSetting.isEnglish,
+              initiallyShowExport: feature == AppFeature.historySharing,
+              onChanged: () async {
+                if (!mounted ||
+                    !identical(context.read<MedBuddyViewModel>(), viewModel) ||
+                    viewModel.patientHash != owner) {
+                  return;
+                }
+                await viewModel.refreshMedicationSchedule();
+              },
+            ),
+          ),
+        );
+      case AppFeature.caregiverLink:
+        await _openPatientCaregiverLink(context, viewModel);
+      case AppFeature.caregiverSchedule:
+        await _openSearchedPatient(viewModel);
+      case AppFeature.chat:
+        // 연동이 없거나 확인에 실패하면 대화 권한을 추정하지 않고 연결 관리로 안내한다.
+        if (_chatList?.hasError == false &&
+            (_chatList?.links.isNotEmpty ?? false)) {
+          _selectDestination(MedBuddyDestination.chat);
+        } else {
+          await _openPatientCaregiverLink(context, viewModel);
+        }
+      case AppFeature.notificationInbox:
+        _openNotificationInbox(context, viewModel);
+      case AppFeature.healthRecommendation:
+        await Navigator.push<void>(
+          context,
+          MaterialPageRoute(builder: (_) => const HealthRecommendationUI()),
+        );
+      case AppFeature.nearbyPharmacy:
+      case AppFeature.nearbyHospital:
+        await Navigator.push<void>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => CheckNearbyPharmacyUI(
+              userSetting: viewModel.userSetting.copyWith(userHash: owner),
+              hospitals: feature == AppFeature.nearbyHospital,
+            ),
+          ),
+        );
+      case AppFeature.prescription:
+        final source = await showPrescriptionImageSourceOptions(
+          context: context,
+          userSetting: viewModel.userSetting,
+        );
+        if (!mounted ||
+            !identical(context.read<MedBuddyViewModel>(), viewModel) ||
+            viewModel.patientHash != owner) {
+          return;
+        }
+        if (source == PrescriptionImageSource.camera) {
+          await _requestGuidedPrescriptionImage(context, viewModel);
+        } else if (source == PrescriptionImageSource.gallery) {
+          await viewModel.requestPrescriptionImageFromGallery();
+        }
+      case AppFeature.pillIdentification:
+        await Navigator.push<void>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => PillIdentificationUI(
+              userSetting: viewModel.userSetting,
+              captureMode: PillCaptureMode.singlePhoto,
+              onSaveRequested: viewModel.saveIdentifiedPill,
+              onBatchSaveRequested: viewModel.saveIdentifiedPills,
+            ),
+          ),
+        );
+      case AppFeature.dataUse:
+        await Navigator.push<void>(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                DataUseInfoUI(isEnglish: viewModel.userSetting.isEnglish),
+          ),
+        );
+      default:
+        break;
+    }
+  }
+
+  // 함수이름: _openSearchedPatient
+  // 함수역할: 보호자 본인의 기록 대신 현재 연결된 환자를 선택하고 기존 권한 재검증 경로로 연다.
+  Future<void> _openSearchedPatient(MedBuddyViewModel viewModel) async {
+    final owner = viewModel.patientHash;
+    await _refreshChatList();
+    if (!mounted ||
+        !identical(context.read<MedBuddyViewModel>(), viewModel) ||
+        viewModel.patientHash != owner) {
+      return;
+    }
+    final chat = _chatList;
+    final links = chat?.hasError == false
+        ? chat!.links.where((link) => link.caregiverHash == owner).toList()
+        : <PatientCaregiverLink>[];
+    if (links.isEmpty) {
+      await _openPatientCaregiverLink(context, viewModel);
+      return;
+    }
+    final selected = links.length == 1
+        ? links.single
+        : await showModalBottomSheet<PatientCaregiverLink>(
+            context: context,
+            isScrollControlled: true,
+            builder: (sheetContext) => SafeArea(
+              child: DraggableScrollableSheet(
+                expand: false,
+                initialChildSize: 0.5,
+                minChildSize: 0.25,
+                maxChildSize: 0.85,
+                builder: (_, scroll) => ListView(
+                  controller: scroll,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Text(
+                        viewModel.userSetting.isEnglish
+                            ? 'Choose a patient'
+                            : '환자 선택',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    for (final link in links)
+                      ListTile(
+                        leading: const Icon(Icons.person_outline),
+                        title: Text(
+                          chat!.peerName(
+                            link,
+                            isEnglish: viewModel.userSetting.isEnglish,
+                          ),
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => Navigator.pop(sheetContext, link),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          );
+    if (!mounted ||
+        selected == null ||
+        !identical(context.read<MedBuddyViewModel>(), viewModel) ||
+        viewModel.patientHash != owner) {
+      return;
+    }
+    await _openCaregiverPatient(viewModel, selected);
   }
 
   // 함수역할: 복용약 유무가 아닌 사용자가 저장한 홈 일정 선택만 적용한다.
@@ -1188,6 +1421,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     BuildContext context,
     MedBuddyViewModel viewModel, {
     bool initiallyShowDisplayAndVoice = false,
+    UserSettingDestination? initialDestination,
   }) async {
     final authenticationControl = context.read<AuthenticationControl>();
     final appLanguageControl = context.read<AppLanguageControl>();
@@ -1214,6 +1448,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         builder: (context) => ManageUserSettingUI(
           initialSetting: viewModel.userSetting,
           initiallyShowDisplayAndVoice: initiallyShowDisplayAndVoice,
+          initialDestination: initialDestination,
           authenticationControl: authenticationControl,
           // 함수이름: _openUserSettings.onMedicationScheduleRequested callback
           // 함수역할: 처방 분석 단계와 앱 탐색 목적지별 활성 화면에서 캡처된 작업 `Navigator.push(context, MaterialPageRoute(builder: (context) => const CheckScheduleUI())); MaterialPageRoute(builder: (context) => const CheckScheduleUI())`을 실행한다.
