@@ -388,7 +388,9 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
         saved &&
         _saveError == null &&
         !_control.sessionInvalidated) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      // 안내는 앱 전체 메신저에 떠 일정 화면을 떠난 뒤에도 남으므로, 결과도 같은 메신저로 알린다.
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.showSnackBar(
         resumedEarlierDay
             // 지난날 기록은 오늘 목록에서 되돌릴 수 없으므로 실행 취소 대신 다시 누르라고 알린다.
             ? SnackBar(
@@ -408,7 +410,7 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
                 action: SnackBarAction(
                   key: const Key('prn-undo-record'),
                   label: tr('실행 취소', 'Undo'),
-                  onPressed: () => unawaited(_undo(recordedKeys)),
+                  onPressed: () => unawaited(_undo(recordedKeys, messenger)),
                 ),
               ),
       );
@@ -418,18 +420,25 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
   // 함수이름: _undo
   // 함수역할: 잘못 누른 필요시 복용을 바로 되돌린다. 이번 동작으로 만든 기록만 최신 버전으로 다시 읽어
   //   '미기록'으로 바꾸며, 다른 화면에서 이미 정정한 기록은 건드리지 않는다. 이미 보낸 보호자 알림은
-  //   회수되지 않지만 보호자 화면의 횟수는 다음 조회에서 바로잡힌다.
-  // 매개변수: keys: 되돌릴 기록 키. 반환값: 없음.
-  Future<void> _undo(Set<String> keys) async {
-    if (_readOnly || _locked || keys.isEmpty) return;
-    setState(() {
+  //   회수되지 않지만 보호자 화면의 횟수는 다음 조회에서 바로잡힌다. 일정 화면을 떠난 뒤 눌러도
+  //   정기 복용의 실행 취소처럼 공유 기록 Control로 되돌린다. 화면이 만든 Control은 화면과 함께 닫혔다.
+  // 매개변수: keys: 되돌릴 기록 키, messenger: 안내를 띄운 메신저. 반환값: 없음.
+  Future<void> _undo(Set<String> keys, ScaffoldMessengerState messenger) async {
+    if ((!mounted && widget.control == null) ||
+        _readOnly ||
+        _locked ||
+        keys.isEmpty) {
+      return;
+    }
+    void update(VoidCallback change) => mounted ? setState(change) : change();
+    update(() {
       _recording = true;
       _saveError = null;
     });
     var undone = false;
+    String? failure;
     try {
       await _readToday();
-      if (!mounted) return;
       final entries = _control.snapshot!.items
           .where(
             (entry) =>
@@ -447,32 +456,31 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
           ),
         );
         undone = true;
-        if (!mounted) return;
       }
     } catch (_) {
-      if (mounted && !_control.sessionInvalidated) {
-        _saveError = tr(
+      if (!_control.sessionInvalidated) {
+        failure = tr(
           '복용 기록을 취소하지 못했어요. 복약 기록에서 해당 기록을 \'미기록\'으로 바꿔 주세요.',
           'The dose could not be undone. Change it to "Not recorded" in the dose history.',
         );
       }
     } finally {
-      if (mounted) {
-        setState(() => _recording = false);
-        await _load();
-      }
+      update(() {
+        _recording = false;
+        if (mounted) _saveError = failure;
+      });
+      if (mounted) await _load();
     }
-    if (mounted &&
-        undone &&
-        _saveError == null &&
-        !_control.sessionInvalidated) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(tr('복용 기록을 취소했어요.', 'Dose record undone.')),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
+    if (_control.sessionInvalidated || (failure == null && !undone)) return;
+    // 화면에 남아 있으면 실패는 카드에 보이고, 떠난 뒤라면 안내로만 알릴 수 있다.
+    if (failure != null && mounted) return;
+    if (mounted && _saveError != null) return;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(failure ?? tr('복용 기록을 취소했어요.', 'Dose record undone.')),
+        duration: Duration(seconds: failure == null ? 2 : 6),
+      ),
+    );
   }
 
   Future<void> _configureReminder() async {

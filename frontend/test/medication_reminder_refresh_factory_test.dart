@@ -128,9 +128,16 @@ void main() {
               'success': true,
               // 서버처럼 조회 기간을 함께 보내 오프라인 저장 검증을 통과한다.
               'window_start': doseScheduleDay(now),
-              'window_end': doseScheduleDay(
-                DateTime(now.year, now.month, now.day + 13),
-              ),
+              // 끝 날짜는 한국 날짜 문자열에서 계산한다. 기기 자정을 한국 날짜로 바꾸면 한국보다
+              // 동쪽 시간대에서 하루 이르게 나온다.
+              'window_end': () {
+                final start = DateTime.parse(doseScheduleDay(now));
+                return DateTime(
+                  start.year,
+                  start.month,
+                  start.day + 13,
+                ).toIso8601String().substring(0, 10);
+              }(),
               'data': [
                 medication().toJson(),
                 if (secondMorningMedication) medication(id: '92').toJson(),

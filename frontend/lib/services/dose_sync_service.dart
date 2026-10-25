@@ -241,25 +241,32 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
       final revision = await _store!.cacheRevision(owner);
       final courses = await loader();
       if (_disposed || day != doseScheduleDay(clock())) return;
-      await cacheScheduleWindow(
+      final saved = await cacheScheduleWindow(
         courses,
         startDay: day,
         expectedRevision: revision,
       );
+      // 받는 사이 저장 버전이 바뀌면(복용 전송 확인도 버전을 올린다) 낡았을 수 있는 기간을 버리고
+      // 다시 받는다. 다시 받지 않으면 기간 일정 없이 남는다. 계정이 바뀌어 거부된 경우는 반복하지 않는다.
+      if (!saved &&
+          !_disposed &&
+          await _store!.cacheRevision(owner) != revision) {
+        _windowRefreshAgain = true;
+      }
     } catch (_) {
       // 네트워크 실패는 이미 받은 기간을 늘리거나 기존 일정 조회를 실패로 바꾸지 않는다.
     }
   }
 
-  Future<void> cacheScheduleWindow(
+  Future<bool> cacheScheduleWindow(
     List<MedicationSchedule> courses, {
     required String startDay,
     required int expectedRevision,
   }) async {
     await initialize();
-    if (_disposed || startDay != doseScheduleDay(clock())) return;
+    if (_disposed || startDay != doseScheduleDay(clock())) return false;
     final start = DateTime.parse(startDay);
-    await _store!.saveOfflineScheduleWindow(owner, {
+    return _store!.saveOfflineScheduleWindow(owner, {
       'start': startDay,
       'end': DateTime(
         start.year,

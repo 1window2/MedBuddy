@@ -289,6 +289,181 @@ Future<MedicationHistoryControl> _pumpAsNeeded(
 
 // 함수역할: 보호자·수정·내보내기와 실패 경로의 UI 회귀 테스트를 등록한다.
 void main() {
+  // 하루 기록을 불러오는 동안 뒤로가기를 누르면 무시하지 않고 화면을 닫는다(느린 연결에서 최대 25초).
+  testWidgets('back while a day loads closes the history', (tester) async {
+    final server = _HistoryServer();
+    final control = MedicationHistoryControl(
+      patientHash: 'test-patient',
+      pendingStore: FakeAsNeededPendingStore(),
+      client: MockClient(server.respond),
+      now: () => historyTestNow,
+      sessionKeyProvider: () => 'test-user',
+    );
+    addTearDown(control.dispose);
+    final navigator = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: navigator,
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        supportedLocales: const [Locale('en'), Locale('ko')],
+        home: const Scaffold(body: Text('home-root')),
+      ),
+    );
+    unawaited(
+      navigator.currentState!.push(
+        MaterialPageRoute<void>(
+          builder: (_) => MedicationHistoryUI(
+            patientHash: 'test-patient',
+            isEnglish: true,
+            control: control,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final today = find.byKey(const ValueKey('history-month-day-2026-10-17'));
+    await tester.scrollUntilVisible(
+      today,
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byType(ListView),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.tap(today);
+    await tester.pumpAndSettle();
+    server.pendingRead = Completer<http.Response>();
+    await tester.tap(find.byKey(const Key('history-previous-day')));
+    await tester.pump();
+    expect(control.busy, isTrue);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(MedicationHistoryUI), findsNothing);
+    expect(find.text('home-root'), findsOneWidget);
+    server.pendingRead!.complete(
+      historyTestResponse(
+        historyTestBody(start: '2026-10-16', end: '2026-10-16', items: []),
+      ),
+    );
+    await tester.pumpAndSettle();
+  });
+
+  // 채팅 카드로 연 기간 화면은 앱이 다시 그려져도(토큰 갱신·언어 변경) 같은 기간이면 다시 시작하지 않는다.
+  testWidgets('a rebuilt chat-shared history keeps its session', (tester) async {
+    var reads = 0;
+    final history = MedicationHistoryControl(
+      patientHash: 'test-patient',
+      readOnly: true,
+      client: MockClient((request) async {
+        reads++;
+        return historyTestResponse(
+          historyTestBody(
+            start: request.url.queryParameters['start_date']!,
+            end: request.url.queryParameters['end_date']!,
+            items: [historyTestEntry(date: '2026-10-17')],
+          ),
+        );
+      }),
+      now: () => historyTestNow,
+      sessionKeyProvider: () => 'test-user',
+    );
+    addTearDown(history.dispose);
+    late StateSetter rebuildRoot;
+    final navigator = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(
+      StatefulBuilder(
+        builder: (context, setState) {
+          rebuildRoot = setState;
+          return MaterialApp(
+            navigatorKey: navigator,
+            localizationsDelegates: GlobalMaterialLocalizations.delegates,
+            supportedLocales: const [Locale('en'), Locale('ko')],
+            home: const Scaffold(body: Text('home')),
+          );
+        },
+      ),
+    );
+    unawaited(
+      navigator.currentState!.push(
+        MaterialPageRoute<void>(
+          // 채팅 카드처럼 다시 그릴 때마다 새 기간 객체를 만든다.
+          builder: (_) => MedicationHistoryUI(
+            patientHash: 'test-patient',
+            readOnly: true,
+            isEnglish: true,
+            control: history,
+            sharedRange: MedicationHistoryRange(
+              DateTime.utc(2026, 10, 16),
+              DateTime.utc(2026, 10, 17),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(reads, 1);
+    rebuildRoot(() {});
+    await tester.pumpAndSettle();
+    expect(history.sessionInvalidated, isFalse);
+    expect(reads, 1);
+  });
+
+  // 실행 취소 안내는 일정 화면을 떠난 뒤에도 남으므로, 그때 눌러도 실제로 되돌려야 한다.
+  testWidgets('the as-needed undo still works after leaving the schedule', (
+    tester,
+  ) async {
+    final server = _HistoryServer();
+    final control = MedicationHistoryControl(
+      patientHash: 'test-patient',
+      pendingStore: FakeAsNeededPendingStore(),
+      client: MockClient(server.respond),
+      now: () => historyTestNow,
+      sessionKeyProvider: () => 'test-user',
+    );
+    addTearDown(control.dispose);
+    final navigator = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: navigator,
+        theme: MedBuddyTheme.light(),
+        home: const Scaffold(body: Text('home')),
+      ),
+    );
+    unawaited(
+      navigator.currentState!.push(
+        MaterialPageRoute<void>(
+          builder: (_) => Scaffold(
+            body: ListView(
+              children: [
+                AsNeededScheduleSection(
+                  patientHash: 'test-patient',
+                  isEnglish: true,
+                  control: control,
+                  emptyState: const Text('No medication today'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('prn-undo-record')), findsOneWidget);
+
+    navigator.currentState!.pop();
+    await tester.pumpAndSettle();
+    expect(find.text('home'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('prn-undo-record')));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(server.writes, hasLength(2));
+    expect(server.writes.last['status'], 'unrecorded');
+    expect(find.text('Dose record undone.'), findsOneWidget);
+  });
   for (final readOnly in [false, true]) {
     for (final isEnglish in [false, true]) {
       testWidgets('필요시 복용량 번역: 보호자=$readOnly 영어=$isEnglish', (tester) async {

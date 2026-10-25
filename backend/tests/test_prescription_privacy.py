@@ -60,6 +60,8 @@ def test_preserves_medication_and_explicit_prescription_dates(safe: str) -> None
 @pytest.mark.parametrize(("private_line", "leftover"), [
     ("서울특별시 종로구 사직로 100", None),
     ("서울특별시 종로구", None),
+    ("역삼동 123-4", None),
+    ("테헤란로 12길 3", None),
     ("홍길동님", None),
     ("홍길동 님", None),
     ("36세 / 남", None),
@@ -93,6 +95,13 @@ def test_identifying_lines_without_medication_are_left_out(private_line, leftove
     ("세티리진정 1정 아침저녁으로 1정씩", "세티리진정 1정 아침저녁으로 1정씩"),
     ("이부프로펜정 필요하면 1정, 통증이 심하면 2정", "이부프로펜정 필요하면 1정, 통증이 심하면 2정"),
     ("다음 진료일 2026-11-01\n" + _MEDICATION, "다음 진료일 2026-11-01\n" + _MEDICATION),
+    # 두 자리 이상 숫자도 끝까지 읽고 단위를 본다(번지로 오인하면 거부되거나 용법 줄이 빠졌다).
+    ("타이레놀정 500mg\n아프면 12시간 간격으로 1정씩 복용", "타이레놀정 500mg\n아프면 12시간 간격으로 1정씩 복용"),
+    ("챔프시럽\n열나면 10ml씩 복용", "챔프시럽\n열나면 10ml씩 복용"),
+    ("세티리진정 10mg 1일 1회 자기전\n가려우면 24시간에 1정까지", "세티리진정 10mg 1일 1회 자기전\n가려우면 24시간에 1정까지"),
+    # OCR이 띄운 "4 주"와 다음 줄의 "소…" 약 이름은 주소 라벨이 아니다.
+    ("복용기간 4 주\n소론도정 5mg 1일 1회", "복용기간 4 주\n소론도정 5mg 1일 1회"),
+    ("4 주 소론도정 5mg", "4 주 소론도정 5mg"),
 ])
 def test_realistic_prescription_and_bag_text_is_analysed(source: str, expected: str) -> None:
     assert deidentify_prescription_text(source) == expected

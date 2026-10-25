@@ -178,6 +178,8 @@ void main() {
         DoseSyncBackgroundScheduler.platform = work;
         DoseHomeWidget.platform = widget;
         final originalSession = auth.session;
+        final registeredBefore = notifications.registrations.length;
+        final cancelledBefore = notifications.cancellations.length;
         var providerCalled = false;
         await expectLater(
           auth.signOutForTest(() async {
@@ -197,18 +199,25 @@ void main() {
         );
         expect(work.registrations, greaterThan(0));
         expect(widget.latest?['date'], isNotNull);
-        expect(
-          notifications.registrations.any(
-            (r) => r.slotKey == 'morning' && r.hour == 8 && r.minute == 17,
-          ),
-          isTrue,
-        );
-        expect(
-          notifications.registrations.any(
-            (r) => r.slotKey == 'evening' && r.hour == 19 && r.minute == 23,
-          ),
-          isTrue,
-        );
+        if (failure != 'reminders') {
+          // 알림 취소 전에 멈췄으면 예약된 알림은 그대로이므로 다시 계산하지 않는다. 다시 계산하면 기간
+          // 일정이 없을 때 오늘 이후의 알림이 지워졌다.
+          expect(notifications.registrations, hasLength(registeredBefore));
+          expect(notifications.cancellations, hasLength(cancelledBefore));
+        } else {
+          expect(
+            notifications.registrations.any(
+              (r) => r.slotKey == 'morning' && r.hour == 8 && r.minute == 17,
+            ),
+            isTrue,
+          );
+          expect(
+            notifications.registrations.any(
+              (r) => r.slotKey == 'evening' && r.hour == 19 && r.minute == 23,
+            ),
+            isTrue,
+          );
+        }
         expect(
           await harness.service.record(
             medicationIds: [91],

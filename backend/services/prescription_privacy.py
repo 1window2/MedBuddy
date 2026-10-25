@@ -8,8 +8,8 @@ import unicodedata
 _PRIVATE_LABEL = re.compile(
     r"환\s*자\s*(?:명|성\s*명|이\s*름|번\s*호|정보)|수진자(?:\s*(?:명|성명))?|"
     r"(?<![가-힣])성\s*명|주\s*민\s*(?:등\s*록)?\s*번\s*호|외국인\s*등록\s*번호|"
-    # "4주 소요"처럼 기간 뒤에 오는 "주 소"는 주소 라벨이 아니다.
-    r"생\s*년\s*월\s*일|생일|(?<![\d가-힣])주\s*소(?!요)|전화\s*번호|연락처|휴대폰|보험\s*번호|"
+    # "4주 소요"·"4 주 소론도정"처럼 기간 뒤에 오는 "주 소"는 주소 라벨이 아니다.
+    r"생\s*년\s*월\s*일|생일|(?<![\d가-힣])(?<!\d\s)주\s*소(?!요)|전화\s*번호|연락처|휴대폰|보험\s*번호|"
     r"차트\s*번호|의무\s*기록\s*번호|"
     r"\b(?:patient(?:\s*(?:name|id|number|information))?|(?<!drug )(?<!medication )name|dob|"
     r"date\s+of\s+birth|birth\s*date|address|phone|telephone|mobile|email|"
@@ -48,11 +48,12 @@ _AGE_GENDER = re.compile(
 )
 _NAME_WITH_HONORIFIC = re.compile(r"(?<![가-힣])[가-힣]{2,5}\s*(?:님|귀하)(?![가-힣])")
 # 숫자 뒤가 복용 단위이면 주소가 아니라 용법이다("아프면 1정", "12시간 간격으로 1캡슐").
-# 조사 "으로"로 끝나는 낱말("아침저녁으로")도 도로명이 아니다.
+# 조사 "으로"로 끝나는 낱말("아침저녁으로")도 도로명이 아니다. 숫자는 끝까지 읽은 뒤 단위를 본다.
+# 그러지 않으면 "아프면 12시간"의 "1"만 번지로 보고 "2시간"을 단위가 아니라고 판단한다.
 _DOSE_AFTER_NUMBER = r"(?!\s*(?:정|캡슐|캅셀|포|회|일|시간|분|번|알|방울|mg|ml|g|cc|%))"
 _ADDRESS = re.compile(
-    r"[가-힣]{2,}(?<!으)(?:대로|로|길)\s*\d+(?:-\d+)?" + _DOSE_AFTER_NUMBER + r"(?:번길)?|"
-    r"[가-힣]{2,}(?:동|읍|면|리)\s*\d+(?:-\d+)?" + _DOSE_AFTER_NUMBER + r"|"
+    r"[가-힣]{2,}(?<!으)(?:대로|로|길)\s*\d+(?:-\d+)?(?![\d-])" + _DOSE_AFTER_NUMBER + r"(?:번길)?|"
+    r"[가-힣]{2,}(?:동|읍|면|리)\s*\d+(?:-\d+)?(?![\d-])" + _DOSE_AFTER_NUMBER + r"|"
     r"\d+\s*동\s*\d+\s*호|"
     r"[가-힣]+(?:시|도)\s+[가-힣]+(?:시|군|구)\b",
     re.IGNORECASE,
@@ -128,6 +129,9 @@ def deidentify_prescription_text(text: str) -> str:
     if not safe_text or not safe_text.replace("[REDACTED]", "").strip():
         raise PrescriptionPrivacyError(_REJECT_MESSAGE)
     # 변경 후에도 고위험 표기가 남으면 제공자 호출 전에 차단한다.
-    if any(pattern.search(safe_text) for pattern in (_RRN, _PHONE, _EMAIL, _PRIVATE_LABEL)):
+    # 번호는 줄바꿈으로 나뉘어도 잡되, 라벨은 줄마다 본다("4 주" 다음 줄의 "소론도정"은 주소 라벨이 아니다).
+    if any(pattern.search(safe_text) for pattern in (_RRN, _PHONE, _EMAIL)) or any(
+        _PRIVATE_LABEL.search(line) for line in safe_text.splitlines()
+    ):
         raise PrescriptionPrivacyError(_REJECT_MESSAGE)
     return safe_text

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:cryptography/cryptography.dart';
@@ -384,6 +385,45 @@ void main() {
       },
     );
   }
+
+  // 기간 일정을 받는 사이 복용 전송이 확인되면 저장 버전이 올라 그 기간이 거부된다. 다시 받아 두지
+  // 않으면 오프라인으로 돌아온 사용자가 다음 날 기록할 일정이 없다.
+  test('a dose upload during the window download still leaves a window', () async {
+    final windowRead = Completer<List<MedicationSchedule>>();
+    var windowReads = 0;
+    final windowed = DoseSyncService(
+      owner: 'owner',
+      client: client,
+      openStore: () async => store,
+      clock: () => now,
+      loadScheduleWindow: () {
+        windowReads++;
+        return windowRead.future;
+      },
+    );
+    addTearDown(windowed.dispose);
+    await windowed.initialize();
+    await windowed.cacheSchedules([course(1)], scheduleDate: '2026-10-21');
+    status = 200;
+    expect(
+      await windowed.record(
+        medicationIds: [1],
+        slotKey: 'morning',
+        completed: true,
+      ),
+      isTrue,
+    );
+    await windowed.drain();
+    expect(await store.pending('owner'), isEmpty);
+    windowRead.complete([course(1)]);
+    await pumpEventQueue();
+    expect(windowReads, 2);
+    expect(await store.readOfflineScheduleWindow('owner'), isNotNull);
+    now = DateTime.utc(2026, 10, 22, 3);
+    await windowed.reload();
+    expect(windowed.hasCache, isTrue);
+    expect(windowed.schedules.map((s) => s.medicationID), ['1']);
+  });
 
   test(
     'server window dates must match before persisting offline support',

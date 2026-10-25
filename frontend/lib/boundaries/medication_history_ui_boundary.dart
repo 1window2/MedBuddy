@@ -185,7 +185,9 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
         oldWidget.readOnly != widget.readOnly ||
         oldWidget.currentUserHash != widget.currentUserHash ||
         oldWidget.chatShareControl != widget.chatShareControl ||
-        oldWidget.sharedRange != widget.sharedRange ||
+        // 채팅 카드는 경로가 다시 그려질 때마다 같은 기간의 새 객체를 넘기므로 날짜로 비교한다.
+        oldWidget.sharedRange?.start != widget.sharedRange?.start ||
+        oldWidget.sharedRange?.end != widget.sharedRange?.end ||
         oldWidget.control != widget.control) {
       if (oldWidget.chatShareControl == null) _chatShare?.dispose();
       _control.invalidateSession();
@@ -870,7 +872,8 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
       );
       // 하루 기록에서 뒤로 가면 달력으로 돌아가고, 달력에서 뒤로 가면 화면을 닫는다.
       return PopScope(
-        canPop: _showMonth || widget.sharedRange != null,
+        // 날짜 조회를 기다리는 중에는 월 보기로 돌아갈 수 없으므로 뒤로가기가 화면을 닫게 한다.
+        canPop: _showMonth || widget.sharedRange != null || _control.busy,
         onPopInvokedWithResult: (didPop, _) {
           if (!didPop) unawaited(_openMonth());
         },

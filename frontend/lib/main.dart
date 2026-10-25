@@ -366,6 +366,9 @@ class _MedBuddyAppState extends State<MedBuddyApp> with WidgetsBindingObserver {
         identical(_settingsViewModel, viewModel);
     // 서버 요청이 필요한 푸시 토큰 해제만 실패할 수 있다. 이를 먼저 해서, 오프라인 등으로
     // 로그아웃이 중단되어도 복용 기록 대기열과 복약 알림이 지워진 채 남지 않게 한다.
+    // 알림 취소 전에 멈췄으면 예약된 14일 알림이 그대로이므로 다시 계산하지 않는다. 다시 계산하면
+    // 기간 일정이 없을 때 오늘 알림만 남는다.
+    var remindersTouched = false;
     try {
       await push?.stop(requireServerUnregistration: true);
       // 오프라인에서 기록해 아직 올리지 못한 복용은 토큰이 유효한 지금 한 번 더 올려 본다. 몇 초 안에
@@ -376,6 +379,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> with WidgetsBindingObserver {
       if (!isCurrent()) throw StateError('Account changed.');
       await DoseHomeWidget.clear();
       if (!isCurrent()) throw StateError('Account changed.');
+      remindersTouched = true;
       await _cancelSessionReminders();
     } catch (_) {
       // 로컬 정리가 실패하면 로그아웃이 중단되어 계정은 로그인 상태로 남는다. 앞에서 멈춘 푸시와 복용 기록
@@ -404,9 +408,11 @@ class _MedBuddyAppState extends State<MedBuddyApp> with WidgetsBindingObserver {
       await restore(() async {
         await DoseHomeWidget.publish(owner: session!.userHash);
       });
-      await restore(() async {
-        await viewModel?.restoreSessionReminders(isCurrent);
-      });
+      if (remindersTouched) {
+        await restore(() async {
+          await viewModel?.restoreSessionReminders(isCurrent);
+        });
+      }
       await restore(
         () => DoseSyncBackgroundScheduler.register(session!.userHash),
       );
