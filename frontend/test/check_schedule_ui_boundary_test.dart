@@ -33,13 +33,17 @@ import 'support/fake_as_needed_pending_store.dart';
 import 'support/fake_notification_service.dart';
 
 // 일정의 정기 약과 필요시 약 조회를 모두 격리해 실제 서버에 접근하지 않는다.
-MedicationHistoryControl _historyControl({bool withPrn = false}) {
+MedicationHistoryControl _historyControl({
+  bool withPrn = false,
+  Future<void>? beforeRead,
+}) {
   final control = MedicationHistoryControl(
     patientHash: 'test-patient',
     pendingStore: FakeAsNeededPendingStore(),
     sessionKeyProvider: () => 'test-user',
-    client: MockClient(
-      (request) async => http.Response(
+    client: MockClient((request) async {
+      await beforeRead;
+      return http.Response(
         jsonEncode({
           'start_date': request.url.queryParameters['start_date'],
           'end_date': request.url.queryParameters['end_date'],
@@ -58,8 +62,8 @@ MedicationHistoryControl _historyControl({bool withPrn = false}) {
         }),
         200,
         headers: {'content-type': 'application/json'},
-      ),
-    ),
+      );
+    }),
   );
   addTearDown(control.dispose);
   return control;
@@ -145,6 +149,17 @@ class _ActiveCheckSchedule extends CheckSchedule {
         scheduleSlotKeys: ['morning'],
       ),
     ];
+  }
+}
+
+// 정기 일정 응답을 보류해 필요시 약만 먼저 도착하는 상황을 재현한다.
+class _DelayedCheckSchedule extends _ActiveCheckSchedule {
+  final gate = Completer<void>();
+
+  @override
+  Future<List<MedicationSchedule>> requestTodayMedicationSchedule() async {
+    await gate.future;
+    return super.requestTodayMedicationSchedule();
   }
 }
 
@@ -539,6 +554,109 @@ Future<void> _closeDoseSchedule(
 // 함수이름: main
 // 함수역할: 일정·알림·화면 배치·접근성 회귀 사례를 등록한다. 매개변수·반환값: 없음.
 void main() {
+  for (final failSchedule in [false, true]) {
+    testWidgets('정기 일정 대기에는 필요시 카드 대신 로딩만 표시한다: $failSchedule', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final schedule = _DelayedCheckSchedule();
+      final history = _historyControl(withPrn: true);
+      final viewModel = MedBuddyViewModel(
+        checkSchedule: schedule,
+        setNotification: EmptySetNotification(),
+        notificationService: RecordingNotificationService(),
+      );
+      addTearDown(viewModel.dispose);
+      await tester.pumpWidget(
+        ChangeNotifierProvider<MedBuddyViewModel>.value(
+          value: viewModel,
+          child: MaterialApp(home: CheckScheduleUI(asNeededControl: history)),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(history.snapshot, isNotNull);
+      expect(find.byKey(const Key('schedule-initial-loading')), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byKey(const Key('schedule-as-needed')), findsNothing);
+      expect(find.text('필요시 복용'), findsNothing);
+      expect(find.byKey(const Key('prn-reminder')), findsNothing);
+      expect(find.text('오늘 복용할 약이 없습니다'), findsNothing);
+
+      if (failSchedule) {
+        schedule.gate.completeError(StateError('Schedule lookup failed.'));
+      } else {
+        schedule.gate.complete();
+      }
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('schedule-initial-loading')), findsNothing);
+      expect(
+        find.byKey(const Key('schedule-load-error')),
+        failSchedule ? findsOneWidget : findsNothing,
+      );
+      if (!failSchedule) expect(find.text('active-tablet'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Test PRN'),
+        200,
+        scrollable: find
+            .descendant(
+              of: find.byType(ListView).first,
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      expect(find.text('Test PRN'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
+  for (final failHistory in [false, true]) {
+    testWidgets('필요시 약 첫 조회에는 빈 카드나 빈 일정 안내를 노출하지 않는다: $failHistory', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      final gate = Completer<void>();
+      final history = _historyControl(withPrn: true, beforeRead: gate.future);
+      final viewModel = MedBuddyViewModel(
+        checkSchedule: EmptyCheckSchedule(),
+        setNotification: EmptySetNotification(),
+        notificationService: RecordingNotificationService(),
+      );
+      addTearDown(viewModel.dispose);
+      await tester.pumpWidget(
+        ChangeNotifierProvider<MedBuddyViewModel>.value(
+          value: viewModel,
+          child: MaterialApp(home: CheckScheduleUI(asNeededControl: history)),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(
+        find.byKey(const Key('schedule-prn-initial-loading')),
+        findsOneWidget,
+      );
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byKey(const Key('schedule-as-needed')), findsNothing);
+      expect(find.text('오늘 복용할 약이 없습니다'), findsNothing);
+
+      if (failHistory) {
+        gate.completeError(StateError('History lookup failed.'));
+      } else {
+        gate.complete();
+      }
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('schedule-prn-initial-loading')),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('schedule-as-needed')), findsOneWidget);
+      expect(
+        find.byKey(const Key('schedule-prn-error')),
+        failHistory ? findsOneWidget : findsNothing,
+      );
+      if (!failHistory) expect(find.text('Test PRN'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
   testWidgets('알림 저장 연타가 설정창 아래 일정까지 닫지 않는다', (tester) async {
     final notification = _MutableSetNotification();
     await _pumpReminderSchedule(tester, notification);

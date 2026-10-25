@@ -625,6 +625,19 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
       final snapshot =
           _control.snapshot ??
           (_lastSnapshot?.range.end == _control.today ? _lastSnapshot : null);
+      // 첫 조회 전에는 빈 필요시 복용 카드와 조작 버튼 대신 로딩만 표시한다.
+      // 이후 재조회는 기존 스냅샷을 유지해 복용 체크마다 카드가 사라지지 않게 한다.
+      if (widget.isActive && snapshot == null && _control.error == null) {
+        return const Padding(
+          padding: EdgeInsets.symmetric(vertical: 24),
+          child: Center(
+            child: CircularProgressIndicator(
+              key: Key('schedule-prn-initial-loading'),
+              color: MedBuddyColors.primary,
+            ),
+          ),
+        );
+      }
       final pending = _control.pendingAsNeededChange;
       final medications = snapshot == null
           ? <MedicationHistoryMedication>[]

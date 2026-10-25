@@ -450,6 +450,8 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     final slots = _buildSlots(viewModel);
     final progress = viewModel.todayMedicationProgress;
     final hasTodaySchedule = viewModel.todayMedicationScheduleList.isNotEmpty;
+    final initialLoading =
+        !hasTodaySchedule && viewModel.isTodayScheduleLoading;
 
     return Scaffold(
       backgroundColor: MedBuddyColors.pageBackground,
@@ -478,7 +480,25 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
               service: viewModel.doseSync!,
               isEnglish: viewModel.userSetting.isEnglish,
             ),
-          Expanded(child: _buildContent(viewModel, slots, text)),
+          Expanded(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // 필요시 약 조회는 유지하되, 정기 일정 대기 중 일부 카드만 노출하지 않는다.
+                Offstage(
+                  offstage: initialLoading,
+                  child: _buildContent(viewModel, slots, text),
+                ),
+                if (initialLoading)
+                  const Center(
+                    child: CircularProgressIndicator(
+                      key: Key('schedule-initial-loading'),
+                      color: MedBuddyColors.primary,
+                    ),
+                  ),
+              ],
+            ),
+          ),
           if (hasTodaySchedule)
             _HealthRecommendationFooter(
               text: text,
@@ -538,15 +558,6 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
           children: [
-            if (noRegularDoses && viewModel.isTodayScheduleLoading)
-              const SizedBox(
-                height: 100,
-                child: Center(
-                  child: CircularProgressIndicator(
-                    color: MedBuddyColors.primary,
-                  ),
-                ),
-              ),
             if (noRegularDoses && viewModel.hasTodayScheduleLoadError)
               SizedBox(
                 height: 340,
