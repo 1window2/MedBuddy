@@ -9,6 +9,8 @@ import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/widgets/home_linked_patient_hint.dart';
 
+import 'support/test_viewport.dart';
+
 // 함수이름: main
 // 함수역할: 화면 크기별로 홈 대시보드의 남는 스크롤 길이를 확인한다. 매개변수: 없음. 반환값: 없음.
 void main() {
@@ -20,10 +22,11 @@ void main() {
     ('Galaxy Note10 buttons', const Size(412, 869), 24.0, 48.0, 'ko'),
   ]) {
     testWidgets('홈은 $name 기본 글씨에서 스크롤 없이 보인다 ($language)', (tester) async {
-      tester.view.physicalSize = size;
-      tester.view.devicePixelRatio = 1;
+      // 기본 글씨 전용 검증이므로 전체 테스트의 접근성 배율과 입력을 분리한다.
+      setTestViewport(tester, size, textScale: 1);
       tester.view.padding = FakeViewPadding(top: top, bottom: bottom);
-      addTearDown(tester.view.reset);
+      addTearDown(tester.view.resetPadding);
+      var searchRequests = 0;
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -64,11 +67,20 @@ void main() {
               onTodayScheduleRequested: () {},
               onHealthRecommendationRequested: () {},
               onUserSettingRequested: () {},
+              onNotificationsRequested: () {},
+              onFeatureSearchRequested: () => searchRequests++,
             ),
           ),
         ),
       );
       await tester.pumpAndSettle();
+
+      expect(
+        MediaQuery.textScalerOf(
+          tester.element(find.byType(InputPrescriptionUI)),
+        ).scale(16),
+        16,
+      );
 
       final scrollable = tester.state<ScrollableState>(
         find
@@ -83,6 +95,33 @@ void main() {
         tester.getSize(find.byKey(const Key('caregiver-home-source-hint'))).height,
         greaterThanOrEqualTo(48),
       );
+      expect(tester.takeException(), isNull);
+
+      final search = find.byKey(const ValueKey('homeFeatureSearchButton'));
+      final notifications = find.byKey(const ValueKey('homeNotificationsButton'));
+      expect(search.hitTestable(), findsOneWidget);
+      expect(notifications.hitTestable(), findsOneWidget);
+      await tester.tap(search);
+      expect(searchRequests, 1);
+
+      // 큰 글씨에서는 스크롤을 허용하되 새 헤더의 검색·알림은 좁은 화면에서도 겹치지 않는다.
+      tester.view.physicalSize = const Size(320, 640);
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      await tester.pumpAndSettle();
+      expect(
+        MediaQuery.textScalerOf(
+          tester.element(find.byType(InputPrescriptionUI)),
+        ).scale(16),
+        32,
+      );
+      expect(search.hitTestable(), findsOneWidget);
+      expect(notifications.hitTestable(), findsOneWidget);
+      expect(
+        tester.getRect(search).overlaps(tester.getRect(notifications)),
+        isFalse,
+      );
+      await tester.tap(search);
+      expect(searchRequests, 2);
       expect(tester.takeException(), isNull);
     });
   }
