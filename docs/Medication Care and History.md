@@ -43,7 +43,9 @@ not select a treatment or recommend stopping one.
 
 - The patient's schedule has a separate as-needed section. The first check each
   day records one intake immediately; later checks ask to confirm the displayed
-  count increase. The bulk control records unchecked medicines first; once all
+  count increase, latest intake time today and elapsed time. The save notice
+  offers undo for only the records made by that tap; already delivered caregiver
+  alerts are not recalled. The bulk control records unchecked medicines first; once all
   have been checked, it confirms one additional intake per medicine. It also
   works when no scheduled medications are due. These events do not change
   scheduled-dose progress, bulk completion or reminders. The server supplies
@@ -51,10 +53,16 @@ not select a treatment or recommend stopping one.
   receive new checks for today. Existing reports can still be corrected.
 - New checks record the current time. The history editor can correct an existing
   intake time. A failed transmission retries the same event and operation IDs;
-  bulk retries retain only unresolved requests. These pending intentions live
-  in the current login session, not a durable offline queue. A later, intentional
+  bulk retries retain only unresolved requests. New intentions are encrypted
+  locally before sending and restored for the same account after restart. They
+  use explicit screen retry, not the regular background dose queue; existing
+  corrections and undo are not persisted by this workflow. A later, intentional
   intake receives a different event ID. Bulk recording is a sequence of
   individual requests, not an all-or-nothing transaction.
+- Initial schedule loading hides partial PRN cards while their read continues.
+  The PRN section itself shows loading until its first snapshot or error and
+  retains a same-day snapshot during later refreshes. A pending-store failure
+  blocks new intake, not an otherwise readable list and count.
 - The as-needed bell configures an optional, one-time check at the next selected
   time. It defaults off and has no missed-dose warning, automatic repeat, dose
   action or snooze button. Its neutral notification only opens the schedule.
@@ -102,6 +110,10 @@ network delivery. Opening the alert navigates to the linked patient's schedule.
 
 - Calendar icons in patient and linked-caregiver schedule headers open medication
   history. Only the patient can write; linked caregivers have read-only access.
+- History starts on the current month. Scheduled taken/total counts and a separate
+  PRN marker summarize each day; selecting a day opens the existing daily view.
+  The summary excludes PRN from scheduled-dose progress. Multiple PRN intakes
+  of the same medication are ordered by intake time, including in the CSV.
 - New intake is recorded from the schedule, not from history. History provides
   daily review, correction of existing reports and period export; correcting an
   as-needed report preserves the original event ID.
@@ -112,13 +124,15 @@ network delivery. Opening the alert navigates to the linked patient's schedule.
   reports. Versioning does not promise indefinite retention after deletion.
 - States are taken, skipped and unrecorded. Unrecorded does not mean not taken;
   skipped is not counted as taken. Reasons and corrections are retained in the
-  server audit trail.
+  server audit trail. PRN editing normally offers taken or cancel record;
+  skipped is retained only when an existing PRN report already has that state.
 - Marking a report skipped does not turn off the existing dose or missed-dose
   reminders. The schedule and widget still regard it as incomplete; a report is
   not an instruction to stop the prescribed regimen.
 - Actual intake time and server recording time are separate. Earlier legacy
   records do not invent an actual intake time. Dates and displayed timestamps use
-  Korea time (UTC+09:00); future intake times are rejected.
+  Korea time (UTC+09:00). A client clock up to 60 seconds ahead is tolerated and
+  clamped to server receipt time; later future intake times are rejected.
 - An intake can occur after its scheduled date. Correction does not silently move
   that record to another scheduled dose.
 - The existing completion, undo, chat and offline-sync paths update the same
@@ -147,11 +161,21 @@ audit-browser view. These are not a new source of clinical verification.
 
 ## Export and Data Use
 
-The daily history screen summarizes statuses for the day being viewed. Its
+The daily history screen summarizes scheduled-dose statuses for the day being viewed. Its
 export dialog separately offers start/end dates, the allowed range and a short
 health-data notice; it does not display a selected-period summary or status
 counts. Changing these dates does not fetch export records or change the day
 being reviewed.
+
+From the month view the initial export period is that visible month within the
+allowed history window. CSV covers up to 90 days, fetched in parts of at most
+31 days; linked-chat sharing remains limited to 31 days. CSV omits internal
+revision fields. The general history lookup limit remains 31 days per request.
+
+Feature search opens personal history and, for the sharing destination, only
+opens this dialog after the initial read succeeds in the same session. It does
+not transmit a file or chat message. Read-only or failed initial entry does not
+automatically open the dialog. See [Feature Search](Feature%20Search.md).
 
 Selecting Share CSV triggers `readRangeForExport` to fetch the selected period
 with current access and session checks. A failed read leaves the dialog open for
@@ -171,6 +195,14 @@ account deletion also attempts cleanup. Copies saved by another app cannot be
 recalled. Unsupported platforms offer CSV-text copying after separate consent;
 the app does not claim that a file was saved or shared.
 
+The same dialog can share a server-calculated period/status-count summary into
+an active linked chat after target confirmation. It sends no medication list or
+raw history in the message. The card opens current records read-only after a new
+access check; cards outside the 90-day lookup window explain expiration. Its
+summary includes PRN counts and is not scheduled-dose adherence or proof of intake.
+Push carries only a generic message notice. Existing idempotent chat requests and
+current account/link checks apply; copies already shared are not recalled.
+
 Settings > Account > Privacy & Data includes a data-use guide covering
 authentication, medication data, on-device OCR, external AI processing, caregiver
 sharing, location, cached data and deletion. It is not a finalized publication
@@ -182,17 +214,19 @@ the provider terms and applicable processing requirements first.
 
 ## Setup and Notification Check
 
-Settings > Medication & Notifications provides a setup/notification check; the
-home dashboard keeps its existing four action cards without a separate check
-shortcut. It shows medication setup, notification permission, schedule settings,
-exact-alarm availability and useful widget/caregiver entry points. Opening the
-screen does not request permission automatically.
+Settings > Medication & Notifications integrates phone notification permission,
+medication-channel status, exact-alarm availability and a test notification.
+There is no separate readiness screen or medication-registration check. The
+home dashboard retains its four action cards; feature search can open the
+integrated settings section without changing a preference or requesting permission.
 
 The check distinguishes app-level permission, medication-channel permission and
 exact-alarm availability. Failed or unsupported checks remain unknown or
 unsupported rather than reporting success or claiming that no medication exists.
-Permission requests remain explicit user actions. After exact-alarm permission
-is granted, the existing service upgrades eligible inexact reminders.
+The two device switches open operating-system settings; they do not directly
+request permission or predict a successful change. On resume the app reads the
+actual state. After exact-alarm permission is granted, the existing service
+upgrades eligible inexact reminders.
 
 The test alert uses the medication notification channel but has no dose action,
 no medication navigation payload and no inbox record. The screen distinguishes

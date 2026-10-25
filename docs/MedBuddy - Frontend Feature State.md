@@ -80,11 +80,23 @@ still reads the server, and schedule changes invalidate this reuse window.
 `AsNeededScheduleSection` composes a separate history-backed list alongside regular
 slots. `MedBuddyViewModel.asNeededHistory` owns the patient's control for the login
 session, so unresolved PRN submissions survive closing and reopening the schedule.
-They are in-memory retry intentions, not the encrypted `DoseSyncService` queue.
+New PRN intentions are persisted through `AsNeededPendingStore` in the account's
+encrypted store before transmission and restored for the same account after a
+restart. They remain separate from the regular `DoseSyncService` background queue;
+existing-report corrections and undo are not added to this pending workflow.
 Each intended intake has an event UUID and a distinct operation UUID; partial
 bulk success removes only acknowledged requests. The section reloads before
 recording and rechecks eligibility/counts after additional-dose confirmation.
 Resume, day rollover and explicit parent refresh reload the PRN data.
+
+During an initial schedule read with no regular schedule yet, `CheckScheduleUI`
+keeps the content mounted but offstage and shows one loading indicator, so the
+PRN read continues without exposing a partial card. The PRN section independently
+shows loading until its first snapshot or error. Later reads retain a same-day
+snapshot; an error or a confirmed PRN-only day is not treated as initial loading.
+Additional-dose confirmation includes today's latest intake time and elapsed
+time. If the pending store is unavailable, readable counts remain visible but
+new intake is blocked.
 
 The caregiver schedule uses the same section in read-only mode with its own
 patient-scoped control. It cannot write reports, read the patient's device-only
@@ -162,11 +174,43 @@ dose/navigation payload or inbox record, and a note says that one test does not
 guarantee later reminders. `DataUseInfoUI` is explanatory only:
 it does not collect AI consent or enforce a transmission gate.
 
+`ManageUserSettingUI.initialDestination` selects the existing settings category
+and scroll target through `UserSettingDestination`; it does not alter the draft
+or save a setting. The existing save/discard checks remain in effect. The account
+welcome panel uses the same noncompact alignment as the account presentation.
+`AppLanguageControl` also updates the three Android notification channel names
+and descriptions through `NotificationService.updateLanguage`, retaining channel
+IDs, notification bookings and the user's channel choices. Dose labels in PRN
+cards and regimen confirmation use the existing display-only localization helper.
+Android widget resources provide Korean/English labels and previews; runtime
+record-save failure text follows the widget state's language. These presentation
+changes do not rewrite stored doses or change reminder classification.
+
 At the native scheduling boundary, date-specific plans are reconciled with
 pending notifications instead of cancelling and rebuilding every slot. Unchanged
 bookings and snoozes survive; scheduling, snoozing and cancellation are serialized
 within the service. See the [client refresh policy](MedBuddy%20-%20Client%20Refresh%20Policy.md)
 for cache scope, widget publication and recovery behavior.
+
+## Local feature navigation
+
+`FeatureSearchUI` owns only transient query and result presentation. `FindAppFeature`
+matches 27 static `FeatureSearchEntry` destinations using Korean/English names,
+aliases and intent groups; no account data, external AI or search persistence is
+involved. It is not a seventh feature-state owner inside `MedBuddyViewModel`.
+
+`HomeScreen` accepts only an explicitly selected `AppFeature`, verifies the same
+ViewModel and account after returning, and reuses existing routes and controls.
+Personal history remains owner-scoped even when Home displays a linked patient.
+Linked-patient navigation refreshes caregiver links, selects a patient when there
+are several, then reuses the existing access revalidation. Missing or failed link
+reads lead to connection management, not an assumed patient or chat permission.
+
+`MedicationHistoryUI.initiallyShowExport` opens only the existing period/target
+dialog after the initial read succeeds in the same session. Read-only entry,
+failed reads or stale sessions do not open it. File sharing or chat sending still
+requires a separate user choice and existing authorization checks. See
+[Feature Search](Feature%20Search.md) and its linked class/sequence diagrams.
 
 ## Prescriptions and completion boundary
 
@@ -181,7 +225,9 @@ Prescription and reminder screens read feature-specific status messages. The old
 facade `statusMessage` remains a compatibility summary, not shared feature state.
 The six owners do not import the facade or share a Dart library with one another.
 Their intentional dependencies are explicit; this is not a claim of zero coupling
-or complete release readiness. Real-device notification checks remain deferred.
+or complete release readiness. Completed device checks and remaining acceptance
+gates are tracked separately in [the release TODO](TODO.md); this note does not
+claim that the new local navigation or language changes passed those checks.
 
 This note refines feature ownership inside the existing UML facade box. The
 [settings class diagram](UML/class/05_AuthenticationSettingsAccessibility.puml)
