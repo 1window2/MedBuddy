@@ -566,6 +566,51 @@
   },
   {
     "kind": "divider",
+    "chapter": "1 시작하기",
+    "section": "1.7 기능 찾기로 원하는 화면 열기",
+    "steps": []
+  },
+  {
+    "kind": "steps",
+    "chapter": "1 시작하기",
+    "section": "1.7 기능 찾기로 원하는 화면 열기",
+    "steps": [
+      {
+        "identity": "FEATURE-SEARCH-20261025:1",
+        "number": 1,
+        "crop": [0, 0, 1080, 2340],
+        "boxes": [],
+        "callouts": [],
+        "image": "assets/feature-search-start-2026-10-25.png"
+      },
+      {
+        "identity": "FEATURE-SEARCH-20261025:2",
+        "number": 2,
+        "crop": [0, 0, 1080, 2340],
+        "boxes": [],
+        "callouts": [],
+        "image": "assets/feature-search-text-2026-10-25.png"
+      },
+      {
+        "identity": "FEATURE-SEARCH-20261025:3",
+        "number": 3,
+        "crop": [0, 0, 1080, 2340],
+        "boxes": [],
+        "callouts": [],
+        "image": "assets/feature-search-share-2026-10-25.png"
+      },
+      {
+        "identity": "FEATURE-SEARCH-20261025:4",
+        "number": 4,
+        "crop": [0, 0, 1080, 2340],
+        "boxes": [],
+        "callouts": [],
+        "image": "assets/feature-search-empty-2026-10-25.png"
+      }
+    ]
+  },
+  {
+    "kind": "divider",
     "chapter": "2 약 등록과 식별",
     "section": "2.1 처방전 사진 가져오기",
     "steps": []
