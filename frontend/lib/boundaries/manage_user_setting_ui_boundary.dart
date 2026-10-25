@@ -788,7 +788,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _AccountWelcomePanel(presentation: accountPresentation, compact: true),
+        _AccountWelcomePanel(presentation: accountPresentation, compact: false),
         if (hasMfaSettings) ...[
           const SizedBox(height: 24),
           ListenableBuilder(
@@ -1579,6 +1579,7 @@ class _AccountWelcomePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      key: const ValueKey('settingsAccountWelcomePanel'),
       width: double.infinity,
       padding: EdgeInsets.all(compact ? 18 : 20),
       decoration: BoxDecoration(

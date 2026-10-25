@@ -9,6 +9,7 @@ import 'package:medbuddy_frontend/boundaries/manage_user_setting_ui_boundary.dar
 import 'package:medbuddy_frontend/controls/authentication_control.dart';
 import 'package:medbuddy_frontend/controls/manage_account_control.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
+import 'package:medbuddy_frontend/widgets/medbuddy_page_header.dart';
 
 // 함수이름: main
 // 함수역할:
@@ -18,6 +19,51 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  for (final language in ['ko', 'en']) {
+    for (final width in [320.0, 430.0]) {
+      testWidgets('설정 홈과 계정의 인사 영역 위치·크기가 같다 $language $width', (tester) async {
+        tester.view.physicalSize = Size(width, 1000);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final auth = AuthenticationControl.development();
+        addTearDown(auth.dispose);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ManageUserSettingUI(
+              initialSetting: UserSetting(language: language),
+              authenticationControl: auth,
+              onExtendedSettingSaveRequested: (setting) async => _saveResult(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final panel = find.byKey(const ValueKey('settingsAccountWelcomePanel'));
+        final icon = find.descendant(
+          of: panel,
+          matching: find.byIcon(Icons.person_outline_rounded),
+        );
+        final homeRect = tester.getRect(panel);
+        final homeIconOffset = tester.getTopLeft(icon) - homeRect.topLeft;
+        final homeGap =
+            homeRect.top -
+            tester.getBottomLeft(find.byType(MedBuddyPageHeader)).dy;
+        await _openAccount(tester);
+        final accountRect = tester.getRect(panel);
+        expect(accountRect.left, homeRect.left);
+        expect(accountRect.size, homeRect.size);
+        expect(tester.getTopLeft(icon) - accountRect.topLeft, homeIconOffset);
+        // 제목의 줄 수가 달라도 헤더 아래 간격과 인사 영역 내부 배치는 같다.
+        expect(
+          accountRect.top -
+              tester.getBottomLeft(find.byType(MedBuddyPageHeader)).dy,
+          homeGap,
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
   for (final language in ['ko', 'en']) {
     for (final hasMfa in [false, true]) {
       testWidgets('계정은 보안과 데이터 안내 뒤에 로그아웃과 삭제를 배치한다 $language $hasMfa', (
