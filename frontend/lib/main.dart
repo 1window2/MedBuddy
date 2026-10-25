@@ -217,6 +217,8 @@ class _MedBuddyAppState extends State<MedBuddyApp> with WidgetsBindingObserver {
         _authenticationControl.handleUnauthorizedResponse;
     _ownsAppLanguageControl = widget.appLanguageControl == null;
     _appLanguageControl = widget.appLanguageControl ?? AppLanguageControl();
+    _appLanguageControl.addListener(_synchronizeNotificationLanguage);
+    _synchronizeNotificationLanguage();
     _settingsUserHash = _authenticationControl.session?.userHash;
     _pendingEmailVerification = _authenticationControl.emailVerificationRequired
         ? _authenticationControl.signedInEmail
@@ -257,6 +259,12 @@ class _MedBuddyAppState extends State<MedBuddyApp> with WidgetsBindingObserver {
   }
 
   Uri? _pendingWidgetUri;
+
+  void _synchronizeNotificationLanguage() {
+    unawaited(
+      NotificationService.instance.updateLanguage(_appLanguageControl.language),
+    );
+  }
 
   // 기기 언어 이벤트에서만 동기화를 요청해 설정 알림이 다시 저장을 유발하지 않게 한다.
   @override
@@ -329,6 +337,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> with WidgetsBindingObserver {
     _authenticationControl.setBeforeSignOut(null);
     AuthenticatedApiClient.defaultOnUnauthorized = null;
     _authenticationControl.removeListener(_handleAuthenticationChange);
+    _appLanguageControl.removeListener(_synchronizeNotificationLanguage);
     if (_ownsAuthenticationControl) {
       _authenticationControl.dispose();
     }

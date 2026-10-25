@@ -21,6 +21,7 @@ import '../entities/medication_schedule_entity.dart';
 import '../entities/notification_inbox_entity.dart';
 import '../entities/user_setting_entity.dart';
 import 'medication_notification_payload_codec.dart';
+import 'app_language_resolver.dart';
 import 'notification_inbox_store.dart';
 
 // Preserve existing imports while keeping the action contract platform-neutral.
@@ -71,6 +72,8 @@ class NotificationService {
   bool _isInitialized = false;
   Future<void>? _initializationFuture;
   bool _channelsInitialized = false;
+  String? _notificationLanguage;
+  String? _channelLanguage;
   Future<void>? _channelInitializationFuture;
   bool _showSensitiveDetails = true;
   String? _historyUserHash;
@@ -496,6 +499,17 @@ class NotificationService {
       timezone_data.initializeTimeZones();
       timezone.setLocalLocation(timezone.getLocation('Asia/Seoul'));
 
+      if (_notificationLanguage == null) {
+        try {
+          final preferences = await preferencesLoader();
+          _notificationLanguage ??= resolveAppLanguage(
+            preferences.getString(appLanguagePreferenceKey) ?? 'ko',
+          );
+        } catch (_) {
+          _notificationLanguage ??= 'ko';
+        }
+      }
+
       final launchDetails = await _plugin.getNotificationAppLaunchDetails();
       await _plugin.initialize(
         settings: const InitializationSettings(
@@ -528,55 +542,78 @@ class NotificationService {
 
   // 채널 생성 실패는 초기화를 막지 않되 다음 호출에서 재시도하고 동시 호출은 합친다.
   Future<void> _ensureAndroidNotificationChannels() {
-    if (_channelsInitialized) return Future<void>.value();
+    if (_channelInitializationFuture != null) return _channelInitializationFuture!;
+    if (_channelsInitialized && _channelLanguage == _notificationLanguage) {
+      return Future<void>.value();
+    }
     return _channelInitializationFuture ??=
         _createAndroidNotificationChannels().whenComplete(() {
           _channelInitializationFuture = null;
         });
   }
 
+  // 기존 채널 ID를 유지한 채 이름만 갱신해 사용자의 권한·소리 선택과 예약을 보존한다.
+  Future<void> updateLanguage(String language) {
+    _notificationLanguage = resolveAppLanguage(language);
+    return _ensureAndroidNotificationChannels();
+  }
+
   // Function Name: _createAndroidNotificationChannels
   // Description: Creates the three Android channels at start-up. The plugin otherwise creates a channel only when the app
   //   first shows a local notification on it, so a server push that names a channel the app has not used yet would be
-  //   shown on the Firebase fallback channel without this app's importance and sound. Names follow the last shown language
-  //   once a local notification is displayed; a failure here must not block notification initialization.
+  //   shown on the Firebase fallback channel without this app's importance and sound. Names follow the selected app language;
+  //   a failure here must not block notification initialization.
   // Parameters:
   // - None.
   // Returns:
   // - Future<void>: asynchronous completion without a result payload.
   Future<void> _createAndroidNotificationChannels() async {
+    _channelsInitialized = false;
     try {
       final android = _plugin
           .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin
           >();
       if (android == null) {
+        _channelLanguage = _notificationLanguage;
         _channelsInitialized = true;
         return;
       }
-      const channels = <AndroidNotificationChannel>[
-        AndroidNotificationChannel(
-          _medicationChannelId,
-          '복약 알림',
-          description: 'MedBuddy 복약 시간 알림',
-          importance: Importance.high,
-        ),
-        AndroidNotificationChannel(
-          _caregiverChannelId,
-          '보호자 복약 확인',
-          description: '연동된 환자의 복약 완료 및 미복용 상태 알림',
-          importance: Importance.high,
-        ),
-        AndroidNotificationChannel(
-          _chatChannelId,
-          '가족 채팅',
-          description: '연동된 환자와 보호자의 새 채팅 메시지 알림',
-          importance: Importance.high,
-        ),
-      ];
-      for (final channel in channels) {
-        await android.createNotificationChannel(channel);
-      }
+      do {
+        final language = _notificationLanguage;
+        final english = language == 'en';
+        final channels = <AndroidNotificationChannel>[
+          AndroidNotificationChannel(
+            _medicationChannelId,
+            english ? 'Medication reminders' : '복약 알림',
+            description: english
+                ? 'MedBuddy medication time reminders'
+                : 'MedBuddy 복약 시간 알림',
+            importance: Importance.high,
+          ),
+          AndroidNotificationChannel(
+            _caregiverChannelId,
+            english ? 'Caregiver medication updates' : '보호자 복약 확인',
+            description: english
+                ? 'Medication completion and missed-dose updates for linked patients'
+                : '연동된 환자의 복약 완료 및 미복용 상태 알림',
+            importance: Importance.high,
+          ),
+          AndroidNotificationChannel(
+            _chatChannelId,
+            english ? 'Family chat' : '가족 채팅',
+            description: english
+                ? 'New chat messages between linked patients and caregivers'
+                : '연동된 환자와 보호자의 새 채팅 메시지 알림',
+            importance: Importance.high,
+          ),
+        ];
+        for (final channel in channels) {
+          await android.createNotificationChannel(channel);
+        }
+        _channelLanguage = language;
+        // 생성 중 언어가 바뀌었으면 마지막 선택으로 세 채널을 모두 맞춘다.
+      } while (_channelLanguage != _notificationLanguage);
       _channelsInitialized = true;
     } catch (_) {
       // Channels are still created lazily when a local notification is shown.

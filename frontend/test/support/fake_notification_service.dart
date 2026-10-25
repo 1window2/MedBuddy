@@ -117,6 +117,13 @@ class RecordingNotificationService implements NotificationService {
   final List<RecordedLinkedChatAlert> linkedChatAlerts = [];
   final List<RecordedHistoryUser> historyUsers = [];
   bool? showSensitiveDetails;
+  final List<String> languages = [];
+
+  @override
+  Future<void> updateLanguage(String language) async {
+    languages.add(language);
+  }
+
   // Result of canScheduleExactReminders; requestExactReminderPermission sets it to
   // exactPermissionAfterRequest when that is not null.
   bool exactRemindersAllowed = true;

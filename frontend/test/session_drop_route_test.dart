@@ -42,6 +42,9 @@ class _EmptySetNotification extends SetNotification {
   }
 }
 class _NoopNotificationService implements NotificationService {
+  @override
+  Future<void> updateLanguage(String language) async {}
+
   // 함수이름: setHistoryUser
   // 함수역할: 테스트에서는 계정별 플랫폼 저장을 생략한다. 매개변수: 계정과 저장 여부. 반환값: 없음.
   @override
