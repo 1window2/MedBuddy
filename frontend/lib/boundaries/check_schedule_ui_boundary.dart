@@ -450,8 +450,11 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     final slots = _buildSlots(viewModel);
     final progress = viewModel.todayMedicationProgress;
     final hasTodaySchedule = viewModel.todayMedicationScheduleList.isNotEmpty;
+    // 첫 조회 전에만 가린다. 필요시 약만 있는 환자는 정기 일정이 늘 비어 있어 새로고침마다 카드가 사라졌다.
     final initialLoading =
-        !hasTodaySchedule && viewModel.isTodayScheduleLoading;
+        !hasTodaySchedule &&
+        viewModel.isTodayScheduleLoading &&
+        !viewModel.hasSettledTodaySchedule;
 
     return Scaffold(
       backgroundColor: MedBuddyColors.pageBackground,

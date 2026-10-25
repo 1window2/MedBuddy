@@ -58,6 +58,14 @@ void main() {
     'connect my family': AppFeature.caregiverLink,
     'patient history': AppFeature.caregiverSchedule,
     'turn off alerts': AppFeature.notificationReception,
+    'turn off notifications': AppFeature.notificationReception,
+    'disable notifications': AppFeature.notificationReception,
+    'notifications not working': AppFeature.notifications,
+    'test notification': AppFeature.notifications,
+    'what is this pill': AppFeature.pillIdentification,
+    'did i take my medicine': AppFeature.schedule,
+    '어제 약 먹었나': AppFeature.medicationHistory,
+    '어제 약 먹었어?': AppFeature.medicationHistory,
   };
   for (final expression in expressions.entries) {
     test('일상 표현을 관련 기능으로 정렬: ${expression.key}', () {

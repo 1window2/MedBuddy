@@ -21,6 +21,10 @@ class MedBuddyScheduleViewModel {
   // Returns:
   // - bool: Whether the tracked current schedule load is still pending.
   bool get isTodayScheduleLoading => _isTodayScheduleLoading;
+  bool _hasSettledTodaySchedule = false;
+  // 함수역할: 이 계정의 오늘 일정이 성공·실패와 관계없이 한 번이라도 확정됐는지 반환한다.
+  //   첫 조회 대기와 이후 새로고침을 구분해 화면이 첫 조회 때만 카드를 가리게 한다.
+  bool get hasSettledTodaySchedule => _hasSettledTodaySchedule;
   bool _hasTodayScheduleLoadError = false;
   // Function Name: hasTodayScheduleLoadError
   // Description: Exposes failure of the latest applicable schedule load for retry-state rendering.
@@ -97,6 +101,7 @@ class MedBuddyScheduleViewModel {
     _todayScheduleEpoch++;
     _activeTodayScheduleLoadEpoch = null;
     _isTodayScheduleLoading = false;
+    _hasSettledTodaySchedule = true;
     _todayMedicationScheduleList = schedules;
     if (!hasCurrentDayCache) {
       // A projection without today's snapshot (first open of a new day) is
@@ -114,6 +119,7 @@ class MedBuddyScheduleViewModel {
     _todayScheduleEpoch++;
     _activeTodayScheduleLoadEpoch = null;
     _isTodayScheduleLoading = false;
+    _hasSettledTodaySchedule = false;
     _lastTodayScheduleLoadSucceeded = false;
     _hasTodayScheduleLoadError = false;
     _todayMedicationScheduleList = [];
@@ -134,6 +140,7 @@ class MedBuddyScheduleViewModel {
     _activeTodayScheduleLoadEpoch = null;
     _todayMedicationScheduleList = List.unmodifiable(schedules);
     _isTodayScheduleLoading = false;
+    _hasSettledTodaySchedule = true;
     _hasTodayScheduleLoadError = false;
     _lastTodayScheduleLoadSucceeded = true;
     _notifyViewModelListeners();
@@ -248,6 +255,7 @@ class MedBuddyScheduleViewModel {
       if (_activeTodayScheduleLoadEpoch == loadEpoch) {
         _activeTodayScheduleLoadEpoch = null;
         _isTodayScheduleLoading = false;
+        _hasSettledTodaySchedule = true;
         _notifyViewModelListeners();
       }
     }

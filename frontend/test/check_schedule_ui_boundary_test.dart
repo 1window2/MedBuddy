@@ -163,6 +163,19 @@ class _DelayedCheckSchedule extends _ActiveCheckSchedule {
   }
 }
 
+// 클래스명: _RefreshGatedEmptySchedule
+// 역할: 필요시 약만 있는 환자처럼 정기 일정이 비어 있고, 두 번째 조회부터 대기하는 일정 응답.
+class _RefreshGatedEmptySchedule extends EmptyCheckSchedule {
+  final gate = Completer<void>();
+  int reads = 0;
+
+  @override
+  Future<List<MedicationSchedule>> requestTodayMedicationSchedule() async {
+    if (++reads > 1) await gate.future;
+    return const [];
+  }
+}
+
 // Class Name: _MorningDoseCheckSchedule
 // Role: Schedule stub with one pending morning dose for the dose-recording widget tests.
 // Responsibilities:
@@ -607,6 +620,38 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     });
   }
+
+  testWidgets('필요시 약만 있을 때 새로고침 중에도 카드를 가리지 않는다', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final schedule = _RefreshGatedEmptySchedule();
+    final history = _historyControl(withPrn: true);
+    final viewModel = MedBuddyViewModel(
+      checkSchedule: schedule,
+      setNotification: EmptySetNotification(),
+      notificationService: RecordingNotificationService(),
+    );
+    addTearDown(viewModel.dispose);
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: viewModel,
+        child: MaterialApp(home: CheckScheduleUI(asNeededControl: history)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('schedule-as-needed')), findsOneWidget);
+
+    final refresh = viewModel.fetchTodayMedicationSchedule();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(viewModel.isTodayScheduleLoading, isTrue);
+    expect(find.byKey(const Key('schedule-initial-loading')), findsNothing);
+    expect(find.byKey(const Key('schedule-as-needed')), findsOneWidget);
+
+    schedule.gate.complete();
+    await refresh;
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('schedule-as-needed')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   for (final failHistory in [false, true]) {
     testWidgets('필요시 약 첫 조회에는 빈 카드나 빈 일정 안내를 노출하지 않는다: $failHistory', (

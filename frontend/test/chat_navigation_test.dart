@@ -33,6 +33,7 @@ import 'package:medbuddy_frontend/views/home_screen.dart';
 import 'package:medbuddy_frontend/boundaries/feature_search_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/manual_medication_entry_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/link_patient_caregiver_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/check_caregiver_medication_ui_boundary.dart';
 
 // 함수이름: _emptyResponse
 // 함수역할: 실제 통신을 막는 응답을 제공한다. 매개변수: request: 요청. 반환값: 빈 성공 응답.
@@ -291,6 +292,71 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     });
   }
+  // 환자 일정 검색 결과는 연동 확인을 기다린 뒤 열리므로, 그사이 다른 화면을 열었다면 덮지 않는다.
+  testWidgets('기능 찾기의 환자 일정은 대기 중 다른 화면을 열면 그 위에 열지 않는다', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    _viewport(tester, 390);
+    final links = _Links()..result = [_link(1)];
+    final model = _ViewModel();
+    final api = _HomeMonitoring();
+    final auth = AuthenticationControl.development();
+    final language = AppLanguageControl(loadPersisted: false);
+    addTearDown(model.dispose);
+    addTearDown(api.dispose);
+    addTearDown(auth.dispose);
+    addTearDown(language.dispose);
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<MedBuddyViewModel>.value(value: model),
+          ChangeNotifierProvider<AuthenticationControl>.value(value: auth),
+          ChangeNotifierProvider<AppLanguageControl>.value(value: language),
+        ],
+        child: MaterialApp(
+          theme: MedBuddyTheme.light(),
+          home: HomeScreen(
+            chatListFactory: (hash) => ManageChatList(
+              userHash: hash,
+              linkControl: links,
+              chatControl: _History(),
+            ),
+            caregiverHomeFactory: (hash) =>
+                CheckCaregiverHome(userHash: hash, control: api),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final search = find.byKey(const ValueKey('homeFeatureSearchButton'));
+    Future<void> chooseCaregiverSchedule() async {
+      await tester.tap(search);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('featureSearchInput')),
+        '환자 기록 확인',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('feature-caregiverSchedule')));
+      await tester.pumpAndSettle();
+    }
+
+    final lookup = Completer<List<PatientCaregiverLink>>();
+    links.pending = lookup;
+    await chooseCaregiverSchedule();
+    await tester.tap(search);
+    await tester.pumpAndSettle();
+    lookup.complete([_link(1)]);
+    await tester.pumpAndSettle();
+    expect(find.byType(CheckCaregiverMedicationUI), findsNothing);
+    expect(find.byType(FeatureSearchUI), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    await chooseCaregiverSchedule();
+    expect(find.byType(CheckCaregiverMedicationUI), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
   // 저장 설정이 연동 조회보다 늦게 복원되어도 환자 조회와 위젯 발행 출처를 갱신한다.
   testWidgets(
     'late home source restoration refreshes linked patient schedules',

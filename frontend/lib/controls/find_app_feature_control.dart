@@ -86,7 +86,7 @@ class FindAppFeature {
       ],
       concepts: [
         ['알약', '약', 'pill'],
-        ['모양', '식별', '정체', '알아', '뭔', '무슨', 'identify'],
+        ['모양', '식별', '정체', '알아', '뭔', '무슨', 'identify', 'what', 'which'],
       ],
     ),
     FeatureSearchEntry(
@@ -114,6 +114,7 @@ class FindAppFeature {
         '한번에 체크',
         'taken today',
         'take medicine',
+        'did i take',
         'schedule',
         'mark taken',
       ],
@@ -200,6 +201,8 @@ class FindAppFeature {
         '지난기록',
         '어제 먹',
         '어제먹',
+        '어제 약 먹었',
+        '어제약먹었',
         '언제 먹었',
         '먹었는지',
         '복용 내역',
@@ -421,7 +424,8 @@ class FindAppFeature {
       ],
       concepts: [
         ['알림', '알람', '소리', 'notification', 'alarm'],
-        ['안', '허용', '권한', '테스트', 'test', 'permission', 'not'],
+        // 공백을 지운 비교라 'not'은 notification 자체와 겹치므로 구체적 표현만 둔다.
+        ['안', '허용', '권한', '테스트', 'test', 'permission', 'notwork', 'notcom', 'notring'],
       ],
     ),
     FeatureSearchEntry(
@@ -444,10 +448,14 @@ class FindAppFeature {
         'mute notifications',
         'turn off alerts',
         'enable alerts',
+        'turn off notifications',
+        'notifications off',
+        'disable notifications',
       ],
       concepts: [
         ['알림', '알람', 'notification', 'alert'],
-        ['끄', '꺼', '켜', '키고', '종류', '수신', 'off', 'on', 'mute'],
+        // 'on'은 notification 끝과 겹치므로 켜기 표현을 그대로 쓴다.
+        ['끄', '꺼', '켜', '키고', '종류', '수신', 'off', 'turnon', 'enable', 'disable', 'mute'],
       ],
     ),
     FeatureSearchEntry(

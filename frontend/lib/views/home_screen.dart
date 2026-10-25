@@ -1096,9 +1096,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _openSearchedPatient(MedBuddyViewModel viewModel) async {
     final owner = viewModel.patientHash;
     await _refreshChatList();
+    // 연동 확인은 네트워크를 기다리므로, 그사이 다른 화면이나 탭으로 옮겼다면 그 위에 열지 않는다.
     if (!mounted ||
         !identical(context.read<MedBuddyViewModel>(), viewModel) ||
-        viewModel.patientHash != owner) {
+        viewModel.patientHash != owner ||
+        _selectedDestination != MedBuddyDestination.home ||
+        !(ModalRoute.of(context)?.isCurrent ?? false)) {
       return;
     }
     final chat = _chatList;

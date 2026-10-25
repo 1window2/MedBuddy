@@ -172,6 +172,8 @@ class MedBuddyViewModel extends ChangeNotifier {
 
   bool get isTodayScheduleLoading => _schedules.isTodayScheduleLoading;
 
+  bool get hasSettledTodaySchedule => _schedules.hasSettledTodaySchedule;
+
   bool get hasTodayScheduleLoadError => _schedules.hasTodayScheduleLoadError;
 
   // 함수이름: isHealthRecommendationLoading

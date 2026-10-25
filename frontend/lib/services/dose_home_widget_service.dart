@@ -7,10 +7,12 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../entities/caregiver_monitoring_snapshot_entity.dart';
 import '../entities/dose_widget_state.dart';
 import '../entities/medication_schedule_entity.dart';
+import 'app_language_resolver.dart';
 import 'auth_config.dart';
 import 'authenticated_api_client.dart';
 import 'dose_outbox_store.dart';
@@ -400,8 +402,21 @@ class DoseHomeWidget {
     if (!supported) return;
     await platform.cancelScheduledUpdates();
     final actions = await _journalActions();
+    // 로그인 안내도 앱 언어를 따르게 한다. 언어가 없으면 위젯은 한국어로 그린다.
+    var language = 'ko';
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      language = resolveAppLanguage(
+        preferences.getString(appLanguagePreferenceKey) ?? 'ko',
+      );
+    } catch (_) {
+      // 설정을 읽지 못해도 위젯은 비운다.
+    }
     await platform.saveState(
-      jsonEncode({'handled': actions.map((a) => a['token']).toList()}),
+      jsonEncode({
+        'handled': actions.map((a) => a['token']).toList(),
+        'language': language,
+      }),
     );
     await platform.updateWidget();
   }
