@@ -5,6 +5,7 @@ import '../boundaries/medication_image_viewer_boundary.dart';
 import '../controls/as_needed_check_reminder_control.dart';
 import '../controls/medication_history_control.dart';
 import '../entities/medication_history_entity.dart';
+import '../entities/medication_schedule_entity.dart';
 import '../services/manual_medication_image_store.dart';
 import '../services/api_response_parser.dart';
 import '../theme/medbuddy_theme.dart';
@@ -882,7 +883,10 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
                 ),
                 if (medication.dosage.isNotEmpty)
                   Text(
-                    medication.dosage,
+                    localizedDoseAmountLabel(
+                      medication.dosage,
+                      widget.isEnglish ? 'en' : 'ko',
+                    ),
                     style: const TextStyle(
                       fontSize: 14,
                       color: MedBuddyColors.textMuted,

@@ -273,6 +273,7 @@ Future<MedicationHistoryControl> _pumpAsNeeded(
               isEnglish: isEnglish,
               control: control,
               imageStore: imageStore,
+              readOnly: readOnly,
               emptyState: const Text('No medication today'),
             ),
           ],
@@ -286,6 +287,25 @@ Future<MedicationHistoryControl> _pumpAsNeeded(
 
 // 함수역할: 보호자·수정·내보내기와 실패 경로의 UI 회귀 테스트를 등록한다.
 void main() {
+  for (final readOnly in [false, true]) {
+    for (final isEnglish in [false, true]) {
+      testWidgets('필요시 복용량 번역: 보호자=$readOnly 영어=$isEnglish', (tester) async {
+        final server = _HistoryServer();
+        final control = await _pumpAsNeeded(
+          tester,
+          server,
+          readOnly: readOnly,
+          isEnglish: isEnglish,
+        );
+        expect(find.text(isEnglish ? '1 tablet' : '1정'), findsOneWidget);
+        expect(find.text(isEnglish ? '1정' : '1 tablet'), findsNothing);
+        expect(find.text('테스트 필요시약'), findsOneWidget);
+        expect(control.snapshot!.medications.last.dosage, '1정');
+        expect(server.writes, isEmpty);
+      });
+    }
+  }
+
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() {
     SharedPreferences.setMockInitialValues({});
