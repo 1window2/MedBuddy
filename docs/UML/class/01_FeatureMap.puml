@@ -8,7 +8,7 @@ title MedBuddy Feature Map
 skinparam backgroundColor white
 skinparam shadowing false
 skinparam linetype ortho
-skinparam defaultFontName Arial
+skinparam defaultFontName Malgun Gothic
 skinparam defaultFontSize 16
 skinparam ArrowColor #64748B
 skinparam ArrowThickness 2
@@ -23,6 +23,7 @@ skinparam rectangle {
 
 package "Flutter Frontend" as FE #E8F4FF {
   rectangle "App and\nAuthentication" as FE_AUTH #DCEEFF
+  rectangle "기능 찾기\n로컬 매칭·기존 화면 이동" as FE_SEARCH #DCEEFF
   rectangle "Prescription\nAnalysis" as FE_RX #DCEEFF
   rectangle "Medication\nManagement / 직접 등록" as FE_MED #DCEEFF
   rectangle "Caregiver and\nNotifications" as FE_CARE #DCEEFF
@@ -66,6 +67,13 @@ FE_SETTINGS --> BE_API
 FE_CHAT --> BE_CHAT : HTTP / WebSocket
 FE_PHARMACY --> BE_PHARMACY
 FE_CHAT --> FE_PHARMACY : 장소 선택 후 공유 확인
+FE_AUTH --> FE_SEARCH : 홈 돋보기
+note bottom of FE_SEARCH
+  27개 정적 목적지; 한영 별칭·의도 그룹
+  서버·외부 AI 없이 검색; 검색어 저장 없음
+  동일 세션 확인 후 기존 기능의 권한·확인 경로 사용
+  설정·복용·삭제·공유를 자동 실행하지 않음
+end note
 BE_CHAT --> BE_PHARMACY : 병원 문맥 서버 검증
 
 BE_RX --> BE_EXTERNAL

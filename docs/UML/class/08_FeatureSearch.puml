@@ -1,0 +1,85 @@
+@startuml
+allowmixing
+top to bottom direction
+!pragma layout smetana
+scale max 2400 width
+title Feature Search - Local Matching and Existing Navigation
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Malgun Gothic
+skinparam defaultFontSize 16
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+hide empty members
+skinparam classBackgroundColor<<UI>> #E8F4FF
+skinparam classBackgroundColor<<Control>> #EAF8F0
+skinparam classBackgroundColor<<Entity>> #F5F3FF
+
+package "로컬 기능 찾기" {
+  class HomeScreen <<UI>>
+  class FeatureSearchUI <<UI>> {
+    +isEnglish : bool
+    +widgetSupported : bool
+  }
+  class FindAppFeature <<Control>> {
+    {static} entries : List<FeatureSearchEntry>
+    {static} common : List<AppFeature>
+    {static} search(query, widgetSupported) : List<FeatureSearchEntry>
+  }
+  class FeatureSearchEntry <<Entity>> {
+    +feature : AppFeature
+    +ko, en : String
+    +pathKo, pathEn : String
+    +phrases : List<String>
+    +concepts : List<List<String>>
+    +conceptBoost : int
+  }
+  enum AppFeature <<Entity>>
+}
+
+package "기존 목적 화면·제어 경계" {
+  class ManageUserSettingUI <<UI>> {
+    +initialDestination : UserSettingDestination?
+  }
+  enum UserSettingDestination <<Entity>>
+  class MedicationHistoryUI <<UI>> {
+    +initiallyShowExport : bool
+  }
+  class MedicationHistoryControl <<Control>>
+  class ManageChatList <<Control>>
+  class CheckCaregiverMedicationUI <<UI>>
+}
+
+HomeScreen --> FeatureSearchUI : 열기 / 선택한 AppFeature 반환
+FeatureSearchUI --> FindAppFeature : 로컬 검색
+FindAppFeature --> FeatureSearchEntry : 정적 목록 매칭·정렬
+FeatureSearchEntry --> AppFeature : 허용된 목적지 27개
+HomeScreen --> ManageUserSettingUI : 설정 분류·항목 위치
+ManageUserSettingUI --> UserSettingDestination
+HomeScreen --> MedicationHistoryUI : 본인 기록 / 공유 확인창 요청
+MedicationHistoryUI --> MedicationHistoryControl : 기존 조회·공유 검증
+HomeScreen --> ManageChatList : 활성 보호자 연동 갱신
+HomeScreen --> CheckCaregiverMedicationUI : 환자 선택 후 기존 접근 재검증
+
+note bottom of FindAppFeature
+  한국어·영어 이름, 별칭, 의도 그룹을 비교한다.
+  검색어는 UI 메모리에만 존재하며 최대 120자다.
+  서버 조회·외부 AI·검색 기록 저장은 없다.
+  미지원 위젯은 제외하고 결과를 자동 실행하지 않는다.
+end note
+
+note bottom of HomeScreen
+  UI의 화면 이동 연결만 맡는다.
+  검색 복귀와 비동기 선택 후 동일 ViewModel·계정을 확인한다.
+  환자가 여럿이면 선택하며 연동 없음·조회 실패는 연결 관리로 안내한다.
+  그 외 목적지는 기존 탭·화면·입력 선택창으로 연결한다.
+  권한·저장·전송은 기존 Control에 남는다.
+end note
+
+note bottom of MedicationHistoryUI
+  같은 세션의 최초 조회 성공 후 공유 확인창만 연다.
+  읽기 전용·조회 실패·세션 변경이면 자동으로 열지 않는다.
+  공유·복용·삭제·설정 변경은 별도 명시적 동작이 필요하다.
+end note
+@enduml

@@ -1,0 +1,75 @@
+@startuml
+title Feature Search - Selection, Scope and Confirmation
+hide footbox
+skinparam defaultFontName Malgun Gothic
+skinparam maxMessageSize 80
+skinparam sequenceMessageAlign center
+
+actor "사용자" as User
+boundary HomeScreen as Home
+boundary FeatureSearchUI as Search
+control FindAppFeature as Match
+entity "FeatureSearchEntry / AppFeature" as Catalog
+control "ManageChatList /\n기존 환자·기록 조회 Control" as Access
+boundary "기존 목적 화면" as Target
+
+User -> Home : 홈 알림 왼쪽 돋보기
+Home -> Home : 중복 열기 차단; ViewModel·계정 캡처
+Home -> Search : 표시 언어·위젯 지원 여부
+Search -> Catalog : 주요 기능 6개 + 나머지 정적 목적지
+Search --> User : 기능명·기존 메뉴 위치
+loop 검색어 입력 또는 지우기
+  User -> Search : 최대 120자 입력
+  Search -> Match : search(query, widgetSupported)
+  Match -> Catalog : 한영 이름·별칭·의도 그룹 비교
+  Match --> Search : 관련도 순 결과 또는 빈 결과
+  Search --> User : 선택 목록; 자동 이동 없음
+end
+User -> Search : 결과 선택 또는 뒤로
+Search --> Home : AppFeature 또는 null; 검색어 폐기
+alt 취소 또는 ViewModel·계정 변경
+  Home -> Home : 이동하지 않음
+else 같은 세션의 명시적 선택
+  alt 연결 환자 일정
+    Home -> Access : 활성 보호자 연동 새로 읽기
+    alt 연동 없음 또는 조회 실패
+      Home -> Target : 연결 관리 열기
+    else 활성 환자 있음
+      opt 환자가 여러 명
+        Home --> User : 환자 선택창
+        User -> Home : 환자 선택 또는 취소
+      end
+      opt 선택 유효 및 같은 세션
+        Home -> Home : 선택한 활성 연동·보호자 범위 재검사
+        Home -> Target : CheckCaregiverMedicationUI 읽기 전용 진입
+        Target -> Access : 기존 환자 일정 조회·서버 권한 재검증
+        Access --> Target : 허용된 조회 결과 또는 접근 오류
+      end
+    end
+  else 본인 기록 공유
+    Home -> Target : 본인 MedicationHistoryUI(initiallyShowExport=true)
+    Target -> Access : 기존 기록 최초 조회
+    Access --> Target : 현재 세션·권한에 따른 결과
+    opt 조회 성공 및 같은 세션, 읽기 전용 아님
+      Target --> User : 기존 기간·공유 대상 확인창
+    end
+    note over User,Target
+      CSV 전달·채팅 전송은 별도 사용자 선택과 UC-35 검증을 따른다.
+      검색 선택만으로 공유하지 않으며 취소·실패는 전송하지 않는다.
+    end note
+  else 설정 또는 다른 기능
+    Home -> Target : 기존 설정 위치 / 탭 / 화면 / 입력 선택창
+    note over Home,Target
+      설정값을 자동 변경하지 않고 기존 저장·확인 규칙을 유지한다.
+      가족 채팅의 활성 연동이 확인되지 않으면 연결 관리로 안내한다.
+      목적 화면의 네트워크·권한 검증은 기존 기능 책임이다.
+    end note
+  end
+end
+
+note over Search,Catalog
+  검색은 기기 내 정적 목록만 사용한다.
+  외부 AI·검색 API·개인 약명·채팅 본문 조회가 없다.
+  검색어는 저장·전송하지 않는다.
+end note
+@enduml
