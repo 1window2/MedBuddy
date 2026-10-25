@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:medbuddy_frontend/boundaries/medication_capture_options_ui_boundary.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/input_prescription_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/check_nearby_pharmacy_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/medbuddy_bottom_navigation_ui_boundary.dart';
@@ -15,6 +17,7 @@ import 'package:medbuddy_frontend/boundaries/notification_inbox_ui_boundary.dart
 import 'package:medbuddy_frontend/boundaries/pill_identification_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
+import 'package:medbuddy_frontend/controls/set_notification_control.dart';
 import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
@@ -23,6 +26,8 @@ import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:medbuddy_frontend/views/home_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'support/fake_notification_service.dart';
 
 // Class Name: _CountingCheckSchedule
 // Role: Schedule stub that counts destination-triggered refreshes.
@@ -876,17 +881,25 @@ void main() {
 
   // Function Name: testWidgets callback
   // Description:
-  // - Expected behavior: schedule destination refreshes whenever it is revisited.
+  // - Expected behavior: schedule revisits request a refresh that can reuse recent data.
   // Parameters:
   // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
   // Returns:
   // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
-  testWidgets('schedule destination refreshes whenever it is revisited', (
+  testWidgets('schedule destination requests cache-aware refresh on revisit', (
     tester,
   ) async {
     _setViewport(tester, const Size(390, 844));
+    // 앞선 테스트의 기기 설정이나 알림 조회 실패에 따라 캐시 조건이 달라지지 않게 한다.
+    SharedPreferences.setMockInitialValues({});
+    final client = MockClient((_) async => http.Response('{"data":[]}', 200));
     final checkSchedule = _CountingCheckSchedule();
-    final viewModel = MedBuddyViewModel(checkSchedule: checkSchedule);
+    final viewModel = MedBuddyViewModel(
+      checkSchedule: checkSchedule,
+      setNotification: SetNotification(client: client),
+      notificationService: RecordingNotificationService(),
+    );
+    addTearDown(client.close);
     addTearDown(viewModel.dispose);
 
     await tester.pumpWidget(
@@ -905,6 +918,14 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('bottomNavigation-schedule')));
     await tester.pumpAndSettle();
 
+    expect(checkSchedule.requestCount, 1);
+
+    // 확정된 일정 변경은 최근 조회를 무효화하므로 다음 재방문에서 다시 읽어야 한다.
+    viewModel.applyConfirmedTodaySchedules([]);
+    await tester.tap(find.byKey(const ValueKey('bottomNavigation-home')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('bottomNavigation-schedule')));
+    await tester.pumpAndSettle();
     expect(checkSchedule.requestCount, 2);
   });
 
