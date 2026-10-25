@@ -1826,10 +1826,11 @@ void main() {
     );
 
     expect(result, isTrue);
+    // 서머타임 전환일의 하루는 24시간이 아닐 수 있으므로 달력 날짜로 비교한다.
     expect(notificationService.registeredActiveDates.single, [
       today,
-      today.add(const Duration(days: 1)),
-      today.add(const Duration(days: 2)),
+      addCalendarDays(today, 1),
+      addCalendarDays(today, 2),
     ]);
   });
 
