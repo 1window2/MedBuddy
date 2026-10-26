@@ -19,6 +19,11 @@ import 'package:medbuddy_frontend/services/medication_reminder_background_servic
 void main() {
   test('adding calendar days lands on local midnight across a fall-back change', () {
     for (final (start, days, expected) in [
+      // 전환 당일도 고정해 실제 실행 날짜와 무관하게 하루 이동을 검증한다.
+      (DateTime(2026, 10, 25), 1, DateTime(2026, 10, 26)),
+      (DateTime(2026, 11, 1), 1, DateTime(2026, 11, 2)),
+      (DateTime(2026, 3, 8), 1, DateTime(2026, 3, 9)),
+      (DateTime(2026, 3, 29), 1, DateTime(2026, 3, 30)),
       (DateTime(2026, 10, 19), 27, DateTime(2026, 11, 15)),
       (DateTime(2026, 10, 20, 18, 30), 7, DateTime(2026, 10, 27)),
       (DateTime(2026, 11, 2), -3, DateTime(2026, 10, 30)),
