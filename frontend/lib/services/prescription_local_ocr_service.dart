@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 import '../entities/recognized_text_region_entity.dart';
+import 'prescription_ocr_reading_order.dart';
 
 // 파일명: prescription_local_ocr_service.dart
 // 역할: 처방전 원본이 기기를 벗어나기 전에 한글 OCR과 개인정보 제거를 수행한다.
@@ -86,7 +87,7 @@ class PrescriptionLocalOcrService implements PrescriptionLocalOcrBoundary {
     final inputImage = InputImage.fromFilePath(imagePath);
     final recognizedText = await _textRecognizer.processImage(inputImage);
     final imageSize = await _readImageSize(imagePath);
-    final safeLines = <String>[];
+    final safeLines = <int, String>{};
     final regions = <RecognizedTextRegion>[];
     var plainRegionCount = 0;
     final lines = [
@@ -120,12 +121,19 @@ class PrescriptionLocalOcrService implements PrescriptionLocalOcrBoundary {
       if (!sensitive) {
         final maskedLine = _privacyFilter.maskInlineIdentifiers(text).trim();
         if (maskedLine.isNotEmpty) {
-          safeLines.add(maskedLine);
+          safeLines[index] = maskedLine;
         }
       }
     }
 
-    final maskedText = safeLines.join('\n').trim();
+    // 인식기는 열 단위 블록으로 줄을 돌려주므로 약 이름과 그 행의 용법이 멀리 떨어진다. 화면의 행 순서로
+    // 다시 놓아 같은 행의 줄이 이어지게 한다. 개인정보 판단은 위에서 원래 순서로 이미 끝났다.
+    final maskedText = [
+      for (final index in PrescriptionOcrReadingOrder.order([
+        for (final line in lines) line.boundingBox,
+      ], safeLines.keys.toList()))
+        safeLines[index]!,
+    ].join('\n').trim();
     if (maskedText.isEmpty) {
       throw StateError('기기에서 처방전 글자를 인식하지 못했거나 개인정보 외의 내용을 찾지 못했습니다.');
     }
