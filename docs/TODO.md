@@ -129,7 +129,7 @@ recovery, docs) were reviewed on 2026-10-23. Corrected on top:
       line can sit under the footer, because the card is still loading when
       it moves). Test medicines deleted afterwards.
 - [x] A tester's own pharmacy bag (another layout, green guide) on the
-      released 0.2.4 build: five medicines matched catalogue candidates and
+      0.2.4 test build: five medicines matched catalogue candidates and
       the analysis finished with five medicines over five days.
 - [ ] Not checkable remotely on the Note10 (its network carries adb): offline
       after midnight and caregiver alerts after an offline start. The chat
