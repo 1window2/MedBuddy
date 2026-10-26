@@ -88,6 +88,24 @@ recovery, docs) were reviewed on 2026-10-23. Corrected on top:
       the confirmation read "1시간 4분 전", then "방금 전" right after a dose.
       The test medication was deleted.
 
+### Device check on 2026-10-26 (Galaxy Note10, production `4a6b911`)
+
+- [x] Prescription analysis from the gallery with a real pharmacy bag whose
+      name was pseudonymised and whose dates and course were edited for the
+      test (dispensed 2026-10-26, next visit 10-31, five days, one medicine
+      changed to once a day). The privacy guard passed it ("De-identified
+      prescription text analysis completed"); the preview masked the patient,
+      issue-number and hospital rows; the date was read as 10/26 and every row
+      as five days from 2026-10-26. OCR read two rows wrongly (a frequency and
+      a 0.5-tablet dose) and added one row that is not on the bag; both were
+      corrected in the editor, the extra row was left out through "확인된
+      약만으로 계속", and the five medicines were confirmed against their
+      catalogue candidates. Saved: today 0/12 (morning 5, lunch 3, evening 4)
+      with the bag's pill crops, course 10-26 to 10-30 in the cabinet. The
+      first detail lookup failed on a Gemini server error and showed the
+      public-data outage notice; the retry worked. The test medicines were
+      deleted; the edited image is in the phone's Pictures/MedBuddyTest.
+
 ### Decisions taken on 2026-10-23
 
 Recorded with reasons and how to undo them in the
