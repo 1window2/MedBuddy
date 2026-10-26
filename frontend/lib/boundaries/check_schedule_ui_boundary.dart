@@ -168,6 +168,8 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
           _revealInitialSlot();
         }
       });
+      // 새로 읽은 일정이 화면을 바꾸지 않으면 다음 프레임이 오지 않아, 사용자가 화면을 만질 때까지 이동하지 않았다.
+      WidgetsBinding.instance.scheduleFrame();
     });
   }
 
@@ -183,6 +185,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _revealInitialSlot();
       });
+      WidgetsBinding.instance.scheduleFrame();
     }
   }
 
@@ -242,6 +245,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _revealInitialSlot(attempt + 1);
       });
+      WidgetsBinding.instance.scheduleFrame();
       return;
     }
     _didRevealInitialSlot = true;

@@ -118,6 +118,13 @@ recovery, docs) were reviewed on 2026-10-23. Corrected on top:
       the restart showed one dose, the next tap asked "1회 → 2회", and the
       server still had one record. Recording a first as-needed dose offline
       is refused by design (it reads today's records first).
+- [x] Signed `8927e48` on the Note10: the same bag is read correctly without
+      any correction (애니펜정 1×3, 파모터정 1×2, 프로코푸정 1×3, 셀리온정
+      1×1, 슈다페드정 0.5×3, no extra row) and saves as 0/12. The delete
+      button keeps "선택 삭제" while the confirmation is open. Opening
+      "필요시 복용" from feature search stayed at the top until the app was
+      backgrounded and resumed, which drew a frame and then moved to the card;
+      fixed by requesting the frame (to be checked on the next build).
 - [ ] Not checkable remotely on the Note10 (its network carries adb): offline
       after midnight and caregiver alerts after an offline start. The chat
       history reload on an app rebuild and Back during a slow day load are
