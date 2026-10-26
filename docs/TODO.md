@@ -128,6 +128,9 @@ recovery, docs) were reviewed on 2026-10-23. Corrected on top:
       the as-needed card within four seconds without a touch (the card's last
       line can sit under the footer, because the card is still loading when
       it moves). Test medicines deleted afterwards.
+- [x] A tester's own pharmacy bag (another layout, green guide) on the
+      released 0.2.4 build: five medicines matched catalogue candidates and
+      the analysis finished with five medicines over five days.
 - [ ] Not checkable remotely on the Note10 (its network carries adb): offline
       after midnight and caregiver alerts after an offline start. The chat
       history reload on an app rebuild and Back during a slow day load are
@@ -953,3 +956,10 @@ Existing-flow acceptance tests above remain release requirements.
       `MedBuddy - Medication Intake Automation Roadmap.md`. A camera or model
       may preselect a dose, but ambiguous identity, count, or timing must still
       require one clear confirmation and must never write a completion record.
+- [ ] 1.0.0 candidate, lowest priority: Samsung scroll capture (long
+      screenshot) does not work in the app. It reports "이 화면에서는 스크롤
+      캡처를 사용할 수 없어요" or moves the page slightly and stops, because
+      Flutter draws everything in one FlutterView that the system cannot
+      scroll. Supporting it means implementing Android 12's scroll capture
+      callback for the Flutter view, and Samsung's capture may not use it.
+      Reported by a tester on 2026-10-26; ordinary screenshots work.
