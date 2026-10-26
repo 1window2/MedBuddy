@@ -593,6 +593,25 @@ void main() {
     );
   });
 
+  // 함수이름: 삭제 확인 중 문구 테스트
+  // 함수역할: 확인창이 열린 동안에는 아직 삭제하지 않으므로 '삭제 중'이라고 표시하지 않는지 검증한다.
+  // 매개변수: tester. 반환값: 검증 완료.
+  testWidgets('삭제 확인창이 열린 동안에는 삭제 중으로 표시하지 않는다', (tester) async {
+    final model = await _pumpSelectionApp(tester);
+    model.deleteGate = Completer<void>();
+    await _startSavedSelection(tester);
+    await _toggleSavedAll(tester);
+    await tester.tap(find.byKey(const Key('saved-medication-delete-selected')));
+    await tester.pumpAndSettle();
+    expect(find.text('삭제 중...'), findsNothing);
+    await tester.tap(_dialogButton('삭제'));
+    await tester.pumpAndSettle();
+    expect(find.text('삭제 중...'), findsOneWidget);
+    model.deleteGate!.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('삭제 중...'), findsNothing);
+  });
+
   // 함수이름: 삭제 중 조작 차단 테스트
   // 함수역할: 대기 중인 삭제는 선택·조건·뒤로가기와 중복 삭제를 막는다.
   // 매개변수: tester. 반환값: 검증 완료.

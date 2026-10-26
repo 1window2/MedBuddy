@@ -98,6 +98,8 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
   bool _isSelectionMode = false;
   bool _reportedBackHandling = false;
   bool _isDeleting = false;
+  // 확인창이 열린 동안에도 조작은 막되, 버튼은 확인 뒤에만 '삭제 중'으로 표시한다.
+  bool _deleteConfirmed = false;
   _SavedMedicationSortMode _sortMode = _SavedMedicationSortMode.registeredDate;
   _SavedMedicationSortDirection _sortDirection =
       _SavedMedicationSortDirection.descending;
@@ -354,7 +356,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
                       child: _SelectionDeleteBar(
                         text: text,
                         selectedCount: selectedIds.length,
-                        isDeleting: _isDeleting,
+                        isDeleting: _isDeleting && _deleteConfirmed,
                         // 함수역할: 보이는 선택 약의 삭제를 확인한다.
                         // 매개변수: 없음. 반환값: 삭제 확인·처리 완료.
                         onDeleteRequested: () =>
@@ -684,6 +686,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
             _DeleteConfirmationDialog(text: text, count: ids.length),
       );
       if (!mounted || shouldDelete != true) return;
+      setState(() => _deleteConfirmed = true);
       // 확인 중 조회 결과가 바뀌어도 숨겨진 약을 삭제하지 않는다.
       ids.retainAll(_visibleMedicationIds(viewModel));
       if (ids.isEmpty) return;
@@ -697,7 +700,12 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
         context,
       ).showSnackBar(SnackBar(content: Text(text.deleteResult(result))));
     } finally {
-      if (mounted) setState(() => _isDeleting = false);
+      if (mounted) {
+        setState(() {
+          _isDeleting = false;
+          _deleteConfirmed = false;
+        });
+      }
     }
   }
 

@@ -152,6 +152,21 @@ class _ActiveCheckSchedule extends CheckSchedule {
   }
 }
 
+// 네 시간대 모두 약이 많아 취침 전·필요시 카드가 처음 화면 밖에 놓이는 일정.
+class _CrowdedCheckSchedule extends CheckSchedule {
+  @override
+  Future<List<MedicationSchedule>> requestTodayMedicationSchedule() async => [
+    for (var i = 0; i < 6; i++)
+      MedicationSchedule(
+        medicationID: '$i',
+        medicationName: 'crowded-$i',
+        intakeTime: '4 times',
+        medicationTime: 5,
+        scheduleSlotKeys: const ['morning', 'lunch', 'evening', 'bedtime'],
+      ),
+  ];
+}
+
 // 정기 일정 응답을 보류해 필요시 약만 먼저 도착하는 상황을 재현한다.
 class _DelayedCheckSchedule extends _ActiveCheckSchedule {
   final gate = Completer<void>();
@@ -567,6 +582,74 @@ Future<void> _closeDoseSchedule(
 // 함수이름: main
 // 함수역할: 일정·알림·화면 배치·접근성 회귀 사례를 등록한다. 매개변수·반환값: 없음.
 void main() {
+  // 알림·기능 찾기로 연 시간대가 처음 화면 밖이면 목록이 아직 만들지 않아 이동하지 못했다.
+  for (final (slot, title) in [
+    ('bedtime', '취침 전'),
+    ('as_needed', '필요시 복용'),
+  ]) {
+    testWidgets('opening at $slot reveals a card that starts off screen', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      tester.view.physicalSize = const Size(390, 760);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final viewModel = MedBuddyViewModel(
+        checkSchedule: _CrowdedCheckSchedule(),
+        setNotification: EmptySetNotification(),
+        notificationService: RecordingNotificationService(),
+      );
+      addTearDown(viewModel.dispose);
+      await viewModel.fetchTodayMedicationSchedule();
+      await tester.pumpWidget(
+        ChangeNotifierProvider<MedBuddyViewModel>.value(
+          value: viewModel,
+          child: MaterialApp(
+            home: CheckScheduleUI(
+              initialSlotKey: slot,
+              asNeededControl: _historyControl(withPrn: true),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text(title).hitTestable(), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
+  testWidgets('an unknown slot key leaves the schedule at the top', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    tester.view.physicalSize = const Size(390, 760);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final viewModel = MedBuddyViewModel(
+      checkSchedule: _CrowdedCheckSchedule(),
+      setNotification: EmptySetNotification(),
+      notificationService: RecordingNotificationService(),
+    );
+    addTearDown(viewModel.dispose);
+    await viewModel.fetchTodayMedicationSchedule();
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: viewModel,
+        child: MaterialApp(
+          home: CheckScheduleUI(
+            initialSlotKey: 'unknown',
+            asNeededControl: _historyControl(withPrn: true),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('crowded-0').first.hitTestable(), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   for (final failSchedule in [false, true]) {
     testWidgets('정기 일정 대기에는 필요시 카드 대신 로딩만 표시한다: $failSchedule', (tester) async {
       SharedPreferences.setMockInitialValues({});

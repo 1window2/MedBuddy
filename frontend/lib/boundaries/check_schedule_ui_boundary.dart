@@ -128,6 +128,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
   bool _reminderWorkflowActive = false;
   bool _historyWorkflowActive = false;
   bool _didRevealInitialSlot = false;
+  final ScrollController _listController = ScrollController();
   late Set<({String medicationId, String slotKey})> _selectedDoses;
   // 함수이름: initState
   // 함수역할: 초기 선택 ID를 복사하고 일반 모드에서는 일정을 갱신한 뒤 요청 시간대를 드러낸다.
@@ -204,18 +205,43 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     });
   }
 
+  @override
+  void dispose() {
+    _listController.dispose();
+    super.dispose();
+  }
+
   // 함수이름: _revealInitialSlot
   // 함수역할: 알림에서 전달된 시간대 카드가 화면에 보이도록 최초 한 번만 이동한다.
   // 매개변수:
   // - 없음.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
-  void _revealInitialSlot() {
+  void _revealInitialSlot([int attempt = 0]) {
     if (_didRevealInitialSlot) {
       return;
     }
     final slotKey = widget.initialSlotKey?.trim().toLowerCase();
     final targetContext = _slotKeys[slotKey]?.currentContext;
     if (targetContext == null) {
+      // 목록은 화면 밖 카드를 만들지 않으므로 한 화면씩 내려가며 찾는다. 오늘 그 시간대가 없으면
+      // 맨 위로 돌아간다(취침 전·필요시 카드는 약이 많으면 처음에 만들어지지 않는다).
+      if (!_slotKeys.containsKey(slotKey) || !_listController.hasClients) {
+        return;
+      }
+      final position = _listController.position;
+      if (attempt >= 20 || position.pixels >= position.maxScrollExtent) {
+        if (attempt > 0) position.jumpTo(0);
+        return;
+      }
+      position.jumpTo(
+        (position.pixels + position.viewportDimension).clamp(
+          0,
+          position.maxScrollExtent,
+        ),
+      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _revealInitialSlot(attempt + 1);
+      });
       return;
     }
     _didRevealInitialSlot = true;
@@ -559,6 +585,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
           maxWidth: MedBuddySpacing.contentMaxWidth,
         ),
         child: ListView(
+          controller: _listController,
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
           children: [
             if (noRegularDoses && viewModel.hasTodayScheduleLoadError)

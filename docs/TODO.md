@@ -105,6 +105,23 @@ recovery, docs) were reviewed on 2026-10-23. Corrected on top:
       first detail lookup failed on a Gemini server error and showed the
       public-data outage notice; the retry worked. The test medicines were
       deleted; the edited image is in the phone's Pictures/MedBuddyTest.
+- [x] Signed `4a6b911` over `78725bd` on both devices, session kept. All test
+      medicines on the phone were deleted and the bag analysed again from an
+      empty cabinet: same OCR rows (the "비염 & 콧물약" row adds a medicine
+      and shifts two values; corrected in the editor) and the same saved
+      schedule. As-needed undo after leaving a pushed schedule (feature
+      search) undid the second dose on the server ("복용 기록을 취소했어요");
+      a tab switch keeps the schedule alive, so it is not that case.
+- [x] Lost as-needed response (emulator): the network was dropped right
+      after the tap, the server stored the dose, the card said
+      "저장 결과를 확인하지 못했어요"; after a force stop and reconnecting,
+      the restart showed one dose, the next tap asked "1회 → 2회", and the
+      server still had one record. Recording a first as-needed dose offline
+      is refused by design (it reads today's records first).
+- [ ] Not checkable remotely on the Note10 (its network carries adb): offline
+      after midnight and caregiver alerts after an offline start. The chat
+      history reload on an app rebuild and Back during a slow day load are
+      covered by widget tests only.
 
 ### Decisions taken on 2026-10-23
 
