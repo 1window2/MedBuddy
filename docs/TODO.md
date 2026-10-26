@@ -124,7 +124,10 @@ recovery, docs) were reviewed on 2026-10-23. Corrected on top:
       button keeps "선택 삭제" while the confirmation is open. Opening
       "필요시 복용" from feature search stayed at the top until the app was
       backgrounded and resumed, which drew a frame and then moved to the card;
-      fixed by requesting the frame (to be checked on the next build).
+      fixed by requesting the frame. Signed `f51ef20`: the schedule moves to
+      the as-needed card within four seconds without a touch (the card's last
+      line can sit under the footer, because the card is still loading when
+      it moves). Test medicines deleted afterwards.
 - [ ] Not checkable remotely on the Note10 (its network carries adb): offline
       after midnight and caregiver alerts after an offline start. The chat
       history reload on an app rebuild and Back during a slow day load are
