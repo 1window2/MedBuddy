@@ -4,6 +4,8 @@
 """채팅 푸시 알림의 내용 미리보기와 토큰 정리를 검증한다."""
 
 import sys
+import json
+import hashlib
 import unittest
 from pathlib import Path
 
@@ -31,6 +33,8 @@ from entities.patient_caregiver_link_entity import (  # noqa: E402
 )
 from entities.user_account_entity import _UserAccount, utc_now  # noqa: E402
 from entities.user_setting_entity import _UserSetting  # noqa: E402
+from controls.manage_linked_chat_control import ManageLinkedChat
+from fastapi import HTTPException
 
 
 # 클래스명: _RecordingPushBoundary
@@ -352,6 +356,85 @@ class DispatchChatMessageAlertTest(unittest.TestCase):
         self.assertEqual(boundary.calls[0]["data"]["message_preview"], "")
 
 
+def test_group_summary_counts_only_visible_incoming_and_resets_after_read(fk_db):
+    link_id, first_id = _seed_chat_scene(fk_db)
+    link = fk_db.get(_PatientCaregiverLink, link_id)
+    link.patient_alias = "테스트 가족"
+    rows = []
+    for i in range(2, 8):
+        row = _ChatMessage(link_id=link_id, sender_hash=_PATIENT,
+                           client_message_id=f"group-{i}", body=f"메시지 {i}")
+        fk_db.add(row)
+        rows.append(row)
+    fk_db.flush()
+    rows[0].read_at = utc_now()
+    rows[1].caregiver_deleted_at = utc_now()
+    rows[2].deleted_for_everyone_at = utc_now()
+    fk_db.add(_ChatMessage(link_id=link_id, sender_hash=_CAREGIVER,
+                          client_message_id="own-message", body="내 메시지"))
+    fk_db.commit()
+    control = ManageLinkedChat(fk_db)
+    result = control.request_unread_count(link_id=link_id, user_hash=_CAREGIVER,
+                                         include_notification_preview=True)["data"]
+    summary = result["notification"]
+    assert summary["count"] == result["unread_count"] == 4
+    assert summary["sender_name"] == "테스트 가족"
+    assert summary["lines"] == ["메시지 5", "메시지 6", "메시지 7"]
+    with pytest.raises(HTTPException):
+        control.request_unread_count(link_id=link_id, user_hash=_OUTSIDER,
+                                     include_notification_preview=True)
+    for row in fk_db.query(_ChatMessage).filter_by(link_id=link_id).all():
+        row.read_at = utc_now()
+    fk_db.commit()
+    empty = control.request_unread_count(link_id=link_id, user_hash=_CAREGIVER,
+                                        include_notification_preview=True)["data"]["notification"]
+    assert empty["count"] == 0 and empty["lines"] == []
+    next_row = _ChatMessage(link_id=link_id, sender_hash=_PATIENT,
+                           client_message_id="after-read", body="새 메시지")
+    fk_db.add(next_row)
+    fk_db.commit()
+    reset = control.request_unread_count(link_id=link_id, user_hash=_CAREGIVER,
+                                        include_notification_preview=True)["data"]["notification"]
+    assert reset["count"] == 1 and reset["group_tag"] == summary["group_tag"]
+    link.linked = False
+    fk_db.commit()
+    with pytest.raises(HTTPException):
+        control.request_unread_count(link_id=link_id, user_hash=_CAREGIVER,
+                                     include_notification_preview=True)
+
+
+def test_group_summary_hides_health_share_and_limits_push_size(fk_db):
+    link_id, first_id = _seed_chat_scene(fk_db)
+    for i in range(3):
+        fk_db.add(_ChatMessage(link_id=link_id, sender_hash=_PATIENT,
+            client_message_id=f"long-{i}", body="가" * 2000))
+    fk_db.flush()
+    last = fk_db.query(_ChatMessage).order_by(_ChatMessage.id.desc()).first()
+    last_id = last.id
+    fk_db.commit()
+    boundary = RecordingPushBoundary()
+    DispatchChatMessageAlert(fk_db, boundary).notify_new_message(
+        recipient_hash=_CAREGIVER, link_id=link_id, message_id=last_id, message_body="")
+    call = boundary.calls[-1]
+    summary = json.loads(call["data"]["chat_summary"])
+    assert all(len(line) <= 80 for line in summary["lines"])
+    assert len(json.dumps({"notification": {"title": call["title"], "body": call["body"]},
+                           "data": call["data"]}, ensure_ascii=False).encode()) < 4096
+    last = fk_db.get(_ChatMessage, last_id)
+    last.message_kind = "medication_history_share"
+    last.body = "비공개 건강 기록"
+    fk_db.commit()
+    control = ManageLinkedChat(fk_db)
+    summary = control.request_unread_count(link_id=link_id, user_hash=_CAREGIVER,
+                                         include_notification_preview=True)["data"]["notification"]
+    assert "비공개" not in str(summary)
+    fk_db.add(_UserSetting(user_hash=_CAREGIVER, notification_detail_mode="type_only"))
+    fk_db.commit()
+    hidden = control.request_unread_count(link_id=link_id, user_hash=_CAREGIVER,
+                                        include_notification_preview=True)["data"]["notification"]
+    assert hidden["count"] == 4 and hidden["lines"] == [] and hidden["sender_name"] == ""
+
+
 _PATIENT = "patient-a"
 _CAREGIVER = "caregiver-a"
 _OUTSIDER = "outsider-a"
@@ -444,10 +527,15 @@ def test_chat_alert_follows_recipient_language_and_detail_mode(
     )
 
     assert result.success_count == 1
+    tag = 'medbuddy-chat-' + hashlib.sha256(f'{_CAREGIVER}|{link_id}'.encode()).hexdigest()[:32]
+    sender = ("Patient NT-A" if language == "en" else "환자 NT-A") if show_details else ""
+    summary = {"count": 1, "latest_message_id": message_id, "sender_name": sender,
+               "lines": [_MESSAGE_BODY] if show_details else [],
+               "show_details": show_details, "group_tag": tag}
     assert boundary.calls == [
         {
             "tokens": [_ACTIVE_TOKEN],
-            "title": _CHAT_TITLE[language],
+            "title": f"{sender or _CHAT_TITLE[language]} (1)",
             "body": _MESSAGE_BODY if show_details else _CHAT_FALLBACK_BODY[language],
             "data": {
                 "type": "linked_chat_message",
@@ -458,6 +546,9 @@ def test_chat_alert_follows_recipient_language_and_detail_mode(
                 "message_preview": _MESSAGE_BODY if show_details else "",
                 "message_kind": "text",
                 "slot_key": "evening",
+                "chat_group": tag,
+                "chat_count": "1",
+                "chat_summary": json.dumps(summary, ensure_ascii=False),
             },
         }
     ]

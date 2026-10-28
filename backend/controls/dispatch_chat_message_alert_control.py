@@ -3,6 +3,8 @@
 
 """채팅방에 접속하지 않은 상대에게 새 메시지 푸시를 전달한다."""
 
+import json
+
 from sqlalchemy.orm import Session
 
 from boundaries.push_notification_boundary import (
@@ -10,9 +12,8 @@ from boundaries.push_notification_boundary import (
     PushNotificationBoundary,
 )
 from entities.chat_message_entity import CHAT_MESSAGE_KIND_MEDICATION_HISTORY_SHARE, _ChatMessage
-from entities.medication_schedule_entity import (
-    MEDICATION_SLOT_ENGLISH_NAMES,
-    MEDICATION_SLOT_KOREAN_NAMES,
+from services.chat_notification_summary import (
+    build_chat_notification_summary, dose_receipt_preview, message_preview,
 )
 from repositories.patient_caregiver_link_repository import (
     PatientCaregiverLinkRepository,
@@ -113,11 +114,25 @@ class DispatchChatMessageAlert:
             message_preview = fallback_body
         show_details = recipient.show_details
         notification_body = (message_preview or fallback_body) if show_details else fallback_body
+        title = "New family message" if is_english else "새 가족 메시지"
+        grouped_data = {}
+        if message_id is not None:
+            summary = build_chat_notification_summary(
+                self.db, link=link, recipient_hash=recipient_hash,
+                language=language, show_details=show_details,
+            )
+            if summary["count"] == 0:
+                return PushDeliveryResult(success_count=0)
+            title = f"{summary['sender_name'] or title} ({summary['count']})"
+            notification_body = "\n".join(summary["lines"]) or fallback_body
+            grouped_data = {"chat_summary": json.dumps(summary, ensure_ascii=False),
+                            "chat_group": summary["group_tag"],
+                            "chat_count": str(summary["count"])}
         # Firebase 호출이 느려도 풀 연결과 읽기 트랜잭션을 잡고 있지 않도록 먼저 반환한다.
         self.db.rollback()
         result = self.push_boundary.send_notification(
             tokens=list(recipient.tokens),
-            title="New family message" if is_english else "새 가족 메시지",
+            title=title,
             body=notification_body,
             data={
                 "type": "linked_chat_message",
@@ -129,6 +144,7 @@ class DispatchChatMessageAlert:
                 "message_preview": message_preview if show_details else "",
                 "message_kind": message_kind,
                 "slot_key": slot_key or "",
+                **grouped_data,
             },
         )
         if result.invalid_tokens:
@@ -160,16 +176,7 @@ class DispatchChatMessageAlert:
     @staticmethod
     def _dose_receipt_preview(dose_receipt: dict[str, object], is_english: bool) -> str:
         """날짜와 시간대를 알 수 없으면 그 부분을 빼고 기록 사실만 알린다."""
-        slot_key = str(dose_receipt.get("slot_key") or "")
-        schedule_date = str(dose_receipt.get("schedule_date") or "").strip()
-        if is_english:
-            slot_name = MEDICATION_SLOT_ENGLISH_NAMES.get(slot_key, "")
-            dose_label = f"{slot_name} doses" if slot_name else "doses"
-            suffix = f" for {schedule_date}" if schedule_date else ""
-            return f"Recorded {dose_label}{suffix}."
-        slot_name = MEDICATION_SLOT_KOREAN_NAMES.get(slot_key, "")
-        subject = " ".join(part for part in (schedule_date, slot_name) if part)
-        return f"{subject} 복용을 기록했습니다.".strip()
+        return dose_receipt_preview(dose_receipt, is_english)
 
     # 함수이름: _message_preview
     # 함수역할:
@@ -181,7 +188,4 @@ class DispatchChatMessageAlert:
     @classmethod
     def _message_preview(cls, message_body: str) -> str:
         """공백을 정리한 뒤 긴 메시지 끝에 말줄임표를 붙인다."""
-        normalized = " ".join(str(message_body or "").split())
-        if len(normalized) <= cls._MAXIMUM_PREVIEW_LENGTH:
-            return normalized
-        return f"{normalized[: cls._MAXIMUM_PREVIEW_LENGTH - 1].rstrip()}…"
+        return message_preview(message_body, cls._MAXIMUM_PREVIEW_LENGTH)

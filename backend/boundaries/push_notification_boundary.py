@@ -161,6 +161,15 @@ class FirebasePushNotificationBoundary:
             and re.fullmatch(r"[0-9a-f]{64}", event_key)
             else None
         )
+        is_chat = data.get("type") == "linked_chat_message"
+        chat_group = data.get("chat_group", "")
+        chat_count = None
+        if is_chat and re.fullmatch(r"medbuddy-chat-[0-9a-f]{32}", chat_group):
+            notification_key = chat_group
+            try:
+                chat_count = max(0, int(data.get("chat_count", "0")))
+            except ValueError:
+                pass
         success_count = 0
         invalid_tokens: list[str] = []
         retryable_failure_count = 0
@@ -179,11 +188,16 @@ class FirebasePushNotificationBoundary:
                         priority="high",
                         notification=(None if data.get("type") == "caregiver_slot_missed"
                                       and data.get("action_version") == "1" else messaging.AndroidNotification(
-                            channel_id="medbuddy_caregiver_updates",
+                            channel_id="medbuddy_linked_chat" if is_chat else "medbuddy_caregiver_updates",
                             tag=notification_key,
+                            notification_count=chat_count,
                         )),
                     ),
-                    apns=(messaging.APNSConfig(headers={"apns-collapse-id": notification_key})
+                    apns=(messaging.APNSConfig(
+                        headers={"apns-collapse-id": notification_key},
+                        payload=(messaging.APNSPayload(messaging.Aps(thread_id=notification_key))
+                                 if is_chat else None),
+                    )
                           if notification_key is not None else None),
                 ),
                 app=self._app,

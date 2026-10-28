@@ -270,6 +270,24 @@ void main() {
     expect(fixture.model.messages.first.messageId, 51);
   });
 
+  test(
+    'slow notification cleanup cannot block the next read receipt',
+    () async {
+      final gate = Completer<void>();
+      final fixture = _HistoryFixture(onRead: (_) => gate.future);
+      addTearDown(fixture.dispose);
+      fixture.control.history = [_message(1, sender: 'peer')];
+      await fixture.model.refresh(showLoading: true);
+      fixture.atLatest = true;
+      await fixture.model.markLatestIncomingRead();
+      fixture.model.addMessage(_message(2, sender: 'peer'));
+      await fixture.model.markLatestIncomingRead();
+      expect(fixture.control.readIds, [1, 2]);
+      gate.complete();
+      await pumpEventQueue();
+    },
+  );
+
   // Verifies acknowledgements require both visibility and latest position, and drain one newer message.
   test(
     'read acknowledgement is gated, coalesced and drains newer incoming messages',
@@ -518,7 +536,7 @@ class _HistoryFixture {
   // Function Name: _HistoryFixture
   // Description: Connects a conversation model to independent test presentation ports.
   // Parameters: None. Returns: An isolated history fixture.
-  _HistoryFixture() {
+  _HistoryFixture({Future<void> Function(int)? onRead}) {
     model = LinkedChatHistoryViewModel(
       linkId: 17,
       userHash: 'self',
@@ -529,6 +547,7 @@ class _HistoryFixture {
       onScrollRequested: (_) {},
       onScheduleChanged: () {},
       onDeleted: deletedSelections.add,
+      onRead: onRead,
     );
   }
 

@@ -97,5 +97,22 @@ def test_non_prn_payload_behavior_is_unchanged_even_with_valid_key(gateway, payl
         assert message.notification is None and message.android.notification is None
     else:
         assert message.android.notification.tag is None
-        assert message.android.notification.channel_id == "medbuddy_caregiver_updates"
+        assert message.android.notification.channel_id == (
+            "medbuddy_linked_chat" if payload["type"] == "linked_chat_message"
+            else "medbuddy_caregiver_updates"
+        )
         assert (message.notification.title, message.notification.body) == ("title", "body")
+
+
+def test_chat_updates_one_notification_per_conversation_with_count(gateway):
+    response = SimpleNamespace(success_count=1, responses=[SimpleNamespace(success=True)])
+    tag = "medbuddy-chat-" + "a1" * 16
+    with patch("boundaries.push_notification_boundary.messaging.send_each_for_multicast", return_value=response) as send:
+        for count in (1, 2, 3):
+            gateway.send_notification(tokens=["device"], title=f"Patient ({count})", body="one\ntwo\nthree",
+                data={"type": "linked_chat_message", "chat_group": tag, "chat_count": str(count)})
+    messages = [call.args[0] for call in send.call_args_list]
+    assert [m.android.notification.tag for m in messages] == [tag] * 3
+    assert [m.android.notification.notification_count for m in messages] == [1, 2, 3]
+    assert all(m.android.notification.channel_id == "medbuddy_linked_chat" for m in messages)
+    assert all(m.apns.payload.aps.thread_id == tag for m in messages)

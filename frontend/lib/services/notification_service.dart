@@ -14,6 +14,7 @@ import 'package:timezone/data/latest_all.dart' as timezone_data;
 import 'package:timezone/timezone.dart' as timezone;
 
 import '../entities/json_value_reader.dart';
+import '../entities/chat_notification_summary.dart';
 import '../entities/medication_alarm_entity.dart';
 import '../entities/caregiver_alert_context_entity.dart';
 import '../entities/medication_notification_selection_entity.dart';
@@ -26,6 +27,7 @@ import 'notification_inbox_store.dart';
 
 // Preserve existing imports while keeping the action contract platform-neutral.
 export '../entities/medication_notification_selection_entity.dart';
+export '../entities/chat_notification_summary.dart';
 
 // Class Name: NotificationService
 // Role: Wraps local notifications for medication, caregiver, and linked-chat workflows.
@@ -79,6 +81,19 @@ class NotificationService {
   String? _historyUserHash;
   Future<void> _scopeWrite = Future<void>.value();
   Future<void>? _reminderWrite;
+  Future<void> _chatWrite = Future<void>.value();
+  final Map<int, int> _chatLatestIds = {};
+  final Map<int, int> _chatReadIds = {};
+
+  Future<void> _serializeChat(Future<void> Function() action) {
+    final session = _historyUserHash;
+    final next = _chatWrite.catchError((Object _) {}).then((_) async {
+      if (session == _historyUserHash) await action();
+    });
+    _chatWrite = next;
+    return next;
+  }
+
   // 이 실행 중 실제로 취소한 구형 고정 ID.
   final Set<int> _cancelledLegacyReminderIds = <int>{};
   // 이 실행에서 직접 예약한 날짜별 알림 ID. 강제 종료나 '알람 및 리마인더' 권한 회수 뒤에는 Android가 알람을
@@ -96,20 +111,29 @@ class NotificationService {
     final owner = _historyUserHash;
     final previous = _reminderWrite;
     late final Future<void> current;
-    current = (() async {
-      if (previous != null) {
-        try { await previous; } catch (_) { /* 다음 요청은 재시도할 수 있다. */ }
-      }
-      if (owner == _historyUserHash) await action();
-    })().whenComplete(() {
-      if (identical(_reminderWrite, current)) _reminderWrite = null;
-    });
+    current =
+        (() async {
+          if (previous != null) {
+            try {
+              await previous;
+            } catch (_) {
+              /* 다음 요청은 재시도할 수 있다. */
+            }
+          }
+          if (owner == _historyUserHash) await action();
+        })().whenComplete(() {
+          if (identical(_reminderWrite, current)) _reminderWrite = null;
+        });
     return _reminderWrite = current;
   }
 
   // 함수이름: setHistoryUser
   // 함수역할: 알림 기록의 계정 범위를 교체한다. 매개변수: userHash, 전경 세션 저장 여부. 반환값: 없음.
   void setHistoryUser(String? userHash, {bool persistSession = true}) {
+    if (_historyUserHash != userHash?.trim()) {
+      _chatLatestIds.clear();
+      _chatReadIds.clear();
+    }
     _historyUserHash = userHash?.trim();
     if (!persistSession) return;
     _scopeWrite = _scopeWrite
@@ -285,7 +309,9 @@ class NotificationService {
     for (final slotKey in medicationScheduleSlotKeys) {
       final rawPlan = preferences.getString(reminderPlanKey(owner, slotKey));
       // 부정확 알람이 없는 계획은 해석하지 않고 넘어간다.
-      if (rawPlan == null || !rawPlan.contains(_inexactScheduleMarker)) continue;
+      if (rawPlan == null || !rawPlan.contains(_inexactScheduleMarker)) {
+        continue;
+      }
       try {
         plans[slotKey] = Map<String, dynamic>.from(jsonDecode(rawPlan));
       } catch (_) {
@@ -305,7 +331,9 @@ class NotificationService {
         final notificationId = int.tryParse(key);
         final signature = _decodeReminderSignature(plan.value[key]);
         final request = pending[notificationId];
-        final scheduleDate = selectionFromPayload(request?.payload)?.scheduleDate;
+        final scheduleDate = selectionFromPayload(
+          request?.payload,
+        )?.scheduleDate;
         if (notificationId == null ||
             signature == null ||
             !signature.inexact ||
@@ -366,7 +394,14 @@ class NotificationService {
   // 함수이름: _decodeReminderSignature
   // 함수역할: 예약 계획에 저장한 서명에서 예약 시각·문구와 부정확 알람 표시를 읽는다.
   // 매개변수: rawSignature - 계획에 저장된 값. 반환값: 해석한 값, 형식이 다르면 null.
-  ({int hour, int minute, String slotTitle, String language, String body, bool inexact})?
+  ({
+    int hour,
+    int minute,
+    String slotTitle,
+    String language,
+    String body,
+    bool inexact,
+  })?
   _decodeReminderSignature(Object? rawSignature) {
     if (rawSignature is! String) return null;
     try {
@@ -542,12 +577,14 @@ class NotificationService {
 
   // 채널 생성 실패는 초기화를 막지 않되 다음 호출에서 재시도하고 동시 호출은 합친다.
   Future<void> _ensureAndroidNotificationChannels() {
-    if (_channelInitializationFuture != null) return _channelInitializationFuture!;
+    if (_channelInitializationFuture != null) {
+      return _channelInitializationFuture!;
+    }
     if (_channelsInitialized && _channelLanguage == _notificationLanguage) {
       return Future<void>.value();
     }
-    return _channelInitializationFuture ??=
-        _createAndroidNotificationChannels().whenComplete(() {
+    return _channelInitializationFuture ??= _createAndroidNotificationChannels()
+        .whenComplete(() {
           _channelInitializationFuture = null;
         });
   }
@@ -693,17 +730,30 @@ class NotificationService {
     String language = 'ko',
   }) {
     final owner = _historyUserHash;
-    return _serializeReminder(() =>
-      _reconcileReminder(owner: owner, id: id, slotKey: slotKey,
-          slotTitle: slotTitle, hour: hour, minute: minute,
-          activeDates: List.of(activeDates), language: language));
+    return _serializeReminder(
+      () => _reconcileReminder(
+        owner: owner,
+        id: id,
+        slotKey: slotKey,
+        slotTitle: slotTitle,
+        hour: hour,
+        minute: minute,
+        activeDates: List.of(activeDates),
+        language: language,
+      ),
+    );
   }
 
   // 날짜별 예약 계획을 보존해 동일한 예약과 사용자가 미룬 알림은 건드리지 않는다.
   Future<void> _reconcileReminder({
-    required String? owner, required int id, required String slotKey,
-    required String slotTitle, required int hour, required int minute,
-    required List<DateTime> activeDates, required String language,
+    required String? owner,
+    required int id,
+    required String slotKey,
+    required String slotTitle,
+    required int hour,
+    required int minute,
+    required List<DateTime> activeDates,
+    required String language,
   }) async {
     await initialize();
     if (owner != _historyUserHash) return;
@@ -713,13 +763,16 @@ class NotificationService {
     final planKey = reminderPlanKey(owner, slotKey);
     Map<String, dynamic> previous = {};
     try {
-      previous = Map<String, dynamic>.from(jsonDecode(preferences.getString(planKey) ?? '{}'));
+      previous = Map<String, dynamic>.from(
+        jsonDecode(preferences.getString(planKey) ?? '{}'),
+      );
     } catch (_) {
       // 손상된 계획은 실제 기기 예약을 확인한 뒤 다시 작성한다.
     }
     final pending = {
       for (final request in await _plugin.pendingNotificationRequests())
-        if (request.id == id || (request.payload?.startsWith('schedule:$slotKey:') ?? false))
+        if (request.id == id ||
+            (request.payload?.startsWith('schedule:$slotKey:') ?? false))
           request.id: request,
     };
     final now = timezone.TZDateTime.from(clock(), timezone.local);
@@ -736,7 +789,9 @@ class NotificationService {
     final desiredIds = {
       for (final date in sortedDates) _notificationIdForDate(id, slotKey, date),
     };
-    for (final staleId in pending.keys.where((key) => !desiredIds.contains(key))) {
+    for (final staleId in pending.keys.where(
+      (key) => !desiredIds.contains(key),
+    )) {
       if (owner != _historyUserHash) return;
       await _plugin.cancel(id: staleId);
       await _cancelInboxReminders(id: staleId);
@@ -767,7 +822,12 @@ class NotificationService {
         final key = '$notificationId';
         final signature = jsonEncode([hour, minute, slotTitle, language, body]);
         final inexactSignature = jsonEncode([
-          hour, minute, slotTitle, language, body, _inexactScheduleMarker,
+          hour,
+          minute,
+          slotTitle,
+          language,
+          body,
+          _inexactScheduleMarker,
         ]);
         final previousSignature = previous[key];
         final sameContent =
@@ -933,7 +993,9 @@ class NotificationService {
     // 예약 도중 계정이 바뀌면 나머지 예약을 새 계정에 남기지 않는다.
     if (owner != _historyUserHash) return null;
     final title = slotKey == 'as_needed'
-        ? (isEnglishLanguage(language) ? 'As-needed medication check' : '필요시 약 확인')
+        ? (isEnglishLanguage(language)
+              ? 'As-needed medication check'
+              : '필요시 약 확인')
         : isEnglishLanguage(language)
         ? '$slotTitle medication schedule'
         : '$slotTitle 복약 일정 확인';
@@ -953,18 +1015,22 @@ class NotificationService {
           importance: Importance.high,
           priority: Priority.high,
           groupKey: _reminderGroupKey(slotKey),
-          actions: slotKey == 'as_needed' ? const [] : <AndroidNotificationAction>[
-            AndroidNotificationAction(
-              markSlotTakenActionId,
-              isEnglishLanguage(language) ? 'Taken' : '복용했어요',
-              showsUserInterface: true,
-            ),
-            AndroidNotificationAction(
-              snoozeTenMinutesActionId,
-              isEnglishLanguage(language) ? 'Remind in 10 min' : '10분 후 다시 알림',
-              showsUserInterface: true,
-            ),
-          ],
+          actions: slotKey == 'as_needed'
+              ? const []
+              : <AndroidNotificationAction>[
+                  AndroidNotificationAction(
+                    markSlotTakenActionId,
+                    isEnglishLanguage(language) ? 'Taken' : '복용했어요',
+                    showsUserInterface: true,
+                  ),
+                  AndroidNotificationAction(
+                    snoozeTenMinutesActionId,
+                    isEnglishLanguage(language)
+                        ? 'Remind in 10 min'
+                        : '10분 후 다시 알림',
+                    showsUserInterface: true,
+                  ),
+                ],
         ),
         iOS: const DarwinNotificationDetails(),
       ),
@@ -1001,14 +1067,24 @@ class NotificationService {
     String language = 'ko',
     Duration delay = const Duration(minutes: 10),
     DateTime? scheduleDate,
-  }) => _serializeReminder(() => _snoozeMedicationReminder(
-    id: id, slotKey: slotKey, slotTitle: slotTitle, language: language,
-    delay: delay, scheduleDate: scheduleDate,
-  ));
+  }) => _serializeReminder(
+    () => _snoozeMedicationReminder(
+      id: id,
+      slotKey: slotKey,
+      slotTitle: slotTitle,
+      language: language,
+      delay: delay,
+      scheduleDate: scheduleDate,
+    ),
+  );
 
   Future<void> _snoozeMedicationReminder({
-    required int id, required String slotKey, required String slotTitle,
-    required String language, required Duration delay, DateTime? scheduleDate,
+    required int id,
+    required String slotKey,
+    required String slotTitle,
+    required String language,
+    required Duration delay,
+    DateTime? scheduleDate,
   }) async {
     final owner = _historyUserHash;
     await initialize();
@@ -1061,21 +1137,21 @@ class NotificationService {
     required String slotKey,
     required DateTime date,
   }) => _serializeReminder(() async {
-    if (owner.trim().isEmpty ||
-        !medicationScheduleSlotKeys.contains(slotKey)) {
+    if (owner.trim().isEmpty || !medicationScheduleSlotKeys.contains(slotKey)) {
       return;
     }
     final preferences = await SharedPreferences.getInstance();
     Future<bool> stillActive() async {
       await preferences.reload();
-      return preferences.getString(NotificationInboxStore.activeUserKey) == owner;
+      return preferences.getString(NotificationInboxStore.activeUserKey) ==
+          owner;
     }
 
     if (!await stillActive()) return;
     await initialize();
-    final baseId = MedicationAlarm.defaults(slotKey)
-        .copyWith(patientHash: owner)
-        .notificationId;
+    final baseId = MedicationAlarm.defaults(
+      slotKey,
+    ).copyWith(patientHash: owner).notificationId;
     final id = _notificationIdForDate(baseId, slotKey, date);
     if (!await stillActive()) return;
     await _plugin.cancel(id: id);
@@ -1107,11 +1183,13 @@ class NotificationService {
       final now = timezone.TZDateTime.now(timezone.local);
       final legacyIds = <int>{id};
       for (var day = 0; day <= 90; day++) {
-        legacyIds.add(_notificationIdForDate(
-          id,
-          slotKey,
-          DateTime(now.year, now.month, now.day - day),
-        ));
+        legacyIds.add(
+          _notificationIdForDate(
+            id,
+            slotKey,
+            DateTime(now.year, now.month, now.day - day),
+          ),
+        );
       }
       for (final notification in activeNotifications) {
         final notificationId = notification.id;
@@ -1122,7 +1200,8 @@ class NotificationService {
                     legacyIds.contains(notificationId)));
         if (notificationId != null &&
             (androidMatch ||
-                (notification.payload?.startsWith('schedule:$slotKey:') ?? false))) {
+                (notification.payload?.startsWith('schedule:$slotKey:') ??
+                    false))) {
           await _plugin.cancel(id: notificationId, tag: notification.tag);
         }
       }
@@ -1293,18 +1372,30 @@ class NotificationService {
               : '연동된 환자의 복약 완료 및 미복용 상태 알림',
           importance: Importance.high,
           priority: Priority.high,
-          actions: alertContext == null ? null : [
-            AndroidNotificationAction(caregiverSnoozeActionId,
-                isEnglish ? 'Remind in 10 min' : '10분 후 다시 알림', showsUserInterface: true),
-            AndroidNotificationAction(caregiverChatActionId,
-                isEnglish ? 'Send chat request' : '채팅으로 알림', showsUserInterface: true),
-          ],
+          actions: alertContext == null
+              ? null
+              : [
+                  AndroidNotificationAction(
+                    caregiverSnoozeActionId,
+                    isEnglish ? 'Remind in 10 min' : '10분 후 다시 알림',
+                    showsUserInterface: true,
+                  ),
+                  AndroidNotificationAction(
+                    caregiverChatActionId,
+                    isEnglish ? 'Send chat request' : '채팅으로 알림',
+                    showsUserInterface: true,
+                  ),
+                ],
         ),
         iOS: const DarwinNotificationDetails(),
       ),
-      payload: alertContext?.payload ?? (patientHash == null || patientHash.trim().isEmpty
-          ? null
-          : MedicationNotificationPayloadCodec.caregiverPayload(patientHash.trim())),
+      payload:
+          alertContext?.payload ??
+          (patientHash == null || patientHash.trim().isEmpty
+              ? null
+              : MedicationNotificationPayloadCodec.caregiverPayload(
+                  patientHash.trim(),
+                )),
     );
     if (recordHistory && patientHash != null && patientHash.trim().isNotEmpty) {
       await _recordInbox(
@@ -1318,8 +1409,11 @@ class NotificationService {
               ? 'Medication update'
               : '복약 상태 알림',
           body: visibleBody,
-          payload: alertContext?.payload ??
-              MedicationNotificationPayloadCodec.caregiverPayload(patientHash.trim()),
+          payload:
+              alertContext?.payload ??
+              MedicationNotificationPayloadCodec.caregiverPayload(
+                patientHash.trim(),
+              ),
           category: NotificationInboxCategory.medication,
           occurredAt: DateTime.now(),
         ),
@@ -1349,19 +1443,42 @@ class NotificationService {
     String? slotKey,
     String? historyUserHash,
     bool recordHistory = true,
-  }) async {
+    ChatNotificationSummary? summary,
+  }) => _serializeChat(() async {
     final owner = historyUserHash ?? _historyUserHash;
+    if (owner != _historyUserHash) return;
+    final detailsAllowed =
+        _showSensitiveDetails && (summary?.showDetails ?? true);
     final body = buildLinkedChatNotificationBody(
       messagePreview: messagePreview,
-      showSensitiveDetails: _showSensitiveDetails,
+      showSensitiveDetails: detailsAllowed,
       language: language,
     );
     await initialize();
+    final tag = await ChatNotificationSummary.groupTag(owner ?? '', linkId);
+    if (owner != _historyUserHash) return;
+    final latestId = summary?.latestMessageId;
+    if (latestId != null &&
+        latestId > 0 &&
+        (latestId < (_chatLatestIds[linkId] ?? 0) ||
+            latestId <= (_chatReadIds[linkId] ?? 0))) {
+      return;
+    }
+    if (summary?.count == 0) return;
     final isEnglish = isEnglishLanguage(language);
+    final genericTitle = isEnglish ? 'New family message' : '새 가족 메시지';
+    final count = summary?.count ?? 1;
+    final name = detailsAllowed ? summary?.senderName.trim() ?? '' : '';
+    final title = '${name.isEmpty ? genericTitle : name} ($count)';
+    final lines = detailsAllowed && summary != null && summary.lines.isNotEmpty
+        ? summary.lines.map(linkedChatMessagePreview).toList()
+        : [body];
     await _plugin.show(
-      id: id,
-      title: isEnglish ? 'New family message' : '새 가족 메시지',
-      body: body,
+      id: defaultTargetPlatform == TargetPlatform.android
+          ? 0
+          : int.parse(tag.split('-').last.substring(0, 7), radix: 16),
+      title: title,
+      body: lines.last,
       notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           _chatChannelId,
@@ -1371,13 +1488,24 @@ class NotificationService {
               : '연동된 환자와 보호자의 새 채팅 메시지 알림',
           importance: Importance.high,
           priority: Priority.high,
+          tag: tag,
+          number: count,
+          category: AndroidNotificationCategory.message,
+          styleInformation: InboxStyleInformation(
+            lines,
+            contentTitle: title,
+            summaryText: isEnglish
+                ? '$count unread messages'
+                : '안 읽은 메시지 $count개',
+          ),
         ),
-        iOS: const DarwinNotificationDetails(),
+        iOS: DarwinNotificationDetails(threadIdentifier: tag),
       ),
       // A dose-check request is still a chat message. Open its conversation;
       // the patient chooses whether to record a dose from there.
       payload: MedicationNotificationPayloadCodec.chatPayload(linkId),
     );
+    if (latestId != null) _chatLatestIds[linkId] = latestId;
     if (recordHistory) {
       await _recordInbox(
         owner,
@@ -1391,7 +1519,7 @@ class NotificationService {
         ),
       );
     }
-  }
+  });
 
   // 함수이름: buildLinkedChatNotificationBody
   // 함수역할: 로컬·푸시 알림함이 같은 미리보기 길이와 내용 숨김 규칙을 사용하게 한다.
@@ -1441,6 +1569,28 @@ class NotificationService {
   }
 }
 
+extension LinkedChatNotificationCleanup on NotificationService {
+  Future<void> clearReadChatAlert({
+    required String owner,
+    required int linkId,
+    required int throughMessageId,
+  }) => _serializeChat(() async {
+    if (owner != _historyUserHash) return;
+    final previous = _chatReadIds[linkId] ?? 0;
+    if (throughMessageId > previous) _chatReadIds[linkId] = throughMessageId;
+    // 읽음 요청 이후 도착한 새 메시지 알림은 지우지 않는다.
+    if ((_chatLatestIds[linkId] ?? 0) > throughMessageId) return;
+    final tag = await ChatNotificationSummary.groupTag(owner, linkId);
+    if (owner != _historyUserHash) return;
+    await _plugin.cancel(
+      id: defaultTargetPlatform == TargetPlatform.android
+          ? 0
+          : int.parse(tag.split('-').last.substring(0, 7), radix: 16),
+      tag: tag,
+    );
+  });
+}
+
 // 기존 알림 계약과 테스트 대역에 새 의무를 추가하지 않는 기기 알림 확인 기능이다.
 extension NotificationReadinessDiagnostics on NotificationService {
   Future<bool> supportsExactReminderSettings() async {
@@ -1472,9 +1622,10 @@ extension NotificationReadinessDiagnostics on NotificationService {
     bool? medicationChannel;
     bool? exactAlarms;
     if (defaultTargetPlatform == TargetPlatform.android) {
-      final android = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin
-      >();
+      final android = _plugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
       try {
         notifications = await android?.areNotificationsEnabled();
       } catch (_) {}
@@ -1493,9 +1644,10 @@ extension NotificationReadinessDiagnostics on NotificationService {
         exactAlarms = await android?.canScheduleExactNotifications();
       } catch (_) {}
     } else if (defaultTargetPlatform == TargetPlatform.iOS) {
-      final ios = _plugin.resolvePlatformSpecificImplementation<
-        IOSFlutterLocalNotificationsPlugin
-      >();
+      final ios = _plugin
+          .resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin
+          >();
       final permissions = await ios?.checkPermissions();
       notifications = permissions?.isAlertEnabled;
     }

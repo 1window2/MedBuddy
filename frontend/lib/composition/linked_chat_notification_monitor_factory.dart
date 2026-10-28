@@ -2,6 +2,7 @@
 // 역할: 가족 채팅의 연동 조회, 실시간 연결과 로컬 알림 의존성을 조립한다.
 
 import '../controls/link_patient_caregiver_control.dart';
+import '../controls/manage_linked_chat_control.dart';
 import '../controls/manage_user_setting_control.dart';
 import '../entities/chat_message_entity.dart';
 import '../entities/user_setting_entity.dart';
@@ -32,12 +33,14 @@ Future<void> deliverLinkedChatAlert({
   required String messageBody,
   required ChatMessageKind messageKind,
   required String? slotKey,
+  Future<ChatNotificationSummary?> Function()? loadSummary,
 }) async {
   final setting = await loadSetting();
   if (!setting.chatNotificationsEnabled) {
     return;
   }
   notifications.setShowSensitiveDetails(setting.showNotificationDetails);
+  final summary = await loadSummary?.call();
   return notifications.showLinkedChatAlert(
     historyUserHash: userHash,
     id: LinkedChatNotificationMonitorFactory._notificationId(linkId, messageId),
@@ -46,6 +49,7 @@ Future<void> deliverLinkedChatAlert({
     messagePreview: messageBody,
     messageKind: messageKind.wireName,
     slotKey: slotKey,
+    summary: summary,
   );
 }
 
@@ -87,6 +91,7 @@ class LinkedChatNotificationMonitorFactory {
       client: client,
       useRemotePersistence: false,
     );
+    final chatControl = ManageLinkedChat(userHash: userHash, client: client);
     return LinkedChatNotificationMonitorService(
       currentUserHash: userHash,
       loadLinks: linkControl.requestLinkScreen,
@@ -129,6 +134,8 @@ class LinkedChatNotificationMonitorFactory {
             messageBody: messageBody,
             messageKind: messageKind,
             slotKey: slotKey,
+            loadSummary: () =>
+                chatControl.requestNotificationSummary(linkId: linkId),
           ),
       permissionRequester: NotificationService.instance.requestPermission,
       linkRefreshInterval: linkRefreshInterval,
@@ -142,6 +149,7 @@ class LinkedChatNotificationMonitorFactory {
        */ () {
         linkControl.dispose();
         settingControl.dispose();
+        chatControl.dispose();
       },
     );
   }

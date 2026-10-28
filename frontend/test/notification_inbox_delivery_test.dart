@@ -60,6 +60,140 @@ void main() {
         .setMockMethodCallHandler(channel, null);
   });
 
+  test(
+    'chat groups by person, expands three previews and resets after reading',
+    () async {
+      expect(
+        await ChatNotificationSummary.groupTag('caregiver-a', 1),
+        'medbuddy-chat-485348c367fd2dc93440d20a6d4577e4',
+      );
+      for (var count = 1; count <= 3; count++) {
+        await service.showLinkedChatAlert(
+          id: 100 + count,
+          linkId: 7,
+          messagePreview: 'message $count',
+          summary: ChatNotificationSummary(
+            count: count,
+            latestMessageId: count,
+            senderName: 'Family',
+            lines: [for (var i = 1; i <= count; i++) 'message $i'],
+          ),
+        );
+      }
+      final shown = calls
+          .where((c) => c.method == 'show')
+          .map((c) => c.arguments as Map)
+          .toList();
+      expect(shown.map((a) => a['id']).toSet(), {0});
+      final tags = shown
+          .map((a) => (a['platformSpecifics'] as Map)['tag'])
+          .toSet();
+      expect(tags, hasLength(1));
+      expect(shown.map((a) => a['title']), [
+        'Family (1)',
+        'Family (2)',
+        'Family (3)',
+      ]);
+      final android = shown.last['platformSpecifics'] as Map;
+      expect(android['number'], 3);
+      expect((android['styleInformation'] as Map)['lines'], [
+        'message 1',
+        'message 2',
+        'message 3',
+      ]);
+      await service.showLinkedChatAlert(
+        id: 200,
+        linkId: 8,
+        summary: const ChatNotificationSummary(
+          count: 1,
+          latestMessageId: 10,
+          senderName: 'Other family',
+          lines: ['hello'],
+        ),
+      );
+      final other = calls.lastWhere((c) => c.method == 'show').arguments as Map;
+      expect((other['platformSpecifics'] as Map)['tag'], isNot(tags.single));
+      await service.clearReadChatAlert(
+        owner: 'patient',
+        linkId: 7,
+        throughMessageId: 3,
+      );
+      expect(calls.last.method, 'cancel');
+      expect((calls.last.arguments as Map)['tag'], tags.single);
+      final before = calls.where((c) => c.method == 'show').length;
+      await service.showLinkedChatAlert(
+        id: 103,
+        linkId: 7,
+        summary: const ChatNotificationSummary(count: 3, latestMessageId: 3),
+      );
+      expect(calls.where((c) => c.method == 'show').length, before);
+      await service.showLinkedChatAlert(
+        id: 104,
+        linkId: 7,
+        summary: const ChatNotificationSummary(
+          count: 1,
+          latestMessageId: 4,
+          senderName: 'Family',
+          lines: ['new'],
+        ),
+      );
+      expect(
+        (calls.lastWhere((c) => c.method == 'show').arguments as Map)['title'],
+        'Family (1)',
+      );
+      final cancels = calls.where((c) => c.method == 'cancel').length;
+      await service.clearReadChatAlert(
+        owner: 'patient',
+        linkId: 7,
+        throughMessageId: 3,
+      );
+      expect(calls.where((c) => c.method == 'cancel').length, cancels);
+    },
+  );
+
+  test('chat grouping respects privacy and ignores older snapshots', () async {
+    service.setShowSensitiveDetails(false);
+    await service.showLinkedChatAlert(
+      id: 3,
+      linkId: 7,
+      messagePreview: 'secret',
+      summary: const ChatNotificationSummary(
+        count: 3,
+        latestMessageId: 3,
+        senderName: 'Private name',
+        lines: ['secret', 'old secret'],
+      ),
+    );
+    final shown = calls.lastWhere((c) => c.method == 'show').arguments as Map;
+    expect(shown.toString(), isNot(contains('secret')));
+    expect(shown.toString(), isNot(contains('Private name')));
+    expect(shown['title'], '새 가족 메시지 (3)');
+    final before = calls.where((c) => c.method == 'show').length;
+    await service.showLinkedChatAlert(
+      id: 2,
+      linkId: 7,
+      summary: const ChatNotificationSummary(count: 2, latestMessageId: 2),
+    );
+    expect(calls.where((c) => c.method == 'show').length, before);
+    service.setShowSensitiveDetails(true);
+    await service.showLinkedChatAlert(
+      id: 4,
+      linkId: 7,
+      messagePreview: 'secret',
+      summary: const ChatNotificationSummary(
+        count: 4,
+        latestMessageId: 4,
+        showDetails: false,
+        senderName: 'Private name',
+        lines: ['secret'],
+      ),
+    );
+    expect(
+      calls.lastWhere((c) => c.method == 'show').arguments.toString(),
+      isNot(contains('secret')),
+    );
+  });
+
   // 함수이름: 로컬 알림 기록 테스트
   // 함수역할: 표시 성공한 알림만 소유 계정에 중복 없이 저장한다. 매개변수: 없음. 반환값: 검증 완료.
   test(
@@ -150,16 +284,30 @@ void main() {
   for (final slot in ['morning', 'lunch', 'evening', 'bedtime', 'invalid']) {
     test('dose request for $slot opens its conversation', () async {
       await service.showLinkedChatAlert(
-        id: 301, linkId: 17, messageKind: 'slot_check_request', slotKey: slot,
+        id: 301,
+        linkId: 17,
+        messageKind: 'slot_check_request',
+        slotKey: slot,
       );
-      final args = calls.singleWhere((call) => call.method == 'show').arguments as Map;
+      final args =
+          calls.singleWhere((call) => call.method == 'show').arguments as Map;
       expect(args['payload'], 'chat:17');
-      final selection = NotificationService.selectionFromPayload(args['payload'] as String);
-      expect(selection!.destination, MedicationNotificationDestination.linkedChat);
+      final selection = NotificationService.selectionFromPayload(
+        args['payload'] as String,
+      );
+      expect(
+        selection!.destination,
+        MedicationNotificationDestination.linkedChat,
+      );
       expect(selection.linkId, 17);
       expect(selection.action, MedicationNotificationAction.open);
       expect(selection.slotKey, isNull);
-      expect((await NotificationInboxStore(userHash: 'patient').load()).single.payload, 'chat:17');
+      expect(
+        (await NotificationInboxStore(
+          userHash: 'patient',
+        ).load()).single.payload,
+        'chat:17',
+      );
     });
   }
 

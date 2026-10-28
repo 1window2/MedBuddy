@@ -749,9 +749,10 @@ class PushNotificationService {
         id: source.hashCode & 0x7fffffff,
         linkId: linkId,
         language: language,
-        messagePreview: notificationBody.isNotEmpty
-            ? notificationBody
-            : dataPreview,
+        messagePreview: message.data.containsKey('message_preview')
+            ? dataPreview
+            : notificationBody,
+        summary: ChatNotificationSummary.parse(message.data['chat_summary']),
         messageKind: message.data['message_kind'],
         slotKey: message.data['slot_key'],
       );

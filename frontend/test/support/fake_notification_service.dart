@@ -211,7 +211,8 @@ class RecordingNotificationService implements NotificationService {
   @override
   Future<bool> requestExactReminderPermission() async {
     exactPermissionRequestCount++;
-    exactRemindersAllowed = exactPermissionAfterRequest ?? exactRemindersAllowed;
+    exactRemindersAllowed =
+        exactPermissionAfterRequest ?? exactRemindersAllowed;
     return exactRemindersAllowed;
   }
 
@@ -385,6 +386,7 @@ class RecordingNotificationService implements NotificationService {
     String? slotKey,
     String? historyUserHash,
     bool recordHistory = true,
+    ChatNotificationSummary? summary,
   }) async {
     linkedChatAlerts.add((
       id: id,
