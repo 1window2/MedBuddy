@@ -83,7 +83,7 @@ Future<Map<String, dynamic>> _snapshot(
 
 Future<void> _expectPendingOff(_GatedPreferences storage) async {
   final state = await _snapshot(storage);
-  expect(state['setting'], _off.toJson());
+  expect(state['setting'], _off.toJson(includeDevicePreferences: true));
   expect(
     state['pending_sync'],
     isA<String>().having((value) => value.isNotEmpty, 'nonempty', isTrue),
@@ -130,7 +130,7 @@ void main() {
     try {
       await gate.entered.future.timeout(_limit);
       final staged = await _snapshot(storage);
-      expect(staged['setting'], _off.toJson());
+      expect(staged['setting'], _off.toJson(includeDevicePreferences: true));
       expect(staged['pending_sync'], staged['latest_intent']);
       var retryFinished = false;
       reading = retry.requestUserSetting().then((setting) {
@@ -247,7 +247,9 @@ void main() {
       expect(otherState['pending_sync'], isNull);
       expect(
         otherState['setting'],
-        _off.copyWith(userHash: otherOwner).toJson(),
+        _off
+            .copyWith(userHash: otherOwner)
+            .toJson(includeDevicePreferences: true),
       );
     } finally {
       gate.release();

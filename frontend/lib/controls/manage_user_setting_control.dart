@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 
+import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -135,14 +136,17 @@ class ManageUserSetting {
             (revision != null && revision < current.revision)) {
           return current.setting;
         }
+        final merged = setting.copyWith(
+          medicationSearchMode: current.setting.medicationSearchMode,
+        );
         await _writeState(preferences, (
-          setting: setting,
+          setting: merged,
           pendingToken: null,
           intent: current.intent,
           revision: revision ?? current.revision,
         ));
         _lastLookupReachedServer = true;
-        return setting;
+        return merged;
       });
     } catch (error, stackTrace) {
       developer.log(
@@ -166,6 +170,31 @@ class ManageUserSetting {
   // - 저장 완료된 설정과 서버 동기화 여부
   Future<UserSettingSaveResult> saveUserSetting(UserSetting setting) async {
     final nextSetting = setting.copyWith(userHash: _normalizedUserHash);
+
+    // 기기별 검색 모드만 바꾸면 서버 버전과 미전송 설정은 건드리지 않는다.
+    final deviceOnly = await _withPreferences((preferences) async {
+      final current = _readState(preferences);
+      if (current.setting.medicationSearchMode ==
+              nextSetting.medicationSearchMode ||
+          !mapEquals(
+            current.setting.toJson(includeDevicePreferences: false),
+            nextSetting.toJson(includeDevicePreferences: false),
+          )) {
+        return null;
+      }
+      await _writeState(preferences, (
+        setting: nextSetting,
+        pendingToken: current.pendingToken,
+        intent: current.intent,
+        revision: current.revision,
+      ));
+      _hasPendingSave = current.pendingToken != null;
+      return UserSettingSaveResult(
+        setting: nextSetting,
+        synchronizedWithServer: useRemotePersistence && !_hasPendingSave,
+      );
+    });
+    if (deviceOnly != null) return deviceOnly;
 
     if (!useRemotePersistence) {
       await _withPreferences((preferences) async {
@@ -227,7 +256,7 @@ class ManageUserSetting {
               _buildUserSettingUri(),
               headers: const {'Content-Type': 'application/json'},
               body: jsonEncode({
-                ...setting.toJson(),
+                ...setting.toJson(includeDevicePreferences: false),
                 'expected_revision': expectedRevision,
               }),
             )
@@ -256,15 +285,18 @@ class ManageUserSetting {
         return await _withPreferences((preferences) async {
           final current = _readState(preferences);
           if (current.pendingToken == token) {
+            final merged = savedSetting.copyWith(
+              medicationSearchMode: current.setting.medicationSearchMode,
+            );
             await _writeState(preferences, (
-              setting: savedSetting,
+              setting: merged,
               pendingToken: null,
               intent: current.intent,
               revision: _responseRevision(responseBody) ?? current.revision,
             ));
             _hasPendingSave = false;
             return UserSettingSaveResult(
-              setting: savedSetting,
+              setting: merged,
               synchronizedWithServer: true,
             );
           }
@@ -360,7 +392,7 @@ class ManageUserSetting {
     final saved = await preferences.setString(
       _key(UserSettingPreference.snapshot),
       jsonEncode({
-        'setting': state.setting.toJson(),
+        'setting': state.setting.toJson(includeDevicePreferences: true),
         'pending_sync': state.pendingToken,
         'latest_intent': state.intent,
         'server_revision': state.revision,
@@ -443,6 +475,11 @@ class ManageUserSetting {
           preferences.getInt(_key(UserSettingPreference.fontSize)) ??
           preferences.getInt(_legacyFontSizeKey) ??
           fallbackSetting.fontSize,
+      medicationSearchMode:
+          preferences.getString(
+            _key(UserSettingPreference.medicationSearchMode),
+          ) ??
+          fallbackSetting.medicationSearchMode,
       readingSpeed:
           preferences.getDouble(_key(UserSettingPreference.readingSpeed)) ??
           preferences.getDouble(_legacyReadingSpeedKey) ??
@@ -514,6 +551,10 @@ class ManageUserSetting {
   // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
   Future<void> _cacheUserSetting(UserSetting setting) async {
     final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(
+      _key(UserSettingPreference.medicationSearchMode),
+      setting.medicationSearchMode,
+    );
     await preferences.setInt(
       _key(UserSettingPreference.fontSize),
       setting.fontSize,

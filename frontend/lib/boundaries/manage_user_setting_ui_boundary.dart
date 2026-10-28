@@ -459,6 +459,12 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         ),
         const SizedBox(height: 24),
         _SettingsSection(
+          key: const ValueKey('medicationSearchSection'),
+          title: text.isEnglish ? 'Medication search' : '약품 검색',
+          children: [_buildMedicationSearchSlider(text)],
+        ),
+        const SizedBox(height: 24),
+        _SettingsSection(
           key: _targetKey(UserSettingDestination.defaultTimes),
           title: text.defaultMedicationTimeTitle,
           description: text.defaultMedicationTimeDescription,
@@ -496,6 +502,94 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
           ],
         ),
       ],
+    );
+  }
+
+  // 함수역할: 세 단계 검색 선택을 초안에만 반영하며 저장은 기존 저장 버튼에 맡긴다.
+  Widget _buildMedicationSearchSlider(_SettingText text) {
+    final title = text.isEnglish ? 'Medication search' : '약품 검색';
+    final options = [
+      ('fast', text.isEnglish ? 'Fast' : '속도 우선'),
+      ('balanced', text.isEnglish ? 'Balanced' : '보통'),
+      ('thorough', text.isEnglish ? 'Thorough' : '정확도 우선'),
+    ];
+    final selected = options.indexWhere(
+      (option) => option.$1 == _draft.medicationSearchMode,
+    );
+    void select(int index) =>
+        _setDraft(_draft.copyWith(medicationSearchMode: options[index].$1));
+
+    return LayoutBuilder(
+      builder: (context, constraints) => Column(
+        children: [
+          MergeSemantics(
+            key: const ValueKey('medicationSearchModeSemantics'),
+            child: Semantics(
+              label: title,
+              child: Slider(
+                key: const ValueKey('medicationSearchModeSlider'),
+                value: selected.toDouble(),
+                min: 0,
+                max: 2,
+                divisions: 2,
+                padding: EdgeInsets.symmetric(
+                  horizontal: constraints.maxWidth / 6,
+                  vertical: 16,
+                ),
+                semanticFormatterCallback: (value) => options[value.round()].$2,
+                onChanged: _isSaving ? null : (value) => select(value.round()),
+              ),
+            ),
+          ),
+          Row(
+            children: [
+              for (var index = 0; index < options.length; index++)
+                Expanded(
+                  child: Semantics(
+                    key: ValueKey('medicationSearchMode-${options[index].$1}'),
+                    label: '$title, ${options[index].$2}',
+                    button: true,
+                    selected: index == selected,
+                    inMutuallyExclusiveGroup: true,
+                    enabled: !_isSaving,
+                    child: InkWell(
+                      onTap: _isSaving ? null : () => select(index),
+                      borderRadius: BorderRadius.circular(4),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 48),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 8,
+                          ),
+                          child: ExcludeSemantics(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                // 긴 라벨은 단어 사이에서 나눈 뒤 너비를 맞춘다.
+                                options[index].$2.replaceAll(' ', '\n'),
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: index == selected
+                                      ? MedBuddyColors.primaryDark
+                                      : MedBuddyColors.textMuted,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  height: 1.35,
+                                  letterSpacing: 0,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -977,8 +1071,10 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   }
 
   // 함수역할: 편집값을 마지막 저장값과 비교한다. 반환값: 미저장 변경 여부.
-  bool get _hasUnsavedChanges =>
-      !mapEquals(_draft.toJson(), _savedSetting.toJson());
+  bool get _hasUnsavedChanges => !mapEquals(
+    _draft.toJson(includeDevicePreferences: true),
+    _savedSetting.toJson(includeDevicePreferences: true),
+  );
 
   // 함수역할: 저장·변경 취소·계속 편집 중 하나를 선택한다. 반환값: 나가기 허용 여부.
   Future<bool> _confirmSettingExit() async {

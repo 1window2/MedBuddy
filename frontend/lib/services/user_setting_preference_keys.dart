@@ -11,6 +11,7 @@
 // 비고(선택): 순서는 계정 삭제의 정리 목록 순서와 같다. 저장된 키 문자열이 바뀌면 기존 기기 설정을 읽지 못하므로 값을 바꾸지 않는다.
 enum UserSettingPreference {
   fontSize('font_size'),
+  medicationSearchMode('medication_search_mode'),
   readingSpeed('reading_speed'),
   language('language'),
   languageMode('language_mode'),

@@ -38,6 +38,51 @@ Future<Object?> _lookup(Future<http.Response> Function() respond) {
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  for (final mode in ['fast', 'balanced', 'thorough', 'invalid']) {
+    test('검색 모드 $mode 전달 중 원본 약명과 함량을 유지한다', () async {
+      Map<String, dynamic>? payload;
+      final client = MockClient((request) async {
+        payload = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response('{"success":false,"data":[]}', 200);
+      });
+      addTearDown(client.close);
+      final control = CheckMedicationDetail(
+        readSearchMode: () => mode,
+        client: client,
+      );
+      await control.requestMedicationDetail(
+        const MedicationSchedule(
+          medicationName: '펠로엔정(펠로디핀)5밀리그램',
+          rawMedicationName: '펠로엔정(펠로디핀) 5mg',
+        ),
+      );
+      expect(payload!['search_mode'], mode == 'invalid' ? 'balanced' : mode);
+      expect(payload!['extracted_text'], '펠로엔정(펠로디핀)5밀리그램');
+      expect(payload!['original_text'], '펠로엔정(펠로디핀) 5mg');
+    });
+  }
+  test('검색 모드를 요청마다 읽고 기본값은 보통이다', () async {
+    String? selected;
+    final modes = <String>[];
+    final client = MockClient((request) async {
+      modes.add((jsonDecode(request.body) as Map)['search_mode'] as String);
+      return http.Response('{"success":false,"data":[]}', 200);
+    });
+    addTearDown(client.close);
+    final control = CheckMedicationDetail(
+      client: client,
+      readSearchMode: () => selected ?? 'balanced',
+    );
+    const schedule = MedicationSchedule(medicationName: '시험약');
+    await CheckMedicationDetail(
+      client: client,
+    ).requestMedicationDetail(schedule);
+    selected = 'fast';
+    await control.requestMedicationDetail(schedule);
+    selected = 'thorough';
+    await control.requestMedicationDetail(schedule);
+    expect(modes, ['balanced', 'fast', 'thorough']);
+  });
   const dedicatedMessages = <int, String>{
     401: '로그인 정보가 만료되었습니다. 다시 로그인해주세요.',
     403: '약품 정보를 조회할 수 없습니다. 잠시 후 다시 시도해주세요.',
@@ -139,11 +184,7 @@ void main() {
       throwsA(
         isA<ApiRequestException>()
             .having((error) => error.cause, 'cause', isA<FormatException>())
-            .having(
-              (error) => error.message,
-              'message',
-              '약품 정보를 불러오지 못했습니다.',
-            ),
+            .having((error) => error.message, 'message', '약품 정보를 불러오지 못했습니다.'),
       ),
     );
   });

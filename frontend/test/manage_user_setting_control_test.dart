@@ -38,16 +38,14 @@ void main() {
     final control = ManageUserSetting(userHash: 'user-a', client: client);
     addTearDown(control.dispose);
     final result = await control.saveUserSetting(
-        const UserSetting()
+      const UserSetting()
           .updateUserSetting(
             fontSize: UserSetting.fontSizeFromOption('medium'),
             readingSpeed: UserSetting.readingSpeedFromOption('medium'),
             language: 'ko',
           )
-          .copyWith(
-            homeScheduleSource: 'patients',
-          ),
-      );
+          .copyWith(homeScheduleSource: 'patients'),
+    );
     expect(result.synchronizedWithServer, isTrue);
     expect(result.setting.homeScheduleSource, 'patients');
     final restored = ManageUserSetting(
@@ -100,7 +98,7 @@ void main() {
     final control = ManageUserSetting(useRemotePersistence: false);
 
     final result = await control.saveUserSetting(
-        const UserSetting()
+      const UserSetting()
           .updateUserSetting(
             fontSize: UserSetting.fontSizeFromOption('large'),
             readingSpeed: UserSetting.readingSpeedFromOption('fast'),
@@ -118,7 +116,7 @@ void main() {
             defaultEveningTime: '19:10',
             defaultBedtime: '23:20',
           ),
-      );
+    );
     final setting = result.setting;
 
     expect(result.synchronizedWithServer, isFalse);
@@ -189,13 +187,12 @@ void main() {
 
     addTearDown(control.dispose);
     final saved = await control.saveUserSetting(
-        const UserSetting()
-          .updateUserSetting(
-            fontSize: UserSetting.fontSizeFromOption('large'),
-            readingSpeed: UserSetting.readingSpeedFromOption('slow'),
-            language: 'en',
-          ),
-      );
+      const UserSetting().updateUserSetting(
+        fontSize: UserSetting.fontSizeFromOption('large'),
+        readingSpeed: UserSetting.readingSpeedFromOption('slow'),
+        language: 'en',
+      ),
+    );
     final restoredSetting = await control.requestUserSetting();
 
     expect(restoredSetting.toJson(), saved.setting.toJson());
@@ -405,7 +402,7 @@ void main() {
     );
 
     final result = await control.saveUserSetting(
-        const UserSetting()
+      const UserSetting()
           .updateUserSetting(
             fontSize: UserSetting.fontSizeFromOption('large'),
             readingSpeed: UserSetting.readingSpeedFromOption('fast'),
@@ -423,7 +420,7 @@ void main() {
             defaultEveningTime: '19:15',
             defaultBedtime: '23:15',
           ),
-      );
+    );
 
     expect(result.synchronizedWithServer, isTrue);
     expect(result.setting.fontSizeOption, 'large');
@@ -465,13 +462,12 @@ void main() {
     );
 
     final result = await control.saveUserSetting(
-        const UserSetting()
-          .updateUserSetting(
-            fontSize: UserSetting.fontSizeFromOption('small'),
-            readingSpeed: UserSetting.readingSpeedFromOption('slow'),
-            language: 'ko',
-          ),
-      );
+      const UserSetting().updateUserSetting(
+        fontSize: UserSetting.fontSizeFromOption('small'),
+        readingSpeed: UserSetting.readingSpeedFromOption('slow'),
+        language: 'ko',
+      ),
+    );
     final setting = result.setting;
 
     expect(result.synchronizedWithServer, isFalse);
@@ -622,9 +618,13 @@ void main() {
     expect(result.synchronizedWithServer, isFalse);
     final preferences = await SharedPreferences.getInstance();
     expect(
-      preferences.getKeys().where((key) => key.startsWith('user_setting_')).toSet(),
+      preferences
+          .getKeys()
+          .where((key) => key.startsWith('user_setting_'))
+          .toSet(),
       {
         'user_setting_usr_pin_font_size',
+        'user_setting_usr_pin_medication_search_mode',
         'user_setting_usr_pin_reading_speed',
         'user_setting_usr_pin_language',
         'user_setting_usr_pin_language_mode',
@@ -734,7 +734,9 @@ void _pendingSyncMain() {
     // 함수역할: 요청을 기록하고 PUT은 본문을, GET은 user-b의 서버 사본을 돌려준다.
     // 매개변수: request는 가로챈 요청. 반환값: 대역 응답.
     final client = MockClient((request) async {
-      requests.add('${request.method} ${request.url.queryParameters['user_hash']}');
+      requests.add(
+        '${request.method} ${request.url.queryParameters['user_hash']}',
+      );
       final setting = request.method == 'PUT'
           ? jsonDecode(request.body) as Map<String, dynamic>
           : const UserSetting(userHash: 'user-b', fontSize: 14).toJson();

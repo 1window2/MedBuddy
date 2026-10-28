@@ -37,6 +37,14 @@ bool isEnglishLanguage(String? language) =>
 String normalizeAppLanguage(String? language) =>
     isEnglishLanguage(language) ? 'en' : 'ko';
 
+// 함수역할: 저장값과 약품 검색 요청값을 지원하는 세 가지 모드로 정규화한다.
+String normalizeMedicationSearchMode(String? value) =>
+    switch (value?.trim().toLowerCase()) {
+      'fast' => 'fast',
+      'thorough' => 'thorough',
+      _ => 'balanced',
+    };
+
 // 클래스명: UserSetting
 // 역할: 글씨 크기, 읽기 속도, 언어 설정을 앱 전체에서 동일한 형식으로 사용하게 한다.
 // 주요 책임:
@@ -65,6 +73,12 @@ class UserSetting {
 
   final String userHash;
   final int fontSize;
+  final String _medicationSearchMode;
+
+  // 기기별 검색 선택은 생성 경로와 무관하게 지원하는 요청값으로만 노출한다.
+  String get medicationSearchMode =>
+      normalizeMedicationSearchMode(_medicationSearchMode);
+
   final double readingSpeed;
   final String language;
   final String languageMode;
@@ -102,6 +116,7 @@ class UserSetting {
   const UserSetting({
     this.userHash = '',
     this.fontSize = 16,
+    String medicationSearchMode = 'balanced',
     this.readingSpeed = 1.0,
     this.language = 'ko',
     this.languageMode = 'ko',
@@ -115,7 +130,7 @@ class UserSetting {
     this.defaultLunchTime = '12:00',
     this.defaultEveningTime = '18:00',
     this.defaultBedtime = '22:00',
-  });
+  }) : _medicationSearchMode = medicationSearchMode;
 
   // 함수이름: UserSetting.fromJson
   // 함수역할: 현재·구형 설정 필드를 읽고 누락 값에 기본값을 적용하며 언어·언어 모드·시간제·알림 상세·시각 문자열을 정규화한다.
@@ -129,6 +144,9 @@ class UserSetting {
       userHash: readJsonText(json['user_hash'] ?? json['userHash']),
       fontSize:
           readJsonTruncatedInt(json['font_size'] ?? json['fontSize']) ?? 16,
+      medicationSearchMode: readJsonText(
+        json['medication_search_mode'] ?? json['medicationSearchMode'],
+      ),
       readingSpeed:
           readJsonDouble(json['reading_speed'] ?? json['readingSpeed']) ?? 1.0,
       language: language,
@@ -140,7 +158,9 @@ class UserSetting {
         readJsonText(json['time_format'] ?? json['timeFormat']),
       ),
       homeScheduleSource: _normalizedHomeScheduleSource(
-        readJsonText(json['home_schedule_source'] ?? json['homeScheduleSource']),
+        readJsonText(
+          json['home_schedule_source'] ?? json['homeScheduleSource'],
+        ),
       ),
       medicationNotificationsEnabled: _readBool(
         json['medication_notifications_enabled'] ??
@@ -162,7 +182,9 @@ class UserSetting {
         ),
       ),
       defaultMorningTime: _normalizedTime(
-        readJsonText(json['default_morning_time'] ?? json['defaultMorningTime']),
+        readJsonText(
+          json['default_morning_time'] ?? json['defaultMorningTime'],
+        ),
         fallback: '08:00',
       ),
       defaultLunchTime: _normalizedTime(
@@ -170,7 +192,9 @@ class UserSetting {
         fallback: '12:00',
       ),
       defaultEveningTime: _normalizedTime(
-        readJsonText(json['default_evening_time'] ?? json['defaultEveningTime']),
+        readJsonText(
+          json['default_evening_time'] ?? json['defaultEveningTime'],
+        ),
         fallback: '18:00',
       ),
       defaultBedtime: _normalizedTime(
@@ -347,6 +371,7 @@ class UserSetting {
   UserSetting copyWith({
     String? userHash,
     int? fontSize,
+    String? medicationSearchMode,
     double? readingSpeed,
     String? language,
     String? languageMode,
@@ -364,6 +389,7 @@ class UserSetting {
     return UserSetting(
       userHash: userHash ?? this.userHash,
       fontSize: fontSize ?? this.fontSize,
+      medicationSearchMode: medicationSearchMode ?? this.medicationSearchMode,
       readingSpeed: readingSpeed ?? this.readingSpeed,
       language: normalizeAppLanguage(language ?? this.language),
       languageMode: languageMode ?? this.languageMode,
@@ -412,10 +438,13 @@ class UserSetting {
   // - 없음.
   // 반환값:
   // - Map<String, dynamic>: 서버와 공유할 사용자 설정 필드.
-  Map<String, dynamic> toJson() {
+  // 기기 스냅샷·초안 비교에서만 약품 검색 방식을 포함한다.
+  Map<String, dynamic> toJson({bool includeDevicePreferences = false}) {
     return {
       'user_hash': userHash,
       'font_size': fontSize,
+      if (includeDevicePreferences)
+        'medication_search_mode': medicationSearchMode,
       'reading_speed': readingSpeed,
       'language': language,
       'language_mode': languageMode,
