@@ -86,6 +86,36 @@ def test_missing_strength_and_typo_require_confirmation():
     assert not can_auto_match('에니코프캡슐300mg', '애니코프캡슐300mg')
 
 
+@pytest.mark.parametrize('original,candidate', [
+    ('시네츄라시럽_(15mL)', '시네츄라시럽'),
+    ('테스트정100mg', '테스트정'),
+])
+def test_missing_strength_is_only_allowed_for_manual_candidates(original, candidate):
+    matcher = MedicationNameMatcher()
+    assert match_conflict(original, candidate) == 'strength_unknown'
+    assert not matcher.rank_candidates(original, [candidate], str, 5)
+    assert matcher.rank_candidates(
+        original, [candidate], str, 5, allow_unknown_strength=True,
+    ) == [candidate]
+    assert not can_auto_match(original, candidate)
+
+
+@pytest.mark.parametrize('original,candidate', [
+    ('테스트정100mg', '테스트정500mg'),
+    ('테스트정100mg', '테스트캡슐'),
+    ('테스트서방정100mg', '테스트정'),
+    ('시네츄라시럽_(15mL)', '시네츄라캡슐'),
+    ('테스트액100mg/0ml', '테스트액'),
+    ('테스트정5/50mg', '테스트정10/50mg'),
+    ('시네츄라시럽_(15mL)', '전혀다른약품정'),
+])
+def test_manual_candidates_still_reject_conflicts_and_unrelated_names(original, candidate):
+    assert not MedicationNameMatcher().rank_candidates(
+        original, [candidate], str, 5, allow_unknown_strength=True,
+    )
+    assert not can_auto_match(original, candidate)
+
+
 # Function Name: test_equal_strength_gets_the_same_bonus_in_any_notation
 # Description:
 # - Scores a typo candidate the same whether the equal strength is written in the catalogue's

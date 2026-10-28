@@ -3,7 +3,7 @@
 
 import re
 from difflib import SequenceMatcher
-from typing import Callable, TypeVar
+from typing import Callable, Literal, TypeVar
 
 from services.medication_match_safety import can_auto_match, match_conflict, strengths
 
@@ -18,6 +18,7 @@ _CandidateT = TypeVar("_CandidateT")
 # - Strip dosage and dosage-form suffixes from search keywords.
 class MedicationTextNormalizer:
     MAX_SEARCH_KEYWORDS = 24
+    SEARCH_KEYWORD_LIMITS = {'fast': 2, 'balanced': 4, 'thorough': 8}
     _DOSAGE_PATTERN = re.compile(
         r"\d{1,10}(?:\.\d{1,5})?\s{0,5}(?:mg|g|ml|밀리그램|밀리그람|그램|그람|밀리리터)",
         flags=re.IGNORECASE,
@@ -89,12 +90,18 @@ class MedicationTextNormalizer:
 
     # Function Name: build_search_keywords
     # Description:
-    # - Expands the outside text and parenthesized names into bounded, deduplicated OCR search variants.
+    # - Prioritizes direct original/outside/inside names and structural searches before OCR variants.
     # Parameters:
     # - raw_text (str): Source OCR text before medication-name normalization.
+    # - search_mode: Optional lookup strategy; omitted for the full candidate-matching vocabulary.
     # Returns:
-    # - Ordered search keywords up to MAX_SEARCH_KEYWORDS; empty for blank input.
-    def build_search_keywords(self, raw_text: str) -> list[str]:
+    # - Up to 2/4/8 lookup keywords, or MAX_SEARCH_KEYWORDS for matching; empty for blank input.
+    def build_search_keywords(
+        self, raw_text: str, *,
+        search_mode: Literal['fast', 'balanced', 'thorough'] | None = None,
+    ) -> list[str]:
+        if search_mode is not None and search_mode not in self.SEARCH_KEYWORD_LIMITS:
+            raise ValueError("Invalid medication search mode.")
         normalized_text = self.normalize_raw_text(raw_text)
         if not normalized_text:
             return []
@@ -103,19 +110,27 @@ class MedicationTextNormalizer:
             self._split_parenthesized_text(normalized_text)
         )
         raw_candidates = [normalized_text, outside_parentheses]
+        if search_mode == 'fast':
+            return self._deduplicate_keywords(raw_candidates)[:2]
         raw_candidates.extend(parenthesized_candidates)
+        raw_candidates = self._deduplicate_keywords(raw_candidates)
 
-        search_keywords: list[str] = []
+        # 직접 검색어를 먼저 확보해 원문 변형이 제품명·성분명 검색을 밀어내지 못하게 한다.
+        structural_keywords = list(raw_candidates)
         for candidate in raw_candidates:
-            search_keywords.extend(self._candidate_variants(candidate))
+            structural_keywords.extend(self._candidate_structural_variants(candidate))
+        structural_keywords = self._deduplicate_keywords(structural_keywords)
 
-        return self._deduplicate_keywords(search_keywords)[
-            : self.MAX_SEARCH_KEYWORDS
+        ocr_keywords = [
+            variant for keyword in structural_keywords
+            for variant in self._hangul_ocr_variants(keyword)
         ]
+        limit = self.SEARCH_KEYWORD_LIMITS.get(search_mode, self.MAX_SEARCH_KEYWORDS)
+        return self._deduplicate_keywords([*structural_keywords, *ocr_keywords])[:limit]
 
     # Function Name: _split_parenthesized_text
     # Description:
-    # - Separates balanced parenthesized names while retaining unmatched parentheses in the outside text.
+    # - Separates parenthesized names and recovers product text before a truncated group.
     # Parameters:
     # - normalized_text (str): OCR text with whitespace and bracket notation already normalized.
     # Returns:
@@ -149,20 +164,18 @@ class MedicationTextNormalizer:
                 continue
             parenthesized_chars.append(character)
 
-        if parenthesized_chars is not None:
-            outside_chars.append("(")
-            outside_chars.extend(parenthesized_chars)
+        # 잘린 괄호 뒤 설명은 보조 검색어에서만 제외한다. 원문 검색과 함량·제형 검증은 그대로 유지한다.
+        outside_text = self.normalize_raw_text("".join(outside_chars)).rstrip(" _.-…")
+        return outside_text, parenthesized_candidates
 
-        return self.normalize_raw_text("".join(outside_chars)), parenthesized_candidates
-
-    # 함수이름: _candidate_variants
+    # 함수이름: _candidate_structural_variants
     # 함수역할:
-    # - 한 약품명 후보에서 용량 제거, 제형 제거, 제조사 제거, OCR 보정 후보를 만든다.
+    # - 한 약품명 후보에서 용량·제형·제조사 제거 후보를 만들며 OCR 변형은 뒤로 미룬다.
     # 매개변수:
     # - candidate (str): 원본에서 추출한 약품명 후보
     # 반환값:
     # - 검색 시도 순서를 보존한 약품명 후보 목록
-    def _candidate_variants(self, candidate: str) -> list[str]:
+    def _candidate_structural_variants(self, candidate: str) -> list[str]:
         normalized_candidate = self.normalize_raw_text(candidate)
         if not normalized_candidate:
             return []
@@ -173,11 +186,7 @@ class MedicationTextNormalizer:
         for base_keyword in [normalized_candidate, dosage_trimmed_candidate]:
             structural_keywords.extend(self._structural_variants(base_keyword))
 
-        ocr_keywords: list[str] = []
-        for keyword in structural_keywords:
-            ocr_keywords.extend(self._hangul_ocr_variants(keyword))
-
-        return self._deduplicate_keywords([*structural_keywords, *ocr_keywords])
+        return self._deduplicate_keywords(structural_keywords)
 
     # 함수이름: _structural_variants
     # 함수역할:
@@ -298,8 +307,13 @@ class MedicationNameMatcher:
     # - candidate_name (str): DB 또는 공공데이터 API가 반환한 약품명
     # 반환값:
     # - 0.0 이상 1.0 이하의 이름 유사도 점수
-    def calculate_score(self, search_text: str, candidate_name: str) -> float:
-        if match_conflict(search_text, candidate_name):
+    def calculate_score(
+        self, search_text: str, candidate_name: str, *,
+        allow_unknown_strength: bool = False,
+    ) -> float:
+        if match_conflict(
+            search_text, candidate_name, allow_unknown_strength=allow_unknown_strength,
+        ):
             return 0.0
         if can_auto_match(search_text, candidate_name):
             return 1.0
@@ -342,11 +356,16 @@ class MedicationNameMatcher:
         candidates: list[_CandidateT],
         name_reader: Callable[[_CandidateT], str],
         limit: int,
+        *,
+        allow_unknown_strength: bool = False,
     ) -> list[_CandidateT]:
         ranked_candidates: list[tuple[float, int, _CandidateT]] = []
         required_score = self._required_score(search_text)
         for candidate_index, candidate in enumerate(candidates):
-            score = self.calculate_score(search_text, name_reader(candidate))
+            score = self.calculate_score(
+                search_text, name_reader(candidate),
+                allow_unknown_strength=allow_unknown_strength,
+            )
             if score < required_score:
                 continue
             ranked_candidates.append((score, candidate_index, candidate))
@@ -426,8 +445,8 @@ class MedicationNameMatcher:
     # 함수이름: _adjust_dosage_score
     # 함수역할:
     # - 검색어의 함량이 후보의 함량과 같다고 확인되면 이름 점수에 0.03을 더한다.
-    # - 함량 비교는 medication_match_safety의 정규화 규칙을 그대로 사용한다. 함량이 다르거나
-    #   후보에서 확인되지 않으면 calculate_score가 이 함수에 앞서 0점으로 제외하므로 감점은 두지 않는다.
+    # - 함량 비교는 medication_match_safety의 정규화 규칙을 그대로 사용한다. 다른 함량은 제외하고,
+    #   수동 확인용으로 허용한 함량 미표기 후보에는 가산점을 주지 않는다.
     # 매개변수:
     # - name_score (float): 약품명 문자열만으로 계산한 유사도
     # - search_text (str): OCR 보정 과정을 거친 검색어

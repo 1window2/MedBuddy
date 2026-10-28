@@ -440,10 +440,17 @@ async def identify_medication(
         "서버 내부 오류가 발생했습니다.",
         client_value_errors=True,
     ):
-        return await check_medication_detail.requestMedicationDetail(
-            request.extracted_text,
-            **({'original_text': request.original_text} if request.original_text else {}),
-        )
+        try:
+            # 기본값은 컨트롤에도 정의되어 있어 기존 호출 대역에 새 인자를 강제하지 않는다.
+            return await check_medication_detail.requestMedicationDetail(
+                request.extracted_text,
+                **({'original_text': request.original_text} if request.original_text else {}),
+                **({'search_mode': request.search_mode} if request.search_mode != 'balanced' else {}),
+            )
+        except TimeoutError as exc:
+            raise HTTPException(
+                status_code=504, detail="약품 정보 조회 시간이 초과되었습니다. 다시 시도해 주세요.",
+            ) from exc
 
 
 # Function Name: check_prescription_change

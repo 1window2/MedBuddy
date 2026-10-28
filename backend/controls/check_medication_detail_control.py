@@ -3,7 +3,7 @@
 
 import asyncio
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy.orm import Session
 
@@ -46,6 +46,8 @@ logger = logging.getLogger(__name__)
 # - local_medication_catalog (LocalMedicationCatalog): 문서 요약 캐시를 포함한 로컬 기본·허가 정보 조회기.
 class CheckMedicationDetail:
     MAX_KEYWORD_LENGTH = 100
+    # 프런트엔드의 60초 제한 안에서 응답할 여유를 남기며 모드별로 시간을 늘리지 않는다.
+    LOOKUP_TIMEOUT_SECONDS = 50.0
 
     # 함수이름: __init__
     # 함수역할:
@@ -99,33 +101,58 @@ class CheckMedicationDetail:
     # - Exact product details, or confirmation-only candidates without automatic data.
     async def requestMedicationDetail(
         self, raw_text: str, *, original_text: str | None = None,
+        search_mode: Literal['fast', 'balanced', 'thorough'] = 'balanced',
     ) -> MedicationResponse:
+        if search_mode not in MedicationTextNormalizer.SEARCH_KEYWORD_LIMITS:
+            raise ValueError("Invalid medication search mode.")
         normalized_text = self.text_normalizer.normalize_raw_text(raw_text)
         self._validate_lookup_text(normalized_text)
         reference = self.text_normalizer.normalize_raw_text(original_text or raw_text)
         self._validate_lookup_text(reference)
 
-        search_keywords = self.text_normalizer.build_search_keywords(normalized_text)
+        # 기본 모드에서는 기존 한 인자 정규화기 대역과 호출 계약을 유지한다.
+        search_keywords = self.text_normalizer.build_search_keywords(
+            normalized_text,
+            **({'search_mode': search_mode} if search_mode != 'balanced' else {}),
+        )[:MedicationTextNormalizer.SEARCH_KEYWORD_LIMITS[search_mode]]
         if not search_keywords:
             raise ValueError("Extracted medication text is empty.")
 
         logger.info("Medication lookup generated %s candidate(s).", len(search_keywords))
 
-        medication_details: list[MedicationDetail] = []
+        candidates_by_product: dict[str | tuple[str, str], MedicationDetail] = {}
         lookup_complete = True
         rejected = False
-        for search_keyword in search_keywords[:8]:
-            found = await self._fetch_drug_info(search_keyword, reference=reference)
-            lookup_complete = lookup_complete and found.is_complete
-            safe = [item for item in found.details if not match_conflict(reference, item.item_name)]
-            rejected = rejected or len(safe) != len(found.details)
-            medication_details = self.name_matcher.rank_candidates(
-                reference, safe, lambda item: item.item_name, limit=5,
-            )
-            if medication_details:
-                break
+        exact: list[MedicationDetail] = []
+        # 검색어는 순차 조회하며 시간 초과·공급자 오류는 빈 결과로 바꾸지 않는다.
+        async with asyncio.timeout(self.LOOKUP_TIMEOUT_SECONDS):
+            for search_keyword in search_keywords:
+                found = await self._fetch_drug_info(search_keyword, reference=reference)
+                lookup_complete = lookup_complete and found.is_complete
+                safe = [item for item in found.details if not match_conflict(
+                    reference, item.item_name, allow_unknown_strength=True,
+                )]
+                rejected = rejected or len(safe) != len(found.details)
+                ranked = self.name_matcher.rank_candidates(
+                    reference, safe, lambda item: item.item_name, limit=5,
+                    allow_unknown_strength=True,
+                )
+                for item in ranked:
+                    key = item.item_seq or (item.item_name, item.manufacturer)
+                    existing = candidates_by_product.get(key)
+                    if existing is None or (
+                        can_auto_match(reference, item.item_name)
+                        and not can_auto_match(reference, existing.item_name)
+                    ):
+                        candidates_by_product[key] = item
+                exact = [item for item in candidates_by_product.values()
+                         if can_auto_match(reference, item.item_name)]
+                if len(exact) == 1 and lookup_complete:
+                    break
+                if candidates_by_product and search_mode != 'thorough':
+                    break
 
-        if not medication_details:
+        if not candidates_by_product:
             return MedicationResponse(
                 success=False,
                 message=f"No medication information found for '{search_keywords[0]}'.",
@@ -133,15 +160,15 @@ class CheckMedicationDetail:
                 review_reason='strength_or_form' if rejected else 'not_found',
             )
 
-        unique = {
-            item.item_seq or (item.item_name, item.manufacturer): item
-            for item in medication_details
-        }
-        medication_details = list(unique.values())
-        exact = [item for item in medication_details if can_auto_match(reference, item.item_name)]
+        # 최대 8회×5개만 누적한다. 표시 개수 제한이 다른 동일명 품목의 존재를 지우면 안 된다.
         if len(exact) == 1 and lookup_complete:
             medication_details = exact
         else:
+            medication_details = self.name_matcher.rank_candidates(
+                reference, list(candidates_by_product.values()),
+                lambda item: item.item_name, limit=5,
+                allow_unknown_strength=True,
+            )
             return MedicationResponse(
                 success=True, message="Confirm the product against the prescription.",
                 data=[], candidates=medication_details, requires_confirmation=True,
@@ -179,6 +206,7 @@ class CheckMedicationDetail:
         local_result = await self.local_medication_catalog.fetch_drug_info(drug_name)
         local_drugs = self.name_matcher.rank_candidates(
             reference, local_result.details, lambda item: item.item_name, limit=5,
+            allow_unknown_strength=True,
         )
         if local_drugs:
             return MedicationLookupResult(
@@ -194,6 +222,7 @@ class CheckMedicationDetail:
                 cached_drugs,
                 lambda item: item.item_name,
                 limit=3,
+                allow_unknown_strength=True,
             )
             if ranked_cached_drugs:
                 return MedicationLookupResult(
@@ -268,6 +297,7 @@ class CheckMedicationDetail:
             basic_items,
             read_public_item_name,
             limit=3,
+            allow_unknown_strength=True,
         )
         if basic_items:
             logger.info(
@@ -284,6 +314,7 @@ class CheckMedicationDetail:
             advanced_items,
             read_public_item_name,
             limit=3,
+            allow_unknown_strength=True,
         )
         if not advanced_items:
             logger.warning("No drug information found in public drug databases.")
