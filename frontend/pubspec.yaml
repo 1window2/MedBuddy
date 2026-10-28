@@ -48,3 +48,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/app_icon/medbuddy_logo.png

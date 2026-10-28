@@ -92,13 +92,22 @@ void main() {
       );
       expect(scrollable.position.maxScrollExtent, 0);
       expect(
-        tester.getSize(find.byKey(const Key('caregiver-home-source-hint'))).height,
+        tester
+            .getSize(find.byKey(const Key('caregiver-home-source-hint')))
+            .height,
         greaterThanOrEqualTo(48),
       );
       expect(tester.takeException(), isNull);
 
       final search = find.byKey(const ValueKey('homeFeatureSearchButton'));
-      final notifications = find.byKey(const ValueKey('homeNotificationsButton'));
+      final notifications = find.byKey(
+        const ValueKey('homeNotificationsButton'),
+      );
+      final logo = find.byKey(const ValueKey('homeBrandLogo'));
+      expect(logo, findsOneWidget);
+      expect(find.text('건강한 복약 관리 도우미'), findsNothing);
+      expect(find.text('Your medication guide'), findsNothing);
+      expect(tester.getRect(logo).right, lessThan(tester.getRect(search).left));
       expect(search.hitTestable(), findsOneWidget);
       expect(notifications.hitTestable(), findsOneWidget);
       await tester.tap(search);
@@ -120,6 +129,7 @@ void main() {
         tester.getRect(search).overlaps(tester.getRect(notifications)),
         isFalse,
       );
+      expect(tester.getRect(logo).right, lessThan(tester.getRect(search).left));
       await tester.tap(search);
       expect(searchRequests, 2);
       expect(tester.takeException(), isNull);

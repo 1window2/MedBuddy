@@ -2,6 +2,7 @@
 // Role: UI boundaries and helpers for the home medication dashboard and medication input entry points.
 
 import 'package:flutter/material.dart';
+import '../widgets/medbuddy_wordmark.dart';
 
 import 'medication_capture_options_ui_boundary.dart';
 import '../entities/medication_alarm_entity.dart';
@@ -425,40 +426,8 @@ class _HomeHeader extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'MedBuddy',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textScaler: TextScaler.noScaling,
-                      style: TextStyle(
-                        color: MedBuddyColors.textStrong,
-                        fontSize: 26,
-                        height: 1.1,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      text.brandSubtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textScaler: TextScaler.noScaling,
-                      style: const TextStyle(
-                        color: MedBuddyColors.textSubtle,
-                        fontSize: 13,
-                        height: 1.2,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                  ],
-                ),
+              const Expanded(
+                child: MedBuddyWordmark(key: ValueKey('homeBrandLogo')),
               ),
               const SizedBox(width: 8),
               if (onSearchPressed != null) ...[
