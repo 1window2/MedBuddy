@@ -14,6 +14,15 @@ participant "LinkedChatRealtimeService" as Realtime
 participant "Chat API / Repository" as API
 participant "Other participant" as Peer
 
+Control -> API : 미확인 조회 + include_notification_preview=true
+API --> Control : 현재 미확인 개수·최근 최대 세 건·내용 표시 정책
+Control -> Notification : 서버 요약으로 계정·연동별 알림 갱신
+note over Notification,API
+  푸시와 로컬 알림은 동일한 계정·연동 그룹 키를 사용한다.
+  내용 숨김은 상대 이름·본문을 숨기고 기록 공유는 일반 안내만 표시한다.
+  기기에 수신 메시지를 누적해 개수를 추정하지 않는다.
+end note
+
 User -> Notification : Tap chat notification / inbox entry
 Notification -> Notification : validate recipient and destination type
 alt Same linked conversation already open
@@ -38,6 +47,9 @@ alt Foreground + current route + latest position
   Control -> API : POST read; deduplicate acknowledged range
   API --> Peer : read event
   Peer -> Peer : remove outgoing unread 1
+  API --> History : 읽음 범위 갱신 성공
+  History -> Notification : clearReadChatAlert(owner, linkId, throughMessageId)
+  Notification -> Notification : 해당 그룹 알림 정리\n더 최신 메시지 알림은 유지하고 오래된 요약 재표시 방지
 else Older history / covered route / background
   UI -> UI : preserve scroll; defer read request
 end
