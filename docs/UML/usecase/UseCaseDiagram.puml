@@ -57,7 +57,7 @@ rectangle "메드버디" {
         usecase "UC-32\n날짜별 복약 기록 조회" as UC32
         usecase "UC-33\n사용자 복용 보고 정정" as UC33
         usecase "UC-34\n필요시 복용 기록·확인 알림" as UC34
-        usecase "UC-35\n기간별 복약 기록 CSV·채팅 공유" as UC35
+        usecase "UC-35\n기간별 복약 기록 텍스트·채팅 공유" as UC35
     }
 
     package "환자 및 보호자 관리" {
@@ -237,7 +237,7 @@ note right of UC35
 채팅에는 서버가 집계한 공유 당시 기간·상태별 건수만 저장한다.
 최신 기록은 현재 권한으로 다시 조회하며 읽기 전용이다.
 푸시는 건강정보 없는 일반 메시지 안내만 전달한다.
-CSV는 별도 외부 공유이며 상대방 사본을 회수할 수 없다.
+자연어 텍스트는 별도 외부 공유이며 상대방 사본을 회수할 수 없다.
 end note
 
 note right of UC36
