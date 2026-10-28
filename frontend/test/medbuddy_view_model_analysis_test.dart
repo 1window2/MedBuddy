@@ -2,12 +2,17 @@
 // Role: Verifies prescription analysis state handling in MedBuddyViewModel.
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:medbuddy_frontend/controls/check_medication_detail_control.dart';
 import 'package:medbuddy_frontend/controls/check_prescription_change_control.dart';
 import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
 import 'package:medbuddy_frontend/controls/input_prescription_control.dart';
+import 'package:medbuddy_frontend/controls/manage_user_setting_control.dart';
 import 'package:medbuddy_frontend/entities/analyzed_medication_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_match_review_entity.dart';
@@ -15,6 +20,8 @@ import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/prescription_flow_entity.dart';
 import 'package:medbuddy_frontend/entities/prescription_change_entity.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
+
+import 'support/fake_notification_service.dart';
 
 // Class Name: _FakeInputPrescription
 // Role: Prescription-input stub with fixed schedules and recognition counters.
@@ -90,6 +97,7 @@ class _FakeInputPrescription extends InputPrescription {
   @override
   Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
     PrescriptionImageSelectedCallback? onImageSelected,
+    PrescriptionRecognitionProgressCallback? onProgress,
   }) async {
     onImageSelected?.call();
     return schedules;
@@ -122,6 +130,16 @@ class _FakeCheckMedicationDetail extends CheckMedicationDetail {
       warning: 'warning',
     );
   }
+}
+
+class _ProgressCheckMedicationDetail extends CheckMedicationDetail {
+  final pending = <String, Completer<MedicationDetail?>>{};
+
+  @override
+  Future<MedicationDetail?> requestMedicationDetail(
+    MedicationSchedule schedule,
+  ) => (pending[schedule.medicationName] = Completer<MedicationDetail?>())
+      .future;
 }
 
 // 클래스명: _CapturingCheckMedicationDetail
@@ -157,6 +175,7 @@ class _CapturingCheckMedicationDetail extends CheckMedicationDetail {
 // Responsibilities:
 // - Signal image selection immediately but defer recognized schedules until the test completes OCR.
 class _DeferredInputPrescription extends InputPrescription {
+  PrescriptionRecognitionProgressCallback? progress;
   final Completer<List<MedicationSchedule>?> completer =
       Completer<List<MedicationSchedule>?>();
 
@@ -171,7 +190,9 @@ class _DeferredInputPrescription extends InputPrescription {
   @override
   Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
     PrescriptionImageSelectedCallback? onImageSelected,
+    PrescriptionRecognitionProgressCallback? onProgress,
   }) {
+    progress = onProgress;
     onImageSelected?.call();
     return completer.future;
   }
@@ -205,6 +226,7 @@ class _GalleryPickInputPrescription extends InputPrescription {
   @override
   Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
     PrescriptionImageSelectedCallback? onImageSelected,
+    PrescriptionRecognitionProgressCallback? onProgress,
   }) async {
     requestCount += 1;
     final picked = pendingPick == null
@@ -501,7 +523,255 @@ class _MixedReviewMedicationDetail extends _ReviewMedicationDetail {
   }
 }
 
+class _OutcomeMedicationDetail extends CheckMedicationDetail {
+  final Map<String, Object?> results;
+  final List<String> requests = [];
+
+  _OutcomeMedicationDetail(this.results);
+
+  @override
+  Future<MedicationDetail?> requestMedicationDetail(
+    MedicationSchedule schedule,
+  ) async {
+    requests.add(schedule.medicationName);
+    final result = results[schedule.medicationName];
+    if (result == null || result is MedicationDetail) {
+      return result as MedicationDetail?;
+    }
+    throw result;
+  }
+}
+
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('앱에서 저장한 검색 방식을 다음 조회와 재조회 요청에 반영한다', () async {
+    SharedPreferences.setMockInitialValues({});
+    final requestedModes = <String>[];
+    final client = MockClient((request) async {
+      expect(request.url.path, endsWith('/identify'));
+      requestedModes.add(jsonDecode(request.body)['search_mode'] as String);
+      return http.Response('{"success":false,"data":[]}', 200);
+    });
+    addTearDown(client.close);
+    final settings = ManageUserSetting(
+      client: client,
+      useRemotePersistence: false,
+    );
+    addTearDown(settings.dispose);
+    final model = MedBuddyViewModel(
+      apiClient: client,
+      manageUserSetting: settings,
+      notificationService: RecordingNotificationService(),
+    );
+    addTearDown(model.dispose);
+    const schedule = MedicationSchedule(medicationName: '시험약');
+    await model.checkMedicationDetail.requestMedicationDetail(schedule);
+    for (final mode in ['fast', 'thorough', 'balanced']) {
+      await model.saveUserSetting(
+        model.userSetting.copyWith(medicationSearchMode: mode),
+      );
+      await model.checkMedicationDetail.requestMedicationDetail(schedule);
+    }
+    expect(requestedModes, ['balanced', 'fast', 'thorough', 'balanced']);
+  });
+
+  test(
+    'recognition progress ignores callbacks after leaving the flow',
+    () async {
+      final input = _DeferredInputPrescription();
+      final model = MedBuddyViewModel(inputPrescription: input);
+      addTearDown(model.dispose);
+      final request = model.requestPrescriptionImageFromGallery();
+      input.progress!(PrescriptionRecognitionStage.structuringMedication);
+      expect(
+        model.recognitionStage,
+        PrescriptionRecognitionStage.structuringMedication,
+      );
+      model.clearAnalysisResult();
+      input.progress!(PrescriptionRecognitionStage.completed);
+      expect(
+        model.recognitionStage,
+        PrescriptionRecognitionStage.recognizingText,
+      );
+      input.completer.complete([]);
+      await request;
+      expect(model.prescriptionFlowState, PrescriptionFlowState.idle);
+    },
+  );
+  test(
+    'lookup badges distinguish outcomes and follow edits and retries',
+    () async {
+      const detail = MedicationDetail(
+        itemName: 'matched',
+        efficacy: '',
+        usageMethod: '',
+        warning: '',
+      );
+      final review = MedicationMatchReview([detail]);
+      final control = _OutcomeMedicationDetail({
+        'matched': detail,
+        'candidate': review,
+        'missing': null,
+        'failed': StateError('Network unavailable'),
+        'empty-candidates': MedicationMatchReview([]),
+      });
+      final model = MedBuddyViewModel(
+        inputPrescription: _FakeInputPrescription([
+          for (final name in control.results.keys)
+            MedicationSchedule(medicationName: name),
+        ]),
+        checkMedicationDetail: control,
+      );
+      addTearDown(model.dispose);
+      await model.requestPrescriptionImageFromGallery();
+      expect(model.medicationLookupStatuses, {
+        0: MedicationLookupStatus.verified,
+        1: MedicationLookupStatus.candidates,
+        2: MedicationLookupStatus.notFound,
+        3: MedicationLookupStatus.failed,
+        4: MedicationLookupStatus.notFound,
+      });
+      expect(
+        () => model.medicationLookupStatuses.clear(),
+        throwsUnsupportedError,
+      );
+
+      model.confirmMedicationCandidate(1, detail);
+      expect(
+        model.medicationLookupStatuses[1],
+        MedicationLookupStatus.verified,
+      );
+      expect(model.medicationLookupStatuses[3], MedicationLookupStatus.failed);
+      model.updateRecognizedMedicationSchedule(
+        2,
+        const MedicationSchedule(medicationName: 'corrected'),
+      );
+      expect(model.medicationLookupStatuses[2], MedicationLookupStatus.pending);
+      model.addRecognizedMedicationSchedule(
+        const MedicationSchedule(medicationName: 'added'),
+      );
+      expect(model.medicationLookupStatuses[5], MedicationLookupStatus.pending);
+      control.results.addAll({
+        'corrected': detail,
+        'added': detail,
+        'failed': review,
+        'empty-candidates': detail,
+      });
+      control.requests.clear();
+      await model.requestPrescriptionAnalysis();
+      expect(control.requests, [
+        'corrected',
+        'failed',
+        'empty-candidates',
+        'added',
+      ]);
+      expect(model.medicationLookupStatuses, {
+        0: MedicationLookupStatus.verified,
+        1: MedicationLookupStatus.verified,
+        2: MedicationLookupStatus.verified,
+        3: MedicationLookupStatus.candidates,
+        4: MedicationLookupStatus.verified,
+        5: MedicationLookupStatus.verified,
+      });
+      model.clearAnalysisResult();
+      expect(model.medicationLookupStatuses, isEmpty);
+    },
+  );
+
+  test(
+    'all technical failures retain row badges and retry in review',
+    () async {
+      final model = MedBuddyViewModel(
+        inputPrescription: _FakeInputPrescription(const [
+          MedicationSchedule(medicationName: 'failed'),
+        ]),
+        checkMedicationDetail: _OutcomeMedicationDetail({
+          'failed': StateError('Network unavailable'),
+        }),
+      );
+      addTearDown(model.dispose);
+      await model.requestPrescriptionImageFromGallery();
+      expect(
+        model.prescriptionFlowState,
+        PrescriptionFlowState.medicationReviewRequired,
+      );
+      expect(model.medicationLookupStatuses, {
+        0: MedicationLookupStatus.failed,
+      });
+      expect(model.analysisErrorMessage, isNotEmpty);
+      expect(model.unverifiedMedicationScheduleIndexes, {0});
+    },
+  );
+  test(
+    'a completed automatic lookup does not release a newer gallery picker',
+    () async {
+      final input = _GalleryPickInputPrescription(const [
+        MedicationSchedule(medicationName: 'first'),
+      ]);
+      final detail = _DeferredCheckMedicationDetail();
+      final model = MedBuddyViewModel(
+        inputPrescription: input,
+        checkMedicationDetail: detail,
+      );
+      addTearDown(model.dispose);
+      final first = model.requestPrescriptionImageFromGallery();
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        model.prescriptionFlowState,
+        PrescriptionFlowState.analyzingMedication,
+      );
+      input.pendingPick = Completer<bool>();
+      final next = model.requestPrescriptionImageFromGallery();
+      detail.completer.complete(null);
+      await first;
+      await model.requestPrescriptionImageFromGallery();
+      expect(input.requestCount, 2);
+      input.pendingPick!.complete(false);
+      await next;
+      expect(
+        model.prescriptionFlowState,
+        PrescriptionFlowState.medicationReviewRequired,
+      );
+    },
+  );
+  test(
+    'automatic lookup keeps matching rows and rechecks only an edited row',
+    () async {
+      final control = _SelectiveCheckMedicationDetail({'first', 'second'});
+      final model = MedBuddyViewModel(
+        inputPrescription: _FakeInputPrescription(const [
+          MedicationSchedule(medicationName: 'first', dosage: '1정'),
+          MedicationSchedule(medicationName: 'second', dosage: '1정'),
+        ]),
+        checkMedicationDetail: control,
+      );
+      addTearDown(model.dispose);
+      final states = <PrescriptionFlowState>[];
+      model.addListener(() => states.add(model.prescriptionFlowState));
+      await model.requestPrescriptionImageFromGallery();
+      expect(states, isNot(contains(PrescriptionFlowState.previewReady)));
+      expect(model.verifiedMedicationScheduleIndexes, {0, 1});
+      model.updateRecognizedMedicationSchedule(
+        0,
+        model.recognizedMedicationScheduleList.first.copyWith(dosage: '0.5정'),
+      );
+      expect(
+        model.prescriptionFlowState,
+        PrescriptionFlowState.medicationReviewRequired,
+      );
+      expect(model.verifiedMedicationScheduleIndexes, {1});
+      expect(model.medicationLookupStatuses, {
+        0: MedicationLookupStatus.pending,
+        1: MedicationLookupStatus.verified,
+      });
+      expect(model.unverifiedMedicationScheduleIndexes, {0});
+      await model.requestPrescriptionAnalysis();
+      expect(control.requestedMedicationNames, ['first', 'second', 'first']);
+      expect(model.analyzedMedicationList.first.schedule.dosage, '0.5정');
+      expect(model.completedMedicationSaveIndexes, isEmpty);
+    },
+  );
   for (final recovery in ['retry', 'recognition', 'reset']) {
     // Function Name: mixed review and lookup failure test
     // Description: Retains another row's technical error after confirmation and clears it on recovery or a new flow.
@@ -520,7 +790,6 @@ void main() {
         );
         addTearDown(model.dispose);
         await model.requestPrescriptionImageFromGallery();
-        await model.requestPrescriptionAnalysis();
         final lookupError = model.analysisErrorMessage;
         expect(lookupError, isNotEmpty);
         expect(model.unverifiedMedicationScheduleIndexes, {0, 1});
@@ -545,12 +814,13 @@ void main() {
             expect(model.unverifiedMedicationScheduleIndexes, isEmpty);
             expect(model.analyzedMedicationList, hasLength(2));
           case 'recognition':
+            control.failLookup = false;
             await model.requestPrescriptionImageFromGallery();
             expect(
               model.prescriptionFlowState,
-              PrescriptionFlowState.previewReady,
+              PrescriptionFlowState.medicationReviewRequired,
             );
-            expect(model.medicationMatchReviews, isEmpty);
+            expect(model.medicationMatchReviews.keys, [0]);
           case 'reset':
             model.clearAnalysisResult();
             expect(model.prescriptionFlowState, PrescriptionFlowState.idle);
@@ -564,78 +834,104 @@ void main() {
   // Description: Verifies that cancelling the gallery picker from a retryable analysis failure keeps the failure state, its message and the recognized schedules, and that picking an image afterwards starts a fresh recognition.
   // Parameters: None.
   // Returns: Completion after the state assertions pass.
-  test('cancelling the gallery picker keeps a retryable analysis failure', () async {
-    final control = _GalleryPickInputPrescription(const [
-      MedicationSchedule(medicationName: 'a-tablet', intakeTime: '3회'),
-    ]);
-    final model = MedBuddyViewModel(
-      inputPrescription: control,
-      checkMedicationDetail: _AccountLockedMedicationDetail(alwaysBusy: true),
-    );
-    addTearDown(model.dispose);
-    await model.requestPrescriptionImageFromGallery();
-    await model.requestPrescriptionAnalysis();
-    expect(model.prescriptionFlowState, PrescriptionFlowState.analysisFailed);
-    expect(model.canRetryPrescriptionAnalysis, isTrue);
-    final failureMessage = model.analysisErrorMessage;
-    final statusMessage = model.prescriptionStatusMessage;
-    expect(failureMessage, isNotEmpty);
+  test(
+    'cancelling the gallery picker keeps a retryable analysis failure',
+    () async {
+      final control = _GalleryPickInputPrescription(const [
+        MedicationSchedule(medicationName: 'a-tablet', intakeTime: '3회'),
+      ]);
+      final model = MedBuddyViewModel(
+        inputPrescription: control,
+        checkMedicationDetail: _AccountLockedMedicationDetail(alwaysBusy: true),
+      );
+      addTearDown(model.dispose);
+      await model.requestPrescriptionImageFromGallery();
+      expect(
+        model.prescriptionFlowState,
+        PrescriptionFlowState.medicationReviewRequired,
+      );
+      expect(model.canRetryPrescriptionAnalysis, isTrue);
+      final failureMessage = model.analysisErrorMessage;
+      final statusMessage = model.prescriptionStatusMessage;
+      expect(failureMessage, isNotEmpty);
 
-    await model.requestPrescriptionImageFromGallery();
+      await model.requestPrescriptionImageFromGallery();
 
-    expect(control.requestCount, 2);
-    expect(model.prescriptionFlowState, PrescriptionFlowState.analysisFailed);
-    expect(model.canRetryPrescriptionAnalysis, isTrue);
-    expect(model.recognizedMedicationScheduleList, hasLength(1));
-    expect(model.analysisErrorMessage, failureMessage);
-    expect(model.prescriptionStatusMessage, statusMessage);
-  });
+      expect(control.requestCount, 2);
+      expect(
+        model.prescriptionFlowState,
+        PrescriptionFlowState.medicationReviewRequired,
+      );
+      expect(model.canRetryPrescriptionAnalysis, isTrue);
+      expect(model.recognizedMedicationScheduleList, hasLength(1));
+      expect(model.analysisErrorMessage, failureMessage);
+      expect(model.prescriptionStatusMessage, statusMessage);
+    },
+  );
 
   // Function Name: idle gallery cancel test
   // Description: Verifies that cancelling the picker from the idle screen still reports the cancellation and stays idle.
   // Parameters: None.
   // Returns: Completion after the state assertions pass.
-  test('cancelling the gallery picker while idle reports the cancellation', () async {
-    final control = _GalleryPickInputPrescription(const [])
-      ..pendingPick = (Completer<bool>()..complete(false));
-    final model = MedBuddyViewModel(inputPrescription: control);
-    addTearDown(model.dispose);
+  test(
+    'cancelling the gallery picker while idle reports the cancellation',
+    () async {
+      final control = _GalleryPickInputPrescription(const [])
+        ..pendingPick = (Completer<bool>()..complete(false));
+      final model = MedBuddyViewModel(inputPrescription: control);
+      addTearDown(model.dispose);
 
-    await model.requestPrescriptionImageFromGallery();
+      await model.requestPrescriptionImageFromGallery();
 
-    expect(model.prescriptionFlowState, PrescriptionFlowState.idle);
-    expect(model.prescriptionStatusMessage, '이미지 선택이 취소되었습니다.');
-  });
+      expect(model.prescriptionFlowState, PrescriptionFlowState.idle);
+      expect(model.prescriptionStatusMessage, '이미지 선택이 취소되었습니다.');
+    },
+  );
 
   // Function Name: pending gallery pick guard test
   // Description: Verifies that a second gallery request is ignored while the picker is still open, that the open picker does not clear the current preview, and that the chosen image then replaces it.
   // Parameters: None.
   // Returns: Completion after the request-count and state assertions pass.
-  test('a second gallery request is ignored while the picker is open', () async {
-    final control = _GalleryPickInputPrescription(const [
-      MedicationSchedule(medicationName: 'a-tablet'),
-    ]);
-    final model = MedBuddyViewModel(inputPrescription: control);
-    addTearDown(model.dispose);
-    await model.requestPrescriptionImageFromGallery();
-    expect(model.prescriptionFlowState, PrescriptionFlowState.previewReady);
+  test(
+    'a second gallery request is ignored while the picker is open',
+    () async {
+      final control = _GalleryPickInputPrescription(const [
+        MedicationSchedule(medicationName: 'a-tablet'),
+      ]);
+      final model = MedBuddyViewModel(
+        inputPrescription: control,
+        checkMedicationDetail: _FakeCheckMedicationDetail(),
+      );
+      addTearDown(model.dispose);
+      await model.requestPrescriptionImageFromGallery();
+      expect(
+        model.prescriptionFlowState,
+        PrescriptionFlowState.analysisSucceeded,
+      );
 
-    control.pendingPick = Completer<bool>();
-    final firstRequest = model.requestPrescriptionImageFromGallery();
-    await model.requestPrescriptionImageFromGallery();
-    expect(control.requestCount, 2);
-    expect(model.prescriptionFlowState, PrescriptionFlowState.previewReady);
-    expect(model.recognizedMedicationScheduleList, hasLength(1));
+      control.pendingPick = Completer<bool>();
+      final firstRequest = model.requestPrescriptionImageFromGallery();
+      await model.requestPrescriptionImageFromGallery();
+      expect(control.requestCount, 2);
+      expect(
+        model.prescriptionFlowState,
+        PrescriptionFlowState.analysisSucceeded,
+      );
+      expect(model.recognizedMedicationScheduleList, hasLength(1));
 
-    control.pendingPick!.complete(true);
-    await firstRequest;
-    expect(model.prescriptionFlowState, PrescriptionFlowState.previewReady);
+      control.pendingPick!.complete(true);
+      await firstRequest;
+      expect(
+        model.prescriptionFlowState,
+        PrescriptionFlowState.analysisSucceeded,
+      );
 
-    // The guard is released once the pick finished.
-    control.pendingPick = Completer<bool>()..complete(false);
-    await model.requestPrescriptionImageFromGallery();
-    expect(control.requestCount, 3);
-  });
+      // The guard is released once the pick finished.
+      control.pendingPick = Completer<bool>()..complete(false);
+      await model.requestPrescriptionImageFromGallery();
+      expect(control.requestCount, 3);
+    },
+  );
 
   // Function Name: reset during open picker test
   // Description: Verifies that an image chosen after the flow was reset while the picker was open does not start a recognition.
@@ -661,42 +957,49 @@ void main() {
   // Description: Verifies that starting a new recognition clears the saving marker and completed-save indexes left by the previous result, whose late save response can no longer clear them.
   // Parameters: None.
   // Returns: Completion after the save-state assertions pass.
-  test('a new recognition clears save progress of the previous result', () async {
-    final saveControl = _DeferredCheckSavedMedication();
-    final model = MedBuddyViewModel(
-      inputPrescription: _FakeInputPrescription(const [
-        MedicationSchedule(medicationName: 'next-tablet'),
-      ]),
-      checkSavedMedication: saveControl,
-    );
-    addTearDown(model.dispose);
-    const medication = AnalyzedMedication(
-      schedule: MedicationSchedule(medicationName: 'test'),
-      detail: MedicationDetail(
-        itemName: 'test',
-        efficacy: '',
-        usageMethod: '',
-        warning: '',
-      ),
-    );
-    final save = model.requestMedicationSave(medication, 0);
-    expect(model.savingMedicationIndex, 0);
+  test(
+    'a new recognition clears save progress of the previous result',
+    () async {
+      final saveControl = _DeferredCheckSavedMedication();
+      final model = MedBuddyViewModel(
+        inputPrescription: _FakeInputPrescription(const [
+          MedicationSchedule(medicationName: 'next-tablet'),
+        ]),
+        checkSavedMedication: saveControl,
+        checkMedicationDetail: _FakeCheckMedicationDetail(),
+      );
+      addTearDown(model.dispose);
+      const medication = AnalyzedMedication(
+        schedule: MedicationSchedule(medicationName: 'test'),
+        detail: MedicationDetail(
+          itemName: 'test',
+          efficacy: '',
+          usageMethod: '',
+          warning: '',
+        ),
+      );
+      final save = model.requestMedicationSave(medication, 0);
+      expect(model.savingMedicationIndex, 0);
 
-    await model.requestPrescriptionImageFromGallery();
+      await model.requestPrescriptionImageFromGallery();
 
-    expect(model.prescriptionFlowState, PrescriptionFlowState.previewReady);
-    expect(model.savingMedicationIndex, isNull);
-    expect(model.completedMedicationSaveIndexes, isEmpty);
-    saveControl.completer.complete(
-      const MedicationSaveResult(
-        status: MedicationSaveStatus.saved,
-        message: 'saved',
-      ),
-    );
-    await save;
-    expect(model.savingMedicationIndex, isNull);
-    expect(model.completedMedicationSaveIndexes, isEmpty);
-  });
+      expect(
+        model.prescriptionFlowState,
+        PrescriptionFlowState.analysisSucceeded,
+      );
+      expect(model.savingMedicationIndex, isNull);
+      expect(model.completedMedicationSaveIndexes, isEmpty);
+      saveControl.completer.complete(
+        const MedicationSaveResult(
+          status: MedicationSaveStatus.saved,
+          message: 'saved',
+        ),
+      );
+      await save;
+      expect(model.savingMedicationIndex, isNull);
+      expect(model.completedMedicationSaveIndexes, isEmpty);
+    },
+  );
 
   for (final alwaysBusy in [false, true]) {
     test(
@@ -713,7 +1016,6 @@ void main() {
         );
         addTearDown(model.dispose);
         await model.requestPrescriptionImageFromGallery();
-        await model.requestPrescriptionAnalysis();
         expect(control.calls, {
           'first': alwaysBusy ? 2 : 1,
           'second': 2,
@@ -722,10 +1024,12 @@ void main() {
         expect(
           model.prescriptionFlowState,
           alwaysBusy
-              ? PrescriptionFlowState.analysisFailed
+              ? PrescriptionFlowState.medicationReviewRequired
               : PrescriptionFlowState.analysisSucceeded,
         );
         expect(model.analyzedMedicationList, hasLength(alwaysBusy ? 0 : 3));
+        expect(model.completedMedicationAnalysisCount, 3);
+        expect(model.totalMedicationAnalysisCount, 3);
       },
     );
   }
@@ -746,7 +1050,6 @@ void main() {
       );
       addTearDown(model.dispose);
       await model.requestPrescriptionImageFromGallery();
-      await model.requestPrescriptionAnalysis();
       expect(
         model.prescriptionFlowState,
         PrescriptionFlowState.medicationReviewRequired,
@@ -782,7 +1085,6 @@ void main() {
       );
       addTearDown(model.dispose);
       await model.requestPrescriptionImageFromGallery();
-      await model.requestPrescriptionAnalysis();
       model.updateRecognizedMedicationSchedule(
         0,
         model.recognizedMedicationScheduleList.single.copyWith(
@@ -859,6 +1161,7 @@ void main() {
           parsedCount: 1,
           skippedCount: 1,
         ),
+        checkMedicationDetail: _FakeCheckMedicationDetail(),
       );
       addTearDown(viewModel.dispose);
 
@@ -866,7 +1169,7 @@ void main() {
 
       expect(
         viewModel.prescriptionFlowState,
-        PrescriptionFlowState.previewReady,
+        PrescriptionFlowState.analysisSucceeded,
       );
       expect(viewModel.lastPrescriptionRawMedicationCount, 2);
       expect(viewModel.lastPrescriptionParsedMedicationCount, 1);
@@ -874,7 +1177,7 @@ void main() {
       expect(viewModel.correctedPrescriptionMedicationCount, 1);
       expect(viewModel.prescriptionRecognitionNotice, contains('약명 보정'));
       expect(viewModel.prescriptionRecognitionNotice, contains('OCR 항목 제외'));
-      expect(viewModel.statusMessage, contains('인식 내역'));
+      expect(viewModel.statusMessage, contains('분석이 완료'));
     },
   );
 
@@ -898,7 +1201,6 @@ void main() {
     addTearDown(viewModel.dispose);
 
     await viewModel.requestPrescriptionImageFromGallery();
-    await viewModel.requestPrescriptionAnalysis();
 
     expect(
       viewModel.prescriptionFlowState,
@@ -948,22 +1250,58 @@ void main() {
     );
     addTearDown(viewModel.dispose);
 
-    await viewModel.requestPrescriptionImageFromGallery();
-    final pendingAnalysis = viewModel.requestPrescriptionAnalysis();
+    final pendingAnalysis = viewModel.requestPrescriptionImageFromGallery();
     await Future<void>.delayed(Duration.zero);
 
     expect(detailControl.startedRequestCount, 6);
     expect(detailControl.maximumActiveRequestCount, 6);
+    expect(viewModel.completedMedicationAnalysisCount, 0);
+    expect(viewModel.totalMedicationAnalysisCount, 7);
 
     detailControl.firstBatchRelease.complete();
     await pendingAnalysis;
 
     expect(detailControl.startedRequestCount, 7);
+    expect(viewModel.completedMedicationAnalysisCount, 7);
     expect(
       viewModel.prescriptionFlowState,
       PrescriptionFlowState.analysisSucceeded,
     );
   });
+
+  test(
+    'analysis progress counts each finished lookup and ignores cancelled responses',
+    () async {
+      final control = _ProgressCheckMedicationDetail();
+      final model = MedBuddyViewModel(
+        inputPrescription: _FakeInputPrescription(const [
+          MedicationSchedule(medicationName: 'first'),
+          MedicationSchedule(medicationName: 'second'),
+          MedicationSchedule(medicationName: 'third'),
+        ]),
+        checkMedicationDetail: control,
+      );
+      addTearDown(model.dispose);
+      final analysis = model.requestPrescriptionImageFromGallery();
+      await Future<void>.delayed(Duration.zero);
+      expect(model.totalMedicationAnalysisCount, 3);
+      expect(model.completedMedicationAnalysisCount, 0);
+      control.pending['second']!.complete(null);
+      await Future<void>.delayed(Duration.zero);
+      expect(model.completedMedicationAnalysisCount, 1);
+      control.pending['first']!.completeError(
+        StateError('test lookup failure'),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(model.completedMedicationAnalysisCount, 2);
+      model.clearAnalysisResult();
+      control.pending['third']!.complete(null);
+      await analysis;
+      expect(model.completedMedicationAnalysisCount, 0);
+      expect(model.totalMedicationAnalysisCount, 0);
+      expect(model.prescriptionFlowState, PrescriptionFlowState.idle);
+    },
+  );
 
   // 함수이름: test 콜백
   // 함수역할:
@@ -1037,7 +1375,6 @@ void main() {
     addTearDown(viewModel.dispose);
 
     await viewModel.requestPrescriptionImageFromGallery();
-    await viewModel.requestPrescriptionAnalysis();
     viewModel.showMedicationAnalysisResult();
     await Future<void>.delayed(Duration.zero);
 
@@ -1066,7 +1403,6 @@ void main() {
       addTearDown(viewModel.dispose);
 
       await viewModel.requestPrescriptionImageFromGallery();
-      await viewModel.requestPrescriptionAnalysis();
 
       expect(
         viewModel.prescriptionFlowState,
@@ -1106,7 +1442,6 @@ void main() {
     addTearDown(viewModel.dispose);
 
     await viewModel.requestPrescriptionImageFromGallery();
-    await viewModel.requestPrescriptionAnalysis();
     expect(detailControl.requestedMedicationNames, [
       'found-tablet',
       'wrong-tablet',
@@ -1265,8 +1600,7 @@ void main() {
     );
     addTearDown(viewModel.dispose);
 
-    await viewModel.requestPrescriptionImageFromGallery();
-    final pendingRequest = viewModel.requestPrescriptionAnalysis();
+    final pendingRequest = viewModel.requestPrescriptionImageFromGallery();
     await Future<void>.delayed(Duration.zero);
     expect(
       viewModel.prescriptionFlowState,
@@ -1286,6 +1620,7 @@ void main() {
 
     expect(viewModel.prescriptionFlowState, PrescriptionFlowState.idle);
     expect(viewModel.analyzedMedicationList, isEmpty);
+    expect(viewModel.medicationLookupStatuses, isEmpty);
   });
 
   // Function Name: test callback

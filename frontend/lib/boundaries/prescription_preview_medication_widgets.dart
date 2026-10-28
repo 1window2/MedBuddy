@@ -32,377 +32,216 @@ typedef _MedicationTableEditCallback =
       _MedicationScheduleEditField initialField,
     );
 
-// 클래스명: _PreviewMedicationTable
-// 역할: 인식된 모든 약의 수정 가능한 가로 스크롤 표를 담당한다.
-// 주요 책임:
-// - 세로 화면에서도 모든 열을 확인할 수 있도록 표에 가로 스크롤을 제공한다.
-// - 각 값 셀을 누르면 해당 입력란이 선택된 수정 창을 연다.
-// - 수정 가능 여부와 약명 보정 상태를 화면에서 바로 알아볼 수 있게 한다.
-// 속성:
-// - medicationScheduleList (List<MedicationSchedule>): 검토·표시·시간대 분류에 사용할 복약 일정 목록.
-// - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-// - scrollController (ScrollController): 목록 위치 제어와 스크롤 안내에 사용할 컨트롤러.
-// - onEditRequested (_MedicationTableEditCallback): 선택한 약품 일정·입력란의 편집을 여는 콜백.
-class _PreviewMedicationTable extends StatelessWidget {
-  static const double _tableWidth = 1010;
-
+// 클래스명: _PreviewMedicationList
+// 역할: 약별 복약 정보와 후보 확인을 같은 카드에 세로로 배치한다.
+class _PreviewMedicationList extends StatelessWidget {
   final List<MedicationSchedule> medicationScheduleList;
   final _PreviewText previewText;
   final UserSetting userSetting;
-  final ScrollController scrollController;
   final _MedicationTableEditCallback onEditRequested;
   final Set<int> verifiedScheduleIndexes;
+  final bool isMedicationLookupReview;
+  final Map<int, MedicationMatchReview> matchReviews;
+  final Map<int, MedicationLookupStatus> lookupStatuses;
+  final void Function(int, MedicationMatchReview)? onCandidateRequested;
 
-  // 함수이름: _PreviewMedicationTable
-  // 함수역할: 인식된 모든 약의 수정 가능한 가로 스크롤 표에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - medicationScheduleList (List<MedicationSchedule>): 검토·표시·시간대 분류에 사용할 복약 일정 목록.
-  // - previewText (_PreviewText): 해당 화면 구역의 언어별 표시 문구.
-  // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-  // - scrollController (ScrollController): 목록 위치 제어와 스크롤 안내에 사용할 컨트롤러.
-  // - onEditRequested (_MedicationTableEditCallback): 선택한 약품 일정·입력란의 편집을 여는 콜백.
-  // - verifiedScheduleIndexes (Set<int>): 약품 상세 조회로 검증된 일정 인덱스 집합.
-  // 반환값: 입력 설정이 반영된 _PreviewMedicationTable 인스턴스.
-  const _PreviewMedicationTable({
+  const _PreviewMedicationList({
     required this.medicationScheduleList,
     required this.previewText,
     required this.userSetting,
-    required this.scrollController,
     required this.onEditRequested,
-    this.verifiedScheduleIndexes = const {},
+    required this.verifiedScheduleIndexes,
+    required this.isMedicationLookupReview,
+    required this.matchReviews,
+    required this.lookupStatuses,
+    required this.onCandidateRequested,
   });
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 인식된 모든 약의 수정 가능한 가로 스크롤 표 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 인식된 모든 약의 수정 가능한 가로 스크롤 표에 쓰는 위젯 트리.
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              Icons.edit_note_rounded,
-              size: 20,
-              color: MedBuddyColors.primaryDark,
+  Widget build(BuildContext context) => Column(
+    key: const Key('ocr-medication-list'),
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      for (var index = 0; index < medicationScheduleList.length; index++) ...[
+        if (index > 0) const SizedBox(height: 12),
+        _buildMedicationCard(context, index, medicationScheduleList[index]),
+      ],
+    ],
+  );
+
+  Widget _buildMedicationCard(
+    BuildContext context,
+    int index,
+    MedicationSchedule schedule,
+  ) {
+    final verified = verifiedScheduleIndexes.contains(index);
+    final review = matchReviews[index];
+    final lookupStatus = verified
+        ? MedicationLookupStatus.verified
+        : lookupStatuses[index] ??
+              (review?.candidates.isNotEmpty == true
+                  ? MedicationLookupStatus.candidates
+                  : null);
+    final canReview =
+        isMedicationLookupReview &&
+        !verified &&
+        review != null &&
+        review.candidates.isNotEmpty &&
+        onCandidateRequested != null;
+
+    Widget field(
+      String suffix,
+      String label,
+      String value,
+      _MedicationScheduleEditField editField, {
+      Widget? extra,
+    }) => _EditableMedicationCell(
+      cellKey: Key('ocr-table-cell-$index-$suffix'),
+      semanticsLabel: previewText.editCell(label, value),
+      onTap: () => onEditRequested(index, schedule, editField),
+      alignment: Alignment.center,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: MedBuddyColors.textMuted,
+              fontSize: 12,
             ),
-            const SizedBox(width: 7),
-            Expanded(
-              child: Text(
-                previewText.tableEditGuide,
-                style: TextStyle(
-                  color: MedBuddyColors.textMuted,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0,
-                ),
+          ),
+          const SizedBox(height: 2),
+          _TableValueText(value: value, isVerified: verified),
+          if (extra != null) ...[const SizedBox(height: 6), extra],
+        ],
+      ),
+    );
+
+    final fields = [
+      field(
+        'dosage',
+        previewText.isEnglish ? 'Dose' : previewText.dosage,
+        schedule.dosageLabelForLanguage(previewText.language),
+        _MedicationScheduleEditField.dosage,
+      ),
+      field(
+        'days',
+        previewText.isEnglish ? 'Duration' : previewText.totalDays,
+        schedule.durationLabelForLanguage(previewText.language),
+        _MedicationScheduleEditField.totalDays,
+      ),
+      field(
+        'date',
+        previewText.medicationStartDate,
+        previewText.dateValue(schedule.prescriptionDate),
+        _MedicationScheduleEditField.prescriptionDate,
+      ),
+      field(
+        'slots',
+        previewText.scheduleSlots,
+        schedule.isAsNeeded
+            ? (previewText.isEnglish ? 'As needed' : '필요시 복용')
+            : [
+                if (!readDoseCycle(schedule.intakeTime).isDaily)
+                  schedule.dailyFrequencyLabelForLanguage(previewText.language),
+                previewText.slotSummary(schedule.slotKeys),
+              ].join('\n'),
+        _MedicationScheduleEditField.scheduleSlots,
+        extra:
+            !schedule.isAsNeeded &&
+                (schedule.needsScheduleReview ||
+                    !readDoseCycle(schedule.intakeTime).isDaily)
+            ? Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 6,
+                runSpacing: 4,
+                children: [
+                  if (schedule.needsScheduleReview)
+                    _CorrectionBadge(
+                      key: Key('ocr-table-dosing-mode-$index'),
+                      label: previewText.isEnglish
+                          ? 'Schedule needs review'
+                          : '복용 일정 확인 필요',
+                      isWarning: true,
+                    ),
+                  if (!readDoseCycle(schedule.intakeTime).isDaily)
+                    _CorrectionBadge(
+                      key: Key('ocr-table-not-daily-$index'),
+                      label: previewText.notDailyBadge,
+                      isWarning: true,
+                    ),
+                ],
+              )
+            : null,
+      ),
+    ];
+    return Material(
+      key: Key('ocr-medication-card-$index'),
+      color: lookupStatus == null
+          ? Colors.white
+          : _lookupStatusPresentation(lookupStatus, previewText.isEnglish).$3,
+      shape: RoundedRectangleBorder(
+        borderRadius: MedBuddyRadii.small,
+        side: const BorderSide(color: MedBuddyColors.outline),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: ExpandableMedicationSection(
+        initiallyExpanded: true,
+        isEnglish: previewText.isEnglish,
+        toggleKey: Key('ocr-medication-toggle-$index'),
+        headerBuilder: (toggle) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _MedicationNameTableValue(
+              schedule: schedule,
+              previewText: previewText,
+              lookupStatus: lookupStatus,
+              index: index,
+              toggle: toggle,
+              onEditRequested: () => onEditRequested(
+                index,
+                schedule,
+                _MedicationScheduleEditField.medicationName,
               ),
             ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            border: Border.all(color: MedBuddyColors.outline),
-            borderRadius: MedBuddyRadii.small,
-          ),
-          child: ClipRRect(
-            borderRadius: MedBuddyRadii.small,
-            child: Scrollbar(
-              controller: scrollController,
-              thumbVisibility: true,
-              trackVisibility: true,
-              scrollbarOrientation: ScrollbarOrientation.bottom,
-              child: SingleChildScrollView(
-                key: const Key('ocr-medication-table-scroll'),
-                controller: scrollController,
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.only(bottom: 11),
-                child: SizedBox(
-                  width: _tableWidth,
-                  child: Table(
-                    key: const Key('ocr-medication-table'),
-                    border: const TableBorder(
-                      horizontalInside: BorderSide(
-                        color: MedBuddyColors.outline,
-                      ),
-                      verticalInside: BorderSide(color: MedBuddyColors.outline),
-                    ),
-                    columnWidths: const {
-                      0: FixedColumnWidth(240),
-                      1: FixedColumnWidth(150),
-                      2: FixedColumnWidth(150),
-                      3: FixedColumnWidth(130),
-                      4: FixedColumnWidth(160),
-                      5: FixedColumnWidth(180),
-                    },
-                    defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-                    children: [
-                      _buildHeaderRow(),
-                      for (
-                        int index = 0;
-                        index < medicationScheduleList.length;
-                        index++
-                      )
-                        _buildMedicationRow(
-                          index,
-                          medicationScheduleList[index],
-                        ),
-                    ],
+            if (canReview)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                child: OutlinedButton.icon(
+                  key: Key('medication-candidates-$index'),
+                  onPressed: () => onCandidateRequested!(index, review),
+                  icon: const Icon(Icons.fact_check_outlined),
+                  label: Text(
+                    previewText.isEnglish ? 'Review candidates' : '약품 후보 확인',
                   ),
                 ),
               ),
-            ),
-          ),
+          ],
         ),
-      ],
-    );
-  }
-
-  // 함수이름: _buildHeaderRow
-  // 함수역할: 약명·용량·횟수·일수·시작일·시간대의 여섯 열 제목을 구성한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: TableRow: 복약 표의 열 제목 또는 편집 가능한 약품 한 행.
-  TableRow _buildHeaderRow() {
-    return TableRow(
-      decoration: const BoxDecoration(color: MedBuddyColors.successSurface),
-      children: [
-        _TableHeaderCell(label: previewText.medicationName),
-        _TableHeaderCell(label: previewText.dosage),
-        _TableHeaderCell(label: previewText.dailyFrequency),
-        _TableHeaderCell(label: previewText.totalDays),
-        _TableHeaderCell(label: previewText.medicationStartDate),
-        _TableHeaderCell(label: previewText.scheduleSlots),
-      ],
-    );
-  }
-
-  // 함수이름: _buildMedicationRow
-  // 함수역할: 검증된 일정은 편집을 막고 나머지 여섯 값 셀을 해당 입력란 편집에 연결한다.
-  // 매개변수:
-  // - scheduleIndex (int): 대상 약품·사진·행의 0부터 시작하는 목록 위치.
-  // - schedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-  // 반환값: TableRow: 복약 표의 열 제목 또는 편집 가능한 약품 한 행.
-  TableRow _buildMedicationRow(int scheduleIndex, MedicationSchedule schedule) {
-    final isVerified = verifiedScheduleIndexes.contains(scheduleIndex);
-    return TableRow(
-      decoration: isVerified
-          ? const BoxDecoration(color: MedBuddyColors.surfaceSubtle)
-          : null,
-      children: [
-        _EditableMedicationCell(
-          cellKey: Key('ocr-table-cell-$scheduleIndex-name'),
-          semanticsLabel: previewText.editCell(
-            previewText.medicationName,
-            schedule.displayNameForLanguage(previewText.language),
-          ),
-          onTap: isVerified
-              ? null
-              // 함수이름: _buildMedicationRow.onTap callback
-              // 함수역할: 인식된 모든 약의 수정 가능한 가로 스크롤 표에서 캡처된 작업 `onEditRequested(scheduleIndex, schedule, _MedicationScheduleEditField.medicationName)`을 실행한다.
-              // 매개변수:
-              // - 없음.
-              // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-              : () => onEditRequested(
-                  scheduleIndex,
-                  schedule,
-                  _MedicationScheduleEditField.medicationName,
-                ),
-          child: _MedicationNameTableValue(
-            schedule: schedule,
-            previewText: previewText,
-            isVerified: isVerified,
-          ),
-        ),
-        _EditableMedicationCell(
-          cellKey: Key('ocr-table-cell-$scheduleIndex-dosage'),
-          semanticsLabel: previewText.editCell(
-            previewText.dosage,
-            schedule.dosageLabelForLanguage(previewText.language),
-          ),
-          onTap: isVerified
-              ? null
-              // 함수이름: _buildMedicationRow.onTap callback
-              // 함수역할: 인식된 모든 약의 수정 가능한 가로 스크롤 표에서 캡처된 작업 `onEditRequested(scheduleIndex, schedule, _MedicationScheduleEditField.dosage)`을 실행한다.
-              // 매개변수:
-              // - 없음.
-              // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-              : () => onEditRequested(
-                  scheduleIndex,
-                  schedule,
-                  _MedicationScheduleEditField.dosage,
-                ),
-          child: _TableValueText(
-            value: schedule.dosageLabelForLanguage(previewText.language),
-            isVerified: isVerified,
-          ),
-        ),
-        _EditableMedicationCell(
-          cellKey: Key('ocr-table-cell-$scheduleIndex-frequency'),
-          semanticsLabel: previewText.editCell(
-            previewText.dailyFrequency,
-            schedule.dailyFrequencyLabelForLanguage(previewText.language),
-          ),
-          onTap: isVerified
-              ? null
-              // 함수이름: _buildMedicationRow.onTap callback
-              // 함수역할: 인식된 모든 약의 수정 가능한 가로 스크롤 표에서 캡처된 작업 `onEditRequested(scheduleIndex, schedule, _MedicationScheduleEditField.dailyFrequency)`을 실행한다.
-              // 매개변수:
-              // - 없음.
-              // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-              : () => onEditRequested(
-                  scheduleIndex,
-                  schedule,
-                  _MedicationScheduleEditField.dailyFrequency,
-                ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _TableValueText(
-                value: schedule.dailyFrequencyLabelForLanguage(
-                  previewText.language,
-                ),
-                isVerified: isVerified,
+        details: Column(
+          children: [
+            const Divider(height: 1),
+            // 행 높이는 내용에 맞추고 각 셀의 폭은 균등하게 유지한다.
+            Table(
+              key: Key('ocr-medication-summary-$index'),
+              defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+              border: const TableBorder(
+                verticalInside: BorderSide(color: MedBuddyColors.outline),
               ),
-              // 매일 복용하지 않는 약은 일정이 달라지므로 표에서도 바로 알아볼 수 있게 한다.
-              if (schedule.isAsNeeded || schedule.needsScheduleReview) ...[
-                const SizedBox(height: 4),
-                _CorrectionBadge(
-                  key: Key('ocr-table-dosing-mode-$scheduleIndex'),
-                  label: schedule.isAsNeeded
-                      ? (previewText.isEnglish ? 'As needed' : '필요시 복용')
-                      : (previewText.isEnglish
-                            ? 'Schedule needs review'
-                            : '복용 일정 확인 필요'),
-                  isWarning: !schedule.isAsNeeded,
-                ),
-              ],
-              if (!readDoseCycle(schedule.intakeTime).isDaily) ...[
-                const SizedBox(height: 4),
-                _CorrectionBadge(
-                  key: Key('ocr-table-not-daily-$scheduleIndex'),
-                  label: previewText.notDailyBadge,
-                  isWarning: true,
-                ),
-              ],
-            ],
-          ),
-        ),
-        _EditableMedicationCell(
-          cellKey: Key('ocr-table-cell-$scheduleIndex-days'),
-          semanticsLabel: previewText.editCell(
-            previewText.totalDays,
-            schedule.durationLabelForLanguage(previewText.language),
-          ),
-          onTap: isVerified
-              ? null
-              // 함수이름: _buildMedicationRow.onTap callback
-              // 함수역할: 인식된 모든 약의 수정 가능한 가로 스크롤 표에서 캡처된 작업 `onEditRequested(scheduleIndex, schedule, _MedicationScheduleEditField.totalDays)`을 실행한다.
-              // 매개변수:
-              // - 없음.
-              // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-              : () => onEditRequested(
-                  scheduleIndex,
-                  schedule,
-                  _MedicationScheduleEditField.totalDays,
-                ),
-          child: _TableValueText(
-            value: schedule.durationLabelForLanguage(previewText.language),
-            isVerified: isVerified,
-          ),
-        ),
-        _EditableMedicationCell(
-          cellKey: Key('ocr-table-cell-$scheduleIndex-date'),
-          semanticsLabel: previewText.editCell(
-            previewText.medicationStartDate,
-            previewText.dateValue(schedule.prescriptionDate),
-          ),
-          onTap: isVerified
-              ? null
-              // 함수이름: _buildMedicationRow.onTap callback
-              // 함수역할: 인식된 모든 약의 수정 가능한 가로 스크롤 표에서 캡처된 작업 `onEditRequested(scheduleIndex, schedule, _MedicationScheduleEditField.prescriptionDate)`을 실행한다.
-              // 매개변수:
-              // - 없음.
-              // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-              : () => onEditRequested(
-                  scheduleIndex,
-                  schedule,
-                  _MedicationScheduleEditField.prescriptionDate,
-                ),
-          child: _TableValueText(
-            value: previewText.dateValue(schedule.prescriptionDate),
-            isVerified: isVerified,
-          ),
-        ),
-        _EditableMedicationCell(
-          cellKey: Key('ocr-table-cell-$scheduleIndex-slots'),
-          semanticsLabel: previewText.editCell(
-            previewText.scheduleSlots,
-            previewText.slotSummary(schedule.slotKeys),
-          ),
-          onTap: isVerified
-              ? null
-              // 함수이름: _buildMedicationRow.onTap callback
-              // 함수역할: 인식된 모든 약의 수정 가능한 가로 스크롤 표에서 캡처된 작업 `onEditRequested(scheduleIndex, schedule, _MedicationScheduleEditField.scheduleSlots)`을 실행한다.
-              // 매개변수:
-              // - 없음.
-              // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-              : () => onEditRequested(
-                  scheduleIndex,
-                  schedule,
-                  _MedicationScheduleEditField.scheduleSlots,
-                ),
-          child: _TableValueText(
-            value: previewText.slotSummary(schedule.slotKeys),
-            isVerified: isVerified,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// 클래스명: _TableHeaderCell
-// 역할: 복약 표 열 이름의 공통 표시를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 복약 표 열 이름의 공통 표시 위젯을 구성한다.
-// 속성:
-// - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
-class _TableHeaderCell extends StatelessWidget {
-  final String label;
-
-  // 함수이름: _TableHeaderCell
-  // 함수역할: 복약 표 열 이름의 공통 표시에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
-  // 반환값: 입력 설정이 반영된 _TableHeaderCell 인스턴스.
-  const _TableHeaderCell({required this.label});
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 복약 표 열 이름의 공통 표시 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 복약 표 열 이름의 공통 표시에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(minHeight: 52),
-      alignment: Alignment.centerLeft,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      child: Text(
-        label,
-        maxLines: 2,
-        style: TextStyle(
-          color: MedBuddyColors.textStrong,
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0,
+              children: [TableRow(children: fields.take(2).toList())],
+            ),
+            const Divider(height: 1),
+            Table(
+              key: Key('ocr-medication-schedule-$index'),
+              defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+              border: const TableBorder(
+                verticalInside: BorderSide(color: MedBuddyColors.outline),
+              ),
+              children: [TableRow(children: fields.skip(2).toList())],
+            ),
+          ],
         ),
       ),
     );
@@ -423,6 +262,7 @@ class _EditableMedicationCell extends StatelessWidget {
   final String semanticsLabel;
   final VoidCallback? onTap;
   final Widget child;
+  final AlignmentGeometry alignment;
 
   // 함수이름: _EditableMedicationCell
   // 함수역할: 접근성 버튼으로 작동하는 복약 값 셀에 필요한 입력값과 표시 설정을 초기화한다.
@@ -437,6 +277,7 @@ class _EditableMedicationCell extends StatelessWidget {
     required this.semanticsLabel,
     required this.onTap,
     required this.child,
+    this.alignment = Alignment.centerLeft,
   });
 
   // 함수이름: build
@@ -454,9 +295,9 @@ class _EditableMedicationCell extends StatelessWidget {
         key: cellKey,
         onTap: onTap,
         child: Container(
-          constraints: const BoxConstraints(minHeight: 76),
-          alignment: Alignment.centerLeft,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          constraints: const BoxConstraints(minHeight: 48),
+          alignment: alignment,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: child,
         ),
       ),
@@ -492,107 +333,221 @@ class _TableValueText extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       value,
-      maxLines: 3,
-      overflow: TextOverflow.ellipsis,
+      textAlign: TextAlign.center,
       style: TextStyle(
-        color: isVerified
-            ? MedBuddyColors.textLight
-            : MedBuddyColors.textStrong,
-        fontSize: 14,
+        color: MedBuddyColors.textStrong,
+        fontSize: 16,
         fontWeight: FontWeight.w600,
         letterSpacing: 0,
-        decoration: isVerified ? TextDecoration.lineThrough : null,
       ),
     );
   }
 }
 
 // 클래스명: _MedicationNameTableValue
-// 역할: 약품명·보정 표식·최초 OCR 약품명을 담당한다.
+// 역할: 약품명·조회 상태·순번과 편집 표시를 담당한다.
 // 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 약품명·보정 표식·최초 OCR 약품명 위젯을 구성한다.
+// - 약품명 오른쪽에 조회 상태와 순번을 표시하고 큰 글씨에서는 줄을 나눈다.
 // 속성:
 // - schedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-// - isVerified (bool): 현재 약품이나 일정이 확인된 값인지 여부.
+// - lookupStatus (MedicationLookupStatus?): 약별 조회 결과이며 조회 이력이 없으면 null.
+// - index (int): 원래 처방 목록의 0부터 시작하는 위치.
 class _MedicationNameTableValue extends StatelessWidget {
   final MedicationSchedule schedule;
   final _PreviewText previewText;
-  final bool isVerified;
+  final MedicationLookupStatus? lookupStatus;
+  final int index;
+  final Widget toggle;
+  final VoidCallback onEditRequested;
 
   // 함수이름: _MedicationNameTableValue
-  // 함수역할: 약품명·보정 표식·최초 OCR 약품명에 필요한 입력값과 표시 설정을 초기화한다.
+  // 함수역할: 약품명·조회 상태·순번에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - schedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
   // - previewText (_PreviewText): 해당 화면 구역의 언어별 표시 문구.
-  // - isVerified (bool): 현재 약품이나 일정이 확인된 값인지 여부.
+  // - lookupStatus (MedicationLookupStatus?): 약별 조회 결과.
+  // - index (int): 원래 처방 목록의 위치.
   // 반환값: 입력 설정이 반영된 _MedicationNameTableValue 인스턴스.
   const _MedicationNameTableValue({
     required this.schedule,
     required this.previewText,
-    this.isVerified = false,
+    required this.lookupStatus,
+    required this.index,
+    required this.toggle,
+    required this.onEditRequested,
   });
 
   // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 약품명·보정 표식·최초 OCR 약품명 화면을 구성한다.
+  // 함수역할: 현재 입력값과 상태를 반영해 약품명·조회 상태·순번을 배치한다.
   // 매개변수:
   // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 약품명·보정 표식·최초 OCR 약품명에 쓰는 위젯 트리.
+  // 반환값: 약품명·조회 상태·순번에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-    final correctionBadge = isVerified
-        ? _CorrectionBadge(label: previewText.verified)
-        : schedule.isNameConfirmed
-        ? _CorrectionBadge(label: previewText.confirmed)
-        : schedule.hasNameCorrection
-        ? _CorrectionBadge(label: previewText.corrected)
-        : schedule.isNameReviewRequired
-        ? _CorrectionBadge(label: previewText.reviewNeeded, isWarning: true)
-        : null;
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Text(
-                schedule.displayNameForLanguage(previewText.language),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: isVerified
-                      ? MedBuddyColors.textLight
-                      : MedBuddyColors.textStrong,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0,
-                  decoration: isVerified ? TextDecoration.lineThrough : null,
-                ),
-              ),
-            ),
-            if (correctionBadge != null) ...[
-              const SizedBox(width: 6),
-              correctionBadge,
-            ],
-          ],
+    final name = Text(
+      schedule.displayNameForLanguage(previewText.language),
+      key: Key('ocr-medication-name-$index'),
+      style: const TextStyle(
+        color: MedBuddyColors.textStrong,
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0,
+      ),
+    );
+    final status = lookupStatus;
+    final badge = status == null
+        ? null
+        : _MedicationLookupBadge(
+            key: Key('ocr-lookup-status-$index'),
+            status: status,
+            isEnglish: previewText.isEnglish,
+          );
+    final number = Padding(
+      padding: const EdgeInsets.only(top: 2, right: 8),
+      child: Text(
+        '${index + 1}',
+        key: Key('ocr-medication-number-$index'),
+        semanticsLabel: previewText.isEnglish
+            ? 'Medication ${index + 1}'
+            : '${index + 1}번 약',
+        style: const TextStyle(
+          color: MedBuddyColors.textMuted,
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
         ),
-        if (schedule.hasNameCorrection) ...[
-          const SizedBox(height: 4),
-          Text(
-            previewText.correctedFrom(schedule.rawMedicationName),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: MedBuddyColors.textLight,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0,
-            ),
-          ),
+      ),
+    );
+    final editLabel = previewText.editCell(
+      previewText.medicationName,
+      schedule.displayNameForLanguage(previewText.language),
+    );
+    final editableName = _EditableMedicationCell(
+      cellKey: Key('ocr-table-cell-$index-name'),
+      semanticsLabel: editLabel,
+      onTap: onEditRequested,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          number,
+          Expanded(child: name),
         ],
-      ],
+      ),
+    );
+    final editButton = IconButton(
+      key: Key('ocr-medication-edit-$index'),
+      tooltip: editLabel,
+      onPressed: onEditRequested,
+      style: IconButton.styleFrom(fixedSize: const Size(48, 48)),
+      icon: const Icon(
+        Icons.edit_outlined,
+        size: 18,
+        color: MedBuddyColors.primaryDark,
+      ),
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // 큰 글씨에서는 약명을 좁히지 않고 상태·순번을 다음 줄 오른쪽에 둔다.
+        if (constraints.maxWidth < 340 &&
+            MediaQuery.textScalerOf(context).scale(18) > 24) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              editableName,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  if (badge != null) Flexible(child: badge),
+                  editButton,
+                  toggle,
+                ],
+              ),
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(child: editableName),
+            if (badge != null) ...[
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: constraints.maxWidth * .25,
+                ),
+                child: badge,
+              ),
+            ],
+            editButton,
+            toggle,
+          ],
+        );
+      },
+    );
+  }
+}
+
+(String, Color, Color) _lookupStatusPresentation(
+  MedicationLookupStatus status,
+  bool isEnglish,
+) => switch (status) {
+  MedicationLookupStatus.verified => (
+    isEnglish ? 'Medicine found' : '약품 확인됨',
+    MedBuddyColors.primaryDark,
+    MedBuddyColors.successSurface,
+  ),
+  MedicationLookupStatus.candidates => (
+    isEnglish ? 'Check candidates' : '후보 확인 필요',
+    MedBuddyColors.reminderAccent,
+    MedBuddyColors.warningSurface,
+  ),
+  MedicationLookupStatus.notFound => (
+    isEnglish ? 'No match found' : '약품을 찾지 못함',
+    MedBuddyColors.textMuted,
+    MedBuddyColors.surfaceSubtle,
+  ),
+  MedicationLookupStatus.failed => (
+    isEnglish ? 'Lookup failed' : '조회 실패',
+    MedBuddyColors.danger,
+    MedBuddyColors.dangerSurface,
+  ),
+  MedicationLookupStatus.pending => (
+    isEnglish ? 'Lookup needed' : '다시 조회 필요',
+    MedBuddyColors.infoBlue,
+    MedBuddyColors.lavenderSurface,
+  ),
+};
+
+class _MedicationLookupBadge extends StatelessWidget {
+  final MedicationLookupStatus status;
+  final bool isEnglish;
+
+  const _MedicationLookupBadge({
+    super.key,
+    required this.status,
+    required this.isEnglish,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, foreground, background) = _lookupStatusPresentation(
+      status,
+      isEnglish,
+    );
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: MedBuddyRadii.small,
+      ),
+      child: Text(
+        label,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: foreground,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0,
+        ),
+      ),
     );
   }
 }
@@ -813,6 +768,7 @@ class _MedicationScheduleEditDialogState
                     label: Text(text.restoreOriginalName),
                   ),
                 ),
+              const SizedBox(height: 16),
               TextFormField(
                 key: const Key('ocr-edit-prescription-date'),
                 controller: _prescriptionDateController,
@@ -836,6 +792,7 @@ class _MedicationScheduleEditDialogState
                 ),
                 validator: _validatePrescriptionDate,
               ),
+              const SizedBox(height: 16),
               TextFormField(
                 key: const Key('ocr-edit-dosage'),
                 controller: _dosageController,
@@ -845,7 +802,7 @@ class _MedicationScheduleEditDialogState
                 textInputAction: TextInputAction.next,
                 decoration: InputDecoration(labelText: text.dosage),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               MedicationDosingModeSelector(
                 keyPrefix: 'ocr-edit',
                 isAsNeeded: _asNeeded,
@@ -860,6 +817,7 @@ class _MedicationScheduleEditDialogState
                   }
                 }),
               ),
+              const SizedBox(height: 16),
               if (!_asNeeded)
                 TextFormField(
                   key: const Key('ocr-edit-frequency'),
@@ -878,6 +836,7 @@ class _MedicationScheduleEditDialogState
                   onChanged: _updateDailyFrequency,
                   validator: _validateDailyFrequency,
                 ),
+              if (!_asNeeded) const SizedBox(height: 16),
               TextFormField(
                 key: const Key('ocr-edit-days'),
                 controller: _daysController,
@@ -947,13 +906,10 @@ class _MedicationScheduleEditDialogState
                             !requiresDoseScheduleReview(
                               _frequencyController.text,
                             ) &&
-                            readDoseCycle(
-                              _frequencyController.text,
-                            ).isDaily) {
-                          _frequencyController.text =
-                              _canonicalDailyFrequency(
-                                _selectedSlotKeys.length,
-                              );
+                            readDoseCycle(_frequencyController.text).isDaily) {
+                          _frequencyController.text = _canonicalDailyFrequency(
+                            _selectedSlotKeys.length,
+                          );
                         }
                         _showSlotValidationError = false;
                       });
@@ -1330,7 +1286,7 @@ class _PreviewText {
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get verified => isEnglish ? 'Verified' : '확인됨';
+  String get verified => isEnglish ? 'Medicine found' : '약품 확인됨';
   // 함수이름: editTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "OCR 인식 결과 수정" 문구를 제공한다.
   // 매개변수:
@@ -1356,14 +1312,14 @@ class _PreviewText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get retryUnverifiedMedications =>
-      isEnglish ? 'Retry unverified medications' : '미확인 약 다시 조회';
+      isEnglish ? 'Retry search' : '미확인 약 다시 조회';
   // 함수이름: continueWithVerifiedOnly
   // 함수역할: 현재 언어와 입력값에 맞춰 "확인된 약만으로 계속" 문구를 제공한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get continueWithVerifiedOnly =>
-      isEnglish ? 'Continue with verified medications only' : '확인된 약만으로 계속';
+      isEnglish ? 'Use verified only' : '확인된 약만으로 계속';
   // 함수이름: continueWithVerifiedTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "미확인 약을 제외할까요?" 문구를 제공한다.
   // 매개변수:
@@ -1537,8 +1493,8 @@ class _PreviewText {
   // - count (int): 문구나 목록에 표시할 항목 수 또는 일련번호.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String lookupReviewGuide(int count) => isEnglish
-      ? '$count medication item(s) need confirmation. Compare candidates with your prescription. If none match, check and correct the name and strength.'
-      : '약 $count개는 확인이 필요합니다. 후보가 있으면 처방전과 비교해 선택해주세요. 일치하는 약이 없으면 약 이름과 함량을 확인한 뒤 수정해주세요.';
+      ? 'Check $count medication(s). Match the name and strength to your prescription.'
+      : '약 $count개 확인 필요 · 약 이름과 함량을 처방전과 비교해 주세요.';
 
   // 함수이름: slotLabel
   // 함수역할: 시간대 키를 현재 언어의 공통 시간대 이름으로 바꾸고, 모르는 키는 그대로 돌려준다.

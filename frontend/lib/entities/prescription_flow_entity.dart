@@ -23,3 +23,16 @@ enum PrescriptionFlowState {
 // 주요 책임:
 // - 분석 작업의 현재 단계를 화면의 진행 표시와 연결한다.
 enum AnalysisProgressStep { prescriptionRecognition, medicationAnalysis }
+
+// 약별 조회 결과를 보관해 검색 결과 없음과 요청 실패를 구분한다.
+enum MedicationLookupStatus { verified, candidates, notFound, failed, pending }
+
+// 엔진 내부의 추정 백분율이 아니라 실제 완료된 인식 처리 단계이다.
+enum PrescriptionRecognitionStage {
+  recognizingText,
+  structuringMedication,
+  validatingResult,
+  completed;
+
+  double get progress => index / (values.length - 1);
+}

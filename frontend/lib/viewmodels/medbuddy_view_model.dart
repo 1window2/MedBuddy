@@ -151,6 +151,10 @@ class MedBuddyViewModel extends ChangeNotifier {
 
   AnalysisProgressStep get analysisProgressStep =>
       _prescriptions.analysisProgressStep;
+  int get completedMedicationAnalysisCount =>
+      _prescriptions.completedMedicationAnalysisCount;
+  int get totalMedicationAnalysisCount =>
+      _prescriptions.totalMedicationAnalysisCount;
 
   bool get isLoading => _prescriptions.isLoading;
 
@@ -281,6 +285,10 @@ class MedBuddyViewModel extends ChangeNotifier {
 
   Set<int> get verifiedMedicationScheduleIndexes =>
       _prescriptions.verifiedMedicationScheduleIndexes;
+  Map<int, MedicationLookupStatus> get medicationLookupStatuses =>
+      _prescriptions.medicationLookupStatuses;
+  PrescriptionRecognitionStage get recognitionStage =>
+      _prescriptions.recognitionStage;
   Set<int> get unverifiedMedicationScheduleIndexes =>
       _prescriptions.unverifiedMedicationScheduleIndexes;
   Map<int, MedicationMatchReview> get medicationMatchReviews =>
@@ -388,7 +396,11 @@ class MedBuddyViewModel extends ChangeNotifier {
     this.inputPrescription =
         inputPrescription ?? InputPrescription(client: _apiClient);
     this.checkMedicationDetail =
-        checkMedicationDetail ?? CheckMedicationDetail(client: _apiClient);
+        checkMedicationDetail ??
+        CheckMedicationDetail(
+          client: _apiClient,
+          readSearchMode: () => userSetting.medicationSearchMode,
+        );
     this.checkPrescriptionChange =
         checkPrescriptionChange ??
         CheckPrescriptionChange(

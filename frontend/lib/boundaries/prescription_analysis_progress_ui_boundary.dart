@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../entities/prescription_flow_entity.dart';
@@ -20,10 +21,13 @@ import 'prescription_analysis_preview_ui_boundary.dart'
 // - activeStep (AnalysisProgressStep): 현재 진행 중이거나 실패한 처방 분석 단계.
 // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
 // - onBackRequested (VoidCallback): 이전 단계로 이동하거나 현재 화면을 닫을 때 실행할 콜백.
-class PrescriptionAnalysisProgressUI extends StatelessWidget {
+class PrescriptionAnalysisProgressUI extends StatefulWidget {
   final AnalysisProgressStep activeStep;
   final UserSetting userSetting;
   final VoidCallback onBackRequested;
+  final int completedMedicationCount;
+  final int totalMedicationCount;
+  final PrescriptionRecognitionStage recognitionStage;
 
   // 함수이름: PrescriptionAnalysisProgressUI
   // 함수역할: OCR 인식과 약품 분석의 활성 단계에 필요한 입력값과 표시 설정을 초기화한다.
@@ -38,13 +42,63 @@ class PrescriptionAnalysisProgressUI extends StatelessWidget {
     required this.activeStep,
     required this.userSetting,
     required this.onBackRequested,
+    this.completedMedicationCount = 0,
+    this.totalMedicationCount = 0,
+    this.recognitionStage = PrescriptionRecognitionStage.recognizingText,
   });
+
+  @override
+  State<PrescriptionAnalysisProgressUI> createState() =>
+      _PrescriptionAnalysisProgressUIState();
+}
+
+class _PrescriptionAnalysisProgressUIState
+    extends State<PrescriptionAnalysisProgressUI> {
+  Timer? _completionTimer;
+  bool _finishingRecognition = false;
+
+  AnalysisProgressStep get _visibleStep => _finishingRecognition
+      ? AnalysisProgressStep.prescriptionRecognition
+      : widget.activeStep;
+  PrescriptionRecognitionStage get _visibleRecognitionStage =>
+      _finishingRecognition
+      ? PrescriptionRecognitionStage.completed
+      : widget.recognitionStage;
+
+  @override
+  void didUpdateWidget(covariant PrescriptionAnalysisProgressUI oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.activeStep == widget.activeStep) return;
+    _completionTimer?.cancel();
+    _finishingRecognition =
+        oldWidget.activeStep == AnalysisProgressStep.prescriptionRecognition &&
+        widget.activeStep == AnalysisProgressStep.medicationAnalysis &&
+        !MediaQuery.disableAnimationsOf(context);
+    // 다음 서버 요청은 바로 진행하면서 화면에서만 OCR 완료를 짧게 보여준다.
+    if (_finishingRecognition) {
+      _completionTimer = Timer(const Duration(milliseconds: 500), () {
+        if (mounted) setState(() => _finishingRecognition = false);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _completionTimer?.cancel();
+    super.dispose();
+  }
 
   // 함수이름: build
   // 함수역할: OCR·API 진행 표시 위에 무작위 복약 팁을 제공하고 작은 화면에서는 스크롤을 허용한다.
   // 매개변수: context는 테마·접근성 문맥. 반환값: 분석 진행 및 복약 팁 화면.
   @override
   Widget build(BuildContext context) {
+    final activeStep = _visibleStep;
+    final recognitionStage = _visibleRecognitionStage;
+    final userSetting = widget.userSetting;
+    final onBackRequested = widget.onBackRequested;
+    final completedMedicationCount = widget.completedMedicationCount;
+    final totalMedicationCount = widget.totalMedicationCount;
     final text = _ProgressText(userSetting.language);
     return Scaffold(
       backgroundColor: Colors.white,
@@ -75,92 +129,124 @@ class PrescriptionAnalysisProgressUI extends StatelessWidget {
                         horizontal: 20,
                         vertical: 24,
                       ),
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(minHeight: minimumHeight),
-                        child: Center(
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 480),
                           child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 360),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                MedicationLoadingTip(
-                                  language: userSetting.language,
-                                ),
-                                const SizedBox(height: 20),
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.all(24),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: MedBuddyRadii.card,
-                                    boxShadow: MedBuddyShadows.card,
+                            constraints: BoxConstraints(
+                              minHeight: minimumHeight,
+                            ),
+                            child: IntrinsicHeight(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  MedicationLoadingTip(
+                                    language: userSetting.language,
                                   ),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        text.title,
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          color: MedBuddyColors.textStrong,
-                                          fontSize: 28,
-                                          fontWeight: FontWeight.w700,
-                                          letterSpacing: 0,
+                                  const SizedBox(height: 24),
+                                  const Spacer(),
+                                  Container(
+                                    key: const Key('analysis-progress-panel'),
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(24),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: MedBuddyRadii.card,
+                                      boxShadow: MedBuddyShadows.card,
+                                    ),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          text.title,
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            color: MedBuddyColors.textStrong,
+                                            fontSize: 28,
+                                            fontWeight: FontWeight.w700,
+                                            letterSpacing: 0,
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(height: 24),
-                                      const SizedBox(
-                                        width: 88,
-                                        height: 88,
-                                        child: CircularProgressIndicator(
-                                          color: MedBuddyColors.primary,
-                                          backgroundColor:
-                                              MedBuddyColors.successBorder,
-                                          strokeWidth: 7,
+                                        const SizedBox(height: 16),
+                                        const SizedBox(
+                                          width: 64,
+                                          height: 64,
+                                          child: CircularProgressIndicator(
+                                            color: MedBuddyColors.primary,
+                                            backgroundColor:
+                                                MedBuddyColors.successBorder,
+                                            strokeWidth: 7,
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(height: 24),
-                                      _ProgressStepLabel(
-                                        label: text.recognizing,
-                                        active:
-                                            activeStep ==
-                                            AnalysisProgressStep
-                                                .prescriptionRecognition,
-                                      ),
-                                      const SizedBox(height: 14),
-                                      _ProgressStepLabel(
-                                        label: text.analyzingMedication,
-                                        active:
-                                            activeStep ==
-                                            AnalysisProgressStep
-                                                .medicationAnalysis,
-                                      ),
-                                      const SizedBox(height: 24),
-                                      ClipRRect(
-                                        borderRadius: MedBuddyRadii.pill,
-                                        child: LinearProgressIndicator(
-                                          minHeight: 12,
-                                          value: _progressValue,
-                                          color: MedBuddyColors.primary,
-                                          backgroundColor:
-                                              MedBuddyColors.divider,
+                                        const SizedBox(height: 16),
+                                        _ProgressStepLabel(
+                                          label: text.recognizing,
+                                          active:
+                                              activeStep ==
+                                              AnalysisProgressStep
+                                                  .prescriptionRecognition,
                                         ),
-                                      ),
-                                      const SizedBox(height: 20),
-                                      Text(
-                                        text.wait,
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          color: MedBuddyColors.textMuted,
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w500,
-                                          letterSpacing: 0,
+                                        const SizedBox(height: 8),
+                                        _ProgressStepLabel(
+                                          label: text.analyzingMedication,
+                                          active:
+                                              activeStep ==
+                                              AnalysisProgressStep
+                                                  .medicationAnalysis,
                                         ),
-                                      ),
-                                    ],
+                                        const SizedBox(height: 16),
+                                        ClipRRect(
+                                          borderRadius: MedBuddyRadii.pill,
+                                          child: TweenAnimationBuilder<double>(
+                                            key: ValueKey(activeStep),
+                                            tween: Tween(
+                                              begin: 0,
+                                              end: _progressValue,
+                                            ),
+                                            duration: const Duration(
+                                              milliseconds: 350,
+                                            ),
+                                            builder: (context, value, _) =>
+                                                LinearProgressIndicator(
+                                                  minHeight: 8,
+                                                  value: value,
+                                                  color: MedBuddyColors.primary,
+                                                  backgroundColor:
+                                                      MedBuddyColors.divider,
+                                                ),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          activeStep ==
+                                                  AnalysisProgressStep
+                                                      .prescriptionRecognition
+                                              ? text.recognitionProgress(
+                                                  recognitionStage,
+                                                )
+                                              : text.checked(
+                                                  completedMedicationCount
+                                                      .clamp(
+                                                        0,
+                                                        totalMedicationCount,
+                                                      ),
+                                                  totalMedicationCount,
+                                                ),
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            color: MedBuddyColors.textMuted,
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w500,
+                                            letterSpacing: 0,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                ),
-                              ],
+                                  const Spacer(flex: 2),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -177,16 +263,19 @@ class PrescriptionAnalysisProgressUI extends StatelessWidget {
   }
 
   // 함수이름: _progressValue
-  // 함수역할: 인식 단계는 0.5, 약품 분석 단계는 0.85의 안내 진행률로 표시한다.
+  // 함수역할: OCR은 완료된 처리 단계, 약 조회는 실제 완료 응답 수로 진행률을 계산한다.
   // 매개변수:
   // - 없음.
-  // 반환값: double: 현재 분석 단계의 안내용 진행률.
-  double get _progressValue {
-    return switch (activeStep) {
-      AnalysisProgressStep.prescriptionRecognition => 0.5,
-      AnalysisProgressStep.medicationAnalysis => 0.85,
-    };
-  }
+  // 반환값: 0부터 1 사이의 단계 또는 조회 완료 비율.
+  double get _progressValue =>
+      _visibleStep == AnalysisProgressStep.prescriptionRecognition
+      ? _visibleRecognitionStage.progress
+      : widget.totalMedicationCount > 0
+      ? (widget.completedMedicationCount / widget.totalMedicationCount).clamp(
+          0.0,
+          1.0,
+        )
+      : 0;
 }
 
 // 클래스명: _ProgressStepLabel
@@ -206,10 +295,7 @@ class _ProgressStepLabel extends StatelessWidget {
   // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
   // - active (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
   // 반환값: 입력 설정이 반영된 _ProgressStepLabel 인스턴스.
-  const _ProgressStepLabel({
-    required this.label,
-    required this.active,
-  });
+  const _ProgressStepLabel({required this.label, required this.active});
 
   // 함수이름: build
   // 함수역할: 현재 입력값과 상태를 반영해 분석 단계 이름과 활성 강조 화면을 구성한다.
@@ -286,4 +372,25 @@ class _ProgressText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get wait => isEnglish ? 'Please wait a moment' : '잠시만 기다려주세요';
+
+  String checked(int completed, int total) => isEnglish
+      ? '$completed of $total medication lookups completed'
+      : '약 $total개 중 $completed개 조회 완료';
+
+  String recognitionProgress(PrescriptionRecognitionStage stage) {
+    final label = switch (stage) {
+      PrescriptionRecognitionStage.recognizingText =>
+        isEnglish ? 'Reading text' : '문자 인식',
+      PrescriptionRecognitionStage.structuringMedication =>
+        isEnglish ? 'Organizing medications' : '약 정보 정리',
+      PrescriptionRecognitionStage.validatingResult =>
+        isEnglish ? 'Checking results' : '결과 확인',
+      PrescriptionRecognitionStage.completed =>
+        isEnglish ? 'Recognition complete' : '인식 완료',
+    };
+    final percent = (stage.progress * 100).round();
+    return isEnglish
+        ? 'Recognition stages $percent% · $label'
+        : '인식 단계 $percent% · $label';
+  }
 }

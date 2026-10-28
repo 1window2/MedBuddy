@@ -15,6 +15,7 @@ import 'package:medbuddy_frontend/main.dart';
 import 'package:medbuddy_frontend/services/notification_service.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 class _EmptyCheckSchedule extends CheckSchedule {
   // Function Name: requestTodayMedicationSchedule
   // Description:
@@ -28,6 +29,7 @@ class _EmptyCheckSchedule extends CheckSchedule {
     return const [];
   }
 }
+
 class _EmptySetNotification extends SetNotification {
   // Function Name: requestMedicationAlarm
   // Description:
@@ -41,6 +43,7 @@ class _EmptySetNotification extends SetNotification {
     return const [];
   }
 }
+
 class _NoopNotificationService implements NotificationService {
   @override
   Future<void> updateLanguage(String language) async {}
@@ -268,6 +271,7 @@ class _NoopNotificationService implements NotificationService {
   // - Future<void>; 플랫폼 호출 없이 완료된다.
   @override
   Future<void> showLinkedChatAlert({
+    ChatNotificationSummary? summary,
     String? historyUserHash,
     bool recordHistory = true,
     required int id,
@@ -280,44 +284,52 @@ class _NoopNotificationService implements NotificationService {
 }
 
 void main() {
-  testWidgets('ending the session removes routes above the root without a provider error', (tester) async {
-    SharedPreferences.setMockInitialValues({});
-    final navigatorKey = GlobalKey<NavigatorState>();
-    MedicationNotificationSelectionHandler? selectionHandler;
-    final authenticationControl = AuthenticationControl.development();
-    addTearDown(authenticationControl.dispose);
-    final errors = <Object>[];
-    final previous = FlutterError.onError;
-    FlutterError.onError = (details) => errors.add(details.exception);
-    await tester.pumpWidget(
-      MedBuddyApp(
-        navigatorKey: navigatorKey,
-        authenticationControl: authenticationControl,
-        sessionReminderCleanup: () async {},
-        notificationSelectionRegistrar: (handler) => selectionHandler = handler,
-        viewModelFactory: () => MedBuddyViewModel(
-          checkSchedule: _EmptyCheckSchedule(),
-          setNotification: _EmptySetNotification(),
-          manageUserSetting: ManageUserSetting(useRemotePersistence: false),
-          notificationService: _NoopNotificationService(),
+  testWidgets(
+    'ending the session removes routes above the root without a provider error',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final navigatorKey = GlobalKey<NavigatorState>();
+      MedicationNotificationSelectionHandler? selectionHandler;
+      final authenticationControl = AuthenticationControl.development();
+      addTearDown(authenticationControl.dispose);
+      final errors = <Object>[];
+      final previous = FlutterError.onError;
+      FlutterError.onError = (details) => errors.add(details.exception);
+      await tester.pumpWidget(
+        MedBuddyApp(
+          navigatorKey: navigatorKey,
+          authenticationControl: authenticationControl,
+          sessionReminderCleanup: () async {},
+          notificationSelectionRegistrar: (handler) =>
+              selectionHandler = handler,
+          viewModelFactory: () => MedBuddyViewModel(
+            checkSchedule: _EmptyCheckSchedule(),
+            setNotification: _EmptySetNotification(),
+            manageUserSetting: ManageUserSetting(useRemotePersistence: false),
+            notificationService: _NoopNotificationService(),
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    selectionHandler!(const MedicationNotificationSelection(
-      destination: MedicationNotificationDestination.schedule,
-    ));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 500));
-    expect(find.byType(CheckScheduleUI), findsOneWidget);
-    await authenticationControl.invalidateUnauthorizedSessionForTest(() async {});
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
-    await tester.pump(const Duration(milliseconds: 500));
-    await tester.pumpAndSettle();
-    FlutterError.onError = previous;
-    expect(errors, isEmpty);
-    expect(navigatorKey.currentState?.canPop(), isFalse);
-    expect(find.byType(CheckScheduleUI), findsNothing);
-  });
+      );
+      await tester.pumpAndSettle();
+      selectionHandler!(
+        const MedicationNotificationSelection(
+          destination: MedicationNotificationDestination.schedule,
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.byType(CheckScheduleUI), findsOneWidget);
+      await authenticationControl.invalidateUnauthorizedSessionForTest(
+        () async {},
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      FlutterError.onError = previous;
+      expect(errors, isEmpty);
+      expect(navigatorKey.currentState?.canPop(), isFalse);
+      expect(find.byType(CheckScheduleUI), findsNothing);
+    },
+  );
 }

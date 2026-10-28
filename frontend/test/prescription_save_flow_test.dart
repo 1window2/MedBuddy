@@ -163,8 +163,6 @@ class _RegistrationFlow {
     await model.requestCapturedPrescriptionImage(
       XFile('registration-fixture.png'),
     );
-    expect(model.prescriptionFlowState, PrescriptionFlowState.previewReady);
-    await model.requestPrescriptionAnalysis();
     expect(
       model.prescriptionFlowState,
       PrescriptionFlowState.analysisSucceeded,

@@ -15,6 +15,89 @@ import 'package:medbuddy_frontend/widgets/medication_loading_tip.dart';
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  testWidgets('OCR visibly completes before switching to medication counts', (
+    tester,
+  ) async {
+    Future<void> show(AnalysisProgressStep step) => tester.pumpWidget(
+      MaterialApp(
+        home: PrescriptionAnalysisProgressUI(
+          activeStep: step,
+          recognitionStage: PrescriptionRecognitionStage.structuringMedication,
+          totalMedicationCount: 4,
+          completedMedicationCount: 1,
+          userSetting: const UserSetting(),
+          onBackRequested: () {},
+        ),
+      ),
+    );
+    await show(AnalysisProgressStep.prescriptionRecognition);
+    await tester.pump(const Duration(milliseconds: 400));
+    await show(AnalysisProgressStep.medicationAnalysis);
+    expect(find.textContaining('100%'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(
+      tester
+          .widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator))
+          .value,
+      1,
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('약 4개 중 1개 조회 완료'), findsOneWidget);
+    expect(
+      tester
+          .widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator))
+          .value,
+      .25,
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('OCR bar advances only when a recognition stage completes', (
+    tester,
+  ) async {
+    Future<void> show(PrescriptionRecognitionStage stage) => tester.pumpWidget(
+      MaterialApp(
+        home: PrescriptionAnalysisProgressUI(
+          activeStep: AnalysisProgressStep.prescriptionRecognition,
+          recognitionStage: stage,
+          userSetting: const UserSetting(),
+          onBackRequested: () {},
+        ),
+      ),
+    );
+    await show(PrescriptionRecognitionStage.recognizingText);
+    await tester.pump(const Duration(seconds: 8));
+    expect(
+      tester
+          .widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator))
+          .value,
+      0,
+    );
+    for (final stage in PrescriptionRecognitionStage.values.skip(1)) {
+      await show(stage);
+      await tester.pump(const Duration(milliseconds: 175));
+      final moving = tester
+          .widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator))
+          .value!;
+      expect(moving, lessThan(stage.progress));
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(
+        tester
+            .widget<LinearProgressIndicator>(
+              find.byType(LinearProgressIndicator),
+            )
+            .value,
+        stage.progress,
+      );
+      expect(
+        find.textContaining('${(stage.progress * 100).round()}%'),
+        findsOneWidget,
+      );
+    }
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
   // 함수이름: testWidgets 콜백
   // 함수역할:
   // - 기대 동작: 분석 화면은 실제 처리 중인 두 단계만 표시한다.
@@ -27,6 +110,8 @@ void main() {
       MaterialApp(
         home: PrescriptionAnalysisProgressUI(
           activeStep: AnalysisProgressStep.medicationAnalysis,
+          completedMedicationCount: 2,
+          totalMedicationCount: 5,
           userSetting: const UserSetting(),
           // 함수이름: onBackRequested 콜백
           // 함수역할:
@@ -44,10 +129,12 @@ void main() {
     expect(find.text('약물 정보 분석 중...'), findsOneWidget);
     expect(find.text('복용 일정 생성 중...'), findsNothing);
 
+    await tester.pump(const Duration(milliseconds: 350));
     final progressIndicator = tester.widget<LinearProgressIndicator>(
       find.byType(LinearProgressIndicator),
     );
-    expect(progressIndicator.value, 0.85);
+    expect(progressIndicator.value, 0.4);
+    expect(find.text('약 5개 중 2개 조회 완료'), findsOneWidget);
     expect(find.byType(MedicationLoadingTip), findsOneWidget);
     expect(find.text('복약 팁'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
@@ -85,9 +172,44 @@ void main() {
     final progressIndicator = tester.widget<LinearProgressIndicator>(
       find.byType(LinearProgressIndicator),
     );
-    expect(progressIndicator.value, 0.5);
+    expect(progressIndicator.value, 0);
     expect(find.byType(MedicationLoadingTip), findsOneWidget);
     expect(find.text('Medication tip'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('tips stay at the top and the analysis panel stays near center', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PrescriptionAnalysisProgressUI(
+          activeStep: AnalysisProgressStep.medicationAnalysis,
+          userSetting: const UserSetting(),
+          totalMedicationCount: 5,
+          onBackRequested: () {},
+        ),
+      ),
+    );
+    expect(
+      tester.getTopLeft(find.byType(MedicationLoadingTip)).dy,
+      lessThan(110),
+    );
+    expect(
+      tester.getCenter(find.byKey(const Key('analysis-progress-panel'))).dy,
+      closeTo(422, 90),
+    );
+    expect(
+      tester
+          .widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator))
+          .value,
+      0,
+    );
+    expect(find.text('약 5개 중 0개 조회 완료'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 

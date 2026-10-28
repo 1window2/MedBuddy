@@ -464,6 +464,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       PrescriptionFlowState.analyzingMedication =>
         PrescriptionAnalysisProgressUI(
           activeStep: viewModel.analysisProgressStep,
+          recognitionStage: viewModel.recognitionStage,
+          completedMedicationCount: viewModel.completedMedicationAnalysisCount,
+          totalMedicationCount: viewModel.totalMedicationAnalysisCount,
           userSetting: viewModel.userSetting,
           onBackRequested: viewModel.clearAnalysisResult,
         ),
@@ -472,6 +475,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         recognizedTextRegions: viewModel.recognizedTextRegionList,
         previewImagePath: viewModel.prescriptionPreviewImagePath,
         recognitionNotice: viewModel.prescriptionRecognitionNotice,
+        lookupStatuses: viewModel.medicationLookupStatuses,
         userSetting: viewModel.userSetting,
         onBackRequested: viewModel.clearAnalysisResult,
         onAnalysisRequested: viewModel.requestPrescriptionAnalysis,
@@ -479,29 +483,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             viewModel.updateRecognizedMedicationSchedule,
         onMedicationScheduleAdded: viewModel.addRecognizedMedicationSchedule,
       ),
-      PrescriptionFlowState.medicationReviewRequired =>
-        PrescriptionAnalysisPreviewUI(
-          medicationScheduleList: viewModel.recognizedMedicationScheduleList,
-          recognizedTextRegions: viewModel.recognizedTextRegionList,
-          previewImagePath: viewModel.prescriptionPreviewImagePath,
-          userSetting: viewModel.userSetting,
-          onBackRequested: viewModel.returnToPrescriptionPreview,
-          onAnalysisRequested: viewModel.requestPrescriptionAnalysis,
-          onMedicationScheduleChanged:
-              viewModel.updateRecognizedMedicationSchedule,
-          onMedicationScheduleAdded: viewModel.addRecognizedMedicationSchedule,
-          verifiedScheduleIndexes: viewModel.verifiedMedicationScheduleIndexes,
-          isMedicationLookupReview: true,
-          lookupErrorMessage: viewModel.analysisErrorMessage,
-          matchReviews: viewModel.medicationMatchReviews,
-          onCandidateConfirmed: viewModel.confirmMedicationCandidate,
-          onVerifiedOnlyContinueRequested:
-              viewModel.continueWithVerifiedMedicationAnalysis,
-        ),
-      PrescriptionFlowState.analysisSucceeded => PrescriptionAnalysisSuccessUI(
-        analyzedMedicationList: viewModel.analyzedMedicationList,
+      PrescriptionFlowState.medicationReviewRequired ||
+      PrescriptionFlowState.analysisSucceeded => PrescriptionAnalysisPreviewUI(
+        medicationScheduleList: viewModel.recognizedMedicationScheduleList,
+        recognizedTextRegions: viewModel.recognizedTextRegionList,
+        previewImagePath: viewModel.prescriptionPreviewImagePath,
         userSetting: viewModel.userSetting,
-        onResultRequested: viewModel.showMedicationAnalysisResult,
+        onBackRequested: viewModel.clearAnalysisResult,
+        onAnalysisRequested:
+            flowState == PrescriptionFlowState.analysisSucceeded
+            ? viewModel.showMedicationAnalysisResult
+            : viewModel.requestPrescriptionAnalysis,
+        onMedicationScheduleChanged:
+            viewModel.updateRecognizedMedicationSchedule,
+        onMedicationScheduleAdded: viewModel.addRecognizedMedicationSchedule,
+        verifiedScheduleIndexes: viewModel.verifiedMedicationScheduleIndexes,
+        isMedicationLookupReview: true,
+        matchReviews: viewModel.medicationMatchReviews,
+        lookupStatuses: viewModel.medicationLookupStatuses,
+        onCandidateConfirmed: viewModel.confirmMedicationCandidate,
+        onVerifiedOnlyContinueRequested: () {
+          if (viewModel.continueWithVerifiedMedicationAnalysis()) {
+            viewModel.showMedicationAnalysisResult();
+          }
+        },
       ),
       PrescriptionFlowState.analysisFailed => PrescriptionAnalysisFailureUI(
         message: viewModel.analysisErrorMessage,
@@ -1262,9 +1267,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final needsTimingGuidance =
         completed &&
         (!pressedAt.isBefore(
-              scheduledAt.add(
-                const Duration(minutes: missedDoseGraceMinutes),
-              ),
+              scheduledAt.add(const Duration(minutes: missedDoseGraceMinutes)),
             ) ||
             scheduledAt.difference(pressedAt) > const Duration(hours: 2));
     // Function Name: _updateHomeMedicationSlot.setState callback

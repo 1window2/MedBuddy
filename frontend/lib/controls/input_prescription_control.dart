@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../entities/medication_schedule_entity.dart';
 import '../entities/recognized_text_region_entity.dart';
+import '../entities/prescription_flow_entity.dart';
 import '../services/api_config.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
@@ -21,6 +22,8 @@ import '../services/prescription_local_ocr_service.dart';
 // 반환값:
 // - 없음.
 typedef PrescriptionImageSelectedCallback = void Function();
+typedef PrescriptionRecognitionProgressCallback =
+    void Function(PrescriptionRecognitionStage stage);
 
 // 파일명: input_prescription_control.dart
 // 역할: 처방전 이미지를 기기에서 비식별 처리하고 복약 정보 분석을 요청한다.
@@ -144,6 +147,7 @@ class InputPrescription {
   // - Future<List<MedicationSchedule>?>: Recognized schedules of the chosen image, or null when the picker was cancelled.
   Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
     PrescriptionImageSelectedCallback? onImageSelected,
+    PrescriptionRecognitionProgressCallback? onProgress,
   }) async {
     if (_disposed) return null;
     final generation = ++_selectionGeneration;
@@ -175,6 +179,7 @@ class InputPrescription {
     return _requestPrescriptionAnalysis(
       image,
       imageSource: ImageSource.gallery,
+      onProgress: onProgress,
     );
   }
 
@@ -188,6 +193,7 @@ class InputPrescription {
   Future<List<MedicationSchedule>> requestCapturedPrescriptionImage(
     XFile image, {
     PrescriptionImageSelectedCallback? onImageSelected,
+    PrescriptionRecognitionProgressCallback? onProgress,
   }) async {
     final generation = ++_selectionGeneration;
     if (!_disposed) {
@@ -204,7 +210,11 @@ class InputPrescription {
     if (!_isCurrentSelection(generation)) {
       throw StateError('Prescription analysis was cancelled.');
     }
-    return _requestPrescriptionAnalysis(image, imageSource: ImageSource.camera);
+    return _requestPrescriptionAnalysis(
+      image,
+      imageSource: ImageSource.camera,
+      onProgress: onProgress,
+    );
   }
 
   // 함수이름: _requestPrescriptionAnalysis
@@ -217,6 +227,7 @@ class InputPrescription {
   Future<List<MedicationSchedule>> _requestPrescriptionAnalysis(
     XFile image, {
     ImageSource imageSource = ImageSource.camera,
+    PrescriptionRecognitionProgressCallback? onProgress,
   }) async {
     final imageOperation = Completer<void>();
     final abortTrigger = Completer<void>();
@@ -225,6 +236,7 @@ class InputPrescription {
     _lastRecognizedTextRegions = [];
     var failureStage = 'local OCR';
     try {
+      onProgress?.call(PrescriptionRecognitionStage.recognizingText);
       final localOcrResult = await _resolvedLocalOcrBoundary.recognizeAndMask(
         image.path,
       );
@@ -233,6 +245,7 @@ class InputPrescription {
       }
       final localRegions = localOcrResult.regions;
       _lastRecognizedTextRegions = localRegions;
+      onProgress?.call(PrescriptionRecognitionStage.structuringMedication);
       failureStage = 'server request';
       final request = http.AbortableRequest(
         'POST',
@@ -255,7 +268,7 @@ class InputPrescription {
                * - 없음.
                * 반환값:
                * - 정상 반환하지 않으며 StateError를 던진다.
-               */() {
+               */ () {
                 if (!abortTrigger.isCompleted) {
                   abortTrigger.complete();
                 }
@@ -273,6 +286,7 @@ class InputPrescription {
       final responseBody = ApiResponseParser.requireOkBody('분석 실패', response);
 
       final decodedData = ApiResponseParser.decodeMap(responseBody);
+      onProgress?.call(PrescriptionRecognitionStage.validatingResult);
       final prescriptionDate =
           decodedData['prescription_date']?.toString().trim() ?? '';
       final prescriptionBatchId =
@@ -284,6 +298,7 @@ class InputPrescription {
           medicationSchedules: const [],
         );
         _recordParseCounts(decodedData, 0);
+        onProgress?.call(PrescriptionRecognitionStage.completed);
         return [];
       }
 
@@ -295,15 +310,19 @@ class InputPrescription {
            * - item (Map): Current response or collection entry being transformed or checked.
            * Returns:
            * - The parsed schedule with inherited prescription metadata.
-           */(item) {
+           */ (item) {
             final itemJson = Map<String, dynamic>.from(item);
-            itemJson.putIfAbsent('prescription_date', /* 함수이름: putIfAbsent 콜백
+            itemJson.putIfAbsent(
+              'prescription_date',
+              /* 함수이름: putIfAbsent 콜백
              * 함수역할: 응답 약에 처방 날짜가 없을 때 분석 요청의 처방 날짜를 보충한다.
              * 매개변수:
              * - 없음.
              * 반환값:
              * - 요청에서 사용한 처방 날짜.
-             */() => prescriptionDate);
+             */
+              () => prescriptionDate,
+            );
             itemJson.putIfAbsent(
               'prescription_batch_id',
               // Function Name: putIfAbsent callback
@@ -322,6 +341,7 @@ class InputPrescription {
         medicationSchedules: medicationSchedules,
       );
       _recordParseCounts(decodedData, medicationSchedules.length);
+      onProgress?.call(PrescriptionRecognitionStage.completed);
       return medicationSchedules;
     } on StateError {
       rethrow;
@@ -504,13 +524,16 @@ class InputPrescription {
     required List<RecognizedTextRegion> localRegions,
     required List<MedicationSchedule> medicationSchedules,
   }) {
-    final sensitiveRegions = localRegions.where(/* Function Name: where callback
+    final sensitiveRegions = localRegions.where(
+      /* Function Name: where callback
      * Description: Selects OCR regions marked sensitive for image redaction.
      * Parameters:
      * - region (RecognizedTextRegion): OCR region being selected or reclassified.
      * Returns:
      * - Whether the region contains sensitive content.
-     */(region) => region.isSensitive);
+     */
+      (region) => region.isSensitive,
+    );
     final medicationRegions = _classifyLocalMedicationRegions(
       localRegions,
       medicationSchedules,
@@ -526,7 +549,7 @@ class InputPrescription {
            * - value (double): 반올림할 OCR 좌표
            * 반환값:
            * - 반올림된 좌표값.
-           */(value) => value.round()).join(',')}';
+           */ (value) => value.round()).join(',')}';
       if (seenRegionKeys.add(regionKey)) {
         uniqueRegions.add(region);
       }
@@ -538,7 +561,7 @@ class InputPrescription {
      * - right (RecognizedTextRegion): 정렬 비교의 두 번째 OCR 영역
      * 반환값:
      * - 위·왼쪽 순서를 나타내는 음수·0·양수 비교값.
-     */(left, right) {
+     */ (left, right) {
       final topComparison = left.box2d[0].compareTo(right.box2d[0]);
       return topComparison != 0
           ? topComparison
@@ -563,13 +586,16 @@ class InputPrescription {
         ...[
           _normalizeRegionText(schedule.medicationName),
           _normalizeRegionText(schedule.rawMedicationName),
-        ].where(/* 함수이름: where 콜백
+        ].where(
+          /* 함수이름: where 콜백
          * 함수역할: 짧은 문자열의 오탐을 줄이기 위해 세 글자 이상인 약 이름만 유지한다.
          * 매개변수:
          * - name (String): 표시·일치 여부를 검사할 약 이름
          * 반환값:
          * - 약 이름 길이가 3 이상이면 true.
-         */(name) => name.length >= 3),
+         */
+          (name) => name.length >= 3,
+        ),
     };
     if (medicationNames.isEmpty) {
       return const [];
@@ -582,7 +608,7 @@ class InputPrescription {
          * - region (RecognizedTextRegion): 선택 또는 재분류할 OCR 인식 영역
          * 반환값:
          * - 약 이름 영역으로 사용할 수 있으면 true.
-         */(region) {
+         */ (region) {
           if (region.isMedication) {
             return true;
           }
@@ -713,13 +739,17 @@ class InputPrescription {
       return left.length;
     }
 
-    var previousRow = List<int>.generate(right.length + 1, /* 함수이름: callback 콜백
+    var previousRow = List<int>.generate(
+      right.length + 1,
+      /* 함수이름: callback 콜백
      * 함수역할: 편집 거리 계산의 초기 행을 문자 위치별 삽입 비용으로 채운다.
      * 매개변수:
      * - index (int): 현재 목록 항목의 0부터 시작하는 위치
      * 반환값:
      * - 초기 위치와 같은 삽입 비용.
-     */(index) => index);
+     */
+      (index) => index,
+    );
     for (var leftIndex = 1; leftIndex <= left.length; leftIndex++) {
       final currentRow = List<int>.filled(right.length + 1, 0);
       currentRow[0] = leftIndex;
@@ -730,18 +760,17 @@ class InputPrescription {
         final insertion = currentRow[rightIndex - 1] + 1;
         final deletion = previousRow[rightIndex] + 1;
         final substitution = previousRow[rightIndex - 1] + substitutionCost;
-        currentRow[rightIndex] = [
-          insertion,
-          deletion,
-          substitution,
-        ].reduce(/* 함수이름: reduce 콜백
+        currentRow[rightIndex] = [insertion, deletion, substitution].reduce(
+          /* 함수이름: reduce 콜백
          * 함수역할: 편집 거리 후보 비용에서 더 작은 값을 유지한다.
          * 매개변수:
          * - minimum (int): 지금까지 선택한 최소 편집 비용
          * - value (int): 비교할 편집 거리 비용
          * 반환값:
          * - 두 후보 중 작은 비용.
-         */(minimum, value) => value < minimum ? value : minimum);
+         */
+          (minimum, value) => value < minimum ? value : minimum,
+        );
       }
       previousRow = currentRow;
     }
@@ -799,7 +828,7 @@ class InputPrescription {
          * - stack (StackTrace): 오류 발생 지점을 기록한 스택 추적
          * 반환값:
          * - 없음.
-         */(Object error, StackTrace stack) {
+         */ (Object error, StackTrace stack) {
           developer.log(
             '로컬 OCR 자원 해제에 실패했습니다.',
             name: 'InputPrescription',

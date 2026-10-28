@@ -21,6 +21,80 @@ const candidate = MedicationDetail(
 );
 
 void main() {
+  testWidgets('syrup volume suffix offers an explicit candidate selection', (
+    tester,
+  ) async {
+    const original = '시네츄라시럽_(15mL)';
+    const schedule = MedicationSchedule(medicationName: original);
+    final client = MockClient((request) async {
+      expect(jsonDecode(request.body)['extracted_text'], original);
+      return http.Response(
+        jsonEncode({
+          'success': true,
+          'data': [],
+          'requires_confirmation': true,
+          'review_reason': 'ambiguous_product',
+          'candidates': [
+            {'item_name': '시네츄라시럽', 'manufacturer': '테스트 제약'},
+          ],
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    addTearDown(client.close);
+    MedicationMatchReview? review;
+    await expectLater(
+      CheckMedicationDetail(client: client).requestMedicationDetail(schedule),
+      throwsA(
+        isA<MedicationMatchReview>().having(
+          (value) {
+            review = value;
+            return value.candidates.single.itemName;
+          },
+          'candidate',
+          '시네츄라시럽',
+        ),
+      ),
+    );
+    MedicationDetail? confirmed;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PrescriptionAnalysisPreviewUI(
+          medicationScheduleList: const [schedule],
+          userSetting: const UserSetting(),
+          onBackRequested: () {},
+          onAnalysisRequested: () {},
+          onMedicationScheduleChanged: (_, _) {},
+          isMedicationLookupReview: true,
+          matchReviews: {0: review!},
+          onCandidateConfirmed: (_, detail) => confirmed = detail,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final candidates = find.byKey(const Key('medication-candidates-0'));
+    await tester.ensureVisible(candidates);
+    await tester.tap(candidates);
+    await tester.pumpAndSettle();
+    expect(find.text('약 이름: $original'), findsOneWidget);
+    expect(find.text('시네츄라시럽'), findsOneWidget);
+    final confirm = find.byKey(const Key('confirm-medication-candidate'));
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+    await tester.tap(find.text('취소'));
+    await tester.pumpAndSettle();
+    expect(confirmed, isNull);
+    await tester.tap(candidates);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('medication-candidate-0')));
+    await tester.pumpAndSettle();
+    expect(confirmed, isNull);
+    await tester.tap(confirm);
+    await tester.pumpAndSettle();
+    expect(confirmed?.itemName, '시네츄라시럽');
+    expect(tester.takeException(), isNull);
+  });
+
   for (final source in ['llm_catalog_candidate', 'user_edit']) {
     testWidgets('candidate dialog preserves the intended name ($source)', (
       tester,
@@ -54,7 +128,7 @@ void main() {
       await tester.tap(button);
       await tester.pumpAndSettle();
       expect(
-        find.text('처방전: ${source == 'user_edit' ? '애니코프' : '에니코프'}캡슐300mg'),
+        find.text('약 이름: ${source == 'user_edit' ? '애니코프' : '에니코프'}캡슐300mg'),
         findsOneWidget,
       );
       await tester.tap(find.text('취소'));
@@ -132,7 +206,10 @@ void main() {
     'explicit name edit supersedes OCR but multiple legacy results still require review',
     () async {
       final client = MockClient((request) async {
-        expect(jsonDecode(request.body), {'extracted_text': '사용자가수정한정100mg'});
+        expect(jsonDecode(request.body), {
+          'extracted_text': '사용자가수정한정100mg',
+          'search_mode': 'balanced',
+        });
         return http.Response(
           jsonEncode({
             'success': true,
