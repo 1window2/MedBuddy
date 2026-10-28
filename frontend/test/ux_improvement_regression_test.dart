@@ -17,7 +17,6 @@ import 'package:medbuddy_frontend/services/user_facing_error_message.dart';
 import 'package:medbuddy_frontend/widgets/home_medication_preview.dart';
 import 'package:medbuddy_frontend/widgets/home_medication_slot_pager.dart';
 
-
 // 함수이름: main
 // 함수역할:
 // - 홈 안내, OCR 복구, 저장 후 이동과 대응 가능한 오류 문구 검증 사례와 테스트 대역을 등록한다.
@@ -74,9 +73,9 @@ void main() {
     expect(find.text('12:30 · 점심약'), findsOneWidget);
     expect(find.text('1/2회 완료'), findsOneWidget);
     expect(
-      tester.widget<LinearProgressIndicator>(
-        find.byType(LinearProgressIndicator),
-      ).value,
+      tester
+          .widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator))
+          .value,
       .5,
     );
     expect(tester.takeException(), isNull);
@@ -304,6 +303,7 @@ void main() {
       ),
     );
 
+    await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.save_outlined));
     await tester.pumpAndSettle();
     expect(find.text('오늘 일정 확인'), findsOneWidget);

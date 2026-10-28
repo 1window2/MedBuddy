@@ -351,7 +351,9 @@ void main() {
   });
 
   // 채팅 카드로 연 기간 화면은 앱이 다시 그려져도(토큰 갱신·언어 변경) 같은 기간이면 다시 시작하지 않는다.
-  testWidgets('a rebuilt chat-shared history keeps its session', (tester) async {
+  testWidgets('a rebuilt chat-shared history keeps its session', (
+    tester,
+  ) async {
     var reads = 0;
     final history = MedicationHistoryControl(
       patientHash: 'test-patient',
@@ -750,7 +752,7 @@ void main() {
       final server = _HistoryServer();
       final control = await _pumpHistory(tester, server);
       final original = control.snapshot;
-      await tester.tap(find.byTooltip('Export'));
+      await tester.tap(find.byTooltip('Share'));
       await tester.pumpAndSettle();
       await _chooseExportDate(tester, 'start', DateTime(2026, 10, 11));
       await _chooseExportDate(tester, 'end', DateTime(2026, 10, 16));
@@ -778,7 +780,7 @@ void main() {
       expect(find.byTooltip('About medication records'), findsOneWidget);
       expect(find.byTooltip('Edit record'), findsNothing);
       expect(find.byKey(const Key('history-add-prn')), findsNothing);
-      expect(find.byTooltip('Export'), findsOneWidget);
+      expect(find.byTooltip('Share'), findsOneWidget);
       expect(server.writes, isEmpty);
     },
   );
@@ -792,7 +794,7 @@ void main() {
       tester
           .widget<IconButton>(
             find.byWidgetPredicate(
-              (widget) => widget is IconButton && widget.tooltip == 'Export',
+              (widget) => widget is IconButton && widget.tooltip == 'Share',
             ),
           )
           .onPressed,
@@ -1284,7 +1286,10 @@ void main() {
     await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
     await tester.pumpAndSettle();
     expect(server.writes, isEmpty);
-    expect(find.textContaining('Device storage could not be opened'), findsOneWidget);
+    expect(
+      find.textContaining('Device storage could not be opened'),
+      findsOneWidget,
+    );
     store.failRead = false;
     await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
     await tester.pumpAndSettle();
@@ -1333,7 +1338,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('instead of 1'), findsOneWidget);
     // 12:30(한국 시간)에 먹었고 지금은 15:00이다.
-    expect(find.textContaining('Last dose at 12:30 (2 h 30 min ago)'), findsOneWidget);
+    expect(
+      find.textContaining('Last dose at 12:30 (2 h 30 min ago)'),
+      findsOneWidget,
+    );
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     expect(server.writes, isEmpty);
@@ -1350,11 +1358,16 @@ void main() {
     );
     await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
     await tester.pumpAndSettle();
-    ScaffoldMessenger.of(tester.element(find.byType(ListView))).clearSnackBars();
+    ScaffoldMessenger.of(
+      tester.element(find.byType(ListView)),
+    ).clearSnackBars();
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Last dose at 15:00 (just now)'), findsOneWidget);
+    expect(
+      find.textContaining('Last dose at 15:00 (just now)'),
+      findsOneWidget,
+    );
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
   });
@@ -1815,7 +1828,7 @@ void main() {
       tester,
     ) async {
       await _pumpHistory(tester, monthServer(), openToday: false);
-      await tester.tap(find.byTooltip('Export'));
+      await tester.tap(find.byTooltip('Share'));
       await tester.pumpAndSettle();
       expect(find.textContaining('2026-10-01'), findsWidgets);
       expect(find.text('2026-10-17'), findsWidgets);
@@ -1928,7 +1941,7 @@ void main() {
 
   // 공유 전 동의가 필요하고 공유 완료와 전송 완료를 혼동하지 않는다.
   testWidgets(
-    'CSV export asks privacy confirmation and calls native share safely',
+    'Text sharing asks privacy confirmation and calls native share safely',
     (tester) async {
       final calls = <MethodCall>[];
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
@@ -1945,7 +1958,7 @@ void main() {
         ),
       );
       await _pumpHistory(tester, _HistoryServer());
-      await tester.tap(find.byTooltip('Export'));
+      await tester.tap(find.byTooltip('Share'));
       await tester.pumpAndSettle();
       expect(calls, isEmpty);
       expect(find.textContaining('skip reasons'), findsOneWidget);
@@ -1955,16 +1968,17 @@ void main() {
       expect(find.textContaining('Time zone: Korea'), findsNothing);
       expect(find.byType(DateRangePickerDialog), findsNothing);
       await _chooseExportDate(tester, 'start', DateTime(2026, 10, 11));
-      await tester.tap(find.text('Share CSV'));
+      await tester.tap(find.text('Share via other apps'));
       await tester.pumpAndSettle();
-      expect(calls.single.method, 'shareCsv');
+      expect(calls.single.method, 'shareText');
       final args = calls.single.arguments as Map;
-      expect(args['filename'], 'medbuddy_history_2026-10-11_2026-10-17.csv');
+      expect(args.containsKey('filename'), isFalse);
+      expect(args['subject'], 'MedBuddy medication history');
       expect(args['content'], contains('테스트 주간약'));
       expect(args['content'], contains('2026-10-11 ~ 2026-10-17'));
       expect(
         args['content'],
-        contains('Self-reported, not proof of ingestion'),
+        contains('Self-reported records, not proof of ingestion'),
       );
       expect((args['content'] as String).startsWith('\uFEFF'), isFalse);
       expect(args['content'], isNot(contains('test-patient')));
@@ -1972,45 +1986,49 @@ void main() {
     },
   );
 
-  testWidgets('export validates date order and allows up to 90 days for CSV', (
-    tester,
-  ) async {
-    final server = _HistoryServer();
-    await _pumpHistory(tester, server);
-    await tester.tap(find.byTooltip('Export'));
-    await tester.pumpAndSettle();
-    await _chooseExportDate(tester, 'end', DateTime(2026, 10, 16));
-    expect(find.text('End date cannot be before start date.'), findsOneWidget);
-    expect(
-      tester
-          .widget<FilledButton>(find.byKey(const Key('history-export-share')))
-          .onPressed,
-      isNull,
-    );
-    // CSV는 31일씩 나눠 읽으므로 31일을 넘는 기간도 고를 수 있다.
-    await _chooseExportDate(tester, 'start', DateTime(2026, 7, 20));
-    expect(find.byKey(const Key('history-export-error')), findsNothing);
-    expect(
-      tester
-          .widget<FilledButton>(find.byKey(const Key('history-export-share')))
-          .onPressed,
-      isNotNull,
-    );
-    await _chooseExportDate(tester, 'start', DateTime(2026, 9, 16));
-    expect(find.byKey(const Key('history-export-error')), findsNothing);
-    expect(
-      tester
-          .widget<FilledButton>(find.byKey(const Key('history-export-share')))
-          .onPressed,
-      isNotNull,
-    );
-    await _chooseExportDate(tester, 'end', null);
-    expect(find.text('2026-10-16'), findsOneWidget);
-    // 달력의 한 달 조회와 오늘 조회 뒤로는 날짜를 골라도 다시 읽지 않는다.
-    expect(server.reads, hasLength(2));
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
-  });
+  testWidgets(
+    'export validates date order and allows up to 90 days for external sharing',
+    (tester) async {
+      final server = _HistoryServer();
+      await _pumpHistory(tester, server);
+      await tester.tap(find.byTooltip('Share'));
+      await tester.pumpAndSettle();
+      await _chooseExportDate(tester, 'end', DateTime(2026, 10, 16));
+      expect(
+        find.text('End date cannot be before start date.'),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('history-export-share')))
+            .onPressed,
+        isNull,
+      );
+      // CSV는 31일씩 나눠 읽으므로 31일을 넘는 기간도 고를 수 있다.
+      await _chooseExportDate(tester, 'start', DateTime(2026, 7, 20));
+      expect(find.byKey(const Key('history-export-error')), findsNothing);
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('history-export-share')))
+            .onPressed,
+        isNotNull,
+      );
+      await _chooseExportDate(tester, 'start', DateTime(2026, 9, 16));
+      expect(find.byKey(const Key('history-export-error')), findsNothing);
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('history-export-share')))
+            .onPressed,
+        isNotNull,
+      );
+      await _chooseExportDate(tester, 'end', null);
+      expect(find.text('2026-10-16'), findsOneWidget);
+      // 달력의 한 달 조회와 오늘 조회 뒤로는 날짜를 골라도 다시 읽지 않는다.
+      expect(server.reads, hasLength(2));
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+    },
+  );
 
   testWidgets('export read failure stays in dialog and permits retry', (
     tester,
@@ -2018,11 +2036,11 @@ void main() {
     final server = _HistoryServer();
     final control = await _pumpHistory(tester, server);
     final original = control.snapshot;
-    await tester.tap(find.byTooltip('Export'));
+    await tester.tap(find.byTooltip('Share'));
     await tester.pumpAndSettle();
     await _chooseExportDate(tester, 'start', DateTime(2026, 10, 11));
     server.failRead = true;
-    await tester.tap(find.text('Share CSV'));
+    await tester.tap(find.text('Share via other apps'));
     await tester.pumpAndSettle();
     expect(
       find.text('Could not load the export records. Please try again.'),
@@ -2062,10 +2080,10 @@ void main() {
         addTearDown(changes.close);
         final server = _HistoryServer();
         await _pumpHistory(tester, server, sessionChanges: changes.stream);
-        await tester.tap(find.byTooltip('Export'));
+        await tester.tap(find.byTooltip('Share'));
         await tester.pumpAndSettle();
         server.pendingRead = Completer<http.Response>();
-        await tester.tap(find.text('Share CSV'));
+        await tester.tap(find.text('Share via other apps'));
         await tester.pump();
         expect(
           tester
@@ -2121,7 +2139,7 @@ void main() {
           textScale: 2,
           isEnglish: english,
         );
-        await tester.tap(find.byTooltip(english ? 'Export' : '내보내기'));
+        await tester.tap(find.byTooltip(english ? 'Share' : '공유'));
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
         final start = tester.getRect(
@@ -2136,7 +2154,48 @@ void main() {
     );
   }
 
-  // 파일 공유 미지원 시 동의 없이 민감한 자료를 클립보드로 옮기지 않는다.
+  testWidgets(
+    'oversized text stays in the dialog without truncating or sharing',
+    (tester) async {
+      final shares = <MethodCall>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('com.medbuddy/data_export'),
+        (call) async {
+          shares.add(call);
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          const MethodChannel('com.medbuddy/data_export'),
+          null,
+        ),
+      );
+      final server = _HistoryServer();
+      await _pumpHistory(tester, server);
+      await tester.tap(find.byTooltip('Share'));
+      await tester.pumpAndSettle();
+      server.items.single['item_name'] = List.filled(100001, 'x').join();
+      await tester.tap(find.byKey(const Key('history-export-share')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'Too many records to share at once. Select a shorter period.',
+        ),
+        findsOneWidget,
+      );
+      expect(shares, isEmpty);
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('history-export-share')))
+            .onPressed,
+        isNotNull,
+      );
+    },
+  );
+
+  // 텍스트 공유 미지원 시 동의 없이 민감한 자료를 클립보드로 옮기지 않는다.
   testWidgets(
     'unsupported sharing asks before clipboard fallback and permits cancellation',
     (tester) async {
@@ -2151,12 +2210,12 @@ void main() {
         ),
       );
       await _pumpHistory(tester, _HistoryServer());
-      await tester.tap(find.byTooltip('Export'));
+      await tester.tap(find.byTooltip('Share'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Share CSV'));
+      await tester.tap(find.text('Share via other apps'));
       await tester.pumpAndSettle();
       expect(
-        find.text('File sharing is unavailable on this device'),
+        find.text('Sharing is unavailable on this device'),
         findsOneWidget,
       );
       expect(
@@ -2165,7 +2224,10 @@ void main() {
       );
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('CSV text was copied'), findsNothing);
+      expect(
+        find.textContaining('Medication records were copied'),
+        findsNothing,
+      );
     },
   );
 

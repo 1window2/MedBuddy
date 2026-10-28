@@ -133,11 +133,28 @@ void main() {
         ),
         findsOneWidget,
       );
+      final renderedTexts = <String>{};
       for (var i = 0; i < 90; i++) {
         await tester.drag(find.byType(ListView), const Offset(0, -350));
         await tester.pumpAndSettle();
+        renderedTexts.addAll(
+          tester
+              .widgetList<Text>(find.byType(Text))
+              .map((text) => text.data ?? ''),
+        );
         expect(tester.takeException(), isNull);
       }
+      expect(
+        renderedTexts,
+        contains(english ? 'Sharing medication records' : '복약 기록 공유'),
+      );
+      final fullText = renderedTexts.join('\n');
+      expect(fullText, contains(english ? 'readable text' : '읽기 쉬운 텍스트'));
+      expect(fullText, isNot(contains('CSV')));
+      expect(
+        fullText,
+        isNot(contains(english ? 'Temporary sharing files' : '공유용 임시 파일')),
+      );
       expect(
         find.textContaining(
           english ? 'Do not post prescriptions' : '공개 게시판에 처방전',

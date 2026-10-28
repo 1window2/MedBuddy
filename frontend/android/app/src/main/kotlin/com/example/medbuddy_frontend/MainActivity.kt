@@ -86,6 +86,28 @@ class MainActivity : FlutterActivity() {
                     }
                     return@setMethodCallHandler
                 }
+                if (call.method == "shareText") {
+                    val content = call.argument<String>("content")
+                    val subject = call.argument<String>("subject")
+                    if (content.isNullOrBlank() || content.length > 100_000 ||
+                        subject == null || subject.length > 100) {
+                        result.error("invalid_export", "Invalid text export.", null)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        // 파일 첨부 없이 메시지 본문으로 전달하며 받는 앱은 사용자가 선택한다.
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, content)
+                            putExtra(Intent.EXTRA_SUBJECT, subject)
+                        }
+                        startActivity(Intent.createChooser(intent, null))
+                        result.success(null)
+                    } catch (_: Exception) {
+                        result.error("share_unavailable", "Could not open the share sheet.", null)
+                    }
+                    return@setMethodCallHandler
+                }
                 if (call.method != "shareCsv") {
                     result.notImplemented()
                     return@setMethodCallHandler

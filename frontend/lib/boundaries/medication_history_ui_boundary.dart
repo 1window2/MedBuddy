@@ -1,5 +1,5 @@
 // 파일명: medication_history_ui_boundary.dart
-// 역할: 환자·보호자의 날짜별 복약 이력, 정정 확인, 개인정보 안내 후 CSV 공유를 제공한다.
+// 역할: 환자·보호자의 날짜별 복약 이력, 정정 확인, 개인정보 안내 후 텍스트 공유를 제공한다.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -16,7 +16,7 @@ import '../theme/medbuddy_theme.dart';
 import '../widgets/medication_entry_fields.dart';
 import '../widgets/medbuddy_page_header.dart';
 
-enum _HistoryShareDestination { csv, chat }
+enum _HistoryShareDestination { external, chat }
 
 // 클래스명: MedicationHistoryUI
 // 역할: 외부 탐색 화면에서 환자 범위·읽기 전용 권한·언어·갱신 콜백을 전달받는다.
@@ -413,7 +413,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     }
   }
 
-  // 함수역할: 선택 기간 요약과 민감정보 안내를 확인받아 CSV 공유 창을 열며 전송 완료로 주장하지 않는다.
+  // 함수역할: 선택 기간 요약과 민감정보 안내를 확인받아 텍스트 공유 창을 열며 전송 완료로 주장하지 않는다.
   Future<void> _export() async {
     if (_locked) return;
     final control = _control;
@@ -426,7 +426,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     String? exportError;
 
     // 날짜 선택은 공유 창 안에서만 바꾸고 날짜별 기록 화면은 유지한다.
-    // CSV는 31일씩 나눠 읽어 최근 90일 전체를 담을 수 있고, 채팅 공유는 서버가 한 번에 31일만 받는다.
+    // 외부 공유는 31일씩 나눠 읽어 최근 90일 전체를 담을 수 있고, 채팅 공유는 서버가 한 번에 31일만 받는다.
     String? rangeError() {
       if (exportRange.start.isAfter(exportRange.end)) {
         return tr(
@@ -453,8 +453,8 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
       if (error != null) return error;
       return exportRange.days > MedicationHistoryRange.maximumReadDays
           ? tr(
-              '채팅 공유는 최대 31일까지예요. CSV는 90일까지 공유할 수 있어요.',
-              'Chat sharing covers up to 31 days; a CSV can cover up to 90.',
+              '채팅 공유는 최대 31일까지예요. 다른 앱으로는 90일까지 공유할 수 있어요.',
+              'Chat sharing covers up to 31 days; other apps can receive up to 90.',
             )
           : null;
     }
@@ -525,6 +525,20 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
         final result = await control.readRangeForExport(exportRange);
         if (!_isCurrent(control) || !dialogContext.mounted) return;
         if (ModalRoute.of(dialogContext)?.isCurrent != true) return;
+        if (destination == _HistoryShareDestination.external &&
+            medicationHistoryShareText(
+                  result,
+                  isEnglish: widget.isEnglish,
+                ).length >
+                medicationHistoryShareTextLimit) {
+          updateDialog(
+            () => exportError = tr(
+              '공유할 기록이 많아요. 기간을 줄여 다시 시도해 주세요.',
+              'Too many records to share at once. Select a shorter period.',
+            ),
+          );
+          return;
+        }
         snapshot = result;
         Navigator.pop(dialogContext, destination);
       } catch (_) {
@@ -618,8 +632,8 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
                                       'Last 90 days · Up to 90 days',
                                     )
                                   : tr(
-                                      '최근 90일 · CSV 최대 90일 · 채팅 최대 31일',
-                                      'Last 90 days · CSV up to 90 days · Chat up to 31 days',
+                                      '최근 90일 · 다른 앱 최대 90일 · 채팅 최대 31일',
+                                      'Last 90 days · Other apps up to 90 days · Chat up to 31 days',
                                     ),
                               style: Theme.of(context).textTheme.bodySmall,
                             ),
@@ -647,7 +661,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
                                 child: LinearProgressIndicator(),
                               ),
                             const SizedBox(height: 16),
-                            // 채팅 공유는 서버가 기간과 상태별 횟수만 만들어 보내므로 CSV와 구분해 알린다.
+                            // 채팅 공유는 서버가 기간과 상태별 횟수만 만들어 보내므로 외부 공유와 구분해 알린다.
                             Text(
                               key: const Key('history-share-privacy-notice'),
                               _chatShare == null
@@ -656,8 +670,8 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
                                       'Includes medication names, taken times and skip reasons. Check who you share with.',
                                     )
                                   : tr(
-                                      'CSV에는 약 이름·복용 시각·건너뛴 이유가 포함되고, 채팅에는 기간과 상태별 횟수만 보냅니다. 공유 대상을 확인해 주세요.',
-                                      'The CSV includes medication names, taken times and skip reasons; the chat gets only the period and the counts. Check who you share with.',
+                                      '다른 앱에는 약 이름·복용 시각·건너뛴 이유를, 앱 내 채팅에는 기간과 횟수만 보냅니다. 공유 대상을 확인해 주세요.',
+                                      'Other apps receive medication names, taken times and skip reasons; the chat gets only the period and the counts. Check who you share with.',
                                     ),
                             ),
                           ],
@@ -699,10 +713,12 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
                                   : () => prepareExport(
                                       context,
                                       updateDialog,
-                                      _HistoryShareDestination.csv,
+                                      _HistoryShareDestination.external,
                                     ),
                               icon: const Icon(Icons.share_outlined),
-                              label: Text(tr('CSV 공유', 'Share CSV')),
+                              label: Text(
+                                tr('다른 방법으로 공유', 'Share via other apps'),
+                              ),
                             ),
                             const SizedBox(height: 8),
                             TextButton(
@@ -737,18 +753,14 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
         }
         return;
       }
-      final csv = medicationHistoryCsv(
+      final content = medicationHistoryShareText(
         exportSnapshot,
         isEnglish: widget.isEnglish,
       );
-      final filename =
-          'medbuddy_history_${MedicationHistoryDates.format(exportSnapshot.range.start)}_'
-          '${MedicationHistoryDates.format(exportSnapshot.range.end)}.csv';
       try {
-        await _exportChannel.invokeMethod<void>('shareCsv', {
-          'filename': filename,
-          // Android 공유 경계가 UTF-8 BOM을 추가하므로 본문은 중복하지 않는다.
-          'content': csv.substring(1),
+        await _exportChannel.invokeMethod<void>('shareText', {
+          'content': content,
+          'subject': tr('MedBuddy 복약 기록', 'MedBuddy medication history'),
         });
         if (_isCurrent(control)) {
           _message(
@@ -760,7 +772,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
         }
       } on MissingPluginException {
         if (_isCurrent(control)) {
-          await _offerClipboard(csv.substring(1), control);
+          await _offerClipboard(content, control);
         }
       } on PlatformException catch (failure) {
         if (!_isCurrent(control)) return;
@@ -769,12 +781,12 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
           'unsupported',
           'not_implemented',
         }.contains(failure.code)) {
-          await _offerClipboard(csv.substring(1), control);
+          await _offerClipboard(content, control);
         } else {
           _message(
             tr(
-              '파일을 공유하지 못했어요. 다시 시도해 주세요.',
-              'The file could not be shared. Please try again.',
+              '공유 창을 열지 못했어요. 다시 시도해 주세요.',
+              'Could not open the share window. Please try again.',
             ),
           );
         }
@@ -790,24 +802,21 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     }
   }
 
-  // 함수역할: 파일 공유 미지원일 때 별도 동의를 받은 경우에만 CSV 본문을 클립보드에 복사한다.
+  // 함수역할: 텍스트 공유 미지원일 때 별도 동의를 받은 경우에만 공유 본문을 클립보드에 복사한다.
   Future<void> _offerClipboard(
-    String csv,
+    String content,
     MedicationHistoryControl control,
   ) async {
     final accepted = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(
-          tr(
-            '이 기기에서는 파일 공유를 지원하지 않아요',
-            'File sharing is unavailable on this device',
-          ),
+          tr('이 기기에서는 공유 창을 지원하지 않아요', 'Sharing is unavailable on this device'),
         ),
         content: Text(
           tr(
-            '대신 CSV 내용을 클립보드에 복사할까요? 복사한 복약 정보는 다른 앱에서 읽을 수 있습니다.',
-            'Copy the CSV text to the clipboard instead? Other apps may be able to read copied medication information.',
+            '대신 복약 기록을 클립보드에 복사할까요? 복사한 복약 정보는 다른 앱에서 읽을 수 있습니다.',
+            'Copy the medication records to the clipboard instead? Other apps may be able to read copied medication information.',
           ),
         ),
         actions: [
@@ -824,14 +833,9 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
       ),
     );
     if (accepted != true || !_isCurrent(control)) return;
-    await Clipboard.setData(ClipboardData(text: csv));
+    await Clipboard.setData(ClipboardData(text: content));
     if (_isCurrent(control)) {
-      _message(
-        tr(
-          'CSV 내용을 복사했어요. 파일 저장은 되지 않았어요.',
-          'CSV text was copied. No file was saved.',
-        ),
-      );
+      _message(tr('복약 기록을 복사했어요.', 'Medication records were copied.'));
     }
   }
 
@@ -863,7 +867,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
             icon: const Icon(Icons.refresh),
           ),
           IconButton(
-            tooltip: tr('내보내기', 'Export'),
+            tooltip: tr('공유', 'Share'),
             onPressed: _locked || shown == null ? null : _export,
             icon: const Icon(Icons.ios_share_outlined),
           ),

@@ -223,8 +223,8 @@ class FindAppFeature {
       AppFeature.historySharing,
       '복약 기록 공유',
       'Share medication history',
-      '복약 기록 > 내보내기',
-      'History > Export',
+      '복약 기록 > 공유',
+      'History > Share',
       phrases: [
         'csv',
         '엑셀',
@@ -425,7 +425,17 @@ class FindAppFeature {
       concepts: [
         ['알림', '알람', '소리', 'notification', 'alarm'],
         // 공백을 지운 비교라 'not'은 notification 자체와 겹치므로 구체적 표현만 둔다.
-        ['안', '허용', '권한', '테스트', 'test', 'permission', 'notwork', 'notcom', 'notring'],
+        [
+          '안',
+          '허용',
+          '권한',
+          '테스트',
+          'test',
+          'permission',
+          'notwork',
+          'notcom',
+          'notring',
+        ],
       ],
     ),
     FeatureSearchEntry(
@@ -455,7 +465,19 @@ class FindAppFeature {
       concepts: [
         ['알림', '알람', 'notification', 'alert'],
         // 'on'은 notification 끝과 겹치므로 켜기 표현을 그대로 쓴다.
-        ['끄', '꺼', '켜', '키고', '종류', '수신', 'off', 'turnon', 'enable', 'disable', 'mute'],
+        [
+          '끄',
+          '꺼',
+          '켜',
+          '키고',
+          '종류',
+          '수신',
+          'off',
+          'turnon',
+          'enable',
+          'disable',
+          'mute',
+        ],
       ],
     ),
     FeatureSearchEntry(
