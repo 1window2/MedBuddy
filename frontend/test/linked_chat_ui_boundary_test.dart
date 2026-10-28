@@ -4,10 +4,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/linked_chat_ui_boundary.dart';
+import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 import 'package:medbuddy_frontend/boundaries/medication_history_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/check_schedule_ui_boundary.dart';
 import 'package:medbuddy_frontend/entities/nearby_care_entity.dart';
@@ -781,6 +783,299 @@ ChatMessage _historyShareMessage({
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  for (final hospital in [false, true]) {
+    for (final language in ['ko', 'en']) {
+      testWidgets(
+        'shared place compact status and exact detail navigation $hospital/$language',
+        (tester) async {
+          const name = '이름이 긴 테스트 병원 약국';
+          const address = '서울특별시 마포구 테스트로 152, 테스트빌딩 본관 4층 (상세 주소를 생략하지 않습니다)';
+          final status = hospital
+              ? (language == 'ko' ? 'closed' : 'open')
+              : (language == 'ko' ? 'before_open' : 'closing_soon');
+          final hour = switch (status) {
+            'closed' => '20:00',
+            'before_open' => '08:00',
+            'closing_soon' => '18:45',
+            _ => '13:00',
+          };
+          final placeJson = <String, dynamic>{
+            if (hospital)
+              'hospital_id': 'place-123'
+            else
+              'pharmacy_id': 'place-123',
+            'name': name,
+            'address': address,
+            'telephone': '02-000-0000',
+            'latitude': 37.55,
+            'longitude': 126.92,
+            'schedule_date': '2026-10-28',
+            'operating_snapshot': {
+              'status': status,
+              'as_of': '2026-10-27T$hour:00+09:00',
+              'opens_at': '2026-10-27T09:00:00+09:00',
+              'closes_at': '2026-10-27T19:00:00+09:00',
+            },
+          };
+          final control = _RetryChatControl(
+            historyMessages: [
+              ChatMessage(
+                messageId: 1,
+                linkId: 17,
+                senderHash: 'caregiver-a',
+                clientMessageId: 'place-share-1',
+                body: 'Shared place',
+                createdAt: DateTime.utc(2026, 10, 27, 4),
+                hospitalContext: hospital
+                    ? ChatHospitalContext.fromJson(placeJson)
+                    : null,
+                pharmacyContext: hospital
+                    ? null
+                    : ChatPharmacyContext.fromJson(placeJson),
+                messageKind: hospital
+                    ? ChatMessageKind.hospitalShare
+                    : ChatMessageKind.pharmacyShare,
+              ),
+            ],
+          );
+          final realtime = _FakeRealtimeService();
+          NearbyCarePlace? opened;
+          bool? hospitalOpened;
+          await tester.binding.setSurfaceSize(const Size(360, 1000));
+          addTearDown(() => tester.binding.setSurfaceSize(null));
+          await tester.pumpWidget(
+            MaterialApp(
+              home: LinkedChatUI(
+                linkId: 17,
+                currentUserHash: 'patient-a',
+                patientHash: 'patient-a',
+                userSetting: UserSetting(language: language),
+                control: control,
+                realtimeService: realtime,
+                careDetailsBuilder: (place, hospitals) {
+                  opened = place;
+                  hospitalOpened = hospitals;
+                  return const Scaffold(body: Text('Exact shared place'));
+                },
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(
+            find.text(switch (status) {
+              'closed' => '영업 종료 · 19:00 종료',
+              'before_open' => '영업 전 · 09:00 시작',
+              'closing_soon' => 'Closing soon · Closes 19:00',
+              _ => 'Open · Closes 19:00',
+            }),
+            findsOneWidget,
+          );
+          final addressText = tester.widget<Text>(find.text(address));
+          expect(addressText.maxLines, isNull);
+          expect(addressText.overflow, isNot(TextOverflow.ellipsis));
+          expect(find.textContaining('정보 확인:'), findsNothing);
+          expect(find.textContaining('예약이 확정'), findsNothing);
+          expect(find.text('정보 보기'), findsNothing);
+          expect(find.text('Details'), findsNothing);
+          expect(
+            find.descendant(
+              of: find.byKey(const Key('chat-place-details')),
+              matching: find.byIcon(Icons.chevron_right),
+            ),
+            findsOneWidget,
+          );
+          final callback = tester
+              .widget<OutlinedButton>(
+                find.byKey(const Key('chat-place-details')),
+              )
+              .onPressed!;
+          await tester.tap(find.byKey(const Key('chat-place-details')));
+          await tester.pumpAndSettle();
+          expect(opened!.placeId, 'place-123');
+          expect(opened!.address, address);
+          expect(opened!.isOpenNow, isNull);
+          expect(opened!.todayCloseTime, isNull);
+          expect(hospitalOpened, hospital);
+          Navigator.of(tester.element(find.text('Exact shared place'))).pop();
+          await tester.pumpAndSettle();
+          realtime._events.add({
+            'type': 'chat_messages_deleted',
+            'link_id': 17,
+            'message_ids': [1],
+            'scope': 'everyone',
+          });
+          await tester.pumpAndSettle();
+          callback();
+          await tester.pumpAndSettle();
+          expect(find.text('Exact shared place'), findsNothing);
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox.shrink());
+          await realtime.dispose();
+          control.dispose();
+        },
+      );
+    }
+  }
+
+  for (final language in ['ko', 'en']) {
+    for (final mine in [true, false]) {
+      testWidgets('copy preserves message text $language/$mine', (
+        tester,
+      ) async {
+        final control = _RetryChatControl(
+          historyMessages: [
+            _deletionMessage(sender: mine ? 'patient-a' : 'caregiver-a'),
+          ],
+        );
+        final realtime = _FakeRealtimeService();
+        String? copied;
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          (call) async {
+            if (call.method == 'Clipboard.setData') {
+              copied = (call.arguments as Map)['text'] as String;
+            }
+            return null;
+          },
+        );
+        addTearDown(
+          () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+            SystemChannels.platform,
+            null,
+          ),
+        );
+        await tester.pumpWidget(
+          MaterialApp(
+            home: LinkedChatUI(
+              linkId: 17,
+              currentUserHash: 'patient-a',
+              patientHash: 'patient-a',
+              userSetting: UserSetting(language: language),
+              control: control,
+              realtimeService: realtime,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.longPress(find.text('Message 1'));
+        await tester.pumpAndSettle();
+        expect(find.text(language == 'ko' ? '복사' : 'Copy'), findsOneWidget);
+        await tester.tap(find.byKey(const Key('chat-copy-message')));
+        await tester.pumpAndSettle();
+        expect(copied, 'Message 1');
+        expect(find.byType(Checkbox), findsNothing);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await realtime.dispose();
+        control.dispose();
+      });
+
+      testWidgets(
+        'deleted bubble retains sender and disables copy $language/$mine',
+        (tester) async {
+          final control = _RetryChatControl(
+            historyMessages: [
+              _deletionMessage(
+                sender: mine ? 'patient-a' : 'caregiver-a',
+              ).copyWith(deletedForEveryone: true),
+            ],
+          );
+          final realtime = _FakeRealtimeService();
+          await tester.pumpWidget(
+            MaterialApp(
+              home: LinkedChatUI(
+                linkId: 17,
+                currentUserHash: 'patient-a',
+                patientHash: 'patient-a',
+                userSetting: UserSetting(language: language),
+                control: control,
+                realtimeService: realtime,
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          final bubble = find.byKey(const ValueKey('chat-bubble-1'));
+          final decoration =
+              tester.widget<Container>(bubble).decoration! as BoxDecoration;
+          expect(
+            decoration.color,
+            mine ? MedBuddyColors.primary : Colors.white,
+          );
+          final alignment = tester.widget<Align>(
+            find.ancestor(of: bubble, matching: find.byType(Align)).first,
+          );
+          expect(
+            alignment.alignment,
+            mine ? Alignment.centerRight : Alignment.centerLeft,
+          );
+          final deleted = find.text(
+            language == 'ko' ? '삭제된 메시지입니다.' : 'This message was deleted.',
+          );
+          expect(
+            tester.widget<Text>(deleted).style!.fontStyle,
+            FontStyle.italic,
+          );
+          expect(find.text('Message 1'), findsNothing);
+          await tester.longPress(deleted);
+          await tester.pumpAndSettle();
+          expect(find.byKey(const Key('chat-copy-message')), findsNothing);
+          expect(find.byKey(const Key('chat-select-message')), findsOneWidget);
+          await tester.pumpWidget(const SizedBox.shrink());
+          await realtime.dispose();
+          control.dispose();
+        },
+      );
+    }
+  }
+
+  testWidgets('copy menu rechecks a message deleted while open', (
+    tester,
+  ) async {
+    final control = _RetryChatControl(historyMessages: [_deletionMessage()]);
+    final realtime = _FakeRealtimeService();
+    var copies = 0;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') copies++;
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkedChatUI(
+          linkId: 17,
+          currentUserHash: 'patient-a',
+          patientHash: 'patient-a',
+          control: control,
+          realtimeService: realtime,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.longPress(find.text('Message 1'));
+    await tester.pumpAndSettle();
+    realtime._events.add({
+      'type': 'chat_messages_deleted',
+      'link_id': 17,
+      'message_ids': [1],
+      'scope': 'everyone',
+    });
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('chat-copy-message')));
+    await tester.pumpAndSettle();
+    expect(copies, 0);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await realtime.dispose();
+    control.dispose();
+  });
+
   for (final language in ['ko', 'en']) {
     for (final mine in [false, true]) {
       testWidgets('history card wraps large text $language/$mine', (
@@ -1126,6 +1421,8 @@ void main() {
       final staleCallback = tester.widget<OutlinedButton>(button).onPressed!;
       await tester.longPress(find.text('Shared records'));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('chat-select-message')));
+      await tester.pumpAndSettle();
       expect(tester.widget<OutlinedButton>(button).onPressed, isNull);
       staleCallback();
       await tester.pumpAndSettle();
@@ -1359,6 +1656,17 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('chat-unread-divider')), findsOneWidget);
       expect(find.text('여기까지 읽음'), findsOneWidget);
+      final unreadRect = tester.getRect(
+        find.byKey(const Key('chat-unread-divider')),
+      );
+      final labelRect = tester.getRect(find.text('여기까지 읽음'));
+      expect(labelRect.center.dx, closeTo(unreadRect.center.dx, 0.5));
+      final divider = find.descendant(
+        of: find.byKey(const Key('chat-unread-divider')),
+        matching: find.byType(Divider),
+      );
+      expect(tester.getRect(divider).left, unreadRect.left);
+      expect(tester.getRect(divider).right, unreadRect.right);
       // 과거 대화를 읽고 있을 때 받은 메시지는 최신 위치로 돌아오기 전에는 읽지 않는다.
       list.controller!.jumpTo(900);
       await tester.pumpAndSettle();
@@ -1926,9 +2234,12 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('09:00 - 19:00'), findsOneWidget);
+      final status = language == 'ko' ? '운영 확인 필요' : 'Hours unconfirmed';
+      expect(find.text(status), findsOneWidget);
+      expect(find.textContaining('정보 확인:'), findsNothing);
+      expect(find.textContaining('예약이 확정'), findsNothing);
       // 공유된 병원 정보는 메시지 본문과 같은 크기로 읽힌다.
-      for (final value in ['09:00 - 19:00', '서울특별시 마포구']) {
+      for (final value in [status, '서울특별시 마포구']) {
         expect(tester.widget<Text>(find.text(value)).style!.fontSize, 15);
       }
       expect(find.byIcon(Icons.call_outlined), findsOneWidget);
@@ -2567,6 +2878,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.longPress(find.text('Message 1'));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('chat-select-message')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('deleteChatMessages')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Delete for everyone'));
@@ -2647,6 +2960,8 @@ void main() {
         );
         await tester.pumpAndSettle();
         await tester.longPress(find.text('Message 1'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('chat-select-message')));
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const ValueKey('deleteChatMessages')));
         await tester.pumpAndSettle();
