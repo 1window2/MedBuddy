@@ -4,9 +4,15 @@
 import 'package:flutter/material.dart';
 
 import '../entities/analyzed_medication_entity.dart';
+import '../entities/json_value_reader.dart';
+import '../entities/medication_dose_rhythm.dart';
+import '../entities/medication_slot_label.dart';
 import '../entities/prescription_change_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/expandable_medication_section.dart';
+import '../widgets/pinned_analysis_summary.dart';
+import '../widgets/medbuddy_page_header.dart';
 import 'prescription_change_radar_ui_boundary.dart';
 
 // 파일명: check_result_ui_boundary.dart
@@ -90,100 +96,119 @@ class CheckResultUI extends StatelessWidget {
     final text = _ResultText(userSetting.language);
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: MedBuddyColors.pageBackground,
       body: SafeArea(
         top: false,
-        child: Column(
-          children: [
-            _ResultHeader(
-              title: text.title,
-              backTooltip: text.back,
-              onCloseRequested: onCloseRequested,
-            ),
-            _AnalysisSummary(
-              count: analyzedMedicationList.length,
-              text: text,
-              userSetting: userSetting,
-            ),
-            Expanded(
-              child: Stack(
-                children: [
-                  ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(40, 10, 40, 126),
-                    itemCount:
-                        analyzedMedicationList.length +
-                        (prescriptionChangeRadar != null ||
-                                isPrescriptionChangeLoading
-                            ? 1
-                            : 0),
-                    // Function Name: build.itemBuilder callback
-                    // Description: Composes analyzed medications and individual or bulk save state with the current parent constraints for the active layout.
-                    // Parameters:
-                    // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-                    // - index (int): Zero-based position of the target medication, photo, or row.
-                    // Returns: Widget subtree for the described layout or fallback.
-                    itemBuilder: (context, index) {
-                      final hasRadarSlot =
-                          prescriptionChangeRadar != null ||
-                          isPrescriptionChangeLoading;
-                      if (hasRadarSlot && index == 0) {
-                        if (isPrescriptionChangeLoading) {
-                          return PrescriptionChangeRadarLoadingUI(
-                            userSetting: userSetting,
-                          );
-                        }
-                        return PrescriptionChangeRadarUI(
-                          radar: prescriptionChangeRadar!,
-                          userSetting: userSetting,
-                        );
-                      }
-
-                      final medicationIndex = hasRadarSlot ? index - 1 : index;
-                      final analyzedMedication =
-                          analyzedMedicationList[medicationIndex];
-                      return _MedicationResultCard(
-                        analyzedMedication: analyzedMedication,
-                        text: text,
-                        userSetting: userSetting,
-                        isMedicationSaving:
-                            savingMedicationIndex == medicationIndex,
-                        isMedicationSaved: completedMedicationSaveIndexes
-                            .contains(medicationIndex),
-                        isAllMedicationSaving:
-                            isAllMedicationSaving ||
-                            savingMedicationIndex != null,
-                        // 함수이름: build.onMedicationSaveRequested callback
-                        // 함수역할: 저장 완료 시트를 열고 선택한 목적지로 이동하기 전에 시트를 닫는다.
-                        // 매개변수:
-                        // - 없음.
-                        // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-                        onMedicationSaveRequested: () async {
-                          final success = await onMedicationSaveRequested(
-                            analyzedMedication,
-                            medicationIndex,
-                          );
-                          if (!context.mounted) {
-                            return;
-                          }
-                          // 이 클로저의 완료 집합은 저장 전 사본이므로 방금 저장한 약을 더해 판단한다.
-                          final allSaved =
-                              {
-                                ...completedMedicationSaveIndexes,
-                                medicationIndex,
-                              }.length >=
-                              analyzedMedicationList.length;
-                          if (success && allSaved) {
-                            await _showSaveCompletedSheet(context, text);
-                            return;
-                          }
-                          _showSaveResultMessage(context, success);
-                        },
-                      );
-                    },
+        child: LayoutBuilder(
+          builder: (context, constraints) => Column(
+            children: [
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: constraints.maxHeight * .3,
+                ),
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.vertical(
+                    bottom: Radius.circular(24),
                   ),
-                  Align(
-                    alignment: Alignment.bottomCenter,
-                    child: _BulkSaveButton(
+                  child: SingleChildScrollView(
+                    child: _ResultHeader(
+                      title: text.title,
+                      subtitle: text.subtitle,
+                      backTooltip: text.back,
+                      onCloseRequested: onCloseRequested,
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: PinnedAnalysisSummary(
+                        summary: _AnalysisSummary(
+                          count: analyzedMedicationList.length,
+                          text: text,
+                          userSetting: userSetting,
+                        ),
+                        child: ListView.builder(
+                          key: const Key('analysis-result-list'),
+                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                          itemCount:
+                              analyzedMedicationList.length +
+                              (prescriptionChangeRadar != null ||
+                                      isPrescriptionChangeLoading
+                                  ? 1
+                                  : 0),
+                          // Function Name: build.itemBuilder callback
+                          // Description: Composes analyzed medications and individual or bulk save state with the current parent constraints for the active layout.
+                          // Parameters:
+                          // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
+                          // - index (int): Zero-based position of the target medication, photo, or row.
+                          // Returns: Widget subtree for the described layout or fallback.
+                          itemBuilder: (context, index) {
+                            final hasRadarSlot =
+                                prescriptionChangeRadar != null ||
+                                isPrescriptionChangeLoading;
+                            if (hasRadarSlot && index == 0) {
+                              if (isPrescriptionChangeLoading) {
+                                return PrescriptionChangeRadarLoadingUI(
+                                  userSetting: userSetting,
+                                );
+                              }
+                              return PrescriptionChangeRadarUI(
+                                radar: prescriptionChangeRadar!,
+                                userSetting: userSetting,
+                              );
+                            }
+
+                            final medicationIndex =
+                                index - (hasRadarSlot ? 1 : 0);
+                            final analyzedMedication =
+                                analyzedMedicationList[medicationIndex];
+                            return _MedicationResultCard(
+                              medicationIndex: medicationIndex,
+                              analyzedMedication: analyzedMedication,
+                              text: text,
+                              userSetting: userSetting,
+                              isMedicationSaving:
+                                  savingMedicationIndex == medicationIndex,
+                              isMedicationSaved: completedMedicationSaveIndexes
+                                  .contains(medicationIndex),
+                              isAllMedicationSaving:
+                                  isAllMedicationSaving ||
+                                  savingMedicationIndex != null,
+                              // 함수이름: build.onMedicationSaveRequested callback
+                              // 함수역할: 저장 완료 시트를 열고 선택한 목적지로 이동하기 전에 시트를 닫는다.
+                              // 매개변수:
+                              // - 없음.
+                              // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                              onMedicationSaveRequested: () async {
+                                final success = await onMedicationSaveRequested(
+                                  analyzedMedication,
+                                  medicationIndex,
+                                );
+                                if (!context.mounted) {
+                                  return;
+                                }
+                                // 이 클로저의 완료 집합은 저장 전 사본이므로 방금 저장한 약을 더해 판단한다.
+                                final allSaved =
+                                    {
+                                      ...completedMedicationSaveIndexes,
+                                      medicationIndex,
+                                    }.length >=
+                                    analyzedMedicationList.length;
+                                if (success && allSaved) {
+                                  await _showSaveCompletedSheet(context, text);
+                                  return;
+                                }
+                                _showSaveResultMessage(context, success);
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                    _BulkSaveButton(
                       text: text,
                       userSetting: userSetting,
                       isSaving:
@@ -209,11 +234,11 @@ class CheckResultUI extends StatelessWidget {
                         _showSaveResultMessage(context, false);
                       },
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -414,6 +439,7 @@ class _SaveCompletedSheet extends StatelessWidget {
 // - onCloseRequested (VoidCallback?): 이전 단계로 이동하거나 현재 화면을 닫을 때 실행할 콜백.
 class _ResultHeader extends StatelessWidget {
   final String title;
+  final String subtitle;
   final String backTooltip;
   final VoidCallback? onCloseRequested;
 
@@ -426,6 +452,7 @@ class _ResultHeader extends StatelessWidget {
   // 반환값: 입력 설정이 반영된 _ResultHeader 인스턴스.
   const _ResultHeader({
     required this.title,
+    required this.subtitle,
     required this.backTooltip,
     required this.onCloseRequested,
   });
@@ -437,38 +464,14 @@ class _ResultHeader extends StatelessWidget {
   // 반환값: 처방 분석 결과 제목과 닫기 명령에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(minHeight: 94),
-      width: double.infinity,
-      color: MedBuddyColors.topBar,
-      padding: const EdgeInsets.fromLTRB(22, 30, 22, 0),
-      child: Row(
-        children: [
-          IconButton(
-            tooltip: backTooltip,
-            onPressed: onCloseRequested,
-            icon: Icon(
-              Icons.arrow_back,
-              color: onCloseRequested == null ? Colors.white54 : Colors.white,
-              size: 31,
-            ),
-          ),
-          Expanded(
-            child: Text(
-              title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0,
-              ),
-            ),
-          ),
-          const SizedBox(width: 48),
-        ],
+    return MedBuddyPageHeader(
+      title: title,
+      subtitle: subtitle,
+      backTooltip: backTooltip,
+      leading: IconButton(
+        tooltip: backTooltip,
+        onPressed: onCloseRequested,
+        icon: const Icon(Icons.arrow_back),
       ),
     );
   }
@@ -506,10 +509,9 @@ class _AnalysisSummary extends StatelessWidget {
   // Returns: Widget tree for a summary of analyzed medications ready to save.
   @override
   Widget build(BuildContext context) {
-
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(22, 20, 22, 16),
+      margin: const EdgeInsets.only(top: 8, bottom: 16),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -603,15 +605,9 @@ class _BulkSaveButton extends StatelessWidget {
   // Returns: Widget tree for the bulk-save action with busy and completed states preventing duplicate requests.
   @override
   Widget build(BuildContext context) {
-
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.fromLTRB(
-        40,
-        22,
-        40,
-        MediaQuery.of(context).padding.bottom + 23,
-      ),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
       decoration: const BoxDecoration(
         color: Colors.white,
         border: Border(top: BorderSide(color: MedBuddyColors.divider)),
@@ -619,6 +615,7 @@ class _BulkSaveButton extends StatelessWidget {
       child: SizedBox(
         width: double.infinity,
         child: FilledButton.icon(
+          key: const Key('prescription-save-all'),
           // 함수이름: build.onPressed callback
           // 함수역할: 중복 요청을 막는 전체 저장·완료 상태에서 캡처된 작업 `onPressed()`을 실행한다.
           // 매개변수:
@@ -649,8 +646,8 @@ class _BulkSaveButton extends StatelessWidget {
             disabledBackgroundColor: MedBuddyColors.textLight,
             disabledForegroundColor: Colors.white,
             minimumSize: const Size.fromHeight(66),
-            textStyle: TextStyle(
-              fontSize: 22,
+            textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
+              fontSize: 20,
               fontWeight: FontWeight.w700,
               letterSpacing: 0,
             ),
@@ -671,6 +668,7 @@ class _BulkSaveButton extends StatelessWidget {
 // - isMedicationSaving (bool): 해당 저장·분석·복약 갱신 요청이 진행 중인지 여부.
 // - isMedicationSaved (bool): 복약 또는 저장 작업의 완료 상태.
 class _MedicationResultCard extends StatelessWidget {
+  final int medicationIndex;
   final AnalyzedMedication analyzedMedication;
   final _ResultText text;
   final UserSetting userSetting;
@@ -691,6 +689,7 @@ class _MedicationResultCard extends StatelessWidget {
   // - onMedicationSaveRequested (Future<void> Function()): 검증한 약품과 복약 정보를 저장할 콜백.
   // 반환값: 입력 설정이 반영된 _MedicationResultCard 인스턴스.
   const _MedicationResultCard({
+    required this.medicationIndex,
     required this.analyzedMedication,
     required this.text,
     required this.userSetting,
@@ -708,99 +707,157 @@ class _MedicationResultCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final schedule = analyzedMedication.schedule;
+    final slots = schedule.isAsNeeded
+        ? text.asNeeded
+        : [
+            if (!readDoseCycle(schedule.intakeTime).isDaily)
+              schedule.dailyFrequencyLabelForLanguage(text.language),
+            schedule.slotKeys
+                .map(
+                  (slot) =>
+                      medicationSlotLabel(slot, isEnglish: text.isEnglish),
+                )
+                .join(', '),
+          ].join('\n');
 
     return Container(
+      key: Key('result-medication-card-$medicationIndex'),
       margin: const EdgeInsets.only(bottom: 16),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: MedBuddyRadii.largeCard,
-        border: Border.all(color: MedBuddyColors.cardBorder),
-        boxShadow: MedBuddyShadows.card,
+        borderRadius: MedBuddyRadii.small,
+        border: Border.all(color: MedBuddyColors.outline),
       ),
-      child: Column(
-        children: [
-          Container(
+      child: ExpandableMedicationSection(
+        initiallyExpanded: false,
+        isEnglish: text.isEnglish,
+        toggleKey: Key('result-medication-toggle-$medicationIndex'),
+        headerBuilder: (toggle) {
+          final name = Text(
+            analyzedMedication.displayNameForLanguage(text.language),
+            key: Key('result-medication-name-$medicationIndex'),
+            style: const TextStyle(
+              color: MedBuddyColors.textStrong,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0,
+            ),
+          );
+          final actions = Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _MedicationSaveIconButton(
+                key: Key('result-medication-save-$medicationIndex'),
+                text: text,
+                isMedicationSaving: isMedicationSaving,
+                isMedicationSaved: isMedicationSaved,
+                isAllMedicationSaving: isAllMedicationSaving,
+                onPressed: onMedicationSaveRequested,
+              ),
+              toggle,
+            ],
+          );
+          final numberedName = Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2, right: 8),
+                child: Text(
+                  '${medicationIndex + 1}',
+                  key: Key('result-medication-number-$medicationIndex'),
+                  style: const TextStyle(
+                    color: MedBuddyColors.textMuted,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              Expanded(child: name),
+            ],
+          );
+          return Container(
+            key: Key('result-medication-header-$medicationIndex'),
             width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(18, 14, 12, 14),
-            decoration: const BoxDecoration(
-              color: MedBuddyColors.successSurface,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
-              border: Border(bottom: BorderSide(color: MedBuddyColors.mint)),
+            padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+            color: MedBuddyColors.successSurface,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                if (constraints.maxWidth < 340 &&
+                    MediaQuery.textScalerOf(context).scale(18) > 24) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      numberedName,
+                      Align(alignment: Alignment.centerRight, child: actions),
+                    ],
+                  );
+                }
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(child: numberedName),
+                    const SizedBox(width: 10),
+                    actions,
+                  ],
+                );
+              },
             ),
-            child: Row(
+          );
+        },
+        details: Column(
+          children: [
+            const Divider(height: 1),
+            Table(
+              key: Key('result-medication-summary-$medicationIndex'),
+              defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+              border: const TableBorder(
+                verticalInside: BorderSide(color: MedBuddyColors.outline),
+              ),
               children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: MedBuddyColors.primary,
-                    borderRadius: MedBuddyRadii.control,
-                  ),
-                  child: const Icon(
-                    Icons.medication_outlined,
-                    color: Colors.white,
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    analyzedMedication.displayNameForLanguage(text.language),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: MedBuddyColors.textStrong,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0,
+                TableRow(
+                  children: [
+                    _DoseInfoCell(
+                      label: text.dose,
+                      value: _displayValue(
+                        schedule.dosageLabelForLanguage(text.language),
+                      ),
                     ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                _MedicationSaveIconButton(
-                  text: text,
-                  isMedicationSaving: isMedicationSaving,
-                  isMedicationSaved: isMedicationSaved,
-                  isAllMedicationSaving: isAllMedicationSaving,
-                  onPressed: onMedicationSaveRequested,
+                    _DoseInfoCell(
+                      label: text.duration,
+                      value: _displayValue(
+                        schedule.durationLabelForLanguage(text.language),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-            child: Column(
+            const Divider(height: 1),
+            Table(
+              key: Key('result-medication-schedule-$medicationIndex'),
+              defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+              border: const TableBorder(
+                verticalInside: BorderSide(color: MedBuddyColors.outline),
+              ),
               children: [
-                _DoseInfoRow(
-                  icon: Icons.medication_liquid_outlined,
-                  label: text.dose,
-                  value: _displayValue(
-                    schedule.dosageLabelForLanguage(text.language),
-                  ),
-                  userSetting: userSetting,
-                ),
-                const SizedBox(height: 14),
-                _DoseInfoRow(
-                  icon: Icons.schedule_outlined,
-                  label: text.frequency,
-                  value: _displayValue(
-                    schedule.dailyFrequencyLabelForLanguage(text.language),
-                  ),
-                  userSetting: userSetting,
-                ),
-                const SizedBox(height: 14),
-                _DoseInfoRow(
-                  icon: Icons.calendar_today_outlined,
-                  label: text.duration,
-                  value: _displayValue(
-                    schedule.durationLabelForLanguage(text.language),
-                  ),
-                  userSetting: userSetting,
+                TableRow(
+                  children: [
+                    _DoseInfoCell(
+                      label: text.medicationStartDate,
+                      value:
+                          formatJsonDate(schedule.prescriptionDate) ??
+                          text.noInformation,
+                    ),
+                    _DoseInfoCell(
+                      label: text.scheduleSlots,
+                      value: _displayValue(slots),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -841,6 +898,7 @@ class _MedicationSaveIconButton extends StatelessWidget {
   // - onPressed (Future<void> Function()): Callback executing the item's documented primary action.
   // Returns: Initialized _MedicationSaveIconButton instance.
   const _MedicationSaveIconButton({
+    super.key,
     required this.text,
     required this.isMedicationSaving,
     required this.isMedicationSaved,
@@ -896,35 +954,24 @@ class _MedicationSaveIconButton extends StatelessWidget {
   }
 }
 
-// 클래스명: _DoseInfoRow
-// 역할: 복용량·횟수·기간의 라벨과 값을 담당한다.
+// 클래스명: _DoseInfoCell
+// 역할: 복약 정보 표의 라벨과 값을 중앙에 표시한다.
 // 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 복용량·횟수·기간의 라벨과 값 위젯을 구성한다.
+// - 내용과 글자 크기에 맞춰 표의 셀 높이를 조절한다.
 // 속성:
-// - icon (IconData): 기본 또는 선택 상태에서 표시할 아이콘.
 // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
 // - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-// - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-class _DoseInfoRow extends StatelessWidget {
-  final IconData icon;
+class _DoseInfoCell extends StatelessWidget {
   final String label;
   final String value;
-  final UserSetting userSetting;
 
-  // 함수이름: _DoseInfoRow
-  // 함수역할: 복용량·횟수·기간의 라벨과 값에 필요한 입력값과 표시 설정을 초기화한다.
+  // 함수이름: _DoseInfoCell
+  // 함수역할: 복약 정보 셀의 라벨과 값을 초기화한다.
   // 매개변수:
-  // - icon (IconData): 기본 또는 선택 상태에서 표시할 아이콘.
   // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
   // - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-  // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-  // 반환값: 입력 설정이 반영된 _DoseInfoRow 인스턴스.
-  const _DoseInfoRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.userSetting,
-  });
+  // 반환값: 입력 설정이 반영된 _DoseInfoCell 인스턴스.
+  const _DoseInfoCell({required this.label, required this.value});
 
   // 함수이름: build
   // 함수역할: 현재 입력값과 상태를 반영해 복용량·횟수·기간의 라벨과 값 화면을 구성한다.
@@ -933,44 +980,34 @@ class _DoseInfoRow extends StatelessWidget {
   // 반환값: 복용량·횟수·기간의 라벨과 값에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-
-    return Row(
-      children: [
-        Icon(icon, color: MedBuddyColors.primary, size: 21),
-        const SizedBox(width: 10),
-        Expanded(
-          flex: 3,
-          child: Text(
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
             label,
-            style: TextStyle(
+            textAlign: TextAlign.center,
+            style: const TextStyle(
               color: MedBuddyColors.textMuted,
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
+              fontSize: 12,
               letterSpacing: 0,
             ),
           ),
-        ),
-        Flexible(
-          flex: 2,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-            decoration: BoxDecoration(
-              color: MedBuddyColors.mint,
-              borderRadius: MedBuddyRadii.pill,
-            ),
-            child: Text(
-              value,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: MedBuddyColors.primaryDark,
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0,
-              ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: MedBuddyColors.textStrong,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0,
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -1004,6 +1041,9 @@ class _ResultText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get title => isEnglish ? 'Prescription Analysis Result' : '처방전 분석 결과';
+  String get subtitle => isEnglish
+      ? 'Review and save your medication schedules.'
+      : '분석한 약과 복용 일정을 확인하고 저장합니다.';
   // 함수이름: back
   // 함수역할: 현재 언어와 입력값에 맞춰 "뒤로가기" 문구를 제공한다.
   // 매개변수:
@@ -1030,12 +1070,9 @@ class _ResultText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get dose => isEnglish ? 'Dose' : '1회 투약량';
-  // 함수이름: frequency
-  // 함수역할: 현재 언어와 입력값에 맞춰 "1일 횟수" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get frequency => isEnglish ? 'Frequency' : '1일 횟수';
+  String get medicationStartDate => isEnglish ? 'Start date' : '복용 시작일';
+  String get scheduleSlots => isEnglish ? 'Medication time slots' : '실제 복약 시간대';
+  String get asNeeded => isEnglish ? 'As needed' : '필요시 복용';
   // 함수이름: duration
   // 함수역할: 현재 언어와 입력값에 맞춰 "총 투약일" 문구를 제공한다.
   // 매개변수:
@@ -1106,8 +1143,7 @@ class _ResultText {
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get openSavedMedication =>
-      isEnglish ? 'View Medications' : '복약함 보기';
+  String get openSavedMedication => isEnglish ? 'View Medications' : '복약함 보기';
   // 함수이름: returnHome
   // 함수역할: 현재 언어와 입력값에 맞춰 "홈으로 돌아가기" 문구를 제공한다.
   // 매개변수:
