@@ -168,32 +168,33 @@ counts. Changing these dates does not fetch export records or change the day
 being reviewed.
 
 From the month view the initial export period is that visible month within the
-allowed history window. CSV covers up to 90 days, fetched in parts of at most
-31 days; linked-chat sharing remains limited to 31 days. CSV omits internal
-revision fields. The general history lookup limit remains 31 days per request.
+allowed history window. External text sharing covers up to 90 days, fetched in
+parts of at most 31 days; linked-chat sharing remains limited to 31 days. Internal
+revision fields are not shared. The general lookup limit remains 31 days per request.
 
 Feature search opens personal history and, for the sharing destination, only
 opens this dialog after the initial read succeeds in the same session. It does
 not transmit a file or chat message. Read-only or failed initial entry does not
 automatically open the dialog. See [Feature Search](Feature%20Search.md).
 
-Selecting Share CSV triggers `readRangeForExport` to fetch the selected period
+Selecting Share via other apps triggers `readRangeForExport` to fetch the selected period
 with current access and session checks. A failed read leaves the dialog open for
 retry. Only a successful read with the same session and active dialog closes it;
-the screen rechecks the session before generating CSV and invoking native sharing.
-The CSV itself includes the selected-period metadata and status counts, followed
-by self-reported records and details of medications represented in that period,
-but not unrelated medications or internal account identifiers. Cancelling before
-sharing sends nothing through MedBuddy. Opening the Android chooser is not
-evidence that another app delivered the file.
+the screen rechecks the session before generating text and invoking native sharing.
+The message includes the period and counts, then date-grouped medication names,
+dose slots, statuses, entered taken times and skip reasons. It excludes internal
+identifiers, revision values, unrelated stored medications and redundant table
+headers. An empty period is stated explicitly. Missing taken times are not replaced
+with recorded times, and unrecorded status is not interpreted as a missed dose.
+Cancelling before sharing sends nothing through MedBuddy. Opening the Android
+chooser is not evidence that another app delivered the message.
 
-CSV is UTF-8 with a BOM; cells are quoted and spreadsheet-formula prefixes are
-escaped. Android shares a temporary content URI through a non-exported
-FileProvider limited to the medication-export cache directory. Older cache files
-are cleaned on later exports;
-account deletion also attempts cleanup. Copies saved by another app cannot be
-recalled. Unsupported platforms offer CSV-text copying after separate consent;
-the app does not claim that a file was saved or shared.
+Android uses ACTION_SEND with text/plain and EXTRA_TEXT, without a CSV attachment.
+Messages over 100,000 characters remain in the selection dialog with a request to
+shorten the period; records are never silently truncated. Unsupported platforms
+offer text copying after separate consent. Copies saved by another app cannot be
+recalled. Legacy CSV helpers and cache cleanup remain for compatibility, but the
+history screen no longer selects CSV sharing.
 
 The same dialog can share a server-calculated period/status-count summary into
 an active linked chat after target confirmation. It sends no medication list or

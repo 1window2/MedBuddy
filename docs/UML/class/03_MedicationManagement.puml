@@ -89,7 +89,7 @@ package "FastAPI Backend" #EAF8F0 {
 }
 
 cloud "MFDS Drug APIs" as MFDS
-boundary "Android FileProvider\nmedication_exports cache" as ExportProvider
+boundary "Android ACTION_SEND\ntext/plain" as ExportProvider
 
 CheckScheduleUI --> MedBuddyViewModel
 CheckSavedMedicationUI --> MedBuddyViewModel
@@ -107,7 +107,7 @@ AsNeededPendingStore --> DoseOutboxStore
 HistoryPending ..> DoseOutboxStore : 계정별 미확정 요청; 정기 큐와 분리
 AsNeededScheduleSection --> AsNeededCheckReminderControl : patient only
 AsNeededCheckReminderControl --> NotificationService : one future check; default off
-MedicationHistoryUI --> ExportProvider : confirmed CSV / temporary content URI
+MedicationHistoryUI --> ExportProvider : 확인한 기간의 자연어 텍스트 (파일 없음)
 CheckMedicationDetailUI --> MedBuddyViewModel
 MedBuddyViewModel *-- MedBuddyScheduleViewModel
 MedBuddyViewModel *-- MedBuddySavedMedicationViewModel
@@ -181,10 +181,10 @@ note bottom of MedicationHistoryControl
   기존 기록 정정은 영속 큐가 아니며 PRN 대기는 자동 background 전송하지 않는다.
 end note
 note bottom of ExportProvider
-  Pure export helpers quote cells and escape formula prefixes.
-  Only medications represented in the selected period are exported.
-  Chooser opening is not delivery; unsupported sharing offers
-  CSV-text copying only after separate consent.
+  날짜별 약·복용 기록과 선택 기간의 요약만 텍스트로 만든다.
+  내부 식별값·revision·무관한 약은 제외한다.
+  100,000자 초과는 기간 축소를 요청하며 기록을 잘라내지 않는다.
+  공유 창 열림은 전달 완료가 아니며 미지원 기기는 별도 동의 후 복사한다.
 end note
 FCheckMedicationDetail --> BCheckMedicationDetail : detail API
 

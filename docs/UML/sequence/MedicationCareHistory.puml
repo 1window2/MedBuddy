@@ -117,7 +117,7 @@ note over UI,Front
   Daily-screen status summary stays scoped to the displayed day.
   Export dialog does not show period summaries or status counts.
 end note
-Patient -> UI: Select Share CSV
+Patient -> UI: 다른 앱으로 공유 선택
 UI -> Front: readRangeForExport(range)
 Front -> API: GET selected range; server rechecks current access
 alt Read fails
@@ -128,20 +128,25 @@ else Snapshot loaded
   Front -> Front: Verify session after read
   Front --> UI: Export snapshot
   opt Same session and dialog route still active
-    UI -> UI: Close export dialog with confirmed result
-    UI -> UI: Recheck session; generate CSV with period/status totals
-    UI -> UI: Quote cells and escape formula prefixes
-    alt Android sharing supported
-      UI -> Share: UTF-8 CSV via restricted temporary content URI
-      Share --> UI: Chooser opened, not delivery confirmation
-    else Native sharing unsupported
-      UI --> Patient: Separate consent to copy CSV text
+    UI -> UI: 날짜별 자연어 기록과 기간·상태별 횟수 생성
+    alt 100,000자 초과
+      UI --> Patient: 대화창 유지·기간 축소 안내; 기록을 잘라내지 않음
+    else 허용된 길이
+      UI -> UI: 대화창 닫기·동일 세션 재확인
+      alt Android 공유 지원
+        UI -> Share: ACTION_SEND text/plain + EXTRA_TEXT (파일 없음)
+        Share --> UI: 공유 창 열림; 전달 완료를 의미하지 않음
+      else 외부 공유 미지원
+        UI --> Patient: 별도 동의 후 텍스트 복사
+      end
     end
   end
 end
 note over UI,Share
-  Summary metadata and status totals are in CSV, not the export dialog.
-  No internal account IDs or unrelated medications in CSV.
+  기간 정보·횟수는 공유 텍스트에 포함하고 대화창에서는 집계하지 않는다.
+  내부 계정 ID·revision·무관한 약은 제외한다.
+  외부 공유는 최대 90일을 31일씩 조회하고 채팅 공유는 최대 31일이다.
+  미기록을 미복용으로 단정하지 않고 실제 복용 시각을 추정하지 않는다.
   Cancelling sends nothing through MedBuddy; external copies cannot be recalled.
   Session changes invalidate open edits and exports.
 end note
