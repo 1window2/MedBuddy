@@ -65,7 +65,7 @@ GuidedPrescriptionCameraUI -down-> PrescriptionCameraOrientationService : camera
 PrescriptionImageCropService -right-> PrescriptionLocalOcrService : captured image
 PrescriptionLocalOcrService -down-> PrescriptionPrivacyFilter : masks identifiers
 PrescriptionPrivacyFilter -right-> PrescriptionAnalysisPreviewUI : masked OCR regions
-PrescriptionAnalysisPreviewUI -right-> FInputPrescription : confirmed rows
+MedBuddyPrescriptionViewModel --> FInputPrescription : 이미지 입력·OCR 인식
 FInputPrescription -down-> BInputPrescription : authenticated API
 BInputPrescription -right-> OCRServiceBoundary : structures text
 BInputPrescription --> PrescriptionPrivacy : 서버 입력 재검사
@@ -81,8 +81,9 @@ BInputPrescription -down-> BMedicationSchedule : response DTO
 MedicationNameVerifier --> MatchSafety : rejects incompatible OCR / AI correction
 PrescriptionAnalysisPreviewUI --> MedBuddyPrescriptionViewModel : review and confirm one row
 PrescriptionAnalysisPreviewUI --> MedicationCandidateDialog : explicit candidate choice
-MedBuddyPrescriptionViewModel --> FCheckMedicationDetail : six-way lookup; busy-only serial retry once
-FCheckMedicationDetail --> BCheckMedicationDetail : /identify + original_text
+FInputPrescription --> MedBuddyPrescriptionViewModel : 인식 단계·복약 일정
+MedBuddyPrescriptionViewModel --> FCheckMedicationDetail : OCR 직후 1차 조회; 여섯 건 병렬·사용 중 1회 재시도
+FCheckMedicationDetail --> BCheckMedicationDetail : /identify + original_text + search_mode
 FCheckMedicationDetail --> MedicationMatchReview : confirmation-only candidates
 FCheckMedicationDetail --> MedicationLookupBusy : known account-busy 503 + retryAt
 BCheckMedicationDetail --> MatchSafety : original strength / dosage form; exact name only
@@ -98,16 +99,17 @@ note right of MedicationNameVerifier
 end note
 
 note bottom of PrescriptionAnalysisPreviewUI
-  Users review OCR rows and restore
-  missing medications before analysis.
-  Uncertain products require explicit choice;
-  confirmation alone does not save a medication.
+  OCR 직후 1차 조회를 마친 뒤 약별 카드에서 검토한다.
+  확인·후보·결과 없음·실패·조회 전 상태를 구분한다.
+  검토·결과 요약은 진입 즉시 상단 고정이며 대기·슬라이딩이 없다.
+  후보 확정·일정 검토·약 저장은 별도 사용자 동작이다.
 end note
 
 note bottom of MatchSafety
-  Local, cached and public results use the original evidence.
-  Candidate-only replies leave data empty for older clients.
-  Similarity discovers candidates, not therapeutic substitutes.
+  모든 검색 방식에서 원문 함량·제형을 검사한다.
+  함량 누락 후보는 수동 확인만 가능하며 충돌 후보는 제외한다.
+  단일 정확 일치와 후보 요약 완결성을 확인한 경우만 자동 확정한다.
+  확인 전용 응답은 data가 비어 있으며 치료상 대체를 판단하지 않는다.
 end note
 
 note bottom of PrescriptionImageCropService

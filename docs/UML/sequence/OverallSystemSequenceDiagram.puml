@@ -357,7 +357,7 @@ BackControl --> Router : MedicationSchedule 목록과 prescription_batch_id
 Router --> ApiClient : 처방 분석 응답
 ApiClient --> FrontControl : MedicationSchedule 목록과 prescription_batch_id
 FrontControl --> ViewModel : 인식 일정과 Preview Region
-ViewModel --> UI : PrescriptionAnalysisPreviewUI 출력
+ViewModel --> UI : 인식 단계 완료; 약품 1차 조회 진행 표시
 
 opt 사용자가 흐름을 닫거나 새 촬영을 시작
     UI -> ViewModel : clearAnalysisResult()
@@ -370,27 +370,17 @@ opt 사용자가 흐름을 닫거나 새 촬영을 시작
     end
 end
 
-opt 사용자가 OCR 결과를 수정하는 경우
-    User -> UI : 약명, 복용량, 횟수, 일수 수정\n또는 누락 약 직접 추가
-    UI -> ViewModel : updateRecognizedMedicationSchedule() /\naddRecognizedMedicationSchedule()
-    ViewModel -> ViewModel : 원본 OCR 값 보존 및\n수정·직접 추가 상태 반영
-    ViewModel --> UI : 수정된 Preview 출력
-end
-
 == 3. 약 정보 조회 및 분석 결과 생성 ==
 
-User -> UI : 분석 시작 선택
-UI --> User : showMedicationScheduleReview()로 일정 검토 화면 출력
-User -> UI : 시작일, 기간, 1일 횟수, 1회 용량과 시간대 확인 또는 수정
-UI -> UI : 날짜 범위와 일정 일관성 검증
-UI -> ViewModel : requestPrescriptionAnalysis()
+ViewModel -> ViewModel : OCR 인식 직후 requestPrescriptionAnalysis() 자동 실행
+note over UI,ViewModel : 중간 분석 시작 확인 없이 1차 조회까지 진행한다.\n후보 확정·일정 검토·약 저장은 별도 사용자 동작이다.
 
 loop 인식된 MedicationSchedule마다 (최대 여섯 건 동시 조회)
     ViewModel -> FrontControl : CheckMedicationDetail.requestMedicationDetail(schedule)
-    FrontControl -> ApiClient : POST /identify\nextracted_text + 자동 보정 전 original_text
+    FrontControl -> ApiClient : POST /identify\nextracted_text + 자동 보정 전 original_text + search_mode
     ApiClient -> Router : 약 상세 조회 요청
-    Router -> BackControl : CheckMedicationDetail.requestMedicationDetail(rawText, original_text)
-    note right of BackControl : 함량 포함 원문부터 조회하고 검색 변형은 최대 8개.\n로컬·캐시·API 후보 모두 원문 함량·제형을 검사한다.\nOCR 로컬·AI 교정도 같은 안전 규칙을 적용한다.
+    Router -> BackControl : CheckMedicationDetail.requestMedicationDetail(rawText, original_text, search_mode)
+    note right of BackControl : fast/balanced/thorough는 최대 2/4/8개 검색어, 기본 balanced.\n원문·괄호 이름·구조 변형을 OCR 변형보다 우선하며 서버 제한은 모두 50초.\n명시적 함량·제형 충돌은 제외하고 함량 누락은 수동 확인 후보에만 허용한다.\nOCR 보정·자동 확인의 엄격한 안전 기준은 유지한다.
     BackControl -> BackService : LocalMedicationCatalog.fetch_drug_info()
     BackService -> Database : drug_basic_infos 및\ndrug_approval_infos 조회
     Database --> BackService : Local 약품 후보
@@ -429,7 +419,7 @@ loop 인식된 MedicationSchedule마다 (최대 여섯 건 동시 조회)
         end
     end
 
-    alt 정규화한 제품명이 같은 단일 후보이며 함량·제형 충돌 없음
+    alt 누적 후보 중 단일 정확 일치이며 함량·제형 충돌과 요약 누락 없음
         BackControl --> Router : MedicationResponse
         Router --> ApiClient : 약 상세 응답
         ApiClient --> FrontControl : MedicationDetail
@@ -472,16 +462,10 @@ end
 
 alt 확인되지 않은 약품이 존재
     ViewModel -> ViewModel : 성공 결과는 행별 보존하고\n변경 Radar 생략
-    alt 일부 성공 또는 약명 불일치
-        ViewModel --> UI : 성공 행은 잠그고 실패 행만 수정 가능한\nPrescriptionAnalysisPreviewUI 출력
-        User -> UI : 약명 수정 후 실패 행 재분석
-        UI -> ViewModel : requestPrescriptionAnalysis()
-    else 모든 대상이 일시적으로 실패
-        ViewModel --> UI : 재시도와 OCR 검토 복귀 기능을 가진\nPrescriptionAnalysisFailureUI 출력
-        User -> UI : OCR 검토로 복귀
-        UI -> ViewModel : returnToPrescriptionPreview()
-        ViewModel --> UI : 촬영 이미지와 OCR 수정 결과가 유지된 Preview
-    end
+    ViewModel --> UI : 약별 세로 카드와 상태별 요약\n확인 완료·후보 있음·결과 없음·조회 실패·조회 전 구분
+    note over UI,ViewModel : 전체 조회 실패도 같은 검토 화면에서 인식 정보를 보존한다.\n조회 완료 건수는 실제 응답 기준이며 재시도를 중복 집계하지 않는다.
+    User -> UI : 미확인 약 수정·누락 약 추가 후 재조회\n또는 별도 확인 후 확인된 약만으로 계속
+    UI -> ViewModel : 미확인 대상만 requestPrescriptionAnalysis()\n또는 continueWithVerifiedMedicationAnalysis()
 else 모든 인식 약품 상세정보 조회 성공
     ViewModel -> FrontControl : CheckPrescriptionChange.requestPrescriptionChange()
     FrontControl -> ApiClient : POST /prescription/change-radar
@@ -496,6 +480,7 @@ else 모든 인식 약품 상세정보 조회 성공
     ApiClient --> ViewModel : PrescriptionChangeRadar
     ViewModel --> UI : CheckResultUI에 분석 결과와 변경 Radar 출력
 end
+note over UI,ViewModel : 검토·결과 요약은 진입 즉시 상단 고정, 중앙 2초 대기·슬라이딩 없음.\n결과 약 상세는 접기·펼치기, Radar는 기본 접힘.\n변경·추가·이번 처방 미확인 분류별 세 건씩 표시하며 중단을 추정하지 않는다.
 
 opt 사용자가 분석 약을 저장하는 경우
     User -> UI : 개별 저장 또는 전체 저장 선택
@@ -1370,7 +1355,7 @@ ApiClient -> Router : 읽음 범위 갱신
 Router -> Database : 상대 메시지 read_at 일괄 갱신
 
 opt 사용자가 메시지를 선택하고 삭제 범위를 확인
-    User -> UI : 길게 눌러 선택 시작, 선택 중 행을 눌러 선택·해제
+    User -> UI : 길게 눌러 복사·삭제 선택 메뉴 열기\n삭제 선택 후 행을 눌러 선택·해제
     UI -> FrontControl : deleteMessages(linkId, messageIds, scope)
     FrontControl -> ApiClient : POST /chat/links/{linkId}/messages/delete
     ApiClient -> Router : 인증된 메시지 선택과 범위
