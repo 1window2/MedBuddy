@@ -49,6 +49,7 @@ class _CancelledGalleryInputPrescription extends InputPrescription {
   @override
   Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
     PrescriptionImageSelectedCallback? onImageSelected,
+    PrescriptionRecognitionProgressCallback? onProgress,
   }) async {
     requestCount += 1;
     return null;
@@ -59,6 +60,92 @@ class _CancelledGalleryInputPrescription extends InputPrescription {
 // 함수역할: 등록·정렬·선택 삭제와 작은 화면 접근성 회귀 검사를 등록한다.
 // 매개변수: 없음. 반환값: 없음; 각 테스트가 기대 동작을 검증한다.
 void main() {
+  testWidgets('날짜별 접기 상태는 검색과 목록 갱신 뒤에도 서로 독립적이다', (tester) async {
+    final model = await _pumpSelectionApp(tester, initialFilter: 'all');
+    final items = [
+      _selectionMedication(1).copyWith(createdDate: DateTime(2026, 1, 2)),
+      _selectionMedication(2).copyWith(createdDate: DateTime(2026, 1, 1)),
+    ];
+    await model.replaceMedications(items);
+    await tester.pumpAndSettle();
+    final first = find.byKey(const Key('saved-date-toggle-2026-01-02'));
+    final second = find.byKey(const Key('saved-date-toggle-2026-01-01'));
+    expect(find.text('약 1'), findsOneWidget);
+    expect(find.text('약 2'), findsOneWidget);
+    await tester.tap(first);
+    await tester.pumpAndSettle();
+    expect(find.text('약 1'), findsNothing);
+    expect(find.text('약 2'), findsOneWidget);
+    expect(
+      find.descendant(of: first, matching: find.byIcon(Icons.arrow_drop_down)),
+      findsOneWidget,
+    );
+    await tester.enterText(
+      find.byKey(const Key('saved-medication-search')),
+      '약 2',
+    );
+    await tester.pumpAndSettle();
+    expect(first, findsNothing);
+    await tester.enterText(
+      find.byKey(const Key('saved-medication-search')),
+      '',
+    );
+    await model.replaceMedications(items.reversed.toList());
+    await tester.pumpAndSettle();
+    expect(find.text('약 1'), findsNothing);
+    expect(find.text('약 2'), findsOneWidget);
+    await tester.tap(second);
+    await tester.pumpAndSettle();
+    await tester.tap(first);
+    await tester.pumpAndSettle();
+    expect(find.text('약 1'), findsOneWidget);
+    expect(find.text('약 2'), findsNothing);
+    expect(model.deletedIds, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('접힌 날짜도 선택 수를 표시하고 펼치면 선택을 유지한다', (tester) async {
+    final model = await _pumpSelectionApp(tester, initialFilter: 'all');
+    await model.replaceMedications([
+      _selectionMedication(1).copyWith(createdDate: DateTime(2026, 1, 2)),
+      _selectionMedication(2).copyWith(createdDate: DateTime(2026, 1, 2)),
+    ]);
+    await tester.pumpAndSettle();
+    await _startSavedSelection(tester);
+    await tester.tap(find.byKey(const Key('saved-medication-checkbox-1')));
+    await tester.pumpAndSettle();
+    final toggle = find.byKey(const Key('saved-date-toggle-2026-01-02'));
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(find.text('약 1'), findsNothing);
+    expect(
+      tester
+          .widget<Text>(find.byKey(const Key('saved-date-selected-2026-01-02')))
+          .data,
+      '1개 선택',
+    );
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<Checkbox>(
+            find.byKey(const Key('saved-medication-checkbox-1')),
+          )
+          .value,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<Checkbox>(
+            find.byKey(const Key('saved-medication-checkbox-2')),
+          )
+          .value,
+      isFalse,
+    );
+    expect(model.deletedIds, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final language in ['ko', 'en']) {
     testWidgets('중단과 교체 상태는 큰 글씨에서도 색과 상태명으로 구분한다 $language', (tester) async {
       final model = await _pumpSelectionApp(
@@ -85,10 +172,12 @@ void main() {
         await tester.scrollUntilVisible(
           find.byKey(const Key('saved-medication-status-1')),
           120,
-          scrollable: find.descendant(
-            of: find.byKey(const Key('saved-medication-scroll')),
-            matching: find.byType(Scrollable),
-          ).first,
+          scrollable: find
+              .descendant(
+                of: find.byKey(const Key('saved-medication-scroll')),
+                matching: find.byType(Scrollable),
+              )
+              .first,
         );
         final label = tester.widget<Text>(
           find.byKey(const Key('saved-medication-status-1')),

@@ -283,6 +283,8 @@ class _SelectionDeleteBar extends StatelessWidget {
 // - enabled (bool): 삭제 중이 아니어서 조작할 수 있는지 여부.
 // - selectedMedicationIds (Set<int>): 첨부 또는 삭제 대상으로 선택한 약품 ID 집합.
 class _SavedMedicationDateCard extends StatelessWidget {
+  final bool isExpanded;
+  final VoidCallback onToggleExpanded;
   final bool showRegisteredDate;
   final _SavedMedicationGroup group;
   final _SavedMedicationText text;
@@ -311,6 +313,8 @@ class _SavedMedicationDateCard extends StatelessWidget {
   // - onDeleteRequested (Future<void> Function()): 선택한 약품 또는 날짜 그룹 삭제를 요청할 콜백.
   // 반환값: 입력 설정이 반영된 _SavedMedicationDateCard 인스턴스.
   const _SavedMedicationDateCard({
+    required this.isExpanded,
+    required this.onToggleExpanded,
     required this.showRegisteredDate,
     required this.group,
     required this.text,
@@ -331,6 +335,83 @@ class _SavedMedicationDateCard extends StatelessWidget {
   // 반환값: 같은 날짜의 저장 약 목록과 그룹 삭제에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
+    final selectedCount = group.medications
+        .where((medication) => selectedMedicationIds.contains(medication.id))
+        .length;
+    final title = Wrap(
+      spacing: 8,
+      runSpacing: 2,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text(
+          group.displayDate,
+          style: const TextStyle(
+            color: MedBuddyColors.textStrong,
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0,
+          ),
+        ),
+        Text(
+          text.medicationCount(group.medications.length),
+          style: const TextStyle(
+            color: MedBuddyColors.textSubtle,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0,
+          ),
+        ),
+        if (isSelectionMode && !isExpanded && selectedCount > 0)
+          Text(
+            text.isEnglish ? '$selectedCount selected' : '$selectedCount개 선택',
+            key: ValueKey('saved-date-selected-${group.displayDate}'),
+            style: const TextStyle(
+              color: MedBuddyColors.primaryDark,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+      ],
+    );
+    final actions = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (!isSelectionMode)
+          Flexible(
+            child: TextButton.icon(
+              style: TextButton.styleFrom(
+                foregroundColor: MedBuddyColors.danger,
+                minimumSize: const Size(48, 48),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                textStyle: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0,
+                ),
+              ),
+              onPressed: enabled ? onDeleteRequested : null,
+              icon: const Icon(Icons.delete_outline_rounded, size: 20),
+              label: Text(text.delete),
+            ),
+          ),
+        Semantics(
+          expanded: isExpanded,
+          child: IconButton(
+            key: ValueKey('saved-date-toggle-${group.displayDate}'),
+            tooltip: text.isEnglish
+                ? '${isExpanded ? 'Hide' : 'Show'} medications: ${group.displayDate}'
+                : '${group.displayDate} 약 목록 ${isExpanded ? '접기' : '펼치기'}',
+            onPressed: enabled ? onToggleExpanded : null,
+            style: IconButton.styleFrom(fixedSize: const Size(48, 48)),
+            icon: Icon(
+              isExpanded ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+              size: 28,
+              color: MedBuddyColors.primaryDark,
+            ),
+          ),
+        ),
+      ],
+    );
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 12),
@@ -342,94 +423,69 @@ class _SavedMedicationDateCard extends StatelessWidget {
       child: Column(
         children: [
           Padding(
-            padding: EdgeInsets.fromLTRB(16, 8, isSelectionMode ? 16 : 6, 8),
+            padding: const EdgeInsets.fromLTRB(16, 8, 6, 8),
             child: ConstrainedBox(
               constraints: const BoxConstraints(minHeight: 48),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 2,
-                      crossAxisAlignment: WrapCrossAlignment.center,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  if (constraints.maxWidth < 340 &&
+                      MediaQuery.textScalerOf(context).scale(17) > 24) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text(
-                          group.displayDate,
-                          style: TextStyle(
-                            color: MedBuddyColors.textStrong,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0,
-                          ),
-                        ),
-                        Text(
-                          text.medicationCount(group.medications.length),
-                          style: TextStyle(
-                            color: MedBuddyColors.textSubtle,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0,
-                          ),
-                        ),
+                        title,
+                        Align(alignment: Alignment.centerRight, child: actions),
                       ],
-                    ),
-                  ),
-                  if (!isSelectionMode)
-                    TextButton.icon(
-                      style: TextButton.styleFrom(
-                        foregroundColor: MedBuddyColors.danger,
-                        minimumSize: const Size(48, 48),
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        textStyle: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0,
-                        ),
-                      ),
-                      onPressed: enabled ? onDeleteRequested : null,
-                      icon: Icon(Icons.delete_outline_rounded, size: 20),
-                      label: Text(text.delete),
-                    ),
-                ],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(child: title),
+                      actions,
+                    ],
+                  );
+                },
               ),
             ),
           ),
-          const Divider(height: 1, color: MedBuddyColors.divider),
-          for (final medication in group.medications) ...[
-            _SavedMedicationNameRow(
-              showRegisteredDate: showRegisteredDate,
-              medication: medication,
-              text: text,
-              isSelectionMode: isSelectionMode,
-              enabled: enabled,
-              isSelected:
-                  medication.id != null &&
-                  selectedMedicationIds.contains(medication.id),
-              // 함수이름: build.onSelectionChanged callback
-              // 함수역할: 같은 날짜의 저장 약 목록과 그룹 삭제에서 캡처된 작업 `onSelectionChanged(medication, selected)`을 실행한다.
-              // 매개변수:
-              // - selected (콜백 계약에서 추론): 현재 선택 집합에 포함되는지 여부.
-              // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-              onSelectionChanged: (selected) {
-                onSelectionChanged(medication, selected);
-              },
-              // 함수이름: build.onGuideRequested callback
-              // 함수역할: 같은 날짜의 저장 약 목록과 그룹 삭제에서 캡처된 작업 `onGuideRequested(medication)`을 실행한다.
-              // 매개변수:
-              // - 없음.
-              // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-              onGuideRequested: () => onGuideRequested(medication),
-              onRegimenRequested: (action) =>
-                  onRegimenRequested(medication, action),
-              // 함수이름: build.onImageRequested callback
-              // 함수역할: 같은 날짜의 저장 약 목록과 그룹 삭제에서 캡처된 작업 `onImageRequested(medication)`을 실행한다.
-              // 매개변수:
-              // - 없음.
-              // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-              onImageRequested: () => onImageRequested(medication),
-            ),
-            if (medication != group.medications.last)
-              const Divider(height: 1, color: MedBuddyColors.divider),
+          if (isExpanded) ...[
+            const Divider(height: 1, color: MedBuddyColors.divider),
+            for (final medication in group.medications) ...[
+              _SavedMedicationNameRow(
+                showRegisteredDate: showRegisteredDate,
+                medication: medication,
+                text: text,
+                isSelectionMode: isSelectionMode,
+                enabled: enabled,
+                isSelected:
+                    medication.id != null &&
+                    selectedMedicationIds.contains(medication.id),
+                // 함수이름: build.onSelectionChanged callback
+                // 함수역할: 같은 날짜의 저장 약 목록과 그룹 삭제에서 캡처된 작업 `onSelectionChanged(medication, selected)`을 실행한다.
+                // 매개변수:
+                // - selected (콜백 계약에서 추론): 현재 선택 집합에 포함되는지 여부.
+                // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                onSelectionChanged: (selected) {
+                  onSelectionChanged(medication, selected);
+                },
+                // 함수이름: build.onGuideRequested callback
+                // 함수역할: 같은 날짜의 저장 약 목록과 그룹 삭제에서 캡처된 작업 `onGuideRequested(medication)`을 실행한다.
+                // 매개변수:
+                // - 없음.
+                // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                onGuideRequested: () => onGuideRequested(medication),
+                onRegimenRequested: (action) =>
+                    onRegimenRequested(medication, action),
+                // 함수이름: build.onImageRequested callback
+                // 함수역할: 같은 날짜의 저장 약 목록과 그룹 삭제에서 캡처된 작업 `onImageRequested(medication)`을 실행한다.
+                // 매개변수:
+                // - 없음.
+                // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
+                onImageRequested: () => onImageRequested(medication),
+              ),
+              if (medication != group.medications.last)
+                const Divider(height: 1, color: MedBuddyColors.divider),
+            ],
           ],
         ],
       ),

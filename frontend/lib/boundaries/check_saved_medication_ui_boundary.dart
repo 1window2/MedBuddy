@@ -93,6 +93,7 @@ enum _SavedMedicationFilterMode { active, ended, all }
 // 속성: _selectedMedicationIds는 선택 ID, _isDeleting은 중복 조작 방지 상태이다.
 class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
   final Set<int> _selectedMedicationIds = {};
+  final Set<String> _collapsedDateGroups = {};
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   bool _isSelectionMode = false;
@@ -526,6 +527,17 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
       // 매개변수: context는 화면 위치, index는 묶음 순번. 반환값: 날짜별 목록.
       itemBuilder: (context, index) => _SavedMedicationDateCard(
         group: groups[index],
+        isExpanded: !_collapsedDateGroups.contains(
+          '${_sortMode.name}:${groups[index].displayDate}',
+        ),
+        onToggleExpanded: () {
+          final key = '${_sortMode.name}:${groups[index].displayDate}';
+          setState(() {
+            if (!_collapsedDateGroups.remove(key)) {
+              _collapsedDateGroups.add(key);
+            }
+          });
+        },
         showRegisteredDate:
             _sortMode != _SavedMedicationSortMode.registeredDate,
         text: text,
@@ -616,7 +628,9 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
                         medication.stoppedOn!.year,
                         medication.stoppedOn!.month,
                         medication.stoppedOn!.day,
-                      ).isAfter(DateTime(today.year, today.month, today.day))) ||
+                      ).isAfter(
+                        DateTime(today.year, today.month, today.day),
+                      )) ||
                   (medication.medicationEndDate != null &&
                       medication.medicationEndDate!.isBefore(
                         DateTime(today.year, today.month, today.day),
