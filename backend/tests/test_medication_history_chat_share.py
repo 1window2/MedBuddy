@@ -1,6 +1,7 @@
 """복약 이력 공유의 서버 집계·권한·멱등성·삭제·푸시 개인정보 경계를 검증한다."""
 
 from collections import Counter
+import json
 from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -293,7 +294,13 @@ def test_push_preview_is_generic_even_when_body_contains_health_details(chat, la
     call = boundary.calls[0]
     assert call["body"] == fallback
     assert call["data"]["message_preview"] == (fallback if mode == "full" else "")
-    assert all(secret not in str(call) for secret in ("PRIVATE-DRUG", "2026-10-20", "198", "77"))
+    summary = json.loads(call["data"]["chat_summary"])
+    # 해시 식별자에 우연히 같은 숫자가 들어가도 실제 표시 내용과 혼동하지 않는다.
+    visible = [call["title"], call["body"], call["data"]["message_preview"],
+               summary["sender_name"], *summary["lines"]]
+    assert all(secret not in str(visible) for secret in ("PRIVATE-DRUG", "2026-10-20", "198", "77"))
+    assert summary["lines"] == ([fallback] if mode == "full" else [])
+    assert summary["count"] == 1 and summary["latest_message_id"] == first.message.message_id
 
 
 @pytest.fixture

@@ -261,6 +261,8 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
     if (!isNaverMapConfigured) {
       return _MapUnavailableState(message: widget.configurationUnavailableText);
     }
+    // 채팅 등에서 장소를 선택한 채 처음 열어도 해당 마커가 정보창 뒤에 가리지 않게 한다.
+    final initialSelection = _findSelectedPharmacy(_mappablePharmacies);
     return Semantics(
       container: true,
       label: widget.statusText,
@@ -279,10 +281,12 @@ class _NearbyPharmacyMapState extends State<NearbyPharmacyMap> {
               options: NaverMapViewOptions(
                 initialCameraPosition: NCameraPosition(
                   target: NLatLng(
-                    widget.searchArea.center.latitude,
-                    widget.searchArea.center.longitude,
+                    initialSelection?.latitude ??
+                        widget.searchArea.center.latitude,
+                    initialSelection?.longitude ??
+                        widget.searchArea.center.longitude,
                   ),
-                  zoom: _searchAreaZoom,
+                  zoom: initialSelection != null ? 16 : _searchAreaZoom,
                 ),
                 minZoom: 5,
                 maxZoom: 19,

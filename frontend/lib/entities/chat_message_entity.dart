@@ -280,6 +280,45 @@ class ChatScheduleContext {
 // - longitude (double): WGS84 경도(도 단위)
 // - sourceUpdatedAt (DateTime?): 원본 약국 자료의 갱신 시각
 // 병원·약국 카드의 연락처와 길찾기 데이터는 같은 계약을 사용한다.
+class ChatPlaceOperatingSnapshot {
+  final String status;
+  final DateTime asOf;
+  final DateTime? opensAt;
+  final DateTime? closesAt;
+
+  const ChatPlaceOperatingSnapshot({
+    required this.status,
+    required this.asOf,
+    this.opensAt,
+    this.closesAt,
+  });
+
+  static ChatPlaceOperatingSnapshot? tryParse(Object? value) {
+    if (value is! Map) return null;
+    DateTime? instant(Object? raw) {
+      final parsed = DateTime.tryParse(readJsonText(raw));
+      return parsed?.isUtc == true ? parsed : null;
+    }
+
+    final asOf = instant(value['as_of']);
+    if (asOf == null) return null;
+    final rawStatus = readJsonText(value['status']);
+    const statuses = {
+      'open',
+      'closing_soon',
+      'before_open',
+      'closed',
+      'unknown',
+    };
+    return ChatPlaceOperatingSnapshot(
+      status: statuses.contains(rawStatus) ? rawStatus : 'unknown',
+      asOf: asOf,
+      opensAt: instant(value['opens_at']),
+      closesAt: instant(value['closes_at']),
+    );
+  }
+}
+
 abstract class ChatPlaceContext {
   final String name;
   final String address;
@@ -288,6 +327,7 @@ abstract class ChatPlaceContext {
   final double latitude;
   final double longitude;
   final DateTime? sourceUpdatedAt;
+  final ChatPlaceOperatingSnapshot? operatingSnapshot;
 
   const ChatPlaceContext({
     required this.name,
@@ -297,6 +337,7 @@ abstract class ChatPlaceContext {
     required this.longitude,
     this.todayHours = '',
     this.sourceUpdatedAt,
+    this.operatingSnapshot,
   });
 }
 
@@ -325,6 +366,7 @@ class ChatPharmacyContext extends ChatPlaceContext {
     required super.latitude,
     required super.longitude,
     super.sourceUpdatedAt,
+    super.operatingSnapshot,
   });
 
   // 함수이름: ChatPharmacyContext.fromJson
@@ -350,6 +392,9 @@ class ChatPharmacyContext extends ChatPlaceContext {
       sourceUpdatedAt: DateTime.tryParse(
         readJsonText(json['source_updated_at']),
       ),
+      operatingSnapshot: ChatPlaceOperatingSnapshot.tryParse(
+        json['operating_snapshot'],
+      ),
     );
   }
 }
@@ -369,6 +414,7 @@ class ChatHospitalContext extends ChatPlaceContext {
     required super.longitude,
     super.todayHours,
     super.sourceUpdatedAt,
+    super.operatingSnapshot,
     required this.departments,
     required this.scheduleDate,
   });
@@ -389,6 +435,7 @@ class ChatHospitalContext extends ChatPlaceContext {
       longitude: base.longitude,
       todayHours: base.todayHours,
       sourceUpdatedAt: base.sourceUpdatedAt,
+      operatingSnapshot: base.operatingSnapshot,
       departments: (json['departments'] as List? ?? const [])
           .map((value) => value.toString())
           .toList(growable: false),

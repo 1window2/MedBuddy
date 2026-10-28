@@ -536,52 +536,59 @@ void main() {
   );
 
   for (final language in ['ko', 'en']) {
-    // 실제 부분 조회 안내는 시간이 지나거나 필터를 바꿔도 하단에 유지한다.
-    testWidgets('partial hospital guide stays below map in $language', (
-      tester,
-    ) async {
-      final control = _HospitalControl()
-        ..truncated = true
-        ..initialArea = NearbyCareSearchArea(
-          center: NearbyCareSearchArea.fallbackCenter,
-          radiusKm: 1,
+    // 안내는 5초 뒤 사라지고 같은 제한 상태의 재조회로 다시 나타나지 않는다.
+    testWidgets(
+      'partial hospital guide hides after five seconds in $language',
+      (tester) async {
+        final control = _HospitalControl()
+          ..truncated = true
+          ..initialArea = NearbyCareSearchArea(
+            center: NearbyCareSearchArea.fallbackCenter,
+            radiusKm: 1,
+          );
+        final map = _MapProbe();
+        await _pumpHospital(tester, control, map, language: language);
+        final guide = find.text(
+          language == 'ko'
+              ? '일부 병원 정보를 확인하지 못했어요. 다시 검색하거나 조회 조건을 바꿔보세요.'
+              : 'Some hospital data is unavailable. Try again.',
         );
-      final map = _MapProbe();
-      await _pumpHospital(tester, control, map, language: language);
-      final guide = find.text(
-        language == 'ko'
-            ? '일부 병원 정보를 확인하지 못했어요. 다시 검색하거나 조회 조건을 바꿔보세요.'
-            : 'Some hospital data is unavailable. Try again.',
-      );
-      expect(guide, findsOneWidget);
-      final mapFinder = find.byKey(const Key('hospital-test-map'));
-      final mapElement = tester.element(mapFinder);
-      final heightWithGuide = tester.getSize(mapFinder).height;
-      await tester.pump(const Duration(seconds: 3));
-      expect(guide, findsOneWidget);
-      await tester.pump(const Duration(seconds: 1));
-      await tester.pumpAndSettle();
-      expect(guide, findsOneWidget);
-      expect(tester.getSize(mapFinder).height, heightWithGuide);
-      expect(
-        tester.getRect(guide).top,
-        greaterThanOrEqualTo(tester.getRect(mapFinder).bottom),
-      );
-      expect(
-        tester.getRect(guide).bottom,
-        lessThan(
-          tester.getRect(find.byKey(const Key('pharmacy-list-toggle'))).top,
-        ),
-      );
-      expect(tester.element(mapFinder), same(mapElement));
-      expect(control.requests, hasLength(1));
-      await _chooseFilter(tester, 'lateHours');
-      expect(guide, findsOneWidget);
-      await map.search(control.initialArea);
-      await tester.pumpAndSettle();
-      expect(guide, findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
+        expect(guide, findsOneWidget);
+        final mapFinder = find.byKey(const Key('hospital-test-map'));
+        final mapElement = tester.element(mapFinder);
+        final heightWithGuide = tester.getSize(mapFinder).height;
+        await tester.pump(const Duration(seconds: 3));
+        expect(guide, findsOneWidget);
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pumpAndSettle();
+        expect(guide, findsOneWidget);
+        expect(tester.getSize(mapFinder).height, heightWithGuide);
+        expect(
+          tester.getRect(guide).top,
+          greaterThanOrEqualTo(tester.getRect(mapFinder).bottom),
+        );
+        expect(
+          tester.getRect(guide).bottom,
+          lessThan(
+            tester.getRect(find.byKey(const Key('pharmacy-list-toggle'))).top,
+          ),
+        );
+        expect(tester.element(mapFinder), same(mapElement));
+        expect(control.requests, hasLength(1));
+        await map.search(control.initialArea);
+        await tester.pumpAndSettle();
+        await tester.pump(const Duration(seconds: 1));
+        expect(guide, findsNothing);
+        expect(tester.getSize(mapFinder).height, greaterThan(heightWithGuide));
+        expect(tester.element(mapFinder), same(mapElement));
+        await _chooseFilter(tester, 'lateHours');
+        expect(guide, findsNothing);
+        await map.search(control.initialArea);
+        await tester.pumpAndSettle();
+        expect(guide, findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
   }
 
   // 하단 부분 조회 안내가 위치 실패나 채팅 공유의 검색 기준을 숨기지 않는다.
@@ -604,12 +611,13 @@ void main() {
     });
   }
 
-  testWidgets('fallback area survives persistent partial hospital guide', (
+  testWidgets('fallback area survives transient partial hospital guide', (
     tester,
   ) async {
     final control = _HospitalControl()..truncated = true;
     await _pumpHospital(tester, control, _MapProbe(), selection: true);
-    await tester.pump(const Duration(seconds: 4));
+    await tester.pump(const Duration(seconds: 6));
+    expect(find.byKey(const Key('hospital-search-notice')), findsNothing);
     expect(find.text('검색 기준: 홍익대학교 서울캠퍼스 (위치 확인 불가)'), findsOneWidget);
     expect(find.text('위치를 확인하지 못해 홍익대학교 서울캠퍼스 기준으로 검색했어요.'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -648,6 +656,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text(guide), findsOneWidget);
     await tester.pump(const Duration(seconds: 5));
+    expect(find.text(guide), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -692,9 +701,11 @@ void main() {
     );
     expect(find.byKey(const Key('hospital-guide-acknowledge')), findsNothing);
     expect(find.byKey(const Key('hospital-search-notice')), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5));
+    expect(find.byKey(const Key('hospital-search-notice')), findsNothing);
   });
 
-  // 반경 안내는 실제 검색한 3km부터 유지되며 작은 반경에서도 부분 조회가 우선한다.
+  // 반경 안내는 실제 검색한 3km부터 잠깐 표시하며 작은 반경에서도 부분 조회가 우선한다.
   for (final language in ['ko', 'en']) {
     // 병원이 없는 지역의 첫 안내가 범위를 더 좁히라는 잘못된 방향을 제시하지 않는다.
     testWidgets(
@@ -775,9 +786,9 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        expect(notice, radius >= 3 ? findsOneWidget : findsNothing);
+        expect(notice, radius == 3 ? findsOneWidget : findsNothing);
         await tester.pump(const Duration(seconds: 5));
-        expect(notice, radius >= 3 ? findsOneWidget : findsNothing);
+        expect(notice, findsNothing);
         expect(tester.takeException(), isNull);
       }
       control.truncated = true;
@@ -1196,8 +1207,8 @@ void main() {
       expect(find.text(notice), findsOneWidget);
       expect(find.textContaining('진료 중인 병원이 없습니다'), findsNothing);
       // 시간이 지나도 빈 결과를 전체 병원에 대한 결론처럼 표시하지 않는다.
-      await tester.pump(const Duration(seconds: 4));
-      expect(find.text(notice), findsOneWidget);
+      await tester.pump(const Duration(seconds: 5));
+      expect(find.text(notice), findsNothing);
       expect(find.text('조회한 병원 중 조건에 맞는 결과가 없습니다'), findsWidgets);
       expect(find.textContaining('진료 중인 병원이 없습니다'), findsNothing);
       expect(tester.takeException(), isNull);

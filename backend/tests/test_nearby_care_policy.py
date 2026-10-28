@@ -144,7 +144,7 @@ def test_display_and_distance_are_feature_independent() -> None:
 def test_nearby_care_dependency_direction() -> None:
     backend = Path(__file__).resolve().parents[1]
     for relative, allowed in (
-        ("services/nearby_care_policy.py", {"math", "datetime"}),
+        ("services/nearby_care_policy.py", {"math", "datetime", "re"}),
         ("boundaries/holiday_lookup_boundary.py", {"datetime", "typing"}),
     ):
         tree = ast.parse((backend / relative).read_text(encoding="utf-8"))

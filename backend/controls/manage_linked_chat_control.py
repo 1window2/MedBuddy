@@ -13,7 +13,7 @@ from controls.manage_caregiver_alert_control import ManageCaregiverAlert
 
 from core.api_contract import client_schedules_by_dose_days
 from core.account_database_lock import ACCOUNT_BUSY_DETAIL, lock_account_operations
-from core.application_clock import application_today
+from core.application_clock import application_now, application_today
 from controls.check_schedule_control import CheckSchedule
 from controls.manage_medication_care_control import ManageMedicationCare
 from entities.chat_notification_job_entity import ChatNotificationJob
@@ -41,9 +41,12 @@ from entities.medication_schedule_entity import (
     MEDICATION_SLOT_KOREAN_NAMES,
 )
 from entities.patient_caregiver_link_entity import _PatientCaregiverLink
+from entities.pharmacy_catalog_entity import PharmacyCatalogEntry
 from entities.saved_medication_entity import _SavedMedication
 from entities.user_account_entity import _UserAccount, utc_isoformat, utc_now
 from entities.user_setting_entity import _UserSetting
+from services.chat_notification_summary import build_chat_notification_summary
+from services.chat_operating_snapshot import build_operating_snapshot
 from repositories.chat_message_repository import ChatMessageRepository
 from repositories.patient_caregiver_link_repository import (
     PatientCaregiverLinkRepository,
@@ -324,6 +327,19 @@ class ManageLinkedChat:
         finally:
             self.db.rollback()
 
+    def prepare_pharmacy_share(
+        self, *, link_id: int, sender_hash: str, pharmacy_id: str,
+    ) -> PharmacyCatalogEntry | None:
+        """권한과 서버 식별 정보를 확인하고 외부 조회 전에 읽기 트랜잭션을 반환한다."""
+        try:
+            self.require_active_link(link_id=link_id, user_hash=sender_hash)
+            pharmacy = self.pharmacy_repository.find_by_id(pharmacy_id)
+            if pharmacy is None:
+                raise HTTPException(400, "Pharmacy was not found.")
+            return pharmacy if not pharmacy.weekly_hours else None
+        finally:
+            self.db.rollback()
+
     @staticmethod
     def _validate_history_retry(
         existing: _ChatMessage, *, message_kind: str, body: str | None = None,
@@ -402,6 +418,7 @@ class ManageLinkedChat:
         allow_internal: bool = False,
         source_alert_id: int | None = None,
         hospital_context: dict[str, object] | None = None,
+        pharmacy_operating_snapshot: dict[str, object] | None = None,
         history_start_date: date | None = None,
         history_end_date: date | None = None,
     ) -> ChatSendResult:
@@ -418,6 +435,7 @@ class ManageLinkedChat:
                 raise HTTPException(400, "History sharing requires start and end dates.")
             if medication_ids or any(value is not None for value in (
                 medication_id, slot_key, pharmacy_id, hospital_context, source_alert_id,
+                pharmacy_operating_snapshot,
             )):
                 raise HTTPException(400, "History sharing cannot be combined with other contexts.")
         elif history_start_date is not None or history_end_date is not None:
@@ -479,6 +497,7 @@ class ManageLinkedChat:
             pharmacy_id=pharmacy_id,
             allow_internal=allow_internal,
             hospital_context=hospital_context,
+            pharmacy_operating_snapshot=pharmacy_operating_snapshot,
             history_start_date=history_start_date,
             history_end_date=history_end_date,
         )
@@ -768,6 +787,7 @@ class ManageLinkedChat:
         *,
         link_id: int,
         user_hash: str,
+        include_notification_preview: bool = False,
     ) -> dict[str, object]:
         """미확인 개수와 읽음 처리 전 첫 메시지 위치를 같은 시점에 반환한다."""
         link = self.require_active_link(link_id=link_id, user_hash=user_hash)
@@ -776,11 +796,22 @@ class ManageLinkedChat:
             reader_hash=user_hash,
             is_patient=str(link.patient_hash) == user_hash,
         )
+        notification = {}
+        if include_notification_preview:
+            setting = self.db.query(_UserSetting).filter(
+                _UserSetting.user_hash == user_hash,
+            ).first()
+            notification["notification"] = build_chat_notification_summary(
+                self.db, link=link, recipient_hash=user_hash,
+                language=setting.language if setting else "ko",
+                show_details=setting is None or setting.notification_detail_mode != "type_only",
+            )
         return {
             "success": True,
             "data": {
                 "unread_count": count,
                 "first_unread_message_id": first_id,
+                **notification,
             },
         }
 
@@ -994,6 +1025,7 @@ class ManageLinkedChat:
         pharmacy_id: str | None,
         allow_internal: bool,
         hospital_context: dict[str, object] | None = None,
+        pharmacy_operating_snapshot: dict[str, object] | None = None,
         history_start_date: date | None = None,
         history_end_date: date | None = None,
     ) -> dict[str, object] | None:
@@ -1056,12 +1088,38 @@ class ManageLinkedChat:
                     "address": pharmacy.address,
                     "telephone": pharmacy.telephone,
                     "today_hours": self._pharmacy_today_hours(pharmacy),
+                    "operating_snapshot": (
+                        dict(pharmacy_operating_snapshot)
+                        if pharmacy_operating_snapshot is not None and not pharmacy.weekly_hours
+                        else self._pharmacy_operating_snapshot(pharmacy)
+                    ),
                     "latitude": pharmacy.latitude,
                     "longitude": pharmacy.longitude,
                     "source_updated_at": utc_isoformat(pharmacy.source_updated_at),
                 }
             }
         raise HTTPException(status_code=400, detail="Unsupported chat message kind.")
+
+    def _pharmacy_operating_snapshot(self, pharmacy: object) -> dict[str, object]:
+        """카탈로그와 신선한 달력 캐시만 사용해 전송 시점의 약국 상태를 고정한다."""
+        now = application_now()
+        previous = now.date() - timedelta(days=1)
+        # 동일 월은 한 번만 읽으며 캐시 미확인을 평일로 간주하지 않는다.
+        months = {(value.year, value.month) for value in (now.date(), previous)}
+        holidays = {
+            month: self.pharmacy_repository.get_cached_korean_holidays(
+                *month, max_age=timedelta(days=30),
+            ) for month in months
+        }
+        today_holidays = holidays[(now.year, now.month)]
+        previous_holidays = holidays[(previous.year, previous.month)]
+        hours = getattr(pharmacy, "weekly_hours", None) or {}
+        return build_operating_snapshot(
+            now=now, today_hours=hours.get(str(now.isoweekday())),
+            previous_hours=hours.get(str(previous.isoweekday())),
+            today_calendar_verified=today_holidays is not None and now.date() not in today_holidays,
+            previous_calendar_verified=previous_holidays is not None and previous not in previous_holidays,
+        )
 
     # 함수이름: _pharmacy_today_hours
     # 함수역할:

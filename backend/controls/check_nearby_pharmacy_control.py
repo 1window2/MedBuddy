@@ -31,6 +31,7 @@ from entities.pharmacy_catalog_entity import (
     PharmacyCatalogEntry,
     PharmacyHolidaySchedule,
 )
+from services.chat_operating_snapshot import build_operating_snapshot
 from services.nearby_care_policy import (
     format_time,
     haversine_distance,
@@ -188,6 +189,37 @@ class CheckNearbyPharmacy:
         self._holiday_emergency_boundary = holiday_emergency_boundary
         self._now_provider = now_provider or (
             lambda: datetime.now(ZoneInfo(settings.APPLICATION_TIME_ZONE))
+        )
+
+    async def requestShareOperatingSnapshot(self, pharmacy: PharmacyCatalogEntry) -> dict[str, object]:
+        """서버에 저장된 좌표에서 정확한 약국 ID의 당일 시간만 제한적으로 확인한다."""
+        timezone = ZoneInfo(settings.APPLICATION_TIME_ZONE)
+        requested_at = self._now_provider().astimezone(timezone)
+        records: list[PharmacyLocationRecord] = []
+        today_holiday = previous_holiday = None
+        if self._pharmacy_boundary is not None and self._holiday_boundary is not None:
+            try:
+                # 공유 한 건은 한 페이지·최대 5초만 사용하며 실패해도 식별 정보 공유는 유지한다.
+                async with asyncio.timeout(min(5.0, settings.PHARMACY_API_TIMEOUT_SECONDS)):
+                    records = await self._pharmacy_boundary.searchNearby(
+                        latitude=pharmacy.latitude, longitude=pharmacy.longitude,
+                        limit=_MAX_RESULT_LIMIT,
+                    )
+                    today_holiday, previous_holiday = await asyncio.gather(
+                        self._lookup_holiday(requested_at.date()),
+                        self._lookup_holiday(requested_at.date() - timedelta(days=1)),
+                    )
+            except (PharmacyApiUnavailableError, PharmacyApiResponseError, TimeoutError):
+                records = []
+        now = self._now_provider().astimezone(timezone)
+        matches = [record for record in records if record.pharmacy_id == pharmacy.pharmacy_id]
+        # 위치 응답의 당일 시간은 주간표나 전날 이월 시간으로 복제하지 않는다.
+        hours = (matches[0].start_time, matches[0].end_time) if len(matches) == 1 else None
+        same_date = now.date() == requested_at.date()
+        return build_operating_snapshot(
+            now=now, today_hours=hours, previous_hours=None,
+            today_calendar_verified=same_date and today_holiday is False,
+            previous_calendar_verified=same_date and previous_holiday is False,
         )
 
     # Function Name: requestNearbyPharmacies

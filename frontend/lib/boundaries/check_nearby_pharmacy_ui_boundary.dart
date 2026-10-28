@@ -30,6 +30,8 @@ part 'nearby_care_filter_sheet.dart';
 // - 현재 영업·심야·주말공휴일·전체 약국 조회 조건에서 지원하는 선택지를 열거하고 구분한다: openNow, lateHours, weekendHoliday, all.
 enum _PharmacyFilter { openNow, lateHours, weekendHoliday, all }
 
+enum _HospitalSearchWarning { partialResults, wideArea }
+
 // 클래스명: _PharmacyDirectionsChoice
 // 역할: 설치 지도 앱·Google 지도·주소 복사 경로를 담당한다.
 // 주요 책임:
@@ -38,6 +40,7 @@ enum _PharmacyDirectionsChoice { installedMapApp, googleMaps, copyAddress }
 
 const _refreshCooldownDuration = Duration(seconds: 10);
 const _mapDistanceGuideDuration = Duration(seconds: 4);
+const _hospitalSearchWarningDuration = Duration(seconds: 5);
 const _hospitalSearchGuidePreference = 'medbuddy.hospital_search_guide_v1';
 const _hospitalWideSearchRadiusKm = 3.0;
 
@@ -127,6 +130,8 @@ class CheckNearbyPharmacyUI extends StatefulWidget {
   final bool selectionMode;
   final bool hospitals;
   final DateTime Function()? clock;
+  // 채팅에서 받은 장소는 최초 조회 후 선택할 ID와 검색 좌표로만 사용한다.
+  final NearbyCarePlace? initialPlace;
 
   // 함수이름: CheckNearbyPharmacyUI
   // 함수역할: 주입된 검색·지도·즐겨찾기 의존성으로 일반 약국 검색 화면을 구성하고 선택 모드는 끈다.
@@ -145,6 +150,7 @@ class CheckNearbyPharmacyUI extends StatefulWidget {
     this.favoriteService,
     this.clock,
     this.hospitals = false,
+    this.initialPlace,
   }) : selectionMode = false;
 
   // 함수이름: CheckNearbyPharmacyUI.selection
@@ -164,7 +170,8 @@ class CheckNearbyPharmacyUI extends StatefulWidget {
     this.favoriteService,
     this.clock,
     this.hospitals = false,
-  }) : selectionMode = true;
+  }) : selectionMode = true,
+       initialPlace = null;
 
   // 함수이름: createState
   // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도의 입력·표시 상태를 관리할 State 객체를 만든다.
@@ -191,6 +198,8 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   late final CheckNearbyCare _control;
   late final bool _ownsControl;
   late final PharmacyFavoriteService _favoriteService;
+  late final NearbyCarePlace? _initialPlace;
+  bool _initialPlaceResolved = false;
   List<NearbyCarePlace> _pharmacies = const [];
   Set<String> _favoritePharmacyIds = const {};
   bool _favoritesLoaded = false;
@@ -210,6 +219,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
   bool _isRefreshCoolingDown = false;
   Timer? _refreshCooldownTimer;
   Timer? _mapDistanceGuideTimer;
+  Timer? _hospitalSearchWarningTimer;
+  _HospitalSearchWarning? _lastHospitalSearchWarning;
+  bool _showHospitalSearchWarning = false;
   bool _hasShownMapDistanceGuide = false;
   bool _showMapDistanceGuide = false;
   bool _showHospitalFirstGuide = false;
@@ -315,7 +327,14 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     _control =
         widget.control ??
         (widget.hospitals ? CheckNearbyHospital() : CheckNearbyPharmacy());
-    _isLoading = !widget.hospitals;
+    _initialPlace = widget.initialPlace;
+    final initialPlace = _initialPlace;
+    _isLoading = initialPlace != null || !widget.hospitals;
+    if (initialPlace != null) {
+      // 현재 응답을 받기 전에는 공유 당시 상세를 화면에 배치하지 않는다.
+      _hasSelectedHospitalDepartment = true;
+      _filter = _PharmacyFilter.all;
+    }
     _favoriteService =
         widget.favoriteService ??
         PharmacyFavoriteService(
@@ -329,8 +348,12 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_loadFavorites());
-      if (!widget.hospitals) unawaited(_loadPharmacies());
-      if (widget.hospitals) unawaited(_loadHospitalFirstGuide());
+      if (initialPlace != null || !widget.hospitals) {
+        unawaited(_loadPharmacies());
+      }
+      if (initialPlace == null && widget.hospitals) {
+        unawaited(_loadHospitalFirstGuide());
+      }
     });
   }
 
@@ -344,6 +367,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     WidgetsBinding.instance.removeObserver(this);
     _refreshCooldownTimer?.cancel();
     _mapDistanceGuideTimer?.cancel();
+    _hospitalSearchWarningTimer?.cancel();
     _detailExtent.dispose();
     if (_ownsControl) {
       _control.dispose();
@@ -367,6 +391,14 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     _lastSearchStartedAt = _now();
     _resumeRefreshPending = false;
     final requestedArea = searchArea ?? (locate ? null : _searchArea);
+    final resolveSharedPlace =
+        _initialPlace != null &&
+        (!_initialPlaceResolved ||
+            _selectedPharmacyId == _initialPlace.placeId) &&
+        searchArea == null &&
+        !locate &&
+        _filter == _PharmacyFilter.all;
+    if (searchArea != null || locate) _initialPlaceResolved = true;
     // Only an explicitly chosen calendar date survives a later search.
     if (!_hasSelectedSearchDate) {
       _targetDateTime = _now();
@@ -381,15 +413,24 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       _errorMessage = null;
     });
     try {
-      final result = await _control.requestNearbyCareSearch(
-        searchArea: requestedArea,
-        // 최초 조회와 내 위치 재검색만 좁힌다. 지도에서 고른 지역은 우선 유지한다.
-        maxDistanceKm: widget.hospitals
-            ? CheckNearbyHospital.defaultRadiusKm
-            : 20,
-        searchMode: _searchModeForFilter(_filter),
-        targetDateTime: _targetDateTime,
-      );
+      final result = resolveSharedPlace
+          ? await _control.requestSelectedPlaceSearch(
+              place: _initialPlace,
+              targetDateTime: _targetDateTime,
+              searchArea: requestedArea,
+              maxDistanceKm: widget.hospitals
+                  ? CheckNearbyHospital.defaultRadiusKm
+                  : 20,
+            )
+          : await _control.requestNearbyCareSearch(
+              searchArea: requestedArea,
+              // 최초 조회와 내 위치 재검색만 좁힌다. 지도에서 고른 지역은 우선 유지한다.
+              maxDistanceKm: widget.hospitals
+                  ? CheckNearbyHospital.defaultRadiusKm
+                  : 20,
+              searchMode: _searchModeForFilter(_filter),
+              targetDateTime: _targetDateTime,
+            );
       if (!mounted || generation != _searchGeneration) {
         return false;
       }
@@ -423,11 +464,17 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
           _selectedPhoneVerified = false;
         }
         _pharmacies = result.data;
+        if (resolveSharedPlace) {
+          if (!_initialPlaceResolved) _centerRevision++;
+          _initialPlaceResolved = true;
+          _selectedPharmacyId = _initialPlace.placeId;
+        }
         _catalogIsStale = result.catalogIsStale;
         _searchTruncated = result.searchTruncated;
         _regionScopeUncertain = result.regionScopeUncertain;
         _holidayScheduleStatus = result.holidayScheduleStatus;
-        final selectedStillExists = result.data.any(
+        _updateHospitalSearchWarning();
+        final selectedStillExists = _pharmacies.any(
           // 함수이름: _loadPharmacies.any callback
           // 함수역할: 위치 권한·조회 조건에 따른 약국 목록과 지도에 대해 `pharmacy.placeId == _selectedPharmacyId` 조건으로 컬렉션 항목을 판별한다.
           // 매개변수:
@@ -467,6 +514,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
         // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
         setState(() {
           _errorMessage = _text.loadFailed;
+          _hospitalSearchWarningTimer?.cancel();
+          _lastHospitalSearchWarning = null;
+          _showHospitalSearchWarning = false;
         });
       }
     } finally {
@@ -505,6 +555,26 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     });
   }
 
+  // 같은 제한 상태의 재조회로 표시 시간을 연장하지 않고, 새 제한이 생겼을 때만 잠깐 안내한다.
+  void _updateHospitalSearchWarning() {
+    final warning = !widget.hospitals
+        ? null
+        : _searchTruncated
+        ? _HospitalSearchWarning.partialResults
+        : (_searchArea?.radiusKm ?? 0) >= _hospitalWideSearchRadiusKm
+        ? _HospitalSearchWarning.wideArea
+        : null;
+    if (warning == _lastHospitalSearchWarning) return;
+    _hospitalSearchWarningTimer?.cancel();
+    _lastHospitalSearchWarning = warning;
+    _showHospitalSearchWarning = warning != null;
+    if (warning != null) {
+      _hospitalSearchWarningTimer = Timer(_hospitalSearchWarningDuration, () {
+        if (mounted) setState(() => _showHospitalSearchWarning = false);
+      });
+    }
+  }
+
   // 최초 안내 확인 여부는 기기에 저장하며 실제 부분 조회 경고와 구분한다.
   Future<void> _loadHospitalFirstGuide() async {
     var seen = false;
@@ -538,7 +608,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
     final wide = (_searchArea?.radiusKm ?? 0) >= _hospitalWideSearchRadiusKm;
     if (!widget.hospitals ||
         _errorMessage != null ||
-        (!_showHospitalFirstGuide && !_searchTruncated && !wide)) {
+        (_searchTruncated || wide
+            ? !_showHospitalSearchWarning
+            : !_showHospitalFirstGuide)) {
       return const SizedBox.shrink();
     }
     final english = widget.userSetting.isEnglish;
@@ -2883,6 +2955,7 @@ class _NearbyPharmacyText {
   // - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String distance(String value) => isEnglish ? '$value away' : '$value 거리';
+
   // 함수이름: todayHours
   // 함수역할: 현재 언어와 입력값에 맞춰 "24시간 운영" 문구를 제공한다.
   // 매개변수:

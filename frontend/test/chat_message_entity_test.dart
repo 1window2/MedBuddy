@@ -21,6 +21,64 @@ Map<String, dynamic> _message(Object? history) => {
 };
 
 void main() {
+  for (final hospital in [true, false]) {
+    test(
+      'place snapshot survives parsing without using viewer time: $hospital',
+      () {
+        final json = <String, dynamic>{
+          'pharmacy_id': 'test-place',
+          'hospital_id': 'test-place',
+          'name': 'Test place',
+          'schedule_date': '2026-10-28',
+          'operating_snapshot': {
+            'status': 'closing_soon',
+            'as_of': '2026-10-27T18:45:00+09:00',
+            'closes_at': '2026-10-27T19:00:00+09:00',
+          },
+        };
+        final ChatPlaceContext place = hospital
+            ? ChatHospitalContext.fromJson(json)
+            : ChatPharmacyContext.fromJson(json);
+        expect(place.operatingSnapshot!.status, 'closing_soon');
+        expect(
+          place.operatingSnapshot!.asOf,
+          DateTime.utc(2026, 10, 27, 9, 45),
+        );
+        expect(
+          place.operatingSnapshot!.closesAt,
+          DateTime.utc(2026, 10, 27, 10),
+        );
+        expect(
+          ChatPharmacyContext.fromJson({
+            ...json,
+            'operating_snapshot': null,
+          }).operatingSnapshot,
+          isNull,
+        );
+      },
+    );
+  }
+  test(
+    'unverifiable snapshot time is not interpreted as current operating state',
+    () {
+      for (final time in [null, 'invalid', '2026-10-27T18:00:00']) {
+        expect(
+          ChatPlaceOperatingSnapshot.tryParse({
+            'status': 'open',
+            'as_of': time,
+          }),
+          isNull,
+        );
+      }
+      expect(
+        ChatPlaceOperatingSnapshot.tryParse({
+          'status': 'unexpected',
+          'as_of': '2026-10-27T09:00:00Z',
+        })!.status,
+        'unknown',
+      );
+    },
+  );
   test('history snapshot preserves strict dates counts and message time', () {
     final message = ChatMessage.fromJson(_message(_history));
     expect(message.messageKind, ChatMessageKind.medicationHistoryShare);
