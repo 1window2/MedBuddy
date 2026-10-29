@@ -104,14 +104,24 @@ Decided by the project owner on the recommendation of the review, on
 - **Alternative:** look up yesterday's hours too (one more external call per
   share).
 
-### 3. Left for the team
+### 3. The search-mode control stays as the collaborator made it
 
-- The search-mode setting shows a slider and three buttons for one value
-  (four controls for a screen reader); the reading-speed setting uses the
-  common choice sheet. Changing it alters the collaborator's design, so it is
-  left as is.
-- A date group the user collapsed in the cabinet stays collapsed while a
-  search is active, so a match shows as a count only.
+- The setting shows a slider and three buttons for one value (four controls
+  for a screen reader), while the reading-speed setting uses the common
+  choice sheet. The user decided not to revert the collaborator's design.
+- **Alternative:** the common choice sheet (`_buildSettingChoice`).
+
+### 4. Cabinet date groups open while searching
+
+- **Before:** a date group the user had collapsed stayed collapsed during a
+  search, so a match showed only as "2026-10-29 · 1개".
+- **Now:** while a search is active every group with a match is open; groups
+  collapsed during the search are remembered only until the search changes,
+  and the user's own collapsed groups return when the search is cleared.
+- **Why:** a search is for finding a medicine by name; an extra tap to see
+  the match defeats it, especially for older users.
+- **Undo:** use `_collapsedDateGroups` for both cases in
+  `check_saved_medication_ui_boundary.dart`.
 
 ## Earlier decisions
 

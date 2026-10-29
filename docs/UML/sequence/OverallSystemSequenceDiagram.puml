@@ -1,7 +1,8 @@
 @startuml
-scale max 4096*4096
+skinparam defaultFontName Nanum Gothic
+scale max 16000*16000
 
-title beta/v0.2.2 전체 시스템 주요 동작 Sequence Diagram
+title beta/v0.2.4 전체 시스템 주요 동작 Sequence Diagram
 
 autonumber
 hide footbox
@@ -25,7 +26,7 @@ actor "OS Local Notification" as LocalNotification
 actor "OS TTS" as OSTTS
 actor "Android Workmanager" as Workmanager
 actor "OS Location Service" as LocationService
-actor "OS Phone / Map App" as ExternalApp
+actor "OS Phone / Map App\n텍스트 공유 대상 앱" as ExternalApp
 actor "응급의료기관 약국 API" as PharmacyAPI
 actor "공휴일 정보 API" as HolidayAPI
 actor "Naver Map SDK" as NaverMap
@@ -41,22 +42,22 @@ box "Flutter Frontend"
     control "LinkedChatHistoryViewModel" as ChatHistory
     control "LinkedChatComposerViewModel" as ChatComposer
     control "LinkedChatDoseRecorder" as ChatDose
-    control "Frontend Controller\nInputPrescription\nCheckMedicationDetail\nCheckSchedule\nCheckSavedMedication\nIdentifyPillBatch\nCheckNearbyPharmacy\nManageLinkedChat 등" as FrontControl
-    participant "Frontend Service\nPrescriptionLocalOcrService\nPrescriptionFrameAnalyzer\nPrescriptionCameraOrientationService\nPrescriptionImageCropService\nDeviceLocationBoundary\nNotificationService\nCaregiverPatientLocalStateService\nLinkedChatRealtimeService 등" as FrontService
+    control "Frontend Controller\nInputPrescription\nCheckMedicationDetail\nCheckSchedule\nCheckSavedMedication\nIdentifyPillBatch\nCheckNearbyPharmacy\nManageLinkedChat\nMedicationHistoryControl\nShareMedicationHistory\nFindAppFeature 등" as FrontControl
+    participant "Frontend Service\nPrescriptionLocalOcrService\nPrescriptionOcrReadingOrder\nPrescriptionFrameAnalyzer\nPrescriptionCameraOrientationService\nPrescriptionImageCropService\nDeviceLocationBoundary\nNotificationService\nCaregiverPatientLocalStateService\nLinkedChatRealtimeService\nAsNeededPendingStore 등" as FrontService
     participant "AuthenticatedApiClient" as ApiClient
 end box
 
 box "FastAPI Backend"
     participant "API Router\napi.router\napi.pharmacy_router\napi.chat_router" as Router
     participant "AppCheckTokenVerifier" as AppCheckVerifier
-    control "Backend Control\nInputPrescription\nCheckMedicationDetail\nCheckSchedule\nCheckSavedMedication\nCheckNearbyPharmacy\nManageLinkedChat 등" as BackControl
+    control "Backend Control\nInputPrescription\nCheckMedicationDetail\nCheckSchedule\nCheckSavedMedication\nCheckNearbyPharmacy\nManageLinkedChat\nManageMedicationCare\nSyncDose 등" as BackControl
     control "QueueMissedDoseAlerts" as MissedControl
     control "ProcessCaregiverAlertOutbox" as OutboxControl
     participant "CaregiverAlertOutboxWorker" as OutboxWorker
     control "ManageCaregiverAlert" as AlertControl
     control "ProcessChatNotifications" as ChatPushControl
     participant "ChatNotificationWorker" as ChatPushWorker
-    participant "Backend Service / Boundary\nOIDCTokenVerifier\nOCRServiceBoundary\nLLMService\nPublicDrug / Pill / Pharmacy Boundary\nChatConnectionManager" as BackService
+    participant "Backend Service / Boundary\nOIDCTokenVerifier\nOCRServiceBoundary\nLLMService\nPublicDrug / Pill / Pharmacy Boundary\nChatConnectionManager\nchat_notification_summary\nchat_operating_snapshot" as BackService
     participant "PillIdentificationCatalogRepository" as Repository
     database "Application Database\nSQLAlchemy" as Database
     database "Redis Cache\nREDIS_URL" as Redis
@@ -229,7 +230,7 @@ opt Push 해제 또는 로컬 정리 단계가 실패하고 캡처한 세션·�
     UI -> DoseSync : resumeAfterAbortedSignOut(isCurrent)
     DoseSync -> DoseStore : 다른 계정이 활성화되지 않았는지 확인 후 복약 세션 복원
     DoseSync -> DoseSync : 캐시·대기 요청 재조회와 재시도 예약
-    UI -> FrontService : 위젯 재발행; restoreSessionReminders(isCurrent)
+    UI -> FrontService : 위젯 재발행; 알림 취소가 시작된 경우만 restoreSessionReminders(isCurrent)
     FrontService -> LocalNotification : 기존 설정·확인된 기간 안에서만 알림 복원
     UI -> Workmanager : 복약 전송·알림 보충 작업 각각 재등록
     UI -> FrontService : PushNotificationService.start()
@@ -286,11 +287,35 @@ end
 UI -> ViewModel : startup / locale change / resume / manual settings save
 ViewModel -> ViewModel : serialize settings reads, saves and device-language synchronization
 opt current session; system-language mode on a locale event
-    ViewModel -> FrontControl : ManageUserSetting request/save
-    FrontControl --> ViewModel : persisted settings or local edits awaiting retry
+    ViewModel -> FrontControl : ManageUserSetting request/save\nPUT /settings/user (expected_revision)
+    FrontControl --> ViewModel : persisted settings or local edits awaiting retry\n409이면 최신 의도만 재전송
     ViewModel --> UI : publish only to the still-current account
 end
 note over UI,ViewModel : Fixed language modes do not follow device locale changes.\nA failed lookup/save is retryable; late old-account results cannot change the new language.
+opt 환경설정의 복약 및 알림 설정 (별도 준비 점검 화면 없음)
+    UI -> FrontControl : NotificationReadinessControl.refresh()
+    FrontControl -> FrontService : NotificationService.readReadinessPermissions()\n휴대폰 알림·복약 채널·정시 알림 상태
+    FrontControl --> UI : NotificationDeviceSettings 스위치 (채널 꺼짐이면 꺼짐 표시)
+    opt 사용자가 권한·시스템 설정 또는 테스트 알림 선택
+        UI -> FrontControl : requestNotificationPermission() / openSystemSettings()\n/ openExactSettings() / sendTest(language)
+        FrontControl -> LocalNotification : 테스트 알림 1건; 이후 알림 수신을 보장하지 않음
+    end
+end
+opt 약품 검색 방식 선택 (속도 우선·보통·정확도 우선 = fast/balanced/thorough)
+    UI -> FrontControl : ManageUserSetting.saveUserSetting()\nmedication_search_mode는 기기에만 저장, 서버 설정·revision 미변경
+end
+
+== 1D. 홈 기능 찾기 ==
+
+User -> UI : 홈 알림 버튼 왼쪽 돋보기
+UI -> UI : FeatureSearchUI 열기 (ViewModel·계정 캡처)
+loop 검색어 입력 또는 지우기
+    UI -> FrontControl : FindAppFeature.search(query, widgetSupported)
+    FrontControl --> UI : 한영 이름·별칭·의도 그룹으로 고른 기기 내 정적 목적지 (자동 이동 없음)
+end
+User -> UI : 결과 선택
+UI -> UI : 같은 세션일 때만 기존 화면·설정 위치·탭으로 이동\n연결 환자 일정은 연동을 새로 확인, 기록 공유는 최초 조회 성공 후 확인창만 열기
+note over UI,FrontControl : 외부 AI·서버 검색·검색어 저장이 없으며 검색만으로 설정 변경·복약 기록·삭제·전송을 하지 않는다.\n상세: FeatureSearch.puml
 
 == 2. 처방전 입력 및 이미지 분석 ==
 
@@ -326,14 +351,15 @@ FrontControl -> FrontService : PrescriptionLocalOcrService.recognizeAndMask(imag
 FrontService -> MLKit : 기기 내 문자 인식 실행
 MLKit --> FrontService : 인식 Text와 Text Region
 FrontService -> FrontService : PrescriptionPrivacyFilter\n개인정보 탐지 및 Masking
+FrontService -> FrontService : PrescriptionOcrReadingOrder.order(boxes, keep)\n세로 여백으로 나눈 패널 안에서 화면 행 순서로 정렬, 줄은 합치지 않음
 FrontService --> FrontControl : LocalPrescriptionOcrResult\nmaskedText, regions
 
 FrontControl -> ApiClient : POST /analyze-prescription-text\n비식별 Text만 전송
 ApiClient -> Router : 처방 Text 분석 요청
 Router -> BackControl : InputPrescription.requestPrescriptionText(maskedText)
-BackControl -> BackControl : deidentify_prescription_text(): 개인정보 구역·식별자 재검사
-break 안전하게 분리할 수 없는 개인정보·약 정보
-    BackControl --> UI : 외부 AI 호출 전 거절; 약 목록 재선택 안내
+BackControl -> BackControl : deidentify_prescription_text(): 약 정보 없는 식별 줄 제외\n라벨 없는 날짜 가림, 라벨은 줄 단위 검사
+break 개인정보 라벨과 약 행·조제일자가 한 줄에 섞임 (PrescriptionPrivacyError)
+    BackControl --> UI : 외부 AI 호출 전 거절; 약 목록·조제일자 부분 재촬영 안내
 end
 BackControl -> BackService : OCRServiceBoundary.extractPrescriptionTextData()
 BackService -> BackService : 외부 제공자 호출 직전 같은 개인정보 검사 재적용
@@ -404,18 +430,20 @@ loop 인식된 MedicationSchedule마다 (최대 여섯 건 동시 조회)
             BackControl -> BackControl : 상세·이미지 보완
         else Cache 없음·사용 불가 또는 원문 조건 불일치
             BackService -> MFDS : PublicDrugSmallAPI.searchMedication()
-            MFDS --> BackService : 의약품 기본정보
-            BackService -> MFDS : PublicDrugLargeAPI.searchMedication()
-            MFDS --> BackService : 의약품 허가정보
-            BackService -> BackService : 원문 함량·제형으로 후보 제한
-            opt 허가정보 요약이 필요한 경우
-                BackService -> Gemini : 검증된 후보 최대 3개 요약\n단일 정확 일치이면 그 제품만 요약
+            MFDS --> BackService : 의약품 기본정보 또는 장애
+            opt 기본정보에 유효한 후보가 없거나 기본 API 장애
+                BackService -> MFDS : PublicDrugLargeAPI.searchMedication()
+                MFDS --> BackService : 의약품 허가정보
+                BackService -> BackService : 원문 함량·제형으로 후보 제한
+                BackService -> Gemini : 검증된 후보 최대 3개 요약\n단일 정확 일치이면 그 제품만, 같은 품목은 요청당 1회
                 Gemini --> BackService : 환자용 효능, 복용법, 경고 요약
             end
             BackService -> MFDS : PillImageAPI.searchMedicationImage()
             MFDS --> BackService : 약품 이미지 URL
-            BackService -> Redis : 원문별 MedicationDetail Cache 저장
-            BackService --> BackControl : MedicationDetail 목록
+            opt 후보 요약이 완결되고 결과가 비어 있지 않음
+                BackService -> Redis : 원문별 MedicationDetail Cache 저장
+            end
+            BackService --> BackControl : 성공한 상세 후보와 요약 완결 여부
         end
     end
 
@@ -424,7 +452,7 @@ loop 인식된 MedicationSchedule마다 (최대 여섯 건 동시 조회)
         Router --> ApiClient : 약 상세 응답
         ApiClient --> FrontControl : MedicationDetail
         FrontControl --> ViewModel : 원래 처방 행의 AnalyzedMedication
-    else 유사 이름 또는 복수 제품으로 직접 확인 필요
+    else 유사 이름·복수 제품 또는 일부 요약 실패로 직접 확인 필요
         BackControl --> Router : requires_confirmation=true\ndata=[], candidates, review_reason
         Router --> ApiClient : 확인 전용 응답 (구형 앱도 자동 연결하지 않음)
         ApiClient --> FrontControl : 제품명·제조사 포함 후보
@@ -463,10 +491,11 @@ end
 alt 확인되지 않은 약품이 존재
     ViewModel -> ViewModel : 성공 결과는 행별 보존하고\n변경 Radar 생략
     ViewModel --> UI : 약별 세로 카드와 상태별 요약\n확인 완료·후보 있음·결과 없음·조회 실패·조회 전 구분
-    note over UI,ViewModel : 전체 조회 실패도 같은 검토 화면에서 인식 정보를 보존한다.\n조회 완료 건수는 실제 응답 기준이며 재시도를 중복 집계하지 않는다.
+    note over UI,ViewModel : 전체 조회 실패도 같은 검토 화면에서 인식 정보를 보존한다.\n조회 완료 건수는 실제 응답 기준이며 재시도를 중복 집계하지 않는다.\nOCR에서 건너뛰거나 보정한 행 안내도 이 검토 화면에 표시한다.
     User -> UI : 미확인 약 수정·누락 약 추가 후 재조회\n또는 별도 확인 후 확인된 약만으로 계속
     UI -> ViewModel : 미확인 대상만 requestPrescriptionAnalysis()\n또는 continueWithVerifiedMedicationAnalysis()
 else 모든 인식 약품 상세정보 조회 성공
+    UI -> ViewModel : showMedicationAnalysisResult()\n결과 화면을 먼저 열고 Radar는 비동기 요청
     ViewModel -> FrontControl : CheckPrescriptionChange.requestPrescriptionChange()
     FrontControl -> ApiClient : POST /prescription/change-radar
     ApiClient -> Router : 현재 처방 비교 요청
@@ -478,7 +507,7 @@ else 모든 인식 약품 상세정보 조회 성공
     BackControl --> Router : PrescriptionChangeRadar
     Router --> ApiClient : 처방 변경 결과
     ApiClient --> ViewModel : PrescriptionChangeRadar
-    ViewModel --> UI : CheckResultUI에 분석 결과와 변경 Radar 출력
+    ViewModel --> UI : CheckResultUI에 분석 결과와 변경 Radar 출력\nRadar 실패 시 Radar만 생략, 펼친 결과 카드 상태 유지
 end
 note over UI,ViewModel : 검토·결과 요약은 진입 즉시 상단 고정, 중앙 2초 대기·슬라이딩 없음.\n결과 약 상세는 접기·펼치기, Radar는 기본 접힘.\n변경·추가·이번 처방 미확인 분류별 세 건씩 표시하며 중단을 추정하지 않는다.
 
@@ -587,7 +616,7 @@ opt 사용자가 낱알 약 식별을 선택하는 경우
     end
     User -> UI : 실제 약과 일치하는 후보 확인
     UI --> User : showMedicationScheduleReview()로 일정 검토 화면 출력
-    User -> UI : 복용 시작일, 기간, 복용 주기, 복용일의 횟수·용량·시간대 확인 또는 수정
+    User -> UI : 복용 시작일, 기간, 정기/필요시 방식, 복용 주기와 용량·시간대 확인 또는 수정
     UI -> UI : 실제 복용일과 기간 내 복용일 수 안내\n선택 주기를 공통 저장 정보에 보존
     UI -> FrontControl : ResolveDuplicatePillSelectionControl로 동일 품목 확인
     FrontControl --> UI : 중복 품목과 사진 수
@@ -602,7 +631,8 @@ end
 
 Patient -> UI : 오늘 복약 일정 선택
 note over FrontControl,BackControl : X-MedBuddy-Client-Features: dose-days selects the dose-day schedule.\nOlder clients keep the legacy daily view. Caregiver missed-dose checks always use dose days.\nFrequency cycles and duration units are preserved through review, save and reminder planning.
-note over UI,ViewModel : 복약함은 비매일 약의 복용 주기와 다음 복용일을 표시한다.\n월간은 현재 30일 주기이며 달력의 같은 날짜로 추정하지 않는다.
+note over UI,ViewModel : 복약함은 비매일 약의 복용 주기와 다음 복용일을 표시한다.\n월간은 현재 30일 주기이며 달력의 같은 날짜로 추정하지 않는다.\n복약함은 기본 전체 조회이며 저장 약을 날짜별 접이식 묶음으로 표시한다.
+note over UI,BackControl : 정기 일정은 적용일·중단일·복용 주기를 적용한다. 필요시 약은 정기 진행률과 분리한다(5B).\n변경·중단·교체된 약과 기존 기록은 보존한다(5A).
 UI -> ViewModel : fetchTodayMedicationSchedule()
 ViewModel -> FrontControl : CheckSchedule.requestTodayMedicationSchedule()
 FrontControl -> ApiClient : GET /schedule/today
@@ -634,18 +664,30 @@ DoseSync --> UI : 즉시 상태 반영 + 전송 대기
 DoseSync -> Workmanager : 연결 시 전송 예약
 Workmanager -> DoseSync : 인증 세션 복원 후 drain()
 DoseSync -> DoseStore : 활성 계정의 첫 요청 선점
-DoseSync -> ApiClient : POST /schedule/completion-operations\n재시도에도 같은 operation_id
+DoseSync -> ApiClient : POST /schedule/completion-operations\n재시도에도 같은 operation_id + 본 일정의 regimen_revisions
 ApiClient -> Router : 인증된 본인 기록만 요청
 Router -> BackControl : SyncDose.apply()\n처음 받은 요청만 CheckSchedule에 적용
+opt regimen_revisions가 현재 처방 revision과 다름 (오프라인 중 처방 변경)
+    BackControl --> DoseSync : 409; 복용 상태를 추측해 반영하지 않음, 일정 재조회 필요
+end
 note over UI,BackControl : 원래 날짜의 기록만 변경한다. 지연된 기록은 최대 30일까지 복구하며\n과거 기록으로 오늘의 복용 상태나 새 완료 알림을 만들지 않는다.\n기존 PATCH API는 호환 경로로 유지한다.
-BackControl -> Database : 처리 영수증 + medication_completions Upsert와\n신규 당일 시간대 완료 Caregiver Alert Outbox 저장\n(같은 Transaction)
+BackControl -> Database : 처리 영수증 + medication_completions Upsert·감사 이력과\n신규 당일 정기 시간대 완료 Caregiver Alert Outbox 저장\n(같은 Transaction)
 Database --> BackControl : commit된 완료 상태와 outbox_id
 BackControl --> Router : 갱신된 MedicationSchedule 목록과\ncommit 이후 completion event
 Router --> ApiClient : 처리 영수증과 오늘의 서버 일정
 ApiClient --> DoseSync : 요청 ID 검증 가능한 응답
 DoseSync -> DoseStore : 캐시 저장과 선점 요청 제거를 원자적으로 반영
 DoseSync --> UI : 서버 저장 완료
-ref over UI,Database : 상세 재시도·거부·계정 전환: OfflineDoseSync.puml
+opt 오늘 일정 캐시 저장 후 / 자정 이후 오프라인
+    DoseSync -> FrontControl : CheckSchedule.requestOfflineScheduleWindow(expectedStartDay)
+    FrontControl -> ApiClient : GET /schedule/window?days=14
+    ApiClient --> DoseSync : 과정 목록 + window_start / window_end
+    DoseSync -> DoseStore : DoseOfflineScheduleStore.saveOfflineScheduleWindow()\n시작·종료일 일치 시 계정별 암호화 14일 창 저장
+    DoseSync -> DoseStore : 날짜 변경 시 prepareOfflineScheduleDay()\nOfflineScheduleWindow.project(window, today)
+    DoseStore --> DoseSync : 서버가 확인한 기간 안의 오늘 정기 일정 (완료 상태 초기화)
+    note over DoseSync,DoseStore : 창을 받는 사이 캐시 revision이 바뀌면 버리고 다시 받는다.\n12시간 알림 보충 작업도 새 창을 받는다. 창 밖 날짜는 추정하지 않는다.
+end
+ref over UI,Database : 상세 재시도·거부·계정 전환·14일 창: OfflineDoseSync.puml
 ref over UI,Database : 위젯 본인 기록 / 연결 환자 읽기 전용: HomeDoseWidget.puml
 
 opt 신규 시간대 완료 Outbox가 생성된 경우
@@ -686,6 +728,107 @@ opt 신규 시간대 완료 Outbox가 생성된 경우
         end
     end
 end
+
+== 5A. 처방 변경·월간 복약 기록·기록 공유 ==
+
+ref over UI,Database : MedicationCareHistory.puml: 적용일 경계·정정·기간 공유·채팅 카드
+Patient -> UI : 복약함에서 수정·교체·중단과 적용일 확인
+UI -> ViewModel : 확정한 변경·조회 revision·작업 ID
+ViewModel -> DoseSync : suspendSchedule(): 오늘 캐시·14일 창 백업 후 비움
+ViewModel -> FrontControl : CheckSavedMedication.changeRegimen()
+FrontControl -> ApiClient : POST /care/medications/{id}/change
+ApiClient -> Router : 환자 본인의 변경 요청
+Router -> BackControl : ManageMedicationCare.change_medication()
+BackControl -> Database : 소유권·revision·기존 기록 경계·동일 작업 확인
+alt 유효한 신규 변경
+    BackControl -> Database : 새 snapshot 또는 중단 + 감사 이력 + 영수증 commit\n이전 약·보고 보존
+    BackControl --> ViewModel : 저장 확인
+else 동일 성공 작업 재시도
+    BackControl --> ViewModel : 기존 영수증의 응답 (재변경 없음)
+else 오래된 revision / 부적절한 적용일·기록 경계
+    BackControl --> ViewModel : 거절; 재조회 안내, 기존 기록 유지
+end
+ViewModel -> ViewModel : 적용·충돌·대상 없음이면 목록·일정 재조회 후 알림 조정\n전송 실패(오프라인 등)면 그사이 저장된 것이 없을 때만 restoreSchedule(backup)
+note over BackControl,Database : 약 삭제·만료 정리는 redact_medication_care_receipts()로 관련 재시도 영수증의 응답을 비운다.\n만료 정리는 새 약 저장과 같은 commit으로 반영한다.
+
+User -> UI : 일정 화면 달력 아이콘으로 본인 또는 연결 환자 기록 열기
+UI -> FrontControl : MedicationHistoryControl.readRange()\n보이는 달의 조회 가능 날짜, 달마다 요청 1회
+FrontControl -> ApiClient : GET /care/history (start, end, patient scope)
+ApiClient -> Router : 현재 조회 권한 확인
+Router -> BackControl : ManageMedicationCare.history()
+BackControl -> Database : 최근 90일 내 최대 31일의 보고와 정기 예정 항목 조회
+BackControl --> FrontControl : 복용·건너뜀·미기록, 실제/서버 기록 시각
+FrontControl --> UI : MedicationHistoryMonthCalendar\n날짜별 정기 복용 수(예 2/3)·전부/일부/없음 표시, 필요시 기록은 파란 테두리
+User -> UI : 날짜 선택 시 하루 기록 load(range); 달력 버튼·뒤로가기로 달 복귀
+note over UI,FrontControl : 90일 이전·미래 날짜는 선택할 수 없다. 보호자는 같은 달력을 읽기 전용으로 본다.\n요약 횟수는 정기 복용만 센다.
+opt 환자 본인이 보고 정정
+    UI -> FrontControl : MedicationHistoryControl.save(change)
+    FrontControl -> ApiClient : PUT /care/history/{id}/{date}/{slot}
+    ApiClient -> Router : 인증된 정정 요청
+    Router -> BackControl : ManageMedicationCare.update_history()
+    BackControl -> Database : revision·시각 확인 후 보고 + 감사 + 영수증 commit
+    BackControl --> FrontControl : ACK 후에만 저장 완료, 기존 snapshot 폐기
+end
+note over FrontControl,Database : 정정은 온라인 요청이며 영속 큐는 새 필요시 복용(5B)에만 쓴다.\n당일 새 완료 전환은 기존 Outbox 경로를 쓰고 과거 정정은 새 알림을 만들지 않는다.
+opt 환자 또는 연결 보호자가 기록 공유
+    alt '다른 방법으로 공유' (최대 90일)
+        UI -> FrontControl : readRangeForExport(range): 31일씩 나눠 재조회
+        FrontControl --> UI : 같은 세션에서 확인된 기간 snapshot
+        UI -> UI : medicationHistoryShareText()\n내부 식별자 없는 날짜별 글과 자가 기록 한계 안내, 100,000자 초과 시 기간 축소 안내
+        UI -> ExternalApp : MethodChannel shareText\nAndroid ACTION_SEND text/plain (파일 없음)
+    else 연동 채팅으로 요약 공유 (최대 31일)
+        UI -> FrontControl : ShareMedicationHistory.loadRecipients() / send(linkId, range)
+        FrontControl -> ApiClient : ManageLinkedChat.sendMessage()\nPOST /chat/links/{linkId}/messages\nmedication_history_share + 기간 + clientMessageId
+        ApiClient -> Router : 채팅 전송 요청
+        Router -> BackControl : ManageLinkedChat.send_message()\nManageMedicationCare.history_share_context()
+        BackControl -> Database : 기간·상태별 건수 요약 메시지 + ChatNotificationJob commit
+        BackControl --> FrontControl : 저장 메시지; 응답 불명확하면 같은 ID 유지
+        note over UI,Database : 요약 카드는 약명·개별 기록 없이 기간·건수만 담는다.\n카드를 열면 MedicationHistoryUI(readOnly)가 현재 권한으로 최신 기록을 다시 읽고, 90일이 지난 카드는 만료를 안내한다.
+    end
+end
+
+== 5B. 필요시 복용 기록·실행 취소·보호자 개별 알림 ==
+
+Patient -> UI : 일정 화면 필요시 카드에서 약 체크 / 전체 체크
+UI -> FrontControl : MedicationHistoryControl.restorePendingAsNeeded()
+FrontControl -> FrontService : AsNeededPendingStore.read(owner): 재시작 전 미확인 의도 복원
+opt 오늘 이미 복용한 약을 다시 체크
+    UI --> Patient : 마지막 복용 시각·경과 시간과 함께 추가 복용 확인
+    UI -> FrontControl : 당일 기록 재조회; 횟수가 바뀌었으면 다시 누르도록 안내
+end
+UI -> FrontControl : stageAsNeededChanges(): 새 as_needed:{event} 기록·작업 UUID·복용 시각
+FrontControl -> FrontService : AsNeededPendingStore.stage(): 전송 전 계정별 암호화 저장
+loop 아직 확인되지 않은 의도마다
+    FrontControl -> ApiClient : save(change): PUT /care/history/{id}/{date}/as_needed:{event}
+    ApiClient -> Router : 인증된 필요시 복용 보고
+    Router -> BackControl : ManageMedicationCare.update_history()
+    BackControl -> Database : 보고·감사·영수증 + 당일 새 복용의 고유 Outbox commit\n서버보다 60초 이내 앞선 복용 시각은 수신 시각으로 저장
+    BackControl --> FrontControl : ACK
+    FrontControl -> FrontService : AsNeededPendingStore.remove(): ACK된 작업 ID만 제거
+end
+note over UI,FrontService : 일부 실패 시 성공한 약은 유지하고 남은 의도만 같은 ID로 재시도한다.\n확정 거절(401·403·404·409·410·422)은 의도를 지우고 목록 재확인을 안내한다.\n지난날 의도를 이어 보낸 탭은 실행 취소를 제공하지 않는다.
+opt 저장 알림의 실행 취소 (일정 화면을 떠나도 동작)
+    Patient -> UI : 실행 취소
+    UI -> FrontControl : 당일 기록 재조회 후 이번 탭이 만든 기록만 save(unrecorded)
+    note right of FrontControl : 이미 보낸 보호자 알림은 회수하지 않으며\n보호자 화면의 횟수는 다음 조회에서 바로잡힌다.
+end
+Router -> OutboxControl : commit 이후 processOne(outbox_id)
+OutboxWorker -> OutboxControl : processDue(): 미처리·실패 건 복구
+OutboxControl -> BackControl : DispatchCaregiverAlert.notifyAsNeededDoseCompletedIfCurrent()
+BackControl -> Database : 현재 날짜·유효 복용 기록·연동·명시적 구독·사용자 설정 재검증
+alt 유효하며 구독한 보호자에게 전달 가능
+    BackControl -> BackService : FirebasePushNotificationBoundary.send_notification()
+    BackService -> FCM : 개별 기록 키의 필요시 완료 알림\n정기 전체 완료·자동 채팅·미복약 action 아님
+    FCM --> Caregiver : 개별 복용 알림과 읽기 전용 일정 진입
+else 오래된 기록 / 취소 / 삭제 또는 수신 대상 없음
+    BackControl --> OutboxControl : 알림 생략; 현재성 상실은 terminal 처리
+end
+opt 환자의 필요시 확인 알림 (기본 꺼짐)
+    Patient -> UI : 필요시 종 버튼에서 다음 시각 선택
+    UI -> FrontControl : AsNeededCheckReminderControl.save()
+    FrontControl -> LocalNotification : 일회 예약; 정기 일정·복용 action·미루기 없음
+end
+ref over UI,Database : AsNeededCaregiverNotification.puml: 대기 보존·구독·멱등·발송 재검증·개발 감시
 
 == 6. 환자 복약 알림 설정 ==
 
@@ -755,11 +898,11 @@ loop Android Workmanager 12시간 주기
     Router --> ApiClient : MedicationAlarm과 MedicationSchedule
     ApiClient --> FrontControl : 현재 서버 상태
     FrontControl --> FrontService : 미래 시작 처방을 포함한 과정 목록
-    FrontService -> DoseSync : read current-day schedule with cache revision
+    FrontService -> DoseSync : GET schedule/today 후 cacheSchedules(awaitScheduleWindow)\n오늘 캐시와 새 14일 오프라인 창을 함께 저장
     DoseSync -> DoseStore : overlay same-account, same-day durable pending doses
     DoseStore --> DoseSync : ordered taken/undo/retake projection and latest receipt
     DoseSync --> FrontService : stable snapshot or retry on receipt/day change
-    note over DoseSync,DoseStore : Read-only refresh of pending operations: no upload or account activation.\nAn unreadable or unstable snapshot leaves existing reminders intact for retry.
+    note over DoseSync,DoseStore : Pending operations are only read: no upload or account activation.\nAn unreadable or unstable snapshot leaves existing reminders intact for retry.
     FrontService -> FrontService : 다음 14일의 복용 기간과 dose-cycle 날짜 계산\n기간 미상 과정도 14일 창 보충
     FrontService -> LocalNotification : 날짜별 예약 계획 비교 후 변경분만 갱신\n동일 예약·미루기 유지, Rolling Window 보충
 end
@@ -873,6 +1016,7 @@ opt 보호자 홈 또는 감시 자료 갱신
     ApiClient -> Router : 현재 보호자의 통합 snapshot 요청
     Router -> BackControl : CheckCaregiverMonitoring.requestMonitoringSnapshot(include_all_schedules)
     BackControl -> Database : 활성 연결·알림 정책 각 1회 조회
+    BackControl -> Database : 알림 OFF 환자도 포함한 당일 필요시 기록 키 일괄 조회
     loop 조회 대상 환자 400명 단위
         BackControl -> Database : 일정에 필요한 저장 약 필드 일괄 조회
         opt 복용 중인 약이 있음
@@ -882,7 +1026,7 @@ opt 보호자 홈 또는 감시 자료 갱신
     end
     BackControl --> UI : 환자별 서버 별칭과 조회된 현황
     end
-    note right of BackControl : 홈·위젯은 알림을 끈 환자도 포함하며 약 상세는 제외한다.\n감시 전용 조회는 활성 알림 정책이 있는 환자만 조회한다.
+    note right of BackControl : 홈·위젯은 알림을 끈 환자도 포함하며 약 상세는 제외한다.\n감시 전용 정기 일정은 활성 알림 정책이 있는 환자로 제한한다.\n필요시 기록 키는 재활성화 기준값을 위해 알림 OFF 환자도 포함한다.
 end
 
 opt 내 일정이 선택되어 있고 활성 연결 환자가 있음
@@ -1084,10 +1228,10 @@ end
 == 11. 복약정보 직접 등록 ==
 
 User -> UI : 약 정보 입력에서 직접 등록 선택
-UI --> User : 약명, 용량·단위, 복용기간, 복용 주기·시간대와 선택 사진 입력 화면
+UI --> User : 약명, 용량·단위, 복용기간, 정기/필요시 방식\n정기 주기·시간대와 선택 사진 입력 화면
 User -> UI : 필수 정보 입력 및 저장 선택
 note over UI,ViewModel : Save work captures account and save generation.\nClear/dispose blocks subsequent requests, photo attachment and refresh.\nAn already accepted server write is not undone by cancelling the local flow.
-UI -> UI : 필수값, 날짜 범위와 시간대 검증\n매일·격일·주 1회·월 1회의 복용일 안내
+UI -> UI : 필수값·날짜 범위 검증; 정기는 주기·시간대와\n매일·격일·주 1회·월 1회 복용일 안내, 필요시는 정기 시간대 없이 저장
 UI -> ViewModel : saveManualMedication(entry)
 ViewModel -> FrontControl : MedicationSchedule로 약 상세정보 보완 요청
 FrontControl -> ApiClient : 입력 약의 상세정보 보완 조회
@@ -1196,6 +1340,12 @@ opt 사용자가 연동 채팅에 약국 공유
     Router -> BackControl : 활성 연결 및 공유 약국 검증
     BackControl -> Database : PharmacyCatalog 우선, 없으면 유효한 보완 검색 캐시 조회
     Database --> Router : 신뢰 가능한 약국 Snapshot
+    Router -> BackControl : CheckNearbyPharmacy.requestShareOperatingSnapshot()
+    opt 주간 운영표가 없는 약국
+        BackControl -> PharmacyAPI : 같은 ID의 위치 조회와 당일·전날 공휴일 확인을 함께 실행 (최대 5초)
+    end
+    BackControl -> BackService : build_operating_snapshot()\nopen / closing_soon / before_open / closed / unknown
+    Router -> BackControl : ManageLinkedChat.send_message(): 전송 시점 operating_snapshot 저장
 end
 opt 사용자가 제한 시간 안에 새로고침 반복
     UI --> User : 추가 호출 없이 남은 대기시간 안내
@@ -1322,12 +1472,17 @@ loop 서버 ChatNotificationWorker 주기 (HTTP 요청과 독립)
     ChatPushControl -> BackService : 수신자 접속 여부와 Push 제한 재검증
     alt 상대 미접속이며 Push 전송 허용
         ChatPushControl -> BackControl : DispatchChatMessageAlert\n현재 연결·읽음·삭제·알림 허용 재검증
+        BackControl -> BackService : build_chat_notification_summary()\n미확인 수·최근 미확인 최대 3개 미리보기·대화별 group_tag
+        opt 미확인 수가 0 (이미 읽음)
+            BackControl --> ChatPushControl : 전송 생략
+        end
         BackControl -> BackService : FirebasePushNotificationBoundary.send_notification()
-        BackService -> FCM : 표시 정책에 따른 미리보기와 messageKind/slotKey
-        FCM --> User : 활성 연결·역할 확인 후 해당 채팅을 여는 알림
+        BackService -> FCM : "보낸 사람 (N)" 제목·최신 메시지 우선 본문\nchat_summary·chat_group, 표시 정책에 따른 미리보기와 messageKind/slotKey
+        FCM --> User : 대화별 알림 하나로 교체; 활성 연결·역할 확인 후 해당 채팅 열기
     end
     ChatPushControl -> Database : 완료·억제 또는 실패 재시도 상태 저장\n만료·한도 도달 시 dead 보존
 end
+note over FrontService,ApiClient : 기기는 FCM chat_summary 또는 감시 경로의 GET /chat/links/{linkId}/unread-count\n?include_notification_preview=true 응답으로 NotificationService.showLinkedChatAlert(summary)를 호출해\n대화별 tag 하나로 교체 표시한다. 요약 조회가 실패해도 이번 메시지 알림은 요약 없이 표시한다.
 note over Router,BackService : 일반 채팅은 메시지와 ChatNotificationJob을 같은 Transaction에 저장한다.\n별도 Worker가 재시도하며 caregiver 완료·미복약 Outbox와는 구분한다.\nWebSocket Registry는 프로세스 메모리이며 요청 제한 Redis는 조회 Cache와 분리한다.\n복약 기록 공유 Push는 기간·건수·약명 없는 일반 안내만 사용한다.
 opt 환자가 시간대의 모든 약을 완료
     ref over OutboxControl,Database : Flow 5의 Outbox 처리에서 자동 완료 chat record 생성
@@ -1353,9 +1508,10 @@ UI -> FrontControl : 앱 전경·현재 채팅·최신 위치일 때만 markRead
 FrontControl -> ApiClient : POST /chat/links/{linkId}/read
 ApiClient -> Router : 읽음 범위 갱신
 Router -> Database : 상대 메시지 read_at 일괄 갱신
+UI -> FrontService : NotificationService.clearReadChatAlert(owner, linkId, throughMessageId)\n읽은 범위 뒤 새 메시지가 없을 때만 대화 알림 취소
 
 opt 사용자가 메시지를 선택하고 삭제 범위를 확인
-    User -> UI : 길게 눌러 복사·삭제 선택 메뉴 열기\n삭제 선택 후 행을 눌러 선택·해제
+    User -> UI : 길게 눌러 복사·삭제 선택 메뉴 열기\n복사는 본문을 기기 클립보드로만 복사(서버 요청 없음)\n삭제 선택 후 행을 눌러 선택·해제
     UI -> FrontControl : deleteMessages(linkId, messageIds, scope)
     FrontControl -> ApiClient : POST /chat/links/{linkId}/messages/delete
     ApiClient -> Router : 인증된 메시지 선택과 범위
@@ -1381,6 +1537,19 @@ note over BackService,Database : DataMaintenanceService가 ChatMessageRetentionP
 ref over UI,Database : NearbyCareSharing.puml: 진료과목·날짜·상태 / 서버 검증 공유
 note over UI,BackControl : 약국 조회와 지도·목록 UI를 공유하되 병원 API와 캐시는 분리한다.\n공휴일을 알 수 없으면 평일로 단정하지 않고 불확실 상태로 표시한다.
 note over UI,BackControl : 진료과목(또는 전체)을 먼저 선택한 후 위치와 병원을 조회한다.\n현재 위치의 빈 결과만 제한 범위까지 확장하며 수동 지도 영역은 유지한다.
+opt 공유된 병원·약국 카드 열기
+    User -> UI : 채팅의 장소 카드 선택
+    UI -> FrontControl : CheckNearbyCare.requestSelectedPlaceSearch(place)\n수신 기기의 현재 위치·날짜로 전체 상태 주변 검색
+    opt 같은 ID가 주변 결과에 없음
+        FrontControl -> ApiClient : 공유 좌표 중심 300m 한 번 보완 조회
+    end
+    alt 같은 ID를 찾음
+        FrontControl --> UI : 수신자 기준 거리와 최신 상세
+    else SharedPlaceNotFound
+        FrontControl --> UI : 주변 장소 목록과 찾을 수 없음 안내 (갱신마다 재조회하지 않음)
+    end
+    note right of UI : 카드는 공유 시점 operating_snapshot을 보존하며 현재 상태로 다시 계산하지 않는다.
+end
 
 == 15. 운영 Catalog 주기 갱신 ==
 

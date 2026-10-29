@@ -1,7 +1,7 @@
 @startuml
 title Medication Lifecycle and Reported Intake History
 hide footbox
-skinparam defaultFontName Malgun Gothic
+skinparam defaultFontName Nanum Gothic
 skinparam maxMessageSize 120
 skinparam sequenceMessageAlign center
 actor Patient
@@ -13,7 +13,7 @@ control "ManageMedicationCare" as Care
 participant "AuthorizationControl /\naccount + medication locks" as Auth
 database "saved_medications / medication_completions\nmedication_care_audits / medication_care_operations" as DB
 participant "Schedule / Notifications / Widget" as Schedule
-boundary "Android FileProvider / share chooser" as Share
+boundary "Android ACTION_SEND chooser\n(MethodChannel shareText)" as Share
 control "ShareMedicationHistory /\nManageLinkedChat (Flutter)" as ChatFront
 boundary "chat_router / LinkedChatUI" as ChatBoundary
 control "ManageLinkedChat (FastAPI)" as Chat
@@ -76,9 +76,19 @@ note over Care,DB
   PRN remains saved but never produces automatic scheduled slots.
 end note
 
-== Dated review and correction ==
-Patient -> UI: Open dated history
+== Month calendar, dated review and correction ==
+Patient -> UI: Open history (schedule calendar icon)
 Caregiver -> UI: Open linked patient's history (read-only)
+UI -> UI: Start on current month; MedicationHistoryMonthCalendar.visibleRange(month, today)
+UI -> Front: readRange(visible part of month)
+Front -> API: GET /care/history (one request per visible month)
+API --> Front: Month snapshot
+Front --> UI: Per-day taken / scheduled marks; PRN ring; later days disabled
+note over UI,Front
+  Earlier months stop at the 90-day window; the server API is unchanged.
+  The month snapshot is kept apart from the day view's snapshot.
+end note
+Patient -> UI: Tap a day (calendar button / back returns to month)
 UI -> Front: load(range)
 Front -> API: GET /care/history (dates, patient scope)
 API -> Care: history(...)
@@ -117,7 +127,7 @@ note over UI,Front
   Daily-screen status summary stays scoped to the displayed day.
   Export dialog does not show period summaries or status counts.
 end note
-Patient -> UI: 다른 앱으로 공유 선택
+Patient -> UI: '다른 방법으로 공유' 선택
 UI -> Front: readRangeForExport(range)
 Front -> API: GET selected range; server rechecks current access
 alt Read fails

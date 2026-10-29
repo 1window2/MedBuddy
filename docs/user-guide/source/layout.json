@@ -434,52 +434,95 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2225
+          2154
         ],
-        "boxes": [],
-        "callouts": [],
-        "image": ".build/pdf-images/a5bc2c12bfd7ecad80f97ed6c340c96dbe981a924f84afc476a9d153e176dda8.png"
+        "boxes": [
+          [
+            30,
+            95,
+            1050,
+            255
+          ],
+          [
+            45,
+            280,
+            1035,
+            950
+          ]
+        ],
+        "callouts": [
+          {
+            "box_index": 0,
+            "text": "워드마크·기능 찾기·알림"
+          },
+          {
+            "box_index": 1,
+            "text": "오늘의 복약 진행률"
+          }
+        ],
+        "image": "assets/home-wordmark-2026-10-29.png"
       },
       {
         "identity": "ASM-P010:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2225
+          2154
         ],
-        "boxes": [],
+        "boxes": [
+          [
+            45,
+            975,
+            1035,
+            1725
+          ]
+        ],
         "callouts": [],
-        "image": ".build/pdf-images/a5bc2c12bfd7ecad80f97ed6c340c96dbe981a924f84afc476a9d153e176dda8.png"
+        "image": "assets/home-wordmark-2026-10-29.png"
       },
       {
         "identity": "ASM-P011:3:1",
         "number": 3,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2225
+          2154
         ],
-        "boxes": [],
+        "boxes": [
+          [
+            240,
+            1940,
+            430,
+            2130
+          ]
+        ],
         "callouts": [],
-        "image": ".build/pdf-images/a5bc2c12bfd7ecad80f97ed6c340c96dbe981a924f84afc476a9d153e176dda8.png"
+        "image": "assets/home-wordmark-2026-10-29.png"
       },
       {
         "identity": "ASM-P011:3:2",
         "number": 4,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2225
+          2154
         ],
-        "boxes": [],
+        "boxes": [
+          [
+            440,
+            1940,
+            640,
+            2130
+          ]
+        ],
         "callouts": [],
-        "image": ".build/pdf-images/a5bc2c12bfd7ecad80f97ed6c340c96dbe981a924f84afc476a9d153e176dda8.png"
+        "image": "assets/home-wordmark-2026-10-29.png"
       }
     ]
   },
@@ -493,26 +536,40 @@
         "number": 5,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2225
+          2154
         ],
-        "boxes": [],
+        "boxes": [
+          [
+            650,
+            1940,
+            840,
+            2130
+          ]
+        ],
         "callouts": [],
-        "image": ".build/pdf-images/a5bc2c12bfd7ecad80f97ed6c340c96dbe981a924f84afc476a9d153e176dda8.png"
+        "image": "assets/home-wordmark-2026-10-29.png"
       },
       {
         "identity": "ASM-P011:4:2",
         "number": 6,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2225
+          2154
         ],
-        "boxes": [],
+        "boxes": [
+          [
+            850,
+            1940,
+            1050,
+            2130
+          ]
+        ],
         "callouts": [],
-        "image": ".build/pdf-images/a5bc2c12bfd7ecad80f97ed6c340c96dbe981a924f84afc476a9d153e176dda8.png"
+        "image": "assets/home-wordmark-2026-10-29.png"
       },
       {
         "identity": "ASM-P012:5",
@@ -578,7 +635,12 @@
       {
         "identity": "FEATURE-SEARCH-20261025:1",
         "number": 1,
-        "crop": [0, 0, 1080, 2340],
+        "crop": [
+          0,
+          0,
+          1080,
+          2340
+        ],
         "boxes": [],
         "callouts": [],
         "image": "assets/feature-search-start-2026-10-25.png"
@@ -586,7 +648,12 @@
       {
         "identity": "FEATURE-SEARCH-20261025:2",
         "number": 2,
-        "crop": [0, 0, 1080, 2340],
+        "crop": [
+          0,
+          0,
+          1080,
+          2340
+        ],
         "boxes": [],
         "callouts": [],
         "image": "assets/feature-search-text-2026-10-25.png"
@@ -594,7 +661,12 @@
       {
         "identity": "FEATURE-SEARCH-20261025:3",
         "number": 3,
-        "crop": [0, 0, 1080, 2340],
+        "crop": [
+          0,
+          0,
+          1080,
+          2340
+        ],
         "boxes": [],
         "callouts": [],
         "image": "assets/feature-search-share-2026-10-25.png"
@@ -602,7 +674,12 @@
       {
         "identity": "FEATURE-SEARCH-20261025:4",
         "number": 4,
-        "crop": [0, 0, 1080, 2340],
+        "crop": [
+          0,
+          0,
+          1080,
+          2340
+        ],
         "boxes": [],
         "callouts": [],
         "image": "assets/feature-search-empty-2026-10-25.png"
@@ -625,60 +702,60 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2201
+          2154
         ],
         "boxes": [
           [
-            54,
-            1347,
-            1026,
-            1570
+            55,
+            1305,
+            1025,
+            1530
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/9f7b0e3aaedaf839abc803f508a38574d9bd418733955afe3083de3778fcff0a.png"
+        "image": "assets/prescription-register-2026-10-29.png"
       },
       {
         "identity": "ASM-P013:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2201
+          2154
         ],
         "boxes": [
           [
-            49,
-            1848,
-            1032,
-            2153
+            45,
+            1815,
+            1035,
+            2095
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/50c877964d01066943da453a88a8842b36f49fc39f6eeeea16cddc00f7e7bed6.png"
+        "image": "assets/prescription-source-2026-10-29.png"
       },
       {
         "identity": "ASM-P014:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2201
+          2154
         ],
         "boxes": [
           [
-            49,
-            1998,
-            1032,
-            2153
+            45,
+            1965,
+            1035,
+            2095
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/50c877964d01066943da453a88a8842b36f49fc39f6eeeea16cddc00f7e7bed6.png"
+        "image": "assets/prescription-source-2026-10-29.png"
       },
       {
         "identity": "ASM-P014:4",
@@ -718,29 +795,69 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2247
+          2154
         ],
         "boxes": [
           [
-            194,
-            1309,
-            887,
-            1855
+            53,
+            850,
+            1025,
+            1645
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/5ca65eb84bbb2d1338c466c17a40ed42ae98a7bc7f8b55191e7d9d0ac2f8a36e.png"
+        "image": "assets/prescription-progress-2026-10-29.png"
       },
       {
-        "identity": "ASM-P016:2",
+        "identity": "ASM-P019:9",
         "number": 2,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2247
+          2154
+        ],
+        "boxes": [
+          [
+            42,
+            348,
+            1037,
+            590
+          ]
+        ],
+        "callouts": [],
+        "image": "assets/prescription-lookup-review-2026-10-29.png"
+      },
+      {
+        "identity": "DEV29-2.2:cards",
+        "number": 3,
+        "crop": [
+          0,
+          85,
+          1080,
+          2154
+        ],
+        "boxes": [
+          [
+            42,
+            698,
+            1037,
+            1372
+          ]
+        ],
+        "callouts": [],
+        "image": "assets/prescription-lookup-review-2026-10-29.png"
+      },
+      {
+        "identity": "ASM-P016:2",
+        "number": 4,
+        "crop": [
+          100,
+          560,
+          1000,
+          1160
         ],
         "boxes": [
           [
@@ -751,11 +868,18 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/5ca65eb84bbb2d1338c466c17a40ed42ae98a7bc7f8b55191e7d9d0ac2f8a36e.png"
-      },
+        "image": "assets/prescription-review-legacy.png"
+      }
+    ]
+  },
+  {
+    "kind": "steps",
+    "chapter": "2 약 등록과 식별",
+    "section": "2.2 인식한 내용을 확인하고 수정하기",
+    "steps": [
       {
         "identity": "ASM-P017:4",
-        "number": 3,
+        "number": 5,
         "crop": [
           0,
           0,
@@ -775,7 +899,7 @@
       },
       {
         "identity": "V023-2.2:dose-days",
-        "number": 4,
+        "number": 6,
         "crop": [
           0,
           0,
@@ -792,22 +916,15 @@
         ],
         "callouts": [],
         "image": ".build/pdf-images/82004ceaa692e1a5f2ea198195c8b9888d44a58a90231b08c4c145041b468fd9.png"
-      }
-    ]
-  },
-  {
-    "kind": "steps",
-    "chapter": "2 약 등록과 식별",
-    "section": "2.2 인식한 내용을 확인하고 수정하기",
-    "steps": [
+      },
       {
         "identity": "ASM-P018:7",
-        "number": 5,
+        "number": 7,
         "crop": [
           0,
-          0,
+          150,
           1080,
-          2247
+          2040
         ],
         "boxes": [
           [
@@ -833,11 +950,11 @@
             "text": "수정창으로 확인"
           }
         ],
-        "image": ".build/pdf-images/5646180559ce7c6c2681bfa1e36c5488bd828e9c12a5f6dec8d5cab3e8770317.png"
+        "image": "assets/prescription-date-picker-legacy.png"
       },
       {
         "identity": "ASM-P019:8",
-        "number": 6,
+        "number": 8,
         "crop": [
           0,
           0,
@@ -854,15 +971,22 @@
         ],
         "callouts": [],
         "image": ".build/pdf-images/82004ceaa692e1a5f2ea198195c8b9888d44a58a90231b08c4c145041b468fd9.png"
-      },
+      }
+    ]
+  },
+  {
+    "kind": "steps",
+    "chapter": "2 약 등록과 식별",
+    "section": "2.2 인식한 내용을 확인하고 수정하기",
+    "steps": [
       {
         "identity": "ASM-P020:10",
-        "number": 7,
+        "number": 9,
         "crop": [
-          0,
-          0,
-          1080,
-          2247
+          100,
+          560,
+          1000,
+          1160
         ],
         "boxes": [
           [
@@ -873,27 +997,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/5ca65eb84bbb2d1338c466c17a40ed42ae98a7bc7f8b55191e7d9d0ac2f8a36e.png"
-      },
-      {
-        "identity": "ASM-P019:9",
-        "number": 8,
-        "crop": [
-          0,
-          0,
-          1080,
-          2247
-        ],
-        "boxes": [
-          [
-            49,
-            2054,
-            1032,
-            2214
-          ]
-        ],
-        "callouts": [],
-        "image": ".build/pdf-images/5ca65eb84bbb2d1338c466c17a40ed42ae98a7bc7f8b55191e7d9d0ac2f8a36e.png"
+        "image": "assets/prescription-review-legacy.png"
       }
     ]
   },
@@ -913,80 +1017,95 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2253
+          2154
         ],
         "boxes": [
           [
-            308,
-            469,
-            851,
-            676
+            42,
+            698,
+            1037,
+            1015
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/36de6d2e6b82c1fd3b4db820a15321be2fc2f339f57c9c5ff85c2ade24dec373.png"
+        "image": "assets/prescription-lookup-review-2026-10-29.png"
       },
       {
         "identity": "ASM-P022:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2253
+          2154
         ],
         "boxes": [
           [
-            49,
-            2060,
-            1032,
-            2220
+            50,
+            1962,
+            530,
+            2117
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/36de6d2e6b82c1fd3b4db820a15321be2fc2f339f57c9c5ff85c2ade24dec373.png"
+        "image": "assets/prescription-lookup-review-2026-10-29.png"
       },
       {
         "identity": "CURRENT-2.3:open-candidates",
         "number": 3,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2253
+          2154
         ],
         "boxes": [
           [
-            212,
-            1501,
-            867,
-            1700
+            72,
+            1372,
+            1006,
+            1500
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/f07042f0b2ae17881d4883d32e0ee53f916c7182dd63805e3d99b9001fb574c2.png"
+        "image": "assets/prescription-lookup-confirmed-2026-10-29.png"
       },
       {
         "identity": "CURRENT-2.3:compare-candidates",
         "number": 4,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2247
+          2154
         ],
         "boxes": [
           [
-            164,
+            150,
+            800,
+            620,
+            880
+          ],
+          [
+            140,
             1145,
-            916,
-            1387
+            910,
+            1362
           ]
         ],
-        "callouts": [],
-        "image": ".build/pdf-images/207e9058b029de876513d85949f97044c745282a906c4f26b0be94cb38b273ef.png"
+        "callouts": [
+          {
+            "box_index": 0,
+            "text": "처방전에서 읽은 약 이름"
+          },
+          {
+            "box_index": 1,
+            "text": "후보의 전체 이름과 제조사"
+          }
+        ],
+        "image": "assets/prescription-candidate-2026-10-29.png"
       }
     ]
   },
@@ -1000,60 +1119,75 @@
         "number": 5,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2247
+          2154
         ],
         "boxes": [
           [
-            554,
-            1446,
+            140,
+            1060,
             912,
-            1572
+            1212
+          ],
+          [
+            560,
+            1522,
+            915,
+            1653
           ]
         ],
-        "callouts": [],
-        "image": ".build/pdf-images/487a7058e208a935307c76250b2baf9a6d2f1d19f7b9f7f8caf8d440b34fa384.png"
+        "callouts": [
+          {
+            "box_index": 0,
+            "text": "고른 후보"
+          },
+          {
+            "box_index": 1,
+            "text": "이 약으로 확인"
+          }
+        ],
+        "image": "assets/prescription-candidate-selected-2026-10-29.png"
       },
       {
         "identity": "CURRENT-2.3:analysis-result",
         "number": 6,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2247
+          2154
         ],
         "boxes": [
           [
-            101,
-            1708,
-            979,
-            1863
+            42,
+            348,
+            1037,
+            590
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/0199e5aef520af8f24c15810905866dfe2a38f39cdfd855d56b777985863459f.png"
+        "image": "assets/prescription-lookup-verified-only-2026-10-29.png"
       },
       {
         "identity": "ASM-P023:3",
         "number": 7,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2253
+          2154
         ],
         "boxes": [
           [
-            190,
-            1736,
-            889,
-            1873
+            550,
+            1962,
+            1030,
+            2117
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/f07042f0b2ae17881d4883d32e0ee53f916c7182dd63805e3d99b9001fb574c2.png"
+        "image": "assets/prescription-lookup-verified-only-2026-10-29.png"
       }
     ]
   },
@@ -1073,20 +1207,40 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2247
+          2154
         ],
         "boxes": [
           [
-            101,
-            507,
-            979,
-            1305
+            55,
+            585,
+            1025,
+            795
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/6298436b4e02a5899004b1d66b5696cf491264a22d2eb968ca7f53884980bd9d.png"
+        "image": "assets/prescription-result-2026-10-29.png"
+      },
+      {
+        "identity": "DEV29-2.4:radar-open",
+        "number": 2,
+        "crop": [
+          0,
+          85,
+          1080,
+          2154
+        ],
+        "boxes": [
+          [
+            55,
+            585,
+            1025,
+            995
+          ]
+        ],
+        "callouts": [],
+        "image": "assets/prescription-result-radar-2026-10-29.png"
       }
     ]
   },
@@ -1106,80 +1260,107 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2201
+          2154
         ],
         "boxes": [
           [
-            101,
-            1662,
-            979,
-            1817
+            55,
+            290,
+            1025,
+            520
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/92d96078f1892ce5b0cb968d179049acde14c006e858590b059879a35a5c4ed9.png"
+        "image": "assets/prescription-result-2026-10-29.png"
       },
       {
         "identity": "ASM-P025:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2253
+          2154
         ],
         "boxes": [
           [
-            101,
-            1144,
-            979,
-            1926
+            55,
+            1278,
+            1025,
+            1802
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/51134fe3fc62bdeda63a50959950d6cc52370bdf3b67d82af8c790973d826eab.png"
+        "image": "assets/prescription-result-radar-2026-10-29.png"
       },
       {
         "identity": "ASM-P026:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2253
+          2154
         ],
         "boxes": [
           [
-            101,
-            2015,
-            979,
-            2197
+            55,
+            1948,
+            1025,
+            2122
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/51134fe3fc62bdeda63a50959950d6cc52370bdf3b67d82af8c790973d826eab.png"
+        "image": "assets/prescription-result-2026-10-29.png"
       },
       {
         "identity": "ASM-P027:5",
         "number": 4,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2253
+          2154
         ],
         "boxes": [
           [
-            858,
-            1250,
-            917,
-            1311
+            775,
+            1115,
+            875,
+            1210
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/51134fe3fc62bdeda63a50959950d6cc52370bdf3b67d82af8c790973d826eab.png"
+        "image": "assets/prescription-result-2026-10-29.png"
+      }
+    ]
+  },
+  {
+    "kind": "steps",
+    "chapter": "2 약 등록과 식별",
+    "section": "2.5 분석한 약 저장하기",
+    "steps": [
+      {
+        "identity": "DEV29-2.5:saved",
+        "number": 5,
+        "crop": [
+          0,
+          85,
+          1080,
+          2154
+        ],
+        "boxes": [
+          [
+            55,
+            1600,
+            1025,
+            2075
+          ]
+        ],
+        "callouts": [],
+        "image": "assets/prescription-saved-2026-10-29.png"
       }
     ]
   },
@@ -2860,13 +3041,13 @@
   {
     "kind": "divider",
     "chapter": "3 오늘의 복약 기록",
-    "section": "3.10 복약 기록을 채팅 또는 CSV로 공유하기",
+    "section": "3.10 복약 기록을 채팅 또는 다른 앱으로 공유하기",
     "steps": []
   },
   {
     "kind": "steps",
     "chapter": "3 오늘의 복약 기록",
-    "section": "3.10 복약 기록을 채팅 또는 CSV로 공유하기",
+    "section": "3.10 복약 기록을 채팅 또는 다른 앱으로 공유하기",
     "steps": [
       {
         "identity": "CARE17-3.10:1",
@@ -2886,13 +3067,35 @@
         "number": 2,
         "crop": [
           0,
-          112,
+          85,
           1080,
-          2337
+          2154
         ],
-        "boxes": [],
-        "callouts": [],
-        "image": "assets/history-share-final-dialog.png"
+        "boxes": [
+          [
+            160,
+            675,
+            920,
+            955
+          ],
+          [
+            160,
+            1250,
+            920,
+            1530
+          ]
+        ],
+        "callouts": [
+          {
+            "box_index": 0,
+            "text": "공유 기간과 최대 일수"
+          },
+          {
+            "box_index": 1,
+            "text": "채팅 또는 다른 앱 선택"
+          }
+        ],
+        "image": "assets/history-share-dialog-2026-10-29.png"
       },
       {
         "identity": "CURRENT22-3.10:3",
@@ -2925,7 +3128,7 @@
   {
     "kind": "steps",
     "chapter": "3 오늘의 복약 기록",
-    "section": "3.10 복약 기록을 채팅 또는 CSV로 공유하기",
+    "section": "3.10 복약 기록을 채팅 또는 다른 앱으로 공유하기",
     "steps": [
       {
         "identity": "CURRENT22-3.10:5",
@@ -2945,20 +3148,20 @@
         "number": 6,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2225
+          2154
         ],
         "boxes": [
           [
-            0,
-            1288,
-            1080,
-            2225
+            160,
+            1400,
+            920,
+            1530
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/0be290e55656903b75f074f8aa5ae1be27e8e88b8d0cb8569e4f839b7dd3a629.png"
+        "image": "assets/history-share-dialog-2026-10-29.png"
       },
       {
         "identity": "FINAL17-3.10:caregiver",
@@ -3699,35 +3902,202 @@
     ]
   },
   {
+    "kind": "steps",
+    "chapter": "5 가족 채팅과 알림",
+    "section": "5.5 약 부족을 알리고 병원·약국 정보 공유하기",
+    "steps": [
+      {
+        "identity": "DEV29-5.5:place-card",
+        "number": 5,
+        "crop": [
+          6,
+          136,
+          1074,
+          2330
+        ],
+        "boxes": [
+          [
+            222,
+            785,
+            1045,
+            1395
+          ],
+          [
+            222,
+            1420,
+            1045,
+            2085
+          ]
+        ],
+        "callouts": [
+          {
+            "box_index": 0,
+            "text": "종료 시각이 있는 약국"
+          },
+          {
+            "box_index": 1,
+            "text": "24시간 운영 약국"
+          }
+        ],
+        "image": "assets/chat-place-cards-2026-10-29.png"
+      },
+      {
+        "identity": "DEV29-5.5:reopen",
+        "number": 6,
+        "crop": [
+          0,
+          85,
+          1080,
+          2154
+        ],
+        "boxes": [
+          [
+            15,
+            1330,
+            1060,
+            1945
+          ]
+        ],
+        "callouts": [],
+        "image": "assets/chat-place-reopened-2026-10-29.png"
+      }
+    ]
+  },
+  {
     "kind": "divider",
     "chapter": "5 가족 채팅과 알림",
-    "section": "5.6 메시지 삭제하고 대화 정리하기",
+    "section": "5.6 메시지 복사·삭제하고 대화 정리하기",
     "steps": []
   },
   {
     "kind": "steps",
     "chapter": "5 가족 채팅과 알림",
-    "section": "5.6 메시지 삭제하고 대화 정리하기",
+    "section": "5.6 메시지 복사·삭제하고 대화 정리하기",
     "steps": [
       {
-        "identity": "ASM-P095:1",
+        "identity": "DEV29-5.6:actions",
         "number": 1,
         "crop": [
-          0,
-          0,
-          1080,
-          2201
+          6,
+          136,
+          1074,
+          2330
         ],
         "boxes": [
           [
-            897,
-            28,
-            1032,
-            162
+            10,
+            2067,
+            1070,
+            2175
+          ],
+          [
+            10,
+            2200,
+            1070,
+            2325
+          ]
+        ],
+        "callouts": [
+          {
+            "box_index": 0,
+            "text": "글 복사"
+          },
+          {
+            "box_index": 1,
+            "text": "선택 모드로 전환"
+          }
+        ],
+        "image": "assets/chat-message-actions-2026-10-29.png"
+      },
+      {
+        "identity": "ASM-P095:1",
+        "number": 2,
+        "crop": [
+          0,
+          85,
+          1080,
+          2154
+        ],
+        "boxes": [
+          [
+            40,
+            1530,
+            1050,
+            1700
+          ],
+          [
+            915,
+            135,
+            1015,
+            220
+          ]
+        ],
+        "callouts": [
+          {
+            "box_index": 0,
+            "text": "고른 메시지"
+          },
+          {
+            "box_index": 1,
+            "text": "선택 삭제"
+          }
+        ],
+        "image": "assets/chat-message-selection-2026-10-29.png"
+      },
+      {
+        "identity": "DEV29-5.6:scope",
+        "number": 3,
+        "crop": [
+          0,
+          85,
+          1080,
+          2154
+        ],
+        "boxes": [
+          [
+            100,
+            1100,
+            975,
+            1342
+          ],
+          [
+            660,
+            1435,
+            905,
+            1550
+          ]
+        ],
+        "callouts": [
+          {
+            "box_index": 0,
+            "text": "삭제 범위"
+          },
+          {
+            "box_index": 1,
+            "text": "확인 후 삭제"
+          }
+        ],
+        "image": "assets/chat-message-delete-2026-10-29.png"
+      },
+      {
+        "identity": "DEV29-5.6:deleted",
+        "number": 4,
+        "crop": [
+          6,
+          136,
+          1074,
+          2330
+        ],
+        "boxes": [
+          [
+            30,
+            880,
+            530,
+            1455
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/6d68fa5c71bbd58d70c344a6092839cff83b2b78ad2dc1712f192d167a89fd8e.png"
+        "image": "assets/chat-deleted-messages-2026-10-29.png"
       }
     ]
   },
@@ -4319,13 +4689,20 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2225
+          2154
         ],
-        "boxes": [],
+        "boxes": [
+          [
+            445,
+            1940,
+            637,
+            2130
+          ]
+        ],
         "callouts": [],
-        "image": ".build/pdf-images/b5e2afae30533ff0f73eef321275b24978726189bc4da0052926a26087caf343.png"
+        "image": "assets/cabinet-date-group-2026-10-29.png"
       },
       {
         "identity": "V023-7.1:next-dose-day",
@@ -4472,40 +4849,40 @@
         "number": 6,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2201
+          2154
         ],
         "boxes": [
           [
-            49,
-            403,
-            1032,
-            592
+            50,
+            485,
+            1028,
+            648
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/57970300623690d1f94cf2560480b92bc172b9942524d16e22364dedecee4ec0.png"
+        "image": "assets/cabinet-date-group-2026-10-29.png"
       },
       {
         "identity": "ASM-P127:7",
         "number": 7,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2201
+          2154
         ],
         "boxes": [
           [
-            85,
-            670,
-            463,
-            742
+            45,
+            700,
+            1035,
+            830
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/57970300623690d1f94cf2560480b92bc172b9942524d16e22364dedecee4ec0.png"
+        "image": "assets/cabinet-date-group-2026-10-29.png"
       },
       {
         "identity": "ASM-P128:9",
@@ -4526,6 +4903,33 @@
         ],
         "callouts": [],
         "image": ".build/pdf-images/57970300623690d1f94cf2560480b92bc172b9942524d16e22364dedecee4ec0.png"
+      }
+    ]
+  },
+  {
+    "kind": "steps",
+    "chapter": "7 복약함과 건강 정보",
+    "section": "7.2 조회 조건과 정렬 바꾸기",
+    "steps": [
+      {
+        "identity": "DEV29-7.2:collapse",
+        "number": 9,
+        "crop": [
+          0,
+          85,
+          1080,
+          2154
+        ],
+        "boxes": [
+          [
+            50,
+            680,
+            1030,
+            853
+          ]
+        ],
+        "callouts": [],
+        "image": "assets/cabinet-date-group-collapsed-2026-10-29.png"
       }
     ]
   },
@@ -4692,20 +5096,20 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2201
+          2154
         ],
         "boxes": [
           [
-            897,
-            28,
-            1032,
-            162
+            915,
+            135,
+            1015,
+            220
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/1ee73989c462bb9c2292ed4566a4972b0524790106d4808ab5e0247ff8dbe4f4.png"
+        "image": "assets/cabinet-date-group-2026-10-29.png"
       },
       {
         "identity": "ASM-P134:2",
@@ -4829,20 +5233,20 @@
         "number": 6,
         "crop": [
           0,
-          0,
+          85,
           1080,
-          2201
+          2154
         ],
         "boxes": [
           [
-            812,
-            639,
-            1013,
-            773
+            715,
+            722,
+            870,
+            812
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/1ee73989c462bb9c2292ed4566a4972b0524790106d4808ab5e0247ff8dbe4f4.png"
+        "image": "assets/cabinet-date-group-2026-10-29.png"
       }
     ]
   },
@@ -6604,13 +7008,13 @@
   {
     "kind": "divider",
     "chapter": "9 환경설정과 계정 관리",
-    "section": "9.6 받을 알림 고르기",
+    "section": "9.6 받을 알림과 약품 검색 고르기",
     "steps": []
   },
   {
     "kind": "steps",
     "chapter": "9 환경설정과 계정 관리",
-    "section": "9.6 받을 알림 고르기",
+    "section": "9.6 받을 알림과 약품 검색 고르기",
     "steps": [
       {
         "identity": "ASM-P162:1",
@@ -6637,6 +7041,26 @@
         "boxes": [],
         "callouts": [],
         "image": "assets/notification_settings_2026-10-22.png"
+      },
+      {
+        "identity": "DEV29-9.6:search",
+        "number": 3,
+        "crop": [
+          0,
+          85,
+          1080,
+          2154
+        ],
+        "boxes": [
+          [
+            50,
+            825,
+            1030,
+            1175
+          ]
+        ],
+        "callouts": [],
+        "image": "assets/settings-medication-search-2026-10-29.png"
       }
     ]
   },

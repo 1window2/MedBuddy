@@ -1,4 +1,5 @@
 @startuml
+skinparam defaultFontName Nanum Gothic
 title 복약 기록 동기화와 홈 위젯 주요 클래스
 skinparam shadowing false
 hide empty members
@@ -48,7 +49,7 @@ DoseSyncService --> DoseOutboxStore : 영속 큐·캐시·선점
 DoseSyncService --> FCheckSchedule : 서버 시작일·종료일을 확인한 14일 창
 DoseSyncService --> OfflineScheduleWindow : 앱·위젯의 날짜별 일정 계산
 OfflineStore ..> DoseOutboxStore : 계정·캐시 revision을 함께 검사
-DoseHomeWidget --> DoseSyncService : prepareOfflineCache()
+DoseHomeWidget --> DoseSyncService : prepareOfflineCache() / 주기 갱신의 refreshScheduleWindow()
 DoseSyncService --> DoseSyncBackgroundScheduler
 DoseSyncBackgroundScheduler --> WorkManager
 WorkManager --> DoseSyncService : 연결 시 재전송
@@ -97,7 +98,10 @@ note bottom of DoseSyncService
   기기 영속 저장 이후 표시 콜백은 변경을 합쳐 비동기로 발행한다.
   느린 위젯 갱신이 복용 기록 저장·서버 전송을 막지 않는다.
   서버가 확인한 기간만 보관하며 실패로 기간을 연장하지 않는다.
-  당일 서버 일정 수신과 약 변경·삭제 전후에 이전 기간 캐시를 무효화한다.
+  당일 서버 일정 저장 뒤 refreshScheduleWindow()로 새 창을 받는다.
+  받는 사이 캐시 revision이 바뀌어 거절된 창은 다시 받는다.
+  약 변경·삭제 전 suspendSchedule()로 비우고, 적용되지 않은 실패는
+  restoreSchedule()로 되돌리며 적용·불명확 결과는 invalidateSchedule()로 비운다.
   로그아웃 준비 실패 시 동일 세션에만 저장소 활성화와 재시도를 복원한다.
 end note
 note bottom of OfflineScheduleWindow

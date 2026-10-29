@@ -9,7 +9,7 @@ title Authentication, Settings, and Accessibility - Key Classes
 skinparam backgroundColor white
 skinparam shadowing false
 skinparam linetype ortho
-skinparam defaultFontName Malgun Gothic
+skinparam defaultFontName Nanum Gothic
 skinparam defaultFontSize 15
 skinparam ArrowColor #64748B
 skinparam ArrowThickness 2
@@ -124,6 +124,7 @@ note bottom of NotificationDeviceSettings
   Android의 알림 허용·정확한 시간 스위치는 운영체제 설정을 연다.
   앱에서 직접 권한을 요청하거나 표시값을 미리 바꾸지 않는다.
   resumed 복귀 시 실제 권한 상태를 다시 읽어 표시한다.
+  복약 channel이 꺼져 있으면 알림 허용 스위치도 꺼짐으로 표시한다.
 end note
 note bottom of FAuthenticationControl
   main.dart의 세션 종료 준비 callback은 Push 해제를 먼저 수행한다.
@@ -140,7 +141,8 @@ FManageUserSetting --> BManageUserSetting : GET revision / PUT expected_revision
 FManageUserSetting --> LocalSettings : atomic JSON snapshot; then legacy mirrors
 ManageAccount --> LocalSettings : exact-owner cleanup after server deletion
 note bottom of ManageAccount
-  서버 계정 삭제 확인 뒤 약 기록 CSV 임시 cache 정리도 시도한다.
+  서버 계정 삭제 확인 뒤 이전 빌드가 남겼을 수 있는 기록 내보내기 임시 cache도
+  clearExports로 정리한다(현재 외부 공유는 파일을 만들지 않는다).
   외부 앱이나 상대방이 저장한 사본은 회수하지 못한다.
 end note
 BManageUserSetting --> DBUserSetting : expected revision + ORM version guard
@@ -168,6 +170,8 @@ end note
 note bottom of FUserSetting
   알림 종류별 허용·공개 범위, 언어·시간 형식,
   신규 일정 기본 시각과 홈 조회 대상을 저장한다.
+  medicationSearchMode(fast·balanced·thorough)는 기기 전용 값이며
+  이것만 바꾸면 서버 동기화·revision을 건드리지 않는다.
 end note
 
 ManageUserSettingUI --> TTSService : 기기 내 음성 미리듣기

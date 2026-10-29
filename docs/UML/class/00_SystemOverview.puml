@@ -8,7 +8,7 @@ title MedBuddy System Overview
 skinparam backgroundColor white
 skinparam shadowing false
 skinparam linetype ortho
-skinparam defaultFontName Malgun Gothic
+skinparam defaultFontName Nanum Gothic
 skinparam defaultFontSize 18
 skinparam ArrowColor #64748B
 skinparam ArrowThickness 2

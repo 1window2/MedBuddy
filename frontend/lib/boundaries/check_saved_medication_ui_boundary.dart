@@ -96,6 +96,8 @@ enum _SavedMedicationFilterMode { active, ended, all }
 class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
   final Set<int> _selectedMedicationIds = {};
   final Set<String> _collapsedDateGroups = {};
+  // 검색 중에는 찾은 약이 보이도록 묶음을 펼치고, 그 사이 접은 묶음만 따로 기억한다.
+  final Set<String> _searchCollapsedDateGroups = {};
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   bool _isSelectionMode = false;
@@ -172,11 +174,18 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     super.dispose();
   }
 
+  // 검색어가 있으면 검색 중에 접은 묶음만, 없으면 사용자가 접어 둔 묶음을 적용한다.
+  Set<String> get _activeCollapsedDateGroups => _searchQuery.isEmpty
+      ? _collapsedDateGroups
+      : _searchCollapsedDateGroups;
+
   // 함수역할: 검색어를 반영하고 숨겨질 수 있는 선택을 비운다. 매개변수: 입력 문자열.
   void _changeSearch(String value) {
     if (_isDeleting) return;
     setState(() {
-      _searchQuery = value.trim().toLowerCase();
+      final query = value.trim().toLowerCase();
+      if (query != _searchQuery) _searchCollapsedDateGroups.clear();
+      _searchQuery = query;
       _selectedMedicationIds.clear();
     });
   }
@@ -419,6 +428,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     _searchController.clear();
     setState(() {
       _searchQuery = '';
+      _searchCollapsedDateGroups.clear();
       _filterMode = _SavedMedicationFilterMode.all;
       _selectedMedicationIds.clear();
     });
@@ -529,15 +539,14 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
       // 매개변수: context는 화면 위치, index는 묶음 순번. 반환값: 날짜별 목록.
       itemBuilder: (context, index) => _SavedMedicationDateCard(
         group: groups[index],
-        isExpanded: !_collapsedDateGroups.contains(
+        isExpanded: !_activeCollapsedDateGroups.contains(
           '${_sortMode.name}:${groups[index].displayDate}',
         ),
         onToggleExpanded: () {
           final key = '${_sortMode.name}:${groups[index].displayDate}';
+          final collapsed = _activeCollapsedDateGroups;
           setState(() {
-            if (!_collapsedDateGroups.remove(key)) {
-              _collapsedDateGroups.add(key);
-            }
+            if (!collapsed.remove(key)) collapsed.add(key);
           });
         },
         showRegisteredDate:

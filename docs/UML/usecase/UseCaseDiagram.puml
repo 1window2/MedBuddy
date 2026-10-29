@@ -1,6 +1,6 @@
 @startuml
 left to right direction
-skinparam defaultFontName Malgun Gothic
+skinparam defaultFontName Nanum Gothic
 
 actor "사용자" as U
 actor "환자" as P
@@ -21,7 +21,7 @@ actor "운영체제 위치 서비스" as Location
 actor "운영체제 전화 및 지도 앱" as ExternalApp
 actor "안드로이드 백그라운드\n작업 서비스" as Workmanager
 actor "안드로이드 런처" as HomeWidget
-actor "운영체제 파일 공유 / 클립보드" as FileShare
+actor "운영체제 텍스트 공유 / 클립보드" as FileShare
 actor "국립중앙의료원\n약국 공공데이터 서비스" as PharmacyAPI
 actor "국립중앙의료원\n병·의원 공공데이터 서비스" as HospitalAPI
 actor "공휴일 정보 서비스" as HolidayAPI
@@ -176,6 +176,7 @@ NaverMap -- UC30
 Location -- UC30
 ExternalApp -- UC30
 UC28 <.. UC30 : <<extend>> 장소 공유
+UC28 <.. UC27 : <<extend>> 약국 공유
 
 Camera -- UC1
 Camera -- UC20
@@ -219,14 +220,17 @@ note right of UC13
 end note
 
 note right of UC32
+현재 월 달력에서 시작하며 날짜를 고르면 일일 상세를 연다.
 최근 90일 중 한 번에 최대 31일을 조회한다.
-환자만 쓰며 활성 연동 보호자는 조회·공유만 한다.
+기록 작성·정정은 환자만 하며 활성 연동 보호자는 조회·공유만 한다.
 사용자 보고는 실제 복용의 증명이 아니다.
 end note
 
 note bottom of UC34
 정기 일정 진행률·미복약 판단과 분리한다.
 새 복용은 개별 UUID로 기록하고 추가 복용을 확인한다.
+저장 안내의 실행 취소는 이번 동작으로 만든 기록만 미기록으로 되돌린다.
+보호자는 읽기 전용 횟수 확인과 체크완료 구독만 한다.
 환자의 로컬 확인 알림은 기본 꺼짐인 일회 예약이다.
 보호자 구독 알림과 별개이며 복용 action·반복·미루기가 없다.
 새 필요시 요청은 기기에 먼저 암호화 저장하고 같은 계정에서 복원한다.
@@ -237,7 +241,7 @@ note right of UC35
 채팅에는 서버가 집계한 공유 당시 기간·상태별 건수만 저장한다.
 최신 기록은 현재 권한으로 다시 조회하며 읽기 전용이다.
 푸시는 건강정보 없는 일반 메시지 안내만 전달한다.
-자연어 텍스트는 별도 외부 공유이며 상대방 사본을 회수할 수 없다.
+자연어 텍스트는 파일 없이 공유하며(최대 90일) 상대방 사본을 회수할 수 없다.
 end note
 
 note right of UC36
@@ -272,6 +276,9 @@ note right of UC28
 연동 해제·권한 상실이 확인되면 입력창을 안내로 바꾸고
 해당 대화의 자동 복구를 중지한다.
 일시적 통신 장애의 재시도와 구분한다.
+새 메시지 알림은 대화별 하나로 묶고 읽으면 정리한다.
+공유된 병원·약국 카드는 공유 시점 운영 상태를 보존하고
+다시 열면 수신자 기준 최신 정보를 조회한다.
 end note
 
 note bottom of UC6
@@ -310,6 +317,7 @@ UC3P <.. UC32 : <<extend>>
 UC4C <.. UC32 : <<extend>>
 UC32 <.. UC33 : <<extend>> 환자만 정정
 UC3P <.. UC34 : <<extend>>
+UC4C <.. UC34 : <<extend>> 읽기 전용·구독
 UC34 <.. UC13 : <<extend>> 구독한 보호자
 UC32 <.. UC35 : <<extend>> 공유 확인
 UC28 <.. UC35 : <<extend>> 기간 요약 공유

@@ -2,8 +2,8 @@
 
 이 폴더에는 주요 책임과 계약을 보여주는 전체 구조 및 발표용 단계별 클래스 다이어그램을 함께 관리한다.
 같은 이름의 `.puml`은 설계 원본이고 `.png`는 그 렌더링 이미지다.
-현재 갱신은 `beta/v0.2.4`의 기존 통합 기준과 이후 로컬 기능 변경을 반영한다.
-이전 2026-10-22 원본 12개·대응 PNG 재생성 기록은 아래에 보존한다.
+현재 갱신은 2026-10-29 `beta/v0.2.4` 코드 기준의 전체 현행화이다.
+이전 원본·PNG 재생성 기록은 아래에 이력으로 보존한다.
 이번 대상과 검증 결과는 별도 절에 구분하며 변경하지 않은 그림은 유지한다.
 이 문서와 그림은 개발 브랜치의 설계이며 운영 배포·출시 완료를 뜻하지 않는다.
 원본과 그림이 다르면 텍스트 원본을 기준으로 한다. 이번 원본의 PNG 갱신 여부는
@@ -21,7 +21,7 @@
 - `02_PrescriptionAnalysis.puml` / `02_PrescriptionAnalysis.png`
   - 처방전 촬영, 로컬 OCR, 서버 분석, 사용자 검토 흐름을 보여준다.
 - `03_MedicationManagement.puml` / `03_MedicationManagement.png`
-  - 약 상세정보, 저장된 복약 정보, 오늘 일정과 알림, 적용일별 처방 변경·기록 정정·외부 텍스트 공유 구조를 보여준다.
+  - 약 상세정보, 저장된 복약 정보, 오늘 일정과 알림, 적용일별 처방 변경·월 달력·기록 정정·외부 텍스트 공유 구조를 보여준다.
 - `04_CaregiverNotifications.puml` / `04_CaregiverNotifications.png`
   - 환자·보호자 연동, 조건부 채팅 탭과 대화 목록, 알림 전달과 계정별 로컬 알림함 구조를 보여준다.
   - 서버의 미복약 감지와 완료·미복약 Outbox 처리, 완료 채팅 기록 생성을 구분한다.
@@ -35,12 +35,46 @@
   - 본인 복용 기록과 연결 환자의 읽기 전용 조회를 분리한다.
   - `DoseWidgetLayout`은 런처가 배정한 높이와 글자 배율에 맞춰 표시 밀도를 조절하며 기록·조회 경로는 변경하지 않는다.
 - `07_NearbyCare.puml` / `07_NearbyCare.png`
-  - 공통 병원·약국 지도 UI와 별도 병원 조회·공휴일 확인, 서버가 검증한 채팅 공유 문맥을 보여준다.
+  - 공통 병원·약국 지도 UI와 별도 병원 조회·공휴일 확인, 서버가 검증한 채팅 공유 문맥과 운영 상태 스냅샷을 보여준다.
 - `08_FeatureSearch.puml` / `08_FeatureSearch.png`
   - 로컬 검색 UI·매칭 Control·정적 목적지 Entity와 기존 화면 연결 경계를 보여준다.
   - 27개 목적지의 전체 목록은 [기능 찾기 문서](../../Feature%20Search.md)를 따른다.
 
+## Rendering
+
+모든 원본은 `skinparam defaultFontName Nanum Gothic`을 선언한다(설치 확인:
+`fc-list | grep -i "Nanum Gothic"`). 글꼴이 없으면 다른 글꼴로 대체되어 한글 폭과 배치가
+달라지므로, PNG는 Nanum Gothic이 설치된 환경에서 다시 만든다. 저장소 루트에서 실행한다.
+
+```sh
+cd docs/UML
+PLANTUML_LIMIT_SIZE=16384 plantuml -charset UTF-8 -checkonly class/*.puml sequence/*.puml usecase/*.puml
+PLANTUML_LIMIT_SIZE=16384 plantuml -charset UTF-8 -tpng class/*.puml sequence/*.puml usecase/*.puml
+```
+
+- `PLANTUML_LIMIT_SIZE`가 없으면 4096 px을 넘는 그림의 아래·오른쪽이 잘린다.
+  생성 후 가로·세로가 정확히 4096 또는 16384인 PNG가 없는지 확인한다
+  (`sips -g pixelWidth -g pixelHeight <png>`).
+- `ClassDiagram`과 `OverallSystemSequenceDiagram`은 원래 크기(약 31000×18000,
+  14000×50000 px)가 PNG 한도를 넘으므로 `scale max 16000*16000`으로 축소한다.
+  세부 내용은 원본이나 확대 이미지로 확인하고, 발표에는 기능별 그림을 사용한다.
+- 원본을 외부 렌더링 서버로 보내지 않는다. 바꾼 원본은 같은 이름의 PNG와 함께 갱신한다.
+
 ## Usage
+
+### 2026-10-29 UML 전체 현행화
+
+팀원이 관리하던 UML을 이제 이 저장소에서 직접 관리한다. `beta/v0.2.4`의 코드와 모든 원본을
+대조해 v0.2.2 이후 반영되지 않은 내용과 v0.2.4 변경을 맞췄다(커밋 fe6c491의 시도는 코드로
+확인한 부분만 재사용). 전체 `ClassDiagram`과 `OverallSystemSequenceDiagram`도 더 이상
+v0.2.2 기준선이 아니며 v0.2.4 제목·내용으로 갱신했다. 주요 반영 내용:
+필요시 복용 실행 취소·영속 대기, 월 달력, 기록의 채팅 요약·파일 없는 텍스트 공유(CSV와
+Android FileProvider 제거), 14일 오프라인 일정 창의 재조회·되돌리기, 기능 찾기, 기기 알림 설정,
+약 검색 방식(fast·balanced·thorough), OCR 행 순서(`PrescriptionOcrReadingOrder`)와 처방
+개인정보 검사, 결과 카드 접기·처방 변화 레이더, 복약함 날짜 묶음, 대화별 채팅 알림 묶음과
+메시지 복사, 공유 장소의 운영 상태 스냅샷과 수신자 기준 재조회.
+전체 원본 19개를 Nanum Gothic으로 바꾸고 위 명령으로 PNG 19개를 모두 다시 만들었다.
+아래 기록은 이전 작업 이력이며 그 안의 렌더링 명령·4096 축소 기준은 위 절로 대체한다.
 
 ### v0.2.4 주요 기능 흐름 갱신
 

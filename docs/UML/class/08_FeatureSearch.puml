@@ -7,7 +7,7 @@ title Feature Search - Local Matching and Existing Navigation
 
 skinparam backgroundColor white
 skinparam shadowing false
-skinparam defaultFontName Malgun Gothic
+skinparam defaultFontName Nanum Gothic
 skinparam defaultFontSize 16
 skinparam classAttributeIconSize 0
 skinparam packageStyle rectangle
@@ -73,6 +73,7 @@ note bottom of HomeScreen
   UI의 화면 이동 연결만 맡는다.
   검색 복귀와 비동기 선택 후 동일 ViewModel·계정을 확인한다.
   환자가 여럿이면 선택하며 연동 없음·조회 실패는 연결 관리로 안내한다.
+  연동 확인을 기다리는 사이 다른 탭·화면으로 옮겼으면 환자 화면을 열지 않는다.
   그 외 목적지는 기존 탭·화면·입력 선택창으로 연결한다.
   권한·저장·전송은 기존 Control에 남는다.
 end note

@@ -86,6 +86,22 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(first, findsNothing);
+    // 검색 중에는 사용자가 접어 둔 묶음도 펼쳐 찾은 약 이름을 보인다.
+    await tester.enterText(
+      find.byKey(const Key('saved-medication-search')),
+      '1',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('약 1'), findsOneWidget);
+    await tester.tap(first);
+    await tester.pumpAndSettle();
+    expect(find.text('약 1'), findsNothing);
+    await tester.enterText(
+      find.byKey(const Key('saved-medication-search')),
+      '약',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('약 1'), findsOneWidget);
     await tester.enterText(
       find.byKey(const Key('saved-medication-search')),
       '',

@@ -11,7 +11,7 @@ skinparam shadowing false
 skinparam linetype ortho
 skinparam nodesep 60
 skinparam ranksep 85
-skinparam defaultFontName SansSerif
+skinparam defaultFontName Nanum Gothic
 skinparam defaultFontSize 15
 skinparam ArrowColor #64748B
 skinparam ArrowThickness 2
@@ -35,9 +35,13 @@ package "Flutter Frontend" #E8F4FF {
   class PrescriptionCameraOrientationService <<Service>>
   class PrescriptionImageCropService <<Service>>
   class PrescriptionLocalOcrService <<Service>>
+  class PrescriptionOcrReadingOrder <<Service>>
   class PrescriptionPrivacyFilter <<Service>>
   class PrescriptionAnalysisPreviewUI <<UI>>
   class MedicationCandidateDialog <<UI>>
+  class CheckResultUI <<UI>>
+  class PrescriptionChangeRadarUI <<UI>>
+  class "CheckPrescriptionChange" as FCheckPrescriptionChange <<Control>>
   class MedBuddyPrescriptionViewModel <<Control>>
   class "CheckMedicationDetail" as FCheckMedicationDetail <<Control>>
   class MedicationMatchReview <<Entity>>
@@ -52,6 +56,7 @@ package "FastAPI Backend" #EAF8F0 {
   class "PrescriptionMedicationNameVerifier" as MedicationNameVerifier <<Service>>
   class "MedicationSchedule" as BMedicationSchedule <<Entity>>
   class "CheckMedicationDetail" as BCheckMedicationDetail <<Control>>
+  class "CheckPrescriptionChange" as BCheckPrescriptionChange <<Control>>
   class "medication_match_safety" as MatchSafety <<Module>> {
     + match_conflict(original, candidate)
     + can_auto_match(original, candidate)
@@ -64,6 +69,7 @@ GuidedPrescriptionCameraUI -right-> PrescriptionImageCropService : crops to guid
 GuidedPrescriptionCameraUI -down-> PrescriptionCameraOrientationService : camera-only rotation
 PrescriptionImageCropService -right-> PrescriptionLocalOcrService : captured image
 PrescriptionLocalOcrService -down-> PrescriptionPrivacyFilter : masks identifiers
+PrescriptionLocalOcrService --> PrescriptionOcrReadingOrder : 개인정보 판단 뒤 화면 행 순서로 정렬
 PrescriptionPrivacyFilter -right-> PrescriptionAnalysisPreviewUI : masked OCR regions
 MedBuddyPrescriptionViewModel --> FInputPrescription : 이미지 입력·OCR 인식
 FInputPrescription -down-> BInputPrescription : authenticated API
@@ -71,8 +77,8 @@ BInputPrescription -right-> OCRServiceBoundary : structures text
 BInputPrescription --> PrescriptionPrivacy : 서버 입력 재검사
 OCRServiceBoundary --> PrescriptionPrivacy : 외부 제공자 호출 직전 재검사
 note bottom of PrescriptionPrivacy
-  개인정보 구역을 제외하고 직접 식별자를 가린다.
-  약 정보와 안전하게 분리할 수 없으면 AI 호출 전에 거절한다.
+  약 정보가 없는 식별 줄·라벨 구역은 빼고 라벨 없는 날짜·번호는 가린다.
+  환자 정보와 약 행이 한 줄에 섞이면 AI 호출 전에 거절한다.
   기기 검토를 대체하거나 모든 개인정보 제거를 보증하지 않는다.
 end note
 OCRServiceBoundary -right-> Gemini
@@ -87,6 +93,22 @@ FCheckMedicationDetail --> BCheckMedicationDetail : /identify + original_text + 
 FCheckMedicationDetail --> MedicationMatchReview : confirmation-only candidates
 FCheckMedicationDetail --> MedicationLookupBusy : known account-busy 503 + retryAt
 BCheckMedicationDetail --> MatchSafety : original strength / dosage form; exact name only
+PrescriptionAnalysisPreviewUI --> CheckResultUI : 저장 단계
+CheckResultUI *-- PrescriptionChangeRadarUI : 결과 목록 첫 칸 (기본 접힘)
+MedBuddyPrescriptionViewModel --> FCheckPrescriptionChange : 결과 화면 진입 뒤 비교 조회
+FCheckPrescriptionChange --> BCheckPrescriptionChange : POST /prescription/change-radar
+
+note bottom of PrescriptionOcrReadingOrder
+  기기 인식기는 약봉투를 열 단위로 돌려준다.
+  빈 세로 여백으로 나눈 구역 안에서 행 순서로 놓고
+  이웃 열의 같은 행은 이어 둔다. 줄은 합치지 않는다.
+end note
+
+note bottom of CheckResultUI
+  약별 결과 카드는 접고 펼치며 Radar 조회 실패로
+  목록 위치가 바뀌어도 펼친 상태를 같은 약에 유지한다.
+  Radar(기본 접힘)는 일정 변경·새로 확인·이번에 없음 등 간단한 분류로 묶는다.
+end note
 
 note right of MedicationNameVerifier
   Standalone catalog-name verification service.

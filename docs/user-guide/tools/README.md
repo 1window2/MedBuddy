@@ -1,10 +1,11 @@
 # 사용자 가이드 재생성
 
-`README.md`가 본문 원본입니다. `source/layout.json`은 84개 소섹션과 310단계의
-식별자·스크린샷·크롭·강조 좌표를 연결합니다. 기존 스크린샷 148개는 함께 배포하는
+`README.md`가 본문 원본입니다. `source/layout.json`은 84개 소섹션과 320단계의
+식별자·스크린샷·크롭·강조 좌표를 연결합니다. 기존 스크린샷 134개는 함께 배포하는
 `MedBuddy_User_Guide_ko.pdf` 안에서 추출해 `source/pdf-images.json`의 픽셀 해시와
 대조합니다. 별도의 대용량 원본 이미지 폴더나 중복 기준 PDF를 추가하지 않습니다.
-`source/assets.sha256.json`은 기존 캡처 7개, 기능 찾기 위젯 캡처 4개와 최신 로고의 해시입니다.
+`source/assets.sha256.json`은 기존 캡처 6개, 기능 찾기 위젯 캡처 4개, 일부만 잘라 쓰는 이전 검수 화면 2개, 2026-10-29 실제 기기 캡처 22개와 최신 로고의 해시입니다.
+PDF 안의 사진을 일부만 잘라 쓰면 발행 PDF에는 잘린 부분만 남아 다음 빌드가 실패하므로, 그런 사진은 `assets/`에 파일로 두고 해시를 등록하세요.
 모든 입력 경로는 `docs/user-guide` 기준 상대 경로입니다.
 이전 작업 폴더, 앱 빌드, 서버, 에뮬레이터, 계정이나 비밀 설정은 필요하지 않습니다.
 재생성은 저장소에 포함된 기존 PDF를 입력으로 사용하므로 먼저 삭제하지 마세요.
@@ -30,6 +31,15 @@ python -m pip install -r docs/user-guide/tools/requirements.txt
 $fontDir = Join-Path $env:LOCALAPPDATA 'Microsoft/Windows/Fonts'
 python -B docs/user-guide/tools/rebuild_guide.py build --font-dir $fontDir
 python -B docs/user-guide/tools/rebuild_guide.py render
+```
+
+macOS에서는 저장소 밖의 Python 3.12 가상환경을 쓰고 Homebrew Poppler를 지정하면 됩니다.
+
+```sh
+uv venv -p 3.12 "$VENV"
+VIRTUAL_ENV="$VENV" uv pip install -r docs/user-guide/tools/requirements.txt
+"$VENV/bin/python" -B docs/user-guide/tools/rebuild_guide.py build --font-dir "$FONT_DIR"
+"$VENV/bin/python" -B docs/user-guide/tools/rebuild_guide.py render --poppler /opt/homebrew/bin/pdftoppm
 ```
 
 운영체제에 관계없이 같은 글꼴 파일을 가진 폴더를 지정하면 됩니다.

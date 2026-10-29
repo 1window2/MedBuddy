@@ -210,7 +210,7 @@ def build(font_dir, image_source):
     cover.setFont(layout.BOLD, 30)
     cover.drawCentredString(layout.W / 2, layout.H / 2 - 145, "MedBuddy 사용설명서")
     cover.setFont(layout.REG, 12)
-    cover.drawCentredString(layout.W / 2, layout.H / 2 - 172, "0.2.4 개발 브랜치 | 2026-10-25")
+    cover.drawCentredString(layout.W / 2, layout.H / 2 - 172, "0.2.4 개발 브랜치 | 2026-10-29")
     layout.draw_footer(cover, layout.footer_layout(1, plan["total_pages"], ""))
     cover.showPage()
     cover.save()
@@ -239,7 +239,7 @@ def build(font_dir, image_source):
                  all_step_text_verified=True, baseline_step_ids_preserved=True, visual_qa="pending",
                  source_layout_sha256=digest(SOURCE / "layout.json"),
                  fonts={name: digest(font_dir / name) for name in ("NanumBarunGothic.ttf", "NanumBarunGothicBold.ttf")},
-                 updated_sections=[key for key in groups if key in {"1.6", "1.7", "3.3", "3.9", "3.10", "6.3", "9.1", "9.4"}])
+                 updated_sections=[key for key in groups if key in {"1.6", "1.7", "2.1", "2.2", "2.3", "2.4", "2.5", "3.7", "3.9", "3.10", "5.1", "5.5", "5.6", "5.8", "7.1", "7.2", "7.6", "9.6", "9.7"}])
     dump(BUILD / "audit.json", audit)
     dump(BUILD / "navigation.json", navigation)
     dump(BUILD / "pages.json", layout.public_pages(plan["pages"]))

@@ -25,8 +25,12 @@ line below. Changes are listed in the [v0.2.4 notes](releases/v0.2.4-beta.md).
       mark only (the user agreed to drop the wordmark), plus a transparent
       status-bar icon for reminders and pushes. Checked on the Galaxy Note10
       (One UI) and the Pixel launcher on 2026-10-22.
-- [ ] UML: bring the diagrams from 0.2.2 and part of 0.2.3 up to date.
-- [ ] User guide, poster, and feedback gathered until the deadline.
+- [x] UML: bring the diagrams from 0.2.2 and part of 0.2.3 up to date.
+      Done by us on 2026-10-29 (the teammate stopped): all 19 diagrams
+      checked against `83cddde`, rendered with Nanum Gothic.
+- [x] User guide updated to the 2026-10-29 app by us (224 pages, PDF
+      rebuilt with the recorded NanumBarunGothic).
+- [ ] Poster, and feedback gathered until the deadline.
 
 ### Review of the 2026-10-22 collaborator commits
 
@@ -169,13 +173,11 @@ corrected the same day; see the
 - [ ] Not checked on a device: a shared place missing from the list, and the
       closed and overnight wording (no closed pharmacy came up in the
       provider's results at the time; covered by tests).
-- [ ] Left for the team (decision log 2026-10-29): the search-mode control
-      with a slider and three buttons, and collapsed cabinet groups during a
-      search.
-- [ ] `docs/UML/sequence/MedicationCareHistory.puml` still names "Android
-      FileProvider" for text sharing; re-render with the team's font (Malgun
-      Gothic) when the UML is next updated.
-- [ ] User guide 3.10 still describes CSV sharing.
+- [x] Decided with the user (decision log 2026-10-29): the search-mode
+      control stays as the collaborator made it; cabinet date groups open
+      while a search is active.
+- [x] UML and user guide brought up to the 10-29 app (FileProvider and CSV
+      references removed).
 
 ### Decisions taken on 2026-10-23
 

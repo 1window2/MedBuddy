@@ -1,7 +1,7 @@
 @startuml
 title As-Needed Checks, Local Reminder and Caregiver Delivery
 hide footbox
-skinparam defaultFontName Malgun Gothic
+skinparam defaultFontName Nanum Gothic
 skinparam maxMessageSize 110
 skinparam sequenceMessageAlign center
 
@@ -37,7 +37,7 @@ Front -> API: GET /care/history for today
 API --> Front: Current counts + active PRN medications
 Front --> UI: Fresh state
 opt Additional intake for an already checked medication
-  UI --> Patient: Confirm displayed count increase
+  UI --> Patient: Confirm count increase (N → N+1) with today's last dose time / elapsed
   Patient -> UI: Confirm
   UI -> Front: Reload; verify same date, eligibility and counts
 end
@@ -63,12 +63,24 @@ loop Each unresolved item (bulk is not atomic)
   Front -> Pending: ACK 확인한 작업 ID만 제거
   Front -> Front: Remove only resolved intention; uncertain retry keeps same IDs
 end
+alt Saved now
+  UI --> Patient: "Dose recorded" notice with Undo (record keys fixed before saving)
+  opt Patient taps Undo (also after leaving the schedule)
+    UI -> Front: Re-read today; only this tap's still-taken PRN records
+    Front -> API: PUT report: unrecorded, new operation UUID
+    API -> Care: update_history(...); no new caregiver event
+    note right of UI: An alert already sent is not recalled;\nthe caregiver's count corrects on next read.\nOn failure: change it to "not recorded" in the history.
+  end
+else Resent an earlier day's pending intake
+  UI --> Patient: Earlier dose sent; tap again if taken today (no Undo)
+end
 note over Front,DB
   New intentional intake = new event UUID. Corrections retain the original UUID.
   Event key = hash(patient, medication, scheduled date, report slot UUID).
   Time/revision edits and uncheck/recheck do not create another event.
   Past reports do not queue new alerts. PRN does not change scheduled progress.
   통신·저장소 실패는 미확정 요청을 남기고 같은 계정·같은 ID로 재시도한다.
+  대기 저장소를 열 수 없으면 목록·횟수는 서버 기준으로 보이고 새 복용만 거절한다.
   일정 체크의 확정 거절은 AsNeededScheduleSection에서 대기를 해제한다.
   모든 편집 화면이 같은 해제 정책을 쓰지는 않으며 기존 정정·실행 취소는 영속 대기가 아니다.
   정기 복용의 WorkManager 자동 전송과 분리하며 재시작 후 화면에서 복구한다.
