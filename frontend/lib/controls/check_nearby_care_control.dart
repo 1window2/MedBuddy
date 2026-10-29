@@ -78,6 +78,13 @@ List<NearbyCarePlace> sortNearbyCarePlaces(
 // - Parse the existing shared display DTO without inventing provider availability.
 // - Reject new HTTP work after disposal; close only internally created clients.
 // Attributes: location, HTTP and external-action boundaries; client ownership and disposal flags.
+// 공유된 장소가 수신 기기의 현재 검색 결과에 없을 때, 이미 받은 주변 결과와 함께 알린다.
+class SharedPlaceNotFound implements Exception {
+  const SharedPlaceNotFound(this.nearby);
+
+  final NearbyCareSearchResult nearby;
+}
+
 abstract class CheckNearbyCare {
   final DeviceLocationBoundary _locationBoundary;
   final http.Client _client;
@@ -241,7 +248,7 @@ abstract class CheckNearbyCare {
     final selected = focused.data
         .where((item) => item.placeId == place.placeId)
         .firstOrNull;
-    if (selected == null) throw StateError('Shared place could not be found.');
+    if (selected == null) throw SharedPlaceNotFound(nearby);
     final distance =
         Geolocator.distanceBetween(
           area.center.latitude,

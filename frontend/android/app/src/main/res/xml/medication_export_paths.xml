@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- 복약 내보내기 전용 캐시만 공유하며, 앱의 다른 데이터 경로는 공개하지 않는다. -->
-<paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <cache-path name="medication_exports" path="medication_exports/" />
-</paths>

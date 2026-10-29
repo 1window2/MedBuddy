@@ -43,6 +43,12 @@ def build_operating_snapshot(
             intervals.append((opens_at, closes_at))
     if opened:
         opens_at, closes_at = next(interval for interval in intervals if interval[0] <= now < interval[1])
+        # 당일 0000~2400은 종료 시각이 없는 종일 운영이다. 내일 시간은 모르므로 자정을 종료로 보이지 않는다.
+        if start == 0 and end == 1440:
+            return {
+                "status": "open", "as_of": now.isoformat(),
+                "opens_at": opens_at.isoformat(), "closes_at": None,
+            }
         remaining = closes_at - now
         status = "closing_soon" if timedelta(0) < remaining <= timedelta(minutes=30) else "open"
     else:

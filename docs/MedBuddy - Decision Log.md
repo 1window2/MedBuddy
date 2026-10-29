@@ -82,6 +82,37 @@ Decided by the project owner on the recommendation of the review, on
   `readRange`, use the default `validate` limit in the export dialog, and restore
   the columns in `medication_history_export.dart`.
 
+## 2026-10-29: review of the final feature commits
+
+### 1. The CSV export path is removed
+
+- **Before:** after the switch to readable text sharing, the CSV builder, the
+  Android `shareCsv` handler and its FileProvider stayed in the app "for
+  compatibility".
+- **Now:** they are removed. The Dart caller and the Android handler ship in
+  the same APK, so nothing can still call them. Account deletion still clears
+  the export cache that earlier builds may have left.
+- **Undo:** restore them from `edf1262` (`medication_history_export.dart`,
+  `MainActivity.kt`, the manifest provider and `medication_export_paths.xml`).
+
+### 2. Unknown rather than "not open yet" for live-only pharmacy hours
+
+- **Before:** a pharmacy shared from the live lookup (not in the catalog) had
+  only today's hours; after midnight an overnight pharmacy read "영업 전".
+- **Now:** without yesterday's hours, a time before today's opening is shown
+  as "운영 확인 필요"; "영업 종료" after today's closing stays.
+- **Alternative:** look up yesterday's hours too (one more external call per
+  share).
+
+### 3. Left for the team
+
+- The search-mode setting shows a slider and three buttons for one value
+  (four controls for a screen reader); the reading-speed setting uses the
+  common choice sheet. Changing it alters the collaborator's design, so it is
+  left as is.
+- A date group the user collapsed in the cabinet stays collapsed while a
+  search is active, so a match shows as a count only.
+
 ## Earlier decisions
 
 - 2026-10-21: an as-needed dose can be undone from the save notice (the

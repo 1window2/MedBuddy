@@ -63,15 +63,6 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_color"
             android:resource="@color/medbuddy_notification" />
-        <provider
-            android:name="androidx.core.content.FileProvider"
-            android:authorities="${applicationId}.medication_exports"
-            android:exported="false"
-            android:grantUriPermissions="true">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/medication_export_paths" />
-        </provider>
         <receiver android:name=".DoseWidgetProvider" android:exported="false" android:label="@string/dose_widget_label">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />

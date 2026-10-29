@@ -121,12 +121,16 @@ class MedicationTextNormalizer:
             structural_keywords.extend(self._candidate_structural_variants(candidate))
         structural_keywords = self._deduplicate_keywords(structural_keywords)
 
-        ocr_keywords = [
-            variant for keyword in structural_keywords
-            for variant in self._hangul_ocr_variants(keyword)
-        ]
         limit = self.SEARCH_KEYWORD_LIMITS.get(search_mode, self.MAX_SEARCH_KEYWORDS)
-        return self._deduplicate_keywords([*structural_keywords, *ocr_keywords])[:limit]
+        keywords = structural_keywords[:limit]
+        # 제한에 도달하면 남은 검색어의 OCR 변형은 만들지 않는다.
+        for keyword in structural_keywords:
+            if len(keywords) >= limit:
+                break
+            keywords = self._deduplicate_keywords(
+                [*keywords, *self._hangul_ocr_variants(keyword)],
+            )
+        return keywords[:limit]
 
     # Function Name: _split_parenthesized_text
     # Description:

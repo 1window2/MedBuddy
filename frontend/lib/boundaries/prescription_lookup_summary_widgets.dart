@@ -41,46 +41,31 @@ class _PrescriptionReviewLayout extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: LayoutBuilder(
-            builder: (context, bodyConstraints) => Column(
-              children: [
-                if (showSummary)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: ConstrainedBox(
-                      key: const Key('lookup-summary-pinned-viewport'),
-                      constraints: BoxConstraints(
-                        maxWidth: 640,
-                        maxHeight: bodyConstraints.maxHeight * .4,
-                      ),
-                      child: SingleChildScrollView(
-                        child: _MedicationLookupSummary(
-                          key: const Key('lookup-summary-pinned'),
-                          counts: counts,
-                          isEnglish: isEnglish,
-                        ),
-                      ),
-                    ),
+          child: showSummary
+              ? PinnedAnalysisSummary(
+                  horizontalPadding: 16,
+                  maxHeightFactor: .4,
+                  summaryKey: const Key('lookup-summary-pinned-viewport'),
+                  gap: 10,
+                  summary: _MedicationLookupSummary(
+                    key: const Key('lookup-summary-pinned'),
+                    counts: counts,
+                    isEnglish: isEnglish,
                   ),
-                if (showSummary)
-                  const SizedBox(
-                    key: Key('lookup-summary-bottom-gap'),
-                    height: 10,
-                  ),
-                Expanded(
-                  child: ClipRect(
-                    key: const Key('prescription-review-scroll-region'),
-                    child: _ScrollableCenteredCard(
-                      topPadding: showSummary ? 0 : 24,
-                      child: child,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+                  child: _buildScrollRegion(),
+                )
+              : _buildScrollRegion(),
         ),
       ],
+    ),
+  );
+
+  // 조회 요약 유무와 관계없이 같은 스크롤 본문을 사용하고 요약이 없을 때만 위 여백을 둔다.
+  Widget _buildScrollRegion() => ClipRect(
+    key: const Key('prescription-review-scroll-region'),
+    child: _ScrollableCenteredCard(
+      topPadding: showSummary ? 0 : 24,
+      child: child,
     ),
   );
 }

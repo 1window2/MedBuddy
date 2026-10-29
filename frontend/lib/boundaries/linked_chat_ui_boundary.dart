@@ -2841,6 +2841,7 @@ class _MessagePharmacyContext extends StatelessWidget {
     final hospital = pharmacy is ChatHospitalContext
         ? pharmacy as ChatHospitalContext
         : null;
+    final operatingStatus = text.placeOperatingStatus(pharmacy);
     return SizedBox(
       width: double.infinity,
       child: Column(
@@ -2885,9 +2886,8 @@ class _MessagePharmacyContext extends StatelessWidget {
           ...[
             const SizedBox(height: 5),
             Text(
-              text.placeOperatingStatus(pharmacy),
-              semanticsLabel:
-                  '${text.sharedStatus}: ${text.placeOperatingStatus(pharmacy)}',
+              operatingStatus,
+              semanticsLabel: '${text.sharedStatus}: $operatingStatus',
               style: TextStyle(
                 color: foreground.withValues(alpha: 0.84),
                 fontSize: 15,
@@ -3471,9 +3471,7 @@ class _MessageBubble extends StatelessWidget {
               ],
             )
           else ...[
-            if (message.historyContext != null &&
-                !message.hiddenForMe &&
-                !message.deletedForEveryone) ...[
+            if (message.historyContext != null) ...[
               _MessageMedicationHistoryContext(
                 history: message.historyContext!,
                 isMine: isMine,
@@ -3702,8 +3700,8 @@ class _LinkedChatText {
     final next = closing ? snapshot.closesAt : snapshot.opensAt;
     if (next == null) return status;
     // 국내 의료기관의 영업시각은 수신 기기의 시간대가 달라도 한국 시간으로 표시한다.
-    final local = next.toUtc().add(const Duration(hours: 9));
-    final asOf = snapshot.asOf.toUtc().add(const Duration(hours: 9));
+    final local = MedicationHistoryDates.wallTime(next);
+    final asOf = MedicationHistoryDates.wallTime(snapshot.asOf);
     final sameDay =
         local.year == asOf.year &&
         local.month == asOf.month &&
@@ -3711,6 +3709,10 @@ class _LinkedChatText {
     final clock =
         '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
     final time = sameDay ? clock : '${local.month}/${local.day} $clock';
+    // 영업 종료 상태의 종료 시각은 이미 지난 시각이다.
+    if (snapshot.status == 'closed') {
+      return isEnglish ? '$status at $time' : '$time $status';
+    }
     return isEnglish
         ? '$status · ${closing ? 'Closes' : 'Opens'} $time'
         : '$status · $time ${closing ? '종료' : '시작'}';
@@ -3736,16 +3738,9 @@ class _LinkedChatText {
       : '진료 날짜: ${date.year}년 ${date.month}월 ${date.day}일';
   String hospitalShareBody(String name) =>
       isEnglish ? 'I am sharing $name.' : '$name 병원 정보를 공유해요.';
-  String get hoursUnknown => isEnglish ? 'Hours unavailable' : '진료시간 정보 없음';
   String get hospitalHoursNotice => isEnglish
       ? 'Hours may change. Call before visiting. This is not a reservation.'
       : '진료시간은 변경될 수 있어요. 방문 전 전화로 확인해주세요. 예약이 확정된 것은 아니에요.';
-  String informationChecked(DateTime date) {
-    final local = date.toLocal();
-    final stamp =
-        '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
-    return isEnglish ? 'Information checked: $stamp' : '정보 확인: $stamp';
-  }
 
   // 함수이름: family
   // 함수역할: 현재 언어와 입력값에 맞춰 "Family" 문구를 제공한다.

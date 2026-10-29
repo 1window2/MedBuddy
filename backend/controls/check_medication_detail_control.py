@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 # - pill_image_api (PillImageAPI): 공공 약품 이미지 조회 API 경계.
 # - summary_generator (MedicationSummaryGenerator): 상세 허가 문서의 AI 요약 생성기.
 # - local_medication_catalog (LocalMedicationCatalog): 문서 요약 캐시를 포함한 로컬 기본·허가 정보 조회기.
+# - _summaries_by_item_seq (dict[str, MedicationDetail]): 현재 요청에서 이미 AI로 요약한 허가 품목.
 class CheckMedicationDetail:
     MAX_KEYWORD_LENGTH = 100
     # 프런트엔드의 60초 제한 안에서 응답할 여유를 남기며 모드별로 시간을 늘리지 않는다.
@@ -90,6 +91,7 @@ class CheckMedicationDetail:
             summary_generator=self.summary_generator,
             name_matcher=self.name_matcher,
         )
+        self._summaries_by_item_seq: dict[str, MedicationDetail] = {}
 
     # Function Name: requestMedicationDetail
     # Description:
@@ -103,18 +105,17 @@ class CheckMedicationDetail:
         self, raw_text: str, *, original_text: str | None = None,
         search_mode: Literal['fast', 'balanced', 'thorough'] = 'balanced',
     ) -> MedicationResponse:
-        if search_mode not in MedicationTextNormalizer.SEARCH_KEYWORD_LIMITS:
-            raise ValueError("Invalid medication search mode.")
+        # 정밀 모드는 여러 검색어에서 같은 품목을 다시 만나므로 요약은 요청 단위로만 재사용한다.
+        self._summaries_by_item_seq = {}
         normalized_text = self.text_normalizer.normalize_raw_text(raw_text)
         self._validate_lookup_text(normalized_text)
         reference = self.text_normalizer.normalize_raw_text(original_text or raw_text)
         self._validate_lookup_text(reference)
 
-        # 기본 모드에서는 기존 한 인자 정규화기 대역과 호출 계약을 유지한다.
+        # 정규화기가 모드를 검증하고 모드별 검색어 수를 제한한다.
         search_keywords = self.text_normalizer.build_search_keywords(
-            normalized_text,
-            **({'search_mode': search_mode} if search_mode != 'balanced' else {}),
-        )[:MedicationTextNormalizer.SEARCH_KEYWORD_LIMITS[search_mode]]
+            normalized_text, search_mode=search_mode,
+        )
         if not search_keywords:
             raise ValueError("Extracted medication text is empty.")
 
@@ -291,7 +292,13 @@ class CheckMedicationDetail:
         drug_name: str,
         *, reference: str | None = None,
     ) -> MedicationLookupResult:
-        basic_items = await self.public_drug_small_api.searchMedication(drug_name)
+        basic_error: Exception | None = None
+        try:
+            basic_items = await self.public_drug_small_api.searchMedication(drug_name)
+        except Exception as exc:
+            # 기본 API 장애에도 허가 API로 찾되, 허가 API도 결과가 없으면 미등록이 아닌 오류로 알린다.
+            basic_error = exc
+            basic_items = []
         basic_items = self.name_matcher.rank_candidates(
             reference or drug_name,
             basic_items,
@@ -317,6 +324,8 @@ class CheckMedicationDetail:
             allow_unknown_strength=True,
         )
         if not advanced_items:
+            if basic_error is not None:
+                raise basic_error
             logger.warning("No drug information found in public drug databases.")
             return MedicationLookupResult()
 
@@ -325,13 +334,31 @@ class CheckMedicationDetail:
         if len(exact) == 1:
             advanced_items = exact
         result = await gather_summaries_keeping_successes(
-            self.summary_generator.summarize_advanced_item(drug_name, dict(item))
+            self._summarize_advanced_item(drug_name, item)
             for item in advanced_items
         )
         return MedicationLookupResult(
             await self._enrich_missing_image_urls(result.details),
             is_complete=result.is_complete,
         )
+
+    # 함수이름: _summarize_advanced_item
+    # 함수역할:
+    # - 한 요청 안에서 같은 품목기준코드의 허가 문서는 AI로 한 번만 요약하고 그 결과를 재사용한다.
+    # - 실패한 요약은 저장하지 않으므로 다음 검색어에서 다시 시도한다.
+    # 매개변수:
+    # - drug_name (str): 요약을 요청한 검색어.
+    # - item (dict[str, Any]): 허가 API 품목 기록.
+    # 반환값:
+    # - AI 요약을 담은 약품 상세.
+    async def _summarize_advanced_item(self, drug_name: str, item: dict[str, Any]) -> MedicationDetail:
+        item_seq = read_public_item_sequence(item)
+        summary = self._summaries_by_item_seq.get(item_seq) if item_seq else None
+        if summary is None:
+            summary = await self.summary_generator.summarize_advanced_item(drug_name, dict(item))
+            if item_seq:
+                self._summaries_by_item_seq[item_seq] = summary
+        return summary
 
     # 함수이름: _build_basic_drug_infos
     # 함수역할:

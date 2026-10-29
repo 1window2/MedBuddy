@@ -863,7 +863,7 @@ void main() {
           await tester.pumpAndSettle();
           expect(
             find.text(switch (status) {
-              'closed' => '영업 종료 · 19:00 종료',
+              'closed' => '19:00 영업 종료',
               'before_open' => '영업 전 · 09:00 시작',
               'closing_soon' => 'Closing soon · Closes 19:00',
               _ => 'Open · Closes 19:00',
@@ -2204,7 +2204,6 @@ void main() {
               telephone: '02-000-0000',
               latitude: 37.55,
               longitude: 126.92,
-              todayHours: '09:00 - 19:00',
               departments: const ['내과', '이비인후과'],
               scheduleDate: DateTime(2026, 10, 5),
               sourceUpdatedAt: DateTime.utc(2026, 9, 28, 1),

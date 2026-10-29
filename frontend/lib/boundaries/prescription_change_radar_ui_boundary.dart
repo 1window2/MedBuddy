@@ -395,20 +395,8 @@ class _ChangeSummaryState extends State<_ChangeSummary> {
                           .length,
                       selected: _selected == type,
                       onTap: () => _select(type),
-                      foreground: _ChangePresentation.fromType(
-                        type,
-                        text,
-                      ).color,
-                      background: switch (type) {
-                        PrescriptionChangeType.scheduleChanged =>
-                          MedBuddyColors.warningSurface,
-                        PrescriptionChangeType.added =>
-                          MedBuddyColors.successSurface,
-                        PrescriptionChangeType.missing =>
-                          MedBuddyColors.surfaceSubtle,
-                        PrescriptionChangeType.unknown =>
-                          MedBuddyColors.lavenderSurface,
-                      },
+                      foreground: _changeTypeColors(type).foreground,
+                      background: _changeTypeColors(type).background,
                     ),
                   ),
               ],
@@ -705,7 +693,7 @@ class _MedicationChangeRow extends StatelessWidget {
                   ),
                   ...change.changedFields.map(
                     // 함수이름: build.map callback
-                    // 함수역할: 약품 변화 유형과 변경 전후 일정 값의 변환값을 `Padding(padding: const EdgeInsets.only(top: 4), child: Text(text.changedValue(field, change.previous?.valueForField(field)...` 규칙으로 계산한다.
+                    // 함수역할: 변경된 일정 항목의 이름과 이전·이번 값을 비교 표의 한 행으로 만든다.
                     // 매개변수:
                     // - field (콜백 계약에서 추론): 편집 창에서 선택할 복약 정보 입력 항목.
                     // 반환값: 컬렉션 연산에 전달할 변환값.
@@ -793,66 +781,31 @@ class _NoChangeMessage extends StatelessWidget {
   }
 }
 
-// 클래스명: _ChangePresentation
-// 역할: 처방 변화 유형별 아이콘·색상·문구를 담당한다.
-// 주요 책임:
-// - 처방 변화 유형별 아이콘·색상·문구 관련 필드 값을 하나의 객체로 묶어 전달한다.
-// 속성:
-// - icon (IconData): 기본 또는 선택 상태에서 표시할 아이콘.
-// - color (Color): 문자·아이콘·상태 가이드에 적용할 전경 또는 강조 색상.
-// - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
-class _ChangePresentation {
-  final IconData icon;
-  final Color color;
-  final String label;
-
-  // 함수이름: _ChangePresentation
-  // 함수역할: 처방 변화 유형별 아이콘·색상·문구 관련 값을 _ChangePresentation 인스턴스에 담는다.
-  // 매개변수:
-  // - icon (IconData): 기본 또는 선택 상태에서 표시할 아이콘.
-  // - color (Color): 문자·아이콘·상태 가이드에 적용할 전경 또는 강조 색상.
-  // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
-  // 반환값: 입력 설정이 반영된 _ChangePresentation 인스턴스.
-  const _ChangePresentation({
-    required this.icon,
-    required this.color,
-    required this.label,
-  });
-
-  // 함수이름: _ChangePresentation.fromType
-  // 함수역할: 추가·일정 변경·이번 처방 미확인 유형을 아이콘·색상·현지화 라벨로 변환한다.
-  // 매개변수:
-  // - type (PrescriptionChangeType): 시·분 또는 처방 변화 등 현재 분기 종류.
-  // - text (_PrescriptionChangeText): 해당 화면 구역의 언어별 표시 문구.
-  // 반환값: 입력 설정이 반영된 _ChangePresentation 인스턴스.
-  factory _ChangePresentation.fromType(
-    PrescriptionChangeType type,
-    _PrescriptionChangeText text,
-  ) {
-    return switch (type) {
-      PrescriptionChangeType.added => _ChangePresentation(
-        icon: Icons.add_circle_outline,
-        color: MedBuddyColors.primaryDark,
-        label: text.added,
-      ),
-      PrescriptionChangeType.missing => _ChangePresentation(
-        icon: Icons.remove_circle_outline,
-        color: MedBuddyColors.danger,
-        label: text.missing,
-      ),
-      PrescriptionChangeType.scheduleChanged => _ChangePresentation(
-        icon: Icons.tune,
-        color: MedBuddyColors.reminderAccent,
-        label: text.scheduleChanged,
-      ),
-      PrescriptionChangeType.unknown => _ChangePresentation(
-        icon: Icons.help_outline,
-        color: MedBuddyColors.textMuted,
-        label: text.unknownChange,
-      ),
-    };
-  }
-}
+// 함수이름: _changeTypeColors
+// 함수역할: 처방 변화 유형별 분류 칩의 글자·배경 색상을 고른다.
+// 매개변수:
+// - type (PrescriptionChangeType): 색상을 고를 처방 변화 유형.
+// 반환값: 칩 글자색(foreground)과 배경색(background).
+({Color foreground, Color background}) _changeTypeColors(
+  PrescriptionChangeType type,
+) => switch (type) {
+  PrescriptionChangeType.added => (
+    foreground: MedBuddyColors.primaryDark,
+    background: MedBuddyColors.successSurface,
+  ),
+  PrescriptionChangeType.missing => (
+    foreground: MedBuddyColors.danger,
+    background: MedBuddyColors.surfaceSubtle,
+  ),
+  PrescriptionChangeType.scheduleChanged => (
+    foreground: MedBuddyColors.reminderAccent,
+    background: MedBuddyColors.warningSurface,
+  ),
+  PrescriptionChangeType.unknown => (
+    foreground: MedBuddyColors.textMuted,
+    background: MedBuddyColors.lavenderSurface,
+  ),
+};
 
 // 클래스명: _PrescriptionChangeText
 // 역할: 이전 처방 대비 약품 추가·일정 변경·미확인 항목 비교에 쓰는 한국어·영어 문구를 담당한다.
@@ -933,12 +886,6 @@ class _PrescriptionChangeText {
   String get noChanges => isEnglish
       ? 'No medication or schedule changes were found.'
       : '약품 구성과 복약 일정에서 달라진 점을 찾지 못했습니다.';
-  // 함수이름: added
-  // 함수역할: 현재 언어와 입력값에 맞춰 "새롭게 확인됨" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get added => isEnglish ? 'Newly found' : '새롭게 확인됨';
   // 함수이름: missing
   // 함수역할: 현재 언어와 입력값에 맞춰 "이번 처방에서 확인되지 않음" 문구를 제공한다.
   // 매개변수:
@@ -946,18 +893,6 @@ class _PrescriptionChangeText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get missing =>
       isEnglish ? 'Not found in this prescription' : '이번 처방에서 확인되지 않음';
-  // 함수이름: scheduleChanged
-  // 함수역할: 현재 언어와 입력값에 맞춰 "복약 일정 변경" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get scheduleChanged => isEnglish ? 'Schedule changed' : '복약 일정 변경';
-  // 함수이름: unknownChange
-  // 함수역할: 현재 언어와 입력값에 맞춰 "변화 확인" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get unknownChange => isEnglish ? 'Change found' : '변화 확인';
   // 함수이름: unknownMedication
   // 함수역할: 현재 언어와 입력값에 맞춰 "약품명 확인 필요" 문구를 제공한다.
   // 매개변수:
@@ -988,27 +923,6 @@ class _PrescriptionChangeText {
     };
   }
 
-  // 함수이름: addedCount
-  // 함수역할: 현재 언어와 입력값에 맞춰 "추가 $count" 문구를 제공한다.
-  // 매개변수:
-  // - count (int): 문구나 목록에 표시할 항목 수 또는 일련번호.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String addedCount(int count) => isEnglish ? 'Added $count' : '추가 $count';
-  // 함수이름: changedCount
-  // 함수역할: 현재 언어와 입력값에 맞춰 "일정 변경 $count" 문구를 제공한다.
-  // 매개변수:
-  // - count (int): 문구나 목록에 표시할 항목 수 또는 일련번호.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String changedCount(int count) =>
-      isEnglish ? 'Changed $count' : '일정 변경 $count';
-  // 함수이름: missingCount
-  // 함수역할: 현재 언어와 입력값에 맞춰 "미확인 $count" 문구를 제공한다.
-  // 매개변수:
-  // - count (int): 문구나 목록에 표시할 항목 수 또는 일련번호.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String missingCount(int count) =>
-      isEnglish ? 'Not found $count' : '미확인 $count';
-
   // 함수이름: comparisonPeriod
   // 함수역할: 현재 언어와 입력값에 맞춰 "비교 기준: $previousText → $currentText" 문구를 제공한다.
   // 매개변수:
@@ -1021,26 +935,6 @@ class _PrescriptionChangeText {
     return isEnglish
         ? 'Comparison: $previousText → $currentText'
         : '비교 기준: $previousText → $currentText';
-  }
-
-  // 함수이름: changedValue
-  // 함수역할: 현재 언어와 입력값에 맞춰 "1회 투약량" 문구를 제공한다.
-  // 매개변수:
-  // - field (String): 편집 창에서 선택할 복약 정보 입력 항목.
-  // - previous (String): 표시·비교 기준이 되는 날짜 또는 이전·현재 값.
-  // - current (String): 표시·비교 기준이 되는 날짜 또는 이전·현재 값.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String changedValue(String field, String previous, String current) {
-    final label = switch (field) {
-      'dosage_per_time' => isEnglish ? 'Dose' : '1회 투약량',
-      'daily_frequency' => isEnglish ? 'Frequency' : '1일 횟수',
-      'total_days' => isEnglish ? 'Duration' : '총 투약일',
-      _ => isEnglish ? 'Schedule' : '복약 일정',
-    };
-    final emptyValue = isEnglish ? 'No information' : '정보 없음';
-    final previousText = previous.trim().isEmpty ? emptyValue : previous.trim();
-    final currentText = current.trim().isEmpty ? emptyValue : current.trim();
-    return '$label: $previousText → $currentText';
   }
 
   // 함수이름: _formatDate

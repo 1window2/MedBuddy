@@ -13,6 +13,7 @@ from api.dependencies import get_check_medication_detail
 from api.router import identify_medication
 from boundaries.public_drug_api_boundary import PublicDrugLargeAPI, PublicDrugSmallAPI
 from controls.check_medication_detail_control import CheckMedicationDetail
+from core.config import settings
 from entities.medication_detail_entity import MedicationDetail
 from entities.medication_lookup_result import MedicationLookupResult
 from schemas.medication import MedicationRequest, MedicationResponse
@@ -189,12 +190,49 @@ async def test_real_lookup_pipeline_bounds_both_public_sources_without_retries(m
 @pytest.mark.anyio
 async def test_real_public_boundary_errors_cannot_become_not_found(source, mode, error):
     control, transport = control_with_empty_sources()
-    transport.request_items.side_effect = [error] if source == 'basic' else [([], 0), error]
+    # 기본 API 오류 뒤에도 허가 API를 확인하며, 그마저 비면 기본 API 오류를 그대로 알린다.
+    transport.request_items.side_effect = [error, ([], 0)] if source == 'basic' else [([], 0), error]
     with pytest.raises(type(error)) as raised:
         await control.requestMedicationDetail(PRODUCT, search_mode=mode)
     assert raised.value is error
-    assert transport.request_items.await_count == (1 if source == 'basic' else 2)
+    assert transport.request_items.await_count == 2
     control.medication_cache.set.assert_not_awaited()
+
+
+@pytest.mark.parametrize('mode', MODES)
+@pytest.mark.anyio
+async def test_basic_public_api_failure_still_falls_back_to_advanced_api(mode):
+    control, transport = control_with_empty_sources()
+    transport.request_items.side_effect = [
+        RuntimeError('synthetic basic API failure'),
+        ([{'ITEM_SEQ': '1', 'ITEM_NAME': PRODUCT}], 1),
+    ]
+    control.summary_generator.summarize_advanced_item.return_value = detail()
+    response = await control.requestMedicationDetail(PRODUCT, search_mode=mode)
+    assert response.success and not response.requires_confirmation
+    assert response.data == [detail()]
+    assert [call.args[0] for call in transport.request_items.await_args_list] == [
+        settings.BASIC_DRUG_API_BASE_URL, settings.ADVANCED_DRUG_API_BASE_URL,
+    ]
+
+
+@pytest.mark.anyio
+async def test_thorough_summarises_each_advanced_product_once_per_request():
+    control, transport = control_with_empty_sources()
+    candidate = {'ITEM_SEQ': '9', 'ITEM_NAME': '펠로엔정'}
+
+    async def request_items(url, params, **_):
+        return ([candidate], 1) if url == settings.ADVANCED_DRUG_API_BASE_URL else ([], 0)
+
+    transport.request_items.side_effect = request_items
+    control.summary_generator.summarize_advanced_item.return_value = detail('펠로엔정', '9')
+    response = await control.requestMedicationDetail(PRODUCT, search_mode='thorough')
+    assert response.requires_confirmation
+    assert response.candidates == [detail('펠로엔정', '9')]
+    assert control.local_medication_catalog.fetch_drug_info.await_count > 1
+    control.summary_generator.summarize_advanced_item.assert_awaited_once()
+    await control.requestMedicationDetail(PRODUCT, search_mode='thorough')
+    assert control.summary_generator.summarize_advanced_item.await_count == 2
 
 
 @pytest.mark.parametrize('mode', MODES)
@@ -499,14 +537,16 @@ async def test_deadline_is_shared_across_attempts_not_restarted(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_default_control_supports_existing_one_argument_normalizer_double():
+async def test_default_control_passes_balanced_mode_to_the_normalizer():
     control = control_with_results(MedicationLookupResult([detail()]))
+    modes = []
     control.text_normalizer = SimpleNamespace(
         normalize_raw_text=lambda value: value,
-        build_search_keywords=lambda value: [value],
+        build_search_keywords=lambda value, *, search_mode: modes.append(search_mode) or [value],
     )
     response = await control.requestMedicationDetail(PRODUCT)
     assert response.data == [detail()]
+    assert modes == ['balanced']
 
 
 @pytest.mark.anyio
@@ -518,12 +558,12 @@ async def test_invalid_control_mode_fails_before_any_lookup():
 
 
 @pytest.mark.anyio
-async def test_route_preserves_default_legacy_control_call():
-    async def legacy_lookup(raw_text):
-        assert raw_text == PRODUCT
+async def test_route_passes_the_default_mode_explicitly():
+    async def lookup(raw_text, *, search_mode):
+        assert raw_text == PRODUCT and search_mode == 'balanced'
         return MedicationResponse(success=True, message='synthetic', data=[detail()])
 
-    control = SimpleNamespace(requestMedicationDetail=legacy_lookup)
+    control = SimpleNamespace(requestMedicationDetail=lookup)
     for fields in [{}, {'search_mode': 'balanced'}]:
         response = await identify_medication(
             MedicationRequest(extracted_text=PRODUCT, **fields), control,
@@ -547,9 +587,7 @@ async def test_identify_http_contract_for_modes_and_original_evidence(mode):
             'extracted_text': PRODUCT, 'original_text': '원본정5mg', 'search_mode': mode,
         })
         assert response.status_code == 200
-        expected = {'original_text': '원본정5mg'}
-        if mode != 'balanced':
-            expected['search_mode'] = mode
+        expected = {'original_text': '원본정5mg', 'search_mode': mode}
         control.requestMedicationDetail.assert_awaited_once_with(PRODUCT, **expected)
         invalid = await client.post('/identify', json={
             'extracted_text': PRODUCT, 'search_mode': 'unknown',

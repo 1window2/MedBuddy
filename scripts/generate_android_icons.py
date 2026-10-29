@@ -1,9 +1,11 @@
 # File Name: generate_android_icons.py
 # Role: Builds the adaptive launcher foreground, the monochrome layer and the status-bar
 #   notification icon from the MedBuddy logo (1080 px): the mark only (heart, cross, ECG),
-#   without the wordmark or the white tile. Needs Pillow, which the app does not depend on.
+#   without the wordmark or the white tile. With a third argument it also writes the home
+#   wordmark's two transparent crops (mark and name). Needs Pillow, which the app does not
+#   depend on.
 # Usage: python scripts/generate_android_icons.py frontend/assets/app_icon/medbuddy_logo.png \
-#          frontend/android/app/src/main/res
+#          frontend/android/app/src/main/res [frontend/assets/brand]
 import math
 import os
 import sys
@@ -11,6 +13,7 @@ import sys
 from PIL import Image
 
 src, res = sys.argv[1], sys.argv[2]
+brand = sys.argv[3] if len(sys.argv) > 3 else None
 im = Image.open(src).convert('RGBA')
 W, H = im.size
 px = im.load()
@@ -74,3 +77,27 @@ for name, d in densities.items():
     os.makedirs(f'{res}/drawable-{name}', exist_ok=True)
     stat.save(f'{res}/drawable-{name}/ic_stat_medbuddy.png', optimize=True)
 print('mark on canvas: %.1f x %.1f dp' % (w, h))
+
+if brand:
+    # Home wordmark (MedBuddyWordmark): the mark 46 dp wide and the name 148 dp wide, drawn at
+    # 3x so the app decodes two small images instead of the whole 1080 px logo.
+    word_rows = [y for y in range(cut, H) if inked[y]]
+    word_box = (0, word_rows[0], W, word_rows[-1] + 1)
+    word_mask = Image.new('L', (W, H), 0)
+    wp = word_mask.load()
+    word_inks = [px[x, y][:3] for y in range(word_box[1], word_box[3], 2) for x in range(W) if px[x, y][3] > 250 and px[x, y][0] < 40]
+    word_ink = tuple(sorted(c[i] for c in word_inks)[len(word_inks) // 2] for i in range(3))
+    for y in range(word_box[1], word_box[3]):
+        for x in range(W):
+            p = px[x, y]
+            a = 0.0 if p[3] < 255 else max(0.0, min(1.0, (255 - p[0]) / (255 - word_ink[0])))
+            if a > 0.02:
+                wp[x, y] = int(round(a * 255))
+    os.makedirs(brand, exist_ok=True)
+    for name, alpha_mask, colour, width in (('medbuddy_mark', mark, ink, 46), ('medbuddy_name', word_mask.crop(word_mask.getbbox()), word_ink, 148)):
+        w = width * 3
+        h = round(alpha_mask.height * w / alpha_mask.width)
+        solid = Image.new('RGBA', (w, h), colour + (255,))
+        solid.putalpha(alpha_mask.resize((w, h), Image.LANCZOS))
+        solid.save(f'{brand}/{name}.png', optimize=True)
+        print(name, 'colour', colour, 'size', (w, h))

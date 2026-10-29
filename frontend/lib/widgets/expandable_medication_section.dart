@@ -49,23 +49,44 @@ class _ExpandableMedicationSectionState
       mainAxisSize: MainAxisSize.min,
       children: [
         widget.headerBuilder(
-          Semantics(
+          MedicationExpandToggle(
+            key: widget.toggleKey,
             expanded: _expanded,
-            child: IconButton(
-              key: widget.toggleKey,
-              tooltip: label,
-              onPressed: () => setState(() => _expanded = !_expanded),
-              constraints: const BoxConstraints.tightFor(width: 48, height: 48),
-              color: MedBuddyColors.primaryDark,
-              icon: Icon(
-                _expanded ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-                size: 28,
-              ),
-            ),
+            tooltip: label,
+            onPressed: () => setState(() => _expanded = !_expanded),
           ),
         ),
         if (_expanded) widget.details,
       ],
     );
   }
+}
+
+// 펼침 상태를 화면 읽기에 알리는 48dp 화살표 버튼이다. onPressed가 없으면 비활성 색으로 보인다.
+class MedicationExpandToggle extends StatelessWidget {
+  const MedicationExpandToggle({
+    super.key,
+    required this.expanded,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final bool expanded;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    expanded: expanded,
+    child: IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      constraints: const BoxConstraints.tightFor(width: 48, height: 48),
+      color: MedBuddyColors.primaryDark,
+      icon: Icon(
+        expanded ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+        size: 28,
+      ),
+    ),
+  );
 }

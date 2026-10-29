@@ -1424,7 +1424,7 @@ class NotificationService {
   // 함수이름: showLinkedChatAlert
   // 함수역할: 전경에서 받은 가족 채팅 푸시를 제한된 메시지 미리보기와 함께 표시한다.
   // 매개변수:
-  // - id (int): 플랫폼 알림의 예약·교체·취소 식별자
+  // - id (int): 알림함 항목을 구분하는 식별자. 시스템 알림은 연동별 태그 하나를 교체한다.
   // - linkId (int): 조회·전송·감시 대상 연동 ID
   // - language (String): 표시·음성 안내에 사용할 언어 코드
   // - messagePreview (String?): 시스템 알림과 알림함에 표시할 선택적 메시지 미리보기
@@ -1467,16 +1467,17 @@ class NotificationService {
     if (summary?.count == 0) return;
     final isEnglish = isEnglishLanguage(language);
     final genericTitle = isEnglish ? 'New family message' : '새 가족 메시지';
-    final count = summary?.count ?? 1;
+    // 요약이 없으면(이전 서버, 요약 조회 실패) 개수를 모르므로 개수 없이 이번 메시지만 보인다.
+    final count = summary?.count;
     final name = detailsAllowed ? summary?.senderName.trim() ?? '' : '';
-    final title = '${name.isEmpty ? genericTitle : name} ($count)';
+    final title = count == null
+        ? genericTitle
+        : '${name.isEmpty ? genericTitle : name} ($count)';
     final lines = detailsAllowed && summary != null && summary.lines.isNotEmpty
         ? summary.lines.map(linkedChatMessagePreview).toList()
         : [body];
     await _plugin.show(
-      id: defaultTargetPlatform == TargetPlatform.android
-          ? 0
-          : int.parse(tag.split('-').last.substring(0, 7), radix: 16),
+      id: _chatNotificationId(tag),
       title: title,
       body: lines.last,
       notificationDetails: NotificationDetails(
@@ -1491,13 +1492,15 @@ class NotificationService {
           tag: tag,
           number: count,
           category: AndroidNotificationCategory.message,
-          styleInformation: InboxStyleInformation(
-            lines,
-            contentTitle: title,
-            summaryText: isEnglish
-                ? '$count unread messages'
-                : '안 읽은 메시지 $count개',
-          ),
+          styleInformation: count == null
+              ? null
+              : InboxStyleInformation(
+                  lines,
+                  contentTitle: title,
+                  summaryText: isEnglish
+                      ? '$count unread messages'
+                      : '안 읽은 메시지 $count개',
+                ),
         ),
         iOS: DarwinNotificationDetails(threadIdentifier: tag),
       ),
@@ -1582,14 +1585,16 @@ extension LinkedChatNotificationCleanup on NotificationService {
     if ((_chatLatestIds[linkId] ?? 0) > throughMessageId) return;
     final tag = await ChatNotificationSummary.groupTag(owner, linkId);
     if (owner != _historyUserHash) return;
-    await _plugin.cancel(
-      id: defaultTargetPlatform == TargetPlatform.android
-          ? 0
-          : int.parse(tag.split('-').last.substring(0, 7), radix: 16),
-      tag: tag,
-    );
+    await _plugin.cancel(id: _chatNotificationId(tag), tag: tag);
   });
 }
+
+// 표시와 읽음 정리가 같은 알림을 가리키도록 연동별 채팅 알림 ID를 한곳에서 정한다.
+// Android는 태그로 구분하므로 ID 0을 쓰고(FCM 알림과 같은 자리), 그 밖에는 태그에서 ID를 만든다.
+int _chatNotificationId(String tag) =>
+    defaultTargetPlatform == TargetPlatform.android
+    ? 0
+    : int.parse(tag.split('-').last.substring(0, 7), radix: 16);
 
 // 기존 알림 계약과 테스트 대역에 새 의무를 추가하지 않는 기기 알림 확인 기능이다.
 extension NotificationReadinessDiagnostics on NotificationService {

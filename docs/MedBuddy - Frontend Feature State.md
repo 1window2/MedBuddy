@@ -159,8 +159,8 @@ After confirmed server-side account deletion, `ManageAccount` also removes that
 account's snapshot, latest-intent and server-revision keys alongside pending state.
 Other accounts' keys and local state after a failed deletion remain intact.
 
-Confirmed account deletion also attempts to remove temporary Android medication
-export files. The FileProvider is restricted to that cache directory; external
+Confirmed account deletion also attempts to remove the temporary medication export
+files that earlier CSV-sharing builds may have left in the app cache; external
 copies are outside the app's control. Settings shows the phone's notification and
 on-time reminder switches with a test notification at the top of Medication &
 Notifications (there is no separate setup-check screen since 2026-10-22), and the

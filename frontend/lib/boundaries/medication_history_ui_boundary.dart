@@ -141,14 +141,6 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     }
   }
 
-  String get _recordNotice => tr(
-    '사용자가 입력한 기록이며 실제 복용을 증명하지 않습니다. 미기록은 미복용을 뜻하지 않습니다.',
-    'Self-reported records are not proof of ingestion. Unrecorded does not mean not taken.',
-  );
-
-  String get _timeZoneNotice =>
-      tr('시각 기준: 한국 시간(UTC+09:00)', 'Time zone: Korea (UTC+09:00)');
-
   // 상시 본문 대신 정보 버튼에서 동일한 기록 해석·시간대 안내를 다시 확인한다.
   Future<void> _showRecordNotice() async {
     if (_locked) return;
@@ -161,7 +153,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
         builder: (context) => AlertDialog(
           title: Text(tr('복약 기록 안내', 'About medication records')),
           scrollable: true,
-          content: Text('$_recordNotice\n\n$_timeZoneNotice'),
+          content: Text(
+            '${medicationHistoryRecordNotice(widget.isEnglish)}\n\n'
+            '${medicationHistoryTimeZoneNotice(widget.isEnglish)}',
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -424,6 +419,8 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     var selectingDate = false;
     var preparingExport = false;
     String? exportError;
+    // 외부 공유 본문은 길이 확인 때 만든 것을 그대로 보낸다.
+    String? shareContent;
 
     // 날짜 선택은 공유 창 안에서만 바꾸고 날짜별 기록 화면은 유지한다.
     // 외부 공유는 31일씩 나눠 읽어 최근 90일 전체를 담을 수 있고, 채팅 공유는 서버가 한 번에 31일만 받는다.
@@ -525,12 +522,11 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
         final result = await control.readRangeForExport(exportRange);
         if (!_isCurrent(control) || !dialogContext.mounted) return;
         if (ModalRoute.of(dialogContext)?.isCurrent != true) return;
-        if (destination == _HistoryShareDestination.external &&
-            medicationHistoryShareText(
-                  result,
-                  isEnglish: widget.isEnglish,
-                ).length >
-                medicationHistoryShareTextLimit) {
+        final content = destination == _HistoryShareDestination.external
+            ? medicationHistoryShareText(result, isEnglish: widget.isEnglish)
+            : null;
+        if (content != null &&
+            content.length > medicationHistoryShareTextLimit) {
           updateDialog(
             () => exportError = tr(
               '공유할 기록이 많아요. 기간을 줄여 다시 시도해 주세요.',
@@ -540,6 +536,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
           return;
         }
         snapshot = result;
+        shareContent = content;
         Navigator.pop(dialogContext, destination);
       } catch (_) {
         if (_isCurrent(control) && dialogContext.mounted) {
@@ -753,10 +750,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
         }
         return;
       }
-      final content = medicationHistoryShareText(
-        exportSnapshot,
-        isEnglish: widget.isEnglish,
-      );
+      final content = shareContent!;
       try {
         await _exportChannel.invokeMethod<void>('shareText', {
           'content': content,

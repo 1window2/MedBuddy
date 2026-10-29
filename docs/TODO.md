@@ -136,6 +136,30 @@ recovery, docs) were reviewed on 2026-10-23. Corrected on top:
       history reload on an app rebuild and Back during a slow day load are
       covered by widget tests only.
 
+### Review of the 2026-10-29 collaborator commits
+
+Fifteen commits (medication search modes, prescription review and result
+cards, change radar categories, cabinet date groups, home wordmark, text
+sharing of history, grouped chat alerts, shared places reopened with current
+details, chat copy, docs) mark the functional end of the line. Reviewed and
+corrected the same day; see the
+[v0.2.4 notes](releases/v0.2.4-beta.md#review-corrections-2026-10-29).
+
+- [ ] The backend changed (search modes, chat summaries, operating
+      snapshots): deploy it before or with the next signed build. No
+      migration.
+- [ ] Signed build and phone check of the new screens: search mode setting,
+      prescription review with collapsed cards and the change radar, cabinet
+      date groups, text sharing, grouped chat alerts in the background and
+      after reading, reopening a shared place.
+- [ ] Left for the team (decision log 2026-10-29): the search-mode control
+      with a slider and three buttons, and collapsed cabinet groups during a
+      search.
+- [ ] `docs/UML/sequence/MedicationCareHistory.puml` still names "Android
+      FileProvider" for text sharing; re-render with the team's font (Malgun
+      Gothic) when the UML is next updated.
+- [ ] User guide 3.10 still describes CSV sharing.
+
 ### Decisions taken on 2026-10-23
 
 Recorded with reasons and how to undo them in the

@@ -40,7 +40,11 @@ Future<void> deliverLinkedChatAlert({
     return;
   }
   notifications.setShowSensitiveDetails(setting.showNotificationDetails);
-  final summary = await loadSummary?.call();
+  // 요약 조회가 실패해도 이번 메시지 알림은 요약 없이 보여 준다.
+  ChatNotificationSummary? summary;
+  try {
+    summary = await loadSummary?.call();
+  } catch (_) {}
   return notifications.showLinkedChatAlert(
     historyUserHash: userHash,
     id: LinkedChatNotificationMonitorFactory._notificationId(linkId, messageId),

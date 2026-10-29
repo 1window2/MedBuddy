@@ -41,6 +41,7 @@ Widget screen({
   Future<bool> Function(AnalyzedMedication, int)? save,
   Future<bool> Function()? saveAll,
   PrescriptionChangeRadar? radar,
+  bool radarLoading = false,
   bool reduceMotion = false,
 }) => MaterialApp(
   debugShowCheckedModeBanner: false,
@@ -61,6 +62,7 @@ Widget screen({
   home: CheckResultUI(
     analyzedMedicationList: items ?? [medication(), medication(asNeeded: true)],
     prescriptionChangeRadar: radar,
+    isPrescriptionChangeLoading: radarLoading,
     userSetting: UserSetting(language: english ? 'en' : 'ko'),
     statusMessageProvider: () => '시험 저장 결과',
     savingMedicationIndex: saving,
@@ -263,6 +265,31 @@ void main() {
     await tester.tap(find.byKey(const Key('result-medication-toggle-0')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('result-medication-summary-0')), findsNothing);
+  });
+
+  testWidgets('expanded results stay open when the radar request fails', (
+    tester,
+  ) async {
+    await tester.pumpWidget(screen(radarLoading: true));
+    await tester.pump(const Duration(milliseconds: 500));
+    final toggle = find.byKey(const Key('result-medication-toggle-0'));
+    await tester.ensureVisible(toggle);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(toggle);
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(
+      find.byKey(const Key('result-medication-summary-0')),
+      findsOneWidget,
+    );
+
+    // 비교 요청이 실패하면 로딩 칸이 사라지고 레이더 없이 다시 그려진다.
+    await tester.pumpWidget(screen());
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('result-medication-summary-0')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('result-medication-summary-1')), findsNothing);
   });
 
   testWidgets('comparison summary does not shift medication save indexes', (

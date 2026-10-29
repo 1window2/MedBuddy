@@ -275,7 +275,6 @@ class ChatScheduleContext {
 // - name (String): 표시하거나 길찾기에 사용할 약국 이름
 // - address (String): 복사하거나 표시할 약국 주소
 // - telephone (String): 약국 전화번호 원문
-// - todayHours (String): 공유 시점의 약국 영업시간 표시문
 // - latitude (double): WGS84 위도(도 단위)
 // - longitude (double): WGS84 경도(도 단위)
 // - sourceUpdatedAt (DateTime?): 원본 약국 자료의 갱신 시각
@@ -323,7 +322,6 @@ abstract class ChatPlaceContext {
   final String name;
   final String address;
   final String telephone;
-  final String todayHours;
   final double latitude;
   final double longitude;
   final DateTime? sourceUpdatedAt;
@@ -335,7 +333,6 @@ abstract class ChatPlaceContext {
     required this.telephone,
     required this.latitude,
     required this.longitude,
-    this.todayHours = '',
     this.sourceUpdatedAt,
     this.operatingSnapshot,
   });
@@ -351,7 +348,6 @@ class ChatPharmacyContext extends ChatPlaceContext {
   // - name (String): 표시하거나 길찾기에 사용할 약국 이름
   // - address (String): 복사하거나 표시할 약국 주소
   // - telephone (String): 약국 전화번호 원문
-  // - todayHours (String): 공유 시점의 약국 영업시간 표시문
   // - latitude (double): WGS84 위도(도 단위)
   // - longitude (double): WGS84 경도(도 단위)
   // - sourceUpdatedAt (DateTime?): 원본 약국 자료의 갱신 시각
@@ -362,7 +358,6 @@ class ChatPharmacyContext extends ChatPlaceContext {
     required super.name,
     required super.address,
     required super.telephone,
-    super.todayHours,
     required super.latitude,
     required super.longitude,
     super.sourceUpdatedAt,
@@ -386,7 +381,6 @@ class ChatPharmacyContext extends ChatPlaceContext {
       name: name,
       address: readJsonText(json['address']),
       telephone: readJsonText(json['telephone']),
-      todayHours: readJsonText(json['today_hours']),
       latitude: readJsonDouble(json['latitude']) ?? 0,
       longitude: readJsonDouble(json['longitude']) ?? 0,
       sourceUpdatedAt: DateTime.tryParse(
@@ -412,7 +406,6 @@ class ChatHospitalContext extends ChatPlaceContext {
     required super.telephone,
     required super.latitude,
     required super.longitude,
-    super.todayHours,
     super.sourceUpdatedAt,
     super.operatingSnapshot,
     required this.departments,
@@ -433,7 +426,6 @@ class ChatHospitalContext extends ChatPlaceContext {
       telephone: base.telephone,
       latitude: base.latitude,
       longitude: base.longitude,
-      todayHours: base.todayHours,
       sourceUpdatedAt: base.sourceUpdatedAt,
       operatingSnapshot: base.operatingSnapshot,
       departments: (json['departments'] as List? ?? const [])

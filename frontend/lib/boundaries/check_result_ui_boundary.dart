@@ -5,14 +5,13 @@ import 'package:flutter/material.dart';
 
 import '../entities/analyzed_medication_entity.dart';
 import '../entities/json_value_reader.dart';
-import '../entities/medication_dose_rhythm.dart';
-import '../entities/medication_slot_label.dart';
 import '../entities/prescription_change_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/expandable_medication_section.dart';
 import '../widgets/pinned_analysis_summary.dart';
 import '../widgets/medbuddy_page_header.dart';
+import '../widgets/responsive_card_header.dart';
 import 'prescription_change_radar_ui_boundary.dart';
 
 // 파일명: check_result_ui_boundary.dart
@@ -94,6 +93,8 @@ class CheckResultUI extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = _ResultText(userSetting.language);
+    final hasRadarSlot =
+        prescriptionChangeRadar != null || isPrescriptionChangeLoading;
 
     return Scaffold(
       backgroundColor: MedBuddyColors.pageBackground,
@@ -135,10 +136,11 @@ class CheckResultUI extends StatelessWidget {
                           padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                           itemCount:
                               analyzedMedicationList.length +
-                              (prescriptionChangeRadar != null ||
-                                      isPrescriptionChangeLoading
-                                  ? 1
-                                  : 0),
+                              (hasRadarSlot ? 1 : 0),
+                          // 변경 비교 칸이 사라져 위치가 당겨져도 펼친 약 카드의 상태를 같은 약에 유지한다.
+                          findChildIndexCallback: (key) => key is ValueKey<int>
+                              ? key.value + (hasRadarSlot ? 1 : 0)
+                              : null,
                           // Function Name: build.itemBuilder callback
                           // Description: Composes analyzed medications and individual or bulk save state with the current parent constraints for the active layout.
                           // Parameters:
@@ -146,9 +148,6 @@ class CheckResultUI extends StatelessWidget {
                           // - index (int): Zero-based position of the target medication, photo, or row.
                           // Returns: Widget subtree for the described layout or fallback.
                           itemBuilder: (context, index) {
-                            final hasRadarSlot =
-                                prescriptionChangeRadar != null ||
-                                isPrescriptionChangeLoading;
                             if (hasRadarSlot && index == 0) {
                               if (isPrescriptionChangeLoading) {
                                 return PrescriptionChangeRadarLoadingUI(
@@ -166,6 +165,7 @@ class CheckResultUI extends StatelessWidget {
                             final analyzedMedication =
                                 analyzedMedicationList[medicationIndex];
                             return _MedicationResultCard(
+                              key: ValueKey(medicationIndex),
                               medicationIndex: medicationIndex,
                               analyzedMedication: analyzedMedication,
                               text: text,
@@ -680,6 +680,7 @@ class _MedicationResultCard extends StatelessWidget {
   // 함수이름: _MedicationResultCard
   // 함수역할: 약 한 건의 복용량·횟수·기간과 개별 저장에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
+  // - key (Key?): 목록 위치가 바뀌어도 같은 약 카드의 펼침 상태를 유지할 식별 키.
   // - analyzedMedication (AnalyzedMedication): 표시·변환·저장·비교할 약품 데이터.
   // - text (_ResultText): 해당 화면 구역의 언어별 표시 문구.
   // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
@@ -689,6 +690,7 @@ class _MedicationResultCard extends StatelessWidget {
   // - onMedicationSaveRequested (Future<void> Function()): 검증한 약품과 복약 정보를 저장할 콜백.
   // 반환값: 입력 설정이 반영된 _MedicationResultCard 인스턴스.
   const _MedicationResultCard({
+    super.key,
     required this.medicationIndex,
     required this.analyzedMedication,
     required this.text,
@@ -707,18 +709,7 @@ class _MedicationResultCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final schedule = analyzedMedication.schedule;
-    final slots = schedule.isAsNeeded
-        ? text.asNeeded
-        : [
-            if (!readDoseCycle(schedule.intakeTime).isDaily)
-              schedule.dailyFrequencyLabelForLanguage(text.language),
-            schedule.slotKeys
-                .map(
-                  (slot) =>
-                      medicationSlotLabel(slot, isEnglish: text.isEnglish),
-                )
-                .join(', '),
-          ].join('\n');
+    final slots = schedule.slotSummaryLabelForLanguage(text.language);
 
     return Container(
       key: Key('result-medication-card-$medicationIndex'),
@@ -780,27 +771,10 @@ class _MedicationResultCard extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
             color: MedBuddyColors.successSurface,
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                if (constraints.maxWidth < 340 &&
-                    MediaQuery.textScalerOf(context).scale(18) > 24) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      numberedName,
-                      Align(alignment: Alignment.centerRight, child: actions),
-                    ],
-                  );
-                }
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(child: numberedName),
-                    const SizedBox(width: 10),
-                    actions,
-                  ],
-                );
-              },
+            child: ResponsiveCardHeader(
+              title: numberedName,
+              actions: actions,
+              spacing: 10,
             ),
           );
         },
@@ -1072,7 +1046,6 @@ class _ResultText {
   String get dose => isEnglish ? 'Dose' : '1회 투약량';
   String get medicationStartDate => isEnglish ? 'Start date' : '복용 시작일';
   String get scheduleSlots => isEnglish ? 'Medication time slots' : '실제 복약 시간대';
-  String get asNeeded => isEnglish ? 'As needed' : '필요시 복용';
   // 함수이름: duration
   // 함수역할: 현재 언어와 입력값에 맞춰 "총 투약일" 문구를 제공한다.
   // 매개변수:

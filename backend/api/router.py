@@ -441,11 +441,10 @@ async def identify_medication(
         client_value_errors=True,
     ):
         try:
-            # 기본값은 컨트롤에도 정의되어 있어 기존 호출 대역에 새 인자를 강제하지 않는다.
             return await check_medication_detail.requestMedicationDetail(
                 request.extracted_text,
                 **({'original_text': request.original_text} if request.original_text else {}),
-                **({'search_mode': request.search_mode} if request.search_mode != 'balanced' else {}),
+                search_mode=request.search_mode,
             )
         except TimeoutError as exc:
             raise HTTPException(

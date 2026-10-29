@@ -142,12 +142,11 @@ or deployed:
   link and preferences. Stable event keys deduplicate retries/time corrections
   and repeated displays. PRN does not emit aggregate completion chat events or
   missed-deadline alerts. Local/demo polling baselines existing reports.
-- Selected-period CSV sharing through Android's restricted temporary FileProvider.
-  The dialog shows dates and a short health-data notice, not period status totals.
-  Share CSV triggers a fresh authorized read and session checks before closing
-  the dialog and sharing. Period metadata and status counts are included in the
-  CSV; the daily screen's summary remains scoped to the displayed day. CSV excludes
-  internal account identifiers and escapes formulas; chooser opening is not delivery.
+- Selected-period sharing of readable text through the Android share sheet (up to
+  90 days; no file attachment). The dialog shows dates and a short health-data
+  notice. Sharing triggers a fresh authorized read and session checks before closing
+  the dialog. The text carries the period, status counts and dated records without
+  internal identifiers; chooser opening is not delivery.
 - Integrated phone notification settings/tests and a factual data-use guide,
   without a separate readiness or medication-registration check screen.
   Device switches open OS settings, and a test request is separate from confirming

@@ -31,7 +31,6 @@ enum MedicationLookupStatus { verified, candidates, notFound, failed, pending }
 enum PrescriptionRecognitionStage {
   recognizingText,
   structuringMedication,
-  validatingResult,
   completed;
 
   double get progress => index / (values.length - 1);

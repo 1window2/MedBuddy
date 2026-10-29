@@ -34,6 +34,7 @@ from entities.patient_caregiver_link_entity import (  # noqa: E402
 from entities.user_account_entity import _UserAccount, utc_now  # noqa: E402
 from entities.user_setting_entity import _UserSetting  # noqa: E402
 from controls.manage_linked_chat_control import ManageLinkedChat
+from repositories.chat_message_repository import ChatMessageRepository
 from fastapi import HTTPException
 
 
@@ -433,6 +434,43 @@ def test_group_summary_hides_health_share_and_limits_push_size(fk_db):
     hidden = control.request_unread_count(link_id=link_id, user_hash=_CAREGIVER,
                                         include_notification_preview=True)["data"]["notification"]
     assert hidden["count"] == 4 and hidden["lines"] == [] and hidden["sender_name"] == ""
+
+
+# 접힌 기기 알림은 첫 줄만 보이므로 본문은 최신 메시지부터 보내고,
+# 앱이 InboxStyle로 읽는 chat_summary의 lines는 오래된 순서를 유지한다.
+def test_grouped_push_body_puts_the_newest_message_first(fk_db):
+    link_id, _ = _seed_chat_scene(fk_db)
+    for i in (2, 3, 4):
+        fk_db.add(_ChatMessage(link_id=link_id, sender_hash=_PATIENT,
+                               client_message_id=f"order-{i}", body=f"메시지 {i}"))
+    fk_db.commit()
+    last_id = max(row.id for row in fk_db.query(_ChatMessage).all())
+    boundary = RecordingPushBoundary()
+    DispatchChatMessageAlert(fk_db, boundary).notify_new_message(
+        recipient_hash=_CAREGIVER, link_id=link_id, message_id=last_id, message_body="")
+    call = boundary.calls[-1]
+    assert call["title"].endswith("(4)")
+    assert call["body"] == "메시지 4\n메시지 3\n메시지 2"
+    assert json.loads(call["data"]["chat_summary"])["lines"] == ["메시지 2", "메시지 3", "메시지 4"]
+
+
+# 미리보기 요청은 이미 센 미확인 개수를 재사용하고, 푸시와 같은 수신자 언어 규칙을 쓴다.
+def test_unread_count_preview_counts_once_with_push_language_rules(fk_db, monkeypatch):
+    link_id, _ = _seed_chat_scene(fk_db, {"language": " EN "})
+    calls = []
+    original = ChatMessageRepository.unread_summary
+
+    def counting_unread_summary(self, **kwargs):
+        calls.append(kwargs)
+        return original(self, **kwargs)
+
+    monkeypatch.setattr(ChatMessageRepository, "unread_summary", counting_unread_summary)
+    data = ManageLinkedChat(fk_db).request_unread_count(
+        link_id=link_id, user_hash=_CAREGIVER, include_notification_preview=True,
+    )["data"]
+    assert data["unread_count"] == data["notification"]["count"] == 1
+    assert data["notification"]["sender_name"] == "Patient NT-A"
+    assert len(calls) == 1
 
 
 _PATIENT = "patient-a"

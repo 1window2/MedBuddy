@@ -151,6 +151,21 @@ void main() {
     },
   );
 
+  test('chat alert without a summary shows no unread count', () async {
+    await service.showLinkedChatAlert(
+      id: 300,
+      linkId: 9,
+      language: 'en',
+      messagePreview: 'hello',
+    );
+    final shown = calls.lastWhere((c) => c.method == 'show').arguments as Map;
+    final android = shown['platformSpecifics'] as Map;
+    expect(shown['title'], 'New family message');
+    expect(shown['body'], 'hello');
+    expect(android['number'], isNull);
+    expect(android['styleInformation'], isNot(containsPair('lines', anything)));
+  });
+
   test('chat grouping respects privacy and ignores older snapshots', () async {
     service.setShowSensitiveDetails(false);
     await service.showLinkedChatAlert(

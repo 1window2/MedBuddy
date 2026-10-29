@@ -413,24 +413,32 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
       _errorMessage = null;
     });
     try {
-      final result = resolveSharedPlace
-          ? await _control.requestSelectedPlaceSearch(
-              place: _initialPlace,
-              targetDateTime: _targetDateTime,
-              searchArea: requestedArea,
-              maxDistanceKm: widget.hospitals
-                  ? CheckNearbyHospital.defaultRadiusKm
-                  : 20,
-            )
-          : await _control.requestNearbyCareSearch(
-              searchArea: requestedArea,
-              // 최초 조회와 내 위치 재검색만 좁힌다. 지도에서 고른 지역은 우선 유지한다.
-              maxDistanceKm: widget.hospitals
-                  ? CheckNearbyHospital.defaultRadiusKm
-                  : 20,
-              searchMode: _searchModeForFilter(_filter),
-              targetDateTime: _targetDateTime,
-            );
+      NearbyCareSearchResult result;
+      var sharedPlaceMissing = false;
+      try {
+        result = resolveSharedPlace
+            ? await _control.requestSelectedPlaceSearch(
+                place: _initialPlace,
+                targetDateTime: _targetDateTime,
+                searchArea: requestedArea,
+                maxDistanceKm: widget.hospitals
+                    ? CheckNearbyHospital.defaultRadiusKm
+                    : 20,
+              )
+            : await _control.requestNearbyCareSearch(
+                searchArea: requestedArea,
+                // 최초 조회와 내 위치 재검색만 좁힌다. 지도에서 고른 지역은 우선 유지한다.
+                maxDistanceKm: widget.hospitals
+                    ? CheckNearbyHospital.defaultRadiusKm
+                    : 20,
+                searchMode: _searchModeForFilter(_filter),
+                targetDateTime: _targetDateTime,
+              );
+      } on SharedPlaceNotFound catch (missing) {
+        // 공유된 장소가 지금 목록에 없으면 주변 결과를 보여 주고, 새로고침마다 같은 조회를 되풀이하지 않는다.
+        result = missing.nearby;
+        sharedPlaceMissing = true;
+      }
       if (!mounted || generation != _searchGeneration) {
         return false;
       }
@@ -467,7 +475,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
         if (resolveSharedPlace) {
           if (!_initialPlaceResolved) _centerRevision++;
           _initialPlaceResolved = true;
-          _selectedPharmacyId = _initialPlace.placeId;
+          if (!sharedPlaceMissing) _selectedPharmacyId = _initialPlace.placeId;
         }
         _catalogIsStale = result.catalogIsStale;
         _searchTruncated = result.searchTruncated;
@@ -488,6 +496,11 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
         }
         _lastRefreshedAt = _now();
       });
+      if (sharedPlaceMissing) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_text.sharedPlaceMissing)),
+        );
+      }
       if (expanded) {
         final radius = result.searchArea!.radiusKm;
         final distance = radius < 1
@@ -2685,6 +2698,9 @@ class _NearbyPharmacyText {
   String get loadFailed => isEnglish
       ? 'Could not load pharmacy information.\nPlease try again shortly.'
       : '약국 정보를 불러오지 못했습니다.\n잠시 후 다시 시도해주세요.';
+  String get sharedPlaceMissing => isEnglish
+      ? 'The shared place is not in the current list. Showing places nearby.'
+      : '공유된 장소를 지금 목록에서 찾지 못했어요. 주변 장소를 보여드려요.';
   // 함수이름: loadingAction
   // 함수역할: 현재 언어와 입력값에 맞춰 "약국 정보를 불러오는 중입니다." 문구를 제공한다.
   // 매개변수:

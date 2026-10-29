@@ -1,215 +1,11 @@
 import 'package:flutter/material.dart';
 
-import '../entities/analyzed_medication_entity.dart';
 import '../entities/prescription_flow_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 
 // 파일명: prescription_analysis_status_ui_boundary.dart
-// 역할: 처방 분석 성공 요약과 실패 단계별 복구 동작을 제공한다.
-
-// Class Name: PrescriptionAnalysisSuccessUI
-// Role: Represents analyzed-medication count, maximum treatment days, and results navigation.
-// Responsibilities:
-// - Summarizes the analyzed medication count and longest treatment duration.
-// - Provides navigation to the result list.
-// Attributes:
-// - analyzedMedicationList (List<AnalyzedMedication>): Prescription analysis results containing medication details and schedules.
-// - userSetting (UserSetting): User settings for language, accessibility, medication reminders, and persistence.
-// - onResultRequested (VoidCallback): Callback opening completed analysis results.
-class PrescriptionAnalysisSuccessUI extends StatelessWidget {
-  final List<AnalyzedMedication> analyzedMedicationList;
-  final UserSetting userSetting;
-  final VoidCallback onResultRequested;
-
-  // 함수이름: PrescriptionAnalysisSuccessUI
-  // 함수역할: 분석 약품 수·최대 복용일 요약과 결과 진입에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - key (Key?): 위젯을 구분하고 상태를 유지할 식별 키.
-  // - analyzedMedicationList (List<AnalyzedMedication>): 약 상세와 일정을 함께 가진 처방 분석 결과 목록.
-  // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-  // - onResultRequested (VoidCallback): 완료된 분석 결과 목록을 여는 콜백.
-  // 반환값: 입력 설정이 반영된 PrescriptionAnalysisSuccessUI 인스턴스.
-  const PrescriptionAnalysisSuccessUI({
-    super.key,
-    required this.analyzedMedicationList,
-    required this.userSetting,
-    required this.onResultRequested,
-  });
-
-  // Function Name: build
-  // Description: Renders analyzed-medication count, maximum treatment days, and results navigation from the current configuration and state.
-  // Parameters:
-  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-  // Returns: Widget tree for analyzed-medication count, maximum treatment days, and results navigation.
-  @override
-  Widget build(BuildContext context) {
-    final text = _StatusText(userSetting.language);
-    final maxMedicationDays = _readMaxMedicationDays();
-
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        top: false,
-        child: Container(
-          width: double.infinity,
-          color: MedBuddyColors.pageBackground,
-          child: LayoutBuilder(
-            builder: (context, constraints) => SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: (constraints.maxHeight - 48)
-                      .clamp(0.0, double.infinity)
-                      .toDouble(),
-                ),
-                child: Center(
-                  child: Container(
-                    width: double.infinity,
-                    constraints: const BoxConstraints(maxWidth: 400),
-                    padding: const EdgeInsets.fromLTRB(24, 34, 24, 32),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: MedBuddyRadii.card,
-                      boxShadow: MedBuddyShadows.card,
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          text.successTitle,
-                          style: TextStyle(
-                            color: MedBuddyColors.textStrong,
-                            fontSize: 28,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0,
-                          ),
-                        ),
-                        const SizedBox(height: 36),
-                        Container(
-                          width: 168,
-                          height: 168,
-                          decoration: const BoxDecoration(
-                            color: MedBuddyColors.successSurface,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Center(
-                            child: Container(
-                              width: 98,
-                              height: 98,
-                              decoration: const BoxDecoration(
-                                color: MedBuddyColors.primary,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.check_circle_outline,
-                                color: Colors.white,
-                                size: 62,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 34),
-                        Text(
-                          text.successMessage,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: MedBuddyColors.textStrong,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0,
-                          ),
-                        ),
-                        const SizedBox(height: 13),
-                        Text(
-                          text.successDescription,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: MedBuddyColors.textLight,
-                            fontSize: 14,
-                            height: 1.55,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0,
-                          ),
-                        ),
-                        const SizedBox(height: 32),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _SuccessMetric(
-                                value: '${analyzedMedicationList.length}',
-                                label: text.recognizedMedication,
-                              ),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: _SuccessMetric(
-                                value: maxMedicationDays <= 0
-                                    ? '-'
-                                    : text.days(maxMedicationDays),
-                                label: text.medicationPeriod,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 32),
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(
-                            minWidth: double.infinity,
-                            minHeight: 56,
-                          ),
-                          child: FilledButton(
-                            key: const Key(
-                              'prescription-analysis-result-button',
-                            ),
-                            style: FilledButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                                vertical: 14,
-                              ),
-                              textStyle: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 0,
-                              ),
-                            ),
-                            onPressed: onResultRequested,
-                            child: Text(
-                              text.checkResult,
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // 함수이름: _readMaxMedicationDays
-  // 함수역할: 분석된 약 중 가장 긴 복용일수를 찾고 목록이 비면 0을 반환한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: int: 분석 항목 중 가장 긴 복용 기간; 항목이 없으면 0.
-  int _readMaxMedicationDays() {
-    // 함수이름: _readMaxMedicationDays.fold callback
-    // 함수역할: 분석 약품 수·최대 복용일 요약과 결과 진입의 누적값을 `nextValue > maxValue ? nextValue : maxValue` 규칙으로 계산한다.
-    // 매개변수:
-    // - maxValue (콜백 계약에서 추론): 누적 합계 또는 지금까지의 최대값.
-    // - item (콜백 계약에서 추론): 표시·변환·저장·비교할 약품 데이터.
-    // 반환값: 컬렉션 연산에 전달할 누적값.
-    return analyzedMedicationList.fold<int>(0, (maxValue, item) {
-      final nextValue = item.schedule.medicationTime;
-      return nextValue > maxValue ? nextValue : maxValue;
-    });
-  }
-}
+// 역할: 처방 분석 실패 단계별 복구 동작을 제공한다.
 
 // 클래스명: PrescriptionAnalysisFailureUI
 // 역할: 실패 단계에 맞춘 재분석·재촬영·재선택 명령을 담당한다.
@@ -486,71 +282,6 @@ class PrescriptionAnalysisFailureUI extends StatelessWidget {
   }
 }
 
-// Class Name: _SuccessMetric
-// Role: Represents a numeric metric and label in the analysis-success summary.
-// Responsibilities:
-// - Composes a numeric metric and label in the analysis-success summary using the display values and actions supplied by its parent.
-// Attributes:
-// - value (String): Input to validate, normalize, display, or pass through a selection callback.
-// - label (String): Wording identifying a field, choice, or action.
-class _SuccessMetric extends StatelessWidget {
-  final String value;
-  final String label;
-
-  // 함수이름: _SuccessMetric
-  // 함수역할: 분석 성공 요약의 수치와 라벨에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - value (String): 검증·정규화·표시하거나 선택 콜백으로 전달할 입력값.
-  // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
-  // 반환값: 입력 설정이 반영된 _SuccessMetric 인스턴스.
-  const _SuccessMetric({
-    required this.value,
-    required this.label,
-  });
-
-  // Function Name: build
-  // Description: Renders a numeric metric and label in the analysis-success summary from the current configuration and state.
-  // Parameters:
-  // - context (BuildContext): Widget-tree location for theme, accessibility, and navigation.
-  // Returns: Widget tree for a numeric metric and label in the analysis-success summary.
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 17),
-      decoration: BoxDecoration(
-        color: MedBuddyColors.successSurface,
-        borderRadius: MedBuddyRadii.control,
-      ),
-      child: Column(
-        children: [
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: MedBuddyColors.primary,
-              fontSize: 26,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: MedBuddyColors.textMuted,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // 클래스명: _FailureReasonPanel
 // 역할: 처방 분석 실패의 가능한 원인 목록을 담당한다.
 // 주요 책임:
@@ -653,16 +384,16 @@ class _FailureReasonItem extends StatelessWidget {
 }
 
 // 클래스명: _StatusText
-// 역할: 처방 분석 성공 요약과 실패 단계별 복구 동작에 쓰는 한국어·영어 문구를 담당한다.
+// 역할: 처방 분석 실패 단계별 복구 동작에 쓰는 한국어·영어 문구를 담당한다.
 // 주요 책임:
-// - 처방 분석 성공 요약과 실패 단계별 복구 동작에 쓰는 한국어·영어 문구의 언어를 선택하고 안내에 필요한 값을 문구에 반영한다.
+// - 처방 분석 실패 단계별 복구 동작에 쓰는 한국어·영어 문구의 언어를 선택하고 안내에 필요한 값을 문구에 반영한다.
 // 속성:
 // - language (String): 화면 문구를 선택할 언어 코드.
 class _StatusText {
   final String language;
 
   // 함수이름: _StatusText
-  // 함수역할: 처방 분석 성공 요약과 실패 단계별 복구 동작에 쓰는 한국어·영어 문구 선택에 사용할 언어를 보관한다.
+  // 함수역할: 처방 분석 실패 단계별 복구 동작에 쓰는 한국어·영어 문구 선택에 사용할 언어를 보관한다.
   // 매개변수:
   // - language (String): 화면 문구를 선택할 언어 코드.
   // 반환값: 입력 설정이 반영된 _StatusText 인스턴스.
@@ -674,52 +405,6 @@ class _StatusText {
   // - 없음.
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
   bool get isEnglish => isEnglishLanguage(language);
-
-  // 함수이름: successTitle
-  // 함수역할: 현재 언어와 입력값에 맞춰 "분석 완료" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get successTitle => isEnglish ? 'Complete' : '분석 완료';
-  // 함수이름: successMessage
-  // 함수역할: 현재 언어와 입력값에 맞춰 "처방전 분석이 완료되었습니다" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get successMessage =>
-      isEnglish ? 'Prescription analysis is complete' : '처방전 분석이 완료되었습니다';
-  // 함수이름: successDescription
-  // 함수역할: 현재 언어와 입력값에 맞춰 "약물 정보와 복용 일정을\n확인하실 수 있습니다" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get successDescription => isEnglish
-      ? 'You can review medication info\nand the medication schedule'
-      : '약물 정보와 복용 일정을\n확인하실 수 있습니다';
-  // 함수이름: recognizedMedication
-  // 함수역할: 현재 언어와 입력값에 맞춰 "인식된 약물" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get recognizedMedication => isEnglish ? 'Medications' : '인식된 약물';
-  // 함수이름: medicationPeriod
-  // 함수역할: 현재 언어와 입력값에 맞춰 "복용 기간" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get medicationPeriod => isEnglish ? 'Period' : '복용 기간';
-  // 함수이름: checkResult
-  // 함수역할: 현재 언어와 입력값에 맞춰 "결과 확인하기" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get checkResult => isEnglish ? 'View Results' : '결과 확인하기';
-  // 함수이름: days
-  // 함수역할: 현재 언어와 입력값에 맞춰 "$days일" 문구를 제공한다.
-  // 매개변수:
-  // - days (int): 복용 기간의 일수 또는 이를 표현한 원본 문구.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String days(int days) => isEnglish ? '${days}d' : '$days일';
 
   // 함수이름: failureTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "분석 실패" 문구를 제공한다.

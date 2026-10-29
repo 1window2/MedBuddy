@@ -55,6 +55,7 @@ from repositories.pharmacy_catalog_repository import PharmacyCatalogRepository
 from repositories.saved_medication_repository import SavedMedicationRepository
 from services.medication_course_policy import MedicationCoursePolicy
 from services.medication_dosing_mode import medication_dosing_mode
+from services.push_recipient_resolver import PushRecipientResolver
 
 
 # 클래스명: ChatSendResult
@@ -798,13 +799,11 @@ class ManageLinkedChat:
         )
         notification = {}
         if include_notification_preview:
-            setting = self.db.query(_UserSetting).filter(
-                _UserSetting.user_hash == user_hash,
-            ).first()
+            # 푸시와 같은 언어·표시 규칙을 쓰고, 방금 센 미확인 개수를 다시 세지 않는다.
+            language, show_details = PushRecipientResolver(self.db).notification_display(user_hash)
             notification["notification"] = build_chat_notification_summary(
                 self.db, link=link, recipient_hash=user_hash,
-                language=setting.language if setting else "ko",
-                show_details=setting is None or setting.notification_detail_mode != "type_only",
+                language=language, show_details=show_details, count=count,
             )
         return {
             "success": True,

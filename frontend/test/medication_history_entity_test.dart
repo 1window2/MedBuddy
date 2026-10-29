@@ -1,8 +1,7 @@
 // 파일명: medication_history_entity_test.dart
-// 역할: 이력 날짜·상태·실제 시각 및 CSV 수식 방어를 검증한다.
+// 역할: 이력 날짜·상태·실제 시각을 검증한다.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/entities/medication_history_entity.dart';
-import 'package:medbuddy_frontend/entities/medication_history_export.dart';
 
 import 'medication_history_fixtures.dart';
 
@@ -254,17 +253,6 @@ void main() {
     ]);
   });
 
-  // 내보낸 표는 내부 기록 버전을 빼고, 필요시 복용에도 맞는 날짜 열 이름을 쓴다.
-  test('CSV record table drops the internal revision column', () {
-    final csv = medicationHistoryCsv(
-      MedicationHistorySnapshot.fromJson(historyTestBody()),
-      isEnglish: false,
-    );
-    expect(csv, contains('"날짜 (필요시는 기록일)","약 이름","시간대","상태"'));
-    expect(csv, isNot(contains('기록 버전')));
-    expect(csv, isNot(contains('"예정일"')));
-  });
-
   // 건너뜀만 이유를 가지며 그 외 상태에 실제 복용 시각이 남지 않는다.
   test('reason length and mutually exclusive status fields are validated', () {
     final entry = MedicationHistoryEntry.fromJson(historyTestEntry());
@@ -295,109 +283,5 @@ void main() {
       ).validate(historyTestNow),
       throwsFormatException,
     );
-  });
-
-  // 스프레드시트 수식, 줄바꿈, 따옴표가 포함된 사용자 입력도 안전한 단일 셀로 유지한다.
-  test('CSV cells quote delimiters and neutralize formulas', () {
-    expect(medicationHistoryCsvCell('약, "이름"\n둘째 줄'), '"약, ""이름""\n둘째 줄"');
-    for (final value in [
-      '=HYPERLINK("x")',
-      '+1',
-      '-1',
-      '@SUM(A1)',
-      '  =1',
-      '\t=1',
-      '\rhello',
-      '\nhello',
-    ]) {
-      expect(medicationHistoryCsvCell(value).startsWith('"\''), isTrue);
-    }
-    expect(medicationHistoryCsvCell('일반 약'), '"일반 약"');
-  });
-
-  // 요약은 자가 기록임을 밝히며 내보내기에 내부 환자 식별자를 노출하지 않는다.
-  test(
-    'export includes summary timings medicines without scope identifiers',
-    () {
-      final body = historyTestBody(
-        items: [
-          {
-            ...historyTestEntry(status: 'taken'),
-            'actual_taken_at': '2026-10-17T05:55:00Z',
-            'recorded_at': '2026-10-17T06:00:00Z',
-            'patient_hash': 'private-scope',
-          },
-        ],
-      );
-      final snapshot = MedicationHistorySnapshot.fromJson(body);
-      final csv = medicationHistoryCsv(snapshot, isEnglish: false);
-      expect(csv.startsWith('\uFEFF'), isTrue);
-      expect(csv, contains('2026-10-17 14:55'));
-      expect(csv, contains('2026-10-17 15:00'));
-      expect(csv, contains('테스트 주간약'));
-      expect(csv, isNot(contains('테스트 필요시약')));
-      expect(csv, isNot(contains('private-scope')));
-      // 시각 기준 행과 복용 시간대 열의 제목이 겹치지 않는다.
-      expect(csv, contains('"표준시","UTC+09:00"'));
-      // 시각이 없는 칸은 수식 방지 접두사 없이 '-'로 남는다.
-      expect(csv, isNot(contains('"\'-"')));
-      expect(medicationHistoryCsvCell('-'), '"-"');
-      expect(medicationHistoryCsvCell('-1+2'), '"\'-1+2"');
-      expect('"시간대"'.allMatches(csv).length, 1);
-      expect(
-        medicationHistorySummary(snapshot, isEnglish: true),
-        contains('not proof of ingestion'),
-      );
-      expect(
-        medicationHistorySummary(snapshot, isEnglish: false),
-        contains('미기록은 미복용을 뜻하지 않습니다'),
-      );
-    },
-  );
-
-  // 약 목록 전체가 반환되어도 조회 기간 밖 처방과 기록 없는 필요시 약은 내보내지 않는다.
-  test('CSV medication list excludes out-of-period and no-event medicines', () {
-    final body = historyTestBody();
-    (body['medications'] as List).addAll(<Map<String, Object>>[
-      {
-        'id': 3,
-        'item_name': '기간 이전 처방약',
-        'regimen_effective_from': '2026-09-01',
-        'stopped_on': '2026-10-01',
-      },
-      {
-        'id': 4,
-        'item_name': '기간 이후 처방약',
-        'regimen_effective_from': '2026-10-18',
-      },
-    ]);
-    final snapshot = MedicationHistorySnapshot.fromJson(body);
-    for (final isEnglish in [false, true]) {
-      final csv = medicationHistoryCsv(snapshot, isEnglish: isEnglish);
-      expect(
-        csv,
-        contains(
-          isEnglish ? 'Medications in the selected period' : '조회 기간의 약 목록',
-        ),
-      );
-      expect(csv, contains('"테스트 주간약","1정","주 1회"'));
-      for (final excluded in ['테스트 필요시약', '기간 이전 처방약', '기간 이후 처방약']) {
-        expect(csv, isNot(contains(excluded)));
-      }
-    }
-    expect(snapshot.medications, hasLength(4));
-  });
-
-  // 빈 조회 기간을 내보낼 때 보관된 약 정보가 CSV에 섞이지 않는다.
-  test('CSV without period events exports no medication details', () {
-    final snapshot = MedicationHistorySnapshot.fromJson(
-      historyTestBody(items: []),
-    );
-    for (final isEnglish in [false, true]) {
-      final csv = medicationHistoryCsv(snapshot, isEnglish: isEnglish);
-      expect(csv, isNot(contains('테스트 주간약')));
-      expect(csv, isNot(contains('테스트 필요시약')));
-      expect(csv, isNot(contains('1정')));
-    }
   });
 }

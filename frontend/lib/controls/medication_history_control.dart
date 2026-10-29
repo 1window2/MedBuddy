@@ -228,7 +228,7 @@ class MedicationHistoryControl extends ChangeNotifier {
   }
 
   // 날짜별 화면은 그대로 두고 공유할 기간만 별도로 읽는다.
-  // 31일을 넘는 CSV 기간은 최신 구간부터 31일씩 나눠 읽어 한 스냅샷으로 합친다.
+  // 31일을 넘는 외부 공유 기간은 최신 구간부터 31일씩 나눠 읽어 한 스냅샷으로 합친다.
   Future<MedicationHistorySnapshot> readRangeForExport(
     MedicationHistoryRange range,
   ) async {

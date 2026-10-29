@@ -22,6 +22,8 @@ import '../widgets/expandable_medication_section.dart';
 import '../widgets/medbuddy_notice.dart';
 import '../widgets/medication_dosing_mode_selector.dart';
 import '../widgets/medication_entry_fields.dart';
+import '../widgets/pinned_analysis_summary.dart';
+import '../widgets/responsive_card_header.dart';
 import '../theme/medbuddy_theme.dart';
 
 part 'prescription_preview_image_widgets.dart';
@@ -146,15 +148,24 @@ class _PrescriptionAnalysisPreviewUIState
   Widget build(BuildContext context) {
     final text = _PreviewText(widget.userSetting.language);
     final recognitionNotice = widget.recognitionNotice.trim();
+    // 요약 개수와 약 카드가 같은 행별 조회 상태를 쓰도록 한 번만 정한다.
+    // 조회 이력이 없는 행은 카드에서 결과를 단정하지 않고, 요약에서는 아직 조회할 약으로 센다.
+    final rowLookupStatuses = <MedicationLookupStatus?>[
+      for (var index = 0; index < widget.medicationScheduleList.length; index++)
+        widget.verifiedScheduleIndexes.contains(index)
+            ? MedicationLookupStatus.verified
+            : widget.lookupStatuses[index] ??
+                  (widget.matchReviews[index]?.candidates.isNotEmpty == true
+                      ? MedicationLookupStatus.candidates
+                      : null),
+    ];
     final lookupCounts = <MedicationLookupStatus, int>{};
-    for (var index = 0; index < widget.medicationScheduleList.length; index++) {
-      final status = widget.verifiedScheduleIndexes.contains(index)
-          ? MedicationLookupStatus.verified
-          : widget.lookupStatuses[index] ??
-                (widget.matchReviews[index]?.candidates.isNotEmpty == true
-                    ? MedicationLookupStatus.candidates
-                    : MedicationLookupStatus.pending);
-      lookupCounts.update(status, (count) => count + 1, ifAbsent: () => 1);
+    for (final status in rowLookupStatuses) {
+      lookupCounts.update(
+        status ?? MedicationLookupStatus.pending,
+        (count) => count + 1,
+        ifAbsent: () => 1,
+      );
     }
     final allVerified =
         widget.isMedicationLookupReview &&
@@ -249,7 +260,7 @@ class _PrescriptionAnalysisPreviewUIState
                           isMedicationLookupReview:
                               widget.isMedicationLookupReview,
                           matchReviews: widget.matchReviews,
-                          lookupStatuses: widget.lookupStatuses,
+                          lookupStatuses: rowLookupStatuses,
                           onCandidateRequested:
                               widget.onCandidateConfirmed == null
                               ? null

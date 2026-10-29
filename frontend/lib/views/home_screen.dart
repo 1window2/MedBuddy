@@ -488,6 +488,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         medicationScheduleList: viewModel.recognizedMedicationScheduleList,
         recognizedTextRegions: viewModel.recognizedTextRegionList,
         previewImagePath: viewModel.prescriptionPreviewImagePath,
+        recognitionNotice: viewModel.prescriptionRecognitionNotice,
         userSetting: viewModel.userSetting,
         onBackRequested: viewModel.clearAnalysisResult,
         onAnalysisRequested:

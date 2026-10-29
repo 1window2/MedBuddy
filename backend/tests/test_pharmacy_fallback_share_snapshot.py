@@ -277,5 +277,24 @@ def test_overnight_live_hours_are_not_copied_into_previous_day(flow):
     flow.clock.now = NOW.replace(hour=1, minute=30)
     flow.boundary.searchNearby.return_value = [replace(flow.record, start_time="2200", end_time="0200")]
     snapshot = context(send(flow))["operating_snapshot"]
-    assert snapshot["status"] != "open" and snapshot["status"] != "closing_soon"
+    # 전날 시간을 모르면 어제 22:00에 열어 아직 영업 중일 수 있으므로 오늘 22:00 개점 전으로 단정하지 않는다.
+    assert snapshot == {"status": "unknown", "as_of": flow.clock.now.isoformat(),
+                        "opens_at": None, "closes_at": None}
     assert flow.repository.find_by_id("C1110363").weekly_hours == {}
+
+
+def test_holiday_lookups_run_alongside_the_location_search(flow):
+    holiday_started = asyncio.Event()
+
+    async def search(**_):
+        await asyncio.wait_for(holiday_started.wait(), 0.5)
+        return [flow.record]
+
+    async def holiday(_):
+        holiday_started.set()
+        return False
+
+    flow.boundary.searchNearby.side_effect = search
+    flow.calendar.isHoliday.side_effect = holiday
+    assert context(send(flow))["operating_snapshot"]["status"] == "closing_soon"
+    assert flow.calendar.isHoliday.await_count == 2

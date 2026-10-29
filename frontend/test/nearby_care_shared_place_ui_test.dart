@@ -317,7 +317,14 @@ void main() {
       expect(_detail(place), findsNothing);
       expect(find.text(place.address), findsNothing);
       expect(find.text('새로 조회한 주소'), findsNothing);
-      expect(find.textContaining('정보를 불러오지 못했습니다'), findsOneWidget);
+      expect(find.textContaining('정보를 불러오지 못했습니다'), findsNothing);
+      expect(find.text('공유된 장소를 지금 목록에서 찾지 못했어요. 주변 장소를 보여드려요.'), findsOneWidget);
+      // 찾지 못한 장소는 새로고침해도 같은 두 번의 조회를 되풀이하지 않는다.
+      await tester.tap(
+        find.byTooltip(hospitals ? '병원 목록 새로고침' : '약국 목록 새로고침'),
+      );
+      await tester.pumpAndSettle();
+      expect(requests, 3);
       expect(tester.takeException(), isNull);
     });
 

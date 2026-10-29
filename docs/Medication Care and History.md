@@ -193,8 +193,8 @@ Android uses ACTION_SEND with text/plain and EXTRA_TEXT, without a CSV attachmen
 Messages over 100,000 characters remain in the selection dialog with a request to
 shorten the period; records are never silently truncated. Unsupported platforms
 offer text copying after separate consent. Copies saved by another app cannot be
-recalled. Legacy CSV helpers and cache cleanup remain for compatibility, but the
-history screen no longer selects CSV sharing.
+recalled. The app no longer builds CSV files; account deletion still clears the
+export cache that earlier CSV-sharing builds may have left.
 
 The same dialog can share a server-calculated period/status-count summary into
 an active linked chat after target confirmation. It sends no medication list or

@@ -1978,7 +1978,7 @@ void main() {
       expect(args['content'], contains('2026-10-11 ~ 2026-10-17'));
       expect(
         args['content'],
-        contains('Self-reported records, not proof of ingestion'),
+        contains('Self-reported records are not proof of ingestion'),
       );
       expect((args['content'] as String).startsWith('\uFEFF'), isFalse);
       expect(args['content'], isNot(contains('test-patient')));

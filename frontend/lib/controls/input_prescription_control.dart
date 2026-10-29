@@ -286,7 +286,6 @@ class InputPrescription {
       final responseBody = ApiResponseParser.requireOkBody('분석 실패', response);
 
       final decodedData = ApiResponseParser.decodeMap(responseBody);
-      onProgress?.call(PrescriptionRecognitionStage.validatingResult);
       final prescriptionDate =
           decodedData['prescription_date']?.toString().trim() ?? '';
       final prescriptionBatchId =

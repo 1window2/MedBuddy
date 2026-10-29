@@ -3,6 +3,7 @@
 
 import 'medication_dose_rhythm.dart';
 import 'medication_image_url_entity.dart';
+import 'medication_slot_label.dart';
 import 'json_value_reader.dart';
 import 'user_setting_entity.dart';
 
@@ -635,6 +636,31 @@ class MedicationSchedule {
       return '$medicationTime일';
     }
     return englishDurationLabel(medicationTime)!;
+  }
+
+  // 함수이름: slotSummaryLabelForLanguage
+  // 함수역할: 검토·결과 표의 복약 시간대 칸에 쓸 필요시 복용 문구 또는 매일이 아닌 복용 주기와 시간대 이름을 만든다.
+  // 매개변수:
+  // - language (String): 표시·음성 안내에 사용할 언어 코드
+  // - emptySlotsLabel (String): 시간대가 없을 때 시간대 자리에 둘 문구
+  // 반환값:
+  // - String: 필요시 복용이면 해당 문구, 아니면 매일이 아닌 주기 문구와 시간대 이름 목록을 줄바꿈으로 이은 값.
+  String slotSummaryLabelForLanguage(
+    String language, {
+    String emptySlotsLabel = '',
+  }) {
+    if (isAsNeeded) {
+      return dailyFrequencyLabelForLanguage(language);
+    }
+    final isEnglish = isEnglishLanguage(language);
+    final slots = slotKeys
+        .map((slot) => medicationSlotLabel(slot, isEnglish: isEnglish))
+        .join(', ');
+    return [
+      if (!readDoseCycle(intakeTime).isDaily)
+        dailyFrequencyLabelForLanguage(language),
+      slots.isEmpty ? emptySlotsLabel : slots,
+    ].join('\n');
   }
 
   // Function Name: toJson

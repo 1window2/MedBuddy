@@ -778,13 +778,6 @@ class _HomeText {
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
   bool get isEnglish => isEnglishLanguage(language);
 
-  // 함수이름: brandSubtitle
-  // 함수역할: 현재 언어와 입력값에 맞춰 "건강한 복약 관리 도우미" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get brandSubtitle =>
-      isEnglish ? 'Your medication guide' : '건강한 복약 관리 도우미';
   // 함수이름: userSettings
   // 함수역할: 환경설정 카드 제목을 번역한다. 매개변수: 없음. 반환값: 제목.
   String get userSettings => isEnglish ? 'Settings' : '환경설정';

@@ -34,7 +34,8 @@ void main() {
           historyTestBody(
             items: [
               historyTestEntry(date: '2026-10-17', status: 'taken')
-                ..['actual_taken_at'] = '2026-10-16T23:30:00Z',
+                ..['actual_taken_at'] = '2026-10-16T23:30:00Z'
+                ..['patient_hash'] = 'private-scope',
               historyTestEntry(
                 date: '2026-10-17',
                 slot: 'lunch',
@@ -77,6 +78,14 @@ void main() {
         expect(text, isNot(contains('10000000-')));
         expect(text, isNot(contains('revision')));
         expect(text, isNot(contains('기록 버전')));
+        expect(text, isNot(contains('private-scope')));
+        // 두 언어 모두 자가 기록이 실제 복용의 증명이 아님을 함께 알린다.
+        expect(
+          text,
+          contains(
+            english ? 'not proof of ingestion' : '실제 복용을 증명하지 않습니다',
+          ),
+        );
         expect(
           text,
           contains(

@@ -394,21 +394,13 @@ class _SavedMedicationDateCard extends StatelessWidget {
               label: Text(text.delete),
             ),
           ),
-        Semantics(
+        MedicationExpandToggle(
+          key: ValueKey('saved-date-toggle-${group.displayDate}'),
           expanded: isExpanded,
-          child: IconButton(
-            key: ValueKey('saved-date-toggle-${group.displayDate}'),
-            tooltip: text.isEnglish
-                ? '${isExpanded ? 'Hide' : 'Show'} medications: ${group.displayDate}'
-                : '${group.displayDate} 약 목록 ${isExpanded ? '접기' : '펼치기'}',
-            onPressed: enabled ? onToggleExpanded : null,
-            style: IconButton.styleFrom(fixedSize: const Size(48, 48)),
-            icon: Icon(
-              isExpanded ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-              size: 28,
-              color: MedBuddyColors.primaryDark,
-            ),
-          ),
+          tooltip: text.isEnglish
+              ? '${isExpanded ? 'Hide' : 'Show'} medications: ${group.displayDate}'
+              : '${group.displayDate} 약 목록 ${isExpanded ? '접기' : '펼치기'}',
+          onPressed: enabled ? onToggleExpanded : null,
         ),
       ],
     );
@@ -426,25 +418,10 @@ class _SavedMedicationDateCard extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 8, 6, 8),
             child: ConstrainedBox(
               constraints: const BoxConstraints(minHeight: 48),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  if (constraints.maxWidth < 340 &&
-                      MediaQuery.textScalerOf(context).scale(17) > 24) {
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        title,
-                        Align(alignment: Alignment.centerRight, child: actions),
-                      ],
-                    );
-                  }
-                  return Row(
-                    children: [
-                      Expanded(child: title),
-                      actions,
-                    ],
-                  );
-                },
+              child: ResponsiveCardHeader(
+                title: title,
+                actions: actions,
+                titleFontSize: 17,
               ),
             ),
           ),

@@ -19,6 +19,7 @@ import 'package:medbuddy_frontend/entities/medication_match_review_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/prescription_flow_entity.dart';
 import 'package:medbuddy_frontend/entities/prescription_change_entity.dart';
+import 'package:medbuddy_frontend/entities/recognized_text_region_entity.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 
 import 'support/fake_notification_service.dart';
@@ -102,6 +103,32 @@ class _FakeInputPrescription extends InputPrescription {
     onImageSelected?.call();
     return schedules;
   }
+}
+
+// Class Name: _RegionFailureInputPrescription
+// Role: OCR fixture whose preview-region lookup fails after the schedules were recognized.
+// Responsibilities:
+// - Leave recognized rows without any medication lookup so the flow can return to the pre-lookup preview.
+class _RegionFailureInputPrescription extends _FakeInputPrescription {
+  // Function Name: _RegionFailureInputPrescription
+  // Description:
+  // - Store the recognized schedules returned before the region failure.
+  // Parameters:
+  // - schedules (List<MedicationSchedule>): Recognized dose schedules for the scenario.
+  // Returns:
+  // - A prescription-input fixture that fails while reading preview regions.
+  _RegionFailureInputPrescription(super.schedules);
+
+  // Function Name: lastRecognizedTextRegions
+  // Description:
+  // - Fail after recognition so no medication lookup starts.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Never returns; always throws.
+  @override
+  List<RecognizedTextRegion> get lastRecognizedTextRegions =>
+      throw StateError('Preview regions unavailable');
 }
 
 // Class Name: _FakeCheckMedicationDetail
@@ -679,6 +706,37 @@ void main() {
     },
   );
 
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 조회 전 미리보기에서 수정·추가한 행에 다시 조회 필요 상태를 남기지 않는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  test('pre-lookup preview edits leave lookup statuses empty', () async {
+    final model = MedBuddyViewModel(
+      inputPrescription: _RegionFailureInputPrescription(const [
+        MedicationSchedule(medicationName: 'first-tablet', dosage: '1정'),
+      ]),
+    );
+    addTearDown(model.dispose);
+    await model.requestPrescriptionImageFromGallery();
+    expect(model.prescriptionFlowState, PrescriptionFlowState.analysisFailed);
+    model.returnToPrescriptionPreview();
+    expect(model.prescriptionFlowState, PrescriptionFlowState.previewReady);
+
+    model.updateRecognizedMedicationSchedule(
+      0,
+      model.recognizedMedicationScheduleList.single.copyWith(dosage: '2정'),
+    );
+    model.addRecognizedMedicationSchedule(
+      const MedicationSchedule(medicationName: 'manual-tablet'),
+    );
+
+    expect(model.recognizedMedicationScheduleList, hasLength(2));
+    expect(model.medicationLookupStatuses, isEmpty);
+  });
+
   test(
     'all technical failures retain row badges and retry in review',
     () async {
@@ -1177,6 +1235,7 @@ void main() {
       expect(viewModel.correctedPrescriptionMedicationCount, 1);
       expect(viewModel.prescriptionRecognitionNotice, contains('약명 보정'));
       expect(viewModel.prescriptionRecognitionNotice, contains('OCR 항목 제외'));
+      expect(viewModel.prescriptionRecognitionNotice, endsWith('내역을 확인해주세요.'));
       expect(viewModel.statusMessage, contains('분석이 완료'));
     },
   );

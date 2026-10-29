@@ -42,7 +42,8 @@ class _PreviewMedicationList extends StatelessWidget {
   final Set<int> verifiedScheduleIndexes;
   final bool isMedicationLookupReview;
   final Map<int, MedicationMatchReview> matchReviews;
-  final Map<int, MedicationLookupStatus> lookupStatuses;
+  // 부모 화면이 행 순서대로 정한 조회 상태이며 조회 이력이 없는 행은 null이다.
+  final List<MedicationLookupStatus?> lookupStatuses;
   final void Function(int, MedicationMatchReview)? onCandidateRequested;
 
   const _PreviewMedicationList({
@@ -76,12 +77,7 @@ class _PreviewMedicationList extends StatelessWidget {
   ) {
     final verified = verifiedScheduleIndexes.contains(index);
     final review = matchReviews[index];
-    final lookupStatus = verified
-        ? MedicationLookupStatus.verified
-        : lookupStatuses[index] ??
-              (review?.candidates.isNotEmpty == true
-                  ? MedicationLookupStatus.candidates
-                  : null);
+    final lookupStatus = lookupStatuses[index];
     final canReview =
         isMedicationLookupReview &&
         !verified &&
@@ -141,13 +137,10 @@ class _PreviewMedicationList extends StatelessWidget {
       field(
         'slots',
         previewText.scheduleSlots,
-        schedule.isAsNeeded
-            ? (previewText.isEnglish ? 'As needed' : '필요시 복용')
-            : [
-                if (!readDoseCycle(schedule.intakeTime).isDaily)
-                  schedule.dailyFrequencyLabelForLanguage(previewText.language),
-                previewText.slotSummary(schedule.slotKeys),
-              ].join('\n'),
+        schedule.slotSummaryLabelForLanguage(
+          previewText.language,
+          emptySlotsLabel: previewText.noInformation,
+        ),
         _MedicationScheduleEditField.scheduleSlots,
         extra:
             !schedule.isAsNeeded &&
@@ -444,43 +437,24 @@ class _MedicationNameTableValue extends StatelessWidget {
         color: MedBuddyColors.primaryDark,
       ),
     );
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // 큰 글씨에서는 약명을 좁히지 않고 상태·순번을 다음 줄 오른쪽에 둔다.
-        if (constraints.maxWidth < 340 &&
-            MediaQuery.textScalerOf(context).scale(18) > 24) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              editableName,
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  if (badge != null) Flexible(child: badge),
-                  editButton,
-                  toggle,
-                ],
-              ),
-            ],
-          );
-        }
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Expanded(child: editableName),
-            if (badge != null) ...[
-              ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: constraints.maxWidth * .25,
-                ),
-                child: badge,
-              ),
-            ],
-            editButton,
-            toggle,
-          ],
-        );
-      },
+    // 큰 글씨에서는 약명을 좁히지 않고 상태·순번을 다음 줄 오른쪽에 둔다.
+    return ResponsiveCardHeader.builder(
+      title: editableName,
+      actionsBuilder: (context, isStacked, maxWidth) => Row(
+        mainAxisSize: isStacked ? MainAxisSize.max : MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          if (badge != null)
+            isStacked
+                ? Flexible(child: badge)
+                : ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: maxWidth * .25),
+                    child: badge,
+                  ),
+          editButton,
+          toggle,
+        ],
+      ),
     );
   }
 }
@@ -1263,30 +1237,6 @@ class _PreviewText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get noInformation => isEnglish ? 'No info' : '정보 없음';
-  // 함수이름: corrected
-  // 함수역할: 현재 언어와 입력값에 맞춰 "Corrected" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get corrected => isEnglish ? 'Corrected' : '보정';
-  // 함수이름: confirmed
-  // 함수역할: 현재 언어와 입력값에 맞춰 "확인 완료" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get confirmed => isEnglish ? 'Confirmed' : '확인 완료';
-  // 함수이름: reviewNeeded
-  // 함수역할: 현재 언어와 입력값에 맞춰 "검토 필요" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get reviewNeeded => isEnglish ? 'Review' : '검토 필요';
-  // 함수이름: verified
-  // 함수역할: 현재 언어와 입력값에 맞춰 "확인됨" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get verified => isEnglish ? 'Medicine found' : '약품 확인됨';
   // 함수이름: editTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "OCR 인식 결과 수정" 문구를 제공한다.
   // 매개변수:
@@ -1470,31 +1420,6 @@ class _PreviewText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get medicationStartDate => isEnglish ? 'Start date' : '복용 시작일';
-  // 함수이름: tableEditGuide
-  // 함수역할: 현재 언어와 입력값에 맞춰 "표를 옆으로 밀어 더 확인하고, 수정할 값은 바로 눌러주세요." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get tableEditGuide => isEnglish
-      ? 'Swipe sideways to see more. Tap any value to edit it.'
-      : '표를 옆으로 밀어 더 확인하고, 수정할 값은 바로 눌러주세요.';
-  // 함수이름: tableScrollHint
-  // 함수역할: 현재 언어와 입력값에 맞춰 "표를 옆으로 밀어 모든 복약 정보를 확인해보세요." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get tableScrollHint => isEnglish
-      ? 'Swipe sideways to review all medication details.'
-      : '표를 옆으로 밀어 모든 복약 정보를 확인해보세요.';
-
-  // 함수이름: lookupReviewGuide
-  // 함수역할: 확인이 필요한 후보 비교와 약명·함량 재검토를 안내한다.
-  // 매개변수:
-  // - count (int): 문구나 목록에 표시할 항목 수 또는 일련번호.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String lookupReviewGuide(int count) => isEnglish
-      ? 'Check $count medication(s). Match the name and strength to your prescription.'
-      : '약 $count개 확인 필요 · 약 이름과 함량을 처방전과 비교해 주세요.';
 
   // 함수이름: slotLabel
   // 함수역할: 시간대 키를 현재 언어의 공통 시간대 이름으로 바꾸고, 모르는 키는 그대로 돌려준다.
@@ -1582,27 +1507,6 @@ class _PreviewText {
   // - date (DateTime?): 표시·비교 기준이 되는 날짜 또는 이전·현재 값.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String dateValue(DateTime? date) => formatJsonDate(date) ?? noInformation;
-
-  // 함수이름: slotSummary
-  // 함수역할: 시간대 키를 현재 언어의 이름으로 변환해 구분자로 묶는다.
-  // 매개변수:
-  // - slotKeys (List<String>): 약품에 적용할 복약 시간대 키 목록.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String slotSummary(List<String> slotKeys) {
-    if (slotKeys.isEmpty) {
-      return noInformation;
-    }
-    return slotKeys.map(slotLabel).join(', ');
-  }
-
-  // 함수이름: correctedFrom
-  // 함수역할: 현재 언어와 입력값에 맞춰 "OCR 원문: $rawName" 문구를 제공한다.
-  // 매개변수:
-  // - rawName (String): 보정 전 최초 OCR 약품명.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String correctedFrom(String rawName) {
-    return isEnglish ? 'OCR: $rawName' : 'OCR 원문: $rawName';
-  }
 
   // 함수이름: title
   // 함수역할: 현재 언어와 입력값에 맞춰 "${date.month}/${date.day} ($weekday) 처방 내역" 문구를 제공한다.

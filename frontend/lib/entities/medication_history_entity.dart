@@ -92,7 +92,7 @@ class MedicationHistoryRange {
   }
 
   // 함수역할: 현재 시각 기준 미래·역순·조회 기간 초과를 예외로 거부한다. 서버 조회와 채팅 공유는
-  //   한 번에 31일, CSV 내보내기는 31일씩 나눠 읽어 보관 기간 전체(90일)까지 허용한다.
+  //   한 번에 31일, 외부 텍스트 공유는 31일씩 나눠 읽어 보관 기간 전체(90일)까지 허용한다.
   static const maximumReadDays = 31;
   static const maximumExportDays = 90;
 

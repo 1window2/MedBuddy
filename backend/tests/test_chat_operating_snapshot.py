@@ -78,13 +78,26 @@ def test_missing_or_ambiguous_times_are_unknown(hours):
     ("2026-10-27T23:30:00+09:00", ("0900", "2400"), None, "closing_soon",
      "2026-10-27T09:00:00+09:00", "2026-10-28T00:00:00+09:00"),
     ("2026-10-27T12:00:00+09:00", ("0000", "2400"), None, "open",
-     "2026-10-27T00:00:00+09:00", "2026-10-28T00:00:00+09:00"),
+     "2026-10-27T00:00:00+09:00", None),
 ])
 def test_overnight_and_midnight_use_actual_dates(now, today, previous, status, opens, closes):
     assert build_operating_snapshot(
         now=datetime.fromisoformat(now), today_hours=today, previous_hours=previous,
         today_calendar_verified=True, previous_calendar_verified=True,
     ) == {"status": status, "as_of": now, "opens_at": opens, "closes_at": closes}
+
+
+# 종일 운영은 폐점 시각이 없으므로 자정 직전에도 곧 종료나 다음 날 00:00 종료로 표시하지 않는다.
+@pytest.mark.parametrize("time", ["00:00:00", "12:00:00", "23:45:00", "23:59:00"])
+@pytest.mark.parametrize("previous", [("0000", "2400"), ("2200", "0200"), None])
+def test_all_day_hours_stay_open_without_closing_time(time, previous):
+    now = datetime.fromisoformat(f"2026-10-27T{time}+09:00")
+    snapshot = build_operating_snapshot(
+        now=now, today_hours=("0000", "2400"), previous_hours=previous,
+        today_calendar_verified=True, previous_calendar_verified=True,
+    )
+    assert snapshot["status"] == "open"
+    assert snapshot["closes_at"] is None
 
 
 @pytest.mark.parametrize("previous,today,time,status,closing_date", [

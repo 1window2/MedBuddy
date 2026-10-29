@@ -366,12 +366,6 @@ class _ProgressText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get analyzingMedication =>
       isEnglish ? 'Analyzing medication info...' : '약물 정보 분석 중...';
-  // 함수이름: wait
-  // 함수역할: 현재 언어와 입력값에 맞춰 "잠시만 기다려주세요" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get wait => isEnglish ? 'Please wait a moment' : '잠시만 기다려주세요';
 
   String checked(int completed, int total) => isEnglish
       ? '$completed of $total medication lookups completed'
@@ -383,8 +377,6 @@ class _ProgressText {
         isEnglish ? 'Reading text' : '문자 인식',
       PrescriptionRecognitionStage.structuringMedication =>
         isEnglish ? 'Organizing medications' : '약 정보 정리',
-      PrescriptionRecognitionStage.validatingResult =>
-        isEnglish ? 'Checking results' : '결과 확인',
       PrescriptionRecognitionStage.completed =>
         isEnglish ? 'Recognition complete' : '인식 완료',
     };
