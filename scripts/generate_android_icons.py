@@ -56,8 +56,9 @@ mark = mask.crop(bbox)
 
 # The heart, not the whole mark, is centred on the icon: the cross above it and the ECG tail
 # left of it would pull a box centre up and to the left. The cross is the topmost separate
-# part; the heart spans the remaining ink vertically, and its lobes (the top quarter, above
-# the ECG line) give its width.
+# part. Horizontally the V notch between the lobes sits on the centre line; vertically the
+# heart's centre of mass does (the filled heart, wide lobes over a narrow tip), which lies
+# above the midpoint of its height.
 inked_set = set(inked_mark)
 parts, seen = [], set()
 for start in inked_mark:
@@ -76,14 +77,39 @@ for start in inked_mark:
 cross = min(parts, key=lambda part: min(y for _, y in part))
 body = [p for part in parts if part is not cross for p in part]
 heart_top, heart_bottom = min(y for _, y in body), max(y for _, y in body)
-lobes = [x for x, y in body if y < heart_top + (heart_bottom - heart_top) / 4]
-hx, hy = (min(lobes) + max(lobes)) / 2, (heart_top + heart_bottom) / 2
+# Notch: the lowest top edge between the two lobe peaks.
+column_top = {}
+for x, y in body:
+    if y < (heart_top + heart_bottom) / 2:
+        column_top[x] = min(column_top.get(x, H), y)
+peaks = [x for x in column_top if column_top[x] == heart_top]
+between = [x for x in column_top if min(peaks) < x < max(peaks)]
+notch_y = max(column_top[x] for x in between)
+notch = [x for x in between if column_top[x] == notch_y]
+hx = (min(notch) + max(notch)) / 2
+# Centre of mass of the filled heart, rebuilt from its right edge mirrored about the notch
+# (the ECG tail sticks out on the left only); above the notch the two lobes are separate.
+rows = {}
+for x, y in body:
+    if x >= hx:
+        rows.setdefault(y, []).append(x)
+area = moment = 0
+for y, xs in rows.items():
+    right = max(xs)
+    spans = [right - min(xs) + 1] * 2 if y < notch_y else [2 * (right - hx) + 1]
+    area += sum(spans)
+    moment += y * sum(spans)
+centre_of_mass = moment / area
+# Chosen by eye with the user (2026-10-29, option D): the heart sits 1.5 dp below its centre of
+# mass on the launcher icon, where the mark's radius is 23 dp. The anchor that lands on the icon
+# centre moves up by the same share of the mark, so every icon size gets the same balance.
+hy = centre_of_mass - 1.5 / 23 * radius
 far = max(math.hypot(x - hx, y - hy) for x, y in inked_mark)
 up, down = hy - bbox[1], bbox[3] - hy
 left, right = hx - bbox[0], bbox[2] - hx
 print('ink', ink, 'cut', cut, 'bbox', bbox, 'radius px %.1f' % radius)
-print('heart centre (%.1f, %.1f), cross centre x %.1f, reach from heart px %.1f' % (
-    hx, hy, (min(x for x, _ in cross) + max(x for x, _ in cross)) / 2, far))
+print('heart notch x %.1f (cross centre x %.1f), centre of mass y %.1f (height midpoint %.1f), anchor y %.1f, reach px %.1f' % (
+    hx, (min(x for x, _ in cross) + max(x for x, _ in cross)) / 2, centre_of_mass, (heart_top + heart_bottom) / 2, hy, far))
 
 def layer(canvas_dp, radius_dp, density, colour, half_dp=None):
     size = int(round(canvas_dp * density))
