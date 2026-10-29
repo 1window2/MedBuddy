@@ -145,13 +145,24 @@ details, chat copy, docs) mark the functional end of the line. Reviewed and
 corrected the same day; see the
 [v0.2.4 notes](releases/v0.2.4-beta.md#review-corrections-2026-10-29).
 
-- [ ] The backend changed (search modes, chat summaries, operating
-      snapshots): deploy it before or with the next signed build. No
-      migration.
-- [ ] Signed build and phone check of the new screens: search mode setting,
-      prescription review with collapsed cards and the change radar, cabinet
-      date groups, text sharing, grouped chat alerts in the background and
-      after reading, reopening a shared place.
+- [x] The backend changed (search modes, chat summaries, operating
+      snapshots): deployed `4f81866` on 2026-10-29, no migration, backup
+      `medbuddy-postgres-20261029T030521Z.dump`, rollback images
+      `rollback-4a6b911`.
+- [x] Signed `4f81866` (run 40810106866, versionCode 25, release signer) on
+      the Galaxy Note10 and the Android 14 emulator against production:
+      the wordmark on home; the test bag went from recognition straight to
+      the lookup review with the OCR correction notice shown, five rows
+      confirmed against their candidates (as on 10-26), result cards and the
+      radar expanding, all saved (today 0/12 as on the bag); the cabinet's
+      date group collapsing; the search mode at 보통; history shared as
+      text (the Android sheet opened, nothing sent) and the record notice;
+      chat alerts on the emulator replaced into one "(3)" notification
+      leading with the newest line in the background and removed on
+      reading; message copy offered. The phone has MedBuddy notifications
+      off in Android, so alerts were checked on the emulator only.
+- [ ] Not checked on a device: reopening a shared place, a missing shared
+      place, the closed / all-day / overnight place wording.
 - [ ] Left for the team (decision log 2026-10-29): the search-mode control
       with a slider and three buttons, and collapsed cabinet groups during a
       search.
