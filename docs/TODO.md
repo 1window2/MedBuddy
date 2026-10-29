@@ -161,8 +161,14 @@ corrected the same day; see the
       leading with the newest line in the background and removed on
       reading; message copy offered. The phone has MedBuddy notifications
       off in Android, so alerts were checked on the emulator only.
-- [ ] Not checked on a device: reopening a shared place, a missing shared
-      place, the closed / all-day / overnight place wording.
+- [x] Place sharing on 2026-10-29 (emulator as caregiver, Note10 as
+      patient, production): a pharmacy shared from the live lookup showed
+      "영업 중 · 22:00 종료" and reopened on the phone selected on the map
+      with today's hours, 9.9 km from the phone; a 24-hour pharmacy showed
+      "영업 중" with no midnight closing time.
+- [ ] Not checked on a device: a shared place missing from the list, and the
+      closed and overnight wording (no closed pharmacy came up in the
+      provider's results at the time; covered by tests).
 - [ ] Left for the team (decision log 2026-10-29): the search-mode control
       with a slider and three buttons, and collapsed cabinet groups during a
       search.
