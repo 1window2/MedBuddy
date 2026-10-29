@@ -49,34 +49,72 @@ for y in range(0, cut):
             mp[x, y] = int(round(a * 255))
 bbox = mask.getbbox()
 cx, cy = (bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2
-radius = max(math.hypot(x - cx, y - cy) for y in range(bbox[1], bbox[3]) for x in range(bbox[0], bbox[2]) if mp[x, y] > 128)
+inked_mark = [(x, y) for y in range(bbox[1], bbox[3]) for x in range(bbox[0], bbox[2]) if mp[x, y] > 128]
+# The mark's size is kept as before: its farthest ink from the box centre sets the scale.
+radius = max(math.hypot(x - cx, y - cy) for x, y in inked_mark)
 mark = mask.crop(bbox)
-print('ink', ink, 'cut', cut, 'bbox', bbox, 'radius px %.1f' % radius)
 
-def layer(canvas_dp, radius_dp, density, colour):
+# The heart, not the whole mark, is centred on the icon: the cross above it and the ECG tail
+# left of it would pull a box centre up and to the left. The cross is the topmost separate
+# part; the heart spans the remaining ink vertically, and its lobes (the top quarter, above
+# the ECG line) give its width.
+inked_set = set(inked_mark)
+parts, seen = [], set()
+for start in inked_mark:
+    if start in seen:
+        continue
+    seen.add(start)
+    stack, part = [start], []
+    while stack:
+        x, y = stack.pop()
+        part.append((x, y))
+        for q in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if q in inked_set and q not in seen:
+                seen.add(q)
+                stack.append(q)
+    parts.append(part)
+cross = min(parts, key=lambda part: min(y for _, y in part))
+body = [p for part in parts if part is not cross for p in part]
+heart_top, heart_bottom = min(y for _, y in body), max(y for _, y in body)
+lobes = [x for x, y in body if y < heart_top + (heart_bottom - heart_top) / 4]
+hx, hy = (min(lobes) + max(lobes)) / 2, (heart_top + heart_bottom) / 2
+far = max(math.hypot(x - hx, y - hy) for x, y in inked_mark)
+up, down = hy - bbox[1], bbox[3] - hy
+left, right = hx - bbox[0], bbox[2] - hx
+print('ink', ink, 'cut', cut, 'bbox', bbox, 'radius px %.1f' % radius)
+print('heart centre (%.1f, %.1f), cross centre x %.1f, reach from heart px %.1f' % (
+    hx, hy, (min(x for x, _ in cross) + max(x for x, _ in cross)) / 2, far))
+
+def layer(canvas_dp, radius_dp, density, colour, half_dp=None):
     size = int(round(canvas_dp * density))
     scale = radius_dp * density / radius
+    if half_dp is not None:
+        # Small canvases: shrink until the off-centre mark stays inside the clear margin.
+        scale = min(scale, half_dp * density / max(up, down, left, right))
     w, h = max(1, round(mark.width * scale)), max(1, round(mark.height * scale))
     a = mark.resize((w, h), Image.LANCZOS)
     out = Image.new('RGBA', (size, size), (0, 0, 0, 0))
     solid = Image.new('RGBA', (w, h), colour + (255,))
     solid.putalpha(a)
-    out.alpha_composite(solid, ((size - w) // 2, (size - h) // 2))
-    return out, w / density, h / density
+    # The heart's centre lands on the canvas centre.
+    out.alpha_composite(solid, (round(size / 2 - (hx - bbox[0]) * scale), round(size / 2 - (hy - bbox[1]) * scale)))
+    return out, w / density, h / density, far * scale / density
 
 densities = {'mdpi': 1, 'hdpi': 1.5, 'xhdpi': 2, 'xxhdpi': 3, 'xxxhdpi': 4}
 for name, d in densities.items():
-    # 108 dp layers; the mark reaches 23 dp from the centre, inside the 33 dp safe circle.
+    # 108 dp layers: the mark keeps its size (23 dp from its box centre) and must stay inside
+    # the 33 dp safe circle around the heart's centre.
     os.makedirs(f'{res}/mipmap-{name}', exist_ok=True)
-    fg, w, h = layer(108, 23, d, ink)
+    fg, w, h, reach = layer(108, 23, d, ink)
+    assert reach <= 33, reach
     fg.save(f'{res}/mipmap-{name}/ic_launcher_foreground.png', optimize=True)
-    mono, _, _ = layer(108, 23, d, (255, 255, 255))
+    mono, _, _, _ = layer(108, 23, d, (255, 255, 255))
     mono.save(f'{res}/mipmap-{name}/ic_launcher_monochrome.png', optimize=True)
     # 24 dp status-bar icon: white silhouette, 2 dp clear margin.
-    stat, _, _ = layer(24, 10.5, d, (255, 255, 255))
+    stat, _, _, _ = layer(24, 10.5, d, (255, 255, 255), half_dp=10)
     os.makedirs(f'{res}/drawable-{name}', exist_ok=True)
     stat.save(f'{res}/drawable-{name}/ic_stat_medbuddy.png', optimize=True)
-print('mark on canvas: %.1f x %.1f dp' % (w, h))
+print('mark on canvas: %.1f x %.1f dp, reach from the heart centre %.1f dp' % (w, h, reach))
 
 if brand:
     # Home wordmark (MedBuddyWordmark): the mark 46 dp wide and the name 148 dp wide, drawn at
