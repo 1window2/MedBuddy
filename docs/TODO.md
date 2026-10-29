@@ -173,6 +173,13 @@ corrected the same day; see the
 - [ ] Not checked on a device: a shared place missing from the list, and the
       closed and overnight wording (no closed pharmacy came up in the
       provider's results at the time; covered by tests).
+- [x] Signed `1e1488b` (run 40834295613, release signer) installed on the
+      Note10 with `adb install -r`: the launcher icon in the Samsung app
+      drawer has the heart's centre on the icon centre. The status-bar icon
+      could not be shown there (MedBuddy notifications are off in Android);
+      checked from the generated drawables. Backend `1e1488b` deployed the
+      same day (backup `medbuddy-postgres-20261029T070501Z.dump`, rollback
+      images `rollback-4f81866`).
 - [x] Decided with the user (decision log 2026-10-29): the search-mode
       control stays as the collaborator made it; cabinet date groups open
       while a search is active.
