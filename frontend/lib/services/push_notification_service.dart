@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../entities/notification_inbox_entity.dart';
 import '../entities/caregiver_alert_context_entity.dart';
+import '../entities/medication_schedule_entity.dart';
 import '../entities/medication_slot_label.dart';
 import '../entities/user_setting_entity.dart';
 import 'caregiver_alert_delivery_service.dart';
@@ -35,12 +36,7 @@ String? _asNeededPushIdentity(RemoteMessage message) {
 String? _slotCompletionEventKey(RemoteMessage message) {
   final key = message.data['event_key']?.toString() ?? '';
   return message.data['type'] == 'caregiver_slot_completed' &&
-          const {
-            'morning',
-            'lunch',
-            'evening',
-            'bedtime',
-          }.contains(message.data['slot_key']) &&
+          medicationScheduleSlotKeys.contains(message.data['slot_key']) &&
           RegExp(r'^[0-9a-f]{64}$').hasMatch(key)
       ? key
       : null;

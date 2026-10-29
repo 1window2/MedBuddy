@@ -170,13 +170,13 @@ Future<void> _openShare(WidgetTester tester) async {
   final chatButton = tester.getRect(
     find.byKey(const Key('history-share-chat')),
   );
-  final csvButton = tester.getRect(
+  final shareButton = tester.getRect(
     find.byKey(const Key('history-export-share')),
   );
-  expect(chatButton.left, csvButton.left);
-  expect(chatButton.width, csvButton.width);
-  expect(csvButton.top - chatButton.bottom, greaterThanOrEqualTo(8));
-  // 채팅에는 횟수만 간다는 점을 CSV 내용과 구분해 알린다.
+  expect(chatButton.left, shareButton.left);
+  expect(chatButton.width, shareButton.width);
+  expect(shareButton.top - chatButton.bottom, greaterThanOrEqualTo(8));
+  // 채팅에는 횟수만 간다는 점을 다른 앱으로 보내는 기록 글과 구분해 알린다.
   expect(
     tester
         .widget<Text>(find.byKey(const Key('history-share-privacy-notice')))
@@ -292,7 +292,7 @@ void main() {
     expect(server.posts.single['history_end_date'], '2026-10-17');
   });
 
-  // CSV는 90일까지 되지만 채팅 공유는 서버가 31일만 받으므로 그보다 긴 기간이면 채팅만 막는다.
+  // 다른 앱 공유는 90일까지 되지만 채팅 공유는 서버가 31일만 받으므로 그보다 긴 기간이면 채팅만 막는다.
   testWidgets(
     'a period over 31 days keeps external sharing but not chat sharing',
     (tester) async {

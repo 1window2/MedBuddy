@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import '../controls/medication_history_control.dart';
 import '../controls/share_medication_history_control.dart';
 import '../entities/medication_history_entity.dart';
+import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_caregiver_link_entity.dart';
 import '../widgets/medication_history_month_calendar.dart';
 import '../entities/medication_history_export.dart';
@@ -56,7 +57,7 @@ class MedicationHistoryUI extends StatefulWidget {
 // 역할: 기간 선택과 서버 결과를 표시하고 세션·화면 수명이 바뀐 뒤의 작업을 폐기한다.
 class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     with WidgetsBindingObserver {
-  static const _exportChannel = MethodChannel('com.medbuddy/data_export');
+  static const _exportChannel = MethodChannel(medicationHistoryExportChannel);
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();
   late MedicationHistoryControl _control;
   late MedicationHistoryRange _range;
@@ -313,7 +314,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     setState(() => _interactionActive = true);
     try {
       final today = control.today;
-      final earliest = today.subtract(const Duration(days: 89));
+      final earliest = MedicationHistoryDates.earliest(today);
       final selection = await showDatePicker(
         context: context,
         locale: Locale(widget.isEnglish ? 'en' : 'ko'),
@@ -353,7 +354,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
   // 함수역할: 오늘까지 입력 일수의 기간을 선택하고 새 결과를 읽는다.
   Future<void> _selectDay(DateTime day) async {
     if (_locked) return;
-    if (day.isBefore(_control.today.subtract(const Duration(days: 89))) ||
+    if (day.isBefore(MedicationHistoryDates.earliest(_control.today)) ||
         day.isAfter(_control.today)) {
       return;
     }
@@ -365,12 +366,11 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     await _load();
   }
 
-  // 함수역할: 환자 본인에게만 정정 또는 새 필요시 기록을 열고 서버 저장 확인 뒤 부모 화면을 갱신한다.
-  Future<void> _edit(MedicationHistoryEntry? entry) async {
+  // 함수역할: 환자 본인에게만 기존 기록의 정정을 열고 서버 저장 확인 뒤 부모 화면을 갱신한다.
+  Future<void> _edit(MedicationHistoryEntry entry) async {
     if (_locked || _readOnly) return;
     final control = _control;
-    final snapshot = control.snapshot;
-    if (snapshot == null || !_isCurrent(control)) return;
+    if (control.snapshot == null || !_isCurrent(control)) return;
     setState(() => _interactionActive = true);
     try {
       final changed = await showDialog<bool>(
@@ -379,7 +379,6 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
         builder: (_) => _MedicationHistoryEditor(
           control: control,
           entry: entry,
-          snapshot: snapshot,
           isEnglish: widget.isEnglish,
         ),
       );
@@ -465,7 +464,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
       updateDialog(() => selectingDate = true);
       try {
         final today = control.today;
-        final earliest = today.subtract(const Duration(days: 89));
+        final earliest = MedicationHistoryDates.earliest(today);
         final initial = start ? exportRange.start : exportRange.end;
         final selected = await showDatePicker(
           context: dialogContext,
@@ -917,8 +916,8 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
                                     onPressed:
                                         _locked ||
                                             !_range.start.isAfter(
-                                              _control.today.subtract(
-                                                const Duration(days: 89),
+                                              MedicationHistoryDates.earliest(
+                                                _control.today,
                                               ),
                                             )
                                         ? null
@@ -1033,28 +1032,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
                                       ),
                                     ),
                                   ),
-                                for (final slot in const [
-                                  'morning',
-                                  'lunch',
-                                  'evening',
-                                  'bedtime',
-                                  'as_needed',
-                                ])
-                                  if (snapshot.items.any(
-                                    (entry) => slot == 'as_needed'
-                                        ? entry.isAsNeeded
-                                        : entry.slotKey == slot,
-                                  ))
-                                    _slotCard(
-                                      slot,
-                                      snapshot.items
-                                          .where(
-                                            (entry) => slot == 'as_needed'
-                                                ? entry.isAsNeeded
-                                                : entry.slotKey == slot,
-                                          )
-                                          .toList(),
-                                    ),
+                                ..._slotCards(snapshot.items),
                               ],
                             ],
                           ],
@@ -1141,32 +1119,9 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
           ),
-          for (final slot in const [
-            'morning',
-            'lunch',
-            'evening',
-            'bedtime',
-            'as_needed',
-          ])
-            if (snapshot.items.any(
-              (entry) =>
-                  entry.scheduleDate == day &&
-                  (slot == 'as_needed'
-                      ? entry.isAsNeeded
-                      : entry.slotKey == slot),
-            ))
-              _slotCard(
-                slot,
-                snapshot.items
-                    .where(
-                      (entry) =>
-                          entry.scheduleDate == day &&
-                          (slot == 'as_needed'
-                              ? entry.isAsNeeded
-                              : entry.slotKey == slot),
-                    )
-                    .toList(),
-              ),
+          ..._slotCards(
+            snapshot.items.where((entry) => entry.scheduleDate == day),
+          ),
         ],
       ],
     ];
@@ -1278,6 +1233,21 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
         ],
       ),
     );
+  }
+
+  // 함수역할: 정기 시간대 순서 뒤에 필요시 복용을 두고 기록이 있는 시간대만 카드로 만든다.
+  List<Widget> _slotCards(Iterable<MedicationHistoryEntry> entries) {
+    final cards = <Widget>[];
+    for (final slot in [...medicationScheduleSlotKeys, 'as_needed']) {
+      final slotEntries = entries
+          .where(
+            (entry) =>
+                slot == 'as_needed' ? entry.isAsNeeded : entry.slotKey == slot,
+          )
+          .toList();
+      if (slotEntries.isNotEmpty) cards.add(_slotCard(slot, slotEntries));
+    }
+    return cards;
   }
 
   // 같은 시간대의 기록을 한 카드 안에 모으고 이력 화면에는 알림 조작을 노출하지 않는다.
@@ -1611,71 +1581,18 @@ class _HistoryChatShareDialogState extends State<_HistoryChatShareDialog> {
   );
 }
 
-// 일정에서는 선택한 필요시 약의 새 복용만, 기록에서는 기존 보고의 정정만 연다.
-Future<bool> recordAsNeededDose({
-  required BuildContext context,
-  required MedicationHistoryControl control,
-  required MedicationHistoryMedication medication,
-  required bool isEnglish,
-  MedicationHistoryChange? pendingChange,
-  ValueChanged<MedicationHistoryChange?>? onPendingChanged,
-}) async {
-  control.ensureSession();
-  final snapshot = control.snapshot;
-  if (pendingChange != null &&
-      (pendingChange.entry.medicationId != medication.id ||
-          !pendingChange.entry.isAsNeeded)) {
-    return false;
-  }
-  if (control.readOnly ||
-      control.busy ||
-      snapshot == null ||
-      (pendingChange == null && snapshot.range.end != control.today) ||
-      (pendingChange == null &&
-          !snapshot.medications.any(
-            (item) =>
-                item.id == medication.id &&
-                item.dosingMode == 'as_needed' &&
-                item.canRecordAsNeeded,
-          ))) {
-    return false;
-  }
-  return await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => _MedicationHistoryEditor(
-          control: control,
-          snapshot: snapshot,
-          entry: null,
-          newMedication: medication,
-          pendingChange: pendingChange,
-          onPendingChanged: onPendingChanged,
-          isEnglish: isEnglish,
-        ),
-      ) ==
-      true;
-}
-
 // 클래스명: _MedicationHistoryEditor
-// 역할: 하나의 기존 기록 또는 새 필요시 복용 이벤트를 편집하는 대화상자이다.
+// 역할: 하나의 기존 기록을 정정하는 대화상자이다.
 class _MedicationHistoryEditor extends StatefulWidget {
-  // 함수역할: 동일 환자 제어 객체와 조회 스냅샷·선택 보고를 편집기에 전달한다.
+  // 함수역할: 동일 환자 제어 객체와 선택 보고를 편집기에 전달한다.
   const _MedicationHistoryEditor({
     required this.control,
-    required this.snapshot,
     required this.entry,
     required this.isEnglish,
-    this.newMedication,
-    this.pendingChange,
-    this.onPendingChanged,
   });
   final MedicationHistoryControl control;
-  final MedicationHistorySnapshot snapshot;
-  final MedicationHistoryEntry? entry;
+  final MedicationHistoryEntry entry;
   final bool isEnglish;
-  final MedicationHistoryMedication? newMedication;
-  final MedicationHistoryChange? pendingChange;
-  final ValueChanged<MedicationHistoryChange?>? onPendingChanged;
 
   // 함수역할: 입력값·재시도 의도·충돌 상태를 보존할 편집 상태를 만든다.
   @override
@@ -1687,12 +1604,9 @@ class _MedicationHistoryEditor extends StatefulWidget {
 // 역할: 실제 날짜·시각과 사유를 검증하고 응답 유실 때 같은 작업 ID를 재사용한다.
 class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
   late MedicationHistoryStatus _status;
-  late DateTime _scheduleDate;
   late DateTime _actualDate;
   late TimeOfDay _actualTime;
   late final TextEditingController _reason;
-  late final String _newSlotKey;
-  int? _medicationId;
   MedicationHistoryChange? _pending;
   Object? _error;
   bool _submitting = false;
@@ -1714,40 +1628,25 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
     }
   }
 
-  // 함수역할: 서버가 필요시 복용으로 구분한 약만 새 이벤트의 대상으로 반환한다.
-  List<MedicationHistoryMedication> get _prnMedications => widget
-      .snapshot
-      .medications
-      .where((medication) => medication.dosingMode == 'as_needed')
-      .toList();
-
-  // 함수역할: 기존 보고의 실제 시각을 보존하고 새 필요시 복용에는 독립 UUID 시간대를 배정한다.
+  // 함수역할: 기존 보고의 상태·실제 시각·사유를 입력 초기값으로 보존한다.
   @override
   void initState() {
     super.initState();
-    final entry = widget.entry ?? widget.pendingChange?.entry;
-    _pending = widget.pendingChange;
-    _status =
-        widget.pendingChange?.status ??
-        entry?.status ??
-        MedicationHistoryStatus.taken;
-    _scheduleDate = entry?.scheduleDate ?? widget.snapshot.range.end;
-    _medicationId = entry?.medicationId ?? widget.newMedication?.id;
+    final entry = widget.entry;
+    _status = entry.status;
     final now = MedicationHistoryDates.wallTime(widget.control.now);
-    final actualTakenAt =
-        widget.pendingChange?.actualTakenAt ?? entry?.actualTakenAt;
+    final actualTakenAt = entry.actualTakenAt;
     final time = actualTakenAt == null
         ? null
         : MedicationHistoryDates.wallTime(actualTakenAt);
     _actualDate = time == null
-        ? _scheduleDate
+        ? entry.scheduleDate
         : MedicationHistoryDates.day(time);
     _actualTime = TimeOfDay(
       hour: time?.hour ?? now.hour,
       minute: time?.minute ?? now.minute,
     );
-    _reason = TextEditingController(text: entry?.reason ?? '');
-    _newSlotKey = 'as_needed:${MedicationHistoryControl.newOperationId()}';
+    _reason = TextEditingController(text: entry.reason);
   }
 
   // 함수역할: 사용자가 입력한 사유의 텍스트 제어기를 해제한다.
@@ -1757,32 +1656,23 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
     super.dispose();
   }
 
-  // 함수역할: 실제 복용 날짜는 최근 90일, 새 필요시 기록 날짜는 조회 기간 안에서 고른다.
-  Future<void> _pickDate({required bool actual}) async {
+  // 함수역할: 실제 복용 날짜를 최근 90일 안에서 고른다.
+  Future<void> _pickActualDate() async {
     if (_fieldsLocked) return;
     final selected = await showDatePicker(
       context: context,
       locale: Locale(widget.isEnglish ? 'en' : 'ko'),
-      initialDate: actual ? _actualDate : _scheduleDate,
-      firstDate: actual
-          ? widget.control.today.subtract(const Duration(days: 89))
-          : widget.snapshot.range.start,
-      lastDate: actual ? widget.control.today : widget.snapshot.range.end,
+      initialDate: _actualDate,
+      firstDate: MedicationHistoryDates.earliest(widget.control.today),
+      lastDate: widget.control.today,
       currentDate: widget.control.today,
-      helpText: actual
-          ? tr('실제 복용 날짜', 'Actual taken date')
-          : tr('기록할 날짜', 'Record date'),
+      helpText: tr('실제 복용 날짜', 'Actual taken date'),
     );
     if (!mounted || selected == null || _fieldsLocked) return;
     final selectedDay = MedicationHistoryDates.day(selected);
-    if (selectedDay == (actual ? _actualDate : _scheduleDate)) return;
+    if (selectedDay == _actualDate) return;
     setState(() {
-      if (actual) {
-        _actualDate = selectedDay;
-      } else {
-        _scheduleDate = selectedDay;
-        _actualDate = _scheduleDate;
-      }
+      _actualDate = selectedDay;
       _clearEditableValidationError();
     });
   }
@@ -1804,37 +1694,21 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
   }
 
   // 함수역할: 현재 입력을 새 작업 UUID로 고정하고 기존 예정일·이벤트 키는 보존한다.
-  MedicationHistoryChange _buildChange() {
-    final medication = _prnMedications
-        .where((medication) => medication.id == _medicationId)
-        .firstOrNull;
-    final entry =
-        widget.entry ??
-        MedicationHistoryEntry(
-          medicationId: medication!.id,
-          itemName: medication.itemName,
-          scheduleDate: _scheduleDate,
-          slotKey: _newSlotKey,
-          status: MedicationHistoryStatus.unrecorded,
-          revision: 0,
-          dosingMode: 'as_needed',
-        );
-    return MedicationHistoryChange(
-      entry: entry,
-      status: _status,
-      operationId: MedicationHistoryControl.newOperationId(),
-      actualTakenAt: _status == MedicationHistoryStatus.taken
-          ? MedicationHistoryDates.instant(
-              _actualDate,
-              _actualTime.hour,
-              _actualTime.minute,
-            )
-          : null,
-      reason: _status == MedicationHistoryStatus.skipped
-          ? _reason.text.trim()
-          : '',
-    );
-  }
+  MedicationHistoryChange _buildChange() => MedicationHistoryChange(
+    entry: widget.entry,
+    status: _status,
+    operationId: MedicationHistoryControl.newOperationId(),
+    actualTakenAt: _status == MedicationHistoryStatus.taken
+        ? MedicationHistoryDates.instant(
+            _actualDate,
+            _actualTime.hour,
+            _actualTime.minute,
+          )
+        : null,
+    reason: _status == MedicationHistoryStatus.skipped
+        ? _reason.text.trim()
+        : '',
+  );
 
   // 함수역할: 입력 검증과 확인 후 저장하며 충돌은 새 조회, 응답 유실은 같은 의도 재시도로 안내한다.
   Future<void> _save() async {
@@ -1845,14 +1719,9 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
     });
     try {
       widget.control.ensureSession();
-      if (widget.entry == null &&
-          _pending == null &&
-          _scheduleDate != widget.control.today) {
-        throw const FormatException('Reopen the schedule for the current day.');
-      }
       final change = _pending ?? _buildChange();
       change.validate(widget.control.now);
-      if (_pending == null && widget.entry != null) {
+      if (_pending == null) {
         final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AnimatedBuilder(
@@ -1886,9 +1755,7 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
         if (confirmed != true || !mounted) return;
       }
       _pending = change;
-      if (widget.entry == null) widget.onPendingChanged?.call(change);
       await widget.control.save(change);
-      if (widget.entry == null) widget.onPendingChanged?.call(null);
       if (mounted) {
         setState(() => _submitting = false);
         Navigator.pop(context, true);
@@ -1899,12 +1766,10 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
         _error = failure;
         if (failure is ApiRequestException && failure.statusCode == 409) {
           _conflict = true;
-          if (widget.entry == null) widget.onPendingChanged?.call(null);
         }
         // 명시적인 입력 거절만 수정 가능하게 풀고 응답 유실은 같은 작업 ID로 재시도한다.
         if (failure is ApiRequestException && failure.statusCode == 422) {
           _pending = null;
-          if (widget.entry == null) widget.onPendingChanged?.call(null);
         }
       });
     } finally {
@@ -1921,11 +1786,7 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
         : PopScope(
             canPop: !_submitting,
             child: AlertDialog(
-              title: Text(
-                widget.entry == null
-                    ? tr('복용 확인', 'Confirm dose')
-                    : tr('복약 기록 수정', 'Edit medication record'),
-              ),
+              title: Text(tr('복약 기록 수정', 'Edit medication record')),
               content: SizedBox(
                 width: 480,
                 child: SingleChildScrollView(
@@ -1933,65 +1794,54 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (widget.entry != null) ...[
-                        Text(
-                          widget.entry!.itemName,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        Text(
-                          '${widget.entry!.isAsNeeded ? tr('기록일', 'Record date') : tr('예정일', 'Scheduled date')} ${MedicationHistoryDates.format(_scheduleDate)} · ${widget.entry!.slotLabel(widget.isEnglish)}',
-                        ),
-                      ] else ...[
-                        Text(
-                          widget.newMedication!.itemName,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        if (widget.newMedication!.dosage.isNotEmpty)
-                          Text(widget.newMedication!.dosage),
-                      ],
+                      Text(
+                        widget.entry.itemName,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      Text(
+                        '${widget.entry.isAsNeeded ? tr('기록일', 'Record date') : tr('예정일', 'Scheduled date')} ${MedicationHistoryDates.format(widget.entry.scheduleDate)} · ${widget.entry.slotLabel(widget.isEnglish)}',
+                      ),
                       const SizedBox(height: 12),
-                      if (widget.entry != null)
-                        RadioGroup<MedicationHistoryStatus>(
-                          groupValue: _status,
-                          onChanged: (value) {
-                            if (!_fieldsLocked &&
-                                value != null &&
-                                value != _status) {
-                              setState(() {
-                                _status = value;
-                                _clearEditableValidationError();
-                              });
-                            }
-                          },
-                          child: Column(
-                            children: [
-                              // 필요시 복용에는 건너뛸 예정 복용이 없으므로 건너뜀은 이미 그렇게 저장된
-                              // 기록에만 보이고, 미기록은 잘못 누른 기록의 취소로 안내한다.
-                              for (final status
-                                  in MedicationHistoryStatus.values)
-                                if (!widget.entry!.isAsNeeded ||
-                                    status != MedicationHistoryStatus.skipped ||
-                                    widget.entry!.status ==
-                                        MedicationHistoryStatus.skipped)
-                                  RadioListTile<MedicationHistoryStatus>(
-                                    value: status,
-                                    enabled: !_fieldsLocked,
-                                    contentPadding: EdgeInsets.zero,
-                                    title: Text(
-                                      widget.entry!.isAsNeeded &&
-                                              status ==
-                                                  MedicationHistoryStatus
-                                                      .unrecorded
-                                          ? tr(
-                                              '기록 취소 (잘못 기록함)',
-                                              'Cancel record (recorded by mistake)',
-                                            )
-                                          : status.label(widget.isEnglish),
-                                    ),
+                      RadioGroup<MedicationHistoryStatus>(
+                        groupValue: _status,
+                        onChanged: (value) {
+                          if (!_fieldsLocked &&
+                              value != null &&
+                              value != _status) {
+                            setState(() {
+                              _status = value;
+                              _clearEditableValidationError();
+                            });
+                          }
+                        },
+                        child: Column(
+                          children: [
+                            // 필요시 복용에는 건너뛸 예정 복용이 없으므로 건너뜀은 이미 그렇게 저장된
+                            // 기록에만 보이고, 미기록은 잘못 누른 기록의 취소로 안내한다.
+                            for (final status in MedicationHistoryStatus.values)
+                              if (!widget.entry.isAsNeeded ||
+                                  status != MedicationHistoryStatus.skipped ||
+                                  widget.entry.status ==
+                                      MedicationHistoryStatus.skipped)
+                                RadioListTile<MedicationHistoryStatus>(
+                                  value: status,
+                                  enabled: !_fieldsLocked,
+                                  contentPadding: EdgeInsets.zero,
+                                  title: Text(
+                                    widget.entry.isAsNeeded &&
+                                            status ==
+                                                MedicationHistoryStatus
+                                                    .unrecorded
+                                        ? tr(
+                                            '기록 취소 (잘못 기록함)',
+                                            'Cancel record (recorded by mistake)',
+                                          )
+                                        : status.label(widget.isEnglish),
                                   ),
-                            ],
-                          ),
+                                ),
+                          ],
                         ),
+                      ),
                       if (_status == MedicationHistoryStatus.taken) ...[
                         const SizedBox(height: 8),
                         Text(
@@ -2002,9 +1852,7 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
                           runSpacing: 8,
                           children: [
                             OutlinedButton.icon(
-                              onPressed: _fieldsLocked || widget.entry == null
-                                  ? null
-                                  : () => _pickDate(actual: true),
+                              onPressed: _fieldsLocked ? null : _pickActualDate,
                               icon: const Icon(Icons.calendar_today_outlined),
                               label: Text(
                                 MedicationHistoryDates.format(_actualDate),
@@ -2022,7 +1870,7 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
                       ],
                       if (_status == MedicationHistoryStatus.skipped) ...[
                         Text(
-                          widget.entry?.isAsNeeded == true
+                          widget.entry.isAsNeeded
                               ? tr(
                                   '건너뛴 기록은 복용 완료로 처리되지 않습니다.',
                                   'Skipped doses are not marked as taken.',
@@ -2049,12 +1897,12 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
                           ),
                         ),
                       ],
-                      if (widget.entry?.recordedAt != null)
+                      if (widget.entry.recordedAt != null)
                         Padding(
                           padding: const EdgeInsets.only(top: 12),
                           child: Text(
                             '${tr('이전 기록 시각', 'Previously recorded at')}: '
-                            '${MedicationHistoryDates.timestamp(widget.entry!.recordedAt)}',
+                            '${MedicationHistoryDates.timestamp(widget.entry.recordedAt)}',
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ),
@@ -2107,13 +1955,11 @@ class _MedicationHistoryEditorState extends State<_MedicationHistoryEditor> {
                 if (!_conflict)
                   FilledButton.icon(
                     key: const Key('history-save'),
-                    onPressed: _locked || _medicationId == null ? null : _save,
+                    onPressed: _locked ? null : _save,
                     icon: const Icon(Icons.save_outlined),
                     label: Text(
                       _pending != null
                           ? tr('같은 기록 재시도', 'Retry record')
-                          : widget.entry == null
-                          ? tr('복용했어요', 'Taken')
                           : tr('기록 저장', 'Save record'),
                     ),
                   ),

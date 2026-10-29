@@ -19,6 +19,13 @@ class MedicationHistoryDates {
   // 함수역할: 입력 실제 시각에 해당하는 한국의 오늘 날짜를 반환한다.
   static DateTime today(DateTime now) => day(wallTime(now));
 
+  // 함수역할: 입력 한국 오늘 날짜를 포함한 최근 90일 보관 기간의 첫 날짜를 반환한다.
+  static DateTime earliest(DateTime today) => DateTime.utc(
+    today.year,
+    today.month,
+    today.day - (MedicationHistoryRange.maximumExportDays - 1),
+  );
+
   // 함수역할: 사용자가 고른 한국 날짜·시·분을 실제 UTC 시각으로 변환한다.
   static DateTime instant(DateTime date, int hour, int minute) => DateTime.utc(
     date.year,
@@ -34,13 +41,17 @@ class MedicationHistoryDates {
       '${value.month.toString().padLeft(2, '0')}-'
       '${value.day.toString().padLeft(2, '0')}';
 
-  // 함수역할: 선택적 실제 시각을 한국 시간 문자열로 표시하고 없는 시각은 '-'로 남긴다.
-  static String timestamp(DateTime? instant) {
-    if (instant == null) return '-';
+  // 함수역할: 입력 실제 시각의 한국 시·분을 HH:mm 문자열로 표현한다.
+  static String clock(DateTime instant) {
     final time = wallTime(instant);
-    return '${format(time)} ${time.hour.toString().padLeft(2, '0')}:'
+    return '${time.hour.toString().padLeft(2, '0')}:'
         '${time.minute.toString().padLeft(2, '0')}';
   }
+
+  // 함수역할: 선택적 실제 시각을 한국 시간 문자열로 표시하고 없는 시각은 '-'로 남긴다.
+  static String timestamp(DateTime? instant) => instant == null
+      ? '-'
+      : '${format(wallTime(instant))} ${clock(instant)}';
 
   // 함수역할: 날짜 문자열을 엄격히 읽으며 존재하지 않는 날짜나 시간 포함 입력은 거부한다.
   static DateTime parse(Object? value) {
@@ -101,7 +112,7 @@ class MedicationHistoryRange {
     if (days < 1 ||
         days > maxDays ||
         end.isAfter(today) ||
-        start.isBefore(today.subtract(const Duration(days: 89)))) {
+        start.isBefore(MedicationHistoryDates.earliest(today))) {
       throw const FormatException(
         'Select up to 31 days within the last 90 days.',
       );
@@ -218,19 +229,14 @@ class MedicationHistoryEntry {
 }
 
 // 클래스명: MedicationHistoryMedication
-// 역할: 필요시 기록 선택과 내보내기에 필요한 약·처방 버전 정보를 보존한다.
+// 역할: 필요시 기록 선택에 필요한 약 정보를 보존한다.
 class MedicationHistoryMedication {
-  // 함수역할: 약 이름·용량·적용일·중단일과 교체 여부를 입력받아 보존한다.
+  // 함수역할: 약 이름·복용 방식·용량·사진과 필요시 기록 가능 여부를 입력받아 보존한다.
   const MedicationHistoryMedication({
     required this.id,
     required this.itemName,
     required this.dosingMode,
     this.dosage = '',
-    this.frequency = '',
-    this.startDate,
-    this.stoppedOn,
-    this.totalDays = '',
-    this.superseded = false,
     this.canRecordAsNeeded = false,
     this.imageUrl = '',
   });
@@ -238,11 +244,6 @@ class MedicationHistoryMedication {
   final String itemName;
   final String dosingMode;
   final String dosage;
-  final String frequency;
-  final DateTime? startDate;
-  final DateTime? stoppedOn;
-  final String totalDays;
-  final bool superseded;
   final bool canRecordAsNeeded;
   final String imageUrl;
 
@@ -259,14 +260,6 @@ class MedicationHistoryMedication {
       dosingMode: json['dosing_mode']?.toString() ?? 'scheduled',
       dosage: json['dosage_per_time']?.toString() ?? '',
       imageUrl: json['image_url']?.toString() ?? '',
-      frequency: json['daily_frequency']?.toString() ?? '',
-      startDate:
-          _optionalDate(json['regimen_effective_from']) ??
-          _optionalDate(json['prescription_date']) ??
-          _optionalDate(json['created_date']),
-      stoppedOn: _optionalDate(json['stopped_on']),
-      totalDays: json['total_days']?.toString() ?? '',
-      superseded: json['superseded_by_id'] != null,
       canRecordAsNeeded: json['can_record_as_needed'] == true,
     );
   }
@@ -382,9 +375,7 @@ class MedicationHistoryChange {
       if (actualTakenAt == null ||
           actualTakenAt!.isAfter(now) ||
           MedicationHistoryDates.today(actualTakenAt!).isBefore(
-            MedicationHistoryDates.today(
-              now,
-            ).subtract(const Duration(days: 89)),
+            MedicationHistoryDates.earliest(MedicationHistoryDates.today(now)),
           )) {
         throw const FormatException(
           'Choose an actual taken time that is not in the future.',
@@ -411,9 +402,3 @@ class MedicationHistoryChange {
 
 // 함수역할: 정수 또는 정수 문자열만 읽고 소수·잘못된 값은 null로 반환한다.
 int? _integer(Object? value) => value is int ? value : int.tryParse('$value');
-
-// 함수역할: 저장 약의 선택적 적용 날짜를 읽으며 빈 값은 없는 날짜로 유지한다.
-DateTime? _optionalDate(Object? value) =>
-    value == null || value.toString().trim().isEmpty
-    ? null
-    : MedicationHistoryDates.parse(value);

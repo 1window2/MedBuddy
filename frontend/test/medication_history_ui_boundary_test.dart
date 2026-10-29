@@ -2004,7 +2004,7 @@ void main() {
             .onPressed,
         isNull,
       );
-      // CSV는 31일씩 나눠 읽으므로 31일을 넘는 기간도 고를 수 있다.
+      // 다른 앱 공유는 31일씩 나눠 읽으므로 31일을 넘는 기간도 고를 수 있다.
       await _chooseExportDate(tester, 'start', DateTime(2026, 7, 20));
       expect(find.byKey(const Key('history-export-error')), findsNothing);
       expect(

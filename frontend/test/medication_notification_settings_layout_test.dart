@@ -312,9 +312,6 @@ Future<void> _pumpSettings(
           );
         },
         onMedicationScheduleRequested: onSchedule ?? () {},
-        onDeviceNotificationSettingsRequested: () async {
-          onDevice?.call();
-        },
         notificationService: notificationService,
         readinessControl: _DeviceControl(
           notificationService ?? RecordingNotificationService(),

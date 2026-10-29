@@ -231,8 +231,9 @@ released under that version instead. Changes are listed in the
       reviewers, two supervisors, three implementers; production code about
       1,070 lines smaller, tests 1,908 -> 1,919 backend and 2,222 -> 2,250 app):
       - Owner decisions: `recordAsNeededDose` in
-        medication_history_ui_boundary.dart has no caller (added 2026-10-17)
-        and keeps a "new record" editor path alive; the as-needed slot header
+        medication_history_ui_boundary.dart had no caller (added 2026-10-17)
+        and kept a "new record" editor path alive; both were removed on
+        2026-10-29 (done). Still open: the as-needed slot header
         strip could share `MedicationSlotHeaderStrip`; the OCR-region matching
         in `InputPrescription` (~270 lines) could move to its own file.
       - Seen but not changed (not refactors): the redacted caregiver text uses

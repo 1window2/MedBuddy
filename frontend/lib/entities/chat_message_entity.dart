@@ -456,7 +456,10 @@ class ChatMedicationHistoryContext {
     final start = MedicationHistoryDates.parse(json['start_date']);
     final end = MedicationHistoryDates.parse(json['end_date']);
     final days = end.difference(start).inDays + 1;
-    if (start.year < 1 || end.year < 1 || days < 1 || days > 31) {
+    if (start.year < 1 ||
+        end.year < 1 ||
+        days < 1 ||
+        days > MedicationHistoryRange.maximumReadDays) {
       throw const FormatException('공유 복약 기록의 날짜 범위가 올바르지 않습니다.');
     }
     int count(String key) {

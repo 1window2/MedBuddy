@@ -19,12 +19,7 @@ extension DoseWidgetStore on DoseOutboxStore {
   }) async {
     final expectedOwner = owner == null ? null : await ownerKey(owner);
     return db.transaction((tx) async {
-      final active = await tx.query(
-        'metadata',
-        where: 'name = ?',
-        whereArgs: ['active'],
-      );
-      final token = active.firstOrNull?['value'] as String?;
+      final token = await _activeToken(tx);
       if (token == null ||
           token.isEmpty ||
           (expectedOwner != null && token != expectedOwner)) {
@@ -221,12 +216,7 @@ extension DoseWidgetStore on DoseOutboxStore {
           : _decrypt(rows.single['value'] as String, token);
     }
 
-    final active = await db.query(
-      'metadata',
-      where: 'name = ?',
-      whereArgs: ['active'],
-    );
-    final token = active.firstOrNull?['value'] as String?;
+    final token = await _activeToken(db);
     if (token == null || token.isEmpty) return null;
     final widget = await read('widget:$token', token);
     final owner = widget?['owner'] as String?;

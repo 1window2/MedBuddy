@@ -91,8 +91,7 @@ class MedicationHistoryMonthCalendar extends StatelessWidget {
   final ValueChanged<DateTime> onMonthChanged;
 
   // The history keeps 90 days, so day 89 before today is the earliest reachable one.
-  DateTime get earliest =>
-      DateTime.utc(today.year, today.month, today.day - 89);
+  DateTime get earliest => MedicationHistoryDates.earliest(today);
 
   // Function Name: visibleRange
   // Description: The part of a month that the history can be read for: from the later of
@@ -103,7 +102,7 @@ class MedicationHistoryMonthCalendar extends StatelessWidget {
   static MedicationHistoryRange? visibleRange(DateTime month, DateTime today) {
     final first = DateTime.utc(month.year, month.month);
     final last = DateTime.utc(month.year, month.month + 1, 0);
-    final earliest = DateTime.utc(today.year, today.month, today.day - 89);
+    final earliest = MedicationHistoryDates.earliest(today);
     final start = first.isBefore(earliest) ? earliest : first;
     final end = last.isAfter(today) ? today : last;
     return end.isBefore(start) ? null : MedicationHistoryRange(start, end);

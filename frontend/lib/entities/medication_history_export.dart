@@ -16,6 +16,9 @@ String medicationHistoryTimeZoneNotice(bool isEnglish) => isEnglish
 // 긴 기록을 임의로 생략하지 않고 기간을 줄이도록 안내하기 위한 공유 본문 상한이다.
 const medicationHistoryShareTextLimit = 100000;
 
+// 기록 공유 창을 열고 계정 삭제 때 남은 내보내기 파일을 지우는 Android 채널 이름이다.
+const medicationHistoryExportChannel = 'com.medbuddy/data_export';
+
 // 함수역할: 내부 식별자 없이 날짜별 복약 기록을 다른 앱에서 읽을 수 있는 문장으로 만든다.
 String medicationHistoryShareText(
   MedicationHistorySnapshot snapshot, {

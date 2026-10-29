@@ -11,18 +11,8 @@ extension DoseOfflineScheduleStore on DoseOutboxStore {
     final token = await ownerKey(owner);
     final encrypted = await _encrypt(cache, token);
     return db.transaction((tx) async {
-      final active = await tx.query(
-        'metadata',
-        where: 'name = ?',
-        whereArgs: ['active'],
-      );
-      if (active.firstOrNull?['value'] != token) return false;
-      final rows = await tx.query(
-        'metadata',
-        where: 'name = ?',
-        whereArgs: ['revision:$token'],
-      );
-      final revision = int.tryParse('${rows.firstOrNull?['value']}') ?? 0;
+      if (await _activeToken(tx) != token) return false;
+      final revision = await _revision(tx, token);
       if (expectedRevision != null && revision != expectedRevision) {
         return false;
       }
@@ -35,10 +25,7 @@ extension DoseOfflineScheduleStore on DoseOutboxStore {
         'name': 'cache:$token',
         'value': encrypted,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
-      await tx.insert('metadata', {
-        'name': 'revision:$token',
-        'value': '${revision + 1}',
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      await _bumpRevision(tx, token, revision);
       return true;
     });
   }
@@ -49,12 +36,7 @@ extension DoseOfflineScheduleStore on DoseOutboxStore {
   Future<DoseScheduleBackup?> suspendDoseSchedules(String owner) async {
     final token = await ownerKey(owner);
     return db.transaction((tx) async {
-      final active = await tx.query(
-        'metadata',
-        where: 'name = ?',
-        whereArgs: ['active'],
-      );
-      if (active.firstOrNull?['value'] != token) return null;
+      if (await _activeToken(tx) != token) return null;
       Future<String?> raw(String name) async {
         final rows = await tx.query(
           'metadata',
@@ -66,16 +48,13 @@ extension DoseOfflineScheduleStore on DoseOutboxStore {
 
       final cache = await raw('cache:$token');
       final window = await raw('offline_schedule:$token');
-      final revision = int.tryParse('${await raw('revision:$token')}') ?? 0;
+      final revision = await _revision(tx, token);
       await tx.delete(
         'metadata',
         where: 'name IN (?, ?)',
         whereArgs: ['cache:$token', 'offline_schedule:$token'],
       );
-      await tx.insert('metadata', {
-        'name': 'revision:$token',
-        'value': '${revision + 1}',
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      await _bumpRevision(tx, token, revision);
       return DoseScheduleBackup._(token, cache, window, revision + 1);
     });
   }
@@ -88,19 +67,9 @@ extension DoseOfflineScheduleStore on DoseOutboxStore {
     final token = await ownerKey(owner);
     if (token != backup._token) return false;
     return db.transaction((tx) async {
-      final active = await tx.query(
-        'metadata',
-        where: 'name = ?',
-        whereArgs: ['active'],
-      );
-      final revisions = await tx.query(
-        'metadata',
-        where: 'name = ?',
-        whereArgs: ['revision:$token'],
-      );
-      final revision = int.tryParse('${revisions.firstOrNull?['value']}') ?? 0;
-      if (active.firstOrNull?['value'] != token ||
-          revision != backup._revision) {
+      final active = await _activeToken(tx);
+      final revision = await _revision(tx, token);
+      if (active != token || revision != backup._revision) {
         return false;
       }
       for (final (name, value) in [
@@ -113,10 +82,7 @@ extension DoseOfflineScheduleStore on DoseOutboxStore {
           'value': value,
         }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
-      await tx.insert('metadata', {
-        'name': 'revision:$token',
-        'value': '${revision + 1}',
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      await _bumpRevision(tx, token, revision);
       return true;
     });
   }
@@ -124,27 +90,14 @@ extension DoseOfflineScheduleStore on DoseOutboxStore {
   Future<void> invalidateDoseSchedules(String owner) async {
     final token = await ownerKey(owner);
     await db.transaction((tx) async {
-      final active = await tx.query(
-        'metadata',
-        where: 'name = ?',
-        whereArgs: ['active'],
-      );
-      if (active.firstOrNull?['value'] != token) return;
-      final rows = await tx.query(
-        'metadata',
-        where: 'name = ?',
-        whereArgs: ['revision:$token'],
-      );
-      final revision = int.tryParse('${rows.firstOrNull?['value']}') ?? 0;
+      if (await _activeToken(tx) != token) return;
+      final revision = await _revision(tx, token);
       await tx.delete(
         'metadata',
         where: 'name IN (?, ?)',
         whereArgs: ['cache:$token', 'offline_schedule:$token'],
       );
-      await tx.insert('metadata', {
-        'name': 'revision:$token',
-        'value': '${revision + 1}',
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      await _bumpRevision(tx, token, revision);
     });
   }
 
@@ -154,12 +107,7 @@ extension DoseOfflineScheduleStore on DoseOutboxStore {
   }) async {
     final token = await ownerKey(owner);
     return db.transaction((tx) async {
-      final rows = await tx.query(
-        'metadata',
-        where: 'name = ?',
-        whereArgs: ['active'],
-      );
-      final active = rows.firstOrNull?['value'] as String? ?? '';
+      final active = await _activeToken(tx) ?? '';
       if (!isCurrent() || (active.isNotEmpty && active != token)) return false;
       await tx.insert('metadata', {
         'name': 'active',
@@ -177,19 +125,9 @@ extension DoseOfflineScheduleStore on DoseOutboxStore {
     final token = await ownerKey(owner);
     final encrypted = await _encrypt(window, token);
     return db.transaction((tx) async {
-      final active = await tx.query(
-        'metadata',
-        where: 'name = ?',
-        whereArgs: ['active'],
-      );
-      final revision = await tx.query(
-        'metadata',
-        where: 'name = ?',
-        whereArgs: ['revision:$token'],
-      );
-      if (active.firstOrNull?['value'] != token ||
-          (int.tryParse('${revision.firstOrNull?['value']}') ?? 0) !=
-              expectedRevision) {
+      final active = await _activeToken(tx);
+      final revision = await _revision(tx, token);
+      if (active != token || revision != expectedRevision) {
         return false;
       }
       await tx.insert('metadata', {
@@ -221,12 +159,7 @@ extension DoseOfflineScheduleStore on DoseOutboxStore {
   }) async {
     final expected = owner == null ? null : await ownerKey(owner);
     await db.transaction((tx) async {
-      final active = await tx.query(
-        'metadata',
-        where: 'name = ?',
-        whereArgs: ['active'],
-      );
-      final token = active.firstOrNull?['value'] as String? ?? '';
+      final token = await _activeToken(tx) ?? '';
       if (token.isEmpty || (expected != null && token != expected)) return;
       Future<Map<String, dynamic>?> read(String name) async {
         final rows = await tx.query(
@@ -247,12 +180,7 @@ extension DoseOfflineScheduleStore on DoseOutboxStore {
       if (window == null) return;
       final schedules = project(window);
       if (schedules == null) return;
-      final revisions = await tx.query(
-        'metadata',
-        where: 'name = ?',
-        whereArgs: ['revision:$token'],
-      );
-      final revision = int.tryParse('${revisions.firstOrNull?['value']}') ?? 0;
+      final revision = await _revision(tx, token);
       await tx.insert('metadata', {
         'name': 'cache:$token',
         'value': await _encrypt({
@@ -261,10 +189,7 @@ extension DoseOfflineScheduleStore on DoseOutboxStore {
           'offline': true,
         }, token),
       }, conflictAlgorithm: ConflictAlgorithm.replace);
-      await tx.insert('metadata', {
-        'name': 'revision:$token',
-        'value': '${revision + 1}',
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      await _bumpRevision(tx, token, revision);
     });
   }
 }

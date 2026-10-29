@@ -68,7 +68,6 @@ typedef ExtendedUserSettingSaver =
 // - notificationService (NotificationService?): 복약 알림이 늦을 수 있는 기기의 정확한 알람 허용 안내에 쓰는 알림 서비스; 없으면 안내를 표시하지 않는다.
 class ManageUserSettingUI extends StatefulWidget {
   final UserSetting initialSetting;
-  final bool initiallyShowDisplayAndVoice;
   final UserSettingDestination? initialDestination;
   final AuthenticationControl authenticationControl;
   final Future<void> Function()? onSignOutRequested;
@@ -77,7 +76,6 @@ class ManageUserSettingUI extends StatefulWidget {
   final SettingPreviewStopper? previewStopper;
   final ExtendedUserSettingSaver onExtendedSettingSaveRequested;
   final VoidCallback? onMedicationScheduleRequested;
-  final Future<void> Function()? onDeviceNotificationSettingsRequested;
   final NotificationService? notificationService;
   final NotificationReadinessControl? readinessControl;
 
@@ -86,7 +84,6 @@ class ManageUserSettingUI extends StatefulWidget {
   // 매개변수:
   // - key (Key?): 위젯을 구분하고 상태를 유지할 식별 키.
   // - initialSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-  // - initiallyShowDisplayAndVoice (bool): 설정값 변경 없이 화면 및 음성 화면으로 바로 진입한다.
   // - authenticationControl (AuthenticationControl): 인증·계정·다중 인증 상태와 명령 제공자.
   // - onSignOutRequested (Future<void> Function()?): 현재 계정을 로그아웃할 콜백.
   // - onDeleteAccountRequested (Future<void> Function()?): 확인된 계정 삭제를 수행할 콜백.
@@ -94,13 +91,11 @@ class ManageUserSettingUI extends StatefulWidget {
   // - previewStopper (SettingPreviewStopper?): 진행 중인 음성 미리보기를 중지하는 함수.
   // - onExtendedSettingSaveRequested (ExtendedUserSettingSaver): 편집한 설정 전체를 저장하고 동기화 결과를 반환할 콜백.
   // - onMedicationScheduleRequested (VoidCallback?): 오늘 복약 일정 화면을 여는 콜백.
-  // - onDeviceNotificationSettingsRequested (Future<void> Function()?): 운영체제의 앱 알림 설정을 여는 콜백.
   // - notificationService (NotificationService?): 정확한 알람 허용 안내에 쓰는 알림 서비스.
   // 반환값: 입력 설정이 반영된 ManageUserSettingUI 인스턴스.
   const ManageUserSettingUI({
     super.key,
     required this.initialSetting,
-    this.initiallyShowDisplayAndVoice = false,
     this.initialDestination,
     required this.authenticationControl,
     this.onSignOutRequested,
@@ -109,7 +104,6 @@ class ManageUserSettingUI extends StatefulWidget {
     this.previewStopper,
     required this.onExtendedSettingSaveRequested,
     this.onMedicationScheduleRequested,
-    this.onDeviceNotificationSettingsRequested,
     this.notificationService,
     this.readinessControl,
   });
@@ -168,9 +162,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   @override
   void initState() {
     super.initState();
-    if (widget.initiallyShowDisplayAndVoice) {
-      _selectedSection = _SettingSection.displayAndVoice;
-    }
     if (widget.initialDestination case final target?) {
       _selectedSection = switch (target) {
         UserSettingDestination.notifications ||
@@ -370,7 +361,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       (_ownedNotificationControl ??= NotificationReadinessControl(
         notificationService:
             widget.notificationService ?? NotificationService.instance,
-        openNotificationSettings: widget.onDeviceNotificationSettingsRequested,
       ));
 
   // 새 안내 화면도 선택한 글씨 크기를 전달받아 큰 글씨 사용자가 같은 배율로 읽는다.

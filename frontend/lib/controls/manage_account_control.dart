@@ -2,6 +2,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../entities/medication_history_export.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../services/api_config.dart';
 import '../services/caregiver_alert_delivery_service.dart';
@@ -150,7 +151,7 @@ class ManageAccount {
     final preferences = await SharedPreferences.getInstance();
     try {
       await const MethodChannel(
-        'com.medbuddy/data_export',
+        medicationHistoryExportChannel,
       ).invokeMethod<void>('clearExports');
     } on MissingPluginException {
       // Platforms without the Android export channel have no native CSV cache.

@@ -3279,7 +3279,7 @@ class _MessageMedicationHistoryContext extends StatelessWidget {
     // 기록은 최근 90일만 열 수 있으므로 그보다 오래된 공유는 실패할 화면 대신 안내를 보인다.
     final today = MedicationHistoryDates.today(DateTime.now());
     final expired = range.start.isBefore(
-      DateTime.utc(today.year, today.month, today.day - 89),
+      MedicationHistoryDates.earliest(today),
     );
     final open = expired ? null : onPressed;
     return Material(
@@ -3706,8 +3706,7 @@ class _LinkedChatText {
         local.year == asOf.year &&
         local.month == asOf.month &&
         local.day == asOf.day;
-    final clock =
-        '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+    final clock = MedicationHistoryDates.clock(next);
     final time = sameDay ? clock : '${local.month}/${local.day} $clock';
     // 영업 종료 상태의 종료 시각은 이미 지난 시각이다.
     if (snapshot.status == 'closed') {
@@ -4148,8 +4147,7 @@ class _LinkedChatText {
           ? 'The remaining course could not be calculated.'
           : '남은 복용 기간을 계산하지 못했습니다.';
     }
-    final dateLabel =
-        '${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}';
+    final dateLabel = MedicationHistoryDates.format(endDate);
     return isEnglish
         ? '$days day(s) remaining · through $dateLabel'
         : '남은 복용 기간 $days일 · $dateLabel까지';

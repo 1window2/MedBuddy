@@ -783,138 +783,140 @@ ChatMessage _historyShareMessage({
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
-  for (final hospital in [false, true]) {
-    for (final language in ['ko', 'en']) {
-      testWidgets(
-        'shared place compact status and exact detail navigation $hospital/$language',
-        (tester) async {
-          const name = '이름이 긴 테스트 병원 약국';
-          const address = '서울특별시 마포구 테스트로 152, 테스트빌딩 본관 4층 (상세 주소를 생략하지 않습니다)';
-          final status = hospital
-              ? (language == 'ko' ? 'closed' : 'open')
-              : (language == 'ko' ? 'before_open' : 'closing_soon');
-          final hour = switch (status) {
-            'closed' => '20:00',
-            'before_open' => '08:00',
-            'closing_soon' => '18:45',
-            _ => '13:00',
-          };
-          final placeJson = <String, dynamic>{
-            if (hospital)
-              'hospital_id': 'place-123'
-            else
-              'pharmacy_id': 'place-123',
-            'name': name,
-            'address': address,
-            'telephone': '02-000-0000',
-            'latitude': 37.55,
-            'longitude': 126.92,
-            'schedule_date': '2026-10-28',
-            'operating_snapshot': {
-              'status': status,
-              'as_of': '2026-10-27T$hour:00+09:00',
-              'opens_at': '2026-10-27T09:00:00+09:00',
-              'closes_at': '2026-10-27T19:00:00+09:00',
-            },
-          };
-          final control = _RetryChatControl(
-            historyMessages: [
-              ChatMessage(
-                messageId: 1,
-                linkId: 17,
-                senderHash: 'caregiver-a',
-                clientMessageId: 'place-share-1',
-                body: 'Shared place',
-                createdAt: DateTime.utc(2026, 10, 27, 4),
-                hospitalContext: hospital
-                    ? ChatHospitalContext.fromJson(placeJson)
-                    : null,
-                pharmacyContext: hospital
-                    ? null
-                    : ChatPharmacyContext.fromJson(placeJson),
-                messageKind: hospital
-                    ? ChatMessageKind.hospitalShare
-                    : ChatMessageKind.pharmacyShare,
-              ),
-            ],
-          );
-          final realtime = _FakeRealtimeService();
-          NearbyCarePlace? opened;
-          bool? hospitalOpened;
-          await tester.binding.setSurfaceSize(const Size(360, 1000));
-          addTearDown(() => tester.binding.setSurfaceSize(null));
-          await tester.pumpWidget(
-            MaterialApp(
-              home: LinkedChatUI(
-                linkId: 17,
-                currentUserHash: 'patient-a',
-                patientHash: 'patient-a',
-                userSetting: UserSetting(language: language),
-                control: control,
-                realtimeService: realtime,
-                careDetailsBuilder: (place, hospitals) {
-                  opened = place;
-                  hospitalOpened = hospitals;
-                  return const Scaffold(body: Text('Exact shared place'));
-                },
-              ),
+  for (final (hospital, language, status) in [
+    (false, 'ko', 'before_open'),
+    (false, 'en', 'closing_soon'),
+    (true, 'ko', 'closed'),
+    (true, 'en', 'open'),
+    (true, 'en', 'closed'),
+  ]) {
+    testWidgets(
+      'shared place compact status and exact detail navigation $hospital/$language/$status',
+      (tester) async {
+        const name = '이름이 긴 테스트 병원 약국';
+        const address = '서울특별시 마포구 테스트로 152, 테스트빌딩 본관 4층 (상세 주소를 생략하지 않습니다)';
+        final hour = switch (status) {
+          'closed' => '20:00',
+          'before_open' => '08:00',
+          'closing_soon' => '18:45',
+          _ => '13:00',
+        };
+        final placeJson = <String, dynamic>{
+          if (hospital)
+            'hospital_id': 'place-123'
+          else
+            'pharmacy_id': 'place-123',
+          'name': name,
+          'address': address,
+          'telephone': '02-000-0000',
+          'latitude': 37.55,
+          'longitude': 126.92,
+          'schedule_date': '2026-10-28',
+          'operating_snapshot': {
+            'status': status,
+            'as_of': '2026-10-27T$hour:00+09:00',
+            'opens_at': '2026-10-27T09:00:00+09:00',
+            'closes_at': '2026-10-27T19:00:00+09:00',
+          },
+        };
+        final control = _RetryChatControl(
+          historyMessages: [
+            ChatMessage(
+              messageId: 1,
+              linkId: 17,
+              senderHash: 'caregiver-a',
+              clientMessageId: 'place-share-1',
+              body: 'Shared place',
+              createdAt: DateTime.utc(2026, 10, 27, 4),
+              hospitalContext: hospital
+                  ? ChatHospitalContext.fromJson(placeJson)
+                  : null,
+              pharmacyContext: hospital
+                  ? null
+                  : ChatPharmacyContext.fromJson(placeJson),
+              messageKind: hospital
+                  ? ChatMessageKind.hospitalShare
+                  : ChatMessageKind.pharmacyShare,
             ),
-          );
-          await tester.pumpAndSettle();
-          expect(
-            find.text(switch (status) {
-              'closed' => '19:00 영업 종료',
-              'before_open' => '영업 전 · 09:00 시작',
-              'closing_soon' => 'Closing soon · Closes 19:00',
-              _ => 'Open · Closes 19:00',
-            }),
-            findsOneWidget,
-          );
-          final addressText = tester.widget<Text>(find.text(address));
-          expect(addressText.maxLines, isNull);
-          expect(addressText.overflow, isNot(TextOverflow.ellipsis));
-          expect(find.textContaining('정보 확인:'), findsNothing);
-          expect(find.textContaining('예약이 확정'), findsNothing);
-          expect(find.text('정보 보기'), findsNothing);
-          expect(find.text('Details'), findsNothing);
-          expect(
-            find.descendant(
-              of: find.byKey(const Key('chat-place-details')),
-              matching: find.byIcon(Icons.chevron_right),
+          ],
+        );
+        final realtime = _FakeRealtimeService();
+        NearbyCarePlace? opened;
+        bool? hospitalOpened;
+        await tester.binding.setSurfaceSize(const Size(360, 1000));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await tester.pumpWidget(
+          MaterialApp(
+            home: LinkedChatUI(
+              linkId: 17,
+              currentUserHash: 'patient-a',
+              patientHash: 'patient-a',
+              userSetting: UserSetting(language: language),
+              control: control,
+              realtimeService: realtime,
+              careDetailsBuilder: (place, hospitals) {
+                opened = place;
+                hospitalOpened = hospitals;
+                return const Scaffold(body: Text('Exact shared place'));
+              },
             ),
-            findsOneWidget,
-          );
-          final callback = tester
-              .widget<OutlinedButton>(
-                find.byKey(const Key('chat-place-details')),
-              )
-              .onPressed!;
-          await tester.tap(find.byKey(const Key('chat-place-details')));
-          await tester.pumpAndSettle();
-          expect(opened!.placeId, 'place-123');
-          expect(opened!.address, address);
-          expect(opened!.isOpenNow, isNull);
-          expect(opened!.todayCloseTime, isNull);
-          expect(hospitalOpened, hospital);
-          Navigator.of(tester.element(find.text('Exact shared place'))).pop();
-          await tester.pumpAndSettle();
-          realtime._events.add({
-            'type': 'chat_messages_deleted',
-            'link_id': 17,
-            'message_ids': [1],
-            'scope': 'everyone',
-          });
-          await tester.pumpAndSettle();
-          callback();
-          await tester.pumpAndSettle();
-          expect(find.text('Exact shared place'), findsNothing);
-          expect(tester.takeException(), isNull);
-          await tester.pumpWidget(const SizedBox.shrink());
-          await realtime.dispose();
-          control.dispose();
-        },
-      );
-    }
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.text(switch (status) {
+            'closed' =>
+              language == 'ko' ? '19:00 영업 종료' : 'Closed at 19:00',
+            'before_open' => '영업 전 · 09:00 시작',
+            'closing_soon' => 'Closing soon · Closes 19:00',
+            _ => 'Open · Closes 19:00',
+          }),
+          findsOneWidget,
+        );
+        final addressText = tester.widget<Text>(find.text(address));
+        expect(addressText.maxLines, isNull);
+        expect(addressText.overflow, isNot(TextOverflow.ellipsis));
+        expect(find.textContaining('정보 확인:'), findsNothing);
+        expect(find.textContaining('예약이 확정'), findsNothing);
+        expect(find.text('정보 보기'), findsNothing);
+        expect(find.text('Details'), findsNothing);
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('chat-place-details')),
+            matching: find.byIcon(Icons.chevron_right),
+          ),
+          findsOneWidget,
+        );
+        final callback = tester
+            .widget<OutlinedButton>(
+              find.byKey(const Key('chat-place-details')),
+            )
+            .onPressed!;
+        await tester.tap(find.byKey(const Key('chat-place-details')));
+        await tester.pumpAndSettle();
+        expect(opened!.placeId, 'place-123');
+        expect(opened!.address, address);
+        expect(opened!.isOpenNow, isNull);
+        expect(opened!.todayCloseTime, isNull);
+        expect(hospitalOpened, hospital);
+        Navigator.of(tester.element(find.text('Exact shared place'))).pop();
+        await tester.pumpAndSettle();
+        realtime._events.add({
+          'type': 'chat_messages_deleted',
+          'link_id': 17,
+          'message_ids': [1],
+          'scope': 'everyone',
+        });
+        await tester.pumpAndSettle();
+        callback();
+        await tester.pumpAndSettle();
+        expect(find.text('Exact shared place'), findsNothing);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await realtime.dispose();
+        control.dispose();
+      },
+    );
   }
 
   for (final language in ['ko', 'en']) {

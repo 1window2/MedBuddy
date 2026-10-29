@@ -71,13 +71,6 @@ List<NearbyCarePlace> sortNearbyCarePlaces(
   return sorted;
 }
 
-// Class Name: CheckNearbyCare
-// Role: Owns shared hospital/pharmacy transport and device operations, not provider policy.
-// Responsibilities:
-// - Resolve fresh GPS or an explicitly selected map/fallback area.
-// - Parse the existing shared display DTO without inventing provider availability.
-// - Reject new HTTP work after disposal; close only internally created clients.
-// Attributes: location, HTTP and external-action boundaries; client ownership and disposal flags.
 // 공유된 장소가 수신 기기의 현재 검색 결과에 없을 때, 이미 받은 주변 결과와 함께 알린다.
 class SharedPlaceNotFound implements Exception {
   const SharedPlaceNotFound(this.nearby);
@@ -85,6 +78,13 @@ class SharedPlaceNotFound implements Exception {
   final NearbyCareSearchResult nearby;
 }
 
+// Class Name: CheckNearbyCare
+// Role: Owns shared hospital/pharmacy transport and device operations, not provider policy.
+// Responsibilities:
+// - Resolve fresh GPS or an explicitly selected map/fallback area.
+// - Parse the existing shared display DTO without inventing provider availability.
+// - Reject new HTTP work after disposal; close only internally created clients.
+// Attributes: location, HTTP and external-action boundaries; client ownership and disposal flags.
 abstract class CheckNearbyCare {
   final DeviceLocationBoundary _locationBoundary;
   final http.Client _client;

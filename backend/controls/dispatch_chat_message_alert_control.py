@@ -116,7 +116,7 @@ class DispatchChatMessageAlert:
             if summary["count"] == 0:
                 return PushDeliveryResult(success_count=0)
             title = f"{summary['sender_name'] or title} ({summary['count']})"
-            # 접힌 알림은 첫 줄만 보이므로 앱 전경 알림처럼 최신 메시지를 맨 위에 둔다.
+            # 접힌 알림은 첫 줄만 보이므로, 앱 전경 알림의 접힌 본문처럼 최신 메시지가 보이게 맨 위에 둔다.
             # chat_summary의 lines는 앱의 InboxStyle이 읽는 오래된 순서 그대로 보낸다.
             notification_body = "\n".join(reversed(summary["lines"])) or fallback_body
             grouped_data = {"chat_summary": json.dumps(summary, ensure_ascii=False),

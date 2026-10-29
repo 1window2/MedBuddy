@@ -86,7 +86,7 @@ void main() {
       addTearDown(control.dispose);
       await control.load(_range);
       final original = control.snapshot;
-      // CSV는 보관 기간(최근 90일) 밖으로 나가면 요청 전에 거부한다.
+      // 다른 앱 공유는 보관 기간(최근 90일) 밖으로 나가면 요청 전에 거부한다.
       await expectLater(
         control.readRangeForExport(
           MedicationHistoryRange(
@@ -102,7 +102,7 @@ void main() {
     },
   );
 
-  test('a CSV longer than 31 days is read in 31-day parts and merged', () async {
+  test('an export longer than 31 days is read in 31-day parts and merged', () async {
     final reads = <Uri>[];
     final control = _control(
       MockClient((request) async {

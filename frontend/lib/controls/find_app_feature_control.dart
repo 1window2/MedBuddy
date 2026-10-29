@@ -727,8 +727,11 @@ class FindAppFeature {
     return scored.map((item) => item.entry).toList(growable: false);
   }
 
+  // 검색어 한 글자마다 모든 표현을 다시 정규화하므로 패턴은 한 번만 만든다.
+  static final _ignored = RegExp(r'[^a-z0-9가-힣ㄱ-ㅎㅏ-ㅣ]');
+
   // 함수이름: _normalize
   // 함수역할: 비교할 때만 공백·문장부호를 제거하고 영문 대소문자를 통일한다.
   static String _normalize(String value) =>
-      value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9가-힣ㄱ-ㅎㅏ-ㅣ]'), '');
+      value.toLowerCase().replaceAll(_ignored, '');
 }

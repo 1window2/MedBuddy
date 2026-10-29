@@ -543,14 +543,11 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
                                 ),
                               );
                               if (time == null || !context.mounted) return;
-                              final today = _control.today;
-                              var date = DateTime.utc(
-                                today.year,
-                                today.month,
-                                today.day,
+                              var date = MedicationHistoryDates.instant(
+                                _control.today,
                                 time.hour,
                                 time.minute,
-                              ).subtract(const Duration(hours: 9));
+                              );
                               if (!date.isAfter(_control.now)) {
                                 date = date.add(const Duration(days: 1));
                               }
@@ -945,9 +942,7 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
       if (time != null && (last == null || time.isAfter(last))) last = time;
     }
     if (last == null) return null;
-    final wall = MedicationHistoryDates.wallTime(last);
-    final clock =
-        '${wall.hour.toString().padLeft(2, '0')}:${wall.minute.toString().padLeft(2, '0')}';
+    final clock = MedicationHistoryDates.clock(last);
     final elapsed = _control.now.difference(last);
     if (elapsed.isNegative) {
       return tr('마지막 복용 $clock', 'Last dose at $clock');

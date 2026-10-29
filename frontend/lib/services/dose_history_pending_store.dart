@@ -3,12 +3,7 @@ part of 'dose_outbox_store.dart';
 // 필요시 복용 의도는 일반 시간대 전송 대기열과 섞지 않고 같은 암호화 DB에 보관한다.
 extension DoseHistoryPendingStore on DoseOutboxStore {
   Future<void> _requireHistoryOwner(DatabaseExecutor tx, String token) async {
-    final active = await tx.query(
-      'metadata',
-      where: 'name = ?',
-      whereArgs: ['active'],
-    );
-    if (active.isEmpty || active.single['value'] != token) {
+    if (await _activeToken(tx) != token) {
       throw StateError('Account changed.');
     }
   }

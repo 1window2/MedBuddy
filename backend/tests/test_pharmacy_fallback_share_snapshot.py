@@ -169,14 +169,20 @@ def test_live_date_specific_hours_do_not_guess_holiday_or_calendar_status(flow, 
     assert snapshot == {"status": "unknown", "as_of": NOW.isoformat(), "opens_at": None, "closes_at": None}
 
 
-def test_verified_current_interval_survives_previous_calendar_failure(flow):
-    async def holiday(value):
-        if value < NOW.date():
-            raise PharmacyApiUnavailableError("Previous calendar unavailable")
-        return False
-
-    flow.calendar.isHoliday.side_effect = holiday
+def test_live_snapshot_checks_only_todays_calendar(flow):
     assert context(send(flow))["operating_snapshot"]["status"] == "closing_soon"
+    flow.calendar.isHoliday.assert_awaited_once_with(NOW.date())
+
+
+def test_closed_after_todays_hours_does_not_depend_on_yesterday(flow):
+    # 공휴일 다음 날 저녁: 당일 09:00~18:00이 끝났으면 전날과 관계없이 영업 종료다.
+    flow.clock.now = NOW.replace(hour=20, minute=0)
+    flow.boundary.searchNearby.return_value = [replace(flow.record, start_time="0900", end_time="1800")]
+    assert context(send(flow))["operating_snapshot"] == {
+        "status": "closed", "as_of": flow.clock.now.isoformat(),
+        "opens_at": flow.clock.now.replace(hour=9).isoformat(),
+        "closes_at": flow.clock.now.replace(hour=18).isoformat(),
+    }
 
 
 @pytest.mark.parametrize("start,end", [("0900", ""), ("0900", "0900"), ("0900 lunch", "2200")])
@@ -297,4 +303,4 @@ def test_holiday_lookups_run_alongside_the_location_search(flow):
     flow.boundary.searchNearby.side_effect = search
     flow.calendar.isHoliday.side_effect = holiday
     assert context(send(flow))["operating_snapshot"]["status"] == "closing_soon"
-    assert flow.calendar.isHoliday.await_count == 2
+    assert flow.calendar.isHoliday.await_count == 1

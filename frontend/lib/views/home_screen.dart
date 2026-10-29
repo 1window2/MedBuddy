@@ -23,7 +23,6 @@ import '../boundaries/link_patient_caregiver_ui_boundary.dart';
 import '../boundaries/manual_medication_entry_ui_boundary.dart';
 import '../boundaries/manage_user_hub_ui_boundary.dart';
 import '../boundaries/medbuddy_bottom_navigation_ui_boundary.dart';
-import '../boundaries/pill_identification_ui_boundary.dart';
 import '../boundaries/manage_user_setting_ui_boundary.dart';
 import '../boundaries/prescription_analysis_preview_ui_boundary.dart';
 import '../boundaries/prescription_analysis_progress_ui_boundary.dart';
@@ -45,6 +44,7 @@ import '../controls/manage_notification_inbox_control.dart';
 import '../boundaries/notification_inbox_ui_boundary.dart';
 import '../boundaries/feature_search_ui_boundary.dart';
 import '../boundaries/medication_history_ui_boundary.dart';
+import '../boundaries/medication_registration_flow.dart';
 import '../boundaries/medication_capture_options_ui_boundary.dart';
 import '../boundaries/data_use_info_ui_boundary.dart';
 import '../entities/feature_search_entity.dart';
@@ -816,7 +816,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               onTap: () => _openUserSettings(
                 context,
                 viewModel,
-                initiallyShowDisplayAndVoice: true,
+                initialDestination: UserSettingDestination.homeScheduleSource,
               ),
             )
           : null,
@@ -847,24 +847,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // 매개변수:
       // - mode (PillCaptureMode): 한 장 또는 개별 앞뒷면 촬영 방식.
       // 반환값: 없음. 알약 식별 화면으로 이동한다.
-      onPillIdentificationRequested: (mode) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            // 함수이름: _buildHomeInput.builder callback
-            // 함수역할: 처방 분석 단계와 앱 탐색 목적지별 활성 화면에 현재 부모의 레이아웃 제약을 적용해 현재 배치를 구성한다.
-            // 매개변수:
-            // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-            // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-            builder: (context) => PillIdentificationUI(
-              userSetting: viewModel.userSetting,
-              captureMode: mode,
-              onSaveRequested: viewModel.saveIdentifiedPill,
-              onBatchSaveRequested: viewModel.saveIdentifiedPills,
-            ),
-          ),
-        );
-      },
+      onPillIdentificationRequested: (mode) =>
+          openPillIdentification(context, viewModel, mode),
       // 함수이름: _buildHomeInput.onManualMedicationRequested callback
       // 함수역할: 처방 분석 단계와 앱 탐색 목적지별 활성 화면에서 캡처된 작업 `_openManualMedicationEntry(context, viewModel)`을 실행한다.
       // 매개변수:
@@ -915,17 +899,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               userSetting: viewModel.userSetting,
             );
             if (!context.mounted || destination == null) return;
-            await Navigator.push(
+            await _openNearbyCare(
               context,
-              MaterialPageRoute(
-                builder: (context) => CheckNearbyPharmacyUI(
-                  // 설정을 불러오기 전에는 userHash가 비어 즐겨찾기가 계정 구분 없는 키에 저장되므로 계정 해시를 채운다.
-                  userSetting: viewModel.userSetting.copyWith(
-                    userHash: viewModel.patientHash,
-                  ),
-                  hospitals: destination == NearbyCareDestination.hospital,
-                ),
-              ),
+              viewModel,
+              hospitals: destination == NearbyCareDestination.hospital,
             );
           },
       // Function Name: _buildHomeInput.onUserSettingRequested callback
@@ -940,6 +917,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       onFeatureSearchRequested: () => _openFeatureSearch(viewModel),
     );
   }
+
+  // 함수이름: _sameSession
+  // 함수역할: 비동기 대기 뒤에도 같은 화면 모델·계정인지 확인한다. context를 읽으므로 mounted 확인 뒤 호출한다.
+  // 매개변수: viewModel·owner는 작업을 시작한 세션의 화면 모델과 계정. 반환값: 같은 세션이면 true.
+  bool _sameSession(MedBuddyViewModel viewModel, String owner) =>
+      identical(context.read<MedBuddyViewModel>(), viewModel) &&
+      viewModel.patientHash == owner;
+
+  // 함수이름: _openNearbyCare
+  // 함수역할: 병원 또는 약국 지도 탐색 화면을 현재 계정으로 열고 화면이 닫힐 때 완료한다.
+  // 매개변수: context는 내비게이터 위치, viewModel은 현재 화면 모델, hospitals는 병원 탐색 여부.
+  Future<void> _openNearbyCare(
+    BuildContext context,
+    MedBuddyViewModel viewModel, {
+    required bool hospitals,
+  }) => Navigator.push<void>(
+    context,
+    MaterialPageRoute(
+      builder: (_) => CheckNearbyPharmacyUI(
+        // 설정을 불러오기 전에는 userHash가 비어 즐겨찾기가 계정 구분 없는 키에 저장되므로 계정 해시를 채운다.
+        userSetting: viewModel.userSetting.copyWith(
+          userHash: viewModel.patientHash,
+        ),
+        hospitals: hospitals,
+      ),
+    ),
+  );
 
   // 함수이름: _openFeatureSearch
   // 함수역할: 검색이 끝난 뒤에도 같은 계정인지 확인하고 기존 진입점으로 이동한다.
@@ -962,12 +966,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } finally {
       _featureSearchOpen = false;
     }
-    if (!mounted ||
-        feature == null ||
-        !identical(context.read<MedBuddyViewModel>(), viewModel) ||
-        viewModel.patientHash != owner) {
-      return;
-    }
+    if (!mounted || feature == null || !_sameSession(viewModel, owner)) return;
     final settingDestination = switch (feature) {
       AppFeature.notifications => UserSettingDestination.notifications,
       AppFeature.notificationReception =>
@@ -1017,11 +1016,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               isEnglish: viewModel.userSetting.isEnglish,
               initiallyShowExport: feature == AppFeature.historySharing,
               onChanged: () async {
-                if (!mounted ||
-                    !identical(context.read<MedBuddyViewModel>(), viewModel) ||
-                    viewModel.patientHash != owner) {
-                  return;
-                }
+                if (!mounted || !_sameSession(viewModel, owner)) return;
                 await viewModel.refreshMedicationSchedule();
               },
             ),
@@ -1048,41 +1043,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
       case AppFeature.nearbyPharmacy:
       case AppFeature.nearbyHospital:
-        await Navigator.push<void>(
+        await _openNearbyCare(
           context,
-          MaterialPageRoute(
-            builder: (_) => CheckNearbyPharmacyUI(
-              userSetting: viewModel.userSetting.copyWith(userHash: owner),
-              hospitals: feature == AppFeature.nearbyHospital,
-            ),
-          ),
+          viewModel,
+          hospitals: feature == AppFeature.nearbyHospital,
         );
       case AppFeature.prescription:
         final source = await showPrescriptionImageSourceOptions(
           context: context,
           userSetting: viewModel.userSetting,
         );
-        if (!mounted ||
-            !identical(context.read<MedBuddyViewModel>(), viewModel) ||
-            viewModel.patientHash != owner) {
-          return;
-        }
+        if (!mounted || !_sameSession(viewModel, owner)) return;
         if (source == PrescriptionImageSource.camera) {
           await _requestGuidedPrescriptionImage(context, viewModel);
         } else if (source == PrescriptionImageSource.gallery) {
           await viewModel.requestPrescriptionImageFromGallery();
         }
       case AppFeature.pillIdentification:
-        await Navigator.push<void>(
+        await openPillIdentification(
           context,
-          MaterialPageRoute(
-            builder: (_) => PillIdentificationUI(
-              userSetting: viewModel.userSetting,
-              captureMode: PillCaptureMode.singlePhoto,
-              onSaveRequested: viewModel.saveIdentifiedPill,
-              onBatchSaveRequested: viewModel.saveIdentifiedPills,
-            ),
-          ),
+          viewModel,
+          PillCaptureMode.singlePhoto,
         );
       case AppFeature.dataUse:
         await Navigator.push<void>(
@@ -1104,8 +1085,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _refreshChatList();
     // 연동 확인은 네트워크를 기다리므로, 그사이 다른 화면이나 탭으로 옮겼다면 그 위에 열지 않는다.
     if (!mounted ||
-        !identical(context.read<MedBuddyViewModel>(), viewModel) ||
-        viewModel.patientHash != owner ||
+        !_sameSession(viewModel, owner) ||
         _selectedDestination != MedBuddyDestination.home ||
         !(ModalRoute.of(context)?.isCurrent ?? false)) {
       return;
@@ -1161,12 +1141,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             ),
           );
-    if (!mounted ||
-        selected == null ||
-        !identical(context.read<MedBuddyViewModel>(), viewModel) ||
-        viewModel.patientHash != owner) {
-      return;
-    }
+    if (!mounted || selected == null || !_sameSession(viewModel, owner)) return;
     await _openCaregiverPatient(viewModel, selected);
   }
 
@@ -1427,7 +1402,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _openUserSettings(
     BuildContext context,
     MedBuddyViewModel viewModel, {
-    bool initiallyShowDisplayAndVoice = false,
     UserSettingDestination? initialDestination,
   }) async {
     final authenticationControl = context.read<AuthenticationControl>();
@@ -1454,7 +1428,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         // Returns: Widget subtree for the described layout or fallback.
         builder: (context) => ManageUserSettingUI(
           initialSetting: viewModel.userSetting,
-          initiallyShowDisplayAndVoice: initiallyShowDisplayAndVoice,
           initialDestination: initialDestination,
           authenticationControl: authenticationControl,
           // 함수이름: _openUserSettings.onMedicationScheduleRequested callback
@@ -1473,8 +1446,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               MaterialPageRoute(builder: (context) => const CheckScheduleUI()),
             );
           },
-          onDeviceNotificationSettingsRequested:
-              NotificationService.instance.openSystemNotificationSettings,
           notificationService: viewModel.notificationService,
           // 함수이름: _openUserSettings.onExtendedSettingSaveRequested callback
           // 함수역할: 설정 화면이 넘긴 설정 객체를 그대로 저장하고, 저장된 언어 선택 모드를 앱 전체 언어에 적용한다.

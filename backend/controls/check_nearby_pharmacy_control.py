@@ -196,19 +196,18 @@ class CheckNearbyPharmacy:
         timezone = ZoneInfo(settings.APPLICATION_TIME_ZONE)
         requested_at = self._now_provider().astimezone(timezone)
         records: list[PharmacyLocationRecord] = []
-        today_holiday = previous_holiday = None
+        today_holiday = None
         if self._pharmacy_boundary is not None and self._holiday_boundary is not None:
             try:
                 # 공유 한 건은 한 페이지·최대 5초만 사용하며 실패해도 식별 정보 공유는 유지한다.
                 # 공휴일 조회는 위치 응답과 무관하므로 같은 제한 시간 안에서 함께 기다린다.
                 async with asyncio.timeout(min(5.0, settings.PHARMACY_API_TIMEOUT_SECONDS)):
-                    records, today_holiday, previous_holiday = await asyncio.gather(
+                    records, today_holiday = await asyncio.gather(
                         self._pharmacy_boundary.searchNearby(
                             latitude=pharmacy.latitude, longitude=pharmacy.longitude,
                             limit=_MAX_RESULT_LIMIT,
                         ),
                         self._lookup_holiday(requested_at.date()),
-                        self._lookup_holiday(requested_at.date() - timedelta(days=1)),
                     )
             except (PharmacyApiUnavailableError, PharmacyApiResponseError, TimeoutError):
                 records = []
@@ -216,14 +215,15 @@ class CheckNearbyPharmacy:
         matches = [record for record in records if record.pharmacy_id == pharmacy.pharmacy_id]
         # 위치 응답의 당일 시간은 주간표나 전날 이월 시간으로 복제하지 않는다.
         hours = (matches[0].start_time, matches[0].end_time) if len(matches) == 1 else None
-        same_date = now.date() == requested_at.date()
+        today_verified = now.date() == requested_at.date() and today_holiday is False
+        # 위치 응답에는 전날 시간이 없어 전날 달력을 확인해도 판정에 쓸 시간이 없다.
+        # 전날 야간 영업이 이어질 수 있는 당일 개점 전만 아래에서 확인 불가로 바꾸고,
+        # 당일 폐점 뒤의 영업 종료는 당일 시간만으로 확정한다.
         snapshot = build_operating_snapshot(
             now=now, today_hours=hours, previous_hours=None,
-            today_calendar_verified=same_date and today_holiday is False,
-            previous_calendar_verified=same_date and previous_holiday is False,
+            today_calendar_verified=today_verified,
+            previous_calendar_verified=today_verified,
         )
-        # 전날 시간을 모르므로 당일 개점 전 시각은 전날 야간 영업이 이어지는 중일 수 있다.
-        # 당일 폐점 뒤의 영업 종료 판정은 당일 시간만으로 확정되므로 그대로 둔다.
         if snapshot["status"] == "before_open":
             return {**snapshot, "status": "unknown", "opens_at": None, "closes_at": None}
         return snapshot

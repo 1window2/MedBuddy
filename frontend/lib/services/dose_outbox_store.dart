@@ -140,6 +140,38 @@ class DoseOutboxStore {
   Future<String> ownerKey(String owner) async =>
       base64UrlEncode((await Sha256().hash(utf8.encode(owner))).bytes);
 
+  // 활성 계정 키를 읽는다. 로그아웃 상태는 빈 문자열, 기록이 없으면 null이다.
+  Future<String?> _activeToken(DatabaseExecutor executor) async {
+    final rows = await executor.query(
+      'metadata',
+      where: 'name = ?',
+      whereArgs: ['active'],
+    );
+    return rows.firstOrNull?['value'] as String?;
+  }
+
+  // 계정의 캐시 버전을 읽으며 없거나 숫자가 아닌 값은 0으로 본다.
+  Future<int> _revision(DatabaseExecutor executor, String token) async {
+    final rows = await executor.query(
+      'metadata',
+      where: 'name = ?',
+      whereArgs: ['revision:$token'],
+    );
+    return int.tryParse('${rows.firstOrNull?['value']}') ?? 0;
+  }
+
+  // 읽은 버전의 다음 값을 저장해 그 전에 시작한 조회의 늦은 저장을 거부하게 한다.
+  Future<void> _bumpRevision(
+    DatabaseExecutor executor,
+    String token,
+    int revision,
+  ) async {
+    await executor.insert('metadata', {
+      'name': 'revision:$token',
+      'value': '${revision + 1}',
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
   Future<String> _encrypt(Map<String, dynamic> value, String owner) async {
     final box = await _cipher.encrypt(
       utf8.encode(jsonEncode(value)),
@@ -168,12 +200,7 @@ class DoseOutboxStore {
   Future<void> activate(String? owner) async {
     final next = owner == null ? '' : await ownerKey(owner);
     await db.transaction((tx) async {
-      final rows = await tx.query(
-        'metadata',
-        where: 'name = ?',
-        whereArgs: ['active'],
-      );
-      final previous = rows.firstOrNull?['value'] as String? ?? '';
+      final previous = await _activeToken(tx) ?? '';
       if (previous != next) {
         // 설정은 유지하되 재로그인으로 과거 버튼·환자 탐색·지연 응답이 살아나지 않게 한다.
         for (final token in {
@@ -211,14 +238,8 @@ class DoseOutboxStore {
     });
   }
 
-  Future<bool> isActive(String owner) async {
-    final rows = await db.query(
-      'metadata',
-      where: 'name = ?',
-      whereArgs: ['active'],
-    );
-    return rows.isNotEmpty && rows.single['value'] == await ownerKey(owner);
-  }
+  Future<bool> isActive(String owner) async =>
+      await _activeToken(db) == await ownerKey(owner);
 
   // 함수이름: enqueue
   // 함수역할: 활성 계정을 검증한 뒤 디스크에 저장한다. 실패하면 성공으로 표시하지 않는다.
@@ -227,12 +248,7 @@ class DoseOutboxStore {
     final token = await ownerKey(owner);
     final encrypted = await _encrypt(operation, token);
     await db.transaction((tx) async {
-      final active = await tx.query(
-        'metadata',
-        where: 'name = ?',
-        whereArgs: ['active'],
-      );
-      if (active.isEmpty || active.single['value'] != token) {
+      if (await _activeToken(tx) != token) {
         throw StateError('Account changed.');
       }
       await tx.insert('operations', {
@@ -273,12 +289,7 @@ class DoseOutboxStore {
   ) async {
     final token = await ownerKey(owner);
     return db.transaction<Map<String, dynamic>?>((tx) async {
-      final active = await tx.query(
-        'metadata',
-        where: 'name = ?',
-        whereArgs: ['active'],
-      );
-      if (active.isEmpty || active.single['value'] != token) return null;
+      if (await _activeToken(tx) != token) return null;
       final ready = await _readyOperations(tx, token, now: now);
       if (ready.isEmpty) return null;
       final first = ready.first;
@@ -492,10 +503,7 @@ class DoseOutboxStore {
         'name': 'cache:$token',
         'value': encrypted,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
-      await tx.insert('metadata', {
-        'name': 'revision:$token',
-        'value': '${revision + 1}',
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      await _bumpRevision(tx, token, revision);
       return true;
     });
   }
@@ -531,10 +539,7 @@ class DoseOutboxStore {
         'name': 'cache:$token',
         'value': encrypted,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
-      await tx.insert('metadata', {
-        'name': 'revision:$token',
-        'value': '${revision + 1}',
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      await _bumpRevision(tx, token, revision);
       await tx.delete(
         'operations',
         where: 'owner = ? AND id = ? AND lease = ?',
