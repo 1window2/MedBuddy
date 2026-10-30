@@ -2,6 +2,7 @@
 # Role: Pure time and distance calculations shared by nearby-care use cases.
 
 import math
+import re
 from datetime import datetime, timedelta, tzinfo
 
 # The client date picker offers today - 7 days through today + 366 days and sends the picked day
@@ -116,6 +117,21 @@ def parse_minutes(value: str, *, allow_24: bool = False) -> int | None:
     if hour > 23 or minute > 59:
         return None
     return hour * 60 + minute
+
+
+def parse_operating_hours(values: object) -> tuple[int | None, int | None]:
+    """명시된 시각 쌍만 읽고 동일한 시작·종료를 휴무나 종일 운영으로 추정하지 않는다."""
+    if not isinstance(values, (tuple, list)) or len(values) != 2:
+        return None, None
+    if not all(isinstance(value, str) and re.fullmatch(
+        r"(?:[0-9]{3,4}|[0-9]{1,2}:[0-9]{2})", value,
+    ) for value in values):
+        return None, None
+    start = parse_minutes(values[0])
+    end = parse_minutes(values[1], allow_24=True)
+    if start is None or end is None or start == end:
+        return None, None
+    return start, end
 
 
 # Function Name: is_open_now

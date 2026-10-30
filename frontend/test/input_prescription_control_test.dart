@@ -11,6 +11,7 @@ import 'package:http/testing.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:medbuddy_frontend/controls/input_prescription_control.dart';
 import 'package:medbuddy_frontend/entities/recognized_text_region_entity.dart';
+import 'package:medbuddy_frontend/entities/prescription_flow_entity.dart';
 import 'package:medbuddy_frontend/services/prescription_local_ocr_service.dart';
 import 'package:medbuddy_frontend/services/authenticated_api_client.dart';
 import 'package:medbuddy_frontend/services/user_facing_error_message.dart';
@@ -278,42 +279,102 @@ class _AbortAwareClient extends http.BaseClient {
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  test(
+    'OCR progress reports actual boundaries and never completes on server failure',
+    () async {
+      for (final fail in [false, true]) {
+        final ocr = _BlockingPrescriptionLocalOcrBoundary();
+        final response = Completer<http.Response>();
+        final sent = Completer<void>();
+        final client = MockClient((_) {
+          sent.complete();
+          return response.future;
+        });
+        final control = InputPrescription(
+          imagePicker: _FakeImagePicker(XFile('test-prescription.jpg')),
+          client: client,
+          localOcrBoundary: ocr,
+        );
+        final stages = <PrescriptionRecognitionStage>[];
+        final request = control.requestPrescriptionImageFromGallery(
+          onProgress: stages.add,
+        );
+        final assertion = fail
+            ? expectLater(request, throwsA(isA<StateError>()))
+            : null;
+        await ocr.started.future;
+        expect(stages, [PrescriptionRecognitionStage.recognizingText]);
+        ocr.allowCompletion.complete();
+        await sent.future;
+        expect(stages, PrescriptionRecognitionStage.values.take(2).toList());
+        response.complete(
+          http.Response('{"medications":[]}', fail ? 503 : 200),
+        );
+        if (assertion != null) {
+          await assertion;
+        } else {
+          await request;
+        }
+        expect(
+          stages,
+          fail
+              ? PrescriptionRecognitionStage.values.take(2).toList()
+              : PrescriptionRecognitionStage.values,
+        );
+        control.dispose();
+        client.close();
+      }
+    },
+  );
   for (final disposeDuringOcr in [false, true]) {
     // Function Name: cancellation during OCR regression
     // Description: Exiting during OCR prevents upload and preserves capture cleanup.
     // Parameters: None; disposeDuringOcr selects explicit cancellation or disposal.
     // Returns: Completion of cancellation and file-lifetime assertions.
-    test('cancels before upload during OCR (dispose=$disposeDuringOcr)', () async {
-      final directory = await Directory.systemTemp.createTemp('medbuddy-ocr-cancel-');
-      addTearDown(() => directory.delete(recursive: true));
-      final image = File('${directory.path}/capture.jpg');
-      await image.writeAsBytes([1, 2, 3]);
-      final ocr = _BlockingPrescriptionLocalOcrBoundary();
-      var uploads = 0;
-      final client = MockClient((_) async {
-        uploads++;
-        return http.Response('{"medications":[]}', 200);
-      });
-      addTearDown(client.close);
-      final control = InputPrescription(client: client, localOcrBoundary: ocr);
-      final request = control.requestCapturedPrescriptionImage(XFile(image.path));
-      final assertion = expectLater(request, throwsA(isA<StateError>()));
-      await ocr.started.future;
-      final cleanup = control.clearSelectedImage();
-      if (disposeDuringOcr) {
-        control.dispose();
-      } else {
-        control.cancelPendingRequests();
-      }
-      expect(await image.exists(), isTrue);
-      ocr.allowCompletion.complete();
-      await assertion;
-      await cleanup;
-      expect(uploads, 0);
-      expect(control.lastRecognizedTextRegions, isEmpty);
-      expect(await image.exists(), isFalse);
-      if (!disposeDuringOcr) control.dispose();
-    });
+    test(
+      'cancels before upload during OCR (dispose=$disposeDuringOcr)',
+      () async {
+        final directory = await Directory.systemTemp.createTemp(
+          'medbuddy-ocr-cancel-',
+        );
+        addTearDown(() => directory.delete(recursive: true));
+        final image = File('${directory.path}/capture.jpg');
+        await image.writeAsBytes([1, 2, 3]);
+        final ocr = _BlockingPrescriptionLocalOcrBoundary();
+        var uploads = 0;
+        final client = MockClient((_) async {
+          uploads++;
+          return http.Response('{"medications":[]}', 200);
+        });
+        addTearDown(client.close);
+        final control = InputPrescription(
+          client: client,
+          localOcrBoundary: ocr,
+        );
+        final stages = <PrescriptionRecognitionStage>[];
+        final request = control.requestCapturedPrescriptionImage(
+          XFile(image.path),
+          onProgress: stages.add,
+        );
+        final assertion = expectLater(request, throwsA(isA<StateError>()));
+        await ocr.started.future;
+        final cleanup = control.clearSelectedImage();
+        if (disposeDuringOcr) {
+          control.dispose();
+        } else {
+          control.cancelPendingRequests();
+        }
+        expect(await image.exists(), isTrue);
+        ocr.allowCompletion.complete();
+        await assertion;
+        await cleanup;
+        expect(uploads, 0);
+        expect(stages, [PrescriptionRecognitionStage.recognizingText]);
+        expect(control.lastRecognizedTextRegions, isEmpty);
+        expect(await image.exists(), isFalse);
+        if (!disposeDuringOcr) control.dispose();
+      },
+    );
   }
 
   for (final error in <Object>[
@@ -995,90 +1056,87 @@ void main() {
   // - None.
   // Returns:
   // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
-  test(
-    'prescription analysis preserves medication correction metadata',
-    () async {
-      final tempDirectory = await Directory.systemTemp.createTemp(
-        'medbuddy-prescription-test-',
-      );
-      // Function Name: addTearDown callback
-      // Description:
-      // - Remove the temporary image directory after the case, including failure paths.
-      // Parameters:
-      // - None.
-      // Returns:
-      // - Completion of temporary-file cleanup.
-      addTearDown(() async {
-        if (await tempDirectory.exists()) {
-          await tempDirectory.delete(recursive: true);
-        }
-      });
-      final imageFile = File('${tempDirectory.path}/prescription.jpg');
-      await imageFile.writeAsBytes([1, 2, 3]);
+  test('prescription analysis preserves medication correction metadata', () async {
+    final tempDirectory = await Directory.systemTemp.createTemp(
+      'medbuddy-prescription-test-',
+    );
+    // Function Name: addTearDown callback
+    // Description:
+    // - Remove the temporary image directory after the case, including failure paths.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Completion of temporary-file cleanup.
+    addTearDown(() async {
+      if (await tempDirectory.exists()) {
+        await tempDirectory.delete(recursive: true);
+      }
+    });
+    final imageFile = File('${tempDirectory.path}/prescription.jpg');
+    await imageFile.writeAsBytes([1, 2, 3]);
 
-      // 함수이름: MockClient 콜백
-      // 함수역할:
-      // - 분석 경로를 검사하고 원문 약명·수정 근거·신뢰도·누락 집계를 응답에 포함한다.
-      // 매개변수:
-      // - request (http.Request): 실제 서버 전송 대신 가로챈 HTTP 요청.
-      // 반환값:
-      // - OCR 수정 메타데이터와 집계가 있는 HTTP 200 응답.
-      final client = MockClient((http.Request request) async {
-        expect(request.method, 'POST');
-        expect(request.url.path, '/analyze-prescription-text');
-        return http.Response(
-          jsonEncode({
-            'prescription_date': '2026-07-08',
-            'raw_medication_count': 2,
-            'parsed_medication_count': 1,
-            'skipped_medication_count': 1,
-            'medications': [
-              {
-                'drug_name': '프루코프정',
-                'raw_drug_name': '포루코프정',
-                'name_confidence': 0.92,
-                'name_correction_source': 'local_catalog_ocr_vowel_variant',
-                'dosage_per_time': '1',
-                'daily_frequency': '3',
-                'total_days': '5',
-              },
-            ],
-          }),
-          200,
-          headers: {'content-type': 'application/json; charset=utf-8'},
-        );
-      });
-      final control = InputPrescription(
-        baseUrl: 'http://localhost',
-        imagePicker: _FakeImagePicker(XFile(imageFile.path)),
-        client: client,
-        localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
+    // 함수이름: MockClient 콜백
+    // 함수역할:
+    // - 분석 경로를 검사하고 원문 약명·수정 근거·신뢰도·누락 집계를 응답에 포함한다.
+    // 매개변수:
+    // - request (http.Request): 실제 서버 전송 대신 가로챈 HTTP 요청.
+    // 반환값:
+    // - OCR 수정 메타데이터와 집계가 있는 HTTP 200 응답.
+    final client = MockClient((http.Request request) async {
+      expect(request.method, 'POST');
+      expect(request.url.path, '/analyze-prescription-text');
+      return http.Response(
+        jsonEncode({
+          'prescription_date': '2026-07-08',
+          'raw_medication_count': 2,
+          'parsed_medication_count': 1,
+          'skipped_medication_count': 1,
+          'medications': [
+            {
+              'drug_name': '프루코프정',
+              'raw_drug_name': '포루코프정',
+              'name_confidence': 0.92,
+              'name_correction_source': 'local_catalog_ocr_vowel_variant',
+              'dosage_per_time': '1',
+              'daily_frequency': '3',
+              'total_days': '5',
+            },
+          ],
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
       );
-      // Function Name: addTearDown callback
-      // Description:
-      // - Clear the selected prescription image and dispose its control after the case.
-      // Parameters:
-      // - None.
-      // Returns:
-      // - Completion of image cleanup and control disposal.
-      addTearDown(() => _disposeControl(control));
+    });
+    final control = InputPrescription(
+      baseUrl: 'http://localhost',
+      imagePicker: _FakeImagePicker(XFile(imageFile.path)),
+      client: client,
+      localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
+    );
+    // Function Name: addTearDown callback
+    // Description:
+    // - Clear the selected prescription image and dispose its control after the case.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Completion of image cleanup and control disposal.
+    addTearDown(() => _disposeControl(control));
 
-      final schedules = await control.requestPrescriptionImageFromGallery();
+    final schedules = await control.requestPrescriptionImageFromGallery();
 
-      expect(schedules, hasLength(1));
-      expect(schedules!.first.medicationName, '프루코프정');
-      expect(schedules.first.rawMedicationName, '포루코프정');
-      expect(schedules.first.nameConfidence, 0.92);
-      expect(
-        schedules.first.nameCorrectionSource,
-        'local_catalog_ocr_vowel_variant',
-      );
-      expect(schedules.first.hasNameCorrection, isTrue);
-      expect(control.lastRawMedicationCount, 2);
-      expect(control.lastParsedMedicationCount, 1);
-      expect(control.lastSkippedMedicationCount, 1);
-    },
-  );
+    expect(schedules, hasLength(1));
+    expect(schedules!.first.medicationName, '프루코프정');
+    expect(schedules.first.rawMedicationName, '포루코프정');
+    expect(schedules.first.nameConfidence, 0.92);
+    expect(
+      schedules.first.nameCorrectionSource,
+      'local_catalog_ocr_vowel_variant',
+    );
+    expect(schedules.first.hasNameCorrection, isTrue);
+    expect(control.lastRawMedicationCount, 2);
+    expect(control.lastParsedMedicationCount, 1);
+    expect(control.lastSkippedMedicationCount, 1);
+  });
 
   // Function Name: test callback
   // Description:
@@ -1237,55 +1295,52 @@ void main() {
   // - None.
   // Returns:
   // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
-  test(
-    'prescription analysis times out while reading a stalled body',
-    () async {
-      final tempDirectory = await Directory.systemTemp.createTemp(
-        'medbuddy-prescription-timeout-test-',
-      );
-      // Function Name: addTearDown callback
+  test('prescription analysis times out while reading a stalled body', () async {
+    final tempDirectory = await Directory.systemTemp.createTemp(
+      'medbuddy-prescription-timeout-test-',
+    );
+    // Function Name: addTearDown callback
+    // Description:
+    // - Remove the temporary image directory after the case, including failure paths.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Completion of temporary-file cleanup.
+    addTearDown(() async {
+      if (await tempDirectory.exists()) {
+        await tempDirectory.delete(recursive: true);
+      }
+    });
+    final imageFile = File('${tempDirectory.path}/prescription.jpg');
+    await imageFile.writeAsBytes([1, 2, 3]);
+
+    final control = InputPrescription(
+      imagePicker: _FakeImagePicker(XFile(imageFile.path)),
+      client: _DelayedResponseBodyClient(),
+      localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
+      requestTimeout: const Duration(milliseconds: 10),
+    );
+    // Function Name: addTearDown callback
+    // Description:
+    // - Clear the selected prescription image and dispose its control after the case.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Completion of image cleanup and control disposal.
+    addTearDown(() => _disposeControl(control));
+
+    expect(
+      // Function Name: expect callback
       // Description:
-      // - Remove the temporary image directory after the case, including failure paths.
+      // - Run gallery recognition against the delayed-body client to exercise read timeout handling.
       // Parameters:
       // - None.
       // Returns:
-      // - Completion of temporary-file cleanup.
-      addTearDown(() async {
-        if (await tempDirectory.exists()) {
-          await tempDirectory.delete(recursive: true);
-        }
-      });
-      final imageFile = File('${tempDirectory.path}/prescription.jpg');
-      await imageFile.writeAsBytes([1, 2, 3]);
-
-      final control = InputPrescription(
-        imagePicker: _FakeImagePicker(XFile(imageFile.path)),
-        client: _DelayedResponseBodyClient(),
-        localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
-        requestTimeout: const Duration(milliseconds: 10),
-      );
-      // Function Name: addTearDown callback
-      // Description:
-      // - Clear the selected prescription image and dispose its control after the case.
-      // Parameters:
-      // - None.
-      // Returns:
-      // - Completion of image cleanup and control disposal.
-      addTearDown(() => _disposeControl(control));
-
-      expect(
-        // Function Name: expect callback
-        // Description:
-        // - Run gallery recognition against the delayed-body client to exercise read timeout handling.
-        // Parameters:
-        // - None.
-        // Returns:
-        // - A recognition Future that fails when body reading times out.
-        () => control.requestPrescriptionImageFromGallery(),
-        throwsA(isA<StateError>()),
-      );
-    },
-  );
+      // - A recognition Future that fails when body reading times out.
+      () => control.requestPrescriptionImageFromGallery(),
+      throwsA(isA<StateError>()),
+    );
+  });
 
   // Function Name: test callback
   // Description:
@@ -1294,51 +1349,48 @@ void main() {
   // - None.
   // Returns:
   // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
-  test(
-    'prescription analysis aborts an in-flight request after timeout',
-    () async {
-      final tempDirectory = await Directory.systemTemp.createTemp(
-        'medbuddy-prescription-abort-test-',
-      );
-      // Function Name: addTearDown callback
-      // Description:
-      // - Remove the temporary image directory after the case, including failure paths.
-      // Parameters:
-      // - None.
-      // Returns:
-      // - Completion of temporary-file cleanup.
-      addTearDown(() async {
-        if (await tempDirectory.exists()) {
-          await tempDirectory.delete(recursive: true);
-        }
-      });
-      final imageFile = File('${tempDirectory.path}/prescription.jpg');
-      await imageFile.writeAsBytes([1, 2, 3]);
-      final client = _AbortAwareClient();
-      final control = InputPrescription(
-        imagePicker: _FakeImagePicker(XFile(imageFile.path)),
-        client: client,
-        localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
-        requestTimeout: const Duration(milliseconds: 10),
-      );
-      // Function Name: addTearDown callback
-      // Description:
-      // - Clear the selected prescription image and dispose its control after the case.
-      // Parameters:
-      // - None.
-      // Returns:
-      // - Completion of image cleanup and control disposal.
-      addTearDown(() => _disposeControl(control));
+  test('prescription analysis aborts an in-flight request after timeout', () async {
+    final tempDirectory = await Directory.systemTemp.createTemp(
+      'medbuddy-prescription-abort-test-',
+    );
+    // Function Name: addTearDown callback
+    // Description:
+    // - Remove the temporary image directory after the case, including failure paths.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Completion of temporary-file cleanup.
+    addTearDown(() async {
+      if (await tempDirectory.exists()) {
+        await tempDirectory.delete(recursive: true);
+      }
+    });
+    final imageFile = File('${tempDirectory.path}/prescription.jpg');
+    await imageFile.writeAsBytes([1, 2, 3]);
+    final client = _AbortAwareClient();
+    final control = InputPrescription(
+      imagePicker: _FakeImagePicker(XFile(imageFile.path)),
+      client: client,
+      localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
+      requestTimeout: const Duration(milliseconds: 10),
+    );
+    // Function Name: addTearDown callback
+    // Description:
+    // - Clear the selected prescription image and dispose its control after the case.
+    // Parameters:
+    // - None.
+    // Returns:
+    // - Completion of image cleanup and control disposal.
+    addTearDown(() => _disposeControl(control));
 
-      await expectLater(
-        control.requestPrescriptionImageFromGallery(),
-        throwsA(isA<StateError>()),
-      );
-      await Future<void>.delayed(Duration.zero);
+    await expectLater(
+      control.requestPrescriptionImageFromGallery(),
+      throwsA(isA<StateError>()),
+    );
+    await Future<void>.delayed(Duration.zero);
 
-      expect(client.wasAborted, isTrue);
-    },
-  );
+    expect(client.wasAborted, isTrue);
+  });
 
   // Function Name: test callback
   // Description:
@@ -1381,33 +1433,36 @@ void main() {
     expect(client.wasAborted, isTrue);
   });
 
-  test('cancelPendingRequests aborts analysis without disposing control', () async {
-    final tempDirectory = await Directory.systemTemp.createTemp(
-      'medbuddy-prescription-cancel-test-',
-    );
-    addTearDown(() async {
-      if (await tempDirectory.exists()) {
-        await tempDirectory.delete(recursive: true);
-      }
-    });
-    final imageFile = File('${tempDirectory.path}/prescription.jpg');
-    await imageFile.writeAsBytes([1, 2, 3]);
-    final client = _AbortAwareClient();
-    final control = InputPrescription(
-      imagePicker: _FakeImagePicker(XFile(imageFile.path)),
-      client: client,
-      localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
-    );
-    addTearDown(() => _disposeControl(control));
+  test(
+    'cancelPendingRequests aborts analysis without disposing control',
+    () async {
+      final tempDirectory = await Directory.systemTemp.createTemp(
+        'medbuddy-prescription-cancel-test-',
+      );
+      addTearDown(() async {
+        if (await tempDirectory.exists()) {
+          await tempDirectory.delete(recursive: true);
+        }
+      });
+      final imageFile = File('${tempDirectory.path}/prescription.jpg');
+      await imageFile.writeAsBytes([1, 2, 3]);
+      final client = _AbortAwareClient();
+      final control = InputPrescription(
+        imagePicker: _FakeImagePicker(XFile(imageFile.path)),
+        client: client,
+        localOcrBoundary: _FakePrescriptionLocalOcrBoundary(),
+      );
+      addTearDown(() => _disposeControl(control));
 
-    final request = control.requestPrescriptionImageFromGallery();
-    await client.started.future;
-    control.cancelPendingRequests();
+      final request = control.requestPrescriptionImageFromGallery();
+      await client.started.future;
+      control.cancelPendingRequests();
 
-    await expectLater(request, throwsA(isA<StateError>()));
-    await Future<void>.delayed(Duration.zero);
-    expect(client.wasAborted, isTrue);
-  });
+      await expectLater(request, throwsA(isA<StateError>()));
+      await Future<void>.delayed(Duration.zero);
+      expect(client.wasAborted, isTrue);
+    },
+  );
 
   // Function Name: test callback
   // Description:

@@ -1,4 +1,5 @@
 @startuml
+skinparam defaultFontName Nanum Gothic
 allowmixing
 !pragma layout smetana
 scale max 1920 width
@@ -24,6 +25,7 @@ package "Flutter: Boundary / Control / Entity" {
   abstract class "CheckNearbyCare" as FCare <<Control>> {
     + requestNearbyCareSearch(...)
     + requestSearchArea(...)
+    + requestSelectedPlaceSearch(place, targetDateTime, ...)
     + dispose()
   }
   class "CheckNearbyPharmacy" as FPharmacy <<Control>>
@@ -47,6 +49,12 @@ package "Flutter: Boundary / Control / Entity" {
   class LinkedChatUI <<Boundary>>
   class "ManageLinkedChat" as FChat <<Control>>
   abstract class ChatPlaceContext <<Entity>>
+  class ChatPlaceOperatingSnapshot <<Entity>> {
+    + status
+    + asOf
+    + opensAt
+    + closesAt
+  }
 }
 package "FastAPI: Boundary / Control / Entity" {
   note "module-level route functions\napi/hospital_router.py" as HospitalRouter
@@ -55,7 +63,10 @@ package "FastAPI: Boundary / Control / Entity" {
     + requestNearbyHospitalSearch(...)
     + requestShareContext(hospital_id, schedule_date)
   }
-  class "CheckNearbyPharmacy" as BPharmacy <<Control>>
+  class "CheckNearbyPharmacy" as BPharmacy <<Control>> {
+    + requestShareOperatingSnapshot(pharmacy)
+  }
+  note "chat_operating_snapshot.py\nbuild_operating_snapshot()\nstatus: open / closing_soon(30분 이내) /\nbefore_open / closed / unknown\n불확실하면 unknown; 카드는 공유 시점 값 보존" as OperatingSnapshot
   interface HospitalLookupBoundary {
     + fetchNearbyPage(...)
     + fetchDepartmentPage(province, district, department, page_no, page_size)
@@ -141,6 +152,12 @@ ChatRouter --> BChat : role / link / idempotency checks
 BChat --> ChatMessageRepository
 ChatMessageRepository --> DB
 FChat --> ChatPlaceContext : verified response snapshot
+ChatPlaceContext --> ChatPlaceOperatingSnapshot : 공유 시점 운영 상태
+BHospital ..> OperatingSnapshot : requestShareContext()
+BPharmacy ..> OperatingSnapshot : 한 페이지·최대 5초 보완 조회
+BChat ..> OperatingSnapshot : 주간표가 있는 약국
+LinkedChatUI --> CheckNearbyPharmacyUI : 공유 카드 다시 열기
+CheckNearbyPharmacyUI --> FCare : requestSelectedPlaceSearch()
 
 note bottom of NationalEmergencyMedicalCenterHospitalAPI
   Bounded pages, detail budget, shared in-flight requests and TTL cache.
@@ -169,6 +186,9 @@ note bottom of CheckNearbyPharmacyUI
   At >= 3 km, or for partial results, retain a bottom warning.
   Sampled regions alone do not trigger the limit warning.
   Explain region uncertainty in source notes and qualify empty results.
+  A reopened shared card searches around the receiver, then 300 m around
+  the shared point; if still absent (SharedPlaceNotFound) it shows nearby
+  places with a notice instead of the old timetable.
 end note
 note bottom of FCare
   Sibling controls share transport, not pharmacy-specific policy.

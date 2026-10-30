@@ -31,6 +31,7 @@ from entities.pharmacy_catalog_entity import (
     PharmacyCatalogEntry,
     PharmacyHolidaySchedule,
 )
+from services.chat_operating_snapshot import build_operating_snapshot
 from services.nearby_care_policy import (
     format_time,
     haversine_distance,
@@ -189,6 +190,43 @@ class CheckNearbyPharmacy:
         self._now_provider = now_provider or (
             lambda: datetime.now(ZoneInfo(settings.APPLICATION_TIME_ZONE))
         )
+
+    async def requestShareOperatingSnapshot(self, pharmacy: PharmacyCatalogEntry) -> dict[str, object]:
+        """서버에 저장된 좌표에서 정확한 약국 ID의 당일 시간만 제한적으로 확인한다."""
+        timezone = ZoneInfo(settings.APPLICATION_TIME_ZONE)
+        requested_at = self._now_provider().astimezone(timezone)
+        records: list[PharmacyLocationRecord] = []
+        today_holiday = None
+        if self._pharmacy_boundary is not None and self._holiday_boundary is not None:
+            try:
+                # 공유 한 건은 한 페이지·최대 5초만 사용하며 실패해도 식별 정보 공유는 유지한다.
+                # 공휴일 조회는 위치 응답과 무관하므로 같은 제한 시간 안에서 함께 기다린다.
+                async with asyncio.timeout(min(5.0, settings.PHARMACY_API_TIMEOUT_SECONDS)):
+                    records, today_holiday = await asyncio.gather(
+                        self._pharmacy_boundary.searchNearby(
+                            latitude=pharmacy.latitude, longitude=pharmacy.longitude,
+                            limit=_MAX_RESULT_LIMIT,
+                        ),
+                        self._lookup_holiday(requested_at.date()),
+                    )
+            except (PharmacyApiUnavailableError, PharmacyApiResponseError, TimeoutError):
+                records = []
+        now = self._now_provider().astimezone(timezone)
+        matches = [record for record in records if record.pharmacy_id == pharmacy.pharmacy_id]
+        # 위치 응답의 당일 시간은 주간표나 전날 이월 시간으로 복제하지 않는다.
+        hours = (matches[0].start_time, matches[0].end_time) if len(matches) == 1 else None
+        today_verified = now.date() == requested_at.date() and today_holiday is False
+        # 위치 응답에는 전날 시간이 없어 전날 달력을 확인해도 판정에 쓸 시간이 없다.
+        # 전날 야간 영업이 이어질 수 있는 당일 개점 전만 아래에서 확인 불가로 바꾸고,
+        # 당일 폐점 뒤의 영업 종료는 당일 시간만으로 확정한다.
+        snapshot = build_operating_snapshot(
+            now=now, today_hours=hours, previous_hours=None,
+            today_calendar_verified=today_verified,
+            previous_calendar_verified=today_verified,
+        )
+        if snapshot["status"] == "before_open":
+            return {**snapshot, "status": "unknown", "opens_at": None, "closes_at": None}
+        return snapshot
 
     # Function Name: requestNearbyPharmacies
     # Description:

@@ -4,7 +4,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
-import 'dart:math';
 
 import 'package:http/http.dart' as http;
 
@@ -16,6 +15,7 @@ import '../entities/patient_hash_entity.dart';
 import '../services/api_config.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
+import 'medication_history_control.dart';
 
 // 클래스명: MedicationSaveStatus
 // 역할: 저장 요청의 성공·중복·실패 상태를 구분한다.
@@ -59,7 +59,7 @@ class MedicationRegimenChange {
     required this.expectedRevision,
     String? operationId,
     Map<String, dynamic> changes = const {},
-  }) : operationId = operationId ?? _newOperationId(),
+  }) : operationId = operationId ?? MedicationHistoryControl.newOperationId(),
        changes = Map.unmodifiable({
          for (final entry in changes.entries)
            entry.key: entry.value is List
@@ -75,17 +75,6 @@ class MedicationRegimenChange {
     'operation_id': operationId,
     'changes': changes,
   };
-
-  static String _newOperationId() {
-    final random = Random.secure();
-    final bytes = List.generate(16, (_) => random.nextInt(256));
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    final hex = bytes
-        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
-        .join();
-    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
-  }
 }
 
 class MedicationRegimenResult {

@@ -1,4 +1,5 @@
 @startuml
+skinparam defaultFontName Nanum Gothic
 title Home-screen schedules (own recording / linked-patient viewing)
 actor User
 participant "Android widget" as Widget
@@ -25,6 +26,8 @@ Callback -> Store: Resolve active-account current-day linked patient
 Callback -> User: Existing read-only patient detail screen
 else Own schedules
 
+Callback -> Store: publish(): prepareOfflineCache(owner, now)
+note right of Store: After midnight without a server read, today's slots are\nprojected from the encrypted 14-day window (OfflineScheduleWindow);\nyesterday's completions are not copied (see OfflineDoseSync.puml).
 User -> Widget: Select previous/next arrow or page dot
 Widget -> Widget: Change visible slot locally (no dose write)\nShow taken and remaining medicines
 alt Incomplete slot
@@ -66,7 +69,7 @@ Widget -> Callback: Open own schedule in app (no write)
 end
 note over Widget,Store
 Logout/account switch clears the previous account's display.
-Without an account snapshot, show sign-in guidance and a Sign in action.
+Without an account snapshot, show sign-in guidance and a Sign in action\n(in the app language kept with the cleared state).
 Hide dose progress and refresh; open authentication without a dose write.
 Old-day, replayed and incompatible actions do not write.
 No authentication tokens, credentials or account IDs in PendingIntent data.

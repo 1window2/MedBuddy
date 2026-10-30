@@ -116,6 +116,17 @@ class PushRecipientResolver:
     def caregiver_alerts_enabled(self, user_hash: str) -> bool:
         return self._read_preferences(user_hash).caregiver_enabled
 
+    # Function Name: notification_display
+    # Description:
+    # - Returns how an account wants notification text shown, without reading device tokens.
+    # Parameters:
+    # - user_hash (str): Recipient account.
+    # Returns:
+    # - (language, show_details); "ko" and True when there is no settings row.
+    def notification_display(self, user_hash: str) -> tuple[str, bool]:
+        preferences = self._read_preferences(user_hash)
+        return preferences.language, preferences.show_details
+
     # Function Name: disable_invalid
     # Description:
     # - Disables tokens Firebase rejected as expired or mismatched and commits at once.

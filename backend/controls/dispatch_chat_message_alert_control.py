@@ -3,6 +3,8 @@
 
 """채팅방에 접속하지 않은 상대에게 새 메시지 푸시를 전달한다."""
 
+import json
+
 from sqlalchemy.orm import Session
 
 from boundaries.push_notification_boundary import (
@@ -10,9 +12,8 @@ from boundaries.push_notification_boundary import (
     PushNotificationBoundary,
 )
 from entities.chat_message_entity import _ChatMessage
-from entities.medication_schedule_entity import (
-    MEDICATION_SLOT_ENGLISH_NAMES,
-    MEDICATION_SLOT_KOREAN_NAMES,
+from services.chat_notification_summary import (
+    build_chat_notification_summary, chat_fallback_text, notification_preview,
 )
 from repositories.patient_caregiver_link_repository import (
     PatientCaregiverLinkRepository,
@@ -73,7 +74,7 @@ class DispatchChatMessageAlert:
         message_id: int | None = None,
     ) -> PushDeliveryResult:
         """상대 기기에 길이를 제한한 실제 채팅 내용을 미리 보여준다."""
-        dose_receipt: dict[str, object] | None = None
+        context_payload: object = None
         # Recheck queued work before exposing a preview; completed delivery cannot be recalled.
         if message_id is not None:
             row = self.db.get(_ChatMessage, message_id)
@@ -88,7 +89,7 @@ class DispatchChatMessageAlert:
                 return PushDeliveryResult(success_count=0)
             message_body = str(row.body)
             message_kind = str(row.message_kind)
-            dose_receipt = self._dose_receipt(row)
+            context_payload = row.context_payload
         resolver = PushRecipientResolver(self.db)
         recipient = resolver.resolve(recipient_hash)
         if not recipient.tokens:
@@ -97,24 +98,35 @@ class DispatchChatMessageAlert:
             return PushDeliveryResult(success_count=0)
         language = recipient.language
         is_english = language == "en"
-        # 복용 기록 본문에는 약 이름이 들어 있으므로 잠금 화면에 그대로 내보내지 않는다.
-        message_preview = (
-            self._dose_receipt_preview(dose_receipt, is_english)
-            if dose_receipt is not None
-            else self._message_preview(message_body)
+        # 복용 기록 본문의 약 이름과 이력 공유의 기간·건수·건강 정보는 잠금 화면에 그대로 내보내지 않는다.
+        preview = notification_preview(
+            message_kind=message_kind, context_payload=context_payload, body=message_body,
+            english=is_english, maximum=self._MAXIMUM_PREVIEW_LENGTH,
         )
-        fallback_body = (
-            "You received a new message from a linked family member."
-            if is_english
-            else "연동된 가족에게 새 메시지가 도착했습니다."
-        )
+        fallback_body = chat_fallback_text(is_english)
         show_details = recipient.show_details
-        notification_body = (message_preview or fallback_body) if show_details else fallback_body
+        notification_body = (preview or fallback_body) if show_details else fallback_body
+        title = "New family message" if is_english else "새 가족 메시지"
+        grouped_data = {}
+        if message_id is not None:
+            summary = build_chat_notification_summary(
+                self.db, link=link, recipient_hash=recipient_hash,
+                language=language, show_details=show_details,
+            )
+            if summary["count"] == 0:
+                return PushDeliveryResult(success_count=0)
+            title = f"{summary['sender_name'] or title} ({summary['count']})"
+            # 접힌 알림은 첫 줄만 보이므로, 앱 전경 알림의 접힌 본문처럼 최신 메시지가 보이게 맨 위에 둔다.
+            # chat_summary의 lines는 앱의 InboxStyle이 읽는 오래된 순서 그대로 보낸다.
+            notification_body = "\n".join(reversed(summary["lines"])) or fallback_body
+            grouped_data = {"chat_summary": json.dumps(summary, ensure_ascii=False),
+                            "chat_group": summary["group_tag"],
+                            "chat_count": str(summary["count"])}
         # Firebase 호출이 느려도 풀 연결과 읽기 트랜잭션을 잡고 있지 않도록 먼저 반환한다.
         self.db.rollback()
         result = self.push_boundary.send_notification(
             tokens=list(recipient.tokens),
-            title="New family message" if is_english else "새 가족 메시지",
+            title=title,
             body=notification_body,
             data={
                 "type": "linked_chat_message",
@@ -123,62 +135,12 @@ class DispatchChatMessageAlert:
                 **({"event_id": f"chat:{link_id}:{message_id}"}
                    if message_id is not None else {}),
                 "link_id": str(link_id),
-                "message_preview": message_preview if show_details else "",
+                "message_preview": preview if show_details else "",
                 "message_kind": message_kind,
                 "slot_key": slot_key or "",
+                **grouped_data,
             },
         )
         if result.invalid_tokens:
             resolver.disable_invalid(result.invalid_tokens)
         return result
-
-    # 함수이름: _dose_receipt
-    # 함수역할:
-    # - 메시지가 서버가 작성한 복용 기록인지 확인하고 그 확인 정보를 돌려준다.
-    # 매개변수:
-    # - row (_ChatMessage): 저장된 채팅 메시지.
-    # 반환값:
-    # - 복용 기록의 날짜와 시간대를 담은 사전. 사용자가 쓴 메시지면 None.
-    @staticmethod
-    def _dose_receipt(row: _ChatMessage) -> dict[str, object] | None:
-        """구조화 문맥에 복용 확인이 붙은 메시지만 복용 기록으로 본다."""
-        context = row.context_payload if isinstance(row.context_payload, dict) else {}
-        confirmation = context.get("completion_confirmation")
-        return confirmation if isinstance(confirmation, dict) else None
-
-    # 함수이름: _dose_receipt_preview
-    # 함수역할:
-    # - 복용 기록 메시지의 알림 문구를 약 이름 없이 날짜와 시간대만으로 만든다.
-    # 매개변수:
-    # - dose_receipt (dict[str, object]): 복용 기록의 날짜와 시간대.
-    # - is_english (bool): 수신자의 알림 언어가 영어인지 여부.
-    # 반환값:
-    # - 약 이름이 없는 알림 표시용 문구.
-    @staticmethod
-    def _dose_receipt_preview(dose_receipt: dict[str, object], is_english: bool) -> str:
-        """날짜와 시간대를 알 수 없으면 그 부분을 빼고 기록 사실만 알린다."""
-        slot_key = str(dose_receipt.get("slot_key") or "")
-        schedule_date = str(dose_receipt.get("schedule_date") or "").strip()
-        if is_english:
-            slot_name = MEDICATION_SLOT_ENGLISH_NAMES.get(slot_key, "")
-            dose_label = f"{slot_name} doses" if slot_name else "doses"
-            suffix = f" for {schedule_date}" if schedule_date else ""
-            return f"Recorded {dose_label}{suffix}."
-        slot_name = MEDICATION_SLOT_KOREAN_NAMES.get(slot_key, "")
-        subject = " ".join(part for part in (schedule_date, slot_name) if part)
-        return f"{subject} 복용을 기록했습니다.".strip()
-
-    # 함수이름: _message_preview
-    # 함수역할:
-    # - 알림에 표시할 메시지를 한 줄로 정리하고 최대 길이를 제한한다.
-    # 매개변수:
-    # - message_body (str): 사용자가 전송한 원문
-    # 반환값:
-    # - 알림 표시용 메시지 미리보기
-    @classmethod
-    def _message_preview(cls, message_body: str) -> str:
-        """공백을 정리한 뒤 긴 메시지 끝에 말줄임표를 붙인다."""
-        normalized = " ".join(str(message_body or "").split())
-        if len(normalized) <= cls._MAXIMUM_PREVIEW_LENGTH:
-            return normalized
-        return f"{normalized[: cls._MAXIMUM_PREVIEW_LENGTH - 1].rstrip()}…"

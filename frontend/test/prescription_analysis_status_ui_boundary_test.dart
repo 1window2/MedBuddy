@@ -11,7 +11,6 @@ import 'package:medbuddy_frontend/controls/check_medication_detail_control.dart'
 import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/controls/input_prescription_control.dart';
-import 'package:medbuddy_frontend/entities/analyzed_medication_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_detail_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/prescription_flow_entity.dart';
@@ -40,6 +39,7 @@ class _EmptyGalleryInputPrescription extends InputPrescription {
   @override
   Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
     PrescriptionImageSelectedCallback? onImageSelected,
+    PrescriptionRecognitionProgressCallback? onProgress,
   }) async {
     galleryRequestCount += 1;
     onImageSelected?.call();
@@ -63,6 +63,7 @@ class _SuccessfulGalleryInputPrescription extends InputPrescription {
   @override
   Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
     PrescriptionImageSelectedCallback? onImageSelected,
+    PrescriptionRecognitionProgressCallback? onProgress,
   }) async {
     onImageSelected?.call();
     return const [
@@ -74,6 +75,23 @@ class _SuccessfulGalleryInputPrescription extends InputPrescription {
       ),
     ];
   }
+}
+
+// Class Name: _SkippedRowGalleryInputPrescription
+// Role: Gallery-recognition fixture that reports one OCR row excluded from the recognized schedule.
+// Responsibilities:
+// - Reuse the successful schedule while exposing a skipped-row count for the recognition notice.
+class _SkippedRowGalleryInputPrescription
+    extends _SuccessfulGalleryInputPrescription {
+  // Function Name: lastSkippedMedicationCount
+  // Description:
+  // - Report one OCR row skipped by the most recent recognition.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - The fixed skipped-row count.
+  @override
+  int get lastSkippedMedicationCount => 1;
 }
 
 // Class Name: _SuccessfulMedicationDetail
@@ -167,56 +185,6 @@ class _EmptySchedule extends CheckSchedule {
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
-  for (final language in ['ko', 'en']) {
-    testWidgets('success content remains usable at large text in $language', (
-      tester,
-    ) async {
-      tester.view.physicalSize = const Size(320, 568);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      var resultRequests = 0;
-      await tester.pumpWidget(
-        MaterialApp(
-          builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(
-              context,
-            ).copyWith(textScaler: const TextScaler.linear(2)),
-            child: child!,
-          ),
-          home: PrescriptionAnalysisSuccessUI(
-            analyzedMedicationList: const [
-              AnalyzedMedication(
-                schedule: MedicationSchedule(
-                  medicationName: 'test-tablet',
-                  medicationTime: 3,
-                ),
-                detail: MedicationDetail(
-                  itemName: 'test-tablet',
-                  efficacy: 'effect',
-                  usageMethod: 'usage',
-                  warning: 'warning',
-                ),
-              ),
-            ],
-            userSetting: UserSetting(language: language, fontSize: 20),
-            onResultRequested: () => resultRequests++,
-          ),
-        ),
-      );
-
-      final button = find.byKey(
-        const Key('prescription-analysis-result-button'),
-      );
-      await tester.ensureVisible(button);
-      await tester.pumpAndSettle();
-      expect(button, findsOneWidget);
-      await tester.tap(button);
-      expect(resultRequests, 1);
-      expect(tester.takeException(), isNull);
-    });
-  }
-
   for (final language in ['ko', 'en']) {
     for (final size in [
       const Size(390, 844),
@@ -482,6 +450,101 @@ void main() {
   // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
   // 반환값:
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  testWidgets(
+    'automatic lookup opens editable review without a success screen',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final viewModel = MedBuddyViewModel(
+        inputPrescription: _SuccessfulGalleryInputPrescription(),
+        checkMedicationDetail: _SuccessfulMedicationDetail(),
+      );
+      addTearDown(viewModel.dispose);
+      final states = <PrescriptionFlowState>[];
+      viewModel.addListener(() => states.add(viewModel.prescriptionFlowState));
+      await viewModel.requestPrescriptionImageFromGallery();
+      expect(states, isNot(contains(PrescriptionFlowState.previewReady)));
+      expect(states, contains(PrescriptionFlowState.analyzingMedication));
+      expect(viewModel.completedMedicationSaveIndexes, isEmpty);
+      await tester.pumpWidget(
+        ChangeNotifierProvider<MedBuddyViewModel>.value(
+          value: viewModel,
+          child: const MaterialApp(home: HomeScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('결과 보기'), findsOneWidget);
+      expect(find.byKey(const Key('lookup-summary-intro')), findsNothing);
+      expect(find.byKey(const Key('lookup-summary-pinned')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('ocr-medication-list')),
+          matching: find.text('약품 확인됨'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('medication-lookup-review-banner')),
+        findsNothing,
+      );
+      await tester.ensureVisible(
+        find.byKey(const Key('ocr-table-cell-0-dosage')),
+      );
+      await tester.tap(find.byKey(const Key('ocr-table-cell-0-dosage')));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsOneWidget);
+      await tester.tap(find.byKey(const Key('ocr-edit-cancel')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('prescription-analyze-button')));
+      await tester.pumpAndSettle();
+      expect(
+        viewModel.prescriptionFlowState,
+        PrescriptionFlowState.resultReady,
+      );
+      expect(viewModel.completedMedicationSaveIndexes, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  // 함수이름: testWidgets 콜백
+  // 함수역할:
+  // - 자동 조회 후 열린 검토 화면에도 OCR 제외 항목 안내가 표시되는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
+  // 반환값:
+  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  testWidgets('lookup review shows the OCR skipped-row notice', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final viewModel = MedBuddyViewModel(
+      inputPrescription: _SkippedRowGalleryInputPrescription(),
+      checkMedicationDetail: _SuccessfulMedicationDetail(),
+    );
+    addTearDown(viewModel.dispose);
+
+    await viewModel.requestPrescriptionImageFromGallery();
+    expect(
+      viewModel.prescriptionFlowState,
+      PrescriptionFlowState.analysisSucceeded,
+    );
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: viewModel,
+        child: const MaterialApp(home: HomeScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('1개 OCR 항목 제외 내역을 확인해주세요.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('system back from prescription result returns to home', (
     tester,
   ) async {
@@ -497,7 +560,6 @@ void main() {
     addTearDown(viewModel.dispose);
 
     await viewModel.requestPrescriptionImageFromGallery();
-    await viewModel.requestPrescriptionAnalysis();
     viewModel.showMedicationAnalysisResult();
     expect(viewModel.prescriptionFlowState, PrescriptionFlowState.resultReady);
 
@@ -540,7 +602,6 @@ void main() {
     addTearDown(viewModel.dispose);
 
     await viewModel.requestPrescriptionImageFromGallery();
-    await viewModel.requestPrescriptionAnalysis();
     viewModel.showMedicationAnalysisResult();
 
     await tester.pumpWidget(

@@ -128,6 +128,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
   bool _reminderWorkflowActive = false;
   bool _historyWorkflowActive = false;
   bool _didRevealInitialSlot = false;
+  final ScrollController _listController = ScrollController();
   late Set<({String medicationId, String slotKey})> _selectedDoses;
   // 함수이름: initState
   // 함수역할: 초기 선택 ID를 복사하고 일반 모드에서는 일정을 갱신한 뒤 요청 시간대를 드러낸다.
@@ -167,6 +168,8 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
           _revealInitialSlot();
         }
       });
+      // 새로 읽은 일정이 화면을 바꾸지 않으면 다음 프레임이 오지 않아, 사용자가 화면을 만질 때까지 이동하지 않았다.
+      WidgetsBinding.instance.scheduleFrame();
     });
   }
 
@@ -182,6 +185,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _revealInitialSlot();
       });
+      WidgetsBinding.instance.scheduleFrame();
     }
   }
 
@@ -204,18 +208,44 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     });
   }
 
+  @override
+  void dispose() {
+    _listController.dispose();
+    super.dispose();
+  }
+
   // 함수이름: _revealInitialSlot
   // 함수역할: 알림에서 전달된 시간대 카드가 화면에 보이도록 최초 한 번만 이동한다.
   // 매개변수:
   // - 없음.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
-  void _revealInitialSlot() {
+  void _revealInitialSlot([int attempt = 0]) {
     if (_didRevealInitialSlot) {
       return;
     }
     final slotKey = widget.initialSlotKey?.trim().toLowerCase();
     final targetContext = _slotKeys[slotKey]?.currentContext;
     if (targetContext == null) {
+      // 목록은 화면 밖 카드를 만들지 않으므로 한 화면씩 내려가며 찾는다. 오늘 그 시간대가 없으면
+      // 맨 위로 돌아간다(취침 전·필요시 카드는 약이 많으면 처음에 만들어지지 않는다).
+      if (!_slotKeys.containsKey(slotKey) || !_listController.hasClients) {
+        return;
+      }
+      final position = _listController.position;
+      if (attempt >= 20 || position.pixels >= position.maxScrollExtent) {
+        if (attempt > 0) position.jumpTo(0);
+        return;
+      }
+      position.jumpTo(
+        (position.pixels + position.viewportDimension).clamp(
+          0,
+          position.maxScrollExtent,
+        ),
+      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _revealInitialSlot(attempt + 1);
+      });
+      WidgetsBinding.instance.scheduleFrame();
       return;
     }
     _didRevealInitialSlot = true;
@@ -450,6 +480,11 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     final slots = _buildSlots(viewModel);
     final progress = viewModel.todayMedicationProgress;
     final hasTodaySchedule = viewModel.todayMedicationScheduleList.isNotEmpty;
+    // 첫 조회 전에만 가린다. 필요시 약만 있는 환자는 정기 일정이 늘 비어 있어 새로고침마다 카드가 사라졌다.
+    final initialLoading =
+        !hasTodaySchedule &&
+        viewModel.isTodayScheduleLoading &&
+        !viewModel.hasSettledTodaySchedule;
 
     return Scaffold(
       backgroundColor: MedBuddyColors.pageBackground,
@@ -478,7 +513,25 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
               service: viewModel.doseSync!,
               isEnglish: viewModel.userSetting.isEnglish,
             ),
-          Expanded(child: _buildContent(viewModel, slots, text)),
+          Expanded(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // 필요시 약 조회는 유지하되, 정기 일정 대기 중 일부 카드만 노출하지 않는다.
+                Offstage(
+                  offstage: initialLoading,
+                  child: _buildContent(viewModel, slots, text),
+                ),
+                if (initialLoading)
+                  const Center(
+                    child: CircularProgressIndicator(
+                      key: Key('schedule-initial-loading'),
+                      color: MedBuddyColors.primary,
+                    ),
+                  ),
+              ],
+            ),
+          ),
           if (hasTodaySchedule)
             _HealthRecommendationFooter(
               text: text,
@@ -502,6 +555,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
         MaterialPageRoute(
           builder: (_) => MedicationHistoryUI(
             patientHash: viewModel.patientHash,
+            currentUserHash: viewModel.patientHash,
             isEnglish: viewModel.userSetting.isEnglish,
             onChanged: () async {
               if (!mounted) return;
@@ -535,17 +589,9 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
           maxWidth: MedBuddySpacing.contentMaxWidth,
         ),
         child: ListView(
+          controller: _listController,
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
           children: [
-            if (noRegularDoses && viewModel.isTodayScheduleLoading)
-              const SizedBox(
-                height: 100,
-                child: Center(
-                  child: CircularProgressIndicator(
-                    color: MedBuddyColors.primary,
-                  ),
-                ),
-              ),
             if (noRegularDoses && viewModel.hasTodayScheduleLoadError)
               SizedBox(
                 height: 340,

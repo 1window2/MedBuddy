@@ -2,8 +2,10 @@
 // Role: Shares authenticated nearby-care search, location and external-action ownership.
 
 import 'package:flutter/foundation.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 
+import '../entities/device_coordinate_entity.dart';
 import '../entities/nearby_care_entity.dart';
 import '../services/api_response_parser.dart';
 import '../services/authenticated_api_client.dart';
@@ -67,6 +69,13 @@ List<NearbyCarePlace> sortNearbyCarePlaces(
     return left.distanceKm.compareTo(right.distanceKm);
   });
   return sorted;
+}
+
+// 공유된 장소가 수신 기기의 현재 검색 결과에 없을 때, 이미 받은 주변 결과와 함께 알린다.
+class SharedPlaceNotFound implements Exception {
+  const SharedPlaceNotFound(this.nearby);
+
+  final NearbyCareSearchResult nearby;
 }
 
 // Class Name: CheckNearbyCare
@@ -172,7 +181,8 @@ abstract class CheckNearbyCare {
               // - item (Map): 현재 변환·검사 중인 응답 또는 목록 항목
               // 반환값:
               // - 위치와 영업 정보를 담은 약국 모델.
-              (item) => NearbyCarePlace.fromJson(Map<String, dynamic>.from(item)),
+              (item) =>
+                  NearbyCarePlace.fromJson(Map<String, dynamic>.from(item)),
             )
             .where(
               /* 함수이름: where 콜백
@@ -203,6 +213,66 @@ abstract class CheckNearbyCare {
           regionScopeUncertain: decoded['region_scope_uncertain'] == true,
         );
       },
+    );
+  }
+
+  // 공유된 본문이나 영업시간은 사용하지 않고 수신 기기의 현재 검색 결과에서 같은 ID를 연다.
+  Future<NearbyCareSearchResult> requestSelectedPlaceSearch({
+    required NearbyCarePlace place,
+    required DateTime targetDateTime,
+    double maxDistanceKm = 20,
+    NearbyCareSearchArea? searchArea,
+  }) async {
+    final area = searchArea ?? await requestSearchArea(radiusKm: maxDistanceKm);
+    final nearby = await requestNearbyCareSearch(
+      searchArea: area,
+      searchMode: NearbyCareSearchMode.all,
+      targetDateTime: targetDateTime,
+    );
+    if (_disposed) throw StateError('Nearby care search is disposed.');
+    if (nearby.data.any((item) => item.placeId == place.placeId)) return nearby;
+    // 가까운 결과 개수 제한이나 먼 공유 장소 때문에 대상이 빠졌을 때만 추가 조회한다.
+    final focused = await requestNearbyCareSearch(
+      searchArea: NearbyCareSearchArea(
+        center: DeviceCoordinate(
+          latitude: place.latitude,
+          longitude: place.longitude,
+        ),
+        radiusKm: .3,
+        isMapArea: true,
+      ),
+      searchMode: NearbyCareSearchMode.all,
+      targetDateTime: targetDateTime,
+    );
+    if (_disposed) throw StateError('Nearby care search is disposed.');
+    final selected = focused.data
+        .where((item) => item.placeId == place.placeId)
+        .firstOrNull;
+    if (selected == null) throw SharedPlaceNotFound(nearby);
+    final distance =
+        Geolocator.distanceBetween(
+          area.center.latitude,
+          area.center.longitude,
+          selected.latitude,
+          selected.longitude,
+        ) /
+        1000;
+    return NearbyCareSearchResult(
+      searchArea: nearby.searchArea ?? area,
+      data: [...nearby.data, selected.withDistanceKm(distance)],
+      searchMode: NearbyCareSearchMode.all,
+      targetDateTime: nearby.targetDateTime,
+      catalogUpdatedAt: nearby.catalogUpdatedAt,
+      catalogIsStale: nearby.catalogIsStale || focused.catalogIsStale,
+      holidayScheduleStatus:
+          nearby.holidayScheduleStatus ==
+              NearbyCareSearchResult.holidayScheduleUnknown
+          ? nearby.holidayScheduleStatus
+          : focused.holidayScheduleStatus,
+      searchTruncated: nearby.searchTruncated || focused.searchTruncated,
+      regionScopeUncertain:
+          nearby.regionScopeUncertain || focused.regionScopeUncertain,
+      searchRadiusExpanded: nearby.searchRadiusExpanded,
     );
   }
 

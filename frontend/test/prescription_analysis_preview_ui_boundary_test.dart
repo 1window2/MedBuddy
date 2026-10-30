@@ -20,6 +20,33 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  testWidgets('처방전 뒤로가기는 왼쪽에 정렬하고 터치 영역을 유지한다', (tester) async {
+    await _setViewport(tester, const Size(320, 568));
+    var backRequested = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              PrescriptionFlowBackButton(
+                tooltip: '뒤로',
+                onBackRequested: () => backRequested = true,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    final button = find.byType(IconButton);
+    final rect = tester.getRect(button);
+    expect(rect.left, 4);
+    expect(rect.width, greaterThanOrEqualTo(48));
+    expect(rect.height, greaterThanOrEqualTo(48));
+    await tester.tap(button);
+    expect(backRequested, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
   // 함수이름: testWidgets 콜백
   // 함수역할:
   // - 기대 동작: OCR 영역을 표시하고 확대 화면에서 개인정보 처리를 안내한다.
@@ -120,15 +147,15 @@ void main() {
     expect(find.byKey(const Key('ocr-region-0')), findsOneWidget);
     expect(find.byKey(const Key('ocr-sensitive-region-1')), findsOneWidget);
     expect(find.byKey(const Key('ocr-region-2')), findsNothing);
-    expect(find.textContaining('개인정보 마스킹 영역'), findsOneWidget);
+    expect(find.textContaining('개인정보 마스킹 영역'), findsNothing);
     expect(find.textContaining('인식 문구:'), findsNothing);
     expect(find.textContaining('서버 DB에는 저장하지 않습니다'), findsNothing);
     expect(find.byKey(const Key('ocr-image-canvas')), findsOneWidget);
-    expect(find.byKey(const Key('ocr-medication-table')), findsOneWidget);
-    expect(find.byKey(const Key('ocr-table-scroll-hint')), findsOneWidget);
-    expect(find.text('약 이름'), findsOneWidget);
+    expect(find.byKey(const Key('ocr-medication-list')), findsOneWidget);
+    expect(find.byKey(const Key('ocr-table-scroll-hint')), findsNothing);
+    expect(find.byKey(const Key('ocr-table-cell-0-name')), findsOneWidget);
     expect(find.text('1회 투약량'), findsOneWidget);
-    expect(find.text('1일 횟수'), findsOneWidget);
+    expect(find.text('1일 횟수'), findsNothing);
     expect(find.text('총 투약일'), findsOneWidget);
     expect(find.text('복용 시작일'), findsOneWidget);
     expect(find.text('실제 복약 시간대'), findsOneWidget);
@@ -148,6 +175,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('인식 영역 상세보기'), findsOneWidget);
+    expect(find.textContaining('개인정보 마스킹 영역'), findsOneWidget);
     expect(find.textContaining('원본 이미지는 이 기기에만 남습니다'), findsOneWidget);
     final interactiveViewer = tester.widget<InteractiveViewer>(
       find.byKey(const Key('ocr-expanded-image-viewer')),
@@ -155,10 +183,29 @@ void main() {
     expect(interactiveViewer.maxScale, 5);
     expect(tester.takeException(), isNull);
 
+    // 가로 화면과 큰 글씨에서도 안내가 이미지와 닫기 버튼을 밀어내지 않는다.
+    tester.view.physicalSize = const Size(640, 360);
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(
+      tester.getSize(find.byKey(const Key('ocr-expanded-image-viewer'))).height,
+      greaterThan(100),
+    );
+    expect(
+      find.byKey(const Key('ocr-expanded-close')).hitTestable(),
+      findsOneWidget,
+    );
+    tester.view.physicalSize = const Size(376, 856);
+    tester.platformDispatcher.clearTextScaleFactorTestValue();
+    await tester.pumpAndSettle();
+
     await tester.tap(find.byKey(const Key('ocr-expanded-close')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 250));
     expect(find.byKey(const Key('ocr-expanded-image-viewer')), findsNothing);
+    expect(find.textContaining('개인정보 마스킹 영역'), findsNothing);
 
     await tester.tap(find.byKey(const Key('prescription-analyze-button')));
     await tester.pumpAndSettle();
@@ -215,21 +262,19 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.byKey(const Key('ocr-medication-table')), findsOneWidget);
+    expect(find.byKey(const Key('ocr-medication-list')), findsOneWidget);
     expect(find.textContaining('+1'), findsNothing);
     expect(find.byKey(const Key('ocr-table-cell-4-name')), findsOneWidget);
 
-    final tableScroll = tester.widget<SingleChildScrollView>(
-      find.byKey(const Key('ocr-medication-table-scroll')),
-    );
-    expect(tableScroll.scrollDirection, Axis.horizontal);
-    expect(tableScroll.controller?.offset, 0);
-    await tester.drag(
-      find.byKey(const Key('ocr-medication-table-scroll')),
-      const Offset(-420, 0),
-    );
+    expect(find.byType(Table), findsWidgets);
+    expect(find.byKey(const Key('ocr-medication-table-scroll')), findsNothing);
+    expect(find.textContaining('OCR 원문:'), findsNothing);
+    await tester.ensureVisible(find.byKey(const Key('ocr-table-cell-4-name')));
     await tester.pumpAndSettle();
-    expect(tableScroll.controller?.offset, greaterThan(0));
+    expect(
+      find.byKey(const Key('ocr-table-cell-4-name')).hitTestable(),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -374,9 +419,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('검토 필요'), findsNWidgets(4));
+    expect(find.text('검토 필요'), findsNothing);
     expect(find.byKey(const Key('ocr-table-cell-3-name')), findsOneWidget);
-    expect(find.byIcon(Icons.edit_outlined), findsNothing);
+    expect(find.byIcon(Icons.edit_outlined), findsNWidgets(4));
     expect(tester.takeException(), isNull);
   });
 
@@ -719,7 +764,11 @@ void main() {
 
       expect(updatedSchedule?.medicationName, '타이레놀정');
       expect(updatedSchedule?.intakeTime, frequency);
-      expect(updatedSchedule?.scheduleSlotKeys, ['morning', 'lunch', 'evening']);
+      expect(updatedSchedule?.scheduleSlotKeys, [
+        'morning',
+        'lunch',
+        'evening',
+      ]);
       expect(find.byKey(const Key('ocr-edit-save')), findsNothing);
       expect(tester.takeException(), isNull);
     });
@@ -768,11 +817,9 @@ void main() {
     expect(find.byKey(const Key('ocr-table-not-daily-0')), findsOneWidget);
     expect(find.text('매일 아님'), findsOneWidget);
 
-    await tester.ensureVisible(
-      find.byKey(const Key('ocr-table-cell-0-frequency')),
-    );
+    await tester.ensureVisible(find.byKey(const Key('ocr-table-cell-0-slots')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('ocr-table-cell-0-frequency')));
+    await tester.tap(find.byKey(const Key('ocr-table-cell-0-slots')));
     await tester.pumpAndSettle();
     expect(
       find.text(
@@ -814,11 +861,9 @@ void main() {
 
     // 직접 입력한 "격일"도 받아들이고 안내를 바꾼다.
     updatedSchedule = null;
-    await tester.ensureVisible(
-      find.byKey(const Key('ocr-table-cell-0-frequency')),
-    );
+    await tester.ensureVisible(find.byKey(const Key('ocr-table-cell-0-slots')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('ocr-table-cell-0-frequency')));
+    await tester.tap(find.byKey(const Key('ocr-table-cell-0-slots')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('ocr-edit-frequency')), '격일');
     await tester.pump();
@@ -981,15 +1026,25 @@ void main() {
     await tester.pump(const Duration(seconds: 4));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('후보가 있으면 처방전과 비교'), findsOneWidget);
-    expect(find.text('확인됨'), findsOneWidget);
+    expect(find.textContaining('약 이름과 함량을 처방전과 비교'), findsNothing);
+    expect(find.byKey(const Key('lookup-summary-pinned')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('ocr-medication-list')),
+        matching: find.text('약품 확인됨'),
+      ),
+      findsOneWidget,
+    );
     final verifiedName = tester.widget<Text>(find.text('확인된약'));
-    expect(verifiedName.style?.decoration, TextDecoration.lineThrough);
+    expect(verifiedName.style?.decoration, isNull);
 
     await tester.tap(find.byKey(const Key('ocr-table-cell-0-name')));
     await tester.pumpAndSettle();
-    expect(find.text('OCR 인식 결과 수정'), findsNothing);
+    expect(find.text('OCR 인식 결과 수정'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('ocr-edit-cancel')));
+    await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.byKey(const Key('ocr-table-cell-1-name')));
     await tester.tap(find.byKey(const Key('ocr-table-cell-1-name')));
     await tester.pumpAndSettle();
     expect(find.text('OCR 인식 결과 수정'), findsOneWidget);
@@ -997,10 +1052,6 @@ void main() {
     await tester.pumpAndSettle();
 
     final retryButton = find.byKey(const Key('prescription-analyze-button'));
-    await tester.ensureVisible(retryButton);
-    await tester.tap(retryButton);
-    await tester.pump();
-    expect(retryRequested, isTrue);
 
     final continueButton = find.byKey(
       const Key('continue-with-verified-medications'),
@@ -1012,6 +1063,10 @@ void main() {
     await tester.tap(find.byKey(const Key('confirm-verified-only-continue')));
     await tester.pumpAndSettle();
     expect(continueRequested, isTrue);
+    await tester.tap(retryButton);
+    await tester.pump();
+    expect(retryRequested, isTrue);
+    expect(tester.widget<FilledButton>(continueButton).onPressed, isNull);
     expect(tester.takeException(), isNull);
   });
 }

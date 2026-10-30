@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/manage_user_setting_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/set_notification_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/authentication_control.dart';
+import 'package:medbuddy_frontend/controls/notification_readiness_control.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 
@@ -14,6 +15,33 @@ import 'support/fake_notification_service.dart';
 // 함수이름: main
 // 함수역할: UI 정리 후 기존 저장 계약과 큰 글씨 동작을 검사한다. 매개변수·반환값: 없음.
 void main() {
+  for (final language in ['ko', 'en']) {
+    testWidgets('휴대폰 권한 다음에 알림 종류와 세부 설정을 배치한다 $language', (tester) async {
+      await _pumpSettings(tester, setting: UserSetting(language: language));
+      final keys = [
+        'deviceNotificationSettingsRow',
+        'deviceExactReminderSettingsRow',
+        'notificationSettingsSendTest',
+        'medicationNotificationsSwitch',
+        'caregiverNotificationsSwitch',
+        'chatNotificationsSwitch',
+        'defaultMedicationTime-morning',
+        'medicationScheduleSettingsRow',
+        'notificationPrivacySelector',
+      ];
+      for (var index = 1; index < keys.length; index++) {
+        expect(
+          tester.getBottomLeft(find.byKey(ValueKey(keys[index - 1]))).dy,
+          lessThanOrEqualTo(
+            tester.getTopLeft(find.byKey(ValueKey(keys[index]))).dy,
+          ),
+        );
+      }
+      expect(find.byKey(const ValueKey('addDoseHomeWidget')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   // 세 알림 스위치와 공개 범위는 저장 버튼을 누를 때 함께 전달한다.
   testWidgets('알림 종류와 공개 범위를 초안으로 편집한 뒤 함께 저장한다', (tester) async {
     final saves = <UserSetting>[];
@@ -140,9 +168,9 @@ void main() {
     expect(saves.single.chatNotificationsEnabled, isFalse);
   });
 
-  // 내 복약 알림을 켜 둔 기기가 정확한 알람을 막고 있으면 스위치 아래에서 허용 방법을 안내하고, 알림을 끄면 안내도 사라진다.
+  // 앱 알림 초안과 기기의 권한은 분리하며 기기 설정에서 권한을 변경한다.
   for (final language in ['ko', 'en']) {
-    testWidgets('정확한 알람 안내는 내 복약 알림이 켜져 있을 때만 보인다 $language', (tester) async {
+    testWidgets('기기 권한은 알림 초안과 별도로 확인하고 변경한다 $language', (tester) async {
       tester.platformDispatcher.textScaleFactorTestValue = 2;
       addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
       final notificationService = RecordingNotificationService()
@@ -154,7 +182,9 @@ void main() {
         notificationService: notificationService,
       );
 
-      final allow = find.byKey(const Key('exact-reminder-allow'));
+      final allow = find.byKey(
+        const ValueKey('deviceExactReminderSettingsRow'),
+      );
       await tester.ensureVisible(allow);
       await tester.pumpAndSettle();
       expect(allow.hitTestable(), findsOneWidget);
@@ -162,6 +192,7 @@ void main() {
 
       await _tap(tester, 'medicationNotificationsSwitch');
       expect(find.byKey(const Key('exact-reminder-notice')), findsNothing);
+      expect(allow, findsOneWidget);
       await _tap(tester, 'medicationNotificationsSwitch');
       await tester.ensureVisible(allow);
       await tester.pumpAndSettle();
@@ -171,6 +202,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(notificationService.exactPermissionRequestCount, 1);
       expect(find.byKey(const Key('exact-reminder-notice')), findsNothing);
+      expect(tester.widget<SwitchListTile>(allow).value, isTrue);
       expect(tester.takeException(), isNull);
     });
   }
@@ -280,12 +312,41 @@ Future<void> _pumpSettings(
           );
         },
         onMedicationScheduleRequested: onSchedule ?? () {},
-        onDeviceNotificationSettingsRequested: () async {
-          onDevice?.call();
-        },
         notificationService: notificationService,
+        readinessControl: _DeviceControl(
+          notificationService ?? RecordingNotificationService(),
+          () async {
+            onDevice?.call();
+          },
+        ),
       ),
     ),
   );
   await _tap(tester, 'settingsMedicationAndNotificationsMenu');
+}
+
+class _DeviceControl extends NotificationReadinessControl {
+  final RecordingNotificationService service;
+
+  _DeviceControl(this.service, Future<void> Function() openSettings)
+    : super(
+        notificationService: service,
+        supportsNotifications: true,
+        supportsExactAlarms: true,
+        supportsSystemSettings: true,
+        openNotificationSettings: openSettings,
+      );
+
+  @override
+  Future<NotificationReadinessSnapshot> refresh() async =>
+      NotificationReadinessSnapshot(
+        notifications: true,
+        medicationChannel: true,
+        exactAlarms: service.exactRemindersAllowed,
+      );
+
+  @override
+  Future<void> openExactSettings() async {
+    await service.requestExactReminderPermission();
+  }
 }

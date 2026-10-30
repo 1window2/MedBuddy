@@ -69,6 +69,16 @@ class DoseSyncBackgroundScheduler {
     await platform.registerPeriodic(owner);
   }
 
+  // 로그아웃 중단 때만 같은 세션의 비활성 저장소를 다시 연다. 작업 등록만으로는 활성화되지 않는다.
+  static Future<void> resume(
+    String owner, {
+    required bool Function() isCurrent,
+  }) async {
+    if (!supported || !isCurrent()) return;
+    final store = await platform.openStore();
+    await store.restoreDoseSession(owner, isCurrent: isCurrent);
+  }
+
   // 함수이름: suspend
   // 함수역할: 로그아웃 때 전송 작업을 취소하고 저장소의 활성 계정을 해제한다.
   // 매개변수: 없음. 반환값: 완료 Future. 저장소를 열지 못하면 작업을 취소한 뒤 그 오류를 전달한다.

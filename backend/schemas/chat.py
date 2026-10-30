@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from entities.chat_message_entity import (
     CHAT_MESSAGE_KINDS,
+    CHAT_MESSAGE_KIND_MEDICATION_HISTORY_SHARE,
     CHAT_MESSAGE_KIND_TEXT,
     MAX_CHAT_MEDICATION_CONTEXTS,
 )
@@ -61,6 +62,31 @@ class ChatMessageCreate(BaseModel):
     hospital_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9]{1,32}$")
     hospital_schedule_date: date | None = None
     source_alert_id: int | None = Field(default=None, ge=1)
+    history_start_date: date | None = None
+    history_end_date: date | None = None
+
+    # 이력 공유는 날짜만 입력받고 클라이언트가 만든 집계·환자 식별자를 거부한다.
+    @model_validator(mode="before")
+    @classmethod
+    def reject_history_snapshot_fields(cls, value):
+        if isinstance(value, dict) and str(value.get("message_kind", "")).strip().lower() == CHAT_MESSAGE_KIND_MEDICATION_HISTORY_SHARE:
+            if set(value) - cls.model_fields.keys():
+                raise ValueError("History sharing accepts dates, not client snapshots or patient identifiers.")
+        return value
+
+    @model_validator(mode="after")
+    def validate_history_share(self):
+        if self.message_kind == CHAT_MESSAGE_KIND_MEDICATION_HISTORY_SHARE:
+            if self.history_start_date is None or self.history_end_date is None:
+                raise ValueError("History sharing requires start and end dates.")
+            if self.medication_ids or any(value is not None for value in (
+                self.medication_id, self.slot_key, self.pharmacy_id, self.hospital_id,
+                self.hospital_schedule_date, self.source_alert_id,
+            )):
+                raise ValueError("History sharing cannot be combined with other contexts.")
+        elif self.history_start_date is not None or self.history_end_date is not None:
+            raise ValueError("History dates require a medication history share message.")
+        return self
 
     # 병원 공유에는 식별자와 조회 날짜만 받으며 제공자 정보는 서버에서 구성한다.
     @model_validator(mode="after")

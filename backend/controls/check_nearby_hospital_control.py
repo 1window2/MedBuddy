@@ -3,7 +3,6 @@
 import asyncio
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
-import re
 from zoneinfo import ZoneInfo
 
 from boundaries.holiday_lookup_boundary import HolidayLookupBoundary
@@ -17,13 +16,14 @@ from controls.hospital_department_search import find_department_candidates
 from core.config import settings
 from entities.nearby_hospital_entity import HospitalDetails, HospitalLocationRecord
 from schemas.hospital import HospitalSearchMode, NearbyHospitalItem, NearbyHospitalResponse
+from services.chat_operating_snapshot import build_operating_snapshot
 from services.nearby_care_policy import (
     format_time,
     haversine_distance,
     is_open_now,
     minutes_until_close,
     normalize_target_datetime,
-    parse_minutes,
+    parse_operating_hours,
 )
 
 
@@ -231,16 +231,26 @@ class CheckNearbyHospital:
 
     # 검색일의 운영표와 제공자에서 확인한 병원 정보만 채팅 스냅샷으로 만든다.
     async def requestShareContext(self, hospital_id: str, schedule_date: date) -> dict[str, object]:
-        """서버 상세 조회의 식별 정보와 선택 날짜 시간표만 채팅에 저장한다."""
+        """서버 상세 정보·선택 날짜 시간표와 전송 시점의 운영 상태를 저장한다."""
         # 검색과 같은 달력일 범위만 받아, 임의 날짜로 공휴일 조회를 반복시키지 못하게 한다.
+        now = self._clock().astimezone(self._timezone)
         target = normalize_target_datetime(
             datetime.combine(schedule_date, datetime.min.time()).replace(hour=12),
-            now=self._clock(), timezone=self._timezone,
+            now=now, timezone=self._timezone,
         )
         detail = await self._boundary.fetchDetails(hospital_id)
         if detail.location is None or detail.fetched_at is None:
             raise ValueError("Hospital information could not be verified.")
-        holiday = await self._is_holiday(schedule_date)
+        now = self._clock().astimezone(self._timezone)
+        previous_date = now.date() - timedelta(days=1)
+        dates = sorted({schedule_date, now.date(), previous_date})
+        holidays = dict(zip(dates, await asyncio.gather(
+            *(self._is_holiday(value) for value in dates),
+        ), strict=True))
+        # 외부 조회 중 마감·자정을 넘었으면 최신 시각을 쓰고 미확인 날짜는 추정하지 않는다.
+        now = self._clock().astimezone(self._timezone)
+        previous_date = now.date() - timedelta(days=1)
+        holiday = holidays[schedule_date]
         hours = {day: (start, end) for day, start, end in detail.weekly_hours}
         key = "8" if holiday else str(target.isoweekday())
         start, end = self._hours(hours.get(key, ("", ""))) if holiday is not None else (None, None)
@@ -254,6 +264,13 @@ class CheckNearbyHospital:
             "today_hours": (f"{format_time(start)} - {format_time(end)}"
                             if start is not None and end is not None else ""),
             "source_updated_at": detail.fetched_at.isoformat(),
+            "operating_snapshot": build_operating_snapshot(
+                now=now, today_hours=hours.get(str(now.isoweekday())),
+                previous_hours=hours.get(str(previous_date.isoweekday())),
+                today_calendar_verified=holidays.get(now.date()) is False,
+                previous_calendar_verified=holidays.get(previous_date) is False,
+                operating_notes=detail.operating_notes,
+            ),
         }
 
     # 일부 상세 조회 실패는 다른 병원의 확인된 결과와 구분해 유지한다.
@@ -297,13 +314,7 @@ class CheckNearbyHospital:
     # 불완전하거나 동일한 시작·종료 시각은 휴무나 24시간으로 추정하지 않는다.
     @staticmethod
     def _hours(values: tuple[str, str]) -> tuple[int | None, int | None]:
-        if not all(re.fullmatch(r"(?:[0-9]{3,4}|[0-9]{1,2}:[0-9]{2})", value) for value in values):
-            return None, None
-        start = parse_minutes(values[0])
-        end = parse_minutes(values[1], allow_24=True)
-        if start is None or end is None or start == end:
-            return None, None
-        return start, end
+        return parse_operating_hours(values)
 
     # 선택일과 전날의 공휴일 운영표를 따로 선택해 자정 이월을 계산한다.
     @classmethod

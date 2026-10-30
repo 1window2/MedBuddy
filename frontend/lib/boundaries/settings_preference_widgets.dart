@@ -13,6 +13,7 @@ class _SettingsSection extends StatelessWidget {
   // 함수이름: _SettingsSection
   // 함수역할: 제목·설명·설정 행을 받는다. 반환값: 설정 구역 위젯.
   const _SettingsSection({
+    super.key,
     required this.title,
     required this.children,
     this.description,

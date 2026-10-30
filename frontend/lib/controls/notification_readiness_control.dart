@@ -1,26 +1,25 @@
 // 파일명: notification_readiness_control.dart
-// 역할: 복약 데이터를 바꾸지 않고 기기 권한과 첫 약 등록 상태를 점검한다.
+// 역할: 복약 데이터를 바꾸지 않고 기기 알림 권한과 테스트 알림을 관리한다.
 import 'package:flutter/foundation.dart';
 
 import '../services/notification_service.dart';
 
 class NotificationReadinessSnapshot {
-  final bool? hasMedication;
   final bool? notifications;
   final bool? medicationChannel;
   final bool? exactAlarms;
+  final bool? exactAlarmsEditable;
 
   const NotificationReadinessSnapshot({
-    this.hasMedication,
     this.notifications,
     this.medicationChannel,
     this.exactAlarms,
+    this.exactAlarmsEditable,
   });
 }
 
 class NotificationReadinessControl {
   final NotificationService notificationService;
-  final Future<bool?> Function()? loadHasMedication;
   final Future<void> Function()? openNotificationSettings;
   final bool supportsNotifications;
   final bool supportsExactAlarms;
@@ -30,7 +29,6 @@ class NotificationReadinessControl {
   // 권한 확인과 시스템 이동 경계를 주입하며, 지원하지 않는 플랫폼은 성공으로 표시하지 않는다.
   NotificationReadinessControl({
     required this.notificationService,
-    this.loadHasMedication,
     this.openNotificationSettings,
     bool? supportsNotifications,
     bool? supportsExactAlarms,
@@ -56,7 +54,7 @@ class NotificationReadinessControl {
     bool? notifications;
     bool? medicationChannel;
     bool? exactAlarms;
-    bool? hasMedication;
+    bool? exactAlarmsEditable;
     if (supportsNotifications) {
       try {
         final permissions = await notificationService
@@ -68,16 +66,26 @@ class NotificationReadinessControl {
         // 플러그인 오류와 미허용을 구분한다.
       }
     }
-    try {
-      hasMedication = await loadHasMedication?.call();
-    } catch (_) {
-      // 오프라인일 때 등록 약이 없다고 단정하지 않는다.
+    if (supportsExactAlarms && exactAlarms == true) {
+      try {
+        await notificationService.rescheduleInexactRemindersAsExact();
+      } catch (_) {
+        // 재예약 오류와 사용자가 허용한 권한 상태는 구분한다.
+      }
+    }
+    if (supportsExactAlarms) {
+      try {
+        exactAlarmsEditable = await notificationService
+            .supportsExactReminderSettings();
+      } catch (_) {
+        // 설정 지원 여부를 읽지 못해도 기존 권한을 꺼진 것으로 바꾸지 않는다.
+      }
     }
     return NotificationReadinessSnapshot(
-      hasMedication: hasMedication,
       notifications: notifications,
       medicationChannel: medicationChannel,
       exactAlarms: exactAlarms,
+      exactAlarmsEditable: exactAlarmsEditable,
     );
   }
 
@@ -96,13 +104,12 @@ class NotificationReadinessControl {
         notificationService.openSystemNotificationSettings)();
   }
 
-  // 기존의 정확한 알람 재등록 함수만 재사용한다.
-  Future<void> requestExactPermission() async {
+  // 재예약은 설정 화면에서 돌아온 뒤 refresh에서 실제 허용 상태를 확인하고 수행한다.
+  Future<void> openExactSettings() async {
     if (!supportsExactAlarms) {
       throw UnsupportedError('Exact alarms unavailable.');
     }
-    final allowed = await notificationService.requestExactReminderPermission();
-    if (allowed) await notificationService.rescheduleInexactRemindersAsExact();
+    await notificationService.openExactReminderSettings();
   }
 
   Future<void> sendTest(String language) =>

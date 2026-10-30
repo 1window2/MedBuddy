@@ -36,8 +36,8 @@ class _MedicationCandidateDialogState extends State<MedicationCandidateDialog> {
           children: [
             Text(
               english
-                  ? 'Prescription: ${widget.originalName}'
-                  : '처방전: ${widget.originalName}',
+                  ? 'Medication name: ${widget.originalName}'
+                  : '약 이름: ${widget.originalName}',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),

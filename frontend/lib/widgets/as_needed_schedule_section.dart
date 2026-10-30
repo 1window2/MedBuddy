@@ -5,6 +5,7 @@ import '../boundaries/medication_image_viewer_boundary.dart';
 import '../controls/as_needed_check_reminder_control.dart';
 import '../controls/medication_history_control.dart';
 import '../entities/medication_history_entity.dart';
+import '../entities/medication_schedule_entity.dart';
 import '../services/manual_medication_image_store.dart';
 import '../services/api_response_parser.dart';
 import '../theme/medbuddy_theme.dart';
@@ -55,6 +56,9 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
   bool _reminderOpen = false;
   bool _reloadRequested = false;
   MedicationHistorySnapshot? _lastSnapshot;
+  // 기기의 미확인 기록 저장소를 열지 못하면 목록과 횟수는 서버 기준으로 보여 주되, 보내지 못한
+  // 기록과 겹칠 수 있는 새 기록은 막는다.
+  bool _pendingStoreUnavailable = false;
   final Map<int, String> _photos = {};
   String? _saveError;
   String tr(String ko, String en) => widget.isEnglish ? en : ko;
@@ -131,13 +135,28 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
     });
   }
 
+  Future<void> _restorePending() async {
+    try {
+      await _control.restorePendingAsNeeded();
+      _pendingStoreUnavailable = false;
+    } catch (_) {
+      if (_control.sessionInvalidated) rethrow;
+      _pendingStoreUnavailable = true;
+    }
+  }
+
   Future<void> _readToday() async {
+    await _restorePending();
     await _control.load(MedicationHistoryRange(_control.today, _control.today));
-    _control.pendingAsNeededChanges.removeWhere(
-      (change) => _control.snapshot!.items.any(
-        (entry) => entry.key == change.entry.key && entry.revision > 0,
-      ),
-    );
+    if (!_pendingStoreUnavailable) {
+      await _control.removePendingAsNeeded({
+        for (final change in _control.pendingAsNeededChanges)
+          if (_control.snapshot!.items.any(
+            (entry) => entry.key == change.entry.key && entry.revision > 0,
+          ))
+            change.operationId,
+      });
+    }
     unawaited(_loadPhotos(_control.snapshot!));
     if (mounted) setState(() {});
   }
@@ -205,9 +224,10 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
                     : medications
                           .map((m) {
                             final count = _takenCount(snapshot, m.id);
+                            final last = _lastTakenText(snapshot, m.id);
                             return tr(
-                              '${m.itemName}\n오늘 $count회 → ${count + 1}회로 기록할까요?',
-                              '${m.itemName}\nRecord ${_englishDoses(count + 1)} today instead of $count?',
+                              '${m.itemName}\n오늘 $count회 → ${count + 1}회로 기록할까요?${last == null ? '' : '\n$last'}',
+                              '${m.itemName}\nRecord ${_englishDoses(count + 1)} today instead of $count?${last == null ? '' : '\n$last'}',
                             );
                           })
                           .join('\n\n'),
@@ -238,8 +258,18 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
       _saveError = null;
     });
     var saved = false;
+    final recordedKeys = <String>{};
+    var resumedEarlierDay = false;
     try {
       // 다른 화면에서 정정한 횟수를 다시 읽고 확인한 내용만 한 의도로 고정한다.
+      await _restorePending();
+      if (_pendingStoreUnavailable) {
+        _saveError = tr(
+          '기기 저장소를 열 수 없어 지금은 기록할 수 없어요. 앱을 다시 시작해 주세요.',
+          'Device storage could not be opened, so doses cannot be recorded now. Restart the app.',
+        );
+        return;
+      }
       final resuming = _control.pendingAsNeededChanges.isNotEmpty;
       await _readToday();
       if (!mounted) return;
@@ -277,26 +307,36 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
         if (snapshot.range.end != _control.today) {
           throw const FormatException('Date changed.');
         }
-        _control.pendingAsNeededChanges.addAll(
-          medications.map(
-            (m) => MedicationHistoryChange(
-              entry: MedicationHistoryEntry(
-                medicationId: m.id,
-                itemName: m.itemName,
-                scheduleDate: _control.today,
-                slotKey:
-                    'as_needed:${MedicationHistoryControl.newOperationId()}',
-                status: MedicationHistoryStatus.unrecorded,
-                revision: 0,
-                dosingMode: 'as_needed',
-              ),
-              status: MedicationHistoryStatus.taken,
-              operationId: MedicationHistoryControl.newOperationId(),
-              actualTakenAt: now,
-            ),
-          ),
+        await _control.stageAsNeededChanges(
+          medications
+              .map(
+                (m) => MedicationHistoryChange(
+                  entry: MedicationHistoryEntry(
+                    medicationId: m.id,
+                    itemName: m.itemName,
+                    scheduleDate: _control.today,
+                    slotKey:
+                        'as_needed:${MedicationHistoryControl.newOperationId()}',
+                    status: MedicationHistoryStatus.unrecorded,
+                    revision: 0,
+                    dosingMode: 'as_needed',
+                  ),
+                  status: MedicationHistoryStatus.taken,
+                  operationId: MedicationHistoryControl.newOperationId(),
+                  actualTakenAt: now,
+                ),
+              )
+              .toList(),
         );
       }
+      // 실행 취소는 이번 동작으로 만든 기록만 되돌리도록 기록 키를 저장 전에 고정한다.
+      recordedKeys.addAll(
+        _control.pendingAsNeededChanges.map((change) => change.entry.key),
+      );
+      // 재시작 전에 확인하지 못한 지난날의 기록을 이어 보낸 경우, 이번 탭은 오늘의 새 복용이 아니다.
+      resumedEarlierDay = _control.pendingAsNeededChanges.any(
+        (change) => change.entry.scheduleDate != _control.today,
+      );
       // 일괄 저장 중 일부만 성공해도 남은 요청 ID를 유지해 성공한 약을 중복 기록하지 않는다.
       while (_control.pendingAsNeededChanges.isNotEmpty) {
         final change = _control.pendingAsNeededChanges.first;
@@ -307,8 +347,16 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
       }
     } catch (failure) {
       if (failure is ApiRequestException &&
-          const {401, 403, 404, 409, 422}.contains(failure.statusCode)) {
-        _control.pendingAsNeededChanges.clear();
+          const {401, 403, 404, 409, 410, 422}.contains(failure.statusCode)) {
+        try {
+          await _control.removePendingAsNeeded(
+            _control.pendingAsNeededChanges
+                .map((change) => change.operationId)
+                .toSet(),
+          );
+        } catch (_) {
+          // 저장소나 계정이 바뀌면 미확인 의도를 지운 것으로 처리하지 않는다.
+        }
       }
       if (mounted && !_control.sessionInvalidated) {
         _saveError = _control.pendingAsNeededChanges.isEmpty
@@ -340,10 +388,99 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
         saved &&
         _saveError == null &&
         !_control.sessionInvalidated) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(tr('복용 기록을 저장했어요.', 'Dose recorded.'))),
+      // 안내는 앱 전체 메신저에 떠 일정 화면을 떠난 뒤에도 남으므로, 결과도 같은 메신저로 알린다.
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.showSnackBar(
+        resumedEarlierDay
+            // 지난날 기록은 오늘 목록에서 되돌릴 수 없으므로 실행 취소 대신 다시 누르라고 알린다.
+            ? SnackBar(
+                key: const Key('prn-earlier-record-sent'),
+                content: Text(
+                  tr(
+                    '이전에 저장하지 못한 복용 기록을 보냈어요. 오늘 복용했다면 다시 눌러 기록해 주세요.',
+                    'A dose that could not be saved earlier was sent. If you took one today, tap again to record it.',
+                  ),
+                ),
+                duration: const Duration(seconds: 6),
+              )
+            : SnackBar(
+                content: Text(tr('복용 기록을 저장했어요.', 'Dose recorded.')),
+                duration: const Duration(seconds: 5),
+                persist: false,
+                action: SnackBarAction(
+                  key: const Key('prn-undo-record'),
+                  label: tr('실행 취소', 'Undo'),
+                  onPressed: () => unawaited(_undo(recordedKeys, messenger)),
+                ),
+              ),
       );
     }
+  }
+
+  // 함수이름: _undo
+  // 함수역할: 잘못 누른 필요시 복용을 바로 되돌린다. 이번 동작으로 만든 기록만 최신 버전으로 다시 읽어
+  //   '미기록'으로 바꾸며, 다른 화면에서 이미 정정한 기록은 건드리지 않는다. 이미 보낸 보호자 알림은
+  //   회수되지 않지만 보호자 화면의 횟수는 다음 조회에서 바로잡힌다. 일정 화면을 떠난 뒤 눌러도
+  //   정기 복용의 실행 취소처럼 공유 기록 Control로 되돌린다. 화면이 만든 Control은 화면과 함께 닫혔다.
+  // 매개변수: keys: 되돌릴 기록 키, messenger: 안내를 띄운 메신저. 반환값: 없음.
+  Future<void> _undo(Set<String> keys, ScaffoldMessengerState messenger) async {
+    if ((!mounted && widget.control == null) ||
+        _readOnly ||
+        _locked ||
+        keys.isEmpty) {
+      return;
+    }
+    void update(VoidCallback change) => mounted ? setState(change) : change();
+    update(() {
+      _recording = true;
+      _saveError = null;
+    });
+    var undone = false;
+    String? failure;
+    try {
+      await _readToday();
+      final entries = _control.snapshot!.items
+          .where(
+            (entry) =>
+                keys.contains(entry.key) &&
+                entry.isAsNeeded &&
+                entry.status == MedicationHistoryStatus.taken,
+          )
+          .toList();
+      for (final entry in entries) {
+        await _control.save(
+          MedicationHistoryChange(
+            entry: entry,
+            status: MedicationHistoryStatus.unrecorded,
+            operationId: MedicationHistoryControl.newOperationId(),
+          ),
+        );
+        undone = true;
+      }
+    } catch (_) {
+      if (!_control.sessionInvalidated) {
+        failure = tr(
+          '복용 기록을 취소하지 못했어요. 복약 기록에서 해당 기록을 \'미기록\'으로 바꿔 주세요.',
+          'The dose could not be undone. Change it to "Not recorded" in the dose history.',
+        );
+      }
+    } finally {
+      update(() {
+        _recording = false;
+        if (mounted) _saveError = failure;
+      });
+      if (mounted) await _load();
+    }
+    if (_control.sessionInvalidated || (failure == null && !undone)) return;
+    // 화면에 남아 있으면 실패는 카드에 보이고, 떠난 뒤라면 안내로만 알릴 수 있다.
+    if (failure != null && mounted) return;
+    if (mounted && _saveError != null) return;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(failure ?? tr('복용 기록을 취소했어요.', 'Dose record undone.')),
+        duration: Duration(seconds: failure == null ? 2 : 6),
+      ),
+    );
   }
 
   Future<void> _configureReminder() async {
@@ -406,14 +543,11 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
                                 ),
                               );
                               if (time == null || !context.mounted) return;
-                              final today = _control.today;
-                              var date = DateTime.utc(
-                                today.year,
-                                today.month,
-                                today.day,
+                              var date = MedicationHistoryDates.instant(
+                                _control.today,
                                 time.hour,
                                 time.minute,
-                              ).subtract(const Duration(hours: 9));
+                              );
                               if (!date.isAfter(_control.now)) {
                                 date = date.add(const Duration(days: 1));
                               }
@@ -497,6 +631,19 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
       final snapshot =
           _control.snapshot ??
           (_lastSnapshot?.range.end == _control.today ? _lastSnapshot : null);
+      // 첫 조회 전에는 빈 필요시 복용 카드와 조작 버튼 대신 로딩만 표시한다.
+      // 이후 재조회는 기존 스냅샷을 유지해 복용 체크마다 카드가 사라지지 않게 한다.
+      if (widget.isActive && snapshot == null && _control.error == null) {
+        return const Padding(
+          padding: EdgeInsets.symmetric(vertical: 24),
+          child: Center(
+            child: CircularProgressIndicator(
+              key: Key('schedule-prn-initial-loading'),
+              color: MedBuddyColors.primary,
+            ),
+          ),
+        );
+      }
       final pending = _control.pendingAsNeededChange;
       final medications = snapshot == null
           ? <MedicationHistoryMedication>[]
@@ -741,7 +888,10 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
                 ),
                 if (medication.dosage.isNotEmpty)
                   Text(
-                    medication.dosage,
+                    localizedDoseAmountLabel(
+                      medication.dosage,
+                      widget.isEnglish ? 'en' : 'ko',
+                    ),
                     style: const TextStyle(
                       fontSize: 14,
                       color: MedBuddyColors.textMuted,
@@ -774,6 +924,41 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
         ],
       ),
     );
+  }
+
+  // 함수이름: _lastTakenText
+  // 함수역할: 복용 간격이 정해진 필요시 약을 다시 먹기 전에 확인하도록 오늘 마지막 복용 시각과
+  //   지난 시간을 한국 시간으로 알린다. 실제 복용 시각이 없으면 기록한 시각을 쓴다.
+  // 매개변수: snapshot: 오늘 기록, medicationId: 약 ID. 반환값: 안내 문구, 복용 기록이 없으면 null.
+  String? _lastTakenText(MedicationHistorySnapshot snapshot, int medicationId) {
+    DateTime? last;
+    for (final entry in snapshot.items) {
+      if (entry.medicationId != medicationId ||
+          !entry.isAsNeeded ||
+          entry.status != MedicationHistoryStatus.taken) {
+        continue;
+      }
+      final time = entry.actualTakenAt ?? entry.recordedAt;
+      if (time != null && (last == null || time.isAfter(last))) last = time;
+    }
+    if (last == null) return null;
+    final clock = MedicationHistoryDates.clock(last);
+    final elapsed = _control.now.difference(last);
+    if (elapsed.isNegative) {
+      return tr('마지막 복용 $clock', 'Last dose at $clock');
+    }
+    final hours = elapsed.inHours;
+    final minutes = elapsed.inMinutes % 60;
+    final ago = hours > 0
+        ? tr(
+            minutes > 0 ? '$hours시간 $minutes분 전' : '$hours시간 전',
+            minutes > 0 ? '$hours h $minutes min ago' : '$hours h ago',
+          )
+        : elapsed.inMinutes < 1
+        // 1분이 안 됐으면 "0분 전" 대신 "방금 전"으로 적는다.
+        ? tr('방금 전', 'just now')
+        : tr('${elapsed.inMinutes}분 전', '${elapsed.inMinutes} min ago');
+    return tr('마지막 복용 $clock ($ago)', 'Last dose at $clock ($ago)');
   }
 
   int _takenCount(MedicationHistorySnapshot snapshot, int medicationId) =>

@@ -52,6 +52,7 @@ class _GalleryInput extends InputPrescription {
   @override
   Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
     PrescriptionImageSelectedCallback? onImageSelected,
+    PrescriptionRecognitionProgressCallback? onProgress,
   }) async {
     calls++;
     return null;

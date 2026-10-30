@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../entities/chat_message_entity.dart';
+import '../entities/chat_notification_summary.dart';
 import '../entities/medication_detail_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../services/api_config.dart';
@@ -37,8 +38,13 @@ class ChatMedicationTakenResult {
 class ChatUnreadSummary {
   final int count;
   final int? firstMessageId;
+  final ChatNotificationSummary? notification;
 
-  const ChatUnreadSummary({required this.count, this.firstMessageId});
+  const ChatUnreadSummary({
+    required this.count,
+    this.firstMessageId,
+    this.notification,
+  });
 }
 
 // 클래스명: ChatHistoryPage
@@ -261,6 +267,8 @@ class ManageLinkedChat {
     String? pharmacyId,
     String? hospitalId,
     String? hospitalScheduleDate,
+    String? historyStartDate,
+    String? historyEndDate,
     int? sourceAlertId,
   }) async {
     final normalizedMedicationIds = medicationIds
@@ -296,6 +304,8 @@ class ManageLinkedChat {
             'pharmacy_id': ?pharmacyId,
             'hospital_id': ?hospitalId,
             'hospital_schedule_date': ?hospitalScheduleDate,
+            'history_start_date': ?historyStartDate,
+            'history_end_date': ?historyEndDate,
             'source_alert_id': ?sourceAlertId,
           }),
         )
@@ -398,9 +408,32 @@ class ManageLinkedChat {
   // 함수이름: requestUnreadSummary
   // 함수역할: 읽음 상태를 바꾸지 않고 미확인 개수와 구분선 기준을 조회한다.
   // 매개변수: linkId: 활성 연동 ID. 반환값: 서버의 미확인 상태.
-  Future<ChatUnreadSummary> requestUnreadSummary({required int linkId}) async {
+  Future<ChatUnreadSummary> requestUnreadSummary({required int linkId}) =>
+      _requestUnreadSummary(linkId: linkId);
+
+  Future<ChatNotificationSummary?> requestNotificationSummary({
+    required int linkId,
+  }) async => (await _requestUnreadSummary(
+    linkId: linkId,
+    includeNotificationPreview: true,
+  )).notification;
+
+  Future<ChatUnreadSummary> _requestUnreadSummary({
+    required int linkId,
+    bool includeNotificationPreview = false,
+  }) async {
+    final uri = _buildUri('/links/$linkId/unread-count');
     final response = await _client
-        .get(_buildUri('/links/$linkId/unread-count'))
+        .get(
+          includeNotificationPreview
+              ? uri.replace(
+                  queryParameters: {
+                    ...uri.queryParameters,
+                    'include_notification_preview': 'true',
+                  },
+                )
+              : uri,
+        )
         .timeout(_requestTimeout);
     final decoded = _decodeSuccessfulResponse(
       response,
@@ -419,6 +452,7 @@ class ManageLinkedChat {
     return ChatUnreadSummary(
       count: data['unread_count'] as int,
       firstMessageId: firstId as int?,
+      notification: ChatNotificationSummary.parse(data['notification']),
     );
   }
 

@@ -2,6 +2,7 @@
 // Role: UI boundaries and helpers for the home medication dashboard and medication input entry points.
 
 import 'package:flutter/material.dart';
+import '../widgets/medbuddy_wordmark.dart';
 
 import 'medication_capture_options_ui_boundary.dart';
 import '../entities/medication_alarm_entity.dart';
@@ -47,6 +48,7 @@ class InputPrescriptionUI extends StatelessWidget {
   final VoidCallback? onHealthRecommendationRequested;
   final VoidCallback? onUserSettingRequested;
   final VoidCallback? onNotificationsRequested;
+  final VoidCallback? onFeatureSearchRequested;
   final int unreadNotificationCount;
 
   // Function Name: InputPrescriptionUI
@@ -95,6 +97,7 @@ class InputPrescriptionUI extends StatelessWidget {
     required this.onHealthRecommendationRequested,
     required this.onUserSettingRequested,
     this.onNotificationsRequested,
+    this.onFeatureSearchRequested,
     this.unreadNotificationCount = 0,
   });
 
@@ -116,6 +119,7 @@ class InputPrescriptionUI extends StatelessWidget {
             _HomeHeader(
               text: text,
               onNotificationsPressed: onNotificationsRequested,
+              onSearchPressed: onFeatureSearchRequested,
               unreadCount: unreadNotificationCount,
             ),
             Expanded(
@@ -382,6 +386,7 @@ class InputPrescriptionUI extends StatelessWidget {
 class _HomeHeader extends StatelessWidget {
   final _HomeText text;
   final VoidCallback? onNotificationsPressed;
+  final VoidCallback? onSearchPressed;
   final int unreadCount;
 
   // 함수이름: _HomeHeader
@@ -394,6 +399,7 @@ class _HomeHeader extends StatelessWidget {
   const _HomeHeader({
     required this.text,
     required this.onNotificationsPressed,
+    required this.onSearchPressed,
     required this.unreadCount,
   });
 
@@ -420,42 +426,23 @@ class _HomeHeader extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'MedBuddy',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textScaler: TextScaler.noScaling,
-                      style: TextStyle(
-                        color: MedBuddyColors.textStrong,
-                        fontSize: 26,
-                        height: 1.1,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      text.brandSubtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textScaler: TextScaler.noScaling,
-                      style: const TextStyle(
-                        color: MedBuddyColors.textSubtle,
-                        fontSize: 13,
-                        height: 1.2,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                  ],
-                ),
+              const Expanded(
+                child: MedBuddyWordmark(key: ValueKey('homeBrandLogo')),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 8),
+              if (onSearchPressed != null) ...[
+                IconButton(
+                  key: const ValueKey('homeFeatureSearchButton'),
+                  tooltip: text.isEnglish ? 'Find a feature' : '기능 찾기',
+                  onPressed: onSearchPressed,
+                  style: IconButton.styleFrom(
+                    foregroundColor: MedBuddyColors.primaryDark,
+                    minimumSize: const Size.square(48),
+                  ),
+                  icon: const Icon(Icons.search, size: 26),
+                ),
+                const SizedBox(width: 4),
+              ],
               Badge(
                 isLabelVisible: unreadCount > 0,
                 label: Text(
@@ -791,13 +778,6 @@ class _HomeText {
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
   bool get isEnglish => isEnglishLanguage(language);
 
-  // 함수이름: brandSubtitle
-  // 함수역할: 현재 언어와 입력값에 맞춰 "건강한 복약 관리 도우미" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get brandSubtitle =>
-      isEnglish ? 'Your medication guide' : '건강한 복약 관리 도우미';
   // 함수이름: userSettings
   // 함수역할: 환경설정 카드 제목을 번역한다. 매개변수: 없음. 반환값: 제목.
   String get userSettings => isEnglish ? 'Settings' : '환경설정';

@@ -11,6 +11,7 @@ from entities.medication_completion_entity import _MedicationCompletion
 from entities.saved_medication_entity import _SavedMedication
 from repositories.saved_medication_repository import SavedMedicationRepository
 from services.medication_course_policy import MedicationCoursePolicy
+from services.medication_care_receipts import redact_medication_care_receipts
 
 
 # 클래스명: SavedMedicationRetentionPolicy
@@ -79,15 +80,25 @@ class SavedMedicationRetentionPolicy:
             if self.is_expired(medication, reference_date)
         ]
 
+        deleted_count = 0
         for medication in expired_medications:
+            # 조회 뒤 복용 기간이 바뀔 수 있으므로 삭제 직전에 잠그고 만료 여부를 재검사한다.
+            medication = db.query(_SavedMedication).filter(
+                _SavedMedication.id == medication.id,
+                _SavedMedication.patient_hash == medication.patient_hash,
+            ).with_for_update().populate_existing().first()
+            if medication is None or not self.is_expired(medication, reference_date):
+                continue
+            redact_medication_care_receipts(db, medication.patient_hash, medication.id)
             db.query(_MedicationCompletion).filter(
                 _MedicationCompletion.saved_medication_id == medication.id,
             ).delete(synchronize_session=False)
             db.delete(medication)
+            deleted_count += 1
 
-        if expired_medications and commit:
+        if deleted_count and commit:
             db.commit()
-        return len(expired_medications)
+        return deleted_count
 
     # Function Name: is_expired
     # Description:

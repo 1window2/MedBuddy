@@ -50,6 +50,37 @@ def operation(med_id, **changes):
         schedule_date=application_today(), slot_key="morning", medication_ids=[med_id], completed=True), **changes))
 
 
+@pytest.mark.parametrize("change", ["revision", "deleted", "stopped"])
+def test_offline_regimen_snapshot_rejects_changed_course(fixture, change):
+    db, med_id = fixture
+    medication = db.get(_SavedMedication, med_id)
+    request = operation(med_id, regimen_revisions={med_id: int(medication.regimen_revision or 0)})
+    if change == "revision":
+        medication.regimen_revision = (medication.regimen_revision or 0) + 1
+    elif change == "deleted":
+        db.delete(medication)
+    else:
+        medication.stopped_on = application_today()
+    db.commit()
+    with pytest.raises(HTTPException) as error:
+        SyncDose(db).apply("offline-patient", request)
+    assert error.value.status_code in (404, 409)
+    assert db.query(_MedicationCompletion).count() == 0
+    assert db.query(_DoseSyncOperation).count() == 0
+
+
+def test_verified_offline_retry_survives_later_regimen_change(fixture):
+    db, med_id = fixture
+    medication = db.get(_SavedMedication, med_id)
+    request = operation(med_id, regimen_revisions={med_id: int(medication.regimen_revision or 0)})
+    SyncDose(db).apply("offline-patient", request)
+    medication.regimen_revision = (medication.regimen_revision or 0) + 1
+    db.commit()
+    SyncDose(db).apply("offline-patient", request)
+    assert db.query(_MedicationCompletion).count() == 1
+    assert db.query(_DoseSyncOperation).count() == 1
+
+
 # 함수이름: test_retry_after_undo_never_reapplies
 # 함수역할: 취소 뒤 원래 완료 요청이 재전송되어도 취소를 유지하고 처리 이력·알림을 중복 생성하지 않는지 검증한다.
 # 매개변수: fixture: 격리 DB와 약 식별자. 반환값: 없음; 불일치 시 단언 실패.

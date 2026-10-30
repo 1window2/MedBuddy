@@ -1,6 +1,7 @@
 // 파일명: medication_history_ui_boundary_test.dart
 // 역할: 기록 정정·권한·내보내기·작은 화면의 실제 위젯 흐름을 검증한다.
 import 'dart:async';
+import 'support/fake_as_needed_pending_store.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -139,9 +140,12 @@ Future<MedicationHistoryControl> _pumpHistory(
   double textScale = 1,
   FutureOr<void> Function()? onChanged,
   Stream<String?>? sessionChanges,
+  bool openToday = true,
+  bool initiallyShowExport = false,
 }) async {
   final control = MedicationHistoryControl(
     patientHash: 'test-patient',
+    pendingStore: FakeAsNeededPendingStore(),
     readOnly: readOnly,
     client: MockClient(server.respond),
     now: () => historyTestNow,
@@ -166,10 +170,28 @@ Future<MedicationHistoryControl> _pumpHistory(
         isEnglish: isEnglish,
         control: control,
         onChanged: onChanged,
+        initiallyShowExport: initiallyShowExport,
       ),
     ),
   );
   await tester.pumpAndSettle();
+  // 화면은 한 달 달력에서 시작하므로 기존 하루 기록 검증은 오늘을 눌러 들어간 뒤 진행한다.
+  if (openToday) {
+    final today = find.byKey(const ValueKey('history-month-day-2026-10-17'));
+    await tester.scrollUntilVisible(
+      today,
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byType(ListView),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(today);
+    await tester.pumpAndSettle();
+  }
   return control;
 }
 
@@ -220,9 +242,11 @@ Future<MedicationHistoryControl> _pumpAsNeeded(
   Duration requestTimeout = const Duration(seconds: 25),
   double leadingHeight = 0,
   ManualMedicationImageStore imageStore = const ManualMedicationImageStore(),
+  FakeAsNeededPendingStore? pendingStore,
 }) async {
   final control = MedicationHistoryControl(
     patientHash: 'test-patient',
+    pendingStore: pendingStore ?? FakeAsNeededPendingStore(),
     readOnly: readOnly,
     client: MockClient(server.respond),
     now: now ?? () => historyTestNow,
@@ -249,6 +273,7 @@ Future<MedicationHistoryControl> _pumpAsNeeded(
             AsNeededScheduleSection(
               patientHash: 'test-patient',
               isEnglish: isEnglish,
+              readOnly: readOnly,
               control: control,
               imageStore: imageStore,
               emptyState: const Text('No medication today'),
@@ -264,6 +289,238 @@ Future<MedicationHistoryControl> _pumpAsNeeded(
 
 // 함수역할: 보호자·수정·내보내기와 실패 경로의 UI 회귀 테스트를 등록한다.
 void main() {
+  // 하루 기록을 불러오는 동안 뒤로가기를 누르면 무시하지 않고 화면을 닫는다(느린 연결에서 최대 25초).
+  testWidgets('back while a day loads closes the history', (tester) async {
+    final server = _HistoryServer();
+    final control = MedicationHistoryControl(
+      patientHash: 'test-patient',
+      pendingStore: FakeAsNeededPendingStore(),
+      client: MockClient(server.respond),
+      now: () => historyTestNow,
+      sessionKeyProvider: () => 'test-user',
+    );
+    addTearDown(control.dispose);
+    final navigator = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: navigator,
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        supportedLocales: const [Locale('en'), Locale('ko')],
+        home: const Scaffold(body: Text('home-root')),
+      ),
+    );
+    unawaited(
+      navigator.currentState!.push(
+        MaterialPageRoute<void>(
+          builder: (_) => MedicationHistoryUI(
+            patientHash: 'test-patient',
+            isEnglish: true,
+            control: control,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final today = find.byKey(const ValueKey('history-month-day-2026-10-17'));
+    await tester.scrollUntilVisible(
+      today,
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byType(ListView),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.tap(today);
+    await tester.pumpAndSettle();
+    server.pendingRead = Completer<http.Response>();
+    await tester.tap(find.byKey(const Key('history-previous-day')));
+    await tester.pump();
+    expect(control.busy, isTrue);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(MedicationHistoryUI), findsNothing);
+    expect(find.text('home-root'), findsOneWidget);
+    server.pendingRead!.complete(
+      historyTestResponse(
+        historyTestBody(start: '2026-10-16', end: '2026-10-16', items: []),
+      ),
+    );
+    await tester.pumpAndSettle();
+  });
+
+  // 채팅 카드로 연 기간 화면은 앱이 다시 그려져도(토큰 갱신·언어 변경) 같은 기간이면 다시 시작하지 않는다.
+  testWidgets('a rebuilt chat-shared history keeps its session', (
+    tester,
+  ) async {
+    var reads = 0;
+    final history = MedicationHistoryControl(
+      patientHash: 'test-patient',
+      readOnly: true,
+      client: MockClient((request) async {
+        reads++;
+        return historyTestResponse(
+          historyTestBody(
+            start: request.url.queryParameters['start_date']!,
+            end: request.url.queryParameters['end_date']!,
+            items: [historyTestEntry(date: '2026-10-17')],
+          ),
+        );
+      }),
+      now: () => historyTestNow,
+      sessionKeyProvider: () => 'test-user',
+    );
+    addTearDown(history.dispose);
+    late StateSetter rebuildRoot;
+    final navigator = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(
+      StatefulBuilder(
+        builder: (context, setState) {
+          rebuildRoot = setState;
+          return MaterialApp(
+            navigatorKey: navigator,
+            localizationsDelegates: GlobalMaterialLocalizations.delegates,
+            supportedLocales: const [Locale('en'), Locale('ko')],
+            home: const Scaffold(body: Text('home')),
+          );
+        },
+      ),
+    );
+    unawaited(
+      navigator.currentState!.push(
+        MaterialPageRoute<void>(
+          // 채팅 카드처럼 다시 그릴 때마다 새 기간 객체를 만든다.
+          builder: (_) => MedicationHistoryUI(
+            patientHash: 'test-patient',
+            readOnly: true,
+            isEnglish: true,
+            control: history,
+            sharedRange: MedicationHistoryRange(
+              DateTime.utc(2026, 10, 16),
+              DateTime.utc(2026, 10, 17),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(reads, 1);
+    rebuildRoot(() {});
+    await tester.pumpAndSettle();
+    expect(history.sessionInvalidated, isFalse);
+    expect(reads, 1);
+  });
+
+  // 실행 취소 안내는 일정 화면을 떠난 뒤에도 남으므로, 그때 눌러도 실제로 되돌려야 한다.
+  testWidgets('the as-needed undo still works after leaving the schedule', (
+    tester,
+  ) async {
+    final server = _HistoryServer();
+    final control = MedicationHistoryControl(
+      patientHash: 'test-patient',
+      pendingStore: FakeAsNeededPendingStore(),
+      client: MockClient(server.respond),
+      now: () => historyTestNow,
+      sessionKeyProvider: () => 'test-user',
+    );
+    addTearDown(control.dispose);
+    final navigator = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: navigator,
+        theme: MedBuddyTheme.light(),
+        home: const Scaffold(body: Text('home')),
+      ),
+    );
+    unawaited(
+      navigator.currentState!.push(
+        MaterialPageRoute<void>(
+          builder: (_) => Scaffold(
+            body: ListView(
+              children: [
+                AsNeededScheduleSection(
+                  patientHash: 'test-patient',
+                  isEnglish: true,
+                  control: control,
+                  emptyState: const Text('No medication today'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('prn-undo-record')), findsOneWidget);
+
+    navigator.currentState!.pop();
+    await tester.pumpAndSettle();
+    expect(find.text('home'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('prn-undo-record')));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(server.writes, hasLength(2));
+    expect(server.writes.last['status'], 'unrecorded');
+    expect(find.text('Dose record undone.'), findsOneWidget);
+  });
+  for (final readOnly in [false, true]) {
+    for (final isEnglish in [false, true]) {
+      testWidgets('필요시 복용량 번역: 보호자=$readOnly 영어=$isEnglish', (tester) async {
+        final server = _HistoryServer();
+        final control = await _pumpAsNeeded(
+          tester,
+          server,
+          readOnly: readOnly,
+          isEnglish: isEnglish,
+        );
+        expect(find.text(isEnglish ? '1 tablet' : '1정'), findsOneWidget);
+        expect(find.text(isEnglish ? '1정' : '1 tablet'), findsNothing);
+        expect(find.text('테스트 필요시약'), findsOneWidget);
+        expect(control.snapshot!.medications.last.dosage, '1정');
+        expect(server.writes, isEmpty);
+      });
+    }
+  }
+
+  // 검색 바로가기는 최초 성공 조회 뒤 확인창만 열고 실제 전송·기록 변경을 하지 않는다.
+  testWidgets('공유 바로가기는 확인창만 한 번 열고 취소할 수 있다', (tester) async {
+    final server = _HistoryServer();
+    await _pumpHistory(
+      tester,
+      server,
+      openToday: false,
+      initiallyShowExport: true,
+    );
+    expect(find.byKey(const Key('history-export-start')), findsOneWidget);
+    expect(server.writes, isEmpty);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Refresh'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('history-export-start')), findsNothing);
+    expect(server.writes, isEmpty);
+  });
+
+  for (final readOnly in [false, true]) {
+    testWidgets('공유 바로가기는 조회 실패 또는 읽기 전용이면 자동으로 열지 않는다: $readOnly', (
+      tester,
+    ) async {
+      final server = _HistoryServer()..failRead = !readOnly;
+      await _pumpHistory(
+        tester,
+        server,
+        openToday: false,
+        readOnly: readOnly,
+        initiallyShowExport: true,
+      );
+      expect(find.byKey(const Key('history-export-start')), findsNothing);
+      expect(server.writes, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+  }
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -495,13 +752,14 @@ void main() {
       final server = _HistoryServer();
       final control = await _pumpHistory(tester, server);
       final original = control.snapshot;
-      await tester.tap(find.byTooltip('Export'));
+      await tester.tap(find.byTooltip('Share'));
       await tester.pumpAndSettle();
       await _chooseExportDate(tester, 'start', DateTime(2026, 10, 11));
       await _chooseExportDate(tester, 'end', DateTime(2026, 10, 16));
       expect(find.textContaining('2026-10-11'), findsOneWidget);
       expect(find.text('2026-10-16'), findsOneWidget);
-      expect(server.reads, hasLength(1));
+      // 달력의 한 달 조회와 오늘 조회 뒤로는 날짜를 골라도 다시 읽지 않는다.
+      expect(server.reads, hasLength(2));
       expect(control.snapshot, same(original));
       expect(control.requestedRange!.days, 1);
       await tester.tap(find.text('Cancel'));
@@ -522,7 +780,7 @@ void main() {
       expect(find.byTooltip('About medication records'), findsOneWidget);
       expect(find.byTooltip('Edit record'), findsNothing);
       expect(find.byKey(const Key('history-add-prn')), findsNothing);
-      expect(find.byTooltip('Export'), findsOneWidget);
+      expect(find.byTooltip('Share'), findsOneWidget);
       expect(server.writes, isEmpty);
     },
   );
@@ -536,7 +794,7 @@ void main() {
       tester
           .widget<IconButton>(
             find.byWidgetPredicate(
-              (widget) => widget is IconButton && widget.tooltip == 'Export',
+              (widget) => widget is IconButton && widget.tooltip == 'Share',
             ),
           )
           .onPressed,
@@ -921,6 +1179,199 @@ void main() {
     },
   );
 
+  testWidgets('undo right after a PRN dose marks only that record unrecorded', (
+    tester,
+  ) async {
+    final server = _HistoryServer();
+    await _pumpAsNeeded(tester, server);
+    await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
+    await tester.pumpAndSettle();
+    expect(find.text('1 dose today'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('prn-undo-record')));
+    await tester.pumpAndSettle();
+    expect(server.writes, hasLength(2));
+    expect(server.paths[1], server.paths[0]);
+    expect(server.writes[1]['status'], 'unrecorded');
+    expect(server.writes[1]['expected_revision'], 1);
+    expect(server.writes[1]['actual_taken_at'], isNull);
+    expect(
+      server.writes[1]['operation_id'],
+      isNot(server.writes[0]['operation_id']),
+    );
+    expect(find.text('Dose record undone.'), findsOneWidget);
+    expect(find.text('1 dose today'), findsNothing);
+    // 되돌린 뒤 다시 누르면 추가 복용 확인 없이 첫 복용으로 기록한다.
+    ScaffoldMessenger.of(
+      tester.element(find.byType(ListView)),
+    ).clearSnackBars();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(server.writes, hasLength(3));
+    expect(server.paths[2], isNot(server.paths[0]));
+  });
+
+  testWidgets('undo leaves an earlier dose of the same day as it was', (
+    tester,
+  ) async {
+    final server = _HistoryServer();
+    await _pumpAsNeeded(tester, server);
+    await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
+    await tester.pumpAndSettle();
+    ScaffoldMessenger.of(
+      tester.element(find.byType(ListView)),
+    ).clearSnackBars();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('prn-confirm-additional')));
+    await tester.pumpAndSettle();
+    expect(find.text('2 doses today'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('prn-undo-record')));
+    await tester.pumpAndSettle();
+    expect(server.writes, hasLength(3));
+    expect(server.paths[2], server.paths[1]);
+    expect(server.writes[2]['status'], 'unrecorded');
+    expect(find.text('1 dose today'), findsOneWidget);
+  });
+
+  // 재시작 전에 확인하지 못한 어제 기록을 이어 보내면, 오늘 목록에서 되돌릴 수 없는 실행 취소 대신
+  // 오늘 복용은 다시 누르라고 안내한다.
+  testWidgets('resending an earlier day\'s PRN dose asks for a new tap today', (
+    tester,
+  ) async {
+    final server = _HistoryServer();
+    final store = FakeAsNeededPendingStore()
+      ..batches['test-patient'] = [
+        MedicationHistoryChange(
+          entry: MedicationHistoryEntry(
+            medicationId: 2,
+            itemName: '테스트 필요시약',
+            scheduleDate: DateTime.utc(2026, 10, 16),
+            slotKey: 'as_needed:12345678-1234-4234-8234-123456789012',
+            status: MedicationHistoryStatus.unrecorded,
+            revision: 0,
+            dosingMode: 'as_needed',
+          ),
+          status: MedicationHistoryStatus.taken,
+          operationId: '22345678-1234-4234-8234-123456789012',
+          actualTakenAt: DateTime.utc(2026, 10, 16, 3),
+        ),
+      ];
+    await _pumpAsNeeded(tester, server, pendingStore: store);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('schedule-prn-take-2')),
+      200,
+    );
+    await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
+    await tester.pumpAndSettle();
+    expect(server.paths.single, contains('/2/2026-10-16/as_needed:'));
+    expect(find.byKey(const Key('prn-earlier-record-sent')), findsOneWidget);
+    expect(find.byKey(const Key('prn-undo-record')), findsNothing);
+    expect(store.batches['test-patient'], isEmpty);
+  });
+
+  // 기기 저장소를 열지 못해도 필요시 목록과 횟수는 보이고, 중복될 수 있는 새 기록만 막는다.
+  testWidgets('PRN list stays visible when the pending store fails', (
+    tester,
+  ) async {
+    final server = _HistoryServer();
+    final store = FakeAsNeededPendingStore()..failRead = true;
+    await _pumpAsNeeded(tester, server, pendingStore: store);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('schedule-prn-take-2')),
+      200,
+    );
+    await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
+    await tester.pumpAndSettle();
+    expect(server.writes, isEmpty);
+    expect(
+      find.textContaining('Device storage could not be opened'),
+      findsOneWidget,
+    );
+    store.failRead = false;
+    await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
+    await tester.pumpAndSettle();
+    expect(server.writes, hasLength(1));
+  });
+
+  testWidgets('a failed PRN undo explains where to correct the record', (
+    tester,
+  ) async {
+    final server = _HistoryServer();
+    await _pumpAsNeeded(tester, server);
+    await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
+    await tester.pumpAndSettle();
+    server.failWriteNumber = 2;
+    await tester.tap(find.byKey(const Key('prn-undo-record')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('could not be undone'), findsOneWidget);
+    expect(find.text('Dose record undone.'), findsNothing);
+    expect(find.text('1 dose today'), findsOneWidget);
+  });
+
+  // 복용 간격이 정해진 약을 다시 먹기 전에 오늘 마지막 복용 시각과 지난 시간을 함께 보여 준다.
+  testWidgets('another PRN dose shows when the last one was taken', (
+    tester,
+  ) async {
+    final server = _HistoryServer();
+    server.items.add({
+      ...historyTestEntry(
+        id: 2,
+        name: '테스트 필요시약',
+        date: '2026-10-17',
+        slot: 'as_needed:12345678-1234-4234-8234-123456789012',
+        mode: 'as_needed',
+        status: 'taken',
+        revision: 1,
+      ),
+      'actual_taken_at': '2026-10-17T03:30:00Z',
+      'recorded_at': '2026-10-17T03:31:00Z',
+    });
+    await _pumpAsNeeded(tester, server);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('schedule-prn-take-2')),
+      200,
+    );
+    await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('instead of 1'), findsOneWidget);
+    // 12:30(한국 시간)에 먹었고 지금은 15:00이다.
+    expect(
+      find.textContaining('Last dose at 12:30 (2 h 30 min ago)'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(server.writes, isEmpty);
+  });
+
+  testWidgets('a PRN dose taken under a minute ago reads just now', (
+    tester,
+  ) async {
+    final server = _HistoryServer();
+    await _pumpAsNeeded(tester, server);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('schedule-prn-take-2')),
+      200,
+    );
+    await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
+    await tester.pumpAndSettle();
+    ScaffoldMessenger.of(
+      tester.element(find.byType(ListView)),
+    ).clearSnackBars();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('schedule-prn-take-2')));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Last dose at 15:00 (just now)'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('repeat dose cancellation does not change the count', (
     tester,
   ) async {
@@ -1047,7 +1498,8 @@ void main() {
         .position
         .pixels;
     expect(after, closeTo(before, 2));
-    await tester.pump(const Duration(seconds: 4));
+    // 실행 취소가 있는 저장 알림은 일반 복용과 같이 5초 동안 보인다.
+    await tester.pump(const Duration(seconds: 6));
     await tester.pumpAndSettle();
     expect(
       find.byKey(const Key('schedule-prn-take-2')).hitTestable(),
@@ -1234,6 +1686,216 @@ void main() {
   }
 
   // 기존 필요시 이벤트 정정은 새 복용을 만들지 않고 원래 키와 버전을 사용한다.
+  // 한 달 달력: 날짜별 정기 복용 기록 수·색, 필요시 표시, 날짜 진입과 복귀, 조회 가능 기간.
+  group('month calendar', () {
+    _HistoryServer monthServer() {
+      final server = _HistoryServer();
+      server.items
+        ..clear()
+        ..addAll([
+          historyTestEntry(date: '2026-10-16', status: 'taken', revision: 1),
+          historyTestEntry(date: '2026-10-16', slot: 'evening'),
+          historyTestEntry(date: '2026-10-15', status: 'taken', revision: 1),
+          historyTestEntry(date: '2026-10-14'),
+          historyTestEntry(
+            id: 2,
+            name: '테스트 필요시약',
+            date: '2026-10-14',
+            slot: 'as_needed:12345678-1234-4234-8234-123456789012',
+            mode: 'as_needed',
+            status: 'taken',
+            revision: 1,
+          ),
+        ]);
+      return server;
+    }
+
+    Finder day(String date) => find.byKey(ValueKey('history-month-day-$date'));
+
+    testWidgets('opens on the current month with one read and day summaries', (
+      tester,
+    ) async {
+      final server = monthServer();
+      await _pumpHistory(tester, server, openToday: false);
+      expect(find.byKey(const Key('history-month-calendar')), findsOneWidget);
+      expect(find.text('October 2026'), findsOneWidget);
+      expect(server.reads, hasLength(1));
+      expect(server.reads.single.queryParameters['start_date'], '2026-10-01');
+      expect(server.reads.single.queryParameters['end_date'], '2026-10-17');
+      expect(
+        find.descendant(of: day('2026-10-16'), matching: find.text('1/2')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: day('2026-10-15'), matching: find.text('1/1')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: day('2026-10-14'), matching: find.text('0/1')),
+        findsOneWidget,
+      );
+      expect(
+        find.bySemanticsLabel(
+          RegExp(r'^Day 14, 0 of 1 recorded as taken, as-needed 1$'),
+        ),
+        findsOneWidget,
+      );
+      // 오늘 뒤의 날짜는 누를 수 없다.
+      expect(tester.widget<InkWell>(day('2026-10-18')).onTap, isNull);
+      // 달력 머리의 현황은 그 달의 정기 복용만 센다.
+      expect(find.text('2/4'), findsOneWidget);
+      // 기록이 있는 날과 없는 날의 날짜 숫자는 같은 높이에 놓인다.
+      expect(
+        tester
+            .getRect(
+              find.descendant(of: day('2026-10-16'), matching: find.text('16')),
+            )
+            .top,
+        tester
+            .getRect(
+              find.descendant(of: day('2026-10-17'), matching: find.text('17')),
+            )
+            .top,
+      );
+    });
+
+    testWidgets(
+      'a tapped day opens its records and back returns to the month',
+      (tester) async {
+        final server = monthServer();
+        await _pumpHistory(tester, server, openToday: false);
+        await tester.tap(day('2026-10-16'));
+        await tester.pumpAndSettle();
+        expect(find.text('2026-10-16 (Fri)'), findsOneWidget);
+        expect(server.reads.last.queryParameters['start_date'], '2026-10-16');
+        expect(server.reads.last.queryParameters['end_date'], '2026-10-16');
+        expect(find.byKey(const Key('history-month-calendar')), findsNothing);
+
+        await tester.tap(find.byKey(const Key('history-open-month')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('history-month-calendar')), findsOneWidget);
+        expect(server.reads, hasLength(3));
+
+        // 하루 기록에서의 시스템 뒤로 가기도 화면을 닫지 않고 달력으로 돌아간다.
+        await tester.tap(day('2026-10-15'));
+        await tester.pumpAndSettle();
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('history-month-calendar')), findsOneWidget);
+      },
+    );
+
+    testWidgets('earlier months stop at the 90-day history window', (
+      tester,
+    ) async {
+      final server = monthServer();
+      await _pumpHistory(tester, server, openToday: false);
+      for (final title in ['September 2026', 'August 2026', 'July 2026']) {
+        await tester.tap(find.byKey(const Key('history-previous-month')));
+        await tester.pumpAndSettle();
+        expect(find.text(title), findsOneWidget);
+      }
+      expect(server.reads.last.queryParameters['start_date'], '2026-07-20');
+      expect(server.reads.last.queryParameters['end_date'], '2026-07-31');
+      expect(
+        tester
+            .widget<IconButton>(find.byKey(const Key('history-previous-month')))
+            .onPressed,
+        isNull,
+      );
+      expect(tester.widget<InkWell>(day('2026-07-19')).onTap, isNull);
+      expect(tester.widget<InkWell>(day('2026-07-20')).onTap, isNotNull);
+      await tester.tap(find.byKey(const Key('history-next-month')));
+      await tester.pumpAndSettle();
+      expect(find.text('August 2026'), findsOneWidget);
+    });
+
+    testWidgets('a failed month read offers a retry', (tester) async {
+      final server = monthServer()..failRead = true;
+      await _pumpHistory(tester, server, openToday: false);
+      expect(find.byKey(const Key('history-month-error')), findsOneWidget);
+      server.failRead = false;
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('history-month-error')), findsNothing);
+      expect(
+        find.descendant(of: day('2026-10-16'), matching: find.text('1/2')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('export from the month starts with the visible month', (
+      tester,
+    ) async {
+      await _pumpHistory(tester, monthServer(), openToday: false);
+      await tester.tap(find.byTooltip('Share'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('2026-10-01'), findsWidgets);
+      expect(find.text('2026-10-17'), findsWidgets);
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('the month fits a narrow screen at large Korean text', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await _pumpHistory(
+        tester,
+        monthServer(),
+        isEnglish: false,
+        textScale: 2,
+        openToday: false,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('history-month-legend')),
+        200,
+        scrollable: find
+            .descendant(
+              of: find.byType(ListView),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  testWidgets('record summary counts scheduled doses only, not PRN doses', (
+    tester,
+  ) async {
+    final server = _HistoryServer();
+    server.items
+      ..clear()
+      ..addAll([
+        historyTestEntry(date: '2026-10-17'),
+        historyTestEntry(
+          id: 2,
+          name: '테스트 필요시약',
+          date: '2026-10-17',
+          slot: 'as_needed:12345678-1234-4234-8234-123456789012',
+          mode: 'as_needed',
+          status: 'taken',
+          revision: 1,
+        ),
+      ]);
+    await _pumpHistory(tester, server);
+    // 머리의 현황은 예정 복용 1건만 세고, 필요시 복용은 자기 카드에서만 센다.
+    expect(find.text('1/2'), findsNothing);
+    expect(
+      tester
+          .widget<LinearProgressIndicator>(
+            find.byType(LinearProgressIndicator).first,
+          )
+          .value,
+      0,
+    );
+  });
+
   testWidgets('editing an existing PRN event preserves its original slot key', (
     tester,
   ) async {
@@ -1254,11 +1916,24 @@ void main() {
       );
     await _pumpHistory(tester, server);
     await _openEditor(tester);
+    // 필요시 복용에는 건너뛸 예정 복용이 없으므로 취소와 복용만 고를 수 있다.
+    expect(
+      find.byType(RadioListTile<MedicationHistoryStatus>),
+      findsNWidgets(2),
+    );
+    expect(
+      find.widgetWithText(RadioListTile<MedicationHistoryStatus>, 'Skipped'),
+      findsNothing,
+    );
     await tester.tap(
-      find.widgetWithText(RadioListTile<MedicationHistoryStatus>, 'Unrecorded'),
+      find.widgetWithText(
+        RadioListTile<MedicationHistoryStatus>,
+        'Cancel record (recorded by mistake)',
+      ),
     );
     await _confirmSave(tester);
     await tester.pumpAndSettle();
+    expect(server.writes.single['status'], 'unrecorded');
     expect(server.paths.single, endsWith('/2/2026-10-17/$key'));
     expect(server.writes.single['expected_revision'], 3);
     expect(server.items, hasLength(1));
@@ -1266,7 +1941,7 @@ void main() {
 
   // 공유 전 동의가 필요하고 공유 완료와 전송 완료를 혼동하지 않는다.
   testWidgets(
-    'CSV export asks privacy confirmation and calls native share safely',
+    'Text sharing asks privacy confirmation and calls native share safely',
     (tester) async {
       final calls = <MethodCall>[];
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
@@ -1283,7 +1958,7 @@ void main() {
         ),
       );
       await _pumpHistory(tester, _HistoryServer());
-      await tester.tap(find.byTooltip('Export'));
+      await tester.tap(find.byTooltip('Share'));
       await tester.pumpAndSettle();
       expect(calls, isEmpty);
       expect(find.textContaining('skip reasons'), findsOneWidget);
@@ -1293,16 +1968,17 @@ void main() {
       expect(find.textContaining('Time zone: Korea'), findsNothing);
       expect(find.byType(DateRangePickerDialog), findsNothing);
       await _chooseExportDate(tester, 'start', DateTime(2026, 10, 11));
-      await tester.tap(find.text('Share CSV'));
+      await tester.tap(find.text('Share via other apps'));
       await tester.pumpAndSettle();
-      expect(calls.single.method, 'shareCsv');
+      expect(calls.single.method, 'shareText');
       final args = calls.single.arguments as Map;
-      expect(args['filename'], 'medbuddy_history_2026-10-11_2026-10-17.csv');
+      expect(args.containsKey('filename'), isFalse);
+      expect(args['subject'], 'MedBuddy medication history');
       expect(args['content'], contains('테스트 주간약'));
       expect(args['content'], contains('2026-10-11 ~ 2026-10-17'));
       expect(
         args['content'],
-        contains('Self-reported, not proof of ingestion'),
+        contains('Self-reported records are not proof of ingestion'),
       );
       expect((args['content'] as String).startsWith('\uFEFF'), isFalse);
       expect(args['content'], isNot(contains('test-patient')));
@@ -1310,46 +1986,49 @@ void main() {
     },
   );
 
-  testWidgets('export validates date order and inclusive 31-day limit', (
-    tester,
-  ) async {
-    final server = _HistoryServer();
-    await _pumpHistory(tester, server);
-    await tester.tap(find.byTooltip('Export'));
-    await tester.pumpAndSettle();
-    await _chooseExportDate(tester, 'end', DateTime(2026, 10, 16));
-    expect(find.text('End date cannot be before start date.'), findsOneWidget);
-    expect(
-      tester
-          .widget<FilledButton>(find.byKey(const Key('history-export-share')))
-          .onPressed,
-      isNull,
-    );
-    await _chooseExportDate(tester, 'start', DateTime(2026, 9, 15));
-    expect(
-      find.text('Select up to 31 days within the last 90 days.'),
-      findsOneWidget,
-    );
-    expect(
-      tester
-          .widget<FilledButton>(find.byKey(const Key('history-export-share')))
-          .onPressed,
-      isNull,
-    );
-    await _chooseExportDate(tester, 'start', DateTime(2026, 9, 16));
-    expect(find.byKey(const Key('history-export-error')), findsNothing);
-    expect(
-      tester
-          .widget<FilledButton>(find.byKey(const Key('history-export-share')))
-          .onPressed,
-      isNotNull,
-    );
-    await _chooseExportDate(tester, 'end', null);
-    expect(find.text('2026-10-16'), findsOneWidget);
-    expect(server.reads, hasLength(1));
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
-  });
+  testWidgets(
+    'export validates date order and allows up to 90 days for external sharing',
+    (tester) async {
+      final server = _HistoryServer();
+      await _pumpHistory(tester, server);
+      await tester.tap(find.byTooltip('Share'));
+      await tester.pumpAndSettle();
+      await _chooseExportDate(tester, 'end', DateTime(2026, 10, 16));
+      expect(
+        find.text('End date cannot be before start date.'),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('history-export-share')))
+            .onPressed,
+        isNull,
+      );
+      // 다른 앱 공유는 31일씩 나눠 읽으므로 31일을 넘는 기간도 고를 수 있다.
+      await _chooseExportDate(tester, 'start', DateTime(2026, 7, 20));
+      expect(find.byKey(const Key('history-export-error')), findsNothing);
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('history-export-share')))
+            .onPressed,
+        isNotNull,
+      );
+      await _chooseExportDate(tester, 'start', DateTime(2026, 9, 16));
+      expect(find.byKey(const Key('history-export-error')), findsNothing);
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('history-export-share')))
+            .onPressed,
+        isNotNull,
+      );
+      await _chooseExportDate(tester, 'end', null);
+      expect(find.text('2026-10-16'), findsOneWidget);
+      // 달력의 한 달 조회와 오늘 조회 뒤로는 날짜를 골라도 다시 읽지 않는다.
+      expect(server.reads, hasLength(2));
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+    },
+  );
 
   testWidgets('export read failure stays in dialog and permits retry', (
     tester,
@@ -1357,11 +2036,11 @@ void main() {
     final server = _HistoryServer();
     final control = await _pumpHistory(tester, server);
     final original = control.snapshot;
-    await tester.tap(find.byTooltip('Export'));
+    await tester.tap(find.byTooltip('Share'));
     await tester.pumpAndSettle();
     await _chooseExportDate(tester, 'start', DateTime(2026, 10, 11));
     server.failRead = true;
-    await tester.tap(find.text('Share CSV'));
+    await tester.tap(find.text('Share via other apps'));
     await tester.pumpAndSettle();
     expect(
       find.text('Could not load the export records. Please try again.'),
@@ -1401,10 +2080,10 @@ void main() {
         addTearDown(changes.close);
         final server = _HistoryServer();
         await _pumpHistory(tester, server, sessionChanges: changes.stream);
-        await tester.tap(find.byTooltip('Export'));
+        await tester.tap(find.byTooltip('Share'));
         await tester.pumpAndSettle();
         server.pendingRead = Completer<http.Response>();
-        await tester.tap(find.text('Share CSV'));
+        await tester.tap(find.text('Share via other apps'));
         await tester.pump();
         expect(
           tester
@@ -1460,7 +2139,7 @@ void main() {
           textScale: 2,
           isEnglish: english,
         );
-        await tester.tap(find.byTooltip(english ? 'Export' : '내보내기'));
+        await tester.tap(find.byTooltip(english ? 'Share' : '공유'));
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
         final start = tester.getRect(
@@ -1475,7 +2154,48 @@ void main() {
     );
   }
 
-  // 파일 공유 미지원 시 동의 없이 민감한 자료를 클립보드로 옮기지 않는다.
+  testWidgets(
+    'oversized text stays in the dialog without truncating or sharing',
+    (tester) async {
+      final shares = <MethodCall>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('com.medbuddy/data_export'),
+        (call) async {
+          shares.add(call);
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          const MethodChannel('com.medbuddy/data_export'),
+          null,
+        ),
+      );
+      final server = _HistoryServer();
+      await _pumpHistory(tester, server);
+      await tester.tap(find.byTooltip('Share'));
+      await tester.pumpAndSettle();
+      server.items.single['item_name'] = List.filled(100001, 'x').join();
+      await tester.tap(find.byKey(const Key('history-export-share')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'Too many records to share at once. Select a shorter period.',
+        ),
+        findsOneWidget,
+      );
+      expect(shares, isEmpty);
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('history-export-share')))
+            .onPressed,
+        isNotNull,
+      );
+    },
+  );
+
+  // 텍스트 공유 미지원 시 동의 없이 민감한 자료를 클립보드로 옮기지 않는다.
   testWidgets(
     'unsupported sharing asks before clipboard fallback and permits cancellation',
     (tester) async {
@@ -1490,12 +2210,12 @@ void main() {
         ),
       );
       await _pumpHistory(tester, _HistoryServer());
-      await tester.tap(find.byTooltip('Export'));
+      await tester.tap(find.byTooltip('Share'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Share CSV'));
+      await tester.tap(find.text('Share via other apps'));
       await tester.pumpAndSettle();
       expect(
-        find.text('File sharing is unavailable on this device'),
+        find.text('Sharing is unavailable on this device'),
         findsOneWidget,
       );
       expect(
@@ -1504,7 +2224,10 @@ void main() {
       );
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('CSV text was copied'), findsNothing);
+      expect(
+        find.textContaining('Medication records were copied'),
+        findsNothing,
+      );
     },
   );
 

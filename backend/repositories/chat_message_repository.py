@@ -173,6 +173,13 @@ class ChatMessageRepository:
         )
         return int(count), int(first_id) if first_id is not None else None
 
+    def recent_unread(self, *, link_id: int, reader_hash: str,
+                      is_patient: bool = False) -> list[_ChatMessage]:
+        rows = (self.db.query(_ChatMessage)
+                .filter(*self._unread_incoming_filters(link_id, reader_hash, is_patient))
+                .order_by(_ChatMessage.id.desc()).limit(3).all())
+        return list(reversed(rows))
+
     # 함수이름: _unread_incoming_filters
     # 함수역할:
     # - 읽음 처리와 미확인 집계가 같은 기준을 쓰도록 상대가 보낸 미확인 메시지 조건을 만든다.

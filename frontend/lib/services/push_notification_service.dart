@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../entities/notification_inbox_entity.dart';
 import '../entities/caregiver_alert_context_entity.dart';
+import '../entities/medication_schedule_entity.dart';
 import '../entities/medication_slot_label.dart';
 import '../entities/user_setting_entity.dart';
 import 'caregiver_alert_delivery_service.dart';
@@ -30,6 +31,20 @@ String? _asNeededPushIdentity(RemoteMessage message) {
           RegExp(r'^[0-9a-f]{64}$').hasMatch(key)
       ? 'as-needed:$key'
       : null;
+}
+
+String? _slotCompletionEventKey(RemoteMessage message) {
+  final key = message.data['event_key']?.toString() ?? '';
+  return message.data['type'] == 'caregiver_slot_completed' &&
+          medicationScheduleSlotKeys.contains(message.data['slot_key']) &&
+          RegExp(r'^[0-9a-f]{64}$').hasMatch(key)
+      ? key
+      : null;
+}
+
+String? _completionPushIdentity(RemoteMessage message) {
+  final key = _slotCompletionEventKey(message);
+  return key == null ? _asNeededPushIdentity(message) : 'slot-completed:$key';
 }
 
 // 서버 재시도는 FCM 메시지 ID가 매번 바뀌므로 서버가 보낸 고정 event_id를 먼저 쓴다.
@@ -113,7 +128,7 @@ Future<void> recordPushNotificationHistory(
       return;
     }
     final entry = NotificationInboxEntry(
-      id: 'push:${_asNeededPushIdentity(message) ?? _serverEventIdentity(message) ?? message.messageId ?? '$type:$payload:${message.sentTime?.millisecondsSinceEpoch ?? 0}'}',
+      id: 'push:${_completionPushIdentity(message) ?? _serverEventIdentity(message) ?? message.messageId ?? '$type:$payload:${message.sentTime?.millisecondsSinceEpoch ?? 0}'}',
       title: title,
       body: body,
       payload: payload,
@@ -144,6 +159,15 @@ Future<void> medBuddyPushBackgroundHandler(RemoteMessage message) async {
     return;
   }
   await recordPushNotificationHistory(message);
+  final key = _slotCompletionEventKey(message);
+  if (key != null && message.notification != null) {
+    // 백그라운드에서는 OS가 이미 표시했으므로 이후 전경 재수신 때 다시 울리지 않는다.
+    await CaregiverAlertDeliveryService.presentCompletionOnce(
+      recipientHash: message.data['recipient_hash']?.toString() ?? '',
+      eventKey: key,
+      present: () async {},
+    );
+  }
 }
 
 void registerMedBuddyPushBackgroundHandler() {
@@ -423,7 +447,9 @@ class PushNotificationService {
          * - 없음; 알림 표시는 비동기로 이어진다.
          */
           (message) {
-            unawaited(_showForegroundMessage(message));
+            unawaited(
+              _showForegroundMessage(message).catchError(_reportPushError),
+            );
           },
           onError: _reportPushError,
         );
@@ -719,9 +745,10 @@ class PushNotificationService {
         id: source.hashCode & 0x7fffffff,
         linkId: linkId,
         language: language,
-        messagePreview: notificationBody.isNotEmpty
-            ? notificationBody
-            : dataPreview,
+        messagePreview: message.data.containsKey('message_preview')
+            ? dataPreview
+            : notificationBody,
+        summary: ChatNotificationSummary.parse(message.data['chat_summary']),
         messageKind: message.data['message_kind'],
         slotKey: message.data['slot_key'],
       );
@@ -743,22 +770,32 @@ class PushNotificationService {
     );
     final title = text.title;
     final body = text.body;
-    final prnIdentity = _asNeededPushIdentity(message);
+    final completionIdentity = _completionPushIdentity(message);
     final source =
-        prnIdentity ??
+        completionIdentity ??
         _serverEventIdentity(message) ??
         message.messageId ??
         '$patientHash|$title|$body';
-    await NotificationService.instance.showCaregiverAlert(
+    Future<void> present() => NotificationService.instance.showCaregiverAlert(
       historyUserHash: userHash,
       recordHistory: false,
       id: source.hashCode & 0x7fffffff,
       title: title,
-      onlyAlertOnce: prnIdentity != null,
+      onlyAlertOnce: completionIdentity != null,
       body: body,
       patientHash: patientHash,
       language: language,
     );
+    final eventKey = _slotCompletionEventKey(message);
+    if (eventKey != null) {
+      await CaregiverAlertDeliveryService.presentCompletionOnce(
+        recipientHash: userHash,
+        eventKey: eventKey,
+        present: present,
+      );
+    } else {
+      await present();
+    }
   }
 
   // 함수이름: _handleOpenedMessage
@@ -781,6 +818,17 @@ class PushNotificationService {
     if (alert != null) {
       NotificationService.handleNotificationPayload(alert.payload);
       return;
+    }
+    final completionEventKey = _slotCompletionEventKey(message);
+    if (completionEventKey != null) {
+      // 알림 선택으로 앱을 시작했을 때도 이미 표시된 이벤트를 기억한다.
+      unawaited(
+        CaregiverAlertDeliveryService.presentCompletionOnce(
+          recipientHash: userHash,
+          eventKey: completionEventKey,
+          present: () async {},
+        ).then<void>((_) {}).catchError(_reportPushError),
+      );
     }
     unawaited(
       recordPushNotificationHistory(

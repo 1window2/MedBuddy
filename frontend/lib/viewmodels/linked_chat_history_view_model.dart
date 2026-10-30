@@ -31,6 +31,7 @@ class LinkedChatHistoryViewModel extends ChangeNotifier {
   final void Function(bool force) onScrollRequested;
   final void Function() onScheduleChanged;
   final void Function(List<int> ids) onDeleted;
+  final Future<void> Function(int throughMessageId)? onRead;
   List<ChatMessage> _messages = const [];
   final Set<int> _hiddenIds = {};
   final Set<int> _deletedIds = {};
@@ -64,6 +65,7 @@ class LinkedChatHistoryViewModel extends ChangeNotifier {
     required this.onScrollRequested,
     required this.onScheduleChanged,
     required this.onDeleted,
+    this.onRead,
   }) {
     _events = realtime.events.listen(handleEvent);
     _states = realtime.states.listen(_connectionChanged);
@@ -493,6 +495,11 @@ class LinkedChatHistoryViewModel extends ChangeNotifier {
       if (_disposed) return;
       if (_lastMarkedId == null || latestId > _lastMarkedId!) {
         _lastMarkedId = latestId;
+      }
+      // 운영체제 알림 정리가 지연돼도 다음 메시지의 읽음 처리를 막지 않는다.
+      final notifyRead = onRead;
+      if (notifyRead != null) {
+        unawaited(notifyRead(latestId).catchError((Object _) {}));
       }
     } catch (_) {
       /* Later visible refresh/events retry without claiming a receipt. */

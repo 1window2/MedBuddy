@@ -11,13 +11,14 @@ part of 'prescription_analysis_preview_ui_boundary.dart';
 // - child (Widget): 해당 레이아웃 안에 배치할 콘텐츠 위젯.
 class _ScrollableCenteredCard extends StatelessWidget {
   final Widget child;
+  final double topPadding;
 
   // 함수이름: _ScrollableCenteredCard
   // 함수역할: 공간이 부족하면 스크롤되는 중앙 정렬 본문에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - child (Widget): 해당 레이아웃 안에 배치할 콘텐츠 위젯.
   // 반환값: 입력 설정이 반영된 _ScrollableCenteredCard 인스턴스.
-  const _ScrollableCenteredCard({required this.child});
+  const _ScrollableCenteredCard({required this.child, this.topPadding = 24});
 
   // 함수이름: build
   // 함수역할: 현재 입력값과 상태를 반영해 공간이 부족하면 스크롤되는 중앙 정렬 본문 화면을 구성한다.
@@ -34,7 +35,7 @@ class _ScrollableCenteredCard extends StatelessWidget {
       // - constraints (BoxConstraints): 부모 레이아웃이 허용한 너비·높이 범위.
       // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
       builder: (context, constraints) {
-        const padding = EdgeInsets.symmetric(vertical: 24, horizontal: 16);
+        final padding = EdgeInsets.fromLTRB(16, topPadding, 16, 24);
         final centeredHeight = constraints.maxHeight > padding.vertical
             ? constraints.maxHeight - padding.vertical
             : 0.0;
@@ -43,9 +44,10 @@ class _ScrollableCenteredCard extends StatelessWidget {
           padding: padding,
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: centeredHeight),
-            child: Center(
+            child: Align(
+              alignment: Alignment.topCenter,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 328),
+                constraints: const BoxConstraints(maxWidth: 640),
                 child: SizedBox(width: double.infinity, child: child),
               ),
             ),
@@ -123,28 +125,6 @@ class _RecognizedTextRegionPreview extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            const Icon(
-              Icons.document_scanner_outlined,
-              size: 17,
-              color: MedBuddyColors.primary,
-            ),
-            const SizedBox(width: 7),
-            Expanded(
-              child: Text(
-                previewText.recognizedRegionGuide,
-                style: const TextStyle(
-                  color: MedBuddyColors.textBody,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  height: 1.35,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
         Tooltip(
           message: previewText.openImagePreview,
           child: Semantics(
@@ -577,8 +557,8 @@ class _ExpandedRecognizedImageView extends StatelessWidget {
       body: SafeArea(
         child: Column(
           children: [
-            SizedBox(
-              height: 56,
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 56),
               child: Row(
                 children: [
                   IconButton(
@@ -635,10 +615,41 @@ class _ExpandedRecognizedImageView extends StatelessWidget {
                 },
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-              child: _PrivacyNoticeBanner(
-                message: previewText.privacyNotice,
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(context).height * 0.35,
+              ),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons.document_scanner_outlined,
+                          size: 17,
+                          color: MedBuddyColors.successSurface,
+                        ),
+                        const SizedBox(width: 7),
+                        Expanded(
+                          child: Text(
+                            previewText.recognizedRegionGuide,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              height: 1.35,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    _PrivacyNoticeBanner(message: previewText.privacyNotice),
+                  ],
+                ),
               ),
             ),
           ],
@@ -716,6 +727,8 @@ class _PrivacyNoticeBanner extends StatelessWidget {
 class _AnalysisBottomBar extends StatelessWidget {
   final String label;
   final VoidCallback? onPressed;
+  final String? continueLabel;
+  final VoidCallback? onContinue;
 
   // 함수이름: _AnalysisBottomBar
   // 함수역할: 스크롤과 무관하게 접근 가능한 분석 시작 명령에 필요한 입력값과 표시 설정을 초기화한다.
@@ -726,6 +739,8 @@ class _AnalysisBottomBar extends StatelessWidget {
   const _AnalysisBottomBar({
     required this.label,
     required this.onPressed,
+    this.continueLabel,
+    this.onContinue,
   });
 
   // 함수이름: build
@@ -735,6 +750,16 @@ class _AnalysisBottomBar extends StatelessWidget {
   // 반환값: 스크롤과 무관하게 접근 가능한 분석 시작 명령에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
+    final textStyle = Theme.of(context).textTheme.labelLarge?.copyWith(
+      fontSize: continueLabel == null ? 19 : 16,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0,
+    );
+    final buttonStyle = FilledButton.styleFrom(
+      minimumSize: const Size(0, 58),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      textStyle: textStyle,
+    );
     return SafeArea(
       top: false,
       child: DecoratedBox(
@@ -750,19 +775,49 @@ class _AnalysisBottomBar extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
           child: SizedBox(
             width: double.infinity,
-            height: 58,
-            child: FilledButton(
-              key: const Key('prescription-analyze-button'),
-              style: FilledButton.styleFrom(
-                textStyle: TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0,
-                ),
-              ),
-              onPressed: onPressed,
-              child: Text(label),
-            ),
+            child: continueLabel != null
+                ? IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            key: const Key('prescription-analyze-button'),
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size(0, 58),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 12,
+                              ),
+                              textStyle: textStyle,
+                            ),
+                            onPressed: onPressed,
+                            child: Text(label, textAlign: TextAlign.center),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: FilledButton(
+                            key: const Key(
+                              'continue-with-verified-medications',
+                            ),
+                            style: buttonStyle,
+                            onPressed: onContinue,
+                            child: Text(
+                              continueLabel!,
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : FilledButton(
+                    key: const Key('prescription-analyze-button'),
+                    style: buttonStyle,
+                    onPressed: onPressed,
+                    child: Text(label, textAlign: TextAlign.center),
+                  ),
           ),
         ),
       ),
@@ -803,11 +858,12 @@ class PrescriptionFlowBackButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(31, 37, 31, 0),
+      padding: const EdgeInsets.fromLTRB(4, 37, 4, 0),
       child: Align(
         alignment: Alignment.centerLeft,
         child: IconButton(
           tooltip: tooltip,
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
           onPressed: onBackRequested,
           icon: const Icon(
             Icons.chevron_left,

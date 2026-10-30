@@ -197,8 +197,47 @@ void main() {
         .map((text) => text.data ?? '')
         .join('\n');
     expect(texts, contains('a day'));
+    expect(texts, contains('2 tablets'));
+    expect(texts, isNot(contains('2정')));
     expect(RegExp(r'\d회').hasMatch(texts), isFalse, reason: texts);
   });
+
+  for (final action in [MedicationRegimenAction.edit, MedicationRegimenAction.replace]) {
+    testWidgets('영어 확인창은 복용량만 번역하고 원본으로 저장한다: ${action.name}', (tester) async {
+      MedicationRegimenChange? submitted;
+      final replacing = action == MedicationRegimenAction.replace;
+      await _open(
+        tester,
+        MedicationRegimenEditorUI(
+          medication: _medication().copyWith(
+            prescriptionDate: DateTime(2026, 10, 15),
+            dosagePerTime: '0.50 정',
+          ),
+          clock: () => DateTime.utc(2026, 10, 17, 3),
+          action: action,
+          isEnglish: true,
+          onSubmit: (value) async {
+            submitted = value;
+            return const MedicationRegimenResult(medicationId: 8, revision: 5);
+          },
+        ),
+      );
+      if (replacing) {
+        await tester.enterText(find.byKey(const Key('regimen-dosage')), '2');
+        await _tap(tester, 'regimen-as-needed');
+      }
+      await _tap(tester, 'regimen-submit');
+      final texts = tester.widgetList<Text>(
+        find.descendant(of: find.byType(AlertDialog), matching: find.byType(Text)),
+      ).map((text) => text.data ?? '').join('\n');
+      expect(texts, contains(replacing ? '2 tablets' : '0.50 tablet'));
+      expect(texts, isNot(contains(replacing ? '2정' : '0.50 정')));
+      expect(texts, contains('테스트 약'));
+      expect(submitted, isNull);
+      await _tap(tester, 'regimen-confirm');
+      expect(submitted!.changes['dosage_per_time'], replacing ? '2정' : '0.50 정');
+    });
+  }
 
   testWidgets('교체는 수량과 단위 및 필요시 모드를 새 처방으로 전송한다', (tester) async {
     MedicationRegimenChange? submitted;

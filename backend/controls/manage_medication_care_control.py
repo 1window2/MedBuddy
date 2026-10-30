@@ -1,6 +1,7 @@
 # 파일명: manage_medication_care_control.py
 # 역할: 환자 권한·버전을 검증하고 약 변경 및 날짜별 사용자 복용 보고를 처리한다.
 
+from collections import Counter
 from datetime import date, timedelta
 import hashlib
 import json
@@ -31,6 +32,7 @@ from services.medication_course_policy import MedicationCoursePolicy
 from services.medication_dosing_mode import medication_dosing_mode
 
 _CONFLICT = "This record has changed. Refresh it before trying again."
+_CLIENT_CLOCK_SKEW = timedelta(seconds=60)
 
 
 # 클래스명: ManageMedicationCare
@@ -98,16 +100,22 @@ class ManageMedicationCare:
             return None
         if receipt.request_hash != fingerprint:
             raise HTTPException(409, "The operation ID was already used for a different request.")
+        if receipt.response_redacted:
+            raise HTTPException(410, "The medication for this operation has been deleted.")
         return json.loads(receipt.response_json)
 
     # 함수이름: _commit
     # 함수역할: 변경 결과와 재전송 영수증을 함께 커밋한다.
     # 매개변수: owner: 환자, operation_id: UUID, fingerprint: 서명, response: 응답.
     # 반환값: 성공 응답.
-    def _commit(self, owner: str, operation_id: UUID, fingerprint: str, response: dict[str, object]) -> dict[str, object]:
+    def _commit(
+        self, owner: str, operation_id: UUID, fingerprint: str, response: dict[str, object],
+        *, medication_id: int, replacement_medication_id: int | None = None,
+    ) -> dict[str, object]:
         self.db.add(_MedicationCareOperation(
             patient_hash=owner, operation_id=str(operation_id), request_hash=fingerprint,
             response_json=json.dumps(response, ensure_ascii=False),
+            medication_id=medication_id, replacement_medication_id=replacement_medication_id,
         ))
         self.db.commit()
         return response
@@ -188,7 +196,11 @@ class ManageMedicationCare:
                 before_json=json.dumps(before, ensure_ascii=False),
                 after_json=json.dumps({"previous": self.saved._to_response_dict(medication), "current": self.saved._to_response_dict(result)}, ensure_ascii=False),
             ))
-            return self._commit(owner, request.operation_id, fingerprint, response)
+            return self._commit(
+                owner, request.operation_id, fingerprint, response,
+                medication_id=medication_id,
+                replacement_medication_id=replacement.id if replacement else None,
+            )
         except (IntegrityError, OperationalError) as exc:
             self.db.rollback()
             raise HTTPException(409 if isinstance(exc, IntegrityError) else 503, _CONFLICT if isinstance(exc, IntegrityError) else ACCOUNT_BUSY_DETAIL) from exc
@@ -248,6 +260,22 @@ class ManageMedicationCare:
     def history(self, principal: AuthenticatedPrincipal, start: date, end: date, patient_hash: str | None = None) -> dict[str, object]:
         self._validate_range(start, end)
         owner = self._scope(principal, patient_hash, write=False)
+        return self._history_for_patient(owner, start, end)
+
+    def history_share_context(self, patient_hash: str, start: date, end: date) -> dict[str, object]:
+        """호출자가 활성 연동으로 권한을 확인한 환자의 이력을 건수로만 요약한다."""
+        self._validate_range(start, end)
+        history = self._history_for_patient(patient_hash, start, end)
+        # CSV와 같은 전체 항목을 세므로 필요시 기록도 포함하며 복약률로 해석하지 않는다.
+        counts = Counter(item["status"] for item in history["items"])
+        return {
+            "start_date": history["start_date"], "end_date": history["end_date"],
+            "taken_count": counts["taken"], "skipped_count": counts["skipped"],
+            "unrecorded_count": counts["unrecorded"],
+        }
+
+    def _history_for_patient(self, owner: str, start: date, end: date) -> dict[str, object]:
+        """권한과 기간 검증을 마친 조회·공유에 동일한 이력 항목을 제공한다."""
         medications = self.saved.medication_repository.list_by_patient(owner)
         by_id = {med.id: med for med in medications}
         rows = self.db.query(_MedicationCompletion).filter(
@@ -327,11 +355,15 @@ class ManageMedicationCare:
                     raise HTTPException(422, "This PRN medication was not active on the selected date.")
             elif (not self.policy.is_due_on(med, day) and not correct_existing) or slot not in self.policy.read_slot_keys(med.schedule_slot_keys, med.daily_frequency):
                 raise HTTPException(422, "This medication has no scheduled dose in the selected date and slot.")
-            if request.actual_taken_at is not None:
+            actual_taken_at = request.actual_taken_at
+            if actual_taken_at is not None:
                 now = application_now()
-                actual = request.actual_taken_at.astimezone(now.tzinfo)
-                if actual > now or actual.date() < application_today() - timedelta(days=89):
+                actual = actual_taken_at.astimezone(now.tzinfo)
+                # 기기 시계가 서버보다 조금 빠르면 '지금 복용'도 미래가 되므로 재인증 시각과 같은 허용치를 둔다.
+                if actual > now + _CLIENT_CLOCK_SKEW or actual.date() < application_today() - timedelta(days=89):
                     raise HTTPException(422, "The actual dose time must be within the last 90 days and not in the future.")
+                # 허용치 안의 미래 시각은 서버가 받은 시각으로 저장해 기록이 미래에 놓이지 않게 한다.
+                actual_taken_at = min(actual, now)
             # 실제 복용 시각이 예정일과 달라도 예정일은 옮기지 않는다. 다음 날 복용도 사용자 보고로 남긴다.
             from controls.check_schedule_control import CheckSchedule
             schedule = CheckSchedule(self.db)
@@ -355,7 +387,7 @@ class ManageMedicationCare:
                     completed=bool(med.medication_status and med.medication_status_date == day), completed_at=None,
                 )
                 self.db.add(row)
-            apply_completion_report(self.db, row, status=request.status, actual_taken_at=request.actual_taken_at, reason=request.reason)
+            apply_completion_report(self.db, row, status=request.status, actual_taken_at=actual_taken_at, reason=request.reason)
             self.db.flush()
             prn_outbox_id = None
             if (
@@ -375,7 +407,9 @@ class ManageMedicationCare:
                     previous_slot_completion_states=before_states, alertable=True,
                 )
             response = {"success": True, **self._history_item(med, day, slot, row)}
-            result = self._commit(owner, request.operation_id, fingerprint, response)
+            result = self._commit(
+                owner, request.operation_id, fingerprint, response, medication_id=medication_id,
+            )
             if prn_outbox_id is not None:
                 self._completion_events.append({"outbox_id": prn_outbox_id})
             return result

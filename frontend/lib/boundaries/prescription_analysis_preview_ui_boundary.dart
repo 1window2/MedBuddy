@@ -13,17 +13,22 @@ import '../entities/medication_schedule_limits.dart';
 import '../entities/medication_slot_label.dart';
 import '../entities/medication_detail_entity.dart';
 import '../entities/medication_match_review_entity.dart';
+import '../entities/prescription_flow_entity.dart';
 import 'medication_candidate_dialog.dart';
 import '../entities/recognized_text_region_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../widgets/medbuddy_confirm_dialog.dart';
+import '../widgets/expandable_medication_section.dart';
 import '../widgets/medbuddy_notice.dart';
 import '../widgets/medication_dosing_mode_selector.dart';
 import '../widgets/medication_entry_fields.dart';
+import '../widgets/pinned_analysis_summary.dart';
+import '../widgets/responsive_card_header.dart';
 import '../theme/medbuddy_theme.dart';
 
 part 'prescription_preview_image_widgets.dart';
 part 'prescription_preview_medication_widgets.dart';
+part 'prescription_lookup_summary_widgets.dart';
 
 // 타입명: MedicationScheduleChangedCallback
 // 역할: 수정된 OCR 복약 일정과 원본 목록 인덱스를 상위 상태에 전달한다.
@@ -50,12 +55,12 @@ typedef MedicationScheduleAddedCallback =
 // 역할: UC-1 OCR 결과를 사용자에게 먼저 확인시키는 분석 예비 화면을 구성한다.
 
 // 클래스명: PrescriptionAnalysisPreviewUI
-// 역할: OCR 복약 표 검토·수정·추가와 분석 재개를 담당한다.
+// 역할: 약별 세로 카드에서 복약 정보 검토·수정·후보 선택과 분석 재개를 담당한다.
 // 주요 책임:
-// - OCR 결과의 모든 항목을 가로 스크롤 표로 비교하게 한다.
-// - 사용자가 표의 각 셀을 눌러 잘못 인식된 값을 바로 수정하게 한다.
+// - OCR 결과의 약별 정보를 가로 넘김 없이 세로로 비교하게 한다.
+// - 사용자가 각 항목을 눌러 잘못 인식된 값을 바로 수정하게 한다.
 // - OCR 누락 약은 같은 입력 형식으로 직접 추가하게 한다.
-// - 상세조회에 실패한 약은 확인된 약과 구분해 같은 표에서 다시 검토하게 한다.
+// - 미확인 약은 같은 카드의 후보 확인 버튼과 확인 상태로 구분한다.
 // - 분석 전에 뒤로가기를 통해 촬영 단계로 돌아갈 수 있게 한다.
 // 속성:
 // - medicationScheduleList (List<MedicationSchedule>): 검토·표시·시간대 분류에 사용할 복약 일정 목록.
@@ -67,7 +72,6 @@ class PrescriptionAnalysisPreviewUI extends StatefulWidget {
   final List<RecognizedTextRegion> recognizedTextRegions;
   final String previewImagePath;
   final String recognitionNotice;
-  final String lookupErrorMessage;
   final UserSetting userSetting;
   final VoidCallback onBackRequested;
   final VoidCallback onAnalysisRequested;
@@ -77,6 +81,7 @@ class PrescriptionAnalysisPreviewUI extends StatefulWidget {
   final bool isMedicationLookupReview;
   final VoidCallback? onVerifiedOnlyContinueRequested;
   final Map<int, MedicationMatchReview> matchReviews;
+  final Map<int, MedicationLookupStatus> lookupStatuses;
   final void Function(int, MedicationDetail)? onCandidateConfirmed;
 
   // 함수이름: PrescriptionAnalysisPreviewUI
@@ -102,7 +107,6 @@ class PrescriptionAnalysisPreviewUI extends StatefulWidget {
     this.recognizedTextRegions = const [],
     this.previewImagePath = '',
     this.recognitionNotice = '',
-    this.lookupErrorMessage = '',
     required this.userSetting,
     required this.onBackRequested,
     required this.onAnalysisRequested,
@@ -112,6 +116,7 @@ class PrescriptionAnalysisPreviewUI extends StatefulWidget {
     this.isMedicationLookupReview = false,
     this.onVerifiedOnlyContinueRequested,
     this.matchReviews = const {},
+    this.lookupStatuses = const {},
     this.onCandidateConfirmed,
   });
 
@@ -131,37 +136,8 @@ class PrescriptionAnalysisPreviewUI extends StatefulWidget {
 // - Adds medication missed by OCR using the existing editor layout, prefills editable date, batch, and duration defaults from the first prescription, and forwards the confirmed addition.
 class _PrescriptionAnalysisPreviewUIState
     extends State<PrescriptionAnalysisPreviewUI> {
-  final ScrollController _tableScrollController = ScrollController();
   bool _isAnalysisRequested = false;
-
-  // 함수이름: initState
-  // 함수역할: 첫 프레임이 끝나면 복약 표의 가로 스크롤 안내를 표시한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
-  @override
-  void initState() {
-    super.initState();
-    // 함수이름: initState.addPostFrameCallback callback
-    // 함수역할: OCR 복약 표 검토·수정·추가와 분석 재개에서 캡처된 작업 `_showTableScrollHint()`을 실행한다.
-    // 매개변수:
-    // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
-    // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _showTableScrollHint();
-    });
-  }
-
-  // 함수이름: dispose
-  // 함수역할: _tableScrollController 관련 자원을 정리하고 화면 수명 종료 처리를 수행한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
-  @override
-  void dispose() {
-    _tableScrollController.dispose();
-    super.dispose();
-  }
+  bool _isVerifiedOnlyConfirmationOpen = false;
 
   // 함수이름: build
   // 함수역할: 현재 입력값과 상태를 반영해 OCR 복약 표 검토·수정·추가와 분석 재개 화면을 구성한다.
@@ -172,6 +148,30 @@ class _PrescriptionAnalysisPreviewUIState
   Widget build(BuildContext context) {
     final text = _PreviewText(widget.userSetting.language);
     final recognitionNotice = widget.recognitionNotice.trim();
+    // 요약 개수와 약 카드가 같은 행별 조회 상태를 쓰도록 한 번만 정한다.
+    // 조회 이력이 없는 행은 카드에서 결과를 단정하지 않고, 요약에서는 아직 조회할 약으로 센다.
+    final rowLookupStatuses = <MedicationLookupStatus?>[
+      for (var index = 0; index < widget.medicationScheduleList.length; index++)
+        widget.verifiedScheduleIndexes.contains(index)
+            ? MedicationLookupStatus.verified
+            : widget.lookupStatuses[index] ??
+                  (widget.matchReviews[index]?.candidates.isNotEmpty == true
+                      ? MedicationLookupStatus.candidates
+                      : null),
+    ];
+    final lookupCounts = <MedicationLookupStatus, int>{};
+    for (final status in rowLookupStatuses) {
+      lookupCounts.update(
+        status ?? MedicationLookupStatus.pending,
+        (count) => count + 1,
+        ifAbsent: () => 1,
+      );
+    }
+    final allVerified =
+        widget.isMedicationLookupReview &&
+        widget.medicationScheduleList.isNotEmpty &&
+        widget.verifiedScheduleIndexes.length ==
+            widget.medicationScheduleList.length;
     final hasReviewRequired = widget.medicationScheduleList.any(
       // 함수이름: build.any callback
       // 함수역할: OCR 복약 표 검토·수정·추가와 분석 재개에 대해 `schedule.isNameReviewRequired` 조건으로 컬렉션 항목을 판별한다.
@@ -184,12 +184,24 @@ class _PrescriptionAnalysisPreviewUIState
     return Scaffold(
       backgroundColor: Colors.white,
       bottomNavigationBar: _AnalysisBottomBar(
-        label: widget.isMedicationLookupReview
+        label: allVerified
+            ? (text.isEnglish ? 'View results' : '결과 보기')
+            : widget.isMedicationLookupReview
             ? text.retryUnverifiedMedications
             : hasReviewRequired
             ? text.reviewBeforeAnalyze
             : text.confirmAndAnalyze,
         onPressed: _isAnalysisRequested ? null : _requestAnalysis,
+        continueLabel: widget.isMedicationLookupReview && !allVerified
+            ? text.continueWithVerifiedOnly
+            : null,
+        onContinue:
+            !_isAnalysisRequested &&
+                !_isVerifiedOnlyConfirmationOpen &&
+                widget.verifiedScheduleIndexes.isNotEmpty &&
+                widget.onVerifiedOnlyContinueRequested != null
+            ? _confirmVerifiedOnlyContinue
+            : null,
       ),
       body: SafeArea(
         top: false,
@@ -203,51 +215,21 @@ class _PrescriptionAnalysisPreviewUIState
                 onBackRequested: widget.onBackRequested,
               ),
               Expanded(
-                child: _ScrollableCenteredCard(
+                child: _PrescriptionReviewLayout(
+                  title: text.title(DateTime.now()),
+                  isEnglish: text.isEnglish,
+                  showSummary: widget.isMedicationLookupReview,
+                  counts: lookupCounts,
                   child: Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(31, 32, 31, 30),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: MedBuddyRadii.largeCard,
-                      border: Border.all(color: MedBuddyColors.outline),
-                      boxShadow: MedBuddyShadows.card,
-                    ),
+                    padding: const EdgeInsets.only(bottom: 8),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          text.title(DateTime.now()),
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: MedBuddyColors.textStrong,
-                            fontSize: 26,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0,
-                          ),
-                        ),
-                        if (widget.isMedicationLookupReview) ...[
-                          const SizedBox(height: 14),
-                          MedBuddyNotice(
-                            key: const Key('medication-lookup-review-banner'),
-                            message: text.lookupReviewGuide(
-                              widget.medicationScheduleList.length -
-                                  widget.verifiedScheduleIndexes.length,
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          if (widget.lookupErrorMessage.isNotEmpty) ...[
-                            _RecognitionNoticeBanner(
-                              message: widget.lookupErrorMessage,
-                            ),
-                            const SizedBox(height: 12),
-                          ],
-                        ] else if (recognitionNotice.isNotEmpty) ...[
-                          const SizedBox(height: 14),
+                        if (recognitionNotice.isNotEmpty) ...[
                           _RecognitionNoticeBanner(message: recognitionNotice),
-                          const SizedBox(height: 20),
-                        ] else
-                          const SizedBox(height: 26),
+                          const SizedBox(height: 12),
+                        ],
                         if (widget.previewImagePath.trim().isNotEmpty) ...[
                           _RecognizedTextRegionPreview(
                             imagePath: widget.previewImagePath,
@@ -268,50 +250,22 @@ class _PrescriptionAnalysisPreviewUIState
                           ),
                           const SizedBox(height: 10),
                         ],
-                        _PreviewMedicationTable(
+                        _PreviewMedicationList(
                           medicationScheduleList: widget.medicationScheduleList,
                           previewText: text,
                           userSetting: widget.userSetting,
-                          scrollController: _tableScrollController,
                           onEditRequested: _showMedicationEditor,
                           verifiedScheduleIndexes:
                               widget.verifiedScheduleIndexes,
+                          isMedicationLookupReview:
+                              widget.isMedicationLookupReview,
+                          matchReviews: widget.matchReviews,
+                          lookupStatuses: rowLookupStatuses,
+                          onCandidateRequested:
+                              widget.onCandidateConfirmed == null
+                              ? null
+                              : _showMedicationCandidates,
                         ),
-                        if (widget.isMedicationLookupReview &&
-                            widget.onCandidateConfirmed != null)
-                          for (final entry in widget.matchReviews.entries)
-                            if (entry.value.candidates.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 12),
-                                child: OutlinedButton.icon(
-                                  key: Key(
-                                    'medication-candidates-${entry.key}',
-                                  ),
-                                  icon: const Icon(Icons.fact_check_outlined),
-                                  label: Text(
-                                    '${entry.key + 1}. ${widget.medicationScheduleList[entry.key].medicationName}\n${widget.userSetting.isEnglish ? 'Review medication candidates' : '약품 후보 확인'}',
-                                  ),
-                                  onPressed: () => _showMedicationCandidates(
-                                    entry.key,
-                                    entry.value,
-                                  ),
-                                ),
-                              ),
-                        if (widget.isMedicationLookupReview &&
-                            widget.verifiedScheduleIndexes.isNotEmpty &&
-                            widget.onVerifiedOnlyContinueRequested != null) ...[
-                          const SizedBox(height: 18),
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton(
-                              key: const Key(
-                                'continue-with-verified-medications',
-                              ),
-                              onPressed: _confirmVerifiedOnlyContinue,
-                              child: Text(text.continueWithVerifiedOnly),
-                            ),
-                          ),
-                        ],
                         const SizedBox(height: 8),
                       ],
                     ),
@@ -434,48 +388,32 @@ class _PrescriptionAnalysisPreviewUIState
   // - 없음.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _confirmVerifiedOnlyContinue() async {
+    if (_isAnalysisRequested ||
+        _isVerifiedOnlyConfirmationOpen ||
+        widget.verifiedScheduleIndexes.isEmpty) {
+      return;
+    }
+    setState(() => _isVerifiedOnlyConfirmationOpen = true);
     final text = _PreviewText(widget.userSetting.language);
     final unverifiedCount =
         widget.medicationScheduleList.length -
         widget.verifiedScheduleIndexes.length;
-    final shouldContinue = await showMedBuddyConfirmDialog(
-      context,
-      title: text.continueWithVerifiedTitle,
-      message: text.continueWithVerifiedWarning(unverifiedCount),
-      cancelLabel: text.cancel,
-      confirmLabel: text.continueLabel,
-      cancelKey: const Key('cancel-verified-only-continue'),
-      confirmKey: const Key('confirm-verified-only-continue'),
-    );
-    if (shouldContinue && mounted) {
-      widget.onVerifiedOnlyContinueRequested?.call();
+    try {
+      final shouldContinue = await showMedBuddyConfirmDialog(
+        context,
+        title: text.continueWithVerifiedTitle,
+        message: text.continueWithVerifiedWarning(unverifiedCount),
+        cancelLabel: text.cancel,
+        confirmLabel: text.continueLabel,
+        cancelKey: const Key('cancel-verified-only-continue'),
+        confirmKey: const Key('confirm-verified-only-continue'),
+      );
+      if (shouldContinue && mounted) {
+        widget.onVerifiedOnlyContinueRequested?.call();
+      }
+    } finally {
+      if (mounted) setState(() => _isVerifiedOnlyConfirmationOpen = false);
     }
-  }
-
-  // 함수이름: _showTableScrollHint
-  // 함수역할: OCR 표가 처음 표시될 때 가로로 더 볼 수 있다는 안내를 잠시 노출한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
-  void _showTableScrollHint() {
-    if (!mounted || widget.medicationScheduleList.isEmpty) {
-      return;
-    }
-    final text = _PreviewText(widget.userSetting.language);
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      SnackBar(
-        key: const Key('ocr-table-scroll-hint'),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 3),
-        content: Row(
-          children: [
-            const Icon(Icons.swipe_left_rounded, color: Colors.white),
-            const SizedBox(width: 10),
-            Expanded(child: Text(text.tableScrollHint)),
-          ],
-        ),
-      ),
-    );
   }
 
   // 함수이름: _requestAnalysis
@@ -484,7 +422,7 @@ class _PrescriptionAnalysisPreviewUIState
   // - 없음.
   // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
   void _requestAnalysis() {
-    if (_isAnalysisRequested) {
+    if (_isAnalysisRequested || _isVerifiedOnlyConfirmationOpen) {
       return;
     }
     // 함수이름: _requestAnalysis.setState callback

@@ -388,6 +388,8 @@ class _SendControl extends ManageLinkedChat {
     String? pharmacyId,
     String? hospitalId,
     String? hospitalScheduleDate,
+    String? historyStartDate,
+    String? historyEndDate,
   }) async {
     calls.add((
       id: clientMessageId,

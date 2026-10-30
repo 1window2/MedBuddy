@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import '../entities/medication_detail_entity.dart';
 import '../entities/medication_match_review_entity.dart';
 import '../entities/medication_schedule_entity.dart';
+import '../entities/user_setting_entity.dart';
 import '../services/api_config.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
@@ -34,6 +35,7 @@ class CheckMedicationDetail {
   final String baseUrl;
   final http.Client _client;
   final bool _ownsClient;
+  final String Function()? _readSearchMode;
 
   // Function Name: CheckMedicationDetail
   // Description: Binds medication-name detail lookup to the configured backend and an injected or owned authenticated HTTP client.
@@ -42,9 +44,13 @@ class CheckMedicationDetail {
   // - client (http.Client?): HTTP transport; constructor documentation specifies ownership for injected clients.
   // Returns:
   // - CheckMedicationDetail: the initialized instance.
-  CheckMedicationDetail({this.baseUrl = ApiConfig.baseUrl, http.Client? client})
-    : _client = client ?? AuthenticatedApiClient(),
-      _ownsClient = client == null;
+  CheckMedicationDetail({
+    this.baseUrl = ApiConfig.baseUrl,
+    http.Client? client,
+    String Function()? readSearchMode,
+  }) : _client = client ?? AuthenticatedApiClient(),
+       _readSearchMode = readSearchMode,
+       _ownsClient = client == null;
 
   // 함수이름: requestMedicationDetail
   // 함수역할: 처방전 원문을 함께 조회하고 불확실한 후보는 사용자 확인 단계로 전달한다.
@@ -60,6 +66,8 @@ class CheckMedicationDetail {
     if (medicationName.isEmpty) {
       return null;
     }
+    // 검색 범위만 선택하며 원본 약명·함량은 서버의 동일 약품 판정에 그대로 전달한다.
+    final searchMode = normalizeMedicationSearchMode(_readSearchMode?.call());
 
     try {
       final response = await _client
@@ -68,6 +76,7 @@ class CheckMedicationDetail {
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
               'extracted_text': medicationName,
+              'search_mode': searchMode,
               if (medicationSchedule.rawMedicationName.trim().isNotEmpty &&
                   !{
                     'user_edit',

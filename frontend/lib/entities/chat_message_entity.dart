@@ -2,6 +2,7 @@
 // 역할: 환자·보호자 채팅 메시지와 읽음 상태를 표현한다.
 
 import 'json_value_reader.dart';
+import 'medication_history_entity.dart';
 import 'medication_schedule_entity.dart';
 
 // 클래스명: ChatMessageKind
@@ -18,7 +19,8 @@ enum ChatMessageKind {
   medicationDiscomfort,
   pharmacyShare,
   pharmacyPhoneVerified,
-  hospitalShare;
+  hospitalShare,
+  medicationHistoryShare;
 
   // 함수이름: wireName
   // 함수역할: 현재 메시지 유형을 REST·WebSocket에서 공유하는 snake_case 전송값으로 변환한다.
@@ -35,6 +37,7 @@ enum ChatMessageKind {
     ChatMessageKind.pharmacyShare => 'pharmacy_share',
     ChatMessageKind.pharmacyPhoneVerified => 'pharmacy_phone_verified',
     ChatMessageKind.hospitalShare => 'hospital_share',
+    ChatMessageKind.medicationHistoryShare => 'medication_history_share',
   };
 
   // 함수이름: fromWireName
@@ -272,19 +275,57 @@ class ChatScheduleContext {
 // - name (String): 표시하거나 길찾기에 사용할 약국 이름
 // - address (String): 복사하거나 표시할 약국 주소
 // - telephone (String): 약국 전화번호 원문
-// - todayHours (String): 공유 시점의 약국 영업시간 표시문
 // - latitude (double): WGS84 위도(도 단위)
 // - longitude (double): WGS84 경도(도 단위)
 // - sourceUpdatedAt (DateTime?): 원본 약국 자료의 갱신 시각
 // 병원·약국 카드의 연락처와 길찾기 데이터는 같은 계약을 사용한다.
+class ChatPlaceOperatingSnapshot {
+  final String status;
+  final DateTime asOf;
+  final DateTime? opensAt;
+  final DateTime? closesAt;
+
+  const ChatPlaceOperatingSnapshot({
+    required this.status,
+    required this.asOf,
+    this.opensAt,
+    this.closesAt,
+  });
+
+  static ChatPlaceOperatingSnapshot? tryParse(Object? value) {
+    if (value is! Map) return null;
+    DateTime? instant(Object? raw) {
+      final parsed = DateTime.tryParse(readJsonText(raw));
+      return parsed?.isUtc == true ? parsed : null;
+    }
+
+    final asOf = instant(value['as_of']);
+    if (asOf == null) return null;
+    final rawStatus = readJsonText(value['status']);
+    const statuses = {
+      'open',
+      'closing_soon',
+      'before_open',
+      'closed',
+      'unknown',
+    };
+    return ChatPlaceOperatingSnapshot(
+      status: statuses.contains(rawStatus) ? rawStatus : 'unknown',
+      asOf: asOf,
+      opensAt: instant(value['opens_at']),
+      closesAt: instant(value['closes_at']),
+    );
+  }
+}
+
 abstract class ChatPlaceContext {
   final String name;
   final String address;
   final String telephone;
-  final String todayHours;
   final double latitude;
   final double longitude;
   final DateTime? sourceUpdatedAt;
+  final ChatPlaceOperatingSnapshot? operatingSnapshot;
 
   const ChatPlaceContext({
     required this.name,
@@ -292,8 +333,8 @@ abstract class ChatPlaceContext {
     required this.telephone,
     required this.latitude,
     required this.longitude,
-    this.todayHours = '',
     this.sourceUpdatedAt,
+    this.operatingSnapshot,
   });
 }
 
@@ -307,7 +348,6 @@ class ChatPharmacyContext extends ChatPlaceContext {
   // - name (String): 표시하거나 길찾기에 사용할 약국 이름
   // - address (String): 복사하거나 표시할 약국 주소
   // - telephone (String): 약국 전화번호 원문
-  // - todayHours (String): 공유 시점의 약국 영업시간 표시문
   // - latitude (double): WGS84 위도(도 단위)
   // - longitude (double): WGS84 경도(도 단위)
   // - sourceUpdatedAt (DateTime?): 원본 약국 자료의 갱신 시각
@@ -318,10 +358,10 @@ class ChatPharmacyContext extends ChatPlaceContext {
     required super.name,
     required super.address,
     required super.telephone,
-    super.todayHours,
     required super.latitude,
     required super.longitude,
     super.sourceUpdatedAt,
+    super.operatingSnapshot,
   });
 
   // 함수이름: ChatPharmacyContext.fromJson
@@ -341,11 +381,13 @@ class ChatPharmacyContext extends ChatPlaceContext {
       name: name,
       address: readJsonText(json['address']),
       telephone: readJsonText(json['telephone']),
-      todayHours: readJsonText(json['today_hours']),
       latitude: readJsonDouble(json['latitude']) ?? 0,
       longitude: readJsonDouble(json['longitude']) ?? 0,
       sourceUpdatedAt: DateTime.tryParse(
         readJsonText(json['source_updated_at']),
+      ),
+      operatingSnapshot: ChatPlaceOperatingSnapshot.tryParse(
+        json['operating_snapshot'],
       ),
     );
   }
@@ -364,8 +406,8 @@ class ChatHospitalContext extends ChatPlaceContext {
     required super.telephone,
     required super.latitude,
     required super.longitude,
-    super.todayHours,
     super.sourceUpdatedAt,
+    super.operatingSnapshot,
     required this.departments,
     required this.scheduleDate,
   });
@@ -384,13 +426,67 @@ class ChatHospitalContext extends ChatPlaceContext {
       telephone: base.telephone,
       latitude: base.latitude,
       longitude: base.longitude,
-      todayHours: base.todayHours,
       sourceUpdatedAt: base.sourceUpdatedAt,
+      operatingSnapshot: base.operatingSnapshot,
       departments: (json['departments'] as List? ?? const [])
           .map((value) => value.toString())
           .toList(growable: false),
       scheduleDate: date,
     );
+  }
+}
+
+// 공유 당시의 날짜 범위와 집계만 보존하며 현재 기록으로 해석하지 않는다.
+class ChatMedicationHistoryContext {
+  final DateTime startDate;
+  final DateTime endDate;
+  final int takenCount;
+  final int skippedCount;
+  final int unrecordedCount;
+
+  const ChatMedicationHistoryContext._({
+    required this.startDate,
+    required this.endDate,
+    required this.takenCount,
+    required this.skippedCount,
+    required this.unrecordedCount,
+  });
+
+  factory ChatMedicationHistoryContext.fromJson(Map<String, dynamic> json) {
+    final start = MedicationHistoryDates.parse(json['start_date']);
+    final end = MedicationHistoryDates.parse(json['end_date']);
+    final days = end.difference(start).inDays + 1;
+    if (start.year < 1 ||
+        end.year < 1 ||
+        days < 1 ||
+        days > MedicationHistoryRange.maximumReadDays) {
+      throw const FormatException('공유 복약 기록의 날짜 범위가 올바르지 않습니다.');
+    }
+    int count(String key) {
+      final value = json[key];
+      if (value is! int || value < 0) {
+        throw const FormatException('공유 복약 기록의 집계가 올바르지 않습니다.');
+      }
+      return value;
+    }
+
+    return ChatMedicationHistoryContext._(
+      startDate: start,
+      endDate: end,
+      takenCount: count('taken_count'),
+      skippedCount: count('skipped_count'),
+      unrecordedCount: count('unrecorded_count'),
+    );
+  }
+
+  // 손상된 첨부는 숨기되 메시지 본문과 나머지 대화는 유지한다.
+  static ChatMedicationHistoryContext? tryParse(Object? value) {
+    if (value is! Map<String, dynamic>) return null;
+    try {
+      return ChatMedicationHistoryContext.fromJson(value);
+    } on FormatException {
+      return null;
+    }
   }
 }
 
@@ -435,6 +531,7 @@ class ChatMessage {
   final ChatScheduleContext? scheduleContext;
   final ChatPharmacyContext? pharmacyContext;
   final ChatHospitalContext? hospitalContext;
+  final ChatMedicationHistoryContext? historyContext;
   final int? remainingDays;
   final DateTime? courseEndDate;
   final bool showSafetyGuidance;
@@ -477,6 +574,7 @@ class ChatMessage {
     this.scheduleContext,
     this.pharmacyContext,
     this.hospitalContext,
+    this.historyContext,
     this.remainingDays,
     this.courseEndDate,
     this.showSafetyGuidance = false,
@@ -559,6 +657,10 @@ class ChatMessage {
             )
           : null,
       remainingDays: readJsonInt(context['remaining_days']),
+      historyContext:
+          json['hidden_for_me'] == true || json['deleted_for_everyone'] == true
+          ? null
+          : ChatMedicationHistoryContext.tryParse(context['history_context']),
       courseEndDate: DateTime.tryParse(
         readJsonText(context['course_end_date']),
       ),
@@ -614,6 +716,7 @@ class ChatMessage {
       scheduleContext: redact ? null : scheduleContext,
       pharmacyContext: redact ? null : pharmacyContext,
       hospitalContext: redact ? null : hospitalContext,
+      historyContext: redact ? null : historyContext,
       remainingDays: redact ? null : remainingDays,
       courseEndDate: redact ? null : courseEndDate,
       showSafetyGuidance: !redact && showSafetyGuidance,

@@ -6,12 +6,49 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/boundaries/manage_user_setting_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/authentication_control.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
+import 'package:medbuddy_frontend/services/dose_home_widget_service.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 
 // 함수이름: main
 // 함수역할: 초안 편집과 음성 제어, 좁은 화면·큰 글씨 회귀 사례를 등록한다.
 // 매개변수·반환값: 없음.
 void main() {
+  for (final language in ['ko', 'en']) {
+    for (final widgetSupported in [false, true]) {
+      testWidgets(
+        '표시 방식과 홈 화면을 구분하고 음성 미리보기를 마지막에 둔다 $language $widgetSupported',
+        (tester) async {
+          final originalPlatform = DoseHomeWidget.platform;
+          DoseHomeWidget.platform = _WidgetPlatform(widgetSupported);
+          addTearDown(() => DoseHomeWidget.platform = originalPlatform);
+          await _pumpSettings(tester, setting: UserSetting(language: language));
+          final keys = [
+            'fontSizeSelector',
+            'languageSelector',
+            'timeFormatSelector',
+            'homeScheduleSourceSelector',
+            if (widgetSupported) 'addDoseHomeWidget',
+            'readingSpeedSelector',
+            'settingsVoicePreviewButton',
+          ];
+          for (var index = 1; index < keys.length; index++) {
+            expect(
+              tester.getBottomLeft(find.byKey(ValueKey(keys[index - 1]))).dy,
+              lessThanOrEqualTo(
+                tester.getTopLeft(find.byKey(ValueKey(keys[index]))).dy,
+              ),
+            );
+          }
+          expect(
+            find.byKey(const ValueKey('addDoseHomeWidget')),
+            widgetSupported ? findsOneWidget : findsNothing,
+          );
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
   // 선택창의 굵은 글씨와 현재 값 강조가 모든 표시 설정에 동일하게 적용된다.
   testWidgets('값 선택은 굵은 글씨와 초록색 선택 배경으로 통일한다', (tester) async {
     await _pumpSettings(tester);
@@ -229,6 +266,14 @@ void main() {
       }
     }
   }
+}
+
+// 실제 위젯을 추가하지 않고 지원 기기에서의 메뉴 배치만 검증한다.
+class _WidgetPlatform extends DoseHomeWidgetPlatform {
+  @override
+  final bool supported;
+
+  const _WidgetPlatform(this.supported);
 }
 
 // 함수이름: _tap

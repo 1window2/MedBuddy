@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dose_widget_label">MedBuddy 복약 일정</string>
+    <string name="dose_widget_preview_title">나의 복약 일정</string>
+    <string name="dose_widget_taken">복용했어요</string>
+    <string name="dose_widget_sign_in_title">로그인이 필요해요</string>
+    <string name="dose_widget_sign_in_body">로그인하면 복약 일정을 볼 수 있어요.</string>
+    <string name="dose_widget_sign_in">로그인하기</string>
+    <string name="dose_widget_previous_patient">이전 환자</string>
+    <string name="dose_widget_next_patient">다음 환자</string>
+    <string name="dose_widget_previous_schedule">이전 복약 일정</string>
+    <string name="dose_widget_next_schedule">다음 복약 일정</string>
+    <string name="dose_widget_refresh">새로고침</string>
+</resources>

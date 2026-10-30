@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dose_widget_label">MedBuddy medication schedule</string>
+    <string name="dose_widget_preview_title">My medication</string>
+    <string name="dose_widget_taken">Taken</string>
+    <string name="dose_widget_sign_in_title">Please sign in</string>
+    <string name="dose_widget_sign_in_body">Sign in to view your medication schedule.</string>
+    <string name="dose_widget_sign_in">Sign in</string>
+    <string name="dose_widget_previous_patient">Previous patient</string>
+    <string name="dose_widget_next_patient">Next patient</string>
+    <string name="dose_widget_previous_schedule">Previous schedule</string>
+    <string name="dose_widget_next_schedule">Next schedule</string>
+    <string name="dose_widget_refresh">Refresh</string>
+</resources>

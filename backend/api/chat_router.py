@@ -27,6 +27,7 @@ from api.dependencies import (
     get_authorization_control,
     get_manage_linked_chat,
     get_check_nearby_hospital,
+    get_check_nearby_pharmacy,
     verify_app_check_token,
 )
 from api.route_support import (
@@ -38,6 +39,7 @@ from api.route_support import (
 )
 from controls.authorization_control import AuthorizationControl
 from controls.check_nearby_hospital_control import CheckNearbyHospital
+from controls.check_nearby_pharmacy_control import CheckNearbyPharmacy
 from controls.check_schedule_control import CheckSchedule
 from controls.manage_linked_chat_control import ManageLinkedChat
 from core.api_contract import CHAT_CLOSE_CODES_FEATURE, client_declares_feature
@@ -47,7 +49,11 @@ from core.request_database_work import run_request_database_work
 from core.request_rate_limits import RateLimitRule, RequestRateLimitStore
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from entities.patient_hash_entity import DEFAULT_PATIENT_HASH
-from entities.chat_message_entity import CHAT_MESSAGE_KIND_HOSPITAL_SHARE
+from entities.chat_message_entity import (
+    CHAT_MESSAGE_KIND_HOSPITAL_SHARE,
+    CHAT_MESSAGE_KIND_PHARMACY_SHARE,
+    CHAT_MESSAGE_KIND_PHARMACY_PHONE_VERIFIED,
+)
 from api.hospital_router import HOSPITAL_BUDGET_EXHAUSTED_DETAIL
 from boundaries.hospital_api_boundary import (
     HospitalApiBudgetExhaustedError,
@@ -252,6 +258,7 @@ async def post_chat_message(
     authorization: AuthorizationControl = Depends(get_authorization_control),
     chat: ManageLinkedChat = Depends(get_manage_linked_chat),
     hospital: CheckNearbyHospital = Depends(get_check_nearby_hospital),
+    pharmacy: CheckNearbyPharmacy = Depends(get_check_nearby_pharmacy),
 ) -> dict[str, object]:
     """Persist message and notification job atomically, then broadcast live state."""
     authorized_user_hash = await run_request_database_work(
@@ -261,20 +268,25 @@ async def post_chat_message(
         request=request,
         user_hash=authorized_user_hash,
     )
-    hospital_arguments = {}
-    if payload.message_kind == CHAT_MESSAGE_KIND_HOSPITAL_SHARE:
+    share_arguments = {}
+    if payload.message_kind in (
+        CHAT_MESSAGE_KIND_HOSPITAL_SHARE, CHAT_MESSAGE_KIND_PHARMACY_SHARE,
+        CHAT_MESSAGE_KIND_PHARMACY_PHONE_VERIFIED,
+    ):
         existing = await run_request_database_work(
             chat.find_sent_message, link_id=link_id, sender_hash=authorized_user_hash,
             client_message_id=payload.client_message_id,
+            message_kind=payload.message_kind,
         )
         if existing is not None:
             return await publish_saved_message(link_id, existing, request)
+    if payload.message_kind == CHAT_MESSAGE_KIND_HOSPITAL_SHARE:
         await enforce_hospital_share_daily_quota(
             request=request, user_hash=authorized_user_hash,
         )
         try:
             async with asyncio.timeout(settings.HOSPITAL_SEARCH_TIMEOUT_SECONDS):
-                hospital_arguments["hospital_context"] = await hospital.requestShareContext(
+                share_arguments["hospital_context"] = await hospital.requestShareContext(
                     payload.hospital_id, payload.hospital_schedule_date,
                 )
         except ValueError:
@@ -287,6 +299,13 @@ async def post_chat_message(
         except (HospitalApiUnavailableError, HospitalApiResponseError, TimeoutError):
             raise HTTPException(503, "Hospital information is temporarily unavailable.",
                                 headers={"Retry-After": "5"}) from None
+    elif payload.message_kind in (CHAT_MESSAGE_KIND_PHARMACY_SHARE, CHAT_MESSAGE_KIND_PHARMACY_PHONE_VERIFIED):
+        source = await run_request_database_work(
+            chat.prepare_pharmacy_share, link_id=link_id, sender_hash=authorized_user_hash,
+            pharmacy_id=payload.pharmacy_id,
+        )
+        if source is not None:
+            share_arguments["pharmacy_operating_snapshot"] = await pharmacy.requestShareOperatingSnapshot(source)
     result = await run_request_database_work(
         chat.send_message,
         link_id=link_id,
@@ -299,7 +318,9 @@ async def post_chat_message(
         slot_key=payload.slot_key,
         pharmacy_id=payload.pharmacy_id,
         source_alert_id=payload.source_alert_id,
-        **hospital_arguments,
+        history_start_date=payload.history_start_date,
+        history_end_date=payload.history_end_date,
+        **share_arguments,
     )
     return await publish_saved_message(link_id, result, request)
 
@@ -403,6 +424,7 @@ async def mark_chat_read(
 def get_chat_unread_count(
     link_id: int,
     user_hash: str = DEFAULT_PATIENT_HASH,
+    include_notification_preview: bool = False,
     principal: AuthenticatedPrincipal = Depends(get_authenticated_app_principal),
     authorization: AuthorizationControl = Depends(get_authorization_control),
     chat: ManageLinkedChat = Depends(get_manage_linked_chat),
@@ -412,6 +434,7 @@ def get_chat_unread_count(
     return chat.request_unread_count(
         link_id=link_id,
         user_hash=authorized_user_hash,
+        include_notification_preview=include_notification_preview,
     )
 
 

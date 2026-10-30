@@ -1,4 +1,5 @@
 @startuml
+skinparam defaultFontName Nanum Gothic
 title 복약 기록 동기화와 홈 위젯 주요 클래스
 skinparam shadowing false
 hide empty members
@@ -13,6 +14,9 @@ package "Flutter" {
   class CaregiverNotificationMonitorService <<Service>>
   class DoseSyncService <<Service>>
   class DoseOutboxStore <<Service>>
+  class OfflineScheduleWindow <<Entity>>
+  note "dose_offline_schedule_store.dart\nDoseOfflineScheduleStore extension\n독립 객체가 아닌 암호화 저장소 확장" as OfflineStore
+  class "CheckSchedule" as FCheckSchedule <<Control>>
   note "dose_widget_store.dart\nDart extension DoseWidgetStore on DoseOutboxStore\n독립 객체가 아닌 암호화 저장소 확장" as DoseWidgetStore
   class DoseSyncBackgroundScheduler <<Service>>
   class DoseHomeWidget <<Service>>
@@ -42,6 +46,10 @@ MedBuddyViewModel --> DoseSyncService
 LinkedChatUI *-- LinkedChatDoseRecorder
 LinkedChatDoseRecorder --> DoseSyncService : 선택한 약·시간대 기록
 DoseSyncService --> DoseOutboxStore : 영속 큐·캐시·선점
+DoseSyncService --> FCheckSchedule : 서버 시작일·종료일을 확인한 14일 창
+DoseSyncService --> OfflineScheduleWindow : 앱·위젯의 날짜별 일정 계산
+OfflineStore ..> DoseOutboxStore : 계정·캐시 revision을 함께 검사
+DoseHomeWidget --> DoseSyncService : prepareOfflineCache() / 주기 갱신의 refreshScheduleWindow()
 DoseSyncService --> DoseSyncBackgroundScheduler
 DoseSyncBackgroundScheduler --> WorkManager
 WorkManager --> DoseSyncService : 연결 시 재전송
@@ -89,6 +97,18 @@ end note
 note bottom of DoseSyncService
   기기 영속 저장 이후 표시 콜백은 변경을 합쳐 비동기로 발행한다.
   느린 위젯 갱신이 복용 기록 저장·서버 전송을 막지 않는다.
+  서버가 확인한 기간만 보관하며 실패로 기간을 연장하지 않는다.
+  당일 서버 일정 저장 뒤 refreshScheduleWindow()로 새 창을 받는다.
+  받는 사이 캐시 revision이 바뀌어 거절된 창은 다시 받는다.
+  약 변경·삭제 전 suspendSchedule()로 비우고, 적용되지 않은 실패는
+  restoreSchedule()로 되돌리며 적용·불명확 결과는 invalidateSchedule()로 비운다.
+  로그아웃 준비 실패 시 동일 세션에만 저장소 활성화와 재시도를 복원한다.
+end note
+note bottom of OfflineScheduleWindow
+  최대 14일 창·복용 시작/종료·복용 주기가 모두 맞는 정기 일정만 계산한다.
+  검토 필요 약은 제외하고 전날 완료 상태는 모두 초기화한다.
+  오늘의 미전송 기록은 기존 큐로 겹쳐 표시한다.
+  기간 밖·다른 계정·기기 시각 역행은 이전 캐시 재사용 근거가 아니다.
 end note
 note bottom of DoseOutboxStore
   SQLite 트랜잭션에서 계정별 유효한 전송 선점을 하나만 허용한다.
@@ -104,6 +124,8 @@ note bottom of SyncDose
   영속 기록 후 연결이 사라지면 채팅 없이 본인 복용만 검증·저장한다.
   현재 Client는 dose-days 기능을 선언해 실제 복용일만 조회·기록한다.
   연결 환자 미복약 검사도 복용일을 적용하며 구형 일일 조회와 구분한다.
+  신규 요청에 regimen_revisions가 있으면 약 잠금 후 현재 버전과 비교한다.
+  불일치는 409이며 이미 성공한 동일 영수증은 다시 적용하지 않는다.
 end note
 note right of NotificationService
   활성 계정·오늘 날짜·완료 시간대의 예약과 재알림만 취소한다.

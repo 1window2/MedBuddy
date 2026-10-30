@@ -8,6 +8,22 @@ import 'manual_medication_entry_ui_boundary.dart';
 import 'medication_capture_options_ui_boundary.dart';
 import 'pill_identification_ui_boundary.dart';
 
+// 선택한 촬영 방식과 viewModel 계정의 기존 저장 명령을 알약 식별 화면에 연결하고 화면이 닫힐 때 완료한다.
+Future<void> openPillIdentification(
+  BuildContext context,
+  MedBuddyViewModel viewModel,
+  PillCaptureMode mode,
+) => Navigator.of(context).push<void>(
+  MaterialPageRoute<void>(
+    builder: (_) => PillIdentificationUI(
+      userSetting: viewModel.userSetting,
+      captureMode: mode,
+      onSaveRequested: viewModel.saveIdentifiedPill,
+      onBatchSaveRequested: viewModel.saveIdentifiedPills,
+    ),
+  ),
+);
+
 // context의 현재 계정으로 공통 약 등록 메뉴를 열고 선택한 입력 흐름이 끝날 때 완료한다.
 // 입력 취소 시 데이터를 저장하지 않으며, OCR은 최상위 홈의 분석 화면으로 연결한다.
 Future<void> openMedicationRegistration(BuildContext context) async {
@@ -31,18 +47,12 @@ Future<void> openMedicationRegistration(BuildContext context) async {
   }
   if (task == MedicationCaptureTask.multiplePills ||
       task == MedicationCaptureTask.individualPills) {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        // 선택한 촬영 방식과 기존 저장 명령을 알약 식별 화면에 연결한다.
-        builder: (_) => PillIdentificationUI(
-          userSetting: viewModel.userSetting,
-          captureMode: task == MedicationCaptureTask.multiplePills
-              ? PillCaptureMode.singlePhoto
-              : PillCaptureMode.individualPhotos,
-          onSaveRequested: viewModel.saveIdentifiedPill,
-          onBatchSaveRequested: viewModel.saveIdentifiedPills,
-        ),
-      ),
+    await openPillIdentification(
+      context,
+      viewModel,
+      task == MedicationCaptureTask.multiplePills
+          ? PillCaptureMode.singlePhoto
+          : PillCaptureMode.individualPhotos,
     );
     return;
   }

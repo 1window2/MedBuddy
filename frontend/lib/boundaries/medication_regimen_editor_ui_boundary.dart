@@ -618,11 +618,15 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
         _busy = true;
         _error = null;
       });
+      final doseLabel = localizedDoseAmountLabel(
+        _doseText,
+        _english ? 'en' : 'ko',
+      );
       final confirmed = await showMedBuddyConfirmDialog(
         context,
         title: _title,
         message:
-            '${widget.medication.displayName}\n$_dateLabel: ${formatJsonDate(_effectiveDate)}\n\n${_stopping ? _text('이 날부터 복용 일정과 알림에서 제외합니다.', 'Remove this medication from scheduled doses and reminders from this date.') : '${_name.text.trim()} · $_doseText\n${_asNeeded ? _text('필요시 복용', 'As needed') : _frequencySummary}\n${_text('복용 종료일', 'End date')}: ${formatJsonDate(_endDate)} · ${_text('총 $_courseDays일', '$_courseDays day(s)')}'}\n\n${_text('기존 복용 기록은 삭제하지 않습니다. 처방·복약지도에 따른 변경이 맞나요?', 'Earlier records will not be deleted. Does this match your prescription or professional instructions?')}',
+            '${widget.medication.displayName}\n$_dateLabel: ${formatJsonDate(_effectiveDate)}\n\n${_stopping ? _text('이 날부터 복용 일정과 알림에서 제외합니다.', 'Remove this medication from scheduled doses and reminders from this date.') : '${_name.text.trim()} · $doseLabel\n${_asNeeded ? _text('필요시 복용', 'As needed') : _frequencySummary}\n${_text('복용 종료일', 'End date')}: ${formatJsonDate(_endDate)} · ${_text('총 $_courseDays일', '$_courseDays day(s)')}'}\n\n${_text('기존 복용 기록은 삭제하지 않습니다. 처방·복약지도에 따른 변경이 맞나요?', 'Earlier records will not be deleted. Does this match your prescription or professional instructions?')}',
         cancelLabel: _text('취소', 'Cancel'),
         confirmLabel: _text('확인 후 적용', 'Confirm change'),
         confirmKey: const Key('regimen-confirm'),

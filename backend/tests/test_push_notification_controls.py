@@ -6,7 +6,7 @@ import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 import pytest
 from firebase_admin import exceptions as firebase_exceptions
@@ -491,7 +491,9 @@ class PushNotificationControlTest(unittest.TestCase):
         notify.assert_called_once_with(
             patient_hash="patient-a",
             slot_key="morning",
+            event_key=ANY,
         )
+        self.assertRegex(notify.call_args.kwargs["event_key"], r"^[0-9a-f]{64}$")
 
     # 함수이름: test_outbox_gives_up_a_row_that_keeps_stalling_in_processing
     # 함수역할:
@@ -1115,6 +1117,55 @@ def _queue_outbox_event(db, notification_type: str) -> int:
     db.add(row)
     db.commit()
     return int(row.id)
+
+
+@pytest.mark.parametrize("late_link", [False, True])
+def test_completed_outbox_retry_keeps_event_identity_and_new_event_does_not_collapse(fk_db, late_link):
+    _seed_caregiver_alert_scene(fk_db, notification_type=CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED)
+    outbox_id = _queue_outbox_event(fk_db, CAREGIVER_NOTIFICATION_MODE_DOSE_COMPLETED)
+    row = fk_db.get(_CaregiverAlertOutbox, outbox_id)
+    if late_link:
+        row.event_type = CAREGIVER_ALERT_EVENT_LATE_LINK_COMPLETED
+        row.caregiver_hash = _CAREGIVER
+        fk_db.commit()
+    partial = SimpleNamespace(success_count=1, responses=[
+        SimpleNamespace(success=True),
+        SimpleNamespace(success=False, exception=messaging.QuotaExceededError("retry")),
+    ])
+    success = SimpleNamespace(success_count=2, responses=[SimpleNamespace(success=True)] * 2)
+    boundary = FirebasePushNotificationBoundary.__new__(FirebasePushNotificationBoundary)
+    boundary._app = object()
+    with patch("boundaries.push_notification_boundary.messaging.send_each_for_multicast",
+               side_effect=[partial, success, success]) as send:
+        assert ProcessCaregiverAlertOutbox(fk_db, boundary).processOne(outbox_id) == "failed"
+        row = fk_db.get(_CaregiverAlertOutbox, outbox_id)
+        row.available_at = utc_now() - timedelta(seconds=1)
+        fk_db.commit()
+        # 새 작업자에서도 첫 전송과 같은 이벤트 식별자를 사용한다.
+        assert ProcessCaregiverAlertOutbox(fk_db, boundary).processOne(outbox_id) == "sent"
+        replacement = _CaregiverAlertOutbox(
+            event_key="new-event-same-day-and-slot",
+            event_type=row.event_type,
+            caregiver_hash=row.caregiver_hash,
+            patient_hash=_PATIENT, slot_key="morning", schedule_date=application_today(),
+        )
+        fk_db.add(replacement)
+        fk_db.commit()
+        assert ProcessCaregiverAlertOutbox(fk_db, boundary).processOne(replacement.id) == "sent"
+    messages = [call.args[0] for call in send.call_args_list]
+    keys = [message.data["event_key"] for message in messages]
+    assert keys[0] == keys[1] != keys[2]
+    for message in messages:
+        key = message.data["event_key"]
+        assert len(key) == 64 and set(key) <= set("0123456789abcdef")
+        assert message.android.notification.tag == key
+        assert message.apns.headers == {"apns-collapse-id": key}
+        assert sorted(message.tokens) == sorted([_PLAIN_TOKEN, _ACTION_TOKEN])
+        assert message.data == {
+            "type": "caregiver_slot_completed", "recipient_hash": _CAREGIVER,
+            "patient_hash": _PATIENT, "slot_key": "morning", "language": "ko",
+            "event_key": key,
+        }
 
 
 # 함수이름: _fail_next_commits

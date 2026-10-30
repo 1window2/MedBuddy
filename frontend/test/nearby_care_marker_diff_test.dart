@@ -269,6 +269,42 @@ void main() {
     await imageDirectory!.delete(recursive: true);
   });
 
+  for (final selected in [null, 'shared', 'missing']) {
+    testWidgets(
+      'initial camera uses selected place without changing search origin: $selected',
+      (tester) async {
+        final shared = place('shared', latitude: 35.1);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: _QueueTestMap(places: [shared], selected: selected),
+          ),
+        );
+        final element =
+            tester.element(find.byType(_QueueTestMap)) as _QueueTestMapElement;
+        final camera = element.map!.options.initialCameraPosition;
+        expect(
+          camera.target.latitude,
+          selected == shared.placeId
+              ? shared.latitude
+              : NearbyCareSearchArea.fallbackCenter.latitude,
+        );
+        expect(
+          camera.target.longitude,
+          selected == shared.placeId
+              ? shared.longitude
+              : NearbyCareSearchArea.fallbackCenter.longitude,
+        );
+        final map = tester.widget<_QueueTestMap>(find.byType(_QueueTestMap));
+        expect(map.searchArea.center, NearbyCareSearchArea.fallbackCenter);
+        if (selected == shared.placeId) expect(camera.zoom, 16);
+        await tester.pumpWidget(const SizedBox());
+        await _flushMapOperations(tester);
+        expect(tester.takeException(), isNull);
+      },
+      skip: !isNaverMapConfigured,
+    );
+  }
+
   for (final scenario in ['empty', 'same', 'failed-clear', 'replacement']) {
     // Function Name: native marker recovery regression
     // Description: Exercises production queue recovery after a partially successful native batch.
@@ -394,77 +430,71 @@ void main() {
     // Function Name: native marker automatic retry regression
     // Description: A partial add must be repaired once without any widget change, and only once per failure.
     // Parameters: tester: Host widget driver. Returns: Deterministic native-command assertions.
-    testWidgets(
-      'native marker queue retries a partial add once without a widget '
-      'change: retryFails=$retryFails',
-      (tester) async {
-        final errors = <FlutterErrorDetails>[];
-        final previousErrorHandler = FlutterError.onError;
-        FlutterError.onError = (details) {
-          if (details.library == 'nearby care map') {
-            errors.add(details);
-          } else {
-            previousErrorHandler?.call(details);
-          }
-        };
-        addTearDown(() => FlutterError.onError = previousErrorHandler);
-        final controller = _QueueMapController();
-        final places = [place('a'), place('b')];
-
-        await tester.pumpWidget(
-          MaterialApp(home: _QueueTestMap(places: places)),
-        );
-        final element =
-            tester.element(find.byType(_QueueTestMap)) as _QueueTestMapElement;
-        element.map!.onMapReady!(controller);
-        await _flushMapOperations(
-          tester,
-          until: () => controller.firstAdd.isCompleted,
-        );
-        expect(controller.markers, {'pharmacy-a'});
-        expect(controller.commands, ['add']);
-        expect(errors, hasLength(1));
-
-        // The same widget stays mounted; only time passes.
-        controller.failNextAdd = retryFails;
-        await tester.pump(const Duration(seconds: 2));
-        await _flushMapOperations(
-          tester,
-          until: () => controller.commands.length == 3,
-        );
-        expect(controller.commands, ['add', 'clear', 'add']);
-        if (!retryFails) {
-          expect(controller.markers, {'pharmacy-a', 'pharmacy-b'});
-          expect(errors, hasLength(1));
+    testWidgets('native marker queue retries a partial add once without a widget '
+        'change: retryFails=$retryFails', (tester) async {
+      final errors = <FlutterErrorDetails>[];
+      final previousErrorHandler = FlutterError.onError;
+      FlutterError.onError = (details) {
+        if (details.library == 'nearby care map') {
+          errors.add(details);
         } else {
-          expect(controller.markers, {'pharmacy-a'});
-          expect(errors, hasLength(2));
+          previousErrorHandler?.call(details);
         }
+      };
+      addTearDown(() => FlutterError.onError = previousErrorHandler);
+      final controller = _QueueMapController();
+      final places = [place('a'), place('b')];
 
-        // No second automatic attempt follows, whether the retry succeeded or failed.
-        await tester.pump(const Duration(seconds: 30));
-        await _flushMapOperations(tester);
-        expect(controller.commands, ['add', 'clear', 'add']);
+      await tester.pumpWidget(MaterialApp(home: _QueueTestMap(places: places)));
+      final element =
+          tester.element(find.byType(_QueueTestMap)) as _QueueTestMapElement;
+      element.map!.onMapReady!(controller);
+      await _flushMapOperations(
+        tester,
+        until: () => controller.firstAdd.isCompleted,
+      );
+      expect(controller.markers, {'pharmacy-a'});
+      expect(controller.commands, ['add']);
+      expect(errors, hasLength(1));
 
-        if (retryFails) {
-          // The next widget change still repairs the map, as before.
-          await tester.pumpWidget(
-            MaterialApp(
-              home: _QueueTestMap(places: places, favorites: {'unrelated'}),
-            ),
-          );
-          await _flushMapOperations(
-            tester,
-            until: () => controller.commands.length == 5,
-          );
-          expect(controller.commands, ['add', 'clear', 'add', 'clear', 'add']);
-          expect(controller.markers, {'pharmacy-a', 'pharmacy-b'});
-        }
-        expect(tester.takeException(), isNull);
-        await tester.pumpWidget(const SizedBox());
-      },
-      skip: !isNaverMapConfigured,
-    );
+      // The same widget stays mounted; only time passes.
+      controller.failNextAdd = retryFails;
+      await tester.pump(const Duration(seconds: 2));
+      await _flushMapOperations(
+        tester,
+        until: () => controller.commands.length == 3,
+      );
+      expect(controller.commands, ['add', 'clear', 'add']);
+      if (!retryFails) {
+        expect(controller.markers, {'pharmacy-a', 'pharmacy-b'});
+        expect(errors, hasLength(1));
+      } else {
+        expect(controller.markers, {'pharmacy-a'});
+        expect(errors, hasLength(2));
+      }
+
+      // No second automatic attempt follows, whether the retry succeeded or failed.
+      await tester.pump(const Duration(seconds: 30));
+      await _flushMapOperations(tester);
+      expect(controller.commands, ['add', 'clear', 'add']);
+
+      if (retryFails) {
+        // The next widget change still repairs the map, as before.
+        await tester.pumpWidget(
+          MaterialApp(
+            home: _QueueTestMap(places: places, favorites: {'unrelated'}),
+          ),
+        );
+        await _flushMapOperations(
+          tester,
+          until: () => controller.commands.length == 5,
+        );
+        expect(controller.commands, ['add', 'clear', 'add', 'clear', 'add']);
+        expect(controller.markers, {'pharmacy-a', 'pharmacy-b'});
+      }
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    }, skip: !isNaverMapConfigured);
   }
 
   // Function Name: settled content padding regression

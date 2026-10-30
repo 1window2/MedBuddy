@@ -13,6 +13,7 @@ import '../services/api_config.dart';
 import '../services/api_response_parser.dart';
 import '../services/auth_config.dart';
 import '../services/authenticated_api_client.dart';
+import '../services/as_needed_pending_store.dart';
 
 // 클래스명: MedicationHistorySessionChanged
 // 역할: 화면을 연 세션이 바뀌어 더 이상 자료를 읽거나 저장할 수 없음을 나타낸다.
@@ -43,8 +44,10 @@ class MedicationHistoryControl extends ChangeNotifier {
     String? Function()? sessionKeyProvider,
     Stream<String?>? sessionChanges,
     this.requestTimeout = const Duration(seconds: 25),
+    AsNeededPendingStore? pendingStore,
   }) : patientHash = patientHash.trim(),
        _ownsClient = client == null,
+       _pendingStore = pendingStore ?? AsNeededPendingStore(),
        _now = now ?? DateTime.now {
     if (this.patientHash.isEmpty) {
       throw ArgumentError.value(
@@ -88,6 +91,8 @@ class MedicationHistoryControl extends ChangeNotifier {
   late final http.Client _client;
   final bool _ownsClient;
   final DateTime Function() _now;
+  final AsNeededPendingStore _pendingStore;
+  bool _pendingRestored = false;
   late final String? Function() _sessionKeyProvider;
   late final String? _sessionKey;
   StreamSubscription<String?>? _sessionSubscription;
@@ -108,6 +113,58 @@ class MedicationHistoryControl extends ChangeNotifier {
   }
 
   MedicationHistoryRange? requestedRange;
+
+  // 재시작 뒤에도 새 요청을 만들기 전에 같은 계정의 미확인 의도를 먼저 복원한다.
+  Future<void> restorePendingAsNeeded() async {
+    ensureSession();
+    if (readOnly || _pendingRestored) return;
+    try {
+      final changes = await _pendingStore.read(patientHash);
+      ensureSession();
+      final existing = pendingAsNeededChanges
+          .map((change) => change.operationId)
+          .toSet();
+      pendingAsNeededChanges.addAll(
+        changes.where((change) => !existing.contains(change.operationId)),
+      );
+      _pendingRestored = true;
+    } catch (failure) {
+      if (!_disposed && !_invalidated) {
+        error = failure;
+        notifyListeners();
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> stageAsNeededChanges(
+    List<MedicationHistoryChange> changes,
+  ) async {
+    ensureSession();
+    if (readOnly) throw StateError('Caregiver history is read-only.');
+    for (final change in changes) {
+      change.validate(now);
+      if (!change.entry.isAsNeeded || change.entry.revision != 0) {
+        throw const FormatException('Only new as-needed doses can be staged.');
+      }
+    }
+    final staged = await _pendingStore.stage(patientHash, changes);
+    ensureSession();
+    pendingAsNeededChanges
+      ..clear()
+      ..addAll(staged);
+    _pendingRestored = true;
+  }
+
+  Future<void> removePendingAsNeeded(Set<String> operationIds) async {
+    if (operationIds.isEmpty) return;
+    ensureSession();
+    await _pendingStore.remove(patientHash, operationIds);
+    ensureSession();
+    pendingAsNeededChanges.removeWhere(
+      (change) => operationIds.contains(change.operationId),
+    );
+  }
 
   // 함수역할: 조회 또는 저장 중인지 알려 UI의 중복 명령을 막는다.
   bool get busy => loading || saving;
@@ -171,7 +228,45 @@ class MedicationHistoryControl extends ChangeNotifier {
   }
 
   // 날짜별 화면은 그대로 두고 공유할 기간만 별도로 읽는다.
+  // 31일을 넘는 외부 공유 기간은 최신 구간부터 31일씩 나눠 읽어 한 스냅샷으로 합친다.
   Future<MedicationHistorySnapshot> readRangeForExport(
+    MedicationHistoryRange range,
+  ) async {
+    range.validate(now, maxDays: MedicationHistoryRange.maximumExportDays);
+    if (range.days <= MedicationHistoryRange.maximumReadDays) {
+      return readRange(range);
+    }
+    final items = <MedicationHistoryEntry>[];
+    final medications = <int, MedicationHistoryMedication>{};
+    var end = range.end;
+    while (!end.isBefore(range.start)) {
+      final chunkStart = DateTime.utc(
+        end.year,
+        end.month,
+        end.day - MedicationHistoryRange.maximumReadDays + 1,
+      );
+      final chunk = await readRange(
+        MedicationHistoryRange(
+          chunkStart.isBefore(range.start) ? range.start : chunkStart,
+          end,
+        ),
+      );
+      // 구간마다 최신 날짜부터 정렬돼 있으므로 최신 구간부터 이어 붙이면 전체 순서가 유지된다.
+      items.addAll(chunk.items);
+      for (final medication in chunk.medications) {
+        medications.putIfAbsent(medication.id, () => medication);
+      }
+      end = DateTime.utc(chunkStart.year, chunkStart.month, chunkStart.day - 1);
+    }
+    return MedicationHistorySnapshot(
+      range: range,
+      items: items,
+      medications: medications.values.toList(),
+    );
+  }
+
+  // 함수역할: 화면의 하루 기록은 그대로 둔 채 한 달 달력이나 내보내기용 기간을 서버에서 읽는다.
+  Future<MedicationHistorySnapshot> readRange(
     MedicationHistoryRange range,
   ) async {
     ensureSession();
@@ -227,6 +322,15 @@ class MedicationHistoryControl extends ChangeNotifier {
     notifyListeners();
     try {
       final entry = change.entry;
+      final isNewAsNeeded = entry.isAsNeeded && entry.revision == 0;
+      if (isNewAsNeeded) {
+        await stageAsNeededChanges([change]);
+        if (!pendingAsNeededChanges.any(
+          (pending) => pending.operationId == change.operationId,
+        )) {
+          throw const MedicationHistoryBusy();
+        }
+      }
       final uri = Uri.parse(baseUrl).replace(
         pathSegments: [
           ...Uri.parse(baseUrl).pathSegments,
@@ -252,6 +356,7 @@ class MedicationHistoryControl extends ChangeNotifier {
       if (body['success'] != true) {
         throw const FormatException('History correction was not acknowledged.');
       }
+      if (isNewAsNeeded) await removePendingAsNeeded({change.operationId});
       // 갱신 전 데이터는 내보내기에 사용하지 않고 서버에서 다시 읽는다.
       snapshot = null;
     } finally {

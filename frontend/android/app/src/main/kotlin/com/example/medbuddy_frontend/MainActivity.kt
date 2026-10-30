@@ -4,16 +4,14 @@
 package com.example.medbuddy_frontend
 
 import android.content.Intent
-import android.content.ClipData
 import android.content.pm.ActivityInfo
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
-import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
-import java.util.UUID
 
 // Class Name: MainActivity
 // Role: Adapts Flutter method-channel requests to Android settings and camera orientation.
@@ -37,12 +35,23 @@ class MainActivity : FlutterActivity() {
         // 반환값: Unit; 설정 화면을 연 뒤 result.success(null)로 완료를 알린다.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, settingsChannel)
             .setMethodCallHandler { call, result ->
-                if (call.method != "openNotificationSettings") {
-                    result.notImplemented()
-                    return@setMethodCallHandler
+                try {
+                    when (call.method) {
+                        "openNotificationSettings" -> {
+                            openNotificationSettings()
+                            result.success(null)
+                        }
+                        "supportsExactReminderSettings" ->
+                            result.success(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+                        "openExactReminderSettings" -> {
+                            openExactReminderSettings()
+                            result.success(null)
+                        }
+                        else -> result.notImplemented()
+                    }
+                } catch (_: Exception) {
+                    result.error("settings_unavailable", "Could not open notification settings.", null)
                 }
-                openNotificationSettings()
-                result.success(null)
             }
         // Function Name: prescriptionCameraChannel.setMethodCallHandler callback
         // Description: Dispatches camera rotation enable/restore requests and rejects unsupported methods.
@@ -62,7 +71,7 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
-        // 함수역할: 사용자 확인을 거친 CSV만 임시 읽기 권한으로 Android 공유 창에 전달한다.
+        // 함수역할: 사용자 확인을 거친 복약 기록 글을 Android 공유 창에 전달하고, 이전 버전이 남긴 내보내기 캐시를 지운다.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, dataExportChannel)
             .setMethodCallHandler { call, result ->
                 if (call.method == "clearExports") {
@@ -74,49 +83,30 @@ class MainActivity : FlutterActivity() {
                     }
                     return@setMethodCallHandler
                 }
-                if (call.method != "shareCsv") {
-                    result.notImplemented()
+                if (call.method == "shareText") {
+                    val content = call.argument<String>("content")
+                    val subject = call.argument<String>("subject")
+                    if (content.isNullOrBlank() || content.length > 100_000 ||
+                        subject == null || subject.length > 100) {
+                        result.error("invalid_export", "Invalid text export.", null)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        // 파일 첨부 없이 메시지 본문으로 전달하며 받는 앱은 사용자가 선택한다.
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, content)
+                            putExtra(Intent.EXTRA_SUBJECT, subject)
+                        }
+                        startActivity(Intent.createChooser(intent, null))
+                        result.success(null)
+                    } catch (_: Exception) {
+                        result.error("share_unavailable", "Could not open the share sheet.", null)
+                    }
                     return@setMethodCallHandler
                 }
-                val content = call.argument<String>("content")
-                val filename = call.argument<String>("filename")
-                if (content.isNullOrEmpty() || content.length > 2_000_000 ||
-                    filename == null || !Regex("[A-Za-z0-9_-]{1,100}\\.csv").matches(filename)) {
-                    result.error("invalid_export", "Invalid CSV export.", null)
-                    return@setMethodCallHandler
-                }
-                try {
-                    shareMedicationCsv(filename, content)
-                    result.success(null)
-                } catch (_: Exception) {
-                    result.error("share_unavailable", "Could not open the share sheet.", null)
-                }
+                result.notImplemented()
             }
-    }
-
-    // 함수이름: shareMedicationCsv
-    // 함수역할: 격리된 캐시에 UTF-8 CSV를 만들고 선택한 앱에만 임시 읽기 권한을 부여한다.
-    // 매개변수: filename - 검증된 파일명; content - 사용자 확인을 거친 CSV 본문.
-    // 반환값: 없음. 공유 창을 열 수 없으면 호출자가 오류를 표시한다.
-    private fun shareMedicationCsv(filename: String, content: String) {
-        val root = File(cacheDir, "medication_exports")
-        check(root.isDirectory || root.mkdirs())
-        val expiry = System.currentTimeMillis() - 24 * 60 * 60 * 1000L
-        // 공유 중인 파일을 덮어쓰지 않고, 하루가 지난 내보내기 임시 파일만 정리한다.
-        root.listFiles()?.filter { it.isDirectory && it.lastModified() < expiry }
-            ?.forEach { it.deleteRecursively() }
-        val directory = File(root, UUID.randomUUID().toString())
-        check(directory.mkdir())
-        val file = File(directory, filename)
-        file.writeText(if (content.startsWith("\uFEFF")) content else "\uFEFF$content", Charsets.UTF_8)
-        val uri = FileProvider.getUriForFile(this, "$packageName.medication_exports", file)
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/csv"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            clipData = ClipData.newUri(contentResolver, filename, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        startActivity(Intent.createChooser(intent, null))
     }
 
     // Function Name: enableSensorOrientationForPrescriptionCamera
@@ -169,5 +159,14 @@ class MainActivity : FlutterActivity() {
             // 매개변수: 앞선 실패 원인인 Throwable; 본문에서는 사용하지 않는다.
             // 반환값: Unit; 대체 화면도 열 수 없으면 해당 예외는 호출자에게 전달된다.
             .getOrElse { startActivity(fallbackIntent) }
+    }
+
+    // 이미 허용된 권한도 변경할 수 있도록 권한 요청 대신 설정 화면을 직접 연다.
+    private fun openExactReminderSettings() {
+        check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+        val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+            data = Uri.parse("package:$packageName")
+        }
+        startActivity(intent)
     }
 }

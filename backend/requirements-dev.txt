@@ -1,3 +1,5 @@
 # Backend development and test dependencies
 -r requirements.txt
 pytest==9.1.1
+# 배포 설정의 실제 YAML 구조를 회귀 검사한다.
+PyYAML==6.0.3

@@ -34,6 +34,7 @@ import '../entities/prescription_flow_entity.dart';
 import '../entities/recognized_text_region_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../services/authenticated_api_client.dart';
+import '../services/dose_outbox_store.dart';
 import '../services/dose_sync_service.dart';
 import '../services/dose_home_widget_service.dart';
 import '../services/medication_reminder_background_service.dart';
@@ -150,6 +151,10 @@ class MedBuddyViewModel extends ChangeNotifier {
 
   AnalysisProgressStep get analysisProgressStep =>
       _prescriptions.analysisProgressStep;
+  int get completedMedicationAnalysisCount =>
+      _prescriptions.completedMedicationAnalysisCount;
+  int get totalMedicationAnalysisCount =>
+      _prescriptions.totalMedicationAnalysisCount;
 
   bool get isLoading => _prescriptions.isLoading;
 
@@ -170,6 +175,8 @@ class MedBuddyViewModel extends ChangeNotifier {
   bool get isSavedMedicationLoading => _savedMedications.isLoading;
 
   bool get isTodayScheduleLoading => _schedules.isTodayScheduleLoading;
+
+  bool get hasSettledTodaySchedule => _schedules.hasSettledTodaySchedule;
 
   bool get hasTodayScheduleLoadError => _schedules.hasTodayScheduleLoadError;
 
@@ -278,6 +285,10 @@ class MedBuddyViewModel extends ChangeNotifier {
 
   Set<int> get verifiedMedicationScheduleIndexes =>
       _prescriptions.verifiedMedicationScheduleIndexes;
+  Map<int, MedicationLookupStatus> get medicationLookupStatuses =>
+      _prescriptions.medicationLookupStatuses;
+  PrescriptionRecognitionStage get recognitionStage =>
+      _prescriptions.recognitionStage;
   Set<int> get unverifiedMedicationScheduleIndexes =>
       _prescriptions.unverifiedMedicationScheduleIndexes;
   Map<int, MedicationMatchReview> get medicationMatchReviews =>
@@ -385,7 +396,11 @@ class MedBuddyViewModel extends ChangeNotifier {
     this.inputPrescription =
         inputPrescription ?? InputPrescription(client: _apiClient);
     this.checkMedicationDetail =
-        checkMedicationDetail ?? CheckMedicationDetail(client: _apiClient);
+        checkMedicationDetail ??
+        CheckMedicationDetail(
+          client: _apiClient,
+          readSearchMode: () => userSetting.medicationSearchMode,
+        );
     this.checkPrescriptionChange =
         checkPrescriptionChange ??
         CheckPrescriptionChange(
@@ -456,6 +471,24 @@ class MedBuddyViewModel extends ChangeNotifier {
       patientHash: this.patientHash,
       readEnglishSetting: () => _isEnglishSetting,
       fetchTodayMedicationSchedule: fetchTodayMedicationSchedule,
+      invalidateSchedule: () async {
+        if (_isDisposed) return;
+        _schedules.clear();
+        await doseSync?.invalidateSchedule();
+      },
+      suspendSchedule: () async {
+        if (_isDisposed) return null;
+        _schedules.clear();
+        return doseSync?.suspendSchedule();
+      },
+      restoreSchedule: (backup) async {
+        if (_isDisposed) return;
+        await doseSync?.restoreSchedule(
+          backup is DoseScheduleBackup ? backup : null,
+        );
+        // 되돌린 일정을 화면에 다시 올린다. 연결이 없으면 기기에 되돌린 일정을 쓴다.
+        await fetchTodayMedicationSchedule();
+      },
       synchronizeReminders:
           _synchronizeMedicationReminderSchedulesIfScheduleIsFresh,
       onChanged: _onSavedMedicationChanged,
@@ -684,6 +717,22 @@ class MedBuddyViewModel extends ChangeNotifier {
   }
 
   DoseSyncService? doseSync;
+
+  // 서버 연결 없이도 로그아웃 전에 저장된 알림 시각과 유효한 기간 일정으로 예약을 복구한다.
+  Future<void> restoreSessionReminders(bool Function() isCurrent) async {
+    final window = await doseSync?.offlineWindow();
+    if (_isDisposed || !isCurrent()) return;
+    await _reminders.restoreAfterAbortedSignOut(
+      isCurrent: () => !_isDisposed && isCurrent(),
+      courses: window == null
+          ? null
+          : MedicationSchedule.fromScheduleJsonList(window['courses']),
+      lastAllowedDate: window == null
+          ? null
+          : DateTime.tryParse('${window['end']}'),
+    );
+  }
+
   Future<void>? _scheduleRefresh;
   DateTime? _scheduleRefreshedAt;
   String? _widgetConfigurationSignature;

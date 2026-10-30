@@ -1,5 +1,209 @@
 # MedBuddy Release TODO
 
+## v0.2.4 development line
+
+v0.2.4 starts from `v0.2.3-beta` on `beta/v0.2.4` and was planned to be finished by
+2026-11-20 for the graduation exhibition (2026-11-26 to 11-27). Released on
+2026-10-30 as `v0.2.4-beta` (PR #128, build `f377546`); a collaborator's further
+features and the open items below move to the 0.3.0 line. It takes the
+items of the 2026-10-20 team meeting and the items still open on the v0.2.3
+line below. Changes are listed in the [v0.2.4 notes](releases/v0.2.4-beta.md).
+
+### From the 2026-10-20 meeting
+
+- [x] As-needed doses: a dose recorded by mistake can be undone from the
+      save notice (decided with the user on 2026-10-21; the meeting had
+      leaned to "not needed").
+- [x] A calendar for checking past days' doses: the medication history
+      opens on a month calendar with per-day recorded counts (2026-10-21;
+      try it on the phone and drop it before the merge if it does not fit).
+- [x] Dose record export: CSV and, since 2026-10-22, a counts-only summary
+      shared into a linked chat; the export starts with the visible month.
+      Since 2026-10-23 a CSV covers up to 90 days (read in 31-day parts) and
+      drops the internal revision column; chat sharing stays at 31 days.
+      See the [decision log](MedBuddy%20-%20Decision%20Log.md).
+- [x] The launcher icon is enlarged and cropped by the Samsung launcher (the
+      wordmark is cut at both edges); shrink it. Now an adaptive icon with the
+      mark only (the user agreed to drop the wordmark), plus a transparent
+      status-bar icon for reminders and pushes. Checked on the Galaxy Note10
+      (One UI) and the Pixel launcher on 2026-10-22.
+- [x] UML: bring the diagrams from 0.2.2 and part of 0.2.3 up to date.
+      Done by us on 2026-10-29 (the teammate stopped): all 19 diagrams
+      checked against `83cddde`, rendered with Nanum Gothic.
+- [x] User guide updated to the 2026-10-29 app by us (224 pages, PDF
+      rebuilt with the recorded NanumBarunGothic).
+- [ ] Poster, and feedback gathered until the deadline.
+
+### Review of the 2026-10-22 collaborator commits
+
+Seventeen commits (history sharing in chat, offline schedule window, persisted
+as-needed intents, receipt redaction with migration `e6b4d2a9f031`, separate
+rate-limit Redis, prescription privacy guard, settings rework, sign-out abort
+recovery, docs) were reviewed on 2026-10-23. Corrected on top:
+
+- [x] The prescription privacy guard rejected ordinary prescriptions and bags
+      ("아프면 1정", "12시간 간격으로 1캡슐", "4주 소요", 교부 연월일, a
+      pharmacy address, "홍길동 님"). It now leaves such lines out or masks
+      the date and rejects only a line that mixes patient data with a
+      medication row. Must be in place before this backend is deployed.
+- [x] The 12-hour background reminder refresh replaced today's schedule
+      without fetching the 14-day offline window, which deleted it; it now
+      fetches and waits for the window.
+- [x] A chat history card older than the 90-day history opened into an
+      error with a retry that could not succeed; it now says it has expired.
+      The card notes that unrecorded does not mean not taken, and the share
+      dialog says the chat receives counts only.
+- [x] Resending an earlier day's unconfirmed as-needed dose after a restart
+      offered an undo that silently did nothing; it now asks to tap again for
+      today's dose.
+- [x] The test-notification limits note, dropped with the setup-check
+      screen, is back; the deployment guide names the current migration head
+      and the rollback behaviour of redacted receipts.
+
+### Device check on 2026-10-23 (Android 14 emulator, guest caregiver, production)
+
+- [x] With backend `cf5bc86` deployed: a caregiver shared the linked patient's
+      October summary into their chat (recipient choice, counts 복용함 9 ·
+      건너뜀 0 · 미기록 6 with the unrecorded note), and "최신 기록 보기"
+      opened that period read-only. The caregiver's patient history opens on
+      the month calendar.
+- [x] Offline after midnight with the app left running: a three-day course
+      registered online was still listed after moving the clock to the next
+      morning in airplane mode, and was gone on the day after its last day,
+      so today was projected from the stored window. A cold start while
+      offline stops at the session retry screen, as already recorded; the
+      clock and network were restored and the course deleted.
+- [x] As-needed dose on signed `ade1eaf`: the save notice's undo removed the
+      dose, and the confirmation for another dose showed "오늘 1회 → 2회" with
+      the last dose time; under a minute it now reads "방금 전".
+- [x] Signed `cf5bc86`: share dialog limits (CSV 90 days, chat 31), an 81-day
+      CSV, the switch off when only the medication channel is off, and a
+      failed offline stop keeping today's schedule.
+- [x] Galaxy Note10 (patient) with the emulator (caregiver), app `ade1eaf`:
+      the Samsung launcher and status-bar icons show the new mark; the patient
+      saw the caregiver's shared summary card and opened its period. An
+      as-needed dose could not be saved at first ("목록이나 횟수가 바뀌었거나
+      연결하지 못했어요"): the phone's clock ran about 0.7 s ahead of the
+      server, so "now" arrived as a future dose time and was refused (422).
+      Fixed on the server in `33827f0` (60 s tolerance, stored as the receipt
+      time) and deployed. Afterwards a dose saved, the caregiver got exactly
+      one alert per dose, the second-dose confirmation showed the last dose
+      time ("0분 전" on this build; "방금 전" from `78725bd`), and undo brought
+      both the patient's and the caregiver's count back to 1. Signed
+      `78725bd` (versionCode 25) installed over it with `-r`, session kept:
+      the confirmation read "1시간 4분 전", then "방금 전" right after a dose.
+      The test medication was deleted.
+
+### Device check on 2026-10-26 (Galaxy Note10, production `4a6b911`)
+
+- [x] Prescription analysis from the gallery with a real pharmacy bag whose
+      name was pseudonymised and whose dates and course were edited for the
+      test (dispensed 2026-10-26, next visit 10-31, five days, one medicine
+      changed to once a day). The privacy guard passed it ("De-identified
+      prescription text analysis completed"); the preview masked the patient,
+      issue-number and hospital rows; the date was read as 10/26 and every row
+      as five days from 2026-10-26. OCR read two rows wrongly (a frequency and
+      a 0.5-tablet dose) and added one row that is not on the bag; both were
+      corrected in the editor, the extra row was left out through "확인된
+      약만으로 계속", and the five medicines were confirmed against their
+      catalogue candidates. Saved: today 0/12 (morning 5, lunch 3, evening 4)
+      with the bag's pill crops, course 10-26 to 10-30 in the cabinet. The
+      first detail lookup failed on a Gemini server error and showed the
+      public-data outage notice; the retry worked. The test medicines were
+      deleted; the edited image is in the phone's Pictures/MedBuddyTest.
+- [x] Signed `4a6b911` over `78725bd` on both devices, session kept. All test
+      medicines on the phone were deleted and the bag analysed again from an
+      empty cabinet: same OCR rows (the "비염 & 콧물약" row adds a medicine
+      and shifts two values; corrected in the editor) and the same saved
+      schedule. As-needed undo after leaving a pushed schedule (feature
+      search) undid the second dose on the server ("복용 기록을 취소했어요");
+      a tab switch keeps the schedule alive, so it is not that case.
+- [x] Lost as-needed response (emulator): the network was dropped right
+      after the tap, the server stored the dose, the card said
+      "저장 결과를 확인하지 못했어요"; after a force stop and reconnecting,
+      the restart showed one dose, the next tap asked "1회 → 2회", and the
+      server still had one record. Recording a first as-needed dose offline
+      is refused by design (it reads today's records first).
+- [x] Signed `8927e48` on the Note10: the same bag is read correctly without
+      any correction (애니펜정 1×3, 파모터정 1×2, 프로코푸정 1×3, 셀리온정
+      1×1, 슈다페드정 0.5×3, no extra row) and saves as 0/12. The delete
+      button keeps "선택 삭제" while the confirmation is open. Opening
+      "필요시 복용" from feature search stayed at the top until the app was
+      backgrounded and resumed, which drew a frame and then moved to the card;
+      fixed by requesting the frame. Signed `f51ef20`: the schedule moves to
+      the as-needed card within four seconds without a touch (the card's last
+      line can sit under the footer, because the card is still loading when
+      it moves). Test medicines deleted afterwards.
+- [x] A tester's own pharmacy bag (another layout, green guide) on the
+      0.2.4 test build: five medicines matched catalogue candidates and
+      the analysis finished with five medicines over five days.
+- [ ] Not checkable remotely on the Note10 (its network carries adb): offline
+      after midnight and caregiver alerts after an offline start. The chat
+      history reload on an app rebuild and Back during a slow day load are
+      covered by widget tests only.
+
+### Review of the 2026-10-29 collaborator commits
+
+Fifteen commits (medication search modes, prescription review and result
+cards, change radar categories, cabinet date groups, home wordmark, text
+sharing of history, grouped chat alerts, shared places reopened with current
+details, chat copy, docs) mark the functional end of the line. Reviewed and
+corrected the same day; see the
+[v0.2.4 notes](releases/v0.2.4-beta.md#review-corrections-2026-10-29).
+
+- [x] The backend changed (search modes, chat summaries, operating
+      snapshots): deployed `4f81866` on 2026-10-29, no migration, backup
+      `medbuddy-postgres-20261029T030521Z.dump`, rollback images
+      `rollback-4a6b911`.
+- [x] Signed `4f81866` (run 40810106866, versionCode 25, release signer) on
+      the Galaxy Note10 and the Android 14 emulator against production:
+      the wordmark on home; the test bag went from recognition straight to
+      the lookup review with the OCR correction notice shown, five rows
+      confirmed against their candidates (as on 10-26), result cards and the
+      radar expanding, all saved (today 0/12 as on the bag); the cabinet's
+      date group collapsing; the search mode at 보통; history shared as
+      text (the Android sheet opened, nothing sent) and the record notice;
+      chat alerts on the emulator replaced into one "(3)" notification
+      leading with the newest line in the background and removed on
+      reading; message copy offered. The phone has MedBuddy notifications
+      off in Android, so alerts were checked on the emulator only.
+- [x] Place sharing on 2026-10-29 (emulator as caregiver, Note10 as
+      patient, production): a pharmacy shared from the live lookup showed
+      "영업 중 · 22:00 종료" and reopened on the phone selected on the map
+      with today's hours, 9.9 km from the phone; a 24-hour pharmacy showed
+      "영업 중" with no midnight closing time.
+- [ ] Not checked on a device: a shared place missing from the list, and the
+      closed and overnight wording (no closed pharmacy came up in the
+      provider's results at the time; covered by tests).
+- [x] Signed `1e1488b` (run 40834295613, release signer) installed on the
+      Note10 with `adb install -r`: the launcher icon in the Samsung app
+      drawer has the heart's centre on the icon centre. The status-bar icon
+      could not be shown there (MedBuddy notifications are off in Android);
+      checked from the generated drawables. Backend `1e1488b` deployed the
+      same day (backup `medbuddy-postgres-20261029T070501Z.dump`, rollback
+      images `rollback-4f81866`).
+- [x] Decided with the user (decision log 2026-10-29): the search-mode
+      control stays as the collaborator made it; cabinet date groups open
+      while a search is active.
+- [x] UML and user guide brought up to the 10-29 app (FileProvider and CSV
+      references removed).
+
+### Decisions taken on 2026-10-23
+
+Recorded with reasons and how to undo them in the
+[decision log](MedBuddy%20-%20Decision%20Log.md):
+
+- [x] A failed medication change keeps the offline schedule (restored unless
+      something else was stored meanwhile; the server refuses offline doses of
+      a changed regimen).
+- [x] The as-needed card stays visible when the local pending store fails;
+      only new doses are refused until it opens.
+- [x] The phone notification switch shows off when the medication channel is
+      off.
+- [x] CSV export up to 90 days with tidier columns; chat sharing stays at 31.
+- [x] `main` requires a pull request (ruleset "Protect Main": no approvals,
+      merge commits only, no bypass), set by the owner on 2026-10-23.
+
 ## v0.2.3 development line
 
 v0.2.3 starts from `v0.2.2-beta` on `beta/v0.2.3`. It collects small
@@ -11,15 +215,16 @@ released under that version instead. Changes are listed in the
 
 ### Open on this line
 
-- [ ] Offline after Korean midnight, no dose can be recorded until the server
+- [x] Offline after Korean midnight, no dose can be recorded until the server
       has answered once that day: recording needs today's schedule from the
       server, and the 14-day window is fetched but not kept on the device.
-      Building today's list on the device (courses, cycles, stop and change
-      dates, as-needed exclusion) and reconciling it with the server later is
-      a change to the core dose path, left for a separate line (found in the
-      2026-10-19 final review, MAJOR).
-- [ ] Final-review items left as they are: the as-needed extra-dose
-      confirmation could show the last dose time; a reminder worker already
+      Resolved on the v0.2.4 line (82b14b0, with the background refresh fix
+      of 2026-10-23): the window is kept encrypted per account, today is
+      projected from it after midnight, and the server refuses offline doses
+      whose regimen revision changed. To be checked on a device; see the
+      offline-edit decision under v0.2.4.
+- [ ] Final-review items left as they are (the as-needed extra-dose
+      confirmation shows the last dose time since 2026-10-23): a reminder worker already
       running at sign-out may re-arm the old account's reminders (race, not
       reproduced); a course length of 0 or less sent directly to the API has
       no end (the app sends 1-3650); a failed local reminder save turns the
@@ -35,8 +240,9 @@ released under that version instead. Changes are listed in the
       reviewers, two supervisors, three implementers; production code about
       1,070 lines smaller, tests 1,908 -> 1,919 backend and 2,222 -> 2,250 app):
       - Owner decisions: `recordAsNeededDose` in
-        medication_history_ui_boundary.dart has no caller (added 2026-10-17)
-        and keeps a "new record" editor path alive; the as-needed slot header
+        medication_history_ui_boundary.dart had no caller (added 2026-10-17)
+        and kept a "new record" editor path alive; both were removed on
+        2026-10-29 (done). Still open: the as-needed slot header
         strip could share `MedicationSlotHeaderStrip`; the OCR-region matching
         in `InputPrescription` (~270 lines) could move to its own file.
       - Seen but not changed (not refactors): the redacted caregiver text uses
@@ -335,11 +541,14 @@ closed by any code on this branch:
       Manual registration offered no rhythm at all until October 12, so a
       weekly medication entered by hand was scheduled every day; found while
       using the signed build on the phone.
-- [ ] "As needed" directions are scheduled like daily ones, on the slots the
-      user confirmed.
-- [ ] A dose of a medication that is not taken every day can be recorded
+- [x] "As needed" directions are scheduled like daily ones, on the slots the
+      user confirmed. Resolved in v0.2.3: an as-needed medicine leaves the fixed
+      schedule and its doses are recorded from the schedule's as-needed card.
+- [x] A dose of a medication that is not taken every day can be recorded
       only on its dose day; the day after, it is no longer on the schedule, so
-      a weekly dose taken a day late cannot be recorded. The medication box
+      a weekly dose taken a day late cannot be recorded. Since v0.2.3 it can be
+      recorded in the dose history on its dose day with the actual time of the
+      next day (the scheduled date is kept). The medication box
       shows the next dose day of such a medication, so that its absence from
       today's schedule is explained.
 - [ ] A weekly prescription often prints the number of doses as its total
@@ -800,3 +1009,10 @@ Existing-flow acceptance tests above remain release requirements.
       `MedBuddy - Medication Intake Automation Roadmap.md`. A camera or model
       may preselect a dose, but ambiguous identity, count, or timing must still
       require one clear confirmation and must never write a completion record.
+- [ ] 1.0.0 candidate, lowest priority: Samsung scroll capture (long
+      screenshot) does not work in the app. It reports "이 화면에서는 스크롤
+      캡처를 사용할 수 없어요" or moves the page slightly and stops, because
+      Flutter draws everything in one FlutterView that the system cannot
+      scroll. Supporting it means implementing Android 12's scroll capture
+      callback for the Flutter view, and Samsung's capture may not use it.
+      Reported by a tester on 2026-10-26; ordinary screenshots work.

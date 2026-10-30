@@ -19,7 +19,9 @@ import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../viewmodels/medbuddy_view_model.dart';
 import '../viewmodels/medbuddy_feature_updates.dart';
+import '../widgets/expandable_medication_section.dart';
 import '../widgets/medbuddy_page_header.dart';
+import '../widgets/responsive_card_header.dart';
 import '../widgets/medication_thumbnail.dart';
 
 part 'check_saved_medication_empty_widgets.dart';
@@ -93,11 +95,16 @@ enum _SavedMedicationFilterMode { active, ended, all }
 // 속성: _selectedMedicationIds는 선택 ID, _isDeleting은 중복 조작 방지 상태이다.
 class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
   final Set<int> _selectedMedicationIds = {};
+  final Set<String> _collapsedDateGroups = {};
+  // 검색 중에는 찾은 약이 보이도록 묶음을 펼치고, 그 사이 접은 묶음만 따로 기억한다.
+  final Set<String> _searchCollapsedDateGroups = {};
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   bool _isSelectionMode = false;
   bool _reportedBackHandling = false;
   bool _isDeleting = false;
+  // 확인창이 열린 동안에도 조작은 막되, 버튼은 확인 뒤에만 '삭제 중'으로 표시한다.
+  bool _deleteConfirmed = false;
   _SavedMedicationSortMode _sortMode = _SavedMedicationSortMode.registeredDate;
   _SavedMedicationSortDirection _sortDirection =
       _SavedMedicationSortDirection.descending;
@@ -167,11 +174,18 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     super.dispose();
   }
 
+  // 검색어가 있으면 검색 중에 접은 묶음만, 없으면 사용자가 접어 둔 묶음을 적용한다.
+  Set<String> get _activeCollapsedDateGroups => _searchQuery.isEmpty
+      ? _collapsedDateGroups
+      : _searchCollapsedDateGroups;
+
   // 함수역할: 검색어를 반영하고 숨겨질 수 있는 선택을 비운다. 매개변수: 입력 문자열.
   void _changeSearch(String value) {
     if (_isDeleting) return;
     setState(() {
-      _searchQuery = value.trim().toLowerCase();
+      final query = value.trim().toLowerCase();
+      if (query != _searchQuery) _searchCollapsedDateGroups.clear();
+      _searchQuery = query;
       _selectedMedicationIds.clear();
     });
   }
@@ -354,7 +368,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
                       child: _SelectionDeleteBar(
                         text: text,
                         selectedCount: selectedIds.length,
-                        isDeleting: _isDeleting,
+                        isDeleting: _isDeleting && _deleteConfirmed,
                         // 함수역할: 보이는 선택 약의 삭제를 확인한다.
                         // 매개변수: 없음. 반환값: 삭제 확인·처리 완료.
                         onDeleteRequested: () =>
@@ -414,6 +428,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
     _searchController.clear();
     setState(() {
       _searchQuery = '';
+      _searchCollapsedDateGroups.clear();
       _filterMode = _SavedMedicationFilterMode.all;
       _selectedMedicationIds.clear();
     });
@@ -524,6 +539,16 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
       // 매개변수: context는 화면 위치, index는 묶음 순번. 반환값: 날짜별 목록.
       itemBuilder: (context, index) => _SavedMedicationDateCard(
         group: groups[index],
+        isExpanded: !_activeCollapsedDateGroups.contains(
+          '${_sortMode.name}:${groups[index].displayDate}',
+        ),
+        onToggleExpanded: () {
+          final key = '${_sortMode.name}:${groups[index].displayDate}';
+          final collapsed = _activeCollapsedDateGroups;
+          setState(() {
+            if (!collapsed.remove(key)) collapsed.add(key);
+          });
+        },
         showRegisteredDate:
             _sortMode != _SavedMedicationSortMode.registeredDate,
         text: text,
@@ -614,7 +639,9 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
                         medication.stoppedOn!.year,
                         medication.stoppedOn!.month,
                         medication.stoppedOn!.day,
-                      ).isAfter(DateTime(today.year, today.month, today.day))) ||
+                      ).isAfter(
+                        DateTime(today.year, today.month, today.day),
+                      )) ||
                   (medication.medicationEndDate != null &&
                       medication.medicationEndDate!.isBefore(
                         DateTime(today.year, today.month, today.day),
@@ -684,6 +711,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
             _DeleteConfirmationDialog(text: text, count: ids.length),
       );
       if (!mounted || shouldDelete != true) return;
+      setState(() => _deleteConfirmed = true);
       // 확인 중 조회 결과가 바뀌어도 숨겨진 약을 삭제하지 않는다.
       ids.retainAll(_visibleMedicationIds(viewModel));
       if (ids.isEmpty) return;
@@ -697,7 +725,12 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
         context,
       ).showSnackBar(SnackBar(content: Text(text.deleteResult(result))));
     } finally {
-      if (mounted) setState(() => _isDeleting = false);
+      if (mounted) {
+        setState(() {
+          _isDeleting = false;
+          _deleteConfirmed = false;
+        });
+      }
     }
   }
 

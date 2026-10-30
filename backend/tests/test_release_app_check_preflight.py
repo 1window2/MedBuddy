@@ -327,7 +327,7 @@ def test_actual_build_and_signature_scripts_share_artifact_plan(
     calls = tmp_path / "tool-calls"
     summary = tmp_path / "summary"
     environment = {
-        **os.environ, "PATH": f"{tools}:{os.environ['PATH']}",
+        **os.environ, "PATH": f"{tools}{os.pathsep}{os.environ['PATH']}",
         "MEDBUDDY_APP_CHECK_REQUIRED_NORMALIZED": policy, "MEDBUDDY_RELEASE_DISTRIBUTION": distribution,
         "MEDBUDDY_BUILD_DIRECT_APK": build_apk, "EXPECTED_SIGNING_CERT_SHA256": UPLOAD,
         "MEDBUDDY_KEYSTORE_PATH": "test-keystore", "MEDBUDDY_KEY_ALIAS": "test-alias",
@@ -338,6 +338,12 @@ def test_actual_build_and_signature_scripts_share_artifact_plan(
         "FIREBASE_MESSAGING_SENDER_ID": "123456789", "FIREBASE_PROJECT_ID": "medbuddy-test",
         "NAVER_MAP_CLIENT_ID": "test-map-client",
     }
+    if os.name == "nt":
+        # Git Bash가 시스템 도구를 앞에 넣어도 이 테스트의 가짜 도구만 실행한다.
+        bash_environment = tmp_path / "bash-environment"
+        bash_environment.write_text('export PATH="$(cd "$MEDBUDDY_TEST_TOOLS" && pwd):$PATH"\n')
+        environment["BASH_ENV"] = str(bash_environment)
+        environment["MEDBUDDY_TEST_TOOLS"] = tools.as_posix()
     _fake_tool(tools / "keytool", 'printf "SHA256: %s\\n" "${TEST_AAB_CERT:-$EXPECTED_SIGNING_CERT_SHA256}"\n')
     _fake_tool(tools / "flutter", '''
 printf '%s\n' "$*" >> "$TOOL_CALLS"

@@ -165,8 +165,7 @@ class MedBuddyApp extends StatefulWidget {
 // - _navigatorKey (GlobalKey<NavigatorState>): Navigator key used by notification routing.
 // - _authenticationControl (AuthenticationControl): Authentication gate and session lifecycle control.
 // - _appLanguageControl (AppLanguageControl): Application language state shared before and after sign-in.
-class _MedBuddyAppState extends State<MedBuddyApp>
-    with WidgetsBindingObserver {
+class _MedBuddyAppState extends State<MedBuddyApp> with WidgetsBindingObserver {
   static const String _scheduleRouteName = '/schedule';
   static const String _caregiverScheduleRoutePrefix = '/caregiver-schedule/';
 
@@ -218,6 +217,8 @@ class _MedBuddyAppState extends State<MedBuddyApp>
         _authenticationControl.handleUnauthorizedResponse;
     _ownsAppLanguageControl = widget.appLanguageControl == null;
     _appLanguageControl = widget.appLanguageControl ?? AppLanguageControl();
+    _appLanguageControl.addListener(_synchronizeNotificationLanguage);
+    _synchronizeNotificationLanguage();
     _settingsUserHash = _authenticationControl.session?.userHash;
     _pendingEmailVerification = _authenticationControl.emailVerificationRequired
         ? _authenticationControl.signedInEmail
@@ -258,6 +259,12 @@ class _MedBuddyAppState extends State<MedBuddyApp>
   }
 
   Uri? _pendingWidgetUri;
+
+  void _synchronizeNotificationLanguage() {
+    unawaited(
+      NotificationService.instance.updateLanguage(_appLanguageControl.language),
+    );
+  }
 
   // 기기 언어 이벤트에서만 동기화를 요청해 설정 알림이 다시 저장을 유발하지 않게 한다.
   @override
@@ -330,6 +337,7 @@ class _MedBuddyAppState extends State<MedBuddyApp>
     _authenticationControl.setBeforeSignOut(null);
     AuthenticatedApiClient.defaultOnUnauthorized = null;
     _authenticationControl.removeListener(_handleAuthenticationChange);
+    _appLanguageControl.removeListener(_synchronizeNotificationLanguage);
     if (_ownsAuthenticationControl) {
       _authenticationControl.dispose();
     }
@@ -346,28 +354,74 @@ class _MedBuddyAppState extends State<MedBuddyApp>
   // Returns:
   // - Future<void>: asynchronous completion without a result payload.
   Future<void> _prepareSessionEnd() async {
+    final session = _authenticationControl.session;
+    final generation = _settingsGeneration;
+    final viewModel = _settingsViewModel;
+    final push = _pushNotificationService;
+    bool isCurrent() =>
+        mounted &&
+        session != null &&
+        identical(_authenticationControl.session, session) &&
+        generation == _settingsGeneration &&
+        identical(_settingsViewModel, viewModel);
     // 서버 요청이 필요한 푸시 토큰 해제만 실패할 수 있다. 이를 먼저 해서, 오프라인 등으로
     // 로그아웃이 중단되어도 복용 기록 대기열과 복약 알림이 지워진 채 남지 않게 한다.
-    await _pushNotificationService?.stop(requireServerUnregistration: true);
-    // 오프라인에서 기록해 아직 올리지 못한 복용은 토큰이 유효한 지금 한 번 더 올려 본다. 몇 초 안에
-    // 끝나지 않으면 기다리지 않으며, 남은 기록은 같은 계정이 이 기기에 다시 로그인할 때 전송된다.
-    await _flushPendingDoseRecords();
+    // 알림 취소 전에 멈췄으면 예약된 14일 알림이 그대로이므로 다시 계산하지 않는다. 다시 계산하면
+    // 기간 일정이 없을 때 오늘 알림만 남는다.
+    var remindersTouched = false;
     try {
+      await push?.stop(requireServerUnregistration: true);
+      // 오프라인에서 기록해 아직 올리지 못한 복용은 토큰이 유효한 지금 한 번 더 올려 본다. 몇 초 안에
+      // 끝나지 않으면 기다리지 않으며, 남은 기록은 같은 계정이 이 기기에 다시 로그인할 때 전송된다.
+      await _flushPendingDoseRecords();
+      if (!isCurrent()) throw StateError('Account changed.');
       await DoseSyncBackgroundScheduler.suspend();
+      if (!isCurrent()) throw StateError('Account changed.');
       await DoseHomeWidget.clear();
+      if (!isCurrent()) throw StateError('Account changed.');
+      remindersTouched = true;
       await _cancelSessionReminders();
     } catch (_) {
       // 로컬 정리가 실패하면 로그아웃이 중단되어 계정은 로그인 상태로 남는다. 앞에서 멈춘 푸시와 복용 기록
       // 전송 작업을 되살려, 로그인한 채로 푸시(보호자 미복용 알림 포함)를 받지 못하는 상태가 되지 않게 한다.
-      final session = _authenticationControl.session;
-      if (session != null) {
-        unawaited(_pushNotificationService?.start().catchError((_) {}));
-        unawaited(
-          DoseSyncBackgroundScheduler.register(
-            session.userHash,
-          ).catchError((_) {}),
-        );
+      // 한 복원 단계가 실패해도 다른 복원은 시도한다. 다른 세션으로 바뀌면 즉시 중단한다.
+      Future<void> restore(Future<void> Function() action) async {
+        if (!isCurrent()) return;
+        try {
+          await action();
+        } catch (_) {
+          /* 다음 복원 단계는 계속 진행한다. */
+        }
       }
+
+      await restore(() async {
+        final sync = viewModel?.doseSync;
+        if (sync != null) {
+          await sync.resumeAfterAbortedSignOut(isCurrent);
+        } else {
+          await DoseSyncBackgroundScheduler.resume(
+            session!.userHash,
+            isCurrent: isCurrent,
+          );
+        }
+      });
+      await restore(() async {
+        await DoseHomeWidget.publish(owner: session!.userHash);
+      });
+      if (remindersTouched) {
+        await restore(() async {
+          await viewModel?.restoreSessionReminders(isCurrent);
+        });
+      }
+      await restore(
+        () => DoseSyncBackgroundScheduler.register(session!.userHash),
+      );
+      await restore(
+        () => MedicationReminderBackgroundScheduler.register(session!.userHash),
+      );
+      await restore(() async {
+        await push?.start();
+      });
       rethrow;
     }
   }
@@ -598,7 +652,8 @@ class _MedBuddyAppState extends State<MedBuddyApp>
     NotificationService.instance.setHistoryUser(
       userHash,
       persistSession:
-          hasSession || (previousUserHash != null && previousUserHash.isNotEmpty),
+          hasSession ||
+          (previousUserHash != null && previousUserHash.isNotEmpty),
     );
     if (userHash == _monitoredUserHash) {
       return;
@@ -637,7 +692,9 @@ class _MedBuddyAppState extends State<MedBuddyApp>
     }
     // 등록에 실패해도 처리되지 않은 오류로 남기지 않는다. 다음 앱 시작 때 다시 등록한다.
     unawaited(
-      MedicationReminderBackgroundScheduler.register(userHash).catchError((_) {}),
+      MedicationReminderBackgroundScheduler.register(
+        userHash,
+      ).catchError((_) {}),
     );
     final pushService = PushNotificationService(
       userHash: userHash,
@@ -1196,13 +1253,10 @@ class _MedBuddyAppState extends State<MedBuddyApp>
           latestMessageRequest: _notificationChatLatest,
           linkId: linkId,
           currentUserHash: session.userHash,
-          userSetting: context
-              .read<MedBuddyViewModel>()
-              .userSetting
-              .copyWith(
-                userHash: session.userHash,
-                language: _appLanguageControl.language,
-              ),
+          userSetting: context.read<MedBuddyViewModel>().userSetting.copyWith(
+            userHash: session.userHash,
+            language: _appLanguageControl.language,
+          ),
         ),
       ),
     );
@@ -1319,6 +1373,10 @@ class _MedBuddyAppState extends State<MedBuddyApp>
                         DoseSyncBackgroundScheduler.register(session.userHash),
                     onStateChanged: () =>
                         DoseHomeWidget.publish(owner: session.userHash),
+                    loadScheduleWindow: () =>
+                        viewModel.checkSchedule.requestOfflineScheduleWindow(
+                          expectedStartDay: doseScheduleDay(DateTime.now()),
+                        ),
                   ),
                 );
               }

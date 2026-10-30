@@ -8,7 +8,7 @@ title MedBuddy System Overview
 skinparam backgroundColor white
 skinparam shadowing false
 skinparam linetype ortho
-skinparam defaultFontName Arial
+skinparam defaultFontName Nanum Gothic
 skinparam defaultFontSize 18
 skinparam ArrowColor #64748B
 skinparam ArrowThickness 2
@@ -27,6 +27,8 @@ actor Caregiver as Caregiver
 rectangle "Flutter Frontend\n\nMobile UI and device services" as Frontend #E8F4FF
 rectangle "FastAPI Backend\n\nBusiness rules and secured APIs" as Backend #EAF8F0
 database "PostgreSQL / SQLite\nApplication Data" as Database #F8FAFC
+database "Redis Cache\nREDIS_URL" as CacheRedis #F8FAFC
+database "Rate-limit Redis\nRATE_LIMIT_REDIS_URL\nnoeviction" as RateRedis #F8FAFC
 cloud "External Services\n\nFirebase, MFDS, Gemini\n병원·약국·공휴일 API, Naver 지도" as External #FFF7E6
 
 Patient --> Frontend : uses
@@ -35,6 +37,8 @@ Patient -[hidden]right-> Caregiver
 Frontend --> Backend : authenticated HTTPS API / WebSocket
 Frontend --> External : 앱 인증·지도 SDK
 Backend --> Database : persists and queries
+Backend --> CacheRedis : 의약품 조회 캐시
+Backend --> RateRedis : 요청 제한 Counter
 Backend --> External : verifies and enriches
 Database -[hidden]right-> External
 External --> Frontend : push notifications
@@ -43,5 +47,7 @@ legend bottom
   Main presentation view: responsibilities and communication boundaries only
   채팅 기록은 Application Database, 연결 Registry는 프로세스 메모리에 저장한다.
   Redis는 Cache·요청 제한 Counter이며 채팅 방송 broker가 아니다.
+  운영 API의 요청 제한 Redis는 Cache와 다른 서버 주소·포트를 요구한다.
+  시작 시 연결과 noeviction 정책을 확인하며 DB 번호 분리만으로 대체하지 않는다.
 endlegend
 @enduml

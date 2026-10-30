@@ -9,7 +9,9 @@ title Prescription Analysis - Key Classes
 skinparam backgroundColor white
 skinparam shadowing false
 skinparam linetype ortho
-skinparam defaultFontName SansSerif
+skinparam nodesep 60
+skinparam ranksep 85
+skinparam defaultFontName Nanum Gothic
 skinparam defaultFontSize 15
 skinparam ArrowColor #64748B
 skinparam ArrowThickness 2
@@ -33,9 +35,13 @@ package "Flutter Frontend" #E8F4FF {
   class PrescriptionCameraOrientationService <<Service>>
   class PrescriptionImageCropService <<Service>>
   class PrescriptionLocalOcrService <<Service>>
+  class PrescriptionOcrReadingOrder <<Service>>
   class PrescriptionPrivacyFilter <<Service>>
   class PrescriptionAnalysisPreviewUI <<UI>>
   class MedicationCandidateDialog <<UI>>
+  class CheckResultUI <<UI>>
+  class PrescriptionChangeRadarUI <<UI>>
+  class "CheckPrescriptionChange" as FCheckPrescriptionChange <<Control>>
   class MedBuddyPrescriptionViewModel <<Control>>
   class "CheckMedicationDetail" as FCheckMedicationDetail <<Control>>
   class MedicationMatchReview <<Entity>>
@@ -46,9 +52,11 @@ package "Flutter Frontend" #E8F4FF {
 package "FastAPI Backend" #EAF8F0 {
   class "InputPrescription" as BInputPrescription <<Control>>
   class OCRServiceBoundary <<Service>>
+  note "prescription_privacy.py\ndeidentify_prescription_text()" as PrescriptionPrivacy
   class "PrescriptionMedicationNameVerifier" as MedicationNameVerifier <<Service>>
   class "MedicationSchedule" as BMedicationSchedule <<Entity>>
   class "CheckMedicationDetail" as BCheckMedicationDetail <<Control>>
+  class "CheckPrescriptionChange" as BCheckPrescriptionChange <<Control>>
   class "medication_match_safety" as MatchSafety <<Module>> {
     + match_conflict(original, candidate)
     + can_auto_match(original, candidate)
@@ -61,21 +69,46 @@ GuidedPrescriptionCameraUI -right-> PrescriptionImageCropService : crops to guid
 GuidedPrescriptionCameraUI -down-> PrescriptionCameraOrientationService : camera-only rotation
 PrescriptionImageCropService -right-> PrescriptionLocalOcrService : captured image
 PrescriptionLocalOcrService -down-> PrescriptionPrivacyFilter : masks identifiers
+PrescriptionLocalOcrService --> PrescriptionOcrReadingOrder : 개인정보 판단 뒤 화면 행 순서로 정렬
 PrescriptionPrivacyFilter -right-> PrescriptionAnalysisPreviewUI : masked OCR regions
-PrescriptionAnalysisPreviewUI -right-> FInputPrescription : confirmed rows
+MedBuddyPrescriptionViewModel --> FInputPrescription : 이미지 입력·OCR 인식
 FInputPrescription -down-> BInputPrescription : authenticated API
 BInputPrescription -right-> OCRServiceBoundary : structures text
+BInputPrescription --> PrescriptionPrivacy : 서버 입력 재검사
+OCRServiceBoundary --> PrescriptionPrivacy : 외부 제공자 호출 직전 재검사
+note bottom of PrescriptionPrivacy
+  약 정보가 없는 식별 줄·라벨 구역은 빼고 라벨 없는 날짜·번호는 가린다.
+  환자 정보와 약 행이 한 줄에 섞이면 AI 호출 전에 거절한다.
+  기기 검토를 대체하거나 모든 개인정보 제거를 보증하지 않는다.
+end note
 OCRServiceBoundary -right-> Gemini
-BInputPrescription -right-> MedicationNameVerifier : verifies medication names
-BInputPrescription -right-> BMedicationSchedule : response DTO
+BInputPrescription -down-> MedicationNameVerifier : verifies medication names
+BInputPrescription -down-> BMedicationSchedule : response DTO
 MedicationNameVerifier --> MatchSafety : rejects incompatible OCR / AI correction
 PrescriptionAnalysisPreviewUI --> MedBuddyPrescriptionViewModel : review and confirm one row
 PrescriptionAnalysisPreviewUI --> MedicationCandidateDialog : explicit candidate choice
-MedBuddyPrescriptionViewModel --> FCheckMedicationDetail : six-way lookup; busy-only serial retry once
-FCheckMedicationDetail --> BCheckMedicationDetail : /identify + original_text
+FInputPrescription --> MedBuddyPrescriptionViewModel : 인식 단계·복약 일정
+MedBuddyPrescriptionViewModel --> FCheckMedicationDetail : OCR 직후 1차 조회; 여섯 건 병렬·사용 중 1회 재시도
+FCheckMedicationDetail --> BCheckMedicationDetail : /identify + original_text + search_mode
 FCheckMedicationDetail --> MedicationMatchReview : confirmation-only candidates
 FCheckMedicationDetail --> MedicationLookupBusy : known account-busy 503 + retryAt
 BCheckMedicationDetail --> MatchSafety : original strength / dosage form; exact name only
+PrescriptionAnalysisPreviewUI --> CheckResultUI : 저장 단계
+CheckResultUI *-- PrescriptionChangeRadarUI : 결과 목록 첫 칸 (기본 접힘)
+MedBuddyPrescriptionViewModel --> FCheckPrescriptionChange : 결과 화면 진입 뒤 비교 조회
+FCheckPrescriptionChange --> BCheckPrescriptionChange : POST /prescription/change-radar
+
+note bottom of PrescriptionOcrReadingOrder
+  기기 인식기는 약봉투를 열 단위로 돌려준다.
+  빈 세로 여백으로 나눈 구역 안에서 행 순서로 놓고
+  이웃 열의 같은 행은 이어 둔다. 줄은 합치지 않는다.
+end note
+
+note bottom of CheckResultUI
+  약별 결과 카드는 접고 펼치며 Radar 조회 실패로
+  목록 위치가 바뀌어도 펼친 상태를 같은 약에 유지한다.
+  Radar(기본 접힘)는 일정 변경·새로 확인·이번에 없음 등 간단한 분류로 묶는다.
+end note
 
 note right of MedicationNameVerifier
   Standalone catalog-name verification service.
@@ -88,16 +121,17 @@ note right of MedicationNameVerifier
 end note
 
 note bottom of PrescriptionAnalysisPreviewUI
-  Users review OCR rows and restore
-  missing medications before analysis.
-  Uncertain products require explicit choice;
-  confirmation alone does not save a medication.
+  OCR 직후 1차 조회를 마친 뒤 약별 카드에서 검토한다.
+  확인·후보·결과 없음·실패·조회 전 상태를 구분한다.
+  검토·결과 요약은 진입 즉시 상단 고정이며 대기·슬라이딩이 없다.
+  후보 확정·일정 검토·약 저장은 별도 사용자 동작이다.
 end note
 
 note bottom of MatchSafety
-  Local, cached and public results use the original evidence.
-  Candidate-only replies leave data empty for older clients.
-  Similarity discovers candidates, not therapeutic substitutes.
+  모든 검색 방식에서 원문 함량·제형을 검사한다.
+  함량 누락 후보는 수동 확인만 가능하며 충돌 후보는 제외한다.
+  단일 정확 일치와 후보 요약 완결성을 확인한 경우만 자동 확정한다.
+  확인 전용 응답은 data가 비어 있으며 치료상 대체를 판단하지 않는다.
 end note
 
 note bottom of PrescriptionImageCropService

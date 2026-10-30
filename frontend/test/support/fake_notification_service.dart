@@ -117,6 +117,13 @@ class RecordingNotificationService implements NotificationService {
   final List<RecordedLinkedChatAlert> linkedChatAlerts = [];
   final List<RecordedHistoryUser> historyUsers = [];
   bool? showSensitiveDetails;
+  final List<String> languages = [];
+
+  @override
+  Future<void> updateLanguage(String language) async {
+    languages.add(language);
+  }
+
   // Result of canScheduleExactReminders; requestExactReminderPermission sets it to
   // exactPermissionAfterRequest when that is not null.
   bool exactRemindersAllowed = true;
@@ -204,7 +211,8 @@ class RecordingNotificationService implements NotificationService {
   @override
   Future<bool> requestExactReminderPermission() async {
     exactPermissionRequestCount++;
-    exactRemindersAllowed = exactPermissionAfterRequest ?? exactRemindersAllowed;
+    exactRemindersAllowed =
+        exactPermissionAfterRequest ?? exactRemindersAllowed;
     return exactRemindersAllowed;
   }
 
@@ -378,6 +386,7 @@ class RecordingNotificationService implements NotificationService {
     String? slotKey,
     String? historyUserHash,
     bool recordHistory = true,
+    ChatNotificationSummary? summary,
   }) async {
     linkedChatAlerts.add((
       id: id,

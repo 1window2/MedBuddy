@@ -126,6 +126,18 @@ void main() {
           return http.Response(
             jsonEncode({
               'success': true,
+              // 서버처럼 조회 기간을 함께 보내 오프라인 저장 검증을 통과한다.
+              'window_start': doseScheduleDay(now),
+              // 끝 날짜는 한국 날짜 문자열에서 계산한다. 기기 자정을 한국 날짜로 바꾸면 한국보다
+              // 동쪽 시간대에서 하루 이르게 나온다.
+              'window_end': () {
+                final start = DateTime.parse(doseScheduleDay(now));
+                return DateTime(
+                  start.year,
+                  start.month,
+                  start.day + 13,
+                ).toIso8601String().substring(0, 10);
+              }(),
               'data': [
                 medication().toJson(),
                 if (secondMorningMedication) medication(id: '92').toJson(),
@@ -172,6 +184,19 @@ void main() {
     addTearDown(service.dispose);
     return service;
   }
+
+  // 12시간 작업이 오늘 일정을 저장해도 자정 뒤 오프라인 기록에 쓸 14일 일정이 남아야 한다.
+  test('the background refresh keeps an offline window for the next days', () async {
+    final service = build();
+    expect(await service.synchronize(), isTrue);
+    final window = await store.readOfflineScheduleWindow('patient-a');
+    expect(window, isNotNull);
+    expect(window!['start'], '2026-10-10');
+    expect(
+      (window['courses'] as List).map((course) => course['medication_id']),
+      contains('91'),
+    );
+  });
 
   test(
     'completed offline is not rearmed by the real background refresh factory',

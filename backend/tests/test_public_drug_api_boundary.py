@@ -65,16 +65,16 @@ async def test_small_api_search_medication_uses_basic_catalog_contract(
     ]
 
 
-# Function Name: test_small_api_search_medication_degrades_to_empty_result
+# Function Name: test_small_api_search_medication_propagates_failure
 # Description:
-# - Degrades an unavailable interactive basic-drug search to an empty result.
+# - Keeps an unavailable interactive basic-drug search distinct from a successful empty result.
 # Parameters:
 # - monkeypatch (pytest.MonkeyPatch): Pytest replacement fixture restoring patched collaborators
 #   afterward.
 # Returns:
 # - None.
 @pytest.mark.anyio
-async def test_small_api_search_medication_degrades_to_empty_result(
+async def test_small_api_search_medication_propagates_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     transport = _PublicDrugTransport()
@@ -82,7 +82,7 @@ async def test_small_api_search_medication_degrades_to_empty_result(
 
     # Function Name: failing_request_items
     # Description:
-    # - Raises an upstream availability error to exercise interactive search fallback.
+    # - Raises an upstream availability error to verify that lookup failures remain visible.
     # Parameters:
     # - url (str): Public API endpoint requested by the boundary.
     # - params (dict[str, object]): Public API query parameters checked by the transport
@@ -97,7 +97,8 @@ async def test_small_api_search_medication_degrades_to_empty_result(
 
     monkeypatch.setattr(transport, "request_items", failing_request_items)
 
-    assert await api.searchMedication("sample tablet") == []
+    with pytest.raises(RuntimeError, match="unavailable"):
+        await api.searchMedication("sample tablet")
 
 
 # 함수이름: test_large_api_search_medication_uses_approval_catalog_contract

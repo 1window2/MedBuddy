@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/composition/linked_chat_notification_monitor_factory.dart';
 import 'package:medbuddy_frontend/entities/chat_message_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
+import 'package:medbuddy_frontend/services/notification_service.dart';
 
 import 'support/fake_notification_service.dart';
 
@@ -18,6 +19,7 @@ Future<void> _deliver(
   RecordingNotificationService notifications,
   UserSetting setting, {
   int messageId = 41,
+  Future<ChatNotificationSummary?> Function()? loadSummary,
 }) {
   return deliverLinkedChatAlert(
     loadSetting: () async => setting,
@@ -28,6 +30,7 @@ Future<void> _deliver(
     messageBody: 'Did you take the morning dose?',
     messageKind: ChatMessageKind.slotCheckRequest,
     slotKey: 'morning',
+    loadSummary: loadSummary,
   );
 }
 
@@ -83,5 +86,17 @@ void main() {
     final ids = [for (final alert in notifications.linkedChatAlerts) alert.id];
     expect(ids[0], ids[1]);
     expect(ids[2], isNot(ids[0]));
+  });
+
+  // A failed unread-summary request must not drop the alert of the message that arrived.
+  test('a failed summary lookup still shows the message alert', () async {
+    final notifications = RecordingNotificationService();
+    await _deliver(
+      notifications,
+      const UserSetting(),
+      loadSummary: () async => throw StateError('offline'),
+    );
+
+    expect(notifications.linkedChatAlerts, hasLength(1));
   });
 }

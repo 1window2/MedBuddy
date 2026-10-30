@@ -86,6 +86,44 @@ class MedBuddyReminderViewModel {
     _loadGeneration++;
   }
 
+  // 실패한 로그아웃 복구는 알림 설정을 서버에서 끄거나 새 시각을 추측하지 않는다.
+  Future<void> restoreAfterAbortedSignOut({
+    required bool Function() isCurrent,
+    List<MedicationSchedule>? courses,
+    DateTime? lastAllowedDate,
+  }) async {
+    bool current() => !_disposed && isCurrent();
+    if (!current()) return;
+    if (_synchronization != null) await _synchronization;
+    if (!current()) return;
+    if (_medicationReminderSettings.isEmpty) {
+      await _loadMedicationReminderSettingsFromCache(_loadGeneration);
+    }
+    if (!current() || !userSetting.medicationNotificationsEnabled) return;
+    notificationService.setShowSensitiveDetails(
+      userSetting.showNotificationDetails,
+    );
+    await _restoreAsNeededCheckReminder(current);
+    for (final setting in _medicationReminderSettings.values.toList()) {
+      if (!current()) return;
+      if (!setting.isEnabled) continue;
+      try {
+        await _scheduleMedicationReminder(
+          setting: setting,
+          slotTitle: _reminderSlotTitle(setting.slotKey),
+          schedules: _schedulesForReminderSlot(setting.slotKey),
+          courseSchedules: courses == null
+              ? null
+              : _schedulesForSlot(courses, setting.slotKey),
+          isCurrent: current,
+          lastAllowedDate: lastAllowedDate ?? DateTime.now(),
+        );
+      } catch (_) {
+        // 한 시간대의 플러그인 오류 때문에 다른 시간대 복구를 건너뛰지 않는다.
+      }
+    }
+  }
+
   // 함수이름: loadMedicationReminderSettings
   // 함수역할: 서버에서 시간대별 알림을 읽어 기본값과 캐시에 반영하고 조회 실패 시 사용자별 또는 구형 캐시로 복원한다.
   // 매개변수:
@@ -707,6 +745,7 @@ class MedBuddyReminderViewModel {
     required List<MedicationSchedule> schedules,
     List<MedicationSchedule>? courseSchedules,
     bool Function()? isCurrent,
+    DateTime? lastAllowedDate,
   }) async {
     if (!_canContinueReminder(isCurrent)) return;
     notificationService.setShowSensitiveDetails(
@@ -754,7 +793,11 @@ class MedBuddyReminderViewModel {
             (name) => name.trim().isNotEmpty,
           )
           .toList(growable: false),
-      activeDates: activeDates,
+      activeDates: lastAllowedDate == null
+          ? activeDates
+          : activeDates
+                .where((date) => !date.isAfter(lastAllowedDate))
+                .toList(),
       language: userSetting.language,
     );
   }

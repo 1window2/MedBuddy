@@ -359,11 +359,11 @@ class PublicDrugSmallAPI:
 
     # Function Name: searchMedication
     # Description:
-    # - Search up to three consumer medication rows by name and treat provider failures as an empty optional result.
+    # - Search up to three consumer medication rows by name and propagate provider failures.
     # Parameters:
     # - medication_name (str): Product name sent as the eDrug itemName query.
     # Returns:
-    # - Matching item dictionaries, or an empty list on lookup failure.
+    # - Matching item dictionaries; an empty list only when the provider reports no matches.
     async def searchMedication(self, medication_name: str) -> list[dict[str, Any]]:
         params = {
             "serviceKey": settings.PUBLIC_DATA_API_KEY,
@@ -382,7 +382,7 @@ class PublicDrugSmallAPI:
                 "Basic public drug API lookup failed: %s",
                 type(exc).__name__,
             )
-            return []
+            raise
 
     # Function Name: fetchPage
     # Description:

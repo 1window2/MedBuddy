@@ -44,6 +44,10 @@ class MedBuddyPrescriptionViewModel {
   // 반환값:
   // - AnalysisProgressStep: 현재 처방 인식 또는 약품 분석 진행 단계 값을 제공한다.
   AnalysisProgressStep get analysisProgressStep => _analysisProgressStep;
+  int _completedMedicationAnalysisCount = 0;
+  int _totalMedicationAnalysisCount = 0;
+  int get completedMedicationAnalysisCount => _completedMedicationAnalysisCount;
+  int get totalMedicationAnalysisCount => _totalMedicationAnalysisCount;
   // 함수이름: isPrescriptionAnalyzing
   // 함수역할: 처방전 인식이나 약품 상세 분석이 진행 중인 상태인지 확인한다.
   // 매개변수:
@@ -164,11 +168,11 @@ class MedBuddyPrescriptionViewModel {
   }
 
   // Function Name: prescriptionRecognitionNotice
-  // Description: Builds a localized preanalysis review notice for corrected names and skipped OCR entries, returning blank when neither occurred.
+  // Description: Builds a localized OCR review notice for corrected names and skipped OCR entries, returning blank when neither occurred.
   // Parameters:
   // - None.
   // Returns:
-  // - String: Builds a localized preanalysis review notice for corrected names and skipped OCR entries, returning blank when neither occurred.
+  // - String: Builds a localized OCR review notice for corrected names and skipped OCR entries, returning blank when neither occurred.
   String get prescriptionRecognitionNotice {
     final correctedCount = correctedPrescriptionMedicationCount;
     final skippedCount = _lastPrescriptionSkippedMedicationCount;
@@ -193,8 +197,8 @@ class MedBuddyPrescriptionViewModel {
     }
 
     return _isEnglishSetting
-        ? '${parts.join(' · ')}. Please review before analysis.'
-        : '${parts.join(' · ')} 내역을 분석 전 확인해주세요.';
+        ? '${parts.join(' · ')}. Please review.'
+        : '${parts.join(' · ')} 내역을 확인해주세요.';
   }
 
   List<MedicationSchedule> _recognizedMedicationScheduleList = [];
@@ -244,6 +248,12 @@ class MedBuddyPrescriptionViewModel {
   final Map<int, AnalyzedMedication> _analyzedMedicationByScheduleIndex = {};
   final Set<int> _unverifiedMedicationScheduleIndexes = {};
   final Map<int, MedicationMatchReview> _medicationMatchReviews = {};
+  final Map<int, MedicationLookupStatus> _medicationLookupStatuses = {};
+  PrescriptionRecognitionStage _recognitionStage =
+      PrescriptionRecognitionStage.recognizingText;
+  PrescriptionRecognitionStage get recognitionStage => _recognitionStage;
+  Map<int, MedicationLookupStatus> get medicationLookupStatuses =>
+      Map.unmodifiable(_medicationLookupStatuses);
   Map<int, MedicationMatchReview> get medicationMatchReviews =>
       Map.unmodifiable(_medicationMatchReviews);
   // 함수이름: verifiedMedicationScheduleIndexes
@@ -343,24 +353,10 @@ class MedBuddyPrescriptionViewModel {
   // 반환값:
   // - 없음.
   void clearAnalysisResult() {
-    _medicationMatchReviews.clear();
     _cancelPrescriptionOperation();
     inputPrescription.cancelPendingRequests();
     unawaited(inputPrescription.clearSelectedImage());
-    _recognizedMedicationScheduleList = [];
-    _recognizedTextRegionList = [];
-    _prescriptionPreviewImagePath = '';
-    _analyzedMedicationList = [];
-    _analyzedMedicationByScheduleIndex.clear();
-    _unverifiedMedicationScheduleIndexes.clear();
-    _prescriptionChangeRadar = null;
-    _isPrescriptionChangeLoading = false;
-    _completedMedicationSaveIndexes.clear();
-    _isAllMedicationSaving = false;
-    _savingMedicationIndex = null;
-    _analysisErrorMessage = '';
-    _clearPrescriptionRecognitionCounts();
-    _analysisProgressStep = AnalysisProgressStep.prescriptionRecognition;
+    _resetPrescriptionRecognitionState();
     _prescriptionFlowState = PrescriptionFlowState.idle;
     _statusMessage = idlePrompt;
     _notifyViewModelListeners();
@@ -380,10 +376,11 @@ class MedBuddyPrescriptionViewModel {
        * - onImageSelected (PrescriptionImageSelectedCallback?): 실제 이미지 선택 직후 진행 상태 수신자
        * 반환값:
        * - 촬영 이미지 입력 처리 결과의 Future.
-       */ ({onImageSelected}) {
+       */ ({onImageSelected, onProgress}) {
         return inputPrescription.requestCapturedPrescriptionImage(
           image,
           onImageSelected: onImageSelected,
+          onProgress: onProgress,
         );
       },
       cancelledMessage: _isEnglishSetting
@@ -421,7 +418,8 @@ class MedBuddyPrescriptionViewModel {
   ) {
     final isReviewState =
         _prescriptionFlowState ==
-        PrescriptionFlowState.medicationReviewRequired;
+            PrescriptionFlowState.medicationReviewRequired ||
+        _prescriptionFlowState == PrescriptionFlowState.analysisSucceeded;
     if ((_prescriptionFlowState != PrescriptionFlowState.previewReady &&
             !isReviewState) ||
         scheduleIndex < 0 ||
@@ -471,9 +469,12 @@ class MedBuddyPrescriptionViewModel {
     _recognizedMedicationScheduleList = updatedScheduleList;
     _medicationMatchReviews.remove(scheduleIndex);
     if (isReviewState) {
+      // 조회 전 미리보기에는 조회 상태가 없으므로 검토 중 수정한 행만 다시 조회 대상으로 표시한다.
+      _medicationLookupStatuses[scheduleIndex] = MedicationLookupStatus.pending;
       _analyzedMedicationByScheduleIndex.remove(scheduleIndex);
       _unverifiedMedicationScheduleIndexes.add(scheduleIndex);
       _analyzedMedicationList = _orderedAnalyzedMedications();
+      _prescriptionFlowState = PrescriptionFlowState.medicationReviewRequired;
     } else {
       _analyzedMedicationByScheduleIndex.clear();
       _unverifiedMedicationScheduleIndexes.clear();
@@ -498,7 +499,8 @@ class MedBuddyPrescriptionViewModel {
   void addRecognizedMedicationSchedule(MedicationSchedule medicationSchedule) {
     final isReviewState =
         _prescriptionFlowState ==
-        PrescriptionFlowState.medicationReviewRequired;
+            PrescriptionFlowState.medicationReviewRequired ||
+        _prescriptionFlowState == PrescriptionFlowState.analysisSucceeded;
     if (_prescriptionFlowState != PrescriptionFlowState.previewReady &&
         !isReviewState) {
       return;
@@ -523,8 +525,10 @@ class MedBuddyPrescriptionViewModel {
     ];
 
     if (isReviewState) {
+      _medicationLookupStatuses[addedIndex] = MedicationLookupStatus.pending;
       _unverifiedMedicationScheduleIndexes.add(addedIndex);
       _analyzedMedicationList = _orderedAnalyzedMedications();
+      _prescriptionFlowState = PrescriptionFlowState.medicationReviewRequired;
     } else {
       _analyzedMedicationByScheduleIndex.clear();
       _unverifiedMedicationScheduleIndexes.clear();
@@ -554,10 +558,18 @@ class MedBuddyPrescriptionViewModel {
   // 반환값:
   // - 없음.
   void returnToPrescriptionPreview() {
-    _medicationMatchReviews.clear();
     if (_recognizedMedicationScheduleList.isEmpty) {
       return;
     }
+    // 오류 화면에서 돌아와도 약별 실패 사유를 검색 결과 없음으로 바꾸지 않는다.
+    if (_prescriptionFlowState == PrescriptionFlowState.analysisFailed &&
+        _medicationLookupStatuses.isNotEmpty) {
+      _prescriptionFlowState = PrescriptionFlowState.medicationReviewRequired;
+      _notifyViewModelListeners();
+      return;
+    }
+    _medicationMatchReviews.clear();
+    _medicationLookupStatuses.clear();
     _analyzedMedicationByScheduleIndex.clear();
     _unverifiedMedicationScheduleIndexes.clear();
     _analyzedMedicationList = [];
@@ -604,6 +616,7 @@ class MedBuddyPrescriptionViewModel {
             growable: false,
           );
     if (!isRetryingUnverifiedMedication) {
+      _medicationLookupStatuses.clear();
       _medicationMatchReviews.clear();
       _analyzedMedicationByScheduleIndex.clear();
       _unverifiedMedicationScheduleIndexes.clear();
@@ -614,6 +627,8 @@ class MedBuddyPrescriptionViewModel {
       _recognizedMedicationScheduleList,
     );
     _analysisProgressStep = AnalysisProgressStep.medicationAnalysis;
+    _completedMedicationAnalysisCount = 0;
+    _totalMedicationAnalysisCount = targetIndexes.length;
     _prescriptionFlowState = PrescriptionFlowState.analyzingMedication;
     _statusMessage = _isEnglishSetting
         ? 'Analyzing medication information...'
@@ -639,6 +654,16 @@ class MedBuddyPrescriptionViewModel {
         (index, _) => targetIndexes.contains(index),
       );
       _medicationMatchReviews.addAll(analysisBatch.reviews);
+      for (final index in targetIndexes) {
+        _medicationLookupStatuses[index] =
+            analysisBatch.analyzedMedicationByScheduleIndex.containsKey(index)
+            ? MedicationLookupStatus.verified
+            : analysisBatch.errorMessagesByScheduleIndex.containsKey(index)
+            ? MedicationLookupStatus.failed
+            : analysisBatch.reviews[index]?.candidates.isNotEmpty == true
+            ? MedicationLookupStatus.candidates
+            : MedicationLookupStatus.notFound;
+      }
       _analyzedMedicationByScheduleIndex.addAll(
         analysisBatch.analyzedMedicationByScheduleIndex,
       );
@@ -647,18 +672,7 @@ class MedBuddyPrescriptionViewModel {
       );
       _analyzedMedicationList = _orderedAnalyzedMedications();
 
-      final hasOnlyTechnicalFailures =
-          analysisBatch.analyzedMedicationByScheduleIndex.isEmpty &&
-          analysisBatch.unmatchedScheduleIndexes.isEmpty &&
-          analysisBatch.errorMessagesByScheduleIndex.length ==
-              targetIndexes.length;
-      if (_analyzedMedicationList.isEmpty && hasOnlyTechnicalFailures) {
-        _showAnalysisFailure(
-          analysisBatch.errorMessagesByScheduleIndex.values.first,
-        );
-        return;
-      }
-
+      // 전체 조회가 실패해도 인식된 약과 실패 개수를 유지하고 같은 화면에서 재시도한다.
       if (_unverifiedMedicationScheduleIndexes.isNotEmpty) {
         final unverifiedCount = _unverifiedMedicationScheduleIndexes.length;
         _analysisErrorMessage =
@@ -710,7 +724,16 @@ class MedBuddyPrescriptionViewModel {
     final errorMessagesByScheduleIndex = <int, String>{};
     final reviews = <int, MedicationMatchReview>{};
 
-    Future<_MedicationLookupResult> lookup(int index) async {
+    // 각 약은 마지막 조회 시도에서 한 번만 집계하고 취소된 요청의 늦은 응답은 무시한다.
+    void markCompleted() {
+      if (!_isCurrentPrescriptionOperation(operationId)) {
+        return;
+      }
+      _completedMedicationAnalysisCount += 1;
+      _notifyViewModelListeners();
+    }
+
+    Future<_MedicationLookupResult> request(int index) async {
       final schedule = schedules[index];
       try {
         final detail = await checkMedicationDetail.requestMedicationDetail(
@@ -744,6 +767,16 @@ class MedBuddyPrescriptionViewModel {
       }
     }
 
+    // 잠금 충돌 응답은 재시도가 남아 있으므로 첫 시도에서는 집계하지 않는다.
+    Future<_MedicationLookupResult> lookup(
+      int index, {
+      bool isRetry = false,
+    }) async {
+      final result = await request(index);
+      if (isRetry || result.busy == null) markCompleted();
+      return result;
+    }
+
     for (var start = 0; start < scheduleIndexes.length; start += batchSize) {
       final end = math.min(start + batchSize, scheduleIndexes.length);
       final batchIndexes = scheduleIndexes.sublist(start, end);
@@ -755,7 +788,7 @@ class MedBuddyPrescriptionViewModel {
           final delay = result.busy!.retryAt.difference(DateTime.now());
           if (delay > Duration.zero) await Future<void>.delayed(delay);
           if (!_isCurrentPrescriptionOperation(operationId)) break;
-          result = await lookup(result.scheduleIndex);
+          result = await lookup(result.scheduleIndex, isRetry: true);
         }
         if (result.review != null) {
           reviews[result.scheduleIndex] = result.review!;
@@ -811,6 +844,7 @@ class MedBuddyPrescriptionViewModel {
       detail: detail,
     );
     _unverifiedMedicationScheduleIndexes.remove(index);
+    _medicationLookupStatuses[index] = MedicationLookupStatus.verified;
     _medicationMatchReviews.remove(index);
     _analyzedMedicationList = _orderedAnalyzedMedications();
     if (_unverifiedMedicationScheduleIndexes.isEmpty) {
@@ -1086,6 +1120,7 @@ class MedBuddyPrescriptionViewModel {
   Future<void> _requestPrescriptionRecognition({
     required Future<List<MedicationSchedule>?> Function({
       VoidCallback? onImageSelected,
+      PrescriptionRecognitionProgressCallback? onProgress,
     })
     imageRequest,
     required String cancelledMessage,
@@ -1099,6 +1134,7 @@ class MedBuddyPrescriptionViewModel {
     }
     final requestGeneration = _prescriptionOperationId;
     int? operationId;
+    var ownsImagePicker = resetAfterImageSelection;
     // 함수이름: beginRecognition
     // 함수역할: 이 요청의 인식 작업을 한 번만 시작한다. 선택 창이 열려 있는 동안 흐름이 초기화됐으면(세대 변경·해제) 시작하지 않는다.
     // 매개변수: 없음. 반환값: 이 요청이 현재 처방 작업이면 true.
@@ -1119,6 +1155,14 @@ class MedBuddyPrescriptionViewModel {
 
     try {
       final result = await imageRequest(
+        onProgress: (stage) {
+          if (operationId == null ||
+              !_isCurrentPrescriptionOperation(operationId!)) {
+            return;
+          }
+          _recognitionStage = stage;
+          _notifyViewModelListeners();
+        },
         onImageSelected: /* 함수이름: onImageSelected 콜백
          * 함수역할: 현재 처방 작업이 유지될 때 선택 이미지 미리보기를 갱신하고 문자 인식 진행 상태를 표시한다.
          * 매개변수:
@@ -1128,6 +1172,7 @@ class MedBuddyPrescriptionViewModel {
          */ () {
           if (resetAfterImageSelection) {
             _isPrescriptionImagePickPending = false;
+            ownsImagePicker = false;
           }
           if (beginRecognition()) {
             _prescriptionPreviewImagePath =
@@ -1168,15 +1213,8 @@ class MedBuddyPrescriptionViewModel {
       _recognizedMedicationScheduleList = result;
       _recognizedTextRegionList = inputPrescription.lastRecognizedTextRegions;
       _recordPrescriptionRecognitionCounts(result);
-      _prescriptionFlowState = PrescriptionFlowState.previewReady;
-      _statusMessage = prescriptionRecognitionNotice.isEmpty
-          ? (_isEnglishSetting
-                ? 'Prescription recognition completed.'
-                : '처방전 인식이 완료되었습니다.')
-          : (_isEnglishSetting
-                ? 'Prescription recognition completed. Review the recognized information.'
-                : '처방전 인식이 완료되었습니다. 인식 내역을 확인해주세요.');
-      _notifyViewModelListeners();
+      // 중간 검토 화면 없이 약품 조회까지 이어가되 후보 확정과 저장은 사용자에게 맡긴다.
+      await requestPrescriptionAnalysis();
     } catch (error) {
       if (!beginRecognition()) {
         return;
@@ -1185,19 +1223,22 @@ class MedBuddyPrescriptionViewModel {
         UserFacingErrorMessage.resolve(error, isEnglish: _isEnglishSetting),
       );
     } finally {
-      if (resetAfterImageSelection) {
+      // 이전 분석이 끝나도 이후 요청이 연 갤러리의 중복 실행 방지는 해제하지 않는다.
+      if (ownsImagePicker) {
         _isPrescriptionImagePickPending = false;
       }
     }
   }
 
   // 함수이름: _resetPrescriptionRecognitionState
-  // 함수역할: 새 처방전 인식을 시작하기 전에 이전 인식·분석 결과와 저장 진행 표시를 지운다.
+  // 함수역할: 새 처방전 인식을 시작하거나 처방 흐름을 닫을 때 이전 인식·분석 결과와 진행·저장 표시를 지운다.
   // 매개변수:
   // - 없음.
   // 반환값:
   // - 없음.
   void _resetPrescriptionRecognitionState() {
+    _recognitionStage = PrescriptionRecognitionStage.recognizingText;
+    _medicationLookupStatuses.clear();
     _recognizedMedicationScheduleList = [];
     _medicationMatchReviews.clear();
     _recognizedTextRegionList = [];
@@ -1214,6 +1255,8 @@ class MedBuddyPrescriptionViewModel {
     _analysisErrorMessage = '';
     _clearPrescriptionRecognitionCounts();
     _analysisProgressStep = AnalysisProgressStep.prescriptionRecognition;
+    _completedMedicationAnalysisCount = 0;
+    _totalMedicationAnalysisCount = 0;
   }
 
   // 함수이름: _beginPrescriptionOperation

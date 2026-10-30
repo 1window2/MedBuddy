@@ -403,9 +403,7 @@ void main() {
             find.byKey(const ValueKey('homeMedicationTipCard')),
             findsNothing,
           );
-          final reminders = find.byKey(
-            const ValueKey('homeUserSettingsCard'),
-          );
+          final reminders = find.byKey(const ValueKey('homeUserSettingsCard'));
           await tester.ensureVisible(reminders);
           await tester.pumpAndSettle();
           expect(reminders.hitTestable(), findsOneWidget);
@@ -484,7 +482,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(find.text('MedBuddy'), findsOneWidget);
+        expect(find.byKey(const ValueKey('homeBrandLogo')), findsOneWidget);
         expect(find.text('약 등록·식별'), findsOneWidget);
         expect(find.text('근처 운영 병원·약국'), findsOneWidget);
         await tester.drag(
@@ -558,7 +556,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       final medicationNameCell = find.byKey(const Key('ocr-table-cell-0-name'));
-      expect(find.byKey(const Key('ocr-medication-table')), findsOneWidget);
+      expect(find.byKey(const Key('ocr-medication-list')), findsOneWidget);
       await tester.ensureVisible(medicationNameCell);
       await tester.pumpAndSettle();
       expect(medicationNameCell.hitTestable(), findsOneWidget);
@@ -807,13 +805,15 @@ void main() {
           dailyFrequency: '1일 2회',
           totalDays: '7일',
         );
-        await tester.pumpWidget(_scaledMaterialApp(
-          textScale: 2,
-          home: CheckMedicationDetailUI(
-            medicationDetail: medicationDetail,
-            userSetting: UserSetting(language: language),
+        await tester.pumpWidget(
+          _scaledMaterialApp(
+            textScale: 2,
+            home: CheckMedicationDetailUI(
+              medicationDetail: medicationDetail,
+              userSetting: UserSetting(language: language),
+            ),
           ),
-        ));
+        );
         await tester.pumpAndSettle();
         for (final original in [
           medicationDetail.usageMethod,
@@ -825,14 +825,26 @@ void main() {
           medicationDetail.aiGuide,
         ]) {
           final finder = find.text(original);
-          await tester.scrollUntilVisible(finder, 180, scrollable: find.byType(Scrollable).first);
+          await tester.scrollUntilVisible(
+            finder,
+            180,
+            scrollable: find.byType(Scrollable).first,
+          );
           await tester.ensureVisible(finder);
           await tester.pumpAndSettle();
           expect(finder, findsOneWidget);
           expect(tester.takeException(), isNull);
         }
-        expect(find.text(language == 'en' ? 'Read aloud' : '큰 소리로 읽어주세요').hitTestable(), findsOneWidget);
-        expect(medicationDetail.voiceGuideTextForLanguage(language), contains(medicationDetail.usageMethod));
+        expect(
+          find
+              .text(language == 'en' ? 'Read aloud' : '큰 소리로 읽어주세요')
+              .hitTestable(),
+          findsOneWidget,
+        );
+        expect(
+          medicationDetail.voiceGuideTextForLanguage(language),
+          contains(medicationDetail.usageMethod),
+        );
       });
     }
 
@@ -1213,7 +1225,10 @@ void main() {
         final reminder = SetCaregiverNotificationUI.slotReminderTime(slotKey);
         final deadline = SetCaregiverNotificationUI.defaultDeadline(slotKey);
         expect(
-          SetCaregiverNotificationUI.isDeadlineBeforeReminder(deadline, reminder),
+          SetCaregiverNotificationUI.isDeadlineBeforeReminder(
+            deadline,
+            reminder,
+          ),
           isFalse,
           reason: slotKey,
         );
@@ -1252,7 +1267,9 @@ void main() {
     });
 
     for (final language in ['ko', 'en']) {
-      testWidgets('알림보다 이른 저장값은 이유를 보여 주고 저장하지 않는다 ($language)', (tester) async {
+      testWidgets('알림보다 이른 저장값은 이유를 보여 주고 저장하지 않는다 ($language)', (
+        tester,
+      ) async {
         final results = <CaregiverNotification?>[];
         await openDialog(
           tester,
@@ -1321,16 +1338,17 @@ void main() {
           home: Builder(
             builder: (context) => Scaffold(
               body: FilledButton(
-                onPressed: () => SetCaregiverNotificationUI.showNotificationPopup(
-                  context,
-                  setting: const CaregiverNotification(
-                    slotKey: 'bedtime',
-                    mode: CaregiverNotificationMode.missedDeadline,
-                    deadlineHour: 21,
-                    deadlineMinute: 0,
-                  ),
-                  slotLabel: '취침 전',
-                ),
+                onPressed: () =>
+                    SetCaregiverNotificationUI.showNotificationPopup(
+                      context,
+                      setting: const CaregiverNotification(
+                        slotKey: 'bedtime',
+                        mode: CaregiverNotificationMode.missedDeadline,
+                        deadlineHour: 21,
+                        deadlineMinute: 0,
+                      ),
+                      slotLabel: '취침 전',
+                    ),
                 child: const Text('열기'),
               ),
             ),

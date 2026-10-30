@@ -246,7 +246,7 @@ async def test_later_search_keyword_does_not_erase_earlier_summary_failure(looku
     case = lookup_case
     case.control.text_normalizer = SimpleNamespace(
         normalize_raw_text=lambda value: value,
-        build_search_keywords=lambda value: [value, "테스트정"],
+        build_search_keywords=lambda value, **_: [value, "테스트정"],
     )
     case.control._fetch_drug_info = AsyncMock(side_effect=[
         MedicationLookupResult([_detail(name="테스트정500mg")], is_complete=False),

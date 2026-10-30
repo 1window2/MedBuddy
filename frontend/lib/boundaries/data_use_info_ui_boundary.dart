@@ -173,20 +173,18 @@ class DataUseInfoUI extends StatelessWidget {
                     ),
                     const Divider(height: 1),
                     _section(
-                      _text('복약 기록 파일 공유', 'Sharing medication record files'),
+                      _text('복약 기록 공유', 'Sharing medication records'),
                       _text(
-                        '복약 기록을 CSV 파일로 내보내면 선택한 기간의 약 정보와 기록이 포함됩니다. '
-                            '공유 전 내용과 받을 앱·상대방을 확인해주세요. 계정 내부 식별값을 제외해도 '
-                            '파일에는 건강 정보가 담기므로 안전하게 보관해야 합니다. '
-                            '공유용 임시 파일은 앱의 기기 캐시에 만들어집니다. 계정 삭제 시 정리를 '
-                            '시도하고 이후 내보내기 때 오래된 임시 파일을 정리하지만, 상대방이나 '
-                            '다른 앱이 저장한 사본은 회수할 수 없습니다.',
-                        'Exported CSV files contain medication details and records for the selected period. '
-                            'Review the contents and the receiving app or person before sharing. Even without '
-                            'internal account identifiers, the file contains health information and needs safe storage. '
-                            'Temporary sharing files are created in app cache. The app attempts to clear them on '
-                            'account deletion and removes older temporary files on later exports. Copies saved by '
-                            'other people or apps cannot be recalled.',
+                        '복약 기록에서 기간을 선택해 다른 앱으로 공유하면 약 이름·복용 상태·복용 시각·'
+                            '건너뛴 이유 등이 읽기 쉬운 텍스트로 전달됩니다. 공유 전 내용과 받을 앱·'
+                            '상대방을 확인해주세요. 계정 내부 식별값을 제외해도 공유 내용에는 건강 정보가 '
+                            '담기므로 안전하게 보관해야 합니다. 상대방이나 다른 앱이 저장한 사본은 '
+                            '회수할 수 없습니다.',
+                        'Sharing medication records through another app sends readable text for the selected period, '
+                            'including medication names, dose statuses, taken times and skip reasons. Review the '
+                            'contents and the receiving app or person before sharing. Even without internal account '
+                            'identifiers, the shared content contains health information and needs safe storage. '
+                            'Copies saved by other people or apps cannot be recalled.',
                       ),
                     ),
                     const Divider(height: 1),
@@ -231,11 +229,13 @@ class DataUseInfoUI extends StatelessWidget {
                       ),
                       _text(
                         '약 정보는 복약함에서, 날짜별 복용 기록은 일정의 복용 기록에서 확인하고 '
-                            '수정할 수 있습니다. 복약 기록은 원하는 기간을 선택해 CSV로 내보낼 수 '
-                            '있습니다. 보호자 연동은 내 정보에서, 알림과 계정 삭제는 환경설정에서 '
+                            '수정할 수 있습니다. 복약 기록은 원하는 기간을 선택해 앱 내 채팅으로 '
+                            '공유하거나, 읽기 쉬운 텍스트로 다른 앱에 공유할 수 있습니다. '
+                            '보호자 연동은 내 정보에서, 알림과 계정 삭제는 환경설정에서 '
                             '관리합니다. 문의를 위해 공개 게시판에 처방전·연락처·복약 기록을 올리지 마세요.',
                         'Review and edit medications in My Medications and dated dose records in the '
-                            'schedule history. You can export records for a selected period as CSV. '
+                            'schedule history. You can share records for a selected period in the app chat '
+                            'or as readable text through other apps. '
                             'Manage caregiver links in My Info, and notifications or account deletion '
                             'in Settings. Do not post prescriptions, contact details or medication records '
                             'on a public issue board when seeking help.',

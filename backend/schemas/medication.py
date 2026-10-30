@@ -93,6 +93,7 @@ def _truncate_to_field_limit(
 # - extracted_text (Optional[str]): 기기 또는 분석 흐름에서 추출한 약품 텍스트.
 class MedicationRequest(BaseModel):
     original_text: str | None = Field(default=None, max_length=100)
+    search_mode: Literal['fast', 'balanced', 'thorough'] = 'balanced'
     extracted_text: Optional[str] = Field(
         default=None,
         max_length=_MAX_DETAIL_TEXT_LENGTH,

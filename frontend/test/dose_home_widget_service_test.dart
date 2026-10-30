@@ -17,6 +17,7 @@ import 'package:medbuddy_frontend/services/dose_home_widget_service.dart';
 import 'package:medbuddy_frontend/services/dose_outbox_store.dart';
 import 'package:medbuddy_frontend/services/dose_sync_background_service.dart';
 import 'package:medbuddy_frontend/services/dose_sync_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'support/json_http.dart';
@@ -738,6 +739,7 @@ void main() {
   // 함수이름: 로그아웃 위젯 정리 테스트
   // 함수역할: 로그아웃 때 위젯 표시를 비우고 처리하지 못한 클릭을 처리 완료로 표시하는지 검증한다.
   test('clear blanks the widget and discards unhandled taps', () async {
+    SharedPreferences.setMockInitialValues({});
     platform.journal = jsonEncode([
       {'action': 'take', 'token': 'widget_old', 'widget': 1},
     ]);
@@ -747,7 +749,18 @@ void main() {
     expect(platform.cancelledScheduledUpdates, 1);
     expect(platform.savedStates.single, {
       'handled': ['widget_old'],
+      'language': 'ko',
     });
     expect(platform.journal, '[]');
+  });
+
+  // 함수이름: 로그아웃 위젯 언어 테스트
+  // 함수역할: 영어를 쓰던 사용자가 로그아웃해도 위젯의 로그인 안내가 영어로 남는지 검증한다.
+  test('clear keeps the app language for the sign-in prompt', () async {
+    SharedPreferences.setMockInitialValues({'medbuddy_app_language': 'en'});
+
+    await DoseHomeWidget.clear();
+
+    expect(platform.savedStates.single['language'], 'en');
   });
 }

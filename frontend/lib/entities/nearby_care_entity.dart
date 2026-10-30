@@ -206,6 +206,38 @@ class NearbyCarePlace {
     );
   }
 
+  // 대상 장소 중심으로 보완 조회한 결과도 사용자 검색 위치를 기준으로 거리를 표시한다.
+  NearbyCarePlace withDistanceKm(double distance) => NearbyCarePlace(
+    placeId: placeId,
+    name: name,
+    address: address,
+    telephone: telephone,
+    latitude: latitude,
+    longitude: longitude,
+    distanceKm: distance,
+    todayOpenTime: todayOpenTime,
+    todayCloseTime: todayCloseTime,
+    isOpenNow: isOpenNow,
+    is24Hours: is24Hours,
+    isOpenLate: isOpenLate,
+    hasWeekendOrHolidayHours: hasWeekendOrHolidayHours,
+    isPublicHoliday: isPublicHoliday,
+    isOfficialLateNight: isOfficialLateNight,
+    designationSourceName: designationSourceName,
+    designationSourceUrl: designationSourceUrl,
+    designationVerifiedAt: designationVerifiedAt,
+    designationIsStale: designationIsStale,
+    scheduleDate: scheduleDate,
+    scheduleSource: scheduleSource,
+    scheduleIsDateSpecific: scheduleIsDateSpecific,
+    minutesUntilClose: minutesUntilClose,
+    nextOpenAt: nextOpenAt,
+    sourceUpdatedAt: sourceUpdatedAt,
+    sourceName: sourceName,
+    departments: departments,
+    institutionType: institutionType,
+  );
+
   // 함수이름: distanceLabel
   // 함수역할: 1km 미만은 반올림한 미터로, 10km 미만은 소수 한 자리 km로, 그 이상은 정수 km로 표시한다.
   // 매개변수:

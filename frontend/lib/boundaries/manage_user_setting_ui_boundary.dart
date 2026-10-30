@@ -9,6 +9,7 @@ import '../services/dose_home_widget_service.dart';
 
 import '../widgets/medbuddy_confirm_dialog.dart';
 import '../widgets/medbuddy_preference_row.dart';
+import '../widgets/medbuddy_setting_toggle.dart';
 
 import '../controls/app_language_control.dart';
 import '../controls/authentication_control.dart';
@@ -20,7 +21,6 @@ import '../services/tts_service.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/medbuddy_page_header.dart';
 import '../widgets/app_version_label.dart';
-import '../widgets/exact_reminder_notice.dart';
 import 'set_notification_ui_boundary.dart';
 import 'data_use_info_ui_boundary.dart';
 import 'notification_readiness_ui_boundary.dart';
@@ -68,7 +68,7 @@ typedef ExtendedUserSettingSaver =
 // - notificationService (NotificationService?): 복약 알림이 늦을 수 있는 기기의 정확한 알람 허용 안내에 쓰는 알림 서비스; 없으면 안내를 표시하지 않는다.
 class ManageUserSettingUI extends StatefulWidget {
   final UserSetting initialSetting;
-  final bool initiallyShowDisplayAndVoice;
+  final UserSettingDestination? initialDestination;
   final AuthenticationControl authenticationControl;
   final Future<void> Function()? onSignOutRequested;
   final Future<void> Function()? onDeleteAccountRequested;
@@ -76,13 +76,7 @@ class ManageUserSettingUI extends StatefulWidget {
   final SettingPreviewStopper? previewStopper;
   final ExtendedUserSettingSaver onExtendedSettingSaveRequested;
   final VoidCallback? onMedicationScheduleRequested;
-  final Future<void> Function()? onDeviceNotificationSettingsRequested;
   final NotificationService? notificationService;
-  // 등록 조회가 아직 끝나지 않았거나 실패했으면 null로 전달한다.
-  final int? registeredMedicationCount;
-  final Future<bool?> Function()? loadHasMedicationForReadiness;
-  final VoidCallback? onMedicationRegistrationRequested;
-  final VoidCallback? onCaregiverSetupRequested;
   final NotificationReadinessControl? readinessControl;
 
   // 함수이름: ManageUserSettingUI
@@ -90,7 +84,6 @@ class ManageUserSettingUI extends StatefulWidget {
   // 매개변수:
   // - key (Key?): 위젯을 구분하고 상태를 유지할 식별 키.
   // - initialSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-  // - initiallyShowDisplayAndVoice (bool): 설정값 변경 없이 화면 및 음성 화면으로 바로 진입한다.
   // - authenticationControl (AuthenticationControl): 인증·계정·다중 인증 상태와 명령 제공자.
   // - onSignOutRequested (Future<void> Function()?): 현재 계정을 로그아웃할 콜백.
   // - onDeleteAccountRequested (Future<void> Function()?): 확인된 계정 삭제를 수행할 콜백.
@@ -98,13 +91,12 @@ class ManageUserSettingUI extends StatefulWidget {
   // - previewStopper (SettingPreviewStopper?): 진행 중인 음성 미리보기를 중지하는 함수.
   // - onExtendedSettingSaveRequested (ExtendedUserSettingSaver): 편집한 설정 전체를 저장하고 동기화 결과를 반환할 콜백.
   // - onMedicationScheduleRequested (VoidCallback?): 오늘 복약 일정 화면을 여는 콜백.
-  // - onDeviceNotificationSettingsRequested (Future<void> Function()?): 운영체제의 앱 알림 설정을 여는 콜백.
   // - notificationService (NotificationService?): 정확한 알람 허용 안내에 쓰는 알림 서비스.
   // 반환값: 입력 설정이 반영된 ManageUserSettingUI 인스턴스.
   const ManageUserSettingUI({
     super.key,
     required this.initialSetting,
-    this.initiallyShowDisplayAndVoice = false,
+    this.initialDestination,
     required this.authenticationControl,
     this.onSignOutRequested,
     this.onDeleteAccountRequested,
@@ -112,12 +104,7 @@ class ManageUserSettingUI extends StatefulWidget {
     this.previewStopper,
     required this.onExtendedSettingSaveRequested,
     this.onMedicationScheduleRequested,
-    this.onDeviceNotificationSettingsRequested,
     this.notificationService,
-    this.registeredMedicationCount,
-    this.loadHasMedicationForReadiness,
-    this.onMedicationRegistrationRequested,
-    this.onCaregiverSetupRequested,
     this.readinessControl,
   });
 
@@ -158,7 +145,14 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   bool _isPreviewSpeaking = false;
   int _voicePreviewRequestId = 0;
   TTSService? _ownedTtsService;
+  NotificationReadinessControl? _ownedNotificationControl;
   _SettingSection _selectedSection = _SettingSection.overview;
+  final _initialTargetKey = GlobalKey();
+
+  // 함수이름: _targetKey
+  // 함수역할: 검색으로 요청한 설정 한 곳에만 최초 스크롤 위치를 연결한다.
+  Key? _targetKey(UserSettingDestination target) =>
+      widget.initialDestination == target ? _initialTargetKey : null;
 
   // 함수이름: initState
   // 함수역할: 현재 설정을 편집용 초안으로 복사하고 주입된 음성 재생기가 없으면 TTS를 준비한다.
@@ -168,8 +162,21 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   @override
   void initState() {
     super.initState();
-    if (widget.initiallyShowDisplayAndVoice) {
-      _selectedSection = _SettingSection.displayAndVoice;
+    if (widget.initialDestination case final target?) {
+      _selectedSection = switch (target) {
+        UserSettingDestination.notifications ||
+        UserSettingDestination.notificationReception ||
+        UserSettingDestination.defaultTimes ||
+        UserSettingDestination.notificationPrivacy =>
+          _SettingSection.medicationAndNotifications,
+        UserSettingDestination.account => _SettingSection.account,
+        _ => _SettingSection.displayAndVoice,
+      };
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final targetContext = _initialTargetKey.currentContext;
+        if (!mounted || targetContext == null) return;
+        unawaited(Scrollable.ensureVisible(targetContext, alignment: 0.05));
+      });
     }
     _savedSetting = _editableCopy(widget.initialSetting);
     _draft = _savedSetting;
@@ -349,54 +356,12 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     };
   }
 
-  // 저장되지 않은 알림 설정을 켜진 것으로 표시하지 않되 언어·글씨 미리보기는 유지한다.
-  void _openReadiness() {
-    final isEnglish = _SettingText(_language).isEnglish;
-    final control =
-        widget.readinessControl ??
-        NotificationReadinessControl(
-          notificationService:
-              widget.notificationService ?? NotificationService.instance,
-          openNotificationSettings:
-              widget.onDeviceNotificationSettingsRequested,
-          loadHasMedication:
-              widget.loadHasMedicationForReadiness ??
-              () async {
-                final count = widget.registeredMedicationCount;
-                return count == null ? null : count > 0;
-              },
-        );
-    _openInformationPage(
-      NotificationReadinessUI(
-        control: control,
-        savedSetting: _savedSetting,
-        isEnglish: isEnglish,
-        onMedicationRegistrationRequested:
-            widget.onMedicationRegistrationRequested,
-        onMedicationScheduleRequested: widget.onMedicationScheduleRequested,
-        onCaregiverSetupRequested: widget.onCaregiverSetupRequested,
-        onWidgetRequested: DoseHomeWidget.supported
-            ? () async {
-                final requested = await DoseHomeWidget.pin();
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      requested
-                          ? (isEnglish
-                                ? 'Widget request sent. Confirm it on your home screen.'
-                                : '위젯 추가를 요청했습니다. 홈 화면에서 추가 여부를 확인해주세요.')
-                          : (isEnglish
-                                ? 'Add MedBuddy from your home screen widget list.'
-                                : '홈 화면의 위젯 목록에서 MedBuddy를 추가해주세요.'),
-                    ),
-                  ),
-                );
-              }
-            : null,
-      ),
-    );
-  }
+  NotificationReadinessControl get _deviceNotificationControl =>
+      widget.readinessControl ??
+      (_ownedNotificationControl ??= NotificationReadinessControl(
+        notificationService:
+            widget.notificationService ?? NotificationService.instance,
+      ));
 
   // 새 안내 화면도 선택한 글씨 크기를 전달받아 큰 글씨 사용자가 같은 배율로 읽는다.
   void _openInformationPage(Widget page) {
@@ -425,17 +390,21 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _SettingsSection(
+          key: _targetKey(UserSettingDestination.notifications),
+          title: text.isEnglish ? 'Phone settings' : '휴대폰 설정',
+          children: [
+            NotificationDeviceSettings(
+              control: _deviceNotificationControl,
+              isEnglish: text.isEnglish,
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        _SettingsSection(
+          key: _targetKey(UserSettingDestination.notificationReception),
           title: text.notificationReceptionTitle,
           children: [
-            MedBuddyPreferenceRow(
-              key: const ValueKey('settingsReadinessMenu'),
-              title: text.isEnglish ? 'Setup check' : '사용 준비 점검',
-              description: text.isEnglish
-                  ? 'Medication setup, permissions and a test notification'
-                  : '약 등록, 기기 권한과 테스트 알림 확인',
-              onTap: _openReadiness,
-            ),
-            _SettingToggle(
+            MedBuddySettingToggle(
               switchKey: const ValueKey('medicationNotificationsSwitch'),
               title: text.medicationNotificationsTitle,
               description: text.medicationNotificationsDescription,
@@ -449,7 +418,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                 _draft.copyWith(medicationNotificationsEnabled: enabled),
               ),
             ),
-            _SettingToggle(
+            MedBuddySettingToggle(
               switchKey: const ValueKey('caregiverNotificationsSwitch'),
               title: text.caregiverNotificationsTitle,
               description: text.caregiverNotificationsDescription,
@@ -463,7 +432,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                 _draft.copyWith(caregiverNotificationsEnabled: enabled),
               ),
             ),
-            _SettingToggle(
+            MedBuddySettingToggle(
               switchKey: const ValueKey('chatNotificationsSwitch'),
               title: text.chatNotificationsTitle,
               description: text.chatNotificationsDescription,
@@ -478,16 +447,15 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
             ),
           ],
         ),
-        // 내 복약 알림을 켠 기기가 정확한 알람을 막고 있으면 허용 방법을 안내한다.
-        if (widget.notificationService != null &&
-            _draft.medicationNotificationsEnabled)
-          ExactReminderNotice(
-            notificationService: widget.notificationService!,
-            isEnglish: text.isEnglish,
-            margin: const EdgeInsets.only(top: 12),
-          ),
         const SizedBox(height: 24),
         _SettingsSection(
+          key: const ValueKey('medicationSearchSection'),
+          title: text.isEnglish ? 'Medication search' : '약품 검색',
+          children: [_buildMedicationSearchSlider(text)],
+        ),
+        const SizedBox(height: 24),
+        _SettingsSection(
+          key: _targetKey(UserSettingDestination.defaultTimes),
           title: text.defaultMedicationTimeTitle,
           description: text.defaultMedicationTimeDescription,
           children: [
@@ -510,6 +478,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         ),
         const SizedBox(height: 24),
         _SettingsSection(
+          key: _targetKey(UserSettingDestination.notificationPrivacy),
           title: text.notificationDisplayTitle,
           children: [
             MedBuddyPreferenceRow(
@@ -520,38 +489,97 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
                   : text.notificationTypeOnlySummary,
               onTap: _selectNotificationPrivacy,
             ),
-            MedBuddyPreferenceRow(
-              key: const ValueKey('deviceNotificationSettingsRow'),
-              title: text.deviceNotificationSettingsTitle,
-              description: text.deviceNotificationSettingsDescription,
-              onTap: _openDeviceNotificationSettings,
-            ),
-            if (DoseHomeWidget.supported)
-              MedBuddyPreferenceRow(
-                key: const ValueKey('addDoseHomeWidget'),
-                title: text.isEnglish
-                    ? 'Add medication widget'
-                    : '홈 화면 복약 위젯 추가',
-                onTap: () async {
-                  var supported = false;
-                  try {
-                    supported = await DoseHomeWidget.pin();
-                  } catch (_) {}
-                  if (!mounted || supported) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        text.isEnglish
-                            ? 'Add MedBuddy from your home screen widget list.'
-                            : '홈 화면의 위젯 목록에서 MedBuddy를 추가해주세요.',
-                      ),
-                    ),
-                  );
-                },
-              ),
           ],
         ),
       ],
+    );
+  }
+
+  // 함수역할: 세 단계 검색 선택을 초안에만 반영하며 저장은 기존 저장 버튼에 맡긴다.
+  Widget _buildMedicationSearchSlider(_SettingText text) {
+    final title = text.isEnglish ? 'Medication search' : '약품 검색';
+    final options = [
+      ('fast', text.isEnglish ? 'Fast' : '속도 우선'),
+      ('balanced', text.isEnglish ? 'Balanced' : '보통'),
+      ('thorough', text.isEnglish ? 'Thorough' : '정확도 우선'),
+    ];
+    final selected = options.indexWhere(
+      (option) => option.$1 == _draft.medicationSearchMode,
+    );
+    void select(int index) =>
+        _setDraft(_draft.copyWith(medicationSearchMode: options[index].$1));
+
+    return LayoutBuilder(
+      builder: (context, constraints) => Column(
+        children: [
+          MergeSemantics(
+            key: const ValueKey('medicationSearchModeSemantics'),
+            child: Semantics(
+              label: title,
+              child: Slider(
+                key: const ValueKey('medicationSearchModeSlider'),
+                value: selected.toDouble(),
+                min: 0,
+                max: 2,
+                divisions: 2,
+                padding: EdgeInsets.symmetric(
+                  horizontal: constraints.maxWidth / 6,
+                  vertical: 16,
+                ),
+                semanticFormatterCallback: (value) => options[value.round()].$2,
+                onChanged: _isSaving ? null : (value) => select(value.round()),
+              ),
+            ),
+          ),
+          Row(
+            children: [
+              for (var index = 0; index < options.length; index++)
+                Expanded(
+                  child: Semantics(
+                    key: ValueKey('medicationSearchMode-${options[index].$1}'),
+                    label: '$title, ${options[index].$2}',
+                    button: true,
+                    selected: index == selected,
+                    inMutuallyExclusiveGroup: true,
+                    enabled: !_isSaving,
+                    child: InkWell(
+                      onTap: _isSaving ? null : () => select(index),
+                      borderRadius: BorderRadius.circular(4),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 48),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 8,
+                          ),
+                          child: ExcludeSemantics(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                // 긴 라벨은 단어 사이에서 나눈 뒤 너비를 맞춘다.
+                                options[index].$2.replaceAll(' ', '\n'),
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: index == selected
+                                      ? MedBuddyColors.primaryDark
+                                      : MedBuddyColors.textMuted,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  height: 1.35,
+                                  letterSpacing: 0,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -688,7 +716,7 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     required List<_SettingOption> options,
     required ValueChanged<String> onSelected,
   }) {
-    return MedBuddyPreferenceRow(
+    final row = MedBuddyPreferenceRow(
       key: ValueKey('${preferenceKey}Selector'),
       title: title,
       value: options
@@ -706,6 +734,9 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         onSelected(value);
       },
     );
+    return widget.initialDestination?.name == preferenceKey
+        ? KeyedSubtree(key: _initialTargetKey, child: row)
+        : row;
   }
 
   // 함수이름: _buildDisplayAndVoiceSettings
@@ -718,23 +749,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         _SettingsSection(
           title: text.displaySectionTitle,
           children: [
-            _buildSettingChoice(
-              preferenceKey: 'homeScheduleSource',
-              title: text.isEnglish ? 'Home schedule' : '홈 복약 일정',
-              selectedValue: _draft.homeScheduleSource,
-              options: [
-                _SettingOption(
-                  value: 'self',
-                  label: text.isEnglish ? 'My schedule' : '내 일정',
-                ),
-                _SettingOption(
-                  value: 'patients',
-                  label: text.isEnglish ? 'Linked patients' : '연동된 환자',
-                ),
-              ],
-              onSelected: (value) =>
-                  _setDraft(_draft.copyWith(homeScheduleSource: value)),
-            ),
             _buildSettingChoice(
               preferenceKey: 'fontSize',
               title: text.fontSizeTitle,
@@ -793,6 +807,53 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
         ),
         const SizedBox(height: 24),
         _SettingsSection(
+          key: _targetKey(UserSettingDestination.homeWidget),
+          title: text.isEnglish ? 'Home screen' : '홈 화면',
+          children: [
+            _buildSettingChoice(
+              preferenceKey: 'homeScheduleSource',
+              title: text.isEnglish ? 'Home schedule' : '홈 복약 일정',
+              selectedValue: _draft.homeScheduleSource,
+              options: [
+                _SettingOption(
+                  value: 'self',
+                  label: text.isEnglish ? 'My schedule' : '내 일정',
+                ),
+                _SettingOption(
+                  value: 'patients',
+                  label: text.isEnglish ? 'Linked patients' : '연동된 환자',
+                ),
+              ],
+              onSelected: (value) =>
+                  _setDraft(_draft.copyWith(homeScheduleSource: value)),
+            ),
+            if (DoseHomeWidget.supported)
+              MedBuddyPreferenceRow(
+                key: const ValueKey('addDoseHomeWidget'),
+                title: text.isEnglish
+                    ? 'Add medication widget'
+                    : '홈 화면 복약 위젯 추가',
+                onTap: () async {
+                  var supported = false;
+                  try {
+                    supported = await DoseHomeWidget.pin();
+                  } catch (_) {}
+                  if (!mounted || supported) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        text.isEnglish
+                            ? 'Add MedBuddy from your home screen widget list.'
+                            : '홈 화면의 위젯 목록에서 MedBuddy를 추가해주세요.',
+                      ),
+                    ),
+                  );
+                },
+              ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        _SettingsSection(
           title: text.voiceSectionTitle,
           children: [
             _buildSettingChoice(
@@ -843,25 +904,9 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _AccountWelcomePanel(presentation: accountPresentation, compact: true),
-        const SizedBox(height: 24),
-        _SettingsSection(
-          title: text.isEnglish ? 'Privacy & Data' : '개인정보 및 데이터',
-          children: [
-            MedBuddyPreferenceRow(
-              key: const ValueKey('settingsDataUseMenu'),
-              title: text.isEnglish ? 'Data use guide' : '데이터 이용 안내',
-              description: text.isEnglish
-                  ? 'Device, server and external AI processing'
-                  : '기기·서버·외부 AI에서 처리하는 정보',
-              onTap: () => _openInformationPage(
-                DataUseInfoUI(isEnglish: text.isEnglish),
-              ),
-            ),
-          ],
-        ),
+        _AccountWelcomePanel(presentation: accountPresentation, compact: false),
         if (hasMfaSettings) ...[
-          const SizedBox(height: 18),
+          const SizedBox(height: 24),
           ListenableBuilder(
             listenable: widget.authenticationControl,
             // 함수이름: _buildAccountSettings.builder callback
@@ -878,6 +923,22 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
             ),
           ),
         ],
+        const SizedBox(height: 24),
+        _SettingsSection(
+          title: text.isEnglish ? 'Privacy & Data' : '개인정보 및 데이터',
+          children: [
+            MedBuddyPreferenceRow(
+              key: const ValueKey('settingsDataUseMenu'),
+              title: text.isEnglish ? 'Data use guide' : '데이터 이용 안내',
+              description: text.isEnglish
+                  ? 'Device, server and external AI processing'
+                  : '기기·서버·외부 AI에서 처리하는 정보',
+              onTap: () => _openInformationPage(
+                DataUseInfoUI(isEnglish: text.isEnglish),
+              ),
+            ),
+          ],
+        ),
         if (hasSignOut) ...[
           const SizedBox(height: 18),
           SizedBox(
@@ -1000,8 +1061,10 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
   }
 
   // 함수역할: 편집값을 마지막 저장값과 비교한다. 반환값: 미저장 변경 여부.
-  bool get _hasUnsavedChanges =>
-      !mapEquals(_draft.toJson(), _savedSetting.toJson());
+  bool get _hasUnsavedChanges => !mapEquals(
+    _draft.toJson(includeDevicePreferences: true),
+    _savedSetting.toJson(includeDevicePreferences: true),
+  );
 
   // 함수역할: 저장·변경 취소·계속 편집 중 하나를 선택한다. 반환값: 나가기 허용 여부.
   Future<bool> _confirmSettingExit() async {
@@ -1162,25 +1225,6 @@ class _ManageUserSettingUIState extends State<ManageUserSettingUI> {
       hour: parts.isNotEmpty ? int.tryParse(parts.first) ?? 8 : 8,
       minute: parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0,
     );
-  }
-
-  // 함수이름: _openDeviceNotificationSettings
-  // 함수역할: 주입된 기기 알림 설정 열기를 실행하고 예외 발생 시 사용자에게 안내한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
-  Future<void> _openDeviceNotificationSettings() async {
-    final text = _SettingText(_language);
-    try {
-      await widget.onDeviceNotificationSettingsRequested?.call();
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(text.deviceNotificationSettingsFailed)),
-      );
-    }
   }
 
   // 함수이름: _selectReadingSpeed
@@ -1653,6 +1697,7 @@ class _AccountWelcomePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      key: const ValueKey('settingsAccountWelcomePanel'),
       width: double.infinity,
       padding: EdgeInsets.all(compact ? 18 : 20),
       decoration: BoxDecoration(
@@ -2102,80 +2147,6 @@ class _SettingSaveFooter extends StatelessWidget {
               ),
               onPressed: isSaving ? null : onSaveRequested,
               child: Text(isSaving ? text.saving : text.save),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// 클래스명: _SettingToggle
-// 역할: 이진 설정의 라벨·설명·현재 값을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 이진 설정의 라벨·설명·현재 값 위젯을 구성한다.
-// 속성:
-// - switchKey (Key): 위젯을 구분하고 상태를 유지할 식별 키.
-// - title (String): 화면·구역·항목에 표시할 제목.
-// - description (String): 주 표시 아래에 제공할 설명 또는 계정 상세.
-// - enabled (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
-class _SettingToggle extends StatelessWidget {
-  final Key switchKey;
-  final String title;
-  final String description;
-  final bool enabled;
-  final ValueChanged<bool> onChanged;
-
-  // 함수이름: _SettingToggle
-  // 함수역할: 이진 설정의 라벨·설명·현재 값에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - switchKey (Key): 위젯을 구분하고 상태를 유지할 식별 키.
-  // - title (String): 화면·구역·항목에 표시할 제목.
-  // - description (String): 주 표시 아래에 제공할 설명 또는 계정 상세.
-  // - enabled (bool): 선택지·명령·기능을 사용할 수 있는지 여부.
-  // - onChanged (ValueChanged<bool>): 변경된 값 또는 선택 상태를 소유 화면에 전달할 콜백.
-  // 반환값: 입력 설정이 반영된 _SettingToggle 인스턴스.
-  const _SettingToggle({
-    required this.switchKey,
-    required this.title,
-    required this.description,
-    required this.enabled,
-    required this.onChanged,
-  });
-
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 이진 설정의 라벨·설명·현재 값 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 이진 설정의 라벨·설명·현재 값에 쓰는 위젯 트리.
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: SwitchListTile(
-        key: switchKey,
-        value: enabled,
-        onChanged: onChanged,
-        activeThumbColor: MedBuddyColors.primary,
-        contentPadding: const EdgeInsets.symmetric(vertical: 6),
-        title: Text(
-          title,
-          style: const TextStyle(
-            color: MedBuddyColors.textStrong,
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-            height: 1.35,
-          ),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Text(
-            description,
-            style: const TextStyle(
-              color: MedBuddyColors.textMuted,
-              fontSize: 13,
-              height: 1.35,
-              fontWeight: FontWeight.w400,
             ),
           ),
         ),

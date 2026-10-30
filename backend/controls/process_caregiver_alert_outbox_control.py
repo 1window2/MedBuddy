@@ -1,6 +1,7 @@
 # 파일명: process_caregiver_alert_outbox_control.py
 # 역할: DB에 보존된 보호자 알림 요청을 안전하게 선점하고 전송한다.
 
+import hashlib
 import logging
 import re
 import sqlite3
@@ -237,6 +238,11 @@ class ProcessCaregiverAlertOutbox:
                     self.db.commit()
                     return "skipped"
                 # 채팅 완료 기록은 푸시 공급자의 일시 장애와 무관하게 먼저 보존한다.
+                # 날짜·시간대가 같아도 다른 아웃박스 요청은 구별하고 재시도에는 같은 키를 쓴다.
+                # 생성 시각을 포함해 정리 이후 기본키가 재사용되어도 이전 알림과 합쳐지지 않게 한다.
+                completion_event_key = hashlib.sha256(
+                    f"caregiver-slot-completed:{row.id}:{row.created_at.isoformat()}".encode("utf-8")
+                ).hexdigest()
                 ManageLinkedChat(self.db).publish_slot_completion(
                     patient_hash=patient_hash,
                     slot_key=slot_key,
@@ -245,6 +251,7 @@ class ProcessCaregiverAlertOutbox:
                 delivery_result = self.dispatcher.notifySlotCompleted(
                     patient_hash=patient_hash,
                     slot_key=slot_key,
+                    event_key=completion_event_key,
                     **recipient_scope,
                 )
             elif event_type == CAREGIVER_ALERT_EVENT_AS_NEEDED_COMPLETED:

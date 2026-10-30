@@ -64,7 +64,7 @@ def component_strengths(name: str) -> Counter:
 
 
 def dosage_form(name: str) -> tuple[str, str]:
-    value = re.sub(r"\s+", "", _text(name))
+    value = re.sub(r"[\s_]+", "", _text(name))
     release = 'extended' if re.search(r'서방|(?<![a-z])(?:sr|er|cr|xr)(?![a-z])', value) else ''
     if '장용' in value:
         release = 'enteric'
@@ -74,15 +74,18 @@ def dosage_form(name: str) -> tuple[str, str]:
     return release, base
 
 
-def match_conflict(original: str, candidate: str) -> str | None:
+def match_conflict(
+    original: str, candidate: str, *, allow_unknown_strength: bool = False,
+) -> str | None:
     expected, actual = strengths(original), strengths(candidate)
-    if expected and not actual:
+    # 수동 확인 후보에만 누락된 함량을 허용한다. 명시된 함량 충돌·제형 검사는 생략하지 않는다.
+    if expected and not actual and not allow_unknown_strength:
         return 'strength_unknown'
-    if expected and expected != actual:
+    if expected and actual and expected != actual:
         return 'strength_mismatch'
     # 위 비교는 "5/50mg"에서 50mg만 읽는다. 앞 성분이 다른 복합제를 여기서 추가로 걸러 낸다.
     # 추가 검사이므로 기존에 충돌로 판정하던 쌍의 결과는 바뀌지 않는다.
-    if expected and component_strengths(original) != component_strengths(candidate):
+    if expected and actual and component_strengths(original) != component_strengths(candidate):
         return 'strength_mismatch'
     if any(kind == 'invalid' for kind, _ in expected | actual):
         return 'strength_unknown'

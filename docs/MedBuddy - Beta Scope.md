@@ -3,15 +3,15 @@
 ## Status
 
 - Scope review: 2026-09-30
-- Stable functional baseline: `v0.2.2-beta`
-- Active development branch: `beta/v0.2.3`
-- Target release tag: `v0.2.3-beta`
+- Stable functional baseline: `v0.2.3-beta`
+- Active development branch: `beta/v0.2.4`
+- Target release tag: `v0.2.4-beta`
 - Target platform: Android
 - iOS: deferred until after the Android public-release decision, no earlier than
   October 2026
 
 This document tracks the inherited Android beta baseline and the local
-`beta/v0.2.3` additions below. Features
+`beta/v0.2.4` additions below. Features
 outside the list below do not enter the release without an explicit scope
 review covering safety, privacy, data integrity, and release operability.
 
@@ -95,6 +95,27 @@ production acceptance gates below.
 
 ## Required Beta Hardening
 
+### Current v0.2.4 Design Additions
+
+The design reflects the integrated branch through `77a0f26` and the subsequent
+local changes; this is not a release or a new device-test result.
+
+- Month-first medication history, PRN undo and latest-intake confirmation,
+  account-scoped encrypted pending PRN requests, and 90-day CSV export in 31-day
+  reads. Chat summaries remain limited to 31 days and reopen current data read-only.
+- A local feature finder beside Home's notification button, with 27 static
+  destinations and Korean/English aliases and intent matching. It reuses existing
+  screens, settings positions and patient-access checks. Search text is not sent
+  to a server or external AI; choosing a result does not execute a dose update,
+  setting change, deletion or share.
+- Initial schedule/PRN loading, account welcome alignment and English dose,
+  widget and notification-channel presentation. Channel IDs and stored data
+  contracts are unchanged.
+
+See [Feature Search](Feature%20Search.md), the
+[v0.2.4 development notes](releases/v0.2.4-beta.md) and
+[release TODO](TODO.md) for design boundaries and remaining verification.
+
 ### Local Care Workflow Additions (2026-10-17)
 
 These are local source additions, not a declaration that they have been released
@@ -106,7 +127,8 @@ or deployed:
   to all medications, including stopped/replaced courses; deletion is separate.
 - Patient-reported history with taken, skipped and unrecorded states, actual
   intake versus recording time, audited corrections and read-only linked-caregiver
-  access. Queries and exports cover up to 31 days within the last 90 days.
+  access. Queries cover up to 31 days within the last 90 days; current CSV export
+  covers up to 90 days in multiple reads, while chat sharing remains at 31 days.
   This is a query limit, not a retention/deletion rule or proof of ingestion.
 - Explicit scheduled/PRN dosing. PRN checks are separate events in the patient's
   daily schedule, including a PRN-only day. Repeated intentional checks require
@@ -120,14 +142,14 @@ or deployed:
   link and preferences. Stable event keys deduplicate retries/time corrections
   and repeated displays. PRN does not emit aggregate completion chat events or
   missed-deadline alerts. Local/demo polling baselines existing reports.
-- Selected-period CSV sharing through Android's restricted temporary FileProvider.
-  The dialog shows dates and a short health-data notice, not period status totals.
-  Share CSV triggers a fresh authorized read and session checks before closing
-  the dialog and sharing. Period metadata and status counts are included in the
-  CSV; the daily screen's summary remains scoped to the displayed day. CSV excludes
-  internal account identifiers and escapes formulas; chooser opening is not delivery.
-- Settings-only setup/notification readiness checks and a factual data-use guide.
-  Permission requests are explicit, and a test request is separate from confirming
+- Selected-period sharing of readable text through the Android share sheet (up to
+  90 days; no file attachment). The dialog shows dates and a short health-data
+  notice. Sharing triggers a fresh authorized read and session checks before closing
+  the dialog. The text carries the period, status counts and dated records without
+  internal identifiers; chooser opening is not delivery.
+- Integrated phone notification settings/tests and a factual data-use guide,
+  without a separate readiness or medication-registration check screen.
+  Device switches open OS settings, and a test request is separate from confirming
   receipt. The guide does not replace a final privacy policy, separate consent or
   provider-side processing controls.
 

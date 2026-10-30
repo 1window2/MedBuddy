@@ -26,6 +26,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'support/dose_sync_harness.dart';
 import 'support/fake_notification_service.dart';
 
+// 대기열 테스트는 실행일이나 자정 경과에 영향받지 않도록 같은 한국 날짜를 기준으로 삼는다.
+final _doseTestNow = DateTime.utc(2026, 10, 25, 3);
+
 // Function Name: main
 // Description:
 // - Register regression cases for schedule state races, completion updates, deletion refreshes, and
@@ -236,7 +239,10 @@ void main() {
             client: client,
           ),
         );
-        final harness = await attachTestDoseSync(viewModel);
+        final harness = await attachTestDoseSync(
+          viewModel,
+          clock: () => _doseTestNow,
+        );
         harness.respond = (request) async {
           if (failure == 'transport') {
             throw http.ClientException('Simulated offline connection');
@@ -256,7 +262,7 @@ void main() {
         final queued = harness.queued.single;
         expect(queued['slot_key'], 'morning');
         expect(queued['medication_ids'], [7, 8]);
-        expect(queued['schedule_date'], doseScheduleDay(DateTime.now()));
+        expect(queued['schedule_date'], '2026-10-25');
         expect(queued['completed'], isTrue);
         expect(queued['medication_names'], ['already-complete', 'pending']);
         expect((await harness.pending()).single['state'], 'pending');
@@ -304,26 +310,30 @@ void main() {
           client: client,
         ),
       );
-      final harness = await attachTestDoseSync(viewModel);
+      final harness = await attachTestDoseSync(
+        viewModel,
+        clock: () => _doseTestNow,
+      );
       harness.respond = (request) async => http.Response(
         '{"detail":"Simulated rejected completion"}',
         409,
         headers: {'content-type': 'application/json'},
       );
       await viewModel.fetchTodayMedicationSchedule();
-      final today = doseScheduleDay(DateTime.now());
+      const today = '2026-10-25';
+      const previousDay = '2026-10-24';
 
       // 알림에서 온 지난 날짜의 기록은 그 날짜로 저장되고 오늘 화면의 완료 상태를 바꾸지 않는다.
       expect(
         await viewModel.requestMedicationSlotStatusUpdate(
           'morning',
           true,
-          expectedScheduleDate: '2026-09-09',
+          expectedScheduleDate: previousDay,
         ),
         isTrue,
       );
       await harness.service.drain();
-      expect(harness.queued.single['schedule_date'], '2026-09-09');
+      expect(harness.queued.single['schedule_date'], previousDay);
       expect(harness.service.hasBlocked, isTrue);
       expect(viewModel.todayMedicationProgress.completedCount, 1);
       expect(
@@ -353,7 +363,7 @@ void main() {
       expect(uploaded['schedule_date'], today);
       expect(uploaded['medication_ids'], [7, 8]);
       final remaining = await harness.pending();
-      expect(remaining.single['schedule_date'], '2026-09-09');
+      expect(remaining.single['schedule_date'], previousDay);
       expect(remaining.single['state'], 'blocked');
       expect(viewModel.todayMedicationProgress.completedCount, 2);
 
@@ -484,7 +494,10 @@ void main() {
         client: client,
       ),
     );
-    final harness = await attachTestDoseSync(viewModel);
+    final harness = await attachTestDoseSync(
+      viewModel,
+      clock: () => _doseTestNow,
+    );
     await viewModel.fetchTodayMedicationSchedule();
     final schedule = viewModel.todayMedicationScheduleList.first;
 
@@ -499,7 +512,7 @@ void main() {
     final queued = harness.queued.single;
     expect(queued['medication_ids'], [7]);
     expect(queued['slot_key'], 'morning');
-    expect(queued['schedule_date'], doseScheduleDay(DateTime.now()));
+    expect(queued['schedule_date'], '2026-10-25');
     expect(queued['completed'], isTrue);
     expect(queued['medication_names'], ['test-tablet']);
     expect(scheduleRequests, ['GET /schedule/today']);
@@ -566,7 +579,10 @@ void main() {
         client: client,
       ),
     );
-    final harness = await attachTestDoseSync(viewModel);
+    final harness = await attachTestDoseSync(
+      viewModel,
+      clock: () => _doseTestNow,
+    );
     await viewModel.fetchTodayMedicationSchedule();
 
     expect(
@@ -643,7 +659,10 @@ void main() {
           client: client,
         ),
       );
-      final harness = await attachTestDoseSync(viewModel);
+      final harness = await attachTestDoseSync(
+        viewModel,
+        clock: () => _doseTestNow,
+      );
       await viewModel.fetchTodayMedicationSchedule();
 
       final success = await viewModel.requestMedicationSlotStatusUpdate(
@@ -709,7 +728,10 @@ void main() {
           client: client,
         ),
       );
-      final harness = await attachTestDoseSync(viewModel);
+      final harness = await attachTestDoseSync(
+        viewModel,
+        clock: () => _doseTestNow,
+      );
 
       await viewModel.fetchTodayMedicationSchedule();
       final schedule = viewModel.todayMedicationScheduleList.single;
