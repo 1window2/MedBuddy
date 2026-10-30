@@ -2,8 +2,10 @@
 
 ## v0.2.4 development line
 
-v0.2.4 starts from `v0.2.3-beta` on `beta/v0.2.4` and is to be finished by
-2026-11-20 for the graduation exhibition (2026-11-26 to 11-27). It takes the
+v0.2.4 starts from `v0.2.3-beta` on `beta/v0.2.4` and was planned to be finished by
+2026-11-20 for the graduation exhibition (2026-11-26 to 11-27). Released on
+2026-10-30 as `v0.2.4-beta` (PR #128, build `f377546`); a collaborator's further
+features and the open items below move to the 0.3.0 line. It takes the
 items of the 2026-10-20 team meeting and the items still open on the v0.2.3
 line below. Changes are listed in the [v0.2.4 notes](releases/v0.2.4-beta.md).
 
