@@ -13,6 +13,19 @@ import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 // 함수이름: main
 // 함수역할: 문장·동의어·띄어쓰기·언어와 화면 이동의 회귀 사례를 등록한다.
 void main() {
+  test('약 등록과 복약 기록의 경로는 현재 메뉴 구조와 일치한다', () {
+    final entries = {for (final e in FindAppFeature.entries) e.feature: e};
+    for (final feature in [
+      AppFeature.manualMedication,
+      AppFeature.prescription,
+      AppFeature.pillIdentification,
+    ]) {
+      expect(entries[feature]!.pathKo, '홈 > 약 등록·관리 > 약 등록');
+    }
+    expect(entries[AppFeature.medicationCabinet]!.pathKo, '홈 > 약 등록·관리 > 약 관리');
+    expect(entries[AppFeature.medicationHistory]!.pathKo, '하단 메뉴 > 복약 기록');
+    expect(entries[AppFeature.historySharing]!.pathKo, '하단 메뉴 > 복약 기록 > 공유');
+  });
   final expressions = <String, AppFeature>{
     '폰 글씨가 작아서 크게 보고 싶어': AppFeature.fontSize,
     '잘 안 보여요': AppFeature.fontSize,
@@ -140,6 +153,13 @@ void main() {
         );
         await tester.tap(find.text('open'));
         await tester.pumpAndSettle();
+        expect(find.byKey(const Key('featureSearchPanel')), findsOneWidget);
+        expect(
+          find.byKey(const Key('feature-category-medications')),
+          findsOneWidget,
+        );
+        expect(find.text(english ? 'Quick access' : '주요 기능'), findsNothing);
+        expect(find.text(english ? 'All features' : '전체 기능'), findsNothing);
         expect(
           find.text(
             english
@@ -173,7 +193,13 @@ void main() {
         );
         await tester.pump();
         expect(selected, isNull);
+        expect(
+          find.byKey(const Key('feature-category-display')),
+          findsOneWidget,
+        );
         expect(tester.takeException(), isNull);
+        await tester.ensureVisible(find.byKey(const Key('feature-fontSize')));
+        await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('feature-fontSize')));
         await tester.pumpAndSettle();
         expect(selected, AppFeature.fontSize);

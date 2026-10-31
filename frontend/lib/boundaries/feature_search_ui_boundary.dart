@@ -5,12 +5,14 @@ import '../controls/find_app_feature_control.dart';
 import '../entities/feature_search_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/medbuddy_page_header.dart';
+import '../widgets/medbuddy_search_field.dart';
 
 // 클래스명: FeatureSearchUI
 // 역할: 계정 데이터 조회 없이 기능 검색·초기화·결과 선택을 제공한다.
 class FeatureSearchUI extends StatefulWidget {
   final bool isEnglish;
   final bool widgetSupported;
+  final Future<void> Function(BuildContext, AppFeature)? onFeatureSelected;
 
   // 함수이름: FeatureSearchUI
   // 함수역할: 표시 언어와 기기 기능 지원 범위를 받아 검색 화면을 만든다.
@@ -18,6 +20,7 @@ class FeatureSearchUI extends StatefulWidget {
     super.key,
     this.isEnglish = false,
     this.widgetSupported = true,
+    this.onFeatureSelected,
   });
 
   @override
@@ -28,6 +31,7 @@ class FeatureSearchUI extends StatefulWidget {
 // 역할: 현재 화면에만 검색어를 보관하며 종료할 때 폐기한다.
 class _FeatureSearchUIState extends State<FeatureSearchUI> {
   final _query = TextEditingController();
+  bool _openingFeature = false;
   bool get _english => widget.isEnglish;
 
   @override
@@ -48,13 +52,10 @@ class _FeatureSearchUIState extends State<FeatureSearchUI> {
             _query.text,
             widgetSupported: widget.widgetSupported,
           )
-        : [
-            for (final id in FindAppFeature.common)
-              ...available.where((entry) => entry.feature == id),
-          ];
-    final others = available.where(
-      (entry) => !FindAppFeature.common.contains(entry.feature),
-    );
+        : available.toList(growable: false);
+    final categories = hasQuery
+        ? results.map((entry) => _category(entry.feature)).toSet().toList()
+        : _FeatureCategory.values;
     return Scaffold(
       backgroundColor: MedBuddyColors.pageBackground,
       body: SafeArea(
@@ -78,67 +79,56 @@ class _FeatureSearchUIState extends State<FeatureSearchUI> {
                   child: Column(
                     children: [
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                        child: TextField(
-                          key: const Key('featureSearchInput'),
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                        child: MedBuddySearchField(
+                          inputKey: const Key('featureSearchInput'),
+                          clearKey: const Key('featureSearchClear'),
                           controller: _query,
-                          maxLength: 120,
-                          textInputAction: TextInputAction.search,
-                          onChanged: (_) => setState(() {}),
-                          onSubmitted: (_) => FocusScope.of(context).unfocus(),
-                          decoration: InputDecoration(
-                            labelText: _english ? 'Feature search' : '기능 검색',
-                            hintText: _english
-                                ? 'Bigger text, send records'
-                                : '글씨 크게, 먹은 기록 보내기',
-                            counterText: '',
-                            prefixIcon: const Icon(Icons.search),
-                            suffixIcon: hasQuery
-                                ? IconButton(
-                                    key: const Key('featureSearchClear'),
-                                    tooltip: _english
-                                        ? 'Clear search'
-                                        : '검색어 지우기',
-                                    onPressed: () => setState(_query.clear),
-                                    icon: const Icon(Icons.close),
-                                  )
-                                : null,
-                          ),
+                          isEnglish: _english,
+                          onChanged: () => setState(() {}),
+                          label: _english ? 'Feature search' : '기능 검색',
+                          hint: _english
+                              ? 'Bigger text, send records'
+                              : '글씨 크게, 먹은 기록 보내기',
                         ),
                       ),
                       Expanded(
-                        child: ListView(
-                          keyboardDismissBehavior:
-                              ScrollViewKeyboardDismissBehavior.onDrag,
-                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                          children: [
-                            _heading(
-                              hasQuery
-                                  ? (_english ? 'Results' : '검색 결과')
-                                  : (_english ? 'Quick access' : '주요 기능'),
-                            ),
-                            if (hasQuery && results.isEmpty)
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 32,
-                                ),
-                                child: Text(
-                                  _english
-                                      ? 'No matching features'
-                                      : '검색 결과가 없어요',
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                    color: MedBuddyColors.textMuted,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                          child: ListView(
+                            key: const Key('featureSearchPanel'),
+                            keyboardDismissBehavior:
+                                ScrollViewKeyboardDismissBehavior.onDrag,
+                            padding: EdgeInsets.zero,
+                            children: [
+                              if (hasQuery && results.isEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 32,
+                                  ),
+                                  child: Text(
+                                    _english
+                                        ? 'No matching features'
+                                        : '검색 결과가 없어요',
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: MedBuddyColors.textMuted,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            for (final entry in results) _result(entry),
-                            if (!hasQuery) ...[
-                              const SizedBox(height: 24),
-                              _heading(_english ? 'All features' : '전체 기능'),
-                              for (final entry in others) _result(entry),
+                              for (final category in categories)
+                                _categoryPanel(
+                                  category,
+                                  results
+                                      .where(
+                                        (entry) =>
+                                            _category(entry.feature) ==
+                                            category,
+                                      )
+                                      .toList(),
+                                ),
                             ],
-                          ],
+                          ),
                         ),
                       ),
                     ],
@@ -152,6 +142,63 @@ class _FeatureSearchUIState extends State<FeatureSearchUI> {
     );
   }
 
+  Widget _categoryPanel(
+    _FeatureCategory category,
+    List<FeatureSearchEntry> entries,
+  ) {
+    if (entries.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: MedBuddySearchPanel(
+        key: ValueKey('feature-category-${category.name}'),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Column(
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _heading(_english ? category.en : category.ko),
+              ),
+              for (var index = 0; index < entries.length; index++) ...[
+                if (index > 0) const Divider(height: 1),
+                _result(entries[index]),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  _FeatureCategory _category(AppFeature feature) => switch (feature) {
+    AppFeature.manualMedication ||
+    AppFeature.prescription ||
+    AppFeature.pillIdentification ||
+    AppFeature.medicationCabinet => _FeatureCategory.medications,
+    AppFeature.schedule ||
+    AppFeature.asNeeded ||
+    AppFeature.medicationHistory ||
+    AppFeature.historySharing ||
+    AppFeature.homeSchedule => _FeatureCategory.records,
+    AppFeature.caregiverLink ||
+    AppFeature.caregiverSchedule ||
+    AppFeature.chat => _FeatureCategory.family,
+    AppFeature.nearbyPharmacy ||
+    AppFeature.nearbyHospital ||
+    AppFeature.healthRecommendation => _FeatureCategory.health,
+    AppFeature.notificationInbox ||
+    AppFeature.notifications ||
+    AppFeature.notificationReception ||
+    AppFeature.defaultTimes ||
+    AppFeature.notificationPrivacy => _FeatureCategory.notifications,
+    AppFeature.fontSize ||
+    AppFeature.language ||
+    AppFeature.timeFormat ||
+    AppFeature.readingSpeed ||
+    AppFeature.homeWidget => _FeatureCategory.display,
+    AppFeature.account || AppFeature.dataUse => _FeatureCategory.account,
+  };
+
   // 함수이름: _heading
   // 함수역할: 결과 구역의 제목을 기존 설정 화면과 같은 크기로 표시한다.
   Widget _heading(String title) => Padding(
@@ -160,7 +207,9 @@ class _FeatureSearchUIState extends State<FeatureSearchUI> {
       title,
       style: const TextStyle(
         fontSize: 18,
-        fontWeight: FontWeight.w700,
+        fontWeight: FontWeight.w600,
+        height: 1.35,
+        letterSpacing: 0,
         color: MedBuddyColors.primaryDark,
       ),
     ),
@@ -174,18 +223,28 @@ class _FeatureSearchUIState extends State<FeatureSearchUI> {
         key: ValueKey('feature-${entry.feature.name}'),
         contentPadding: const EdgeInsets.symmetric(vertical: 6),
         leading: Icon(_icon(entry.feature), color: MedBuddyColors.primaryDark),
-        title: Text(
-          entry.title(_english),
-          style: const TextStyle(fontWeight: FontWeight.w700),
+        title: Text(entry.title(_english), style: MedBuddyTextStyles.menuTitle),
+        subtitle: Text(
+          entry.path(_english),
+          style: MedBuddyTextStyles.menuBody,
         ),
-        subtitle: Text(entry.path(_english)),
         trailing: const Icon(Icons.chevron_right),
-        onTap: () {
+        onTap: () async {
+          if (_openingFeature) return;
           FocusScope.of(context).unfocus();
-          Navigator.pop(context, entry.feature);
+          final onSelected = widget.onFeatureSelected;
+          if (onSelected == null) {
+            Navigator.pop(context, entry.feature);
+            return;
+          }
+          _openingFeature = true;
+          try {
+            await onSelected(context, entry.feature);
+          } finally {
+            _openingFeature = false;
+          }
         },
       ),
-      const Divider(height: 1),
     ],
   );
 
@@ -219,4 +278,18 @@ class _FeatureSearchUIState extends State<FeatureSearchUI> {
     AppFeature.homeWidget => Icons.widgets_outlined,
     AppFeature.account => Icons.manage_accounts_outlined,
   };
+}
+
+enum _FeatureCategory {
+  medications('약 등록·관리', 'Add & manage medications'),
+  records('복용 일정·기록', 'Schedules & records'),
+  family('가족 연결·채팅', 'Family & chat'),
+  health('병원·약국·건강', 'Healthcare & pharmacies'),
+  notifications('알림·복용 시간', 'Notifications & dose times'),
+  display('화면·음성·위젯', 'Display, voice & widgets'),
+  account('계정·개인정보', 'Account & privacy');
+
+  const _FeatureCategory(this.ko, this.en);
+  final String ko;
+  final String en;
 }
