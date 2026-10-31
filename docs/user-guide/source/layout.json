@@ -4681,20 +4681,20 @@
         "number": 1,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
-            445,
-            1940,
-            637,
-            2130
+            58,
+            2059,
+            1022,
+            2274
           ]
         ],
         "callouts": [],
-        "image": "assets/cabinet-date-group-2026-10-29.png"
+        "image": "assets/v025-registration-sheet-medium.png"
       },
       {
         "identity": "V023-7.1:next-dose-day",
@@ -5649,40 +5649,40 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            17,
-            361,
-            955,
-            516
+            42,
+            365,
+            1038,
+            500
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/424aaf64fb63678837bc7d4fac48261948067a8fcd8184241b594cadcf06e2d5.png"
+        "image": "assets/v025-departments-medium.png"
       },
       {
         "identity": "CURRENT-8.2:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            950,
-            1222,
-            1080,
-            1356
+            908,
+            678,
+            1036,
+            2150
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/424aaf64fb63678837bc7d4fac48261948067a8fcd8184241b594cadcf06e2d5.png"
+        "image": "assets/v025-departments-medium.png"
       },
       {
         "identity": "CURRENT-8.2:4",

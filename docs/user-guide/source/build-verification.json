@@ -20,6 +20,8 @@
       73,
       100,
       109,
+      128,
+      156,
       207
     ],
     "limitations": "변경된 화면 일부를 최신 캡처로 교체했으며 나머지 이전 사진은 최신 화면과 다를 수 있습니다."
@@ -35,8 +37,8 @@
     "pdf_sha256_identical": true,
     "markdown_sha256_identical": true
   },
-  "pdf_sha256": "5ca87271587b6e370c7e8f9168811da2ff89a02a5a9fbf1fb2c353e9da9d1821",
-  "markdown_sha256": "134d63517a77cb47be1342d711295ca25800185d9c6ad19da521f8ebeaf4b57d",
+  "pdf_sha256": "ff7cf154a4146b571a1cd4a28be43e538daa772f93e8201686e40362ee43ea78",
+  "markdown_sha256": "d1cc091dd09deb1f2b5046f06e8c8250cae947efe250caa882a36cccda821b63",
   "fonts_sha256": {
     "NanumBarunGothic": "9b872773134e2e4d8c0b17021266786576db06c843ede0d0b523b214a450756c",
     "NanumBarunGothicBold": "39bba4cd9bd2986143825c8654abbb62443914ab33b346c0c929a916f5d98bf2"
