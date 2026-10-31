@@ -62,8 +62,8 @@ class MedBuddyBottomNavigationUI extends StatelessWidget {
       ),
       _BottomNavigationItem(
         destination: MedBuddyDestination.medicationCabinet,
-        icon: Icons.medication_outlined,
-        selectedIcon: Icons.medication_rounded,
+        icon: Icons.event_note_outlined,
+        selectedIcon: Icons.event_note_rounded,
         label: text.medicationCabinet,
       ),
       _BottomNavigationItem(
@@ -106,6 +106,13 @@ class MedBuddyBottomNavigationUI extends StatelessWidget {
                     child: _BottomNavigationButton(
                       item: item,
                       selected: item.destination == selectedDestination,
+                      labelHeight:
+                          _navigationHeight(
+                            context,
+                            constraints.maxWidth,
+                            items,
+                          ) -
+                          58,
                       // Function Name: build.onPressed callback
                       // Description: Connects fixed bottom navigation with selected-state and accessibility cues to the captured operation `onDestinationSelected(item.destination)`.
                       // Parameters:
@@ -135,6 +142,7 @@ class MedBuddyBottomNavigationUI extends StatelessWidget {
     var height = 70.0;
     for (final item in items) {
       final painter = TextPainter(
+        maxLines: 1,
         text: TextSpan(
           text: item.label,
           style: const TextStyle(
@@ -164,6 +172,7 @@ class MedBuddyBottomNavigationUI extends StatelessWidget {
 class _BottomNavigationButton extends StatelessWidget {
   final _BottomNavigationItem item;
   final bool selected;
+  final double labelHeight;
   final VoidCallback onPressed;
 
   // Function Name: _BottomNavigationButton
@@ -176,6 +185,7 @@ class _BottomNavigationButton extends StatelessWidget {
   const _BottomNavigationButton({
     required this.item,
     required this.selected,
+    required this.labelHeight,
     required this.onPressed,
   });
 
@@ -208,22 +218,40 @@ class _BottomNavigationButton extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(
-                      selected ? item.selectedIcon : item.icon,
-                      color: foreground,
-                      size: 24,
+                    Transform.scale(
+                      scale:
+                          item.destination ==
+                              MedBuddyDestination.medicationCabinet
+                          ? 1.125
+                          : 1,
+                      child: Icon(
+                        selected ? item.selectedIcon : item.icon,
+                        color: foreground,
+                        size: 24,
+                      ),
                     ),
                     const SizedBox(height: 3),
-                    Text(
-                      item.label,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: foreground,
-                        fontSize: _labelFontSize,
-                        height: 1.1,
-                        fontWeight: selected
-                            ? FontWeight.w700
-                            : FontWeight.w600,
+                    SizedBox(
+                      height: labelHeight,
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            item.label,
+                            maxLines: 1,
+                            softWrap: false,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: foreground,
+                              fontSize: _labelFontSize,
+                              height: 1.1,
+                              fontWeight: selected
+                                  ? FontWeight.w700
+                                  : FontWeight.w600,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -312,7 +340,7 @@ class _BottomNavigationText {
   // Parameters:
   // - None.
   // Returns: The formatted display text or identifier described above.
-  String get medicationCabinet => isEnglish ? 'Medications' : '복약함';
+  String get medicationCabinet => isEnglish ? 'Records' : '복약 기록';
   // Function Name: profile
   // Description: Provides localized wording for "My Info" using the current language and message inputs.
   // Parameters:

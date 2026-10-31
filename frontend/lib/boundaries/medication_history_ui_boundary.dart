@@ -11,6 +11,7 @@ import '../entities/medication_history_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/patient_caregiver_link_entity.dart';
 import '../widgets/medication_history_month_calendar.dart';
+import '../widgets/medication_history_charts.dart';
 import '../entities/medication_history_export.dart';
 import '../services/api_response_parser.dart';
 import '../theme/medbuddy_theme.dart';
@@ -18,6 +19,8 @@ import '../widgets/medication_entry_fields.dart';
 import '../widgets/medbuddy_page_header.dart';
 
 enum _HistoryShareDestination { external, chat }
+
+enum _HistoryPeriod { week, month, custom }
 
 // 클래스명: MedicationHistoryUI
 // 역할: 외부 탐색 화면에서 환자 범위·읽기 전용 권한·언어·갱신 콜백을 전달받는다.
@@ -34,6 +37,7 @@ class MedicationHistoryUI extends StatefulWidget {
     this.chatShareControl,
     this.sharedRange,
     this.initiallyShowExport = false,
+    this.showBackButton = true,
   });
 
   final String patientHash;
@@ -47,6 +51,7 @@ class MedicationHistoryUI extends StatefulWidget {
   final MedicationHistoryRange? sharedRange;
   // 기능 검색에서 공유를 선택해도 전송은 하지 않고 기존 기간·대상 확인창만 연다.
   final bool initiallyShowExport;
+  final bool showBackButton;
 
   // 함수역할: 조회·정정·내보내기 수명을 관리할 화면 상태를 만든다.
   @override
@@ -66,17 +71,18 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
   bool get _readOnly => widget.readOnly || widget.sharedRange != null;
   bool _interactionActive = false;
   bool _exporting = false;
-  // 화면은 한 달 달력에서 시작하고, 날짜를 누르면 그날의 기록으로 들어간다.
-  bool _showMonth = true;
-  late DateTime _month;
-  MedicationHistorySnapshot? _monthSnapshot;
-  bool _monthFailed = false;
+  _HistoryPeriod _period = _HistoryPeriod.week;
+  late DateTime _anchor;
+  late DateTime _selectedDay;
+  late DateTime _customStart;
+  late DateTime _customEnd;
+  final _chartExpanded = <_HistoryPeriod, bool>{};
+  final _detailsExpanded = <_HistoryPeriod, bool>{};
 
   // 함수역할: 현재 화면 언어에 해당하는 문구를 선택한다.
   String tr(String ko, String en) => widget.isEnglish ? en : ko;
 
-  // 함수역할: 앱 복귀 감시와 최초 7일 조회를 준비한다.
-  // 날짜 탐색 화면에서는 최초 조회를 오늘 하루로 제한한다.
+  // 함수역할: 앱 복귀 감시와 이번 주의 오늘까지 조회를 준비한다.
   @override
   void initState() {
     super.initState();
@@ -117,13 +123,12 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
         isEnglish: widget.isEnglish,
       );
     }
-    _range =
-        widget.sharedRange ??
-        MedicationHistoryRange(_control.today, _control.today);
-    _month = DateTime.utc(_control.today.year, _control.today.month);
-    _showMonth = widget.sharedRange == null;
-    _monthSnapshot = null;
-    _monthFailed = false;
+    _period = _HistoryPeriod.week;
+    _anchor = _selectedDay = _customEnd = _control.today;
+    _customStart = _control.today.subtract(const Duration(days: 6));
+    _range = widget.sharedRange ?? _periodRange(_anchor, _period)!;
+    _chartExpanded.clear();
+    _detailsExpanded.clear();
     final bound = _control;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && identical(bound, _control)) {
@@ -137,39 +142,8 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
   Future<void> _loadInitial(MedicationHistoryControl bound) async {
     await _reload();
     if (!_isCurrent(bound) || !widget.initiallyShowExport || _readOnly) return;
-    if ((_showMonth ? _monthSnapshot : _control.snapshot) != null) {
+    if (_control.snapshot != null) {
       await _export();
-    }
-  }
-
-  // 상시 본문 대신 정보 버튼에서 동일한 기록 해석·시간대 안내를 다시 확인한다.
-  Future<void> _showRecordNotice() async {
-    if (_locked) return;
-    final control = _control;
-    _messengerKey.currentState?.hideCurrentSnackBar();
-    setState(() => _interactionActive = true);
-    try {
-      await showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text(tr('복약 기록 안내', 'About medication records')),
-          scrollable: true,
-          content: Text(
-            '${medicationHistoryRecordNotice(widget.isEnglish)}\n\n'
-            '${medicationHistoryTimeZoneNotice(widget.isEnglish)}',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(tr('닫기', 'Close')),
-            ),
-          ],
-        ),
-      );
-    } finally {
-      if (mounted && identical(control, _control)) {
-        setState(() => _interactionActive = false);
-      }
     }
   }
 
@@ -220,64 +194,72 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
   // 함수역할: 선택 범위를 조회하고 실패 표시와 재시도 상태는 제어 객체에 맡긴다.
   Future<void> _load() async {
     try {
-      await _control.load(_range);
+      await _control.load(_range, extended: widget.sharedRange == null);
     } catch (_) {
       // 서버·네트워크 오류는 제어 객체의 상태로 표시하고 이전 자료는 남기지 않는다.
     }
   }
 
   // 함수역할: 지금 보이는 달력 또는 하루 기록을 다시 읽는다.
-  Future<void> _reload() => _showMonth ? _loadMonth() : _load();
-
-  // 함수역할: 보이는 달의 조회 가능한 날짜를 한 번에 읽어 날짜별 복용 기록 요약을 만든다.
-  //   하루 기록 화면의 자료는 바꾸지 않으며, 실패하면 달력 아래에 재시도를 보여 준다.
-  Future<void> _loadMonth() async {
-    final control = _control;
-    final range = MedicationHistoryMonthCalendar.visibleRange(
-      _month,
-      control.today,
-    );
-    if (range == null || control.busy) return;
-    setState(() => _monthFailed = false);
-    try {
-      final snapshot = await control.readRange(range);
-      if (!_isCurrent(control) || !_showMonth) return;
-      setState(() => _monthSnapshot = snapshot);
-    } catch (_) {
-      if (mounted && identical(control, _control)) {
-        setState(() {
-          _monthSnapshot = null;
-          _monthFailed = true;
-        });
+  Future<void> _reload() async {
+    if (widget.sharedRange == null) {
+      final earliest = MedicationHistoryDates.earliest(_control.today);
+      final range = _period == _HistoryPeriod.custom
+          ? MedicationHistoryRange(
+              _range.start.isBefore(earliest) ? earliest : _range.start,
+              _range.end.isBefore(earliest) ? earliest : _range.end,
+            )
+          : _periodRange(_anchor, _period);
+      if (range != null) {
+        _range = range;
+        if (_period == _HistoryPeriod.custom) {
+          _customStart = range.start;
+          _customEnd = range.end;
+        }
+        if (!_range.contains(_selectedDay)) _selectedDay = _range.end;
       }
     }
+    await _load();
   }
 
-  // 함수역할: 달력에서 고른 날짜의 기록 화면으로 들어간다.
-  Future<void> _openDay(DateTime day) async {
-    if (_locked) return;
-    setState(() => _showMonth = false);
-    await _selectDay(day);
+  // 보관 기간과 한국 기준 오늘로 잘라 실제 조회할 수 있는 주·월·사용자 기간을 계산한다.
+  MedicationHistoryRange? _periodRange(DateTime anchor, _HistoryPeriod period) {
+    final today = _control.today;
+    final earliest = MedicationHistoryDates.earliest(today);
+    final start = switch (period) {
+      _HistoryPeriod.week => anchor.subtract(
+        Duration(days: anchor.weekday - 1),
+      ),
+      _HistoryPeriod.month => DateTime.utc(anchor.year, anchor.month),
+      _HistoryPeriod.custom => _customStart,
+    };
+    final end = switch (period) {
+      _HistoryPeriod.week => start.add(const Duration(days: 6)),
+      _HistoryPeriod.month => DateTime.utc(anchor.year, anchor.month + 1, 0),
+      _HistoryPeriod.custom => _customEnd,
+    };
+    final first = start.isBefore(earliest) ? earliest : start;
+    final last = end.isAfter(today) ? today : end;
+    return first.isAfter(last) ? null : MedicationHistoryRange(first, last);
   }
 
-  // 함수역할: 하루 기록에서 그 날짜가 속한 달의 달력으로 돌아가 최신 요약을 읽는다.
-  Future<void> _openMonth() async {
+  // 기간 전환은 서버 집계 범위만 바꾸고 상세 날짜가 그 범위 밖일 때 마지막 날로 옮긴다.
+  Future<void> _changePeriod(_HistoryPeriod period, {DateTime? anchor}) async {
     if (_locked) return;
+    final nextAnchor = anchor ?? _selectedDay;
+    final range = _periodRange(nextAnchor, period);
+    if (range == null) return;
     setState(() {
-      _showMonth = true;
-      _month = DateTime.utc(_range.start.year, _range.start.month);
+      _period = period;
+      _anchor = nextAnchor;
+      _range = range;
+      if (period == _HistoryPeriod.custom) {
+        _customStart = range.start;
+        _customEnd = range.end;
+      }
+      if (!_range.contains(_selectedDay)) _selectedDay = _range.end;
     });
-    await _loadMonth();
-  }
-
-  // 함수역할: 다른 달로 이동하고 그 달의 요약을 읽는다.
-  Future<void> _changeMonth(DateTime month) async {
-    if (_locked) return;
-    setState(() {
-      _month = month;
-      _monthSnapshot = null;
-    });
-    await _loadMonth();
+    await _load();
   }
 
   // 함수역할: 비동기 작업의 화면·제어 객체·세션이 아직 같은지 확인한다.
@@ -306,9 +288,8 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
       _exporting ||
       _control.sessionInvalidated;
 
-  // 함수역할: 최근 90일 달력에서 최대 31일을 선택하고 확인한 범위만 조회한다.
-  // 기간 선택은 내보내기에만 사용하고 화면의 달력은 하루를 선택한다.
-  Future<void> _pickRange() async {
+  // 상세 날짜는 현재 조회 범위 안에서, 기간 제목은 최근 90일 안에서 선택한다.
+  Future<void> _pickRange({bool period = false}) async {
     if (_locked) return;
     final control = _control;
     setState(() => _interactionActive = true);
@@ -318,32 +299,27 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
       final selection = await showDatePicker(
         context: context,
         locale: Locale(widget.isEnglish ? 'en' : 'ko'),
-        firstDate: earliest,
-        lastDate: today,
+        firstDate: period ? earliest : _range.start,
+        lastDate: period ? today : _range.end,
         currentDate: today,
-        initialDate: _range.start.isBefore(earliest)
+        initialDate: _selectedDay.isBefore(earliest)
             ? earliest
-            : _range.start.isAfter(today)
+            : _selectedDay.isAfter(today)
             ? today
-            : _range.start,
+            : _selectedDay,
         helpText: tr('복약 기록 날짜 선택', 'Select a record date'),
         confirmText: tr('조회', 'Apply'),
       );
       if (selection == null || !_isCurrent(control)) return;
-      final range = MedicationHistoryRange(selection, selection);
-      try {
-        range.validate(control.now);
-      } on FormatException {
-        _message(
-          tr(
-            '한 번에 최대 31일까지 선택할 수 있어요.',
-            'Select no more than 31 days at a time.',
-          ),
-        );
-        return;
-      }
-      setState(() => _range = range);
-      await _load();
+      final day = MedicationHistoryDates.day(selection);
+      setState(() {
+        _selectedDay = day;
+        if (period) {
+          _anchor = day;
+          _range = _periodRange(day, _period)!;
+        }
+      });
+      if (period) await _load();
     } finally {
       if (mounted && identical(control, _control)) {
         setState(() => _interactionActive = false);
@@ -351,19 +327,14 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     }
   }
 
-  // 함수역할: 오늘까지 입력 일수의 기간을 선택하고 새 결과를 읽는다.
+  // 이미 조회한 기간 안에서 날짜만 바꾸며 선택한 날의 상세를 펼친다.
   Future<void> _selectDay(DateTime day) async {
     if (_locked) return;
-    if (day.isBefore(MedicationHistoryDates.earliest(_control.today)) ||
-        day.isAfter(_control.today)) {
-      return;
-    }
-    final range = MedicationHistoryRange(day, day);
-    range.validate(_control.now);
+    if (!_range.contains(day)) return;
     setState(() {
-      _range = range;
+      _selectedDay = MedicationHistoryDates.day(day);
+      _detailsExpanded[_period] = true;
     });
-    await _load();
   }
 
   // 함수역할: 환자 본인에게만 기존 기록의 정정을 열고 서버 저장 확인 뒤 부모 화면을 갱신한다.
@@ -411,8 +382,8 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
   Future<void> _export() async {
     if (_locked) return;
     final control = _control;
-    // 달력에서는 보이는 달, 하루 기록에서는 그날을 공유 기간의 시작값으로 쓴다.
-    var snapshot = _showMonth ? _monthSnapshot : control.snapshot;
+    // 현재 통계를 조회한 기간을 공유 기간의 시작값으로 쓴다.
+    var snapshot = control.snapshot;
     if (snapshot == null || !_isCurrent(control)) return;
     var exportRange = snapshot.range;
     var selectingDate = false;
@@ -838,8 +809,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
     animation: _control,
     builder: (context, _) {
       final snapshot = _control.snapshot;
-      final shown = _showMonth ? _monthSnapshot : snapshot;
-      final scrollProgress =
+      final scrollHeader =
           MediaQuery.textScalerOf(context).scale(16) > 22 ||
           MediaQuery.sizeOf(context).height < 600;
       final header = MedBuddyPageHeader(
@@ -852,7 +822,9 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
             : _readOnly
             ? tr('환자 기록 · 읽기 전용', 'Patient records · Read only')
             : tr('날짜별 복용 기록입니다.', 'Daily medication records.'),
-        onBackRequested: () => Navigator.maybePop(context),
+        onBackRequested: widget.showBackButton
+            ? () => Navigator.maybePop(context)
+            : null,
         actions: [
           IconButton(
             tooltip: tr('새로고침', 'Refresh'),
@@ -861,193 +833,509 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
           ),
           IconButton(
             tooltip: tr('공유', 'Share'),
-            onPressed: _locked || shown == null ? null : _export,
+            onPressed: _locked || snapshot == null ? null : _export,
             icon: const Icon(Icons.ios_share_outlined),
           ),
         ],
-        bottom: shown == null ? null : _progress(shown),
+        bottom: widget.sharedRange != null && snapshot != null
+            ? _progress(snapshot)
+            : null,
       );
-      // 하루 기록에서 뒤로 가면 달력으로 돌아가고, 달력에서 뒤로 가면 화면을 닫는다.
-      return PopScope(
-        // 날짜 조회를 기다리는 중에는 월 보기로 돌아갈 수 없으므로 뒤로가기가 화면을 닫게 한다.
-        canPop: _showMonth || widget.sharedRange != null || _control.busy,
-        onPopInvokedWithResult: (didPop, _) {
-          if (!didPop) unawaited(_openMonth());
-        },
-        child: ScaffoldMessenger(
-          key: _messengerKey,
-          child: Scaffold(
-            backgroundColor: MedBuddyColors.pageBackground,
-            body: SafeArea(
-              top: false,
-              child: Column(
-                children: [
-                  if (!scrollProgress) header,
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.topCenter,
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 720),
-                        child: ListView(
-                          // 달력과 하루 기록을 오갈 때마다 목록을 맨 위에서 시작한다.
-                          key: ValueKey(_showMonth ? 'month' : 'day'),
-                          padding: const EdgeInsets.all(16),
-                          children: [
-                            if (scrollProgress) header,
-                            if (widget.sharedRange != null)
-                              ..._sharedPeriodBody(snapshot)
-                            else if (_showMonth)
-                              ..._monthBody()
-                            else ...[
-                              Row(
-                                key: const Key('history-date-navigation'),
-                                children: [
-                                  IconButton(
-                                    key: const Key('history-open-month'),
-                                    tooltip: tr('달력으로 보기', 'Show the month'),
-                                    onPressed: _locked ? null : _openMonth,
-                                    icon: const Icon(
-                                      Icons.calendar_month_outlined,
-                                    ),
-                                  ),
-                                  IconButton(
-                                    key: const Key('history-previous-day'),
-                                    tooltip: tr('이전 날짜', 'Previous day'),
-                                    onPressed:
-                                        _locked ||
-                                            !_range.start.isAfter(
-                                              MedicationHistoryDates.earliest(
-                                                _control.today,
-                                              ),
-                                            )
-                                        ? null
-                                        : () => _selectDay(
-                                            _range.start.subtract(
-                                              const Duration(days: 1),
-                                            ),
-                                          ),
-                                    icon: const Icon(Icons.chevron_left),
-                                  ),
-                                  Expanded(
-                                    child: TextButton(
-                                      key: const Key('history-select-date'),
-                                      onPressed: _locked ? null : _pickRange,
-                                      child: Text(
-                                        '${MedicationHistoryDates.format(_range.start)} (${(widget.isEnglish ? const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] : const ['월', '화', '수', '목', '금', '토', '일'])[_range.start.weekday - 1]})',
-                                        textAlign: TextAlign.center,
-                                        style: const TextStyle(
-                                          fontSize: 17,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  IconButton(
-                                    key: const Key('history-next-day'),
-                                    tooltip: tr('다음 날짜', 'Next day'),
-                                    onPressed:
-                                        _locked ||
-                                            !_range.start.isBefore(
-                                              _control.today,
-                                            )
-                                        ? null
-                                        : () => _selectDay(
-                                            _range.start.add(
-                                              const Duration(days: 1),
-                                            ),
-                                          ),
-                                    icon: const Icon(Icons.chevron_right),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              if (_control.loading)
-                                const Padding(
-                                  padding: EdgeInsets.all(32),
-                                  child: Center(
-                                    child: CircularProgressIndicator(),
-                                  ),
-                                )
-                              else if (_control.error != null) ...[
-                                Text(
-                                  _failureText(
-                                    _control.error!,
-                                    widget.isEnglish,
-                                  ),
-                                  key: const Key('history-load-error'),
-                                  style: const TextStyle(
-                                    color: MedBuddyColors.danger,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                if (!_control.sessionInvalidated)
-                                  OutlinedButton.icon(
-                                    onPressed: _locked ? null : _load,
-                                    icon: const Icon(Icons.refresh),
-                                    label: Text(tr('다시 시도', 'Retry')),
-                                  ),
-                              ] else if (snapshot != null) ...[
-                                Row(
-                                  key: const Key('history-status-summary'),
-                                  children: [
-                                    Expanded(
-                                      child: Wrap(
-                                        spacing: 16,
-                                        runSpacing: 8,
-                                        children: [
-                                          for (final status
-                                              in MedicationHistoryStatus.values)
-                                            Text(
-                                              '${status.label(widget.isEnglish)} ${snapshot.count(status)}',
-                                              style: TextStyle(
-                                                color: _statusColor(status),
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                    IconButton(
-                                      tooltip: tr(
-                                        '복약 기록 안내',
-                                        'About medication records',
-                                      ),
-                                      onPressed: _locked
-                                          ? null
-                                          : _showRecordNotice,
-                                      icon: const Icon(Icons.info_outline),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                if (snapshot.items.isEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 24,
-                                    ),
-                                    child: Text(
-                                      tr(
-                                        '이 날짜에는 복약 일정이나 기록이 없어요.',
-                                        'No scheduled doses or records on this date.',
-                                      ),
-                                    ),
-                                  ),
-                                ..._slotCards(snapshot.items),
-                              ],
-                            ],
-                          ],
-                        ),
+      return ScaffoldMessenger(
+        key: _messengerKey,
+        child: Scaffold(
+          backgroundColor: MedBuddyColors.pageBackground,
+          body: SafeArea(
+            top: false,
+            child: Column(
+              children: [
+                if (!scrollHeader) header,
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 720),
+                      child: ListView(
+                        key: const Key('history-scroll'),
+                        padding: const EdgeInsets.all(16),
+                        children: [
+                          if (scrollHeader) header,
+                          if (widget.sharedRange != null)
+                            ..._sharedPeriodBody(snapshot)
+                          else
+                            ..._dashboard(snapshot),
+                        ],
                       ),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
       );
     },
   );
+
+  // 주간·월간·사용자 지정 기간은 같은 서버 자료를 요약하고 상세는 선택한 하루만 보여준다.
+  List<Widget> _dashboard(MedicationHistorySnapshot? snapshot) {
+    final chartOpen = _chartExpanded[_period] ?? true;
+    final detailsOpen = _detailsExpanded[_period] ?? true;
+    return [
+      Container(
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: MedBuddyColors.primary.withValues(alpha: 0.06),
+          borderRadius: MedBuddyRadii.small,
+        ),
+        child: Row(
+          children: [
+            for (final period in _HistoryPeriod.values)
+              Expanded(
+                child: TextButton(
+                  key: ValueKey('history-tab-${period.name}'),
+                  onPressed: _locked ? null : () => _changePeriod(period),
+                  style: TextButton.styleFrom(
+                    backgroundColor: _period == period
+                        ? MedBuddyColors.surface
+                        : Colors.transparent,
+                    foregroundColor: _period == period
+                        ? MedBuddyColors.primary
+                        : MedBuddyColors.textMuted,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: MedBuddyRadii.small,
+                    ),
+                  ),
+                  child: Text(switch (period) {
+                    _HistoryPeriod.week => tr('주간', 'Weekly'),
+                    _HistoryPeriod.month => tr('월간', 'Monthly'),
+                    _HistoryPeriod.custom => tr('기간 선택', 'Date range'),
+                  }, textAlign: TextAlign.center),
+                ),
+              ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 12),
+      if (_period == _HistoryPeriod.custom)
+        _customRangeControls()
+      else
+        _periodNavigation(),
+      const SizedBox(height: 12),
+      if (_control.loading)
+        const Padding(
+          padding: EdgeInsets.all(32),
+          child: Center(child: CircularProgressIndicator()),
+        )
+      else if (_control.error != null) ...[
+        Text(
+          _failureText(_control.error!, widget.isEnglish),
+          key: const Key('history-load-error'),
+          style: const TextStyle(color: MedBuddyColors.danger),
+        ),
+        if (!_control.sessionInvalidated) const SizedBox(height: 12),
+        if (!_control.sessionInvalidated)
+          OutlinedButton.icon(
+            onPressed: _locked ? null : _reload,
+            icon: const Icon(Icons.refresh),
+            label: Text(tr('다시 시도', 'Retry')),
+          ),
+      ] else if (snapshot != null) ...[
+        _sectionFrame(
+          key: 'history-section-summary',
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: MedicationHistoryChartsSummary(
+              snapshot: snapshot,
+              isEnglish: widget.isEnglish,
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        if (_period != _HistoryPeriod.custom) ...[
+          _sectionFrame(
+            key: 'history-section-dates',
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _sectionHeading(
+                    key: 'history-toggle-chart',
+                    title: tr('날짜별 기록', 'Records by date'),
+                    open: chartOpen,
+                    onPressed: () =>
+                        setState(() => _chartExpanded[_period] = !chartOpen),
+                    trailing: _period == _HistoryPeriod.week
+                        ? tr('단위: 회', 'Doses')
+                        : null,
+                  ),
+                  if (chartOpen && _period == _HistoryPeriod.week)
+                    MedicationHistoryWeekChart(
+                      snapshot: snapshot,
+                      weekStart: _anchor.subtract(
+                        Duration(days: _anchor.weekday - 1),
+                      ),
+                      today: _control.today,
+                      selected: _selectedDay,
+                      isEnglish: widget.isEnglish,
+                      enabled: !_locked,
+                      onDaySelected: _selectDay,
+                    ),
+                  if (chartOpen && _period == _HistoryPeriod.month)
+                    MedicationHistoryMonthCalendar(
+                      month: DateTime.utc(_anchor.year, _anchor.month),
+                      today: _control.today,
+                      selected: _selectedDay,
+                      summaries: MedicationHistoryDaySummary.fromSnapshot(
+                        snapshot,
+                      ),
+                      isEnglish: widget.isEnglish,
+                      enabled: !_locked,
+                      showNavigation: false,
+                      onDaySelected: _selectDay,
+                      onMonthChanged: (day) =>
+                          _changePeriod(_HistoryPeriod.month, anchor: day),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+        _sectionFrame(
+          key: 'history-section-details',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: _sectionHeading(
+                  key: 'history-toggle-details',
+                  title: tr('일별 상세 기록', 'Daily details'),
+                  open: detailsOpen,
+                  onPressed: () =>
+                      setState(() => _detailsExpanded[_period] = !detailsOpen),
+                ),
+              ),
+              if (detailsOpen) ...[
+                _dayNavigation(),
+                const SizedBox(height: 4),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: _dailySummary(snapshot),
+                ),
+                const SizedBox(height: 8),
+                if (!snapshot.items.any(
+                  (entry) => entry.scheduleDate == _selectedDay,
+                ))
+                  Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      tr(
+                        '이 날짜에는 복약 일정이나 기록이 없어요.',
+                        'No scheduled doses or records on this date.',
+                      ),
+                      style: MedBuddyTextStyles.menuBody,
+                    ),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    children: _slotCards(
+                      snapshot.items.where(
+                        (entry) => entry.scheduleDate == _selectedDay,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    ];
+  }
+
+  // 관련 영역을 그림자 없는 테두리로 구분한다.
+  Widget _sectionFrame({required String key, required Widget child}) =>
+      Container(
+        key: ValueKey(key),
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: MedBuddyColors.surface,
+          border: Border.all(color: MedBuddyColors.cardBorder),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: child,
+      );
+
+  // 삼각형 버튼을 포함한 제목 전체를 누르면 해당 영역만 접거나 펼친다.
+  Widget _sectionHeading({
+    required String key,
+    required String title,
+    required bool open,
+    required VoidCallback onPressed,
+    String? trailing,
+  }) => Semantics(
+    expanded: open,
+    child: InkWell(
+      key: ValueKey(key),
+      onTap: _locked ? null : onPressed,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            if (trailing != null)
+              Text(
+                trailing,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: MedBuddyColors.textMuted,
+                ),
+              ),
+            const SizedBox(width: 8),
+            Icon(
+              open ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+              color: MedBuddyColors.primary,
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  // 주·월의 이동 단위와 실제 조회 가능한 날짜 범위를 분리한다.
+  Widget _periodNavigation() {
+    final isMonth = _period == _HistoryPeriod.month;
+    final previous = isMonth
+        ? DateTime.utc(_anchor.year, _anchor.month - 1)
+        : _anchor.subtract(const Duration(days: 7));
+    final next = isMonth
+        ? DateTime.utc(_anchor.year, _anchor.month + 1)
+        : _anchor.add(const Duration(days: 7));
+    final monday = _anchor.subtract(Duration(days: _anchor.weekday - 1));
+    final sunday = monday.add(const Duration(days: 6));
+    final title = isMonth
+        ? tr(
+            '${_anchor.year}년 ${_anchor.month}월',
+            '${_anchor.year}.${_anchor.month.toString().padLeft(2, '0')}',
+          )
+        : '${MedicationHistoryDates.format(monday)} ~ ${MedicationHistoryDates.format(sunday)}';
+    return Row(
+      children: [
+        IconButton(
+          key: ValueKey(
+            isMonth ? 'history-previous-month' : 'history-previous-week',
+          ),
+          tooltip: tr('이전 기간', 'Previous period'),
+          onPressed: _locked || _periodRange(previous, _period) == null
+              ? null
+              : () => _changePeriod(_period, anchor: previous),
+          icon: const Icon(Icons.chevron_left),
+        ),
+        Expanded(
+          child: TextButton(
+            key: const Key('history-select-period'),
+            onPressed: _locked ? null : () => _pickRange(period: true),
+            child: Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ),
+        IconButton(
+          key: ValueKey(isMonth ? 'history-next-month' : 'history-next-week'),
+          tooltip: tr('다음 기간', 'Next period'),
+          onPressed: _locked || _periodRange(next, _period) == null
+              ? null
+              : () => _changePeriod(_period, anchor: next),
+          icon: const Icon(Icons.chevron_right),
+        ),
+      ],
+    );
+  }
+
+  // 상세 날짜 이동은 이미 읽은 기간 안에서만 허용한다.
+  Widget _dayNavigation() => Row(
+    key: const Key('history-date-navigation'),
+    children: [
+      IconButton(
+        key: const Key('history-previous-day'),
+        tooltip: tr('이전 날짜', 'Previous day'),
+        onPressed: _locked || !_selectedDay.isAfter(_range.start)
+            ? null
+            : () => _selectDay(_selectedDay.subtract(const Duration(days: 1))),
+        icon: const Icon(Icons.chevron_left),
+      ),
+      Expanded(
+        child: TextButton(
+          key: const Key('history-select-date'),
+          onPressed: _locked ? null : _pickRange,
+          child: Text(
+            MedicationHistoryDates.format(_selectedDay),
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
+        ),
+      ),
+      IconButton(
+        key: const Key('history-next-day'),
+        tooltip: tr('다음 날짜', 'Next day'),
+        onPressed: _locked || !_selectedDay.isBefore(_range.end)
+            ? null
+            : () => _selectDay(_selectedDay.add(const Duration(days: 1))),
+        icon: const Icon(Icons.chevron_right),
+      ),
+    ],
+  );
+
+  // 시작·종료일은 선택 즉시 반영하므로 별도 조회 명령이나 중복 기간 표시는 두지 않는다.
+  Widget _customRangeControls() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final start in [true, false]) ...[
+            if (!start) const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    tr(
+                      start ? '시작일' : '종료일',
+                      start ? 'Start date' : 'End date',
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  OutlinedButton(
+                    key: ValueKey(
+                      start ? 'history-range-start' : 'history-range-end',
+                    ),
+                    onPressed: _locked ? null : () => _pickCustomDate(start),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 12,
+                      ),
+                    ),
+                    child: Text(
+                      MedicationHistoryDates.format(
+                        start ? _customStart : _customEnd,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    ],
+  );
+
+  // 유효한 날짜를 확정하면 한 번만 조회하고 취소·동일 날짜·세션 변경은 무시한다.
+  Future<void> _pickCustomDate(bool start) async {
+    if (_locked) return;
+    final control = _control;
+    setState(() => _interactionActive = true);
+    try {
+      final earliest = MedicationHistoryDates.earliest(control.today);
+      final first = start
+          ? earliest
+          : (_customStart.isBefore(earliest) ? earliest : _customStart);
+      final last = start
+          ? (_customEnd.isBefore(earliest) ? earliest : _customEnd)
+          : control.today;
+      final initial = start ? _customStart : _customEnd;
+      final selected = await showDatePicker(
+        context: context,
+        locale: Locale(widget.isEnglish ? 'en' : 'ko'),
+        firstDate: first,
+        lastDate: last,
+        currentDate: control.today,
+        initialDate: initial.isBefore(first)
+            ? first
+            : initial.isAfter(last)
+            ? last
+            : initial,
+        helpText: tr(
+          start ? '시작일 선택' : '종료일 선택',
+          start ? 'Select start date' : 'Select end date',
+        ),
+      );
+      if (selected == null || !_isCurrent(control)) return;
+      final day = MedicationHistoryDates.day(selected);
+      if (day == initial || day.isBefore(first) || day.isAfter(last)) return;
+      setState(() {
+        if (start) {
+          _customStart = day;
+        } else {
+          _customEnd = day;
+        }
+        _range = _periodRange(_anchor, _HistoryPeriod.custom)!;
+        _customStart = _range.start;
+        _customEnd = _range.end;
+        if (!_range.contains(_selectedDay)) _selectedDay = _range.end;
+      });
+      await _load();
+    } finally {
+      if (mounted && identical(control, _control)) {
+        setState(() => _interactionActive = false);
+      }
+    }
+  }
+
+  // 상세 요약은 선택한 하루의 기록만 세며 기간 전체 통계와 혼동하지 않는다.
+  Widget _dailySummary(MedicationHistorySnapshot snapshot) {
+    final entries = snapshot.items.where(
+      (item) => item.scheduleDate == _selectedDay,
+    );
+    final counts = MedicationHistoryChartCounts.fromEntries(entries);
+    final values = [counts.taken, counts.skipped, counts.unrecorded];
+    return Wrap(
+      key: const Key('history-status-summary'),
+      alignment: WrapAlignment.center,
+      spacing: 12,
+      runSpacing: 4,
+      children: [
+        for (final status in MedicationHistoryStatus.values)
+          Text(
+            '${status.label(widget.isEnglish)} ${values[status.index]}',
+            style: MedBuddyTextStyles.menuBody.copyWith(
+              color: _statusColor(status),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        if (entries.any((entry) => entry.isAsNeeded))
+          Text(
+            '${tr('필요시 복용', 'As needed')} ${counts.asNeeded}',
+            style: MedBuddyTextStyles.menuBody.copyWith(
+              color: MedBuddyColors.infoBlue,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+      ],
+    );
+  }
 
   // 공유된 기간을 다른 날짜로 바꾸지 않고 날짜·시간대별 최신 기록을 보여준다.
   List<Widget> _sharedPeriodBody(MedicationHistorySnapshot? snapshot) {
@@ -1069,6 +1357,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
           key: const Key('history-load-error'),
           style: const TextStyle(color: MedBuddyColors.danger),
         ),
+        if (!_control.sessionInvalidated) const SizedBox(height: 12),
         if (!_control.sessionInvalidated)
           OutlinedButton.icon(
             onPressed: _locked ? null : _load,
@@ -1086,18 +1375,13 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
                   for (final status in MedicationHistoryStatus.values)
                     Text(
                       '${status.label(widget.isEnglish)} ${snapshot.count(status)}',
-                      style: TextStyle(
+                      style: MedBuddyTextStyles.menuBody.copyWith(
                         color: _statusColor(status),
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                 ],
               ),
-            ),
-            IconButton(
-              onPressed: _locked ? null : _showRecordNotice,
-              tooltip: tr('복약 기록 안내', 'About medication records'),
-              icon: const Icon(Icons.info_outline),
             ),
           ],
         ),
@@ -1109,6 +1393,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
                 '이 기간에는 복약 일정이나 기록이 없어요.',
                 'No scheduled doses or records in this period.',
               ),
+              style: MedBuddyTextStyles.menuBody,
             ),
           ),
         for (final day in days ?? <DateTime>[]) ...[
@@ -1126,61 +1411,6 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
       ],
     ];
   }
-
-  // 함수역할: 달력, 불러오는 중·실패 상태, 날짜를 눌러 보라는 안내를 차례로 놓는다.
-  List<Widget> _monthBody() => [
-    MedicationHistoryMonthCalendar(
-      month: _month,
-      today: _control.today,
-      selected: _range.start,
-      summaries: _monthSnapshot == null
-          ? const {}
-          : MedicationHistoryDaySummary.fromSnapshot(_monthSnapshot!),
-      isEnglish: widget.isEnglish,
-      enabled: !_locked,
-      onDaySelected: (day) => unawaited(_openDay(day)),
-      onMonthChanged: (month) => unawaited(_changeMonth(month)),
-    ),
-    const SizedBox(height: 12),
-    if (_control.loading)
-      const LinearProgressIndicator(key: Key('history-month-loading'))
-    else if (_monthFailed) ...[
-      Text(
-        tr('이 달의 기록을 불러오지 못했어요.', 'Could not load the records of this month.'),
-        key: const Key('history-month-error'),
-        style: const TextStyle(color: MedBuddyColors.danger),
-      ),
-      const SizedBox(height: 8),
-      if (!_control.sessionInvalidated)
-        Align(
-          alignment: Alignment.centerLeft,
-          child: OutlinedButton.icon(
-            onPressed: _locked ? null : _loadMonth,
-            icon: const Icon(Icons.refresh),
-            label: Text(tr('다시 시도', 'Retry')),
-          ),
-        ),
-    ],
-    const SizedBox(height: 8),
-    Row(
-      children: [
-        Expanded(
-          child: Text(
-            tr(
-              '날짜를 누르면 그날의 자세한 기록을 볼 수 있어요. 기록이 없다고 복용하지 않았다는 뜻은 아니에요.',
-              'Tap a date to see its records. A missing record does not mean a missed dose.',
-            ),
-            style: const TextStyle(color: MedBuddyColors.textMuted),
-          ),
-        ),
-        IconButton(
-          tooltip: tr('복약 기록 안내', 'About medication records'),
-          onPressed: _locked ? null : _showRecordNotice,
-          icon: const Icon(Icons.info_outline),
-        ),
-      ],
-    ),
-  ];
 
   // 일정 화면과 같은 진행률·시간대 색상을 사용하되 실제 복용의 증명으로 표시하지 않는다.
   // 필요시 복용은 정해진 횟수가 없으므로 일정 화면처럼 현황의 분모·분자에 넣지 않는다.
@@ -1245,7 +1475,9 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
                 slot == 'as_needed' ? entry.isAsNeeded : entry.slotKey == slot,
           )
           .toList();
-      if (slotEntries.isNotEmpty) cards.add(_slotCard(slot, slotEntries));
+      if (slotEntries.isNotEmpty) {
+        cards.add(_slotCard(slot, slotEntries));
+      }
     }
     return cards;
   }
@@ -1324,7 +1556,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
   // 함수역할: 한 보고의 예정일·실제 시각·기록 시각·사유를 구분하고 허용된 경우 정정 명령을 제공한다.
   Widget _entryTile(MedicationHistoryEntry entry) => Container(
     key: ValueKey('history-entry-${entry.key}'),
-    padding: const EdgeInsets.all(16),
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1336,9 +1568,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
                 children: [
                   Text(
                     entry.itemName,
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
+                    style: MedBuddyTextStyles.menuTitle.copyWith(
                       decoration: entry.status == MedicationHistoryStatus.taken
                           ? TextDecoration.lineThrough
                           : null,
@@ -1350,9 +1580,8 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
                   const SizedBox(height: 4),
                   Text(
                     entry.status.label(widget.isEnglish),
-                    style: TextStyle(
+                    style: MedBuddyTextStyles.menuBody.copyWith(
                       color: _statusColor(entry.status),
-                      fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -1374,13 +1603,18 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
         if (entry.status == MedicationHistoryStatus.taken)
           Text(
             '${tr('실제 복용', 'Actual taken')}: ${entry.actualTakenAt == null ? tr('시각 미입력', 'Time not provided') : MedicationHistoryDates.timestamp(entry.actualTakenAt)}',
+            style: MedBuddyTextStyles.menuBody,
           ),
         if (entry.recordedAt != null)
           Text(
             '${tr('기록 시각', 'Recorded at')}: ${MedicationHistoryDates.timestamp(entry.recordedAt)}',
+            style: MedBuddyTextStyles.menuBody,
           ),
         if (entry.reason.isNotEmpty)
-          Text('${tr('이유', 'Reason')}: ${entry.reason}'),
+          Text(
+            '${tr('이유', 'Reason')}: ${entry.reason}',
+            style: MedBuddyTextStyles.menuBody,
+          ),
       ],
     ),
   );

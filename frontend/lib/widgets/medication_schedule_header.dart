@@ -30,6 +30,7 @@ class MedicationScheduleHeader extends StatelessWidget {
   final Key historyKey;
   final String historyTooltip;
   final VoidCallback onHistory;
+  final IconData actionIcon;
   final String progressLabel;
   final int completedCount;
   final int totalCount;
@@ -58,6 +59,7 @@ class MedicationScheduleHeader extends StatelessWidget {
     required this.historyKey,
     required this.historyTooltip,
     required this.onHistory,
+    this.actionIcon = Icons.calendar_month_outlined,
     required this.progressLabel,
     required this.completedCount,
     required this.totalCount,
@@ -87,15 +89,15 @@ class MedicationScheduleHeader extends StatelessWidget {
       ),
       padding: EdgeInsets.fromLTRB(
         20,
-        MediaQuery.paddingOf(context).top + 12,
+        MediaQuery.paddingOf(context).top + 8,
         20,
-        18,
+        12,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               if (onBack != null) ...[
                 IconButton(
@@ -135,14 +137,11 @@ class MedicationScheduleHeader extends StatelessWidget {
                 key: historyKey,
                 tooltip: historyTooltip,
                 onPressed: onHistory,
-                icon: const Icon(
-                  Icons.calendar_month_outlined,
-                  color: Colors.white,
-                ),
+                icon: Icon(actionIcon, color: Colors.white),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           Container(
             margin: const EdgeInsets.only(left: 12, right: 4),
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),

@@ -483,7 +483,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.byKey(const ValueKey('homeBrandLogo')), findsOneWidget);
-        expect(find.text('약 등록·식별'), findsOneWidget);
+        expect(find.text('약 등록·관리'), findsOneWidget);
         expect(find.text('근처 운영 병원·약국'), findsOneWidget);
         await tester.drag(
           find.byKey(const ValueKey('homeDashboardScrollView')),
@@ -1116,7 +1116,7 @@ void main() {
       await tester.tap(find.text('열기'));
       await tester.pumpAndSettle();
 
-      expect(find.text('처방전 분석'), findsOneWidget);
+      expect(find.text('약봉투·처방전 등록'), findsOneWidget);
       expect(find.text('낱알약 식별'), findsOneWidget);
       expect(find.text('직접 등록'), findsOneWidget);
       expect(tester.takeException(), isNull);

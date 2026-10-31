@@ -1586,7 +1586,7 @@ void main() {
         expect(title.style!.fontSize, 21);
         expect(title.style!.color, Colors.white);
         expect(title.strutStyle, MedBuddyPageHeader.titleStrutStyle);
-        expect(tester.getTopLeft(find.text('오늘의 복약 일정')).dy, 12);
+        expect(tester.getTopLeft(find.text('오늘의 복약 일정')).dy, 8);
         expect(
           find.ancestor(
             of: find.text('오늘의 복약 일정'),

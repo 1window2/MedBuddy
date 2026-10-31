@@ -175,9 +175,9 @@ Future<MedicationHistoryControl> _pumpHistory(
     ),
   );
   await tester.pumpAndSettle();
-  // 화면은 한 달 달력에서 시작하므로 기존 하루 기록 검증은 오늘을 눌러 들어간 뒤 진행한다.
-  if (openToday) {
-    final today = find.byKey(const ValueKey('history-month-day-2026-10-17'));
+  // 주간 통계에서 오늘을 선택해 기존 정정·권한 검증에 필요한 상세만 펼친다.
+  if (openToday && !server.failRead) {
+    final today = find.byKey(const ValueKey('history-week-day-2026-10-17'));
     await tester.scrollUntilVisible(
       today,
       200,
@@ -191,8 +191,30 @@ Future<MedicationHistoryControl> _pumpHistory(
     await tester.pumpAndSettle();
     await tester.tap(today);
     await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const Key('history-date-navigation')),
+    );
+    await tester.pumpAndSettle();
   }
   return control;
+}
+
+// 화면 상단으로 돌아간 뒤 대상까지 스크롤하여 작은 화면에서도 실제 조작 경로를 사용한다.
+Future<void> _revealHistory(WidgetTester tester, Finder target) async {
+  await tester.drag(find.byType(ListView).first, const Offset(0, 10000));
+  await tester.pumpAndSettle();
+  if (target.hitTestable().evaluate().isNotEmpty) return;
+  await tester.scrollUntilVisible(
+    target,
+    150,
+    scrollable: find
+        .descendant(
+          of: find.byType(ListView).first,
+          matching: find.byType(Scrollable),
+        )
+        .first,
+  );
+  await tester.pumpAndSettle();
 }
 
 // 함수역할: 실제 스크롤 뒤 정정 버튼을 눌러 편집 대화상자를 연다.
@@ -289,6 +311,174 @@ Future<MedicationHistoryControl> _pumpAsNeeded(
 
 // 함수역할: 보호자·수정·내보내기와 실패 경로의 UI 회귀 테스트를 등록한다.
 void main() {
+  // 모든 기간에서 상세는 처음부터 열리고 사용자가 접은 상태는 탭별로 유지된다.
+  testWidgets(
+    'daily details start open in every period and remain collapsible',
+    (tester) async {
+      await _pumpHistory(tester, _HistoryServer(), openToday: false);
+      for (final period in ['week', 'month', 'custom']) {
+        await _revealHistory(tester, find.byKey(Key('history-tab-$period')));
+        await tester.tap(find.byKey(Key('history-tab-$period')));
+        await tester.pumpAndSettle();
+        await _revealHistory(
+          tester,
+          find.byKey(const Key('history-toggle-details')),
+        );
+        expect(
+          find.byKey(const Key('history-date-navigation')),
+          findsOneWidget,
+        );
+        await tester.tap(find.byKey(const Key('history-toggle-details')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('history-date-navigation')), findsNothing);
+      }
+      await _revealHistory(tester, find.byKey(const Key('history-tab-week')));
+      await tester.tap(find.byKey(const Key('history-tab-week')));
+      await tester.pumpAndSettle();
+      await _revealHistory(
+        tester,
+        find.byKey(const Key('history-toggle-details')),
+      );
+      expect(find.byKey(const Key('history-date-navigation')), findsNothing);
+    },
+  );
+
+  // 날짜를 확정하면 바로 집계를 바꾸며 중복 기간 표시나 조회 버튼은 두지 않는다.
+  testWidgets(
+    'custom period automatically applies dates and has no binned chart',
+    (tester) async {
+      final server = _HistoryServer();
+      final control = await _pumpHistory(tester, server, openToday: false);
+      expect(find.byKey(const Key('history-week-chart')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('history-tab-custom')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('history-toggle-chart')), findsNothing);
+      expect(find.byKey(const Key('history-week-chart')), findsNothing);
+      expect(find.byKey(const Key('history-date-navigation')), findsOneWidget);
+      expect(control.snapshot!.range.days, 7);
+      expect(find.byKey(const Key('history-apply-range')), findsNothing);
+      expect(find.byKey(const Key('history-applied-range')), findsNothing);
+      await tester.tap(find.byKey(const Key('history-range-start')));
+      await tester.pumpAndSettle();
+      Navigator.of(
+        tester.element(find.byType(DatePickerDialog)),
+      ).pop(DateTime(2026, 8, 1));
+      await tester.pumpAndSettle();
+      expect(control.snapshot!.range.start, DateTime.utc(2026, 8, 1));
+      expect(control.snapshot!.range.end, DateTime.utc(2026, 10, 17));
+      expect(control.snapshot!.range.days, 78);
+      expect(
+        server.reads
+            .skip(server.reads.length - 3)
+            .map(
+              (uri) => MedicationHistoryRange(
+                MedicationHistoryDates.parse(uri.queryParameters['start_date']),
+                MedicationHistoryDates.parse(uri.queryParameters['end_date']),
+              ).days,
+            ),
+        [31, 31, 16],
+      );
+      await _revealHistory(
+        tester,
+        find.byKey(const Key('history-select-date')),
+      );
+      await tester.tap(find.byKey(const Key('history-select-date')));
+      await tester.pumpAndSettle();
+      final picker = tester.widget<CalendarDatePicker>(
+        find.byType(CalendarDatePicker),
+      );
+      expect(picker.firstDate, DateTime(2026, 8, 1));
+      expect(picker.lastDate, DateTime(2026, 10, 17));
+      Navigator.of(
+        tester.element(find.byType(DatePickerDialog)),
+      ).pop(DateTime(2026, 8, 1));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<IconButton>(find.byKey(const Key('history-previous-day')))
+            .onPressed,
+        isNull,
+      );
+      expect(server.writes, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'custom picker prevents reversed ranges and folds are independent by tab',
+    (tester) async {
+      final server = _HistoryServer();
+      final control = await _pumpHistory(tester, server, openToday: false);
+      await _revealHistory(
+        tester,
+        find.byKey(const Key('history-toggle-chart')),
+      );
+      await tester.tap(find.byKey(const Key('history-toggle-chart')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('history-week-chart')), findsNothing);
+      await _revealHistory(tester, find.byKey(const Key('history-tab-custom')));
+      await tester.tap(find.byKey(const Key('history-tab-custom')));
+      await tester.pumpAndSettle();
+      final range = control.snapshot!.range.label;
+      final readCount = server.reads.length;
+      await tester.tap(find.byKey(const Key('history-range-end')));
+      await tester.pumpAndSettle();
+      final picker = tester.widget<CalendarDatePicker>(
+        find.byType(CalendarDatePicker),
+      );
+      expect(picker.firstDate, DateTime(2026, 10, 11));
+      expect(picker.lastDate, DateTime(2026, 10, 17));
+      Navigator.of(
+        tester.element(find.byType(DatePickerDialog)),
+      ).pop(DateTime(2026, 10, 1));
+      await tester.pumpAndSettle();
+      expect(server.reads.length, readCount);
+      expect(control.snapshot!.range.label, range);
+      await tester.tap(find.byKey(const Key('history-tab-week')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('history-week-chart')), findsNothing);
+      await tester.tap(find.byKey(const Key('history-tab-custom')));
+      await tester.pumpAndSettle();
+      expect(control.snapshot!.range.label, range);
+      expect(find.byKey(const Key('history-apply-range')), findsNothing);
+      expect(find.byKey(const Key('history-date-navigation')), findsOneWidget);
+    },
+  );
+
+  // 취소·동일 날짜는 요청하지 않고 종료일 변경은 한 번만 조회한다. 실패해도 이전 기간 자료를 남기지 않는다.
+  testWidgets(
+    'automatic range loading ignores cancellation and supports retry',
+    (tester) async {
+      final server = _HistoryServer();
+      final control = await _pumpHistory(tester, server, openToday: false);
+      await tester.tap(find.byKey(const Key('history-tab-custom')));
+      await tester.pumpAndSettle();
+      final before = server.reads.length;
+      for (final result in <DateTime?>[null, DateTime(2026, 10, 17)]) {
+        await tester.tap(find.byKey(const Key('history-range-end')));
+        await tester.pumpAndSettle();
+        Navigator.of(tester.element(find.byType(DatePickerDialog))).pop(result);
+        await tester.pumpAndSettle();
+        expect(server.reads.length, before);
+      }
+      server.failRead = true;
+      await tester.tap(find.byKey(const Key('history-range-end')));
+      await tester.pumpAndSettle();
+      Navigator.of(
+        tester.element(find.byType(DatePickerDialog)),
+      ).pop(DateTime(2026, 10, 15));
+      await tester.pumpAndSettle();
+      expect(server.reads.length, before + 1);
+      expect(find.byKey(const Key('history-load-error')), findsOneWidget);
+      expect(find.byKey(const Key('history-rate-value')), findsNothing);
+      server.failRead = false;
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(control.snapshot!.range.end, DateTime.utc(2026, 10, 15));
+      expect(control.snapshot!.range.start, DateTime.utc(2026, 10, 11));
+      expect(server.reads.length, before + 2);
+    },
+  );
+
   // 하루 기록을 불러오는 동안 뒤로가기를 누르면 무시하지 않고 화면을 닫는다(느린 연결에서 최대 25초).
   testWidgets('back while a day loads closes the history', (tester) async {
     final server = _HistoryServer();
@@ -321,7 +511,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    final today = find.byKey(const ValueKey('history-month-day-2026-10-17'));
+    final today = find.byKey(const ValueKey('history-week-day-2026-10-17'));
     await tester.scrollUntilVisible(
       today,
       200,
@@ -332,10 +522,12 @@ void main() {
           )
           .first,
     );
+    await Scrollable.ensureVisible(tester.element(today), alignment: 0.5);
+    await tester.pumpAndSettle();
     await tester.tap(today);
     await tester.pumpAndSettle();
     server.pendingRead = Completer<http.Response>();
-    await tester.tap(find.byKey(const Key('history-previous-day')));
+    await tester.tap(find.byTooltip('Refresh'));
     await tester.pump();
     expect(control.busy, isTrue);
     await tester.binding.handlePopRoute();
@@ -344,7 +536,7 @@ void main() {
     expect(find.text('home-root'), findsOneWidget);
     server.pendingRead!.complete(
       historyTestResponse(
-        historyTestBody(start: '2026-10-16', end: '2026-10-16', items: []),
+        historyTestBody(start: '2026-10-12', end: '2026-10-17', items: []),
       ),
     );
     await tester.pumpAndSettle();
@@ -547,55 +739,88 @@ void main() {
     await _pumpHistory(tester, _HistoryServer(), readOnly: true);
     expect(find.byType(SnackBar), findsNothing);
     expect(find.textContaining('not proof of ingestion'), findsNothing);
-    expect(find.byTooltip('About medication records'), findsOneWidget);
+    expect(find.byTooltip('About medication records'), findsNothing);
   });
 
-  testWidgets(
-    'status summary has compact spacing without shrinking info touch target',
-    (tester) async {
-      await _pumpHistory(tester, _HistoryServer(), isEnglish: false);
-      final date = tester.getRect(
-        find.byKey(const Key('history-date-navigation')),
-      );
-      final summary = tester.getRect(
-        find.byKey(const Key('history-status-summary')),
-      );
-      final morning = tester.getRect(
-        find.byKey(const Key('history-slot-morning')),
-      );
-      expect(summary.top - date.bottom, closeTo(4, 0.01));
-      expect(morning.top - summary.bottom, closeTo(4, 0.01));
-      final infoSize = tester.getSize(
-        find.ancestor(
-          of: find.byTooltip('복약 기록 안내'),
-          matching: find.byType(IconButton),
-        ),
-      );
-      expect(infoSize.width, greaterThanOrEqualTo(48));
-      expect(infoSize.height, greaterThanOrEqualTo(48));
-    },
-  );
-
-  testWidgets(
-    'record notice can be reopened without changing the selected day',
-    (tester) async {
-      final control = await _pumpHistory(tester, _HistoryServer());
-      expect(find.textContaining('not proof of ingestion'), findsNothing);
-      final original = control.snapshot;
-      await tester.tap(find.byTooltip('About medication records'));
-      await tester.pumpAndSettle();
-      expect(find.textContaining('not proof of ingestion'), findsOneWidget);
-      expect(find.textContaining('Time zone: Korea'), findsOneWidget);
-      await tester.tap(find.text('Close'));
-      await tester.pumpAndSettle();
-      expect(find.textContaining('not proof of ingestion'), findsNothing);
-      expect(control.snapshot, same(original));
-    },
-  );
-
-  testWidgets('record notice stays readable when requested with large text', (
+  testWidgets('status summary has compact spacing without an info control', (
     tester,
   ) async {
+    await _pumpHistory(tester, _HistoryServer(), isEnglish: false);
+    final date = tester.getRect(
+      find.byKey(const Key('history-date-navigation')),
+    );
+    final summary = tester.getRect(
+      find.byKey(const Key('history-status-summary')),
+    );
+    final morning = tester.getRect(
+      find.byKey(const Key('history-slot-morning')),
+    );
+    expect(summary.top - date.bottom, closeTo(4, 0.01));
+    expect(morning.top - summary.bottom, closeTo(8, 0.01));
+    final entry = find
+        .descendant(
+          of: find.byKey(const Key('history-slot-morning')),
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is Container &&
+                widget.key.toString().contains('history-entry-'),
+          ),
+        )
+        .first;
+    expect(tester.getSize(entry).height, lessThanOrEqualTo(68));
+    final section = tester.getRect(
+      find.byKey(const Key('history-section-details')),
+    );
+    expect(morning.left - section.left, closeTo(17, 0.01));
+    expect(section.right - morning.right, closeTo(17, 0.01));
+    final card = tester.widget<Container>(
+      find.byKey(const Key('history-slot-morning')),
+    );
+    expect(
+      (card.decoration! as BoxDecoration).borderRadius,
+      MedBuddyRadii.card,
+    );
+    expect(
+      tester
+          .widget<Wrap>(find.byKey(const Key('history-status-summary')))
+          .alignment,
+      WrapAlignment.center,
+    );
+    expect(find.byTooltip('복약 기록 안내'), findsNothing);
+  });
+
+  // 안내 팝업 대신 그래프 표시만 바뀌며 조회 자료와 선택한 날짜는 유지된다.
+  testWidgets(
+    'summary toggles count without changing history or selected day',
+    (tester) async {
+      final control = await _pumpHistory(tester, _HistoryServer());
+      final snapshot = control.snapshot;
+      final day = control.requestedRange;
+      await _revealHistory(
+        tester,
+        find.byKey(const Key('history-rate-toggle')),
+      );
+      await tester.tap(find.byKey(const Key('history-rate-toggle')));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<Text>(find.byKey(const Key('history-rate-value'))).data,
+        contains('/'),
+      );
+      expect(control.snapshot, same(snapshot));
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(control.requestedRange, same(day));
+      expect(find.byKey(const Key('history-section-summary')), findsOneWidget);
+      expect(find.byKey(const Key('history-section-dates')), findsOneWidget);
+      expect(find.text('2026-10-12 ~ 2026-10-18'), findsOneWidget);
+      await _revealHistory(
+        tester,
+        find.byKey(const Key('history-section-details')),
+      );
+      expect(find.byKey(const Key('history-section-details')), findsOneWidget);
+    },
+  );
+
+  testWidgets('large text ratio toggle has no overflow', (tester) async {
     tester.view.physicalSize = const Size(320, 640);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -606,30 +831,10 @@ void main() {
       isEnglish: false,
       textScale: 2,
     );
-    expect(find.byType(SnackBar), findsNothing);
-    expect(find.textContaining('실제 복용을 증명'), findsNothing);
-    final info = find.byTooltip('복약 기록 안내');
-    for (
-      var scroll = 0;
-      scroll < 10 && info.hitTestable().evaluate().isEmpty;
-      scroll++
-    ) {
-      await tester.drag(find.byType(ListView), const Offset(0, -200));
-      await tester.pumpAndSettle();
-    }
-    expect(info.hitTestable(), findsOneWidget);
-    await tester.tap(info);
+    await _revealHistory(tester, find.byKey(const Key('history-rate-toggle')));
+    await tester.tap(find.byKey(const Key('history-rate-toggle')));
     await tester.pumpAndSettle();
-    expect(find.textContaining('실제 복용을 증명'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-    await tester.tap(find.text('닫기'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('실제 복용을 증명'), findsNothing);
-    await tester.pumpWidget(
-      const MaterialApp(home: Scaffold(body: Text('Other page'))),
-    );
-    await tester.pumpAndSettle();
-    expect(find.byType(SnackBar), findsNothing);
+    expect(find.byTooltip('복약 기록 안내'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -639,8 +844,8 @@ void main() {
       final server = _HistoryServer();
       server.items.add(historyTestEntry(name: 'Yesterday medication'));
       final control = await _pumpHistory(tester, server);
-      expect(control.requestedRange!.days, 1);
-      expect(control.requestedRange!.start, control.today);
+      expect(control.requestedRange!.days, 6);
+      expect(control.requestedRange!.start, DateTime.utc(2026, 10, 12));
       expect(
         tester
             .widget<IconButton>(find.byKey(const Key('history-next-day')))
@@ -650,24 +855,24 @@ void main() {
       expect(find.text('Yesterday medication'), findsNothing);
       await tester.tap(find.byKey(const Key('history-previous-day')));
       await tester.pumpAndSettle();
-      expect(control.snapshot!.range.start, DateTime.utc(2026, 10, 16));
+      expect(control.snapshot!.range.start, DateTime.utc(2026, 10, 12));
       expect(find.text('Yesterday medication'), findsOneWidget);
       expect(find.text('테스트 주간약'), findsNothing);
       await tester.tap(find.byKey(const Key('history-next-day')));
       await tester.pumpAndSettle();
-      expect(control.snapshot!.range.start, control.today);
+      expect(control.snapshot!.range.start, DateTime.utc(2026, 10, 12));
       await tester.tap(find.byKey(const Key('history-select-date')));
       await tester.pumpAndSettle();
       final calendar = tester.widget<CalendarDatePicker>(
         find.byType(CalendarDatePicker),
       );
       expect(calendar.lastDate, DateTime(2026, 10, 17));
-      expect(calendar.firstDate, DateTime(2026, 7, 20));
+      expect(calendar.firstDate, DateTime(2026, 10, 12));
       Navigator.of(
         tester.element(find.byType(DatePickerDialog)),
-      ).pop(DateTime(2026, 7, 20));
+      ).pop(DateTime(2026, 10, 12));
       await tester.pumpAndSettle();
-      expect(control.requestedRange!.days, 1);
+      expect(control.requestedRange!.days, 6);
       expect(
         tester
             .widget<IconButton>(find.byKey(const Key('history-previous-day')))
@@ -683,29 +888,32 @@ void main() {
   );
 
   testWidgets(
-    'changing day clears old rows and blocks duplicate navigation while loading',
+    'changing period clears rows and blocks duplicate navigation while loading',
     (tester) async {
       final server = _HistoryServer();
       final control = await _pumpHistory(tester, server);
       final pending = Completer<http.Response>();
       server.pendingRead = pending;
-      await tester.tap(find.byKey(const Key('history-previous-day')));
+      final previous = find.byKey(const Key('history-previous-week'));
+      await _revealHistory(tester, previous);
+      await tester.tap(previous);
       await tester.pump();
       expect(find.text('테스트 주간약'), findsNothing);
       expect(
         tester
-            .widget<IconButton>(find.byKey(const Key('history-next-day')))
+            .widget<IconButton>(find.byKey(const Key('history-next-week')))
             .onPressed,
         isNull,
       );
+      expect(find.byKey(const Key('history-rate-value')), findsNothing);
       pending.complete(
         historyTestResponse(
-          historyTestBody(start: '2026-10-16', end: '2026-10-16'),
+          historyTestBody(start: '2026-10-05', end: '2026-10-11', items: []),
         ),
       );
       await tester.pumpAndSettle();
-      expect(control.snapshot!.range.start, DateTime.utc(2026, 10, 16));
-      expect(find.byKey(const Key('history-slot-morning')), findsOneWidget);
+      expect(control.snapshot!.range.start, DateTime.utc(2026, 10, 5));
+      expect(control.snapshot!.items, isEmpty);
     },
   );
 
@@ -752,6 +960,7 @@ void main() {
       final server = _HistoryServer();
       final control = await _pumpHistory(tester, server);
       final original = control.snapshot;
+      await _revealHistory(tester, find.byTooltip('Share'));
       await tester.tap(find.byTooltip('Share'));
       await tester.pumpAndSettle();
       await _chooseExportDate(tester, 'start', DateTime(2026, 10, 11));
@@ -759,12 +968,16 @@ void main() {
       expect(find.textContaining('2026-10-11'), findsOneWidget);
       expect(find.text('2026-10-16'), findsOneWidget);
       // 달력의 한 달 조회와 오늘 조회 뒤로는 날짜를 골라도 다시 읽지 않는다.
-      expect(server.reads, hasLength(2));
+      expect(server.reads, hasLength(1));
       expect(control.snapshot, same(original));
-      expect(control.requestedRange!.days, 1);
+      expect(control.requestedRange!.days, 6);
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
-      expect(find.text('2026-10-17 (Sat)'), findsOneWidget);
+      await _revealHistory(
+        tester,
+        find.byKey(const Key('history-select-date')),
+      );
+      expect(find.text('2026-10-17'), findsOneWidget);
       expect(server.writes, isEmpty);
     },
   );
@@ -777,7 +990,7 @@ void main() {
       await _pumpHistory(tester, server, readOnly: true);
       expect(find.text('Patient records · Read only'), findsOneWidget);
       expect(find.textContaining('not proof of ingestion'), findsNothing);
-      expect(find.byTooltip('About medication records'), findsOneWidget);
+      expect(find.byTooltip('About medication records'), findsNothing);
       expect(find.byTooltip('Edit record'), findsNothing);
       expect(find.byKey(const Key('history-add-prn')), findsNothing);
       expect(find.byTooltip('Share'), findsOneWidget);
@@ -790,6 +1003,13 @@ void main() {
     final server = _HistoryServer()..failRead = true;
     await _pumpHistory(tester, server);
     expect(find.byKey(const Key('history-load-error')), findsOneWidget);
+    final errorBottom = tester
+        .getBottomLeft(find.byKey(const Key('history-load-error')))
+        .dy;
+    final retryTop = tester
+        .getTopLeft(find.widgetWithText(OutlinedButton, 'Retry'))
+        .dy;
+    expect(retryTop - errorBottom, greaterThanOrEqualTo(12));
     expect(
       tester
           .widget<IconButton>(
@@ -804,6 +1024,7 @@ void main() {
     await tester.tap(find.text('Retry'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('history-load-error')), findsNothing);
+    await _revealHistory(tester, find.text('테스트 주간약'));
     expect(find.text('테스트 주간약'), findsOneWidget);
   });
 
@@ -1712,16 +1933,34 @@ void main() {
 
     Finder day(String date) => find.byKey(ValueKey('history-month-day-$date'));
 
-    testWidgets('opens on the current month with one read and day summaries', (
+    Future<void> openMonth(
+      WidgetTester tester,
+      _HistoryServer server, {
+      double textScale = 1,
+      bool isEnglish = true,
+    }) async {
+      await _pumpHistory(
+        tester,
+        server,
+        openToday: false,
+        textScale: textScale,
+        isEnglish: isEnglish,
+      );
+      await _revealHistory(tester, find.byKey(const Key('history-tab-month')));
+      await tester.tap(find.byKey(const Key('history-tab-month')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('monthly tab reads the month and retains count calendar', (
       tester,
     ) async {
       final server = monthServer();
-      await _pumpHistory(tester, server, openToday: false);
+      await openMonth(tester, server);
+      await _revealHistory(tester, day('2026-10-16'));
       expect(find.byKey(const Key('history-month-calendar')), findsOneWidget);
-      expect(find.text('October 2026'), findsOneWidget);
-      expect(server.reads, hasLength(1));
-      expect(server.reads.single.queryParameters['start_date'], '2026-10-01');
-      expect(server.reads.single.queryParameters['end_date'], '2026-10-17');
+      expect(server.reads, hasLength(2));
+      expect(server.reads.last.queryParameters['start_date'], '2026-10-01');
+      expect(server.reads.last.queryParameters['end_date'], '2026-10-17');
       expect(
         find.descendant(of: day('2026-10-16'), matching: find.text('1/2')),
         findsOneWidget,
@@ -1740,11 +1979,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      // 오늘 뒤의 날짜는 누를 수 없다.
       expect(tester.widget<InkWell>(day('2026-10-18')).onTap, isNull);
-      // 달력 머리의 현황은 그 달의 정기 복용만 센다.
-      expect(find.text('2/4'), findsOneWidget);
-      // 기록이 있는 날과 없는 날의 날짜 숫자는 같은 높이에 놓인다.
       expect(
         tester
             .getRect(
@@ -1758,39 +1993,53 @@ void main() {
             .top,
       );
     });
-
     testWidgets(
-      'a tapped day opens its records and back returns to the month',
+      'day selection opens inline details without refetching the period',
       (tester) async {
         final server = monthServer();
-        await _pumpHistory(tester, server, openToday: false);
+        await openMonth(tester, server);
+        await _revealHistory(
+          tester,
+          find.byKey(const Key('history-toggle-details')),
+        );
+        expect(
+          find.byKey(const Key('history-date-navigation')),
+          findsOneWidget,
+        );
+        await tester.tap(find.byKey(const Key('history-toggle-details')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('history-date-navigation')), findsNothing);
+        await _revealHistory(tester, day('2026-10-16'));
         await tester.tap(day('2026-10-16'));
         await tester.pumpAndSettle();
-        expect(find.text('2026-10-16 (Fri)'), findsOneWidget);
-        expect(server.reads.last.queryParameters['start_date'], '2026-10-16');
-        expect(server.reads.last.queryParameters['end_date'], '2026-10-16');
+        await _revealHistory(
+          tester,
+          find.byKey(const Key('history-select-date')),
+        );
+        expect(find.text('2026-10-16'), findsOneWidget);
+        expect(server.reads, hasLength(2));
+        await _revealHistory(
+          tester,
+          find.byKey(const Key('history-toggle-details')),
+        );
+        await tester.tap(find.byKey(const Key('history-toggle-details')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('history-date-navigation')), findsNothing);
+        await _revealHistory(
+          tester,
+          find.byKey(const Key('history-toggle-chart')),
+        );
+        await tester.tap(find.byKey(const Key('history-toggle-chart')));
+        await tester.pumpAndSettle();
         expect(find.byKey(const Key('history-month-calendar')), findsNothing);
-
-        await tester.tap(find.byKey(const Key('history-open-month')));
-        await tester.pumpAndSettle();
-        expect(find.byKey(const Key('history-month-calendar')), findsOneWidget);
-        expect(server.reads, hasLength(3));
-
-        // 하루 기록에서의 시스템 뒤로 가기도 화면을 닫지 않고 달력으로 돌아간다.
-        await tester.tap(day('2026-10-15'));
-        await tester.pumpAndSettle();
-        await tester.binding.handlePopRoute();
-        await tester.pumpAndSettle();
-        expect(find.byKey(const Key('history-month-calendar')), findsOneWidget);
       },
     );
-
     testWidgets('earlier months stop at the 90-day history window', (
       tester,
     ) async {
       final server = monthServer();
-      await _pumpHistory(tester, server, openToday: false);
-      for (final title in ['September 2026', 'August 2026', 'July 2026']) {
+      await openMonth(tester, server);
+      for (final title in ['2026.09', '2026.08', '2026.07']) {
         await tester.tap(find.byKey(const Key('history-previous-month')));
         await tester.pumpAndSettle();
         expect(find.text(title), findsOneWidget);
@@ -1803,31 +2052,35 @@ void main() {
             .onPressed,
         isNull,
       );
+      await _revealHistory(tester, day('2026-07-20'));
       expect(tester.widget<InkWell>(day('2026-07-19')).onTap, isNull);
       expect(tester.widget<InkWell>(day('2026-07-20')).onTap, isNotNull);
+      await _revealHistory(tester, find.byKey(const Key('history-next-month')));
       await tester.tap(find.byKey(const Key('history-next-month')));
       await tester.pumpAndSettle();
-      expect(find.text('August 2026'), findsOneWidget);
+      expect(find.text('2026.08'), findsOneWidget);
     });
-
-    testWidgets('a failed month read offers a retry', (tester) async {
+    testWidgets('a failed month read offers a retry with no stale chart', (
+      tester,
+    ) async {
       final server = monthServer()..failRead = true;
-      await _pumpHistory(tester, server, openToday: false);
-      expect(find.byKey(const Key('history-month-error')), findsOneWidget);
+      await openMonth(tester, server);
+      expect(find.byKey(const Key('history-load-error')), findsOneWidget);
+      expect(find.byKey(const Key('history-rate-value')), findsNothing);
       server.failRead = false;
       await tester.tap(find.text('Retry'));
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('history-month-error')), findsNothing);
+      await _revealHistory(tester, day('2026-10-16'));
       expect(
         find.descendant(of: day('2026-10-16'), matching: find.text('1/2')),
         findsOneWidget,
       );
     });
-
-    testWidgets('export from the month starts with the visible month', (
+    testWidgets('export from month starts with the visible month', (
       tester,
     ) async {
-      await _pumpHistory(tester, monthServer(), openToday: false);
+      await openMonth(tester, monthServer());
+      await _revealHistory(tester, find.byTooltip('Share'));
       await tester.tap(find.byTooltip('Share'));
       await tester.pumpAndSettle();
       expect(find.textContaining('2026-10-01'), findsWidgets);
@@ -1835,31 +2088,56 @@ void main() {
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
     });
+    // 짧은 범례는 기본 배율에서 한 줄 안에 모두 들어간다.
+    testWidgets('month legend shows all categories in one compact row', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await openMonth(tester, monthServer(), isEnglish: false);
+      final legend = find.byKey(const Key('history-month-legend'));
+      await _revealHistory(tester, legend);
+      final bounds = tester.getRect(legend);
+      final labels = ['모두 기록', '일부 기록', '미기록', '필요시'];
+      final items = find.descendant(
+        of: legend,
+        matching: find.byWidgetPredicate(
+          (widget) => widget is Row && widget.mainAxisSize == MainAxisSize.min,
+        ),
+      );
+      expect(items, findsNWidgets(4));
+      expect(
+        (tester.getRect(items.first).left + tester.getRect(items.last).right) /
+            2,
+        closeTo(bounds.center.dx, 0.5),
+      );
+      final rectangles = [
+        for (final label in labels)
+          tester.getRect(
+            find.descendant(of: legend, matching: find.text(label)),
+          ),
+      ];
+      for (final rect in rectangles) {
+        expect(rect.top, closeTo(rectangles.first.top, 0.01));
+        expect(rect.left, greaterThanOrEqualTo(bounds.left));
+        expect(rect.right, lessThanOrEqualTo(bounds.right));
+      }
+      expect(tester.takeException(), isNull);
+    });
 
-    testWidgets('the month fits a narrow screen at large Korean text', (
+    testWidgets('month fits narrow screens at large Korean text', (
       tester,
     ) async {
       tester.view.physicalSize = const Size(320, 640);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      await _pumpHistory(
+      await openMonth(tester, monthServer(), textScale: 2, isEnglish: false);
+      await _revealHistory(
         tester,
-        monthServer(),
-        isEnglish: false,
-        textScale: 2,
-        openToday: false,
-      );
-      expect(tester.takeException(), isNull);
-      await tester.scrollUntilVisible(
         find.byKey(const Key('history-month-legend')),
-        200,
-        scrollable: find
-            .descendant(
-              of: find.byType(ListView),
-              matching: find.byType(Scrollable),
-            )
-            .first,
       );
       expect(tester.takeException(), isNull);
     });
@@ -1884,16 +2162,30 @@ void main() {
         ),
       ]);
     await _pumpHistory(tester, server);
-    // 머리의 현황은 예정 복용 1건만 세고, 필요시 복용은 자기 카드에서만 센다.
-    expect(find.text('1/2'), findsNothing);
+    // 필요시 기록은 별도 집계하며 정기 복용률의 분모에는 포함하지 않는다.
+    await _revealHistory(tester, find.byKey(const Key('history-rate-value')));
     expect(
-      tester
-          .widget<LinearProgressIndicator>(
-            find.byType(LinearProgressIndicator).first,
-          )
-          .value,
-      0,
+      tester.widget<Text>(find.byKey(const Key('history-rate-value'))).data,
+      '0%',
     );
+    expect(
+      tester.widget<Text>(find.byKey(const Key('history-count-3'))).data,
+      '1',
+    );
+    await _revealHistory(
+      tester,
+      find.byKey(const Key('history-status-summary')),
+    );
+    final summary = find.byKey(const Key('history-status-summary'));
+    expect(
+      find.descendant(of: summary, matching: find.text('Taken 0')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: summary, matching: find.text('As needed 1')),
+      findsOneWidget,
+    );
+    expect(tester.widget<Wrap>(summary).alignment, WrapAlignment.center);
   });
 
   testWidgets('editing an existing PRN event preserves its original slot key', (
@@ -1958,6 +2250,7 @@ void main() {
         ),
       );
       await _pumpHistory(tester, _HistoryServer());
+      await _revealHistory(tester, find.byTooltip('Share'));
       await tester.tap(find.byTooltip('Share'));
       await tester.pumpAndSettle();
       expect(calls, isEmpty);
@@ -1991,8 +2284,10 @@ void main() {
     (tester) async {
       final server = _HistoryServer();
       await _pumpHistory(tester, server);
+      await _revealHistory(tester, find.byTooltip('Share'));
       await tester.tap(find.byTooltip('Share'));
       await tester.pumpAndSettle();
+      await _chooseExportDate(tester, 'start', DateTime(2026, 10, 17));
       await _chooseExportDate(tester, 'end', DateTime(2026, 10, 16));
       expect(
         find.text('End date cannot be before start date.'),
@@ -2024,7 +2319,7 @@ void main() {
       await _chooseExportDate(tester, 'end', null);
       expect(find.text('2026-10-16'), findsOneWidget);
       // 달력의 한 달 조회와 오늘 조회 뒤로는 날짜를 골라도 다시 읽지 않는다.
-      expect(server.reads, hasLength(2));
+      expect(server.reads, hasLength(1));
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
     },
@@ -2036,6 +2331,7 @@ void main() {
     final server = _HistoryServer();
     final control = await _pumpHistory(tester, server);
     final original = control.snapshot;
+    await _revealHistory(tester, find.byTooltip('Share'));
     await tester.tap(find.byTooltip('Share'));
     await tester.pumpAndSettle();
     await _chooseExportDate(tester, 'start', DateTime(2026, 10, 11));
@@ -2080,6 +2376,7 @@ void main() {
         addTearDown(changes.close);
         final server = _HistoryServer();
         await _pumpHistory(tester, server, sessionChanges: changes.stream);
+        await _revealHistory(tester, find.byTooltip('Share'));
         await tester.tap(find.byTooltip('Share'));
         await tester.pumpAndSettle();
         server.pendingRead = Completer<http.Response>();
@@ -2139,6 +2436,7 @@ void main() {
           textScale: 2,
           isEnglish: english,
         );
+        await _revealHistory(tester, find.byTooltip(english ? 'Share' : '공유'));
         await tester.tap(find.byTooltip(english ? 'Share' : '공유'));
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
@@ -2173,6 +2471,7 @@ void main() {
       );
       final server = _HistoryServer();
       await _pumpHistory(tester, server);
+      await _revealHistory(tester, find.byTooltip('Share'));
       await tester.tap(find.byTooltip('Share'));
       await tester.pumpAndSettle();
       server.items.single['item_name'] = List.filled(100001, 'x').join();
@@ -2210,6 +2509,7 @@ void main() {
         ),
       );
       await _pumpHistory(tester, _HistoryServer());
+      await _revealHistory(tester, find.byTooltip('Share'));
       await tester.tap(find.byTooltip('Share'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Share via other apps'));
@@ -2259,6 +2559,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
       await _pumpHistory(tester, _HistoryServer(), textScale: 2);
+      await _revealHistory(tester, find.text('Daily medication records.'));
       expect(find.text('Daily medication records.'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await _openEditor(tester);

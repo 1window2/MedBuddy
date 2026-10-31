@@ -23,10 +23,10 @@ import '../widgets/medication_schedule_header.dart';
 import '../widgets/dose_sync_status.dart';
 import '../widgets/exact_reminder_notice.dart';
 import '../widgets/as_needed_schedule_section.dart';
+import 'check_saved_medication_ui_boundary.dart';
 import '../controls/medication_history_control.dart';
 import '../widgets/medication_thumbnail.dart';
 import 'medication_image_viewer_boundary.dart';
-import 'medication_history_ui_boundary.dart';
 
 // 파일명: check_schedule_ui_boundary.dart
 // 역할: 오늘 복약 일정과 시간대별 알림 설정 화면을 구성한다.
@@ -194,9 +194,13 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     for (final schedule
         in widget.selectionSchedules ?? const <MedicationSchedule>[])
       if (schedule.medicationID.trim().isNotEmpty)
-        for (final slot in schedule.slotKeys)
+        for (final slot in _selectionSlotKeys(schedule))
           (medicationId: schedule.medicationID, slotKey: slot),
   };
+
+  // 필요시 분류 키는 선택 화면에서만 쓰고 실제 복용 시간대로 저장하지 않는다.
+  List<String> _selectionSlotKeys(MedicationSchedule schedule) =>
+      schedule.isAsNeeded ? const ['as_needed'] : schedule.slotKeys;
 
   // 함수역할: 일부 선택은 전체 선택으로, 전체 선택은 모두 해제로 전환한다. 복용 기록은 변경하지 않는다.
   void _toggleAllMedicationSelections() {
@@ -232,6 +236,15 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
         return;
       }
       final position = _listController.position;
+      // 아래쪽 알림을 본 뒤 위쪽 시간대를 열면 아직 생성되지 않은 카드를 맨 위부터 찾는다.
+      if (attempt == 0 && position.pixels > 0) {
+        position.jumpTo(0);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _revealInitialSlot(attempt + 1);
+        });
+        WidgetsBinding.instance.scheduleFrame();
+        return;
+      }
       if (attempt >= 20 || position.pixels >= position.maxScrollExtent) {
         if (attempt > 0) position.jumpTo(0);
         return;
@@ -444,7 +457,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     final selectedById = <String, MedicationSchedule>{};
     for (final schedule in schedules) {
       final selectedSlots = [
-        for (final slot in medicationScheduleSlotKeys)
+        for (final slot in [...medicationScheduleSlotKeys, 'as_needed'])
           if (_selectedDoses.contains((
             medicationId: schedule.medicationID,
             slotKey: slot,
@@ -459,7 +472,9 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
         // 반환값: 컬렉션 연산에 전달할 새 키의 초기값.
         selectedById.putIfAbsent(
           schedule.medicationID,
-          () => schedule.copyWith(scheduleSlotKeys: selectedSlots),
+          () => schedule.copyWith(
+            scheduleSlotKeys: schedule.isAsNeeded ? const [] : selectedSlots,
+          ),
         );
       }
     }
@@ -494,7 +509,8 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
             title: text.title,
             backTooltip: text.back,
             historyKey: const Key('schedule-history'),
-            historyTooltip: text.isEnglish ? 'Medication history' : '복용 기록',
+            historyTooltip: text.isEnglish ? 'Manage medications' : '등록한 약 관리',
+            actionIcon: Icons.medication_outlined,
             progressLabel: text.progress,
             completedCount: progress.completedCount,
             totalCount: progress.totalCount,
@@ -552,17 +568,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     try {
       await Navigator.push<void>(
         context,
-        MaterialPageRoute(
-          builder: (_) => MedicationHistoryUI(
-            patientHash: viewModel.patientHash,
-            currentUserHash: viewModel.patientHash,
-            isEnglish: viewModel.userSetting.isEnglish,
-            onChanged: () async {
-              if (!mounted) return;
-              await viewModel.refreshMedicationSchedule();
-            },
-          ),
-        ),
+        MaterialPageRoute(builder: (_) => const CheckSavedMedicationUI()),
       );
     } finally {
       _historyWorkflowActive = false;
@@ -947,7 +953,11 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
   // - schedules (List<MedicationSchedule>): 검토·표시·시간대 분류에 사용할 복약 일정 목록.
   // 반환값: List<_ScheduleSlot>: 기본 시간대별로 분류된 약품과 표시 정보.
   List<_ScheduleSlot> _buildSelectionSlots(List<MedicationSchedule> schedules) {
-    return _slotDefinitions
+    return [
+          ..._slotDefinitions,
+          if (schedules.any((schedule) => schedule.isAsNeeded))
+            const _ScheduleSlotDefinition(key: 'as_needed'),
+        ]
         // 함수이름: _buildSelectionSlots.map callback
         // 함수역할: 오늘의 시간대별 복약 체크·알림·첨부 선택의 변환값을 `_ScheduleSlot(definition: definition, medications: medications)` 규칙으로 계산한다.
         // 매개변수:
@@ -961,7 +971,8 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
                 // 매개변수:
                 // - schedule (콜백 계약에서 추론): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
                 // 반환값: 전달된 항목이 조건을 만족하는지 나타내는 bool.
-                (schedule) => schedule.slotKeys.contains(definition.key),
+                (schedule) =>
+                    _selectionSlotKeys(schedule).contains(definition.key),
               )
               .toList(growable: false);
           return _ScheduleSlot(
@@ -2387,6 +2398,7 @@ class _ScheduleText {
   // - slotKey (String): 아침·점심·저녁·취침 전을 구분하는 시간대 키.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String slotTitle(String slotKey) {
+    if (slotKey == 'as_needed') return isEnglish ? 'As needed' : '필요시 복용';
     return medicationSlotLabel(
       slotKey,
       isEnglish: isEnglish,

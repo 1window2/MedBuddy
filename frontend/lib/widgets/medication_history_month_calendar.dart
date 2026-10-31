@@ -78,6 +78,7 @@ class MedicationHistoryMonthCalendar extends StatelessWidget {
     required this.enabled,
     required this.onDaySelected,
     required this.onMonthChanged,
+    this.showNavigation = true,
   });
 
   // First day of the shown month and the dates, all as UTC calendar dates.
@@ -89,6 +90,7 @@ class MedicationHistoryMonthCalendar extends StatelessWidget {
   final bool enabled;
   final ValueChanged<DateTime> onDaySelected;
   final ValueChanged<DateTime> onMonthChanged;
+  final bool showNavigation;
 
   // The history keeps 90 days, so day 89 before today is the earliest reachable one.
   DateTime get earliest => MedicationHistoryDates.earliest(today);
@@ -131,37 +133,38 @@ class MedicationHistoryMonthCalendar extends StatelessWidget {
       key: const Key('history-month-calendar'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            IconButton(
-              key: const Key('history-previous-month'),
-              tooltip: _tr('이전 달', 'Previous month'),
-              onPressed: enabled && canGoBack
-                  ? () => onMonthChanged(previous)
-                  : null,
-              icon: const Icon(Icons.chevron_left),
-            ),
-            Expanded(
-              child: Text(
-                title,
-                key: const Key('history-month-title'),
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
+        if (showNavigation)
+          Row(
+            children: [
+              IconButton(
+                key: const Key('history-previous-month'),
+                tooltip: _tr('이전 달', 'Previous month'),
+                onPressed: enabled && canGoBack
+                    ? () => onMonthChanged(previous)
+                    : null,
+                icon: const Icon(Icons.chevron_left),
+              ),
+              Expanded(
+                child: Text(
+                  title,
+                  key: const Key('history-month-title'),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
-            ),
-            IconButton(
-              key: const Key('history-next-month'),
-              tooltip: _tr('다음 달', 'Next month'),
-              onPressed: enabled && canGoForward
-                  ? () => onMonthChanged(next)
-                  : null,
-              icon: const Icon(Icons.chevron_right),
-            ),
-          ],
-        ),
+              IconButton(
+                key: const Key('history-next-month'),
+                tooltip: _tr('다음 달', 'Next month'),
+                onPressed: enabled && canGoForward
+                    ? () => onMonthChanged(next)
+                    : null,
+                icon: const Icon(Icons.chevron_right),
+              ),
+            ],
+          ),
         const SizedBox(height: 4),
         ExcludeSemantics(
           child: Row(
@@ -216,9 +219,7 @@ class MedicationHistoryMonthCalendar extends StatelessWidget {
     final isToday = day == today;
     final isSelected = day == selected;
     final colour = summary?.color;
-    final label = StringBuffer(
-      isEnglish ? 'Day $dayNumber' : '$dayNumber일',
-    );
+    final label = StringBuffer(isEnglish ? 'Day $dayNumber' : '$dayNumber일');
     if (!reachable) {
       label.write(isEnglish ? ', not available' : ', 조회할 수 없음');
     } else if (summary == null || summary.scheduled == 0) {
@@ -257,7 +258,9 @@ class MedicationHistoryMonthCalendar extends StatelessWidget {
                 : BorderSide.none,
           ),
           child: InkWell(
-            key: ValueKey('history-month-day-${MedicationHistoryDates.format(day)}'),
+            key: ValueKey(
+              'history-month-day-${MedicationHistoryDates.format(day)}',
+            ),
             borderRadius: MedBuddyRadii.small,
             onTap: enabled && reachable ? () => onDaySelected(day) : null,
             child: SizedBox(
@@ -335,35 +338,47 @@ class MedicationHistoryMonthCalendar extends StatelessWidget {
   }
 
   // Function Name: _legend
-  // Description: Explains the marks; the record notice already says that a missing
-  //   record does not mean a missed dose.
+  // Description: Explains the marks in one compact row, keeping large text scrollable.
   Widget _legend() {
     Widget item(Color colour, String text, {bool ring = false}) => Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 10,
-          height: 10,
+          width: 8,
+          height: 8,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: ring ? null : colour,
             border: ring ? Border.all(color: colour, width: 2) : null,
           ),
         ),
-        const SizedBox(width: 6),
-        Flexible(child: Text(text, style: const TextStyle(fontSize: 13))),
+        const SizedBox(width: 4),
+        Text(text, style: const TextStyle(fontSize: 12)),
       ],
     );
-    return Wrap(
-      key: const Key('history-month-legend'),
-      spacing: 14,
-      runSpacing: 6,
-      children: [
-        item(MedBuddyColors.primary, _tr('모두 복용 기록', 'All recorded taken')),
-        item(MedBuddyColors.reminderAccent, _tr('일부 기록', 'Some recorded')),
-        item(MedBuddyColors.textMuted, _tr('복용 기록 없음', 'None recorded')),
-        item(MedBuddyColors.infoBlue, _tr('필요시 복용', 'As needed'), ring: true),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        key: const Key('history-month-legend'),
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.only(bottom: 8),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minWidth: constraints.maxWidth),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            spacing: 10,
+            children: [
+              item(MedBuddyColors.primary, _tr('모두 기록', 'All taken')),
+              item(MedBuddyColors.reminderAccent, _tr('일부 기록', 'Some taken')),
+              item(MedBuddyColors.textMuted, _tr('미기록', 'No record')),
+              item(
+                MedBuddyColors.infoBlue,
+                _tr('필요시', 'As needed'),
+                ring: true,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
