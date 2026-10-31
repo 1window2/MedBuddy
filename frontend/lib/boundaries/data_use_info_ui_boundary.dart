@@ -13,24 +13,50 @@ class DataUseInfoUI extends StatelessWidget {
   String _text(String ko, String en) => isEnglish ? en : ko;
 
   Widget _section(String title, String body) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 18),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Semantics(
-          header: true,
-          child: Text(
-            title,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              height: 1.4,
+    padding: const EdgeInsets.symmetric(vertical: 6),
+    // 항목을 누른 효과가 보이도록 장식 상자가 아닌 Material로 그린다.
+    child: Material(
+      color: MedBuddyColors.surface,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: MedBuddyRadii.card,
+        side: const BorderSide(color: MedBuddyColors.divider),
+      ),
+      child: Builder(
+        builder: (context) => Theme(
+          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+          child: ExpansionTile(
+            initiallyExpanded: false,
+            tilePadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 4,
             ),
+            childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+            iconColor: MedBuddyColors.primaryDark,
+            collapsedIconColor: MedBuddyColors.primaryDark,
+            title: Semantics(
+              header: true,
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  height: 1.4,
+                ),
+              ),
+            ),
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  body,
+                  style: const TextStyle(fontSize: 16, height: 1.5),
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 10),
-        Text(body, style: const TextStyle(fontSize: 16, height: 1.5)),
-      ],
+      ),
     ),
   );
 
@@ -68,7 +94,6 @@ class DataUseInfoUI extends StatelessWidget {
                             'A hashed user identifier does not make account-linked health information fully anonymous.',
                       ),
                     ),
-                    const Divider(height: 1),
                     _section(
                       _text(
                         '처방전 사진과 글자 인식',
@@ -87,7 +112,6 @@ class DataUseInfoUI extends StatelessWidget {
                             'personal information before taking the photo.',
                       ),
                     ),
-                    const Divider(height: 1),
                     _section(
                       _text(
                         '알약 식별·건강 추천과 외부 AI',
@@ -108,7 +132,6 @@ class DataUseInfoUI extends StatelessWidget {
                             'Manual entry is available when you do not need AI identification.',
                       ),
                     ),
-                    const Divider(height: 1),
                     _section(
                       _text('외부 AI 이용 시 주의', 'Before using external AI'),
                       _text(
@@ -124,7 +147,6 @@ class DataUseInfoUI extends StatelessWidget {
                             'names or hashing account identifiers does not by itself anonymize health data.',
                       ),
                     ),
-                    const Divider(height: 1),
                     _section(
                       _text('보호자 연동과 채팅', 'Caregiver links and chat'),
                       _text(
@@ -138,21 +160,21 @@ class DataUseInfoUI extends StatelessWidget {
                             'Unlinking cannot retrieve information the other person has already seen or saved.',
                       ),
                     ),
-                    const Divider(height: 1),
                     _section(
                       _text('위치와 지도', 'Location and maps'),
                       _text(
                         '주변 병원·약국을 찾을 때 현재 위치 또는 이동한 지도의 검색 위치를 사용합니다. '
                             '검색 좌표는 주변 시설 조회를 위해 서버로 전달되고, 지도 표시와 길찾기에는 '
                             '지도 제공 서비스가 사용됩니다. 위치 권한을 거절한 경우 현재 위치를 자동으로 '
-                            '사용할 수 없습니다. 공유한 장소 정보와 내 위치는 구분해서 확인해주세요.',
+                            '사용할 수 없습니다. 채팅의 병원·약국 카드는 공유된 장소의 지도를 바로 불러오므로 그 위치가 '
+                            '지도 제공 서비스에 전달됩니다. 공유한 장소 정보와 내 위치는 구분해서 확인해주세요.',
                         'Nearby hospital and pharmacy searches use your current position or the search position '
                             'on the map. Coordinates are sent to the server to find nearby facilities; map providers '
-                            'are used for maps and directions. Denying location access prevents automatic use of your '
+                            'are used for maps and directions. A hospital or pharmacy card in chat loads its map right away, '
+                            'which sends the shared place to the map provider. Denying location access prevents automatic use of your '
                             'current position. A shared place is not necessarily your own location.',
                       ),
                     ),
-                    const Divider(height: 1),
                     _section(
                       _text(
                         '기기 저장·위젯·알림',
@@ -171,7 +193,6 @@ class DataUseInfoUI extends StatelessWidget {
                             'Uninstalling or clearing app data can remove records not yet uploaded.',
                       ),
                     ),
-                    const Divider(height: 1),
                     _section(
                       _text('복약 기록 공유', 'Sharing medication records'),
                       _text(
@@ -187,7 +208,6 @@ class DataUseInfoUI extends StatelessWidget {
                             'Copies saved by other people or apps cannot be recalled.',
                       ),
                     ),
-                    const Divider(height: 1),
                     _section(
                       _text('삭제와 보관 기준', 'Deletion and retention'),
                       _text(
@@ -203,7 +223,6 @@ class DataUseInfoUI extends StatelessWidget {
                             'guest medication, schedule, link and settings data are deleted.',
                       ),
                     ),
-                    const Divider(height: 1),
                     _section(
                       _text('계정 삭제 범위', 'What account deletion covers'),
                       _text(
@@ -221,20 +240,19 @@ class DataUseInfoUI extends StatelessWidget {
                             'with other apps or people cannot be recalled.',
                       ),
                     ),
-                    const Divider(height: 1),
                     _section(
                       _text(
                         '내 정보 확인과 관리',
                         'Access and manage your information',
                       ),
                       _text(
-                        '약 정보는 복약함에서, 날짜별 복용 기록은 일정의 복용 기록에서 확인하고 '
+                        '약 정보는 약 등록·관리의 약 관리에서, 날짜별 복용 기록은 하단의 복약 기록에서 확인하고 '
                             '수정할 수 있습니다. 복약 기록은 원하는 기간을 선택해 앱 내 채팅으로 '
                             '공유하거나, 읽기 쉬운 텍스트로 다른 앱에 공유할 수 있습니다. '
                             '보호자 연동은 내 정보에서, 알림과 계정 삭제는 환경설정에서 '
                             '관리합니다. 문의를 위해 공개 게시판에 처방전·연락처·복약 기록을 올리지 마세요.',
-                        'Review and edit medications in My Medications and dated dose records in the '
-                            'schedule history. You can share records for a selected period in the app chat '
+                        'Review and edit medications in Add or manage > Manage medications and dated dose records '
+                            'in the Records tab. You can share records for a selected period in the app chat '
                             'or as readable text through other apps. '
                             'Manage caregiver links in My Info, and notifications or account deletion '
                             'in Settings. Do not post prescriptions, contact details or medication records '

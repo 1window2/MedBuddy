@@ -61,8 +61,6 @@ void main() {
                 isEnglish: language == 'en',
                 onTap: () {},
               ),
-              onPrescriptionScanRequested: () {},
-              onPrescriptionGalleryRequested: () {},
               onPillIdentificationRequested: (mode) {},
               onTodayScheduleRequested: () {},
               onHealthRecommendationRequested: () {},

@@ -33,5 +33,22 @@
   "assets/chat-place-cards-2026-10-29.png": "c7a15bbe9f91340ac9a9f26773e558aeffe4dcf82b78ce4834d450dd0e00273c",
   "assets/chat-place-reopened-2026-10-29.png": "9ca35b302c0369d376df50547ad98409e2e20a42f8fefef459014d24b95eec3a",
   "assets/prescription-review-legacy.png": "8f2ab0d65d09fbb6ff31f570240954ddeb111c5bcc1a850a79ada60676b6902c",
-  "assets/prescription-date-picker-legacy.png": "021dce11d9a849f5832d9c1c2dc82c6fbd809e13fd1dc29ff1907d885a23de18"
+  "assets/prescription-date-picker-legacy.png": "021dce11d9a849f5832d9c1c2dc82c6fbd809e13fd1dc29ff1907d885a23de18",
+  "assets/v025-home-medium.png": "cc8573ceb6a97ac304f8c4dc1f8f7aba5ef4f0cf8786a317577e25623eeff5d4",
+  "assets/v025-search-medium.png": "6abb71968c030676a7f6cf60832253f19e7ce0a84c387b506ab5296546ec9679",
+  "assets/v025-history-week-medium.png": "62cc6bd3ab2dad46183eca97f71847ae34034a4e4dfde43848ec0b3880428c10",
+  "assets/v025-history-month-medium.png": "4f13a580ab4a2b7b55748a6161420d5e980cfe355cde94e4d280e64bb3461c71",
+  "assets/v025-history-range-medium.png": "eaf8aea16389b5246d150f121371daba18c414040c8ba3144fb5c849b46ba1ee",
+  "assets/v025-history-detail-medium.png": "cc3b227aaf4ba64a39778d7b9f7f34ac1f9cb793acf06e3f1cc93962817b7601",
+  "assets/v025-account-medium.png": "6e6ae3232b8031167e3a974a6b4de34ea4d1647bc5be289f38da0f43094110e4",
+  "assets/v025-data-medium.png": "8a40ba79e3f5010fa8f900992a91140289ce9e7889c5a47afc0e0b0f5c3c8fe6",
+  "assets/v025-data-open-medium.png": "6b905b9b7543e0f1a7f7fa55a394dba17a395f28865a716ab78baa8c2f72efb6",
+  "assets/v025-registration-sheet-medium.png": "d016fb6891bb68966709ce8a1f56d27b66be6bb890a57671786c2e005ea360b9",
+  "assets/v025-registration-options-medium.png": "2b8d57f3ebca44de02973ec32d3dfd18326bfcc70a989819868ba6eb4da67202",
+  "assets/v025-prescription-source-medium.png": "fdd6d65a12ad0f529d3093c8d41c6aae8534e2e4908297c9a384a8da4b9f0f12",
+  "assets/v025-pill-options-medium.png": "98afa4b642a2a0b0723606926ca3f669c4b998a20f9e7e346fc496d999078d6f",
+  "assets/v025-chat-list-medium.png": "f47fec469f3f2a8aafe9ccda1b720eca7395fe53c84f92f0626f7e7a5b1ee6b1",
+  "assets/v025-chat-medium.png": "f20c99661a51880a994bf368704a9749b3304c334b378fa4fa1b6e4cec273a08",
+  "assets/v025-cabinet-medium.png": "895bb1943fbaa4294cb3a667c7f2236c133d1ed6b9865b17c5457c1668a023f1",
+  "assets/v025-departments-medium.png": "2a8588fd55938e7b9f8eaaceb8dde6cd3e01609197a31e6c3f8a41e6237e9b83"
 }

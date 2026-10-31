@@ -123,6 +123,43 @@ Decided by the project owner on the recommendation of the review, on
 - **Undo:** use `_collapsedDateGroups` for both cases in
   `check_saved_medication_ui_boundary.dart`.
 
+## 2026-10-31: review of the v0.2.5 collaborator commits
+
+### 1. An as-needed medicine in the chat selection blocks "taken"
+
+- **Before:** the medicines with a slot were recorded and the as-needed one was
+  left out without a word; with only as-needed medicines the message said no
+  schedule was found.
+- **Now:** nothing is recorded, and the message points to the schedule's as-needed
+  section. A partial write that looks complete is worse than a refusal.
+- **Alternative:** record as-needed doses from chat. That is a new feature with
+  its own undo and caregiver alert rules, so it is not part of this review.
+- **Undo:** remove the `asNeededSelected` check in `LinkedChatDoseRecorder.plan`.
+
+### 2. More wording counts as urgent in department search
+
+- **Before:** nine fixed phrases; "호흡곤란" or "가슴이 아파요" found no department
+  and no 119 notice.
+- **Now:** explicit emergency wording shows emergency medicine and the conditional
+  119 notice, and so does a search with no result. Chest pain leaves out
+  internal medicine on purpose: the app must not steer it to a routine visit.
+- **Alternative:** keep the short list and list departments for chest pain.
+- **Undo:** edit the list in `FindHospitalDepartment.needsUrgentHelp` and the
+  `results.isEmpty` condition in `hospital_department_sheet.dart`.
+
+### 3. Two notices stay removed
+
+- **Decided by the project owner** after comparing both screens with and without
+  the text: the note that unrecorded does not mean not taken on the chat history
+  card, and the note that one test notification does not guarantee later alerts.
+- **Why:** the screens read better without them. This overrides the 2026-10-23
+  review, which had restored both, so a later review should not reopen it.
+- **What remains:** the record wording stays in the text shared to other apps and
+  in the user guide, and the user guide still covers test notifications.
+- **Undo:** restore the `chat-history-unrecorded-notice` text in
+  `linked_chat_ui_boundary.dart` and `notificationSettingsTestLimitations` in
+  `notification_readiness_ui_boundary.dart`, and their test expectations.
+
 ## Earlier decisions
 
 - 2026-10-21: an as-needed dose can be undone from the save notice (the

@@ -434,22 +434,22 @@
         "number": 1,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
             30,
-            95,
+            150,
             1050,
-            255
+            300
           ],
           [
-            45,
-            280,
-            1035,
-            950
+            53,
+            336,
+            1028,
+            1008
           ]
         ],
         "callouts": [
@@ -462,67 +462,67 @@
             "text": "오늘의 복약 진행률"
           }
         ],
-        "image": "assets/home-wordmark-2026-10-29.png"
+        "image": "assets/v025-home-medium.png"
       },
       {
         "identity": "ASM-P010:2",
         "number": 2,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
-            45,
-            975,
-            1035,
-            1725
+            53,
+            1044,
+            1028,
+            1795
           ]
         ],
         "callouts": [],
-        "image": "assets/home-wordmark-2026-10-29.png"
+        "image": "assets/v025-home-medium.png"
       },
       {
         "identity": "ASM-P011:3:1",
         "number": 3,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
-            240,
-            1940,
-            430,
-            2130
+            232,
+            2148,
+            437,
+            2337
           ]
         ],
         "callouts": [],
-        "image": "assets/home-wordmark-2026-10-29.png"
+        "image": "assets/v025-home-medium.png"
       },
       {
         "identity": "ASM-P011:3:2",
         "number": 4,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
-            440,
-            1940,
-            640,
-            2130
+            53,
+            1044,
+            527,
+            1407
           ]
         ],
         "callouts": [],
-        "image": "assets/home-wordmark-2026-10-29.png"
+        "image": "assets/v025-home-medium.png"
       }
     ]
   },
@@ -536,40 +536,40 @@
         "number": 5,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
-            650,
-            1940,
-            840,
-            2130
+            643,
+            2148,
+            848,
+            2337
           ]
         ],
         "callouts": [],
-        "image": "assets/home-wordmark-2026-10-29.png"
+        "image": "assets/v025-home-medium.png"
       },
       {
         "identity": "ASM-P011:4:2",
         "number": 6,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
-            850,
-            1940,
-            1050,
-            2130
+            848,
+            2148,
+            1054,
+            2337
           ]
         ],
         "callouts": [],
-        "image": "assets/home-wordmark-2026-10-29.png"
+        "image": "assets/v025-home-medium.png"
       },
       {
         "identity": "ASM-P012:5",
@@ -637,13 +637,20 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2340
+          2337
         ],
-        "boxes": [],
+        "boxes": [
+          [
+            42,
+            365,
+            1038,
+            500
+          ]
+        ],
         "callouts": [],
-        "image": "assets/feature-search-start-2026-10-25.png"
+        "image": "assets/v025-search-medium.png"
       },
       {
         "identity": "FEATURE-SEARCH-20261025:2",
@@ -702,60 +709,60 @@
         "number": 1,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
-            55,
-            1305,
-            1025,
-            1530
+            58,
+            370,
+            1022,
+            630
           ]
         ],
         "callouts": [],
-        "image": "assets/prescription-register-2026-10-29.png"
+        "image": "assets/v025-registration-options-medium.png"
       },
       {
         "identity": "ASM-P013:2",
         "number": 2,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
-            45,
-            1815,
-            1035,
-            2095
+            52,
+            1975,
+            1028,
+            2280
           ]
         ],
         "callouts": [],
-        "image": "assets/prescription-source-2026-10-29.png"
+        "image": "assets/v025-prescription-source-medium.png"
       },
       {
         "identity": "ASM-P014:3",
         "number": 3,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
-            45,
-            1965,
-            1035,
-            2095
+            52,
+            2138,
+            1028,
+            2280
           ]
         ],
         "callouts": [],
-        "image": "assets/prescription-source-2026-10-29.png"
+        "image": "assets/v025-prescription-source-medium.png"
       },
       {
         "identity": "ASM-P014:4",
@@ -1607,20 +1614,20 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2250
+          2337
         ],
         "boxes": [
           [
-            54,
-            1693,
-            1026,
-            1917
+            53,
+            1988,
+            1028,
+            2135
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/782cf00a84cd53293cb863896d2c657dd4183337a90db18851a6fc6b0b51b34b.png"
+        "image": "assets/v025-pill-options-medium.png"
       },
       {
         "identity": "ASM-P033:2",
@@ -2735,73 +2742,73 @@
         "number": 1,
         "crop": [
           0,
-          112,
+          110,
           1080,
           2337
         ],
-        "boxes": [],
+        "boxes": [
+          [
+            42,
+            695,
+            1038,
+            1183
+          ]
+        ],
         "callouts": [],
-        "image": "assets/history-share-patient-month.png"
+        "image": "assets/v025-history-week-medium.png"
       },
       {
         "identity": "CARE17-3.7:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
             42,
-            523,
+            1225,
             1038,
-            649
+            2130
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/d4999ca157a19d93148dd887921c6fe2200bca360ad11bacce22c8b2f16ca3f6.png"
+        "image": "assets/v025-history-month-medium.png"
       },
       {
         "identity": "FINAL17-3.7:calendar",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            68,
-            379,
-            1013,
-            1865
+            42,
+            545,
+            1038,
+            735
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/2889b93ed058be058383d1e04fa6b78f02dff954b5950020d8de678d4eb00166.png"
+        "image": "assets/v025-history-range-medium.png"
       },
       {
         "identity": "CARE17-3.7:3",
         "number": 4,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
-        "boxes": [
-          [
-            42,
-            659,
-            1038,
-            785
-          ]
-        ],
+        "boxes": [],
         "callouts": [],
-        "image": ".build/pdf-images/d4999ca157a19d93148dd887921c6fe2200bca360ad11bacce22c8b2f16ca3f6.png"
+        "image": "assets/v025-history-detail-medium.png"
       }
     ]
   },
@@ -2815,20 +2822,20 @@
         "number": 5,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            168,
-            816,
-            912,
-            1433
+            42,
+            1295,
+            1038,
+            1435
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/295400156fd39f56cf00909d57f21f4f22b79c6f7ccbcace2671814693d861e6.png"
+        "image": "assets/v025-history-range-medium.png"
       },
       {
         "identity": "FINAL17-3.7:readonly",
@@ -3569,20 +3576,20 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2250
+          2337
         ],
         "boxes": [
           [
-            0,
-            209,
-            1080,
-            451
+            53,
+            375,
+            1028,
+            658
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/c741ee91edbeff2174a24f6dc72685535a4f9b7ee17b5ca5cf6acd075fe3ccd7.png"
+        "image": "assets/v025-chat-list-medium.png"
       },
       {
         "identity": "ASM-P077:2",
@@ -3910,36 +3917,21 @@
         "identity": "DEV29-5.5:place-card",
         "number": 5,
         "crop": [
-          6,
-          136,
-          1074,
-          2330
+          0,
+          110,
+          1080,
+          2337
         ],
         "boxes": [
           [
-            222,
-            785,
-            1045,
-            1395
-          ],
-          [
-            222,
-            1420,
-            1045,
+            38,
+            1037,
+            857,
             2085
           ]
         ],
-        "callouts": [
-          {
-            "box_index": 0,
-            "text": "종료 시각이 있는 약국"
-          },
-          {
-            "box_index": 1,
-            "text": "24시간 운영 약국"
-          }
-        ],
-        "image": "assets/chat-place-cards-2026-10-29.png"
+        "callouts": [],
+        "image": "assets/v025-chat-medium.png"
       },
       {
         "identity": "DEV29-5.5:reopen",
@@ -4689,20 +4681,20 @@
         "number": 1,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
-            445,
-            1940,
-            637,
-            2130
+            58,
+            2059,
+            1022,
+            2274
           ]
         ],
         "callouts": [],
-        "image": "assets/cabinet-date-group-2026-10-29.png"
+        "image": "assets/v025-registration-sheet-medium.png"
       },
       {
         "identity": "V023-7.1:next-dose-day",
@@ -5657,40 +5649,40 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            17,
-            361,
-            955,
-            516
+            42,
+            365,
+            1038,
+            500
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/424aaf64fb63678837bc7d4fac48261948067a8fcd8184241b594cadcf06e2d5.png"
+        "image": "assets/v025-departments-medium.png"
       },
       {
         "identity": "CURRENT-8.2:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            950,
-            1222,
-            1080,
-            1356
+            908,
+            678,
+            1036,
+            2150
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/424aaf64fb63678837bc7d4fac48261948067a8fcd8184241b594cadcf06e2d5.png"
+        "image": "assets/v025-departments-medium.png"
       },
       {
         "identity": "CURRENT-8.2:4",
@@ -7639,60 +7631,60 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
             53,
-            536,
+            732,
             1028,
-            804
+            926
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/bc638e95046b7b6d5e6836f3c2f3540a4fd4cd84f043b255b2713476d2a17c2c.png"
+        "image": "assets/v025-account-medium.png"
       },
       {
         "identity": "CARE17-9.13:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
             53,
-            210,
+            341,
             1028,
-            2156
+            1050
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/51f430d8ac83b3f4f93f6cd7f292afa5e5cd2ecb189fab5cbed5136e9bd0bcee.png"
+        "image": "assets/v025-data-open-medium.png"
       },
       {
         "identity": "CARE17-9.13:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
             53,
-            217,
+            1970,
             1028,
-            2162
+            2150
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/d0084c5e6aff3ea24a0374d0f9ccfba8e104d46a91da826505aa74a8cc1e4e55.png"
+        "image": "assets/v025-data-medium.png"
       }
     ]
   },

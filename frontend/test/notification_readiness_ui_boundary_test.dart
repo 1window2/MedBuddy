@@ -130,10 +130,10 @@ void main() {
     expect(control.sends, 1);
     expect(control.sentLanguage, 'ko');
     expect(find.textContaining('휴대폰 알림창을 확인'), findsOneWidget);
-    // 테스트 한 번이 이후 알림을 보장하지 않는다는 주의는 테스트할 수 있을 때 함께 보인다.
+    // 상시 설명은 제거하지만 전송 뒤 실제 수신 확인 안내는 유지한다.
     expect(
       find.byKey(const ValueKey('notificationSettingsTestLimitations')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(find.textContaining('수신 완료'), findsNothing);
     expect(find.text('테스트 알림을 봤어요'), findsNothing);

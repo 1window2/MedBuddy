@@ -12,6 +12,7 @@ import 'package:medbuddy_frontend/entities/device_coordinate_entity.dart';
 import 'package:medbuddy_frontend/entities/nearby_care_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/services/pharmacy_favorite_service.dart';
+import 'package:medbuddy_frontend/widgets/medbuddy_search_field.dart';
 
 class _HospitalControl extends CheckNearbyHospital {
   final requests =
@@ -304,6 +305,18 @@ void main() {
           chooseDepartment: false,
         );
         expect(control.requests, isEmpty);
+        final panel = tester.widget<Material>(
+          find
+              .descendant(
+                of: find.byKey(const Key('hospital-department-panel')),
+                matching: find.byType(Material),
+              )
+              .first,
+        );
+        final shape = panel.shape! as RoundedRectangleBorder;
+        expect(shape.borderRadius, BorderRadius.circular(16));
+        expect(shape.side, isNot(BorderSide.none));
+        expect(find.byType(MedBuddySearchField), findsOneWidget);
         expect(
           find.text(language == 'ko' ? '진료과목 선택' : 'Select specialty'),
           findsOneWidget,
@@ -315,7 +328,15 @@ void main() {
           findsNothing,
         );
         expect(find.byIcon(Icons.radio_button_checked), findsNothing);
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.inactive,
+        );
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
         tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.inactive,
+        );
         tester.binding.handleAppLifecycleStateChanged(
           AppLifecycleState.resumed,
         );
@@ -324,6 +345,11 @@ void main() {
         final option = find.byKey(
           const ValueKey('hospital-department-option-D001'),
         );
+        final title = tester.widget<ListTile>(option).title! as Text;
+        expect(title.style!.fontSize, 17);
+        expect(title.style!.fontWeight, FontWeight.w600);
+        expect(title.style!.height, 1.25);
+        expect(title.style!.letterSpacing, 0);
         await tester.ensureVisible(option);
         await tester.pumpAndSettle();
         await tester.tap(option);
@@ -341,6 +367,56 @@ void main() {
   }
 
   // 전체 선택도 취소나 미선택과 구분하여 첫 요청을 한 번만 만든다.
+  for (final language in ['ko', 'en']) {
+    testWidgets('증상 검색은 선택 전 조회하지 않고 초기화 가능: $language', (tester) async {
+      final control = _HospitalControl();
+      await _pumpHospital(
+        tester,
+        control,
+        _MapProbe(),
+        language: language,
+        chooseDepartment: false,
+        width: 320,
+        scale: 1.6,
+      );
+      final input = find.byKey(const Key('hospitalDepartmentSearchInput'));
+      await tester.enterText(input, language == 'ko' ? '기침이 나요' : 'cough');
+      await tester.pumpAndSettle();
+      expect(control.requests, isEmpty);
+      expect(find.byKey(const Key('hospital-department-index')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('hospital-department-option-D001')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('hospital-department-option-D013')),
+        findsOneWidget,
+      );
+      await tester.enterText(input, 'zxqvw');
+      await tester.pumpAndSettle();
+      expect(
+        find.text(language == 'ko' ? '검색 결과가 없어요' : 'No matching specialties'),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const Key('hospitalDepartmentSearchClear')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('hospital-department-index')),
+        findsOneWidget,
+      );
+      await tester.enterText(input, language == 'ko' ? '감기' : 'cold');
+      await tester.pumpAndSettle();
+      final option = find.byKey(
+        const ValueKey('hospital-department-option-D001'),
+      );
+      await tester.ensureVisible(option);
+      await tester.tap(option);
+      await tester.pumpAndSettle();
+      expect(control.requests.single.department, 'D001');
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('all departments requires an explicit first selection', (
     tester,
   ) async {
@@ -472,6 +548,11 @@ void main() {
       await tester.pumpAndSettle();
       final option = find.byKey(ValueKey('hospital-department-option-$code'));
       expect(option.hitTestable(), findsOneWidget);
+      final title = tester.widget<ListTile>(option).title! as Text;
+      expect(title.style!.fontSize, 17);
+      expect(title.style!.fontWeight, FontWeight.w600);
+      expect(title.style!.height, 1.25);
+      expect(title.style!.letterSpacing, 0);
       expect(control.requests, hasLength(1));
       await tester.tap(option);
       await tester.pumpAndSettle();

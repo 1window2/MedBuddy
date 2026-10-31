@@ -46,6 +46,7 @@ class _HealthControl extends CheckHealthRecommendation {
 // 역할: 실제 사진 선택 없이 기존 갤러리 흐름 호출을 확인한다.
 class _GalleryInput extends InputPrescription {
   int calls = 0;
+  bool selected = false;
 
   // 함수이름: requestPrescriptionImageFromGallery
   // 함수역할: 갤러리 요청을 세고 취소를 반환한다. 매개변수: onImageSelected. 반환값: 취소 결과.
@@ -55,6 +56,10 @@ class _GalleryInput extends InputPrescription {
     PrescriptionRecognitionProgressCallback? onProgress,
   }) async {
     calls++;
+    if (selected) {
+      onImageSelected?.call();
+      return [];
+    }
     return null;
   }
 }
@@ -125,7 +130,7 @@ void main() {
       register.onPressed!();
       register.onPressed!();
       await tester.pumpAndSettle();
-      expect(find.text('처방전 분석'), findsOneWidget);
+      expect(find.text('약봉투·처방전 등록'), findsOneWidget);
       expect(find.text('낱알약 식별'), findsOneWidget);
       expect(find.text('직접 등록'), findsOneWidget);
       await tester.binding.handlePopRoute();
@@ -141,6 +146,12 @@ void main() {
       Navigator.of(
         tester.element(find.byType(ManualMedicationEntryUI)),
       ).pop(true);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('medication-registration-page')),
+        findsOneWidget,
+      );
+      await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
       expect(control.calls, 3);
       expect(model.hasNoActiveHealthMedications, isFalse);
@@ -180,6 +191,12 @@ void main() {
       expect(page.onBatchSaveRequested, isNotNull);
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('medication-registration-page')),
+        findsOneWidget,
+      );
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
       expect(find.byType(HealthRecommendationUI), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
@@ -215,7 +232,44 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('healthRegisterMedication')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('처방전 분석'));
+    await tester.tap(find.text('약봉투·처방전 등록'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('medication-registration-page')),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('갤러리에서 선택'));
+    await tester.pumpAndSettle();
+    expect(input.calls, 1);
+    expect(
+      find.byKey(const Key('medication-registration-page')),
+      findsOneWidget,
+    );
+    expect(navigator.currentState!.canPop(), isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('사진을 선택한 경우에만 등록 화면을 닫고 분석 화면을 보여준다', (tester) async {
+    final input = _GalleryInput()..selected = true;
+    final model = _ViewModel(_HealthControl(), input: input);
+    addTearDown(model.dispose);
+    final navigator = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: model,
+        child: MaterialApp(
+          navigatorKey: navigator,
+          home: const Scaffold(body: Text('Home')),
+        ),
+      ),
+    );
+    navigator.currentState!.push(
+      MaterialPageRoute<void>(builder: (_) => const HealthRecommendationUI()),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('healthRegisterMedication')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('약봉투·처방전 등록'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('갤러리에서 선택'));
     await tester.pumpAndSettle();

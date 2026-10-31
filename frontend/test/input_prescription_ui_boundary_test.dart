@@ -649,22 +649,6 @@ void main() {
       MaterialApp(
         home: InputPrescriptionUI(
           userSetting: const UserSetting(language: 'ko'),
-          // Function Name: onPrescriptionScanRequested callback
-          // Description:
-          // - Keep prescription camera navigation available in the fixture without performing the action.
-          // Parameters:
-          // - None.
-          // Returns:
-          // - No value; the action is intentionally inert.
-          onPrescriptionScanRequested: () {},
-          // Function Name: onPrescriptionGalleryRequested callback
-          // Description:
-          // - Keep prescription gallery navigation available in the fixture without performing the action.
-          // Parameters:
-          // - None.
-          // Returns:
-          // - No value; the action is intentionally inert.
-          onPrescriptionGalleryRequested: () {},
           // Function Name: onPillIdentificationRequested callback
           // Description:
           // - Record pill-identification navigation so the test can assert the action was dispatched.
@@ -718,17 +702,19 @@ void main() {
       find.byKey(const ValueKey('homePillIdentificationCard')),
       findsNothing,
     );
-    await tester.tap(find.text('약 등록·식별'));
+    await tester.tap(find.text('약 등록·관리'));
+    await tester.pumpAndSettle();
+    expect(find.text('약 관리'), findsOneWidget);
+    expect(find.text('약봉투·처방전 등록'), findsNothing);
+    await tester.tap(find.text('약 등록'));
     await tester.pumpAndSettle();
 
-    expect(find.text('처방전 분석'), findsOneWidget);
+    expect(find.text('약봉투·처방전 등록'), findsOneWidget);
     expect(find.text('직접 등록'), findsOneWidget);
     await tester.tap(find.text('직접 등록'));
     await tester.pumpAndSettle();
     expect(manualTaskRequested, isTrue);
 
-    await tester.tap(find.text('약 등록·식별'));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('낱알약 식별'));
     await tester.pumpAndSettle();
     expect(pillTaskRequested, isFalse);
@@ -859,9 +845,9 @@ void main() {
     expect(find.byType(MedBuddyBottomNavigationUI), findsOneWidget);
     expect(find.text('홈'), findsOneWidget);
     expect(find.text('일정'), findsOneWidget);
-    expect(find.text('복약함'), findsOneWidget);
+    expect(find.text('복약 기록'), findsOneWidget);
     expect(find.text('내 정보'), findsOneWidget);
-    expect(find.text('약 등록·식별'), findsOneWidget);
+    expect(find.text('약 등록·관리'), findsOneWidget);
     expect(find.text('낱알약 식별'), findsNothing);
     expect(find.text('건강 관리 추천'), findsOneWidget);
     expect(find.text('근처 운영 병원·약국'), findsOneWidget);
@@ -953,17 +939,17 @@ void main() {
       ),
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey('bottomNavigation-medicationCabinet')),
-    );
+    await tester.tap(find.text('약 등록·관리'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('약 관리'));
     await tester.pumpAndSettle();
     expect(checkSavedMedication.requestCount, 1);
 
-    await tester.tap(find.byKey(const ValueKey('bottomNavigation-home')));
+    await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey('bottomNavigation-medicationCabinet')),
-    );
+    await tester.tap(find.text('약 등록·관리'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('약 관리'));
     await tester.pumpAndSettle();
 
     expect(checkSavedMedication.requestCount, 2);
@@ -982,9 +968,9 @@ void main() {
         child: const MaterialApp(home: HomeScreen()),
       ),
     );
-    await tester.tap(
-      find.byKey(const ValueKey('bottomNavigation-medicationCabinet')),
-    );
+    await tester.tap(find.text('약 등록·관리'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('약 관리'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('saved-medication-select')));
     await tester.pumpAndSettle();
@@ -996,10 +982,10 @@ void main() {
     expect(
       tester
           .widget<MedBuddyBottomNavigationUI>(
-            find.byType(MedBuddyBottomNavigationUI),
+            find.byType(MedBuddyBottomNavigationUI, skipOffstage: false),
           )
           .selectedDestination,
-      MedBuddyDestination.medicationCabinet,
+      MedBuddyDestination.home,
     );
 
     await tester.binding.handlePopRoute();
@@ -1007,7 +993,7 @@ void main() {
     expect(
       tester
           .widget<MedBuddyBottomNavigationUI>(
-            find.byType(MedBuddyBottomNavigationUI),
+            find.byType(MedBuddyBottomNavigationUI, skipOffstage: false),
           )
           .selectedDestination,
       MedBuddyDestination.home,
@@ -1053,9 +1039,9 @@ void main() {
 
     expect(find.text('홈'), findsOneWidget);
     expect(find.text('일정'), findsOneWidget);
-    expect(find.text('복약함'), findsOneWidget);
+    expect(find.text('복약 기록'), findsOneWidget);
     expect(find.text('내 정보'), findsOneWidget);
-    expect(find.text('처방전 분석'), findsNothing);
+    expect(find.text('약봉투·처방전 등록'), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('bottomNavigation-schedule')));
     expect(selected, MedBuddyDestination.schedule);
@@ -1074,6 +1060,70 @@ void main() {
   // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
   // Returns:
   // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  for (final language in ['ko', 'en']) {
+    for (final scale in [1.0, 1.7]) {
+      testWidgets(
+        'bottom navigation aligns icons and labels $language $scale',
+        (tester) async {
+          _setViewport(tester, const Size(390, 300));
+          await tester.pumpWidget(
+            MaterialApp(
+              home: MediaQuery(
+                data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+                child: Scaffold(
+                  bottomNavigationBar: MedBuddyBottomNavigationUI(
+                    selectedDestination: MedBuddyDestination.home,
+                    language: language,
+                    showChat: true,
+                    onDestinationSelected: (_) {},
+                  ),
+                ),
+              ),
+            ),
+          );
+          final icons = <double>[];
+          final labels = <double>[];
+          for (final destination in MedBuddyDestination.values) {
+            final button = find.byKey(
+              ValueKey('bottomNavigation-${destination.name}'),
+            );
+            icons.add(
+              tester
+                  .getCenter(
+                    find.descendant(of: button, matching: find.byType(Icon)),
+                  )
+                  .dy,
+            );
+            labels.add(
+              tester
+                  .getTopLeft(
+                    find.descendant(of: button, matching: find.byType(Text)),
+                  )
+                  .dy,
+            );
+          }
+          for (final top in icons) {
+            expect(top, closeTo(icons.first, 0.01));
+          }
+          for (final top in labels) {
+            expect(top, closeTo(labels.first, 0.01));
+          }
+          for (final destination in MedBuddyDestination.values) {
+            final button = find.byKey(
+              ValueKey('bottomNavigation-${destination.name}'),
+            );
+            final label = tester.widget<Text>(
+              find.descendant(of: button, matching: find.byType(Text)),
+            );
+            expect(label.maxLines, 1);
+            expect(label.softWrap, isFalse);
+          }
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
   testWidgets('bottom navigation follows accessible text scaling', (
     tester,
   ) async {
@@ -1127,22 +1177,6 @@ void main() {
       MaterialApp(
         home: InputPrescriptionUI(
           userSetting: const UserSetting(language: 'ko'),
-          // Function Name: onPrescriptionScanRequested callback
-          // Description:
-          // - Keep prescription camera navigation available in the fixture without performing the action.
-          // Parameters:
-          // - None.
-          // Returns:
-          // - No value; the action is intentionally inert.
-          onPrescriptionScanRequested: () {},
-          // Function Name: onPrescriptionGalleryRequested callback
-          // Description:
-          // - Keep prescription gallery navigation available in the fixture without performing the action.
-          // Parameters:
-          // - None.
-          // Returns:
-          // - No value; the action is intentionally inert.
-          onPrescriptionGalleryRequested: () {},
           // 함수이름: onPillIdentificationRequested 콜백
           // 함수역할:
           // - 알약 식별 화면 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
@@ -1209,22 +1243,6 @@ void main() {
       return MaterialApp(
         home: InputPrescriptionUI(
           userSetting: const UserSetting(language: 'ko'),
-          // Function Name: onPrescriptionScanRequested callback
-          // Description:
-          // - Keep prescription camera navigation available in the fixture without performing the action.
-          // Parameters:
-          // - None.
-          // Returns:
-          // - No value; the action is intentionally inert.
-          onPrescriptionScanRequested: () {},
-          // Function Name: onPrescriptionGalleryRequested callback
-          // Description:
-          // - Keep prescription gallery navigation available in the fixture without performing the action.
-          // Parameters:
-          // - None.
-          // Returns:
-          // - No value; the action is intentionally inert.
-          onPrescriptionGalleryRequested: () {},
           // 함수이름: onPillIdentificationRequested 콜백
           // 함수역할:
           // - 알약 식별 화면 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
@@ -1298,22 +1316,6 @@ void main() {
       MaterialApp(
         home: InputPrescriptionUI(
           userSetting: const UserSetting(language: 'en'),
-          // Function Name: onPrescriptionScanRequested callback
-          // Description:
-          // - Keep prescription camera navigation available in the fixture without performing the action.
-          // Parameters:
-          // - None.
-          // Returns:
-          // - No value; the action is intentionally inert.
-          onPrescriptionScanRequested: () {},
-          // Function Name: onPrescriptionGalleryRequested callback
-          // Description:
-          // - Keep prescription gallery navigation available in the fixture without performing the action.
-          // Parameters:
-          // - None.
-          // Returns:
-          // - No value; the action is intentionally inert.
-          onPrescriptionGalleryRequested: () {},
           // 함수이름: onPillIdentificationRequested 콜백
           // 함수역할:
           // - 알약 식별 화면 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
@@ -1353,11 +1355,8 @@ void main() {
     expect(find.text('Start your medication plan with ease'), findsOneWidget);
     expect(find.text('빠른 기능'), findsNothing);
     expect(find.text('Quick Actions'), findsNothing);
-    expect(find.text('Add or Identify Medication'), findsOneWidget);
-    expect(
-      find.text('Use a prescription, pill photo, or manual entry'),
-      findsOneWidget,
-    );
+    expect(find.text('Add or manage medication'), findsOneWidget);
+    expect(find.text('Add or manage your medications'), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget);
     expect(find.text('Nearby Hospitals & Pharmacies'), findsOneWidget);
   });
@@ -1392,13 +1391,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final prescriptionTitle = tester.widget<Text>(find.text('약 등록·식별'));
+    final prescriptionTitle = tester.widget<Text>(find.text('약 등록·관리'));
     final reminderTitle = tester.widget<Text>(find.text('환경설정'));
     expect(prescriptionTitle.textScaler, isNull);
     expect(reminderTitle.textScaler, isNull);
     expect(find.text('건강 관리 추천'), findsOneWidget);
     expect(find.text('환경설정'), findsOneWidget);
-    expect(find.text('처방전·알약 사진 또는 직접 입력으로 등록해요'), findsOneWidget);
+    expect(find.text('약을 등록하고 저장한 약을 관리해요'), findsOneWidget);
     expect(find.text('글자 크기·언어·알림을 설정해요'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -1981,22 +1980,6 @@ InputPrescriptionUI _home({
     todayMedicationTotalCount: totalCount,
     nowProvider: nowProvider,
     onMedicationSlotStatusRequested: onMedicationSlotStatusRequested,
-    // Function Name: onPrescriptionScanRequested callback
-    // Description:
-    // - Keep prescription camera navigation available in the fixture without performing the action.
-    // Parameters:
-    // - None.
-    // Returns:
-    // - No value; the action is intentionally inert.
-    onPrescriptionScanRequested: () {},
-    // Function Name: onPrescriptionGalleryRequested callback
-    // Description:
-    // - Keep prescription gallery navigation available in the fixture without performing the action.
-    // Parameters:
-    // - None.
-    // Returns:
-    // - No value; the action is intentionally inert.
-    onPrescriptionGalleryRequested: () {},
     // 함수이름: onPillIdentificationRequested 콜백
     // 함수역할:
     // - 알약 식별 화면 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.

@@ -515,9 +515,7 @@ void main() {
   // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
   // 반환값:
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  testWidgets('lookup review shows the OCR skipped-row notice', (
-    tester,
-  ) async {
+  testWidgets('lookup review shows the OCR skipped-row notice', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -544,6 +542,55 @@ void main() {
     expect(find.text('1개 OCR 항목 제외 내역을 확인해주세요.'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  for (final systemBack in [false, true]) {
+    testWidgets('1차 검토 이탈 시 확인하고 취소하면 결과를 유지한다: $systemBack', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final viewModel = MedBuddyViewModel(
+        inputPrescription: _SuccessfulGalleryInputPrescription(),
+        checkMedicationDetail: _SuccessfulMedicationDetail(),
+      );
+      addTearDown(viewModel.dispose);
+      await viewModel.requestPrescriptionImageFromGallery();
+      expect(
+        viewModel.prescriptionFlowState,
+        PrescriptionFlowState.analysisSucceeded,
+      );
+      await tester.pumpWidget(
+        ChangeNotifierProvider<MedBuddyViewModel>.value(
+          value: viewModel,
+          child: const MaterialApp(home: HomeScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      if (systemBack) {
+        await tester.binding.handlePopRoute();
+      } else {
+        await tester.tap(find.byTooltip('뒤로가기'));
+      }
+      await tester.pumpAndSettle();
+      expect(find.text('분석 결과를 나갈까요?'), findsOneWidget);
+      await tester.tap(find.text('취소'));
+      await tester.pumpAndSettle();
+      expect(
+        viewModel.prescriptionFlowState,
+        PrescriptionFlowState.analysisSucceeded,
+      );
+      if (systemBack) {
+        await tester.binding.handlePopRoute();
+      } else {
+        await tester.tap(find.byTooltip('뒤로가기'));
+      }
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('나가기'));
+      await tester.pumpAndSettle();
+      expect(viewModel.prescriptionFlowState, PrescriptionFlowState.idle);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('system back from prescription result returns to home', (
     tester,
@@ -573,6 +620,14 @@ void main() {
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
 
+    expect(find.text('분석 결과를 나갈까요?'), findsOneWidget);
+    await tester.tap(find.text('취소'));
+    await tester.pumpAndSettle();
+    expect(viewModel.prescriptionFlowState, PrescriptionFlowState.resultReady);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('나가기'));
+    await tester.pumpAndSettle();
     expect(viewModel.prescriptionFlowState, PrescriptionFlowState.idle);
     expect(find.byType(HomeScreen), findsOneWidget);
   });
@@ -634,8 +689,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(viewModel.isAllMedicationSaving, isFalse);
 
+    // 모두 저장한 결과는 사라질 내용이 없으므로 묻지 않고 나간다.
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
+    expect(find.text('분석 결과를 나갈까요?'), findsNothing);
     expect(viewModel.prescriptionFlowState, PrescriptionFlowState.idle);
   });
 

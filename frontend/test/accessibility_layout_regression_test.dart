@@ -320,22 +320,6 @@ void main() {
                 // Returns:
                 // - DateTime from DateTime(2026, 8, 30, 7).
                 nowProvider: () => DateTime(2026, 8, 30, 7),
-                // 함수이름: onPrescriptionScanRequested 콜백
-                // 함수역할:
-                // - 처방전 카메라 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
-                // 매개변수:
-                // - 없음.
-                // 반환값:
-                // - 없음; 외부 동작을 수행하지 않는다.
-                onPrescriptionScanRequested: () {},
-                // 함수이름: onPrescriptionGalleryRequested 콜백
-                // 함수역할:
-                // - 처방전 갤러리 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
-                // 매개변수:
-                // - 없음.
-                // 반환값:
-                // - 없음; 외부 동작을 수행하지 않는다.
-                onPrescriptionGalleryRequested: () {},
                 // 함수이름: onPillIdentificationRequested 콜백
                 // 함수역할:
                 // - 알약 식별 화면 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
@@ -429,22 +413,6 @@ void main() {
             textScale: viewportCase.textScale,
             home: InputPrescriptionUI(
               userSetting: const UserSetting(fontSize: 20),
-              // 함수이름: onPrescriptionScanRequested 콜백
-              // 함수역할:
-              // - 처방전 카메라 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
-              // 매개변수:
-              // - 없음.
-              // 반환값:
-              // - 없음; 외부 동작을 수행하지 않는다.
-              onPrescriptionScanRequested: () {},
-              // 함수이름: onPrescriptionGalleryRequested 콜백
-              // 함수역할:
-              // - 처방전 갤러리 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
-              // 매개변수:
-              // - 없음.
-              // 반환값:
-              // - 없음; 외부 동작을 수행하지 않는다.
-              onPrescriptionGalleryRequested: () {},
               // 함수이름: onPillIdentificationRequested 콜백
               // 함수역할:
               // - 알약 식별 화면 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
@@ -483,7 +451,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.byKey(const ValueKey('homeBrandLogo')), findsOneWidget);
-        expect(find.text('약 등록·식별'), findsOneWidget);
+        expect(find.text('약 등록·관리'), findsOneWidget);
         expect(find.text('근처 운영 병원·약국'), findsOneWidget);
         await tester.drag(
           find.byKey(const ValueKey('homeDashboardScrollView')),
@@ -1106,6 +1074,8 @@ void main() {
                 onPressed: () => showMedicationCaptureTaskOptions(
                   context: context,
                   userSetting: const UserSetting(),
+                  onTaskSelected: (_, _) async {},
+                  onSourceSelected: (_, _) async {},
                 ),
                 child: const Text('열기'),
               ),
@@ -1116,7 +1086,7 @@ void main() {
       await tester.tap(find.text('열기'));
       await tester.pumpAndSettle();
 
-      expect(find.text('처방전 분석'), findsOneWidget);
+      expect(find.text('약봉투·처방전 등록'), findsOneWidget);
       expect(find.text('낱알약 식별'), findsOneWidget);
       expect(find.text('직접 등록'), findsOneWidget);
       expect(tester.takeException(), isNull);

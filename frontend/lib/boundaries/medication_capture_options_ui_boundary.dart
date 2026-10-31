@@ -5,6 +5,8 @@ import 'medication_photo_source_sheet.dart';
 
 import '../entities/user_setting_entity.dart';
 import '../widgets/medbuddy_option_sheet.dart';
+import '../widgets/medbuddy_page_header.dart';
+import '../theme/medbuddy_theme.dart';
 
 // 파일명: medication_capture_options_ui_boundary.dart
 // 역할: 약 정보 분석 작업과 처방전 이미지 출처 선택을 제공한다.
@@ -14,7 +16,6 @@ import '../widgets/medbuddy_option_sheet.dart';
 // 주요 책임:
 // - 처방전·한 장의 여러 알약·개별 알약·직접 입력을 구분한다.
 enum MedicationCaptureTask {
-  prescription,
   multiplePills,
   individualPills,
   manual,
@@ -31,144 +32,157 @@ enum PillCaptureMode { singlePhoto, individualPhotos }
 enum PrescriptionImageSource { camera, gallery }
 
 // 함수이름: showMedicationCaptureTaskOptions
-// 함수역할: 처방전 분석, 낱알약 식별, 직접 등록 중 수행할 작업을 선택하는 공통 하단 시트를 표시한다.
+// 함수역할: 약봉투·처방전, 낱알약 식별, 직접 등록 중 하나를 고르는 약 등록 화면을 연다.
 // 매개변수:
 // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
 // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-// 반환값: Future<MedicationCaptureTask?>: 선택한 분석·직접 입력 작업; 취소 시 null.
-Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
+// - onTaskSelected: 등록 화면을 유지한 채 고른 낱알약·직접 등록 작업을 시작한다.
+// - onSourceSelected: 등록 화면을 유지한 채 고른 사진 출처로 처방전 인식을 시작한다.
+// 반환값: 등록 화면이 닫히면 완료되는 Future<void>.
+Future<void> showMedicationCaptureTaskOptions({
   required BuildContext context,
   required UserSetting userSetting,
+  required Future<void> Function(BuildContext, MedicationCaptureTask)
+  onTaskSelected,
+  required Future<void> Function(BuildContext, PrescriptionImageSource)
+  onSourceSelected,
 }) {
   final text = _MedicationCaptureText(userSetting.language);
-  var choosingPillMode = false;
+  var opening = false;
+  // 선택 창이나 다음 화면을 여는 동안 다른 항목을 함께 열지 않는다.
+  Future<void> open(Future<void> Function() action) async {
+    if (opening) return;
+    opening = true;
+    try {
+      await action();
+    } finally {
+      opening = false;
+    }
+  }
 
+  return Navigator.of(context).push<void>(
+    MaterialPageRoute(
+      builder: (pageContext) => Scaffold(
+        key: const Key('medication-registration-page'),
+        body: Column(
+          children: [
+            MedBuddyPageHeader(
+              title: text.isEnglish ? 'Add medication' : '약 등록',
+              subtitle: text.isEnglish
+                  ? 'Choose how to add your medication.'
+                  : '약을 등록할 방법을 선택합니다.',
+              onBackRequested: () => Navigator.pop(pageContext),
+            ),
+            Expanded(
+              child: MedBuddyOptionSheet(
+                showHandle: false,
+                children: [
+                  MedBuddyOptionTile(
+                    icon: Icons.document_scanner_outlined,
+                    title: text.prescriptionTask,
+                    subtitle: text.prescriptionTaskSubtitle,
+                    onTap: () => open(() async {
+                      final source = await showPrescriptionImageSourceOptions(
+                        context: pageContext,
+                        userSetting: userSetting,
+                      );
+                      if (!pageContext.mounted || source == null) return;
+                      await onSourceSelected(pageContext, source);
+                    }),
+                  ),
+                  const SizedBox(height: 10),
+                  MedBuddyOptionTile(
+                    icon: Icons.image_search_outlined,
+                    title: text.pillTask,
+                    subtitle: text.pillTaskSubtitle,
+                    onTap: () => open(() async {
+                      final task = await showPillCaptureModeOptions(
+                        pageContext,
+                        text.isEnglish,
+                      );
+                      if (!pageContext.mounted || task == null) return;
+                      await onTaskSelected(pageContext, task);
+                    }),
+                  ),
+                  const SizedBox(height: 10),
+                  MedBuddyOptionTile(
+                    icon: Icons.add_circle_outline,
+                    title: text.manualTask,
+                    subtitle: text.manualTaskSubtitle,
+                    onTap: () => open(
+                      () => onTaskSelected(
+                        pageContext,
+                        MedicationCaptureTask.manual,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+Future<MedicationCaptureTask?> showPillCaptureModeOptions(
+  BuildContext context,
+  bool isEnglish,
+) {
+  var selected = false;
   return showModalBottomSheet<MedicationCaptureTask>(
     context: context,
     isScrollControlled: true,
-    // 함수이름: showMedicationCaptureTaskOptions.builder callback
-    // 함수역할: 약 정보 분석 작업과 처방전 이미지 출처 선택에 SizedBox을 적용해 현재 배치를 구성한다.
-    // 매개변수:
-    // - sheetContext (BuildContext): 현재 대화상자·하단 시트의 화면 종료와 테마 참조 위치.
-    // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-    builder: (sheetContext) {
-      return StatefulBuilder(
-        // 함수역할: 같은 시트 안에서 작업 선택과 알약 촬영 방식 선택을 전환한다.
-        // 매개변수: sheetContext, setSheetState. 반환값: 현재 단계의 선택지.
-        builder: (sheetContext, setSheetState) => PopScope<MedicationCaptureTask>(
-          canPop: !choosingPillMode,
-          // 함수역할: 시스템 뒤로 가기도 시트를 닫기 전에 이전 단계로 이동한다.
-          // 매개변수: didPop, result. 반환값: 없음.
-          onPopInvokedWithResult: (didPop, result) {
-            if (!didPop && choosingPillMode) {
-              setSheetState(() => choosingPillMode = false);
-            }
-          },
-          child: MedBuddyOptionSheet(
-            key: ValueKey(choosingPillMode),
-            children: [
-              if (choosingPillMode) ...[
-                Row(
-                  children: [
-                    IconButton(
-                      key: const Key('pill-mode-back-button'),
-                      tooltip: MaterialLocalizations.of(
-                        sheetContext,
-                      ).backButtonTooltip,
-                      onPressed: () =>
-                          setSheetState(() => choosingPillMode = false),
-                      icon: const Icon(Icons.arrow_back),
-                    ),
-                    Expanded(
-                      child: Text(
-                        text.pillTask,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                MedBuddyOptionTile(
-                  icon: Icons.center_focus_strong_outlined,
-                  title: text.isEnglish
-                      ? 'Find pills in one photo'
-                      : '여러 알약 한 번에 찾기',
-                  subtitle: text.isEnglish
-                      ? 'Compare pills placed together in one photo.'
-                      : '한 사진 속 여러 알약을 구분해 후보를 확인해요.',
-                  onTap: () => Navigator.pop(
-                    sheetContext,
-                    MedicationCaptureTask.multiplePills,
+    backgroundColor: MedBuddyColors.surface,
+    showDragHandle: true,
+    builder: (sheetContext) => SafeArea(
+      top: false,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (task, icon, label) in [
+              (
+                MedicationCaptureTask.multiplePills,
+                Icons.center_focus_strong_outlined,
+                isEnglish ? 'Find pills in one photo' : '여러 알약 한 번에 찾기',
+              ),
+              (
+                MedicationCaptureTask.individualPills,
+                Icons.medication_outlined,
+                isEnglish ? 'Find pills individually' : '알약 하나씩 찾기',
+              ),
+            ]) ...[
+              ListTile(
+                minTileHeight: 56,
+                leading: Icon(icon, color: MedBuddyColors.primaryDark),
+                title: Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    height: 1.4,
+                    letterSpacing: 0,
                   ),
                 ),
-                const SizedBox(height: 10),
-                MedBuddyOptionTile(
-                  icon: Icons.medication_outlined,
-                  title: text.isEnglish
-                      ? 'Find pills individually'
-                      : '알약 하나씩 찾기',
-                  subtitle: text.isEnglish
-                      ? 'Compare front and back photos of each pill.'
-                      : '알약의 앞·뒷면을 촬영해 후보를 확인해요.',
-                  onTap: () => Navigator.pop(
-                    sheetContext,
-                    MedicationCaptureTask.individualPills,
-                  ),
-                ),
-              ] else ...[
-                MedBuddyOptionTile(
-                  icon: Icons.photo_camera_outlined,
-                  title: text.prescriptionTask,
-                  subtitle: text.prescriptionTaskSubtitle,
-                  // 함수이름: showMedicationCaptureTaskOptions.onTap callback
-                  // 함수역할: `Navigator.pop(sheetContext, MedicationCaptureTask.prescription)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-                  // 매개변수:
-                  // - 없음.
-                  // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-                  onTap: () {
-                    Navigator.pop(
-                      sheetContext,
-                      MedicationCaptureTask.prescription,
-                    );
-                  },
-                ),
-                const SizedBox(height: 10),
-                MedBuddyOptionTile(
-                  icon: Icons.medication_outlined,
-                  title: text.pillTask,
-                  subtitle: text.pillTaskSubtitle,
-                  // 함수이름: showMedicationCaptureTaskOptions.onTap callback
-                  // 함수역할: 시트를 겹치지 않고 알약 촬영 방식 두 가지를 표시한다.
-                  // 매개변수:
-                  // - 없음.
-                  // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-                  onTap: () {
-                    setSheetState(() => choosingPillMode = true);
-                  },
-                ),
-                const SizedBox(height: 10),
-                MedBuddyOptionTile(
-                  icon: Icons.edit_note_rounded,
-                  title: text.manualTask,
-                  subtitle: text.manualTaskSubtitle,
-                  // 함수이름: showMedicationCaptureTaskOptions.onTap callback
-                  // 함수역할: `Navigator.pop(sheetContext, MedicationCaptureTask.manual)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-                  // 매개변수:
-                  // - 없음.
-                  // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-                  onTap: () {
-                    Navigator.pop(sheetContext, MedicationCaptureTask.manual);
-                  },
-                ),
-              ],
+                onTap: () {
+                  if (selected ||
+                      ModalRoute.of(sheetContext)?.isCurrent != true) {
+                    return;
+                  }
+                  selected = true;
+                  Navigator.pop(sheetContext, task);
+                },
+              ),
+              if (task == MedicationCaptureTask.multiplePills)
+                const Divider(height: 1, color: MedBuddyColors.divider),
             ],
-          ),
+          ],
         ),
-      );
-    },
+      ),
+    ),
   );
 }
 
@@ -222,15 +236,15 @@ class _MedicationCaptureText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get prescriptionTask =>
-      isEnglish ? 'Analyze a prescription' : '처방전 분석';
+      isEnglish ? 'Prescription or medication envelope' : '약봉투·처방전 등록';
   // 함수이름: prescriptionTaskSubtitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "처방전에서 약 이름과 복약 일정을 확인합니다." 문구를 제공한다.
   // 매개변수:
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get prescriptionTaskSubtitle => isEnglish
-      ? 'Extract medication names and schedules.'
-      : '처방전에서 약 이름과 복약 일정을 확인합니다.';
+      ? 'Review medication names and schedules printed on your document.'
+      : '약 이름과 복용 일정이 적힌 내용을 사진으로 확인합니다.';
   // 함수이름: pillTask
   // 함수역할: 현재 언어와 입력값에 맞춰 "낱알약 식별" 문구를 제공한다.
   // 매개변수:

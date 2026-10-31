@@ -13,6 +13,7 @@ import '../theme/medbuddy_theme.dart';
 // - children (List<Widget>): Options and headings shown below the handle.
 class MedBuddyOptionSheet extends StatelessWidget {
   final List<Widget> children;
+  final bool showHandle;
 
   // Function Name: MedBuddyOptionSheet
   // Description: Stores the sheet content.
@@ -20,7 +21,11 @@ class MedBuddyOptionSheet extends StatelessWidget {
   // - key (Key?): Identity used to reset the sheet when its mode changes.
   // - children (List<Widget>): Options and headings shown below the handle.
   // Returns: A configured MedBuddyOptionSheet.
-  const MedBuddyOptionSheet({super.key, required this.children});
+  const MedBuddyOptionSheet({
+    super.key,
+    required this.children,
+    this.showHandle = true,
+  });
 
   // Function Name: build
   // Description: Places the drag handle above the supplied options.
@@ -30,20 +35,22 @@ class MedBuddyOptionSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SafeArea(
+      top: showHandle,
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(22, 18, 22, 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 42,
-              height: 4,
-              decoration: BoxDecoration(
-                color: MedBuddyColors.outline,
-                borderRadius: MedBuddyRadii.pill,
+            if (showHandle)
+              Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: MedBuddyColors.outline,
+                  borderRadius: MedBuddyRadii.pill,
+                ),
               ),
-            ),
-            const SizedBox(height: 18),
+            if (showHandle) const SizedBox(height: 18),
             ...children,
           ],
         ),

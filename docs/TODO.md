@@ -1,11 +1,26 @@
 # MedBuddy Release TODO
 
+## v0.2.5 development line
+
+v0.2.5 starts from `v0.2.4-beta` on `beta/v0.2.5` (draft PR #134) and collects the
+collaborator's usability work. The open items of v0.2.4 moved here. Changes are
+listed in the [v0.2.5 notes](releases/v0.2.5-beta.md).
+
+- [ ] Add `beta/v0.2.5` to the `beta-android` environment before the first
+      signed build; the workflow already allows the branch.
+- [ ] Replace the remaining user guide screenshots from earlier versions.
+- [ ] The history tab does not reload after a dose recorded on a schedule screen
+      opened from a notification while the tab is showing. The refresh button
+      works, and a correction of a stale row gets the conflict message.
+- [ ] Department search has no crisis wording ("죽고 싶어요"); decide what it
+      should offer before adding any.
+
 ## v0.2.4 development line
 
 v0.2.4 starts from `v0.2.3-beta` on `beta/v0.2.4` and was planned to be finished by
 2026-11-20 for the graduation exhibition (2026-11-26 to 11-27). Released on
 2026-10-30 as `v0.2.4-beta` (PR #128, build `f377546`); a collaborator's further
-features and the open items below move to the 0.3.0 line. It takes the
+features and the open items below move to the v0.2.5 line. It takes the
 items of the 2026-10-20 team meeting and the items still open on the v0.2.3
 line below. Changes are listed in the [v0.2.4 notes](releases/v0.2.4-beta.md).
 

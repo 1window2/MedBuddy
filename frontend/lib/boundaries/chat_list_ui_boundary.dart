@@ -89,7 +89,7 @@ class ChatListUI extends StatelessWidget {
               child: RefreshIndicator(
                 onRefresh: _refreshRequested,
                 child: ListView(
-                  padding: const EdgeInsets.only(top: 4, bottom: 20),
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
                   physics: const AlwaysScrollableScrollPhysics(),
                   children: [
                     if (control.links.isEmpty && !control.isLoading)
@@ -118,33 +118,61 @@ class ChatListUI extends StatelessWidget {
     final message = control.latestMessage(link.linkId!);
     final unread = control.unreadCount(link.linkId!) ?? 0;
     final isCaregiver = control.isCaregiver(link);
-    return Column(
-      children: [
-        ListTile(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        key: ValueKey('chatConversationFrame-${link.linkId}'),
+        color: MedBuddyColors.surface,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: MedBuddyRadii.largeCard,
+          side: const BorderSide(color: MedBuddyColors.cardBorder),
+        ),
+        child: ListTile(
           key: ValueKey('chatConversation-${link.linkId}'),
           contentPadding: const EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: 8,
+            horizontal: 18,
+            vertical: 12,
           ),
+          horizontalTitleGap: 14,
+          minLeadingWidth: 46,
+          titleAlignment: ListTileTitleAlignment.center,
           leading: CircleAvatar(
+            radius: 23,
             backgroundColor: MedBuddyColors.mint,
             foregroundColor: MedBuddyColors.primaryDark,
             child: Icon(
               isCaregiver
                   ? Icons.person_outline
                   : Icons.health_and_safety_outlined,
+              size: 27,
             ),
           ),
           title: Text(
             control.peerName(link, isEnglish: _isEnglish),
-            style: const TextStyle(fontWeight: FontWeight.w700),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: MedBuddyColors.textStrong,
+              fontSize: 17,
+              height: 1.25,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0,
+            ),
           ),
           subtitle: Padding(
-            padding: const EdgeInsets.only(top: 6),
+            padding: const EdgeInsets.only(top: 5),
             child: Text(
               _preview(link.linkId!, message),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: MedBuddyColors.textMuted,
+                fontSize: 13,
+                height: 1.35,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0,
+              ),
             ),
           ),
           trailing: Row(
@@ -171,8 +199,7 @@ class ChatListUI extends StatelessWidget {
           // 매개변수: 없음. 반환값: 화면 이동 완료.
           onTap: () => _openChat(context, link),
         ),
-        const Divider(height: 1, indent: 76, endIndent: 20),
-      ],
+      ),
     );
   }
 

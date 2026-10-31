@@ -21,6 +21,50 @@ Map<String, dynamic> _message(Object? history) => {
 };
 
 void main() {
+  test('PRN chat context keeps its mode without scheduled slots', () {
+    final context = ChatMedicationContext.fromJson({
+      'medication_id': 1,
+      'medication_name': '필요시 시험약',
+      'dosing_mode': 'as_needed',
+      'schedule_slot_keys': ['morning'],
+    });
+    expect(context.isAsNeeded, isTrue);
+    expect(context.scheduleSlotKeys, isEmpty);
+    expect(context.withScheduleSlots(['evening']).isAsNeeded, isTrue);
+    expect(context.withScheduleSlots(['evening']).scheduleSlotKeys, isEmpty);
+    final legacy = ChatMedicationContext.fromJson({
+      'medication_id': 2,
+      'medication_name': '정기 시험약',
+      'schedule_slot_keys': ['morning'],
+    });
+    expect(legacy.isAsNeeded, isFalse);
+    expect(legacy.scheduleSlotKeys, ['morning']);
+  });
+  // 새 공유는 정기·필요시를 분리하고 이전 공유의 필요시 건수는 추정하지 않는다.
+  test('history parses separate chart counts and retains legacy snapshots', () {
+    final legacy = ChatMedicationHistoryContext.fromJson(_history);
+    expect(legacy.hasScheduledCounts, isFalse);
+    expect(legacy.asNeededTakenCount, isNull);
+    final raw = {
+      ..._history,
+      'scheduled_taken_count': 3,
+      'scheduled_skipped_count': 0,
+      'scheduled_unrecorded_count': 1,
+      'as_needed_taken_count': 1,
+    };
+    final parsed = ChatMedicationHistoryContext.fromJson(raw);
+    expect(parsed.scheduledTakenCount, 3);
+    expect(parsed.scheduledUnrecordedCount, 1);
+    expect(parsed.asNeededTakenCount, 1);
+    for (final invalid in [
+      {...raw, 'as_needed_taken_count': 3},
+      {...raw, 'scheduled_skipped_count': 1},
+      {...raw, 'scheduled_unrecorded_count': -1},
+      {..._history, 'scheduled_taken_count': 3},
+    ]) {
+      expect(ChatMedicationHistoryContext.tryParse(invalid), isNull);
+    }
+  });
   for (final hospital in [true, false]) {
     test(
       'place snapshot survives parsing without using viewer time: $hospital',

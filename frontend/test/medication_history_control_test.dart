@@ -236,7 +236,7 @@ void main() {
       await expectLater(
         control.load(
           MedicationHistoryRange(
-            DateTime.utc(2026, 9, 1),
+            DateTime.utc(2026, 7, 1),
             DateTime.utc(2026, 10, 17),
           ),
         ),

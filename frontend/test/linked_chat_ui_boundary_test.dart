@@ -9,9 +9,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/linked_chat_ui_boundary.dart';
-import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
-import 'package:medbuddy_frontend/boundaries/medication_history_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/check_schedule_ui_boundary.dart';
+import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
+import 'package:medbuddy_frontend/widgets/chat_date_divider.dart';
+import 'package:medbuddy_frontend/boundaries/medication_history_ui_boundary.dart';
 import 'package:medbuddy_frontend/entities/nearby_care_entity.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/controls/manage_linked_chat_control.dart';
@@ -749,6 +750,7 @@ ChatMessage _deletionMessage({
 ChatMessage _historyShareMessage({
   String sender = 'patient-a',
   int endDaysAgo = 0,
+  bool separate = false,
 }) {
   final end = MedicationHistoryDates.today(
     DateTime.now(),
@@ -770,6 +772,12 @@ ChatMessage _historyShareMessage({
         'taken_count': 123456,
         'skipped_count': 2345,
         'unrecorded_count': 6789,
+        if (separate) ...{
+          'scheduled_taken_count': 123455,
+          'scheduled_skipped_count': 2345,
+          'scheduled_unrecorded_count': 6789,
+          'as_needed_taken_count': 1,
+        },
       },
     },
   });
@@ -865,8 +873,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(
           find.text(switch (status) {
-            'closed' =>
-              language == 'ko' ? '19:00 영업 종료' : 'Closed at 19:00',
+            'closed' => language == 'ko' ? '19:00 영업 종료' : 'Closed at 19:00',
             'before_open' => '영업 전 · 09:00 시작',
             'closing_soon' => 'Closing soon · Closes 19:00',
             _ => 'Open · Closes 19:00',
@@ -874,12 +881,48 @@ void main() {
           findsOneWidget,
         );
         final addressText = tester.widget<Text>(find.text(address));
+        final panel =
+            tester
+                    .widget<Container>(
+                      find.byKey(const Key('chat-place-summary-panel')),
+                    )
+                    .decoration!
+                as BoxDecoration;
+        expect(panel.color, MedBuddyColors.chatContentSurface);
+        expect(
+          panel.border,
+          Border.all(color: MedBuddyColors.chatContentBorder),
+        );
+        final title = language == 'ko'
+            ? (hospital ? '병원 정보' : '약국 정보')
+            : (hospital ? 'Hospital information' : 'Pharmacy information');
+        expect(find.text(title), findsOneWidget);
+        expect(tester.widget<Text>(find.text(title)).style!.fontSize, 17);
+        expect(
+          tester.widget<Text>(find.text('Shared place')).style!.fontWeight,
+          FontWeight.w600,
+        );
         expect(addressText.maxLines, isNull);
         expect(addressText.overflow, isNot(TextOverflow.ellipsis));
         expect(find.textContaining('정보 확인:'), findsNothing);
         expect(find.textContaining('예약이 확정'), findsNothing);
         expect(find.text('정보 보기'), findsNothing);
         expect(find.text('Details'), findsNothing);
+        final map = tester.getRect(
+          find.byKey(const ValueKey('chat-place-preview-37.55-126.92')),
+        );
+        final call = tester.getRect(
+          find.widgetWithText(OutlinedButton, language == 'ko' ? '전화' : 'Call'),
+        );
+        final directions = tester.getRect(
+          find.widgetWithText(
+            OutlinedButton,
+            language == 'ko' ? '길찾기' : 'Directions',
+          ),
+        );
+        expect(call.width, closeTo(directions.width, 0.1));
+        expect(call.left, closeTo(map.left, 2));
+        expect(directions.right, closeTo(map.right, 2));
         expect(
           find.descendant(
             of: find.byKey(const Key('chat-place-details')),
@@ -888,9 +931,7 @@ void main() {
           findsOneWidget,
         );
         final callback = tester
-            .widget<OutlinedButton>(
-              find.byKey(const Key('chat-place-details')),
-            )
+            .widget<OutlinedButton>(find.byKey(const Key('chat-place-details')))
             .onPressed!;
         await tester.tap(find.byKey(const Key('chat-place-details')));
         await tester.pumpAndSettle();
@@ -920,6 +961,63 @@ void main() {
   }
 
   for (final language in ['ko', 'en']) {
+    testWidgets('같은 날 여러 메시지는 하나의 현지 날짜로 묶음 $language', (tester) async {
+      ChatMessage message(int id, DateTime time) => ChatMessage(
+        messageId: id,
+        linkId: 17,
+        senderHash: 'patient-a',
+        clientMessageId: 'date-$id',
+        body: 'Date message $id',
+        createdAt: time.toUtc(),
+      );
+      final control = _RetryChatControl(
+        historyMessages: [
+          message(1, DateTime(2026, 10, 29, 23, 59)),
+          message(2, DateTime(2026, 10, 30)),
+          message(3, DateTime(2026, 10, 30, 10)),
+        ],
+      );
+      final realtime = _FakeRealtimeService();
+      await tester.binding.setSurfaceSize(const Size(500, 1300));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LinkedChatUI(
+            linkId: 17,
+            currentUserHash: 'patient-a',
+            patientHash: 'patient-a',
+            userSetting: UserSetting(language: language),
+            control: control,
+            realtimeService: realtime,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(ChatDateDivider), findsNWidgets(2));
+      final first = find.byKey(const Key('chat-date-2026-10-29'));
+      final second = find.byKey(const Key('chat-date-2026-10-30'));
+      expect(
+        tester
+            .getCenter(find.descendant(of: second, matching: find.byType(Text)))
+            .dx,
+        closeTo(tester.getCenter(second).dx, 0.5),
+      );
+      expect(
+        tester.getRect(first).bottom,
+        lessThan(tester.getRect(second).top),
+      );
+      expect(
+        find.text(
+          language == 'ko' ? '2026년 10월 30일 금요일' : '2026-10-30 · Friday',
+        ),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await realtime.dispose();
+      control.dispose();
+    });
+
     for (final mine in [true, false]) {
       testWidgets('copy preserves message text $language/$mine', (
         tester,
@@ -959,9 +1057,25 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        final body = tester.widget<Text>(find.text('Message 1'));
+        expect(body.style!.fontWeight, FontWeight.w600);
+        expect(
+          tester.widget<TextField>(find.byType(TextField)).style!.fontWeight,
+          FontWeight.w600,
+        );
+        expect(
+          find.text(language == 'ko' ? '약 정보' : 'Medication information'),
+          findsNothing,
+        );
         await tester.longPress(find.text('Message 1'));
         await tester.pumpAndSettle();
         expect(find.text(language == 'ko' ? '복사' : 'Copy'), findsOneWidget);
+        expect(
+          tester
+              .widget<Text>(find.text(language == 'ko' ? '복사' : 'Copy'))
+              .style,
+          MedBuddyTextStyles.menuTitle,
+        );
         await tester.tap(find.byKey(const Key('chat-copy-message')));
         await tester.pumpAndSettle();
         expect(copied, 'Message 1');
@@ -1001,7 +1115,7 @@ void main() {
               tester.widget<Container>(bubble).decoration! as BoxDecoration;
           expect(
             decoration.color,
-            mine ? MedBuddyColors.primary : Colors.white,
+            mine ? MedBuddyColors.chatOutgoing : Colors.white,
           );
           final alignment = tester.widget<Align>(
             find.ancestor(of: bubble, matching: find.byType(Align)).first,
@@ -1079,12 +1193,18 @@ void main() {
   });
 
   for (final language in ['ko', 'en']) {
-    for (final mine in [false, true]) {
-      testWidgets('history card wraps large text $language/$mine', (
+    for (final (mine, separate) in [
+      (false, false),
+      (true, false),
+      (false, true),
+      (true, true),
+    ]) {
+      testWidgets('history card wraps large text $language/$mine/$separate', (
         tester,
       ) async {
         final message = _historyShareMessage(
           sender: mine ? 'patient-a' : 'caregiver-a',
+          separate: separate,
         );
         final control = _RetryChatControl(historyMessages: [message]);
         final realtime = _FakeRealtimeService();
@@ -1114,18 +1234,9 @@ void main() {
           find.text(english ? 'Medication history' : '복약 기록'),
           findsOneWidget,
         );
-        expect(
-          find.text('${english ? 'Taken' : '복용함'} 123456'),
-          findsOneWidget,
-        );
-        expect(
-          find.text('${english ? 'Skipped' : '건너뜀'} 2345'),
-          findsOneWidget,
-        );
-        expect(
-          find.text('${english ? 'Unrecorded' : '미기록'} 6789'),
-          findsOneWidget,
-        );
+        expect(find.text(english ? 'Taken' : '복용함'), findsOneWidget);
+        expect(find.text(english ? 'Skipped' : '건너뜀'), findsOneWidget);
+        expect(find.text(english ? 'Unrecorded' : '미기록'), findsOneWidget);
         expect(
           find.text('${english ? 'At sharing' : '공유 당시'}: 2026-10-21 10:15'),
           findsNothing,
@@ -1144,10 +1255,30 @@ void main() {
           findsOneWidget,
         );
         final card = find.byKey(const Key('chat-medication-history-card'));
+        final panel =
+            tester
+                    .widget<Container>(
+                      find.byKey(const Key('chat-history-summary-panel')),
+                    )
+                    .decoration!
+                as BoxDecoration;
+        expect(panel.color, MedBuddyColors.chatContentSurface);
         expect(
-          find.descendant(of: card, matching: find.byType(Wrap)),
+          panel.border,
+          Border.all(color: MedBuddyColors.chatContentBorder),
+        );
+        expect(panel.color, isNot(MedBuddyColors.chatOutgoing));
+        expect(panel.color, isNot(Colors.white));
+        expect(find.byKey(const Key('history-rate-chart')), findsOneWidget);
+        expect(
+          find.text(separate ? '123455/132589' : '123456/132590'),
           findsOneWidget,
         );
+        expect(
+          find.byKey(const Key('history-count-3')),
+          separate ? findsOneWidget : findsNothing,
+        );
+        expect(find.byKey(const Key('history-rate-toggle')), findsNothing);
         expect(
           find.descendant(of: card, matching: find.byType(Checkbox)),
           findsNothing,
@@ -1160,7 +1291,7 @@ void main() {
     }
   }
 
-  // 90일 보관 기간이 지난 공유는 열면 실패할 화면 대신 안내만 보이고, 미기록의 의미를 함께 적는다.
+  // 90일 보관 기간이 지난 공유는 열면 실패할 화면 대신 만료 안내를 보인다.
   testWidgets('an expired history share explains why it cannot be opened', (
     tester,
   ) async {
@@ -1184,7 +1315,7 @@ void main() {
     expect(find.byKey(const Key('chat-history-expired')), findsOneWidget);
     expect(
       find.byKey(const Key('chat-history-unrecorded-notice')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       tester
@@ -2109,6 +2240,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(modes, isEmpty);
       expect(find.text('병원 찾기'), findsOneWidget);
+      expect(
+        find.text(
+          kind == ChatMessageKind.medicationShortage ? '약 부족 알림' : '복용 불편 알림',
+        ),
+        findsOneWidget,
+      );
       if (kind == ChatMessageKind.medicationShortage) {
         expect(find.text('약국 찾기'), findsOneWidget);
       }
@@ -2162,12 +2299,14 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        final notice = find
-            .ancestor(
-              of: find.byIcon(Icons.health_and_safety_outlined),
-              matching: find.byType(Container),
-            )
-            .first;
+        final notice = find.byKey(
+          const ValueKey('chatDiscomfortSafetyGuidance'),
+        );
+        expect(notice, findsOneWidget);
+        expect(
+          find.text(language == 'ko' ? '복용 불편 알림' : 'Medication discomfort'),
+          findsOneWidget,
+        );
         final button = find.widgetWithText(
           OutlinedButton,
           language == 'ko' ? '병원 찾기' : 'Find hospitals',
@@ -3445,69 +3584,145 @@ void main() {
   // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
   // 반환값:
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  testWidgets('환자가 채팅의 시간대 카드를 누르면 해당 복약 일정으로 이동한다', (tester) async {
-    final scheduleContext = const ChatScheduleContext(
-      slotKey: 'evening',
-      alarmTime: '18:00',
-      alarmEnabled: true,
-      completedCount: 0,
-      totalCount: 1,
-      canRequestCheck: false,
-      medications: [
-        ChatMedicationContext(
-          medicationId: 92,
-          medicationName: '저녁정',
-          dosagePerTime: '0.5정',
+  for (final (currentUser, kind) in [
+    ('patient-a', ChatMessageKind.slotCompletion),
+    ('caregiver-a', ChatMessageKind.slotCompletion),
+    ('patient-a', ChatMessageKind.slotCheckRequest),
+  ]) {
+    testWidgets('$currentUser $kind: 채팅 카드에서 해당 일정으로 이동한다', (tester) async {
+      final day = MedicationHistoryDates.today(DateTime.now());
+      final date =
+          '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+      final scheduleContext = ChatScheduleContext(
+        scheduleDate: date,
+        slotKey: 'evening',
+        alarmTime: '18:00',
+        alarmEnabled: true,
+        completedCount: 0,
+        totalCount: 1,
+        canRequestCheck: false,
+        medications: const [
+          ChatMedicationContext(
+            medicationId: 92,
+            medicationName: '저녁정',
+            dosagePerTime: '0.5정',
+          ),
+        ],
+      );
+      final control = _RetryChatControl(
+        failFirstSend: false,
+        historyMessages: [
+          ChatMessage(
+            messageId: 70,
+            linkId: 17,
+            senderHash: 'caregiver-a',
+            clientMessageId: 'schedule_message_001',
+            body: '저녁 복약을 확인해주세요.',
+            createdAt: DateTime.utc(2026, 8, 24, 9),
+            messageKind: kind,
+            scheduleContext: scheduleContext,
+          ),
+        ],
+      );
+      final realtimeService = _FakeRealtimeService();
+      final viewModel = MedBuddyViewModel(
+        checkSchedule: _ChatScheduleControl(),
+        setNotification: _ChatSetNotification(),
+      );
+      addTearDown(viewModel.dispose);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<MedBuddyViewModel>.value(
+          value: viewModel,
+          child: MaterialApp(
+            home: LinkedChatUI(
+              linkId: 17,
+              currentUserHash: currentUser,
+              patientHash: 'patient-a',
+              control: control,
+              realtimeService: realtimeService,
+            ),
+          ),
         ),
-      ],
-    );
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          kind == ChatMessageKind.slotCheckRequest ? '복약 확인 요청' : '복용 완료 알림',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('저녁 18:00'));
+      await tester.pumpAndSettle();
+
+      if (kind == ChatMessageKind.slotCheckRequest) {
+        expect(find.byType(CheckScheduleUI), findsOneWidget);
+      } else {
+        expect(find.byType(MedicationHistoryUI), findsOneWidget);
+        final scheduleScreen = tester.widget<MedicationHistoryUI>(
+          find.byType(MedicationHistoryUI),
+        );
+        expect(scheduleScreen.readOnly, isTrue);
+        expect(scheduleScreen.patientHash, 'patient-a');
+        expect(scheduleScreen.sharedRange!.start.day, day.day);
+      }
+      expect(tester.takeException(), isNull);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await realtimeService.dispose();
+      control.dispose();
+    });
+  }
+
+  // 기록은 최근 90일만 읽을 수 있으므로 더 오래된 일정 카드는 실패할 화면을 열지 않는다.
+  testWidgets('a schedule card older than the history does not open', (
+    tester,
+  ) async {
+    final day = MedicationHistoryDates.today(
+      DateTime.now(),
+    ).subtract(const Duration(days: 120));
     final control = _RetryChatControl(
       failFirstSend: false,
       historyMessages: [
         ChatMessage(
-          messageId: 70,
+          messageId: 71,
           linkId: 17,
-          senderHash: 'caregiver-a',
-          clientMessageId: 'schedule_message_001',
-          body: '저녁 복약을 확인해주세요.',
-          createdAt: DateTime.utc(2026, 8, 24, 9),
-          messageKind: ChatMessageKind.slotCheckRequest,
-          scheduleContext: scheduleContext,
+          senderHash: 'patient-a',
+          clientMessageId: 'schedule_message_002',
+          body: '저녁 복약을 완료했어요.',
+          createdAt: DateTime.utc(2026, 6, 24, 9),
+          messageKind: ChatMessageKind.slotCompletion,
+          scheduleContext: ChatScheduleContext(
+            scheduleDate: MedicationHistoryDates.format(day),
+            slotKey: 'evening',
+            alarmTime: '18:00',
+            alarmEnabled: true,
+            completedCount: 1,
+            totalCount: 1,
+            canRequestCheck: false,
+            medications: const [],
+          ),
         ),
       ],
     );
     final realtimeService = _FakeRealtimeService();
-    final viewModel = MedBuddyViewModel(
-      checkSchedule: _ChatScheduleControl(),
-      setNotification: _ChatSetNotification(),
-    );
-    addTearDown(viewModel.dispose);
-
     await tester.pumpWidget(
-      ChangeNotifierProvider<MedBuddyViewModel>.value(
-        value: viewModel,
-        child: MaterialApp(
-          home: LinkedChatUI(
-            linkId: 17,
-            currentUserHash: 'patient-a',
-            patientHash: 'patient-a',
-            control: control,
-            realtimeService: realtimeService,
-          ),
+      MaterialApp(
+        home: LinkedChatUI(
+          linkId: 17,
+          currentUserHash: 'caregiver-a',
+          patientHash: 'patient-a',
+          control: control,
+          realtimeService: realtimeService,
         ),
       ),
     );
     await tester.pumpAndSettle();
-
     await tester.tap(find.text('저녁 18:00'));
     await tester.pumpAndSettle();
-
-    expect(find.byType(CheckScheduleUI), findsOneWidget);
-    final scheduleScreen = tester.widget<CheckScheduleUI>(
-      find.byType(CheckScheduleUI),
-    );
-    expect(scheduleScreen.initialSlotKey, 'evening');
-    expect(find.text('오늘의 복약 일정'), findsOneWidget);
+    expect(find.byType(MedicationHistoryUI), findsNothing);
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox.shrink());

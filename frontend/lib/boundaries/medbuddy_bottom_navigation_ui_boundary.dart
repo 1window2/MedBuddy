@@ -7,7 +7,7 @@ import '../theme/medbuddy_theme.dart';
 
 // 클래스명: MedBuddyDestination
 // 역할: 고정 목적지와 활성 연동이 있을 때만 노출하는 채팅 목적지를 구분한다.
-enum MedBuddyDestination { home, schedule, medicationCabinet, chat, profile }
+enum MedBuddyDestination { home, schedule, medicationHistory, chat, profile }
 
 // 하단 탭 레이블 글자 크기. 어르신이 읽을 수 있게 13pt로 두고 사용자 글자 크기 배율을 그대로 적용한다.
 const double _labelFontSize = 13;
@@ -61,10 +61,10 @@ class MedBuddyBottomNavigationUI extends StatelessWidget {
         label: text.schedule,
       ),
       _BottomNavigationItem(
-        destination: MedBuddyDestination.medicationCabinet,
-        icon: Icons.medication_outlined,
-        selectedIcon: Icons.medication_rounded,
-        label: text.medicationCabinet,
+        destination: MedBuddyDestination.medicationHistory,
+        icon: Icons.event_note_outlined,
+        selectedIcon: Icons.event_note_rounded,
+        label: text.medicationHistory,
       ),
       _BottomNavigationItem(
         destination: MedBuddyDestination.chat,
@@ -87,38 +87,43 @@ class MedBuddyBottomNavigationUI extends StatelessWidget {
       // 함수이름: 탐색 막대 builder
       // 함수역할: 실제 항목 너비와 글씨 배율로 필요한 높이를 계산해 다섯 탭의 줄바꿈을 보존한다.
       // 매개변수: context, constraints: 표시 문맥과 탐색 막대 크기. 반환값: 탐색 막대.
-      builder: (context, constraints) => DecoratedBox(
-        decoration: const BoxDecoration(
-          color: MedBuddyColors.surface,
-          border: Border(top: BorderSide(color: MedBuddyColors.divider)),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
-          boxShadow: MedBuddyShadows.card,
-        ),
-        child: SafeArea(
-          top: false,
-          minimum: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-          child: SizedBox(
-            height: _navigationHeight(context, constraints.maxWidth, items),
-            child: Row(
-              children: [
-                for (final item in items)
-                  Expanded(
-                    child: _BottomNavigationButton(
-                      item: item,
-                      selected: item.destination == selectedDestination,
-                      // Function Name: build.onPressed callback
-                      // Description: Connects fixed bottom navigation with selected-state and accessibility cues to the captured operation `onDestinationSelected(item.destination)`.
-                      // Parameters:
-                      // - None.
-                      // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
-                      onPressed: () => onDestinationSelected(item.destination),
+      builder: (context, constraints) {
+        final height = _navigationHeight(context, constraints.maxWidth, items);
+        return DecoratedBox(
+          decoration: const BoxDecoration(
+            color: MedBuddyColors.surface,
+            border: Border(top: BorderSide(color: MedBuddyColors.divider)),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+            boxShadow: MedBuddyShadows.card,
+          ),
+          child: SafeArea(
+            top: false,
+            minimum: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+            child: SizedBox(
+              height: height,
+              child: Row(
+                children: [
+                  for (final item in items)
+                    Expanded(
+                      child: _BottomNavigationButton(
+                        item: item,
+                        selected: item.destination == selectedDestination,
+                        labelHeight: height - 58,
+                        // Function Name: build.onPressed callback
+                        // Description: Connects fixed bottom navigation with selected-state and accessibility cues to the captured operation `onDestinationSelected(item.destination)`.
+                        // Parameters:
+                        // - None.
+                        // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
+                        onPressed: () =>
+                            onDestinationSelected(item.destination),
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -135,6 +140,7 @@ class MedBuddyBottomNavigationUI extends StatelessWidget {
     var height = 70.0;
     for (final item in items) {
       final painter = TextPainter(
+        maxLines: 1,
         text: TextSpan(
           text: item.label,
           style: const TextStyle(
@@ -164,6 +170,7 @@ class MedBuddyBottomNavigationUI extends StatelessWidget {
 class _BottomNavigationButton extends StatelessWidget {
   final _BottomNavigationItem item;
   final bool selected;
+  final double labelHeight;
   final VoidCallback onPressed;
 
   // Function Name: _BottomNavigationButton
@@ -176,6 +183,7 @@ class _BottomNavigationButton extends StatelessWidget {
   const _BottomNavigationButton({
     required this.item,
     required this.selected,
+    required this.labelHeight,
     required this.onPressed,
   });
 
@@ -208,22 +216,40 @@ class _BottomNavigationButton extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(
-                      selected ? item.selectedIcon : item.icon,
-                      color: foreground,
-                      size: 24,
+                    Transform.scale(
+                      scale:
+                          item.destination ==
+                              MedBuddyDestination.medicationHistory
+                          ? 1.125
+                          : 1,
+                      child: Icon(
+                        selected ? item.selectedIcon : item.icon,
+                        color: foreground,
+                        size: 24,
+                      ),
                     ),
                     const SizedBox(height: 3),
-                    Text(
-                      item.label,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: foreground,
-                        fontSize: _labelFontSize,
-                        height: 1.1,
-                        fontWeight: selected
-                            ? FontWeight.w700
-                            : FontWeight.w600,
+                    SizedBox(
+                      height: labelHeight,
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            item.label,
+                            maxLines: 1,
+                            softWrap: false,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: foreground,
+                              fontSize: _labelFontSize,
+                              height: 1.1,
+                              fontWeight: selected
+                                  ? FontWeight.w700
+                                  : FontWeight.w600,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -312,7 +338,7 @@ class _BottomNavigationText {
   // Parameters:
   // - None.
   // Returns: The formatted display text or identifier described above.
-  String get medicationCabinet => isEnglish ? 'Medications' : '복약함';
+  String get medicationHistory => isEnglish ? 'Records' : '복약 기록';
   // Function Name: profile
   // Description: Provides localized wording for "My Info" using the current language and message inputs.
   // Parameters:
