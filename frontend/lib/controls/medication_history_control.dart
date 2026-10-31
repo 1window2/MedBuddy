@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../entities/medication_history_entity.dart';
+import '../entities/calendar_days.dart';
 import '../services/api_config.dart';
 import '../services/api_response_parser.dart';
 import '../services/auth_config.dart';
@@ -208,7 +209,10 @@ class MedicationHistoryControl extends ChangeNotifier {
   }
 
   // 함수역할: 범위를 검증한 후 인증된 GET으로 이력을 새로 읽는다. 실패한 조회에는 이전 자료를 남기지 않는다.
-  Future<void> load(MedicationHistoryRange range) async {
+  Future<void> load(
+    MedicationHistoryRange range, {
+    bool extended = false,
+  }) async {
     ensureSession();
     if (busy) throw const MedicationHistoryBusy();
     requestedRange = range;
@@ -217,7 +221,7 @@ class MedicationHistoryControl extends ChangeNotifier {
     loading = true;
     notifyListeners();
     try {
-      snapshot = await _readRange(range);
+      snapshot = extended ? await _readPeriod(range) : await _readRange(range);
     } catch (failure) {
       if (!_disposed && !_invalidated) error = failure;
       rethrow;
@@ -225,6 +229,40 @@ class MedicationHistoryControl extends ChangeNotifier {
       loading = false;
       if (!_disposed) notifyListeners();
     }
+  }
+
+  // 최대 90일의 화면 조회도 31일 단위로 읽고 모든 구간이 성공해야 결과를 공개한다.
+  Future<MedicationHistorySnapshot> _readPeriod(
+    MedicationHistoryRange range,
+  ) async {
+    range.validate(now, maxDays: MedicationHistoryRange.maximumExportDays);
+    final items = <MedicationHistoryEntry>[];
+    final medications = <int, MedicationHistoryMedication>{};
+    var end = range.end;
+    while (!end.isBefore(range.start)) {
+      ensureSession();
+      final start = DateTime.utc(
+        end.year,
+        end.month,
+        end.day - MedicationHistoryRange.maximumReadDays + 1,
+      );
+      final part = await _readRange(
+        MedicationHistoryRange(
+          start.isBefore(range.start) ? range.start : start,
+          end,
+        ),
+      );
+      items.addAll(part.items);
+      for (final medication in part.medications) {
+        medications.putIfAbsent(medication.id, () => medication);
+      }
+      end = addCalendarDays(start, -1);
+    }
+    return MedicationHistorySnapshot(
+      range: range,
+      items: items,
+      medications: medications.values.toList(),
+    );
   }
 
   // 날짜별 화면은 그대로 두고 공유할 기간만 별도로 읽는다.

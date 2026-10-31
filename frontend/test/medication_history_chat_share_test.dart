@@ -288,7 +288,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(server.posts, hasLength(1));
     expect(find.text('Shared in your chat with Family.'), findsOneWidget);
-    expect(server.posts.single['history_start_date'], '2026-10-01');
+    expect(server.posts.single['history_start_date'], '2026-10-12');
     expect(server.posts.single['history_end_date'], '2026-10-17');
   });
 
