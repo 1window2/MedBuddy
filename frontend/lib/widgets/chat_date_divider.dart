@@ -29,29 +29,26 @@ class ChatDateDivider extends StatelessWidget {
         ? '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')} · ${enDays[local.weekday - 1]}'
         : '${local.year}년 ${local.month}월 ${local.day}일 ${koDays[local.weekday - 1]}';
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 7),
-        child: Row(
-          children: [
-            const Expanded(child: Divider(color: MedBuddyColors.successBorder)),
-            const SizedBox(width: 12),
-            Expanded(
-              flex: 4,
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: MedBuddyTextStyles.menuBody.copyWith(
-                  fontSize: 13,
-                  color: MedBuddyColors.primaryDark,
-                  fontWeight: FontWeight.w600,
-                ),
+      padding: const EdgeInsets.symmetric(vertical: 19),
+      child: Row(
+        children: [
+          const Expanded(child: Divider(color: MedBuddyColors.successBorder)),
+          const SizedBox(width: 12),
+          Expanded(
+            flex: 4,
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: MedBuddyTextStyles.menuBody.copyWith(
+                fontSize: 13,
+                color: MedBuddyColors.primaryDark,
+                fontWeight: FontWeight.w600,
               ),
             ),
-            const SizedBox(width: 12),
-            const Expanded(child: Divider(color: MedBuddyColors.successBorder)),
-          ],
-        ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(child: Divider(color: MedBuddyColors.successBorder)),
+        ],
       ),
     );
   }

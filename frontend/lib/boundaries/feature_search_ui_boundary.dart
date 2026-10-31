@@ -12,7 +12,7 @@ import '../widgets/medbuddy_search_field.dart';
 class FeatureSearchUI extends StatefulWidget {
   final bool isEnglish;
   final bool widgetSupported;
-  final Future<void> Function(BuildContext, AppFeature)? onFeatureSelected;
+  final Future<void> Function(BuildContext, AppFeature) onFeatureSelected;
 
   // 함수이름: FeatureSearchUI
   // 함수역할: 표시 언어와 기기 기능 지원 범위를 받아 검색 화면을 만든다.
@@ -20,7 +20,7 @@ class FeatureSearchUI extends StatefulWidget {
     super.key,
     this.isEnglish = false,
     this.widgetSupported = true,
-    this.onFeatureSelected,
+    required this.onFeatureSelected,
   });
 
   @override
@@ -232,14 +232,9 @@ class _FeatureSearchUIState extends State<FeatureSearchUI> {
         onTap: () async {
           if (_openingFeature) return;
           FocusScope.of(context).unfocus();
-          final onSelected = widget.onFeatureSelected;
-          if (onSelected == null) {
-            Navigator.pop(context, entry.feature);
-            return;
-          }
           _openingFeature = true;
           try {
-            await onSelected(context, entry.feature);
+            await widget.onFeatureSelected(context, entry.feature);
           } finally {
             _openingFeature = false;
           }

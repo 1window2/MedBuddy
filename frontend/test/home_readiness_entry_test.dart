@@ -20,8 +20,6 @@ void main() {
             data: const MediaQueryData(textScaler: TextScaler.linear(2)),
             child: InputPrescriptionUI(
               userSetting: UserSetting(language: language),
-              onPrescriptionScanRequested: null,
-              onPrescriptionGalleryRequested: null,
               onPillIdentificationRequested: null,
               onTodayScheduleRequested: null,
               onHealthRecommendationRequested: null,

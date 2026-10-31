@@ -26,9 +26,9 @@ void main() {
                     children: [
                       MedicationScheduleHeader(
                         title: title,
-                        historyKey: const Key('history'),
-                        historyTooltip: 'History',
-                        onHistory: () => opened = true,
+                        actionKey: const Key('history'),
+                        actionTooltip: 'History',
+                        onAction: () => opened = true,
                         progressLabel: english ? 'Progress' : '복용 진행률',
                         completedCount: 0,
                         totalCount: 5,

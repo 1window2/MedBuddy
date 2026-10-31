@@ -193,9 +193,10 @@ class _HospitalDepartmentSheetState extends State<_HospitalDepartmentSheet> {
                                       Padding(
                                         padding: const EdgeInsets.all(16),
                                         child: Text(
-                                          FindHospitalDepartment.needsUrgentHelp(
-                                                _query.text,
-                                              )
+                                          results.isEmpty ||
+                                                  FindHospitalDepartment.needsUrgentHelp(
+                                                    _query.text,
+                                                  )
                                               ? (widget.english
                                                     ? 'For severe symptoms, call 119 or seek emergency care.'
                                                     : '심한 증상이 있으면 119 또는 응급실에 도움을 요청하세요.')

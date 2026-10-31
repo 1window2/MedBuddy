@@ -126,7 +126,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
   };
   final Set<String> _updatingEntireSlotKeys = <String>{};
   bool _reminderWorkflowActive = false;
-  bool _historyWorkflowActive = false;
+  bool _cabinetOpening = false;
   bool _didRevealInitialSlot = false;
   final ScrollController _listController = ScrollController();
   late Set<({String medicationId, String slotKey})> _selectedDoses;
@@ -508,13 +508,13 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
           MedicationScheduleHeader(
             title: text.title,
             backTooltip: text.back,
-            historyKey: const Key('schedule-history'),
-            historyTooltip: text.isEnglish ? 'Manage medications' : '등록한 약 관리',
+            actionKey: const Key('schedule-manage-medications'),
+            actionTooltip: text.isEnglish ? 'Manage medications' : '등록한 약 관리',
             actionIcon: Icons.medication_outlined,
             progressLabel: text.progress,
             completedCount: progress.completedCount,
             totalCount: progress.totalCount,
-            onHistory: () => _openMedicationHistory(viewModel),
+            onAction: _openMedicationCabinet,
             onBack: widget.showBackButton
                 // Function Name: _buildScreen.onBackRequested callback
                 // Description: Closes this route with the selection or cancellation encoded by `Navigator.pop(context)`.
@@ -558,20 +558,20 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
     );
   }
 
-  // 함수이름: _openMedicationHistory
-  // 함수역할: 본인 기록을 열고 저장된 정정 결과를 오늘 일정·알림·위젯에 반영한다.
-  // 매개변수: viewModel - 현재 로그인 계정의 화면 상태.
-  // 반환값: 기록 화면이 닫히면 완료되는 Future.
-  Future<void> _openMedicationHistory(MedBuddyViewModel viewModel) async {
-    if (_historyWorkflowActive) return;
-    _historyWorkflowActive = true;
+  // 함수이름: _openMedicationCabinet
+  // 함수역할: 등록한 약을 관리하는 복약함을 한 번만 연다.
+  // 매개변수: 없음.
+  // 반환값: 복약함이 닫히면 완료되는 Future.
+  Future<void> _openMedicationCabinet() async {
+    if (_cabinetOpening) return;
+    _cabinetOpening = true;
     try {
       await Navigator.push<void>(
         context,
         MaterialPageRoute(builder: (_) => const CheckSavedMedicationUI()),
       );
     } finally {
-      _historyWorkflowActive = false;
+      _cabinetOpening = false;
     }
   }
 

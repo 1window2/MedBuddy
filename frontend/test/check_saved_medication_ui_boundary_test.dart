@@ -5,7 +5,6 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -490,29 +489,15 @@ void main() {
   });
 
   // 함수이름: 공통 제목 테스트
-  // 함수역할: 루트 제목의 강조와 정렬 동작의 같은 행 배치를 확인한다.
+  // 함수역할: 복약함은 탭이 아닌 하위 화면이므로 뒤로가기가 있는 공통 헤더를 쓴다.
   // 매개변수: tester. 반환값: 검증 완료.
-  testWidgets('루트 제목은 공통 헤더이며 선택 메뉴만 같은 행에 놓인다', (tester) async {
+  testWidgets('복약함 제목은 뒤로가기가 있는 공통 헤더이다', (tester) async {
     await _pumpSelectionApp(tester);
     final header = tester.widget<MedBuddyPageHeader>(
       find.byType(MedBuddyPageHeader),
     );
-    expect(header.prominent, isTrue);
-    expect(header.onBackRequested, isNull);
-    expect(tester.getTopLeft(find.text('복약함')).dx, 32);
-    final title = tester.widget<Text>(find.text('복약함'));
-    expect(title.style!.fontSize, 21);
-    expect(title.style!.color, Colors.white);
-    expect(
-      (tester.getTopLeft(find.text('복약함')).dy -
-              tester
-                  .getTopLeft(
-                    find.byKey(const ValueKey('saved-medication-select')),
-                  )
-                  .dy)
-          .abs(),
-      lessThan(1),
-    );
+    expect(header.prominent, isFalse);
+    expect(header.onBackRequested, isNotNull);
     expect(find.text('저장한 약과 복용 기간을 확인합니다.'), findsOneWidget);
   });
 
@@ -676,7 +661,7 @@ void main() {
       ChangeNotifierProvider.value(
         value: viewModel,
         child: const MaterialApp(
-          home: CheckSavedMedicationUI(showCloseButton: false),
+          home: CheckSavedMedicationUI(),
         ),
       ),
     );
@@ -805,92 +790,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(CheckSavedMedicationUI), findsNothing);
     expect(find.text('목록 열기'), findsOneWidget);
-  });
-
-  // 함수이름: 숨겨진 탭 뒤로가기 테스트
-  // 함수역할: 홈 화면과 같은 탭 호스트에서 선택 모드를 켠 채 다른 탭으로 옮기면 선택을 끝내고, 숨겨진 복약함이 첫 시스템 뒤로가기를 가로채지 않는지 검증한다.
-  // 매개변수: tester. 반환값: 검증 완료.
-  testWidgets('다른 탭 뒤에 숨겨진 복약함은 선택을 끝내고 뒤로가기를 가로채지 않는다', (tester) async {
-    final tabIndex = ValueNotifier<int>(1);
-    addTearDown(tabIndex.dispose);
-    var systemPops = 0;
-    var cabinetHandlesBack = false;
-    // 함수역할: 앱 종료 요청 횟수를 센다. 매개변수: call은 플랫폼 호출. 반환값: 없음.
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async {
-        if (call.method == 'SystemNavigator.pop') systemPops += 1;
-        return null;
-      },
-    );
-    // 함수역할: 다른 테스트가 기본 플랫폼 처리를 쓰도록 되돌린다. 매개변수: 없음. 반환값: 없음.
-    addTearDown(
-      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        null,
-      ),
-    );
-    await _pumpSelectionApp(
-      tester,
-      home: ValueListenableBuilder<int>(
-        valueListenable: tabIndex,
-        // 함수역할: 홈이 아닌 탭의 뒤로가기를 홈 탭 이동으로 바꾸는 앱 셸을 재현한다.
-        // 매개변수: context, value는 현재 탭, _는 미사용. 반환값: 탭 호스트.
-        builder: (context, value, _) => PopScope<void>(
-          canPop: value == 0,
-          // 함수역할: 닫히지 않은 뒤로가기를 홈 탭 이동으로 처리한다. 매개변수: didPop, _. 반환값: 없음.
-          onPopInvokedWithResult: (didPop, _) {
-            if (!didPop && !cabinetHandlesBack && value != 0) {
-              tabIndex.value = 0;
-            }
-          },
-          child: IndexedStack(
-            index: value,
-            children: [
-              const Scaffold(body: Text('홈 탭')),
-              CheckSavedMedicationUI(
-                showCloseButton: false,
-                isActive: value == 1,
-                onBackHandlingChanged: (handlesBack) =>
-                    cabinetHandlesBack = handlesBack,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    await _startSavedSelection(tester);
-    expect(find.text('복약 선택'), findsOneWidget);
-    expect(cabinetHandlesBack, isTrue);
-
-    // 선택 모드에서 누른 뒤로가기는 선택만 닫고 탭은 그대로 둔다. 한 번 더 눌러야 홈으로 간다.
-    await tester.binding.handlePopRoute();
-    await tester.pumpAndSettle();
-    expect(find.text('복약 선택'), findsNothing);
-    expect(cabinetHandlesBack, isFalse);
-    expect(tabIndex.value, 1);
-    await tester.binding.handlePopRoute();
-    await tester.pumpAndSettle();
-    expect(tabIndex.value, 0);
-    expect(systemPops, 0);
-
-    tabIndex.value = 1;
-    await tester.pumpAndSettle();
-    await _startSavedSelection(tester);
-    expect(cabinetHandlesBack, isTrue);
-
-    tabIndex.value = 0;
-    await tester.pumpAndSettle();
-    await tester.binding.handlePopRoute();
-    await tester.pumpAndSettle();
-    expect(cabinetHandlesBack, isFalse);
-    expect(systemPops, 1);
-    expect(tabIndex.value, 0);
-
-    tabIndex.value = 1;
-    await tester.pumpAndSettle();
-    expect(find.text('복약 선택'), findsNothing);
-    expect(find.byKey(const Key('saved-medication-select')), findsOneWidget);
   });
 
   // 함수이름: 빈 결과 복구 테스트
@@ -1337,7 +1236,7 @@ void main() {
           child: const MaterialApp(
             home: Scaffold(
               key: ValueKey('embedded-cabinet-root'),
-              body: CheckSavedMedicationUI(showCloseButton: false),
+              body: CheckSavedMedicationUI(),
             ),
           ),
         ),
@@ -2146,7 +2045,7 @@ Future<_SelectionTestViewModel> _pumpSelectionApp(
                   ),
                 ),
               )
-            : home ?? const CheckSavedMedicationUI(showCloseButton: false),
+            : home ?? const CheckSavedMedicationUI(),
       ),
     ),
   );

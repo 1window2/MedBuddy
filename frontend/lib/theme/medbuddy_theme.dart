@@ -244,9 +244,6 @@ class MedBuddyTheme {
         ),
         labelLarge: label,
       ),
-      popupMenuTheme: const PopupMenuThemeData(
-        textStyle: MedBuddyTextStyles.menuTitle,
-      ),
       dialogTheme: const DialogThemeData(
         backgroundColor: MedBuddyColors.surface,
         surfaceTintColor: Colors.transparent,

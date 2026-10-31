@@ -139,10 +139,14 @@ void main() {
                 body: TextButton(
                   child: const Text('open'),
                   onPressed: () async {
-                    selected = await Navigator.push<AppFeature>(
+                    await Navigator.push<void>(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => FeatureSearchUI(isEnglish: english),
+                        builder: (_) => FeatureSearchUI(
+                          isEnglish: english,
+                          onFeatureSelected: (_, feature) async =>
+                              selected = feature,
+                        ),
                       ),
                     );
                   },
@@ -203,7 +207,8 @@ void main() {
         await tester.tap(find.byKey(const Key('feature-fontSize')));
         await tester.pumpAndSettle();
         expect(selected, AppFeature.fontSize);
-        expect(find.text('open'), findsOneWidget);
+        // 고른 기능을 닫고 돌아오면 검색 결과가 그대로 남는다.
+        expect(find.byKey(const Key('featureSearchPanel')), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
     }

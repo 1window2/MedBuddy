@@ -12,7 +12,7 @@ import 'medbuddy_view_model.dart';
 // Responsibilities:
 // - ready: every selected dose exists on the selected day; scheduleChanged: a selected dose or
 //   its day is no longer in the schedule; noSchedule: the selection names no dose slot.
-enum ChatDosePlanStatus { ready, scheduleChanged, noSchedule }
+enum ChatDosePlanStatus { ready, scheduleChanged, asNeededSelected, noSchedule }
 
 // Class Name: ChatDoseRequest
 // Role: One dose write, for one day and one slot, exactly as the patient confirmed it.
@@ -137,12 +137,17 @@ class LinkedChatDoseRecorder {
   // Parameters: selected - medications with their selected slots; selectedDate - dose day the
   //   selection was made for; contexts - current slot contexts from the cache or the server.
   // Returns: A ready plan in slot order, scheduleChanged when a selected dose is missing on that
-  //   day, or noSchedule when the selection contains no slot.
+  //   day, asNeededSelected when an as-needed medication has no slot to record into, or
+  //   noSchedule when the selection contains no slot.
   static ChatDosePlan plan(
     List<ChatMedicationContext> selected,
     String? selectedDate,
     List<ChatScheduleContext> contexts,
   ) {
+    // 필요시 약을 빼고 나머지만 기록하면 선택한 약 일부가 말없이 누락된다.
+    if (selected.any((medication) => medication.isAsNeeded)) {
+      return const ChatDosePlan(ChatDosePlanStatus.asNeededSelected);
+    }
     final requests = <ChatDoseRequest>[];
     for (final slotKey in medicationScheduleSlotKeys) {
       final ids =

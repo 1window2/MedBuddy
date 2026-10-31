@@ -38,8 +38,6 @@ class InputPrescriptionUI extends StatelessWidget {
   final Widget? caregiverSummary;
   final Widget? caregiverScheduleHint;
   final DateTime Function()? nowProvider;
-  final VoidCallback? onPrescriptionScanRequested;
-  final VoidCallback? onPrescriptionGalleryRequested;
   final ValueChanged<PillCaptureMode>? onPillIdentificationRequested;
   final VoidCallback? onManualMedicationRequested;
   final Future<void> Function(BuildContext, PrescriptionImageSource)?
@@ -90,8 +88,6 @@ class InputPrescriptionUI extends StatelessWidget {
     this.caregiverSummary,
     this.caregiverScheduleHint,
     this.nowProvider,
-    required this.onPrescriptionScanRequested,
-    required this.onPrescriptionGalleryRequested,
     required this.onPillIdentificationRequested,
     this.onManualMedicationRequested,
     this.onRegistrationSourceRequested,
@@ -398,15 +394,8 @@ class InputPrescriptionUI extends StatelessWidget {
           onManualMedicationRequested?.call();
         }
       },
-      onSourceSelected: (pageContext, source) async {
-        if (onRegistrationSourceRequested != null) {
-          await onRegistrationSourceRequested!(pageContext, source);
-        } else if (source == PrescriptionImageSource.camera) {
-          onPrescriptionScanRequested?.call();
-        } else {
-          onPrescriptionGalleryRequested?.call();
-        }
-      },
+      onSourceSelected: (pageContext, source) async =>
+          onRegistrationSourceRequested?.call(pageContext, source),
     );
   }
 }

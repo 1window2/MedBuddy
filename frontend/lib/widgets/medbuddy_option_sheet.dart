@@ -76,7 +76,6 @@ class MedBuddyOptionTile extends StatelessWidget {
   final String subtitle;
   final VoidCallback onTap;
   final Key? inkKey;
-  final Widget? leading;
 
   // Function Name: MedBuddyOptionTile
   // Description: Stores the choice content and selection action.
@@ -92,7 +91,6 @@ class MedBuddyOptionTile extends StatelessWidget {
     required this.subtitle,
     required this.onTap,
     this.inkKey,
-    this.leading,
   });
 
   // Function Name: build
@@ -118,7 +116,7 @@ class MedBuddyOptionTile extends StatelessWidget {
           ),
           child: Row(
             children: [
-              leading ?? Icon(icon, color: MedBuddyColors.primary, size: 30),
+              Icon(icon, color: MedBuddyColors.primary, size: 30),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(

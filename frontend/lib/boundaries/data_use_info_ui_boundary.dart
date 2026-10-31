@@ -14,11 +14,13 @@ class DataUseInfoUI extends StatelessWidget {
 
   Widget _section(String title, String body) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 6),
-    child: DecoratedBox(
-      decoration: BoxDecoration(
-        color: MedBuddyColors.surface,
-        border: Border.all(color: MedBuddyColors.divider),
+    // 항목을 누른 효과가 보이도록 장식 상자가 아닌 Material로 그린다.
+    child: Material(
+      color: MedBuddyColors.surface,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
         borderRadius: MedBuddyRadii.card,
+        side: const BorderSide(color: MedBuddyColors.divider),
       ),
       child: Builder(
         builder: (context) => Theme(
@@ -164,10 +166,12 @@ class DataUseInfoUI extends StatelessWidget {
                         '주변 병원·약국을 찾을 때 현재 위치 또는 이동한 지도의 검색 위치를 사용합니다. '
                             '검색 좌표는 주변 시설 조회를 위해 서버로 전달되고, 지도 표시와 길찾기에는 '
                             '지도 제공 서비스가 사용됩니다. 위치 권한을 거절한 경우 현재 위치를 자동으로 '
-                            '사용할 수 없습니다. 공유한 장소 정보와 내 위치는 구분해서 확인해주세요.',
+                            '사용할 수 없습니다. 채팅의 병원·약국 카드는 공유된 장소의 지도를 바로 불러오므로 그 위치가 '
+                            '지도 제공 서비스에 전달됩니다. 공유한 장소 정보와 내 위치는 구분해서 확인해주세요.',
                         'Nearby hospital and pharmacy searches use your current position or the search position '
                             'on the map. Coordinates are sent to the server to find nearby facilities; map providers '
-                            'are used for maps and directions. Denying location access prevents automatic use of your '
+                            'are used for maps and directions. A hospital or pharmacy card in chat loads its map right away, '
+                            'which sends the shared place to the map provider. Denying location access prevents automatic use of your '
                             'current position. A shared place is not necessarily your own location.',
                       ),
                     ),

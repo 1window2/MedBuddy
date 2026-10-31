@@ -47,7 +47,7 @@ package "Flutter Frontend" {
         enum "MedBuddyDestination" as MedBuddyDestination {
             home
             schedule
-            medicationCabinet
+            medicationHistory
             chat
             profile
         }

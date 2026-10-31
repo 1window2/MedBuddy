@@ -3675,4 +3675,59 @@ void main() {
       control.dispose();
     });
   }
+
+  // 기록은 최근 90일만 읽을 수 있으므로 더 오래된 일정 카드는 실패할 화면을 열지 않는다.
+  testWidgets('a schedule card older than the history does not open', (
+    tester,
+  ) async {
+    final day = MedicationHistoryDates.today(
+      DateTime.now(),
+    ).subtract(const Duration(days: 120));
+    final control = _RetryChatControl(
+      failFirstSend: false,
+      historyMessages: [
+        ChatMessage(
+          messageId: 71,
+          linkId: 17,
+          senderHash: 'patient-a',
+          clientMessageId: 'schedule_message_002',
+          body: '저녁 복약을 완료했어요.',
+          createdAt: DateTime.utc(2026, 6, 24, 9),
+          messageKind: ChatMessageKind.slotCompletion,
+          scheduleContext: ChatScheduleContext(
+            scheduleDate: MedicationHistoryDates.format(day),
+            slotKey: 'evening',
+            alarmTime: '18:00',
+            alarmEnabled: true,
+            completedCount: 1,
+            totalCount: 1,
+            canRequestCheck: false,
+            medications: const [],
+          ),
+        ),
+      ],
+    );
+    final realtimeService = _FakeRealtimeService();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkedChatUI(
+          linkId: 17,
+          currentUserHash: 'caregiver-a',
+          patientHash: 'patient-a',
+          control: control,
+          realtimeService: realtimeService,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('저녁 18:00'));
+    await tester.pumpAndSettle();
+    expect(find.byType(MedicationHistoryUI), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await realtimeService.dispose();
+    control.dispose();
+  });
 }

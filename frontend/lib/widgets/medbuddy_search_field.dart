@@ -57,13 +57,14 @@ class MedBuddySearchPanel extends StatelessWidget {
 
   final Widget child;
 
+  // 안의 목록 터치 효과가 보이도록 장식 상자가 아닌 Material로 그린다.
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) => Material(
+    color: MedBuddyColors.surface,
     clipBehavior: Clip.antiAlias,
-    decoration: BoxDecoration(
-      color: MedBuddyColors.surface,
+    shape: RoundedRectangleBorder(
       borderRadius: MedBuddyRadii.card,
-      border: Border.all(color: MedBuddyColors.outline),
+      side: const BorderSide(color: MedBuddyColors.outline),
     ),
     child: child,
   );

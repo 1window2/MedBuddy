@@ -118,8 +118,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isForeground = true;
   bool _featureSearchOpen = false;
   bool _prescriptionExitDialogOpen = false;
-  // 약통 탭이 시스템 뒤로가기를 직접 처리하는 중인지 여부.
-  final bool _cabinetHandlesBack = false;
   String? _updatingHomeMedicationSlotKey;
   final Set<MedBuddyDestination> _visitedDestinations = {
     MedBuddyDestination.home,
@@ -614,9 +612,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     MedBuddyViewModel viewModel,
   ) async {
     if (_prescriptionExitDialogOpen) return;
+    // 모두 저장한 결과는 사라질 내용이 없으므로 묻지 않고 닫는다.
+    if (viewModel.prescriptionFlowState == PrescriptionFlowState.resultReady &&
+        viewModel.completedMedicationSaveIndexes.length >=
+            viewModel.analyzedMedicationList.length) {
+      viewModel.clearAnalysisResult();
+      return;
+    }
     _prescriptionExitDialogOpen = true;
     final initialFlow = viewModel.prescriptionFlowState;
-    final english = viewModel.userSetting.language == 'en';
+    final english = viewModel.userSetting.isEnglish;
     try {
       final confirmed = await showDialog<bool>(
         context: context,
@@ -667,7 +672,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final destinations = [
       MedBuddyDestination.home,
       MedBuddyDestination.schedule,
-      MedBuddyDestination.medicationCabinet,
+      MedBuddyDestination.medicationHistory,
       if (showChat) MedBuddyDestination.chat,
       MedBuddyDestination.profile,
     ];
@@ -682,13 +687,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // - _ (inferred by callback contract): Argument required by the callback contract but unused by the body.
       // Returns: Completion of the captured interaction; any route result or state change is handled by that operation.
       onPopInvokedWithResult: (didPop, _) {
-        // 약통이 선택 모드를 닫는 데 쓴 뒤로가기로 홈까지 이동하지 않는다.
-        final handledByCabinet =
-            _cabinetHandlesBack &&
-            _selectedDestination == MedBuddyDestination.medicationCabinet;
-        if (!didPop &&
-            !handledByCabinet &&
-            _selectedDestination != MedBuddyDestination.home) {
+        if (!didPop && _selectedDestination != MedBuddyDestination.home) {
           _selectDestination(MedBuddyDestination.home);
         }
       },
@@ -716,18 +715,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               () => const CheckScheduleUI(showBackButton: false),
             ),
             _buildDestination(
-              MedBuddyDestination.medicationCabinet,
+              MedBuddyDestination.medicationHistory,
               // Function Name: _buildApplicationShell._buildDestination callback
-              // Description: Supplies `const CheckSavedMedicationUI(showCloseButton: false)` from the captured state of the active screen selected by prescription flow and navigation destination.
+              // Description: Supplies the signed-in user's own medication history, rebuilt each time the tab is selected.
               // Parameters:
               // - None.
-              // Returns: The value of `const CheckSavedMedicationUI(showCloseButton: false)`.
+              // Returns: The medication history screen.
               () => MedicationHistoryUI(
                 key: ValueKey((viewModel.patientHash, _historyRevision)),
                 patientHash: viewModel.patientHash,
                 currentUserHash: viewModel.patientHash,
                 isEnglish: viewModel.userSetting.isEnglish,
                 showBackButton: false,
+                isActive:
+                    _selectedDestination ==
+                    MedBuddyDestination.medicationHistory,
                 onChanged: viewModel.refreshMedicationSchedule,
               ),
             ),
@@ -823,18 +825,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (destination == MedBuddyDestination.chat) {
       unawaited(_chatList?.refresh(includeMessages: true));
     }
-    if (_visitedDestinations.contains(destination)) {
-      final viewModel = context.read<MedBuddyViewModel>();
-      switch (destination) {
-        case MedBuddyDestination.schedule:
-          unawaited(viewModel.refreshMedicationSchedule(reuseRecent: true));
-        case MedBuddyDestination.medicationCabinet:
-          unawaited(viewModel.fetchSavedMedicationInfo());
-        case MedBuddyDestination.home:
-        case MedBuddyDestination.chat:
-        case MedBuddyDestination.profile:
-          break;
-      }
+    if (destination == MedBuddyDestination.schedule &&
+        _visitedDestinations.contains(destination)) {
+      unawaited(
+        context.read<MedBuddyViewModel>().refreshMedicationSchedule(
+          reuseRecent: true,
+        ),
+      );
     }
     if (_selectedDestination == destination) {
       return;
@@ -845,7 +842,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // - None.
     // Returns: No payload; applies the captured state changes.
     setState(() {
-      if (destination == MedBuddyDestination.medicationCabinet) {
+      if (destination == MedBuddyDestination.medicationHistory) {
         _historyRevision++;
       }
       _selectedDestination = destination;
@@ -895,10 +892,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // 매개변수:
       // - 없음.
       // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
-      onPrescriptionScanRequested: () =>
-          _requestGuidedPrescriptionImage(context, viewModel),
-      onPrescriptionGalleryRequested:
-          viewModel.requestPrescriptionImageFromGallery,
       onRegistrationSourceRequested: (pageContext, source) =>
           startPrescriptionFromRegistration(pageContext, viewModel, source),
       // 함수이름: _buildHomeInput.onPillIdentificationRequested callback
@@ -1015,8 +1008,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await Navigator.push<void>(
         context,
         MaterialPageRoute(
-          builder: (_) => FeatureSearchUI(
-            isEnglish: viewModel.userSetting.isEnglish,
+          // 검색 화면 위에서 언어를 바꾸고 돌아와도 같은 언어로 표시한다.
+          builder: (routeContext) => FeatureSearchUI(
+            isEnglish: routeContext.select<MedBuddyViewModel, bool>(
+              (current) => current.userSetting.isEnglish,
+            ),
             widgetSupported: DoseHomeWidget.supported,
             onFeatureSelected: (searchContext, feature) =>
                 _openSearchedFeature(searchContext, viewModel, owner, feature),

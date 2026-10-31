@@ -72,30 +72,22 @@ class MedicationHistoryChartsSummary extends StatefulWidget {
     required this.isEnglish,
   }) : counts = null,
        compact = false,
-       inverse = false,
-       showAsNeeded = true,
-       initiallyShowRatio = false,
-       toggleEnabled = true;
+       showAsNeeded = true;
 
   const MedicationHistoryChartsSummary.counts({
     super.key,
     required MedicationHistoryChartCounts this.counts,
     required this.isEnglish,
     this.compact = true,
-    this.inverse = false,
     this.showAsNeeded = true,
-    this.initiallyShowRatio = true,
-    this.toggleEnabled = false,
   }) : snapshot = null;
 
   final MedicationHistorySnapshot? snapshot;
   final MedicationHistoryChartCounts? counts;
   final bool isEnglish;
+  // 채팅 카드처럼 작게 표시할 때는 전환 없이 횟수만 보여준다.
   final bool compact;
-  final bool inverse;
   final bool showAsNeeded;
-  final bool initiallyShowRatio;
-  final bool toggleEnabled;
 
   @override
   State<MedicationHistoryChartsSummary> createState() =>
@@ -104,7 +96,7 @@ class MedicationHistoryChartsSummary extends StatefulWidget {
 
 class _MedicationHistoryChartsSummaryState
     extends State<MedicationHistoryChartsSummary> {
-  late bool _showRatio = widget.initiallyShowRatio;
+  late bool _showRatio = widget.counts != null;
 
   @override
   Widget build(BuildContext context) {
@@ -112,18 +104,8 @@ class _MedicationHistoryChartsSummaryState
         widget.counts ??
         MedicationHistoryChartCounts.fromEntries(widget.snapshot!.items);
     final isEnglish = widget.isEnglish;
-    final foreground = widget.inverse
-        ? Colors.white
-        : MedBuddyColors.textStrong;
-    final muted = widget.inverse ? Colors.white70 : MedBuddyColors.textMuted;
-    final colors = widget.inverse
-        ? const [
-            Color(0xFF75DFC0),
-            Color(0xFFFFD37B),
-            Color(0xFFB8CAC4),
-            Color(0xFFB6C8FF),
-          ]
-        : _chartColors;
+    const foreground = MedBuddyColors.textStrong;
+    const muted = MedBuddyColors.textMuted;
     final values = [
       counts.taken,
       counts.skipped,
@@ -146,7 +128,7 @@ class _MedicationHistoryChartsSummaryState
       dimension: size,
       child: CustomPaint(
         key: const Key('history-rate-chart'),
-        painter: _HistoryRingPainter(counts, colors: colors),
+        painter: _HistoryRingPainter(counts),
         child: Center(
           // 원 안에 내접하는 사각형으로 제한해 긴 비율과 확대 글자도 고리를 침범하지 않는다.
           child: SizedBox.square(
@@ -175,7 +157,7 @@ class _MedicationHistoryChartsSummaryState
                       color: muted,
                     ),
                   ),
-                  if (widget.toggleEnabled) ...[
+                  if (!widget.compact) ...[
                     const SizedBox(height: 4),
                     Icon(Icons.swap_horiz_rounded, size: 18, color: muted),
                   ],
@@ -187,14 +169,15 @@ class _MedicationHistoryChartsSummaryState
       ),
     );
     final chart = Semantics(
-      button: widget.toggleEnabled,
+      button: !widget.compact,
       label: !widget.showAsNeeded
           ? (isEnglish ? 'Recorded doses $value' : '복용 기록 $value')
           : isEnglish
           ? 'Scheduled dose record ${_showRatio ? 'count' : 'rate'} $value'
           : '정기 복용 ${_showRatio ? '기록 횟수' : '기록률'} $value',
-      child: widget.toggleEnabled
-          ? Tooltip(
+      child: widget.compact
+          ? ring
+          : Tooltip(
               message: hint,
               child: InkWell(
                 key: const Key('history-rate-toggle'),
@@ -202,8 +185,7 @@ class _MedicationHistoryChartsSummaryState
                 onTap: () => setState(() => _showRatio = !_showRatio),
                 child: ring,
               ),
-            )
-          : ring,
+            ),
     );
     final legend = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -218,7 +200,7 @@ class _MedicationHistoryChartsSummaryState
                   width: 8,
                   height: 8,
                   decoration: BoxDecoration(
-                    color: colors[i],
+                    color: _chartColors[i],
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -269,9 +251,8 @@ class _MedicationHistoryChartsSummaryState
 
 // 원형 그래프의 분모에는 정기 일정만 넣고 빈 일정은 0% 대신 빈 고리로 남긴다.
 class _HistoryRingPainter extends CustomPainter {
-  const _HistoryRingPainter(this.counts, {this.colors = _chartColors});
+  const _HistoryRingPainter(this.counts);
   final MedicationHistoryChartCounts counts;
-  final List<Color> colors;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -280,14 +261,20 @@ class _HistoryRingPainter extends CustomPainter {
     final paint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = width;
-    canvas.drawOval(rect, paint..color = colors[2]);
+    canvas.drawOval(rect, paint..color = _chartColors[2]);
     if (counts.scheduled == 0) return;
     var angle = -math.pi / 2;
     final values = [counts.taken, counts.skipped, counts.unrecorded];
     for (var i = 0; i < values.length; i++) {
       final sweep = math.pi * 2 * values[i] / counts.scheduled;
       if (sweep > 0) {
-        canvas.drawArc(rect, angle, sweep, false, paint..color = colors[i]);
+        canvas.drawArc(
+          rect,
+          angle,
+          sweep,
+          false,
+          paint..color = _chartColors[i],
+        );
       }
       angle += sweep;
     }
@@ -295,7 +282,6 @@ class _HistoryRingPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_HistoryRingPainter oldDelegate) =>
-      oldDelegate.colors != colors ||
       oldDelegate.counts.taken != counts.taken ||
       oldDelegate.counts.skipped != counts.skipped ||
       oldDelegate.counts.unrecorded != counts.unrecorded;

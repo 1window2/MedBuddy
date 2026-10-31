@@ -5,15 +5,6 @@ import '../entities/feature_search_entity.dart';
 // 클래스명: FindAppFeature
 // 역할: 띄어쓰기·대소문자·동의어와 단어 조합을 사용해 관련 기능을 정렬한다.
 class FindAppFeature {
-  static const common = [
-    AppFeature.manualMedication,
-    AppFeature.medicationHistory,
-    AppFeature.notifications,
-    AppFeature.fontSize,
-    AppFeature.caregiverLink,
-    AppFeature.homeWidget,
-  ];
-
   static const entries = <FeatureSearchEntry>[
     FeatureSearchEntry(
       AppFeature.manualMedication,

@@ -99,12 +99,12 @@ void main() {
         MedicationHistoryDates.earliest(control.today),
         control.today,
       );
-      final loading = control.load(range, extended: true);
+      final loading = control.load(range);
       await Future<void>.delayed(Duration.zero);
       expect(control.loading, isTrue);
       expect(control.snapshot, isNull);
       await expectLater(
-        control.load(range, extended: true),
+        control.load(range),
         throwsA(isA<MedicationHistoryBusy>()),
       );
       second.complete(emptyResponse(secondRequest!));
@@ -135,8 +135,7 @@ void main() {
           control.today.subtract(const Duration(days: 60)),
           control.today,
         ),
-        extended: true,
-      ),
+              ),
       throwsA(isA<http.ClientException>()),
     );
     expect(requests, 2);
@@ -163,8 +162,7 @@ void main() {
           control.today.subtract(const Duration(days: 60)),
           control.today,
         ),
-        extended: true,
-      ),
+              ),
       throwsA(isA<MedicationHistorySessionChanged>()),
     );
     expect(requests, 1);
@@ -198,7 +196,7 @@ void main() {
         ),
       ]) {
         await expectLater(
-          control.load(range, extended: true),
+          control.load(range),
           throwsFormatException,
         );
       }

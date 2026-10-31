@@ -195,6 +195,34 @@ void main() {
     DateTime.utc(2026, 10, 17),
   );
 
+  // 31일을 넘으면 채팅 기간 안내가 늘 보이지만 다른 앱 공유 실패는 가려지면 안 된다.
+  testWidgets('an external share failure replaces the chat period notice', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final server = _Server();
+    await _pump(tester, server);
+    await tester.tap(find.byKey(const Key('history-tab-custom')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('history-range-start')));
+    await tester.pumpAndSettle();
+    Navigator.of(
+      tester.element(find.byType(DatePickerDialog)),
+    ).pop(DateTime(2026, 9, 1));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Share'));
+    await tester.pumpAndSettle();
+    final message = find.byKey(const Key('history-export-error'));
+    expect(tester.widget<Text>(message).data, contains('Chat sharing covers'));
+    server.items.first['item_name'] = List.filled(100001, 'x').join();
+    await tester.tap(find.byKey(const Key('history-export-share')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<Text>(message).data, contains('Too many records'));
+  });
+
   test('recipient list is scoped to both patient and actor', () async {
     final share = _share(_Server(), sender: 'carer');
     expect((await share.loadRecipients()).map((link) => link.linkId), [1]);

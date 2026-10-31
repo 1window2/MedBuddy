@@ -142,13 +142,15 @@ Future<MedicationHistoryControl> _pumpHistory(
   Stream<String?>? sessionChanges,
   bool openToday = true,
   bool initiallyShowExport = false,
+  bool isActive = true,
+  DateTime Function()? now,
 }) async {
   final control = MedicationHistoryControl(
     patientHash: 'test-patient',
     pendingStore: FakeAsNeededPendingStore(),
     readOnly: readOnly,
     client: MockClient(server.respond),
-    now: () => historyTestNow,
+    now: now ?? () => historyTestNow,
     sessionKeyProvider: () => 'test-user',
     sessionChanges: sessionChanges,
   );
@@ -171,6 +173,7 @@ Future<MedicationHistoryControl> _pumpHistory(
         control: control,
         onChanged: onChanged,
         initiallyShowExport: initiallyShowExport,
+        isActive: isActive,
       ),
     ),
   );
@@ -480,6 +483,60 @@ void main() {
   );
 
   // 하루 기록을 불러오는 동안 뒤로가기를 누르면 무시하지 않고 화면을 닫는다(느린 연결에서 최대 25초).
+  // 탭으로 유지되는 숨겨진 기록 화면은 앱 복귀마다 서버를 다시 읽지 않는다.
+  for (final active in [true, false]) {
+    testWidgets('resume reloads only a visible history: $active', (
+      tester,
+    ) async {
+      final server = _HistoryServer();
+      await _pumpHistory(
+        tester,
+        server,
+        openToday: false,
+        isActive: active,
+      );
+      final reads = server.reads.length;
+      expect(reads, greaterThan(0));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(server.reads.length, active ? greaterThan(reads) : reads);
+    });
+  }
+
+  // 탭을 켜 둔 채 주가 바뀌면 지난주 대신 오늘이 속한 주를 다시 읽는다.
+  testWidgets('resume after a new week moves the period to today', (
+    tester,
+  ) async {
+    var now = historyTestNow;
+    final server = _HistoryServer();
+    await _pumpHistory(tester, server, openToday: false, now: () => now);
+    final monday = find.byKey(const ValueKey('history-week-day-2026-10-19'));
+    expect(monday, findsNothing);
+    now = historyTestNow.add(const Duration(days: 3));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(monday, findsOneWidget);
+    expect(server.reads.last.queryParameters['start_date'], '2026-10-19');
+  });
+
+  // 저장 뒤 다른 화면을 갱신하는 동안에도 빈 화면 대신 진행을 표시한다.
+  testWidgets('a saved edit shows progress until the reload starts', (
+    tester,
+  ) async {
+    final refresh = Completer<void>();
+    final server = _HistoryServer();
+    await _pumpHistory(tester, server, onChanged: () => refresh.future);
+    await _openEditor(tester);
+    await _confirmSave(tester);
+    await tester.pump();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    refresh.complete();
+    await tester.pumpAndSettle();
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+
   testWidgets('back while a day loads closes the history', (tester) async {
     final server = _HistoryServer();
     final control = MedicationHistoryControl(
@@ -1950,6 +2007,22 @@ void main() {
       await tester.tap(find.byKey(const Key('history-tab-month')));
       await tester.pumpAndSettle();
     }
+
+    // 달력 칸은 하위 의미 정보를 제외하므로 화면 낭독기의 누르기가 날짜를 골라야 한다.
+    testWidgets('a calendar day exposes its tap to screen readers', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await openMonth(tester, monthServer());
+      await _revealHistory(tester, day('2026-10-16'));
+      final cell = tester
+          .widgetList<Semantics>(
+            find.ancestor(of: day('2026-10-16'), matching: find.byType(Semantics)),
+          )
+          .firstWhere((widget) => widget.properties.label?.contains('16') ?? false);
+      expect(cell.properties.onTap, isNotNull);
+      handle.dispose();
+    });
 
     testWidgets('monthly tab reads the month and retains count calendar', (
       tester,

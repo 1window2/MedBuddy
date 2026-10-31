@@ -1,5 +1,5 @@
 // 파일명: medication_history_ui_boundary.dart
-// 역할: 환자·보호자의 날짜별 복약 이력, 정정 확인, 개인정보 안내 후 텍스트 공유를 제공한다.
+// 역할: 환자·보호자의 주간·월간·기간별 복약 이력, 정정 확인, 개인정보 안내 후 텍스트 공유를 제공한다.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -38,6 +38,7 @@ class MedicationHistoryUI extends StatefulWidget {
     this.sharedRange,
     this.initiallyShowExport = false,
     this.showBackButton = true,
+    this.isActive = true,
   });
 
   final String patientHash;
@@ -52,6 +53,8 @@ class MedicationHistoryUI extends StatefulWidget {
   // 기능 검색에서 공유를 선택해도 전송은 하지 않고 기존 기간·대상 확인창만 연다.
   final bool initiallyShowExport;
   final bool showBackButton;
+  // 탭으로 유지되는 동안 숨겨지면 앱 복귀 때 서버 기록을 다시 읽지 않는다.
+  final bool isActive;
 
   // 함수역할: 조회·정정·내보내기 수명을 관리할 화면 상태를 만든다.
   @override
@@ -74,6 +77,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
   _HistoryPeriod _period = _HistoryPeriod.week;
   late DateTime _anchor;
   late DateTime _selectedDay;
+  late DateTime _lastSeenToday;
   late DateTime _customStart;
   late DateTime _customEnd;
   final _chartExpanded = <_HistoryPeriod, bool>{};
@@ -124,7 +128,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
       );
     }
     _period = _HistoryPeriod.week;
-    _anchor = _selectedDay = _customEnd = _control.today;
+    _anchor = _selectedDay = _customEnd = _lastSeenToday = _control.today;
     _customStart = _control.today.subtract(const Duration(days: 6));
     _range = widget.sharedRange ?? _periodRange(_anchor, _period)!;
     _chartExpanded.clear();
@@ -171,13 +175,19 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
   // 함수역할: 앱 복귀 때 세션을 확인하고 편집·공유 중이 아니면 서버 기록을 다시 읽는다.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) return;
+    if (state != AppLifecycleState.resumed || !widget.isActive) return;
     try {
       _control.ensureSession();
     } catch (_) {
       return;
     }
     if (!_control.busy && !_interactionActive && !_exporting) {
+      // 탭은 계속 유지되므로 날짜가 바뀐 뒤 돌아오면 주간·월간을 오늘로 옮긴다.
+      final today = _control.today;
+      if (today != _lastSeenToday) {
+        _lastSeenToday = today;
+        if (_period != _HistoryPeriod.custom) _anchor = _selectedDay = today;
+      }
       unawaited(_reload());
     }
   }
@@ -194,13 +204,13 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
   // 함수역할: 선택 범위를 조회하고 실패 표시와 재시도 상태는 제어 객체에 맡긴다.
   Future<void> _load() async {
     try {
-      await _control.load(_range, extended: widget.sharedRange == null);
+      await _control.load(_range);
     } catch (_) {
       // 서버·네트워크 오류는 제어 객체의 상태로 표시하고 이전 자료는 남기지 않는다.
     }
   }
 
-  // 함수역할: 지금 보이는 달력 또는 하루 기록을 다시 읽는다.
+  // 함수역할: 지금 선택한 주·월·기간을 오늘 기준으로 다시 잘라 서버 기록을 읽는다.
   Future<void> _reload() async {
     if (widget.sharedRange == null) {
       final earliest = MedicationHistoryDates.earliest(_control.today);
@@ -611,11 +621,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
                               Padding(
                                 padding: const EdgeInsets.only(top: 8),
                                 child: Text(
-                                  rangeError() ??
-                                      (_chatShare == null
-                                          ? null
-                                          : chatRangeError()) ??
-                                      exportError!,
+                                  // 날짜를 바꾸면 지워지는 실패 안내가 채팅 기간 안내에 가려지지 않게 한다.
+                                  exportError ??
+                                      rangeError() ??
+                                      chatRangeError()!,
                                   key: const Key('history-export-error'),
                                   style: const TextStyle(
                                     color: MedBuddyColors.danger,
@@ -892,29 +901,32 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
           children: [
             for (final period in _HistoryPeriod.values)
               Expanded(
-                child: TextButton(
-                  key: ValueKey('history-tab-${period.name}'),
-                  onPressed: _locked ? null : () => _changePeriod(period),
-                  style: TextButton.styleFrom(
-                    backgroundColor: _period == period
-                        ? MedBuddyColors.surface
-                        : Colors.transparent,
-                    foregroundColor: _period == period
-                        ? MedBuddyColors.primary
-                        : MedBuddyColors.textMuted,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                      vertical: 12,
+                child: Semantics(
+                  selected: _period == period,
+                  child: TextButton(
+                    key: ValueKey('history-tab-${period.name}'),
+                    onPressed: _locked ? null : () => _changePeriod(period),
+                    style: TextButton.styleFrom(
+                      backgroundColor: _period == period
+                          ? MedBuddyColors.surface
+                          : Colors.transparent,
+                      foregroundColor: _period == period
+                          ? MedBuddyColors.primary
+                          : MedBuddyColors.textMuted,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: MedBuddyRadii.small,
+                      ),
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: MedBuddyRadii.small,
-                    ),
+                    child: Text(switch (period) {
+                      _HistoryPeriod.week => tr('주간', 'Weekly'),
+                      _HistoryPeriod.month => tr('월간', 'Monthly'),
+                      _HistoryPeriod.custom => tr('기간 선택', 'Date range'),
+                    }, textAlign: TextAlign.center),
                   ),
-                  child: Text(switch (period) {
-                    _HistoryPeriod.week => tr('주간', 'Weekly'),
-                    _HistoryPeriod.month => tr('월간', 'Monthly'),
-                    _HistoryPeriod.custom => tr('기간 선택', 'Date range'),
-                  }, textAlign: TextAlign.center),
                 ),
               ),
           ],
@@ -926,7 +938,8 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
       else
         _periodNavigation(),
       const SizedBox(height: 12),
-      if (_control.loading)
+      // 수정 저장 뒤 다시 읽기 전까지는 자료도 오류도 없으므로 빈 화면 대신 진행을 표시한다.
+      if (_control.loading || (snapshot == null && _control.error == null))
         const Padding(
           padding: EdgeInsets.all(32),
           child: Center(child: CircularProgressIndicator()),
@@ -996,10 +1009,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
                       ),
                       isEnglish: widget.isEnglish,
                       enabled: !_locked,
-                      showNavigation: false,
                       onDaySelected: _selectDay,
-                      onMonthChanged: (day) =>
-                          _changePeriod(_HistoryPeriod.month, anchor: day),
                     ),
                 ],
               ),

@@ -209,10 +209,7 @@ class MedicationHistoryControl extends ChangeNotifier {
   }
 
   // 함수역할: 범위를 검증한 후 인증된 GET으로 이력을 새로 읽는다. 실패한 조회에는 이전 자료를 남기지 않는다.
-  Future<void> load(
-    MedicationHistoryRange range, {
-    bool extended = false,
-  }) async {
+  Future<void> load(MedicationHistoryRange range) async {
     ensureSession();
     if (busy) throw const MedicationHistoryBusy();
     requestedRange = range;
@@ -221,7 +218,7 @@ class MedicationHistoryControl extends ChangeNotifier {
     loading = true;
     notifyListeners();
     try {
-      snapshot = extended ? await _readPeriod(range) : await _readRange(range);
+      snapshot = await _readPeriod(range);
     } catch (failure) {
       if (!_disposed && !_invalidated) error = failure;
       rethrow;
@@ -231,59 +228,24 @@ class MedicationHistoryControl extends ChangeNotifier {
     }
   }
 
-  // 최대 90일의 화면 조회도 31일 단위로 읽고 모든 구간이 성공해야 결과를 공개한다.
+  // 서버는 한 번에 31일만 주므로 최대 90일을 최신 구간부터 나눠 읽고, 모든 구간이 성공해야 결과를 공개한다.
   Future<MedicationHistorySnapshot> _readPeriod(
     MedicationHistoryRange range,
   ) async {
     range.validate(now, maxDays: MedicationHistoryRange.maximumExportDays);
+    if (range.days <= MedicationHistoryRange.maximumReadDays) {
+      return _readRange(range);
+    }
     final items = <MedicationHistoryEntry>[];
     final medications = <int, MedicationHistoryMedication>{};
     var end = range.end;
     while (!end.isBefore(range.start)) {
       ensureSession();
-      final start = DateTime.utc(
-        end.year,
-        end.month,
-        end.day - MedicationHistoryRange.maximumReadDays + 1,
+      final chunkStart = addCalendarDays(
+        end,
+        1 - MedicationHistoryRange.maximumReadDays,
       );
-      final part = await _readRange(
-        MedicationHistoryRange(
-          start.isBefore(range.start) ? range.start : start,
-          end,
-        ),
-      );
-      items.addAll(part.items);
-      for (final medication in part.medications) {
-        medications.putIfAbsent(medication.id, () => medication);
-      }
-      end = addCalendarDays(start, -1);
-    }
-    return MedicationHistorySnapshot(
-      range: range,
-      items: items,
-      medications: medications.values.toList(),
-    );
-  }
-
-  // 날짜별 화면은 그대로 두고 공유할 기간만 별도로 읽는다.
-  // 31일을 넘는 외부 공유 기간은 최신 구간부터 31일씩 나눠 읽어 한 스냅샷으로 합친다.
-  Future<MedicationHistorySnapshot> readRangeForExport(
-    MedicationHistoryRange range,
-  ) async {
-    range.validate(now, maxDays: MedicationHistoryRange.maximumExportDays);
-    if (range.days <= MedicationHistoryRange.maximumReadDays) {
-      return readRange(range);
-    }
-    final items = <MedicationHistoryEntry>[];
-    final medications = <int, MedicationHistoryMedication>{};
-    var end = range.end;
-    while (!end.isBefore(range.start)) {
-      final chunkStart = DateTime.utc(
-        end.year,
-        end.month,
-        end.day - MedicationHistoryRange.maximumReadDays + 1,
-      );
-      final chunk = await readRange(
+      final chunk = await _readRange(
         MedicationHistoryRange(
           chunkStart.isBefore(range.start) ? range.start : chunkStart,
           end,
@@ -294,7 +256,7 @@ class MedicationHistoryControl extends ChangeNotifier {
       for (final medication in chunk.medications) {
         medications.putIfAbsent(medication.id, () => medication);
       }
-      end = DateTime.utc(chunkStart.year, chunkStart.month, chunkStart.day - 1);
+      end = addCalendarDays(chunkStart, -1);
     }
     return MedicationHistorySnapshot(
       range: range,
@@ -303,8 +265,8 @@ class MedicationHistoryControl extends ChangeNotifier {
     );
   }
 
-  // 함수역할: 화면의 하루 기록은 그대로 둔 채 한 달 달력이나 내보내기용 기간을 서버에서 읽는다.
-  Future<MedicationHistorySnapshot> readRange(
+  // 날짜별 화면은 그대로 두고 공유할 기간만 별도로 읽는다.
+  Future<MedicationHistorySnapshot> readRangeForExport(
     MedicationHistoryRange range,
   ) async {
     ensureSession();
@@ -312,7 +274,7 @@ class MedicationHistoryControl extends ChangeNotifier {
     loading = true;
     notifyListeners();
     try {
-      return await _readRange(range);
+      return await _readPeriod(range);
     } catch (failure) {
       if (!_disposed && !_invalidated && snapshot == null) error = failure;
       rethrow;

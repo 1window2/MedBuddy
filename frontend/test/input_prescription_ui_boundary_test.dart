@@ -649,22 +649,6 @@ void main() {
       MaterialApp(
         home: InputPrescriptionUI(
           userSetting: const UserSetting(language: 'ko'),
-          // Function Name: onPrescriptionScanRequested callback
-          // Description:
-          // - Keep prescription camera navigation available in the fixture without performing the action.
-          // Parameters:
-          // - None.
-          // Returns:
-          // - No value; the action is intentionally inert.
-          onPrescriptionScanRequested: () {},
-          // Function Name: onPrescriptionGalleryRequested callback
-          // Description:
-          // - Keep prescription gallery navigation available in the fixture without performing the action.
-          // Parameters:
-          // - None.
-          // Returns:
-          // - No value; the action is intentionally inert.
-          onPrescriptionGalleryRequested: () {},
           // Function Name: onPillIdentificationRequested callback
           // Description:
           // - Record pill-identification navigation so the test can assert the action was dispatched.
@@ -1193,22 +1177,6 @@ void main() {
       MaterialApp(
         home: InputPrescriptionUI(
           userSetting: const UserSetting(language: 'ko'),
-          // Function Name: onPrescriptionScanRequested callback
-          // Description:
-          // - Keep prescription camera navigation available in the fixture without performing the action.
-          // Parameters:
-          // - None.
-          // Returns:
-          // - No value; the action is intentionally inert.
-          onPrescriptionScanRequested: () {},
-          // Function Name: onPrescriptionGalleryRequested callback
-          // Description:
-          // - Keep prescription gallery navigation available in the fixture without performing the action.
-          // Parameters:
-          // - None.
-          // Returns:
-          // - No value; the action is intentionally inert.
-          onPrescriptionGalleryRequested: () {},
           // 함수이름: onPillIdentificationRequested 콜백
           // 함수역할:
           // - 알약 식별 화면 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
@@ -1275,22 +1243,6 @@ void main() {
       return MaterialApp(
         home: InputPrescriptionUI(
           userSetting: const UserSetting(language: 'ko'),
-          // Function Name: onPrescriptionScanRequested callback
-          // Description:
-          // - Keep prescription camera navigation available in the fixture without performing the action.
-          // Parameters:
-          // - None.
-          // Returns:
-          // - No value; the action is intentionally inert.
-          onPrescriptionScanRequested: () {},
-          // Function Name: onPrescriptionGalleryRequested callback
-          // Description:
-          // - Keep prescription gallery navigation available in the fixture without performing the action.
-          // Parameters:
-          // - None.
-          // Returns:
-          // - No value; the action is intentionally inert.
-          onPrescriptionGalleryRequested: () {},
           // 함수이름: onPillIdentificationRequested 콜백
           // 함수역할:
           // - 알약 식별 화면 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
@@ -1364,22 +1316,6 @@ void main() {
       MaterialApp(
         home: InputPrescriptionUI(
           userSetting: const UserSetting(language: 'en'),
-          // Function Name: onPrescriptionScanRequested callback
-          // Description:
-          // - Keep prescription camera navigation available in the fixture without performing the action.
-          // Parameters:
-          // - None.
-          // Returns:
-          // - No value; the action is intentionally inert.
-          onPrescriptionScanRequested: () {},
-          // Function Name: onPrescriptionGalleryRequested callback
-          // Description:
-          // - Keep prescription gallery navigation available in the fixture without performing the action.
-          // Parameters:
-          // - None.
-          // Returns:
-          // - No value; the action is intentionally inert.
-          onPrescriptionGalleryRequested: () {},
           // 함수이름: onPillIdentificationRequested 콜백
           // 함수역할:
           // - 알약 식별 화면 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
@@ -2044,22 +1980,6 @@ InputPrescriptionUI _home({
     todayMedicationTotalCount: totalCount,
     nowProvider: nowProvider,
     onMedicationSlotStatusRequested: onMedicationSlotStatusRequested,
-    // Function Name: onPrescriptionScanRequested callback
-    // Description:
-    // - Keep prescription camera navigation available in the fixture without performing the action.
-    // Parameters:
-    // - None.
-    // Returns:
-    // - No value; the action is intentionally inert.
-    onPrescriptionScanRequested: () {},
-    // Function Name: onPrescriptionGalleryRequested callback
-    // Description:
-    // - Keep prescription gallery navigation available in the fixture without performing the action.
-    // Parameters:
-    // - None.
-    // Returns:
-    // - No value; the action is intentionally inert.
-    onPrescriptionGalleryRequested: () {},
     // 함수이름: onPillIdentificationRequested 콜백
     // 함수역할:
     // - 알약 식별 화면 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.

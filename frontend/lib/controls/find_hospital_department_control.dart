@@ -22,11 +22,18 @@ class FindHospitalDepartment {
       '고혈압',
       '당뇨',
       '독감',
+      '열나',
+      '고열',
+      '메스꺼',
+      '토했',
+      '토해',
       'cough',
+      'coughing',
       'cold',
       'flu',
       'fever',
       'stomach',
+      'stomachache',
       'diarrhea',
       'diabetes',
     ],
@@ -38,8 +45,6 @@ class FindHospitalDepartment {
       '비염',
       '축농증',
       '목감기',
-      '목아',
-      '목이아',
       '인후통',
       '편도',
       '중이염',
@@ -47,11 +52,13 @@ class FindHospitalDepartment {
       '귀가아',
       '이명',
       '난청',
+      '코피',
       'ent',
       'cough',
       'cold',
       'throat',
       'earache',
+      'ear pain',
       'rhinitis',
       'runny nose',
     ],
@@ -89,6 +96,8 @@ class FindHospitalDepartment {
       '손목',
       '발목',
       '정형',
+      '다리아',
+      '다리가아',
       'knee',
       'shoulder',
       'back pain',
@@ -109,19 +118,19 @@ class FindHospitalDepartment {
       'skin',
       'rash',
       'itch',
+      'itchy',
       'acne',
       'eczema',
     ],
     'D026': [
       '치아',
       '치통',
-      '이아파',
-      '이가아파',
       '잇몸',
       '충치',
       '사랑니',
       'tooth',
       'teeth',
+      'toothache',
       'gum',
       'dentist',
     ],
@@ -147,10 +156,25 @@ class FindHospitalDepartment {
       '질염',
       '갱년기',
       'pregnancy',
+      'pregnant',
       'menstrual',
       'gynecology',
     ],
-    'D003': ['두통', '편두통', '손저림', '발저림', '떨림', 'headache', 'migraine', 'tremor'],
+    'D003': [
+      '두통',
+      '편두통',
+      '머리아',
+      '머리가아',
+      '어지러',
+      '손저림',
+      '발저림',
+      '떨림',
+      'headache',
+      'headaches',
+      'migraine',
+      'tremor',
+      'dizzy',
+    ],
     'D004': [
       '불면',
       '잠이안',
@@ -159,8 +183,10 @@ class FindHospitalDepartment {
       '불안',
       '공황',
       '스트레스',
+      '정신과',
       'insomnia',
       'depression',
+      'depressed',
       'anxiety',
       'panic',
     ],
@@ -171,6 +197,7 @@ class FindHospitalDepartment {
       '요로',
       '배뇨',
       '혈뇨',
+      '비뇨의학과',
       'urination',
       'bladder',
       'prostate',
@@ -181,16 +208,31 @@ class FindHospitalDepartment {
     'D017': ['통증클리닉', '만성통증', 'pain clinic', 'chronic pain'],
   };
 
-  static String _normalize(String value) =>
-      value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9가-힣ㄱ-ㅎ]'), '');
+  // 앞말에 붙은 '많이 아파', '손목 아파', '아이가 아파'를 치아·목 증상으로 읽지 않게 어절 첫머리에서만 찾는다.
+  static const _wordStartTerms = <String, List<String>>{
+    'D026': ['이아파', '이가아파'],
+    'D013': ['목아', '목이아'],
+  };
 
-  static bool _containsTerm(String query, String term) =>
-      RegExp(r'^[a-z ]+$', caseSensitive: false).hasMatch(term)
-      ? RegExp(
+  static final _ignoredCharacters = RegExp(r'[^a-z0-9가-힣ㄱ-ㅎ]');
+  static final _asciiTerm = RegExp(r'^[a-z ]+$', caseSensitive: false);
+  // 입력할 때마다 호출되므로 한 번 만든 패턴은 다시 컴파일하지 않는다.
+  static final _patterns = <String, RegExp>{};
+
+  static String _normalize(String value) =>
+      value.toLowerCase().replaceAll(_ignoredCharacters, '');
+
+  static bool _containsTerm(String query, String normalized, String term) =>
+      _asciiTerm.hasMatch(term)
+      ? (_patterns[term] ??= RegExp(
           '\\b${term.split(' ').map(RegExp.escape).join(r'\s+')}\\b',
           caseSensitive: false,
-        ).hasMatch(query)
-      : _normalize(query).contains(_normalize(term));
+        )).hasMatch(query)
+      : normalized.contains(term);
+
+  static bool _startsWord(String query, String term) => (_patterns[term] ??=
+          RegExp('(?:^|\\s)${term.split('').join(r'\s*')}'))
+      .hasMatch(query);
 
   // 한 증상을 한 진료과로 확정하지 않고 명칭 일치·연관 표현 순으로 여러 결과를 반환한다.
   static List<String> search(
@@ -199,6 +241,9 @@ class FindHospitalDepartment {
   ) {
     final normalized = _normalize(query);
     if (normalized.isEmpty) return [];
+    if (needsUrgentHelp(query)) {
+      return departments.containsKey('D024') ? ['D024'] : [];
+    }
     final scores = <String, int>{};
     for (final entry in departments.entries) {
       if (entry.key.isEmpty) continue;
@@ -207,17 +252,18 @@ class FindHospitalDepartment {
         final name = _normalize(label);
         if (name == normalized) {
           score = 1000;
-        } else if (name.contains(normalized) || _containsTerm(query, label)) {
+        } else if (name.contains(normalized) ||
+            _containsTerm(query, normalized, label)) {
           score = score < 100 ? 100 : score;
         }
       }
       for (final term in _terms[entry.key] ?? const <String>[]) {
-        if (_containsTerm(query, term)) score += 10;
+        if (_containsTerm(query, normalized, term)) score += 10;
+      }
+      for (final term in _wordStartTerms[entry.key] ?? const <String>[]) {
+        if (_startsWord(query, term)) score += 10;
       }
       if (score > 0) scores[entry.key] = score;
-    }
-    if (needsUrgentHelp(query)) {
-      return departments.containsKey('D024') ? ['D024'] : [];
     }
     return scores.keys.toList()..sort((a, b) {
       final score = scores[b]!.compareTo(scores[a]!);
@@ -231,13 +277,31 @@ class FindHospitalDepartment {
     return [
       '숨을못쉬',
       '숨못쉬',
+      '숨이안쉬',
+      '숨쉬기힘들',
+      '숨쉬기어렵',
+      '숨을쉴수없',
+      '호흡곤란',
       '의식없',
       '의식이없',
-      '심한가슴통증',
-      'severechestpain',
+      '의식을잃',
+      '의식불명',
+      '쓰러졌',
+      '가슴통증',
+      '가슴이아파',
+      '가슴이너무아파',
+      '가슴이심하게',
+      '뇌졸중',
+      '심근경색',
+      '응급실',
+      'chestpain',
+      'heartattack',
       'cannotbreathe',
       'cantbreathe',
+      'notbreathing',
+      'troublebreathing',
       'unconscious',
+      'passedout',
     ].any(text.contains);
   }
 }

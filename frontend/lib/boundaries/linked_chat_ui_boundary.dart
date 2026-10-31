@@ -799,10 +799,13 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       if (plan.status != ChatDosePlanStatus.ready) {
         if (mounted) {
           setState(
-            () => _sendErrorMessage =
-                plan.status == ChatDosePlanStatus.scheduleChanged
-                ? _text.selectionScheduleChanged
-                : _text.noConfirmableSchedule,
+            () => _sendErrorMessage = switch (plan.status) {
+              ChatDosePlanStatus.scheduleChanged =>
+                _text.selectionScheduleChanged,
+              ChatDosePlanStatus.asNeededSelected =>
+                _text.asNeededNotRecordable,
+              _ => _text.noConfirmableSchedule,
+            },
           );
         }
         return;
@@ -1189,30 +1192,33 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       _configuration.patientHash.isNotEmpty;
 
   // 진입 직전에도 현재 대화의 삭제·연동 상태를 확인하며 최신 자료의 권한은 이력 API가 검증한다.
-  Future<void> _openMedicationHistory(ChatMessage message) async {
-    if (!mounted || !_isChatVisible || !_canOpenMedicationHistory) return;
+  ChatMessage? _openableCard(ChatMessage message) {
+    if (!_isChatVisible || !_canOpenMedicationHistory) return null;
     final current = _messages
         .where((item) => item.messageId == message.messageId)
         .firstOrNull;
-    final history = current?.historyContext;
-    if (current == null ||
-        current.hiddenForMe ||
-        current.deletedForEveryone ||
-        history == null) {
-      return;
-    }
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => MedicationHistoryUI(
-          patientHash: _configuration.patientHash,
-          readOnly: true,
-          isEnglish: _configuration.userSetting.isEnglish,
-          sharedRange: MedicationHistoryRange(
-            history.startDate,
-            history.endDate,
+    return current == null || current.hiddenForMe || current.deletedForEveryone
+        ? null
+        : current;
+  }
+
+  Future<void> _openSharedHistory(MedicationHistoryRange range) =>
+      Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => MedicationHistoryUI(
+            patientHash: _configuration.patientHash,
+            readOnly: true,
+            isEnglish: _configuration.userSetting.isEnglish,
+            sharedRange: range,
           ),
         ),
-      ),
+      );
+
+  Future<void> _openMedicationHistory(ChatMessage message) async {
+    final history = _openableCard(message)?.historyContext;
+    if (history == null) return;
+    await _openSharedHistory(
+      MedicationHistoryRange(history.startDate, history.endDate),
     );
   }
 
@@ -1272,15 +1278,13 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   // - schedule (ChatScheduleContext): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _openPatientSchedule(ChatMessage message) async {
-    if (!_isChatVisible || !_canOpenMedicationHistory) return;
-    final schedule = message.scheduleContext;
-    if (schedule == null) return;
-    final day = DateTime.tryParse(schedule.scheduleDate);
-    if (day == null) return;
-    final today = MedicationHistoryDates.today(DateTime.now());
+    final current = _openableCard(message);
+    final schedule = current?.scheduleContext;
+    final day = schedule == null ? null : _readableScheduleDay(schedule);
+    if (current == null || schedule == null || day == null) return;
     if (_isPatient &&
-        message.messageKind == ChatMessageKind.slotCheckRequest &&
-        DateUtils.isSameDay(day, today)) {
+        current.messageKind == ChatMessageKind.slotCheckRequest &&
+        day == MedicationHistoryDates.today(DateTime.now())) {
       await Navigator.of(context).push<void>(
         MaterialPageRoute(
           builder: (_) => CheckScheduleUI(initialSlotKey: schedule.slotKey),
@@ -1288,21 +1292,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       );
       return;
     }
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        // 함수이름: _openPatientSchedule.builder callback
-        // 함수역할: 연동 사용자 메시지와 복약 관련 첨부에 현재 부모의 레이아웃 제약을 적용해 현재 배치를 구성한다.
-        // 매개변수:
-        // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
-        // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-        builder: (_) => MedicationHistoryUI(
-          patientHash: _configuration.patientHash,
-          readOnly: true,
-          isEnglish: _configuration.userSetting.isEnglish,
-          sharedRange: MedicationHistoryRange(day, day),
-        ),
-      ),
-    );
+    await _openSharedHistory(MedicationHistoryRange(day, day));
   }
 
   // 함수이름: _openMedicationDetail
@@ -2538,11 +2528,9 @@ class _ScheduleContextSelector extends StatelessWidget {
 // - 부모가 전달한 표시값과 동작을 반영해 메시지에 첨부된 일정 요약 위젯을 구성한다.
 // 속성:
 // - schedule (ChatScheduleContext): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-// - isMine (bool): 현재 사용자가 보낸 메시지인지 여부.
 // - onPressed (VoidCallback?): 해당 항목의 명시된 주 동작을 실행할 콜백.
 class _MessageScheduleContext extends StatelessWidget {
   final ChatScheduleContext schedule;
-  final bool isMine;
   final _LinkedChatText text;
   final VoidCallback? onPressed;
 
@@ -2550,13 +2538,11 @@ class _MessageScheduleContext extends StatelessWidget {
   // 함수역할: 메시지에 첨부된 일정 요약에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - schedule (ChatScheduleContext): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-  // - isMine (bool): 현재 사용자가 보낸 메시지인지 여부.
   // - text (_LinkedChatText): 해당 화면 구역의 언어별 표시 문구.
   // - onPressed (VoidCallback?): 해당 항목의 명시된 주 동작을 실행할 콜백.
   // 반환값: 입력 설정이 반영된 _MessageScheduleContext 인스턴스.
   const _MessageScheduleContext({
     required this.schedule,
-    required this.isMine,
     required this.text,
     this.onPressed,
   });
@@ -2710,11 +2696,9 @@ class _ScheduleSummaryContent extends StatelessWidget {
 // - 부모가 전달한 표시값과 동작을 반영해 약 부족 알림과 약국 찾기 동작 위젯을 구성한다.
 // 속성:
 // - message (ChatMessage): 본문·발신자·시각·읽음 상태·첨부를 담은 메시지.
-// - isMine (bool): 현재 사용자가 보낸 메시지인지 여부.
 // - onFindPharmacyRequested (VoidCallback): 주변 약국 검색을 여는 콜백.
 class _MedicationShortageContext extends StatelessWidget {
   final ChatMessage message;
-  final bool isMine;
   final _LinkedChatText text;
   final VoidCallback onFindPharmacyRequested;
   final VoidCallback onFindHospitalRequested;
@@ -2723,13 +2707,11 @@ class _MedicationShortageContext extends StatelessWidget {
   // 함수역할: 약 부족 알림과 약국 찾기 동작에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - message (ChatMessage): 본문·발신자·시각·읽음 상태·첨부를 담은 메시지.
-  // - isMine (bool): 현재 사용자가 보낸 메시지인지 여부.
   // - text (_LinkedChatText): 해당 화면 구역의 언어별 표시 문구.
   // - onFindPharmacyRequested (VoidCallback): 주변 약국 검색을 여는 콜백.
   // 반환값: 입력 설정이 반영된 _MedicationShortageContext 인스턴스.
   const _MedicationShortageContext({
     required this.message,
-    required this.isMine,
     required this.text,
     required this.onFindPharmacyRequested,
     required this.onFindHospitalRequested,
@@ -2790,18 +2772,15 @@ class _MedicationShortageContext extends StatelessWidget {
 // 주요 책임:
 // - 부모가 전달한 표시값과 동작을 반영해 복약 대화의 안전 안내 문구 위젯을 구성한다.
 // 속성:
-// - isMine (bool): 현재 사용자가 보낸 메시지인지 여부.
 class _MedicationSafetyGuidance extends StatelessWidget {
-  final bool isMine;
   final _LinkedChatText text;
 
   // 함수이름: _MedicationSafetyGuidance
   // 함수역할: 복약 대화의 안전 안내 문구에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
-  // - isMine (bool): 현재 사용자가 보낸 메시지인지 여부.
   // - text (_LinkedChatText): 해당 화면 구역의 언어별 표시 문구.
   // 반환값: 입력 설정이 반영된 _MedicationSafetyGuidance 인스턴스.
-  const _MedicationSafetyGuidance({required this.isMine, required this.text});
+  const _MedicationSafetyGuidance({required this.text});
 
   // 함수이름: build
   // 함수역할: 현재 입력값과 상태를 반영해 복약 대화의 안전 안내 문구 화면을 구성한다.
@@ -2847,12 +2826,10 @@ class _MedicationSafetyGuidance extends StatelessWidget {
 // - 부모가 전달한 표시값과 동작을 반영해 메시지에 공유된 약국과 전화 확인 상태 위젯을 구성한다.
 // 속성:
 // - pharmacy (ChatPharmacyContext): 표시하거나 전화·길찾기·공유할 약국.
-// - isMine (bool): 현재 사용자가 보낸 메시지인지 여부.
 // - phoneVerified (bool): 사용자가 전화로 운영 여부를 확인했는지 여부.
 // - onCallRequested (VoidCallback): 해당 약국으로 전화 연결을 요청할 콜백.
 class _MessagePharmacyContext extends StatelessWidget {
   final ChatPlaceContext pharmacy;
-  final bool isMine;
   final bool phoneVerified;
   final _LinkedChatText text;
   final VoidCallback onCallRequested;
@@ -2863,7 +2840,6 @@ class _MessagePharmacyContext extends StatelessWidget {
   // 함수역할: 메시지에 공유된 약국과 전화 확인 상태에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - pharmacy (ChatPharmacyContext): 표시하거나 전화·길찾기·공유할 약국.
-  // - isMine (bool): 현재 사용자가 보낸 메시지인지 여부.
   // - phoneVerified (bool): 사용자가 전화로 운영 여부를 확인했는지 여부.
   // - text (_LinkedChatText): 해당 화면 구역의 언어별 표시 문구.
   // - onCallRequested (VoidCallback): 해당 약국으로 전화 연결을 요청할 콜백.
@@ -2871,7 +2847,6 @@ class _MessagePharmacyContext extends StatelessWidget {
   // 반환값: 입력 설정이 반영된 _MessagePharmacyContext 인스턴스.
   const _MessagePharmacyContext({
     required this.pharmacy,
-    required this.isMine,
     required this.phoneVerified,
     required this.text,
     required this.onCallRequested,
@@ -3178,12 +3153,10 @@ class _SelectedMedicationContext extends StatelessWidget {
 // - 부모가 전달한 표시값과 동작을 반영해 메시지에 첨부된 약품 상세 진입 위젯을 구성한다.
 // 속성:
 // - medication (ChatMedicationContext): 표시·변환·저장·비교할 약품 데이터.
-// - isMine (bool): 현재 사용자가 보낸 메시지인지 여부.
 // - isLoading (bool): 진행 중 표시를 보여줄지 여부.
 // - onPressed (VoidCallback?): 해당 항목의 명시된 주 동작을 실행할 콜백.
 class _MessageMedicationContext extends StatelessWidget {
   final ChatMedicationContext medication;
-  final bool isMine;
   final bool isLoading;
   final _LinkedChatText text;
   final VoidCallback? onPressed;
@@ -3192,14 +3165,12 @@ class _MessageMedicationContext extends StatelessWidget {
   // 함수역할: 메시지에 첨부된 약품 상세 진입에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - medication (ChatMedicationContext): 표시·변환·저장·비교할 약품 데이터.
-  // - isMine (bool): 현재 사용자가 보낸 메시지인지 여부.
   // - isLoading (bool): 진행 중 표시를 보여줄지 여부.
   // - text (_LinkedChatText): 해당 화면 구역의 언어별 표시 문구.
   // - onPressed (VoidCallback?): 해당 항목의 명시된 주 동작을 실행할 콜백.
   // 반환값: 입력 설정이 반영된 _MessageMedicationContext 인스턴스.
   const _MessageMedicationContext({
     required this.medication,
-    required this.isMine,
     required this.isLoading,
     required this.text,
     required this.onPressed,
@@ -3381,16 +3352,26 @@ class _ChatContentHeading extends StatelessWidget {
   );
 }
 
+// 일정 카드의 날짜를 기록 달력 날짜로 읽는다. 기록은 최근 90일만 열 수 있으므로 그 밖의 날짜는 null이다.
+DateTime? _readableScheduleDay(ChatScheduleContext schedule) {
+  final parsed = DateTime.tryParse(schedule.scheduleDate);
+  if (parsed == null) return null;
+  final day = MedicationHistoryDates.day(parsed);
+  final today = MedicationHistoryDates.today(DateTime.now());
+  return day.isBefore(MedicationHistoryDates.earliest(today)) ||
+          day.isAfter(today)
+      ? null
+      : day;
+}
+
 // 공유 당시 집계는 읽기 전용으로 표시하고 최신 기록 이동만 제공한다.
 class _MessageMedicationHistoryContext extends StatelessWidget {
   final ChatMedicationHistoryContext history;
-  final bool isMine;
   final _LinkedChatText text;
   final VoidCallback? onPressed;
 
   const _MessageMedicationHistoryContext({
     required this.history,
-    required this.isMine,
     required this.text,
     required this.onPressed,
   });
@@ -3474,7 +3455,6 @@ class _MessageMedicationHistoryContext extends StatelessWidget {
                         asNeeded: history.asNeededTakenCount ?? 0,
                       ),
                       isEnglish: text.isEnglish,
-                      inverse: false,
                       showAsNeeded: history.hasScheduledCounts,
                     ),
                   ],
@@ -3631,7 +3611,6 @@ class _MessageBubble extends StatelessWidget {
             if (message.historyContext != null) ...[
               _MessageMedicationHistoryContext(
                 history: message.historyContext!,
-                isMine: isMine,
                 text: text,
                 onPressed: onHistoryPressed == null
                     ? null
@@ -3642,7 +3621,6 @@ class _MessageBubble extends StatelessWidget {
             for (final medication in message.attachedMedicationContexts) ...[
               _MessageMedicationContext(
                 medication: medication,
-                isMine: isMine,
                 isLoading: medication.medicationId == loadingMedicationId,
                 text: text,
                 onPressed: loadingMedicationId != null
@@ -3659,14 +3637,10 @@ class _MessageBubble extends StatelessWidget {
             if (message.scheduleContext != null) ...[
               _MessageScheduleContext(
                 schedule: message.scheduleContext!,
-                isMine: isMine,
                 text: text,
                 onPressed:
                     onSchedulePressed == null ||
-                        DateTime.tryParse(
-                              message.scheduleContext!.scheduleDate,
-                            ) ==
-                            null
+                        _readableScheduleDay(message.scheduleContext!) == null
                     ? null
                     // 함수이름: build.onPressed callback
                     // 함수역할: 발신자 구분·메시지 시각·텍스트·첨부 본문의 캡처된 상태에서 `onSchedulePressed!(message.scheduleContext!)` 값을 제공한다.
@@ -3680,7 +3654,6 @@ class _MessageBubble extends StatelessWidget {
             if (message.pharmacyContext != null) ...[
               _MessagePharmacyContext(
                 pharmacy: message.pharmacyContext!,
-                isMine: isMine,
                 phoneVerified:
                     message.messageKind ==
                     ChatMessageKind.pharmacyPhoneVerified,
@@ -3706,7 +3679,6 @@ class _MessageBubble extends StatelessWidget {
             if (message.hospitalContext != null) ...[
               _MessagePharmacyContext(
                 pharmacy: message.hospitalContext!,
-                isMine: isMine,
                 phoneVerified: false,
                 text: text,
                 onCallRequested: () =>
@@ -3721,7 +3693,6 @@ class _MessageBubble extends StatelessWidget {
                 message.attachedMedicationContexts.isNotEmpty) ...[
               _MedicationShortageContext(
                 message: message,
-                isMine: isMine,
                 text: text,
                 // 함수이름: build.onFindPharmacyRequested callback
                 // 함수역할: 메시지에 첨부된 약 목록을 유지하며 약국 검색을 연다.
@@ -3747,7 +3718,7 @@ class _MessageBubble extends StatelessWidget {
             ),
             if (message.showSafetyGuidance) ...[
               const SizedBox(height: 8),
-              _MedicationSafetyGuidance(isMine: isMine, text: text),
+              _MedicationSafetyGuidance(text: text),
               const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: () =>
@@ -3887,6 +3858,9 @@ class _LinkedChatText {
   }
 
   String get medicationHistory => isEnglish ? 'Medication history' : '복약 기록';
+  String get asNeededNotRecordable => isEnglish
+      ? 'Record as-needed doses from the schedule, then try again without them.'
+      : '필요시 약은 일정의 필요시 복용에서 기록하고, 선택에서 뺀 뒤 다시 시도해 주세요.';
   String get copyMessage => isEnglish ? 'Copy' : '복사';
   String get messageCopied => isEnglish ? 'Message copied.' : '메시지를 복사했어요.';
   String get copyFailed =>

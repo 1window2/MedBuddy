@@ -305,17 +305,17 @@ void main() {
           chooseDepartment: false,
         );
         expect(control.requests, isEmpty);
-        final panel = tester.widget<Container>(
+        final panel = tester.widget<Material>(
           find
               .descendant(
                 of: find.byKey(const Key('hospital-department-panel')),
-                matching: find.byType(Container),
+                matching: find.byType(Material),
               )
               .first,
         );
-        final decoration = panel.decoration! as BoxDecoration;
-        expect(decoration.borderRadius, BorderRadius.circular(16));
-        expect(decoration.border, isNotNull);
+        final shape = panel.shape! as RoundedRectangleBorder;
+        expect(shape.borderRadius, BorderRadius.circular(16));
+        expect(shape.side, isNot(BorderSide.none));
         expect(find.byType(MedBuddySearchField), findsOneWidget);
         expect(
           find.text(language == 'ko' ? '진료과목 선택' : 'Select specialty'),

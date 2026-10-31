@@ -16,7 +16,6 @@ import '../theme/medbuddy_theme.dart';
 // 주요 책임:
 // - 처방전·한 장의 여러 알약·개별 알약·직접 입력을 구분한다.
 enum MedicationCaptureTask {
-  prescription,
   multiplePills,
   individualPills,
   manual,
@@ -33,156 +32,96 @@ enum PillCaptureMode { singlePhoto, individualPhotos }
 enum PrescriptionImageSource { camera, gallery }
 
 // 함수이름: showMedicationCaptureTaskOptions
-// 함수역할: 처방전 분석, 낱알약 식별, 직접 등록 중 수행할 작업을 선택하는 공통 하단 시트를 표시한다.
+// 함수역할: 약봉투·처방전, 낱알약 식별, 직접 등록 중 하나를 고르는 약 등록 화면을 연다.
 // 매개변수:
 // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
 // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-// 반환값: Future<MedicationCaptureTask?>: 선택한 분석·직접 입력 작업; 취소 시 null.
-Future<MedicationCaptureTask?> showMedicationCaptureTaskOptions({
+// - onTaskSelected: 등록 화면을 유지한 채 고른 낱알약·직접 등록 작업을 시작한다.
+// - onSourceSelected: 등록 화면을 유지한 채 고른 사진 출처로 처방전 인식을 시작한다.
+// 반환값: 등록 화면이 닫히면 완료되는 Future<void>.
+Future<void> showMedicationCaptureTaskOptions({
   required BuildContext context,
   required UserSetting userSetting,
-  Future<void> Function(BuildContext, MedicationCaptureTask)? onTaskSelected,
-  Future<void> Function(BuildContext, PrescriptionImageSource)?
+  required Future<void> Function(BuildContext, MedicationCaptureTask)
+  onTaskSelected,
+  required Future<void> Function(BuildContext, PrescriptionImageSource)
   onSourceSelected,
 }) {
   final text = _MedicationCaptureText(userSetting.language);
   var opening = false;
+  // 선택 창이나 다음 화면을 여는 동안 다른 항목을 함께 열지 않는다.
+  Future<void> open(Future<void> Function() action) async {
+    if (opening) return;
+    opening = true;
+    try {
+      await action();
+    } finally {
+      opening = false;
+    }
+  }
 
-  return Navigator.of(context).push<MedicationCaptureTask>(
+  return Navigator.of(context).push<void>(
     MaterialPageRoute(
-      // 함수이름: showMedicationCaptureTaskOptions.builder callback
-      // 함수역할: 약 정보 분석 작업과 처방전 이미지 출처 선택에 SizedBox을 적용해 현재 배치를 구성한다.
-      // 매개변수:
-      // - sheetContext (BuildContext): 현재 대화상자·하단 시트의 화면 종료와 테마 참조 위치.
-      // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-      builder: (sheetContext) {
-        return StatefulBuilder(
-          // 함수역할: 같은 시트 안에서 작업 선택과 알약 촬영 방식 선택을 전환한다.
-          // 매개변수: sheetContext, setSheetState. 반환값: 현재 단계의 선택지.
-          builder: (sheetContext, setSheetState) => PopScope<MedicationCaptureTask>(
-            canPop: true,
-            // 함수역할: 시스템 뒤로 가기도 시트를 닫기 전에 이전 단계로 이동한다.
-            // 매개변수: didPop, result. 반환값: 없음.
-            onPopInvokedWithResult: (didPop, result) {},
-            child: Scaffold(
-              key: const Key('medication-registration-page'),
-              body: Column(
+      builder: (pageContext) => Scaffold(
+        key: const Key('medication-registration-page'),
+        body: Column(
+          children: [
+            MedBuddyPageHeader(
+              title: text.isEnglish ? 'Add medication' : '약 등록',
+              subtitle: text.isEnglish
+                  ? 'Choose how to add your medication.'
+                  : '약을 등록할 방법을 선택합니다.',
+              onBackRequested: () => Navigator.pop(pageContext),
+            ),
+            Expanded(
+              child: MedBuddyOptionSheet(
+                showHandle: false,
                 children: [
-                  MedBuddyPageHeader(
-                    title: text.isEnglish ? 'Add medication' : '약 등록',
-                    subtitle: text.isEnglish
-                        ? 'Choose how to add your medication.'
-                        : '약을 등록할 방법을 선택합니다.',
-                    onBackRequested: () {
-                      Navigator.pop(sheetContext);
-                    },
+                  MedBuddyOptionTile(
+                    icon: Icons.document_scanner_outlined,
+                    title: text.prescriptionTask,
+                    subtitle: text.prescriptionTaskSubtitle,
+                    onTap: () => open(() async {
+                      final source = await showPrescriptionImageSourceOptions(
+                        context: pageContext,
+                        userSetting: userSetting,
+                      );
+                      if (!pageContext.mounted || source == null) return;
+                      await onSourceSelected(pageContext, source);
+                    }),
                   ),
-                  Expanded(
-                    child: MedBuddyOptionSheet(
-                      showHandle: false,
-                      children: [
-                        MedBuddyOptionTile(
-                          icon: Icons.document_scanner_outlined,
-                          title: text.prescriptionTask,
-                          subtitle: text.prescriptionTaskSubtitle,
-                          // 함수이름: showMedicationCaptureTaskOptions.onTap callback
-                          // 함수역할: `Navigator.pop(sheetContext, MedicationCaptureTask.prescription)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-                          // 매개변수:
-                          // - 없음.
-                          // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-                          onTap: () async {
-                            if (opening) return;
-                            opening = true;
-                            try {
-                              if (onSourceSelected == null) {
-                                Navigator.pop(
-                                  sheetContext,
-                                  MedicationCaptureTask.prescription,
-                                );
-                                return;
-                              }
-                              final source =
-                                  await showPrescriptionImageSourceOptions(
-                                    context: sheetContext,
-                                    userSetting: userSetting,
-                                  );
-                              if (!sheetContext.mounted || source == null) {
-                                return;
-                              }
-                              await onSourceSelected(sheetContext, source);
-                            } finally {
-                              opening = false;
-                            }
-                          },
-                        ),
-                        const SizedBox(height: 10),
-                        MedBuddyOptionTile(
-                          icon: Icons.image_search_outlined,
-                          title: text.pillTask,
-                          subtitle: text.pillTaskSubtitle,
-                          // 함수이름: showMedicationCaptureTaskOptions.onTap callback
-                          // 함수역할: 시트를 겹치지 않고 알약 촬영 방식 두 가지를 표시한다.
-                          // 매개변수:
-                          // - 없음.
-                          // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-                          onTap: () async {
-                            if (opening) return;
-                            opening = true;
-                            try {
-                              final task = await showPillCaptureModeOptions(
-                                sheetContext,
-                                text.isEnglish,
-                              );
-                              if (!sheetContext.mounted || task == null) return;
-                              if (onTaskSelected != null) {
-                                await onTaskSelected(sheetContext, task);
-                              } else {
-                                Navigator.pop(sheetContext, task);
-                              }
-                            } finally {
-                              opening = false;
-                            }
-                          },
-                        ),
-                        const SizedBox(height: 10),
-                        MedBuddyOptionTile(
-                          icon: Icons.add_circle_outline,
-                          title: text.manualTask,
-                          subtitle: text.manualTaskSubtitle,
-                          // 함수이름: showMedicationCaptureTaskOptions.onTap callback
-                          // 함수역할: `Navigator.pop(sheetContext, MedicationCaptureTask.manual)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
-                          // 매개변수:
-                          // - 없음.
-                          // 반환값: 콜백 결과는 없으며 선택값은 화면 종료 결과로 전달한다.
-                          onTap: () async {
-                            if (opening) return;
-                            opening = true;
-                            try {
-                              if (onTaskSelected != null) {
-                                await onTaskSelected(
-                                  sheetContext,
-                                  MedicationCaptureTask.manual,
-                                );
-                              } else {
-                                Navigator.pop(
-                                  sheetContext,
-                                  MedicationCaptureTask.manual,
-                                );
-                              }
-                            } finally {
-                              opening = false;
-                            }
-                          },
-                        ),
-                      ],
+                  const SizedBox(height: 10),
+                  MedBuddyOptionTile(
+                    icon: Icons.image_search_outlined,
+                    title: text.pillTask,
+                    subtitle: text.pillTaskSubtitle,
+                    onTap: () => open(() async {
+                      final task = await showPillCaptureModeOptions(
+                        pageContext,
+                        text.isEnglish,
+                      );
+                      if (!pageContext.mounted || task == null) return;
+                      await onTaskSelected(pageContext, task);
+                    }),
+                  ),
+                  const SizedBox(height: 10),
+                  MedBuddyOptionTile(
+                    icon: Icons.add_circle_outline,
+                    title: text.manualTask,
+                    subtitle: text.manualTaskSubtitle,
+                    onTap: () => open(
+                      () => onTaskSelected(
+                        pageContext,
+                        MedicationCaptureTask.manual,
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-        );
-      },
+          ],
+        ),
+      ),
     ),
   );
 }

@@ -10,7 +10,7 @@
 
 - [Read the Korean user guide on GitHub](docs/user-guide/README.md).
 - [Open the illustrated Korean PDF guide](docs/user-guide/MedBuddy_User_Guide_ko.pdf).
-- The guide covers the v0.2.3 beta interface; its text was brought up to the v0.2.4 line on 2026-10-21 while the PDF and screenshots still await a rebuild. [Capture and version notes](docs/user-guide/SOURCE_NOTES.md) list what changed.
+- The guide follows the v0.2.5 development line; part of its screenshots still show earlier versions. [Capture and version notes](docs/user-guide/SOURCE_NOTES.md) list what changed.
 
 ## Key Features
 
@@ -84,7 +84,7 @@
 
 ## Roadmap
 
-1. **v0.2.4 exhibition line and carried-over verification:** v0.2.3-beta is published as a limited off-Play pre-release; v0.2.4 prepares the app for the graduation exhibition (2026-11-26 to 11-27) and is to be finished by 2026-11-20. Remaining physical reboot/offline recovery, two-device caregiver/chat checks, and measured recognition validation are tracked in the [release TODO](docs/TODO.md).
+1. **v0.2.5 usability line and carried-over verification:** v0.2.4-beta is published as a limited off-Play pre-release; v0.2.5 makes existing features easier to find and prepares the app for the graduation exhibition (2026-11-26 to 11-27) and is to be finished by 2026-11-20. Remaining physical reboot/offline recovery, two-device caregiver/chat checks, and measured recognition validation are tracked in the [release TODO](docs/TODO.md).
 2. **Android production verification:** Validate the dedicated
    FastAPI/PostgreSQL/Redis production host behind Cloudflare Tunnel, complete
    backup and restore rehearsal, and finish authenticated two-device, Wi-Fi,

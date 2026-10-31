@@ -189,7 +189,6 @@ void main() {
             counts: MedicationHistoryChartCounts(taken: count, unrecorded: 876),
             compact: compact,
             isEnglish: false,
-            toggleEnabled: true,
           ),
           width: 320,
           textScale: 2,

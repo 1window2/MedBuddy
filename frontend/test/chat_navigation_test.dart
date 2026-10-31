@@ -1035,8 +1035,6 @@ void main() {
               ),
               child: InputPrescriptionUI(
                 userSetting: UserSetting(language: language),
-                onPrescriptionScanRequested: _noop,
-                onPrescriptionGalleryRequested: _noop,
                 onTodayScheduleRequested: _noop,
                 // 함수역할: 선택한 알약 촬영 방식을 받고 실제 탐색은 생략한다.
                 // 매개변수: mode. 반환값: 없음.

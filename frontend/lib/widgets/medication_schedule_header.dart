@@ -16,9 +16,9 @@ import 'medbuddy_page_header.dart';
 //   - subtitle : 제목 아래 한 줄 부제목; null이면 제목만 표시한다 (String?)
 //   - onBack : 뒤로가기 콜백; null이면 버튼 대신 12px 여백을 둔다 (VoidCallback?)
 //   - backTooltip : 뒤로가기 버튼 안내 문구 (String?)
-//   - historyKey : 복용 기록 버튼의 위젯 키 (Key)
-//   - historyTooltip : 복용 기록 버튼 안내 문구 (String)
-//   - onHistory : 복용 기록 화면을 여는 콜백 (VoidCallback)
+//   - actionKey : 복용 기록 버튼의 위젯 키 (Key)
+//   - actionTooltip : 복용 기록 버튼 안내 문구 (String)
+//   - onAction : 복용 기록 화면을 여는 콜백 (VoidCallback)
 //   - progressLabel : 진행률 패널 제목 (String)
 //   - completedCount : 완료한 복약 횟수 (int)
 //   - totalCount : 예정된 전체 복약 횟수 (int)
@@ -27,9 +27,9 @@ class MedicationScheduleHeader extends StatelessWidget {
   final String? subtitle;
   final VoidCallback? onBack;
   final String? backTooltip;
-  final Key historyKey;
-  final String historyTooltip;
-  final VoidCallback onHistory;
+  final Key actionKey;
+  final String actionTooltip;
+  final VoidCallback onAction;
   final IconData actionIcon;
   final String progressLabel;
   final int completedCount;
@@ -43,9 +43,9 @@ class MedicationScheduleHeader extends StatelessWidget {
   // - subtitle (String?): 제목 아래 한 줄 부제목; null이면 표시하지 않는다.
   // - onBack (VoidCallback?): 뒤로가기 콜백; null이면 뒤로가기 버튼을 표시하지 않는다.
   // - backTooltip (String?): 뒤로가기 버튼 안내 문구.
-  // - historyKey (Key): 복용 기록 버튼의 위젯 키.
-  // - historyTooltip (String): 복용 기록 버튼 안내 문구.
-  // - onHistory (VoidCallback): 복용 기록 화면을 여는 콜백.
+  // - actionKey (Key): 복용 기록 버튼의 위젯 키.
+  // - actionTooltip (String): 복용 기록 버튼 안내 문구.
+  // - onAction (VoidCallback): 복용 기록 화면을 여는 콜백.
   // - progressLabel (String): 진행률 패널 제목.
   // - completedCount (int): 완료한 복약 횟수.
   // - totalCount (int): 예정된 전체 복약 횟수.
@@ -56,9 +56,9 @@ class MedicationScheduleHeader extends StatelessWidget {
     this.subtitle,
     this.onBack,
     this.backTooltip,
-    required this.historyKey,
-    required this.historyTooltip,
-    required this.onHistory,
+    required this.actionKey,
+    required this.actionTooltip,
+    required this.onAction,
     this.actionIcon = Icons.calendar_month_outlined,
     required this.progressLabel,
     required this.completedCount,
@@ -134,9 +134,9 @@ class MedicationScheduleHeader extends StatelessWidget {
                       ),
               ),
               IconButton(
-                key: historyKey,
-                tooltip: historyTooltip,
-                onPressed: onHistory,
+                key: actionKey,
+                tooltip: actionTooltip,
+                onPressed: onAction,
                 icon: Icon(actionIcon, color: Colors.white),
               ),
             ],

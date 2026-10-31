@@ -253,6 +253,26 @@ void main() {
       expect(plan.requests.last.medicationNames, ['저녁정', '테스트정']);
     });
 
+    // An as-needed medication has no slot; recording the rest would silently drop it.
+    test('a selection with an as-needed medication records nothing', () {
+      const asNeeded = ChatMedicationContext(
+        medicationId: 93,
+        medicationName: '진통제',
+        dosingMode: 'as_needed',
+      );
+      for (final selected in [
+        [asNeeded],
+        [
+          asNeeded,
+          _selected(91, '테스트정', ['evening']),
+        ],
+      ]) {
+        final plan = LinkedChatDoseRecorder.plan(selected, _day, contexts);
+        expect(plan.status, ChatDosePlanStatus.asNeededSelected);
+        expect(plan.requests, isEmpty);
+      }
+    });
+
     // A multi-slot medication selected for the evening only is not recorded for the morning.
     test('unselected slots of a selected medication are left out', () {
       final plan = LinkedChatDoseRecorder.plan(

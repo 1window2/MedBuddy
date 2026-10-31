@@ -689,11 +689,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(viewModel.isAllMedicationSaving, isFalse);
 
+    // 모두 저장한 결과는 사라질 내용이 없으므로 묻지 않고 나간다.
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    expect(find.text('분석 결과를 나갈까요?'), findsOneWidget);
-    await tester.tap(find.text('나가기'));
-    await tester.pumpAndSettle();
+    expect(find.text('분석 결과를 나갈까요?'), findsNothing);
     expect(viewModel.prescriptionFlowState, PrescriptionFlowState.idle);
   });
 

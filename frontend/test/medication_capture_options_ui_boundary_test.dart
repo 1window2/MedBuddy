@@ -31,12 +31,14 @@ void main() {
               builder: (context) => Scaffold(
                 body: TextButton(
                   onPressed: () async {
-                    selected = await showMedicationCaptureTaskOptions(
+                    await showMedicationCaptureTaskOptions(
                       context: context,
                       userSetting: UserSetting(
                         language: language,
                         fontSize: 20,
                       ),
+                      onTaskSelected: (_, task) async => selected = task,
+                      onSourceSelected: (_, _) async {},
                     );
                   },
                   child: const Text('Open'),
@@ -84,9 +86,10 @@ void main() {
               ? MedicationCaptureTask.multiplePills
               : MedicationCaptureTask.individualPills,
         );
+        // 등록 화면은 시작한 작업이 끝나 돌아올 수 있도록 남는다.
         expect(
           find.byKey(const Key('medication-registration-page')),
-          findsNothing,
+          findsOneWidget,
         );
         expect(tester.takeException(), isNull);
       });
