@@ -32,6 +32,8 @@ import 'package:medbuddy_frontend/viewmodels/medbuddy_feature_updates.dart';
 import 'package:medbuddy_frontend/views/home_screen.dart';
 import 'package:medbuddy_frontend/boundaries/feature_search_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/manual_medication_entry_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/medication_capture_options_ui_boundary.dart';
+import 'package:medbuddy_frontend/boundaries/pill_identification_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/link_patient_caregiver_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/check_caregiver_medication_ui_boundary.dart';
 
@@ -250,6 +252,7 @@ void main() {
       await tester.tap(find.byKey(const Key('feature-fontSize')));
       await tester.pumpAndSettle();
       expect(find.byType(FeatureSearchUI), findsNothing);
+      expect(find.byType(FeatureSearchUI, skipOffstage: false), findsOneWidget);
       expect(
         find.byKey(const ValueKey('fontSizeSelector')).hitTestable(),
         findsOneWidget,
@@ -259,14 +262,12 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('settingsBackButton')));
       await tester.pumpAndSettle();
-      await tester.tap(search);
-      await tester.pumpAndSettle();
       expect(
         tester
             .widget<TextField>(find.byKey(const Key('featureSearchInput')))
             .controller!
             .text,
-        isEmpty,
+        '글씨 크게',
       );
       await tester.enterText(
         find.byKey(const Key('featureSearchInput')),
@@ -274,11 +275,41 @@ void main() {
       );
       await tester.pump();
       await tester.tap(find.byKey(const Key('feature-manualMedication')));
+      await tester.pump();
+      expect(find.byType(FeatureSearchUI, skipOffstage: false), findsOneWidget);
       await tester.pumpAndSettle();
       expect(find.byType(ManualMedicationEntryUI), findsOneWidget);
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
-      await tester.tap(search);
+      expect(find.byType(FeatureSearchUI), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const Key('featureSearchInput')),
+        '처방전',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('feature-prescription')));
+      await tester.pumpAndSettle();
+      expect(find.byType(FeatureSearchUI), findsOneWidget);
+      expect(find.text('카메라로 촬영'), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('featureSearchInput')),
+        '알약 식별',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('feature-pillIdentification')));
+      await tester.pumpAndSettle();
+      expect(find.byType(FeatureSearchUI), findsOneWidget);
+      await tester.tap(find.text('알약 하나씩 찾기'));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<PillIdentificationUI>(find.byType(PillIdentificationUI))
+            .captureMode,
+        PillCaptureMode.individualPhotos,
+      );
+      await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const Key('featureSearchInput')),
@@ -288,6 +319,24 @@ void main() {
       await tester.tap(find.byKey(const Key('feature-chat')));
       await tester.pumpAndSettle();
       expect(find.byType(LinkPatientCaregiverUI), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('featureSearchInput')),
+        '오늘 먹을 약',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('feature-schedule')));
+      await tester.pumpAndSettle();
+      expect(find.byType(FeatureSearchUI), findsNothing);
+      expect(
+        tester
+            .widget<MedBuddyBottomNavigationUI>(
+              find.byType(MedBuddyBottomNavigationUI),
+            )
+            .selectedDestination,
+        MedBuddyDestination.schedule,
+      );
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
     });
@@ -343,6 +392,8 @@ void main() {
     final lookup = Completer<List<PatientCaregiverLink>>();
     links.pending = lookup;
     await chooseCaregiverSchedule();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
     await tester.tap(search);
     await tester.pumpAndSettle();
     lookup.complete([_link(1)]);
@@ -818,12 +869,26 @@ void main() {
     final header = tester.getRect(find.byType(MedBuddyPageHeader));
     final firstConversation = find.byType(ListTile).first;
     final conversation = tester.getRect(firstConversation);
-    expect(conversation.top - header.bottom, closeTo(4, 0.01));
+    expect(conversation.top - header.bottom, closeTo(20, 0.01));
     final tile = tester.widget<ListTile>(firstConversation);
     expect(
       tile.contentPadding,
-      const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
     );
+    final frame = tester.widget<Material>(
+      find.byKey(const ValueKey('chatConversationFrame-1')),
+    );
+    expect(
+      (frame.shape! as RoundedRectangleBorder).borderRadius,
+      MedBuddyRadii.largeCard,
+    );
+    final titleStyle = (tile.title! as Text).style!;
+    final previewStyle = ((tile.subtitle! as Padding).child! as Text).style!;
+    expect(titleStyle.fontSize, 17);
+    expect(titleStyle.fontWeight, FontWeight.w700);
+    expect(previewStyle.fontSize, 13);
+    expect(previewStyle.fontWeight, FontWeight.w600);
+    expect(previewStyle.color, MedBuddyColors.textMuted);
     await tester.tap(find.byKey(const ValueKey('chatConversation-2')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 350));
