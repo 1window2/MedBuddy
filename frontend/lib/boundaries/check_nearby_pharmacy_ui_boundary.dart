@@ -4,6 +4,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../controls/find_hospital_department_control.dart';
+import '../widgets/medbuddy_search_field.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/medbuddy_page_header.dart';
 import 'package:flutter/rendering.dart';
@@ -497,9 +499,9 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
         _lastRefreshedAt = _now();
       });
       if (sharedPlaceMissing) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_text.sharedPlaceMissing)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(_text.sharedPlaceMissing)));
       }
       if (expanded) {
         final radius = result.searchArea!.radiusKm;
