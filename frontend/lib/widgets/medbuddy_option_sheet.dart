@@ -13,6 +13,7 @@ import '../theme/medbuddy_theme.dart';
 // - children (List<Widget>): Options and headings shown below the handle.
 class MedBuddyOptionSheet extends StatelessWidget {
   final List<Widget> children;
+  final bool showHandle;
 
   // Function Name: MedBuddyOptionSheet
   // Description: Stores the sheet content.
@@ -20,7 +21,11 @@ class MedBuddyOptionSheet extends StatelessWidget {
   // - key (Key?): Identity used to reset the sheet when its mode changes.
   // - children (List<Widget>): Options and headings shown below the handle.
   // Returns: A configured MedBuddyOptionSheet.
-  const MedBuddyOptionSheet({super.key, required this.children});
+  const MedBuddyOptionSheet({
+    super.key,
+    required this.children,
+    this.showHandle = true,
+  });
 
   // Function Name: build
   // Description: Places the drag handle above the supplied options.
@@ -30,20 +35,22 @@ class MedBuddyOptionSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SafeArea(
+      top: showHandle,
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(22, 18, 22, 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 42,
-              height: 4,
-              decoration: BoxDecoration(
-                color: MedBuddyColors.outline,
-                borderRadius: MedBuddyRadii.pill,
+            if (showHandle)
+              Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: MedBuddyColors.outline,
+                  borderRadius: MedBuddyRadii.pill,
+                ),
               ),
-            ),
-            const SizedBox(height: 18),
+            if (showHandle) const SizedBox(height: 18),
             ...children,
           ],
         ),
@@ -69,6 +76,7 @@ class MedBuddyOptionTile extends StatelessWidget {
   final String subtitle;
   final VoidCallback onTap;
   final Key? inkKey;
+  final Widget? leading;
 
   // Function Name: MedBuddyOptionTile
   // Description: Stores the choice content and selection action.
@@ -84,6 +92,7 @@ class MedBuddyOptionTile extends StatelessWidget {
     required this.subtitle,
     required this.onTap,
     this.inkKey,
+    this.leading,
   });
 
   // Function Name: build
@@ -109,7 +118,7 @@ class MedBuddyOptionTile extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(icon, color: MedBuddyColors.primary, size: 30),
+              leading ?? Icon(icon, color: MedBuddyColors.primary, size: 30),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(

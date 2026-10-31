@@ -51,7 +51,10 @@ void main() {
         await tester.ensureVisible(pill);
         await tester.tap(pill);
         await tester.pumpAndSettle();
-        expect(find.byType(BottomSheet), findsOneWidget);
+        expect(
+          find.byKey(const Key('medication-registration-page')),
+          findsOneWidget,
+        );
         expect(selected, isNull);
 
         // 시스템 뒤로 가기는 현재 시트의 이전 단계로 돌아간다.
@@ -61,7 +64,7 @@ void main() {
         await tester.ensureVisible(pill);
         await tester.tap(pill);
         await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const Key('pill-mode-back-button')));
+        await tester.binding.handlePopRoute();
         await tester.pumpAndSettle();
         expect(find.text(english ? 'Add manually' : '직접 등록'), findsOneWidget);
         await tester.ensureVisible(pill);
@@ -81,7 +84,10 @@ void main() {
               ? MedicationCaptureTask.multiplePills
               : MedicationCaptureTask.individualPills,
         );
-        expect(find.byType(BottomSheet), findsNothing);
+        expect(
+          find.byKey(const Key('medication-registration-page')),
+          findsNothing,
+        );
         expect(tester.takeException(), isNull);
       });
     }

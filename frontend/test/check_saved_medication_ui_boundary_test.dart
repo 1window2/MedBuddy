@@ -900,7 +900,7 @@ void main() {
     await _pumpFilterApp(tester, onlyEnded: true);
     await tester.tap(find.byKey(const Key('saved-medication-register')));
     await tester.pumpAndSettle();
-    expect(find.text('처방전 분석'), findsOneWidget);
+    expect(find.text('약봉투·처방전 등록'), findsOneWidget);
     expect(find.text('직접 등록'), findsOneWidget);
     Navigator.of(tester.element(find.text('직접 등록'))).pop();
     await tester.pumpAndSettle();
@@ -1251,7 +1251,7 @@ void main() {
     await tester.tap(find.byKey(const Key('saved-medication-register')));
     await tester.pumpAndSettle();
 
-    expect(find.text('처방전 분석'), findsOneWidget);
+    expect(find.text('약봉투·처방전 등록'), findsOneWidget);
     expect(find.text('낱알약 식별'), findsOneWidget);
     expect(find.text('직접 등록'), findsOneWidget);
 
@@ -1297,7 +1297,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('saved-medication-register')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('처방전 분석'));
+    await tester.tap(find.text('약봉투·처방전 등록'));
     await tester.pumpAndSettle();
 
     expect(find.text('카메라로 촬영'), findsOneWidget);
@@ -1346,14 +1346,21 @@ void main() {
 
       await tester.tap(find.byKey(const Key('saved-medication-register')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('처방전 분석'));
+      await tester.tap(find.text('약봉투·처방전 등록'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('갤러리에서 선택'));
       await tester.pumpAndSettle();
 
       expect(inputPrescription.requestCount, 1);
       expect(
-        find.byKey(const ValueKey('embedded-cabinet-root')),
+        find.byKey(const Key('medication-registration-page')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const ValueKey('embedded-cabinet-root'),
+          skipOffstage: false,
+        ),
         findsOneWidget,
       );
     },
