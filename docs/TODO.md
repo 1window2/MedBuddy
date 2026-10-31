@@ -6,10 +6,6 @@ v0.2.5 starts from `v0.2.4-beta` on `beta/v0.2.5` (draft PR #134) and collects t
 collaborator's usability work. The open items of v0.2.4 moved here. Changes are
 listed in the [v0.2.5 notes](releases/v0.2.5-beta.md).
 
-- [ ] Decide whether two removed notices return. Both were restored once in
-      the 2026-10-23 review and removed again in this line: "미기록은 복용하지
-      않았다는 뜻이 아니에요" on the chat history card, and the note that one test
-      notification does not guarantee later alerts.
 - [ ] Add `beta/v0.2.5` to the `beta-android` environment before the first
       signed build; the workflow already allows the branch.
 - [ ] Replace the remaining user guide screenshots from earlier versions.

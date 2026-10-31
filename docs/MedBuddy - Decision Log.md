@@ -147,6 +147,19 @@ Decided by the project owner on the recommendation of the review, on
 - **Undo:** edit the list in `FindHospitalDepartment.needsUrgentHelp` and the
   `results.isEmpty` condition in `hospital_department_sheet.dart`.
 
+### 3. Two notices stay removed
+
+- **Decided by the project owner** after comparing both screens with and without
+  the text: the note that unrecorded does not mean not taken on the chat history
+  card, and the note that one test notification does not guarantee later alerts.
+- **Why:** the screens read better without them. This overrides the 2026-10-23
+  review, which had restored both, so a later review should not reopen it.
+- **What remains:** the record wording stays in the text shared to other apps and
+  in the user guide, and the user guide still covers test notifications.
+- **Undo:** restore the `chat-history-unrecorded-notice` text in
+  `linked_chat_ui_boundary.dart` and `notificationSettingsTestLimitations` in
+  `notification_readiness_ui_boundary.dart`, and their test expectations.
+
 ## Earlier decisions
 
 - 2026-10-21: an as-needed dose can be undone from the save notice (the
