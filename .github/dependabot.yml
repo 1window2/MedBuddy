@@ -3,7 +3,7 @@
 
 version: 2
 
-# Every ecosystem below belongs to this group, so version updates arrive as a
+# Application ecosystems belong to this group, so version updates arrive as a
 # single pull request once a month instead of one pull request per package.
 multi-ecosystem-groups:
   all-dependencies:
@@ -43,3 +43,11 @@ updates:
     patterns:
       - "*"
     multi-ecosystem-group: "all-dependencies"
+
+  # User guide build tools: tracked for security alerts only, with no monthly
+  # version update pull requests.
+  - package-ecosystem: "pip"
+    directory: "/docs/user-guide/tools"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 0
