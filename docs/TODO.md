@@ -14,6 +14,14 @@ listed in the [v0.2.5 notes](releases/v0.2.5-beta.md).
       works, and a correction of a stale row gets the conflict message.
 - [ ] Department search has no crisis wording ("죽고 싶어요"); decide what it
       should offer before adding any.
+- [ ] Open the app right after updating on the Galaxy Note10 with the next signed
+      build, when a dose sync task is due. The store open fix was verified on an
+      emulator, and the phone's 130-second wait was seen once in three launches.
+- [ ] Update pydantic to 2.14 or later with the next backend change. 2.13.5 has
+      two medium advisories (GHSA-gj4f-r7mf-jjxh, GHSA-955g-x97g-8mcp), but they
+      need a `Fraction` or multi-host URL field, and the backend has neither. They
+      may appear as Dependabot alerts once GitHub reviews them. The backend suite
+      passes with 2.14.1.
 
 ## v0.2.4 development line
 

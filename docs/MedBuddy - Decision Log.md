@@ -160,6 +160,23 @@ Decided by the project owner on the recommendation of the review, on
   `linked_chat_ui_boundary.dart` and `notificationSettingsTestLimitations` in
   `notification_readiness_ui_boundary.dart`, and their test expectations.
 
+## 2026-11-01: opening the dose store from two Flutter engines
+
+Chosen after the schedule stalled on the phone. Details are in the
+[v0.2.5 notes](releases/v0.2.5-beta.md).
+
+- **Chosen:** a gate on `IsolateNameServer` makes engines in one process open the
+  store in turn, which keeps sqflite's single shared connection.
+- **Alternatives:** more sqflite threads (`androidThreadCount`) is a dev-only
+  option, and a task of another connection can still land on the thread a
+  transaction is pinned to, so the stall stays possible. Skipping background work
+  while the app runs needs a check at every background entry point, and an app
+  started just after a task would still race it.
+- **Trade-off:** an engine that stops while opening leaves the gate taken, so the
+  next engine takes it over after 5 seconds. If the first engine was only slow,
+  the two opens can overlap, which is the old behaviour rather than a new failure.
+- **To undo:** pass the database opener directly in `DoseOutboxStore.openWith`.
+
 ## Earlier decisions
 
 - 2026-10-21: an as-needed dose can be undone from the save notice (the

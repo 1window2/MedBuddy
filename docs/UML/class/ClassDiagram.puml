@@ -855,6 +855,7 @@ package "Flutter Frontend" {
             dose_history_pending_store.dart의 extension DoseHistoryPendingStore가
             미확인 필요시 복용 의도 보관을 더한다. 두 extension은 별도 Class가 아니다.
         end note
+        class "DoseStoreOpenGate" as DoseStoreOpenGate <<Service: 엔진 간 저장소 열기 순서>>
         class "AsNeededPendingStore" as AsNeededPendingStore <<Service: 미확인 필요시 복용 보관>> {
             + read(owner): Future<List<MedicationHistoryChange>>
             + stage(owner, changes): Future<List<MedicationHistoryChange>>
@@ -2647,6 +2648,7 @@ MedBuddyReminderViewModel --> NotificationService
 MedBuddyUserSettingViewModel --> FManageUserSetting
 MedBuddyHealthRecommendationViewModel --> FCheckHealthRecommendation
 DoseSyncService --> DoseOutboxStore
+DoseOutboxStore --> DoseStoreOpenGate
 DoseSyncService ..> SyncDose : 인증 API / completion-operations
 MedBuddyViewModel ..> DoseHomeWidget
 DoseHomeWidget --> DoseOutboxStore
