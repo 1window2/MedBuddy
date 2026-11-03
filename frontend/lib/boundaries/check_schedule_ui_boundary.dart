@@ -344,7 +344,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
                     if (scrollHeader) header,
                     if (scrollHeader) selectionControl,
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(34, 14, 34, 24),
+                      padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
                       child: Column(
                         children: [
                           for (final slot in slots) ...[
@@ -510,7 +510,7 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
             backTooltip: text.back,
             actionKey: const Key('schedule-manage-medications'),
             actionTooltip: text.isEnglish ? 'Manage medications' : '등록한 약 관리',
-            actionIcon: Icons.medication_outlined,
+            actionIcon: Icons.inventory_2_outlined,
             progressLabel: text.progress,
             completedCount: progress.completedCount,
             totalCount: progress.totalCount,

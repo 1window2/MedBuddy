@@ -1496,7 +1496,7 @@ class _CheckNearbyPharmacyUIState extends State<CheckNearbyPharmacyUI>
                   ? _PharmacyMessageState(
                       icon: widget.hospitals
                           ? Icons.local_hospital_outlined
-                          : Icons.local_pharmacy_outlined,
+                          : Icons.storefront_outlined,
                       title: switch (_filter) {
                         _PharmacyFilter.openNow => text.noOpenPharmacy,
                         _PharmacyFilter.lateHours => text.noLateNightPharmacy,

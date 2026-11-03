@@ -187,7 +187,7 @@ class InputPrescriptionUI extends StatelessWidget {
                                     cardKey: const ValueKey(
                                       'homePrescriptionAnalysisCard',
                                     ),
-                                    icon: Icons.document_scanner_outlined,
+                                    icon: Icons.medication_outlined,
                                     title: text.prescriptionAnalysis,
                                     subtitle: text.prescriptionAnalysisSubtitle,
                                     tone: _HomeActionTone.primary,
@@ -214,7 +214,7 @@ class InputPrescriptionUI extends StatelessWidget {
                                     cardKey: const ValueKey(
                                       'homeNearbyPharmacyCard',
                                     ),
-                                    icon: Icons.local_pharmacy_outlined,
+                                    icon: Icons.map_outlined,
                                     title: text.nearbyPharmacy,
                                     subtitle: text.nearbyPharmacySubtitle,
                                     tone: _HomeActionTone.lavender,
@@ -362,7 +362,7 @@ class InputPrescriptionUI extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           MedBuddyOptionTile(
-            icon: Icons.medication_outlined,
+            icon: Icons.inventory_2_outlined,
             title: isEnglish ? 'Manage medications' : '약 관리',
             subtitle: isEnglish
                 ? 'View and manage saved medications.'
@@ -596,7 +596,7 @@ class _HomeActionCard extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisAlignment: MainAxisAlignment.start,
       children: [
         Row(
           children: [

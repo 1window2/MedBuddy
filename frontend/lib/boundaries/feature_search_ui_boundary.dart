@@ -252,13 +252,13 @@ class _FeatureSearchUIState extends State<FeatureSearchUI> {
     AppFeature.schedule ||
     AppFeature.asNeeded ||
     AppFeature.homeSchedule => Icons.calendar_month_outlined,
-    AppFeature.medicationCabinet => Icons.medication_outlined,
+    AppFeature.medicationCabinet => Icons.inventory_2_outlined,
     AppFeature.medicationHistory => Icons.event_note_outlined,
     AppFeature.historySharing => Icons.share_outlined,
     AppFeature.caregiverLink => Icons.link,
     AppFeature.caregiverSchedule => Icons.supervisor_account_outlined,
     AppFeature.chat => Icons.chat_bubble_outline,
-    AppFeature.nearbyPharmacy => Icons.local_pharmacy_outlined,
+    AppFeature.nearbyPharmacy => Icons.storefront_outlined,
     AppFeature.nearbyHospital => Icons.local_hospital_outlined,
     AppFeature.healthRecommendation => Icons.monitor_heart_outlined,
     AppFeature.notificationInbox ||
