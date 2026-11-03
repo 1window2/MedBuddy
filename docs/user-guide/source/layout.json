@@ -3649,13 +3649,13 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [],
         "callouts": [],
-        "image": ".build/pdf-images/c9c5423cf46ff3dd38d27e3a31928dfaa5a12eff92a134376a0d73cb8908e3c8.png"
+        "image": "assets/v025-chat-medication-selection-medium.png"
       }
     ]
   },
@@ -3695,20 +3695,20 @@
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            169,
-            2045,
-            303,
-            2179
+            310,
+            2040,
+            540,
+            2280
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/eefc8589dcb2b066b554216a783845bee880af33e4232fd4bef149b0c28143bd.png"
+        "image": "assets/v025-caregiver-chat-actions-medium.png"
       }
     ]
   },
@@ -3728,60 +3728,60 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            92,
-            414,
+            55,
+            550,
             1027,
-            789
+            1060
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/c9c5423cf46ff3dd38d27e3a31928dfaa5a12eff92a134376a0d73cb8908e3c8.png"
+        "image": "assets/v025-chat-medication-selection-medium.png"
       },
       {
         "identity": "ASM-P086:3",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            28,
-            1851,
+            30,
+            2073,
             320,
-            1958
+            2158
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/e26e52b10b4ace67b806482196755793ecfc323d103dcbea95f6de5ae3f836e1.png"
+        "image": "assets/v025-chat-attachment-medium.png"
       },
       {
         "identity": "ASM-P087:5",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            330,
-            1851,
-            743,
-            1958
+            335,
+            2073,
+            739,
+            2158
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/e26e52b10b4ace67b806482196755793ecfc323d103dcbea95f6de5ae3f836e1.png"
+        "image": "assets/v025-chat-attachment-medium.png"
       }
     ]
   },
@@ -3801,42 +3801,42 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            771,
-            28,
-            905,
-            162
+            180,
+            2070,
+            900,
+            2300
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/e26e52b10b4ace67b806482196755793ecfc323d103dcbea95f6de5ae3f836e1.png"
+        "image": "assets/v025-chat-actions-medium.png"
       },
       {
         "identity": "CURRENT-5.5:3",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            54,
-            1633,
-            1026,
-            1901
+            435,
+            2070,
+            655,
+            2300
           ],
           [
-            54,
-            1919,
-            1026,
-            2142
+            675,
+            2070,
+            900,
+            2300
           ]
         ],
         "callouts": [
@@ -3849,7 +3849,7 @@
             "text": "약국 검색"
           }
         ],
-        "image": ".build/pdf-images/f5e0980133c12f4951a3680810cd3435f31e0d48df16b9df8a62e8db3414c9af.png"
+        "image": "assets/v025-chat-actions-medium.png"
       },
       {
         "identity": "CURRENT-5.5:4",
@@ -4182,40 +4182,40 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
             897,
-            47,
-            1032,
-            181
+            155,
+            1050,
+            305
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/3bf54a6d008b89bd8d43464486d47231009aa3d6e0e285a527c82956c6198a19.png"
+        "image": "assets/v025-home-medium.png"
       },
       {
         "identity": "ASM-P106:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            0,
-            322,
-            1080,
-            632
+            53,
+            367,
+            1028,
+            792
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/cb52c1e948a2fc036912b9dd10886c9798c1e198ad33da8f7c8bbd2d3c800cb1.png"
+        "image": "assets/v025-inbox-medium.png"
       },
       {
         "identity": "ASM-P107:3",
@@ -4269,40 +4269,40 @@
         "number": 5,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            771,
-            28,
-            905,
-            162
+            790,
+            175,
+            885,
+            290
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/cb52c1e948a2fc036912b9dd10886c9798c1e198ad33da8f7c8bbd2d3c800cb1.png"
+        "image": "assets/v025-inbox-medium.png"
       },
       {
         "identity": "ASM-P111:11",
         "number": 6,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            897,
-            28,
-            1032,
-            162
+            920,
+            175,
+            1025,
+            290
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/cb52c1e948a2fc036912b9dd10886c9798c1e198ad33da8f7c8bbd2d3c800cb1.png"
+        "image": "assets/v025-inbox-medium.png"
       }
     ]
   },
@@ -7039,16 +7039,16 @@
         "number": 3,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
-            50,
-            825,
-            1030,
-            1175
+            53,
+            795,
+            1028,
+            1202
           ]
         ],
         "callouts": [],
