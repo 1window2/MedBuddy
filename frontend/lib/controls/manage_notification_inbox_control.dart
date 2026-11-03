@@ -57,6 +57,8 @@ class ManageNotificationInbox extends ChangeNotifier {
     required bool isEnglish,
     bool showSensitiveDetails = true,
   }) {
+    final reminderTitle = _localizedReminderTitle(entry, isEnglish);
+    if (reminderTitle != null) return reminderTitle;
     final chatList = _chatList;
     if (_isCaregiverEntry(entry)) {
       if (!showSensitiveDetails) {
@@ -104,12 +106,60 @@ class ManageNotificationInbox extends ChangeNotifier {
     required bool isEnglish,
     bool showSensitiveDetails = true,
   }) {
+    final reminderBody = _localizedReminderBody(entry, isEnglish);
+    if (reminderBody != null) return reminderBody;
     if (_isCaregiverEntry(entry) && !showSensitiveDetails) {
       return isEnglish
           ? 'Check your linked patient\'s medication status.'
           : '연동된 환자의 복약 상태를 확인해 주세요.';
     }
     return entry.body;
+  }
+
+  // 정형 복약 알림만 변환하고 알 수 없는 이전 문구는 원문을 보존한다.
+  String? _reminderSlot(NotificationInboxEntry entry) {
+    if (entry.category != NotificationInboxCategory.medication) return null;
+    final match = RegExp(
+      r'^schedule:(morning|lunch|evening|bedtime|as_needed):\d+:\d{4}-\d{2}-\d{2}$',
+    ).firstMatch(entry.payload);
+    return match?.group(1);
+  }
+
+  String? _localizedReminderTitle(NotificationInboxEntry entry, bool english) {
+    final slot = _reminderSlot(entry);
+    if (slot == null) return null;
+    const names = {
+      'morning': ('아침', 'Morning'),
+      'lunch': ('점심', 'Lunch'),
+      'evening': ('저녁', 'Evening'),
+      'bedtime': ('취침 전', 'Bedtime'),
+    };
+    if (slot == 'as_needed') {
+      const korean = '필요시 약 확인';
+      const englishTitle = 'As-needed medication check';
+      return entry.title == korean || entry.title == englishTitle
+          ? (english ? englishTitle : korean)
+          : null;
+    }
+    final name = names[slot];
+    if (name == null) return null;
+    final korean = '${name.$1} 복약 일정 확인';
+    final englishTitle = '${name.$2} medication schedule';
+    if (entry.title != korean && entry.title != englishTitle) return null;
+    return english ? englishTitle : korean;
+  }
+
+  String? _localizedReminderBody(NotificationInboxEntry entry, bool english) {
+    final slot = _reminderSlot(entry);
+    if (slot == null) return null;
+    final korean = slot == 'as_needed'
+        ? '필요시 약과 오늘 기록한 복용 내역을 확인해 주세요.'
+        : '복약 일정과 복용 완료 기록을 확인해 주세요.';
+    final englishBody = slot == 'as_needed'
+        ? 'Check your as-needed medication and recorded doses.'
+        : 'Check your medication schedule and recorded completion status.';
+    if (entry.body != korean && entry.body != englishBody) return null;
+    return english ? englishBody : korean;
   }
 
   // 함수이름: _isCaregiverEntry
@@ -252,7 +302,9 @@ class ManageNotificationInbox extends ChangeNotifier {
   // 함수이름: markRead
   // 함수역할: 선택 항목 또는 현재 목록 전체를 읽음 처리한다. 매개변수: 선택적 entry. 반환값: 갱신 완료.
   Future<void> markRead([NotificationInboxEntry? entry]) async {
-    await store.markRead(entry == null ? _entries.map((e) => e.id) : [entry.id]);
+    await store.markRead(
+      entry == null ? _entries.map((e) => e.id) : [entry.id],
+    );
     await refresh();
   }
 
