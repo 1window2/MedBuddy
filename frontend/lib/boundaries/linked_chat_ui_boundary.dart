@@ -12,7 +12,6 @@ import 'check_schedule_ui_boundary.dart';
 import 'check_medication_detail_ui_boundary.dart';
 import 'check_nearby_pharmacy_ui_boundary.dart';
 import 'medication_history_ui_boundary.dart';
-import 'nearby_care_options_sheet.dart';
 import '../controls/manage_linked_chat_control.dart';
 import '../services/notification_service.dart';
 import '../entities/chat_message_entity.dart';
@@ -211,6 +210,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   bool _checkedLinkAfterSendFailure = false;
   bool _isRecordingTaken = false;
   bool _isSelectingMessages = false;
+  bool _isChatActionsOpen = false;
   bool _isDeletingMessages = false;
   final Set<int> _selectedMessageIds = {};
   ({
@@ -852,21 +852,93 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     }
   }
 
-  // 대화 상대와 선택한 약을 유지한 채 병원·약국 중 탐색할 대상을 고른다.
-  Future<void> _showCareOptions() async {
-    if (_isSending || _isSelectingMessages || _isDeletingMessages) return;
-    final medications = List<ChatMedicationContext>.of(
-      _selectedMedicationContexts,
-    );
-    final destination = await showNearbyCareOptions(
+  Future<void> _showChatActions() async {
+    if (_isSending ||
+        _isSelectingMessages ||
+        _isDeletingMessages ||
+        _isChatActionsOpen) {
+      return;
+    }
+    _isChatActionsOpen = true;
+    final action = await showModalBottomSheet<int>(
       context: context,
-      userSetting: _configuration.userSetting,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        final actions = <(int, IconData, String, bool)>[
+          (
+            0,
+            Icons.medication_outlined,
+            _text.selectMedication,
+            _medicationContexts.isNotEmpty,
+          ),
+          if (!_isPatient)
+            (
+              1,
+              Icons.schedule_rounded,
+              _text.scheduleSelectorTitle,
+              _requestableScheduleContexts.isNotEmpty,
+            ),
+          (2, Icons.local_hospital_outlined, _text.findNearbyHospital, true),
+          (3, Icons.storefront_outlined, _text.findNearbyPharmacy, true),
+        ];
+        return SafeArea(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < actions.length; i++)
+                  SizedBox(
+                    width: 90,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton.filledTonal(
+                          key: ValueKey('chat-action-${actions[i].$1}'),
+                          tooltip: actions[i].$3,
+                          style: IconButton.styleFrom(
+                            backgroundColor: MedBuddyColors.successSurface,
+                            foregroundColor: MedBuddyColors.primary,
+                          ),
+                          onPressed: actions[i].$4
+                              ? () => Navigator.pop(sheetContext, actions[i].$1)
+                              : null,
+                          icon: Icon(actions[i].$2),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          actions[i].$3,
+                          textAlign: TextAlign.center,
+                          style: MedBuddyTextStyles.menuTitle.copyWith(
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
-    if (destination == null || !mounted) return;
-    await _showPharmacySelector(
-      medications: medications,
-      hospitals: destination == NearbyCareDestination.hospital,
-    );
+    _isChatActionsOpen = false;
+    if (!mounted || action == null) return;
+    switch (action) {
+      case 0:
+        await _showMedicationSelector();
+      case 1:
+        await _showScheduleSelector();
+      case 2:
+      case 3:
+        await _showPharmacySelector(
+          medications: List<ChatMedicationContext>.of(
+            _selectedMedicationContexts,
+          ),
+          hospitals: action == 2,
+        );
+    }
   }
 
   // 함수이름: _showPharmacySelector
@@ -1678,15 +1750,6 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
                     )
                   : null,
               actions: [
-                if (!_isSelectingMessages)
-                  IconButton(
-                    key: const ValueKey('chatCareSelector'),
-                    tooltip: _text.findNearbyCare,
-                    onPressed: _isLoading || _isSending
-                        ? null
-                        : _showCareOptions,
-                    icon: const Icon(Icons.local_hospital_outlined),
-                  ),
                 IconButton(
                   key: const ValueKey('deleteChatMessages'),
                   tooltip: _text.deleteMessages,
@@ -2210,32 +2273,17 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   IconButton.outlined(
-                    key: const ValueKey('chatMedicationSelector'),
-                    tooltip: _medicationContexts.isEmpty
-                        ? _text.noActiveMedication
-                        : _text.selectMedication,
-                    onPressed: _medicationContexts.isEmpty || _isSending
+                    key: const ValueKey('chatActions'),
+                    tooltip: _text.isEnglish ? 'More actions' : '기능 더보기',
+                    onPressed: _isLoading || _isSending
                         ? null
-                        : _showMedicationSelector,
+                        : _showChatActions,
                     constraints: const BoxConstraints.tightFor(
                       width: 48,
                       height: 48,
                     ),
-                    icon: const Icon(Icons.medication_outlined),
+                    icon: const Icon(Icons.add),
                   ),
-                  if (_requestableScheduleContexts.isNotEmpty) ...[
-                    const SizedBox(width: 6),
-                    IconButton.outlined(
-                      key: const ValueKey('chatScheduleSelector'),
-                      tooltip: _text.selectScheduleSlot,
-                      onPressed: _isSending ? null : _showScheduleSelector,
-                      constraints: const BoxConstraints.tightFor(
-                        width: 48,
-                        height: 48,
-                      ),
-                      icon: const Icon(Icons.schedule_rounded),
-                    ),
-                  ],
                   const SizedBox(width: 8),
                   Expanded(
                     child: TextField(
@@ -2753,7 +2801,7 @@ class _MedicationShortageContext extends StatelessWidget {
             ),
             OutlinedButton.icon(
               onPressed: onFindPharmacyRequested,
-              icon: const Icon(Icons.local_pharmacy_outlined, size: 18),
+              icon: const Icon(Icons.storefront_outlined, size: 18),
               label: Text(text.findNearbyPharmacy),
               style: OutlinedButton.styleFrom(
                 foregroundColor: foreground,
@@ -2899,7 +2947,7 @@ class _MessagePharmacyContext extends StatelessWidget {
                     children: [
                       Icon(
                         hospital == null
-                            ? Icons.local_pharmacy_outlined
+                            ? Icons.storefront_outlined
                             : Icons.local_hospital_outlined,
                         size: 22,
                       ),
@@ -3839,7 +3887,7 @@ class _LinkedChatText {
     if (message.pharmacyContext != null) {
       return (
         isEnglish ? 'Pharmacy information' : '약국 정보',
-        Icons.local_pharmacy_outlined,
+        Icons.storefront_outlined,
       );
     }
     if (message.scheduleContext != null) {

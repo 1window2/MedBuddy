@@ -446,7 +446,9 @@ Future<void> _pumpPatientChat(
 // 함수역할: 약 선택 화면에서 91번 약의 지정 시간대를 고르고 확인한다.
 // 매개변수: tester: 화면 도구, slots: 선택할 시간대 키. 반환값: 채팅으로 돌아온 뒤 완료.
 Future<void> _selectDoseSlots(WidgetTester tester, List<String> slots) async {
-  await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
+  await tester.tap(find.byKey(const ValueKey('chatActions')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const ValueKey('chat-action-0')));
   await tester.pumpAndSettle();
   for (final slot in slots) {
     final row = find.byKey(
@@ -1958,9 +1960,11 @@ void main() {
           );
           await tester.pumpAndSettle();
           await tester.enterText(find.byType(TextField), '유지할 초안');
-          await tester.tap(find.byKey(const ValueKey('chatCareSelector')));
+          await tester.tap(find.byKey(const ValueKey('chatActions')));
           await tester.pumpAndSettle();
-          await tester.tap(find.text(hospitals ? '근처 병원' : '근처 약국'));
+          await tester.tap(
+            find.byKey(ValueKey(hospitals ? 'chat-action-2' : 'chat-action-3')),
+          );
           await tester.pumpAndSettle();
           await tester.tap(find.byKey(const Key('pick-double-tap-care')));
           await tester.pumpAndSettle();
@@ -2004,7 +2008,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    final selector = find.byKey(const ValueKey('chatCareSelector'));
+    final selector = find.byKey(const ValueKey('chatActions'));
     await tester.tap(selector);
     await tester.tap(selector, warnIfMissed: false);
     await tester.pumpAndSettle();
@@ -2069,9 +2073,13 @@ void main() {
         );
         await tester.pumpAndSettle();
         for (final confirm in [false, true]) {
-          await tester.tap(find.byKey(const ValueKey('chatCareSelector')));
+          await tester.tap(find.byKey(const ValueKey('chatActions')));
           await tester.pumpAndSettle();
-          await tester.tap(find.text(mode.hospitals ? '근처 병원' : '근처 약국'));
+          await tester.tap(
+            find.byKey(
+              ValueKey(mode.hospitals ? 'chat-action-2' : 'chat-action-3'),
+            ),
+          );
           await tester.pumpAndSettle();
           await tester.tap(find.byKey(const Key('pick-test-hospital')));
           await tester.pumpAndSettle();
@@ -2650,7 +2658,9 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
+      await tester.tap(find.byKey(const ValueKey('chatActions')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('chat-action-0')));
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(
@@ -2765,7 +2775,9 @@ void main() {
       await _selectDoseSlots(tester, slots);
 
       // Reopening must restore the exact dose choices, not all slots of that drug.
-      await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
+      await tester.tap(find.byKey(const ValueKey('chatActions')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('chat-action-0')));
       await tester.pumpAndSettle();
       expect(
         tester
@@ -3209,7 +3221,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
+    await tester.tap(find.byKey(const ValueKey('chatActions')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('chat-action-0')));
     await tester.pumpAndSettle();
     expect(find.text('대화할 약 선택'), findsOneWidget);
     expect(find.text('아침'), findsOneWidget);
@@ -3317,11 +3331,15 @@ void main() {
         );
         await tester.pumpAndSettle();
 
+        await tester.tap(find.byKey(const ValueKey('chatActions')));
+        await tester.pumpAndSettle();
         expect(
-          find.byTooltip(isEnglish ? 'Request a medication check' : '복약 확인 요청'),
-          findsOneWidget,
+          tester
+              .widget<IconButton>(find.byKey(const ValueKey('chat-action-1')))
+              .onPressed,
+          isNotNull,
         );
-        await tester.tap(find.byKey(const ValueKey('chatScheduleSelector')));
+        await tester.tap(find.byKey(const ValueKey('chat-action-1')));
         await tester.pumpAndSettle();
         expect(
           find.text(isEnglish ? "Today's medication times" : '오늘의 복약 시간대'),
@@ -3427,7 +3445,7 @@ void main() {
           find.byKey(const ValueKey('chatScheduleSelector')),
           findsNothing,
         );
-        final medication = find.byKey(const ValueKey('chatMedicationSelector'));
+        final medication = find.byKey(const ValueKey('chatActions'));
         expect(tester.widget<IconButton>(medication).onPressed, isNotNull);
         expect(find.byType(TextField), findsOneWidget);
         expect(
@@ -3435,6 +3453,21 @@ void main() {
               tester.getTopRight(medication).dx,
           8,
         );
+        await tester.tap(medication);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('chat-action-0')), findsOneWidget);
+        if (scenario.user == 'patient-a') {
+          expect(find.byKey(const ValueKey('chat-action-1')), findsNothing);
+        } else {
+          expect(
+            tester
+                .widget<IconButton>(find.byKey(const ValueKey('chat-action-1')))
+                .onPressed,
+            isNull,
+          );
+        }
+        expect(find.byKey(const ValueKey('chat-action-2')), findsOneWidget);
+        expect(find.byKey(const ValueKey('chat-action-3')), findsOneWidget);
         expect(control.sendAttempts, 0);
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox.shrink());
@@ -3469,7 +3502,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
+    await tester.tap(find.byKey(const ValueKey('chatActions')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('chat-action-0')));
     await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(
@@ -3539,7 +3574,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
+    await tester.tap(find.byKey(const ValueKey('chatActions')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('chat-action-0')));
     await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(
