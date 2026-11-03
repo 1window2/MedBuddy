@@ -417,8 +417,9 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
                                                     await control.markRead(
                                                       entry,
                                                     );
-                                                    if (mounted)
+                                                    if (mounted) {
                                                       widget.onOpen(entry);
+                                                    }
                                                   }),
                                             onLongPress: _busy || _selecting
                                                 ? null
