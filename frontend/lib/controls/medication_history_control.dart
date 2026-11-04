@@ -103,6 +103,8 @@ class MedicationHistoryControl extends ChangeNotifier {
   bool saving = false;
   Object? error;
   MedicationHistorySnapshot? snapshot;
+  // 서버가 정정을 확인할 때마다 하나씩 늘어난다. 같은 환자의 다른 기록 화면이 다시 읽는 신호로 쓴다.
+  int savedRevision = 0;
   // 일정 화면을 닫아도 같은 로그인 세션에서는 미확인 필요시 복용 의도를 재사용한다.
   final List<MedicationHistoryChange> pendingAsNeededChanges = [];
   MedicationHistoryChange? get pendingAsNeededChange =>
@@ -359,6 +361,7 @@ class MedicationHistoryControl extends ChangeNotifier {
       if (isNewAsNeeded) await removePendingAsNeeded({change.operationId});
       // 갱신 전 데이터는 내보내기에 사용하지 않고 서버에서 다시 읽는다.
       snapshot = null;
+      savedRevision++;
     } finally {
       saving = false;
       if (!_disposed) notifyListeners();

@@ -992,12 +992,20 @@ class _MedBuddyAppState extends State<MedBuddyApp> with WidgetsBindingObserver {
     var canReview = false;
 
     if (!selection.isForDate(DateTime.now())) {
+      // 자정을 넘겨 누른 알림을 오늘 일정에 기록하면 오늘 같은 시간대가 복용으로 바뀌고 그 알림도
+      // 사라진다. 오늘 일정이 아니라 그날 기록을 고치도록 안내한다.
+      final day = selection.scheduleDate;
+      final dayLabel = day == null
+          ? null
+          : isEnglish
+          ? '${day.month}/${day.day}'
+          : '${day.month}월 ${day.day}일';
       ScaffoldMessenger.maybeOf(navigator.context)?.showSnackBar(
         SnackBar(
           content: Text(
             isEnglish
-                ? 'This reminder is out of date. Please check today’s schedule.'
-                : '지난 날짜의 알림입니다. 오늘의 복약 일정을 확인해 주세요.',
+                ? 'This reminder is for ${dayLabel ?? 'an earlier day'}, so nothing was recorded for today. If you took that dose, correct it in your history.'
+                : '${dayLabel ?? '지난 날짜'} 알림이라 오늘 일정에는 기록하지 않았어요. 그날 복용했다면 복약 기록에서 고쳐 주세요.',
           ),
         ),
       );

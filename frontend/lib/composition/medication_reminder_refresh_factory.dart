@@ -105,6 +105,10 @@ class MedicationReminderRefreshFactory {
       cancelReminder: resolvedNotificationService.cancelReminder,
       setPrivacy: resolvedNotificationService.setShowSensitiveDetails,
       now: clock,
+      ownsReminders: () =>
+          MedicationReminderBackgroundScheduler.ownsReminders(
+            normalizedPatientHash,
+          ),
       onDispose: /* 함수이름: onDispose 콜백
        * 함수역할: 갱신 서비스가 생성한 알림·일정·사용자 설정 제어기를 해제한다.
        * 매개변수:

@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
 
 from entities.medication_schedule_entity import normalize_medication_schedule_slot_keys
+from services.medication_dose_rhythm import names_nonpositive_duration
 
 
 # 클래스명: RegimenChanges
@@ -33,6 +34,16 @@ class RegimenChanges(BaseModel):
         if value is not None and not value.strip():
             raise ValueError("A medication name is required.")
         return value.strip() if value is not None else None
+
+    # 함수이름: validate_total_days
+    # 함수역할: 0일 이하의 복용 기간은 끝나지 않는 복용이 되므로 거부한다.
+    # 매개변수: value: 새 총 복용 기간. 반환값: 받은 값 그대로.
+    @field_validator("total_days")
+    @classmethod
+    def validate_total_days(cls, value: str | None) -> str | None:
+        if names_nonpositive_duration(value):
+            raise ValueError("The course length must be at least one day.")
+        return value
 
     # 함수이름: validate_slots
     # 함수역할: 미지원 시간대를 조용히 버리지 않고 요청 오류로 처리한다.

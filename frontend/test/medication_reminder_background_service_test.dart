@@ -52,6 +52,38 @@ void main() {
     expect(cancelled, 3);
     service.dispose();
   });
+  // 로그아웃 때 이미 돌던 작업은 이전 계정의 알림을 다시 걸지 않는다. 확인 직전·직후 어느 쪽에서
+  // 로그아웃해도 알림이 남지 않는다.
+  for (final signOutAfter in [0, 1]) {
+    test('a worker running at sign-out leaves no reminder (checks before sign-out: $signOutAfter)', () async {
+      SharedPreferences.setMockInitialValues({});
+      final armed = <String>{};
+      var checks = 0;
+      final service = MedicationReminderRefreshService(
+        loadSettings: () async => const [
+          MedicationAlarm(slotKey: 'morning', hour: 8, minute: 0, enabled: true),
+          MedicationAlarm(slotKey: 'evening', hour: 19, minute: 0, enabled: true),
+        ],
+        loadSchedules: () async => [MedicationSchedule(
+          medicationName: 'TEST_ONLY',
+          prescriptionDate: DateTime(2026, 9, 13),
+          medicationTime: 2,
+          scheduleSlotKeys: const ['morning', 'evening'],
+        )],
+        registerReminder: ({required id, required slotKey, required slotTitle,
+          required hour, required minute, required medicationNames,
+          required activeDates, medicationNamesByDate = const <String, List<String>>{},
+          language = 'ko'}) async { armed.add(slotKey); },
+        cancelReminder: (id, {slotKey}) async { armed.remove(slotKey); },
+        now: () => DateTime(2026, 9, 13, 7),
+        ownsReminders: () async => checks++ < signOutAfter,
+      );
+      expect(await service.synchronize(), isTrue);
+      expect(armed, isEmpty);
+      service.dispose();
+    });
+  }
+
   // Function Name: test callback
   // Description:
   // - Verify that background synchronization replenishes long-course reminders beyond fourteen days.

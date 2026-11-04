@@ -125,6 +125,7 @@ class MedicationReminderRefreshService {
   final ReminderPrivacySetter? _setPrivacy;
   final DateTime Function() _now;
   final VoidCallback? _onDispose;
+  final Future<bool> Function()? _ownsReminders;
 
   // 함수이름: MedicationReminderRefreshService
   // 함수역할: 알림 설정·일정·사용자 설정·저장소 조회와 예약·취소·개인정보 표시·시계 경계를 묶는다.
@@ -139,6 +140,7 @@ class MedicationReminderRefreshService {
   // - setPrivacy (ReminderPrivacySetter?): 알림의 민감정보 표시 정책 적용 경계
   // - now (DateTime Function()?): 현재 시각을 제공하는 주입 가능한 시계
   // - onDispose (VoidCallback?): 소유한 의존성 정리 콜백
+  // - ownsReminders (Future<bool> Function()?): 이 계정이 아직 기기의 알림을 맡고 있는지 확인한다. 로그아웃 뒤에는 false.
   // 반환값:
   // - MedicationReminderRefreshService: 초기화된 인스턴스.
   MedicationReminderRefreshService({
@@ -152,6 +154,7 @@ class MedicationReminderRefreshService {
     ReminderPrivacySetter? setPrivacy,
     DateTime Function()? now,
     VoidCallback? onDispose,
+    Future<bool> Function()? ownsReminders,
   }) : _loadSettings = loadSettings,
        _loadSchedules = loadSchedules,
        _loadTodaySchedules = loadTodaySchedules,
@@ -167,7 +170,8 @@ class MedicationReminderRefreshService {
        _loadPreferences = preferencesLoader,
        _setPrivacy = setPrivacy,
        _now = now ?? DateTime.now,
-       _onDispose = onDispose;
+       _onDispose = onDispose,
+       _ownsReminders = ownsReminders;
 
   // 함수이름: synchronize
   // 함수역할: 인증된 서버 상태를 기준으로 모든 로컬 시간대 알림을 갱신한다. 일시적 오류에서는 false를 반환해 Workmanager가 재시도하게 한다.
@@ -252,6 +256,8 @@ class MedicationReminderRefreshService {
                 now: now,
               ),
         );
+        // 조회 도중 로그아웃했으면 이전 계정의 알림을 다시 걸지 않는다.
+        if (!await _stillOwnsReminders()) return true;
         // 알림 문구는 약 이름을 쓰지 않으므로 이름 목록은 만들지 않는다.
         await _registerReminder(
           id: setting.notificationId,
@@ -263,6 +269,14 @@ class MedicationReminderRefreshService {
           activeDates: activeDates,
           language: language,
         );
+        // 예약하는 사이에 로그아웃의 알림 정리가 끝났으면 방금 건 알림을 직접 지운다.
+        if (!await _stillOwnsReminders()) {
+          await _cancelReminder(
+            setting.notificationId,
+            slotKey: setting.slotKey,
+          );
+          return true;
+        }
       }
       return true;
     } catch (error, stackTrace) {
@@ -275,6 +289,12 @@ class MedicationReminderRefreshService {
       return false;
     }
   }
+
+  // 함수이름: _stillOwnsReminders
+  // 함수역할: 이 작업의 계정이 아직 기기의 알림을 맡고 있는지 확인한다. 확인할 함수가 없으면 맡은 것으로 본다.
+  // 매개변수: 없음. 반환값: 알림을 예약해도 되면 true.
+  Future<bool> _stillOwnsReminders() async =>
+      await _ownsReminders?.call() ?? true;
 
   // 함수이름: _isSlotCompletedToday
   // 함수역할: 오늘 일정에서 한 시간대의 약을 모두 복용했는지 판정한다. 조회 도중 날짜가 바뀌었거나 서버의 오늘과
@@ -441,6 +461,23 @@ class MedicationReminderBackgroundScheduler {
       backoffPolicyDelay: const Duration(seconds: 30),
       tag: _medicationReminderBackgroundTag,
     );
+  }
+
+  // Function Name: ownsReminders
+  // Description: Reports whether the account still owns this device's reminder work. Sign-out removes the owner before it
+  //   cancels the reminders, so a worker that was already running checks this around each reminder it sets.
+  // Parameters:
+  // - patientHash (String): Account of the running worker.
+  // Returns:
+  // - Future<bool>: true while that account is the registered owner, and always off Android.
+  static Future<bool> ownsReminders(String patientHash) async {
+    if (!_supportsBackgroundWork) {
+      return true;
+    }
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.reload();
+    return preferences.getString(_reminderWorkerOwnerKey) ==
+        PatientHash.normalizePatientHash(patientHash);
   }
 
   // Function Name: cancel

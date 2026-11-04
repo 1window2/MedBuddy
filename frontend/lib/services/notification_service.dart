@@ -790,8 +790,11 @@ class NotificationService {
     final desiredIds = {
       for (final date in sortedDates) _notificationIdForDate(id, slotKey, date),
     };
+    final today = DateTime(now.year, now.month, now.day);
     for (final staleId in pending.keys.where(
-      (key) => !desiredIds.contains(key),
+      (key) =>
+          !desiredIds.contains(key) &&
+          !_isEarlierDayReminder(pending[key]!, today),
     )) {
       if (owner != _historyUserHash) return;
       await _plugin.cancel(id: staleId);
@@ -1031,6 +1034,24 @@ class NotificationService {
       category: NotificationInboxCategory.medication,
       occurredAt: scheduledDate,
     );
+  }
+
+  // Function Name: _isEarlierDayReminder
+  // Description: Reports whether a pending reminder belongs to an earlier day. Such a reminder is
+  //   still pending only when it was snoozed before midnight; it is left to fire or expire rather
+  //   than cancelled because today's plan does not list it.
+  // Parameters:
+  // - request (PendingNotificationRequest): Pending platform reminder.
+  // - today (DateTime): Start of the current local day.
+  // Returns: True for a reminder dated before today.
+  static bool _isEarlierDayReminder(
+    PendingNotificationRequest request,
+    DateTime today,
+  ) {
+    final date = MedicationNotificationPayloadCodec.decode(
+      request.payload,
+    )?.scheduleDate;
+    return date != null && date.isBefore(today);
   }
 
   // Function Name: snoozeMedicationReminder

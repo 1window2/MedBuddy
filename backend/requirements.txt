@@ -2,7 +2,7 @@
 fastapi==0.142.2
 uvicorn==0.54.0
 websockets==16.1.1
-pydantic==2.13.5
+pydantic==2.14.2
 pydantic-settings==2.15.0
 
 # 2. AI & External APIs

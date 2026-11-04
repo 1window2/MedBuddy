@@ -730,6 +730,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 isActive:
                     _selectedDestination ==
                     MedBuddyDestination.medicationHistory,
+                recordChanges: viewModel.savedDoseRecords,
                 onChanged: viewModel.refreshMedicationSchedule,
               ),
             ),

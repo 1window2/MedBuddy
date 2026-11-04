@@ -367,9 +367,13 @@ class ManageMedicationCare:
             actual_taken_at = request.actual_taken_at
             if actual_taken_at is not None:
                 now = application_now()
-                actual = actual_taken_at.astimezone(now.tzinfo)
+                try:
+                    actual = actual_taken_at.astimezone(now.tzinfo)
+                except OverflowError:
+                    # 달력 끝의 시각은 앱 시간대로 옮길 수 없다. 허용 범위 밖이므로 같은 오류로 답한다.
+                    actual = None
                 # 기기 시계가 서버보다 조금 빠르면 '지금 복용'도 미래가 되므로 재인증 시각과 같은 허용치를 둔다.
-                if actual > now + _CLIENT_CLOCK_SKEW or actual.date() < application_today() - timedelta(days=89):
+                if actual is None or actual > now + _CLIENT_CLOCK_SKEW or actual.date() < application_today() - timedelta(days=89):
                     raise HTTPException(422, "The actual dose time must be within the last 90 days and not in the future.")
                 # 허용치 안의 미래 시각은 서버가 받은 시각으로 저장해 기록이 미래에 놓이지 않게 한다.
                 actual_taken_at = min(actual, now)

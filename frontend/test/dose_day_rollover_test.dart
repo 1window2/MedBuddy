@@ -293,11 +293,14 @@ void main() {
           isTrue,
         );
         expect(viewModel.hasTodayScheduleLoadError, isFalse);
+        // 기기에만 있는 기록은 서버 기록 화면을 다시 읽게 하지 않는다.
+        final savedBefore = viewModel.savedDoseRecords.value;
 
         // 연결되면 같은 요청이 한 번만 전송된다.
         uploadOnline = true;
         await viewModel.doseSync!.drain();
         expect(await store.pending('patient-a'), isEmpty);
+        expect(viewModel.savedDoseRecords.value, savedBefore + 1);
         expect(
           uploads.map((upload) => upload['operation_id']).toSet(),
           {queued['operation_id']},

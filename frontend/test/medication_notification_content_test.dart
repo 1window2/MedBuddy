@@ -337,6 +337,37 @@ void main() {
     expect(cancelled, isEmpty);
   });
 
+  // A reminder snoozed before midnight keeps its day. A refresh after midnight plans from today and
+  // must not cancel it as stale, or the snoozed reminder never comes.
+  test('a snooze across midnight survives a refresh of the new day', () async {
+    final service = NotificationService.instance;
+    await service.initialize();
+    final now = timezone.TZDateTime.now(timezone.local);
+    final day = timezone.TZDateTime(timezone.local, now.year, now.month, now.day + 2);
+    final nextDay = day.add(const Duration(days: 1));
+    NotificationService.clock = () => day.add(const Duration(hours: 21));
+    await service.registerNotification(
+      id: 104, slotKey: 'bedtime', slotTitle: 'Bedtime', hour: 22, minute: 0,
+      medicationNames: [], activeDates: [day, nextDay], language: 'en',
+    );
+    NotificationService.clock = () => day.add(const Duration(hours: 23, minutes: 58));
+    final snoozedId = scheduled.first['id'] as int;
+    await service.snoozeMedicationReminder(
+      id: snoozedId, slotKey: 'bedtime', slotTitle: 'Bedtime', scheduleDate: day,
+    );
+    pending
+      ..clear()
+      ..addAll(scheduled.map((item) => {'id': item['id'], 'payload': item['payload']}));
+    cancelled.clear();
+
+    NotificationService.clock = () => nextDay.add(const Duration(minutes: 2));
+    await service.registerNotification(
+      id: 104, slotKey: 'bedtime', slotTitle: 'Bedtime', hour: 22, minute: 0,
+      medicationNames: [], activeDates: [nextDay], language: 'en',
+    );
+    expect(cancelled.map((call) => call['id']), isNot(contains(snoozedId)));
+  });
+
   // Steady state: a refresh that finds every reminder already reserved with the same time and text
   // only reads the device reservations. It schedules, cancels, writes and announces nothing.
   test('an unchanged refresh only reads the pending reservations', () async {

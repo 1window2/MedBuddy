@@ -40,6 +40,7 @@ class MedicationHistoryUI extends StatefulWidget {
     this.initiallyShowExport = false,
     this.showBackButton = true,
     this.isActive = true,
+    this.recordChanges,
   });
 
   final String patientHash;
@@ -56,6 +57,8 @@ class MedicationHistoryUI extends StatefulWidget {
   final bool showBackButton;
   // 탭으로 유지되는 동안 숨겨지면 앱 복귀 때 서버 기록을 다시 읽지 않는다.
   final bool isActive;
+  // 다른 화면에서 서버에 복용 기록이 저장됐다는 신호. 보이는 동안 받으면 다시 읽는다.
+  final Listenable? recordChanges;
 
   // 함수역할: 조회·정정·내보내기 수명을 관리할 화면 상태를 만든다.
   @override
@@ -75,6 +78,8 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
   bool get _readOnly => widget.readOnly || widget.sharedRange != null;
   bool _interactionActive = false;
   bool _exporting = false;
+  // 조회·대화상자·공유 중에 기록이 바뀌었으면 끝난 뒤 한 번 다시 읽는다.
+  bool _recordsChanged = false;
   _HistoryPeriod _period = _HistoryPeriod.week;
   late DateTime _anchor;
   late DateTime _selectedDay;
@@ -92,6 +97,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    widget.recordChanges?.addListener(_onRecordsChanged);
     _bindControl();
   }
 
@@ -156,6 +162,10 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
   @override
   void didUpdateWidget(covariant MedicationHistoryUI oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.recordChanges != widget.recordChanges) {
+      oldWidget.recordChanges?.removeListener(_onRecordsChanged);
+      widget.recordChanges?.addListener(_onRecordsChanged);
+    }
     if (oldWidget.patientHash != widget.patientHash ||
         oldWidget.readOnly != widget.readOnly ||
         oldWidget.currentUserHash != widget.currentUserHash ||
@@ -197,6 +207,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    widget.recordChanges?.removeListener(_onRecordsChanged);
     if (widget.chatShareControl == null) _chatShare?.dispose();
     if (_ownsControl) _control.dispose();
     super.dispose();
@@ -204,11 +215,33 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
 
   // 함수역할: 선택 범위를 조회하고 실패 표시와 재시도 상태는 제어 객체에 맡긴다.
   Future<void> _load() async {
+    _recordsChanged = false;
     try {
       await _control.load(_range);
     } catch (_) {
       // 서버·네트워크 오류는 제어 객체의 상태로 표시하고 이전 자료는 남기지 않는다.
     }
+    if (_recordsChanged && mounted) _onRecordsChanged();
+  }
+
+  // 함수역할: 다른 화면에서 저장된 기록을 보이도록 다시 읽고, 조회·대화상자·공유 중이면 끝난 뒤로 미룬다.
+  void _onRecordsChanged() {
+    if (!widget.isActive || _control.sessionInvalidated) return;
+    if (_control.busy || _interactionActive || _exporting) {
+      _recordsChanged = true;
+      return;
+    }
+    unawaited(_load());
+  }
+
+  // 함수역할: 대화상자·공유가 끝나면 잠금을 풀고 그동안 바뀐 기록이 있으면 다시 읽는다.
+  void _endInteraction(MedicationHistoryControl control) {
+    if (!mounted || !identical(control, _control)) return;
+    setState(() {
+      _interactionActive = false;
+      _exporting = false;
+    });
+    if (_recordsChanged) _onRecordsChanged();
   }
 
   // 함수역할: 지금 선택한 주·월·기간을 오늘 기준으로 다시 잘라 서버 기록을 읽는다.
@@ -332,9 +365,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
       });
       if (period) await _load();
     } finally {
-      if (mounted && identical(control, _control)) {
-        setState(() => _interactionActive = false);
-      }
+      _endInteraction(control);
     }
   }
 
@@ -383,9 +414,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
       // 충돌·응답 유실 후 닫아도 서버의 최종 상태를 다시 확인한다.
       if (_isCurrent(control)) await _load();
     } finally {
-      if (mounted && identical(control, _control)) {
-        setState(() => _interactionActive = false);
-      }
+      _endInteraction(control);
     }
   }
 
@@ -770,9 +799,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
         _message(tr('내보내기를 완료하지 못했어요.', 'The export could not be completed.'));
       }
     } finally {
-      if (mounted && identical(control, _control)) {
-        setState(() => _exporting = false);
-      }
+      _endInteraction(control);
     }
   }
 
@@ -1309,9 +1336,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
       });
       await _load();
     } finally {
-      if (mounted && identical(control, _control)) {
-        setState(() => _interactionActive = false);
-      }
+      _endInteraction(control);
     }
   }
 

@@ -144,6 +144,7 @@ Future<MedicationHistoryControl> _pumpHistory(
   bool initiallyShowExport = false,
   bool isActive = true,
   DateTime Function()? now,
+  Listenable? recordChanges,
 }) async {
   final control = MedicationHistoryControl(
     patientHash: 'test-patient',
@@ -174,6 +175,7 @@ Future<MedicationHistoryControl> _pumpHistory(
         onChanged: onChanged,
         initiallyShowExport: initiallyShowExport,
         isActive: isActive,
+        recordChanges: recordChanges,
       ),
     ),
   );
@@ -502,6 +504,73 @@ void main() {
       expect(server.reads.length, active ? greaterThan(reads) : reads);
     });
   }
+
+  // 탭 위에 열린 일정 화면에서 기록하면 탭은 다시 만들어지지 않으므로 저장 신호로 다시 읽는다.
+  for (final active in [true, false]) {
+    testWidgets('a dose saved elsewhere reloads only a visible history: $active', (
+      tester,
+    ) async {
+      final saved = ValueNotifier(0);
+      addTearDown(saved.dispose);
+      final server = _HistoryServer();
+      await _pumpHistory(
+        tester,
+        server,
+        openToday: false,
+        isActive: active,
+        recordChanges: saved,
+      );
+      final reads = server.reads.length;
+      saved.value++;
+      await tester.pumpAndSettle();
+      expect(server.reads.length, active ? reads + 1 : reads);
+    });
+  }
+
+  // 조회 중에 온 신호는 버리지 않고 그 조회가 끝난 뒤 한 번 더 읽는다.
+  testWidgets('a dose saved during a read is read after it', (tester) async {
+    final saved = ValueNotifier(0);
+    addTearDown(saved.dispose);
+    final server = _HistoryServer();
+    await _pumpHistory(tester, server, openToday: false, recordChanges: saved);
+    final pending = Completer<http.Response>();
+    server.pendingRead = pending;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    final reads = server.reads.length;
+    saved.value++;
+    await tester.pump();
+    expect(server.reads.length, reads);
+    server.pendingRead = null;
+    pending.complete(
+      historyTestResponse(
+        historyTestBody(start: '2026-10-11', end: '2026-10-17', items: []),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(server.reads.length, reads + 1);
+  });
+
+  // 정정 창이 열려 있는 동안에는 다시 읽지 않고, 닫은 뒤 한 번만 읽는다.
+  testWidgets('a dose saved while the editor is open is read after it closes', (
+    tester,
+  ) async {
+    final saved = ValueNotifier(0);
+    addTearDown(saved.dispose);
+    final server = _HistoryServer();
+    await _pumpHistory(tester, server, recordChanges: saved);
+    await _openEditor(tester);
+    final reads = server.reads.length;
+    saved.value++;
+    await tester.pumpAndSettle();
+    expect(server.reads.length, reads);
+    await tester.tap(find.widgetWithText(TextButton, 'Close'));
+    await tester.pumpAndSettle();
+    expect(server.reads.length, greaterThan(reads));
+    final afterClose = server.reads.length;
+    await tester.pumpAndSettle();
+    expect(server.reads.length, afterClose);
+  });
 
   // 탭을 켜 둔 채 주가 바뀌면 지난주 대신 오늘이 속한 주를 다시 읽는다.
   testWidgets('resume after a new week moves the period to today', (

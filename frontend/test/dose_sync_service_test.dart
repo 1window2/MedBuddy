@@ -762,6 +762,8 @@ void main() {
     addTearDown(service.dispose);
     await service.drain();
     expect(sent, ['rejected', 'other-slot', 'other-medication', 'other-day']);
+    // 서버가 받은 세 기록만 기록 화면을 다시 읽게 하는 신호로 센다.
+    expect(service.acceptedRevision, 3);
     expect(
       service.operations.map((op) => [op['operation_id'], op['state']]),
       [

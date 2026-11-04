@@ -9,6 +9,7 @@ import '../entities/medication_schedule_entity.dart';
 import '../services/manual_medication_image_store.dart';
 import '../services/api_response_parser.dart';
 import '../theme/medbuddy_theme.dart';
+import 'medication_schedule_header.dart';
 import 'medication_thumbnail.dart';
 
 class AsNeededScheduleSection extends StatefulWidget {
@@ -682,111 +683,68 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Container(
-              padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
-              decoration: BoxDecoration(
-                color: style.tint,
-                border: Border(left: BorderSide(color: style.color, width: 5)),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: style.color,
-                      borderRadius: MedBuddyRadii.control,
+            MedicationSlotHeaderStrip(
+              style: style,
+              title: tr('필요시 복용', 'As-needed medication'),
+              status: _readOnly
+                  ? widget.readOnlyStatusLabel ??
+                        tr('환자가 기록한 복용 내역', 'Patient-reported doses')
+                  : reminderOn
+                  ? tr(
+                      '확인 알림 ${MedicationHistoryDates.timestamp(_reminder.scheduledAt)}',
+                      'Check ${MedicationHistoryDates.timestamp(_reminder.scheduledAt)}',
+                    )
+                  : tr('확인 알림 꺼짐', 'Check reminder off'),
+              trailing: [
+                if (_readOnly && widget.readOnlyHeaderAction != null)
+                  widget.readOnlyHeaderAction!,
+                if (!_readOnly) ...[
+                  IconButton(
+                    key: const Key('prn-reminder'),
+                    tooltip: tr('필요시 약 알림 설정', 'As-needed reminder settings'),
+                    onPressed: _locked ? null : _configureReminder,
+                    style: IconButton.styleFrom(
+                      backgroundColor: reminderOn
+                          ? Colors.white
+                          : Colors.transparent,
                     ),
-                    child: const Icon(
-                      Icons.medication_outlined,
-                      color: Colors.white,
-                      size: 23,
-                    ),
-                  ),
-                  const SizedBox(width: 11),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          tr('필요시 복용', 'As-needed medication'),
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        Text(
-                          _readOnly
-                              ? widget.readOnlyStatusLabel ??
-                                    tr(
-                                      '환자가 기록한 복용 내역',
-                                      'Patient-reported doses',
-                                    )
-                              : reminderOn
-                              ? tr(
-                                  '확인 알림 ${MedicationHistoryDates.timestamp(_reminder.scheduledAt)}',
-                                  'Check ${MedicationHistoryDates.timestamp(_reminder.scheduledAt)}',
-                                )
-                              : tr('확인 알림 꺼짐', 'Check reminder off'),
-                          style: TextStyle(
-                            color: style.color,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
+                    icon: Icon(
+                      reminderOn
+                          ? Icons.notifications_active_outlined
+                          : Icons.notifications_none_outlined,
+                      color: reminderOn
+                          ? const Color(0xFFFF1744)
+                          : MedBuddyColors.textSubtle,
+                      size: 29,
                     ),
                   ),
-                  if (_readOnly && widget.readOnlyHeaderAction != null)
-                    widget.readOnlyHeaderAction!,
-                  if (!_readOnly) ...[
-                    IconButton(
-                      key: const Key('prn-reminder'),
-                      tooltip: tr('필요시 약 알림 설정', 'As-needed reminder settings'),
-                      onPressed: _locked ? null : _configureReminder,
-                      style: IconButton.styleFrom(
-                        backgroundColor: reminderOn
-                            ? Colors.white
-                            : Colors.transparent,
-                      ),
-                      icon: Icon(
-                        reminderOn
-                            ? Icons.notifications_active_outlined
-                            : Icons.notifications_none_outlined,
-                        color: reminderOn
-                            ? const Color(0xFFFF1744)
-                            : MedBuddyColors.textSubtle,
-                        size: 29,
-                      ),
+                  const SizedBox(width: 2),
+                  IconButton(
+                    key: const Key('schedule-entire-slot-toggle-as_needed'),
+                    tooltip: pending != null
+                        ? tr('저장 결과 확인', 'Check pending doses')
+                        : allChecked
+                        ? tr('필요시 약 추가 복용 기록', 'Record another dose for all')
+                        : tr(
+                            '필요시 약 전부 체크',
+                            'Mark unchecked as-needed medicines taken',
+                          ),
+                    onPressed: _locked || medications.isEmpty
+                        ? null
+                        : () => _record(),
+                    style: IconButton.styleFrom(
+                      backgroundColor: allChecked
+                          ? style.color
+                          : Colors.transparent,
+                      foregroundColor: allChecked
+                          ? Colors.white
+                          : style.color,
+                      side: BorderSide(color: style.color, width: 1.5),
                     ),
-                    const SizedBox(width: 2),
-                    IconButton(
-                      key: const Key('schedule-entire-slot-toggle-as_needed'),
-                      tooltip: pending != null
-                          ? tr('저장 결과 확인', 'Check pending doses')
-                          : allChecked
-                          ? tr('필요시 약 추가 복용 기록', 'Record another dose for all')
-                          : tr(
-                              '필요시 약 전부 체크',
-                              'Mark unchecked as-needed medicines taken',
-                            ),
-                      onPressed: _locked || medications.isEmpty
-                          ? null
-                          : () => _record(),
-                      style: IconButton.styleFrom(
-                        backgroundColor: allChecked
-                            ? style.color
-                            : Colors.transparent,
-                        foregroundColor: allChecked
-                            ? Colors.white
-                            : style.color,
-                        side: BorderSide(color: style.color, width: 1.5),
-                      ),
-                      icon: const Icon(Icons.done_all_rounded, size: 24),
-                    ),
-                  ],
+                    icon: const Icon(Icons.done_all_rounded, size: 24),
+                  ),
                 ],
-              ),
+              ],
             ),
             if (_control.busy) const LinearProgressIndicator(),
             if (_control.error != null)

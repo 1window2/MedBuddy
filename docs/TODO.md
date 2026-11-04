@@ -9,9 +9,10 @@ listed in the [v0.2.5 notes](releases/v0.2.5-beta.md).
 - [x] Add `beta/v0.2.5` to the `beta-android` environment before the first
       signed build; the workflow already allows the branch.
 - [ ] Replace the remaining user guide screenshots from earlier versions.
-- [ ] The history tab does not reload after a dose recorded on a schedule screen
-      opened from a notification while the tab is showing. The refresh button
-      works, and a correction of a stale row gets the conflict message.
+- [x] The history tab does not reload after a dose recorded on a schedule screen
+      opened from a notification while the tab is showing. Fixed on 2026-11-04:
+      the tab reads again once the server accepts a dose; regressions in
+      [history screen](../frontend/test/medication_history_ui_boundary_test.dart).
 - [ ] Department search has no crisis wording ("죽고 싶어요"); decide what it
       should offer before adding any.
 - [ ] Word wrapping covers the shared widgets and the screens checked on
@@ -20,11 +21,41 @@ listed in the [v0.2.5 notes](releases/v0.2.5-beta.md).
 - [ ] Open the app right after updating on the Galaxy Note10 with the next signed
       build, when a dose sync task is due. The store open fix was verified on an
       emulator, and the phone's 130-second wait was seen once in three launches.
-- [ ] Update pydantic to 2.14 or later with the next backend change. 2.13.5 has
+- [x] Update pydantic to 2.14 or later with the next backend change (2.14.2 on
+      2026-11-04; the backend suite passes). 2.13.5 has
       two medium advisories (GHSA-gj4f-r7mf-jjxh, GHSA-955g-x97g-8mcp), but they
       need a `Fraction` or multi-host URL field, and the backend has neither. They
       may appear as Dependabot alerts once GitHub reviews them. The backend suite
       passes with 2.14.1.
+
+### 1.0.0 readiness (2026-11-04)
+
+Reviewed on 2026-11-04 (see the [v0.2.5 notes](releases/v0.2.5-beta.md#100-readiness-review-2026-11-04)).
+The code defects found were fixed. A 1.0.0 release still needs the items under
+"Blocking a 1.0.0 release" in the v0.2.2 section (Google Play with App Check, the
+hospital API quota, a physical-device pass) and these:
+
+- [ ] A final privacy policy and consent for health data; the in-app data-use
+      guide does not replace them (Beta Scope). Owner and legal.
+- [ ] Check production, read-only, for saved medications whose course length
+      is 0 or less. They were accepted before 2026-11-04 and never end.
+- [ ] Owner decision: a slot tapped on yesterday's list right after midnight,
+      with the app left open across midnight, is recorded for the new day by
+      design (`_ensureCurrentDayCache`), which also removes tonight's reminder of
+      that slot. Refusing it with "updated for the new day, tap again" would
+      change that design and its tests.
+- [ ] Owner decision: `SAVED_MEDICATION_MAX_PER_ACCOUNT` (300) also counts
+      stopped regimen versions, so frequent edits over years can reach it.
+- [ ] Not changed: two caregivers redeeming two codes of one patient at the same
+      moment can pass the per-patient link limit by one (the count is not locked
+      on the patient). No data is exposed; the fix needs a second account lock
+      in the redemption.
+- [ ] Not changed: a 200 response without the expected data shows its English
+      error text in the Korean UI on two caregiver screens. Deliberate in
+      `UserFacingErrorMessage`; a localized generic message would replace it.
+- [ ] Physical checks of the 2026-11-04 fixes: a snooze across midnight, and
+      sign-out while the 12-hour reminder task runs (neither is practical on the
+      emulator).
 
 ## v0.2.4 development line
 
@@ -250,10 +281,9 @@ released under that version instead. Changes are listed in the
       whose regimen revision changed. To be checked on a device; see the
       offline-edit decision under v0.2.4.
 - [ ] Final-review items left as they are (the as-needed extra-dose
-      confirmation shows the last dose time since 2026-10-23): a reminder worker already
-      running at sign-out may re-arm the old account's reminders (race, not
-      reproduced); a course length of 0 or less sent directly to the API has
-      no end (the app sends 1-3650); a failed local reminder save turns the
+      confirmation shows the last dose time since 2026-10-23; the sign-out
+      reminder race and course lengths of 0 or less were fixed on 2026-11-04):
+      a failed local reminder save turns the
       reminder off by design rather than restoring it; keep at least one
       database dump off the production host.
 
@@ -268,9 +298,9 @@ released under that version instead. Changes are listed in the
       - Owner decisions: `recordAsNeededDose` in
         medication_history_ui_boundary.dart had no caller (added 2026-10-17)
         and kept a "new record" editor path alive; both were removed on
-        2026-10-29 (done). Still open: the as-needed slot header
-        strip could share `MedicationSlotHeaderStrip`; the OCR-region matching
-        in `InputPrescription` (~270 lines) could move to its own file.
+        2026-10-29 (done). The as-needed slot header now uses
+        `MedicationSlotHeaderStrip`, and the OCR-region matching moved from
+        `InputPrescription` to `prescription_preview_regions.dart` (2026-11-04).
       - Seen but not changed (not refactors): the redacted caregiver text uses
         a curly apostrophe in caregiver_alert_delivery_service.dart and a
         straight one elsewhere; history dates and the notification time zone

@@ -421,6 +421,46 @@ def test_history_bounds_and_future_actual_time(fk_db: Session) -> None:
     assert error.value.status_code == 422
 
 
+# 함수이름: test_history_rejects_calendar_edge_actual_time
+# 함수역할: 앱 시간대로 옮길 수 없는 달력 끝의 복용 시각을 500 대신 범위 오류로 거부한다.
+# 매개변수: fk_db: 격리 세션, value: 보낸 복용 시각. 반환값: 없음.
+@pytest.mark.parametrize("value", ["0001-01-01T00:00:00+14:00", "9999-12-31T23:59:59-12:00"])
+def test_history_rejects_calendar_edge_actual_time(fk_db: Session, value: str) -> None:
+    med = medication(fk_db)
+    with pytest.raises(HTTPException) as error:
+        ManageMedicationCare(fk_db).update_history(
+            principal(), med.id, application_today(), "morning", report(actual_taken_at=value),
+        )
+    assert error.value.status_code == 422
+    assert fk_db.query(_MedicationCompletion).count() == 0
+
+
+# 함수이름: test_course_length_must_be_positive
+# 함수역할: 0일 이하의 기간은 끝나지 않는 복용이 되므로 저장·변경 요청에서 거부하고, 모르는 기간은 그대로 받는다.
+# 매개변수: value: 보낸 총 복용 기간, accepted: 받아야 하는지. 반환값: 없음.
+@pytest.mark.parametrize(
+    ("value", "accepted"),
+    [("0", False), ("0일", False), ("-7일", False), ("-3", False), ("7일", True), ("2주", True), ("", True), (None, True), ("미정", True)],
+)
+def test_course_length_must_be_positive(value: str | None, accepted: bool) -> None:
+    def build_save() -> object:
+        return SavedMedicationCreate(
+            patient_hash="patient-a", item_name="tablet", efficacy="", use_method="",
+            warning_message="", total_days=value,
+        )
+
+    def build_change() -> object:
+        return change(changes={"total_days": value})
+
+    # 변경 요청은 바꾸지 않는 값을 null 대신 빼므로 None은 저장 요청에서만 본다.
+    for build in (build_save,) if value is None else (build_save, build_change):
+        if accepted:
+            build()
+        else:
+            with pytest.raises(ValueError, match="at least one day"):
+                build()
+
+
 # 함수이름: test_history_accepts_device_clock_slightly_ahead
 # 함수역할: 기기 시계가 서버보다 몇 초 빠른 '지금 복용'을 받아들이고 서버 시각으로 저장한다.
 # 매개변수: fk_db: 격리 세션. 반환값: 없음.

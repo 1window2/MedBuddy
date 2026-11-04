@@ -216,6 +216,21 @@ Chosen in the review of the 2026-11-04 commits. Details are in the
 - **To undo:** put the strings back in `NotificationService._scheduleWithMode`
   and in `ManageNotificationInbox`.
 
+## 2026-11-04: a past-day reminder is corrected in the history
+
+Chosen in the 1.0.0 readiness review. Details are in the
+[v0.2.5 notes](releases/v0.2.5-beta.md).
+
+- **Chosen:** "taken" on a reminder of an earlier day still records nothing, and
+  the message now names that day and points to the history. A reminder of an
+  earlier day that is still pending (a snooze before midnight) is not cancelled
+  by a refresh of the new day.
+- **Alternative:** record the earlier day from the notification. The server
+  accepts earlier days, but the app only holds today's slot list, which may name
+  other medicines than that day's; it would need that day's list first.
+- **To undo:** restore the message in `_performMedicationNotificationAction` and
+  remove `_isEarlierDayReminder` from the stale-reminder loop.
+
 ## Earlier decisions
 
 - 2026-10-21: an as-needed dose can be undone from the save notice (the

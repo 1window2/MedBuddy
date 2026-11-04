@@ -262,3 +262,19 @@ def read_duration_days(raw_duration: str | None) -> int:
     if unit in ("주", "주일") or unit.startswith(("week", "wk")):
         return amount * _DAYS_PER_WEEK
     return amount
+
+
+# Function Name: names_nonpositive_duration
+# Description:
+# - Reports whether a duration label states a number that gives no positive course length, such as
+#   "0일" or "-7". Such a course would never end, because a length of 0 means "unknown". A blank
+#   label or one without a number is an unknown length and is not reported.
+# Parameters:
+# - raw_duration (str | None): Duration label sent by a client.
+# Returns:
+# - True when the label must be refused.
+def names_nonpositive_duration(raw_duration: str | None) -> bool:
+    return (
+        _DURATION.search(str(raw_duration or "")) is not None
+        and read_duration_days(raw_duration) <= 0
+    )
