@@ -27,6 +27,7 @@ import 'check_saved_medication_ui_boundary.dart';
 import '../controls/medication_history_control.dart';
 import '../widgets/medication_thumbnail.dart';
 import 'medication_image_viewer_boundary.dart';
+import '../widgets/keep_words_text.dart';
 
 // 파일명: check_schedule_ui_boundary.dart
 // 역할: 오늘 복약 일정과 시간대별 알림 설정 화면을 구성한다.
@@ -1714,7 +1715,7 @@ class _MedicationScheduleRow extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    KeepWordsText(
                       schedule.displayNameForLanguage(text.language),
                       softWrap: true,
                       style: TextStyle(

@@ -177,6 +177,45 @@ Chosen after the schedule stalled on the phone. Details are in the
   the two opens can overlap, which is the old behaviour rather than a new failure.
 - **To undo:** pass the database opener directly in `DoseOutboxStore.openWith`.
 
+## 2026-11-04: Korean text wraps by word
+
+Chosen in the large-text review after the project owner compared screenshots.
+
+- **Chosen:** `KeepWordsText` paints the text with invisible word joiners
+  between the letters of each Korean word, so lines break only at spaces. The
+  span's semantics label keeps the original text for screen readers, finders and
+  copies.
+- **Alternative:** Flutter has no `word-break: keep-all`, and changing every
+  `Text` in the app would touch about 680 widgets and 1,400 test finders. The
+  joiner only changes the widgets that hold descriptions and names.
+- **Limits:** a word longer than the line still breaks. Selectable text should
+  not use it, because selection offsets would count the joiners.
+- **To undo:** replace `KeepWordsText(` with `Text(` in the files that import
+  `keep_words_text.dart`.
+
+## 2026-11-04: chat + menu as a list
+
+- **Decided by the project owner** from emulator screenshots: a full-width list
+  with one choice per line, instead of the collaborator's row of icons made full
+  width.
+- **Why:** the list keeps each label on one line at the large text size and
+  shows the reason under a disabled choice.
+- **To undo:** restore the icon row in `_ChatActionSheet.build`.
+
+## 2026-11-04: one source for reminder wording
+
+Chosen in the review of the 2026-11-04 commits. Details are in the
+[v0.2.5 notes](releases/v0.2.5-beta.md).
+
+- **Chosen:** `medication_reminder_text.dart` holds the reminder title and body.
+  The notification service schedules with it, and the inbox compares stored
+  entries with it to show them in the current language.
+- **Alternative:** keep the inbox's own copy and a test that compares the two.
+  The copy would still have to be edited by hand at every wording change.
+- **Kept:** wording the app no longer produces stays as it was stored.
+- **To undo:** put the strings back in `NotificationService._scheduleWithMode`
+  and in `ManageNotificationInbox`.
+
 ## Earlier decisions
 
 - 2026-10-21: an as-needed dose can be undone from the save notice (the

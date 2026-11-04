@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/medbuddy_theme.dart';
+import 'keep_words_text.dart';
 
 // Class Name: MedBuddyNotice
 // Role: Shows one caution or review message beside an icon on a warning surface.
@@ -50,7 +51,7 @@ class MedBuddyNotice extends StatelessWidget {
         Icon(icon, color: MedBuddyColors.reminderAccent, size: 20),
         const SizedBox(width: 10),
         Expanded(
-          child: Text(
+          child: KeepWordsText(
             message,
             style: TextStyle(
               color: MedBuddyColors.reminderAccent,

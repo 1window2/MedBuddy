@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../controls/authentication_control.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/keep_words_text.dart';
 import '../widgets/medbuddy_page_header.dart';
 
 // File Name: manage_user_hub_ui_boundary.dart
@@ -196,7 +197,7 @@ class _AccountSummaryCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 5),
-                Text(
+                KeepWordsText(
                   accountType,
                   style: const TextStyle(
                     color: MedBuddyColors.textMuted,
@@ -280,7 +281,7 @@ class _UserHubActionCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    KeepWordsText(
                       title,
                       style: const TextStyle(
                         color: MedBuddyColors.textStrong,
@@ -290,7 +291,7 @@ class _UserHubActionCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 5),
-                    Text(
+                    KeepWordsText(
                       subtitle,
                       style: const TextStyle(
                         color: MedBuddyColors.textMuted,

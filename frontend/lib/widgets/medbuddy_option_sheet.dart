@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/medbuddy_theme.dart';
+import 'keep_words_text.dart';
 
 // Class Name: MedBuddyOptionSheet
 // Role: Frames a scrollable choice sheet with a drag handle.
@@ -122,7 +123,7 @@ class MedBuddyOptionTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    KeepWordsText(
                       title,
                       style: TextStyle(
                         color: MedBuddyColors.textStrong,
@@ -132,7 +133,7 @@ class MedBuddyOptionTile extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
+                    KeepWordsText(
                       subtitle,
                       style: TextStyle(
                         color: MedBuddyColors.textMuted,

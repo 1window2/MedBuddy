@@ -46,7 +46,7 @@ class _SettingsSection extends StatelessWidget {
         ),
         if (description != null) ...[
           const SizedBox(height: 6),
-          Text(
+          KeepWordsText(
             description!,
             style: const TextStyle(
               color: MedBuddyColors.textMuted,

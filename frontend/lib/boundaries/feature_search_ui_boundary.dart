@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../controls/find_app_feature_control.dart';
 import '../entities/feature_search_entity.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/keep_words_text.dart';
 import '../widgets/medbuddy_page_header.dart';
 import '../widgets/medbuddy_search_field.dart';
 
@@ -224,7 +225,7 @@ class _FeatureSearchUIState extends State<FeatureSearchUI> {
         contentPadding: const EdgeInsets.symmetric(vertical: 6),
         leading: Icon(_icon(entry.feature), color: MedBuddyColors.primaryDark),
         title: Text(entry.title(_english), style: MedBuddyTextStyles.menuTitle),
-        subtitle: Text(
+        subtitle: KeepWordsText(
           entry.path(_english),
           style: MedBuddyTextStyles.menuBody,
         ),

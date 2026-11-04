@@ -16,6 +16,7 @@ import 'package:timezone/timezone.dart' as timezone;
 import '../entities/json_value_reader.dart';
 import '../entities/chat_notification_summary.dart';
 import '../entities/medication_alarm_entity.dart';
+import '../entities/medication_reminder_text.dart';
 import '../entities/caregiver_alert_context_entity.dart';
 import '../entities/medication_notification_selection_entity.dart';
 import '../entities/medication_schedule_entity.dart';
@@ -805,11 +806,10 @@ class NotificationService {
     try {
       for (final activeDate in sortedDates) {
         if (owner != _historyUserHash) return;
-        final body = slotKey == 'as_needed'
-            ? (isEnglishLanguage(language)
-                  ? 'Check your as-needed medication and recorded doses.'
-                  : '필요시 약과 오늘 기록한 복용 내역을 확인해 주세요.')
-            : _buildReminderBody(language);
+        final body = medicationReminderBody(
+          slotKey,
+          isEnglish: isEnglishLanguage(language),
+        );
         final scheduledDate = timezone.TZDateTime(
           timezone.local,
           activeDate.year,
@@ -952,20 +952,6 @@ class NotificationService {
     return 100000 + (hash % 2000000000);
   }
 
-  // 함수이름: _buildReminderBody
-  // 함수역할: 예약 후 복용 상태가 바뀌어도 재복용을 지시하지 않는 중립적 안내를 만든다.
-  // 매개변수:
-  // - language (String): 안내 문장에 사용할 언어 코드
-  // 반환값:
-  // - 알림 본문 문자열
-  String _buildReminderBody(String language) {
-    // Android retains this text until delivery. A name snapshot cannot tell us
-    // which doses are still pending then, even when sensitive details are on.
-    return isEnglishLanguage(language)
-        ? 'Check your medication schedule and recorded completion status.'
-        : '복약 일정과 복용 완료 기록을 확인해 주세요.';
-  }
-
   // Function Name: _scheduleWithMode
   // Description: Schedules a localized zoned reminder with the chosen Android precision mode, completion and snooze actions, and a slot-aware navigation payload.
   // Parameters:
@@ -992,13 +978,11 @@ class NotificationService {
   }) async {
     // 예약 도중 계정이 바뀌면 나머지 예약을 새 계정에 남기지 않는다.
     if (owner != _historyUserHash) return null;
-    final title = slotKey == 'as_needed'
-        ? (isEnglishLanguage(language)
-              ? 'As-needed medication check'
-              : '필요시 약 확인')
-        : isEnglishLanguage(language)
-        ? '$slotTitle medication schedule'
-        : '$slotTitle 복약 일정 확인';
+    final title = medicationReminderTitle(
+      slotKey,
+      slotTitle: slotTitle,
+      isEnglish: isEnglishLanguage(language),
+    );
 
     await _plugin.zonedSchedule(
       id: id,
@@ -1091,7 +1075,10 @@ class NotificationService {
     final now = timezone.TZDateTime.now(timezone.local);
     final scheduledDate = now.add(delay);
     final originalDate = scheduleDate ?? now;
-    final body = _buildReminderBody(language);
+    final body = medicationReminderBody(
+      slotKey,
+      isEnglish: isEnglishLanguage(language),
+    );
     NotificationInboxEntry? entry;
     try {
       entry = await _scheduleWithMode(

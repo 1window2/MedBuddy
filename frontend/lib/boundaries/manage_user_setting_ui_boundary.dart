@@ -24,6 +24,7 @@ import '../widgets/app_version_label.dart';
 import 'set_notification_ui_boundary.dart';
 import 'data_use_info_ui_boundary.dart';
 import 'notification_readiness_ui_boundary.dart';
+import '../widgets/keep_words_text.dart';
 
 part 'settings_preference_widgets.dart';
 
@@ -1833,7 +1834,7 @@ class _SettingsMenuTile extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 5),
-                        Text(
+                        KeepWordsText(
                           summary,
                           style: const TextStyle(
                             color: MedBuddyColors.textMuted,

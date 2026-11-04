@@ -413,7 +413,8 @@ void main() {
               matching: find.byType(Text),
             ),
           )
-          .data,
+          .textSpan
+          ?.toPlainText(),
       '다음 복용일: $tomorrowText',
     );
     expect(find.text('다음 복용일: 오늘'), findsOneWidget);
@@ -830,7 +831,8 @@ void main() {
           .byWidgetPredicate(
             (widget) =>
                 widget is Text &&
-                (widget.data ?? '').startsWith(
+                (widget.data ?? widget.textSpan?.toPlainText() ?? '')
+                    .startsWith(
                   language == 'ko' ? '복용기간:' : 'Medication period:',
                 ),
           )

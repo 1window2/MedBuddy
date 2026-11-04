@@ -17,6 +17,7 @@ import '../services/api_response_parser.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/medication_entry_fields.dart';
 import '../widgets/medbuddy_page_header.dart';
+import '../widgets/keep_words_text.dart';
 
 enum _HistoryShareDestination { external, chat }
 
@@ -1576,7 +1577,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  KeepWordsText(
                     entry.itemName,
                     style: MedBuddyTextStyles.menuTitle.copyWith(
                       decoration: entry.status == MedicationHistoryStatus.taken

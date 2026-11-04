@@ -643,6 +643,47 @@ class _FakeRealtimeService extends LinkedChatRealtimeService {
   }
 }
 
+// 클래스명: _NoMedicationChatControl
+// 역할: 복용 중인 약이 없는 연동을 재현하는 대역.
+// 주요 책임:
+// - 채팅에 첨부할 약 문맥을 빈 목록으로 제공한다.
+class _NoMedicationChatControl extends _RetryChatControl {
+  // 함수이름: _NoMedicationChatControl
+  // 함수역할: 전송 실패 없이 기본 대역을 준비한다. 매개변수: 없음. 반환값: 대역.
+  _NoMedicationChatControl() : super(failFirstSend: false);
+
+  // 함수이름: requestMedicationContexts
+  // 함수역할: 복용 중인 약이 없다는 응답을 제공한다. 매개변수: linkId. 반환값: 빈 목록.
+  @override
+  Future<List<ChatMedicationContext>> requestMedicationContexts({
+    required int linkId,
+  }) async => const [];
+}
+
+// 클래스명: _GatedMedicationChatControl
+// 역할: 약 문맥 응답을 테스트가 정한 시점까지 붙잡아 두는 대역.
+// 주요 책임:
+// - 기능 메뉴를 연 뒤에 약 정보가 도착하는 순서를 재현한다.
+// 속성:
+// - gate (Completer<void>): 완료되면 약 문맥 응답을 돌려준다.
+class _GatedMedicationChatControl extends _RetryChatControl {
+  final gate = Completer<void>();
+
+  // 함수이름: _GatedMedicationChatControl
+  // 함수역할: 전송 실패 없이 기본 대역을 준비한다. 매개변수: 없음. 반환값: 대역.
+  _GatedMedicationChatControl() : super(failFirstSend: false);
+
+  // 함수이름: requestMedicationContexts
+  // 함수역할: gate가 완료된 뒤 기본 약 문맥을 돌려준다. 매개변수: linkId. 반환값: 약 문맥.
+  @override
+  Future<List<ChatMedicationContext>> requestMedicationContexts({
+    required int linkId,
+  }) async {
+    await gate.future;
+    return super.requestMedicationContexts(linkId: linkId);
+  }
+}
+
 // 클래스명: _DeleteChatControl
 // 역할: 채팅 삭제 식별자와 범위를 기록하고 선택적으로 서버 실패를 재현하는 대역.
 // 주요 책임:
@@ -3335,9 +3376,9 @@ void main() {
         await tester.pumpAndSettle();
         expect(
           tester
-              .widget<IconButton>(find.byKey(const ValueKey('chat-action-1')))
-              .onPressed,
-          isNotNull,
+              .widget<ListTile>(find.byKey(const ValueKey('chat-action-1')))
+              .enabled,
+          isTrue,
         );
         await tester.tap(find.byKey(const ValueKey('chat-action-1')));
         await tester.pumpAndSettle();
@@ -3393,6 +3434,71 @@ void main() {
     );
   }
 
+  // 함수이름: 기능 메뉴 갱신 테스트
+  // 함수역할: 메뉴를 연 뒤 약 정보가 도착하면 닫았다 열지 않아도 약 첨부를 고를 수 있는지 확인한다.
+  // 매개변수: tester: 화면 테스트 도구. 반환값: 검증 완료.
+  testWidgets('열린 기능 메뉴는 늦게 도착한 약 정보를 반영한다', (tester) async {
+    final control = _GatedMedicationChatControl();
+    final realtimeService = _FakeRealtimeService();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkedChatUI(
+          linkId: 17,
+          currentUserHash: 'patient-a',
+          patientHash: 'patient-a',
+          control: control,
+          realtimeService: realtimeService,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('chatActions')));
+    await tester.pumpAndSettle();
+    final medication = find.byKey(const ValueKey('chat-action-0'));
+    expect(tester.widget<ListTile>(medication).enabled, isFalse);
+
+    control.gate.complete();
+    await tester.pumpAndSettle();
+    expect(tester.widget<ListTile>(medication).enabled, isTrue);
+    expect(find.text('복용 중인 약이 없습니다'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await realtimeService.dispose();
+    control.dispose();
+  });
+
+  // 함수이름: 약 없음 기능 메뉴 테스트
+  // 함수역할: 복용 중인 약이 없으면 약 첨부 선택지를 막고 그 이유를 화면 낭독기 이름으로 알리는지 확인한다.
+  // 매개변수: tester: 화면 테스트 도구. 반환값: 검증 완료.
+  testWidgets('기능 메뉴는 복용 중인 약이 없을 때 이유를 알린다', (tester) async {
+    final control = _NoMedicationChatControl();
+    final realtimeService = _FakeRealtimeService();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkedChatUI(
+          linkId: 17,
+          currentUserHash: 'patient-a',
+          patientHash: 'patient-a',
+          control: control,
+          realtimeService: realtimeService,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('chatActions')));
+    await tester.pumpAndSettle();
+    final medication = tester.widget<ListTile>(
+      find.byKey(const ValueKey('chat-action-0')),
+    );
+    expect(medication.enabled, isFalse);
+    expect(find.text('대화할 약 선택'), findsOneWidget);
+    expect(find.text('복용 중인 약이 없습니다'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await realtimeService.dispose();
+    control.dispose();
+  });
+
   for (final language in ['ko', 'en']) {
     for (final scenario in [
       (user: 'patient-a', canRequest: false),
@@ -3400,7 +3506,7 @@ void main() {
       (user: 'caregiver-a', canRequest: false),
     ]) {
       // 함수이름: 확인 요청 도구 숨김 테스트
-      // 함수역할: 환자 또는 요청 권한 없는 사용자는 시계 버튼 없이 약 첨부와 입력을 사용할 수 있는지 확인한다.
+      // 함수역할: 환자 또는 요청할 시간대가 없는 보호자는 복약 확인 요청을 고를 수 없고, 약 첨부와 입력은 사용할 수 있는지 확인한다.
       // 매개변수: tester: 화면 테스트 도구. 반환값: 검증 완료.
       testWidgets('확인 요청 숨김 $language $scenario', (tester) async {
         tester.view.physicalSize = const Size(360, 740);
@@ -3441,10 +3547,6 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        expect(
-          find.byKey(const ValueKey('chatScheduleSelector')),
-          findsNothing,
-        );
         final medication = find.byKey(const ValueKey('chatActions'));
         expect(tester.widget<IconButton>(medication).onPressed, isNotNull);
         expect(find.byType(TextField), findsOneWidget);
@@ -3461,9 +3563,17 @@ void main() {
         } else {
           expect(
             tester
-                .widget<IconButton>(find.byKey(const ValueKey('chat-action-1')))
-                .onPressed,
-            isNull,
+                .widget<ListTile>(find.byKey(const ValueKey('chat-action-1')))
+                .enabled,
+            isFalse,
+          );
+          expect(
+            find.text(
+              language == 'en'
+                  ? 'No medication times to check today'
+                  : '오늘 확인을 요청할 시간대가 없습니다',
+            ),
+            findsOneWidget,
           );
         }
         expect(find.byKey(const ValueKey('chat-action-2')), findsOneWidget);

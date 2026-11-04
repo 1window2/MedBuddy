@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/medbuddy_theme.dart';
+import 'keep_words_text.dart';
 
 // 클래스명: MedBuddyPreferenceRow
 // 역할: 시간·공개 범위·화면 이동을 같은 라벨·값·화살표 배치로 제공한다.
@@ -45,7 +46,7 @@ class MedBuddyPreferenceRow extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
+                          KeepWordsText(
                             title,
                             style: TextStyle(
                               color: onTap == null
@@ -58,7 +59,7 @@ class MedBuddyPreferenceRow extends StatelessWidget {
                           ),
                           if (description != null) ...[
                             const SizedBox(height: 4),
-                            Text(
+                            KeepWordsText(
                               description!,
                               style: const TextStyle(
                                 fontSize: 13,

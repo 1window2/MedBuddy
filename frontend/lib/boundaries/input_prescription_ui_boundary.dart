@@ -13,6 +13,7 @@ import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/home_medication_preview.dart';
 import '../widgets/home_medication_slot_pager.dart';
+import '../widgets/keep_words_text.dart';
 
 // 파일명: input_prescription_ui_boundary.dart
 // 역할: MedBuddy 홈 화면과 처방전 입력 진입점을 구성한다.
@@ -606,7 +607,7 @@ class _HomeActionCard extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 7),
-        Text(
+        KeepWordsText(
           title,
           maxLines: largeTextGridLayout ? null : 2,
           overflow: largeTextGridLayout
@@ -620,7 +621,7 @@ class _HomeActionCard extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 4),
-        Text(
+        KeepWordsText(
           subtitle,
           maxLines: largeTextGridLayout ? null : 2,
           overflow: largeTextGridLayout
@@ -652,7 +653,7 @@ class _HomeActionCard extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              KeepWordsText(
                 title,
                 maxLines: largeTextGridLayout ? null : 1,
                 overflow: largeTextGridLayout
@@ -665,7 +666,7 @@ class _HomeActionCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 4),
-              Text(
+              KeepWordsText(
                 subtitle,
                 maxLines: largeTextGridLayout ? null : 2,
                 overflow: largeTextGridLayout

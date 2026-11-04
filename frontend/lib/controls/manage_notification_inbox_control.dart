@@ -3,6 +3,9 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../entities/caregiver_alert_context_entity.dart';
+import '../entities/medication_notification_selection_entity.dart';
+import '../entities/medication_reminder_text.dart';
+import '../entities/medication_slot_label.dart';
 import '../entities/notification_inbox_entity.dart';
 import '../services/medication_notification_payload_codec.dart';
 import '../services/notification_inbox_store.dart';
@@ -57,7 +60,7 @@ class ManageNotificationInbox extends ChangeNotifier {
     required bool isEnglish,
     bool showSensitiveDetails = true,
   }) {
-    final reminderTitle = _localizedReminderTitle(entry, isEnglish);
+    final reminderTitle = _localizedReminder(entry, isEnglish).title;
     if (reminderTitle != null) return reminderTitle;
     final chatList = _chatList;
     if (_isCaregiverEntry(entry)) {
@@ -106,7 +109,7 @@ class ManageNotificationInbox extends ChangeNotifier {
     required bool isEnglish,
     bool showSensitiveDetails = true,
   }) {
-    final reminderBody = _localizedReminderBody(entry, isEnglish);
+    final reminderBody = _localizedReminder(entry, isEnglish).body;
     if (reminderBody != null) return reminderBody;
     if (_isCaregiverEntry(entry) && !showSensitiveDetails) {
       return isEnglish
@@ -116,50 +119,42 @@ class ManageNotificationInbox extends ChangeNotifier {
     return entry.body;
   }
 
-  // 정형 복약 알림만 변환하고 알 수 없는 이전 문구는 원문을 보존한다.
+  // 함수이름: _reminderSlot
+  // 함수역할: 앱이 예약한 복약 알림의 시간대 키를 알림 경로에서 읽는다.
+  // 매개변수: entry. 반환값: 시간대 키, 복약 알림이 아니면 null.
   String? _reminderSlot(NotificationInboxEntry entry) {
     if (entry.category != NotificationInboxCategory.medication) return null;
-    final match = RegExp(
-      r'^schedule:(morning|lunch|evening|bedtime|as_needed):\d+:\d{4}-\d{2}-\d{2}$',
-    ).firstMatch(entry.payload);
-    return match?.group(1);
-  }
-
-  String? _localizedReminderTitle(NotificationInboxEntry entry, bool english) {
-    final slot = _reminderSlot(entry);
-    if (slot == null) return null;
-    const names = {
-      'morning': ('아침', 'Morning'),
-      'lunch': ('점심', 'Lunch'),
-      'evening': ('저녁', 'Evening'),
-      'bedtime': ('취침 전', 'Bedtime'),
-    };
-    if (slot == 'as_needed') {
-      const korean = '필요시 약 확인';
-      const englishTitle = 'As-needed medication check';
-      return entry.title == korean || entry.title == englishTitle
-          ? (english ? englishTitle : korean)
-          : null;
+    final selection = MedicationNotificationPayloadCodec.decode(entry.payload);
+    if (selection?.destination != MedicationNotificationDestination.schedule) {
+      return null;
     }
-    final name = names[slot];
-    if (name == null) return null;
-    final korean = '${name.$1} 복약 일정 확인';
-    final englishTitle = '${name.$2} medication schedule';
-    if (entry.title != korean && entry.title != englishTitle) return null;
-    return english ? englishTitle : korean;
+    return selection!.slotKey;
   }
 
-  String? _localizedReminderBody(NotificationInboxEntry entry, bool english) {
+  // 함수이름: _localizedReminder
+  // 함수역할: 정형 복약 알림의 제목과 본문을 현재 언어로 바꾸고, 알 수 없는 이전 문구는 원문을 보존한다.
+  // 매개변수: entry, isEnglish. 반환값: 현재 언어 문구, 정형 문구가 아닌 쪽은 null.
+  ({String? title, String? body}) _localizedReminder(
+    NotificationInboxEntry entry,
+    bool isEnglish,
+  ) {
     final slot = _reminderSlot(entry);
-    if (slot == null) return null;
-    final korean = slot == 'as_needed'
-        ? '필요시 약과 오늘 기록한 복용 내역을 확인해 주세요.'
-        : '복약 일정과 복용 완료 기록을 확인해 주세요.';
-    final englishBody = slot == 'as_needed'
-        ? 'Check your as-needed medication and recorded doses.'
-        : 'Check your medication schedule and recorded completion status.';
-    if (entry.body != korean && entry.body != englishBody) return null;
-    return english ? englishBody : korean;
+    if (slot == null) return (title: null, body: null);
+    String title(bool english) => medicationReminderTitle(
+      slot,
+      slotTitle: medicationSlotLabel(slot, isEnglish: english),
+      isEnglish: english,
+    );
+    String body(bool english) =>
+        medicationReminderBody(slot, isEnglish: english);
+    return (
+      title: entry.title == title(false) || entry.title == title(true)
+          ? title(isEnglish)
+          : null,
+      body: entry.body == body(false) || entry.body == body(true)
+          ? body(isEnglish)
+          : null,
+    );
   }
 
   // 함수이름: _isCaregiverEntry

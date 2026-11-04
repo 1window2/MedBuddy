@@ -35,6 +35,7 @@ import '../widgets/medbuddy_page_header.dart';
 import '../widgets/medication_history_charts.dart';
 import '../widgets/chat_date_divider.dart';
 import '../widgets/chat_place_map_preview.dart';
+import '../widgets/keep_words_text.dart';
 
 // 함수이름: linkedChatRouteName
 // 함수역할: 알림·채팅 목록·연동 화면 어디서 열어도 같은 연동의 채팅 화면이 같은 경로 이름을 쓰게 한다.
@@ -211,6 +212,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   bool _isRecordingTaken = false;
   bool _isSelectingMessages = false;
   bool _isChatActionsOpen = false;
+  final _chatActionsRevision = ValueNotifier<int>(0);
   bool _isDeletingMessages = false;
   final Set<int> _selectedMessageIds = {};
   ({
@@ -509,6 +511,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     WidgetsBinding.instance.removeObserver(this);
     _requestGeneration += 1;
     _medicationContextGuideTimer?.cancel();
+    _chatActionsRevision.dispose();
     _history.removeListener(_historyChanged);
     _history.dispose();
     _composer.removeListener(_composerChanged);
@@ -590,6 +593,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
             )
             .toList(growable: false);
       });
+      _notifyChatActions();
     } catch (_) {
       if (!mounted || generation != _requestGeneration) {
         return;
@@ -613,6 +617,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
           }
         }
       });
+      _notifyChatActions();
     }
   }
 
@@ -636,6 +641,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       // - 없음.
       // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
       setState(() => _scheduleContexts = contexts);
+      _notifyChatActions();
     } catch (_) {
       // 채팅 자체는 계속 사용할 수 있으므로 시간대 카드 실패는 조용히 보완 조회한다.
     }
@@ -852,6 +858,9 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     }
   }
 
+  // 함수이름: _showChatActions
+  // 함수역할: 약 첨부·복약 확인 요청·병원·약국 검색을 하나의 메뉴로 열고 고른 기능을 실행한다.
+  // 매개변수: 없음. 반환값: 고른 기능의 화면이 닫힌 뒤 완료.
   Future<void> _showChatActions() async {
     if (_isSending ||
         _isSelectingMessages ||
@@ -860,86 +869,76 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       return;
     }
     _isChatActionsOpen = true;
-    final action = await showModalBottomSheet<int>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) {
-        final actions = <(int, IconData, String, bool)>[
-          (
-            0,
-            Icons.medication_outlined,
-            _text.selectMedication,
-            _medicationContexts.isNotEmpty,
+    final _ChatAction? action;
+    try {
+      action = await showModalBottomSheet<_ChatAction>(
+        context: context,
+        showDragHandle: true,
+        // 시트를 연 뒤 약·시간대 정보가 도착해도 선택지를 바로 갱신한다.
+        builder: (sheetContext) => ValueListenableBuilder<int>(
+          valueListenable: _chatActionsRevision,
+          builder: (context, _, _) => _ChatActionSheet(
+            items: _chatActionItems(),
+            onSelected: (action) => Navigator.pop(sheetContext, action),
           ),
-          if (!_isPatient)
-            (
-              1,
-              Icons.schedule_rounded,
-              _text.scheduleSelectorTitle,
-              _requestableScheduleContexts.isNotEmpty,
-            ),
-          (2, Icons.local_hospital_outlined, _text.findNearbyHospital, true),
-          (3, Icons.storefront_outlined, _text.findNearbyPharmacy, true),
-        ];
-        return SafeArea(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (var i = 0; i < actions.length; i++)
-                  SizedBox(
-                    width: 90,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton.filledTonal(
-                          key: ValueKey('chat-action-${actions[i].$1}'),
-                          tooltip: actions[i].$3,
-                          style: IconButton.styleFrom(
-                            backgroundColor: MedBuddyColors.successSurface,
-                            foregroundColor: MedBuddyColors.primary,
-                          ),
-                          onPressed: actions[i].$4
-                              ? () => Navigator.pop(sheetContext, actions[i].$1)
-                              : null,
-                          icon: Icon(actions[i].$2),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          actions[i].$3,
-                          textAlign: TextAlign.center,
-                          style: MedBuddyTextStyles.menuTitle.copyWith(
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-    _isChatActionsOpen = false;
+        ),
+      );
+    } finally {
+      _isChatActionsOpen = false;
+    }
     if (!mounted || action == null) return;
     switch (action) {
-      case 0:
+      case _ChatAction.medication:
         await _showMedicationSelector();
-      case 1:
+      case _ChatAction.scheduleRequest:
         await _showScheduleSelector();
-      case 2:
-      case 3:
+      case _ChatAction.nearbyHospital:
+      case _ChatAction.nearbyPharmacy:
         await _showPharmacySelector(
           medications: List<ChatMedicationContext>.of(
             _selectedMedicationContexts,
           ),
-          hospitals: action == 2,
+          hospitals: action == _ChatAction.nearbyHospital,
         );
     }
   }
+
+  // 함수이름: _chatActionItems
+  // 함수역할: 현재 역할과 불러온 약·시간대로 기능 메뉴의 선택지와 막힌 이유를 만든다.
+  // 매개변수: 없음. 반환값: 화면 순서의 선택지 목록.
+  List<_ChatActionItem> _chatActionItems() => [
+    (
+      action: _ChatAction.medication,
+      icon: Icons.medication_outlined,
+      label: _text.selectMedication,
+      reason: _medicationContexts.isEmpty ? _text.noActiveMedication : null,
+    ),
+    if (!_isPatient)
+      (
+        action: _ChatAction.scheduleRequest,
+        icon: Icons.schedule_rounded,
+        label: _text.scheduleSelectorTitle,
+        reason: _requestableScheduleContexts.isEmpty
+            ? _text.noRequestableSchedule
+            : null,
+      ),
+    (
+      action: _ChatAction.nearbyHospital,
+      icon: Icons.local_hospital_outlined,
+      label: _text.findNearbyHospital,
+      reason: null,
+    ),
+    (
+      action: _ChatAction.nearbyPharmacy,
+      icon: Icons.storefront_outlined,
+      label: _text.findNearbyPharmacy,
+      reason: null,
+    ),
+  ];
+
+  // 함수이름: _notifyChatActions
+  // 함수역할: 열린 기능 메뉴가 새 약·시간대 정보를 반영하도록 알린다. 매개변수: 없음. 반환값: 없음.
+  void _notifyChatActions() => _chatActionsRevision.value += 1;
 
   // 함수이름: _showPharmacySelector
   // 함수역할: 병원·약국을 선택한 뒤 수신자와 공유 내용을 확인한다.
@@ -2383,6 +2382,64 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
 // - 빠른 답장 문구와 복약 행동 종류에서 지원하는 선택지를 열거하고 구분한다: taken, cannotNow, shortage, discomfort.
 enum _ChatQuickReply { taken, cannotNow, shortage, discomfort }
 
+// 클래스명: _ChatAction
+// 역할: 채팅 입력창 기능 메뉴의 선택지를 담당한다.
+// 주요 책임:
+// - 약 첨부·복약 확인 요청·병원 찾기·약국 찾기를 구분하며, 순서가 화면 키 chat-action-N의 번호가 된다.
+enum _ChatAction { medication, scheduleRequest, nearbyHospital, nearbyPharmacy }
+
+typedef _ChatActionItem = ({
+  _ChatAction action,
+  IconData icon,
+  String label,
+  String? reason,
+});
+
+// 클래스명: _ChatActionSheet
+// 역할: 채팅 기능 메뉴의 선택지를 한 줄에 하나씩 보여준다.
+// 주요 책임:
+// - 큰 글씨에서도 라벨이 한 줄을 넓게 쓰도록 세로 목록으로 배치한다.
+// - 막힌 선택지는 누를 수 없게 하고 그 이유를 라벨 아래에 알린다.
+// 속성:
+// - items (List<_ChatActionItem>): 화면 순서의 선택지.
+// - onSelected (ValueChanged<_ChatAction>): 고른 선택지를 돌려주는 콜백.
+class _ChatActionSheet extends StatelessWidget {
+  final List<_ChatActionItem> items;
+  final ValueChanged<_ChatAction> onSelected;
+
+  // 함수이름: _ChatActionSheet
+  // 함수역할: 선택지와 선택 콜백을 보관한다. 매개변수: items, onSelected. 반환값: 시트 내용.
+  const _ChatActionSheet({required this.items, required this.onSelected});
+
+  // 함수이름: build
+  // 함수역할: 선택지를 배치한다. 매개변수: context. 반환값: 시트 내용.
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final item in items)
+            ListTile(
+              key: ValueKey('chat-action-${item.action.index}'),
+              enabled: item.reason == null,
+              // 색과 글씨를 ListTile에 맡겨 막힌 선택지가 흐리게 보이게 한다.
+              iconColor: MedBuddyColors.primary,
+              titleTextStyle: MedBuddyTextStyles.menuTitle,
+              leading: Icon(item.icon),
+              title: KeepWordsText(item.label),
+              subtitle: item.reason == null
+                  ? null
+                  : KeepWordsText(item.reason!),
+              onTap: () => onSelected(item.action),
+            ),
+        ],
+      ),
+    ),
+  );
+}
+
 // 클래스명: _QuickReplyBar
 // 역할: 복약 확인·복용 완료 등 빠른 답장 선택지를 담당한다.
 // 주요 책임:
@@ -3754,7 +3811,7 @@ class _MessageBubble extends StatelessWidget {
               ),
               const SizedBox(height: 8),
             ],
-            Text(
+            KeepWordsText(
               message.body,
               style: TextStyle(
                 color: MedBuddyColors.textStrong,
@@ -3952,8 +4009,6 @@ class _LinkedChatText {
       ? 'Records older than 90 days can no longer be opened.'
       : '90일이 지난 기록은 더 이상 열 수 없어요.';
 
-  String get findNearbyCare =>
-      isEnglish ? 'Find hospitals or pharmacies' : '병원·약국 찾기';
   String get findNearbyHospital => isEnglish ? 'Find hospitals' : '병원 찾기';
   String get shareCareTitle => isEnglish ? 'Share place' : '장소 공유';
   String shareRecipient(String name) =>
@@ -4295,13 +4350,6 @@ class _LinkedChatText {
     };
   }
 
-  // 함수이름: selectScheduleSlot
-  // 함수역할: 보호자 전용 시간대 선택 버튼의 복약 확인 요청 목적을 안내한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get selectScheduleSlot =>
-      isEnglish ? 'Request a medication check' : '복약 확인 요청';
   // 함수이름: onlyCaregiverCanRequest
   // 함수역할: 현재 언어와 입력값에 맞춰 "복약 확인 요청은 연결된 보호자만 보낼 수 있습니다." 문구를 제공한다.
   // 매개변수:
@@ -4317,6 +4365,14 @@ class _LinkedChatText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get scheduleSelectorTitle =>
       isEnglish ? 'Today\'s medication times' : '오늘의 복약 시간대';
+  // 함수이름: noRequestableSchedule
+  // 함수역할: 기능 메뉴에서 확인을 요청할 시간대가 없어 선택지가 막힌 이유를 알린다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 현재 언어의 안내 문구.
+  String get noRequestableSchedule => isEnglish
+      ? 'No medication times to check today'
+      : '오늘 확인을 요청할 시간대가 없습니다';
   // 함수이름: scheduleSelectorCaregiverDescription
   // 함수역할: 현재 언어와 입력값에 맞춰 "확인이 필요한 시간대를 선택해 환자에게 알려주세요." 문구를 제공한다.
   // 매개변수:

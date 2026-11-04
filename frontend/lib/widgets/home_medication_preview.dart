@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/medbuddy_theme.dart';
+import 'keep_words_text.dart';
 
 // 클래스명: HomeMedicationPreview
 // 역할: 진행률과 일정 요약을 표시하고 화면별 조회·복용 동작을 배치한다.
@@ -292,7 +293,7 @@ class HomeMedicationSummary extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              KeepWordsText(
                 title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -303,7 +304,7 @@ class HomeMedicationSummary extends StatelessWidget {
                 ),
               ),
               SizedBox(height: compact ? 2 : 3),
-              Text(
+              KeepWordsText(
                 description,
                 maxLines: descriptionMaxLines,
                 overflow: descriptionMaxLines == null

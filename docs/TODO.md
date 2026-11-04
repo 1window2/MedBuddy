@@ -6,7 +6,7 @@ v0.2.5 starts from `v0.2.4-beta` on `beta/v0.2.5` (draft PR #134) and collects t
 collaborator's usability work. The open items of v0.2.4 moved here. Changes are
 listed in the [v0.2.5 notes](releases/v0.2.5-beta.md).
 
-- [ ] Add `beta/v0.2.5` to the `beta-android` environment before the first
+- [x] Add `beta/v0.2.5` to the `beta-android` environment before the first
       signed build; the workflow already allows the branch.
 - [ ] Replace the remaining user guide screenshots from earlier versions.
 - [ ] The history tab does not reload after a dose recorded on a schedule screen
@@ -14,6 +14,9 @@ listed in the [v0.2.5 notes](releases/v0.2.5-beta.md).
       works, and a correction of a stale row gets the conflict message.
 - [ ] Department search has no crisis wording ("죽고 싶어요"); decide what it
       should offer before adding any.
+- [ ] Word wrapping covers the shared widgets and the screens checked on
+      2026-11-04. Other one-off texts still wrap by syllable; switch them to
+      `KeepWordsText` when they are next changed.
 - [ ] Open the app right after updating on the Galaxy Note10 with the next signed
       build, when a dose sync task is due. The store open fix was verified on an
       emulator, and the phone's 130-second wait was seen once in three launches.
