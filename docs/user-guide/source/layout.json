@@ -15,20 +15,20 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
-            929,
-            8,
-            1063,
-            142
+            940,
+            160,
+            1050,
+            250
           ]
         ],
         "callouts": [],
-        "image": "source/assets/fc3a64f0fe659ea1281d80c087932f181eda810b6bc7384304a8973ce37c60a5.png"
+        "image": "assets/login-new.png"
       },
       {
         "identity": "AUTH-INS-LANGUAGE-20260924:2",
@@ -48,7 +48,7 @@
           ]
         ],
         "callouts": [],
-        "image": "assets/guide-manual-language.png"
+        "image": "assets/login-language.png"
       }
     ]
   },
@@ -68,20 +68,20 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
             80,
-            757,
+            800,
             1000,
-            1306
+            1345
           ]
         ],
         "callouts": [],
-        "image": "source/assets/fc3a64f0fe659ea1281d80c087932f181eda810b6bc7384304a8973ce37c60a5.png"
+        "image": "assets/login-new.png"
       }
     ]
   },
@@ -101,20 +101,20 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
-            80,
-            1423,
-            1000,
-            1557
+            180,
+            1490,
+            900,
+            1585
           ]
         ],
         "callouts": [],
-        "image": "source/assets/fc3a64f0fe659ea1281d80c087932f181eda810b6bc7384304a8973ce37c60a5.png"
+        "image": "assets/login-new.png"
       },
       {
         "identity": "ASM-P002:2",
@@ -127,14 +127,14 @@
         ],
         "boxes": [
           [
-            84,
-            950,
-            996,
-            1489
+            80,
+            860,
+            1000,
+            1410
           ]
         ],
         "callouts": [],
-        "image": "assets/guide-manual-signup.png"
+        "image": "assets/signup-new.png"
       },
       {
         "identity": "ASM-P003:3",
@@ -241,60 +241,60 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
             80,
-            1657,
+            1690,
             1000,
-            1791
+            1835
           ]
         ],
         "callouts": [],
-        "image": "source/assets/fc3a64f0fe659ea1281d80c087932f181eda810b6bc7384304a8973ce37c60a5.png"
+        "image": "assets/login-new.png"
       },
       {
         "identity": "ASM-P006:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
             80,
-            1657,
+            1690,
             1000,
-            1791
+            1835
           ]
         ],
         "callouts": [],
-        "image": "source/assets/fc3a64f0fe659ea1281d80c087932f181eda810b6bc7384304a8973ce37c60a5.png"
+        "image": "assets/login-new.png"
       },
       {
         "identity": "ASM-P007:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
-            80,
-            1804,
-            1000,
-            1938
+            260,
+            1870,
+            830,
+            1960
           ]
         ],
         "callouts": [],
-        "image": "source/assets/fc3a64f0fe659ea1281d80c087932f181eda810b6bc7384304a8973ce37c60a5.png"
+        "image": "assets/login-new.png"
       },
       {
         "identity": "ASM-P007:4",
@@ -314,7 +314,7 @@
           ]
         ],
         "callouts": [],
-        "image": "assets/guide-manual-guest-clean.png"
+        "image": "assets/guest-warning-new.png"
       }
     ]
   },
@@ -361,20 +361,20 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
-            80,
-            1297,
-            1000,
-            1431
+            350,
+            1360,
+            740,
+            1450
           ]
         ],
         "callouts": [],
-        "image": "source/assets/fc3a64f0fe659ea1281d80c087932f181eda810b6bc7384304a8973ce37c60a5.png"
+        "image": "assets/login-new.png"
       },
       {
         "identity": "ASM-P008:2",
@@ -383,38 +383,38 @@
           0,
           0,
           1080,
-          2250
+          2229
         ],
         "boxes": [
           [
             0,
-            2082,
+            2070,
             1080,
-            2250
+            2229
           ]
         ],
         "callouts": [],
-        "image": "source/assets/265efa40609b42dc6200db796e90d32e5597e100ef8fb4c0c1ff2118ad69b8e0.png"
+        "image": "assets/simulated-password-reset-2026-11-05.png"
       },
       {
         "identity": "ASM-P009:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
             80,
-            757,
+            800,
             1000,
-            1306
+            1345
           ]
         ],
         "callouts": [],
-        "image": "source/assets/fc3a64f0fe659ea1281d80c087932f181eda810b6bc7384304a8973ce37c60a5.png"
+        "image": "assets/login-new.png"
       }
     ]
   },
@@ -4704,13 +4704,13 @@
         "boxes": [
           [
             80,
-            880,
+            800,
             1000,
-            1425
+            1345
           ]
         ],
         "callouts": [],
-        "image": "assets/guide-login-now.png"
+        "image": "assets/login-new.png"
       }
     ]
   },
@@ -7483,13 +7483,13 @@
         "boxes": [
           [
             80,
-            880,
+            800,
             1000,
-            1425
+            1345
           ]
         ],
         "callouts": [],
-        "image": "assets/guide-login-now.png"
+        "image": "assets/login-new.png"
       },
       {
         "identity": "ASM-P170:3",
@@ -7549,14 +7549,14 @@
         ],
         "boxes": [
           [
-            80,
-            1920,
-            1000,
-            2055
+            260,
+            1870,
+            830,
+            1960
           ]
         ],
         "callouts": [],
-        "image": "assets/guide-login-now.png"
+        "image": "assets/login-new.png"
       }
     ]
   },
@@ -7638,13 +7638,13 @@
         "boxes": [
           [
             80,
-            880,
+            800,
             1000,
-            1425
+            1345
           ]
         ],
         "callouts": [],
-        "image": "assets/guide-login-now.png"
+        "image": "assets/login-new.png"
       }
     ]
   },
@@ -7808,16 +7808,16 @@
         ],
         "boxes": [
           [
-            126,
-            1050,
-            621,
-            1095
+            120,
+            970,
+            635,
+            1015
           ],
           [
-            126,
-            1294,
-            610,
-            1339
+            120,
+            1215,
+            625,
+            1260
           ]
         ],
         "callouts": [
@@ -7830,7 +7830,7 @@
             "text": "비밀번호 길이 확인"
           }
         ],
-        "image": "assets/guide-manual-signup-invalid.png"
+        "image": "assets/signup-validation.png"
       },
       {
         "identity": "ASM-P173:2",
@@ -7839,18 +7839,18 @@
           0,
           0,
           1080,
-          2250
+          2229
         ],
         "boxes": [
           [
-            80,
-            1082,
-            1000,
-            1147
+            85,
+            990,
+            870,
+            1065
           ]
         ],
         "callouts": [],
-        "image": "source/assets/3b107ee46ca6b60af57b7dd16dd9bb3a6b7276a1c6704bdd26bab1953912d114.png"
+        "image": "assets/simulated-wrong-password-2026-11-05.png"
       }
     ]
   },

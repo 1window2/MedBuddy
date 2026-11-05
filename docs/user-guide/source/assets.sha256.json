@@ -216,5 +216,12 @@
   "assets/current-guide-unlink.png": "36eca00b745562d0e831105444c155e017e048ceb1a0b9be5fb59a63b784a8d9",
   "assets/current-caregiver-register.png": "1b2f8428187c07f54fc2321ec95e910b9fa1a075bf3271c2dc42a3d9082e160d",
   "assets/expired-test-guide-code-temporary.png": "adf1c3f5852d596b8b2cf56a5b074935ff6d30f3309ceaac87649ceaed8e2b50",
-  "assets/expired-test-guide-code-expired.png": "42c7e9ca38449b02ff7566d2aff9e7e8040146a9d274fe83103ccedb1c05c2ef"
+  "assets/expired-test-guide-code-expired.png": "42c7e9ca38449b02ff7566d2aff9e7e8040146a9d274fe83103ccedb1c05c2ef",
+  "assets/login-new.png": "96250787b05a53b3e900be99915dfbe7eccf57069d00cf9eaf60b2d6dc9c480d",
+  "assets/login-language.png": "47162edc2a9c3c0723d3c7b48cd1af4af8fcc901533283602a12f037126d7f6a",
+  "assets/signup-new.png": "e4e114ee3a963223260afc15a24c7f1771b668c1e3166a8e42c911d2e2b30be6",
+  "assets/guest-warning-new.png": "47205b8ad67f09b1ed661557ec39d4d6b94af57137f35928904b7b333c66c590",
+  "assets/signup-validation.png": "4b6d589c439d618ca2014c0df865d5c2d008fffc59758937785ae1675a7f4f10",
+  "assets/simulated-password-reset-2026-11-05.png": "c131e14c866f314c36e83e77f2c3a58315c5566d6745c27a1e1b16679939982b",
+  "assets/simulated-wrong-password-2026-11-05.png": "e6295c05ef8240bbe3c822b595391c0b189f4a8c9496ee5837f33d0487c2cb7b"
 }
