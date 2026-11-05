@@ -46,7 +46,15 @@ def pixel_digest(image):
 
 def extract_pdf_images(pdf):
     """Reuse approved screenshots embedded in the shipped PDF, not another raw asset archive."""
-    expected = read_json(SOURCE / "pdf-images.json")
+    manifest = read_json(SOURCE / "pdf-images.json")
+    layout = read_json(SOURCE / "layout.json")
+    referenced = {
+        Path(step["image"]).stem
+        for page in layout
+        for step in page.get("steps", [])
+        if step.get("image", "").startswith(".build/pdf-images/")
+    }
+    expected = {key: manifest[key] for key in referenced}
     folder = BUILD / "pdf-images"
     folder.mkdir(exist_ok=True)
     missing = set(expected)
