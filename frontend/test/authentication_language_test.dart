@@ -14,6 +14,7 @@ import 'package:medbuddy_frontend/boundaries/authentication_ui_boundary.dart';
 import 'package:medbuddy_frontend/controls/app_language_control.dart';
 import 'package:medbuddy_frontend/controls/authentication_control.dart';
 import 'package:medbuddy_frontend/services/authenticated_api_client.dart';
+import 'package:medbuddy_frontend/widgets/medbuddy_wordmark.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // 실제 Firebase 계정 생성과 메일 발송 없이 호출 순서와 선택 언어를 기록한다.
@@ -165,6 +166,74 @@ Future<void> _selectLanguage(WidgetTester tester, String language) async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  for (final scenario in [
+    (size: const Size(390, 844), scale: 1.0),
+    (size: const Size(320, 568), scale: 2.0),
+  ]) {
+    testWidgets(
+      'login header and inputs fit ${scenario.size} at ${scenario.scale}x',
+      (tester) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = scenario.size;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final auth = AuthenticationControl.development();
+        final language = AppLanguageControl(loadPersisted: false);
+        addTearDown(auth.dispose);
+        addTearDown(language.dispose);
+        await _showAuth(tester, auth, language, scale: scenario.scale);
+
+        final logo = find.byType(MedBuddyWordmark);
+        final languageButton = find.byKey(
+          const Key('authentication-language-toggle'),
+        );
+        expect(logo, findsOneWidget);
+        expect(languageButton, findsOneWidget);
+        final logoRect = tester.getRect(logo);
+        final buttonRect = tester.getRect(languageButton);
+        expect(logoRect.left, closeTo(32, 0.1));
+        expect(logoRect.top, closeTo(0, 0.1));
+        expect(logoRect.right, lessThanOrEqualTo(buttonRect.left));
+        expect(logoRect.overlaps(buttonRect), isFalse);
+        expect(
+          logoRect.bottom,
+          lessThanOrEqualTo(
+            tester.getTopLeft(find.byType(TextFormField).first).dy,
+          ),
+        );
+        expect(find.bySemanticsLabel('MedBuddy'), findsOneWidget);
+
+        await tester.tap(languageButton);
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('authentication-language-en')),
+          findsOneWidget,
+        );
+        Navigator.pop(
+          tester.element(find.byKey(const Key('authentication-language-en'))),
+        );
+        await tester.pumpAndSettle();
+        final fields = find.byType(TextFormField);
+        expect(fields, findsNWidgets(2));
+        await tester.ensureVisible(fields.first);
+        await tester.tap(fields.first);
+        await tester.enterText(fields.first, 'user@example.test');
+        await tester.ensureVisible(fields.last);
+        await tester.tap(fields.last);
+        await tester.enterText(fields.last, 'test-password');
+        expect(
+          tester.widget<TextFormField>(fields.first).controller!.text,
+          'user@example.test',
+        );
+        expect(
+          tester.widget<TextFormField>(fields.last).controller!.text,
+          'test-password',
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   // 영어 기기에서도 저장된 선택이 없으면 한국어로 시작하며 자동 선택창은 띄우지 않는다.
   testWidgets('fresh launch defaults to Korean and picker can be dismissed', (
