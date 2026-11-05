@@ -1036,7 +1036,7 @@ void main() {
       await tester.ensureVisible(guestButton);
       await tester.pumpAndSettle();
 
-      expect(find.text('MedBuddy'), findsOneWidget);
+      expect(find.bySemanticsLabel('MedBuddy'), findsOneWidget);
       expect(guestButton.hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
