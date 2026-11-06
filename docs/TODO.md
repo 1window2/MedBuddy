@@ -2,9 +2,13 @@
 
 ## v0.2.5 development line
 
-v0.2.5 starts from `v0.2.4-beta` on `beta/v0.2.5` (draft PR #134) and collects the
+v0.2.5 starts from `v0.2.4-beta` on `beta/v0.2.5` (PR #134) and collects the
 collaborator's usability work. The open items of v0.2.4 moved here. Changes are
 listed in the [v0.2.5 notes](releases/v0.2.5-beta.md).
+
+`v0.2.5-beta` was published on 2026-11-06. The items still open in this section
+and its subsections are carried to the 1.0.0 release candidate line, where they
+are to be finished before 1.0.0.
 
 - [x] Add `beta/v0.2.5` to the `beta-android` environment before the first
       signed build; the workflow already allows the branch.
@@ -18,9 +22,10 @@ listed in the [v0.2.5 notes](releases/v0.2.5-beta.md).
 - [ ] Word wrapping covers the shared widgets and the screens checked on
       2026-11-04. Other one-off texts still wrap by syllable; switch them to
       `KeepWordsText` when they are next changed.
-- [ ] Open the app right after updating on the Galaxy Note10 with the next signed
-      build, when a dose sync task is due. The store open fix was verified on an
-      emulator, and the phone's 130-second wait was seen once in three launches.
+- [x] Open the app right after updating on the Galaxy Note10 with the next signed
+      build, when a dose sync task is due. Done on 2026-11-06 with `4f9d012`: the
+      dose sync task ran as the app opened, the schedule loaded within 3 seconds,
+      one connection to the dose store, no `database is locked`.
 - [x] Update pydantic to 2.14 or later with the next backend change (2.14.2 on
       2026-11-04; the backend suite passes). 2.13.5 has
       two medium advisories (GHSA-gj4f-r7mf-jjxh, GHSA-955g-x97g-8mcp), but they
@@ -82,8 +87,8 @@ Owner actions; the code findings of the audit were fixed in the v0.2.5 notes.
       Remove the exited `medbuddy-v020-device-test` containers and network.
 - [ ] Give the API and catalog jobs a Postgres role without superuser rights; only the
       migration needs the owner role.
-- [ ] Deploy the backend changes of 2026-11-06 (JPEG scan limit, pharmacy budget,
-      pill upload cap, compose pins); they are not in production yet.
+- [x] Deploy the backend changes of 2026-11-06 (JPEG scan limit, pharmacy budget,
+      pill upload cap, compose pins). Deployed with `4f9d012` on 2026-11-06.
 
 ## v0.2.4 development line
 
