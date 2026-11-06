@@ -39,7 +39,9 @@ def main() -> int:
         )
     else:
         semantic_version, build_number = version_match.groups()
-        release_tag = f"v{semantic_version}-beta"
+        # 0.x lines are betas (vX.Y.Z-beta); from 1.0.0 on the tag is the plain version.
+        is_beta_line = semantic_version.startswith("0.")
+        release_tag = f"v{semantic_version}-beta" if is_beta_line else f"v{semantic_version}"
         release_notes_path = f"docs/releases/{release_tag}.md"
 
         if int(build_number) < 1:
