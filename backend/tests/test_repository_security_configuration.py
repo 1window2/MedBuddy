@@ -216,8 +216,15 @@ def test_self_hosted_database_url_uses_structured_credentials() -> None:
 
     assert "${POSTGRES_PASSWORD}@postgres" not in compose_source
     assert "DATABASE_URL:" not in compose_source
-    assert compose_source.count("DATABASE_PASSWORD: ${POSTGRES_PASSWORD") == 4
+    # Only the migration keeps the owner role; the services switch to the data-only role once
+    # both of its settings exist, and keep the owner role until then.
+    assert compose_source.count("DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}") == 1
+    assert compose_source.count(
+        "DATABASE_PASSWORD: ${MEDBUDDY_APP_DB_PASSWORD:-${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}}"
+    ) == 3
+    assert compose_source.count("DATABASE_USER: ${MEDBUDDY_APP_DB_USER:-medbuddy}") == 3
     assert compose_source.count("DATABASE_HOST: postgres") == 4
+    assert "python scripts/provision_database_roles.py" in compose_source
 
 
 # Function Name: test_core_startup_does_not_depend_on_catalog_imports

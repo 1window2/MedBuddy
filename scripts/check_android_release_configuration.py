@@ -97,8 +97,13 @@ class BackendReleaseConfiguration:
     # Returns: Validated HTTPS origin; raises ValueError with a credential-free diagnostic.
     @property
     def origin(self) -> str:
+        # The build embeds the value with only its outer whitespace trimmed, so nothing inside
+        # it may be dropped or reinterpreted by the URL parser.
+        candidate = self.api_base_url.strip()
+        if any(character.isspace() or not character.isprintable() for character in candidate):
+            raise ValueError("MEDBUDDY_API_BASE_URL must not contain whitespace or control characters.")
         try:
-            parsed = urlsplit(self.api_base_url.strip())
+            parsed = urlsplit(candidate)
         except ValueError:
             raise ValueError("MEDBUDDY_API_BASE_URL is malformed.") from None
         if (

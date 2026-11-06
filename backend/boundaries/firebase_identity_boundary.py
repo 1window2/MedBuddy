@@ -1,6 +1,7 @@
 # File Name: firebase_identity_boundary.py
-# Role: Isolates Firebase identity deletion from MedBuddy account controls.
+# Role: Isolates Firebase identity deletion and session-revocation lookups from MedBuddy controls.
 
+from datetime import UTC, datetime
 from typing import Protocol
 
 from firebase_admin import auth
@@ -72,3 +73,36 @@ class FirebaseIdentityDeletionBoundary:
             raise IdentityDeletionUnavailableError(
                 "Firebase identity deletion is temporarily unavailable."
             ) from exc
+
+
+# Class Name: FirebaseSessionRevocationBoundary
+# Role:
+# - Reads when a Firebase user's sessions were last revoked (password change, revokeRefreshTokens).
+# Responsibilities:
+# - Report the revocation time so device registrations from older sessions can be retired.
+# - Never fail a caller: an unavailable lookup reports no revocation.
+# Attributes:
+# - _app (App): Shared Firebase Admin application.
+class FirebaseSessionRevocationBoundary:
+    # Function Name: __init__
+    # Description: Reuse the configured project's Admin app.
+    # Parameters: project_id (str): Firebase project ID. Returns: None.
+    def __init__(self, project_id: str) -> None:
+        self._app = get_firebase_admin_app(project_id)
+
+    # Function Name: sessionsValidAfter
+    # Description:
+    # - Returns the time before which the user's sessions are revoked, as naive UTC like the
+    #   database columns, or None when unknown.
+    # Parameters:
+    # - subject (str): Verified Firebase UID.
+    # Returns:
+    # - Naive UTC datetime or None.
+    def sessionsValidAfter(self, subject: str) -> datetime | None:
+        try:
+            milliseconds = auth.get_user(subject.strip(), app=self._app).tokens_valid_after_timestamp
+        except Exception:
+            return None
+        if not milliseconds:
+            return None
+        return datetime.fromtimestamp(milliseconds / 1000, tz=UTC).replace(tzinfo=None)

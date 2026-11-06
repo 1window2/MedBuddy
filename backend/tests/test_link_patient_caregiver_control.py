@@ -421,7 +421,7 @@ class LinkPatientCaregiverTest(unittest.TestCase):
 
     # 함수이름: test_link_is_refused_once_an_account_holds_the_maximum
     # 함수역할: 환자나 보호자의 활성 연동이 한도에 이르면 새 연동을 409로 거절하고 코드를 소모하지 않으며,
-    #   연동 하나를 해제하면 다시 연동할 수 있는지 확인한다.
+    #   연동 하나를 해제하면 새 코드로 다시 연동할 수 있는지 확인한다.
     # 매개변수: 없음. 반환값: 없음.
     def test_link_is_refused_once_an_account_holds_the_maximum(self) -> None:
         with patch.object(settings, "PATIENT_CAREGIVER_LINK_MAX_PER_ACCOUNT", 2):
@@ -445,13 +445,95 @@ class LinkPatientCaregiverTest(unittest.TestCase):
                     "guardian-a",
                     self.control.generatePatientHash("patient-c")["data"]["patient_code"],
                 )
+            # 거절된 요청은 코드를 쓰지 않는다.
+            self.assertFalse(
+                self.db.query(_PatientLinkCode).filter_by(patient_code=code).one().used
+            )
             self.control.requestUnlink(links[1]["id"], "patient-a")
-            # 거절된 요청은 코드를 쓰지 않았으므로 같은 코드로 다시 연동할 수 있다.
-            accepted = self.control.requestPatientCaregiverLink("guardian-c", code)
+            # 해제는 남은 코드를 막으므로 새 코드로 연동한다.
+            accepted = self.control.requestPatientCaregiverLink(
+                "guardian-c",
+                self.control.generatePatientHash("patient-a")["data"]["patient_code"],
+            )
 
         self.assertEqual(refused.exception.status_code, 409)
         self.assertEqual(caregiver_refused.exception.status_code, 409)
         self.assertTrue(accepted["success"])
+
+    # 함수이름: test_registration_counts_links_under_both_account_locks
+    # 함수역할: 코드 등록이 환자와 보호자 계정을 함께 잠근 뒤 코드를 다시 읽고 연동 수를 세는지 확인한다.
+    #   두 보호자가 한 환자의 두 코드를 동시에 등록해도 환자 잠금에서 차례가 정해져 한도를 넘지 않는다.
+    # 매개변수: 없음. 반환값: 없음.
+    def test_registration_counts_links_under_both_account_locks(self) -> None:
+        import controls.link_patient_caregiver_control as module
+
+        events: list[object] = []
+        real_lock = module.lock_account_operations
+        real_count = self.control.link_repository.list_active_for_patient
+
+        def recording_lock(db, user_hashes):
+            events.append(("lock", frozenset(user_hashes)))
+            real_lock(db, user_hashes)
+
+        def recording_count(patient_hash):
+            events.append("count")
+            return real_count(patient_hash)
+
+        code = self.control.generatePatientHash("patient-a")["data"]["patient_code"]
+        with patch.object(module, "lock_account_operations", recording_lock), patch.object(
+            self.control.link_repository, "list_active_for_patient", recording_count
+        ):
+            self.control.requestPatientCaregiverLink("guardian-a", code)
+
+        self.assertEqual(events[0], ("lock", frozenset({"patient-a", "guardian-a"})))
+        self.assertIn("count", events[1:])
+
+    # 함수이름: test_unlink_runs_under_both_account_locks
+    # 함수역할: 해제가 두 참여자 계정을 함께 잠근 뒤 연동을 다시 읽어 지우는지, 그사이 다른 요청이 해제했으면
+    #   404로 끝나는지 확인한다.
+    # 매개변수: 없음. 반환값: 없음.
+    def test_unlink_runs_under_both_account_locks(self) -> None:
+        import controls.link_patient_caregiver_control as module
+
+        code = self.control.generatePatientHash("patient-a")["data"]["patient_code"]
+        link = self.control.requestPatientCaregiverLink("guardian-a", code)["data"]
+        locks: list[frozenset[str]] = []
+        real_lock = module.lock_account_operations
+
+        def recording_lock(db, user_hashes):
+            locks.append(frozenset(user_hashes))
+            real_lock(db, user_hashes)
+
+        with patch.object(module, "lock_account_operations", recording_lock):
+            self.control.requestUnlink(link["id"], "guardian-a")
+            with self.assertRaises(HTTPException) as gone:
+                self.control.requestUnlink(link["id"], "patient-a")
+
+        self.assertEqual(locks, [frozenset({"patient-a", "guardian-a"})])
+        self.assertEqual(gone.exception.status_code, 404)
+
+    # 함수이름: test_unlink_invalidates_codes_issued_before_it
+    # 함수역할: 해제 전에 발급한 다른 코드로 해제된 보호자가 다시 연동할 수 없고, 해제 뒤 새로 발급한 코드로는
+    #   다시 연동할 수 있는지 확인한다.
+    # 매개변수: 없음. 반환값: 없음.
+    def test_unlink_invalidates_codes_issued_before_it(self) -> None:
+        earlier = self.control.generatePatientHash("patient-a")["data"]["patient_code"]
+        redeemed = self.control.generatePatientHash("patient-a")["data"]["patient_code"]
+        spare = self.control.generatePatientHash("patient-a")["data"]["patient_code"]
+        link = self.control.requestPatientCaregiverLink("guardian-a", redeemed)["data"]
+        self.control.requestUnlink(link["id"], "patient-a")
+
+        with self.assertRaises(HTTPException) as refused:
+            self.control.requestPatientCaregiverLink("guardian-a", earlier)
+        # 해제된 사람이 다른 계정으로 남은 코드를 써도 연동되지 않는다.
+        with self.assertRaises(HTTPException) as other_account:
+            self.control.requestPatientCaregiverLink("guardian-a-second", spare)
+        self.assertEqual(other_account.exception.status_code, 404)
+        fresh = self.control.generatePatientHash("patient-a")["data"]["patient_code"]
+        relinked = self.control.requestPatientCaregiverLink("guardian-a", fresh)
+
+        self.assertEqual(refused.exception.status_code, 404)
+        self.assertTrue(relinked["success"])
 
     # 함수이름: test_caregiver_alias_rejects_nonowners_and_inactive_links
     # 함수역할: 다른 환자, 상대 보호자, 없는 연결 및 해제된 연결의 별칭 변경을 차단한다.

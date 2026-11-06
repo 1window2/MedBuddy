@@ -1,6 +1,7 @@
 # File Name: config.py
 # Role: Loads and validates backend environment, database, authentication and external-service settings.
 
+import os
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlparse
@@ -258,6 +259,15 @@ class Settings(BaseSettings):
             "shared daily request budget of the public hospital API."
         ),
     )
+    PHARMACY_SEARCH_DAILY_LIMIT: int = Field(
+        default=200,
+        ge=20,
+        le=100_000,
+        description=(
+            "Nearby pharmacy searches one account may run per day. Keeps one account from "
+            "spending the shared daily budget of the live pharmacy API."
+        ),
+    )
     CHAT_MESSAGE_RETENTION_DAYS: int = Field(
         default=90,
         ge=1,
@@ -459,8 +469,22 @@ class Settings(BaseSettings):
     # - This Settings instance when accepted; raises ValueError for an unsafe production configuration.
     @model_validator(mode="after")
     def validate_security_configuration(self) -> "Settings":
+        # Names are read case-insensitively, so two spellings of one setting would leave the
+        # value to environment order; a lowercase app_env could even skip the checks below.
+        spellings: dict[str, set[str]] = {}
+        for name in os.environ:
+            if name.upper() in type(self).model_fields:
+                spellings.setdefault(name.upper(), set()).add(name)
+        conflicting = sorted(field for field, names in spellings.items() if len(names) > 1)
+        if conflicting:
+            raise ValueError(
+                "Conflicting environment spellings for: " + ", ".join(conflicting) + "."
+            )
         if self.APP_ENV != "production":
             return self
+        # firebase-admin skips ID token signature checks when this variable is set.
+        if os.environ.get("FIREBASE_AUTH_EMULATOR_HOST", "").strip():
+            raise ValueError("Production must not set FIREBASE_AUTH_EMULATOR_HOST.")
         if self.RUNTIME_ROLE == "api":
             if not self.GEMINI_API_KEY.strip():
                 raise ValueError("Production API requires GEMINI_API_KEY.")
@@ -470,6 +494,10 @@ class Settings(BaseSettings):
                 raise ValueError("Production API requires AUTH_MODE=firebase.")
             if not self.FIREBASE_PROJECT_ID.strip():
                 raise ValueError("Production API requires FIREBASE_PROJECT_ID.")
+            if not self.FIREBASE_CHECK_REVOKED_TOKENS:
+                raise ValueError("Production API requires FIREBASE_CHECK_REVOKED_TOKENS=true.")
+            if not self.FIREBASE_REQUIRE_VERIFIED_EMAIL:
+                raise ValueError("Production API requires FIREBASE_REQUIRE_VERIFIED_EMAIL=true.")
             if (
                 not self.FIREBASE_APP_CHECK_REQUIRED
                 and not self.FIREBASE_OFF_PLAY_BETA_MODE

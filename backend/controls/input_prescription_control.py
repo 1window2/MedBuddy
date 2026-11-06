@@ -1,6 +1,7 @@
 # File Name: input_prescription_control.py
 # Role: Coordinates de-identified prescription text analysis, privacy masking and catalog-backed medication-name verification.
 
+import asyncio
 import json
 import logging
 import secrets
@@ -169,7 +170,8 @@ class InputPrescription:
             raise ValueError(
                 f"Masked prescription text exceeds {MAX_PRESCRIPTION_TEXT_LENGTH:,} characters."
             )
-        normalized_text = deidentify_prescription_text(normalized_text)
+        # 정규식 검사는 CPU 작업이므로 이벤트 루프를 막지 않게 스레드에서 실행한다.
+        normalized_text = await asyncio.to_thread(deidentify_prescription_text, normalized_text)
         try:
             response_text = await self.ocr_service_boundary.extractPrescriptionTextData(
                 normalized_text

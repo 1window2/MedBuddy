@@ -233,7 +233,7 @@ Owner prerequisites, to configure when enrollment resumes:
   and [App Check IAM reference](https://docs.cloud.google.com/iam/docs/roles-permissions/firebaseappcheck).
 - Configure Workload Identity Federation for the exact repository identity,
   `beta-android` environment and `release-android.yml` workflow, restricted to
-  `main` and `beta/v0.2.1` refs. Grant the scoped federated principal
+  `main` and the active release branch (`beta/v1.0.0`). Grant the scoped federated principal
   `roles/iam.workloadIdentityUser` on that service account, not a general
   repository-wide deployment grant. Set protected variables
   `GCP_APP_CHECK_WORKLOAD_IDENTITY_PROVIDER` and `GCP_APP_CHECK_SERVICE_ACCOUNT`.
@@ -483,6 +483,38 @@ crop the photo to the medication list when the guard refuses ambiguous content. 
 unlabelled header information after a patient label until a medicine section is
 recognized. Server tests use synthetic text and mocked providers, not real patient
 data or a live Gemini request.
+
+### Data-only database role
+
+The Postgres role in `POSTGRES_USER` owns the schema and is a superuser. Only the
+migration needs that. The API, catalog bootstrap and catalog refresh can run as a
+role that reads and writes rows but cannot change the schema, the migration head or
+any role.
+
+1. Take the usual backup and rollback tags.
+2. Add both settings to `deploy/.env` (never print the file). The password must be
+   at least 16 characters; `openssl rand -hex 24` gives one.
+
+   ```text
+   MEDBUDDY_APP_DB_USER=medbuddy_app
+   MEDBUDDY_APP_DB_PASSWORD=<new random value>
+   ```
+
+3. Check the file without printing it:
+   `docker compose --env-file deploy/.env -f compose.self-hosted.yml config --quiet`.
+4. Deploy as usual. `database-migrate` runs `alembic upgrade head` and then
+   `scripts/provision_database_roles.py`. That script creates or updates the role,
+   grants `SELECT, INSERT, UPDATE, DELETE` on the tables and `USAGE, SELECT` on the
+   sequences, sets default privileges for tables that later migrations create, and
+   takes back write access to `alembic_version`. The other services then connect as
+   the new role.
+5. Verify as below. In addition, the role is not a superuser:
+   `SELECT rolsuper FROM pg_roles WHERE rolname = 'medbuddy_app'` gives `f`.
+
+To go back, remove both settings and deploy again. The services then use the owner
+role; the unused role can stay or be removed with `DROP OWNED BY medbuddy_app;
+DROP ROLE medbuddy_app;`. With neither setting present the script changes nothing.
+Setting only one of them makes the migration fail before any service restarts.
 
 ### Runtime readiness
 

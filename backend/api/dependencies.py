@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from boundaries.firebase_identity_boundary import (
     FirebaseIdentityDeletionBoundary,
+    FirebaseSessionRevocationBoundary,
 )
 from boundaries.korean_holiday_api_boundary import (
     KoreanHolidayAPI,
@@ -63,10 +64,12 @@ from core.database import get_db
 from core.request_database_work import run_request_database_work
 from core.request_rate_limits import (
     DAILY_QUOTA_EXCEEDED_DETAIL,
+    IP_LIMIT_MULTIPLIER,
     RATE_LIMIT_EXCEEDED_DETAIL,
     RateLimitRule,
     RequestRateLimitStore,
     mounted_route_template,
+    request_ip_identity,
     resolve_daily_quota,
     resolve_rate_limit_rule,
 )
@@ -427,6 +430,17 @@ async def get_registered_principal(
         daily_quota = resolve_daily_quota(request.method, route_path)
         if daily_quota is not None:
             daily_rule, daily_scope = daily_quota
+            # 계정을 여러 개 만들어 계정별 하루 한도를 늘리는 것을 주소 단위로도 막는다. 인증된
+            # 요청만 세므로 인증되지 않은 주소는 하루짜리 카운터를 남기지 않는다.
+            await enforce_address_quota(
+                request,
+                request_scope=daily_scope,
+                rule=RateLimitRule(
+                    daily_rule.max_requests * IP_LIMIT_MULTIPLIER,
+                    daily_rule.window_seconds,
+                ),
+                exceeded_detail=DAILY_QUOTA_EXCEEDED_DETAIL,
+            )
             await enforce_user_quota(
                 request,
                 user_hash=principal.user_hash,
@@ -549,9 +563,55 @@ async def enforce_user_quota(
     rule: RateLimitRule,
     exceeded_detail: str,
 ) -> None:
+    await _enforce_quota(
+        request,
+        identity=f"user:{user_hash}",
+        request_scope=request_scope,
+        rule=rule,
+        exceeded_detail=exceeded_detail,
+    )
+
+
+# Function Name: enforce_address_quota
+# Description:
+# - Counts one request of the caller's network address (an IPv6 address as its /64) against a
+#   quota, answering like enforce_user_quota.
+# Parameters:
+# - request (Request): Incoming request; its ASGI client address is the counted identity.
+# - request_scope, rule, exceeded_detail: as for enforce_user_quota.
+# Returns:
+# - None; raises HTTP 429 or 503 as enforce_user_quota does.
+async def enforce_address_quota(
+    request: Request,
+    *,
+    request_scope: str,
+    rule: RateLimitRule,
+    exceeded_detail: str,
+) -> None:
+    await _enforce_quota(
+        request,
+        identity=request_ip_identity(request.scope),
+        request_scope=request_scope,
+        rule=rule,
+        exceeded_detail=exceeded_detail,
+    )
+
+
+# Function Name: _enforce_quota
+# Description: Shared body of the account and address quotas.
+# Parameters: identity (str): Counter identity; the rest as for enforce_user_quota.
+# Returns: None; raises HTTP 429 when the quota is used up and 503 when storage is unavailable.
+async def _enforce_quota(
+    request: Request,
+    *,
+    identity: str,
+    request_scope: str,
+    rule: RateLimitRule,
+    exceeded_detail: str,
+) -> None:
     try:
         allowed, retry_after = await get_request_rate_limit_store(request).consume(
-            identity=f"user:{user_hash}",
+            identity=identity,
             request_scope=request_scope,
             rule=rule,
         )
@@ -997,6 +1057,19 @@ def get_manage_push_token(
     db: Session = Depends(get_db),
 ) -> ManagePushToken:
     return ManagePushToken(db=db)
+
+
+# Function Name: get_session_revocation_boundary
+# Description:
+# - Provides the Firebase session-revocation lookup in Firebase mode; local modes have none.
+# Parameters:
+# - None.
+# Returns:
+# - FirebaseSessionRevocationBoundary or None.
+def get_session_revocation_boundary() -> FirebaseSessionRevocationBoundary | None:
+    if settings.AUTH_MODE != "firebase":
+        return None
+    return FirebaseSessionRevocationBoundary(settings.FIREBASE_PROJECT_ID)
 
 
 # Function Name: get_check_today_medication_info

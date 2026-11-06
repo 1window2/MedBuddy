@@ -33,6 +33,7 @@ from api.dependencies import (
 from api.route_support import (
     enforce_chat_daily_quota,
     enforce_hospital_share_daily_quota,
+    enforce_pharmacy_share_daily_quota,
     get_chat_connection_manager,
     publish_saved_message,
     queue_completion_alerts,
@@ -305,6 +306,9 @@ async def post_chat_message(
             pharmacy_id=payload.pharmacy_id,
         )
         if source is not None:
+            await enforce_pharmacy_share_daily_quota(
+                request=request, user_hash=authorized_user_hash,
+            )
             share_arguments["pharmacy_operating_snapshot"] = await pharmacy.requestShareOperatingSnapshot(source)
     result = await run_request_database_work(
         chat.send_message,
@@ -560,6 +564,13 @@ async def stream_chat_events(
                 >= settings.CHAT_WEBSOCKET_REVALIDATION_INTERVAL_SECONDS
             ):
                 try:
+                    # 운영은 REST 요청마다 세션 취소·계정 정지를 확인하므로 열린 연결도 같은 주기로 다시 확인한다.
+                    credential_valid = await run_in_threadpool(
+                        _credential_is_still_valid, websocket, authorized_user_hash,
+                    )
+                    if not credential_valid:
+                        await websocket.close(code=4401)
+                        return
                     still_active = await run_request_database_work(
                         _link_is_still_active, link_id, authorized_user_hash,
                     )
@@ -700,6 +711,32 @@ def _authenticate_websocket(websocket: WebSocket) -> AuthenticatedPrincipal:
             credentials=token.strip(),
         )
     return get_authenticated_principal(credentials)
+
+
+# 함수이름: _credential_is_still_valid
+# 함수역할:
+# - 연결 때 받은 ID 토큰을 다시 검증해 취소되거나 정지된 세션이면 False를 돌려준다. App Check 토큰은
+#   연결 때 한 번만 본다(짧게 만료되므로 열린 연결에서 다시 요구하지 않는다).
+# 매개변수:
+# - websocket (WebSocket): 연결 때의 헤더를 가진 실시간 채팅 연결.
+# - user_hash (str): 연결 때 확인한 계정 식별자.
+# 반환값:
+# - 같은 계정의 유효한 토큰이면 True. 검증 서비스 장애(503)는 예외로 올려 다음 ping에서 다시 확인한다.
+def _credential_is_still_valid(websocket: WebSocket, user_hash: str) -> bool:
+    authorization_header = websocket.headers.get("authorization", "").strip()
+    credentials: HTTPAuthorizationCredentials | None = None
+    if authorization_header:
+        scheme, separator, token = authorization_header.partition(" ")
+        if not separator or not token.strip():
+            return False
+        credentials = HTTPAuthorizationCredentials(scheme=scheme, credentials=token.strip())
+    try:
+        principal = get_authenticated_principal(credentials)
+    except HTTPException as exc:
+        if exc.status_code >= 500:
+            raise
+        return False
+    return principal.authentication_disabled or principal.user_hash == user_hash
 
 
 # 함수이름: _websocket_close_code

@@ -76,6 +76,12 @@ class AuthConfig {
         'Release and profile builds require MEDBUDDY_AUTH_MODE=firebase.',
       );
     }
+    // The emulator would take sign-in over plain HTTP outside the real project.
+    if ((kReleaseMode || kProfileMode) && authEmulatorHost.trim().isNotEmpty) {
+      throw StateError(
+        'Release and profile builds must not set MEDBUDDY_FIREBASE_AUTH_EMULATOR_HOST.',
+      );
+    }
     if (mode != AuthenticationMode.firebase) {
       return;
     }

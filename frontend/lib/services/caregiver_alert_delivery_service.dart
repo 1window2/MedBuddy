@@ -85,7 +85,7 @@ class CaregiverAlertDeliveryService {
           ? data['title'].toString() : language == 'en' ? 'Medication update' : '복약 상태 알림';
       final body = detailed && (data['body']?.toString().isNotEmpty ?? false)
           ? data['body'].toString() : language == 'en'
-          ? 'Check your linked patient’s medication status.' : '연동된 환자의 복약 상태를 확인해 주세요.';
+          ? 'Check your linked patient\'s medication status.' : '연동된 환자의 복약 상태를 확인해 주세요.';
       await (presenter ?? _present)(alert, title, body, language);
       await preferences.setInt(key, clock().millisecondsSinceEpoch);
       await _pruneMarkers(preferences);

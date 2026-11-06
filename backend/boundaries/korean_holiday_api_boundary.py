@@ -193,7 +193,7 @@ class KoreanHolidayAPI:
             logger.warning("Korean holiday lookup failed: %s", type(exc).__name__)
             raise PharmacyApiUnavailableError(
                 "The Korean holiday data service is temporarily unavailable."
-            ) from exc
+            ) from None  # httpx errors carry the URL with serviceKey.
 
         result_code = (root.findtext(".//resultCode") or "").strip()
         if (

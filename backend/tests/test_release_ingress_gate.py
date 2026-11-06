@@ -99,3 +99,14 @@ def test_signing_workflow_checks_ingress_before_signing_material() -> None:
     workflow = (ROOT / ".github/workflows/release-android.yml").read_text()
     assert workflow.index("check_release_ingress.py") < workflow.index("Restore release keystore")
     assert workflow.index("check_release_ingress.py") < workflow.index("Restore Firebase Android configuration")
+
+
+# Function Name: test_contract_header_must_match_this_build
+# Description: A route that answers with another API contract than this commit's backend is
+#   refused; the expected value comes from backend/API_CONTRACT_VERSION.
+# Parameters: None. Returns: None.
+def test_contract_header_must_match_this_build() -> None:
+    body = b'{"detail":"Authentication required"}'
+    gate.validate_response(401, "application/json", body, gate.EXPECTED_API_CONTRACT)
+    with pytest.raises(ValueError, match="another API contract"):
+        gate.validate_response(401, "application/json", body, "not-the-contract")

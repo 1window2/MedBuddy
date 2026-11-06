@@ -1443,7 +1443,38 @@ async def test_costly_routes_have_a_daily_quota_per_account_and_per_address(
     assert resolve_daily_quota("POST", "/api/v1/medication/analyze-prescription-text") == (
         RateLimitRule(settings.AI_REQUEST_DAILY_LIMIT, 86_400), "daily:ai",
     )
+    assert resolve_daily_quota("GET", "/api/v1/pharmacy/nearby") == (
+        RateLimitRule(settings.PHARMACY_SEARCH_DAILY_LIMIT, 86_400), "daily:pharmacy-search",
+    )
     assert resolve_daily_quota("GET", "/api/v1/medication/list") is None
+
+
+# Function Name: test_unauthenticated_requests_leave_no_daily_address_counter
+# Description:
+# - A request to a costly route that is refused for missing App Check or a missing sign-in is
+#   counted only against the per-minute address limit, whose counter expires within a minute.
+#   The day-long address counter is written only for a signed-in request, so unauthenticated
+#   addresses cannot fill the counter store with keys that live for a day.
+# Parameters:
+# - pipeline (_Pipeline): Application on replaced outer boundaries.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_unauthenticated_requests_leave_no_daily_address_counter(
+    pipeline: _Pipeline,
+) -> None:
+    search = {"latitude": 37.5, "longitude": 127.0}
+    async with _client(pipeline.app) as client:
+        no_app_check = await client.get("/api/v1/hospitals/nearby", params=search)
+        no_sign_in = await client.get(
+            "/api/v1/hospitals/nearby", headers=_APP_CHECK_HEADERS, params=search,
+        )
+
+    assert (no_app_check.status_code, no_sign_in.status_code) == (403, 401)
+    assert [scope for scope, _ in pipeline.store.ip_calls()] == [
+        "GET:/api/v1/hospitals/nearby",
+    ] * 2
+    assert not [key for key in pipeline.store.redis.values if ":daily:" in key]
 
 
 # Function Name: test_exhausted_connection_pool_returns_503_with_retry_after
@@ -1572,3 +1603,65 @@ async def test_gemini_shutdown_closes_the_remaining_transports_after_a_failure(
     assert text_client.closed is True
     assert (ocr_client.aio.closed, ocr_client.closed) == (True, True)
     assert dependencies._get_gemini_text_client() is not text_client
+
+
+# Function Name: test_pharmacy_share_with_a_live_lookup_charges_the_pharmacy_daily_quota
+# Description:
+# - A pharmacy share that needs a live operating-hours lookup spends the same per-account daily
+#   quota as nearby pharmacy search, before the lookup runs.
+# Parameters:
+# - monkeypatch (pytest.MonkeyPatch): Replaces the quota call.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_pharmacy_share_with_a_live_lookup_charges_the_pharmacy_daily_quota(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from api import route_support
+
+    charged: list[tuple[str, RateLimitRule]] = []
+
+    async def record(_request, *, user_hash, request_scope, rule, exceeded_detail):
+        charged.append((request_scope, rule))
+
+    monkeypatch.setattr(route_support, "enforce_user_quota", record)
+    monkeypatch.setattr(settings, "RATE_LIMIT_ENABLED", True)
+    await route_support.enforce_pharmacy_share_daily_quota(request=object(), user_hash="user-a")
+
+    assert charged == [
+        ("daily:pharmacy-search", RateLimitRule(settings.PHARMACY_SEARCH_DAILY_LIMIT, 86_400)),
+    ]
+
+
+# Function Name: test_spent_pharmacy_budget_asks_to_wait_until_the_next_day
+# Description:
+# - A live pharmacy lookup refused because the shared daily budget is spent answers 503 with
+#   its own message and a wait until local midnight instead of a five-second retry.
+# Parameters:
+# - pipeline (_Pipeline): Application on replaced outer boundaries.
+# - monkeypatch (pytest.MonkeyPatch): Replaces the pharmacy boundary.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_spent_pharmacy_budget_asks_to_wait_until_the_next_day(
+    pipeline: _Pipeline,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from api.pharmacy_router import PHARMACY_BUDGET_EXHAUSTED_DETAIL
+    from boundaries.pharmacy_api_boundary import PharmacyApiBudgetExhaustedError
+
+    monkeypatch.setattr(dependencies, "_pharmacy_api", SimpleNamespace(
+        searchNearby=AsyncMock(side_effect=PharmacyApiBudgetExhaustedError("spent")),
+    ))
+    monkeypatch.setattr(dependencies, "_korean_holiday_api", SimpleNamespace(
+        fetchMonth=AsyncMock(return_value=frozenset()),
+    ))
+    async with _client(pipeline.app) as client:
+        response = await client.get(
+            "/api/v1/pharmacy/nearby", headers=_headers("user-a"),
+            params={"latitude": 0.0, "longitude": 0.0, "max_distance_km": 1.0},
+        )
+
+    assert response.status_code == 503, response.text
+    assert response.json()["detail"] == PHARMACY_BUDGET_EXHAUSTED_DETAIL
+    assert int(response.headers["retry-after"]) > 5

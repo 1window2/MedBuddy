@@ -36,6 +36,7 @@ from api.dependencies import (
     get_manage_account,
     get_manage_caregiver_alert,
     get_manage_push_token,
+    get_session_revocation_boundary,
     get_identify_pill,
     get_link_patient_caregiver_control,
     get_input_prescription,
@@ -51,6 +52,7 @@ from api.route_support import (
     queue_completion_alerts,
 )
 from boundaries.firebase_identity_boundary import (
+    FirebaseSessionRevocationBoundary,
     IdentityDeletionUnavailableError,
 )
 from boundaries.pill_identification_boundary import (
@@ -391,12 +393,18 @@ def register_push_token(
     request: PushTokenRegistration,
     principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
     manage_push_token: ManagePushToken = Depends(get_manage_push_token),
+    revocation: FirebaseSessionRevocationBoundary | None = Depends(
+        get_session_revocation_boundary
+    ),
 ) -> dict[str, object]:
     return manage_push_token.registerPushToken(
         principal.user_hash,
         request.token,
         request.platform,
         request.supports_caregiver_actions,
+        sessions_valid_after=(
+            revocation.sessionsValidAfter(principal.subject) if revocation else None
+        ),
     )
 
 

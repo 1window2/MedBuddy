@@ -128,7 +128,40 @@ async def enforce_hospital_share_daily_quota(
     request: Request,
     user_hash: str,
 ) -> None:
-    quota = resolve_daily_quota("GET", "/api/v1/hospitals/nearby")
+    await _enforce_search_daily_quota(
+        request=request, user_hash=user_hash, search_path="/api/v1/hospitals/nearby",
+    )
+
+
+# 함수이름: enforce_pharmacy_share_daily_quota
+# 함수역할:
+# - 영업시간을 실시간으로 조회해야 하는 약국 공유도 모든 사용자가 함께 쓰는 약국 조회 예산을 쓰므로,
+#   주변 약국 검색과 같은 계정별 하루 한도를 소비한다.
+# 매개변수:
+# - request (Request): 애플리케이션 공유 상태에 접근할 FastAPI 요청.
+# - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
+# 반환값:
+# - 없음. 제한 초과 시 HTTP 429를 발생시킨다.
+async def enforce_pharmacy_share_daily_quota(
+    *,
+    request: Request,
+    user_hash: str,
+) -> None:
+    await _enforce_search_daily_quota(
+        request=request, user_hash=user_hash, search_path="/api/v1/pharmacy/nearby",
+    )
+
+
+# 함수이름: _enforce_search_daily_quota
+# 함수역할: 검색 경로의 하루 한도 규칙을 찾아 같은 계정 카운터에 한 번 기록한다.
+# 매개변수: request, user_hash: 위와 같다. search_path: 한도 규칙을 가진 검색 경로. 반환값: 없음.
+async def _enforce_search_daily_quota(
+    *,
+    request: Request,
+    user_hash: str,
+    search_path: str,
+) -> None:
+    quota = resolve_daily_quota("GET", search_path)
     if not settings.RATE_LIMIT_ENABLED or quota is None:
         return
     rule, scope = quota

@@ -920,7 +920,7 @@ class _MedBuddyAppState extends State<MedBuddyApp> with WidgetsBindingObserver {
         .read<MedBuddyViewModel>()
         .userSetting
         .language;
-    final english = language == 'en';
+    final english = isEnglishLanguage(language);
     var success = false;
     try {
       final action = switch (selection.action) {

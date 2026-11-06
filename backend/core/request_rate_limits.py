@@ -1,6 +1,7 @@
 # 파일명: request_rate_limits.py
 # 역할: 비용이 크거나 반복 대입 위험이 있는 API의 호출 횟수를 제한한다.
 
+import ipaddress
 import logging
 import re
 import time
@@ -405,6 +406,35 @@ class RequestRateLimitStore:
         return count <= rule.max_requests, retry_after
 
 
+# An address may make this many times an account's requests: several people can share one address.
+IP_LIMIT_MULTIPLIER = 20
+
+
+# Function Name: request_ip_identity
+# Description:
+# - Derive a quota identity from the ASGI client address. This code reads no forwarded
+#   header itself; uvicorn resolves the address and is started so that only the tunnel
+#   on a private address may supply X-Forwarded-For.
+# Parameters:
+# - scope (Scope): ASGI connection metadata, including request path and headers.
+# Returns:
+# - An ip:-prefixed host identity, using unknown when no client address exists. An IPv6
+#   address counts as its /64, the smallest block one subscriber normally gets, so a host
+#   cannot open a fresh per-IP counter for each address in its own allocation.
+def request_ip_identity(scope: Scope) -> str:
+    client = scope.get("client")
+    client_host = str(client[0]) if client else "unknown"
+    try:
+        address = ipaddress.ip_address(client_host)
+    except ValueError:
+        return f"ip:{client_host}"
+    if isinstance(address, ipaddress.IPv6Address):
+        if address.ipv4_mapped is not None:
+            return f"ip:{address.ipv4_mapped}"
+        return f"ip:{ipaddress.IPv6Network((address, 64), strict=False)}"
+    return f"ip:{address}"
+
+
 # 클래스명: RequestRateLimitMiddleware
 # 역할:
 # - 경로별 고정 시간창의 광범위한 요청 IP 제한을 적용한다.
@@ -418,7 +448,7 @@ class RequestRateLimitStore:
 # - rules (dict): 메서드와 경로별 기본 정책.
 # - enabled (bool): IP 제한 적용 여부.
 class RequestRateLimitMiddleware:
-    _IP_LIMIT_MULTIPLIER = 20
+    _IP_LIMIT_MULTIPLIER = IP_LIMIT_MULTIPLIER
 
     # Function Name: __init__
     # Description:
@@ -446,7 +476,8 @@ class RequestRateLimitMiddleware:
     # 함수이름: __call__
     # 함수역할:
     # - IP별로 기본 정책의 20배 한도를 적용하고 초과는 429, 필수 저장소 장애는 503으로 응답한다.
-    # - 하루 비용 상한이 있는 경로는 같은 배수의 IP별 하루 한도도 함께 적용한다.
+    # - IP별 하루 한도는 여기서 세지 않는다. 인증 전에 24시간짜리 카운터를 남기면 인증되지 않은
+    #   주소마다 키가 하루씩 쌓여 저장소를 채울 수 있으므로, 인증 의존성이 계정 검증 뒤에 센다.
     # 매개변수:
     # - scope (Scope): 요청 경로와 헤더를 포함한 ASGI 연결 정보.
     # - receive (Receive): 다음 수신 메시지를 읽는 ASGI 콜백.
@@ -496,28 +527,6 @@ class RequestRateLimitMiddleware:
                 )
                 await response(scope, receive, send)
                 return
-            # 계정을 여러 개 만들어 계정별 하루 한도를 늘리는 것을 IP 단위로 막는다.
-            daily_quota = resolve_daily_quota(
-                str(scope.get("method", "")), canonical_path,
-            )
-            if daily_quota is not None:
-                daily_rule, daily_scope = daily_quota
-                allowed, retry_after = await self.store.consume(
-                    identity=self._request_ip_identity(scope),
-                    request_scope=daily_scope,
-                    rule=RateLimitRule(
-                        max_requests=daily_rule.max_requests * self._IP_LIMIT_MULTIPLIER,
-                        window_seconds=daily_rule.window_seconds,
-                    ),
-                )
-                if not allowed:
-                    response = JSONResponse(
-                        status_code=429,
-                        content={"detail": DAILY_QUOTA_EXCEEDED_DETAIL},
-                        headers={"Retry-After": str(max(1, retry_after))},
-                    )
-                    await response(scope, receive, send)
-                    return
         except RuntimeError:
             response = JSONResponse(
                 status_code=503,
@@ -532,19 +541,11 @@ class RequestRateLimitMiddleware:
         await self.app(scope, receive, send)
 
     # Function Name: _request_ip_identity
-    # Description:
-    # - Derive a quota identity from the ASGI client address. This code reads no forwarded
-    #   header itself; uvicorn resolves the address and is started so that only the tunnel
-    #   on a private address may supply X-Forwarded-For.
-    # Parameters:
-    # - scope (Scope): ASGI connection metadata, including request path and headers.
-    # Returns:
-    # - An ip:-prefixed host identity, using unknown when no client address exists.
+    # Description: The middleware's name for request_ip_identity.
+    # Parameters: scope (Scope): ASGI connection metadata. Returns: The address identity.
     @staticmethod
     def _request_ip_identity(scope: Scope) -> str:
-        client = scope.get("client")
-        client_host = str(client[0]) if client else "unknown"
-        return f"ip:{client_host}"
+        return request_ip_identity(scope)
 
     # 함수이름: _request_scope
     # 함수역할:
@@ -643,5 +644,10 @@ DAILY_QUOTA_ROUTES: dict[tuple[str, str], tuple[str, str]] = {
     ),
     ("GET", "/api/v1/hospitals/nearby"): (
         "hospital-search", "HOSPITAL_SEARCH_DAILY_LIMIT",
+    ),
+    # A search with no catalogue rows nearby falls back to the live provider, whose daily budget
+    # all users share (PHARMACY_API_DAILY_REQUEST_BUDGET).
+    ("GET", "/api/v1/pharmacy/nearby"): (
+        "pharmacy-search", "PHARMACY_SEARCH_DAILY_LIMIT",
     ),
 }

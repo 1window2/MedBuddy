@@ -1930,3 +1930,64 @@ def test_mfds_catalog_boundary_rejects_invalid_configuration(
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+# Function Name: test_image_preprocessing_applies_the_scan_limit_to_mpo_images
+# Description:
+# - A JPEG with an MPF segment opens as format "MPO". It is still a JPEG to the decoder, so the
+#   scan limit applies to it too, while a normal MPO photo still decodes.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+def test_image_preprocessing_applies_the_scan_limit_to_mpo_images() -> None:
+    from io import BytesIO
+
+    from PIL import Image
+
+    buffer = BytesIO()
+    Image.new("L", (256, 256), 128).save(
+        buffer, format="MPO", save_all=True,
+        append_images=[Image.new("L", (256, 256), 90)], progressive=True, quality=90,
+    )
+    normal = buffer.getvalue()
+    first_end = normal.index(b"\xff\xd9")
+    empty_scan = bytes.fromhex("ffda0008010100013f10")
+    crafted = normal[:first_end] + empty_scan * 500 + normal[first_end:]
+    with Image.open(BytesIO(crafted), formats=("JPEG", "PNG", "WEBP")) as opened:
+        assert opened.format == "MPO"
+
+    boundary = PillImageProcessingBoundary()
+    assert boundary._decode_bounded_image(normal).shape[:2] == (256, 256)
+    with pytest.raises(PillImageQualityError, match="not a valid image"):
+        boundary._decode_bounded_image(crafted)
+
+
+# Function Name: test_image_preprocessing_turns_the_image_upright_without_rewriting_exif
+# Description:
+# - An image with EXIF orientation 6 is turned upright (its sides swap), and the EXIF block is
+#   not re-encoded: ImageOps.exif_transpose did that, and a large bogus tag made a 128 px image
+#   cost seconds of CPU.
+# Parameters:
+# - monkeypatch (pytest.MonkeyPatch): Makes any EXIF re-encoding fail the test.
+# Returns:
+# - None.
+def test_image_preprocessing_turns_the_image_upright_without_rewriting_exif(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from io import BytesIO
+
+    from PIL import Image
+
+    exif = Image.Exif()
+    exif[0x0112] = 6
+    buffer = BytesIO()
+    Image.new("RGB", (300, 150), (200, 30, 30)).save(buffer, format="PNG", exif=exif)
+
+    def refuse_reencoding(self, offset=8):
+        raise AssertionError("EXIF must not be re-encoded")
+
+    monkeypatch.setattr(Image.Exif, "tobytes", refuse_reencoding)
+    decoded = PillImageProcessingBoundary()._decode_bounded_image(buffer.getvalue())
+
+    assert decoded.shape[:2] == (300, 150)

@@ -2,6 +2,9 @@
 # Role: Validates production configuration and builds verified, signed Android artifacts.
 
 name: Build Signed Android Release
+# The requested API endpoint is in the run title, so the beta-android reviewer sees it before
+# approving the signing job.
+run-name: ${{ inputs.api_base_url && format('Build Signed Android Release (API {0})', inputs.api_base_url) || 'Build Signed Android Release' }}
 
 on:
   workflow_dispatch:
@@ -30,6 +33,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/check_release_ci.py
+      - name: Show the API endpoint before approval
+        env:
+          REQUESTED_API_BASE_URL: ${{ inputs.api_base_url }}
+        run: |
+          shown="$(printf '%s' "${REQUESTED_API_BASE_URL}" | tr -d '`\r\n')"
+          if [ -n "${shown}" ]; then
+            printf 'API endpoint requested for this build: `%s`\n' "${shown}" >> "${GITHUB_STEP_SUMMARY}"
+          else
+            echo 'API endpoint: the configured MEDBUDDY_API_BASE_URL variable.' >> "${GITHUB_STEP_SUMMARY}"
+          fi
 
   build:
     needs: verify-ci
@@ -71,7 +84,9 @@ jobs:
         with:
           flutter-version: '3.41.5'
           channel: stable
-          cache: true
+          # No cache: an entry saved by an earlier push run on this branch is not part of the
+          # approved commit, so the signed build downloads the pinned SDK and every package fresh.
+          cache: false
 
       - name: Package Get
         run: flutter pub get --enforce-lockfile
@@ -203,6 +218,8 @@ jobs:
           NAVER_MAP_CLIENT_ID: ${{ vars.NAVER_MAP_CLIENT_ID }}
         run: |
           set -euo pipefail
+          # Same trimming as the endpoint check, which refuses any whitespace inside the URL.
+          read -r MEDBUDDY_API_BASE_URL <<< "${MEDBUDDY_API_BASE_URL}"
           APP_CHECK_REQUIRED="${MEDBUDDY_APP_CHECK_REQUIRED_NORMALIZED}"
           EXPECTED_CERT="$(printf '%s' "${EXPECTED_SIGNING_CERT_SHA256}" | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
           ACTUAL_CERT="$(keytool -list -v \

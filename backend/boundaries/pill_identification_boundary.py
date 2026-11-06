@@ -18,7 +18,7 @@ import httpx
 import numpy as np
 from google import genai
 from google.genai import types
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, JpegImagePlugin, UnidentifiedImageError
 from sqlalchemy.orm import Session
 
 from core.bounded_thread_work import run_thread_keeping_capacity
@@ -43,6 +43,34 @@ MAX_PILL_IMAGE_PIXELS = 24_000_000
 # A progressive JPEG decodes every scan over the whole image, so a few bytes per extra scan buy
 # seconds of CPU each. Normal encoders write about 10 scans; the limit leaves room for any of them.
 MAX_PILL_JPEG_SCANS = 100
+
+
+# EXIF orientation values and the transpose that puts the image upright (as in Pillow's
+# ImageOps.exif_transpose).
+_EXIF_ORIENTATION_TRANSPOSE = {
+    2: Image.Transpose.FLIP_LEFT_RIGHT,
+    3: Image.Transpose.ROTATE_180,
+    4: Image.Transpose.FLIP_TOP_BOTTOM,
+    5: Image.Transpose.TRANSPOSE,
+    6: Image.Transpose.ROTATE_270,
+    7: Image.Transpose.TRANSVERSE,
+    8: Image.Transpose.ROTATE_90,
+}
+
+
+# Function Name: _apply_exif_orientation
+# Description:
+# - Turns a decoded image upright according to its EXIF orientation tag.
+# - ImageOps.exif_transpose also re-encodes the whole EXIF block after turning the image, and
+#   that work grows with whatever metadata the upload carries (one oversized tag made a 128 px
+#   image cost seconds of CPU). Only the pixels are analysed, so the metadata is left alone.
+# Parameters:
+# - source (Image.Image): Loaded image.
+# Returns:
+# - The upright image (the source itself when no turn is needed).
+def _apply_exif_orientation(source: Image.Image) -> Image.Image:
+    method = _EXIF_ORIENTATION_TRANSPOSE.get(source.getexif().get(0x0112, 1))
+    return source if method is None else source.transpose(method)
 
 
 # Function Name: _count_jpeg_scans
@@ -259,20 +287,20 @@ class PillImageProcessingBoundary:
                     raise PillImageQualityError(
                         "The pill image resolution is too large."
                     )
-                if (
-                    source.format == "JPEG"
-                    and _count_jpeg_scans(image) > MAX_PILL_JPEG_SCANS
-                ):
+                # A JPEG with an MPF segment opens as MpoImageFile (format "MPO"), a JpegImageFile
+                # subclass, so the class decides here rather than the format name.
+                is_jpeg = isinstance(source, JpegImagePlugin.JpegImageFile)
+                if is_jpeg and _count_jpeg_scans(image) > MAX_PILL_JPEG_SCANS:
                     raise PillImageQualityError(
                         "The uploaded file is not a valid image."
                     )
-                if source.format == "JPEG":
+                if is_jpeg:
                     source.draft(
                         "RGB",
                         (self._MAX_ANALYSIS_DIMENSION, self._MAX_ANALYSIS_DIMENSION),
                     )
                 source.load()
-                oriented = ImageOps.exif_transpose(source)
+                oriented = _apply_exif_orientation(source)
                 oriented.thumbnail(
                     (self._MAX_ANALYSIS_DIMENSION, self._MAX_ANALYSIS_DIMENSION),
                     Image.Resampling.LANCZOS,

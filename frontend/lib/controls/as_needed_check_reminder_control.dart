@@ -24,7 +24,12 @@ class AsNeededCheckReminderControl extends ChangeNotifier {
   DateTime? scheduledAt;
   bool busy = false;
   bool _disposed = false;
-  String get _key => 'medbuddy_as_needed_check_$patientHash';
+  String get _key => storageKeyFor(patientHash);
+  // Function Name: storageKeyFor
+  // Description: Preference key of an account's next as-needed check; account deletion removes it.
+  // Parameters: patientHash - account hash. Returns: The preference key.
+  static String storageKeyFor(String patientHash) =>
+      'medbuddy_as_needed_check_$patientHash';
   // 정기 시간대의 기본 ID와 분리하며 날짜별 ID는 기존 알림 서비스가 만든다.
   static const notificationId = 84005;
   bool get enabled => scheduledAt?.isAfter(_now()) ?? false;

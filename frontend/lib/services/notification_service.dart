@@ -534,6 +534,8 @@ class NotificationService {
   Future<void> _initialize() async {
     try {
       timezone_data.initializeTimeZones();
+      // 서버의 APPLICATION_TIME_ZONE 기본값과 같다. 앱 기준 날짜(doseWidgetUtcOffset 기본 540분)도 이
+      // 시간대이며, 한국은 일광 절약 시간이 없어 둘이 어긋나지 않는다.
       timezone.setLocalLocation(timezone.getLocation('Asia/Seoul'));
 
       if (_notificationLanguage == null) {

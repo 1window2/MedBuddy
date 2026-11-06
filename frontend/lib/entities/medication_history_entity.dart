@@ -1,5 +1,6 @@
 // 파일명: medication_history_entity.dart
 // 역할: 날짜별 사용자 복약 보고·정정 의도와 서버 응답을 검증한다.
+import 'dose_widget_state.dart';
 import 'medication_slot_label.dart';
 import 'medication_schedule_entity.dart';
 
@@ -7,7 +8,8 @@ import 'medication_schedule_entity.dart';
 // 클래스명: MedicationHistoryDates
 // 역할: 조회 날짜·한국 시각·UTC 저장 시각을 혼동하지 않게 변환한다.
 class MedicationHistoryDates {
-  static const offset = Duration(hours: 9);
+  // 복용 대기열·위젯과 같은 앱 기준 시간대(APPLICATION_UTC_OFFSET_MINUTES, 기본 한국 시간)를 쓴다.
+  static const offset = Duration(minutes: doseWidgetUtcOffset);
 
   // 함수역할: 입력 시각을 한국 달력·시계 숫자로 바꾼다. 반환값은 표시 계산용이다.
   static DateTime wallTime(DateTime instant) => instant.toUtc().add(offset);

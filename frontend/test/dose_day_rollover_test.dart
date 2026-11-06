@@ -228,9 +228,11 @@ void main() {
             AppLifecycleState.resumed,
           );
         }
+        // 알림 경로는 알림의 날짜를 함께 넘긴다(main.dart).
         final action = viewModel.requestMedicationSlotStatusUpdate(
           'morning',
           true,
+          expectedScheduleDate: doseScheduleDay(current),
         );
         if (!resumeFirst) {
           viewModel.doseSync!.didChangeAppLifecycleState(
@@ -254,12 +256,12 @@ void main() {
   }
 
   // 함수이름: 날짜 변경 직후 개별 복용 체크 테스트
-  // 함수역할: 전날 목록이 그대로 보이는 화면에서 약 하나를 체크해도, 오늘 일정을 다시 읽은 뒤 같은 약의
-  //   오늘 기록으로 대기열에 저장되고 그 뒤에야 화면에 복용으로 표시되는지 검증한다.
+  // 함수역할: 전날 목록이 그대로 보이는 화면에서 약 하나를 체크하면 기록하지 않고 오늘 일정을 다시 읽어
+  //   다시 누르도록 안내하며, 새 목록에서 다시 누르면 오늘 기록으로 대기열에 저장되는지 검증한다.
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
   for (final resumeFirst in [false, true]) {
     test(
-      'a single dose checked right after midnight is queued for the new day (resumeFirst=$resumeFirst)',
+      'a dose tapped on yesterday\'s list right after midnight is refused, then recorded from today\'s list (resumeFirst=$resumeFirst)',
       () async {
         final viewModel = await signedInViewModelAfterDayOne();
         final tapped = viewModel.todayMedicationScheduleList.single;
@@ -272,9 +274,29 @@ void main() {
             AppLifecycleState.resumed,
           );
         }
+        expect(
+          await viewModel.requestMedicationDoseStatusUpdate(
+            'morning',
+            tapped,
+            true,
+          ),
+          isFalse,
+        );
+        expect(
+          viewModel.statusMessage,
+          '날짜가 바뀌어 오늘 일정을 다시 불러왔습니다. 확인한 뒤 다시 눌러주세요.',
+        );
+        expect(await store.pending('patient-a'), isEmpty);
+        expect(
+          viewModel.todayMedicationScheduleList.single.isSlotCompleted(
+            'morning',
+          ),
+          isFalse,
+        );
+        // 다시 읽은 오늘 목록에서 누르면 기록된다.
         final saved = await viewModel.requestMedicationDoseStatusUpdate(
           'morning',
-          tapped,
+          viewModel.todayMedicationScheduleList.single,
           true,
         );
         await viewModel.doseSync!.drain();
@@ -311,6 +333,40 @@ void main() {
     );
   }
 
+  // 함수이름: 날짜 변경 직후 시간대 전체 체크 테스트
+  // 함수역할: 전날 목록에서 시간대 전체를 체크해도 기록하지 않고, 알림처럼 날짜를 지정한 요청은 그대로
+  //   기록되는지 검증한다.
+  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  test(
+    'a whole slot tapped on yesterday\'s list is refused; a dated request is recorded',
+    () async {
+      final viewModel = await signedInViewModelAfterDayOne();
+      current = current.add(const Duration(days: 1));
+      uploadOnline = false;
+
+      expect(
+        await viewModel.requestMedicationSlotStatusUpdate('morning', true),
+        isFalse,
+      );
+      expect(await store.pending('patient-a'), isEmpty);
+
+      current = current.add(const Duration(days: 1));
+      expect(
+        await viewModel.requestMedicationSlotStatusUpdate(
+          'morning',
+          true,
+          expectedScheduleDate: doseScheduleDay(current),
+        ),
+        isTrue,
+      );
+      expect(
+        (await store.pending('patient-a')).single['schedule_date'],
+        doseScheduleDay(current),
+      );
+      viewModel.dispose();
+    },
+  );
+
   // 함수이름: 날짜 변경 뒤 일정 조회 실패 테스트
   // 함수역할: 오늘 일정을 읽지 못하면 전날 목록으로 오늘 복용을 기록하지 않고, 화면에도 복용으로 표시하지
   //   않으며 실패를 알리는지 검증한다.
@@ -331,12 +387,12 @@ void main() {
         ),
         isFalse,
       );
-      expect(viewModel.statusMessage, '오늘의 복약 일정을 다시 불러온 뒤 기록해주세요.');
+      // 다시 읽기에 실패한 이유를 그대로 알린다.
+      expect(viewModel.statusMessage, contains('서버가 일시적으로 응답하지 않습니다'));
       expect(
         await viewModel.requestMedicationSlotStatusUpdate('morning', true),
         isFalse,
       );
-      // 시간대 전체 기록은 다시 읽기에 실패한 이유를 그대로 알린다.
       expect(viewModel.statusMessage, contains('서버가 일시적으로 응답하지 않습니다'));
 
       expect(await store.pending('patient-a'), isEmpty);
@@ -378,7 +434,10 @@ void main() {
         viewModel.todayMedicationScheduleList.single.isSlotCompleted('morning'),
         isFalse,
       );
-      expect(viewModel.statusMessage, '오늘의 복약 일정을 다시 불러온 뒤 기록해주세요.');
+      expect(
+        viewModel.statusMessage,
+        '날짜가 바뀌어 오늘 일정을 다시 불러왔습니다. 확인한 뒤 다시 눌러주세요.',
+      );
       viewModel.dispose();
     },
   );

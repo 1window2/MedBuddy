@@ -5,8 +5,10 @@ import logging
 from datetime import timedelta
 
 from fastapi import HTTPException
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
+from core.account_database_lock import ACCOUNT_BUSY_DETAIL, lock_account_operations
 from core.config import settings
 from entities.caregiver_notification_entity import _CaregiverNotification
 from entities.chat_message_entity import _ChatMessage
@@ -150,6 +152,11 @@ class LinkPatientCaregiver:
                 status_code=400,
                 detail="A caregiver cannot link to the same patient hash.",
             )
+        link_code = self._lock_link_participants(
+            normalized_patient_code,
+            str(link_code.patient_hash),
+            normalized_caregiver_hash,
+        )
 
         try:
             reserved_count = (
@@ -235,6 +242,46 @@ class LinkPatientCaregiver:
             "data": self.toResponseDict(link, viewer_hash=normalized_caregiver_hash),
         }
 
+    # 함수이름: _lock_link_participants
+    # 함수역할:
+    # - 환자와 보호자 계정을 같은 순서로 잠근 뒤 코드를 다시 읽는다. 한 환자의 두 코드를 두 보호자가
+    #   동시에 등록해도 활성 연동 수를 차례로 세게 해 환자당 한도를 넘지 않게 한다.
+    # 매개변수:
+    # - patient_code (str): 정규화한 환자 코드
+    # - patient_hash (str): 코드 주인의 계정 식별값
+    # - caregiver_hash (str): 등록하는 보호자 계정 식별값
+    # 반환값:
+    # - 잠금 안에서 다시 읽은 유효한 코드. 잠금을 얻지 못하면 503.
+    def _lock_link_participants(
+        self,
+        patient_code: str,
+        patient_hash: str,
+        caregiver_hash: str,
+    ) -> _PatientLinkCode:
+        if self.db.new or self.db.dirty or self.db.deleted:
+            raise RuntimeError("Link registration requires a clean database session.")
+        # 인증 단계의 보호자 계정 잠금을 먼저 풀어 두 계정의 잠금 순서가 요청마다 같게 한다.
+        # 첫 요청이면 인증 단계가 만든 계정 행이 아직 commit 전이므로 버리지 않고 commit한다.
+        self.db.commit()
+        try:
+            lock_account_operations(self.db, (patient_hash, caregiver_hash))
+            self.db.expire_all()
+            link_code = self._get_valid_link_code(patient_code)
+        except OperationalError as exc:
+            self.db.rollback()
+            raise HTTPException(
+                status_code=503,
+                detail=ACCOUNT_BUSY_DETAIL,
+                headers={"Retry-After": "5"},
+            ) from exc
+        except BaseException:
+            self.db.rollback()
+            raise
+        if str(link_code.patient_hash) != patient_hash:
+            self.db.rollback()
+            raise HTTPException(status_code=409, detail="Patient code was already used.")
+        return link_code
+
     # 함수이름: requestUnlink
     # 함수역할:
     # - 요청자가 참여한 연동을 논리 삭제한다.
@@ -258,6 +305,7 @@ class LinkPatientCaregiver:
                 status_code=404,
                 detail="Patient-caregiver link was not found.",
             )
+        link = self._lock_unlink_participants(link, normalized_user_hash)
 
         try:
             link_state = PatientCaregiverLink(
@@ -270,6 +318,11 @@ class LinkPatientCaregiver:
             link.linked = link_state.link_status
             self._revoke_caregiver_notification(link)
             self._remove_chat_history(link.id)
+            # 해제 전에 발급한 코드로 해제된 보호자가 환자 몰래 다시 연동하지 못하게 남은 코드를 모두 막는다.
+            self.db.query(_PatientLinkCode).filter(
+                _PatientLinkCode.patient_hash == link.patient_hash,
+                _PatientLinkCode.used.is_(False),
+            ).update({"used": True}, synchronize_session=False)
             self.db.commit()
             self.db.refresh(link)
         except Exception as exc:
@@ -288,6 +341,49 @@ class LinkPatientCaregiver:
             "message": "Patient-caregiver link was removed.",
             "data": self.toResponseDict(link, viewer_hash=normalized_user_hash),
         }
+
+    # 함수이름: _lock_unlink_participants
+    # 함수역할:
+    # - 해제 전에 두 참여자 계정을 같은 순서로 잠그고 연동을 다시 읽는다. 상대방의 채팅 전송이나 알림
+    #   설정 저장은 자기 계정 잠금을 요청 끝까지 쥐므로, 해제는 그 쓰기가 끝난 뒤에 지우거나 그 쓰기가
+    #   해제 뒤에 연동을 다시 확인하게 되어 해제된 연동에 행이 남지 않는다.
+    # 매개변수:
+    # - link (_PatientCaregiverLink): 잠그기 전에 찾은 활성 연동
+    # - user_hash (str): 해제를 요청한 참여자 계정 식별값
+    # 반환값:
+    # - 잠금 안에서 다시 읽은 활성 연동. 잠금을 얻지 못하면 503, 그사이 해제됐으면 404.
+    def _lock_unlink_participants(
+        self,
+        link: _PatientCaregiverLink,
+        user_hash: str,
+    ) -> _PatientCaregiverLink:
+        if self.db.new or self.db.dirty or self.db.deleted:
+            raise RuntimeError("Unlink requires a clean database session.")
+        link_id = link.id
+        participants = (str(link.patient_hash), str(link.caregiver_hash))
+        # 인증 단계에서 만든 계정 행은 버리지 않고 commit해 요청자 계정 잠금만 푼다.
+        self.db.commit()
+        try:
+            lock_account_operations(self.db, participants)
+            self.db.expire_all()
+            locked = self.link_repository.find_active_for_user_by_id(link_id, user_hash)
+        except OperationalError as exc:
+            self.db.rollback()
+            raise HTTPException(
+                status_code=503,
+                detail=ACCOUNT_BUSY_DETAIL,
+                headers={"Retry-After": "5"},
+            ) from exc
+        except BaseException:
+            self.db.rollback()
+            raise
+        if locked is None or (str(locked.patient_hash), str(locked.caregiver_hash)) != participants:
+            self.db.rollback()
+            raise HTTPException(
+                status_code=404,
+                detail="Patient-caregiver link was not found.",
+            )
+        return locked
 
     # 함수이름: updatePatientAlias
     # 함수역할:

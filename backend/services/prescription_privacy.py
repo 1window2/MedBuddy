@@ -64,6 +64,11 @@ _REJECT_MESSAGE = (
 )
 
 
+# 한 줄의 최대 길이. 식별자 정규식은 한 줄 안에서 길이의 제곱에 비례해 돌 수 있으므로(같은 글자가 이어진
+# 긴 줄), 실제 처방·약봉투 줄보다 훨씬 긴 줄은 검사 전에 거절해 요청 하나의 비용을 묶는다.
+MAX_PRESCRIPTION_LINE_LENGTH = 500
+
+
 class PrescriptionPrivacyError(ValueError):
     """개인정보를 안전하게 분리할 수 없어 외부 전송을 중단한다."""
 
@@ -85,6 +90,8 @@ def deidentify_prescription_text(text: str) -> str:
         line = re.sub(r"[ \t]+", " ", source_line).strip()
         if not line:
             continue
+        if len(line) > MAX_PRESCRIPTION_LINE_LENGTH:
+            raise PrescriptionPrivacyError(_REJECT_MESSAGE)
         # 기기에서 이미 가린 정확한 대체 문구는 개인정보 라벨로 다시 해석하지 않는다.
         for placeholder in ("[주민번호 제거]", "[연락처 제거]", "[이메일 제거]"):
             line = line.replace(placeholder, "[REDACTED]")

@@ -117,6 +117,8 @@ def _production_api_settings(**overrides: object) -> Settings:
         "RUNTIME_ROLE": "api",
         "AUTH_MODE": "firebase",
         "FIREBASE_PROJECT_ID": "medbuddy-test",
+        "FIREBASE_CHECK_REVOKED_TOKENS": True,
+        "FIREBASE_REQUIRE_VERIFIED_EMAIL": True,
         "FIREBASE_APP_CHECK_REQUIRED": True,
         "RATE_LIMIT_ENABLED": True,
         "RATE_LIMIT_REQUIRE_REDIS": True,
@@ -384,18 +386,20 @@ async def test_registered_principal_quota_uses_stable_identity_and_route_scope(
     assert verifier.tokens == ["rotated-token-one", "rotated-token-two"]
     assert principals[0].user_hash == principals[1].user_hash
     stable_identity = f"user:{principals[0].user_hash}"
-    # 약 조회와 건강 추천은 하루 AI 비용 한도도 함께 세므로 같은 계정으로 한 번씩 더 기록된다.
-    assert [call[0] for call in rate_limit_store.calls] == [stable_identity] * 4
+    # 약 조회와 건강 추천은 하루 AI 비용 한도도 함께 세므로 같은 계정으로 한 번씩 더 기록되고,
+    # 인증 뒤에 같은 하루 한도를 주소 단위로도 한 번씩 센다.
+    assert [call[:2] for call in rate_limit_store.calls] == [
+        (stable_identity, "POST:/api/v1/medication/identify"),
+        ("ip:203.0.113.10", "daily:ai"),
+        (stable_identity, "daily:ai"),
+        (stable_identity, "GET:/api/v1/medication/health/recommendation"),
+        ("ip:203.0.113.10", "daily:ai"),
+        (stable_identity, "daily:ai"),
+    ]
     assert all(
         credentials.credentials not in stable_identity
         for credentials in credentials
     )
-    assert [call[1] for call in rate_limit_store.calls] == [
-        "POST:/api/v1/medication/identify",
-        "daily:ai",
-        "GET:/api/v1/medication/health/recommendation",
-        "daily:ai",
-    ]
 
 
 # Function Name: test_sqlite_account_lock_is_held_until_dependency_cleanup
@@ -1317,3 +1321,27 @@ def test_password_provider_still_requires_verified_email() -> None:
             get_authenticated_principal(credentials)
 
     assert denied.value.status_code == 403
+
+
+# Function Name: test_production_api_requires_revocation_and_verified_email_and_no_emulator
+# Description:
+# - Production refuses to start without the revocation and verified-email checks, with the
+#   Firebase Auth emulator variable set, or with two spellings of one setting.
+# Parameters:
+# - monkeypatch (pytest.MonkeyPatch): Sets and clears process environment variables.
+# Returns:
+# - None.
+def test_production_api_requires_revocation_and_verified_email_and_no_emulator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in ("FIREBASE_CHECK_REVOKED_TOKENS", "FIREBASE_REQUIRE_VERIFIED_EMAIL"):
+        with pytest.raises(ValueError, match=name):
+            _production_api_settings(**{name: False})
+    monkeypatch.setenv("FIREBASE_AUTH_EMULATOR_HOST", "127.0.0.1:9099")
+    with pytest.raises(ValueError, match="FIREBASE_AUTH_EMULATOR_HOST"):
+        _production_api_settings()
+    monkeypatch.delenv("FIREBASE_AUTH_EMULATOR_HOST")
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("app_env", "development")
+    with pytest.raises(ValueError, match="Conflicting environment spellings for: APP_ENV"):
+        Settings(_env_file=None)

@@ -35,6 +35,12 @@ _QUERY_COORDINATE_DECIMALS = 3
 # - 약국 응답이 기대한 크기 또는 XML 계약을 벗어났음을 나타낸다.
 # 주요 책임:
 # - 신뢰할 수 없는 제공자 응답을 위치 검색 및 카탈로그 제어 흐름에 전달한다.
+# 클래스명: PharmacyApiBudgetExhaustedError
+# 역할: 모든 사용자가 함께 쓰는 하루 위치 조회 예산을 다 쓴 상태를 일시 장애와 구분한다.
+class PharmacyApiBudgetExhaustedError(PharmacyApiUnavailableError):
+    """오늘의 약국 위치 조회 예산을 모두 사용했을 때 발생한다."""
+
+
 class PharmacyApiResponseError(RuntimeError):
     """약국 공공데이터 응답 형식이 계약과 다를 때 발생한다."""
 
@@ -113,14 +119,14 @@ class NationalEmergencyMedicalCenterPharmacyAPI:
     # 매개변수:
     # - 없음.
     # 반환값:
-    # - 없음; 예산을 넘으면 PharmacyApiUnavailableError.
+    # - 없음; 예산을 넘으면 PharmacyApiBudgetExhaustedError.
     def _charge_location_budget(self) -> None:
         today = self._date_clock()
         if self._budget_date != today:
             self._budget_date = today
             self._daily_location_requests = 0
         if self._daily_location_requests >= settings.PHARMACY_API_DAILY_REQUEST_BUDGET:
-            raise PharmacyApiUnavailableError("Pharmacy daily request budget exhausted.")
+            raise PharmacyApiBudgetExhaustedError("Pharmacy daily request budget exhausted.")
         self._daily_location_requests += 1
 
     # 함수이름: searchNearby
@@ -168,7 +174,7 @@ class NationalEmergencyMedicalCenterPharmacyAPI:
             )
             raise PharmacyApiUnavailableError(
                 "The pharmacy data service is temporarily unavailable."
-            ) from exc
+            ) from None  # httpx errors carry the URL with serviceKey.
 
         if response.status_code != 200:
             logger.warning(
@@ -225,7 +231,7 @@ class NationalEmergencyMedicalCenterPharmacyAPI:
             )
             raise PharmacyApiUnavailableError(
                 "The pharmacy data service is temporarily unavailable."
-            ) from exc
+            ) from None  # httpx errors carry the URL with serviceKey.
 
         if response.status_code != 200:
             raise PharmacyApiUnavailableError(

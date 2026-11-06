@@ -767,6 +767,19 @@ def test_rate_limiter_uses_ip_identity_and_route_specific_scope() -> None:
         RequestRateLimitMiddleware._request_ip_identity(scope)  # type: ignore[arg-type]
         == "ip:203.0.113.5"
     )
+    # 한 IPv6 /64 안의 주소는 같은 IP 카운터를 쓰고, IPv4 매핑 주소는 IPv4로 센다.
+    identities = {
+        RequestRateLimitMiddleware._request_ip_identity({"client": (host, 1)})  # type: ignore[arg-type]
+        for host in ("2001:db8:1:2::1", "2001:db8:1:2:ffff::9")
+    }
+    assert identities == {"ip:2001:db8:1:2::/64"}
+    assert RequestRateLimitMiddleware._request_ip_identity(  # type: ignore[arg-type]
+        {"client": ("2001:db8:1:3::1", 1)}
+    ) == "ip:2001:db8:1:3::/64"
+    assert RequestRateLimitMiddleware._request_ip_identity(  # type: ignore[arg-type]
+        {"client": ("::ffff:203.0.113.5", 1)}
+    ) == "ip:203.0.113.5"
+    assert RequestRateLimitMiddleware._request_ip_identity({}) == "ip:unknown"  # type: ignore[arg-type]
     assert (
         RequestRateLimitMiddleware._request_scope(  # type: ignore[arg-type]
             {**scope, "method": "POST", "path": "/limited"}

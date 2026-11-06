@@ -78,6 +78,7 @@ def flow(tmp_path, monkeypatch):
         app.dependency_overrides[chat_router.get_check_nearby_pharmacy] = lambda: pharmacy
         app.dependency_overrides[chat_router.get_check_nearby_hospital] = lambda: object()
         monkeypatch.setattr(chat_router, "enforce_chat_daily_quota", AsyncMock())
+        monkeypatch.setattr(chat_router, "enforce_pharmacy_share_daily_quota", AsyncMock())
         monkeypatch.setattr(route_support, "get_chat_connection_manager",
                             lambda _: SimpleNamespace(broadcast=AsyncMock()))
         with TestClient(app) as client:

@@ -117,7 +117,7 @@ class OCRServiceBoundary:
         if not normalized_text:
             raise ValueError("Masked prescription text is empty.")
         # 다른 호출 경로에서도 원문이 제공자 어댑터로 넘어가지 않게 마지막 경계에서 검사한다.
-        normalized_text = deidentify_prescription_text(normalized_text)
+        normalized_text = await asyncio.to_thread(deidentify_prescription_text, normalized_text)
         extraction_started_at = time.perf_counter()
         try:
             response = await asyncio.wait_for(

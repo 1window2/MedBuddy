@@ -38,6 +38,8 @@ class MedBuddyScheduleViewModel {
   // - bool: Failure of the latest applicable schedule load for retry-state rendering.
   bool get hasTodayScheduleLoadError => _hasTodayScheduleLoadError;
   bool _lastTodayScheduleLoadSucceeded = false;
+  // Application day of the list on screen; a tap on an earlier day's list is refused.
+  String? _listedScheduleDay;
   int _todayScheduleEpoch = 0;
   // 가장 최근 일정 조회만 화면의 로딩 상태를 종료할 수 있도록 요청 번호를 보관한다.
   int? _activeTodayScheduleLoadEpoch;
@@ -107,6 +109,9 @@ class MedBuddyScheduleViewModel {
     _isTodayScheduleLoading = false;
     _hasSettledTodaySchedule = true;
     _todayMedicationScheduleList = schedules;
+    if (hasCurrentDayCache) {
+      _listedScheduleDay = doseScheduleDay(doseSync?.clock() ?? DateTime.now());
+    }
     if (!hasCurrentDayCache) {
       // A projection without today's snapshot (first open of a new day) is
       // unknown, not empty: it must not pass as a successful read, or reminder
@@ -127,6 +132,7 @@ class MedBuddyScheduleViewModel {
     _lastTodayScheduleLoadSucceeded = false;
     _hasTodayScheduleLoadError = false;
     _todayMedicationScheduleList = [];
+    _listedScheduleDay = null;
   }
 
   // Function Name: dispose
@@ -241,6 +247,7 @@ class MedBuddyScheduleViewModel {
       }
       _todayMedicationScheduleList =
           doseSync?.project(scheduleList) ?? scheduleList;
+      _listedScheduleDay = requestDay;
       _hasTodayScheduleLoadError = false;
       _lastTodayScheduleLoadSucceeded = true;
     } on StateError catch (error) {
@@ -327,6 +334,9 @@ class MedBuddyScheduleViewModel {
     bool medicationStatus, {
     String? expectedScheduleDate,
   }) async {
+    if (expectedScheduleDate == null && await _refuseTapOnEarlierDayList()) {
+      return false;
+    }
     if (doseSync != null) {
       if (!(await _ensureCurrentDayCache()).ready) return false;
       return _queueDoseStatus(
@@ -395,6 +405,7 @@ class MedBuddyScheduleViewModel {
     if (medicationSchedule.medicationID.trim().isEmpty) {
       return false;
     }
+    if (await _refuseTapOnEarlierDayList()) return false;
     if (doseSync != null) {
       var target = medicationSchedule;
       if ((await _ensureCurrentDayCache()).refetched) {
@@ -460,8 +471,9 @@ class MedBuddyScheduleViewModel {
 
   // Function Name: _ensureCurrentDayCache
   // Description: Makes sure the queue holds today's schedule before a dose is recorded. A
-  //   notification can arrive before the home screen restores its cache, and the first tap after
-  //   midnight still shows yesterday's list; both refetch once instead of rejecting the tap.
+  //   notification can arrive before the home screen restores its cache; it refetches once
+  //   instead of rejecting the action. A tap on an earlier day's list never gets here
+  //   (`_refuseTapOnEarlierDayList`).
   // Parameters: None.
   // Returns: ready - whether today's schedule is cached; refetched - whether the visible list
   //   was replaced by a new server read. A storage or network failure gives ready == false.
@@ -477,6 +489,27 @@ class MedBuddyScheduleViewModel {
     } catch (_) {
       return (ready: false, refetched: refetched);
     }
+  }
+
+  // Function Name: _refuseTapOnEarlierDayList
+  // Description: A tap on a list drawn for an earlier application day (the app left open
+  //   across midnight) records nothing. Today's list is read instead and the user is asked to
+  //   check it and tap again, so yesterday's row is never recorded as today's dose and
+  //   tonight's reminder of that slot stays. Reminder actions carry their own day and skip this.
+  // Parameters: None.
+  // Returns: True when the tap was refused.
+  Future<bool> _refuseTapOnEarlierDayList() async {
+    final listed = _listedScheduleDay;
+    final today = doseScheduleDay(doseSync?.clock() ?? DateTime.now());
+    if (listed == null || listed == today) return false;
+    await fetchTodayMedicationSchedule();
+    if (_lastTodayScheduleLoadSucceeded) {
+      _statusMessage = _isEnglishSetting
+          ? 'The date has changed and today\'s schedule was loaded. Check it and tap again.'
+          : '날짜가 바뀌어 오늘 일정을 다시 불러왔습니다. 확인한 뒤 다시 눌러주세요.';
+    }
+    _notifyViewModelListeners();
+    return true;
   }
 
   // Function Name: _reloadBeforeRecordingMessage

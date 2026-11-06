@@ -491,8 +491,8 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
     if (first.isAfter(last)) {
       setState(
         () => _error = _text(
-          '기존 복용 시작일부터 3650일을 넘길 수 없습니다. 새 처방이면 처방 교체를 이용해 주세요.',
-          'The original course cannot exceed 3650 days. Use replacement for a new prescription.',
+          '기존 복용 시작일부터 $maxMedicationCourseDays일을 넘길 수 없습니다. 새 처방이면 처방 교체를 이용해 주세요.',
+          'The original course cannot exceed $maxMedicationCourseDays days. Use replacement for a new prescription.',
         ),
       );
       return;
@@ -589,8 +589,8 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
         if (!isValidMedicationCourseDays(_courseDays)) {
           setState(
             () => _error = _text(
-              '복용 기간은 1~3650일로 선택해 주세요.',
-              'Choose a course of 1 to 3650 days.',
+              '복용 기간은 1~$maxMedicationCourseDays일로 선택해 주세요.',
+              'Choose a course of 1 to $maxMedicationCourseDays days.',
             ),
           );
           return;

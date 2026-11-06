@@ -274,6 +274,63 @@ a dose through the exported launcher activity.
 - **To undo:** rename the branch and the references in `release-android.yml`,
   `scripts/check_android_release_configuration.py` and their tests.
 
+## 2026-11-07: owner decisions for 1.0.0
+
+- **Distribution:** 1.0.0 goes to Google Play and stays available as a GitHub APK.
+  App Check with Play Integrity therefore blocks 1.0.0, and the GitHub APK needs its
+  own way through App Check before the server requires it.
+- **Crisis wording in department search:** no special handling.
+- **Chat notification default:** the message preview stays the default; recipients
+  can switch to type only.
+- **A tap on yesterday's list after midnight:** refused. Nothing is recorded, today's
+  list is loaded and the user is asked to tap again. Reminder actions pass their own
+  day and are unaffected. To undo: remove `_refuseTapOnEarlierDayList` in
+  `medbuddy_schedule_view_model.dart`.
+
+## 2026-11-07: data-only database role
+
+- **Chosen:** an opt-in role (`MEDBUDDY_APP_DB_USER`, `MEDBUDDY_APP_DB_PASSWORD`)
+  that the migration provisions with data rights only; the API and catalog jobs use
+  it once both settings exist, and the owner role until then.
+- **Alternatives:** switching at once (needs a new secret on the host before the
+  next deploy); row-level security (no tenant column common to all tables).
+- **To undo:** remove both settings and redeploy.
+
+## 2026-11-07: English developer text in the Korean UI
+
+- **Chosen:** a `StateError` whose text is not Korean gives the Korean UI the generic
+  message; the English UI still shows the text.
+- **Alternative:** translating every developer message (many are never shown).
+- **To undo:** remove the `_isKoreanSentence` check in `UserFacingErrorMessage.resolve`.
+
+## 2026-11-07: per-IP daily quota after sign-in
+
+- **Chosen:** the per-IP daily quota (20 times the account quota) is counted in the
+  authentication dependency, after the account is verified, instead of in the
+  middleware. Unauthenticated requests leave only the per-minute address counter.
+- **Why:** the second security audit showed that day-long counters written before
+  sign-in let unauthenticated addresses fill the 128 MB noeviction counter store, and
+  a full store makes the limiter answer 503 to everyone. The daily quota exists to
+  bound spending by signed-in accounts, which an unauthenticated request cannot do.
+- **Alternatives:** eviction in the counter store (a full store would then reset
+  quotas instead of refusing requests); a larger store (raises the bar only).
+- **To undo:** move the `enforce_address_quota` call in `get_registered_principal`
+  back into `RequestRateLimitMiddleware`.
+
+## 2026-11-07: findings of the second audit left to the owner
+
+- **Hospital budget:** one free account can spend the shared hospital API budget
+  inside its own daily search quota. The provider's operating-account quota is the
+  real fix; a per-call share per account would also limit ordinary users, so no code
+  change was made.
+- **Database pool:** same-account requests waiting for the account lock hold pooled
+  connections for up to 5 s. The audit rejected it as a finding (any client with
+  several requests in flight fills the pool too), so the PostgreSQL lock path was not
+  changed without a PostgreSQL concurrency test.
+- **Anonymous-era accounts:** a link or push token created before a uid proves an
+  email carries over to whoever proves it later. The fix (an identity epoch per
+  account) changes sign-up behaviour and waits for the owner's decision.
+
 ## Earlier decisions
 
 - 2026-10-21: an as-needed dose can be undone from the save notice (the

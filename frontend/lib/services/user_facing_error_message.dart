@@ -110,6 +110,11 @@ class UserFacingErrorMessage {
 
     final originalMessage = error.toString().replaceFirst('Bad state: ', '');
     if (originalMessage.trim().isNotEmpty && error is StateError) {
+      // 영어 StateError 문구는 개발자용 확인 문구다(예: 응답에 필요한 데이터가 없음). 한국어 화면에는
+      // 그대로 보여 주지 않고 일반 안내로 바꾼다.
+      if (!isEnglish && !_isKoreanSentence(originalMessage.trim())) {
+        return _genericMessage(isEnglish);
+      }
       return originalMessage;
     }
     return _genericMessage(isEnglish);

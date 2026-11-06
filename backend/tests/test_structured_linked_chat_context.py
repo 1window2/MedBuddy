@@ -235,6 +235,15 @@ class StructuredLinkedChatContextTest(unittest.TestCase):
                 slot_key="morning",
             )
         self.assertEqual(client_request.exception.status_code, 403)
+        # 서버 카드의 재전송 식별자를 환자 글이 먼저 차지해 카드를 막을 수 없다.
+        with self.assertRaises(HTTPException) as squatted:
+            self.chat.send_message(
+                link_id=self.link_id,
+                sender_hash="patient-a",
+                client_message_id=f"slot_complete_{datetime.now().strftime('%Y%m%d')}_morning",
+                body="patient text",
+            )
+        self.assertEqual(squatted.exception.status_code, 400)
 
         first_count = self.chat.publish_slot_completion(
             patient_hash="patient-a",

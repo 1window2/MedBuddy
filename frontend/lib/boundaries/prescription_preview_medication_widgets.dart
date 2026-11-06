@@ -1412,8 +1412,8 @@ class _PreviewText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get invalidTotalDays => isEnglish
-      ? 'Enter a number between 1 and 3650.'
-      : '1일 이상 3650일 이하의 숫자를 입력해주세요.';
+      ? 'Enter a number between 1 and $maxMedicationCourseDays.'
+      : '1일 이상 $maxMedicationCourseDays일 이하의 숫자를 입력해주세요.';
   // 함수이름: medicationStartDate
   // 함수역할: 현재 언어와 입력값에 맞춰 "복용 시작일" 문구를 제공한다.
   // 매개변수:

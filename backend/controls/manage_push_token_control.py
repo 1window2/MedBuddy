@@ -3,6 +3,7 @@
 
 import logging
 import secrets
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
@@ -47,6 +48,7 @@ class ManagePushToken:
         token: str,
         platform: str,
         supports_caregiver_actions: bool = False,
+        sessions_valid_after: datetime | None = None,
     ) -> dict[str, object]:
         normalized_user_hash = normalize_patient_hash(user_hash)
         normalized_token = token.strip()
@@ -72,6 +74,15 @@ class ManagePushToken:
         push_token.supports_caregiver_actions = supports_caregiver_actions
         # 같은 계정의 재등록도 이전 전송 결과와 구분할 수 있게 갱신한다.
         push_token.registration_version = secrets.token_hex(16)
+        if sessions_valid_after is not None:
+            # 앱은 시작할 때마다 토큰을 다시 등록한다. 세션 취소(비밀번호 변경 등) 뒤로 한 번도 다시
+            # 등록되지 않은 같은 계정의 기기는 취소된 세션의 기기이므로 더 이상 알림을 보내지 않는다.
+            self.db.query(_DevicePushToken).filter(
+                _DevicePushToken.user_hash == normalized_user_hash,
+                _DevicePushToken.token != normalized_token,
+                _DevicePushToken.enabled.is_(True),
+                _DevicePushToken.updated_at < sessions_valid_after,
+            ).update({"enabled": False}, synchronize_session=False)
         self.db.commit()
         self.db.refresh(push_token)
         return {

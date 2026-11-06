@@ -784,7 +784,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             if (viewModel.doseSync case final sync?)
               DoseSyncStatus(
                 service: sync,
-                isEnglish: viewModel.userSetting.language == 'en',
+                isEnglish: isEnglishLanguage(viewModel.userSetting.language),
               ),
             MedBuddyBottomNavigationUI(
               selectedDestination: _selectedDestination,
@@ -867,7 +867,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               _chatList?.hasError == false &&
               (_caregiverHome?.links.isNotEmpty ?? false)
           ? HomeLinkedPatientHint(
-              isEnglish: viewModel.userSetting.language == 'en',
+              isEnglish: isEnglishLanguage(viewModel.userSetting.language),
               onTap: () => _openUserSettings(
                 context,
                 viewModel,
@@ -1245,7 +1245,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         chat == null) {
       return null;
     }
-    final english = viewModel.userSetting.language == 'en';
+    final english = isEnglishLanguage(viewModel.userSetting.language);
     return CaregiverHomeSummaryUI(
       control: control,
       isEnglish: english,
@@ -1285,7 +1285,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           patientHash: link.patientHash,
           patientLabel: chat.peerName(
             link,
-            isEnglish: viewModel.userSetting.language == 'en',
+            isEnglish: isEnglishLanguage(viewModel.userSetting.language),
           ),
           userSetting: viewModel.userSetting,
         ),

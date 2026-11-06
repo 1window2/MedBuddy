@@ -88,6 +88,19 @@ class ChatSendResult:
 # - medication_repository (SavedMedicationRepository): 환자 소유 저장 약품 스냅샷 저장소.
 # - pharmacy_repository (PharmacyCatalogRepository): 약국 카탈로그와 공휴일 당번표 저장소.
 # - course_policy (MedicationCoursePolicy): 약 복용 시작·종료·활성 날짜의 공통 판정 정책.
+# 서버가 만드는 슬롯 완료 카드의 재전송 식별자 접두사다. 클라이언트가 같은 식별자를 먼저 쓰면 서버 카드가
+# 만들어지지 않으므로 클라이언트 요청에는 쓰지 못하게 한다.
+_SERVER_SLOT_COMPLETION_CLIENT_ID_PREFIX = "slot_complete_"
+
+
+# 함수이름: _reject_server_client_id
+# 함수역할: 서버 전용 재전송 식별자를 클라이언트 요청에서 400으로 거절한다.
+# 매개변수: client_message_id (str): 요청의 재전송 식별자. 반환값: 없음.
+def _reject_server_client_id(client_message_id: str) -> None:
+    if client_message_id.startswith(_SERVER_SLOT_COMPLETION_CLIENT_ID_PREFIX):
+        raise HTTPException(400, "This client message namespace is reserved for the server.")
+
+
 class ManageLinkedChat:
     """채팅 접근 권한, 저장, 기록 조회, 읽음 처리를 조율한다."""
 
@@ -444,6 +457,8 @@ class ManageLinkedChat:
         alert = None
         if source_alert_id is None and client_message_id.startswith("missed_chat_"):
             raise HTTPException(400, "This client message namespace requires a caregiver alert.")
+        if not allow_internal:
+            _reject_server_client_id(client_message_id)
         if source_alert_id is not None:
             if message_kind != CHAT_MESSAGE_KIND_SLOT_CHECK_REQUEST:
                 raise HTTPException(400, "Only slot check requests may reference a caregiver alert.")
@@ -596,6 +611,7 @@ class ManageLinkedChat:
             "slot_key": slot_key,
             "medication_ids": sorted(set(medication_ids)),
         }
+        _reject_server_client_id(client_message_id)
         existing = self.message_repository.find_client_request(
             link_id=link_id, sender_hash=sender_hash,
             client_message_id=client_message_id,
@@ -728,7 +744,7 @@ class ManageLinkedChat:
                 link_id=int(link.id),
                 sender_hash=patient_hash,
                 client_message_id=(
-                    f"slot_complete_{today.strftime('%Y%m%d')}_{slot_key}"
+                    f"{_SERVER_SLOT_COMPLETION_CLIENT_ID_PREFIX}{today.strftime('%Y%m%d')}_{slot_key}"
                 ),
                 body=f"{MEDICATION_SLOT_KOREAN_NAMES[slot_key]} 약 복용을 모두 완료했습니다.",
                 message_kind=CHAT_MESSAGE_KIND_SLOT_COMPLETION,

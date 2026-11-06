@@ -232,3 +232,24 @@ async def test_privacy_rejection_returns_safe_400_without_external_call(caplog) 
     assert "홍길동" not in failure.value.detail
     assert "홍길동" not in caplog.text
     extract.assert_not_awaited()
+
+
+# Function Name: test_overlong_line_is_refused_before_identifier_matching
+# Description: A line far longer than any prescription line is refused before the identifier
+#   patterns run, whose cost grows with the square of a line's length; a long text of normal
+#   lines is still processed.
+# Parameters: None.
+# Returns: None.
+def test_overlong_line_is_refused_before_identifier_matching() -> None:
+    import time
+
+    from services.prescription_privacy import MAX_PRESCRIPTION_LINE_LENGTH
+
+    started = time.perf_counter()
+    with pytest.raises(PrescriptionPrivacyError):
+        deidentify_prescription_text("가" * 20_000)
+    assert time.perf_counter() - started < 0.5
+    with pytest.raises(PrescriptionPrivacyError):
+        deidentify_prescription_text(f"{_MEDICATION}\n" + "a" * (MAX_PRESCRIPTION_LINE_LENGTH + 1))
+    many_lines = "\n".join([_MEDICATION] * 300)
+    assert deidentify_prescription_text(many_lines).count("\n") == 299

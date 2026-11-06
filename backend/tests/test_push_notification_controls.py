@@ -204,6 +204,41 @@ class PushNotificationControlTest(unittest.TestCase):
         self.db.refresh(rows[0])
         self.assertFalse(rows[0].enabled)
 
+    # 함수이름: test_registration_after_session_revocation_retires_older_devices
+    # 함수역할:
+    # - 세션 취소 뒤 다시 등록하지 않은 같은 계정의 기기 토큰은 끄고, 취소 뒤 다시 등록한 기기와 다른 계정의
+    #   기기는 그대로 두며, 취소 시각을 모르면 아무것도 끄지 않는지 검증한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음 (None).
+    def test_registration_after_session_revocation_retires_older_devices(self) -> None:
+        control = ManagePushToken(self.db)
+        for user, token in (("user-a", "stolen-device-token-0001"),
+                            ("user-a", "second-device-token-0002"),
+                            ("user-b", "other-account-token-0003")):
+            control.registerPushToken(user, token, "android")
+        rows = {row.token: row for row in self.db.query(_DevicePushToken).all()}
+        long_ago = datetime(2026, 1, 1)
+        for row in rows.values():
+            row.updated_at = long_ago
+        self.db.commit()
+        revoked_at = datetime(2026, 6, 1)
+
+        control.registerPushToken("user-a", "second-device-token-0002", "android",
+                                  sessions_valid_after=None)
+        self.db.refresh(rows["stolen-device-token-0001"])
+        self.assertTrue(rows["stolen-device-token-0001"].enabled)
+
+        control.registerPushToken("user-a", "new-phone-token-0004", "android",
+                                  sessions_valid_after=revoked_at)
+        for row in rows.values():
+            self.db.refresh(row)
+        # 두 번째 기기는 바로 위에서 다시 등록해 취소 시각보다 새로우므로 남는다.
+        self.assertFalse(rows["stolen-device-token-0001"].enabled)
+        self.assertTrue(rows["second-device-token-0002"].enabled)
+        self.assertTrue(rows["other-account-token-0003"].enabled)
+
     # 함수이름: test_completed_dose_is_sent_only_for_matching_slot_setting
     # 함수역할:
     # - 완료 알림이 설정된 시간대에만 발송되고 무효 토큰은 비활성화하되 유효 대상 성공은 정상 집계하는지 검증한다.
