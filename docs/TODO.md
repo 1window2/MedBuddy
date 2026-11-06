@@ -1,5 +1,77 @@
 # MedBuddy Release TODO
 
+## 1.0.0 release candidate line
+
+The 1.0.0 line starts from `v0.2.5-beta` (`main` at `5b156c9`) on `beta/v1.0.0`.
+Every item still open on the beta lines below is sorted here; the details stay in
+the section that recorded it. Changes are listed in the
+[1.0.0 notes](releases/v1.0.0.md).
+
+### Code work
+
+- [ ] Link codes: two caregivers redeeming two codes of one patient at the same
+      moment can pass the per-patient link limit by one (1.0.0 readiness).
+- [ ] A 200 response without the expected data shows its English error text in
+      the Korean UI on two caregiver screens (1.0.0 readiness).
+- [ ] Consistency items seen in the 2026-10-18 refactor round (v0.2.3, "Open on
+      this line"): apostrophes in the redacted caregiver text, Korea time
+      hard-coded next to `APPLICATION_UTC_OFFSET_MINUTES`, two language checks,
+      the hard-coded 3650 in regimen messages, the inbox key's untrimmed account
+      hash, and the relabelled `read_at`.
+- [ ] Home screen lifecycle work inside `build`, shell rebuilds on every inbox or
+      chat notification, and link polling under a pushed screen (carried over
+      from v0.2.0).
+- [ ] `KeepWordsText` for the one-off texts that still wrap by syllable.
+- [ ] A Postgres role without superuser rights for the API and catalog jobs
+      (security audit); deploying it needs the owner's approval.
+- [ ] Android instrumented tests in CI (an emulator job).
+- [ ] User guide screenshots from earlier versions, and the guide and UML version
+      marks.
+
+### Owner decisions
+
+- [ ] Distribution of 1.0.0: Google Play with App Check, or GitHub off-Play as the
+      betas. This decides whether the App Check completion criteria and the
+      anonymous sign-in exposure block 1.0.0.
+- [ ] Department search: what crisis wording ("죽고 싶어요") should offer.
+- [ ] Default of chat notifications: message preview or type only.
+- [ ] A slot tapped on yesterday's list right after midnight (1.0.0 readiness).
+- [ ] `SAVED_MEDICATION_MAX_PER_ACCOUNT` counting stopped regimen versions.
+- [ ] Missed-dose scan cost against undo after the deadline (v0.2.3).
+- [ ] Fuzzy catalogue ranking and review flagging; rate limits, retention and 403
+      wording; unused indexes; unique CI job names; Dependabot for gradle and
+      docker; APK size; chat pushes on the chat channel (carried over from
+      v0.2.0).
+- [ ] A failed local reminder save turns the reminder off; a database dump kept off
+      the production host (v0.2.3).
+
+### Owner actions
+
+- [ ] A final privacy policy and consent for health data (owner and legal).
+- [ ] A larger hospital API quota (an operating account on the public data
+      portal).
+- [ ] The security audit follow-ups below (repository secrets, data.go.kr quotas,
+      Cloudflare rule, host settings).
+- [ ] Add `beta/v1.0.0` to the `beta-android` environment before the first signed
+      build; the workflow already allows the branch.
+
+### Device checks
+
+- [ ] A snooze across midnight, and sign-out while the 12-hour reminder task runs.
+- [ ] Offline after midnight, caregiver alerts after an offline start, and push
+      registration after a cold start without network.
+- [ ] Reminders scheduled by an earlier build, and the caregiver's missed-dose
+      alert withdrawn after a dose.
+- [ ] Notification actions with the app foregrounded, backgrounded and terminated,
+      on a locked screen, after a reboot and with battery saver; disabling
+      medication notifications removes alarms and shown quick actions.
+- [ ] Message deletion between two devices (reconnect, offline failure, delivered
+      previews, the 24-hour deadline) and session cases (network loss during a
+      token refresh, 401 in chat).
+- [ ] Prescription capture with the privacy filter on a real prescription.
+- [ ] Not possible with the current devices: Android 16 on a phone, device-to-device
+      transfer, more than three sessions on one link.
+
 ## v0.2.5 development line
 
 v0.2.5 starts from `v0.2.4-beta` on `beta/v0.2.5` (PR #134) and collects the

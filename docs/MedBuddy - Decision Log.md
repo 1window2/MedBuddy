@@ -263,6 +263,17 @@ a dose through the exported launcher activity.
 - **To undo:** raise `PHARMACY_API_DAILY_REQUEST_BUDGET`, `_PILL_UPLOADS_IN_FLIGHT_LIMIT`
   or `MAX_PILL_JPEG_SCANS`.
 
+## 2026-11-06: the 1.0.0 release candidate line
+
+- **Chosen:** branch `beta/v1.0.0` from `main` after `v0.2.5-beta`, app version
+  `1.0.0+27`, server version `1.0.0-rc`. The off-Play exception of the signed
+  workflow moves to this branch so that candidate builds can be installed over the
+  betas.
+- **Alternatives:** a `release/1.0.0` branch (CI and the deploy workflow match only
+  `main` and `beta/**`); keeping 0.2.x numbers for the candidates.
+- **To undo:** rename the branch and the references in `release-android.yml`,
+  `scripts/check_android_release_configuration.py` and their tests.
+
 ## Earlier decisions
 
 - 2026-10-21: an as-needed dose can be undone from the save notice (the
