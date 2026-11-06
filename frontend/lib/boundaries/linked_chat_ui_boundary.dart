@@ -205,6 +205,9 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   Timer? _medicationContextGuideTimer;
   List<ChatMedicationContext> _medicationContexts = const [];
   List<ChatScheduleContext> _scheduleContexts = const [];
+  // 기능 메뉴가 아직 받지 못한 목록을 "없음"으로 안내하지 않도록 조회 상태를 따로 둔다.
+  _ChatContextLoad _medicationLoad = _ChatContextLoad.loading;
+  _ChatContextLoad _scheduleLoad = _ChatContextLoad.loading;
   List<ChatMedicationContext> _selectedMedicationContexts = const [];
   String? _selectedMedicationScheduleDate;
   String? _sendErrorMessage;
@@ -349,6 +352,9 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     super.initState();
     _configuration.latestMessageRequest?.addListener(_onLatestMessageRequested);
     _medicationContexts = _configuration.initialMedicationContexts;
+    if (_medicationContexts.isNotEmpty) {
+      _medicationLoad = _ChatContextLoad.loaded;
+    }
     WidgetsBinding.instance.addObserver(this);
     _ownsApiClient = _configuration.apiClient == null;
     _apiClient = _configuration.apiClient ?? AuthenticatedApiClient();
@@ -576,6 +582,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
       setState(() {
         _medicationContexts = medications;
+        _medicationLoad = _ChatContextLoad.loaded;
         final selectedSlots = {
           for (final item in _selectedMedicationContexts)
             item.medicationId: item.scheduleSlotKeys,
@@ -612,8 +619,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
               : null;
           if (cached != null) {
             _medicationContexts = cached;
+            _medicationLoad = _ChatContextLoad.loaded;
           } else {
             _sendErrorMessage = _text.medicationLoadFailed;
+            _medicationLoad = _ChatContextLoad.failed;
           }
         }
       });
@@ -640,10 +649,21 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       // 매개변수:
       // - 없음.
       // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-      setState(() => _scheduleContexts = contexts);
+      setState(() {
+        _scheduleContexts = contexts;
+        _scheduleLoad = _ChatContextLoad.loaded;
+      });
       _notifyChatActions();
     } catch (_) {
-      // 채팅 자체는 계속 사용할 수 있으므로 시간대 카드 실패는 조용히 보완 조회한다.
+      // 채팅 자체는 계속 사용할 수 있으므로 시간대 카드 실패는 화면에 알리지 않는다.
+      // 이미 받은 목록이 없을 때만 기능 메뉴에 실패를 이유로 표시한다.
+      if (!mounted ||
+          generation != _requestGeneration ||
+          _scheduleLoad == _ChatContextLoad.loaded) {
+        return;
+      }
+      setState(() => _scheduleLoad = _ChatContextLoad.failed);
+      _notifyChatActions();
     }
   }
 
@@ -911,16 +931,26 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       action: _ChatAction.medication,
       icon: Icons.medication_outlined,
       label: _text.selectMedication,
-      reason: _medicationContexts.isEmpty ? _text.noActiveMedication : null,
+      reason: switch (_medicationLoad) {
+        _ChatContextLoad.loading => _text.medicationsLoading,
+        _ChatContextLoad.failed => _text.medicationLoadFailed,
+        _ChatContextLoad.loaded =>
+          _medicationContexts.isEmpty ? _text.noActiveMedication : null,
+      },
     ),
     if (!_isPatient)
       (
         action: _ChatAction.scheduleRequest,
         icon: Icons.schedule_rounded,
         label: _text.scheduleSelectorTitle,
-        reason: _requestableScheduleContexts.isEmpty
-            ? _text.noRequestableSchedule
-            : null,
+        reason: switch (_scheduleLoad) {
+          _ChatContextLoad.loading => _text.scheduleLoading,
+          _ChatContextLoad.failed => _text.scheduleLoadFailed,
+          _ChatContextLoad.loaded =>
+            _requestableScheduleContexts.isEmpty
+                ? _text.noRequestableSchedule
+                : null,
+        },
       ),
     (
       action: _ChatAction.nearbyHospital,
@@ -2387,6 +2417,9 @@ enum _ChatQuickReply { taken, cannotNow, shortage, discomfort }
 // 주요 책임:
 // - 약 첨부·복약 확인 요청·병원 찾기·약국 찾기를 구분하며, 순서가 화면 키 chat-action-N의 번호가 된다.
 enum _ChatAction { medication, scheduleRequest, nearbyHospital, nearbyPharmacy }
+
+// 약·시간대 목록을 아직 받는 중인지, 받았는지, 받지 못했는지.
+enum _ChatContextLoad { loading, loaded, failed }
 
 typedef _ChatActionItem = ({
   _ChatAction action,
@@ -4200,6 +4233,14 @@ class _LinkedChatText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get noActiveMedication =>
       isEnglish ? 'No active medications' : '복용 중인 약이 없습니다';
+  // 함수이름: medicationsLoading
+  // 함수역할: 기능 메뉴에서 약 목록을 아직 받는 중이라 선택지가 막힌 이유를 알린다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 현재 언어의 안내 문구.
+  String get medicationsLoading => isEnglish
+      ? 'Loading medications...'
+      : '복용 중인 약을 불러오는 중입니다';
   // 함수이름: selectMedication
   // 함수역할: 현재 언어와 입력값에 맞춰 "대화할 약 선택" 문구를 제공한다.
   // 매개변수:
@@ -4373,6 +4414,22 @@ class _LinkedChatText {
   String get noRequestableSchedule => isEnglish
       ? 'No medication times to check today'
       : '오늘 확인을 요청할 시간대가 없습니다';
+  // 함수이름: scheduleLoading
+  // 함수역할: 기능 메뉴에서 오늘 시간대를 아직 받는 중이라 선택지가 막힌 이유를 알린다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 현재 언어의 안내 문구.
+  String get scheduleLoading => isEnglish
+      ? 'Loading today\'s medication times...'
+      : '오늘 복약 시간대를 불러오는 중입니다';
+  // 함수이름: scheduleLoadFailed
+  // 함수역할: 기능 메뉴에서 오늘 시간대를 받지 못해 선택지가 막힌 이유를 알린다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 현재 언어의 안내 문구.
+  String get scheduleLoadFailed => isEnglish
+      ? 'Could not load today\'s medication times.'
+      : '오늘 복약 시간대를 불러오지 못했습니다.';
   // 함수이름: scheduleSelectorCaregiverDescription
   // 함수역할: 현재 언어와 입력값에 맞춰 "확인이 필요한 시간대를 선택해 환자에게 알려주세요." 문구를 제공한다.
   // 매개변수:

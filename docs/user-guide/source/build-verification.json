@@ -1,5 +1,5 @@
 {
-  "version": "0.2.5 (로그인 화면 갱신, 2026-11-05)",
+  "version": "0.2.5 (사진 정리와 본문 수정, 2026-11-06)",
   "pages": 224,
   "subsections": 84,
   "steps": 321,
@@ -11,10 +11,12 @@
     "rendered_pages": 224,
     "contact_sheets": 14,
     "changed_pages_checked": [
-      16,
-      212
+      1,
+      100,
+      104,
+      141
     ],
-    "comparison": "이전 검수본과 60dpi 전체 페이지 렌더 해시 비교: 16, 212페이지만 변경",
+    "comparison": "2026-11-05 발행본과 60dpi 전체 페이지 렌더 해시 비교: 1(표지 날짜), 100(5.1-3), 104(5.3-1), 141(7.6-5)페이지만 변경",
     "limitations": "1.5-2와 10.1-2는 테스트 글꼴을 적용한 실제 인증 위젯 시뮬레이션으로, 기기 글꼴 및 시스템 표시줄은 다를 수 있습니다."
   },
   "capture_environment": {
@@ -27,10 +29,10 @@
     "passed": true,
     "pdf_sha256_identical": true,
     "markdown_sha256_identical": true,
-    "note": "발행 후보 PDF를 입력으로 별도 작업본에서 캐시 없이 재생성"
+    "note": "저장소 밖 별도 복사본에서 캐시 없이 재생성(이전 PDF는 입력으로 읽지 않음)"
   },
-  "pdf_sha256": "794b0c5797c368e2e73467bdc5613d96d44ea6e76b45935ed10103654a781c69",
-  "markdown_sha256": "383d2479ccc61c70355087b8a6877d50484c1d1d41fb3eb041bca2fcc279e3b1",
+  "pdf_sha256": "ca4740fb02d4fbc792ba92172dc013c983928378d9a09f5e595db9e446f38a59",
+  "markdown_sha256": "fc5d4b0975184b7b7330a3a1a598c4ebd99aae3d3bd366054d7e0b9cf15da954",
   "fonts_sha256": {
     "NanumBarunGothic": "9b872773134e2e4d8c0b17021266786576db06c843ede0d0b523b214a450756c",
     "NanumBarunGothicBold": "39bba4cd9bd2986143825c8654abbb62443914ab33b346c0c929a916f5d98bf2"

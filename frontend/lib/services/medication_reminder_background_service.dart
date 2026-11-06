@@ -42,16 +42,14 @@ typedef MedicationScheduleLoader = Future<List<MedicationSchedule>> Function();
 // - Future<UserSetting>: 복약 알림 허용·개인정보 표시·언어를 결정할 현재 사용자 설정을 조회하는 계약이다.
 typedef ReminderUserSettingLoader = Future<UserSetting> Function();
 // Function Name: MedicationReminderRegistrar
-// Description: Registers dated reminders for a slot with local time, localized title, active dates, and per-date medication names.
+// Description: Registers dated reminders for a slot with local time, localized title, and active dates.
 // Parameters:
 // - id (int): Platform identifier used to schedule, replace, or cancel an alert.
 // - slotKey (String): Medication slot key: morning, lunch, evening, or bedtime.
 // - slotTitle (String): Localized medication slot name.
 // - hour (int): Local hour in 24-hour time.
 // - minute (int): Minute component of local time.
-// - medicationNames (List<String>): Medication display names used in reminders or recommendations.
 // - activeDates (List<DateTime>): Reminder dates within the medication course.
-// - medicationNamesByDate (Map<String, List<String>>): Active medication names grouped by calendar date.
 // - language (String): Language code used for display or speech guidance.
 // Returns:
 // - Future<void>: asynchronous completion without a result payload.
@@ -62,9 +60,7 @@ typedef MedicationReminderRegistrar =
       required String slotTitle,
       required int hour,
       required int minute,
-      required List<String> medicationNames,
       required List<DateTime> activeDates,
-      Map<String, List<String>> medicationNamesByDate,
       String language,
     });
 // Function Name: MedicationReminderCanceler
@@ -258,14 +254,12 @@ class MedicationReminderRefreshService {
         );
         // 조회 도중 로그아웃했으면 이전 계정의 알림을 다시 걸지 않는다.
         if (!await _stillOwnsReminders()) return true;
-        // 알림 문구는 약 이름을 쓰지 않으므로 이름 목록은 만들지 않는다.
         await _registerReminder(
           id: setting.notificationId,
           slotKey: setting.slotKey,
           slotTitle: slotTitle(slotKey, language),
           hour: setting.hour,
           minute: setting.minute,
-          medicationNames: const [],
           activeDates: activeDates,
           language: language,
         );

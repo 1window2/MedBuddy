@@ -332,16 +332,14 @@ void main() {
         notificationRegistrar:
             // Function Name: notificationRegistrar callback
             // Description:
-            // - Capture every platform-registration argument, including per-date medication names and language.
+            // - Capture every platform-registration argument, including language.
             // Parameters:
             // - id (int): Identifier of the medication, message, or notification fixture.
             // - slotKey (String): Dose slot such as morning, lunch, evening, or bedtime.
             // - slotTitle (String): Localized user-visible name of the dose slot.
             // - hour (int): Selected local alarm hour in 24-hour time.
             // - minute (int): Selected minute component of the local alarm time.
-            // - medicationNames (List<String>): Medication names eligible for this reminder.
             // - activeDates (List<DateTime>): Dates on which this dose is active.
-            // - medicationNamesByDate (Map<String, List<String>>): Medication names active on each scheduled date.
             // - language (String): Language code used for labels or notification content.
             // Returns:
             // - Future<void>; records the delegated registration payload.
@@ -351,9 +349,7 @@ void main() {
               required slotTitle,
               required hour,
               required minute,
-              required medicationNames,
               required activeDates,
-              medicationNamesByDate = const <String, List<String>>{},
               language = 'ko',
             }) async {
               registration = {
@@ -362,9 +358,7 @@ void main() {
                 'slotTitle': slotTitle,
                 'hour': hour,
                 'minute': minute,
-                'medicationNames': medicationNames,
                 'activeDates': activeDates,
-                'medicationNamesByDate': medicationNamesByDate,
                 'language': language,
               };
             },
@@ -376,7 +370,6 @@ void main() {
         slotTitle: 'Morning',
         hour: 8,
         minute: 25,
-        medicationNames: const ['Medicine A'],
         activeDates: [DateTime(2026, 8, 17)],
         language: 'en',
       );
@@ -387,9 +380,7 @@ void main() {
         'slotTitle': 'Morning',
         'hour': 8,
         'minute': 25,
-        'medicationNames': const ['Medicine A'],
         'activeDates': [DateTime(2026, 8, 17)],
-        'medicationNamesByDate': const <String, List<String>>{},
         'language': 'en',
       });
     },

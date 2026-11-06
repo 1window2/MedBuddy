@@ -220,6 +220,36 @@ def _internal_failures_as_http_errors(
 # - failure_detail (str): Detail of the HTTP 500 response.
 # Returns:
 # - Iterator[None]: Context for the route body; raises HTTPException when the body fails.
+# 알약 분석 슬롯(기본 4개)을 기다리는 동안 요청마다 사진 바이트를 메모리에 들고 있으므로, 한 프로세스가
+# 동시에 받아 두는 알약 업로드 수를 제한한다. 넘치면 사진을 메모리로 읽기 전에 503으로 돌려보낸다.
+_PILL_UPLOADS_IN_FLIGHT_LIMIT = 12
+_pill_uploads_in_flight = 0
+
+
+# Function Name: _admit_pill_upload
+# Description:
+# - Counts one pill upload while it is read and analysed; refuses it with 503 when the process
+#   already holds the limit.
+# Parameters:
+# - None.
+# Returns:
+# - Context manager; raises HTTPException 503 when the limit is reached.
+@contextmanager
+def _admit_pill_upload() -> Iterator[None]:
+    global _pill_uploads_in_flight
+    if _pill_uploads_in_flight >= _PILL_UPLOADS_IN_FLIGHT_LIMIT:
+        raise HTTPException(
+            status_code=503,
+            detail="Pill identification is busy. Please try again shortly.",
+            headers={"Retry-After": "5"},
+        )
+    _pill_uploads_in_flight += 1
+    try:
+        yield
+    finally:
+        _pill_uploads_in_flight -= 1
+
+
 @contextmanager
 def _pill_identification_errors(
     log_message: str,
@@ -1407,7 +1437,7 @@ async def identify_loose_pill(
 ) -> PillIdentificationResponse:
     """Returns MFDS candidates for one pill; user confirmation remains mandatory."""
 
-    with _pill_identification_errors(
+    with _admit_pill_upload(), _pill_identification_errors(
         "Loose-pill identification failed: %s",
         invalid_response_detail="The pill visual-analysis service returned an invalid response.",
         timeout_detail="Pill identification timed out. Please try again.",
@@ -1443,7 +1473,7 @@ async def identify_multiple_loose_pills(
 ) -> MultiplePillIdentificationResponse:
     """Returns independent MFDS candidate lists for one multi-pill photo."""
 
-    with _pill_identification_errors(
+    with _admit_pill_upload(), _pill_identification_errors(
         "Multiple-pill identification failed: %s",
         invalid_response_detail="The multiple-pill analysis returned an invalid response.",
         timeout_detail="Multiple-pill identification timed out. Please try again.",

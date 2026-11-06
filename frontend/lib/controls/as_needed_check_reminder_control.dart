@@ -127,7 +127,6 @@ class AsNeededCheckReminderControl extends ChangeNotifier {
       slotTitle: isEnglish ? 'As-needed' : '필요시 약',
       hour: wall.hour,
       minute: wall.minute,
-      medicationNames: const [],
       activeDates: [DateTime(wall.year, wall.month, wall.day)],
       language: isEnglish ? 'en' : 'ko',
     );

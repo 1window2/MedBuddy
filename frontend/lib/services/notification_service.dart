@@ -23,6 +23,7 @@ import '../entities/medication_schedule_entity.dart';
 import '../entities/notification_inbox_entity.dart';
 import '../entities/user_setting_entity.dart';
 import 'medication_notification_payload_codec.dart';
+import 'medication_reminder_action_tag.dart';
 import 'app_language_resolver.dart';
 import 'notification_inbox_store.dart';
 
@@ -713,9 +714,7 @@ class NotificationService {
   // - slotTitle (String): Localized medication slot name.
   // - hour (int): Local hour in 24-hour time.
   // - minute (int): Minute component of local time.
-  // - medicationNames (List<String>): Retained for caller compatibility; never used as a live pending-dose claim.
   // - activeDates (List<DateTime>): Reminder dates within the medication course.
-  // - medicationNamesByDate (Map<String, List<String>>): Legacy name snapshots, deliberately excluded from reminder text.
   // - language (String): Language code used for display or speech guidance.
   // Returns:
   // - Future<void>: asynchronous completion without a result payload.
@@ -725,9 +724,7 @@ class NotificationService {
     required String slotTitle,
     required int hour,
     required int minute,
-    required List<String> medicationNames,
     required List<DateTime> activeDates,
-    Map<String, List<String>> medicationNamesByDate = const {},
     String language = 'ko',
   }) {
     final owner = _historyUserHash;
@@ -790,11 +787,10 @@ class NotificationService {
     final desiredIds = {
       for (final date in sortedDates) _notificationIdForDate(id, slotKey, date),
     };
-    final today = DateTime(now.year, now.month, now.day);
     for (final staleId in pending.keys.where(
       (key) =>
           !desiredIds.contains(key) &&
-          !_isEarlierDayReminder(pending[key]!, today),
+          !_mayBeLiveSnoozeFromYesterday(pending[key]!, now),
     )) {
       if (owner != _historyUserHash) return;
       await _plugin.cancel(id: staleId);
@@ -986,6 +982,14 @@ class NotificationService {
       slotTitle: slotTitle,
       isEnglish: isEnglishLanguage(language),
     );
+    final unsignedPayload =
+        'schedule:$slotKey:$id:${formatJsonDate(scheduleDate ?? scheduledDate)!}';
+    // 다른 앱도 알림 동작과 같은 인텐트를 보낼 수 있으므로, 빠른 동작이 있는 알림은 이 앱만 아는
+    // 키로 서명해 둔다. 필요시 확인 알림은 빠른 동작이 없어 서명하지 않는다.
+    final payload = slotKey == 'as_needed'
+        ? unsignedPayload
+        : '$unsignedPayload:${await MedicationReminderActionTag.sign(owner: owner ?? '', payload: unsignedPayload)}';
+    if (owner != _historyUserHash) return null;
 
     await _plugin.zonedSchedule(
       id: id,
@@ -1022,37 +1026,43 @@ class NotificationService {
         iOS: const DarwinNotificationDetails(),
       ),
       androidScheduleMode: scheduleMode,
-      payload:
-          'schedule:$slotKey:$id:${formatJsonDate(scheduleDate ?? scheduledDate)!}',
+      payload: payload,
     );
     return NotificationInboxEntry(
       id: 'reminder:$id:${scheduledDate.millisecondsSinceEpoch}',
       title: title,
       body: body,
-      payload:
-          'schedule:$slotKey:$id:${formatJsonDate(scheduleDate ?? scheduledDate)!}',
+      payload: unsignedPayload,
       category: NotificationInboxCategory.medication,
       occurredAt: scheduledDate,
     );
   }
 
-  // Function Name: _isEarlierDayReminder
-  // Description: Reports whether a pending reminder belongs to an earlier day. Such a reminder is
-  //   still pending only when it was snoozed before midnight; it is left to fire or expire rather
-  //   than cancelled because today's plan does not list it.
+  // Function Name: _mayBeLiveSnoozeFromYesterday
+  // Description: Reports whether a pending reminder may be yesterday's snooze that has not fired
+  //   yet. A snooze is only set on the reminder of its own day and fires after ten minutes, so it
+  //   can outlive midnight only briefly; the hour allows for an inexact alarm firing late. Every
+  //   other earlier-day entry is an alarm Android dropped (a force-stopped app) that the plugin
+  //   still lists and would re-arm at the next reboot or update, so it is cancelled.
   // Parameters:
   // - request (PendingNotificationRequest): Pending platform reminder.
-  // - today (DateTime): Start of the current local day.
-  // Returns: True for a reminder dated before today.
-  static bool _isEarlierDayReminder(
+  // - now (DateTime): Current local time.
+  // Returns: True for yesterday's reminder during the first hour of today.
+  static bool _mayBeLiveSnoozeFromYesterday(
     PendingNotificationRequest request,
-    DateTime today,
+    DateTime now,
   ) {
     final date = MedicationNotificationPayloadCodec.decode(
       request.payload,
     )?.scheduleDate;
-    return date != null && date.isBefore(today);
+    if (date == null) return false;
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = DateTime(today.year, today.month, today.day - 1);
+    return DateTime(date.year, date.month, date.day) == yesterday &&
+        now.isBefore(today.add(_snoozeGraceAfterMidnight));
   }
+
+  static const Duration _snoozeGraceAfterMidnight = Duration(hours: 1);
 
   // Function Name: snoozeMedicationReminder
   // Description: Reschedules the selected slot after the supplied delay, defaulting to ten minutes, with privacy-neutral text and an inexact-alarm fallback.

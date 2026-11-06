@@ -3456,11 +3456,15 @@ void main() {
     await tester.pumpAndSettle();
     final medication = find.byKey(const ValueKey('chat-action-0'));
     expect(tester.widget<ListTile>(medication).enabled, isFalse);
+    // 아직 받지 못한 목록을 "약 없음"으로 안내하지 않는다.
+    expect(find.text('복용 중인 약을 불러오는 중입니다'), findsOneWidget);
+    expect(find.text('복용 중인 약이 없습니다'), findsNothing);
 
     control.gate.complete();
     await tester.pumpAndSettle();
     expect(tester.widget<ListTile>(medication).enabled, isTrue);
     expect(find.text('복용 중인 약이 없습니다'), findsNothing);
+    expect(find.text('복용 중인 약을 불러오는 중입니다'), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
     await realtimeService.dispose();

@@ -222,14 +222,46 @@ Chosen in the 1.0.0 readiness review. Details are in the
 [v0.2.5 notes](releases/v0.2.5-beta.md).
 
 - **Chosen:** "taken" on a reminder of an earlier day still records nothing, and
-  the message now names that day and points to the history. A reminder of an
-  earlier day that is still pending (a snooze before midnight) is not cancelled
-  by a refresh of the new day.
+  the message now names that day and points to the history. Yesterday's reminder
+  that is still pending in the first hour of the day (a snooze before midnight)
+  is not cancelled by a refresh of the new day. Older pending reminders are
+  alarms Android dropped, and the plugin would re-arm them all at the next
+  reboot, so they are cancelled (corrected on 2026-11-06).
 - **Alternative:** record the earlier day from the notification. The server
   accepts earlier days, but the app only holds today's slot list, which may name
   other medicines than that day's; it would need that day's list first.
 - **To undo:** restore the message in `_performMedicationNotificationAction` and
-  remove `_isEarlierDayReminder` from the stale-reminder loop.
+  remove `_mayBeLiveSnoozeFromYesterday` from the stale-reminder loop.
+
+## 2026-11-06: reminder quick actions are signed
+
+Chosen in the security audit after an emulator test showed another app could record
+a dose through the exported launcher activity.
+
+- **Chosen:** the app signs each reminder payload with an HMAC key kept in its own
+  preferences, bound to the account, and runs "taken" or "remind in 10 minutes" only
+  when the tag matches. A missing or wrong tag opens the schedule instead.
+- **Alternatives:** a nonce stored per notification (more state, and snoozes would
+  need their own); routing actions through a non-exported receiver (the plugin then
+  runs them in a background isolate without the app's session); Android 16's
+  `intentMatchingFlags` (also blocks the plugin's own action intents and does not
+  cover older phones).
+- **Trade-off:** reminders already scheduled by an earlier build have no tag, so their
+  buttons open the schedule until the app re-arms them on its next start.
+- **To undo:** remove the `MedicationReminderActionTag.verify` check in
+  `_performMedicationNotificationAction` and the tag in
+  `NotificationService._scheduleWithMode`.
+
+## 2026-11-06: limits on public-API and pill-upload work
+
+- **Chosen:** a process-wide daily budget for pharmacy location lookups (800, like the
+  hospital API of the same provider), a cap of 12 pill uploads in flight, and a limit
+  of 100 scans per JPEG.
+- **Not chosen:** a budget for the MFDS drug lookups. Their quota on the production
+  key is not known, and a wrong default would refuse real lookups; it waits for the
+  owner's reading of the data.go.kr console.
+- **To undo:** raise `PHARMACY_API_DAILY_REQUEST_BUDGET`, `_PILL_UPLOADS_IN_FLIGHT_LIMIT`
+  or `MAX_PILL_JPEG_SCANS`.
 
 ## Earlier decisions
 

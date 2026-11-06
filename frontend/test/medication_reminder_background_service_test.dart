@@ -37,9 +37,8 @@ void main() {
         )];
       },
       registerReminder: ({required id, required slotKey, required slotTitle,
-        required hour, required minute, required medicationNames,
-        required activeDates, medicationNamesByDate = const <String, List<String>>{},
-        language = 'ko'}) async { registered++; },
+        required hour, required minute,
+        required activeDates, language = 'ko'}) async { registered++; },
       cancelReminder: (id, {slotKey}) async { cancelled++; },
       now: () => DateTime(2026, 9, 13, 7),
     );
@@ -71,9 +70,8 @@ void main() {
           scheduleSlotKeys: const ['morning', 'evening'],
         )],
         registerReminder: ({required id, required slotKey, required slotTitle,
-          required hour, required minute, required medicationNames,
-          required activeDates, medicationNamesByDate = const <String, List<String>>{},
-          language = 'ko'}) async { armed.add(slotKey); },
+          required hour, required minute,
+          required activeDates, language = 'ko'}) async { armed.add(slotKey); },
         cancelReminder: (id, {slotKey}) async { armed.remove(slotKey); },
         now: () => DateTime(2026, 9, 13, 7),
         ownsReminders: () async => checks++ < signOutAfter,
@@ -145,11 +143,7 @@ void main() {
           // - hour (int): Selected local alarm hour in 24-hour time. Accepted but not consumed by this fixture.
           // - minute (int): Selected minute component of the local alarm time. Accepted but not consumed by this
           //   fixture.
-          // - medicationNames (List<String>): Medication names eligible for this reminder. Accepted but not
-          //   consumed by this fixture.
           // - activeDates (List<DateTime>): Dates on which this dose is active.
-          // - medicationNamesByDate (Map<String, List<String>>): Medication names active on each scheduled date.
-          //   Accepted but not consumed by this fixture.
           // - language (String): Language code used for labels or notification content. Accepted but not
           //   consumed by this fixture.
           // Returns:
@@ -160,9 +154,7 @@ void main() {
             required slotTitle,
             required hour,
             required minute,
-            required medicationNames,
             required activeDates,
-            medicationNamesByDate = const <String, List<String>>{},
             language = 'ko',
           }) async {
             registeredWindows.add(List<DateTime>.from(activeDates));
@@ -249,12 +241,8 @@ void main() {
           // - hour (int): Selected local alarm hour in 24-hour time. Accepted but not consumed by this fixture.
           // - minute (int): Selected minute component of the local alarm time. Accepted but not consumed by this
           //   fixture.
-          // - medicationNames (List<String>): Medication names eligible for this reminder. Accepted but not
-          //   consumed by this fixture.
           // - activeDates (List<DateTime>): Dates on which this dose is active. Accepted but not consumed by
           //   this fixture.
-          // - medicationNamesByDate (Map<String, List<String>>): Medication names active on each scheduled date.
-          //   Accepted but not consumed by this fixture.
           // - language (String): Language code used for labels or notification content. Accepted but not
           //   consumed by this fixture.
           // Returns:
@@ -265,9 +253,7 @@ void main() {
             required slotTitle,
             required hour,
             required minute,
-            required medicationNames,
             required activeDates,
-            medicationNamesByDate = const <String, List<String>>{},
             language = 'ko',
           }) async {
             fail('Disabled reminder should not be registered.');
@@ -300,16 +286,13 @@ void main() {
 
   // Function Name: test callback
   // Description:
-  // - Verify that the refresh registers every date on which any course of the slot is active and no
-  //   longer builds medication-name snapshots, because the reminder text never uses them.
+  // - Verify that the refresh registers every date on which any course of the slot is active.
   // Parameters:
   // - None.
   // Returns:
   // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
-  test('겹치는 복용 기간의 모든 날짜를 등록하고 약 이름은 넘기지 않는다', () async {
+  test('겹치는 복용 기간의 모든 날짜를 등록한다', () async {
     SharedPreferences.setMockInitialValues({});
-    List<String>? registeredNames;
-    Map<String, List<String>>? registeredNamesByDate;
     List<DateTime>? registeredDates;
     final service = MedicationReminderRefreshService(
       // Function Name: loadSettings callback
@@ -352,12 +335,10 @@ void main() {
       registerReminder:
           // Function Name: registerReminder callback
           // Description:
-          // - Capture the dates and the name arguments passed to local reminder registration.
+          // - Capture the dates passed to local reminder registration.
           // Parameters:
           // - id, slotKey, slotTitle, hour, minute, language: Accepted but not consumed by this fixture.
-          // - medicationNames (List<String>): Medication names passed for the reminder.
           // - activeDates (List<DateTime>): Dates on which this dose is active.
-          // - medicationNamesByDate (Map<String, List<String>>): Medication names passed per date.
           // Returns:
           // - Future<void>; stores the registration arguments.
           ({
@@ -366,13 +347,9 @@ void main() {
             required slotTitle,
             required hour,
             required minute,
-            required medicationNames,
             required activeDates,
-            medicationNamesByDate = const <String, List<String>>{},
             language = 'ko',
           }) async {
-            registeredNames = medicationNames;
-            registeredNamesByDate = medicationNamesByDate;
             registeredDates = activeDates;
           },
       // Function Name: cancelReminder callback
@@ -402,8 +379,6 @@ void main() {
       DateTime(2026, 8, 2),
       DateTime(2026, 8, 3),
     ]);
-    expect(registeredNames, isEmpty);
-    expect(registeredNamesByDate, isEmpty);
   });
 
   // Group: reminders for a slot already taken today
@@ -474,9 +449,7 @@ void main() {
             required slotTitle,
             required hour,
             required minute,
-            required medicationNames,
             required activeDates,
-            medicationNamesByDate = const <String, List<String>>{},
             language = 'ko',
           }) async {
             registered[slotKey] = List<DateTime>.from(activeDates);
@@ -726,9 +699,8 @@ void main() {
         // The server lists only medications due today; Aug 5 is a rest day.
         loadTodaySchedules: () async => const [],
         registerReminder: ({required id, required slotKey, required slotTitle,
-          required hour, required minute, required medicationNames,
-          required activeDates, medicationNamesByDate = const <String, List<String>>{},
-          language = 'ko'}) async {
+          required hour, required minute,
+          required activeDates, language = 'ko'}) async {
           registered[slotKey] = List<DateTime>.from(activeDates);
         },
         cancelReminder: (id, {slotKey}) async => cancelled.add(slotKey ?? ''),

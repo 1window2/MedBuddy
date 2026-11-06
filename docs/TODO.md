@@ -37,8 +37,9 @@ hospital API quota, a physical-device pass) and these:
 
 - [ ] A final privacy policy and consent for health data; the in-app data-use
       guide does not replace them (Beta Scope). Owner and legal.
-- [ ] Check production, read-only, for saved medications whose course length
+- [x] Check production, read-only, for saved medications whose course length
       is 0 or less. They were accepted before 2026-11-04 and never end.
+      Checked at the 2026-11-04 deploy: none.
 - [ ] Owner decision: a slot tapped on yesterday's list right after midnight,
       with the app left open across midnight, is recorded for the new day by
       design (`_ensureCurrentDayCache`), which also removes tonight's reminder of
@@ -56,6 +57,33 @@ hospital API quota, a physical-device pass) and these:
 - [ ] Physical checks of the 2026-11-04 fixes: a snooze across midnight, and
       sign-out while the 12-hour reminder task runs (neither is practical on the
       emulator).
+
+### Security audit follow-ups (2026-11-06)
+
+Owner actions; the code findings of the audit were fixed in the v0.2.5 notes.
+
+- [ ] Delete the repository secrets `GEMINI_API_KEY` and `PUBLIC_DATA_API_KEY` (no
+      workflow uses them; any write collaborator's branch workflow can read them), and
+      rotate the keys at the providers if they are still live. Optionally remove the
+      stale variables `GCP_CATALOG_SYNC_JOB` and `GCP_MAINTENANCE_JOB`, and the
+      dormant Cloud Run workflows.
+- [ ] Read the data.go.kr daily quotas of the production key for the MFDS eDrug,
+      drug-approval and pill-image operations and for the NEMC pharmacy location
+      operation. MFDS lookups have no shared daily budget yet: one `/identify` can make
+      up to 16 provider calls and only per-account and per-IP limits apply. Pharmacy
+      lookups now stop at 800 a day; raise `PHARMACY_API_DAILY_REQUEST_BUDGET` if the
+      quota is higher.
+- [ ] Cloudflare: a rate-limit rule for `/api/v1/medication/pill-identification/*`,
+      `/identify` and `/pharmacy/nearby`, since anonymous sign-in is on and App Check
+      is off in the beta.
+- [ ] Host (needs sudo): SSH keys only (`PasswordAuthentication no`), check `ufw`,
+      apply the pending security updates, and decide whether gnome-remote-desktop
+      (3389/3390) and the AdGuard Home admin page (3000) should listen on the LAN.
+      Remove the exited `medbuddy-v020-device-test` containers and network.
+- [ ] Give the API and catalog jobs a Postgres role without superuser rights; only the
+      migration needs the owner role.
+- [ ] Deploy the backend changes of 2026-11-06 (JPEG scan limit, pharmacy budget,
+      pill upload cap, compose pins); they are not in production yet.
 
 ## v0.2.4 development line
 

@@ -173,6 +173,47 @@ async def test_search_nearby_uses_location_api_without_exposing_key() -> None:
     assert captured_request.url.params["numOfRows"] == "10"
 
 
+# 함수이름: test_search_nearby_stops_at_the_daily_budget
+# 함수역할:
+# - 위치 조회가 프로세스 전체의 하루 예산을 넘으면 제공자를 부르지 않고 거절하고, 다음 날 다시 허용하는지 확인한다.
+# 매개변수:
+# - monkeypatch (pytest.MonkeyPatch): 예산 설정을 시험 값으로 바꾼다.
+# 반환값:
+# - 없음 (None).
+@pytest.mark.anyio
+async def test_search_nearby_stops_at_the_daily_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from datetime import date
+
+    from core.config import settings
+
+    monkeypatch.setattr(settings, "PHARMACY_API_DAILY_REQUEST_BUDGET", 2)
+    calls = 0
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, content=_VALID_XML)
+
+    today = date(2026, 11, 6)
+    client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    boundary = NationalEmergencyMedicalCenterPharmacyAPI(
+        client=client, date_clock=lambda: today
+    )
+    try:
+        for _ in range(2):
+            await boundary.searchNearby(latitude=37.5665, longitude=126.978, limit=5)
+        with pytest.raises(PharmacyApiUnavailableError, match="budget"):
+            await boundary.searchNearby(latitude=37.5665, longitude=126.978, limit=5)
+        assert calls == 2
+        today = date(2026, 11, 7)
+        await boundary.searchNearby(latitude=37.5665, longitude=126.978, limit=5)
+        assert calls == 3
+    finally:
+        await client.aclose()
+
+
 # Function Name: test_parse_catalog_page_preserves_weekly_and_holiday_hours
 # Description:
 # - Preserves weekday and holiday schedule slots, including a 22:00-01:00 overnight holiday

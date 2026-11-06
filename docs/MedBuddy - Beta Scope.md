@@ -8,7 +8,12 @@
 - Target release tag: `v0.2.5-beta`
 - Target platform: Android
 - iOS: deferred until after the Android public-release decision, no earlier than
-  October 2026
+  October 2026. The repository has no iOS project yet; the lone
+  `ios/Runner/Info.plist` fragment was removed on 2026-11-06. When the project is
+  created, its Info.plist needs `NSCameraUsageDescription`,
+  `NSPhotoLibraryUsageDescription` and `NSLocationWhenInUseUsageDescription`
+  (camera and photos for prescriptions and pills, location for nearby
+  pharmacies), as the earlier fragment had.
 
 This document tracks the inherited Android beta baseline and the local
 `beta/v0.2.5` additions below. Features

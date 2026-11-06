@@ -21,9 +21,7 @@ typedef RecordedReminderRegistration = ({
   String slotTitle,
   int hour,
   int minute,
-  List<String> medicationNames,
   List<DateTime> activeDates,
-  Map<String, List<String>> medicationNamesByDate,
   String language,
 });
 
@@ -148,13 +146,6 @@ class RecordingNotificationService implements NotificationService {
     for (final r in registrations) r.slotKey,
   ];
 
-  // Function Name: registeredMedicationNames
-  // Description: Lists the medication names passed with every registration attempt.
-  // Parameters: None. Returns: One name list per attempt, oldest first.
-  List<List<String>> get registeredMedicationNames => [
-    for (final r in registrations) r.medicationNames,
-  ];
-
   // Function Name: registeredActiveDates
   // Description: Lists the active dates passed with every registration attempt.
   // Parameters: None. Returns: One date list per attempt, oldest first.
@@ -251,7 +242,7 @@ class RecordingNotificationService implements NotificationService {
 
   // Function Name: registerNotification
   // Description: Records a reminder registration, then fails when failRegistration is set.
-  // Parameters: Same as NotificationService.registerNotification; lists and maps are copied.
+  // Parameters: Same as NotificationService.registerNotification; activeDates is copied.
   // Returns: Completion, or StateError when failRegistration is true.
   @override
   Future<void> registerNotification({
@@ -260,9 +251,7 @@ class RecordingNotificationService implements NotificationService {
     required String slotTitle,
     required int hour,
     required int minute,
-    required List<String> medicationNames,
     required List<DateTime> activeDates,
-    Map<String, List<String>> medicationNamesByDate = const {},
     String language = 'ko',
   }) async {
     registrations.add((
@@ -271,12 +260,7 @@ class RecordingNotificationService implements NotificationService {
       slotTitle: slotTitle,
       hour: hour,
       minute: minute,
-      medicationNames: List.of(medicationNames),
       activeDates: List.of(activeDates),
-      medicationNamesByDate: {
-        for (final entry in medicationNamesByDate.entries)
-          entry.key: List.of(entry.value),
-      },
       language: language,
     ));
     if (failRegistration) {

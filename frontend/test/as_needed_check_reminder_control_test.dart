@@ -30,7 +30,6 @@ void main() {
       expect(registration.slotKey, 'as_needed');
       expect(registration.hour, 20);
       expect(registration.activeDates, [DateTime(2026, 10, 17)]);
-      expect(registration.medicationNames, isEmpty);
       final other = AsNeededCheckReminderControl(
         patientHash: 'patient-b',
         ensureSession: () {},

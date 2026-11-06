@@ -465,7 +465,7 @@ class _CheckSavedMedicationUIState extends State<CheckSavedMedicationUI> {
         onShowAll: _isDeleting ? null : _showAll,
         onRegister: _isDeleting
             ? null
-            // 함수역할: 기존 약 등록·식별을 연다. 매개변수: 없음. 반환값: 선택 처리 완료.
+            // 함수역할: 약 등록 흐름을 연다. 매개변수: 없음. 반환값: 선택 처리 완료.
             : _showMedicationCaptureOptions,
       );
     }

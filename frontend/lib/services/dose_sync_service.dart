@@ -431,6 +431,8 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
       _draining ??= _drain().whenComplete(() => _draining = null);
 
   Future<void> _drain() async {
+    final acceptedBefore = _acceptedRevision;
+    var reloaded = false;
     try {
       await initialize();
       for (var count = 0; count < 100 && !_disposed; count++) {
@@ -510,9 +512,14 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
         }
       }
       await reload();
+      reloaded = true;
     } catch (_) {
       // 저장소·인증·네트워크 오류가 나도 사용자의 전송 대기 기록을 버리지 않는다.
     } finally {
+      // 서버가 받은 기록이 있는데 중간에 빠져나왔으면 기록 화면이 다시 읽도록 그 사실만 알린다.
+      if (!reloaded && _acceptedRevision != acceptedBefore && !_disposed) {
+        notifyListeners();
+      }
       await _scheduleRetryIfUploadable();
     }
   }

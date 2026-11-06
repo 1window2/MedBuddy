@@ -6,7 +6,10 @@
 import asyncio
 import logging
 import xml.etree.ElementTree as ElementTree
+from collections.abc import Callable
+from datetime import date, datetime
 from typing import Protocol
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -86,7 +89,14 @@ class NationalEmergencyMedicalCenterPharmacyAPI:
         *,
         client: httpx.AsyncClient | None = None,
         timeout_seconds: float | None = None,
+        date_clock: Callable[[], date] | None = None,
     ) -> None:
+        self._date_clock = date_clock or (
+            lambda: datetime.now(ZoneInfo(settings.APPLICATION_TIME_ZONE)).date()
+        )
+        # 프로세스 전체의 위치 조회 호출 수. 운영자 할당량을 한 사용자가 소진하지 않게 한다.
+        self._budget_date: date | None = None
+        self._daily_location_requests = 0
         self._client = client
         self._owns_client = client is None
         self._client_lock = asyncio.Lock()
@@ -96,6 +106,22 @@ class NationalEmergencyMedicalCenterPharmacyAPI:
             if timeout_seconds is not None
             else settings.PHARMACY_API_TIMEOUT_SECONDS
         )
+
+    # 함수이름: _charge_location_budget
+    # 함수역할:
+    # - 위치 조회 한 건을 하루 예산에 기록하고, 예산을 다 쓴 날에는 제공자를 부르지 않고 거절한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 없음; 예산을 넘으면 PharmacyApiUnavailableError.
+    def _charge_location_budget(self) -> None:
+        today = self._date_clock()
+        if self._budget_date != today:
+            self._budget_date = today
+            self._daily_location_requests = 0
+        if self._daily_location_requests >= settings.PHARMACY_API_DAILY_REQUEST_BUDGET:
+            raise PharmacyApiUnavailableError("Pharmacy daily request budget exhausted.")
+        self._daily_location_requests += 1
 
     # 함수이름: searchNearby
     # 함수역할:
@@ -132,6 +158,7 @@ class NationalEmergencyMedicalCenterPharmacyAPI:
 
         try:
             async with self._semaphore:
+                self._charge_location_budget()
                 client = await self._get_client()
                 response = await client.get(endpoint, params=params)
         except (httpx.HTTPError, OSError, TimeoutError) as exc:

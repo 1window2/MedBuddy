@@ -381,7 +381,6 @@ void main() {
         slotTitle: '아침',
         hour: 8,
         minute: 0,
-        medicationNames: const ['private pill'],
         activeDates: [tomorrow],
       );
       expect(await NotificationInboxStore(userHash: 'patient').load(), isEmpty);
@@ -391,7 +390,6 @@ void main() {
       );
       final entries = await later.load();
       expect(entries, hasLength(1));
-      expect(entries.single.body, isNot(contains('private pill')));
       expect(
         calls.where((call) => call.method == 'zonedSchedule'),
         hasLength(1),
@@ -415,7 +413,6 @@ void main() {
         slotTitle: '아침',
         hour: 8,
         minute: 0,
-        medicationNames: const [],
         activeDates: [tomorrow, tomorrow.add(const Duration(days: 1))],
       );
       final later = tomorrow.add(const Duration(days: 3));

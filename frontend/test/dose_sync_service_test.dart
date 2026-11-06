@@ -885,6 +885,50 @@ void main() {
     final pending = await store.pending('patient-a');
     expect(pending.single['link_id'], 7);
   });
+  // 서버가 받은 기록 뒤에 저장소 오류로 전송을 멈춰도 기록 화면이 다시 읽도록 알린다.
+  test('a dose accepted before a store failure still notifies', () async {
+    final failing = _FailingClaimStore(db, key, failOnClaim: 2);
+    await failing.enqueue('patient-a', op('first'));
+    await failing.enqueue('patient-a', {...op('second'), 'slot_key': 'evening'});
+    final client = MockClient((request) async {
+      final payload = jsonDecode(request.body) as Map<String, dynamic>;
+      return http.Response(
+        jsonEncode({'operation_id': payload['operation_id'], 'data': []}),
+        200,
+      );
+    });
+    addTearDown(client.close);
+    final service = DoseSyncService(
+      owner: 'patient-a',
+      client: client,
+      openStore: () async => failing,
+      clock: () => now,
+    );
+    addTearDown(service.dispose);
+    await service.initialize();
+    var notifications = 0;
+    service.addListener(() => notifications++);
+    await service.drain();
+    expect(service.acceptedRevision, 1);
+    expect(notifications, greaterThan(0));
+  });
+}
+
+// Class Name: _FailingClaimStore
+// Role: Fail one claim after earlier operations were accepted.
+// Responsibilities: Reach the store-error exit of the upload loop with real data.
+// Attributes: failOnClaim - 1-based claim call that throws.
+class _FailingClaimStore extends DoseOutboxStore {
+  final int failOnClaim;
+  int _claims = 0;
+
+  _FailingClaimStore(super.db, super.key, {required this.failOnClaim});
+
+  @override
+  Future<Map<String, dynamic>?> claim(String owner, String lease, int now) {
+    if (++_claims == failOnClaim) throw StateError('store failed');
+    return super.claim(owner, lease, now);
+  }
 }
 
 // Class Name: _MidnightStore

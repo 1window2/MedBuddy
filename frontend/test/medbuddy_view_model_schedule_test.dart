@@ -1450,9 +1450,6 @@ void main() {
       await viewModel.refreshMedicationOverview();
 
       expect(notificationService.registeredSlotKeys, ['morning']);
-      expect(notificationService.registeredMedicationNames.single, [
-        'test-tablet',
-      ]);
       expect(notificationService.registeredActiveDates, hasLength(1));
       // The course has no readable duration. The server keeps such a course in every day's
       // schedule, so its reminders fill the 14-day window; with today only, tomorrow's reminder

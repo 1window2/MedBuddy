@@ -425,7 +425,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(register.hitTestable(), findsOneWidget);
       expect(
-        find.text(language == 'en' ? 'Add or Identify Medication' : '약 등록·식별'),
+        find.text(language == 'en' ? 'Add medication' : '약 등록'),
         findsOneWidget,
       );
       expect(tester.takeException(), isNull);
