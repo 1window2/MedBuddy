@@ -8,6 +8,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:sqflite/sqflite.dart';
 import '../entities/dose_widget_state.dart';
 import '../entities/user_setting_entity.dart';
+import 'dose_store_open_gate.dart';
 
 part 'dose_widget_store.dart';
 part 'dose_history_pending_store.dart';
@@ -48,7 +49,8 @@ class DoseOutboxStore {
 
   // 함수이름: openWith
   // 함수역할: 보안 저장소의 키로 DB를 연다. 키가 없으면 새 키로 빈 저장소를 시작한다.
-  // 매개변수: readKey/writeKey - 기기 보안 저장소 접근, openDatabase - DB 열기.
+  // 매개변수: readKey/writeKey - 기기 보안 저장소 접근, openDatabase - DB 열기,
+  //           openGate - 같은 프로세스의 다른 Flutter 엔진과 열기 순서를 맞추는 문.
   // 반환값: 열린 저장소. 보안 저장소나 DB 오류는 그대로 전달해 다음 요청에서 다시 시도한다.
   // 키를 읽는 중 발생한 오류는 키가 없는 것으로 취급하지 않으므로 기록을 지우지 않는다.
   @visibleForTesting
@@ -56,9 +58,10 @@ class DoseOutboxStore {
     required Future<String?> Function() readKey,
     required Future<void> Function(String value) writeKey,
     required Future<Database> Function() openDatabase,
+    DoseStoreOpenGate openGate = const DoseStoreOpenGate(),
   }) async {
     var encodedKey = await readKey();
-    final db = await openDatabase();
+    final db = await openGate.run(openDatabase);
     encodedKey ??= await _recoverMissingKey(db, readKey, writeKey);
     return DoseOutboxStore(db, SecretKey(base64Decode(encodedKey)));
   }

@@ -31,12 +31,14 @@ void main() {
               builder: (context) => Scaffold(
                 body: TextButton(
                   onPressed: () async {
-                    selected = await showMedicationCaptureTaskOptions(
+                    await showMedicationCaptureTaskOptions(
                       context: context,
                       userSetting: UserSetting(
                         language: language,
                         fontSize: 20,
                       ),
+                      onTaskSelected: (_, task) async => selected = task,
+                      onSourceSelected: (_, _) async {},
                     );
                   },
                   child: const Text('Open'),
@@ -51,7 +53,10 @@ void main() {
         await tester.ensureVisible(pill);
         await tester.tap(pill);
         await tester.pumpAndSettle();
-        expect(find.byType(BottomSheet), findsOneWidget);
+        expect(
+          find.byKey(const Key('medication-registration-page')),
+          findsOneWidget,
+        );
         expect(selected, isNull);
 
         // 시스템 뒤로 가기는 현재 시트의 이전 단계로 돌아간다.
@@ -61,7 +66,7 @@ void main() {
         await tester.ensureVisible(pill);
         await tester.tap(pill);
         await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const Key('pill-mode-back-button')));
+        await tester.binding.handlePopRoute();
         await tester.pumpAndSettle();
         expect(find.text(english ? 'Add manually' : '직접 등록'), findsOneWidget);
         await tester.ensureVisible(pill);
@@ -81,7 +86,11 @@ void main() {
               ? MedicationCaptureTask.multiplePills
               : MedicationCaptureTask.individualPills,
         );
-        expect(find.byType(BottomSheet), findsNothing);
+        // 등록 화면은 시작한 작업이 끝나 돌아올 수 있도록 남는다.
+        expect(
+          find.byKey(const Key('medication-registration-page')),
+          findsOneWidget,
+        );
         expect(tester.takeException(), isNull);
       });
     }

@@ -85,7 +85,7 @@ void main() {
     final next = now.add(const Duration(days: 1));
     await NotificationService.instance.registerNotification(
       id: 84005, slotKey: 'as_needed', slotTitle: '필요시 약', hour: 12, minute: 0,
-      medicationNames: const [], activeDates: [next],
+      activeDates: [next],
     );
     expect(scheduled, hasLength(1));
     expect(scheduled.single['title'], '필요시 약 확인');
@@ -184,7 +184,7 @@ void main() {
         await service.registerNotification(
           id: MedicationAlarm.defaults(slot).copyWith(patientHash: owner).notificationId,
           slotKey: slot, slotTitle: slot, hour: 8, minute: 0,
-          medicationNames: [], activeDates: [first, second],
+          activeDates: [first, second],
         );
       }
     }
@@ -243,7 +243,7 @@ void main() {
     final second = DateTime(now.year, now.month, now.day + 2);
     Future<void> refresh(List<DateTime> dates, {int hour = 8}) => service.registerNotification(
       id: 101, slotKey: 'morning', slotTitle: '아침', hour: hour, minute: 0,
-      medicationNames: [], activeDates: dates,
+      activeDates: dates,
     );
     await refresh([first, second]);
     expect(scheduled.length, 2);
@@ -278,7 +278,7 @@ void main() {
     final tomorrow = today.add(const Duration(days: 1));
     Future<void> refresh(int hour) => service.registerNotification(
       id: 101, slotKey: 'morning', slotTitle: 'Morning', hour: hour, minute: 0,
-      medicationNames: [], activeDates: [today, tomorrow], language: 'en',
+      activeDates: [today, tomorrow], language: 'en',
     );
 
     await refresh(16);
@@ -320,7 +320,7 @@ void main() {
     NotificationService.clock = () => today.add(const Duration(hours: 7));
     Future<void> refresh() => service.registerNotification(
       id: 101, slotKey: 'morning', slotTitle: 'Morning', hour: 8, minute: 0,
-      medicationNames: [], activeDates: [today], language: 'en',
+      activeDates: [today], language: 'en',
     );
     await refresh();
     final id = scheduled.single['id'] as int;
@@ -335,6 +335,79 @@ void main() {
     await refresh();
     expect(scheduled, isEmpty);
     expect(cancelled, isEmpty);
+  });
+
+  // A reminder snoozed before midnight keeps its day. A refresh after midnight plans from today and
+  // must not cancel it as stale, or the snoozed reminder never comes.
+  test('a snooze across midnight survives a refresh of the new day', () async {
+    final service = NotificationService.instance;
+    await service.initialize();
+    final now = timezone.TZDateTime.now(timezone.local);
+    final day = timezone.TZDateTime(timezone.local, now.year, now.month, now.day + 2);
+    final nextDay = day.add(const Duration(days: 1));
+    NotificationService.clock = () => day.add(const Duration(hours: 21));
+    await service.registerNotification(
+      id: 104, slotKey: 'bedtime', slotTitle: 'Bedtime', hour: 22, minute: 0,
+      activeDates: [day, nextDay], language: 'en',
+    );
+    NotificationService.clock = () => day.add(const Duration(hours: 23, minutes: 58));
+    final snoozedId = scheduled.first['id'] as int;
+    await service.snoozeMedicationReminder(
+      id: snoozedId, slotKey: 'bedtime', slotTitle: 'Bedtime', scheduleDate: day,
+    );
+    pending
+      ..clear()
+      ..addAll(scheduled.map((item) => {'id': item['id'], 'payload': item['payload']}));
+    cancelled.clear();
+
+    NotificationService.clock = () => nextDay.add(const Duration(minutes: 2));
+    await service.registerNotification(
+      id: 104, slotKey: 'bedtime', slotTitle: 'Bedtime', hour: 22, minute: 0,
+      activeDates: [nextDay], language: 'en',
+    );
+    expect(cancelled.map((call) => call['id']), isNot(contains(snoozedId)));
+  });
+
+  // Android drops the alarms of a force-stopped app while the plugin keeps listing them, and the
+  // plugin re-arms every listed entry at the next reboot. An earlier-day entry that cannot be a
+  // live snooze is cancelled, or those old reminders would all fire at once after a reboot.
+  test('earlier-day reminders that cannot be a snooze are still cancelled', () async {
+    final service = NotificationService.instance;
+    await service.initialize();
+    final now = timezone.TZDateTime.now(timezone.local);
+    final day = timezone.TZDateTime(timezone.local, now.year, now.month, now.day + 2);
+    final nextDay = day.add(const Duration(days: 1));
+    final thirdDay = nextDay.add(const Duration(days: 1));
+    NotificationService.clock = () => day.subtract(const Duration(hours: 1));
+    await service.registerNotification(
+      id: 104, slotKey: 'bedtime', slotTitle: 'Bedtime', hour: 22, minute: 0,
+      activeDates: [day, nextDay, thirdDay], language: 'en',
+    );
+    final dayId = scheduled[0]['id'] as int;
+    final nextDayId = scheduled[1]['id'] as int;
+    pending
+      ..clear()
+      ..addAll(scheduled.map((item) => {'id': item['id'], 'payload': item['payload']}));
+    cancelled.clear();
+
+    // Opened just after midnight two days later: the entry of two days ago goes, yesterday's
+    // may still be a snooze and stays.
+    NotificationService.clock = () => thirdDay.add(const Duration(minutes: 2));
+    await service.registerNotification(
+      id: 104, slotKey: 'bedtime', slotTitle: 'Bedtime', hour: 22, minute: 0,
+      activeDates: [thirdDay], language: 'en',
+    );
+    expect(cancelled.map((call) => call['id']), contains(dayId));
+    expect(cancelled.map((call) => call['id']), isNot(contains(nextDayId)));
+
+    // After the first hour no snooze of yesterday can still be waiting.
+    cancelled.clear();
+    NotificationService.clock = () => thirdDay.add(const Duration(hours: 2));
+    await service.registerNotification(
+      id: 104, slotKey: 'bedtime', slotTitle: 'Bedtime', hour: 22, minute: 0,
+      activeDates: [thirdDay], language: 'en',
+    );
+    expect(cancelled.map((call) => call['id']), contains(nextDayId));
   });
 
   // Steady state: a refresh that finds every reminder already reserved with the same time and text
@@ -352,7 +425,7 @@ void main() {
     ];
     Future<void> refresh() => service.registerNotification(
       id: 101, slotKey: 'morning', slotTitle: '아침', hour: 8, minute: 0,
-      medicationNames: [], activeDates: dates,
+      activeDates: dates,
     );
 
     await refresh();
@@ -408,7 +481,7 @@ void main() {
       String language = 'ko',
     }) => service.registerNotification(
       id: 101, slotKey: 'morning', slotTitle: slotTitle, hour: hour, minute: 0,
-      medicationNames: [], activeDates: dates, language: language,
+      activeDates: dates, language: language,
     );
     // Mirrors Android: a scheduled id replaces the pending reservation with that id.
     void deliverToDevice() {
@@ -445,7 +518,7 @@ void main() {
     // A new medication or the rolling window adds a date.
     await refresh([day(1), day(2), day(3)], hour: 9, slotTitle: 'Morning', language: 'en');
     expect(scheduled, hasLength(1));
-    expect(scheduled.single['payload'], endsWith(':${_dateKey(day(3))}'));
+    expect(scheduled.single['payload'], contains(':${_dateKey(day(3))}:'));
     deliverToDevice();
 
     // The device lost its reservations (reboot without the boot receiver, cleared alarms) while
@@ -476,7 +549,7 @@ void main() {
     Future<void> refresh(int hour, {String slotKey = 'morning', int id = 101}) =>
         service.registerNotification(
           id: id, slotKey: slotKey, slotTitle: slotKey, hour: hour, minute: 0,
-          medicationNames: [], activeDates: dates,
+          activeDates: dates,
         );
     Future<List<String>> plannedTimes() async => [
       for (final entry in await NotificationInboxStore(
@@ -515,7 +588,7 @@ void main() {
     ];
     Future<void> refresh() => service.registerNotification(
       id: 101, slotKey: 'morning', slotTitle: '아침', hour: 8, minute: 0,
-      medicationNames: [], activeDates: dates,
+      activeDates: dates,
     );
     await refresh();
     await pumpEventQueue();
@@ -565,7 +638,7 @@ void main() {
     ];
     Future<void> refresh() => service.registerNotification(
       id: 101, slotKey: 'morning', slotTitle: '아침', hour: 8, minute: 0,
-      medicationNames: [], activeDates: dates,
+      activeDates: dates,
     );
     void deliverToDevice() {
       for (final item in scheduled) {
@@ -621,11 +694,11 @@ void main() {
     exactDenied = true;
     await service.registerNotification(
       id: 101, slotKey: 'morning', slotTitle: '아침', hour: 8, minute: 30,
-      medicationNames: [], activeDates: dates,
+      activeDates: dates,
     );
     await service.registerNotification(
       id: 103, slotKey: 'evening', slotTitle: 'Evening', hour: 19, minute: 5,
-      medicationNames: [], activeDates: [dates.first], language: 'en',
+      activeDates: [dates.first], language: 'en',
     );
     final inexact = [for (final item in scheduled) Map<dynamic, dynamic>.from(item)];
     expect(inexact, hasLength(3));
@@ -656,7 +729,7 @@ void main() {
     expect(pluginCalls, isEmpty);
     await service.registerNotification(
       id: 101, slotKey: 'morning', slotTitle: '아침', hour: 8, minute: 30,
-      medicationNames: [], activeDates: dates,
+      activeDates: dates,
     );
     expect(scheduled, isEmpty);
   });
@@ -679,7 +752,7 @@ void main() {
     final tomorrow = DateTime(now.year, now.month, now.day + 1);
     Future<void> refresh(timezone.TZDateTime time) => service.registerNotification(
       id: 101, slotKey: 'morning', slotTitle: '아침', hour: time.hour, minute: time.minute,
-      medicationNames: [], activeDates: [today, tomorrow],
+      activeDates: [today, tomorrow],
     );
     await refresh(later);
     expect(scheduled, hasLength(2));
@@ -691,7 +764,7 @@ void main() {
 
     expect(cancelled, isNot(contains(containsPair('id', todayId))));
     expect(scheduled, hasLength(1));
-    expect(scheduled.single['payload'], endsWith(':${_dateKey(tomorrow)}'));
+    expect(scheduled.single['payload'], contains(':${_dateKey(tomorrow)}:'));
     expect(
       scheduled.single['scheduledDateTime'].toString(),
       contains('${earlier.hour.toString().padLeft(2, '0')}:${earlier.minute.toString().padLeft(2, '0')}'),
@@ -705,7 +778,7 @@ void main() {
     final date = DateTime(now.year, now.month, now.day + 1);
     Future<void> refresh() => service.registerNotification(id: 101,
         slotKey: 'morning', slotTitle: '아침', hour: 8, minute: 0,
-        medicationNames: [], activeDates: [date]);
+        activeDates: [date]);
     service.setHistoryUser('first', persistSession: false);
     await refresh();
     final item = scheduled.single;
@@ -816,33 +889,25 @@ void main() {
         final tomorrow = timezone.TZDateTime.now(timezone.local)
             .add(const Duration(days: 1));
         // Names captured before partial or full completion must never be
-        // presented as instructions to take those medications again.
-        for (final names in [
-          ['ALREADY_COMPLETED', 'PENDING'],
-          ['ALREADY_COMPLETED'],
-          <String>[],
-        ]) {
-          await service.registerNotification(
-            id: 101,
-            slotKey: 'evening',
-            slotTitle: 'Evening',
-            hour: 20,
-            minute: 0,
-            medicationNames: names,
-            activeDates: [tomorrow],
-            medicationNamesByDate: {
-              _dateKey(tomorrow): names,
-            },
-            language: language,
-          );
-          expect(scheduled.last['body'], _body(language));
-          expect((scheduled.last['platformSpecifics'] as Map)['groupKey'],
-              'medbuddy.reminder.evening');
-          expect(scheduled.last['title'], language == 'en'
-              ? 'Evening medication schedule' : 'Evening 복약 일정 확인');
-          expect(scheduled.last['payload'], endsWith(':${_dateKey(tomorrow)}'));
-        }
-        expect(scheduled, hasLength(3));
+        // presented as instructions to take those medications again. The
+        // registration takes no medication names at all, so the reminder
+        // carries only the neutral slot text.
+        await service.registerNotification(
+          id: 101,
+          slotKey: 'evening',
+          slotTitle: 'Evening',
+          hour: 20,
+          minute: 0,
+          activeDates: [tomorrow],
+          language: language,
+        );
+        expect(scheduled.last['body'], _body(language));
+        expect((scheduled.last['platformSpecifics'] as Map)['groupKey'],
+            'medbuddy.reminder.evening');
+        expect(scheduled.last['title'], language == 'en'
+            ? 'Evening medication schedule' : 'Evening 복약 일정 확인');
+        expect(scheduled.last['payload'], contains(':${_dateKey(tomorrow)}:'));
+        expect(scheduled, hasLength(1));
       });
     }
 
@@ -862,7 +927,10 @@ void main() {
       expect(scheduled, hasLength(2));
       for (final notification in scheduled) {
         expect(notification['body'], _body(language));
-        expect(notification['payload'], 'schedule:evening:102:${_dateKey(original)}');
+        expect(
+          notification['payload'],
+          startsWith('schedule:evening:102:${_dateKey(original)}:'),
+        );
       }
     });
   }

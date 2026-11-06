@@ -61,7 +61,8 @@ def test_reviewed_course_reaches_pillbox_and_today(
         warning_message="",
         dosage_per_time="0.5정",
         daily_frequency=f"{len(slots)}회",
-        total_days=str(days),
+        # 기간 0은 기간을 모르는 처방이다. 앱처럼 빈 값으로 보내며, "0"은 끝없는 복용이 되어 거부된다.
+        total_days=str(days) if days else "",
         schedule_slot_keys=slots,
         prescription_date=start,
         prescription_batch_id="registration_batch_0001",

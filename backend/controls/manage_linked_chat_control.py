@@ -1224,7 +1224,9 @@ class ManageLinkedChat:
         medication: _SavedMedication,
     ) -> dict[str, object]:
         """복약 목록 행을 오늘 일정형 채팅 선택기에 필요한 정보로 변환한다."""
-        schedule_slot_keys = list(
+        dosing_mode = medication_dosing_mode(medication)
+        # 필요시 약에는 횟수로 유도한 정기 시간대를 붙이지 않는다.
+        schedule_slot_keys = [] if dosing_mode == "as_needed" else list(
             self.course_policy.read_slot_keys(
                 medication.schedule_slot_keys,
                 medication.daily_frequency,
@@ -1235,6 +1237,7 @@ class ManageLinkedChat:
             "medication_name": str(medication.item_name).strip(),
             "image_url": safe_medication_image_url(medication.image_url),
             "dosage_per_time": (medication.dosage_per_time or "").strip(),
+            "dosing_mode": dosing_mode,
             "schedule_slot_keys": schedule_slot_keys,
         }
 

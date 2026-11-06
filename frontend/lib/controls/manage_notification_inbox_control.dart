@@ -3,6 +3,9 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../entities/caregiver_alert_context_entity.dart';
+import '../entities/medication_notification_selection_entity.dart';
+import '../entities/medication_reminder_text.dart';
+import '../entities/medication_slot_label.dart';
 import '../entities/notification_inbox_entity.dart';
 import '../services/medication_notification_payload_codec.dart';
 import '../services/notification_inbox_store.dart';
@@ -57,6 +60,8 @@ class ManageNotificationInbox extends ChangeNotifier {
     required bool isEnglish,
     bool showSensitiveDetails = true,
   }) {
+    final reminderTitle = _localizedReminder(entry, isEnglish).title;
+    if (reminderTitle != null) return reminderTitle;
     final chatList = _chatList;
     if (_isCaregiverEntry(entry)) {
       if (!showSensitiveDetails) {
@@ -104,12 +109,52 @@ class ManageNotificationInbox extends ChangeNotifier {
     required bool isEnglish,
     bool showSensitiveDetails = true,
   }) {
+    final reminderBody = _localizedReminder(entry, isEnglish).body;
+    if (reminderBody != null) return reminderBody;
     if (_isCaregiverEntry(entry) && !showSensitiveDetails) {
       return isEnglish
           ? 'Check your linked patient\'s medication status.'
           : '연동된 환자의 복약 상태를 확인해 주세요.';
     }
     return entry.body;
+  }
+
+  // 함수이름: _reminderSlot
+  // 함수역할: 앱이 예약한 복약 알림의 시간대 키를 알림 경로에서 읽는다.
+  // 매개변수: entry. 반환값: 시간대 키, 복약 알림이 아니면 null.
+  String? _reminderSlot(NotificationInboxEntry entry) {
+    if (entry.category != NotificationInboxCategory.medication) return null;
+    final selection = MedicationNotificationPayloadCodec.decode(entry.payload);
+    if (selection?.destination != MedicationNotificationDestination.schedule) {
+      return null;
+    }
+    return selection!.slotKey;
+  }
+
+  // 함수이름: _localizedReminder
+  // 함수역할: 정형 복약 알림의 제목과 본문을 현재 언어로 바꾸고, 알 수 없는 이전 문구는 원문을 보존한다.
+  // 매개변수: entry, isEnglish. 반환값: 현재 언어 문구, 정형 문구가 아닌 쪽은 null.
+  ({String? title, String? body}) _localizedReminder(
+    NotificationInboxEntry entry,
+    bool isEnglish,
+  ) {
+    final slot = _reminderSlot(entry);
+    if (slot == null) return (title: null, body: null);
+    String title(bool english) => medicationReminderTitle(
+      slot,
+      slotTitle: medicationSlotLabel(slot, isEnglish: english),
+      isEnglish: english,
+    );
+    String body(bool english) =>
+        medicationReminderBody(slot, isEnglish: english);
+    return (
+      title: entry.title == title(false) || entry.title == title(true)
+          ? title(isEnglish)
+          : null,
+      body: entry.body == body(false) || entry.body == body(true)
+          ? body(isEnglish)
+          : null,
+    );
   }
 
   // 함수이름: _isCaregiverEntry
@@ -252,7 +297,9 @@ class ManageNotificationInbox extends ChangeNotifier {
   // 함수이름: markRead
   // 함수역할: 선택 항목 또는 현재 목록 전체를 읽음 처리한다. 매개변수: 선택적 entry. 반환값: 갱신 완료.
   Future<void> markRead([NotificationInboxEntry? entry]) async {
-    await store.markRead(entry == null ? _entries.map((e) => e.id) : [entry.id]);
+    await store.markRead(
+      entry == null ? _entries.map((e) => e.id) : [entry.id],
+    );
     await refresh();
   }
 

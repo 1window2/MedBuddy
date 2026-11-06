@@ -322,6 +322,46 @@ def test_image_preprocessing_rejects_invalid_data() -> None:
         PillImageProcessingBoundary().preprocessPillImage(b"not-an-image")
 
 
+# Function Name: _progressive_jpeg
+# Description:
+# - Builds a small progressive JPEG and optionally appends empty refinement scans before EOI.
+# Parameters:
+# - extra_scans (int): Number of 10-byte empty scan headers to insert.
+# Returns:
+# - Encoded JPEG bytes.
+def _progressive_jpeg(extra_scans: int = 0) -> bytes:
+    from io import BytesIO
+
+    from PIL import Image
+
+    buffer = BytesIO()
+    Image.new("L", (256, 256), 128).save(buffer, "JPEG", progressive=True, quality=90)
+    data = buffer.getvalue()
+    empty_scan = bytes.fromhex("ffda000801010001 3f10".replace(" ", ""))
+    return data[:-2] + empty_scan * extra_scans + data[-2:]
+
+
+# Function Name: test_image_preprocessing_rejects_jpeg_with_excessive_scans
+# Description:
+# - A progressive JPEG re-decodes the whole image for every scan; a file with hundreds of
+#   empty scans is refused before decoding, while a normal progressive JPEG still decodes.
+# Parameters:
+# - None.
+# Returns:
+# - None.
+def test_image_preprocessing_rejects_jpeg_with_excessive_scans() -> None:
+    boundary = PillImageProcessingBoundary()
+    normal = _progressive_jpeg()
+    assert 1 < boundary_module._count_jpeg_scans(normal) <= 20
+    assert boundary._decode_bounded_image(normal).shape[:2] == (256, 256)
+
+    crafted = _progressive_jpeg(extra_scans=500)
+    started = time.monotonic()
+    with pytest.raises(PillImageQualityError, match="valid image"):
+        boundary._decode_bounded_image(crafted)
+    assert time.monotonic() - started < 1.0
+
+
 # Function Name: test_image_preprocessing_rejects_oversized_dimensions_before_decode
 # Description:
 # - Rejects oversized image metadata before OpenCV can decode the pixel buffer.

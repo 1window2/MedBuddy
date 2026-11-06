@@ -5,6 +5,7 @@ import '../controls/manage_notification_inbox_control.dart';
 import '../entities/notification_inbox_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
+import '../widgets/keep_words_text.dart';
 import '../widgets/medbuddy_page_header.dart';
 import '../widgets/medbuddy_select_all_bar.dart';
 
@@ -209,6 +210,164 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
     return '${local.month}/${local.day} $time';
   }
 
+  // 함수이름: _sameDay
+  // 함수역할: 두 알림 시각이 기기 시간대에서 같은 날짜인지 확인한다. 매개변수: a, b. 반환값: 같은 날짜 여부.
+  bool _sameDay(DateTime a, DateTime b) {
+    final first = a.toLocal();
+    final second = b.toLocal();
+    return first.year == second.year &&
+        first.month == second.month &&
+        first.day == second.day;
+  }
+
+  // 함수이름: _dateHeader
+  // 함수역할: 같은 날짜 알림 묶음 위에 지역 날짜를 제목으로 표시한다. 매개변수: date. 반환값: 날짜 제목.
+  Widget _dateHeader(DateTime date) {
+    final local = date.toLocal();
+    final month = local.month.toString().padLeft(2, '0');
+    final day = local.day.toString().padLeft(2, '0');
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+      child: Semantics(
+        header: true,
+        child: Text(
+          _english
+              ? '${local.year}-$month-$day'
+              : '${local.year}년 ${local.month}월 ${local.day}일',
+          style: const TextStyle(
+            color: MedBuddyColors.textMuted,
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 함수이름: _entryTile
+  // 함수역할: 알림 한 건의 내용과 선택·열기·삭제 동작을 표시한다. 매개변수: control, entry. 반환값: 알림 행.
+  Widget _entryTile(
+    ManageNotificationInbox control,
+    NotificationInboxEntry entry,
+  ) {
+    final isSelected = _selectedIds.contains(entry.id);
+    return Material(
+      color: (_selecting ? isSelected : !entry.isRead)
+          ? MedBuddyColors.successSurface
+          : Colors.transparent,
+      child: InkWell(
+        key: ValueKey('inbox-entry-${entry.id}'),
+        onTap: _busy
+            ? null
+            : _selecting
+            ? () => _toggleSelection(entry)
+            : () => _run(() async {
+                await control.markRead(entry);
+                if (mounted) {
+                  widget.onOpen(entry);
+                }
+              }),
+        onLongPress: _busy || _selecting ? null : () => _startSelection(entry),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (_selecting)
+                Checkbox(
+                  key: ValueKey('inbox-check-${entry.id}'),
+                  value: isSelected,
+                  activeColor: MedBuddyColors.primary,
+                  checkColor: MedBuddyColors.surface,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  onChanged: _busy ? null : (_) => _toggleSelection(entry),
+                )
+              else
+                Icon(
+                  entry.category == NotificationInboxCategory.chat
+                      ? Icons.chat_bubble_outline
+                      : Icons.notifications_active_outlined,
+                  color: MedBuddyColors.primaryDark,
+                  size: 24,
+                ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    KeepWordsText(
+                      control.titleFor(
+                        entry,
+                        isEnglish: _english,
+                        showSensitiveDetails:
+                            widget.userSetting.showNotificationDetails,
+                      ),
+                      style: TextStyle(
+                        fontSize: 17,
+                        height: 1.35,
+                        letterSpacing: 0,
+                        color: MedBuddyColors.textStrong,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    KeepWordsText(
+                      control.bodyFor(
+                        entry,
+                        isEnglish: _english,
+                        showSensitiveDetails:
+                            widget.userSetting.showNotificationDetails,
+                      ),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        height: 1.45,
+                        letterSpacing: 0,
+                        color: MedBuddyColors.textMuted,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${_date(entry.occurredAt)}${entry.isRead ? '' : (_english ? ' · Unread' : ' · 안 읽음')}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        height: 1.35,
+                        letterSpacing: 0,
+                        color: MedBuddyColors.textSubtle,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (!_selecting)
+                PopupMenuButton<String>(
+                  tooltip: _english ? 'Notification options' : '알림 더보기',
+                  enabled: !_busy,
+                  onSelected: (_) => _delete([entry]),
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Text(
+                        _english ? 'Delete' : '삭제',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0,
+                          color: MedBuddyColors.danger,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   // 함수이름: build
   // 함수역할: 상태 안내와 최신순 통합 알림 목록을 구성한다. 매개변수: context. 반환값: 알림함 화면.
   @override
@@ -336,155 +495,49 @@ class _NotificationInboxUIState extends State<NotificationInboxUI> {
                               ),
                             ],
                           )
-                        : ListView.separated(
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            itemCount: entries.length,
-                            separatorBuilder: (context, index) => const Divider(
-                              height: 1,
-                              indent: 20,
-                              endIndent: 20,
-                              color: MedBuddyColors.divider,
-                            ),
-                            itemBuilder: (context, index) {
-                              final entry = entries[index];
-                              final isSelected = _selectedIds.contains(
-                                entry.id,
-                              );
-                              return Material(
-                                color: (_selecting ? isSelected : !entry.isRead)
-                                    ? MedBuddyColors.successSurface
-                                    : Colors.transparent,
-                                child: InkWell(
-                                  key: ValueKey('inbox-entry-${entry.id}'),
-                                  onTap: _busy
-                                      ? null
-                                      : _selecting
-                                      ? () => _toggleSelection(entry)
-                                      : () => _run(() async {
-                                          await control.markRead(entry);
-                                          if (mounted) widget.onOpen(entry);
-                                        }),
-                                  onLongPress: _busy || _selecting
-                                      ? null
-                                      : () => _startSelection(entry),
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(20),
-                                    child: Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        if (_selecting)
-                                          Checkbox(
-                                            key: ValueKey(
-                                              'inbox-check-${entry.id}',
-                                            ),
-                                            value: isSelected,
-                                            activeColor: MedBuddyColors.primary,
-                                            checkColor: MedBuddyColors.surface,
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(4),
-                                            ),
-                                            onChanged: _busy
-                                                ? null
-                                                : (_) =>
-                                                      _toggleSelection(entry),
-                                          )
-                                        else
-                                          Icon(
-                                            entry.category ==
-                                                    NotificationInboxCategory
-                                                        .chat
-                                                ? Icons.chat_bubble_outline
-                                                : Icons
-                                                      .notifications_active_outlined,
-                                            color: MedBuddyColors.primaryDark,
-                                            size: 24,
-                                          ),
-                                        const SizedBox(width: 14),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                control.titleFor(
-                                                  entry,
-                                                  isEnglish: _english,
-                                                  showSensitiveDetails: widget
-                                                      .userSetting
-                                                      .showNotificationDetails,
-                                                ),
-                                                style: TextStyle(
-                                                  fontSize: 17,
-                                                  height: 1.35,
-                                                  letterSpacing: 0,
-                                                  color:
-                                                      MedBuddyColors.textStrong,
-                                                  fontWeight: FontWeight.w700,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 6),
-                                              Text(
-                                                control.bodyFor(
-                                                  entry,
-                                                  isEnglish: _english,
-                                                  showSensitiveDetails: widget
-                                                      .userSetting
-                                                      .showNotificationDetails,
-                                                ),
-                                                style: const TextStyle(
-                                                  fontSize: 14,
-                                                  fontWeight: FontWeight.w500,
-                                                  height: 1.45,
-                                                  letterSpacing: 0,
-                                                  color:
-                                                      MedBuddyColors.textMuted,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 8),
-                                              Text(
-                                                '${_date(entry.occurredAt)}${entry.isRead ? '' : (_english ? ' · Unread' : ' · 안 읽음')}',
-                                                style: const TextStyle(
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.w500,
-                                                  height: 1.35,
-                                                  letterSpacing: 0,
-                                                  color:
-                                                      MedBuddyColors.textSubtle,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        if (!_selecting)
-                                          PopupMenuButton<String>(
-                                            tooltip: _english
-                                                ? 'Notification options'
-                                                : '알림 더보기',
-                                            enabled: !_busy,
-                                            onSelected: (_) => _delete([entry]),
-                                            itemBuilder: (context) => [
-                                              PopupMenuItem(
-                                                value: 'delete',
-                                                child: Text(
-                                                  _english ? 'Delete' : '삭제',
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.w600,
-                                                    letterSpacing: 0,
-                                                    color:
-                                                        MedBuddyColors.danger,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                      ],
-                                    ),
-                                  ),
+                        : Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: MedBuddyColors.surface,
+                                border: Border.all(
+                                  color: MedBuddyColors.cardBorder,
                                 ),
-                              );
-                            },
+                                borderRadius: MedBuddyRadii.card,
+                              ),
+                              child: ClipRRect(
+                                borderRadius: MedBuddyRadii.card,
+                                child: ListView.separated(
+                                  padding: EdgeInsets.zero,
+                                  physics:
+                                      const AlwaysScrollableScrollPhysics(),
+                                  itemCount: entries.length,
+                                  separatorBuilder: (context, index) =>
+                                      const Divider(
+                                        height: 1,
+                                        indent: 20,
+                                        endIndent: 20,
+                                        color: MedBuddyColors.divider,
+                                      ),
+                                  itemBuilder: (context, index) {
+                                    final entry = entries[index];
+                                    return Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        if (index == 0 ||
+                                            !_sameDay(
+                                              entries[index - 1].occurredAt,
+                                              entry.occurredAt,
+                                            ))
+                                          _dateHeader(entry.occurredAt),
+                                        _entryTile(control, entry),
+                                      ],
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
                           ),
                   ),
                 ),

@@ -107,6 +107,10 @@ class Settings(BaseSettings):
         "https://apis.data.go.kr/B552657/ErmctInsttInfoInqireService"
     )
     PHARMACY_API_TIMEOUT_SECONDS: float = Field(default=12.0, gt=0, le=120)
+    # 위치 기반 약국 조회(getParmacyLcinfoInqire)에 적용하는 하루 호출 예산. 카탈로그에 없는 지역의
+    # 보완 조회와 채팅 약국 공유가 이 오퍼레이션을 쓴다. 병원 API와 같은 제공기관 개발계정 할당량
+    # (오퍼레이션당 하루 1,000건)을 기준으로 하고, 운영계정 할당량에 맞춰 늘릴 수 있다.
+    PHARMACY_API_DAILY_REQUEST_BUDGET: int = Field(default=800, ge=1, le=1_000_000)
     HOSPITAL_API_KEY: str = Field(default="", repr=False)
     HOSPITAL_API_BASE_URL: str = (
         "https://apis.data.go.kr/B552657/HsptlAsembySearchService"

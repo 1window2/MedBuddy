@@ -128,11 +128,7 @@ void main() {
         slotTitle: '아침',
         hour: 8,
         minute: 30,
-        medicationNames: ['테스트정'],
         activeDates: [date],
-        medicationNamesByDate: {
-          '2026-09-21': ['테스트정'],
-        },
         language: 'en',
       );
       await service.cancelReminder(17, slotKey: 'morning');
@@ -154,13 +150,9 @@ void main() {
       expect(registration.id, 17);
       expect(registration.slotTitle, '아침');
       expect((registration.hour, registration.minute), (8, 30));
-      expect(registration.medicationNamesByDate, {
-        '2026-09-21': ['테스트정'],
-      });
       expect(registration.language, 'en');
       expect(fake.registeredIds, [17]);
       expect(fake.registeredSlotKeys, ['morning']);
-      expect(fake.registeredMedicationNames.single, ['테스트정']);
       expect(fake.registeredActiveDates.single, [date]);
       expect(fake.canceledIds, [17]);
       expect(fake.cancellations.single.slotKey, 'morning');
@@ -195,7 +187,6 @@ void main() {
           slotTitle: '점심',
           hour: 12,
           minute: 0,
-          medicationNames: const [],
           activeDates: const [],
         ),
         throwsStateError,
@@ -214,7 +205,6 @@ void main() {
         slotTitle: '저녁',
         hour: 18,
         minute: 0,
-        medicationNames: const [],
         activeDates: const [],
       );
       expect(fake.registeredIds, [1, 2]);

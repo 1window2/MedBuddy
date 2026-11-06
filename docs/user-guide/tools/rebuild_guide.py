@@ -38,43 +38,6 @@ def digest(path):
     return sha256(path.read_bytes()).hexdigest()
 
 
-def pixel_digest(image):
-    """Identify decoded screenshot pixels independently of their PNG/PDF compression."""
-    rgb = image.convert("RGB")
-    return sha256(f"{rgb.width}x{rgb.height}:RGB:".encode() + rgb.tobytes()).hexdigest()
-
-
-def extract_pdf_images(pdf):
-    """Reuse approved screenshots embedded in the shipped PDF, not another raw asset archive."""
-    expected = read_json(SOURCE / "pdf-images.json")
-    folder = BUILD / "pdf-images"
-    folder.mkdir(exist_ok=True)
-    missing = set(expected)
-    for key in expected:
-        path = folder / f"{key}.png"
-        if path.exists():
-            with Image.open(path) as image:
-                if pixel_digest(image) == key:
-                    missing.remove(key)
-    if missing:
-        reader = PdfReader(pdf)
-        seen = set()
-        for page in reader.pages:
-            for name, ref in page.get("/Resources", {}).get("/XObject", {}).items():
-                if ref.get_object().get("/Subtype") != "/Image" or ref.idnum in seen:
-                    continue
-                seen.add(ref.idnum)
-                image = page.images[name].image.convert("RGB")
-                key = pixel_digest(image)
-                if key in missing:
-                    assert image.size == (expected[key]["width"], expected[key]["height"])
-                    image.save(folder / f"{key}.png")
-                    missing.remove(key)
-            if not missing:
-                break
-    assert not missing, f"The source PDF is missing {len(missing)} reviewed screenshots."
-
-
 def parse_markdown(text):
     """Parse this manual's explicit headings, numbered steps and linked reference notes."""
     sections = OrderedDict()
@@ -190,12 +153,11 @@ def collect_content(groups, layout):
     return output
 
 
-def build(font_dir, image_source):
+def build(font_dir):
     """Create a candidate full PDF plus synchronized Markdown and structural checks."""
     BUILD.mkdir(exist_ok=True)
     source = (ROOT / "README.md").read_text(encoding="utf-8-sig")
     (BUILD / "input-README.md").write_text(source, encoding="utf-8", newline="\n")
-    extract_pdf_images(image_source)
     groups = parse_markdown(source)
     layout = engine(font_dir)
     layout.register_fonts()
@@ -210,7 +172,7 @@ def build(font_dir, image_source):
     cover.setFont(layout.BOLD, 30)
     cover.drawCentredString(layout.W / 2, layout.H / 2 - 145, "MedBuddy 사용설명서")
     cover.setFont(layout.REG, 12)
-    cover.drawCentredString(layout.W / 2, layout.H / 2 - 172, "0.2.4 개발 브랜치 | 2026-10-29")
+    cover.drawCentredString(layout.W / 2, layout.H / 2 - 172, "0.2.5 개발 브랜치 | 2026-11-06")
     layout.draw_footer(cover, layout.footer_layout(1, plan["total_pages"], ""))
     cover.showPage()
     cover.save()
@@ -284,13 +246,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=["build", "render", "publish"])
     parser.add_argument("--font-dir", type=Path, help="Directory containing NanumBarunGothic.ttf and NanumBarunGothicBold.ttf")
-    parser.add_argument("--image-source", type=Path, default=ROOT / PDF, help="Existing published guide containing the reviewed screenshots")
     parser.add_argument("--poppler", type=Path, default=Path("pdftoppm"))
     args = parser.parse_args()
     if args.command == "build":
         if args.font_dir is None:
             parser.error("build requires --font-dir")
-        build(args.font_dir.resolve(), args.image_source.resolve())
+        build(args.font_dir.resolve())
     elif args.command == "render":
         render(args.poppler)
     else:

@@ -46,6 +46,10 @@ class MedicationNotificationSelection {
   final MedicationNotificationAction action;
   final DateTime? scheduleDate;
   final CaregiverAlertContext? caregiverAlert;
+  // Signed part of a schedule payload and the tag the app attached when it scheduled the
+  // reminder; a quick action runs only when the tag verifies for the signed-in account.
+  final String? signedPayload;
+  final String? actionTag;
 
   // Function Name: MedicationNotificationSelection
   // Description: Captures a parsed notification destination with optional patient, link, slot, and notification identifiers plus the selected action.
@@ -58,6 +62,8 @@ class MedicationNotificationSelection {
   // - action (MedicationNotificationAction): Selected open, completion, or snooze action.
   // - scheduleDate (DateTime?): Original dose day, preserved across snoozes.
   // - caregiverAlert (CaregiverAlertContext?): Validated server delivery context for caregiver actions.
+  // - signedPayload (String?): Schedule payload without its tag, as signed when scheduled.
+  // - actionTag (String?): Tag proving the reminder came from this app; null for unsigned payloads.
   // Returns:
   // - MedicationNotificationSelection: the initialized instance.
   const MedicationNotificationSelection({
@@ -69,6 +75,8 @@ class MedicationNotificationSelection {
     this.action = MedicationNotificationAction.open,
     this.scheduleDate,
     this.caregiverAlert,
+    this.signedPayload,
+    this.actionTag,
   });
 
   // Function Name: isForDate

@@ -127,8 +127,17 @@ class MedBuddyViewModel extends ChangeNotifier {
   MedicationHistoryControl? _asNeededHistory;
 
   // 필요시 복용의 미확인 요청은 화면이 아닌 로그인 세션이 소유한다.
-  MedicationHistoryControl get asNeededHistory => _asNeededHistory ??=
-      MedicationHistoryControl(patientHash: patientHash, client: _apiClient);
+  MedicationHistoryControl get asNeededHistory =>
+      _asNeededHistory ??= MedicationHistoryControl(
+        patientHash: patientHash,
+        client: _apiClient,
+      )..addListener(_onAsNeededHistoryChanged);
+
+  // 서버가 이 계정의 복용 기록을 새로 받을 때마다 값이 바뀐다. 탭으로 열려 있는 복약 기록 화면은
+  // 위에 열린 일정 화면에서 기록해도 다시 만들어지지 않으므로 이 신호로 다시 읽는다.
+  final ValueNotifier<int> savedDoseRecords = ValueNotifier(0);
+  int _seenAcceptedDoses = 0;
+  int _seenAsNeededSaves = 0;
   final bool _ownsApiClient;
   bool _isDisposed = false;
   final Map<MedBuddyFeature, MedBuddyFeatureUpdates> _featureUpdates = {
@@ -763,10 +772,24 @@ class MedBuddyViewModel extends ChangeNotifier {
   void _onDoseSyncChanged() {
     final sync = doseSync;
     if (_isDisposed || sync == null) return;
+    if (sync.acceptedRevision != _seenAcceptedDoses) {
+      _seenAcceptedDoses = sync.acceptedRevision;
+      savedDoseRecords.value++;
+    }
     _schedules.applyDoseProjection(
       sync.schedules,
       hasCurrentDayCache: sync.hasCache,
     );
+  }
+
+  // 일정 화면의 필요시 복용 저장도 서버 기록 변경으로 알린다.
+  void _onAsNeededHistoryChanged() {
+    final control = _asNeededHistory;
+    if (_isDisposed || control == null) return;
+    if (control.savedRevision != _seenAsNeededSaves) {
+      _seenAsNeededSaves = control.savedRevision;
+      savedDoseRecords.value++;
+    }
   }
 
   // 함수이름: _notifyViewModelListeners
@@ -836,8 +859,10 @@ class MedBuddyViewModel extends ChangeNotifier {
       return;
     }
     _isDisposed = true;
+    _asNeededHistory?.removeListener(_onAsNeededHistoryChanged);
     _asNeededHistory?.invalidateSession();
     _asNeededHistory?.dispose();
+    savedDoseRecords.dispose();
     _savedMedications.dispose();
     _schedules.dispose();
     _reminders.dispose();

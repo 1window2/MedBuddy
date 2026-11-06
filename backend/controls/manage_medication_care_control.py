@@ -268,10 +268,19 @@ class ManageMedicationCare:
         history = self._history_for_patient(patient_hash, start, end)
         # CSV와 같은 전체 항목을 세므로 필요시 기록도 포함하며 복약률로 해석하지 않는다.
         counts = Counter(item["status"] for item in history["items"])
+        # 기존 합계는 이전 앱과 호환하고 새 그래프용 정기·필요시 집계를 따로 보존한다.
+        scheduled = Counter(item["status"] for item in history["items"]
+                            if item["dosing_mode"] != "as_needed")
+        prn_taken = sum(item["dosing_mode"] == "as_needed" and item["status"] == "taken"
+                        for item in history["items"])
         return {
             "start_date": history["start_date"], "end_date": history["end_date"],
             "taken_count": counts["taken"], "skipped_count": counts["skipped"],
             "unrecorded_count": counts["unrecorded"],
+            "scheduled_taken_count": scheduled["taken"],
+            "scheduled_skipped_count": scheduled["skipped"],
+            "scheduled_unrecorded_count": scheduled["unrecorded"],
+            "as_needed_taken_count": prn_taken,
         }
 
     def _history_for_patient(self, owner: str, start: date, end: date) -> dict[str, object]:
@@ -358,9 +367,13 @@ class ManageMedicationCare:
             actual_taken_at = request.actual_taken_at
             if actual_taken_at is not None:
                 now = application_now()
-                actual = actual_taken_at.astimezone(now.tzinfo)
+                try:
+                    actual = actual_taken_at.astimezone(now.tzinfo)
+                except OverflowError:
+                    # 달력 끝의 시각은 앱 시간대로 옮길 수 없다. 허용 범위 밖이므로 같은 오류로 답한다.
+                    actual = None
                 # 기기 시계가 서버보다 조금 빠르면 '지금 복용'도 미래가 되므로 재인증 시각과 같은 허용치를 둔다.
-                if actual > now + _CLIENT_CLOCK_SKEW or actual.date() < application_today() - timedelta(days=89):
+                if actual is None or actual > now + _CLIENT_CLOCK_SKEW or actual.date() < application_today() - timedelta(days=89):
                     raise HTTPException(422, "The actual dose time must be within the last 90 days and not in the future.")
                 # 허용치 안의 미래 시각은 서버가 받은 시각으로 저장해 기록이 미래에 놓이지 않게 한다.
                 actual_taken_at = min(actual, now)

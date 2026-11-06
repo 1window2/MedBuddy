@@ -5,22 +5,13 @@ import '../entities/feature_search_entity.dart';
 // 클래스명: FindAppFeature
 // 역할: 띄어쓰기·대소문자·동의어와 단어 조합을 사용해 관련 기능을 정렬한다.
 class FindAppFeature {
-  static const common = [
-    AppFeature.manualMedication,
-    AppFeature.medicationHistory,
-    AppFeature.notifications,
-    AppFeature.fontSize,
-    AppFeature.caregiverLink,
-    AppFeature.homeWidget,
-  ];
-
   static const entries = <FeatureSearchEntry>[
     FeatureSearchEntry(
       AppFeature.manualMedication,
       '약 직접 등록',
       'Add medication',
-      '약 등록·식별',
-      'Medication registration',
+      '홈 > 약 등록·관리 > 약 등록',
+      'Home > Add or manage > Add medication',
       phrases: [
         '약 추가',
         '약 등록',
@@ -41,10 +32,10 @@ class FindAppFeature {
     ),
     FeatureSearchEntry(
       AppFeature.prescription,
-      '처방전으로 약 등록',
-      'Scan prescription',
-      '약 등록·식별',
-      'Medication registration',
+      '약봉투·처방전 등록',
+      'Scan prescription or medication envelope',
+      '홈 > 약 등록·관리 > 약 등록',
+      'Home > Add or manage > Add medication',
       phrases: [
         '처방전',
         '처방 사진',
@@ -66,8 +57,8 @@ class FindAppFeature {
       AppFeature.pillIdentification,
       '알약 사진으로 식별',
       'Identify pills',
-      '약 등록·식별',
-      'Medication registration',
+      '홈 > 약 등록·관리 > 약 등록',
+      'Home > Add or manage > Add medication',
       phrases: [
         '알약 식별',
         '무슨 약',
@@ -146,8 +137,8 @@ class FindAppFeature {
       AppFeature.medicationCabinet,
       '복약함',
       'Medication cabinet',
-      '저장한 약',
-      'Saved medications',
+      '홈 > 약 등록·관리 > 약 관리',
+      'Home > Add or manage > Manage medications',
       phrases: [
         '약통',
         '내 약',
@@ -191,8 +182,8 @@ class FindAppFeature {
       AppFeature.medicationHistory,
       '복약 기록',
       'Medication history',
-      '일정 > 복약 기록',
-      'Schedule > History',
+      '하단 메뉴 > 복약 기록',
+      'Bottom navigation > Records',
       phrases: [
         '복용 기록',
         '먹은 기록',
@@ -223,8 +214,8 @@ class FindAppFeature {
       AppFeature.historySharing,
       '복약 기록 공유',
       'Share medication history',
-      '복약 기록 > 공유',
-      'History > Share',
+      '하단 메뉴 > 복약 기록 > 공유',
+      'Bottom navigation > Records > Share',
       phrases: [
         'csv',
         '엑셀',

@@ -794,7 +794,6 @@ class _HealthRecommendationText {
       : '약을 등록하면 복용 중인 약에 맞는 건강 관리 추천을 받을 수 있어요.';
 
   // 함수이름: registerMedication
-  // 함수역할: 홈과 같은 약 등록·식별 명령을 표시한다. 매개변수: 없음. 반환값: 언어별 버튼 이름.
-  String get registerMedication =>
-      isEnglish ? 'Add or Identify Medication' : '약 등록·식별';
+  // 함수역할: 홈의 약 등록·관리에서 고르는 '약 등록'과 같은 이름을 표시한다. 매개변수: 없음. 반환값: 언어별 버튼 이름.
+  String get registerMedication => isEnglish ? 'Add medication' : '약 등록';
 }

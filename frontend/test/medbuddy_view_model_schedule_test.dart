@@ -18,6 +18,7 @@ import 'package:medbuddy_frontend/controls/set_notification_control.dart';
 import 'package:medbuddy_frontend/entities/medication_alarm_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/entities/patient_hash_entity.dart';
+import 'package:medbuddy_frontend/services/dose_outbox_store.dart';
 import 'package:medbuddy_frontend/services/dose_sync_service.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_feature_updates.dart';
@@ -1449,9 +1450,6 @@ void main() {
       await viewModel.refreshMedicationOverview();
 
       expect(notificationService.registeredSlotKeys, ['morning']);
-      expect(notificationService.registeredMedicationNames.single, [
-        'test-tablet',
-      ]);
       expect(notificationService.registeredActiveDates, hasLength(1));
       // The course has no readable duration. The server keeps such a course in every day's
       // schedule, so its reminders fill the 14-day window; with today only, tomorrow's reminder
@@ -2014,6 +2012,130 @@ void main() {
 
     expect(deleteRequests, 1);
   });
+
+  // 저장소가 막혀도 서버 일정을 보여 주고, 빈 일정으로 오해하지 않게 한다.
+  testWidgets('a blocked device store cannot hold back the online schedule', (
+    tester,
+  ) async {
+    final client = MockClient(
+      (request) async => _jsonResponse({
+        'success': true,
+        'data': [
+          {
+            'medication_id': '7',
+            'drug_name': 'online-tablet',
+            'schedule_slot_keys': ['morning'],
+            'slot_statuses': {'morning': false},
+            'patient_hash': 'patient-a',
+          },
+        ],
+      }),
+    );
+    addTearDown(client.close);
+    final viewModel = MedBuddyViewModel(
+      checkSchedule: CheckSchedule(patientHash: 'patient-a', client: client),
+      notificationService: RecordingNotificationService(),
+    );
+    addTearDown(viewModel.dispose);
+    final blockedStore = Completer<DoseOutboxStore>();
+    viewModel.attachDoseSync(
+      DoseSyncService(
+        owner: 'patient-a',
+        client: client,
+        openStore: () => blockedStore.future,
+      ),
+    );
+
+    unawaited(viewModel.fetchTodayMedicationSchedule());
+    await tester.pump(const Duration(seconds: 6));
+
+    expect(viewModel.isTodayScheduleLoading, isFalse);
+    expect(viewModel.hasSettledTodaySchedule, isTrue);
+    expect(viewModel.hasTodayScheduleLoadError, isFalse);
+    expect(
+      viewModel.todayMedicationScheduleList.single.medicationName,
+      'online-tablet',
+    );
+  });
+
+  // 저장소가 일정 저장 단계에서 막혀도 받은 일정의 표시는 끝나야 한다.
+  testWidgets('a stalled schedule cache write still settles the load', (
+    tester,
+  ) async {
+    final client = MockClient(
+      (request) async => _jsonResponse({
+        'success': true,
+        'data': [
+          {
+            'medication_id': '7',
+            'drug_name': 'online-tablet',
+            'schedule_slot_keys': ['morning'],
+            'slot_statuses': {'morning': false},
+            'patient_hash': 'patient-a',
+          },
+        ],
+      }),
+    );
+    addTearDown(client.close);
+    final viewModel = MedBuddyViewModel(
+      checkSchedule: CheckSchedule(patientHash: 'patient-a', client: client),
+      notificationService: RecordingNotificationService(),
+    );
+    addTearDown(viewModel.dispose);
+    final service = _StalledCacheSyncService(client);
+    viewModel.doseSync = service;
+
+    unawaited(viewModel.fetchTodayMedicationSchedule());
+    await tester.pump(const Duration(seconds: 6));
+
+    expect(service.cacheWrites, 1);
+    expect(viewModel.isTodayScheduleLoading, isFalse);
+    expect(viewModel.hasSettledTodaySchedule, isTrue);
+    expect(
+      viewModel.todayMedicationScheduleList.single.medicationName,
+      'online-tablet',
+    );
+  });
+}
+
+// 클래스명: _StalledCacheSyncService
+// 역할: 저장소 조회는 끝나지만 일정 저장이 끝나지 않는 상태를 재현한다.
+// 속성: cacheWrites - 일정 저장 시도 횟수.
+class _StalledCacheSyncService extends DoseSyncService {
+  // 함수이름: _StalledCacheSyncService
+  // 함수역할: 저장소를 열지 않는 서비스 대역을 만든다.
+  // 매개변수: client - 통신 대역. 반환값: 서비스 대역.
+  _StalledCacheSyncService(http.Client client)
+    : super(
+        owner: 'patient-a',
+        client: client,
+        openStore: () async => throw StateError('not used'),
+      );
+
+  int cacheWrites = 0;
+
+  // 함수이름: cacheRevision
+  // 함수역할: 응답하는 저장소의 개정 번호를 돌려준다. 반환값: 개정 번호.
+  @override
+  Future<int> cacheRevision() async => 1;
+
+  // 함수이름: reload
+  // 함수역할: 응답하는 저장소의 다시 읽기를 재현한다. 반환값: 완료 Future.
+  @override
+  Future<void> reload() async {}
+
+  // 함수이름: cacheSchedules
+  // 함수역할: 끝나지 않는 저장을 재현한다. 매개변수: 운영 코드와 같다. 반환값: 끝나지 않는 Future.
+  @override
+  Future<void> cacheSchedules(
+    List<MedicationSchedule> schedules, {
+    required String scheduleDate,
+    int? expectedRevision,
+    bool awaitScheduleWindow = false,
+  }) {
+    cacheWrites++;
+    return Completer<void>().future;
+  }
 }
 
 // 클래스명: _DelayedCheckSchedule

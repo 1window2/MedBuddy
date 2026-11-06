@@ -40,6 +40,45 @@ logger = logging.getLogger(__name__)
 
 MAX_PILL_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_PILL_IMAGE_PIXELS = 24_000_000
+# A progressive JPEG decodes every scan over the whole image, so a few bytes per extra scan buy
+# seconds of CPU each. Normal encoders write about 10 scans; the limit leaves room for any of them.
+MAX_PILL_JPEG_SCANS = 100
+
+
+# Function Name: _count_jpeg_scans
+# Description:
+# - Counts the start-of-scan markers of a JPEG without decoding it, stopping once the limit is passed.
+# Parameters:
+# - data (bytes): Encoded upload bytes.
+# - limit (int): Count after which the walk stops.
+# Returns:
+# - The number of scans seen, at most limit + 1; 0 for data that is not a JPEG.
+def _count_jpeg_scans(data: bytes, limit: int = MAX_PILL_JPEG_SCANS) -> int:
+    if data[:2] != b"\xff\xd8":
+        return 0
+    index, scans, size = 2, 0, len(data)
+    while index + 1 < size:
+        if data[index] != 0xFF:
+            index += 1
+            continue
+        marker = data[index + 1]
+        if marker == 0xFF:
+            index += 1
+            continue
+        if marker == 0xD9:
+            break
+        # Stuffed zero bytes and restart markers inside scan data carry no length.
+        if marker in (0x00, 0x01) or 0xD0 <= marker <= 0xD7:
+            index += 2
+            continue
+        if index + 4 > size:
+            break
+        if marker == 0xDA:
+            scans += 1
+            if scans > limit:
+                return scans
+        index += 2 + int.from_bytes(data[index + 2:index + 4], "big")
+    return scans
 
 
 # Class Name: PillImageQualityError
@@ -219,6 +258,13 @@ class PillImageProcessingBoundary:
                 if height * width > MAX_PILL_IMAGE_PIXELS:
                     raise PillImageQualityError(
                         "The pill image resolution is too large."
+                    )
+                if (
+                    source.format == "JPEG"
+                    and _count_jpeg_scans(image) > MAX_PILL_JPEG_SCANS
+                ):
+                    raise PillImageQualityError(
+                        "The uploaded file is not a valid image."
                     )
                 if source.format == "JPEG":
                     source.draft(

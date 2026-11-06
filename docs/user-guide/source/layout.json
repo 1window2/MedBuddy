@@ -15,40 +15,40 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
-            929,
-            8,
-            1063,
-            142
+            940,
+            160,
+            1050,
+            250
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/fc3a64f0fe659ea1281d80c087932f181eda810b6bc7384304a8973ce37c60a5.png"
+        "image": "assets/login-new.png"
       },
       {
         "identity": "AUTH-INS-LANGUAGE-20260924:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
-            49,
-            1856,
-            1032,
-            2011
+            53,
+            1980,
+            1028,
+            2125
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/84c44799a4a816fae2d18539bed27ac7cccbc687ab4afae4c95d901ce915ef74.png"
+        "image": "assets/login-language.png"
       }
     ]
   },
@@ -68,20 +68,20 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
             80,
-            757,
+            800,
             1000,
-            1306
+            1345
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/fc3a64f0fe659ea1281d80c087932f181eda810b6bc7384304a8973ce37c60a5.png"
+        "image": "assets/login-new.png"
       }
     ]
   },
@@ -101,40 +101,40 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
-            80,
-            1423,
-            1000,
-            1557
+            180,
+            1490,
+            900,
+            1585
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/fc3a64f0fe659ea1281d80c087932f181eda810b6bc7384304a8973ce37c60a5.png"
+        "image": "assets/login-new.png"
       },
       {
         "identity": "ASM-P002:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
-            84,
-            816,
-            996,
-            1367
+            80,
+            860,
+            1000,
+            1410
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/80beddec7cad067bf7daada46fa69ea2459237b24df535402fae0def4d8c4c4a.png"
+        "image": "assets/signup-new.png"
       },
       {
         "identity": "ASM-P003:3",
@@ -154,7 +154,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/2964035ba01e9a1941fa001c89674fcb50126dcdba62895b5f73811619001c81.png"
+        "image": "source/assets/2964035ba01e9a1941fa001c89674fcb50126dcdba62895b5f73811619001c81.png"
       },
       {
         "identity": "ASM-P004:4",
@@ -174,7 +174,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/2964035ba01e9a1941fa001c89674fcb50126dcdba62895b5f73811619001c81.png"
+        "image": "source/assets/2964035ba01e9a1941fa001c89674fcb50126dcdba62895b5f73811619001c81.png"
       }
     ]
   },
@@ -201,27 +201,27 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/2964035ba01e9a1941fa001c89674fcb50126dcdba62895b5f73811619001c81.png"
+        "image": "source/assets/2964035ba01e9a1941fa001c89674fcb50126dcdba62895b5f73811619001c81.png"
       },
       {
         "identity": "ASM-P005:6",
         "number": 6,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2250
+          2337
         ],
         "boxes": [
           [
-            49,
-            945,
+            53,
+            1045,
             531,
-            1333
+            1405
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/121f49e57a6291a3d5249cf7286dee8dde723b4562dcfe677a3a65824b32e562.png"
+        "image": "assets/v025-home-medium.png"
       }
     ]
   },
@@ -241,80 +241,80 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
             80,
-            1657,
+            1690,
             1000,
-            1791
+            1835
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/fc3a64f0fe659ea1281d80c087932f181eda810b6bc7384304a8973ce37c60a5.png"
+        "image": "assets/login-new.png"
       },
       {
         "identity": "ASM-P006:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
             80,
-            1657,
+            1690,
             1000,
-            1791
+            1835
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/fc3a64f0fe659ea1281d80c087932f181eda810b6bc7384304a8973ce37c60a5.png"
+        "image": "assets/login-new.png"
       },
       {
         "identity": "ASM-P007:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
-            80,
-            1804,
-            1000,
-            1938
+            260,
+            1870,
+            830,
+            1960
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/fc3a64f0fe659ea1281d80c087932f181eda810b6bc7384304a8973ce37c60a5.png"
+        "image": "assets/login-new.png"
       },
       {
         "identity": "ASM-P007:4",
         "number": 4,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2250
+          2337
         ],
         "boxes": [
           [
-            726,
-            1230,
-            916,
-            1364
+            730,
+            1356,
+            912,
+            1483
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/e5a13993c99797a7bcbeadef8c154d6bc2f57e29a884fe855926f23e1b2c7a4f.png"
+        "image": "assets/guest-warning-new.png"
       }
     ]
   },
@@ -328,20 +328,20 @@
         "number": 5,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2250
+          2337
         ],
         "boxes": [
           [
-            259,
-            355,
-            632,
-            418
+            260,
+            475,
+            660,
+            555
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/09c31f6a2cdc8db1c2d287565da989bad07b2018bf47a214657ada98eac5d2b7.png"
+        "image": "assets/guide-guest-account.png"
       }
     ]
   },
@@ -361,20 +361,20 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
-            80,
-            1297,
-            1000,
-            1431
+            350,
+            1360,
+            740,
+            1450
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/fc3a64f0fe659ea1281d80c087932f181eda810b6bc7384304a8973ce37c60a5.png"
+        "image": "assets/login-new.png"
       },
       {
         "identity": "ASM-P008:2",
@@ -383,38 +383,38 @@
           0,
           0,
           1080,
-          2250
+          2229
         ],
         "boxes": [
           [
             0,
-            2082,
+            2070,
             1080,
-            2250
+            2229
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/265efa40609b42dc6200db796e90d32e5597e100ef8fb4c0c1ff2118ad69b8e0.png"
+        "image": "assets/simulated-password-reset-2026-11-05.png"
       },
       {
         "identity": "ASM-P009:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
             80,
-            757,
+            800,
             1000,
-            1306
+            1345
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/fc3a64f0fe659ea1281d80c087932f181eda810b6bc7384304a8973ce37c60a5.png"
+        "image": "assets/login-new.png"
       }
     ]
   },
@@ -434,22 +434,22 @@
         "number": 1,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
             30,
-            95,
+            150,
             1050,
-            255
+            300
           ],
           [
-            45,
-            280,
-            1035,
-            950
+            53,
+            336,
+            1028,
+            1008
           ]
         ],
         "callouts": [
@@ -462,67 +462,67 @@
             "text": "오늘의 복약 진행률"
           }
         ],
-        "image": "assets/home-wordmark-2026-10-29.png"
+        "image": "assets/v025-home-medium.png"
       },
       {
         "identity": "ASM-P010:2",
         "number": 2,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
-            45,
-            975,
-            1035,
-            1725
+            53,
+            1044,
+            1028,
+            1795
           ]
         ],
         "callouts": [],
-        "image": "assets/home-wordmark-2026-10-29.png"
+        "image": "assets/v025-home-medium.png"
       },
       {
         "identity": "ASM-P011:3:1",
         "number": 3,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
-            240,
-            1940,
-            430,
-            2130
+            232,
+            2148,
+            437,
+            2337
           ]
         ],
         "callouts": [],
-        "image": "assets/home-wordmark-2026-10-29.png"
+        "image": "assets/v025-home-medium.png"
       },
       {
         "identity": "ASM-P011:3:2",
         "number": 4,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
-            440,
-            1940,
-            640,
-            2130
+            53,
+            1044,
+            527,
+            1407
           ]
         ],
         "callouts": [],
-        "image": "assets/home-wordmark-2026-10-29.png"
+        "image": "assets/v025-home-medium.png"
       }
     ]
   },
@@ -536,62 +536,62 @@
         "number": 5,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
-            650,
-            1940,
-            840,
-            2130
+            643,
+            2148,
+            848,
+            2337
           ]
         ],
         "callouts": [],
-        "image": "assets/home-wordmark-2026-10-29.png"
+        "image": "assets/v025-home-medium.png"
       },
       {
         "identity": "ASM-P011:4:2",
         "number": 6,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
-            850,
-            1940,
-            1050,
-            2130
+            848,
+            2148,
+            1054,
+            2337
           ]
         ],
         "callouts": [],
-        "image": "assets/home-wordmark-2026-10-29.png"
+        "image": "assets/v025-home-medium.png"
       },
       {
         "identity": "ASM-P012:5",
         "number": 7,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            49,
-            235,
-            1032,
-            526
+            53,
+            375,
+            1028,
+            657
           ],
           [
-            49,
-            560,
-            1032,
-            836
+            53,
+            700,
+            1028,
+            970
           ]
         ],
         "callouts": [
@@ -604,20 +604,20 @@
             "text": "가족 연결과 환자 복약 상태"
           }
         ],
-        "image": ".build/pdf-images/79185226a8ef0a7ce9c71682603877df58d53a5c92b282a62d3f640237471bcc.png"
+        "image": "assets/v025-myinfo-medium.png"
       },
       {
         "identity": "ASM-P012:6",
         "number": 8,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [],
         "callouts": [],
-        "image": ".build/pdf-images/192dff8a4ee17f4d8b30ccbb202786e0739addb276e776897051f4ca4ebd3a11.png"
+        "image": "assets/v025-settings-home-medium.png"
       }
     ]
   },
@@ -637,13 +637,20 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2340
+          2337
         ],
-        "boxes": [],
+        "boxes": [
+          [
+            42,
+            365,
+            1038,
+            500
+          ]
+        ],
         "callouts": [],
-        "image": "assets/feature-search-start-2026-10-25.png"
+        "image": "assets/v025-search-medium.png"
       },
       {
         "identity": "FEATURE-SEARCH-20261025:2",
@@ -702,80 +709,80 @@
         "number": 1,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
-            55,
-            1305,
-            1025,
-            1530
+            58,
+            370,
+            1022,
+            630
           ]
         ],
         "callouts": [],
-        "image": "assets/prescription-register-2026-10-29.png"
+        "image": "assets/v025-registration-options-medium.png"
       },
       {
         "identity": "ASM-P013:2",
         "number": 2,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
-            45,
-            1815,
-            1035,
-            2095
+            52,
+            1975,
+            1028,
+            2280
           ]
         ],
         "callouts": [],
-        "image": "assets/prescription-source-2026-10-29.png"
+        "image": "assets/v025-prescription-source-medium.png"
       },
       {
         "identity": "ASM-P014:3",
         "number": 3,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
-            45,
-            1965,
-            1035,
-            2095
+            52,
+            2138,
+            1028,
+            2280
           ]
         ],
         "callouts": [],
-        "image": "assets/prescription-source-2026-10-29.png"
+        "image": "assets/v025-prescription-source-medium.png"
       },
       {
         "identity": "ASM-P014:4",
         "number": 4,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            862,
-            2035,
-            953,
-            2096
+            723,
+            1407,
+            1077,
+            1763
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/e7248279e4755420a4491cfcc268cfecb15b585a175905c99d521751aeb43d75.png"
+        "image": "assets/v025-prescription-picker-medium.png"
       }
     ]
   },
@@ -895,7 +902,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/82004ceaa692e1a5f2ea198195c8b9888d44a58a90231b08c4c145041b468fd9.png"
+        "image": "source/assets/82004ceaa692e1a5f2ea198195c8b9888d44a58a90231b08c4c145041b468fd9.png"
       },
       {
         "identity": "V023-2.2:dose-days",
@@ -915,7 +922,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/82004ceaa692e1a5f2ea198195c8b9888d44a58a90231b08c4c145041b468fd9.png"
+        "image": "source/assets/82004ceaa692e1a5f2ea198195c8b9888d44a58a90231b08c4c145041b468fd9.png"
       },
       {
         "identity": "ASM-P018:7",
@@ -970,7 +977,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/82004ceaa692e1a5f2ea198195c8b9888d44a58a90231b08c4c145041b468fd9.png"
+        "image": "source/assets/82004ceaa692e1a5f2ea198195c8b9888d44a58a90231b08c4c145041b468fd9.png"
       }
     ]
   },
@@ -1077,22 +1084,22 @@
         "number": 4,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
-            150,
-            800,
-            620,
-            880
+            155,
+            930,
+            910,
+            1010
           ],
           [
-            140,
-            1145,
-            910,
-            1362
+            150,
+            1280,
+            900,
+            1420
           ]
         ],
         "callouts": [
@@ -1105,7 +1112,7 @@
             "text": "후보의 전체 이름과 제조사"
           }
         ],
-        "image": "assets/prescription-candidate-2026-10-29.png"
+        "image": "assets/v025-prescription-candidate-demo.png"
       }
     ]
   },
@@ -1119,22 +1126,22 @@
         "number": 5,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
-            140,
-            1060,
-            912,
-            1212
+            150,
+            1280,
+            900,
+            1420
           ],
           [
-            560,
-            1522,
+            550,
+            1510,
             915,
-            1653
+            1650
           ]
         ],
         "callouts": [
@@ -1147,7 +1154,7 @@
             "text": "이 약으로 확인"
           }
         ],
-        "image": "assets/prescription-candidate-selected-2026-10-29.png"
+        "image": "assets/v025-prescription-candidate-selected-demo.png"
       },
       {
         "identity": "CURRENT-2.3:analysis-result",
@@ -1380,80 +1387,80 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
             53,
-            478,
+            680,
             1028,
-            723
+            850
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/8bad972e84095f2055c852a13c6ce316ca0a6d1ad6db66ffe2568efb5069bb4f.png"
+        "image": "assets/v025-manual-top-medium.png"
       },
       {
         "identity": "ASM-P028:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
             556,
-            924,
+            1025,
             1028,
-            1071
+            1190
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/8bad972e84095f2055c852a13c6ce316ca0a6d1ad6db66ffe2568efb5069bb4f.png"
+        "image": "assets/v025-manual-top-medium.png"
       },
       {
         "identity": "ASM-P029:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            901,
-            1134,
-            1028,
-            1260
+            915,
+            1255,
+            1018,
+            1355
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/8bad972e84095f2055c852a13c6ce316ca0a6d1ad6db66ffe2568efb5069bb4f.png"
+        "image": "assets/v025-manual-top-medium.png"
       },
       {
         "identity": "ASM-P029:4",
         "number": 4,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
             53,
-            1476,
+            1570,
             1028,
-            1743
+            1790
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/8bad972e84095f2055c852a13c6ce316ca0a6d1ad6db66ffe2568efb5069bb4f.png"
+        "image": "assets/v025-manual-top-medium.png"
       }
     ]
   },
@@ -1467,80 +1474,80 @@
         "number": 5,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            850,
-            1711,
-            996,
-            1845
+            865,
+            1870,
+            985,
+            1960
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/b122b8962a5901dc13a85d5e04bd797adda358c917246a520e2d1e3f60977ad3.png"
+        "image": "assets/manual-date-clean.png"
       },
       {
         "identity": "ASM-P030:6",
         "number": 6,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
             53,
-            542,
+            745,
             1028,
-            1188
+            1300
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/21dd5ab472ba7852eb3bd02ee09eb4bac7996e66b9ae4d812b9f975515c370f0.png"
+        "image": "assets/v025-manual-bottom-medium.png"
       },
       {
         "identity": "V023-2.6:dose-days",
         "number": 7,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
             53,
-            1251,
-            844,
-            1556
+            1370,
+            850,
+            1660
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/21dd5ab472ba7852eb3bd02ee09eb4bac7996e66b9ae4d812b9f975515c370f0.png"
+        "image": "assets/v025-manual-bottom-medium.png"
       },
       {
         "identity": "ASM-P031:7",
         "number": 8,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
             53,
-            1619,
-            826,
-            1923
+            1730,
+            850,
+            2040
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/21dd5ab472ba7852eb3bd02ee09eb4bac7996e66b9ae4d812b9f975515c370f0.png"
+        "image": "assets/v025-manual-bottom-medium.png"
       }
     ]
   },
@@ -1554,40 +1561,40 @@
         "number": 9,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
             53,
-            2031,
+            2130,
             1028,
-            2178
+            2300
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/21dd5ab472ba7852eb3bd02ee09eb4bac7996e66b9ae4d812b9f975515c370f0.png"
+        "image": "assets/v025-manual-bottom-medium.png"
       },
       {
         "identity": "ASM-P032:10",
         "number": 10,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            49,
-            551,
-            1032,
-            763
+            53,
+            680,
+            1028,
+            905
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/7d9fa03bbc0f3d21b22d41a9e5d622b13c9a0a821d91539166e94b5f4d5fd687.png"
+        "image": "assets/manual-empty-name.png"
       }
     ]
   },
@@ -1607,20 +1614,20 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2250
+          2337
         ],
         "boxes": [
           [
-            54,
-            1693,
-            1026,
-            1917
+            53,
+            1988,
+            1028,
+            2135
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/782cf00a84cd53293cb863896d2c657dd4183337a90db18851a6fc6b0b51b34b.png"
+        "image": "assets/v025-pill-options-medium.png"
       },
       {
         "identity": "ASM-P033:2",
@@ -1640,7 +1647,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/7de5d97c34721c4d1dd0e45529c920285e972fca133b6a2dac6518fb018aed74.png"
+        "image": "source/assets/7de5d97c34721c4d1dd0e45529c920285e972fca133b6a2dac6518fb018aed74.png"
       },
       {
         "identity": "ASM-P034:3",
@@ -1660,7 +1667,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/eee93cfefcfc52878ad125267a2b1d84abc35db07af71b07c3a5dd4cc10d8b63.png"
+        "image": "source/assets/eee93cfefcfc52878ad125267a2b1d84abc35db07af71b07c3a5dd4cc10d8b63.png"
       },
       {
         "identity": "ASM-P034:4",
@@ -1680,7 +1687,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/eee93cfefcfc52878ad125267a2b1d84abc35db07af71b07c3a5dd4cc10d8b63.png"
+        "image": "source/assets/eee93cfefcfc52878ad125267a2b1d84abc35db07af71b07c3a5dd4cc10d8b63.png"
       }
     ]
   },
@@ -1713,7 +1720,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/60aaef12b58b7c77465f663617bcbe3fca4ac2dbfe511d7515cebe0ad4900c52.png"
+        "image": "source/assets/60aaef12b58b7c77465f663617bcbe3fca4ac2dbfe511d7515cebe0ad4900c52.png"
       },
       {
         "identity": "ASM-P035:2",
@@ -1733,7 +1740,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/fabb29595a3a9f2057df8379b570f49781c7edec86628f4610aa757c4cbbd5e8.png"
+        "image": "source/assets/fabb29595a3a9f2057df8379b570f49781c7edec86628f4610aa757c4cbbd5e8.png"
       },
       {
         "identity": "ASM-P036:3",
@@ -1753,7 +1760,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/fabb29595a3a9f2057df8379b570f49781c7edec86628f4610aa757c4cbbd5e8.png"
+        "image": "source/assets/fabb29595a3a9f2057df8379b570f49781c7edec86628f4610aa757c4cbbd5e8.png"
       },
       {
         "identity": "ASM-P036:4",
@@ -1773,7 +1780,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/fabb29595a3a9f2057df8379b570f49781c7edec86628f4610aa757c4cbbd5e8.png"
+        "image": "source/assets/fabb29595a3a9f2057df8379b570f49781c7edec86628f4610aa757c4cbbd5e8.png"
       }
     ]
   },
@@ -1806,27 +1813,27 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/eee93cfefcfc52878ad125267a2b1d84abc35db07af71b07c3a5dd4cc10d8b63.png"
+        "image": "source/assets/eee93cfefcfc52878ad125267a2b1d84abc35db07af71b07c3a5dd4cc10d8b63.png"
       },
       {
         "identity": "ASM-P037:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          1350,
           1080,
-          2250
+          2337
         ],
         "boxes": [
           [
-            49,
-            424,
-            1032,
-            810
+            53,
+            1750,
+            1028,
+            2065
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/a5e027d156abef264132acc0ec6167be8fca55c054dfa4fa70b249b584b1c25d.png"
+        "image": "assets/guide-pill-selected.png"
       },
       {
         "identity": "ASM-P038:3",
@@ -1846,27 +1853,27 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/b533462d89b8c6eacb30858caf949eb76a964329221923180b082faabb076b22.png"
+        "image": "source/assets/b533462d89b8c6eacb30858caf949eb76a964329221923180b082faabb076b22.png"
       },
       {
         "identity": "ASM-P038:4",
         "number": 4,
         "crop": [
           0,
-          0,
+          1350,
           1080,
-          2250
+          2337
         ],
         "boxes": [
           [
             53,
-            431,
+            1750,
             1028,
-            807
+            2065
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/c522353f7d896e19b55311246f6fd07c1dfa1986e9bde6b8723f5fefb8d10486.png"
+        "image": "assets/guide-pill-candidates-clean.png"
       }
     ]
   },
@@ -1893,7 +1900,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/eee93cfefcfc52878ad125267a2b1d84abc35db07af71b07c3a5dd4cc10d8b63.png"
+        "image": "source/assets/eee93cfefcfc52878ad125267a2b1d84abc35db07af71b07c3a5dd4cc10d8b63.png"
       },
       {
         "identity": "ASM-P039:6",
@@ -1913,7 +1920,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/dfb6c50ab28a703dfa299c127bcf0cda27978de480a877365453019f4e952569.png"
+        "image": "source/assets/dfb6c50ab28a703dfa299c127bcf0cda27978de480a877365453019f4e952569.png"
       }
     ]
   },
@@ -1933,60 +1940,60 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          1350,
           1080,
-          2250
+          2337
         ],
         "boxes": [
           [
-            49,
-            1987,
-            1032,
-            2137
+            53,
+            2110,
+            1028,
+            2250
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/b533462d89b8c6eacb30858caf949eb76a964329221923180b082faabb076b22.png"
+        "image": "assets/guide-pill-selected.png"
       },
       {
         "identity": "ASM-P040:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2288
+          2337
         ],
         "boxes": [
           [
-            857,
-            770,
-            983,
-            896
+            860,
+            880,
+            985,
+            1000
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/bd1bffd7f07088baab5809ca17066e325fb47604a1cad433b7fbeed38ba677f9.png"
+        "image": "assets/guide-pill-review-now.png"
       },
       {
         "identity": "ASM-P041:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            168,
-            264,
-            912,
-            1062
+            190,
+            360,
+            885,
+            1180
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/5e3462b78c6ab9f67df48c3669ad81561726a96e1a0c40da43c838e3b2dc23ba.png"
+        "image": "assets/guide-pill-edit-now.png"
       },
       {
         "identity": "V023-2.10:dose-days",
@@ -2006,7 +2013,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/e41407c545fc6063db6a0ffad482b2ae83c35fad6d4d73b1bf0f4ba1ae36efd2.png"
+        "image": "source/assets/e41407c545fc6063db6a0ffad482b2ae83c35fad6d4d73b1bf0f4ba1ae36efd2.png"
       }
     ]
   },
@@ -2033,47 +2040,67 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/e41407c545fc6063db6a0ffad482b2ae83c35fad6d4d73b1bf0f4ba1ae36efd2.png"
+        "image": "source/assets/e41407c545fc6063db6a0ffad482b2ae83c35fad6d4d73b1bf0f4ba1ae36efd2.png"
       },
       {
         "identity": "ASM-P042:5",
         "number": 6,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2288
+          2337
         ],
         "boxes": [
           [
             53,
-            726,
+            840,
             1028,
-            1316
+            1435
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/bd1bffd7f07088baab5809ca17066e325fb47604a1cad433b7fbeed38ba677f9.png"
+        "image": "assets/guide-pill-review-now.png"
       },
       {
         "identity": "ASM-P042:6",
         "number": 7,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2288
+          2337
         ],
         "boxes": [
           [
             53,
-            2104,
+            2210,
             1028,
-            2246
+            2335
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/bd1bffd7f07088baab5809ca17066e325fb47604a1cad433b7fbeed38ba677f9.png"
+        "image": "assets/guide-pill-review-now.png"
+      },
+      {
+        "identity": "CURRENT-2.10:saved-demo",
+        "number": 8,
+        "crop": [
+          0,
+          1400,
+          1080,
+          2337
+        ],
+        "boxes": [
+          [
+            53,
+            2117,
+            1028,
+            2258
+          ]
+        ],
+        "callouts": [],
+        "image": "assets/guide-pill-saved-demo.png"
       }
     ]
   },
@@ -2093,60 +2120,60 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            304,
-            1666,
-            621,
-            1792
+            300,
+            1780,
+            630,
+            1900
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/3fa52b9b202f8fa1b9e78b76df135fbd3439124bf3407f7e223076dee4e86d1f.png"
+        "image": "assets/manual-prn-lower.png"
       },
       {
         "identity": "CARE17-2.11:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
             53,
-            1813,
+            1920,
             1028,
-            1923
+            2050
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/3fa52b9b202f8fa1b9e78b76df135fbd3439124bf3407f7e223076dee4e86d1f.png"
+        "image": "assets/manual-prn-lower.png"
       },
       {
         "identity": "CARE17-2.11:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            55,
-            1108,
+            53,
+            925,
             1025,
-            1368
+            1275
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/b5e2afae30533ff0f73eef321275b24978726189bc4da0052926a26087caf343.png"
+        "image": "assets/v025-cabinet-list-medium.png"
       }
     ]
   },
@@ -2166,26 +2193,26 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [],
         "callouts": [],
-        "image": ".build/pdf-images/a5bc2c12bfd7ecad80f97ed6c340c96dbe981a924f84afc476a9d153e176dda8.png"
+        "image": "assets/v025-home-schedule-medium.png"
       },
       {
         "identity": "ASM-P045:3",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [],
         "callouts": [],
-        "image": ".build/pdf-images/a5bc2c12bfd7ecad80f97ed6c340c96dbe981a924f84afc476a9d153e176dda8.png"
+        "image": "assets/v025-home-schedule-medium.png"
       }
     ]
   },
@@ -2205,13 +2232,13 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [],
         "callouts": [],
-        "image": ".build/pdf-images/a5bc2c12bfd7ecad80f97ed6c340c96dbe981a924f84afc476a9d153e176dda8.png"
+        "image": "assets/v025-home-schedule-medium.png"
       },
       {
         "identity": "ASM-P047:2",
@@ -2231,7 +2258,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/4236f40c249acc7d6e5e60c3ee9b4e5787717fefd9b348c7a05e79be09f50f10.png"
+        "image": "source/assets/4236f40c249acc7d6e5e60c3ee9b4e5787717fefd9b348c7a05e79be09f50f10.png"
       },
       {
         "identity": "ASM-P048:3",
@@ -2266,7 +2293,7 @@
             "text": "해당 시간대 전체 취소"
           }
         ],
-        "image": ".build/pdf-images/25a395e4d19c274c29055b40e11e36f474d09c5d49209108412081c63f81e839.png"
+        "image": "source/assets/25a395e4d19c274c29055b40e11e36f474d09c5d49209108412081c63f81e839.png"
       },
       {
         "identity": "ASM-P048:4",
@@ -2286,7 +2313,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/c8b9ac4d54c7818c722ab571d52cc6796a8996e6af48a6568198814c1c53619b.png"
+        "image": "source/assets/c8b9ac4d54c7818c722ab571d52cc6796a8996e6af48a6568198814c1c53619b.png"
       }
     ]
   },
@@ -2306,35 +2333,35 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [],
         "callouts": [],
-        "image": ".build/pdf-images/04b740acdbfe3c61a33a145c76a79254eb40daa577aaebd863611ca6300d3117.png"
+        "image": "assets/v025-schedule-current-medium.png"
       },
       {
         "identity": "ASM-P050:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            85,
-            616,
-            843,
-            773
+            90,
+            750,
+            995,
+            915
           ],
           [
-            761,
-            434,
-            884,
-            558
+            745,
+            590,
+            870,
+            715
           ]
         ],
         "callouts": [
@@ -2347,27 +2374,27 @@
             "text": "종: 시간대 알림 설정"
           }
         ],
-        "image": ".build/pdf-images/ce86493ee676d17c8a372e826b5ea6270f892643ae5cd5a9dc02462263933399.png"
+        "image": "assets/v025-schedule-current-medium.png"
       },
       {
         "identity": "ASM-P051:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            85,
-            647,
-            180,
-            742
+            100,
+            795,
+            160,
+            865
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/ce86493ee676d17c8a372e826b5ea6270f892643ae5cd5a9dc02462263933399.png"
+        "image": "assets/v025-schedule-current-medium.png"
       },
       {
         "identity": "ASM-P051:4",
@@ -2402,7 +2429,7 @@
             "text": "잘못 눌렀을 때 실행 취소"
           }
         ],
-        "image": ".build/pdf-images/2be32d396f68b936afd40b4f2e84ab17ad9e826cbe9ab385033d07acd70749dc.png"
+        "image": "source/assets/2be32d396f68b936afd40b4f2e84ab17ad9e826cbe9ab385033d07acd70749dc.png"
       }
     ]
   },
@@ -2429,27 +2456,27 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/2be32d396f68b936afd40b4f2e84ab17ad9e826cbe9ab385033d07acd70749dc.png"
+        "image": "source/assets/2be32d396f68b936afd40b4f2e84ab17ad9e826cbe9ab385033d07acd70749dc.png"
       },
       {
         "identity": "ASM-P053:7",
         "number": 6,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            55,
-            404,
-            1025,
-            1749
+            53,
+            558,
+            1027,
+            1880
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/ce86493ee676d17c8a372e826b5ea6270f892643ae5cd5a9dc02462263933399.png"
+        "image": "assets/v025-schedule-current-medium.png"
       }
     ]
   },
@@ -2469,20 +2496,20 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            882,
-            434,
+            873,
+            588,
             1005,
-            558
+            714
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/ce86493ee676d17c8a372e826b5ea6270f892643ae5cd5a9dc02462263933399.png"
+        "image": "assets/v025-schedule-current-medium.png"
       }
     ]
   },
@@ -2502,42 +2529,42 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            761,
-            434,
-            884,
-            558
+            745,
+            590,
+            870,
+            715
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/ce86493ee676d17c8a372e826b5ea6270f892643ae5cd5a9dc02462263933399.png"
+        "image": "assets/v025-schedule-current-medium.png"
       },
       {
         "identity": "ASM-P056:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            232,
-            906,
-            849,
-            1061
+            230,
+            1070,
+            845,
+            1175
           ],
           [
-            232,
-            1085,
-            849,
-            1219
+            230,
+            1220,
+            845,
+            1355
           ]
         ],
         "callouts": [
@@ -2550,29 +2577,29 @@
             "text": "꺼짐 상태에서도 시간 편집"
           }
         ],
-        "image": ".build/pdf-images/4071fc30f4953ac1e31dca5ee5cdb4fb1d7aebd40c75555d69af9f23702fcaae.png"
+        "image": "assets/v025-schedule-alarm-medium.png"
       },
       {
         "identity": "ASM-P057:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            125,
-            1104,
-            955,
-            1229
+            188,
+            1260,
+            890,
+            1382
           ],
           [
-            825,
-            729,
-            959,
-            863
+            838,
+            879,
+            943,
+            986
           ]
         ],
         "callouts": [
@@ -2585,29 +2612,29 @@
             "text": "알림창으로 적용"
           }
         ],
-        "image": ".build/pdf-images/c832dac7baa053958767d585793b7b0ed4e14c1bc11940a7d4b84a85518ef0d5.png"
+        "image": "assets/v025-schedule-time-picker-medium.png"
       },
       {
         "identity": "ASM-P058:4",
         "number": 4,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            232,
-            983,
-            849,
-            1142
+            235,
+            1120,
+            845,
+            1275
           ],
           [
             658,
-            1197,
-            849,
-            1331
+            1335,
+            846,
+            1465
           ]
         ],
         "callouts": [
@@ -2620,7 +2647,7 @@
             "text": "입력값 적용"
           }
         ],
-        "image": ".build/pdf-images/861acc72f5b08f13fcd0b2f4a810fb7fca60716f4f907daeb81208b7adba938d.png"
+        "image": "assets/v025-schedule-time-input-medium.png"
       }
     ]
   },
@@ -2662,7 +2689,7 @@
             "text": "설정 최종 저장"
           }
         ],
-        "image": ".build/pdf-images/2816052dd74eb97b30d2236c806e568710c05e1a3a8cacc3eb0f47441130e877.png"
+        "image": "source/assets/2816052dd74eb97b30d2236c806e568710c05e1a3a8cacc3eb0f47441130e877.png"
       }
     ]
   },
@@ -2695,7 +2722,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/2be32d396f68b936afd40b4f2e84ab17ad9e826cbe9ab385033d07acd70749dc.png"
+        "image": "source/assets/2be32d396f68b936afd40b4f2e84ab17ad9e826cbe9ab385033d07acd70749dc.png"
       },
       {
         "identity": "ASM-P061:4",
@@ -2715,7 +2742,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/886654f161aeb46fcb79d949b0a74e79d0dfff9faa425a7455122036ff2df9c8.png"
+        "image": "source/assets/886654f161aeb46fcb79d949b0a74e79d0dfff9faa425a7455122036ff2df9c8.png"
       }
     ]
   },
@@ -2735,73 +2762,73 @@
         "number": 1,
         "crop": [
           0,
-          112,
+          110,
           1080,
           2337
         ],
-        "boxes": [],
+        "boxes": [
+          [
+            42,
+            695,
+            1038,
+            1183
+          ]
+        ],
         "callouts": [],
-        "image": "assets/history-share-patient-month.png"
+        "image": "assets/v025-history-week-medium.png"
       },
       {
         "identity": "CARE17-3.7:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
             42,
-            523,
+            1225,
             1038,
-            649
+            2130
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/d4999ca157a19d93148dd887921c6fe2200bca360ad11bacce22c8b2f16ca3f6.png"
+        "image": "assets/v025-history-month-medium.png"
       },
       {
         "identity": "FINAL17-3.7:calendar",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            68,
-            379,
-            1013,
-            1865
+            42,
+            545,
+            1038,
+            735
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/2889b93ed058be058383d1e04fa6b78f02dff954b5950020d8de678d4eb00166.png"
+        "image": "assets/v025-history-range-medium.png"
       },
       {
         "identity": "CARE17-3.7:3",
         "number": 4,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
-        "boxes": [
-          [
-            42,
-            659,
-            1038,
-            785
-          ]
-        ],
+        "boxes": [],
         "callouts": [],
-        "image": ".build/pdf-images/d4999ca157a19d93148dd887921c6fe2200bca360ad11bacce22c8b2f16ca3f6.png"
+        "image": "assets/v025-history-detail-medium.png"
       }
     ]
   },
@@ -2815,40 +2842,40 @@
         "number": 5,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            168,
-            816,
-            912,
-            1433
+            42,
+            1295,
+            1038,
+            1435
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/295400156fd39f56cf00909d57f21f4f22b79c6f7ccbcace2671814693d861e6.png"
+        "image": "assets/v025-history-range-medium.png"
       },
       {
         "identity": "FINAL17-3.7:readonly",
         "number": 6,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            200,
-            56,
-            705,
-            184
+            190,
+            240,
+            510,
+            300
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/30864759e90cd9b33f58b9463c3fc84a7acf92269b438108525d6b79bbff8fca.png"
+        "image": "assets/v025-caregiver-history-medium.png"
       }
     ]
   },
@@ -2868,60 +2895,60 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            867,
-            1376,
-            993,
-            1502
+            830,
+            905,
+            945,
+            1010
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/d4999ca157a19d93148dd887921c6fe2200bca360ad11bacce22c8b2f16ca3f6.png"
+        "image": "assets/v025-history-edit-list-medium.png"
       },
       {
         "identity": "CARE17-3.8:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            168,
-            728,
-            912,
-            1526
+            160,
+            905,
+            930,
+            1630
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/84259e3e044a6b3ec5831aca97d367ffd86375a5e7faf95a9b407274ab661f9e.png"
+        "image": "assets/v025-history-edit-skip-medium.png"
       },
       {
         "identity": "CARE17-3.8:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            574,
-            1665,
-            912,
-            1791
+            570,
+            1735,
+            915,
+            1865
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/84259e3e044a6b3ec5831aca97d367ffd86375a5e7faf95a9b407274ab661f9e.png"
+        "image": "assets/v025-history-edit-skip-medium.png"
       }
     ]
   },
@@ -2954,7 +2981,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/56b9841becafa4151064ffda8d2192a0b25ef1603c2425879645b3fd8aa9d803.png"
+        "image": "source/assets/56b9841becafa4151064ffda8d2192a0b25ef1603c2425879645b3fd8aa9d803.png"
       },
       {
         "identity": "FINAL17-3.9:batch",
@@ -2974,7 +3001,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/56b9841becafa4151064ffda8d2192a0b25ef1603c2425879645b3fd8aa9d803.png"
+        "image": "source/assets/56b9841becafa4151064ffda8d2192a0b25ef1603c2425879645b3fd8aa9d803.png"
       },
       {
         "identity": "CARE17-3.9:2",
@@ -2994,7 +3021,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/c21f29cdae17fd3cfdcdc114893e043e2c3c49147a396261ec1191bd909a11a1.png"
+        "image": "source/assets/c21f29cdae17fd3cfdcdc114893e043e2c3c49147a396261ec1191bd909a11a1.png"
       },
       {
         "identity": "CARE17-3.9:3",
@@ -3007,7 +3034,7 @@
         ],
         "boxes": [],
         "callouts": [],
-        "image": ".build/pdf-images/11daf23c30cb4735042a18673c1765d8fe73f133f5dbc635657b4b646b8e2302.png"
+        "image": "source/assets/11daf23c30cb4735042a18673c1765d8fe73f133f5dbc635657b4b646b8e2302.png"
       }
     ]
   },
@@ -3034,7 +3061,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/2833d315060a1ac527a0fab5b9b71a9a00f1a4502bd74f01c66626342c76acff.png"
+        "image": "source/assets/2833d315060a1ac527a0fab5b9b71a9a00f1a4502bd74f01c66626342c76acff.png"
       }
     ]
   },
@@ -3054,35 +3081,42 @@
         "number": 1,
         "crop": [
           0,
-          112,
+          110,
           1080,
           2337
         ],
-        "boxes": [],
+        "boxes": [
+          [
+            910,
+            170,
+            1020,
+            290
+          ]
+        ],
         "callouts": [],
-        "image": "assets/history-share-patient-month.png"
+        "image": "assets/v025-history-week-medium.png"
       },
       {
         "identity": "CARE17-3.10:2",
         "number": 2,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
             160,
-            675,
-            920,
-            955
+            795,
+            925,
+            1070
           ],
           [
             160,
-            1250,
-            920,
-            1530
+            1350,
+            925,
+            1640
           ]
         ],
         "callouts": [
@@ -3095,20 +3129,27 @@
             "text": "채팅 또는 다른 앱 선택"
           }
         ],
-        "image": "assets/history-share-dialog-2026-10-29.png"
+        "image": "assets/v025-history-share-current-medium.png"
       },
       {
         "identity": "CURRENT22-3.10:3",
         "number": 3,
         "crop": [
           0,
-          112,
+          110,
           1080,
           2337
         ],
-        "boxes": [],
+        "boxes": [
+          [
+            160,
+            1115,
+            830,
+            1220
+          ]
+        ],
         "callouts": [],
-        "image": "assets/history-share-recipient.png"
+        "image": "assets/v025-history-recipient-current-medium.png"
       },
       {
         "identity": "CURRENT22-3.10:4",
@@ -3119,9 +3160,16 @@
           1080,
           2337
         ],
-        "boxes": [],
+        "boxes": [
+          [
+            220,
+            1020,
+            1042,
+            1908
+          ]
+        ],
         "callouts": [],
-        "image": "assets/history-time-label-removed.png"
+        "image": "assets/v025-chat-history-current-medium.png"
       }
     ]
   },
@@ -3148,33 +3196,40 @@
         "number": 6,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
             160,
-            1400,
-            920,
-            1530
+            1500,
+            925,
+            1650
           ]
         ],
         "callouts": [],
-        "image": "assets/history-share-dialog-2026-10-29.png"
+        "image": "assets/v025-history-share-current-medium.png"
       },
       {
         "identity": "FINAL17-3.10:caregiver",
         "number": 7,
         "crop": [
           0,
-          112,
+          110,
           1080,
           2337
         ],
-        "boxes": [],
+        "boxes": [
+          [
+            910,
+            175,
+            1020,
+            285
+          ]
+        ],
         "callouts": [],
-        "image": "assets/history-share-readonly.png"
+        "image": "assets/v025-caregiver-history-medium.png"
       }
     ]
   },
@@ -3194,62 +3249,62 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            49,
-            1882,
-            531,
-            2132
+            53,
+            2020,
+            528,
+            2268
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/a04da530a8a0da8140f9ad4934fcda36412ce10faa3bc579924f5af96ff99b85.png"
+        "image": "assets/v025-family-link-medium.png"
       },
       {
         "identity": "ASM-P062:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2250
+          2337
         ],
         "boxes": [
           [
             167,
-            763,
+            894,
             913,
-            913
+            1044
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/f302cb083a5eaa8ce3f68bf5ab6bd4b61fe8a4163a3299e0b10eee9aeb4b2e16.png"
+        "image": "assets/expired-test-guide-code-temporary.png"
       },
       {
         "identity": "V023-4.1:expired-code",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
             167,
-            719,
+            857,
             913,
-            869
+            1008
           ],
           [
             167,
-            1528,
+            1666,
             913,
-            1664
+            1803
           ]
         ],
         "callouts": [
@@ -3262,7 +3317,7 @@
             "text": "새 코드 발급 요청"
           }
         ],
-        "image": ".build/pdf-images/a4c51b3e9860c63b8aaed5c8a25a9db68bc1ce77f86de06bc305b232dddb09fa.png"
+        "image": "assets/expired-test-guide-code-expired.png"
       }
     ]
   },
@@ -3282,20 +3337,20 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2250
+          2337
         ],
         "boxes": [
           [
             167,
-            1018,
+            1153,
             913,
-            1176
+            1300
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/2f1bfff4dcda279f74625fc05362967a885eba2066b0a416a9f44c7e519ab63a.png"
+        "image": "assets/current-caregiver-register.png"
       }
     ]
   },
@@ -3315,20 +3370,20 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            764,
-            537,
-            877,
-            650
+            737,
+            680,
+            835,
+            800
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/a04da530a8a0da8140f9ad4934fcda36412ce10faa3bc579924f5af96ff99b85.png"
+        "image": "assets/v025-family-link-medium.png"
       }
     ]
   },
@@ -3348,80 +3403,80 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            231,
-            281,
-            988,
-            407
+            280,
+            385,
+            960,
+            500
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/0a2dc49f4a2f8cd9cca3ca361a70ed528ee43e3ae5730914238fa3a437c0c367.png"
+        "image": "assets/v025-caregiver-home-medium.png"
       },
       {
         "identity": "ASM-P069:5",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            92,
-            738,
-            988,
-            875
+            90,
+            830,
+            990,
+            970
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/0a2dc49f4a2f8cd9cca3ca361a70ed528ee43e3ae5730914238fa3a437c0c367.png"
+        "image": "assets/v025-caregiver-home-medium.png"
       },
       {
         "identity": "ASM-P069:6",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            53,
-            612,
+            55,
+            690,
             1028,
-            1145
+            1215
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/af309b21669c594ee7aa79fe500fff9f0cc49d60b5f04ff138abe79e362e4ce5.png"
+        "image": "assets/v025-caregiver-schedule-medium.png"
       },
       {
         "identity": "ASM-P070:7",
         "number": 4,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            126,
-            465,
-            1049,
-            591
+            55,
+            555,
+            1020,
+            650
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/af309b21669c594ee7aa79fe500fff9f0cc49d60b5f04ff138abe79e362e4ce5.png"
+        "image": "assets/v025-caregiver-schedule-medium.png"
       }
     ]
   },
@@ -3448,7 +3503,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/bed205f11bae97e9ff8fcd116817d00895bd2368177902db906839cd3431433f.png"
+        "image": "source/assets/bed205f11bae97e9ff8fcd116817d00895bd2368177902db906839cd3431433f.png"
       }
     ]
   },
@@ -3468,20 +3523,20 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
             236,
-            930,
+            1050,
             845,
-            1080
+            1201
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/2ce4357f9dd6ff293bd68b2cc806f34dc9d1c6c80c21338bfcbbfa9e809e50cf.png"
+        "image": "assets/current-guide-link-alias.png"
       }
     ]
   },
@@ -3501,42 +3556,36 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
             102,
-            1208,
+            1365,
             978,
-            1334
+            1491
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/2408f4330d0e9071c50ebf71611209a7f4a3ff23091c8bfe95f7a612701e66b1.png"
+        "image": "assets/current-guide-link-expand.png"
       },
       {
         "identity": "ASM-P075:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            164,
-            838,
-            916,
-            1287
-          ],
-          [
-            411,
-            1342,
-            557,
-            1476
+            168,
+            978,
+            912,
+            1419
           ]
         ],
         "callouts": [
@@ -3549,7 +3598,7 @@
             "text": "관계를 유지하며 취소"
           }
         ],
-        "image": ".build/pdf-images/88a11564e24cdeb39583b7059f218a3b9a0eee6df03070335af9e8d05a86173b.png"
+        "image": "assets/current-guide-unlink.png"
       }
     ]
   },
@@ -3569,60 +3618,60 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2250
+          2337
         ],
         "boxes": [
           [
-            0,
-            209,
-            1080,
-            451
+            53,
+            375,
+            1028,
+            658
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/c741ee91edbeff2174a24f6dc72685535a4f9b7ee17b5ca5cf6acd075fe3ccd7.png"
+        "image": "assets/v025-chat-list-medium.png"
       },
       {
         "identity": "ASM-P077:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2250
+          2337
         ],
         "boxes": [
           [
-            33,
-            1685,
-            1047,
-            1995
+            36,
+            1490,
+            1044,
+            2085
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/b78da96acc640fcbcc2b62426f2d9f2ff63a573cdd053229bc7cb2ead15a42d1.png"
+        "image": "assets/v025-chat-unread-current-medium.png"
       },
       {
         "identity": "CURRENT-5.1:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2250
+          2100
         ],
         "boxes": [
           [
-            33,
-            1809,
-            1047,
-            1995
+            505,
+            515,
+            1045,
+            690
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/4a819eb2b729fe5f0f0d3812f1d334bc014b74638b57fe577ffadab3171181ae.png"
+        "image": "assets/v025-chat-read-deleted-medium.png"
       }
     ]
   },
@@ -3642,13 +3691,13 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [],
         "callouts": [],
-        "image": ".build/pdf-images/c9c5423cf46ff3dd38d27e3a31928dfaa5a12eff92a134376a0d73cb8908e3c8.png"
+        "image": "assets/v025-chat-medication-selection-medium.png"
       }
     ]
   },
@@ -3668,40 +3717,40 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2250
+          2100
         ],
         "boxes": [
           [
-            33,
-            1809,
-            1047,
-            1995
+            505,
+            515,
+            1045,
+            690
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/a969d5e0db40507a317fabea00b0f6b588408d0ec22561164c35983e40bc8983.png"
+        "image": "assets/v025-chat-read-deleted-medium.png"
       },
       {
         "identity": "ASM-P084:5",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            169,
-            2045,
-            303,
-            2179
+            21,
+            1854,
+            1059,
+            2001
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/eefc8589dcb2b066b554216a783845bee880af33e4232fd4bef149b0c28143bd.png"
+        "image": "assets/v025-caregiver-chat-actions-medium.png"
       }
     ]
   },
@@ -3721,60 +3770,60 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            92,
-            414,
+            55,
+            550,
             1027,
-            789
+            1060
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/c9c5423cf46ff3dd38d27e3a31928dfaa5a12eff92a134376a0d73cb8908e3c8.png"
+        "image": "assets/v025-chat-medication-selection-medium.png"
       },
       {
         "identity": "ASM-P086:3",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            28,
-            1851,
+            30,
+            2073,
             320,
-            1958
+            2158
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/e26e52b10b4ace67b806482196755793ecfc323d103dcbea95f6de5ae3f836e1.png"
+        "image": "assets/v025-chat-attachment-medium.png"
       },
       {
         "identity": "ASM-P087:5",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            330,
-            1851,
-            743,
-            1958
+            335,
+            2073,
+            739,
+            2158
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/e26e52b10b4ace67b806482196755793ecfc323d103dcbea95f6de5ae3f836e1.png"
+        "image": "assets/v025-chat-attachment-medium.png"
       }
     ]
   },
@@ -3794,42 +3843,42 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            771,
-            28,
-            905,
-            162
+            21,
+            2001,
+            1059,
+            2295
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/e26e52b10b4ace67b806482196755793ecfc323d103dcbea95f6de5ae3f836e1.png"
+        "image": "assets/v025-chat-actions-medium.png"
       },
       {
         "identity": "CURRENT-5.5:3",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            54,
-            1633,
-            1026,
-            1901
+            21,
+            2001,
+            1059,
+            2148
           ],
           [
-            54,
-            1919,
-            1026,
-            2142
+            21,
+            2148,
+            1059,
+            2295
           ]
         ],
         "callouts": [
@@ -3842,7 +3891,7 @@
             "text": "약국 검색"
           }
         ],
-        "image": ".build/pdf-images/f5e0980133c12f4951a3680810cd3435f31e0d48df16b9df8a62e8db3414c9af.png"
+        "image": "assets/v025-chat-actions-medium.png"
       },
       {
         "identity": "CURRENT-5.5:4",
@@ -3862,7 +3911,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/fc215c29cecb95d37866242bfef578c4db09c0fa1218f6a330ca5c41d100c4e2.png"
+        "image": "source/assets/fc215c29cecb95d37866242bfef578c4db09c0fa1218f6a330ca5c41d100c4e2.png"
       },
       {
         "identity": "CURRENT-5.5:5",
@@ -3897,7 +3946,7 @@
             "text": "확인 후 전송"
           }
         ],
-        "image": ".build/pdf-images/6e6fad171b6622a7cf1bbed3f465ae567fd5eaa50a56a6b95e48f7bfbed70e2a.png"
+        "image": "source/assets/6e6fad171b6622a7cf1bbed3f465ae567fd5eaa50a56a6b95e48f7bfbed70e2a.png"
       }
     ]
   },
@@ -3910,36 +3959,21 @@
         "identity": "DEV29-5.5:place-card",
         "number": 5,
         "crop": [
-          6,
-          136,
-          1074,
-          2330
+          0,
+          110,
+          1080,
+          2337
         ],
         "boxes": [
           [
-            222,
-            785,
-            1045,
-            1395
-          ],
-          [
-            222,
-            1420,
-            1045,
-            2085
+            38,
+            872,
+            857,
+            1920
           ]
         ],
-        "callouts": [
-          {
-            "box_index": 0,
-            "text": "종료 시각이 있는 약국"
-          },
-          {
-            "box_index": 1,
-            "text": "24시간 운영 약국"
-          }
-        ],
-        "image": "assets/chat-place-cards-2026-10-29.png"
+        "callouts": [],
+        "image": "assets/v025-chat-place-current-medium.png"
       },
       {
         "identity": "DEV29-5.5:reopen",
@@ -3978,23 +4012,23 @@
         "identity": "DEV29-5.6:actions",
         "number": 1,
         "crop": [
-          6,
-          136,
-          1074,
-          2330
+          0,
+          110,
+          1080,
+          2337
         ],
         "boxes": [
           [
-            10,
-            2067,
-            1070,
-            2175
+            20,
+            2050,
+            1055,
+            2180
           ],
           [
-            10,
-            2200,
-            1070,
-            2325
+            20,
+            2190,
+            1055,
+            2330
           ]
         ],
         "callouts": [
@@ -4007,29 +4041,29 @@
             "text": "선택 모드로 전환"
           }
         ],
-        "image": "assets/chat-message-actions-2026-10-29.png"
+        "image": "assets/v025-chat-message-menu-medium.png"
       },
       {
         "identity": "ASM-P095:1",
         "number": 2,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
-            40,
-            1530,
-            1050,
-            1700
+            55,
+            1240,
+            985,
+            1745
           ],
           [
-            915,
-            135,
-            1015,
-            220
+            900,
+            170,
+            1020,
+            285
           ]
         ],
         "callouts": [
@@ -4042,7 +4076,7 @@
             "text": "선택 삭제"
           }
         ],
-        "image": "assets/chat-message-selection-2026-10-29.png"
+        "image": "assets/v025-chat-message-select-medium.png"
       },
       {
         "identity": "DEV29-5.6:scope",
@@ -4083,21 +4117,21 @@
         "identity": "DEV29-5.6:deleted",
         "number": 4,
         "crop": [
-          6,
-          136,
-          1074,
-          2330
+          0,
+          110,
+          1080,
+          2100
         ],
         "boxes": [
           [
-            30,
-            880,
-            530,
-            1455
+            35,
+            515,
+            1045,
+            890
           ]
         ],
         "callouts": [],
-        "image": "assets/chat-deleted-messages-2026-10-29.png"
+        "image": "assets/v025-chat-read-deleted-medium.png"
       }
     ]
   },
@@ -4117,40 +4151,40 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            886,
-            649,
-            1001,
-            764
+            866,
+            713,
+            1008,
+            850
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/af309b21669c594ee7aa79fe500fff9f0cc49d60b5f04ff138abe79e362e4ce5.png"
+        "image": "assets/v025-caregiver-schedule-medium.png"
       },
       {
         "identity": "ASM-P100:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            122,
-            767,
-            958,
-            1392
+            125,
+            915,
+            960,
+            1495
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/636629f421500b698905203a70caf43b8ab57221b34b79c402eeca393408629d.png"
+        "image": "assets/v025-caregiver-alarm-medium.png"
       },
       {
         "identity": "FINAL17-5.7:prn",
@@ -4170,7 +4204,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/eceba40187a300c968627e83e4489753364aa163fb74ddecdcb98b0307c744d8.png"
+        "image": "source/assets/eceba40187a300c968627e83e4489753364aa163fb74ddecdcb98b0307c744d8.png"
       }
     ]
   },
@@ -4190,80 +4224,80 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
             897,
-            47,
-            1032,
-            181
+            155,
+            1050,
+            305
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/3bf54a6d008b89bd8d43464486d47231009aa3d6e0e285a527c82956c6198a19.png"
+        "image": "assets/v025-home-medium.png"
       },
       {
         "identity": "ASM-P106:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            0,
-            322,
-            1080,
-            632
+            53,
+            367,
+            1028,
+            792
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/cb52c1e948a2fc036912b9dd10886c9798c1e198ad33da8f7c8bbd2d3c800cb1.png"
+        "image": "assets/v025-inbox-medium.png"
       },
       {
         "identity": "ASM-P107:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            164,
-            17,
-            670,
-            112
+            190,
+            145,
+            700,
+            300
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/b22225e3f09e8d5c87ebd210b571d563961ff1ada4f975fd879ceff286b88bd8.png"
+        "image": "assets/v025-caregiver-schedule-medium.png"
       },
       {
         "identity": "ASM-P107:4",
         "number": 4,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            129,
-            443,
-            825,
-            531
+            36,
+            1490,
+            1044,
+            1570
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/eefc8589dcb2b066b554216a783845bee880af33e4232fd4bef149b0c28143bd.png"
+        "image": "assets/v025-chat-unread-current-medium.png"
       }
     ]
   },
@@ -4277,40 +4311,40 @@
         "number": 5,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            771,
-            28,
-            905,
-            162
+            790,
+            175,
+            885,
+            290
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/cb52c1e948a2fc036912b9dd10886c9798c1e198ad33da8f7c8bbd2d3c800cb1.png"
+        "image": "assets/v025-inbox-medium.png"
       },
       {
         "identity": "ASM-P111:11",
         "number": 6,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            897,
-            28,
-            1032,
-            162
+            920,
+            175,
+            1025,
+            290
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/cb52c1e948a2fc036912b9dd10886c9798c1e198ad33da8f7c8bbd2d3c800cb1.png"
+        "image": "assets/v025-inbox-medium.png"
       }
     ]
   },
@@ -4330,13 +4364,20 @@
         "number": 1,
         "crop": [
           0,
-          112,
+          110,
           1080,
           2337
         ],
-        "boxes": [],
+        "boxes": [
+          [
+            90,
+            935,
+            980,
+            1040
+          ]
+        ],
         "callouts": [],
-        "image": "assets/settings-order-display.png"
+        "image": "assets/v025-settings-preview-medium.png"
       },
       {
         "identity": "ASM-P113:2",
@@ -4356,29 +4397,29 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/d36848ebd1dca2b6239a02651e605fb211f74bd3d9a173d48cdc91140ce23b37.png"
+        "image": "source/assets/d36848ebd1dca2b6239a02651e605fb211f74bd3d9a173d48cdc91140ce23b37.png"
       },
       {
         "identity": "ASM-P114:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
             50,
-            307,
+            442,
             1030,
-            1116
+            1252
           ],
           [
             50,
-            1144,
+            1280,
             1030,
-            1395
+            1535
           ]
         ],
         "callouts": [
@@ -4391,27 +4432,27 @@
             "text": "새 기본 크기 4×1"
           }
         ],
-        "image": ".build/pdf-images/f7029a6adee10b9f6940607d92a930d24e6cce5d05973c30b8d6f437f1f29360.png"
+        "image": "assets/v025-widget-patient-medium.png"
       },
       {
         "identity": "ASM-P115:4",
         "number": 4,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
             92,
-            761,
+            900,
             989,
-            887
+            990
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/c75c307ad0bf74fa69ad75a6777896167bfc77222efe34fabc094aab1207f4e9.png"
+        "image": "assets/v025-widget-patient-medium.png"
       }
     ]
   },
@@ -4438,7 +4479,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/f7029a6adee10b9f6940607d92a930d24e6cce5d05973c30b8d6f437f1f29360.png"
+        "image": "source/assets/f7029a6adee10b9f6940607d92a930d24e6cce5d05973c30b8d6f437f1f29360.png"
       },
       {
         "identity": "ASM-P116:6",
@@ -4473,7 +4514,7 @@
             "text": "서버 전송 대기 1건"
           }
         ],
-        "image": ".build/pdf-images/a4a1ea598e520bc362be4a0a9b3ae6c2723222f6eb884b890b0ee40243d582a8.png"
+        "image": "source/assets/a4a1ea598e520bc362be4a0a9b3ae6c2723222f6eb884b890b0ee40243d582a8.png"
       },
       {
         "identity": "ASM-P116:7",
@@ -4508,7 +4549,7 @@
             "text": "한 시간대의 완료 기록 취소"
           }
         ],
-        "image": ".build/pdf-images/5ad111191bf94c2811538a1b8ac99dee8e78f8e124af1e98502a5d1967aa23e0.png"
+        "image": "source/assets/5ad111191bf94c2811538a1b8ac99dee8e78f8e124af1e98502a5d1967aa23e0.png"
       },
       {
         "identity": "ASM-P117:8",
@@ -4543,7 +4584,7 @@
             "text": "기록 전송 상태"
           }
         ],
-        "image": ".build/pdf-images/4584c08fce705bbe44b14889d159983f60e1ddc52b67b4da385bc07396d88669.png"
+        "image": "source/assets/4584c08fce705bbe44b14889d159983f60e1ddc52b67b4da385bc07396d88669.png"
       }
     ]
   },
@@ -4563,80 +4604,80 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
             92,
-            365,
+            490,
             863,
-            491
+            610
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/297c64ec836faac33caebcb465ff111a12cbed761401cd9d1b4d781abcc770dd.png"
+        "image": "assets/guide-caregiver-widget.png"
       },
       {
         "identity": "ASM-P119:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
             429,
-            757,
+            880,
             652,
-            891
+            1000
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/f6fd1483a837004161ec7aaca705ee83e509ca572cdbe4315f9c7b34baf158d0.png"
+        "image": "assets/guide-caregiver-widget-next.png"
       },
       {
         "identity": "ASM-P120:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
             644,
-            757,
+            880,
             867,
-            891
+            1000
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/8366c478ef8a1c762a9805f91e50828f1cdfcf512cf51717e350fb3ed9e8c059.png"
+        "image": "assets/guide-caregiver-widget-evening.png"
       },
       {
         "identity": "ASM-P121:4",
         "number": 4,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
             88,
-            960,
+            1080,
             993,
-            1094
+            1210
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/297c64ec836faac33caebcb465ff111a12cbed761401cd9d1b4d781abcc770dd.png"
+        "image": "assets/guide-caregiver-widget.png"
       }
     ]
   },
@@ -4656,20 +4697,20 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
             80,
-            757,
+            800,
             1000,
-            1306
+            1345
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/fc3a64f0fe659ea1281d80c087932f181eda810b6bc7384304a8973ce37c60a5.png"
+        "image": "assets/login-new.png"
       }
     ]
   },
@@ -4689,20 +4730,20 @@
         "number": 1,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
-            445,
-            1940,
-            637,
-            2130
+            58,
+            2059,
+            1022,
+            2274
           ]
         ],
         "callouts": [],
-        "image": "assets/cabinet-date-group-2026-10-29.png"
+        "image": "assets/v025-registration-sheet-medium.png"
       },
       {
         "identity": "V023-7.1:next-dose-day",
@@ -4722,7 +4763,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/f6bf0653609a8e134588d5cbfe75a8288966815a517abe67986e392d7ce46337.png"
+        "image": "source/assets/f6bf0653609a8e134588d5cbfe75a8288966815a517abe67986e392d7ce46337.png"
       }
     ]
   },
@@ -4742,80 +4783,80 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            38,
-            1217,
+            35,
+            1360,
             1045,
-            2167
+            2300
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/a5c4f3a7118092e0a381d049b56c43f5beaec323f8475da0327b7776b46c3b5c.png"
+        "image": "assets/v025-cabinet-filter-medium.png"
       },
       {
         "identity": "ASM-P125:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            48,
-            1692,
-            1033,
-            2144
+            50,
+            1825,
+            1030,
+            2275
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/703dea2127cda83e50036477dd8a66521f894e4000c0903df3489e2c6e6be451.png"
+        "image": "assets/v025-cabinet-status-medium.png"
       },
       {
         "identity": "ASM-P126:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            48,
-            1839,
-            1033,
-            2144
+            50,
+            1975,
+            1030,
+            2270
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/52a1b377c45d020c007ee5b52788509f44e1fe1696157811639a0049e7731419.png"
+        "image": "assets/v025-cabinet-date-medium.png"
       },
       {
         "identity": "ASM-P126:4",
         "number": 4,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            48,
-            1839,
-            1033,
-            2144
+            50,
+            1975,
+            1030,
+            2270
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/aecdf46159982703306d5f4cbee6fc576b3fae3a099bcac57477ba9a47837cf6.png"
+        "image": "assets/v025-cabinet-order-medium.png"
       }
     ]
   },
@@ -4829,80 +4870,80 @@
         "number": 5,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            38,
-            2016,
-            1042,
-            2163
+            40,
+            2150,
+            1040,
+            2300
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/a5c4f3a7118092e0a381d049b56c43f5beaec323f8475da0327b7776b46c3b5c.png"
+        "image": "assets/v025-cabinet-filter-medium.png"
       },
       {
         "identity": "ASM-P127:6",
         "number": 6,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
-            50,
-            485,
+            52,
+            545,
             1028,
-            648
+            725
           ]
         ],
         "callouts": [],
-        "image": "assets/cabinet-date-group-2026-10-29.png"
+        "image": "assets/v025-cabinet-list-medium.png"
       },
       {
         "identity": "ASM-P127:7",
         "number": 7,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
-            45,
-            700,
-            1035,
-            830
+            53,
+            755,
+            1028,
+            1275
           ]
         ],
         "callouts": [],
-        "image": "assets/cabinet-date-group-2026-10-29.png"
+        "image": "assets/v025-cabinet-list-medium.png"
       },
       {
         "identity": "ASM-P128:9",
         "number": 8,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            51,
-            999,
-            1029,
-            1282
+            245,
+            1090,
+            675,
+            1235
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/57970300623690d1f94cf2560480b92bc172b9942524d16e22364dedecee4ec0.png"
+        "image": "assets/v025-cabinet-list-medium.png"
       }
     ]
   },
@@ -4916,20 +4957,20 @@
         "number": 9,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
             50,
-            680,
-            1030,
-            853
+            750,
+            1025,
+            925
           ]
         ],
         "callouts": [],
-        "image": "assets/cabinet-date-group-collapsed-2026-10-29.png"
+        "image": "assets/v025-med-collapsed-medium.png"
       }
     ]
   },
@@ -4949,20 +4990,20 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            49,
-            1840,
-            1032,
-            1995
+            50,
+            1980,
+            1030,
+            2125
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/703dea2127cda83e50036477dd8a66521f894e4000c0903df3489e2c6e6be451.png"
+        "image": "assets/v025-cabinet-status-medium.png"
       },
       {
         "identity": "FINAL17-7.3:status",
@@ -4997,7 +5038,7 @@
             "text": "처방 변경: 파랑"
           }
         ],
-        "image": ".build/pdf-images/b5e2afae30533ff0f73eef321275b24978726189bc4da0052926a26087caf343.png"
+        "image": "source/assets/b5e2afae30533ff0f73eef321275b24978726189bc4da0052926a26087caf343.png"
       }
     ]
   },
@@ -5017,33 +5058,33 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [],
         "callouts": [],
-        "image": ".build/pdf-images/b5e2afae30533ff0f73eef321275b24978726189bc4da0052926a26087caf343.png"
+        "image": "assets/v025-cabinet-list-medium.png"
       },
       {
         "identity": "ASM-P130:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2250
+          2337
         ],
         "boxes": [
           [
-            49,
-            907,
-            1032,
-            1905
+            50,
+            1080,
+            1028,
+            2070
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/61d1597e64ea1bbe1728394add1d0f06bf05be8ade550b26242c29388c8f36e9.png"
+        "image": "assets/v025-med-detail-medium.png"
       }
     ]
   },
@@ -5063,20 +5104,20 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2250
+          2337
         ],
         "boxes": [
           [
-            49,
-            2014,
-            1032,
-            2179
+            50,
+            2130,
+            1028,
+            2295
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/61d1597e64ea1bbe1728394add1d0f06bf05be8ade550b26242c29388c8f36e9.png"
+        "image": "assets/v025-med-detail-medium.png"
       }
     ]
   },
@@ -5096,62 +5137,62 @@
         "number": 1,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
             915,
-            135,
+            175,
             1015,
-            220
+            280
           ]
         ],
         "callouts": [],
-        "image": "assets/cabinet-date-group-2026-10-29.png"
+        "image": "assets/v025-cabinet-list-medium.png"
       },
       {
         "identity": "ASM-P134:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            49,
-            613,
-            1032,
-            789
+            70,
+            785,
+            1030,
+            870
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/6ad60283e904cffd3f108fc59d30f63aecd60bba970287f4fb14c42ea3f0c3e2.png"
+        "image": "assets/v025-cabinet-selected-medium.png"
       },
       {
         "identity": "ASM-P134:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            49,
-            613,
-            1032,
-            789
+            70,
+            785,
+            1030,
+            870
           ],
           [
-            49,
-            1816,
-            1032,
-            1958
+            50,
+            2155,
+            1030,
+            2300
           ]
         ],
         "callouts": [
@@ -5164,42 +5205,42 @@
             "text": "확인 창 열기: 아직 삭제 전"
           }
         ],
-        "image": ".build/pdf-images/9d296618a427e842f3acbeda00705fd107ed9ec081d6047c8fb33d97022b2bfb.png"
+        "image": "assets/v025-cabinet-selected-medium.png"
       },
       {
         "identity": "ASM-P135:4",
         "number": 4,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            49,
-            613,
-            1032,
-            789
+            165,
+            1055,
+            910,
+            1305
           ],
           [
-            49,
-            1816,
-            1032,
-            1958
+            165,
+            1370,
+            525,
+            1530
           ]
         ],
         "callouts": [
           {
             "box_index": 0,
-            "text": "선택 대상과 개수 재확인"
+            "text": "삭제 대상과 주의사항 확인"
           },
           {
             "box_index": 1,
-            "text": "확인 창 열기: 아직 삭제 전"
+            "text": "취소하여 유지"
           }
         ],
-        "image": ".build/pdf-images/9d296618a427e842f3acbeda00705fd107ed9ec081d6047c8fb33d97022b2bfb.png"
+        "image": "assets/v025-cabinet-delete-confirm-medium.png"
       }
     ]
   },
@@ -5213,40 +5254,40 @@
         "number": 5,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            49,
-            613,
-            1032,
-            789
+            165,
+            1370,
+            525,
+            1530
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/6ad60283e904cffd3f108fc59d30f63aecd60bba970287f4fb14c42ea3f0c3e2.png"
+        "image": "assets/v025-cabinet-delete-confirm-medium.png"
       },
       {
         "identity": "ASM-P136:6",
         "number": 6,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
             715,
-            722,
-            870,
-            812
+            800,
+            865,
+            890
           ]
         ],
         "callouts": [],
-        "image": "assets/cabinet-date-group-2026-10-29.png"
+        "image": "assets/v025-cabinet-list-medium.png"
       }
     ]
   },
@@ -5266,13 +5307,13 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [],
         "callouts": [],
-        "image": ".build/pdf-images/a5bc2c12bfd7ecad80f97ed6c340c96dbe981a924f84afc476a9d153e176dda8.png"
+        "image": "assets/v025-home-schedule-medium.png"
       },
       {
         "identity": "ASM-P137:2",
@@ -5292,7 +5333,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/971b0b5304b27737e8bb1ba74966ced02baaacc4f026c5dd650832fa70f6c2e4.png"
+        "image": "source/assets/971b0b5304b27737e8bb1ba74966ced02baaacc4f026c5dd650832fa70f6c2e4.png"
       },
       {
         "identity": "ASM-P138:3",
@@ -5312,7 +5353,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/971b0b5304b27737e8bb1ba74966ced02baaacc4f026c5dd650832fa70f6c2e4.png"
+        "image": "source/assets/971b0b5304b27737e8bb1ba74966ced02baaacc4f026c5dd650832fa70f6c2e4.png"
       },
       {
         "identity": "ASM-P138:4",
@@ -5332,7 +5373,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/74e25afc26d7fd2b41fff4469952cc4b483baf3b566468688cd725d06943e466.png"
+        "image": "source/assets/74e25afc26d7fd2b41fff4469952cc4b483baf3b566468688cd725d06943e466.png"
       }
     ]
   },
@@ -5352,13 +5393,13 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [],
         "callouts": [],
-        "image": ".build/pdf-images/a5bc2c12bfd7ecad80f97ed6c340c96dbe981a924f84afc476a9d153e176dda8.png"
+        "image": "assets/v025-home-schedule-medium.png"
       }
     ]
   },
@@ -5378,80 +5419,80 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            804,
-            1175,
-            930,
-            1301
+            810,
+            1040,
+            925,
+            1165
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/b5e2afae30533ff0f73eef321275b24978726189bc4da0052926a26087caf343.png"
+        "image": "assets/v025-cabinet-list-medium.png"
       },
       {
         "identity": "CARE17-7.9:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            342,
-            1196,
+            340,
+            1040,
             930,
-            1574
+            1460
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/188e2b17a615c6f984462f094a0506c6b7482dfe5f96a4eab31bb656dd9a9f38.png"
+        "image": "assets/v025-med-actions-medium.png"
       },
       {
         "identity": "CARE17-7.9:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            53,
-            980,
-            1028,
-            1518
+            50,
+            385,
+            1030,
+            1630
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/945622a4a76d8e6462c368f5ad2027ba34d1381d100c3291a2ac1136f720db84.png"
+        "image": "assets/v025-med-edit-medium.png"
       },
       {
         "identity": "FINAL17-7.9:replacement",
         "number": 4,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            53,
-            263,
-            1028,
-            1169
+            50,
+            385,
+            1030,
+            1280
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/dc4dbeca1a8110e0e963965d07685e0352fdb809c1f732170ab796b7b7bfe037.png"
+        "image": "assets/v025-med-replace-medium.png"
       }
     ]
   },
@@ -5465,20 +5506,20 @@
         "number": 5,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            168,
-            690,
-            912,
-            1559
+            105,
+            740,
+            975,
+            1735
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/f80bbc7b0e00079c2be026e5585105f93c302fe1b956f395e2c494ba4abd1a7f.png"
+        "image": "assets/v025-med-replace-confirm-medium.png"
       }
     ]
   },
@@ -5498,60 +5539,60 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            342,
-            1322,
-            930,
-            1448
+            345,
+            1190,
+            925,
+            1310
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/188e2b17a615c6f984462f094a0506c6b7482dfe5f96a4eab31bb656dd9a9f38.png"
+        "image": "assets/v025-med-actions-medium.png"
       },
       {
         "identity": "CARE17-7.10:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            53,
-            263,
-            1028,
-            822
+            50,
+            380,
+            1030,
+            920
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/f3d3ec875554ef034ae9a0af545e4189f44b8f829432f3311e9791e3f4194dbc.png"
+        "image": "assets/v025-med-stop-medium.png"
       },
       {
         "identity": "CARE17-7.10:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            168,
-            722,
-            912,
-            1527
+            105,
+            770,
+            975,
+            1705
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/60f3f862beec5839740a57d5d38ce6e0d0c374fce52d3d23882b59410fe36d73.png"
+        "image": "assets/v025-med-stop-confirm-medium.png"
       }
     ]
   },
@@ -5571,73 +5612,73 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [],
         "callouts": [],
-        "image": ".build/pdf-images/a5bc2c12bfd7ecad80f97ed6c340c96dbe981a924f84afc476a9d153e176dda8.png"
+        "image": "assets/v025-home-schedule-medium.png"
       },
       {
         "identity": "CURRENT-8.1:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            51,
-            1634,
-            1026,
-            2142
+            55,
+            1770,
+            1025,
+            2275
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/3fbeffd9de9f925301c608b72155c71c6cb4201cc6073a6dc8516a4305a5e2c4.png"
+        "image": "assets/v025-places-choice-medium.png"
       },
       {
         "identity": "CURRENT-8.1:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            17,
-            361,
-            955,
-            516
+            70,
+            705,
+            880,
+            840
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/424aaf64fb63678837bc7d4fac48261948067a8fcd8184241b594cadcf06e2d5.png"
+        "image": "assets/v025-departments-medium.png"
       },
       {
         "identity": "CURRENT-8.1:4",
         "number": 4,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            28,
-            2021,
-            1053,
-            2174
+            30,
+            2155,
+            1050,
+            2305
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/ecb59084d3b95dcb107ec81943062e7bf6f524646db2c22c3bf00440890d2efc.png"
+        "image": "assets/v025-pharmacy-map-medium.png"
       }
     ]
   },
@@ -5657,62 +5698,62 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            17,
-            361,
-            955,
-            516
+            42,
+            365,
+            1038,
+            500
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/424aaf64fb63678837bc7d4fac48261948067a8fcd8184241b594cadcf06e2d5.png"
+        "image": "assets/v025-departments-medium.png"
       },
       {
         "identity": "CURRENT-8.2:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            950,
-            1222,
-            1080,
-            1356
+            908,
+            678,
+            1036,
+            2150
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/424aaf64fb63678837bc7d4fac48261948067a8fcd8184241b594cadcf06e2d5.png"
+        "image": "assets/v025-departments-medium.png"
       },
       {
         "identity": "CURRENT-8.2:4",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            28,
-            274,
-            534,
-            408
+            30,
+            330,
+            530,
+            460
           ],
           [
-            28,
-            2021,
-            1053,
-            2174
+            30,
+            2155,
+            1050,
+            2305
           ]
         ],
         "callouts": [
@@ -5725,27 +5766,27 @@
             "text": "이번에 찾은 병원 목록"
           }
         ],
-        "image": ".build/pdf-images/03edd2b67e589f9941da60b3bea809ba84078e86c0ef262a5a07a86bf16b1d4e.png"
+        "image": "assets/v025-hospital-map-medium.png"
       },
       {
         "identity": "CURRENT-8.2:5",
         "number": 4,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            947,
-            1740,
+            945,
+            1870,
             1060,
-            1853
+            2005
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/03edd2b67e589f9941da60b3bea809ba84078e86c0ef262a5a07a86bf16b1d4e.png"
+        "image": "assets/v025-hospital-map-medium.png"
       }
     ]
   },
@@ -5759,20 +5800,20 @@
         "number": 5,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            28,
-            274,
-            534,
-            408
+            30,
+            330,
+            530,
+            460
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/03edd2b67e589f9941da60b3bea809ba84078e86c0ef262a5a07a86bf16b1d4e.png"
+        "image": "assets/v025-hospital-map-medium.png"
       }
     ]
   },
@@ -5792,42 +5833,42 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            547,
-            274,
-            1053,
-            408
+            550,
+            330,
+            1050,
+            460
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/03edd2b67e589f9941da60b3bea809ba84078e86c0ef262a5a07a86bf16b1d4e.png"
+        "image": "assets/v025-hospital-map-medium.png"
       },
       {
         "identity": "CURRENT-8.3:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            38,
-            653,
-            1042,
-            787
+            40,
+            790,
+            1040,
+            925
           ],
           [
-            38,
-            921,
-            1042,
-            1136
+            40,
+            1055,
+            1040,
+            1270
           ]
         ],
         "callouts": [
@@ -5840,49 +5881,49 @@
             "text": "선택한 진료 상태"
           }
         ],
-        "image": ".build/pdf-images/13c1f7a4db8ec60dac29e0b4eaa706dfef00eb9bcce93ca2155c4d8316089420.png"
+        "image": "assets/v025-hospital-filter-medium.png"
       },
       {
         "identity": "CURRENT-8.3:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            38,
-            1149,
-            1042,
-            1417
+            40,
+            1285,
+            1040,
+            1550
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/13c1f7a4db8ec60dac29e0b4eaa706dfef00eb9bcce93ca2155c4d8316089420.png"
+        "image": "assets/v025-hospital-filter-medium.png"
       },
       {
         "identity": "CURRENT-8.3:4",
         "number": 4,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            38,
-            1430,
-            1042,
-            1646
+            40,
+            1565,
+            1040,
+            1780
           ],
           [
-            38,
-            1659,
-            1042,
-            1874
+            40,
+            1790,
+            1040,
+            2010
           ]
         ],
         "callouts": [
@@ -5895,7 +5936,7 @@
             "text": "진료시간 조건 없이 검색"
           }
         ],
-        "image": ".build/pdf-images/13c1f7a4db8ec60dac29e0b4eaa706dfef00eb9bcce93ca2155c4d8316089420.png"
+        "image": "assets/v025-hospital-filter-medium.png"
       }
     ]
   },
@@ -5909,40 +5950,40 @@
         "number": 5,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            38,
-            2040,
-            1042,
-            2174
+            40,
+            2175,
+            1040,
+            2310
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/13c1f7a4db8ec60dac29e0b4eaa706dfef00eb9bcce93ca2155c4d8316089420.png"
+        "image": "assets/v025-hospital-filter-medium.png"
       },
       {
         "identity": "CURRENT-8.3:8",
         "number": 6,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            547,
-            274,
-            1053,
-            408
+            40,
+            790,
+            1040,
+            1270
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/03edd2b67e589f9941da60b3bea809ba84078e86c0ef262a5a07a86bf16b1d4e.png"
+        "image": "assets/v025-hospital-filter-medium.png"
       }
     ]
   },
@@ -5962,82 +6003,82 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            28,
-            2021,
-            1053,
-            2174
+            30,
+            2155,
+            1050,
+            2305
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/03edd2b67e589f9941da60b3bea809ba84078e86c0ef262a5a07a86bf16b1d4e.png"
+        "image": "assets/v025-hospital-map-medium.png"
       },
       {
         "identity": "CURRENT-8.4:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            49,
-            671,
-            1032,
-            1629
+            50,
+            730,
+            1030,
+            1625
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/a2d175e18ad5ba0fb2ddbf390350867ec29ab1729b9b0d05556bc3f07575eb5a.png"
+        "image": "assets/v025-hospital-list-medium.png"
       },
       {
         "identity": "CURRENT-8.4:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            45,
-            984,
-            1034,
-            1679
+            30,
+            1300,
+            1040,
+            2110
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/fc215c29cecb95d37866242bfef578c4db09c0fa1218f6a330ca5c41d100c4e2.png"
+        "image": "assets/v025-hospital-detail-medium.png"
       },
       {
         "identity": "CURRENT-8.4:4",
         "number": 4,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            0,
-            864,
-            1080,
-            956
+            490,
+            1210,
+            585,
+            1300
           ],
           [
-            903,
-            948,
-            1037,
-            1082
+            915,
+            1310,
+            1020,
+            1415
           ]
         ],
         "callouts": [
@@ -6050,7 +6091,7 @@
             "text": "상세 닫기"
           }
         ],
-        "image": ".build/pdf-images/fc215c29cecb95d37866242bfef578c4db09c0fa1218f6a330ca5c41d100c4e2.png"
+        "image": "assets/v025-hospital-detail-medium.png"
       }
     ]
   },
@@ -6070,60 +6111,60 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            542,
-            1700,
-            655,
-            1813
+            805,
+            1310,
+            905,
+            1415
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/a2d175e18ad5ba0fb2ddbf390350867ec29ab1729b9b0d05556bc3f07575eb5a.png"
+        "image": "assets/v025-hospital-detail-medium.png"
       },
       {
         "identity": "CURRENT-8.5:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            798,
-            958,
-            911,
-            1071
+            805,
+            1310,
+            905,
+            1415
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/fc215c29cecb95d37866242bfef578c4db09c0fa1218f6a330ca5c41d100c4e2.png"
+        "image": "assets/v025-hospital-favorite-medium.png"
       },
       {
         "identity": "CURRENT-8.5:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            43,
-            1685,
-            531,
-            1819
+            40,
+            1980,
+            530,
+            2110
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/fc215c29cecb95d37866242bfef578c4db09c0fa1218f6a330ca5c41d100c4e2.png"
+        "image": "assets/v025-hospital-detail-medium.png"
       }
     ]
   },
@@ -6143,80 +6184,80 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            51,
-            1919,
-            1026,
-            2142
+            50,
+            2055,
+            1030,
+            2280
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/3fbeffd9de9f925301c608b72155c71c6cb4201cc6073a6dc8516a4305a5e2c4.png"
+        "image": "assets/v025-places-choice-medium.png"
       },
       {
         "identity": "CURRENT-8.6:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            28,
-            2021,
-            1053,
-            2174
+            30,
+            2155,
+            1050,
+            2305
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/ecb59084d3b95dcb107ec81943062e7bf6f524646db2c22c3bf00440890d2efc.png"
+        "image": "assets/v025-pharmacy-map-medium.png"
       },
       {
         "identity": "CURRENT-8.6:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            947,
-            1740,
+            945,
+            1870,
             1060,
-            1853
+            2005
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/ecb59084d3b95dcb107ec81943062e7bf6f524646db2c22c3bf00440890d2efc.png"
+        "image": "assets/v025-pharmacy-map-medium.png"
       },
       {
         "identity": "CURRENT-8.6:4",
         "number": 4,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            49,
-            597,
-            1032,
-            1290
+            50,
+            730,
+            1030,
+            1480
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/ddb8913ecf48cb20bdf5f908b37c9b9e2ced4d88d68c5a75abc4e2a4d91a9a92.png"
+        "image": "assets/v025-pharmacy-list-medium.png"
       }
     ]
   },
@@ -6236,80 +6277,80 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            367,
-            193,
-            713,
-            327
+            365,
+            330,
+            710,
+            460
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/ecb59084d3b95dcb107ec81943062e7bf6f524646db2c22c3bf00440890d2efc.png"
+        "image": "assets/v025-pharmacy-map-medium.png"
       },
       {
         "identity": "CURRENT-8.7:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            36,
-            919,
-            1044,
-            1876
+            40,
+            1055,
+            1040,
+            2010
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/7a302a22964935a196466f7d0a934d1860fe5d03b22c5f3253057ddc9cbdac20.png"
+        "image": "assets/v025-pharmacy-filter-medium.png"
       },
       {
         "identity": "CURRENT-8.7:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            36,
-            1429,
-            1044,
-            1648
+            40,
+            1565,
+            1040,
+            1780
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/e34874ee88b198da4bc7c33022e0e0c0c351b5ea654b4836ddbaf644678ffb9c.png"
+        "image": "assets/v025-pharmacy-weekend-medium.png"
       },
       {
         "identity": "CURRENT-8.7:4",
         "number": 4,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            36,
-            651,
-            1044,
-            789
+            40,
+            790,
+            1040,
+            925
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/e34874ee88b198da4bc7c33022e0e0c0c351b5ea654b4836ddbaf644678ffb9c.png"
+        "image": "assets/v025-pharmacy-weekend-medium.png"
       }
     ]
   },
@@ -6323,22 +6364,22 @@
         "number": 5,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            722,
-            1052,
-            862,
-            1192
+            110,
+            635,
+            660,
+            775
           ],
           [
-            849,
-            1710,
-            999,
-            1848
+            855,
+            1860,
+            985,
+            1970
           ]
         ],
         "callouts": [
@@ -6351,27 +6392,27 @@
             "text": "확인 후 조회 조건으로 돌아가기"
           }
         ],
-        "image": ".build/pdf-images/3cb04c203c3320217e65985bc99129e642aac5306dd1044b5378464e24b6e72c.png"
+        "image": "assets/v025-pharmacy-calendar-medium.png"
       },
       {
         "identity": "CURRENT-8.7:6",
         "number": 6,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            36,
-            2038,
-            1044,
-            2176
+            40,
+            2175,
+            1040,
+            2310
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/e34874ee88b198da4bc7c33022e0e0c0c351b5ea654b4836ddbaf644678ffb9c.png"
+        "image": "assets/v025-pharmacy-weekend-medium.png"
       },
       {
         "identity": "CURRENT-8.7:7",
@@ -6391,27 +6432,27 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/2393f932120a6e398a08f370a474639f584b6dc8d888bad044f3ff58d74234ef.png"
+        "image": "source/assets/2393f932120a6e398a08f370a474639f584b6dc8d888bad044f3ff58d74234ef.png"
       },
       {
         "identity": "CURRENT-8.7:8",
         "number": 8,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            38,
-            921,
-            1042,
-            1136
+            40,
+            790,
+            1040,
+            1270
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/7a302a22964935a196466f7d0a934d1860fe5d03b22c5f3253057ddc9cbdac20.png"
+        "image": "assets/v025-pharmacy-filter-medium.png"
       }
     ]
   },
@@ -6431,80 +6472,80 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            49,
-            597,
-            1032,
-            1290
+            50,
+            730,
+            1030,
+            1480
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/ddb8913ecf48cb20bdf5f908b37c9b9e2ced4d88d68c5a75abc4e2a4d91a9a92.png"
+        "image": "assets/v025-pharmacy-list-medium.png"
       },
       {
         "identity": "CURRENT-8.8:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            0,
-            1370,
-            1080,
-            1998
+            30,
+            1420,
+            1040,
+            2110
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/49cb3410d95659fb6122fda7888437d9af7c4bdbe61b112fc6a332de7ce64b50.png"
+        "image": "assets/v025-pharmacy-detail-medium.png"
       },
       {
         "identity": "CURRENT-8.8:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            0,
-            1286,
-            1080,
-            1378
+            485,
+            1360,
+            590,
+            1460
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/49cb3410d95659fb6122fda7888437d9af7c4bdbe61b112fc6a332de7ce64b50.png"
+        "image": "assets/v025-pharmacy-detail-medium.png"
       },
       {
         "identity": "CURRENT-8.8:4",
         "number": 4,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            27,
-            2020,
-            1055,
-            2176
+            30,
+            2155,
+            1050,
+            2305
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/ddb8913ecf48cb20bdf5f908b37c9b9e2ced4d88d68c5a75abc4e2a4d91a9a92.png"
+        "image": "assets/v025-pharmacy-list-medium.png"
       }
     ]
   },
@@ -6524,80 +6565,80 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            613,
-            1361,
-            726,
-            1474
+            820,
+            1460,
+            895,
+            1565
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/ddb8913ecf48cb20bdf5f908b37c9b9e2ced4d88d68c5a75abc4e2a4d91a9a92.png"
+        "image": "assets/v025-pharmacy-detail-medium.png"
       },
       {
         "identity": "CURRENT-8.9:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            798,
-            1381,
-            911,
-            1494
+            720,
+            784,
+            825,
+            889
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/49cb3410d95659fb6122fda7888437d9af7c4bdbe61b112fc6a332de7ce64b50.png"
+        "image": "assets/current-guide-pharmacy-star.png"
       },
       {
         "identity": "CURRENT-8.9:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            798,
-            1381,
-            911,
-            1494
+            720,
+            784,
+            825,
+            889
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/49cb3410d95659fb6122fda7888437d9af7c4bdbe61b112fc6a332de7ce64b50.png"
+        "image": "assets/current-guide-pharmacy-star.png"
       },
       {
         "identity": "CURRENT-8.9:4",
         "number": 4,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            36,
-            1583,
-            1034,
-            1744
+            48,
+            1580,
+            1035,
+            2105
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/49cb3410d95659fb6122fda7888437d9af7c4bdbe61b112fc6a332de7ce64b50.png"
+        "image": "assets/v025-pharmacy-detail-medium.png"
       }
     ]
   },
@@ -6617,80 +6658,80 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            43,
-            1843,
-            531,
-            1977
+            40,
+            1980,
+            530,
+            2110
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/49cb3410d95659fb6122fda7888437d9af7c4bdbe61b112fc6a332de7ce64b50.png"
+        "image": "assets/v025-pharmacy-detail-medium.png"
       },
       {
         "identity": "CURRENT-8.10:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            549,
-            1843,
-            1037,
-            1977
+            550,
+            1980,
+            1040,
+            2110
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/49cb3410d95659fb6122fda7888437d9af7c4bdbe61b112fc6a332de7ce64b50.png"
+        "image": "assets/v025-pharmacy-detail-medium.png"
       },
       {
         "identity": "CURRENT-8.10:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2216
+          2337
         ],
         "boxes": [
           [
-            48,
-            1640,
-            1034,
-            2028
+            53,
+            1781,
+            1028,
+            2159
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/3e6b5298d5567252b57260f663752dcc17504fd1edd9252deacc65ae9c0bc38d.png"
+        "image": "assets/current-guide-directions.png"
       },
       {
         "identity": "CURRENT-8.10:4",
         "number": 4,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2216
+          2337
         ],
         "boxes": [
           [
-            49,
-            2019,
-            1032,
-            2216
+            53,
+            2159,
+            1028,
+            2337
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/3e6b5298d5567252b57260f663752dcc17504fd1edd9252deacc65ae9c0bc38d.png"
+        "image": "assets/current-guide-directions.png"
       }
     ]
   },
@@ -6710,75 +6751,75 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [],
         "callouts": [],
-        "image": ".build/pdf-images/192dff8a4ee17f4d8b30ccbb202786e0739addb276e776897051f4ca4ebd3a11.png"
+        "image": "assets/v025-settings-home-medium.png"
       },
       {
         "identity": "ASM-P156:3",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            181,
-            914,
-            899,
-            993
+            185,
+            1054,
+            895,
+            1125
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/e8e960fb34fa1b73db2ba1d8dc2e187051839ebae0118a138f375f4b79e5426d.png"
+        "image": "assets/guide-settings-unsaved-medium.png"
       },
       {
         "identity": "ASM-P156:4",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            709,
-            1153,
-            899,
-            1287
+            713,
+            1293,
+            895,
+            1419
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/e8e960fb34fa1b73db2ba1d8dc2e187051839ebae0118a138f375f4b79e5426d.png"
+        "image": "assets/guide-settings-unsaved-medium.png"
       },
       {
         "identity": "ASM-P157:5",
         "number": 4,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            217,
-            1153,
-            450,
-            1287
+            221,
+            1293,
+            446,
+            1419
           ],
           [
-            463,
-            1153,
-            696,
-            1287
+            467,
+            1293,
+            692,
+            1419
           ]
         ],
         "callouts": [
@@ -6791,7 +6832,7 @@
             "text": "마지막 저장값으로 돌아가기"
           }
         ],
-        "image": ".build/pdf-images/e8e960fb34fa1b73db2ba1d8dc2e187051839ebae0118a138f375f4b79e5426d.png"
+        "image": "assets/guide-settings-unsaved-medium.png"
       }
     ]
   },
@@ -6850,46 +6891,60 @@
         "number": 1,
         "crop": [
           0,
-          112,
+          110,
           1080,
           2337
         ],
-        "boxes": [],
+        "boxes": [
+          [
+            50,
+            1820,
+            1030,
+            2280
+          ]
+        ],
         "callouts": [],
-        "image": "assets/settings-order-display.png"
+        "image": "assets/v025-settings-reading-speed-medium.png"
       },
       {
         "identity": "ASM-P159:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            97,
-            1559,
-            983,
-            1685
+            110,
+            1810,
+            970,
+            1995
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/98b101eea7a55180d05498758eb2b95fbf6142e4faed17a68c386e2c94e2e367.png"
+        "image": "assets/v025-settings-preview-medium.png"
       },
       {
         "identity": "ASM-P159:3",
         "number": 3,
         "crop": [
           0,
-          112,
+          110,
           1080,
           2337
         ],
-        "boxes": [],
+        "boxes": [
+          [
+            100,
+            2110,
+            980,
+            2290
+          ]
+        ],
         "callouts": [],
-        "image": "assets/settings-order-display.png"
+        "image": "assets/v025-settings-preview-medium.png"
       }
     ]
   },
@@ -6909,53 +6964,60 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            49,
-            1693,
-            1032,
-            2142
+            50,
+            1820,
+            1030,
+            2280
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/dad84a78b513efd9047a53d04731043845d7d303de33974bca93987c03130633.png"
+        "image": "assets/v025-settings-language-medium.png"
       },
       {
         "identity": "ASM-P160:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            49,
-            1840,
-            1032,
-            2142
+            50,
+            1970,
+            1030,
+            2280
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/8a6636ae9d95c126e3d659afd2c7996984bb4155d1a8e80bc5abb82fc6d5e6f6.png"
+        "image": "assets/v025-settings-time-medium.png"
       },
       {
         "identity": "ASM-P160:3",
         "number": 3,
         "crop": [
           0,
-          112,
+          110,
           1080,
           2337
         ],
-        "boxes": [],
+        "boxes": [
+          [
+            100,
+            2110,
+            980,
+            2290
+          ]
+        ],
         "callouts": [],
-        "image": "assets/settings-order-display.png"
+        "image": "assets/v025-settings-preview-medium.png"
       }
     ]
   },
@@ -6975,33 +7037,40 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            49,
-            1840,
-            1032,
-            2142
+            50,
+            1970,
+            1030,
+            2280
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/1711dddc876dd43f831884a43a7db10464925ff04bb45436cf8a524bc5207030.png"
+        "image": "assets/v025-settings-home-target-medium.png"
       },
       {
         "identity": "ASM-P161:2",
         "number": 2,
         "crop": [
           0,
-          112,
+          110,
           1080,
           2337
         ],
-        "boxes": [],
+        "boxes": [
+          [
+            100,
+            2110,
+            980,
+            2290
+          ]
+        ],
         "callouts": [],
-        "image": "assets/settings-order-display.png"
+        "image": "assets/v025-settings-preview-medium.png"
       }
     ]
   },
@@ -7027,7 +7096,7 @@
         ],
         "boxes": [],
         "callouts": [],
-        "image": "assets/notification_settings_2026-10-22.png"
+        "image": "assets/v025-notification-settings-medium.png"
       },
       {
         "identity": "ASM-P162:2",
@@ -7040,27 +7109,27 @@
         ],
         "boxes": [],
         "callouts": [],
-        "image": "assets/notification_settings_2026-10-22.png"
+        "image": "assets/v025-notification-settings-medium.png"
       },
       {
         "identity": "DEV29-9.6:search",
         "number": 3,
         "crop": [
           0,
-          85,
+          110,
           1080,
-          2154
+          2337
         ],
         "boxes": [
           [
-            50,
-            825,
-            1030,
-            1175
+            55,
+            472,
+            1027,
+            878
           ]
         ],
         "callouts": [],
-        "image": "assets/settings-medication-search-2026-10-29.png"
+        "image": "assets/v025-notification-lower-medium.png"
       }
     ]
   },
@@ -7080,66 +7149,80 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          945
+          2337
         ],
-        "boxes": [],
+        "boxes": [
+          [
+            90,
+            1150,
+            980,
+            1260
+          ]
+        ],
         "callouts": [],
-        "image": ".build/pdf-images/916a9a5c27dc148b1c46295bc4ea5bbb22e34b37be816080a68d709d58db2f85.png"
+        "image": "assets/v025-notification-lower-medium.png"
       },
       {
         "identity": "ASM-P163:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            825,
-            729,
-            959,
-            863
+            830,
+            875,
+            950,
+            990
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/eeef0d09c9282539c21dc0148ba31a44e3420e03490a1b62f84b8b93c6ab410f.png"
+        "image": "assets/v025-default-time-picker-medium.png"
       },
       {
         "identity": "ASM-P164:3",
         "number": 3,
         "crop": [
           0,
-          112,
+          110,
           1080,
           2337
         ],
-        "boxes": [],
+        "boxes": [
+          [
+            105,
+            2110,
+            975,
+            2280
+          ]
+        ],
         "callouts": [],
-        "image": "assets/notification_settings_2026-10-22.png"
+        "image": "assets/v025-notification-lower-medium.png"
       },
       {
         "identity": "ASM-P165:4",
         "number": 4,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            200,
-            1114,
-            870,
-            1246
+            188,
+            1260,
+            890,
+            1380
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/eeef0d09c9282539c21dc0148ba31a44e3420e03490a1b62f84b8b93c6ab410f.png"
+        "image": "assets/v025-default-time-picker-medium.png"
       }
     ]
   },
@@ -7153,22 +7236,22 @@
         "number": 5,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            232,
-            983,
-            849,
-            1142
+            235,
+            1120,
+            850,
+            1270
           ],
           [
-            658,
-            1197,
-            849,
-            1331
+            660,
+            1335,
+            850,
+            1460
           ]
         ],
         "callouts": [
@@ -7181,27 +7264,27 @@
             "text": "입력값 반영"
           }
         ],
-        "image": ".build/pdf-images/d14ce1a6c968607b51abcbcd507841eab9fa58f31ed83983eccda62e602b0ae7.png"
+        "image": "assets/v025-default-time-input-medium.png"
       },
       {
         "identity": "ASM-P165:6",
         "number": 6,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            825,
-            729,
-            959,
-            863
+            830,
+            875,
+            950,
+            990
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/eeef0d09c9282539c21dc0148ba31a44e3420e03490a1b62f84b8b93c6ab410f.png"
+        "image": "assets/v025-default-time-picker-medium.png"
       }
     ]
   },
@@ -7221,33 +7304,40 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            49,
-            1840,
-            1032,
-            2142
+            50,
+            1975,
+            1030,
+            2280
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/947d397134310276541249239248986ac8dfb1e320508197f4bb08abf1a96bee.png"
+        "image": "assets/v025-notification-privacy-dialog-medium.png"
       },
       {
         "identity": "ASM-P166:2",
         "number": 2,
         "crop": [
           0,
-          112,
+          110,
           1080,
           2337
         ],
-        "boxes": [],
+        "boxes": [
+          [
+            100,
+            2110,
+            980,
+            2290
+          ]
+        ],
         "callouts": [],
-        "image": "assets/notification_settings_2026-10-22.png"
+        "image": "assets/v025-notification-privacy-medium.png"
       }
     ]
   },
@@ -7273,7 +7363,7 @@
         ],
         "boxes": [],
         "callouts": [],
-        "image": "assets/notification_settings_2026-10-22.png"
+        "image": "assets/v025-notification-settings-medium.png"
       },
       {
         "identity": "ASM-P167:2",
@@ -7293,7 +7383,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/7f3a8b916618e3658a3974eeaf11a12d1f65906e06910d6880edf2bb3907c593.png"
+        "image": "source/assets/7f3a8b916618e3658a3974eeaf11a12d1f65906e06910d6880edf2bb3907c593.png"
       },
       {
         "identity": "V023-9.9:exact-notice",
@@ -7306,7 +7396,7 @@
         ],
         "boxes": [],
         "callouts": [],
-        "image": "assets/notification_settings_2026-10-22.png"
+        "image": "assets/v025-notification-settings-medium.png"
       },
       {
         "identity": "V023-9.9:exact-permission",
@@ -7326,7 +7416,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/05a8354c867ecf06980fc097a12f1a73ffd3d1bee2dfd1a40c8ec48cb6c759f0.png"
+        "image": "source/assets/05a8354c867ecf06980fc097a12f1a73ffd3d1bee2dfd1a40c8ec48cb6c759f0.png"
       }
     ]
   },
@@ -7366,80 +7456,80 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            53,
-            851,
-            1028,
-            977
+            50,
+            1025,
+            1030,
+            1155
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/bc638e95046b7b6d5e6836f3c2f3540a4fd4cd84f043b255b2713476d2a17c2c.png"
+        "image": "assets/v025-account-medium.png"
       },
       {
         "identity": "ASM-P169:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
             80,
-            757,
+            800,
             1000,
-            1306
+            1345
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/fc3a64f0fe659ea1281d80c087932f181eda810b6bc7384304a8973ce37c60a5.png"
+        "image": "assets/login-new.png"
       },
       {
         "identity": "ASM-P170:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2250
+          2337
         ],
         "boxes": [
           [
             49,
-            504,
+            1025,
             1032,
-            638
+            1155
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/09c31f6a2cdc8db1c2d287565da989bad07b2018bf47a214657ada98eac5d2b7.png"
+        "image": "assets/guide-guest-account.png"
       },
       {
         "identity": "ASM-P170:4",
         "number": 4,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2250
+          2337
         ],
         "boxes": [
           [
-            567,
-            1297,
-            713,
-            1431
+            160,
+            1100,
+            920,
+            1365
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/694fba169aee2e2e9bda1ecfd8b24991f5cf5531f2ae1fa9c6f7ccb7354924b2.png"
+        "image": "assets/guide-guest-warning.png"
       }
     ]
   },
@@ -7453,20 +7543,20 @@
         "number": 5,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
-            80,
-            1804,
-            1000,
-            1938
+            260,
+            1870,
+            830,
+            1960
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/fc3a64f0fe659ea1281d80c087932f181eda810b6bc7384304a8973ce37c60a5.png"
+        "image": "assets/login-new.png"
       }
     ]
   },
@@ -7486,42 +7576,42 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
-            53,
-            1019,
-            1028,
-            1145
+            50,
+            1190,
+            1030,
+            1325
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/bc638e95046b7b6d5e6836f3c2f3540a4fd4cd84f043b255b2713476d2a17c2c.png"
+        "image": "assets/v025-account-medium.png"
       },
       {
         "identity": "ASM-P172:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2250
+          2337
         ],
         "boxes": [
           [
-            164,
-            978,
-            916,
-            1175
+            158,
+            1100,
+            922,
+            1295
           ],
           [
-            567,
-            1230,
-            713,
-            1364
+            570,
+            1360,
+            710,
+            1485
           ]
         ],
         "callouts": [
@@ -7534,27 +7624,27 @@
             "text": "자료를 유지하며 취소"
           }
         ],
-        "image": ".build/pdf-images/8796f1f578485e52cb2287e7999918e5c8fba69b77989d9386f7bd818b87b6d2.png"
+        "image": "assets/v025-account-delete-confirm-medium.png"
       },
       {
         "identity": "ASM-P172:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
             80,
-            757,
+            800,
             1000,
-            1306
+            1345
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/fc3a64f0fe659ea1281d80c087932f181eda810b6bc7384304a8973ce37c60a5.png"
+        "image": "assets/login-new.png"
       }
     ]
   },
@@ -7580,7 +7670,7 @@
         ],
         "boxes": [],
         "callouts": [],
-        "image": "assets/notification_settings_2026-10-22.png"
+        "image": "assets/v025-notification-settings-medium.png"
       },
       {
         "identity": "CARE17-9.12:2",
@@ -7593,7 +7683,7 @@
         ],
         "boxes": [],
         "callouts": [],
-        "image": "assets/notification_settings_2026-10-22.png"
+        "image": "assets/v025-notification-settings-medium.png"
       },
       {
         "identity": "CARE17-9.12:3",
@@ -7606,7 +7696,7 @@
         ],
         "boxes": [],
         "callouts": [],
-        "image": "assets/notification_settings_2026-10-22.png"
+        "image": "assets/v025-notification-settings-medium.png"
       },
       {
         "identity": "CARE17-9.12:4",
@@ -7619,7 +7709,7 @@
         ],
         "boxes": [],
         "callouts": [],
-        "image": "assets/notification_settings_2026-10-22.png"
+        "image": "assets/v025-notification-settings-medium.png"
       }
     ]
   },
@@ -7639,60 +7729,60 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
             53,
-            536,
+            732,
             1028,
-            804
+            926
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/bc638e95046b7b6d5e6836f3c2f3540a4fd4cd84f043b255b2713476d2a17c2c.png"
+        "image": "assets/v025-account-medium.png"
       },
       {
         "identity": "CARE17-9.13:2",
         "number": 2,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
             53,
-            210,
+            341,
             1028,
-            2156
+            1050
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/51f430d8ac83b3f4f93f6cd7f292afa5e5cd2ecb189fab5cbed5136e9bd0bcee.png"
+        "image": "assets/v025-data-open-medium.png"
       },
       {
         "identity": "CARE17-9.13:3",
         "number": 3,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2225
+          2337
         ],
         "boxes": [
           [
             53,
-            217,
+            1970,
             1028,
-            2162
+            2150
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/d0084c5e6aff3ea24a0374d0f9ccfba8e104d46a91da826505aa74a8cc1e4e55.png"
+        "image": "assets/v025-data-medium.png"
       }
     ]
   },
@@ -7712,22 +7802,22 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2250
+          2337
         ],
         "boxes": [
           [
-            122,
-            924,
-            625,
-            977
+            120,
+            970,
+            635,
+            1015
           ],
           [
-            122,
-            1168,
-            614,
-            1221
+            120,
+            1215,
+            625,
+            1260
           ]
         ],
         "callouts": [
@@ -7740,7 +7830,7 @@
             "text": "비밀번호 길이 확인"
           }
         ],
-        "image": ".build/pdf-images/6bb23259a66fdd6bd584397a07334dfa1445e71ac7f4181ad1df681f09a41335.png"
+        "image": "assets/signup-validation.png"
       },
       {
         "identity": "ASM-P173:2",
@@ -7749,18 +7839,18 @@
           0,
           0,
           1080,
-          2250
+          2229
         ],
         "boxes": [
           [
-            80,
-            1082,
-            1000,
-            1147
+            85,
+            990,
+            870,
+            1065
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/3b107ee46ca6b60af57b7dd16dd9bb3a6b7276a1c6704bdd26bab1953912d114.png"
+        "image": "assets/simulated-wrong-password-2026-11-05.png"
       }
     ]
   },
@@ -7780,13 +7870,13 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [],
         "callouts": [],
-        "image": ".build/pdf-images/50c877964d01066943da453a88a8842b36f49fc39f6eeeea16cddc00f7e7bed6.png"
+        "image": "assets/v025-prescription-offline-error-medium.png"
       }
     ]
   },
@@ -7819,7 +7909,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/eee93cfefcfc52878ad125267a2b1d84abc35db07af71b07c3a5dd4cc10d8b63.png"
+        "image": "source/assets/eee93cfefcfc52878ad125267a2b1d84abc35db07af71b07c3a5dd4cc10d8b63.png"
       },
       {
         "identity": "ASM-P177:2",
@@ -7832,14 +7922,29 @@
         ],
         "boxes": [
           [
+            53,
+            1478,
+            530,
+            1604
+          ],
+          [
             735,
             1269,
             1032,
             1403
           ]
         ],
-        "callouts": [],
-        "image": ".build/pdf-images/eee93cfefcfc52878ad125267a2b1d84abc35db07af71b07c3a5dd4cc10d8b63.png"
+        "callouts": [
+          {
+            "box_index": 0,
+            "text": "알약 영역 다시 분석"
+          },
+          {
+            "box_index": 1,
+            "text": "사진 변경"
+          }
+        ],
+        "image": "source/assets/eee93cfefcfc52878ad125267a2b1d84abc35db07af71b07c3a5dd4cc10d8b63.png"
       }
     ]
   },
@@ -7865,7 +7970,7 @@
         ],
         "boxes": [],
         "callouts": [],
-        "image": "assets/notification_settings_2026-10-22.png"
+        "image": "assets/v025-notification-settings-medium.png"
       },
       {
         "identity": "ASM-P178:2",
@@ -7885,7 +7990,7 @@
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/7f3a8b916618e3658a3974eeaf11a12d1f65906e06910d6880edf2bb3907c593.png"
+        "image": "source/assets/7f3a8b916618e3658a3974eeaf11a12d1f65906e06910d6880edf2bb3907c593.png"
       }
     ]
   },
@@ -7905,20 +8010,20 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2217
+          2337
         ],
         "boxes": [
           [
-            859,
-            361,
-            993,
-            495
+            870,
+            485,
+            985,
+            605
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/297c64ec836faac33caebcb465ff111a12cbed761401cd9d1b4d781abcc770dd.png"
+        "image": "assets/guide-caregiver-widget.png"
       }
     ]
   },
@@ -7938,20 +8043,20 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          110,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            43,
-            1685,
-            531,
-            1819
+            48,
+            1980,
+            526,
+            2110
           ]
         ],
         "callouts": [],
-        "image": ".build/pdf-images/fc215c29cecb95d37866242bfef578c4db09c0fa1218f6a330ca5c41d100c4e2.png"
+        "image": "assets/v025-hospital-detail-medium.png"
       }
     ]
   }

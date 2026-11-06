@@ -22,38 +22,46 @@ class _SettingsSection extends StatelessWidget {
   // 함수이름: build
   // 함수역할: context의 글씨 배율로 구역을 표시한다. 반환값: 너비를 공유하는 설정 목록.
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Semantics(
-        header: true,
-        child: Text(
-          title,
-          style: const TextStyle(
-            color: MedBuddyColors.primaryDark,
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            height: 1.35,
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+    decoration: BoxDecoration(
+      color: MedBuddyColors.surface,
+      border: Border.all(color: MedBuddyColors.cardBorder),
+      borderRadius: MedBuddyRadii.card,
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Semantics(
+          header: true,
+          child: Text(
+            title,
+            style: const TextStyle(
+              color: MedBuddyColors.primaryDark,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              height: 1.35,
+            ),
           ),
         ),
-      ),
-      if (description != null) ...[
-        const SizedBox(height: 6),
-        Text(
-          description!,
-          style: const TextStyle(
-            color: MedBuddyColors.textMuted,
-            fontSize: 13,
-            height: 1.4,
+        if (description != null) ...[
+          const SizedBox(height: 6),
+          KeepWordsText(
+            description!,
+            style: const TextStyle(
+              color: MedBuddyColors.textMuted,
+              fontSize: 13,
+              height: 1.4,
+            ),
           ),
-        ),
+        ],
+        const SizedBox(height: 4),
+        for (var index = 0; index < children.length; index++) ...[
+          children[index],
+          if (index < children.length - 1)
+            const Divider(height: 1, color: MedBuddyColors.divider),
+        ],
       ],
-      const SizedBox(height: 8),
-      for (var index = 0; index < children.length; index++) ...[
-        children[index],
-        if (index < children.length - 1)
-          const Divider(height: 1, color: MedBuddyColors.divider),
-      ],
-    ],
+    ),
   );
 }

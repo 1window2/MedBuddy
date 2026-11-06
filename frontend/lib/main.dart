@@ -24,6 +24,7 @@ import 'controls/authentication_control.dart';
 import 'controls/caregiver_alert_action_control.dart';
 import 'entities/user_setting_entity.dart';
 import 'services/notification_inbox_store.dart';
+import 'services/medication_reminder_action_tag.dart';
 import 'services/notification_service.dart';
 import 'services/caregiver_notification_monitor_service.dart';
 import 'composition/caregiver_notification_background_service.dart';
@@ -985,6 +986,18 @@ class _MedBuddyAppState extends State<MedBuddyApp> with WidgetsBindingObserver {
     if (slotKey.isEmpty) {
       return;
     }
+    // 내보낸 MainActivity로 다른 앱도 알림 동작과 같은 인텐트를 보낼 수 있다. 이 앱이 이 계정의
+    // 알림에 붙인 서명이 맞을 때만 기록하거나 다시 알리고, 아니면 일정 화면만 연다.
+    final authorized = await MedicationReminderActionTag.verify(
+      owner: _authenticationControl.session?.userHash ?? '',
+      payload: selection.signedPayload ?? '',
+      tag: selection.actionTag,
+    );
+    if (!authorized) {
+      if (mounted) _openSchedule(navigator, initialSlotKey: slotKey);
+      return;
+    }
+    if (!mounted) return;
     final viewModel = navigator.context.read<MedBuddyViewModel>();
     final language = viewModel.userSetting.language;
     final isEnglish = viewModel.userSetting.isEnglish;
@@ -992,12 +1005,22 @@ class _MedBuddyAppState extends State<MedBuddyApp> with WidgetsBindingObserver {
     var canReview = false;
 
     if (!selection.isForDate(DateTime.now())) {
+      // 자정을 넘겨 누른 알림을 오늘 일정에 기록하면 오늘 같은 시간대가 복용으로 바뀌고 그 알림도
+      // 사라진다. 오늘 일정이 아니라 그날 기록을 고치도록 안내한다.
+      final day = selection.scheduleDate;
+      final dayLabel = day == null
+          ? null
+          : isEnglish
+          ? '${day.month}/${day.day}'
+          : '${day.month}월 ${day.day}일';
+      final snoozed =
+          selection.action == MedicationNotificationAction.snoozeTenMinutes;
       ScaffoldMessenger.maybeOf(navigator.context)?.showSnackBar(
         SnackBar(
           content: Text(
             isEnglish
-                ? 'This reminder is out of date. Please check today’s schedule.'
-                : '지난 날짜의 알림입니다. 오늘의 복약 일정을 확인해 주세요.',
+                ? 'This reminder is for ${dayLabel ?? 'an earlier day'}, so ${snoozed ? 'it was not snoozed' : 'nothing was recorded for today'}. If you took that dose, correct it in your history.'
+                : '${dayLabel ?? '지난 날짜'} 알림이라 ${snoozed ? '다시 알리지 않았어요' : '오늘 일정에는 기록하지 않았어요'}. 그날 복용했다면 복약 기록에서 고쳐 주세요.',
           ),
         ),
       );

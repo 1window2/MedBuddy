@@ -10,6 +10,7 @@ import '../entities/user_setting_entity.dart';
 import '../services/foreground_recovery_service.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/medbuddy_confirm_dialog.dart';
+import '../widgets/medbuddy_wordmark.dart';
 
 // Class Name: AuthenticationUI
 // Role: Represents sign-in methods and the account creation form.
@@ -220,6 +221,7 @@ class _AuthenticationUIState extends State<AuthenticationUI>
     return _AuthenticationScaffold(
       languageControl: _languageControl,
       isBusy: control.isBusy,
+      showWordmark: true,
       body: SafeArea(
         child: Stack(
           children: [
@@ -236,16 +238,6 @@ class _AuthenticationUIState extends State<AuthenticationUI>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const Text(
-                          'MedBuddy',
-                          textScaler: TextScaler.noScaling,
-                          style: TextStyle(
-                            color: MedBuddyColors.primary,
-                            fontSize: 38,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
                         Text(
                           _createAccount
                               ? text.createAccountTitle
@@ -827,12 +819,14 @@ class _AuthenticationScaffold extends StatelessWidget {
   final bool isBusy;
   final Widget body;
   final VoidCallback? onBack;
+  final bool showWordmark;
 
   const _AuthenticationScaffold({
     required this.languageControl,
     required this.isBusy,
     required this.body,
     this.onBack,
+    this.showWordmark = false,
   });
 
   // 언어 아이콘을 누를 때만 선택창을 열고, 닫기만 하면 기존 설정을 유지한다.
@@ -915,7 +909,15 @@ class _AuthenticationScaffold extends StatelessWidget {
                     onPressed: isBusy ? null : onBack,
                     icon: const Icon(Icons.arrow_back),
                   ),
-                const Spacer(),
+                if (showWordmark)
+                  const Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(left: 24),
+                      child: MedBuddyWordmark(),
+                    ),
+                  )
+                else
+                  const Spacer(),
                 IconButton(
                   key: const Key('authentication-language-toggle'),
                   tooltip: '언어 / Language',

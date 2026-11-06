@@ -187,7 +187,7 @@ def draw_footer(c, record):
     c._code.append("/Artifact << /Type /Pagination /Subtype /Footer >> BDC")
     c.setFillColorRGB(0, 0, 0)
     c.setFont(REG, FOOTER_SIZE)
-    c.drawString(LEFT, FOOTER_Y, "MedBuddy 0.2.4")
+    c.drawString(LEFT, FOOTER_Y, "MedBuddy 0.2.5")
     c.drawCentredString(W / 2, FOOTER_Y, record["number"])
     for i, line in enumerate(record["lines"]):
         baseline = FOOTER_Y + (len(record["lines"]) - 1 - i) * FOOTER_LEADING

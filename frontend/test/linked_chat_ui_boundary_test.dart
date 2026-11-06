@@ -9,9 +9,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/boundaries/linked_chat_ui_boundary.dart';
-import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
-import 'package:medbuddy_frontend/boundaries/medication_history_ui_boundary.dart';
 import 'package:medbuddy_frontend/boundaries/check_schedule_ui_boundary.dart';
+import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
+import 'package:medbuddy_frontend/widgets/chat_date_divider.dart';
+import 'package:medbuddy_frontend/boundaries/medication_history_ui_boundary.dart';
 import 'package:medbuddy_frontend/entities/nearby_care_entity.dart';
 import 'package:medbuddy_frontend/controls/check_schedule_control.dart';
 import 'package:medbuddy_frontend/controls/manage_linked_chat_control.dart';
@@ -445,7 +446,9 @@ Future<void> _pumpPatientChat(
 // 함수역할: 약 선택 화면에서 91번 약의 지정 시간대를 고르고 확인한다.
 // 매개변수: tester: 화면 도구, slots: 선택할 시간대 키. 반환값: 채팅으로 돌아온 뒤 완료.
 Future<void> _selectDoseSlots(WidgetTester tester, List<String> slots) async {
-  await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
+  await tester.tap(find.byKey(const ValueKey('chatActions')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const ValueKey('chat-action-0')));
   await tester.pumpAndSettle();
   for (final slot in slots) {
     final row = find.byKey(
@@ -640,6 +643,47 @@ class _FakeRealtimeService extends LinkedChatRealtimeService {
   }
 }
 
+// 클래스명: _NoMedicationChatControl
+// 역할: 복용 중인 약이 없는 연동을 재현하는 대역.
+// 주요 책임:
+// - 채팅에 첨부할 약 문맥을 빈 목록으로 제공한다.
+class _NoMedicationChatControl extends _RetryChatControl {
+  // 함수이름: _NoMedicationChatControl
+  // 함수역할: 전송 실패 없이 기본 대역을 준비한다. 매개변수: 없음. 반환값: 대역.
+  _NoMedicationChatControl() : super(failFirstSend: false);
+
+  // 함수이름: requestMedicationContexts
+  // 함수역할: 복용 중인 약이 없다는 응답을 제공한다. 매개변수: linkId. 반환값: 빈 목록.
+  @override
+  Future<List<ChatMedicationContext>> requestMedicationContexts({
+    required int linkId,
+  }) async => const [];
+}
+
+// 클래스명: _GatedMedicationChatControl
+// 역할: 약 문맥 응답을 테스트가 정한 시점까지 붙잡아 두는 대역.
+// 주요 책임:
+// - 기능 메뉴를 연 뒤에 약 정보가 도착하는 순서를 재현한다.
+// 속성:
+// - gate (Completer<void>): 완료되면 약 문맥 응답을 돌려준다.
+class _GatedMedicationChatControl extends _RetryChatControl {
+  final gate = Completer<void>();
+
+  // 함수이름: _GatedMedicationChatControl
+  // 함수역할: 전송 실패 없이 기본 대역을 준비한다. 매개변수: 없음. 반환값: 대역.
+  _GatedMedicationChatControl() : super(failFirstSend: false);
+
+  // 함수이름: requestMedicationContexts
+  // 함수역할: gate가 완료된 뒤 기본 약 문맥을 돌려준다. 매개변수: linkId. 반환값: 약 문맥.
+  @override
+  Future<List<ChatMedicationContext>> requestMedicationContexts({
+    required int linkId,
+  }) async {
+    await gate.future;
+    return super.requestMedicationContexts(linkId: linkId);
+  }
+}
+
 // 클래스명: _DeleteChatControl
 // 역할: 채팅 삭제 식별자와 범위를 기록하고 선택적으로 서버 실패를 재현하는 대역.
 // 주요 책임:
@@ -749,6 +793,7 @@ ChatMessage _deletionMessage({
 ChatMessage _historyShareMessage({
   String sender = 'patient-a',
   int endDaysAgo = 0,
+  bool separate = false,
 }) {
   final end = MedicationHistoryDates.today(
     DateTime.now(),
@@ -770,6 +815,12 @@ ChatMessage _historyShareMessage({
         'taken_count': 123456,
         'skipped_count': 2345,
         'unrecorded_count': 6789,
+        if (separate) ...{
+          'scheduled_taken_count': 123455,
+          'scheduled_skipped_count': 2345,
+          'scheduled_unrecorded_count': 6789,
+          'as_needed_taken_count': 1,
+        },
       },
     },
   });
@@ -865,8 +916,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(
           find.text(switch (status) {
-            'closed' =>
-              language == 'ko' ? '19:00 영업 종료' : 'Closed at 19:00',
+            'closed' => language == 'ko' ? '19:00 영업 종료' : 'Closed at 19:00',
             'before_open' => '영업 전 · 09:00 시작',
             'closing_soon' => 'Closing soon · Closes 19:00',
             _ => 'Open · Closes 19:00',
@@ -874,12 +924,48 @@ void main() {
           findsOneWidget,
         );
         final addressText = tester.widget<Text>(find.text(address));
+        final panel =
+            tester
+                    .widget<Container>(
+                      find.byKey(const Key('chat-place-summary-panel')),
+                    )
+                    .decoration!
+                as BoxDecoration;
+        expect(panel.color, MedBuddyColors.chatContentSurface);
+        expect(
+          panel.border,
+          Border.all(color: MedBuddyColors.chatContentBorder),
+        );
+        final title = language == 'ko'
+            ? (hospital ? '병원 정보' : '약국 정보')
+            : (hospital ? 'Hospital information' : 'Pharmacy information');
+        expect(find.text(title), findsOneWidget);
+        expect(tester.widget<Text>(find.text(title)).style!.fontSize, 17);
+        expect(
+          tester.widget<Text>(find.text('Shared place')).style!.fontWeight,
+          FontWeight.w600,
+        );
         expect(addressText.maxLines, isNull);
         expect(addressText.overflow, isNot(TextOverflow.ellipsis));
         expect(find.textContaining('정보 확인:'), findsNothing);
         expect(find.textContaining('예약이 확정'), findsNothing);
         expect(find.text('정보 보기'), findsNothing);
         expect(find.text('Details'), findsNothing);
+        final map = tester.getRect(
+          find.byKey(const ValueKey('chat-place-preview-37.55-126.92')),
+        );
+        final call = tester.getRect(
+          find.widgetWithText(OutlinedButton, language == 'ko' ? '전화' : 'Call'),
+        );
+        final directions = tester.getRect(
+          find.widgetWithText(
+            OutlinedButton,
+            language == 'ko' ? '길찾기' : 'Directions',
+          ),
+        );
+        expect(call.width, closeTo(directions.width, 0.1));
+        expect(call.left, closeTo(map.left, 2));
+        expect(directions.right, closeTo(map.right, 2));
         expect(
           find.descendant(
             of: find.byKey(const Key('chat-place-details')),
@@ -888,9 +974,7 @@ void main() {
           findsOneWidget,
         );
         final callback = tester
-            .widget<OutlinedButton>(
-              find.byKey(const Key('chat-place-details')),
-            )
+            .widget<OutlinedButton>(find.byKey(const Key('chat-place-details')))
             .onPressed!;
         await tester.tap(find.byKey(const Key('chat-place-details')));
         await tester.pumpAndSettle();
@@ -920,6 +1004,63 @@ void main() {
   }
 
   for (final language in ['ko', 'en']) {
+    testWidgets('같은 날 여러 메시지는 하나의 현지 날짜로 묶음 $language', (tester) async {
+      ChatMessage message(int id, DateTime time) => ChatMessage(
+        messageId: id,
+        linkId: 17,
+        senderHash: 'patient-a',
+        clientMessageId: 'date-$id',
+        body: 'Date message $id',
+        createdAt: time.toUtc(),
+      );
+      final control = _RetryChatControl(
+        historyMessages: [
+          message(1, DateTime(2026, 10, 29, 23, 59)),
+          message(2, DateTime(2026, 10, 30)),
+          message(3, DateTime(2026, 10, 30, 10)),
+        ],
+      );
+      final realtime = _FakeRealtimeService();
+      await tester.binding.setSurfaceSize(const Size(500, 1300));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LinkedChatUI(
+            linkId: 17,
+            currentUserHash: 'patient-a',
+            patientHash: 'patient-a',
+            userSetting: UserSetting(language: language),
+            control: control,
+            realtimeService: realtime,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(ChatDateDivider), findsNWidgets(2));
+      final first = find.byKey(const Key('chat-date-2026-10-29'));
+      final second = find.byKey(const Key('chat-date-2026-10-30'));
+      expect(
+        tester
+            .getCenter(find.descendant(of: second, matching: find.byType(Text)))
+            .dx,
+        closeTo(tester.getCenter(second).dx, 0.5),
+      );
+      expect(
+        tester.getRect(first).bottom,
+        lessThan(tester.getRect(second).top),
+      );
+      expect(
+        find.text(
+          language == 'ko' ? '2026년 10월 30일 금요일' : '2026-10-30 · Friday',
+        ),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await realtime.dispose();
+      control.dispose();
+    });
+
     for (final mine in [true, false]) {
       testWidgets('copy preserves message text $language/$mine', (
         tester,
@@ -959,9 +1100,25 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        final body = tester.widget<Text>(find.text('Message 1'));
+        expect(body.style!.fontWeight, FontWeight.w600);
+        expect(
+          tester.widget<TextField>(find.byType(TextField)).style!.fontWeight,
+          FontWeight.w600,
+        );
+        expect(
+          find.text(language == 'ko' ? '약 정보' : 'Medication information'),
+          findsNothing,
+        );
         await tester.longPress(find.text('Message 1'));
         await tester.pumpAndSettle();
         expect(find.text(language == 'ko' ? '복사' : 'Copy'), findsOneWidget);
+        expect(
+          tester
+              .widget<Text>(find.text(language == 'ko' ? '복사' : 'Copy'))
+              .style,
+          MedBuddyTextStyles.menuTitle,
+        );
         await tester.tap(find.byKey(const Key('chat-copy-message')));
         await tester.pumpAndSettle();
         expect(copied, 'Message 1');
@@ -1001,7 +1158,7 @@ void main() {
               tester.widget<Container>(bubble).decoration! as BoxDecoration;
           expect(
             decoration.color,
-            mine ? MedBuddyColors.primary : Colors.white,
+            mine ? MedBuddyColors.chatOutgoing : Colors.white,
           );
           final alignment = tester.widget<Align>(
             find.ancestor(of: bubble, matching: find.byType(Align)).first,
@@ -1079,12 +1236,18 @@ void main() {
   });
 
   for (final language in ['ko', 'en']) {
-    for (final mine in [false, true]) {
-      testWidgets('history card wraps large text $language/$mine', (
+    for (final (mine, separate) in [
+      (false, false),
+      (true, false),
+      (false, true),
+      (true, true),
+    ]) {
+      testWidgets('history card wraps large text $language/$mine/$separate', (
         tester,
       ) async {
         final message = _historyShareMessage(
           sender: mine ? 'patient-a' : 'caregiver-a',
+          separate: separate,
         );
         final control = _RetryChatControl(historyMessages: [message]);
         final realtime = _FakeRealtimeService();
@@ -1114,18 +1277,9 @@ void main() {
           find.text(english ? 'Medication history' : '복약 기록'),
           findsOneWidget,
         );
-        expect(
-          find.text('${english ? 'Taken' : '복용함'} 123456'),
-          findsOneWidget,
-        );
-        expect(
-          find.text('${english ? 'Skipped' : '건너뜀'} 2345'),
-          findsOneWidget,
-        );
-        expect(
-          find.text('${english ? 'Unrecorded' : '미기록'} 6789'),
-          findsOneWidget,
-        );
+        expect(find.text(english ? 'Taken' : '복용함'), findsOneWidget);
+        expect(find.text(english ? 'Skipped' : '건너뜀'), findsOneWidget);
+        expect(find.text(english ? 'Unrecorded' : '미기록'), findsOneWidget);
         expect(
           find.text('${english ? 'At sharing' : '공유 당시'}: 2026-10-21 10:15'),
           findsNothing,
@@ -1144,10 +1298,30 @@ void main() {
           findsOneWidget,
         );
         final card = find.byKey(const Key('chat-medication-history-card'));
+        final panel =
+            tester
+                    .widget<Container>(
+                      find.byKey(const Key('chat-history-summary-panel')),
+                    )
+                    .decoration!
+                as BoxDecoration;
+        expect(panel.color, MedBuddyColors.chatContentSurface);
         expect(
-          find.descendant(of: card, matching: find.byType(Wrap)),
+          panel.border,
+          Border.all(color: MedBuddyColors.chatContentBorder),
+        );
+        expect(panel.color, isNot(MedBuddyColors.chatOutgoing));
+        expect(panel.color, isNot(Colors.white));
+        expect(find.byKey(const Key('history-rate-chart')), findsOneWidget);
+        expect(
+          find.text(separate ? '123455/132589' : '123456/132590'),
           findsOneWidget,
         );
+        expect(
+          find.byKey(const Key('history-count-3')),
+          separate ? findsOneWidget : findsNothing,
+        );
+        expect(find.byKey(const Key('history-rate-toggle')), findsNothing);
         expect(
           find.descendant(of: card, matching: find.byType(Checkbox)),
           findsNothing,
@@ -1160,7 +1334,7 @@ void main() {
     }
   }
 
-  // 90일 보관 기간이 지난 공유는 열면 실패할 화면 대신 안내만 보이고, 미기록의 의미를 함께 적는다.
+  // 90일 보관 기간이 지난 공유는 열면 실패할 화면 대신 만료 안내를 보인다.
   testWidgets('an expired history share explains why it cannot be opened', (
     tester,
   ) async {
@@ -1184,7 +1358,7 @@ void main() {
     expect(find.byKey(const Key('chat-history-expired')), findsOneWidget);
     expect(
       find.byKey(const Key('chat-history-unrecorded-notice')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       tester
@@ -1827,9 +2001,11 @@ void main() {
           );
           await tester.pumpAndSettle();
           await tester.enterText(find.byType(TextField), '유지할 초안');
-          await tester.tap(find.byKey(const ValueKey('chatCareSelector')));
+          await tester.tap(find.byKey(const ValueKey('chatActions')));
           await tester.pumpAndSettle();
-          await tester.tap(find.text(hospitals ? '근처 병원' : '근처 약국'));
+          await tester.tap(
+            find.byKey(ValueKey(hospitals ? 'chat-action-2' : 'chat-action-3')),
+          );
           await tester.pumpAndSettle();
           await tester.tap(find.byKey(const Key('pick-double-tap-care')));
           await tester.pumpAndSettle();
@@ -1873,7 +2049,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    final selector = find.byKey(const ValueKey('chatCareSelector'));
+    final selector = find.byKey(const ValueKey('chatActions'));
     await tester.tap(selector);
     await tester.tap(selector, warnIfMissed: false);
     await tester.pumpAndSettle();
@@ -1938,9 +2114,13 @@ void main() {
         );
         await tester.pumpAndSettle();
         for (final confirm in [false, true]) {
-          await tester.tap(find.byKey(const ValueKey('chatCareSelector')));
+          await tester.tap(find.byKey(const ValueKey('chatActions')));
           await tester.pumpAndSettle();
-          await tester.tap(find.text(mode.hospitals ? '근처 병원' : '근처 약국'));
+          await tester.tap(
+            find.byKey(
+              ValueKey(mode.hospitals ? 'chat-action-2' : 'chat-action-3'),
+            ),
+          );
           await tester.pumpAndSettle();
           await tester.tap(find.byKey(const Key('pick-test-hospital')));
           await tester.pumpAndSettle();
@@ -2109,6 +2289,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(modes, isEmpty);
       expect(find.text('병원 찾기'), findsOneWidget);
+      expect(
+        find.text(
+          kind == ChatMessageKind.medicationShortage ? '약 부족 알림' : '복용 불편 알림',
+        ),
+        findsOneWidget,
+      );
       if (kind == ChatMessageKind.medicationShortage) {
         expect(find.text('약국 찾기'), findsOneWidget);
       }
@@ -2162,12 +2348,14 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        final notice = find
-            .ancestor(
-              of: find.byIcon(Icons.health_and_safety_outlined),
-              matching: find.byType(Container),
-            )
-            .first;
+        final notice = find.byKey(
+          const ValueKey('chatDiscomfortSafetyGuidance'),
+        );
+        expect(notice, findsOneWidget);
+        expect(
+          find.text(language == 'ko' ? '복용 불편 알림' : 'Medication discomfort'),
+          findsOneWidget,
+        );
         final button = find.widgetWithText(
           OutlinedButton,
           language == 'ko' ? '병원 찾기' : 'Find hospitals',
@@ -2511,7 +2699,9 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
+      await tester.tap(find.byKey(const ValueKey('chatActions')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('chat-action-0')));
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(
@@ -2626,7 +2816,9 @@ void main() {
       await _selectDoseSlots(tester, slots);
 
       // Reopening must restore the exact dose choices, not all slots of that drug.
-      await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
+      await tester.tap(find.byKey(const ValueKey('chatActions')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('chat-action-0')));
       await tester.pumpAndSettle();
       expect(
         tester
@@ -3070,7 +3262,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
+    await tester.tap(find.byKey(const ValueKey('chatActions')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('chat-action-0')));
     await tester.pumpAndSettle();
     expect(find.text('대화할 약 선택'), findsOneWidget);
     expect(find.text('아침'), findsOneWidget);
@@ -3178,11 +3372,15 @@ void main() {
         );
         await tester.pumpAndSettle();
 
+        await tester.tap(find.byKey(const ValueKey('chatActions')));
+        await tester.pumpAndSettle();
         expect(
-          find.byTooltip(isEnglish ? 'Request a medication check' : '복약 확인 요청'),
-          findsOneWidget,
+          tester
+              .widget<ListTile>(find.byKey(const ValueKey('chat-action-1')))
+              .enabled,
+          isTrue,
         );
-        await tester.tap(find.byKey(const ValueKey('chatScheduleSelector')));
+        await tester.tap(find.byKey(const ValueKey('chat-action-1')));
         await tester.pumpAndSettle();
         expect(
           find.text(isEnglish ? "Today's medication times" : '오늘의 복약 시간대'),
@@ -3236,6 +3434,75 @@ void main() {
     );
   }
 
+  // 함수이름: 기능 메뉴 갱신 테스트
+  // 함수역할: 메뉴를 연 뒤 약 정보가 도착하면 닫았다 열지 않아도 약 첨부를 고를 수 있는지 확인한다.
+  // 매개변수: tester: 화면 테스트 도구. 반환값: 검증 완료.
+  testWidgets('열린 기능 메뉴는 늦게 도착한 약 정보를 반영한다', (tester) async {
+    final control = _GatedMedicationChatControl();
+    final realtimeService = _FakeRealtimeService();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkedChatUI(
+          linkId: 17,
+          currentUserHash: 'patient-a',
+          patientHash: 'patient-a',
+          control: control,
+          realtimeService: realtimeService,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('chatActions')));
+    await tester.pumpAndSettle();
+    final medication = find.byKey(const ValueKey('chat-action-0'));
+    expect(tester.widget<ListTile>(medication).enabled, isFalse);
+    // 아직 받지 못한 목록을 "약 없음"으로 안내하지 않는다.
+    expect(find.text('복용 중인 약을 불러오는 중입니다'), findsOneWidget);
+    expect(find.text('복용 중인 약이 없습니다'), findsNothing);
+
+    control.gate.complete();
+    await tester.pumpAndSettle();
+    expect(tester.widget<ListTile>(medication).enabled, isTrue);
+    expect(find.text('복용 중인 약이 없습니다'), findsNothing);
+    expect(find.text('복용 중인 약을 불러오는 중입니다'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await realtimeService.dispose();
+    control.dispose();
+  });
+
+  // 함수이름: 약 없음 기능 메뉴 테스트
+  // 함수역할: 복용 중인 약이 없으면 약 첨부 선택지를 막고 그 이유를 화면 낭독기 이름으로 알리는지 확인한다.
+  // 매개변수: tester: 화면 테스트 도구. 반환값: 검증 완료.
+  testWidgets('기능 메뉴는 복용 중인 약이 없을 때 이유를 알린다', (tester) async {
+    final control = _NoMedicationChatControl();
+    final realtimeService = _FakeRealtimeService();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LinkedChatUI(
+          linkId: 17,
+          currentUserHash: 'patient-a',
+          patientHash: 'patient-a',
+          control: control,
+          realtimeService: realtimeService,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('chatActions')));
+    await tester.pumpAndSettle();
+    final medication = tester.widget<ListTile>(
+      find.byKey(const ValueKey('chat-action-0')),
+    );
+    expect(medication.enabled, isFalse);
+    expect(find.text('대화할 약 선택'), findsOneWidget);
+    expect(find.text('복용 중인 약이 없습니다'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await realtimeService.dispose();
+    control.dispose();
+  });
+
   for (final language in ['ko', 'en']) {
     for (final scenario in [
       (user: 'patient-a', canRequest: false),
@@ -3243,7 +3510,7 @@ void main() {
       (user: 'caregiver-a', canRequest: false),
     ]) {
       // 함수이름: 확인 요청 도구 숨김 테스트
-      // 함수역할: 환자 또는 요청 권한 없는 사용자는 시계 버튼 없이 약 첨부와 입력을 사용할 수 있는지 확인한다.
+      // 함수역할: 환자 또는 요청할 시간대가 없는 보호자는 복약 확인 요청을 고를 수 없고, 약 첨부와 입력은 사용할 수 있는지 확인한다.
       // 매개변수: tester: 화면 테스트 도구. 반환값: 검증 완료.
       testWidgets('확인 요청 숨김 $language $scenario', (tester) async {
         tester.view.physicalSize = const Size(360, 740);
@@ -3284,11 +3551,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        expect(
-          find.byKey(const ValueKey('chatScheduleSelector')),
-          findsNothing,
-        );
-        final medication = find.byKey(const ValueKey('chatMedicationSelector'));
+        final medication = find.byKey(const ValueKey('chatActions'));
         expect(tester.widget<IconButton>(medication).onPressed, isNotNull);
         expect(find.byType(TextField), findsOneWidget);
         expect(
@@ -3296,6 +3559,29 @@ void main() {
               tester.getTopRight(medication).dx,
           8,
         );
+        await tester.tap(medication);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('chat-action-0')), findsOneWidget);
+        if (scenario.user == 'patient-a') {
+          expect(find.byKey(const ValueKey('chat-action-1')), findsNothing);
+        } else {
+          expect(
+            tester
+                .widget<ListTile>(find.byKey(const ValueKey('chat-action-1')))
+                .enabled,
+            isFalse,
+          );
+          expect(
+            find.text(
+              language == 'en'
+                  ? 'No medication times to check today'
+                  : '오늘 확인을 요청할 시간대가 없습니다',
+            ),
+            findsOneWidget,
+          );
+        }
+        expect(find.byKey(const ValueKey('chat-action-2')), findsOneWidget);
+        expect(find.byKey(const ValueKey('chat-action-3')), findsOneWidget);
         expect(control.sendAttempts, 0);
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox.shrink());
@@ -3330,7 +3616,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
+    await tester.tap(find.byKey(const ValueKey('chatActions')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('chat-action-0')));
     await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(
@@ -3400,7 +3688,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('chatMedicationSelector')));
+    await tester.tap(find.byKey(const ValueKey('chatActions')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('chat-action-0')));
     await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(
@@ -3445,69 +3735,145 @@ void main() {
   // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
   // 반환값:
   // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
-  testWidgets('환자가 채팅의 시간대 카드를 누르면 해당 복약 일정으로 이동한다', (tester) async {
-    final scheduleContext = const ChatScheduleContext(
-      slotKey: 'evening',
-      alarmTime: '18:00',
-      alarmEnabled: true,
-      completedCount: 0,
-      totalCount: 1,
-      canRequestCheck: false,
-      medications: [
-        ChatMedicationContext(
-          medicationId: 92,
-          medicationName: '저녁정',
-          dosagePerTime: '0.5정',
+  for (final (currentUser, kind) in [
+    ('patient-a', ChatMessageKind.slotCompletion),
+    ('caregiver-a', ChatMessageKind.slotCompletion),
+    ('patient-a', ChatMessageKind.slotCheckRequest),
+  ]) {
+    testWidgets('$currentUser $kind: 채팅 카드에서 해당 일정으로 이동한다', (tester) async {
+      final day = MedicationHistoryDates.today(DateTime.now());
+      final date =
+          '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+      final scheduleContext = ChatScheduleContext(
+        scheduleDate: date,
+        slotKey: 'evening',
+        alarmTime: '18:00',
+        alarmEnabled: true,
+        completedCount: 0,
+        totalCount: 1,
+        canRequestCheck: false,
+        medications: const [
+          ChatMedicationContext(
+            medicationId: 92,
+            medicationName: '저녁정',
+            dosagePerTime: '0.5정',
+          ),
+        ],
+      );
+      final control = _RetryChatControl(
+        failFirstSend: false,
+        historyMessages: [
+          ChatMessage(
+            messageId: 70,
+            linkId: 17,
+            senderHash: 'caregiver-a',
+            clientMessageId: 'schedule_message_001',
+            body: '저녁 복약을 확인해주세요.',
+            createdAt: DateTime.utc(2026, 8, 24, 9),
+            messageKind: kind,
+            scheduleContext: scheduleContext,
+          ),
+        ],
+      );
+      final realtimeService = _FakeRealtimeService();
+      final viewModel = MedBuddyViewModel(
+        checkSchedule: _ChatScheduleControl(),
+        setNotification: _ChatSetNotification(),
+      );
+      addTearDown(viewModel.dispose);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<MedBuddyViewModel>.value(
+          value: viewModel,
+          child: MaterialApp(
+            home: LinkedChatUI(
+              linkId: 17,
+              currentUserHash: currentUser,
+              patientHash: 'patient-a',
+              control: control,
+              realtimeService: realtimeService,
+            ),
+          ),
         ),
-      ],
-    );
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          kind == ChatMessageKind.slotCheckRequest ? '복약 확인 요청' : '복용 완료 알림',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('저녁 18:00'));
+      await tester.pumpAndSettle();
+
+      if (kind == ChatMessageKind.slotCheckRequest) {
+        expect(find.byType(CheckScheduleUI), findsOneWidget);
+      } else {
+        expect(find.byType(MedicationHistoryUI), findsOneWidget);
+        final scheduleScreen = tester.widget<MedicationHistoryUI>(
+          find.byType(MedicationHistoryUI),
+        );
+        expect(scheduleScreen.readOnly, isTrue);
+        expect(scheduleScreen.patientHash, 'patient-a');
+        expect(scheduleScreen.sharedRange!.start.day, day.day);
+      }
+      expect(tester.takeException(), isNull);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await realtimeService.dispose();
+      control.dispose();
+    });
+  }
+
+  // 기록은 최근 90일만 읽을 수 있으므로 더 오래된 일정 카드는 실패할 화면을 열지 않는다.
+  testWidgets('a schedule card older than the history does not open', (
+    tester,
+  ) async {
+    final day = MedicationHistoryDates.today(
+      DateTime.now(),
+    ).subtract(const Duration(days: 120));
     final control = _RetryChatControl(
       failFirstSend: false,
       historyMessages: [
         ChatMessage(
-          messageId: 70,
+          messageId: 71,
           linkId: 17,
-          senderHash: 'caregiver-a',
-          clientMessageId: 'schedule_message_001',
-          body: '저녁 복약을 확인해주세요.',
-          createdAt: DateTime.utc(2026, 8, 24, 9),
-          messageKind: ChatMessageKind.slotCheckRequest,
-          scheduleContext: scheduleContext,
+          senderHash: 'patient-a',
+          clientMessageId: 'schedule_message_002',
+          body: '저녁 복약을 완료했어요.',
+          createdAt: DateTime.utc(2026, 6, 24, 9),
+          messageKind: ChatMessageKind.slotCompletion,
+          scheduleContext: ChatScheduleContext(
+            scheduleDate: MedicationHistoryDates.format(day),
+            slotKey: 'evening',
+            alarmTime: '18:00',
+            alarmEnabled: true,
+            completedCount: 1,
+            totalCount: 1,
+            canRequestCheck: false,
+            medications: const [],
+          ),
         ),
       ],
     );
     final realtimeService = _FakeRealtimeService();
-    final viewModel = MedBuddyViewModel(
-      checkSchedule: _ChatScheduleControl(),
-      setNotification: _ChatSetNotification(),
-    );
-    addTearDown(viewModel.dispose);
-
     await tester.pumpWidget(
-      ChangeNotifierProvider<MedBuddyViewModel>.value(
-        value: viewModel,
-        child: MaterialApp(
-          home: LinkedChatUI(
-            linkId: 17,
-            currentUserHash: 'patient-a',
-            patientHash: 'patient-a',
-            control: control,
-            realtimeService: realtimeService,
-          ),
+      MaterialApp(
+        home: LinkedChatUI(
+          linkId: 17,
+          currentUserHash: 'caregiver-a',
+          patientHash: 'patient-a',
+          control: control,
+          realtimeService: realtimeService,
         ),
       ),
     );
     await tester.pumpAndSettle();
-
     await tester.tap(find.text('저녁 18:00'));
     await tester.pumpAndSettle();
-
-    expect(find.byType(CheckScheduleUI), findsOneWidget);
-    final scheduleScreen = tester.widget<CheckScheduleUI>(
-      find.byType(CheckScheduleUI),
-    );
-    expect(scheduleScreen.initialSlotKey, 'evening');
-    expect(find.text('오늘의 복약 일정'), findsOneWidget);
+    expect(find.byType(MedicationHistoryUI), findsNothing);
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox.shrink());

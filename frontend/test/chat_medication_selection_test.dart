@@ -58,6 +58,66 @@ Widget _selectionApp({
 // 함수역할: 약·시간대별 선택, 취소와 접근성 테스트를 등록한다.
 // 매개변수: 없음. 반환값: 없음.
 void main() {
+  for (final language in ['ko', 'en']) {
+    testWidgets(
+      'PRN is selected separately and returned without a regular slot $language',
+      (tester) async {
+        const prn = MedicationSchedule(
+          medicationID: '33',
+          medicationName: 'PRN test',
+          dosingMode: 'as_needed',
+          intakeTime: '1회',
+        );
+        List<MedicationSchedule>? result;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Builder(
+              builder: (context) => TextButton(
+                onPressed: () async {
+                  result = await Navigator.push<List<MedicationSchedule>>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => CheckScheduleUI.selection(
+                        schedules: const [prn],
+                        language: language,
+                        selectedMedicationSlots: const {
+                          '33': {'as_needed'},
+                        },
+                      ),
+                    ),
+                  );
+                },
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+        expect(_all(tester).value, isTrue);
+        await tester.scrollUntilVisible(
+          find.byKey(
+            const Key('scheduleMedicationSelectionOption_as_needed_33'),
+          ),
+          200,
+        );
+        expect(
+          find.text(language == 'ko' ? '필요시 복용' : 'As needed'),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('scheduleMedicationSelectionOption_morning_33')),
+          findsNothing,
+        );
+        await tester.tap(find.byKey(_doneKey));
+        await tester.pumpAndSettle();
+        expect(result!.single.isAsNeeded, isTrue);
+        expect(result!.single.scheduleSlotKeys, isEmpty);
+        expect(result!.single.slotKeys, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   // 함수이름: 전체·일부 선택 전환 테스트
   // 함수역할: 같은 약의 시간대별 선택을 독립적으로 계산하고 선택 조작이 기존 복용 상태를 바꾸지 않는지 검증한다.
   // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.

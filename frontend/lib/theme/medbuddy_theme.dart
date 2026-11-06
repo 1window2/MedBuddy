@@ -16,6 +16,10 @@ class MedBuddyColors {
   static const Color mint = Color(0xFFD6EEE3);
   static const Color successBorder = Color(0xFFB9DCCB);
   static const Color successSurface = Color(0xFFEAF5EF);
+  static const Color chatOutgoing = Color(0xFFDFF0E8);
+  // 공유 내용은 송수신 말풍선과 구별되는 같은 회청색으로 표시한다.
+  static const Color chatContentSurface = Color(0xFFF0F3F7);
+  static const Color chatContentBorder = Color(0xFFCCD5E0);
   // Neutrals share the green hue so text and lines sit quietly beside the brand.
   static const Color pageBackground = Color(0xFFF4F6F5);
   static const Color surface = Colors.white;
@@ -84,6 +88,12 @@ class MedBuddySlotStyle {
     Icons.nightlight_round,
   );
 
+  static const asNeeded = MedBuddySlotStyle._(
+    MedBuddyColors.slotBedtime,
+    Color(0xFFE9ECF1),
+    Icons.medication_outlined,
+  );
+
   // Function Name: of
   // Description: Selects the style for a dose-time key; unknown keys use bedtime.
   // Parameters:
@@ -93,6 +103,7 @@ class MedBuddySlotStyle {
     'morning' => morning,
     'lunch' => lunch,
     'evening' => evening,
+    'as_needed' => asNeeded,
     _ => bedtime,
   };
 }
@@ -122,6 +133,19 @@ class MedBuddySpacing {
 
 // 약 등록과 변경 화면의 항목 제목을 같은 크기와 굵기로 유지한다.
 class MedBuddyTextStyles {
+  // 검색 결과·선택 메뉴는 같은 제목과 보조 설명 위계를 사용한다.
+  static const menuTitle = TextStyle(
+    fontSize: 17,
+    fontWeight: FontWeight.w700,
+    height: 1.25,
+    letterSpacing: 0,
+  );
+  static const menuBody = TextStyle(
+    fontSize: 14,
+    fontWeight: FontWeight.w500,
+    height: 1.35,
+    letterSpacing: 0,
+  );
   static const formSectionTitle = TextStyle(
     color: MedBuddyColors.textStrong,
     fontSize: 17,
@@ -198,6 +222,8 @@ class MedBuddyTheme {
       fontFamilyFallback: const ['Noto Sans KR', 'Roboto', 'Arial'],
       textTheme: const TextTheme(
         titleLarge: title,
+        titleMedium: MedBuddyTextStyles.menuTitle,
+        titleSmall: MedBuddyTextStyles.menuBody,
         headlineMedium: TextStyle(
           fontSize: 28,
           fontWeight: FontWeight.w700,
@@ -314,6 +340,8 @@ class MedBuddyTheme {
       listTileTheme: const ListTileThemeData(
         iconColor: MedBuddyColors.textMuted,
         textColor: MedBuddyColors.textStrong,
+        titleTextStyle: MedBuddyTextStyles.menuTitle,
+        subtitleTextStyle: MedBuddyTextStyles.menuBody,
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(

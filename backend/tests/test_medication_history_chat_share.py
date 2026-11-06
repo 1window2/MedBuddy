@@ -102,6 +102,8 @@ def test_snapshot_counts_all_history_items_including_prn(chat, records, sender):
         "start_date": request.history_start_date.isoformat(),
         "end_date": request.history_end_date.isoformat(),
         **{f"{status}_count": counts[status] for status in ("taken", "skipped", "unrecorded")},
+        "scheduled_taken_count": 1, "scheduled_skipped_count": 1,
+        "scheduled_unrecorded_count": 4, "as_needed_taken_count": 1,
     }}
     assert response["created_at"]
     assert response["medication_context"] is None and response["medication_contexts"] == []
@@ -135,6 +137,8 @@ def test_prn_undo_matches_latest_care_history_without_rewriting_shared_snapshot(
     assert fresh.message.context_payload["history_context"] == {
         "start_date": latest["start_date"], "end_date": latest["end_date"],
         "taken_count": 1, "skipped_count": 0, "unrecorded_count": 1,
+        "scheduled_taken_count": 0, "scheduled_skipped_count": 0,
+        "scheduled_unrecorded_count": 0, "as_needed_taken_count": 1,
     }
     replay = send(chat)
     assert not replay.created and replay.message.to_response_dict() == first.message.to_response_dict()

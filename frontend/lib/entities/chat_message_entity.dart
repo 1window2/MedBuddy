@@ -84,6 +84,9 @@ class ChatMedicationContext {
   final String imageUrl;
   final String dosagePerTime;
   final List<String> scheduleSlotKeys;
+  final String dosingMode;
+
+  bool get isAsNeeded => dosingMode == 'as_needed';
 
   // 함수이름: ChatMedicationContext
   // 함수역할: 채팅 카드의 약 ID·표시명·이미지·1회 용량과 연결 시간대를 함께 보존한다.
@@ -101,6 +104,7 @@ class ChatMedicationContext {
     this.imageUrl = '',
     this.dosagePerTime = '',
     this.scheduleSlotKeys = const [],
+    this.dosingMode = 'scheduled',
   });
 
   // 선택한 시간대만 바꾸며 약의 표시 정보는 유지한다.
@@ -110,7 +114,8 @@ class ChatMedicationContext {
         medicationName: medicationName,
         imageUrl: imageUrl,
         dosagePerTime: dosagePerTime,
-        scheduleSlotKeys: List.unmodifiable(slots),
+        scheduleSlotKeys: isAsNeeded ? const [] : List.unmodifiable(slots),
+        dosingMode: dosingMode,
       );
 
   // 함수이름: fromSchedule
@@ -130,6 +135,7 @@ class ChatMedicationContext {
       imageUrl: schedule.imageUrl ?? '',
       dosagePerTime: schedule.dosage,
       scheduleSlotKeys: schedule.slotKeys,
+      dosingMode: schedule.isAsNeeded ? 'as_needed' : 'scheduled',
     );
   }
 
@@ -150,7 +156,12 @@ class ChatMedicationContext {
       medicationName: medicationName,
       imageUrl: readJsonText(json['image_url']),
       dosagePerTime: readJsonText(json['dosage_per_time']),
-      scheduleSlotKeys: _readScheduleSlotKeys(json['schedule_slot_keys']),
+      scheduleSlotKeys: json['dosing_mode'] == 'as_needed'
+          ? const []
+          : _readScheduleSlotKeys(json['schedule_slot_keys']),
+      dosingMode: json['dosing_mode'] == 'as_needed'
+          ? 'as_needed'
+          : 'scheduled',
     );
   }
 
@@ -443,6 +454,13 @@ class ChatMedicationHistoryContext {
   final int takenCount;
   final int skippedCount;
   final int unrecordedCount;
+  final int? scheduledTakenCount;
+  final int? scheduledSkippedCount;
+  final int? scheduledUnrecordedCount;
+  final int? asNeededTakenCount;
+
+  // 이전 메시지의 합계에서 필요시 복용을 추정하지 않는다.
+  bool get hasScheduledCounts => scheduledTakenCount != null;
 
   const ChatMedicationHistoryContext._({
     required this.startDate,
@@ -450,6 +468,10 @@ class ChatMedicationHistoryContext {
     required this.takenCount,
     required this.skippedCount,
     required this.unrecordedCount,
+    this.scheduledTakenCount,
+    this.scheduledSkippedCount,
+    this.scheduledUnrecordedCount,
+    this.asNeededTakenCount,
   });
 
   factory ChatMedicationHistoryContext.fromJson(Map<String, dynamic> json) {
@@ -470,12 +492,30 @@ class ChatMedicationHistoryContext {
       return value;
     }
 
+    const separateKeys = [
+      'scheduled_taken_count',
+      'scheduled_skipped_count',
+      'scheduled_unrecorded_count',
+      'as_needed_taken_count',
+    ];
+    final hasSeparate = separateKeys.any(json.containsKey);
+    final separate = hasSeparate ? separateKeys.map(count).toList() : null;
+    if (separate != null &&
+        (separate[0] + separate[3] != count('taken_count') ||
+            separate[1] > count('skipped_count') ||
+            separate[2] > count('unrecorded_count'))) {
+      throw const FormatException('공유 복약 기록의 분류 집계가 올바르지 않습니다.');
+    }
     return ChatMedicationHistoryContext._(
       startDate: start,
       endDate: end,
       takenCount: count('taken_count'),
       skippedCount: count('skipped_count'),
       unrecordedCount: count('unrecorded_count'),
+      scheduledTakenCount: separate?[0],
+      scheduledSkippedCount: separate?[1],
+      scheduledUnrecordedCount: separate?[2],
+      asNeededTakenCount: separate?[3],
     );
   }
 

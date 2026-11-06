@@ -12,7 +12,6 @@ import 'check_schedule_ui_boundary.dart';
 import 'check_medication_detail_ui_boundary.dart';
 import 'check_nearby_pharmacy_ui_boundary.dart';
 import 'medication_history_ui_boundary.dart';
-import 'nearby_care_options_sheet.dart';
 import '../controls/manage_linked_chat_control.dart';
 import '../services/notification_service.dart';
 import '../entities/chat_message_entity.dart';
@@ -33,6 +32,10 @@ import '../viewmodels/linked_chat_composer_view_model.dart';
 import '../viewmodels/linked_chat_dose_recorder.dart';
 import '../widgets/dose_sync_status.dart';
 import '../widgets/medbuddy_page_header.dart';
+import '../widgets/medication_history_charts.dart';
+import '../widgets/chat_date_divider.dart';
+import '../widgets/chat_place_map_preview.dart';
+import '../widgets/keep_words_text.dart';
 
 // 함수이름: linkedChatRouteName
 // 함수역할: 알림·채팅 목록·연동 화면 어디서 열어도 같은 연동의 채팅 화면이 같은 경로 이름을 쓰게 한다.
@@ -202,12 +205,17 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   Timer? _medicationContextGuideTimer;
   List<ChatMedicationContext> _medicationContexts = const [];
   List<ChatScheduleContext> _scheduleContexts = const [];
+  // 기능 메뉴가 아직 받지 못한 목록을 "없음"으로 안내하지 않도록 조회 상태를 따로 둔다.
+  _ChatContextLoad _medicationLoad = _ChatContextLoad.loading;
+  _ChatContextLoad _scheduleLoad = _ChatContextLoad.loading;
   List<ChatMedicationContext> _selectedMedicationContexts = const [];
   String? _selectedMedicationScheduleDate;
   String? _sendErrorMessage;
   bool _checkedLinkAfterSendFailure = false;
   bool _isRecordingTaken = false;
   bool _isSelectingMessages = false;
+  bool _isChatActionsOpen = false;
+  final _chatActionsRevision = ValueNotifier<int>(0);
   bool _isDeletingMessages = false;
   final Set<int> _selectedMessageIds = {};
   ({
@@ -344,6 +352,9 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     super.initState();
     _configuration.latestMessageRequest?.addListener(_onLatestMessageRequested);
     _medicationContexts = _configuration.initialMedicationContexts;
+    if (_medicationContexts.isNotEmpty) {
+      _medicationLoad = _ChatContextLoad.loaded;
+    }
     WidgetsBinding.instance.addObserver(this);
     _ownsApiClient = _configuration.apiClient == null;
     _apiClient = _configuration.apiClient ?? AuthenticatedApiClient();
@@ -506,6 +517,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     WidgetsBinding.instance.removeObserver(this);
     _requestGeneration += 1;
     _medicationContextGuideTimer?.cancel();
+    _chatActionsRevision.dispose();
     _history.removeListener(_historyChanged);
     _history.dispose();
     _composer.removeListener(_composerChanged);
@@ -570,6 +582,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
       setState(() {
         _medicationContexts = medications;
+        _medicationLoad = _ChatContextLoad.loaded;
         final selectedSlots = {
           for (final item in _selectedMedicationContexts)
             item.medicationId: item.scheduleSlotKeys,
@@ -587,6 +600,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
             )
             .toList(growable: false);
       });
+      _notifyChatActions();
     } catch (_) {
       if (!mounted || generation != _requestGeneration) {
         return;
@@ -605,11 +619,14 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
               : null;
           if (cached != null) {
             _medicationContexts = cached;
+            _medicationLoad = _ChatContextLoad.loaded;
           } else {
             _sendErrorMessage = _text.medicationLoadFailed;
+            _medicationLoad = _ChatContextLoad.failed;
           }
         }
       });
+      _notifyChatActions();
     }
   }
 
@@ -632,9 +649,21 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       // 매개변수:
       // - 없음.
       // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
-      setState(() => _scheduleContexts = contexts);
+      setState(() {
+        _scheduleContexts = contexts;
+        _scheduleLoad = _ChatContextLoad.loaded;
+      });
+      _notifyChatActions();
     } catch (_) {
-      // 채팅 자체는 계속 사용할 수 있으므로 시간대 카드 실패는 조용히 보완 조회한다.
+      // 채팅 자체는 계속 사용할 수 있으므로 시간대 카드 실패는 화면에 알리지 않는다.
+      // 이미 받은 목록이 없을 때만 기능 메뉴에 실패를 이유로 표시한다.
+      if (!mounted ||
+          generation != _requestGeneration ||
+          _scheduleLoad == _ChatContextLoad.loaded) {
+        return;
+      }
+      setState(() => _scheduleLoad = _ChatContextLoad.failed);
+      _notifyChatActions();
     }
   }
 
@@ -796,10 +825,13 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       if (plan.status != ChatDosePlanStatus.ready) {
         if (mounted) {
           setState(
-            () => _sendErrorMessage =
-                plan.status == ChatDosePlanStatus.scheduleChanged
-                ? _text.selectionScheduleChanged
-                : _text.noConfirmableSchedule,
+            () => _sendErrorMessage = switch (plan.status) {
+              ChatDosePlanStatus.scheduleChanged =>
+                _text.selectionScheduleChanged,
+              ChatDosePlanStatus.asNeededSelected =>
+                _text.asNeededNotRecordable,
+              _ => _text.noConfirmableSchedule,
+            },
           );
         }
         return;
@@ -846,22 +878,97 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     }
   }
 
-  // 대화 상대와 선택한 약을 유지한 채 병원·약국 중 탐색할 대상을 고른다.
-  Future<void> _showCareOptions() async {
-    if (_isSending || _isSelectingMessages || _isDeletingMessages) return;
-    final medications = List<ChatMedicationContext>.of(
-      _selectedMedicationContexts,
-    );
-    final destination = await showNearbyCareOptions(
-      context: context,
-      userSetting: _configuration.userSetting,
-    );
-    if (destination == null || !mounted) return;
-    await _showPharmacySelector(
-      medications: medications,
-      hospitals: destination == NearbyCareDestination.hospital,
-    );
+  // 함수이름: _showChatActions
+  // 함수역할: 약 첨부·복약 확인 요청·병원·약국 검색을 하나의 메뉴로 열고 고른 기능을 실행한다.
+  // 매개변수: 없음. 반환값: 고른 기능의 화면이 닫힌 뒤 완료.
+  Future<void> _showChatActions() async {
+    if (_isSending ||
+        _isSelectingMessages ||
+        _isDeletingMessages ||
+        _isChatActionsOpen) {
+      return;
+    }
+    _isChatActionsOpen = true;
+    final _ChatAction? action;
+    try {
+      action = await showModalBottomSheet<_ChatAction>(
+        context: context,
+        showDragHandle: true,
+        // 시트를 연 뒤 약·시간대 정보가 도착해도 선택지를 바로 갱신한다.
+        builder: (sheetContext) => ValueListenableBuilder<int>(
+          valueListenable: _chatActionsRevision,
+          builder: (context, _, _) => _ChatActionSheet(
+            items: _chatActionItems(),
+            onSelected: (action) => Navigator.pop(sheetContext, action),
+          ),
+        ),
+      );
+    } finally {
+      _isChatActionsOpen = false;
+    }
+    if (!mounted || action == null) return;
+    switch (action) {
+      case _ChatAction.medication:
+        await _showMedicationSelector();
+      case _ChatAction.scheduleRequest:
+        await _showScheduleSelector();
+      case _ChatAction.nearbyHospital:
+      case _ChatAction.nearbyPharmacy:
+        await _showPharmacySelector(
+          medications: List<ChatMedicationContext>.of(
+            _selectedMedicationContexts,
+          ),
+          hospitals: action == _ChatAction.nearbyHospital,
+        );
+    }
   }
+
+  // 함수이름: _chatActionItems
+  // 함수역할: 현재 역할과 불러온 약·시간대로 기능 메뉴의 선택지와 막힌 이유를 만든다.
+  // 매개변수: 없음. 반환값: 화면 순서의 선택지 목록.
+  List<_ChatActionItem> _chatActionItems() => [
+    (
+      action: _ChatAction.medication,
+      icon: Icons.medication_outlined,
+      label: _text.selectMedication,
+      reason: switch (_medicationLoad) {
+        _ChatContextLoad.loading => _text.medicationsLoading,
+        _ChatContextLoad.failed => _text.medicationLoadFailed,
+        _ChatContextLoad.loaded =>
+          _medicationContexts.isEmpty ? _text.noActiveMedication : null,
+      },
+    ),
+    if (!_isPatient)
+      (
+        action: _ChatAction.scheduleRequest,
+        icon: Icons.schedule_rounded,
+        label: _text.scheduleSelectorTitle,
+        reason: switch (_scheduleLoad) {
+          _ChatContextLoad.loading => _text.scheduleLoading,
+          _ChatContextLoad.failed => _text.scheduleLoadFailed,
+          _ChatContextLoad.loaded =>
+            _requestableScheduleContexts.isEmpty
+                ? _text.noRequestableSchedule
+                : null,
+        },
+      ),
+    (
+      action: _ChatAction.nearbyHospital,
+      icon: Icons.local_hospital_outlined,
+      label: _text.findNearbyHospital,
+      reason: null,
+    ),
+    (
+      action: _ChatAction.nearbyPharmacy,
+      icon: Icons.storefront_outlined,
+      label: _text.findNearbyPharmacy,
+      reason: null,
+    ),
+  ];
+
+  // 함수이름: _notifyChatActions
+  // 함수역할: 열린 기능 메뉴가 새 약·시간대 정보를 반영하도록 알린다. 매개변수: 없음. 반환값: 없음.
+  void _notifyChatActions() => _chatActionsRevision.value += 1;
 
   // 함수이름: _showPharmacySelector
   // 함수역할: 병원·약국을 선택한 뒤 수신자와 공유 내용을 확인한다.
@@ -1104,6 +1211,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
             medicationName: medication.medicationName,
             dosage: medication.dosagePerTime,
             scheduleSlotKeys: medication.scheduleSlotKeys,
+            dosingMode: medication.dosingMode,
             imageUrl: medication.imageUrl,
           ),
         )
@@ -1121,7 +1229,9 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
           language: _configuration.userSetting.language,
           selectedMedicationSlots: {
             for (final item in _selectedMedicationContexts)
-              item.medicationId.toString(): item.scheduleSlotKeys.toSet(),
+              item.medicationId.toString(): item.isAsNeeded
+                  ? {'as_needed'}
+                  : item.scheduleSlotKeys.toSet(),
           },
         ),
       ),
@@ -1183,30 +1293,33 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       _configuration.patientHash.isNotEmpty;
 
   // 진입 직전에도 현재 대화의 삭제·연동 상태를 확인하며 최신 자료의 권한은 이력 API가 검증한다.
-  Future<void> _openMedicationHistory(ChatMessage message) async {
-    if (!mounted || !_isChatVisible || !_canOpenMedicationHistory) return;
+  ChatMessage? _openableCard(ChatMessage message) {
+    if (!_isChatVisible || !_canOpenMedicationHistory) return null;
     final current = _messages
         .where((item) => item.messageId == message.messageId)
         .firstOrNull;
-    final history = current?.historyContext;
-    if (current == null ||
-        current.hiddenForMe ||
-        current.deletedForEveryone ||
-        history == null) {
-      return;
-    }
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => MedicationHistoryUI(
-          patientHash: _configuration.patientHash,
-          readOnly: true,
-          isEnglish: _configuration.userSetting.isEnglish,
-          sharedRange: MedicationHistoryRange(
-            history.startDate,
-            history.endDate,
+    return current == null || current.hiddenForMe || current.deletedForEveryone
+        ? null
+        : current;
+  }
+
+  Future<void> _openSharedHistory(MedicationHistoryRange range) =>
+      Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => MedicationHistoryUI(
+            patientHash: _configuration.patientHash,
+            readOnly: true,
+            isEnglish: _configuration.userSetting.isEnglish,
+            sharedRange: range,
           ),
         ),
-      ),
+      );
+
+  Future<void> _openMedicationHistory(ChatMessage message) async {
+    final history = _openableCard(message)?.historyContext;
+    if (history == null) return;
+    await _openSharedHistory(
+      MedicationHistoryRange(history.startDate, history.endDate),
     );
   }
 
@@ -1265,20 +1378,22 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   // 매개변수:
   // - schedule (ChatScheduleContext): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
-  Future<void> _openPatientSchedule(ChatScheduleContext schedule) async {
-    if (!_isPatient) {
+  Future<void> _openPatientSchedule(ChatMessage message) async {
+    final current = _openableCard(message);
+    final schedule = current?.scheduleContext;
+    final day = schedule == null ? null : _readableScheduleDay(schedule);
+    if (current == null || schedule == null || day == null) return;
+    if (_isPatient &&
+        current.messageKind == ChatMessageKind.slotCheckRequest &&
+        day == MedicationHistoryDates.today(DateTime.now())) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => CheckScheduleUI(initialSlotKey: schedule.slotKey),
+        ),
+      );
       return;
     }
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        // 함수이름: _openPatientSchedule.builder callback
-        // 함수역할: 연동 사용자 메시지와 복약 관련 첨부에 현재 부모의 레이아웃 제약을 적용해 현재 배치를 구성한다.
-        // 매개변수:
-        // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
-        // 반환값: 설명한 구역 또는 대체 표시의 위젯 트리.
-        builder: (_) => CheckScheduleUI(initialSlotKey: schedule.slotKey),
-      ),
-    );
+    await _openSharedHistory(MedicationHistoryRange(day, day));
   }
 
   // 함수이름: _openMedicationDetail
@@ -1374,13 +1489,19 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
                 ListTile(
                   key: const Key('chat-copy-message'),
                   leading: const Icon(Icons.copy_outlined),
-                  title: Text(_text.copyMessage),
+                  title: Text(
+                    _text.copyMessage,
+                    style: MedBuddyTextStyles.menuTitle,
+                  ),
                   onTap: () => Navigator.pop(sheetContext, 'copy'),
                 ),
               ListTile(
                 key: const Key('chat-select-message'),
                 leading: const Icon(Icons.checklist_outlined),
-                title: Text(_text.selectMessage),
+                title: Text(
+                  _text.selectMessage,
+                  style: MedBuddyTextStyles.menuTitle,
+                ),
                 onTap: () => Navigator.pop(sheetContext, 'select'),
               ),
             ],
@@ -1658,15 +1779,6 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
                     )
                   : null,
               actions: [
-                if (!_isSelectingMessages)
-                  IconButton(
-                    key: const ValueKey('chatCareSelector'),
-                    tooltip: _text.findNearbyCare,
-                    onPressed: _isLoading || _isSending
-                        ? null
-                        : _showCareOptions,
-                    icon: const Icon(Icons.local_hospital_outlined),
-                  ),
                 IconButton(
                   key: const ValueKey('deleteChatMessages'),
                   tooltip: _text.deleteMessages,
@@ -1864,9 +1976,24 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
             );
           }
           final index = _messages.length - 1 - reverseIndex;
+          final date = _messages[index].createdAt.toLocal();
+          final startsDay =
+              index == 0 ||
+              !DateUtils.isSameDay(
+                date,
+                _messages[index - 1].createdAt.toLocal(),
+              );
           return Column(
             key: ValueKey('chat-message-${_messages[index].messageId}'),
             children: [
+              if (startsDay)
+                ChatDateDivider(
+                  key: ValueKey(
+                    'chat-date-${date.year}-${date.month}-${date.day}',
+                  ),
+                  date: date,
+                  isEnglish: _text.isEnglish,
+                ),
               if (_messages[index].messageId == _firstUnreadMessageId)
                 Padding(
                   key: const Key('chat-unread-divider'),
@@ -1955,7 +2082,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
                           onHistoryPressed: _canOpenMedicationHistory
                               ? _openMedicationHistory
                               : null,
-                          onSchedulePressed: _isPatient
+                          onSchedulePressed: _canOpenMedicationHistory
                               ? _openPatientSchedule
                               : null,
                           onPharmacyCallRequested: _callPharmacy,
@@ -2175,37 +2302,28 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   IconButton.outlined(
-                    key: const ValueKey('chatMedicationSelector'),
-                    tooltip: _medicationContexts.isEmpty
-                        ? _text.noActiveMedication
-                        : _text.selectMedication,
-                    onPressed: _medicationContexts.isEmpty || _isSending
+                    key: const ValueKey('chatActions'),
+                    tooltip: _text.isEnglish ? 'More actions' : '기능 더보기',
+                    onPressed: _isLoading || _isSending
                         ? null
-                        : _showMedicationSelector,
+                        : _showChatActions,
                     constraints: const BoxConstraints.tightFor(
                       width: 48,
                       height: 48,
                     ),
-                    icon: const Icon(Icons.medication_outlined),
+                    icon: const Icon(Icons.add),
                   ),
-                  if (_requestableScheduleContexts.isNotEmpty) ...[
-                    const SizedBox(width: 6),
-                    IconButton.outlined(
-                      key: const ValueKey('chatScheduleSelector'),
-                      tooltip: _text.selectScheduleSlot,
-                      onPressed: _isSending ? null : _showScheduleSelector,
-                      constraints: const BoxConstraints.tightFor(
-                        width: 48,
-                        height: 48,
-                      ),
-                      icon: const Icon(Icons.schedule_rounded),
-                    ),
-                  ],
                   const SizedBox(width: 8),
                   Expanded(
                     child: TextField(
                       controller: _messageController,
                       enabled: !_isSending,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        height: 1.35,
+                        letterSpacing: 0,
+                      ),
                       minLines: 1,
                       maxLines: 4,
                       maxLength: 500,
@@ -2293,6 +2411,67 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
 // 주요 책임:
 // - 빠른 답장 문구와 복약 행동 종류에서 지원하는 선택지를 열거하고 구분한다: taken, cannotNow, shortage, discomfort.
 enum _ChatQuickReply { taken, cannotNow, shortage, discomfort }
+
+// 클래스명: _ChatAction
+// 역할: 채팅 입력창 기능 메뉴의 선택지를 담당한다.
+// 주요 책임:
+// - 약 첨부·복약 확인 요청·병원 찾기·약국 찾기를 구분하며, 순서가 화면 키 chat-action-N의 번호가 된다.
+enum _ChatAction { medication, scheduleRequest, nearbyHospital, nearbyPharmacy }
+
+// 약·시간대 목록을 아직 받는 중인지, 받았는지, 받지 못했는지.
+enum _ChatContextLoad { loading, loaded, failed }
+
+typedef _ChatActionItem = ({
+  _ChatAction action,
+  IconData icon,
+  String label,
+  String? reason,
+});
+
+// 클래스명: _ChatActionSheet
+// 역할: 채팅 기능 메뉴의 선택지를 한 줄에 하나씩 보여준다.
+// 주요 책임:
+// - 큰 글씨에서도 라벨이 한 줄을 넓게 쓰도록 세로 목록으로 배치한다.
+// - 막힌 선택지는 누를 수 없게 하고 그 이유를 라벨 아래에 알린다.
+// 속성:
+// - items (List<_ChatActionItem>): 화면 순서의 선택지.
+// - onSelected (ValueChanged<_ChatAction>): 고른 선택지를 돌려주는 콜백.
+class _ChatActionSheet extends StatelessWidget {
+  final List<_ChatActionItem> items;
+  final ValueChanged<_ChatAction> onSelected;
+
+  // 함수이름: _ChatActionSheet
+  // 함수역할: 선택지와 선택 콜백을 보관한다. 매개변수: items, onSelected. 반환값: 시트 내용.
+  const _ChatActionSheet({required this.items, required this.onSelected});
+
+  // 함수이름: build
+  // 함수역할: 선택지를 배치한다. 매개변수: context. 반환값: 시트 내용.
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final item in items)
+            ListTile(
+              key: ValueKey('chat-action-${item.action.index}'),
+              enabled: item.reason == null,
+              // 색과 글씨를 ListTile에 맡겨 막힌 선택지가 흐리게 보이게 한다.
+              iconColor: MedBuddyColors.primary,
+              titleTextStyle: MedBuddyTextStyles.menuTitle,
+              leading: Icon(item.icon),
+              title: KeepWordsText(item.label),
+              subtitle: item.reason == null
+                  ? null
+                  : KeepWordsText(item.reason!),
+              onTap: () => onSelected(item.action),
+            ),
+        ],
+      ),
+    ),
+  );
+}
 
 // 클래스명: _QuickReplyBar
 // 역할: 복약 확인·복용 완료 등 빠른 답장 선택지를 담당한다.
@@ -2487,11 +2666,9 @@ class _ScheduleContextSelector extends StatelessWidget {
 // - 부모가 전달한 표시값과 동작을 반영해 메시지에 첨부된 일정 요약 위젯을 구성한다.
 // 속성:
 // - schedule (ChatScheduleContext): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-// - isMine (bool): 현재 사용자가 보낸 메시지인지 여부.
 // - onPressed (VoidCallback?): 해당 항목의 명시된 주 동작을 실행할 콜백.
 class _MessageScheduleContext extends StatelessWidget {
   final ChatScheduleContext schedule;
-  final bool isMine;
   final _LinkedChatText text;
   final VoidCallback? onPressed;
 
@@ -2499,13 +2676,11 @@ class _MessageScheduleContext extends StatelessWidget {
   // 함수역할: 메시지에 첨부된 일정 요약에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - schedule (ChatScheduleContext): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-  // - isMine (bool): 현재 사용자가 보낸 메시지인지 여부.
   // - text (_LinkedChatText): 해당 화면 구역의 언어별 표시 문구.
   // - onPressed (VoidCallback?): 해당 항목의 명시된 주 동작을 실행할 콜백.
   // 반환값: 입력 설정이 반영된 _MessageScheduleContext 인스턴스.
   const _MessageScheduleContext({
     required this.schedule,
-    required this.isMine,
     required this.text,
     this.onPressed,
   });
@@ -2517,7 +2692,7 @@ class _MessageScheduleContext extends StatelessWidget {
   // 반환값: 메시지에 첨부된 일정 요약에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-    final foreground = isMine ? Colors.white : MedBuddyColors.textStrong;
+    const foreground = MedBuddyColors.textStrong;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -2527,9 +2702,8 @@ class _MessageScheduleContext extends StatelessWidget {
           width: double.infinity,
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: isMine
-                ? Colors.white.withValues(alpha: 0.16)
-                : MedBuddyColors.successSurface,
+            color: MedBuddyColors.chatContentSurface,
+            border: Border.all(color: MedBuddyColors.chatContentBorder),
             borderRadius: MedBuddyRadii.control,
           ),
           child: _ScheduleSummaryContent(
@@ -2538,7 +2712,7 @@ class _MessageScheduleContext extends StatelessWidget {
             foreground: foreground,
             trailing: onPressed == null
                 ? null
-                : Icon(Icons.chevron_right_rounded, color: foreground),
+                : Icon(Icons.arrow_right_rounded, color: foreground),
           ),
         ),
       ),
@@ -2660,11 +2834,9 @@ class _ScheduleSummaryContent extends StatelessWidget {
 // - 부모가 전달한 표시값과 동작을 반영해 약 부족 알림과 약국 찾기 동작 위젯을 구성한다.
 // 속성:
 // - message (ChatMessage): 본문·발신자·시각·읽음 상태·첨부를 담은 메시지.
-// - isMine (bool): 현재 사용자가 보낸 메시지인지 여부.
 // - onFindPharmacyRequested (VoidCallback): 주변 약국 검색을 여는 콜백.
 class _MedicationShortageContext extends StatelessWidget {
   final ChatMessage message;
-  final bool isMine;
   final _LinkedChatText text;
   final VoidCallback onFindPharmacyRequested;
   final VoidCallback onFindHospitalRequested;
@@ -2673,13 +2845,11 @@ class _MedicationShortageContext extends StatelessWidget {
   // 함수역할: 약 부족 알림과 약국 찾기 동작에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - message (ChatMessage): 본문·발신자·시각·읽음 상태·첨부를 담은 메시지.
-  // - isMine (bool): 현재 사용자가 보낸 메시지인지 여부.
   // - text (_LinkedChatText): 해당 화면 구역의 언어별 표시 문구.
   // - onFindPharmacyRequested (VoidCallback): 주변 약국 검색을 여는 콜백.
   // 반환값: 입력 설정이 반영된 _MedicationShortageContext 인스턴스.
   const _MedicationShortageContext({
     required this.message,
-    required this.isMine,
     required this.text,
     required this.onFindPharmacyRequested,
     required this.onFindHospitalRequested,
@@ -2692,7 +2862,7 @@ class _MedicationShortageContext extends StatelessWidget {
   // 반환값: 약 부족 알림과 약국 찾기 동작에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-    final foreground = isMine ? Colors.white : MedBuddyColors.textStrong;
+    const foreground = MedBuddyColors.textStrong;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2721,7 +2891,7 @@ class _MedicationShortageContext extends StatelessWidget {
             ),
             OutlinedButton.icon(
               onPressed: onFindPharmacyRequested,
-              icon: const Icon(Icons.local_pharmacy_outlined, size: 18),
+              icon: const Icon(Icons.storefront_outlined, size: 18),
               label: Text(text.findNearbyPharmacy),
               style: OutlinedButton.styleFrom(
                 foregroundColor: foreground,
@@ -2740,18 +2910,15 @@ class _MedicationShortageContext extends StatelessWidget {
 // 주요 책임:
 // - 부모가 전달한 표시값과 동작을 반영해 복약 대화의 안전 안내 문구 위젯을 구성한다.
 // 속성:
-// - isMine (bool): 현재 사용자가 보낸 메시지인지 여부.
 class _MedicationSafetyGuidance extends StatelessWidget {
-  final bool isMine;
   final _LinkedChatText text;
 
   // 함수이름: _MedicationSafetyGuidance
   // 함수역할: 복약 대화의 안전 안내 문구에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
-  // - isMine (bool): 현재 사용자가 보낸 메시지인지 여부.
   // - text (_LinkedChatText): 해당 화면 구역의 언어별 표시 문구.
   // 반환값: 입력 설정이 반영된 _MedicationSafetyGuidance 인스턴스.
-  const _MedicationSafetyGuidance({required this.isMine, required this.text});
+  const _MedicationSafetyGuidance({required this.text});
 
   // 함수이름: build
   // 함수역할: 현재 입력값과 상태를 반영해 복약 대화의 안전 안내 문구 화면을 구성한다.
@@ -2760,13 +2927,12 @@ class _MedicationSafetyGuidance extends StatelessWidget {
   // 반환값: 복약 대화의 안전 안내 문구에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-    final foreground = isMine ? Colors.white : MedBuddyColors.reminderAccent;
+    const foreground = MedBuddyColors.reminderAccent;
     return Container(
+      key: const ValueKey('chatDiscomfortSafetyGuidance'),
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: isMine
-            ? Colors.white.withValues(alpha: 0.15)
-            : MedBuddyColors.warningSurface,
+        color: MedBuddyColors.warningSurface,
         borderRadius: MedBuddyRadii.small,
       ),
       child: Row(
@@ -2798,12 +2964,10 @@ class _MedicationSafetyGuidance extends StatelessWidget {
 // - 부모가 전달한 표시값과 동작을 반영해 메시지에 공유된 약국과 전화 확인 상태 위젯을 구성한다.
 // 속성:
 // - pharmacy (ChatPharmacyContext): 표시하거나 전화·길찾기·공유할 약국.
-// - isMine (bool): 현재 사용자가 보낸 메시지인지 여부.
 // - phoneVerified (bool): 사용자가 전화로 운영 여부를 확인했는지 여부.
 // - onCallRequested (VoidCallback): 해당 약국으로 전화 연결을 요청할 콜백.
 class _MessagePharmacyContext extends StatelessWidget {
   final ChatPlaceContext pharmacy;
-  final bool isMine;
   final bool phoneVerified;
   final _LinkedChatText text;
   final VoidCallback onCallRequested;
@@ -2814,7 +2978,6 @@ class _MessagePharmacyContext extends StatelessWidget {
   // 함수역할: 메시지에 공유된 약국과 전화 확인 상태에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - pharmacy (ChatPharmacyContext): 표시하거나 전화·길찾기·공유할 약국.
-  // - isMine (bool): 현재 사용자가 보낸 메시지인지 여부.
   // - phoneVerified (bool): 사용자가 전화로 운영 여부를 확인했는지 여부.
   // - text (_LinkedChatText): 해당 화면 구역의 언어별 표시 문구.
   // - onCallRequested (VoidCallback): 해당 약국으로 전화 연결을 요청할 콜백.
@@ -2822,7 +2985,6 @@ class _MessagePharmacyContext extends StatelessWidget {
   // 반환값: 입력 설정이 반영된 _MessagePharmacyContext 인스턴스.
   const _MessagePharmacyContext({
     required this.pharmacy,
-    required this.isMine,
     required this.phoneVerified,
     required this.text,
     required this.onCallRequested,
@@ -2837,7 +2999,7 @@ class _MessagePharmacyContext extends StatelessWidget {
   // 반환값: 메시지에 공유된 약국과 전화 확인 상태에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-    final foreground = isMine ? Colors.white : MedBuddyColors.textStrong;
+    const foreground = MedBuddyColors.textStrong;
     final hospital = pharmacy is ChatHospitalContext
         ? pharmacy as ChatHospitalContext
         : null;
@@ -2847,38 +3009,63 @@ class _MessagePharmacyContext extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          OutlinedButton(
-            key: const Key('chat-place-details'),
-            onPressed: onDetailsRequested,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: foreground,
-              side: BorderSide(color: foreground.withValues(alpha: 0.72)),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+          Container(
+            key: const Key('chat-place-summary-panel'),
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: MedBuddyColors.chatContentSurface,
+              borderRadius: MedBuddyRadii.small,
+              border: Border.all(color: MedBuddyColors.chatContentBorder),
             ),
-            child: Row(
+            child: Column(
               children: [
-                Icon(
-                  hospital == null
-                      ? Icons.local_pharmacy_outlined
-                      : Icons.local_hospital_outlined,
-                  size: 22,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    pharmacy.name,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0,
+                OutlinedButton(
+                  key: const Key('chat-place-details'),
+                  onPressed: onDetailsRequested,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: foreground,
+                    side: BorderSide.none,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 12,
                     ),
                   ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        hospital == null
+                            ? Icons.storefront_outlined
+                            : Icons.local_hospital_outlined,
+                        size: 22,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          pharmacy.name,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      const Icon(Icons.chevron_right, size: 22),
+                    ],
+                  ),
                 ),
-                const SizedBox(width: 6),
-                const Icon(Icons.chevron_right, size: 22),
+                ChatPlaceMapPreview(
+                  key: ValueKey(
+                    'chat-place-preview-${pharmacy.latitude}-${pharmacy.longitude}',
+                  ),
+                  latitude: pharmacy.latitude,
+                  longitude: pharmacy.longitude,
+                  isEnglish: text.isEnglish,
+                  onOpen: onDetailsRequested,
+                ),
               ],
             ),
           ),
@@ -2904,7 +3091,7 @@ class _MessagePharmacyContext extends StatelessWidget {
                 color: foreground.withValues(alpha: 0.78),
                 fontSize: 15,
                 height: 1.35,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w600,
                 letterSpacing: 0,
               ),
             ),
@@ -2922,26 +3109,39 @@ class _MessagePharmacyContext extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 7,
-            runSpacing: 6,
+          Row(
             children: [
-              OutlinedButton.icon(
-                onPressed: pharmacy.telephone.isEmpty ? null : onCallRequested,
-                icon: const Icon(Icons.call_outlined, size: 17),
-                label: Text(text.call),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: foreground,
-                  side: BorderSide(color: foreground.withValues(alpha: 0.72)),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: pharmacy.telephone.isEmpty
+                      ? null
+                      : onCallRequested,
+                  icon: const Icon(Icons.call_outlined, size: 17),
+                  label: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(text.call, maxLines: 1),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: foreground,
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    side: BorderSide(color: foreground.withValues(alpha: 0.72)),
+                  ),
                 ),
               ),
-              OutlinedButton.icon(
-                onPressed: onDirectionsRequested,
-                icon: const Icon(Icons.directions_outlined, size: 17),
-                label: Text(text.directions),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: foreground,
-                  side: BorderSide(color: foreground.withValues(alpha: 0.72)),
+              const SizedBox(width: 7),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onDirectionsRequested,
+                  icon: const Icon(Icons.directions_outlined, size: 17),
+                  label: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(text.directions, maxLines: 1),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: foreground,
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    side: BorderSide(color: foreground.withValues(alpha: 0.72)),
+                  ),
                 ),
               ),
             ],
@@ -2996,9 +3196,9 @@ class _SelectedMedicationContext extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(10, 8, 6, 8),
       decoration: BoxDecoration(
-        color: MedBuddyColors.successSurface,
+        color: MedBuddyColors.chatContentSurface,
         borderRadius: MedBuddyRadii.control,
-        border: Border.all(color: MedBuddyColors.successBorder),
+        border: Border.all(color: MedBuddyColors.chatContentBorder),
       ),
       child: Row(
         children: [
@@ -3031,10 +3231,13 @@ class _SelectedMedicationContext extends StatelessWidget {
                               letterSpacing: 0,
                             ),
                           ),
-                          if (medication.dosagePerTime.isNotEmpty ||
+                          if (medication.isAsNeeded ||
+                              medication.dosagePerTime.isNotEmpty ||
                               medication.scheduleSlotKeys.isNotEmpty)
                             Text(
                               [
+                                if (medication.isAsNeeded)
+                                  text.isEnglish ? 'As needed' : '필요시 복용',
                                 if (medication.scheduleSlotKeys.isNotEmpty)
                                   medication.scheduleSlotKeys
                                       .map(text.slotLabel)
@@ -3088,12 +3291,10 @@ class _SelectedMedicationContext extends StatelessWidget {
 // - 부모가 전달한 표시값과 동작을 반영해 메시지에 첨부된 약품 상세 진입 위젯을 구성한다.
 // 속성:
 // - medication (ChatMedicationContext): 표시·변환·저장·비교할 약품 데이터.
-// - isMine (bool): 현재 사용자가 보낸 메시지인지 여부.
 // - isLoading (bool): 진행 중 표시를 보여줄지 여부.
 // - onPressed (VoidCallback?): 해당 항목의 명시된 주 동작을 실행할 콜백.
 class _MessageMedicationContext extends StatelessWidget {
   final ChatMedicationContext medication;
-  final bool isMine;
   final bool isLoading;
   final _LinkedChatText text;
   final VoidCallback? onPressed;
@@ -3102,14 +3303,12 @@ class _MessageMedicationContext extends StatelessWidget {
   // 함수역할: 메시지에 첨부된 약품 상세 진입에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - medication (ChatMedicationContext): 표시·변환·저장·비교할 약품 데이터.
-  // - isMine (bool): 현재 사용자가 보낸 메시지인지 여부.
   // - isLoading (bool): 진행 중 표시를 보여줄지 여부.
   // - text (_LinkedChatText): 해당 화면 구역의 언어별 표시 문구.
   // - onPressed (VoidCallback?): 해당 항목의 명시된 주 동작을 실행할 콜백.
   // 반환값: 입력 설정이 반영된 _MessageMedicationContext 인스턴스.
   const _MessageMedicationContext({
     required this.medication,
-    required this.isMine,
     required this.isLoading,
     required this.text,
     required this.onPressed,
@@ -3122,7 +3321,7 @@ class _MessageMedicationContext extends StatelessWidget {
   // 반환값: 메시지에 첨부된 약품 상세 진입에 쓰는 위젯 트리.
   @override
   Widget build(BuildContext context) {
-    final foreground = isMine ? Colors.white : MedBuddyColors.textStrong;
+    const foreground = MedBuddyColors.textStrong;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -3132,9 +3331,8 @@ class _MessageMedicationContext extends StatelessWidget {
           width: double.infinity,
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: isMine
-                ? Colors.white.withValues(alpha: 0.16)
-                : MedBuddyColors.successSurface,
+            color: MedBuddyColors.chatContentSurface,
+            border: Border.all(color: MedBuddyColors.chatContentBorder),
             borderRadius: MedBuddyRadii.control,
           ),
           child: Row(
@@ -3151,7 +3349,8 @@ class _MessageMedicationContext extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: foreground,
-                        fontSize: 13,
+                        fontSize: 15,
+                        height: 1.25,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0,
                       ),
@@ -3163,7 +3362,8 @@ class _MessageMedicationContext extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: foreground.withValues(alpha: 0.78),
-                          fontSize: 11,
+                          fontSize: 13,
+                          height: 1.35,
                           fontWeight: FontWeight.w600,
                           letterSpacing: 0,
                         ),
@@ -3257,24 +3457,67 @@ class _MedicationThumbnail extends StatelessWidget {
   }
 }
 
+// 공유 유형 제목은 내 정보 화면과 같은 제목 크기·굵기로 표시한다.
+class _ChatContentHeading extends StatelessWidget {
+  const _ChatContentHeading({
+    required this.title,
+    required this.icon,
+    required this.color,
+  });
+
+  final String title;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Icon(icon, size: 20, color: color),
+      const SizedBox(width: 8),
+      Expanded(
+        child: Text(
+          title,
+          style: TextStyle(
+            color: color,
+            fontSize: 17,
+            height: 1.25,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0,
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
+// 일정 카드의 날짜를 기록 달력 날짜로 읽는다. 기록은 최근 90일만 열 수 있으므로 그 밖의 날짜는 null이다.
+DateTime? _readableScheduleDay(ChatScheduleContext schedule) {
+  final parsed = DateTime.tryParse(schedule.scheduleDate);
+  if (parsed == null) return null;
+  final day = MedicationHistoryDates.day(parsed);
+  final today = MedicationHistoryDates.today(DateTime.now());
+  return day.isBefore(MedicationHistoryDates.earliest(today)) ||
+          day.isAfter(today)
+      ? null
+      : day;
+}
+
 // 공유 당시 집계는 읽기 전용으로 표시하고 최신 기록 이동만 제공한다.
 class _MessageMedicationHistoryContext extends StatelessWidget {
   final ChatMedicationHistoryContext history;
-  final bool isMine;
   final _LinkedChatText text;
   final VoidCallback? onPressed;
 
   const _MessageMedicationHistoryContext({
     required this.history,
-    required this.isMine,
     required this.text,
     required this.onPressed,
   });
 
   @override
   Widget build(BuildContext context) {
-    final foreground = isMine ? Colors.white : MedBuddyColors.textStrong;
-    final secondary = isMine ? Colors.white70 : MedBuddyColors.textMuted;
+    const foreground = MedBuddyColors.textStrong;
+    const secondary = MedBuddyColors.textMuted;
     final range = MedicationHistoryRange(history.startDate, history.endDate);
     // 기록은 최근 90일만 열 수 있으므로 그보다 오래된 공유는 실패할 화면 대신 안내를 보인다.
     final today = MedicationHistoryDates.today(DateTime.now());
@@ -3289,49 +3532,72 @@ class _MessageMedicationHistoryContext extends StatelessWidget {
         onTap: open,
         borderRadius: MedBuddyRadii.control,
         child: DefaultTextStyle(
-          style: TextStyle(color: foreground, fontSize: 15, letterSpacing: 0),
+          style: TextStyle(
+            color: foreground,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            height: 1.35,
+            letterSpacing: 0,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                children: [
-                  Icon(Icons.history_rounded, size: 20, color: foreground),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      text.medicationHistory,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ],
+              _ChatContentHeading(
+                title: text.medicationHistory,
+                icon: Icons.history_rounded,
+                color: foreground,
               ),
               const SizedBox(height: 8),
-              Text(range.label),
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 12,
-                runSpacing: 6,
-                children: [
-                  Text(
-                    '${MedicationHistoryStatus.taken.label(text.isEnglish)} ${history.takenCount}',
-                  ),
-                  Text(
-                    '${MedicationHistoryStatus.skipped.label(text.isEnglish)} ${history.skippedCount}',
-                  ),
-                  Text(
-                    '${MedicationHistoryStatus.unrecorded.label(text.isEnglish)} ${history.unrecordedCount}',
-                  ),
-                ],
-              ),
-              if (history.unrecordedCount > 0) ...[
-                const SizedBox(height: 4),
-                Text(
-                  text.historyUnrecordedNotice,
-                  key: const Key('chat-history-unrecorded-notice'),
-                  style: TextStyle(color: secondary, fontSize: 13),
+              Container(
+                key: const Key('chat-history-summary-panel'),
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: MedBuddyColors.chatContentSurface,
+                  border: Border.all(color: MedBuddyColors.chatContentBorder),
+                  borderRadius: MedBuddyRadii.control,
                 ),
-              ],
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            range.label,
+                            style: MedBuddyTextStyles.menuBody.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        if (open != null)
+                          const Icon(
+                            Icons.arrow_right_rounded,
+                            color: MedBuddyColors.textMuted,
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    MedicationHistoryChartsSummary.counts(
+                      counts: MedicationHistoryChartCounts(
+                        taken:
+                            history.scheduledTakenCount ?? history.takenCount,
+                        skipped:
+                            history.scheduledSkippedCount ??
+                            history.skippedCount,
+                        unrecorded:
+                            history.scheduledUnrecordedCount ??
+                            history.unrecordedCount,
+                        asNeeded: history.asNeededTakenCount ?? 0,
+                      ),
+                      isEnglish: text.isEnglish,
+                      showAsNeeded: history.hasScheduledCounts,
+                    ),
+                  ],
+                ),
+              ),
               if (expired) ...[
                 const SizedBox(height: 4),
                 Text(
@@ -3384,7 +3650,7 @@ class _MessageBubble extends StatelessWidget {
   final UserSetting userSetting;
   final ValueChanged<ChatMedicationContext> onMedicationPressed;
   final ValueChanged<ChatMessage>? onHistoryPressed;
-  final ValueChanged<ChatScheduleContext>? onSchedulePressed;
+  final ValueChanged<ChatMessage>? onSchedulePressed;
   final ValueChanged<ChatPlaceContext> onPharmacyCallRequested;
   final ValueChanged<ChatPlaceContext> onPharmacyDirectionsRequested;
   final ValueChanged<ChatMessage> onPlaceDetailsRequested;
@@ -3430,6 +3696,7 @@ class _MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final localTime = message.createdAt.toLocal();
     final timeLabel = userSetting.formatTime(localTime.hour, localTime.minute);
+    final heading = text.sharedContentHeading(message);
     final bubble = Container(
       key: ValueKey('chat-bubble-${message.messageId}'),
       constraints: BoxConstraints(
@@ -3438,11 +3705,11 @@ class _MessageBubble extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
       decoration: BoxDecoration(
-        color: isMine ? MedBuddyColors.primary : Colors.white,
+        color: isMine ? MedBuddyColors.chatOutgoing : Colors.white,
         borderRadius: MedBuddyRadii.card,
-        border: isMine
-            ? null
-            : Border.all(color: MedBuddyColors.outline, width: 1),
+        border: Border.all(
+          color: isMine ? MedBuddyColors.successBorder : MedBuddyColors.outline,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3454,14 +3721,14 @@ class _MessageBubble extends StatelessWidget {
                 Icon(
                   Icons.delete_outline,
                   size: 18,
-                  color: isMine ? Colors.white70 : MedBuddyColors.textMuted,
+                  color: MedBuddyColors.textMuted,
                 ),
                 const SizedBox(width: 6),
                 Flexible(
                   child: Text(
                     text.deletedMessage,
                     style: TextStyle(
-                      color: isMine ? Colors.white70 : MedBuddyColors.textMuted,
+                      color: MedBuddyColors.textMuted,
                       fontSize: 15,
                       fontStyle: FontStyle.italic,
                       height: 1.4,
@@ -3471,10 +3738,17 @@ class _MessageBubble extends StatelessWidget {
               ],
             )
           else ...[
+            if (heading != null) ...[
+              _ChatContentHeading(
+                title: heading.$1,
+                icon: heading.$2,
+                color: MedBuddyColors.textStrong,
+              ),
+              const SizedBox(height: 8),
+            ],
             if (message.historyContext != null) ...[
               _MessageMedicationHistoryContext(
                 history: message.historyContext!,
-                isMine: isMine,
                 text: text,
                 onPressed: onHistoryPressed == null
                     ? null
@@ -3485,7 +3759,6 @@ class _MessageBubble extends StatelessWidget {
             for (final medication in message.attachedMedicationContexts) ...[
               _MessageMedicationContext(
                 medication: medication,
-                isMine: isMine,
                 isLoading: medication.medicationId == loadingMedicationId,
                 text: text,
                 onPressed: loadingMedicationId != null
@@ -3502,23 +3775,23 @@ class _MessageBubble extends StatelessWidget {
             if (message.scheduleContext != null) ...[
               _MessageScheduleContext(
                 schedule: message.scheduleContext!,
-                isMine: isMine,
                 text: text,
-                onPressed: onSchedulePressed == null
+                onPressed:
+                    onSchedulePressed == null ||
+                        _readableScheduleDay(message.scheduleContext!) == null
                     ? null
                     // 함수이름: build.onPressed callback
                     // 함수역할: 발신자 구분·메시지 시각·텍스트·첨부 본문의 캡처된 상태에서 `onSchedulePressed!(message.scheduleContext!)` 값을 제공한다.
                     // 매개변수:
                     // - 없음.
                     // 반환값: `onSchedulePressed!(message.scheduleContext!)`의 값.
-                    : () => onSchedulePressed!(message.scheduleContext!),
+                    : () => onSchedulePressed!(message),
               ),
               const SizedBox(height: 8),
             ],
             if (message.pharmacyContext != null) ...[
               _MessagePharmacyContext(
                 pharmacy: message.pharmacyContext!,
-                isMine: isMine,
                 phoneVerified:
                     message.messageKind ==
                     ChatMessageKind.pharmacyPhoneVerified,
@@ -3544,7 +3817,6 @@ class _MessageBubble extends StatelessWidget {
             if (message.hospitalContext != null) ...[
               _MessagePharmacyContext(
                 pharmacy: message.hospitalContext!,
-                isMine: isMine,
                 phoneVerified: false,
                 text: text,
                 onCallRequested: () =>
@@ -3559,7 +3831,6 @@ class _MessageBubble extends StatelessWidget {
                 message.attachedMedicationContexts.isNotEmpty) ...[
               _MedicationShortageContext(
                 message: message,
-                isMine: isMine,
                 text: text,
                 // 함수이름: build.onFindPharmacyRequested callback
                 // 함수역할: 메시지에 첨부된 약 목록을 유지하며 약국 검색을 연다.
@@ -3573,19 +3844,19 @@ class _MessageBubble extends StatelessWidget {
               ),
               const SizedBox(height: 8),
             ],
-            Text(
+            KeepWordsText(
               message.body,
               style: TextStyle(
-                color: isMine ? Colors.white : MedBuddyColors.textStrong,
+                color: MedBuddyColors.textStrong,
                 fontSize: 15,
-                height: 1.4,
-                fontWeight: FontWeight.w500,
+                height: 1.35,
+                fontWeight: FontWeight.w600,
                 letterSpacing: 0,
               ),
             ),
             if (message.showSafetyGuidance) ...[
               const SizedBox(height: 8),
-              _MedicationSafetyGuidance(isMine: isMine, text: text),
+              _MedicationSafetyGuidance(text: text),
               const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: () =>
@@ -3593,12 +3864,8 @@ class _MessageBubble extends StatelessWidget {
                 icon: const Icon(Icons.local_hospital_outlined, size: 18),
                 label: Text(text.findNearbyHospital),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: isMine
-                      ? Colors.white
-                      : MedBuddyColors.primary,
-                  side: BorderSide(
-                    color: isMine ? Colors.white : MedBuddyColors.primary,
-                  ),
+                  foregroundColor: MedBuddyColors.primary,
+                  side: BorderSide(color: MedBuddyColors.primary),
                 ),
               ),
             ],
@@ -3607,12 +3874,11 @@ class _MessageBubble extends StatelessWidget {
           Text(
             timeLabel,
             style: TextStyle(
-              color: isMine
-                  ? Colors.white.withValues(alpha: 0.78)
-                  : MedBuddyColors.textMuted,
+              color: MedBuddyColors.textMuted,
               // 보낸 시각도 읽을 수 있게 13pt 이상으로 둔다.
               fontSize: 13,
-              fontWeight: FontWeight.w500,
+              fontWeight: FontWeight.w600,
+              height: 1.35,
               letterSpacing: 0,
             ),
           ),
@@ -3679,7 +3945,60 @@ class _LinkedChatText {
   // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
   bool get isEnglish => isEnglishLanguage(language);
 
+  // 일반 대화는 그대로 두고 기능으로 공유한 정보에는 유형 제목을 한 번만 붙인다.
+  (String, IconData)? sharedContentHeading(ChatMessage message) {
+    if (message.historyContext != null) return null;
+    final action = switch (message.messageKind) {
+      ChatMessageKind.slotCheckRequest => (
+        isEnglish ? 'Medication check request' : '복약 확인 요청',
+        Icons.fact_check_outlined,
+      ),
+      ChatMessageKind.slotCompletion => (
+        isEnglish ? 'Medication taken' : '복용 완료 알림',
+        Icons.done_all,
+      ),
+      ChatMessageKind.medicationShortage => (
+        isEnglish ? 'Medication running low' : '약 부족 알림',
+        Icons.medication_outlined,
+      ),
+      ChatMessageKind.medicationDiscomfort => (
+        isEnglish ? 'Medication discomfort' : '복용 불편 알림',
+        Icons.health_and_safety_outlined,
+      ),
+      _ => null,
+    };
+    if (action != null) return action;
+    if (message.hospitalContext != null) {
+      return (
+        isEnglish ? 'Hospital information' : '병원 정보',
+        Icons.local_hospital_outlined,
+      );
+    }
+    if (message.pharmacyContext != null) {
+      return (
+        isEnglish ? 'Pharmacy information' : '약국 정보',
+        Icons.storefront_outlined,
+      );
+    }
+    if (message.scheduleContext != null) {
+      return (
+        isEnglish ? 'Medication schedule' : '복약 일정',
+        Icons.calendar_month_outlined,
+      );
+    }
+    if (message.attachedMedicationContexts.isNotEmpty) {
+      return (
+        isEnglish ? 'Medication information' : '약 정보',
+        Icons.medication_outlined,
+      );
+    }
+    return null;
+  }
+
   String get medicationHistory => isEnglish ? 'Medication history' : '복약 기록';
+  String get asNeededNotRecordable => isEnglish
+      ? 'Record as-needed doses from the schedule, then try again without them.'
+      : '필요시 약은 일정의 필요시 복용에서 기록하고, 선택에서 뺀 뒤 다시 시도해 주세요.';
   String get copyMessage => isEnglish ? 'Copy' : '복사';
   String get messageCopied => isEnglish ? 'Message copied.' : '메시지를 복사했어요.';
   String get copyFailed =>
@@ -3719,15 +4038,10 @@ class _LinkedChatText {
 
   String get viewLatestRecords =>
       isEnglish ? 'View latest records' : '최신 기록 보기';
-  String get historyUnrecordedNotice => isEnglish
-      ? 'Unrecorded does not mean not taken.'
-      : '미기록은 복용하지 않았다는 뜻이 아니에요.';
   String get historyExpired => isEnglish
       ? 'Records older than 90 days can no longer be opened.'
       : '90일이 지난 기록은 더 이상 열 수 없어요.';
 
-  String get findNearbyCare =>
-      isEnglish ? 'Find hospitals or pharmacies' : '병원·약국 찾기';
   String get findNearbyHospital => isEnglish ? 'Find hospitals' : '병원 찾기';
   String get shareCareTitle => isEnglish ? 'Share place' : '장소 공유';
   String shareRecipient(String name) =>
@@ -3919,6 +4233,14 @@ class _LinkedChatText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get noActiveMedication =>
       isEnglish ? 'No active medications' : '복용 중인 약이 없습니다';
+  // 함수이름: medicationsLoading
+  // 함수역할: 기능 메뉴에서 약 목록을 아직 받는 중이라 선택지가 막힌 이유를 알린다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 현재 언어의 안내 문구.
+  String get medicationsLoading => isEnglish
+      ? 'Loading medications...'
+      : '복용 중인 약을 불러오는 중입니다';
   // 함수이름: selectMedication
   // 함수역할: 현재 언어와 입력값에 맞춰 "대화할 약 선택" 문구를 제공한다.
   // 매개변수:
@@ -4069,13 +4391,6 @@ class _LinkedChatText {
     };
   }
 
-  // 함수이름: selectScheduleSlot
-  // 함수역할: 보호자 전용 시간대 선택 버튼의 복약 확인 요청 목적을 안내한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get selectScheduleSlot =>
-      isEnglish ? 'Request a medication check' : '복약 확인 요청';
   // 함수이름: onlyCaregiverCanRequest
   // 함수역할: 현재 언어와 입력값에 맞춰 "복약 확인 요청은 연결된 보호자만 보낼 수 있습니다." 문구를 제공한다.
   // 매개변수:
@@ -4091,6 +4406,30 @@ class _LinkedChatText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get scheduleSelectorTitle =>
       isEnglish ? 'Today\'s medication times' : '오늘의 복약 시간대';
+  // 함수이름: noRequestableSchedule
+  // 함수역할: 기능 메뉴에서 확인을 요청할 시간대가 없어 선택지가 막힌 이유를 알린다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 현재 언어의 안내 문구.
+  String get noRequestableSchedule => isEnglish
+      ? 'No medication times to check today'
+      : '오늘 확인을 요청할 시간대가 없습니다';
+  // 함수이름: scheduleLoading
+  // 함수역할: 기능 메뉴에서 오늘 시간대를 아직 받는 중이라 선택지가 막힌 이유를 알린다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 현재 언어의 안내 문구.
+  String get scheduleLoading => isEnglish
+      ? 'Loading today\'s medication times...'
+      : '오늘 복약 시간대를 불러오는 중입니다';
+  // 함수이름: scheduleLoadFailed
+  // 함수역할: 기능 메뉴에서 오늘 시간대를 받지 못해 선택지가 막힌 이유를 알린다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 현재 언어의 안내 문구.
+  String get scheduleLoadFailed => isEnglish
+      ? 'Could not load today\'s medication times.'
+      : '오늘 복약 시간대를 불러오지 못했습니다.';
   // 함수이름: scheduleSelectorCaregiverDescription
   // 함수역할: 현재 언어와 입력값에 맞춰 "확인이 필요한 시간대를 선택해 환자에게 알려주세요." 문구를 제공한다.
   // 매개변수:

@@ -46,6 +46,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(DataUseInfoUI), findsOneWidget);
     expect(find.text('개인정보의 이용과 보관 방법을 확인합니다.'), findsOneWidget);
+    expect(find.textContaining('완전히 익명화되는 것은 아닙니다'), findsNothing);
+    await tester.tap(find.text('계정과 복약 정보'));
+    await tester.pumpAndSettle();
     expect(find.textContaining('완전히 익명화되는 것은 아닙니다'), findsOneWidget);
     await tester.tap(find.byTooltip('뒤로').last);
     await tester.pumpAndSettle();
@@ -148,12 +151,36 @@ void main() {
         renderedTexts,
         contains(english ? 'Sharing medication records' : '복약 기록 공유'),
       );
-      final fullText = renderedTexts.join('\n');
-      expect(fullText, contains(english ? 'readable text' : '읽기 쉬운 텍스트'));
-      expect(fullText, isNot(contains('CSV')));
+      await tester.scrollUntilVisible(
+        find.text(english ? 'Sharing medication records' : '복약 기록 공유'),
+        -300,
+      );
+      await tester.tap(
+        find.text(english ? 'Sharing medication records' : '복약 기록 공유'),
+      );
+      await tester.pumpAndSettle();
       expect(
-        fullText,
-        isNot(contains(english ? 'Temporary sharing files' : '공유용 임시 파일')),
+        find.textContaining(english ? 'readable text' : '읽기 쉬운 텍스트'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('CSV'), findsNothing);
+      await tester.scrollUntilVisible(
+        find.text(
+          english ? 'Access and manage your information' : '내 정보 확인과 관리',
+        ),
+        300,
+      );
+      await tester.ensureVisible(find.text(english ? 'Access and manage your information' : '내 정보 확인과 관리'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.text(
+          english ? 'Access and manage your information' : '내 정보 확인과 관리',
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.textContaining(english ? 'Do not post prescriptions' : '공개 게시판에 처방전', skipOffstage: false),
+        250,
       );
       expect(
         find.textContaining(
@@ -170,8 +197,12 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('외부 AI 이용 시 주의'), 300);
+    await tester.tap(find.text('외부 AI 이용 시 주의'));
+    await tester.pumpAndSettle();
     expect(find.textContaining('개인정보·민감정보를 전송해서는 안 됩니다'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('계정 삭제 범위'), 300);
+    await tester.tap(find.text('계정 삭제 범위'));
+    await tester.pumpAndSettle();
     expect(find.textContaining('모든 사본이 같은 순간에 삭제되는 것은 아닙니다'), findsOneWidget);
     expect(find.textContaining('운영자는 공개 배포 전에'), findsNothing);
     expect(tester.takeException(), isNull);

@@ -11,16 +11,14 @@ import '../services/api_response_parser.dart';
 import '../services/notification_service.dart';
 
 // Function Name: NotificationRegistrar
-// Description: Defines platform registration of reminders for explicit active dates, with slot identity, localized text, time, and date-specific medication names.
+// Description: Defines platform registration of reminders for explicit active dates, with slot identity, localized text, and time.
 // Parameters:
 // - id (int): Platform identifier used to schedule, replace, or cancel an alert.
 // - slotKey (String): Medication slot key: morning, lunch, evening, or bedtime.
 // - slotTitle (String): Localized medication slot name.
 // - hour (int): Local hour in 24-hour time.
 // - minute (int): Minute component of local time.
-// - medicationNames (List<String>): Medication display names used in reminders or recommendations.
 // - activeDates (List<DateTime>): Reminder dates within the medication course.
-// - medicationNamesByDate (Map<String, List<String>>): Active medication names grouped by calendar date.
 // - language (String): Language code used for display or speech guidance.
 // Returns:
 // - Future<void>: asynchronous completion without a result payload.
@@ -31,9 +29,7 @@ typedef NotificationRegistrar =
       required String slotTitle,
       required int hour,
       required int minute,
-      required List<String> medicationNames,
       required List<DateTime> activeDates,
-      Map<String, List<String>> medicationNamesByDate,
       String language,
     });
 
@@ -158,16 +154,14 @@ class SetNotification {
   }
 
   // Function Name: registerNotification
-  // Description: Passes active course dates and date-specific medication names to the notification registrar, keeping plugin details inside NotificationService.
+  // Description: Passes active course dates to the notification registrar, keeping plugin details inside NotificationService.
   // Parameters:
   // - id (int): Platform identifier used to schedule, replace, or cancel an alert.
   // - slotKey (String): Medication slot key: morning, lunch, evening, or bedtime.
   // - slotTitle (String): Localized medication slot name.
   // - hour (int): Local hour in 24-hour time.
   // - minute (int): Minute component of local time.
-  // - medicationNames (List<String>): Medication display names used in reminders or recommendations.
   // - activeDates (List<DateTime>): Reminder dates within the medication course.
-  // - medicationNamesByDate (Map<String, List<String>>): Active medication names grouped by calendar date.
   // - language (String): Language code used for display or speech guidance.
   // Returns:
   // - Future<void>: asynchronous completion without a result payload.
@@ -177,9 +171,7 @@ class SetNotification {
     required String slotTitle,
     required int hour,
     required int minute,
-    required List<String> medicationNames,
     required List<DateTime> activeDates,
-    Map<String, List<String>> medicationNamesByDate = const {},
     String language = 'ko',
   }) {
     return _notificationRegistrar(
@@ -188,9 +180,7 @@ class SetNotification {
       slotTitle: slotTitle,
       hour: hour,
       minute: minute,
-      medicationNames: medicationNames,
       activeDates: activeDates,
-      medicationNamesByDate: medicationNamesByDate,
       language: language,
     );
   }

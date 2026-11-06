@@ -179,6 +179,10 @@ services:
       AUTH_MODE: firebase
       FIREBASE_ALLOW_PHONE_AUTH: "false"
       FIREBASE_ALLOW_ANONYMOUS_AUTH: "true"
+      # Revoked sessions and disabled users stop at once, and a typo in backend.env cannot
+      # turn the check off (the code default is off for local development).
+      FIREBASE_CHECK_REVOKED_TOKENS: "true"
+      FIREBASE_REQUIRE_VERIFIED_EMAIL: "true"
       FIREBASE_APP_CHECK_REQUIRED: "${FIREBASE_APP_CHECK_REQUIRED:-true}"
       FIREBASE_OFF_PLAY_BETA_MODE: "${FIREBASE_OFF_PLAY_BETA_MODE:-false}"
       DATABASE_HOST: postgres
@@ -197,7 +201,7 @@ services:
       - /bin/sh
       - -ec
       - |
-        exec python -m uvicorn main:app --host 0.0.0.0 --port 8080 --proxy-headers --forwarded-allow-ips=127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
+        exec python -m uvicorn main:app --host 0.0.0.0 --port 8080 --proxy-headers --forwarded-allow-ips=127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7 --ws-max-size 65536
     depends_on:
       database-migrate:
         condition: service_completed_successfully
@@ -216,6 +220,9 @@ services:
       test:
         - CMD
         - python
+        # Isolated mode: the check runs as the container user with /app as the working
+        # directory, so it must not import modules from there.
+        - -I
         - -c
         - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/ready', timeout=3)
       interval: 15s

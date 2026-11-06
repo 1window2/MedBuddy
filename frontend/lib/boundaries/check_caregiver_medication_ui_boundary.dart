@@ -277,12 +277,12 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
                 : '환자 오늘의 복약 일정',
             subtitle: _patientLabel,
             backTooltip: _isEnglish ? 'Back' : '뒤로가기',
-            historyKey: const Key('caregiver-schedule-history'),
-            historyTooltip: _isEnglish ? 'Medication history' : '복용 기록',
+            actionKey: const Key('caregiver-schedule-history'),
+            actionTooltip: _isEnglish ? 'Medication history' : '복용 기록',
             progressLabel: _isEnglish ? 'Medication progress' : '복용 진행률',
             completedCount: progress.completedCount,
             totalCount: progress.totalCount,
-            onHistory: _openMedicationHistory,
+            onAction: _openMedicationHistory,
             // 함수이름: build.onBack callback
             // 함수역할: `Navigator.pop(context)`에 지정한 선택값 또는 취소 결과로 현재 화면을 닫는다.
             // 매개변수:

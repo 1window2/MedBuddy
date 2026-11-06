@@ -24,6 +24,7 @@ import '../widgets/app_version_label.dart';
 import 'set_notification_ui_boundary.dart';
 import 'data_use_info_ui_boundary.dart';
 import 'notification_readiness_ui_boundary.dart';
+import '../widgets/keep_words_text.dart';
 
 part 'settings_preference_widgets.dart';
 
@@ -1833,7 +1834,7 @@ class _SettingsMenuTile extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 5),
-                        Text(
+                        KeepWordsText(
                           summary,
                           style: const TextStyle(
                             color: MedBuddyColors.textMuted,
@@ -2524,28 +2525,6 @@ class _SettingText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get chatNotificationsDescription =>
       isEnglish ? 'New family messages' : '가족이 보낸 새 메시지';
-  // 함수이름: deviceNotificationSettingsTitle
-  // 함수역할: 현재 언어와 입력값에 맞춰 "휴대폰 알림 설정" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get deviceNotificationSettingsTitle =>
-      isEnglish ? 'Phone notification settings' : '휴대폰 알림 설정';
-  // 함수이름: deviceNotificationSettingsDescription
-  // 함수역할: 운영체제 알림 설정에서 확인할 항목을 설명한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get deviceNotificationSettingsDescription =>
-      isEnglish ? 'App permission and lock-screen display' : '알림 권한과 잠금 화면 표시';
-  // 함수이름: deviceNotificationSettingsFailed
-  // 함수역할: 현재 언어와 입력값에 맞춰 "휴대폰 알림 설정을 열지 못했습니다." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get deviceNotificationSettingsFailed => isEnglish
-      ? 'Could not open the phone notification settings.'
-      : '휴대폰 알림 설정을 열지 못했습니다.';
   // 함수이름: defaultMedicationTimeTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "기본 복약 시간" 문구를 제공한다.
   // 매개변수:

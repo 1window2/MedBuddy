@@ -413,12 +413,8 @@ class _MutableSetNotification extends SetNotification {
   // - hour (int): Selected local alarm hour in 24-hour time. Accepted but not consumed by this fixture.
   // - minute (int): Selected minute component of the local alarm time. Accepted but not consumed by this
   //   fixture.
-  // - medicationNames (List<String>): Medication names eligible for this reminder. Accepted but not
-  //   consumed by this fixture.
   // - activeDates (List<DateTime>): Dates on which this dose is active. Accepted but not consumed by
   //   this fixture.
-  // - medicationNamesByDate (Map<String, List<String>>): Medication names active on each scheduled date.
-  //   Accepted but not consumed by this fixture.
   // - language (String): Language code used for labels or notification content. Accepted but not
   //   consumed by this fixture.
   // Returns:
@@ -430,9 +426,7 @@ class _MutableSetNotification extends SetNotification {
     required String slotTitle,
     required int hour,
     required int minute,
-    required List<String> medicationNames,
     required List<DateTime> activeDates,
-    Map<String, List<String>> medicationNamesByDate = const {},
     String language = 'ko',
   }) async {}
 }
@@ -1586,7 +1580,7 @@ void main() {
         expect(title.style!.fontSize, 21);
         expect(title.style!.color, Colors.white);
         expect(title.strutStyle, MedBuddyPageHeader.titleStrutStyle);
-        expect(tester.getTopLeft(find.text('오늘의 복약 일정')).dy, 12);
+        expect(tester.getTopLeft(find.text('오늘의 복약 일정')).dy, 8);
         expect(
           find.ancestor(
             of: find.text('오늘의 복약 일정'),

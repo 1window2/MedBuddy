@@ -66,7 +66,7 @@ class MedicationHistoryDaySummary {
 }
 
 // Class Name: MedicationHistoryMonthCalendar
-// Role: Draws one month with its navigation, day cells and legend.
+// Role: Draws the day cells and legend of one month; the history screen owns month navigation.
 class MedicationHistoryMonthCalendar extends StatelessWidget {
   const MedicationHistoryMonthCalendar({
     super.key,
@@ -77,7 +77,6 @@ class MedicationHistoryMonthCalendar extends StatelessWidget {
     required this.isEnglish,
     required this.enabled,
     required this.onDaySelected,
-    required this.onMonthChanged,
   });
 
   // First day of the shown month and the dates, all as UTC calendar dates.
@@ -88,25 +87,9 @@ class MedicationHistoryMonthCalendar extends StatelessWidget {
   final bool isEnglish;
   final bool enabled;
   final ValueChanged<DateTime> onDaySelected;
-  final ValueChanged<DateTime> onMonthChanged;
 
   // The history keeps 90 days, so day 89 before today is the earliest reachable one.
   DateTime get earliest => MedicationHistoryDates.earliest(today);
-
-  // Function Name: visibleRange
-  // Description: The part of a month that the history can be read for: from the later of
-  //   the first of the month and the earliest day, to the earlier of its last day and
-  //   today. Null when no day of the month is reachable.
-  // Parameters: - month (DateTime): First day of the month. - today (DateTime): Korean today.
-  // Returns: MedicationHistoryRange?: The readable days of that month.
-  static MedicationHistoryRange? visibleRange(DateTime month, DateTime today) {
-    final first = DateTime.utc(month.year, month.month);
-    final last = DateTime.utc(month.year, month.month + 1, 0);
-    final earliest = MedicationHistoryDates.earliest(today);
-    final start = first.isBefore(earliest) ? earliest : first;
-    final end = last.isAfter(today) ? today : last;
-    return end.isBefore(start) ? null : MedicationHistoryRange(start, end);
-  }
 
   String _tr(String ko, String en) => isEnglish ? en : ko;
 
@@ -116,52 +99,14 @@ class MedicationHistoryMonthCalendar extends StatelessWidget {
     final daysInMonth = DateTime.utc(month.year, month.month + 1, 0).day;
     // Sunday-first grid, as Korean wall calendars are laid out.
     final leading = first.weekday % 7;
-    final previous = DateTime.utc(month.year, month.month - 1);
-    final next = DateTime.utc(month.year, month.month + 1);
-    final canGoBack = visibleRange(previous, today) != null;
-    final canGoForward = visibleRange(next, today) != null;
     final weekdays = isEnglish
         ? const ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
         : const ['일', '월', '화', '수', '목', '금', '토'];
-    final title = isEnglish
-        ? '${const ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][month.month - 1]} ${month.year}'
-        : '${month.year}년 ${month.month}월';
 
     return Column(
       key: const Key('history-month-calendar'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            IconButton(
-              key: const Key('history-previous-month'),
-              tooltip: _tr('이전 달', 'Previous month'),
-              onPressed: enabled && canGoBack
-                  ? () => onMonthChanged(previous)
-                  : null,
-              icon: const Icon(Icons.chevron_left),
-            ),
-            Expanded(
-              child: Text(
-                title,
-                key: const Key('history-month-title'),
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            IconButton(
-              key: const Key('history-next-month'),
-              tooltip: _tr('다음 달', 'Next month'),
-              onPressed: enabled && canGoForward
-                  ? () => onMonthChanged(next)
-                  : null,
-              icon: const Icon(Icons.chevron_right),
-            ),
-          ],
-        ),
         const SizedBox(height: 4),
         ExcludeSemantics(
           child: Row(
@@ -216,9 +161,7 @@ class MedicationHistoryMonthCalendar extends StatelessWidget {
     final isToday = day == today;
     final isSelected = day == selected;
     final colour = summary?.color;
-    final label = StringBuffer(
-      isEnglish ? 'Day $dayNumber' : '$dayNumber일',
-    );
+    final label = StringBuffer(isEnglish ? 'Day $dayNumber' : '$dayNumber일');
     if (!reachable) {
       label.write(isEnglish ? ', not available' : ', 조회할 수 없음');
     } else if (summary == null || summary.scheduled == 0) {
@@ -243,6 +186,8 @@ class MedicationHistoryMonthCalendar extends StatelessWidget {
       button: reachable,
       selected: isSelected,
       label: label.toString(),
+      // 하위 InkWell의 의미 정보를 제외하므로 화면 낭독기의 누르기 동작을 직접 연결한다.
+      onTap: enabled && reachable ? () => onDaySelected(day) : null,
       excludeSemantics: true,
       child: Padding(
         padding: const EdgeInsets.all(2),
@@ -257,7 +202,9 @@ class MedicationHistoryMonthCalendar extends StatelessWidget {
                 : BorderSide.none,
           ),
           child: InkWell(
-            key: ValueKey('history-month-day-${MedicationHistoryDates.format(day)}'),
+            key: ValueKey(
+              'history-month-day-${MedicationHistoryDates.format(day)}',
+            ),
             borderRadius: MedBuddyRadii.small,
             onTap: enabled && reachable ? () => onDaySelected(day) : null,
             child: SizedBox(
@@ -335,35 +282,47 @@ class MedicationHistoryMonthCalendar extends StatelessWidget {
   }
 
   // Function Name: _legend
-  // Description: Explains the marks; the record notice already says that a missing
-  //   record does not mean a missed dose.
+  // Description: Explains the marks in one compact row, keeping large text scrollable.
   Widget _legend() {
     Widget item(Color colour, String text, {bool ring = false}) => Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 10,
-          height: 10,
+          width: 8,
+          height: 8,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: ring ? null : colour,
             border: ring ? Border.all(color: colour, width: 2) : null,
           ),
         ),
-        const SizedBox(width: 6),
-        Flexible(child: Text(text, style: const TextStyle(fontSize: 13))),
+        const SizedBox(width: 4),
+        Text(text, style: const TextStyle(fontSize: 12)),
       ],
     );
-    return Wrap(
-      key: const Key('history-month-legend'),
-      spacing: 14,
-      runSpacing: 6,
-      children: [
-        item(MedBuddyColors.primary, _tr('모두 복용 기록', 'All recorded taken')),
-        item(MedBuddyColors.reminderAccent, _tr('일부 기록', 'Some recorded')),
-        item(MedBuddyColors.textMuted, _tr('복용 기록 없음', 'None recorded')),
-        item(MedBuddyColors.infoBlue, _tr('필요시 복용', 'As needed'), ring: true),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        key: const Key('history-month-legend'),
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.only(bottom: 8),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minWidth: constraints.maxWidth),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            spacing: 10,
+            children: [
+              item(MedBuddyColors.primary, _tr('모두 기록', 'All taken')),
+              item(MedBuddyColors.reminderAccent, _tr('일부 기록', 'Some taken')),
+              item(MedBuddyColors.textMuted, _tr('미기록', 'No record')),
+              item(
+                MedBuddyColors.infoBlue,
+                _tr('필요시', 'As needed'),
+                ring: true,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

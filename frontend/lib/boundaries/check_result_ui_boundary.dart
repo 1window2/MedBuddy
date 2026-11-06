@@ -409,7 +409,7 @@ class _SaveCompletedSheet extends StatelessWidget {
             const SizedBox(height: 10),
             OutlinedButton.icon(
               onPressed: onSavedMedicationRequested,
-              icon: const Icon(Icons.medication_outlined),
+              icon: const Icon(Icons.inventory_2_outlined),
               label: Text(text.openSavedMedication),
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size.fromHeight(58),

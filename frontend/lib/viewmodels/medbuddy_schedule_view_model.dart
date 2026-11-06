@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../controls/check_schedule_control.dart';
 import '../controls/check_today_medication_info_control.dart';
 import '../entities/medication_schedule_entity.dart';
@@ -13,6 +15,8 @@ import 'medbuddy_schedule_slot_policy.dart';
 // Responsibilities:
 // - Reject stale load generations, merge server-updated schedules, and publish loading and failure state to schedule listeners.
 class MedBuddyScheduleViewModel {
+  // 기기 저장소가 응답하지 않아도 서버 일정 표시까지 함께 멈추지 않게 하는 대기 한도.
+  static const _localStoreTimeout = Duration(seconds: 5);
   bool _isTodayScheduleLoading = false;
   // Function Name: isTodayScheduleLoading
   // Description: Exposes whether the tracked current schedule load is still pending.
@@ -181,11 +185,17 @@ class MedBuddyScheduleViewModel {
   ) async {
     if (_disposed) return;
     int? cacheRevision;
+    var localStoreResponsive = true;
     if (doseSync != null) {
       try {
-        cacheRevision = await doseSync!.cacheRevision();
-        await doseSync!.reload();
-        cacheRevision = await doseSync!.cacheRevision();
+        await () async {
+          cacheRevision = await doseSync!.cacheRevision();
+          await doseSync!.reload();
+          cacheRevision = await doseSync!.cacheRevision();
+        }().timeout(_localStoreTimeout);
+      } on TimeoutException {
+        // 막힌 저장소에 일정 저장까지 기다리면 표시만 더 늦어진다.
+        localStoreResponsive = false;
       } catch (_) {
         // Online reads remain available when local persistence is unavailable.
       }
@@ -208,13 +218,15 @@ class MedBuddyScheduleViewModel {
           'The medication schedule has expired. Please refresh.',
         );
       }
-      if (doseSync != null) {
+      if (doseSync != null && localStoreResponsive) {
         try {
-          await doseSync!.cacheSchedules(
-            scheduleList,
-            scheduleDate: requestDay,
-            expectedRevision: cacheRevision,
-          );
+          await doseSync!
+              .cacheSchedules(
+                scheduleList,
+                scheduleDate: requestDay,
+                expectedRevision: cacheRevision,
+              )
+              .timeout(_localStoreTimeout);
         } catch (_) {
           // A local storage failure must not hide a successful online read.
           // Dose writes still fail closed when they cannot be persisted.

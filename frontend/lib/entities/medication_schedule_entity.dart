@@ -528,17 +528,6 @@ class MedicationSchedule {
         (nameConfidence > 0 && nameConfidence < 0.75);
   }
 
-  // 함수이름: isNameConfirmed
-  // 함수역할: 사용자가 직접 수정하거나 검토 완료한 출처의 약명인지 판정한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - bool: 사용자가 직접 수정하거나 검토 완료한 출처의 약명인지 판정한다.
-  bool get isNameConfirmed {
-    final source = nameCorrectionSource.trim();
-    return source == 'user_edit' || source == 'user_review';
-  }
-
   // 함수이름: dailyFrequencyCount
   // 함수역할: 하루 복용 횟수 텍스트에서 횟수 단위가 붙은 숫자를, 없으면 마지막 숫자 묶음을 정수로 읽는다.
   // 매개변수:

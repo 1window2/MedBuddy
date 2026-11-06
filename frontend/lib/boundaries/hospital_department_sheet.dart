@@ -22,6 +22,7 @@ class _HospitalDepartmentSheet extends StatefulWidget {
 }
 
 class _HospitalDepartmentSheetState extends State<_HospitalDepartmentSheet> {
+  final _query = TextEditingController();
   final _scrollController = ScrollController();
   final _indexController = ScrollController();
   late final Map<String, List<String>> _groups;
@@ -57,6 +58,7 @@ class _HospitalDepartmentSheetState extends State<_HospitalDepartmentSheet> {
 
   @override
   void dispose() {
+    _query.dispose();
     _scrollController.dispose();
     _indexController.dispose();
     super.dispose();
@@ -83,128 +85,237 @@ class _HospitalDepartmentSheetState extends State<_HospitalDepartmentSheet> {
           ? Icons.radio_button_checked
           : Icons.radio_button_off,
     ),
-    title: Text(_label(code)),
+    title: Text(
+      _label(code),
+      style: const TextStyle(
+        fontSize: 17,
+        fontWeight: FontWeight.w600,
+        height: 1.25,
+        letterSpacing: 0,
+      ),
+    ),
     onTap: () => widget.onSelected != null
         ? widget.onSelected!(code)
         : Navigator.pop(context, code),
   );
 
   @override
-  Widget build(BuildContext context) => FractionallySizedBox(
-    heightFactor: widget.embedded ? 1 : .78,
-    child: SafeArea(
-      top: false,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 12, 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    widget.embedded
-                        ? (widget.english ? 'Select specialty' : '진료과목 선택')
-                        : (widget.english ? 'Specialty' : '진료과목'),
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0,
-                    ),
-                  ),
-                ),
-                if (!widget.embedded)
-                  IconButton(
-                    tooltip: widget.closeLabel,
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
-                  ),
-              ],
-            ),
+  Widget build(BuildContext context) {
+    final searching = _query.text.trim().isNotEmpty;
+    final results = FindHospitalDepartment.search(
+      _query.text,
+      _hospitalDepartments,
+    );
+    return FractionallySizedBox(
+      heightFactor:
+          widget.embedded || MediaQuery.viewInsetsOf(context).bottom > 0
+          ? 1
+          : .78,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            16,
+            16,
+            16 +
+                (widget.embedded ? 0 : MediaQuery.viewInsetsOf(context).bottom),
           ),
-          const Divider(height: 1),
-          Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: SingleChildScrollView(
-                    key: const Key('hospital-department-list'),
-                    controller: _scrollController,
-                    padding: const EdgeInsets.fromLTRB(8, 8, 0, 24),
-                    child: Column(
-                      children: [
-                        _option(''),
-                        for (final group in _groups.entries) ...[
-                          Container(
-                            key: _anchors[group.key],
-                            alignment: Alignment.centerLeft,
-                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                            child: Text(
-                              group.key,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: MedBuddyColors.primary,
+          child: Column(
+            children: [
+              MedBuddySearchField(
+                inputKey: const Key('hospitalDepartmentSearchInput'),
+                clearKey: const Key('hospitalDepartmentSearchClear'),
+                controller: _query,
+                label: widget.english
+                    ? 'Specialty, symptom or condition'
+                    : '진료과·증상·질병 검색',
+                hint: widget.english
+                    ? 'Cough, cold, internal medicine'
+                    : '기침, 감기, 내과',
+                isEnglish: widget.english,
+                onChanged: () {
+                  setState(() => _activeIndex = null);
+                  if (_scrollController.hasClients) _scrollController.jumpTo(0);
+                },
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: MedBuddySearchPanel(
+                  key: const Key('hospital-department-panel'),
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 12, 12, 12),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                searching
+                                    ? (widget.english
+                                          ? 'Related specialties'
+                                          : '관련 진료과목')
+                                    : widget.embedded
+                                    ? (widget.english
+                                          ? 'Select specialty'
+                                          : '진료과목 선택')
+                                    : (widget.english ? 'Specialty' : '진료과목'),
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w700,
+                                  height: 1.25,
+                                  letterSpacing: 0,
+                                ),
                               ),
                             ),
-                          ),
-                          for (final code in group.value) _option(code),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-                const VerticalDivider(width: 1),
-                SizedBox(
-                  width: 48,
-                  child: SingleChildScrollView(
-                    key: const Key('hospital-department-index'),
-                    controller: _indexController,
-                    child: Column(
-                      children: [
-                        for (final initial in _groups.keys)
-                          Tooltip(
-                            message: widget.english
-                                ? 'Jump to $initial'
-                                : '$initial 진료과목으로 이동',
-                            child: Semantics(
-                              button: true,
-                              selected: _activeIndex == initial,
-                              label: widget.english
-                                  ? 'Jump to $initial'
-                                  : '$initial 진료과목으로 이동',
-                              excludeSemantics: true,
-                              child: InkWell(
-                                key: ValueKey(
-                                  'hospital-department-index-$initial',
-                                ),
-                                onTap: () => _jumpTo(initial),
-                                child: SizedBox(
-                                  width: 48,
-                                  height: 48,
-                                  child: Center(
-                                    child: Text(
-                                      initial,
-                                      style: TextStyle(
-                                        color: MedBuddyColors.primary,
-                                        fontWeight: _activeIndex == initial
-                                            ? FontWeight.w700
-                                            : FontWeight.w600,
+                            if (!widget.embedded)
+                              IconButton(
+                                tooltip: widget.closeLabel,
+                                onPressed: () => Navigator.pop(context),
+                                icon: const Icon(Icons.close),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      Expanded(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(
+                              child: SingleChildScrollView(
+                                key: const Key('hospital-department-list'),
+                                controller: _scrollController,
+                                padding: const EdgeInsets.fromLTRB(8, 8, 0, 24),
+                                child: Column(
+                                  children: [
+                                    if (searching) ...[
+                                      Padding(
+                                        padding: const EdgeInsets.all(16),
+                                        child: Text(
+                                          results.isEmpty ||
+                                                  FindHospitalDepartment.needsUrgentHelp(
+                                                    _query.text,
+                                                  )
+                                              ? (widget.english
+                                                    ? 'For severe symptoms, call 119 or seek emergency care.'
+                                                    : '심한 증상이 있으면 119 또는 응급실에 도움을 요청하세요.')
+                                              : (widget.english
+                                                    ? 'Related specialties, not a diagnosis.'
+                                                    : '진단이 아닌 관련 진료과 안내입니다.'),
+                                          style: MedBuddyTextStyles.menuBody
+                                              .copyWith(
+                                                color: MedBuddyColors.textMuted,
+                                              ),
+                                        ),
                                       ),
-                                    ),
+                                      if (results.isEmpty)
+                                        Padding(
+                                          padding: const EdgeInsets.all(24),
+                                          child: Text(
+                                            widget.english
+                                                ? 'No matching specialties'
+                                                : '검색 결과가 없어요',
+                                            style: MedBuddyTextStyles.menuBody,
+                                          ),
+                                        ),
+                                      for (final code in results) _option(code),
+                                    ] else ...[
+                                      _option(''),
+                                      for (final group in _groups.entries) ...[
+                                        Container(
+                                          key: _anchors[group.key],
+                                          alignment: Alignment.centerLeft,
+                                          padding: const EdgeInsets.fromLTRB(
+                                            16,
+                                            12,
+                                            16,
+                                            4,
+                                          ),
+                                          child: Text(
+                                            group.key,
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                              height: 1.35,
+                                              letterSpacing: 0,
+                                              color: MedBuddyColors.primary,
+                                            ),
+                                          ),
+                                        ),
+                                        for (final code in group.value)
+                                          _option(code),
+                                      ],
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
+                            if (!searching) const VerticalDivider(width: 1),
+                            if (!searching)
+                              SizedBox(
+                                width: 48,
+                                child: SingleChildScrollView(
+                                  key: const Key('hospital-department-index'),
+                                  controller: _indexController,
+                                  child: Column(
+                                    children: [
+                                      for (final initial in _groups.keys)
+                                        Tooltip(
+                                          message: widget.english
+                                              ? 'Jump to $initial'
+                                              : '$initial 진료과목으로 이동',
+                                          child: Semantics(
+                                            button: true,
+                                            selected: _activeIndex == initial,
+                                            label: widget.english
+                                                ? 'Jump to $initial'
+                                                : '$initial 진료과목으로 이동',
+                                            excludeSemantics: true,
+                                            child: InkWell(
+                                              key: ValueKey(
+                                                'hospital-department-index-$initial',
+                                              ),
+                                              onTap: () => _jumpTo(initial),
+                                              child: SizedBox(
+                                                width: 48,
+                                                height: 48,
+                                                child: Center(
+                                                  child: Text(
+                                                    initial,
+                                                    style: TextStyle(
+                                                      color: MedBuddyColors
+                                                          .primary,
+                                                      fontSize: 14,
+                                                      height: 1.35,
+                                                      letterSpacing: 0,
+                                                      fontWeight:
+                                                          _activeIndex ==
+                                                              initial
+                                                          ? FontWeight.w700
+                                                          : FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                    ],
                                   ),
                                 ),
                               ),
-                            ),
-                          ),
-                      ],
-                    ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }

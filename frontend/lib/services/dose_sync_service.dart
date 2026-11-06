@@ -89,6 +89,9 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   // 기기 키가 사라져 전송하지 못하고 버려진 기록 수. 사용자가 확인할 때까지 유지한다.
   int _lostRecordCount = 0;
   int get lostRecordCount => _lostRecordCount;
+  // 서버가 받은 기록 수. 서버 기록을 보여 주는 화면이 다시 읽을 때를 알려 준다.
+  int _acceptedRevision = 0;
+  int get acceptedRevision => _acceptedRevision;
   List<MedicationSchedule> _confirmed = const [];
   String _cacheDate = '';
   String _fingerprint = '';
@@ -428,6 +431,8 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
       _draining ??= _drain().whenComplete(() => _draining = null);
 
   Future<void> _drain() async {
+    final acceptedBefore = _acceptedRevision;
+    var reloaded = false;
     try {
       await initialize();
       for (var count = 0; count < 100 && !_disposed; count++) {
@@ -499,6 +504,7 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
             'date': body['schedule_date'] ?? doseScheduleDay(clock()),
             'schedules': body['data'],
           });
+          _acceptedRevision++;
           _retry = 0;
         } catch (_) {
           await _store!.finish(owner, id, lease, retry: true);
@@ -506,9 +512,14 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
         }
       }
       await reload();
+      reloaded = true;
     } catch (_) {
       // 저장소·인증·네트워크 오류가 나도 사용자의 전송 대기 기록을 버리지 않는다.
     } finally {
+      // 서버가 받은 기록이 있는데 중간에 빠져나왔으면 기록 화면이 다시 읽도록 그 사실만 알린다.
+      if (!reloaded && _acceptedRevision != acceptedBefore && !_disposed) {
+        notifyListeners();
+      }
       await _scheduleRetryIfUploadable();
     }
   }

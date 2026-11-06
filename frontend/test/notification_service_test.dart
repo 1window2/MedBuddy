@@ -11,6 +11,9 @@ import 'package:medbuddy_frontend/controls/authentication_control.dart';
 import 'package:medbuddy_frontend/controls/manage_user_setting_control.dart';
 import 'package:medbuddy_frontend/entities/medication_schedule_entity.dart';
 import 'package:medbuddy_frontend/main.dart';
+import 'package:medbuddy_frontend/entities/patient_hash_entity.dart';
+import 'package:medbuddy_frontend/services/auth_config.dart';
+import 'package:medbuddy_frontend/services/medication_reminder_action_tag.dart';
 import 'package:medbuddy_frontend/services/notification_service.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -504,13 +507,7 @@ void main() {
     await tester.pumpAndSettle();
 
     selectionHandler!(
-      MedicationNotificationSelection(
-        destination: MedicationNotificationDestination.schedule,
-        slotKey: 'evening',
-        notificationId: 29,
-        action: MedicationNotificationAction.markSlotTaken,
-        scheduleDate: DateTime.now(),
-      ),
+      await _signedSelection(tester, slotKey: 'evening', notificationId: 29, action: MedicationNotificationAction.markSlotTaken),
     );
     await tester.pumpAndSettle();
 
@@ -591,13 +588,7 @@ void main() {
     await tester.pumpAndSettle();
 
     selectionHandler!(
-      MedicationNotificationSelection(
-        destination: MedicationNotificationDestination.schedule,
-        slotKey: 'bedtime',
-        notificationId: 31,
-        action: MedicationNotificationAction.snoozeTenMinutes,
-        scheduleDate: DateTime.now(),
-      ),
+      await _signedSelection(tester, slotKey: 'bedtime', notificationId: 31, action: MedicationNotificationAction.snoozeTenMinutes),
     );
     await tester.pumpAndSettle();
 
@@ -832,8 +823,60 @@ void main() {
   // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
   // Returns:
   // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  // Android delivers notification actions to the exported launcher activity, which any other
+  // app can start with the same action and extras. A quick action without this app's tag, or with
+  // a tag issued for another account, opens the schedule and records nothing.
+  for (final forged in ['unsigned', 'other-account']) {
+    testWidgets('a $forged taken action records nothing', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final schedule = _RecordingCheckSchedule();
+      MedicationNotificationSelectionHandler? selectionHandler;
+      await tester.pumpWidget(
+        MedBuddyApp(
+          notificationSelectionRegistrar: (handler) {
+            selectionHandler = handler;
+          },
+          viewModelFactory: () => MedBuddyViewModel(
+            checkSchedule: schedule,
+            setNotification: EmptySetNotification(),
+            manageUserSetting: ManageUserSetting(useRemotePersistence: false),
+            notificationService: RecordingNotificationService(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final selection = forged == 'unsigned'
+          ? MedicationNotificationSelection(
+              destination: MedicationNotificationDestination.schedule,
+              slotKey: 'evening',
+              notificationId: 29,
+              action: MedicationNotificationAction.markSlotTaken,
+              scheduleDate: DateTime.now(),
+            )
+          : await _signedSelection(
+              tester,
+              slotKey: 'evening',
+              notificationId: 29,
+              action: MedicationNotificationAction.markSlotTaken,
+              owner: 'another-account',
+            );
+
+      selectionHandler!(selection);
+      await tester.pumpAndSettle();
+
+      expect(schedule.updatedSlotKey, isNull);
+      expect(find.byType(CheckScheduleUI), findsOneWidget);
+    });
+  }
+
   testWidgets('a cold-start taken action records the dose slot', (tester) async {
     SharedPreferences.setMockInitialValues({});
+    final coldStartSelection = await _signedSelection(
+      tester,
+      slotKey: 'evening',
+      notificationId: 29,
+      action: MedicationNotificationAction.markSlotTaken,
+    );
     final navigatorKey = GlobalKey<NavigatorState>();
     final schedule = _RecordingCheckSchedule();
     NavigatorState? navigatorAtDelivery;
@@ -855,13 +898,7 @@ void main() {
           delivered = true;
           navigatorAtDelivery = navigatorKey.currentState;
           handler(
-            MedicationNotificationSelection(
-              destination: MedicationNotificationDestination.schedule,
-              slotKey: 'evening',
-              notificationId: 29,
-              action: MedicationNotificationAction.markSlotTaken,
-              scheduleDate: DateTime.now(),
-            ),
+            coldStartSelection,
           );
         },
         viewModelFactory: () => MedBuddyViewModel(
@@ -952,4 +989,37 @@ void main() {
       },
     );
   }
+}
+
+// Function Name: _signedSelection
+// Description: Builds a schedule quick action as a genuine reminder delivers it, with the tag the
+//   app signs when it schedules the reminder for the signed-in development account.
+// Parameters: tester - widget tester; slotKey, notificationId, action - selected reminder action;
+//   owner - account the tag is issued for.
+// Returns: The selection the notification response handler would decode.
+Future<MedicationNotificationSelection> _signedSelection(
+  WidgetTester tester, {
+  required String slotKey,
+  required int notificationId,
+  required MedicationNotificationAction action,
+  String? owner,
+}) async {
+  final today = DateTime.now();
+  final payload =
+      'schedule:$slotKey:$notificationId:${today.toIso8601String().split('T').first}';
+  final tag = await tester.runAsync(
+    () => MedicationReminderActionTag.sign(
+      owner: owner ?? PatientHash.normalizePatientHash(AuthConfig.localUserHash),
+      payload: payload,
+    ),
+  );
+  return MedicationNotificationSelection(
+    destination: MedicationNotificationDestination.schedule,
+    slotKey: slotKey,
+    notificationId: notificationId,
+    action: action,
+    scheduleDate: today,
+    signedPayload: payload,
+    actionTag: tag,
+  );
 }

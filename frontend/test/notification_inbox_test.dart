@@ -81,6 +81,34 @@ void main() {
     store = NotificationInboxStore(userHash: 'patient', now: () => now);
   });
 
+  test('기존 정형 복약 알림은 현재 언어로 표시하고 채팅은 보존한다', () {
+    final control = ManageNotificationInbox(store: store);
+    addTearDown(control.dispose);
+    NotificationInboxEntry reminder(String slot, String title, String body) =>
+        NotificationInboxEntry(
+          id: 'reminder:12:1',
+          title: title,
+          body: body,
+          payload: 'schedule:$slot:12:2026-09-11',
+          category: NotificationInboxCategory.medication,
+          occurredAt: now,
+        );
+    final korean = reminder('lunch', '점심 복약 일정 확인', '복약 일정과 복용 완료 기록을 확인해 주세요.');
+    expect(control.titleFor(korean, isEnglish: true), 'Lunch medication schedule');
+    expect(control.bodyFor(korean, isEnglish: true), 'Check your medication schedule and recorded completion status.');
+    final english = reminder('morning', 'Morning medication schedule', 'Check your medication schedule and recorded completion status.');
+    expect(control.titleFor(english, isEnglish: false), '아침 복약 일정 확인');
+    expect(control.bodyFor(english, isEnglish: false), '복약 일정과 복용 완료 기록을 확인해 주세요.');
+    final needed = reminder('as_needed', '필요시 약 확인', '필요시 약과 오늘 기록한 복용 내역을 확인해 주세요.');
+    expect(control.titleFor(needed, isEnglish: true), 'As-needed medication check');
+    expect(control.bodyFor(needed, isEnglish: true), 'Check your as-needed medication and recorded doses.');
+    final custom = reminder('lunch', '사용자 제목', '사용자 내용');
+    expect(control.titleFor(custom, isEnglish: true), custom.title);
+    expect(control.bodyFor(custom, isEnglish: true), custom.body);
+    final chat = _entry('chat', now, chat: true);
+    expect(control.bodyFor(chat, isEnglish: true), chat.body);
+  });
+
   // 함수이름: 계정 격리 테스트
   // 함수역할: 다른 계정의 기록이 섞이지 않는지 검사한다. 매개변수: 없음. 반환값: 검증 완료.
   test('entries are account scoped and newest first', () async {
@@ -582,6 +610,38 @@ void main() {
       );
     });
   }
+
+  // 함수이름: 날짜 묶음 테스트
+  // 함수역할: 같은 날짜 알림을 한 제목 아래 모으고 날짜 제목을 화면 낭독기 제목으로 알리는지 검증한다. 매개변수: tester. 반환값: 검증 완료.
+  testWidgets('inbox shows one date heading per day', (tester) async {
+    await store.record(_entry('late', DateTime(2026, 9, 11, 9)));
+    await store.record(_entry('early', DateTime(2026, 9, 11, 7)));
+    await store.record(_entry('yesterday', DateTime(2026, 9, 10, 21)));
+    final control = ManageNotificationInbox(store: store);
+    addTearDown(control.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NotificationInboxUI(
+          control: control,
+          userSetting: UserSetting(),
+          onOpen: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('inbox-entry-early')), findsOneWidget);
+    expect(find.text('2026년 9월 11일'), findsOneWidget);
+    expect(find.text('2026년 9월 10일'), findsOneWidget);
+    final heading = tester.widget<Semantics>(
+      find
+          .ancestor(
+            of: find.text('2026년 9월 10일'),
+            matching: find.byType(Semantics),
+          )
+          .first,
+    );
+    expect(heading.properties.header, isTrue);
+  });
 
   // 함수이름: 선택 삭제 테스트
   // 함수역할: 선택 중에는 이동·읽음 처리를 하지 않고 선택 당시 항목만 삭제한다. 매개변수: tester. 반환값: 검증 완료.

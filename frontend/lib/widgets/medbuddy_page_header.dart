@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/medbuddy_theme.dart';
+import 'keep_words_text.dart';
 
 // 파일명: medbuddy_page_header.dart
 // 역할: 오늘의 복약 일정과 동일한 초록색 헤더·제목·탐색 명령을 제공한다.
@@ -153,7 +154,7 @@ class MedBuddyPageHeader extends StatelessWidget {
                                 if (subtitle != null &&
                                     subtitle!.isNotEmpty) ...[
                                   const SizedBox(height: 4),
-                                  Text(
+                                  KeepWordsText(
                                     subtitle!,
                                     maxLines: subtitleMaxLines,
                                     overflow: subtitleMaxLines == null

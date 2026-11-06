@@ -25,6 +25,7 @@ from entities.patient_hash_entity import (
     MAX_PATIENT_HASH_LENGTH,
     PATIENT_LINK_CODE_LENGTH,
 )
+from services.medication_dose_rhythm import names_nonpositive_duration
 
 _MAX_MEDICATION_NAME_LENGTH = 500
 _MAX_DETAIL_TEXT_LENGTH = 20_000
@@ -175,6 +176,20 @@ class SavedMedicationCreate(BaseModel):
         if not normalized_name:
             raise ValueError("A medication name is required.")
         return normalized_name
+
+    # 함수이름: validate_total_days
+    # 함수역할:
+    # - 0일 이하의 복용 기간은 끝나지 않는 복용으로 저장되므로 거부한다. 비어 있으면 기간을 모르는 것으로 둔다.
+    # 매개변수:
+    # - value (Optional[str]): 저장 요청에 포함된 총 복용 기간.
+    # 반환값:
+    # - 받은 값 그대로; 0일 이하면 ValueError.
+    @field_validator("total_days")
+    @classmethod
+    def validate_total_days(cls, value: Optional[str]) -> Optional[str]:
+        if names_nonpositive_duration(value):
+            raise ValueError("The course length must be at least one day.")
+        return value
 
     # 함수이름: validate_schedule_slot_keys
     # 함수역할:

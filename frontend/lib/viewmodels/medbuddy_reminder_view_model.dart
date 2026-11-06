@@ -772,27 +772,6 @@ class MedBuddyReminderViewModel {
       slotTitle: slotTitle,
       hour: setting.hour,
       minute: setting.minute,
-      medicationNames: schedules
-          .map(
-            // 함수이름: map 콜백
-            // 함수역할: 사용자 언어에 맞는 약 이름을 복약 알림 본문에 제공한다.
-            // 매개변수:
-            // - schedule (MedicationSchedule): 처리할 약 이름·복용량·기간·시간대 일정
-            // 반환값:
-            // - 현재 언어의 약 표시 이름.
-            (schedule) => schedule.displayNameForLanguage(userSetting.language),
-          )
-          .where(
-            /* 함수이름: where 콜백
-           * 함수역할: 복약 알림에서 공백뿐인 약 이름을 제외한다.
-           * 매개변수:
-           * - name (String): 표시·일치 여부를 검사할 약 이름
-           * 반환값:
-           * - 공백 외 내용이 있으면 true.
-           */
-            (name) => name.trim().isNotEmpty,
-          )
-          .toList(growable: false),
       activeDates: lastAllowedDate == null
           ? activeDates
           : activeDates

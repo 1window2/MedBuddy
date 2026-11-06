@@ -1,11 +1,101 @@
 # MedBuddy Release TODO
 
+## v0.2.5 development line
+
+v0.2.5 starts from `v0.2.4-beta` on `beta/v0.2.5` (PR #134) and collects the
+collaborator's usability work. The open items of v0.2.4 moved here. Changes are
+listed in the [v0.2.5 notes](releases/v0.2.5-beta.md).
+
+`v0.2.5-beta` was published on 2026-11-06. The items still open in this section
+and its subsections are carried to the 1.0.0 release candidate line, where they
+are to be finished before 1.0.0.
+
+- [x] Add `beta/v0.2.5` to the `beta-android` environment before the first
+      signed build; the workflow already allows the branch.
+- [ ] Replace the remaining user guide screenshots from earlier versions.
+- [x] The history tab does not reload after a dose recorded on a schedule screen
+      opened from a notification while the tab is showing. Fixed on 2026-11-04:
+      the tab reads again once the server accepts a dose; regressions in
+      [history screen](../frontend/test/medication_history_ui_boundary_test.dart).
+- [ ] Department search has no crisis wording ("죽고 싶어요"); decide what it
+      should offer before adding any.
+- [ ] Word wrapping covers the shared widgets and the screens checked on
+      2026-11-04. Other one-off texts still wrap by syllable; switch them to
+      `KeepWordsText` when they are next changed.
+- [x] Open the app right after updating on the Galaxy Note10 with the next signed
+      build, when a dose sync task is due. Done on 2026-11-06 with `4f9d012`: the
+      dose sync task ran as the app opened, the schedule loaded within 3 seconds,
+      one connection to the dose store, no `database is locked`.
+- [x] Update pydantic to 2.14 or later with the next backend change (2.14.2 on
+      2026-11-04; the backend suite passes). 2.13.5 has
+      two medium advisories (GHSA-gj4f-r7mf-jjxh, GHSA-955g-x97g-8mcp), but they
+      need a `Fraction` or multi-host URL field, and the backend has neither. They
+      may appear as Dependabot alerts once GitHub reviews them. The backend suite
+      passes with 2.14.1.
+
+### 1.0.0 readiness (2026-11-04)
+
+Reviewed on 2026-11-04 (see the [v0.2.5 notes](releases/v0.2.5-beta.md#100-readiness-review-2026-11-04)).
+The code defects found were fixed. A 1.0.0 release still needs the items under
+"Blocking a 1.0.0 release" in the v0.2.2 section (Google Play with App Check, the
+hospital API quota, a physical-device pass) and these:
+
+- [ ] A final privacy policy and consent for health data; the in-app data-use
+      guide does not replace them (Beta Scope). Owner and legal.
+- [x] Check production, read-only, for saved medications whose course length
+      is 0 or less. They were accepted before 2026-11-04 and never end.
+      Checked at the 2026-11-04 deploy: none.
+- [ ] Owner decision: a slot tapped on yesterday's list right after midnight,
+      with the app left open across midnight, is recorded for the new day by
+      design (`_ensureCurrentDayCache`), which also removes tonight's reminder of
+      that slot. Refusing it with "updated for the new day, tap again" would
+      change that design and its tests.
+- [ ] Owner decision: `SAVED_MEDICATION_MAX_PER_ACCOUNT` (300) also counts
+      stopped regimen versions, so frequent edits over years can reach it.
+- [ ] Not changed: two caregivers redeeming two codes of one patient at the same
+      moment can pass the per-patient link limit by one (the count is not locked
+      on the patient). No data is exposed; the fix needs a second account lock
+      in the redemption.
+- [ ] Not changed: a 200 response without the expected data shows its English
+      error text in the Korean UI on two caregiver screens. Deliberate in
+      `UserFacingErrorMessage`; a localized generic message would replace it.
+- [ ] Physical checks of the 2026-11-04 fixes: a snooze across midnight, and
+      sign-out while the 12-hour reminder task runs (neither is practical on the
+      emulator).
+
+### Security audit follow-ups (2026-11-06)
+
+Owner actions; the code findings of the audit were fixed in the v0.2.5 notes.
+
+- [ ] Delete the repository secrets `GEMINI_API_KEY` and `PUBLIC_DATA_API_KEY` (no
+      workflow uses them; any write collaborator's branch workflow can read them), and
+      rotate the keys at the providers if they are still live. Optionally remove the
+      stale variables `GCP_CATALOG_SYNC_JOB` and `GCP_MAINTENANCE_JOB`, and the
+      dormant Cloud Run workflows.
+- [ ] Read the data.go.kr daily quotas of the production key for the MFDS eDrug,
+      drug-approval and pill-image operations and for the NEMC pharmacy location
+      operation. MFDS lookups have no shared daily budget yet: one `/identify` can make
+      up to 16 provider calls and only per-account and per-IP limits apply. Pharmacy
+      lookups now stop at 800 a day; raise `PHARMACY_API_DAILY_REQUEST_BUDGET` if the
+      quota is higher.
+- [ ] Cloudflare: a rate-limit rule for `/api/v1/medication/pill-identification/*`,
+      `/identify` and `/pharmacy/nearby`, since anonymous sign-in is on and App Check
+      is off in the beta.
+- [ ] Host (needs sudo): SSH keys only (`PasswordAuthentication no`), check `ufw`,
+      apply the pending security updates, and decide whether gnome-remote-desktop
+      (3389/3390) and the AdGuard Home admin page (3000) should listen on the LAN.
+      Remove the exited `medbuddy-v020-device-test` containers and network.
+- [ ] Give the API and catalog jobs a Postgres role without superuser rights; only the
+      migration needs the owner role.
+- [x] Deploy the backend changes of 2026-11-06 (JPEG scan limit, pharmacy budget,
+      pill upload cap, compose pins). Deployed with `4f9d012` on 2026-11-06.
+
 ## v0.2.4 development line
 
 v0.2.4 starts from `v0.2.3-beta` on `beta/v0.2.4` and was planned to be finished by
 2026-11-20 for the graduation exhibition (2026-11-26 to 11-27). Released on
 2026-10-30 as `v0.2.4-beta` (PR #128, build `f377546`); a collaborator's further
-features and the open items below move to the 0.3.0 line. It takes the
+features and the open items below move to the v0.2.5 line. It takes the
 items of the 2026-10-20 team meeting and the items still open on the v0.2.3
 line below. Changes are listed in the [v0.2.4 notes](releases/v0.2.4-beta.md).
 
@@ -224,10 +314,9 @@ released under that version instead. Changes are listed in the
       whose regimen revision changed. To be checked on a device; see the
       offline-edit decision under v0.2.4.
 - [ ] Final-review items left as they are (the as-needed extra-dose
-      confirmation shows the last dose time since 2026-10-23): a reminder worker already
-      running at sign-out may re-arm the old account's reminders (race, not
-      reproduced); a course length of 0 or less sent directly to the API has
-      no end (the app sends 1-3650); a failed local reminder save turns the
+      confirmation shows the last dose time since 2026-10-23; the sign-out
+      reminder race and course lengths of 0 or less were fixed on 2026-11-04):
+      a failed local reminder save turns the
       reminder off by design rather than restoring it; keep at least one
       database dump off the production host.
 
@@ -242,9 +331,9 @@ released under that version instead. Changes are listed in the
       - Owner decisions: `recordAsNeededDose` in
         medication_history_ui_boundary.dart had no caller (added 2026-10-17)
         and kept a "new record" editor path alive; both were removed on
-        2026-10-29 (done). Still open: the as-needed slot header
-        strip could share `MedicationSlotHeaderStrip`; the OCR-region matching
-        in `InputPrescription` (~270 lines) could move to its own file.
+        2026-10-29 (done). The as-needed slot header now uses
+        `MedicationSlotHeaderStrip`, and the OCR-region matching moved from
+        `InputPrescription` to `prescription_preview_regions.dart` (2026-11-04).
       - Seen but not changed (not refactors): the redacted caregiver text uses
         a curly apostrophe in caregiver_alert_delivery_service.dart and a
         straight one elsewhere; history dates and the notification time zone

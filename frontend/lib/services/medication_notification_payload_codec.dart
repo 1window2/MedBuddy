@@ -70,17 +70,23 @@ class MedicationNotificationPayloadCodec {
       );
     }
     final segments = payload?.split(':') ?? const <String>[];
-    if ((segments.length == 3 || segments.length == 4) &&
+    if (segments.length >= 3 &&
+        segments.length <= 5 &&
         segments[0] == 'schedule' &&
         caregiverNotificationSlotKeys.contains(
           segments[1].trim().toLowerCase(),
         )) {
+      // The fifth segment is the app's own signature tag (see MedicationReminderActionTag).
+      if (segments.length == 5 &&
+          !RegExp(r'^[A-Za-z0-9_-]{22}$').hasMatch(segments[4])) {
+        return null;
+      }
       final encodedNotificationId = int.tryParse(segments[2]);
       if (encodedNotificationId == null || encodedNotificationId < 0) {
         return null;
       }
       DateTime? scheduleDate;
-      if (segments.length == 4) {
+      if (segments.length >= 4) {
         final rawDate = segments[3];
         scheduleDate = DateTime.tryParse(rawDate);
         if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(rawDate) ||
@@ -94,6 +100,8 @@ class MedicationNotificationPayloadCodec {
         slotKey: segments[1].trim().toLowerCase(),
         notificationId: notificationId ?? encodedNotificationId,
         scheduleDate: scheduleDate,
+        signedPayload: segments.take(4).join(':'),
+        actionTag: segments.length == 5 ? segments[4] : null,
         // 필요시 확인 알림은 복용 처리와 다시 알림을 자동 실행하지 않는다.
         action: segments[1].trim().toLowerCase() == 'as_needed'
             ? MedicationNotificationAction.open

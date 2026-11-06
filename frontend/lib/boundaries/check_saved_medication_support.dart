@@ -430,9 +430,8 @@ class _SavedMedicationText {
   String get showAll => isEnglish ? 'View all' : '전체 보기';
 
   // 함수이름: registerMedication
-  // 함수역할: 등록·식별 진입을 함께 표현한다. 매개변수: 없음. 반환값: 버튼 문구.
-  String get registerMedication =>
-      isEnglish ? 'Add or identify medication' : '약 등록·식별';
+  // 함수역할: 홈의 약 등록·관리에서 고르는 '약 등록'과 같은 이름을 표시한다. 매개변수: 없음. 반환값: 버튼 문구.
+  String get registerMedication => isEnglish ? 'Add medication' : '약 등록';
 
   // 함수이름: deleting
   // 함수역할: 삭제 요청 중임을 알린다. 매개변수: 없음. 반환값: 진행 문구.

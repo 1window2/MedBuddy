@@ -5,12 +5,15 @@ import 'package:flutter/material.dart';
 import '../widgets/medbuddy_wordmark.dart';
 
 import 'medication_capture_options_ui_boundary.dart';
+import 'check_saved_medication_ui_boundary.dart';
+import '../widgets/medbuddy_option_sheet.dart';
 import '../entities/medication_alarm_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/user_setting_entity.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/home_medication_preview.dart';
 import '../widgets/home_medication_slot_pager.dart';
+import '../widgets/keep_words_text.dart';
 
 // 파일명: input_prescription_ui_boundary.dart
 // 역할: MedBuddy 홈 화면과 처방전 입력 진입점을 구성한다.
@@ -36,10 +39,10 @@ class InputPrescriptionUI extends StatelessWidget {
   final Widget? caregiverSummary;
   final Widget? caregiverScheduleHint;
   final DateTime Function()? nowProvider;
-  final VoidCallback? onPrescriptionScanRequested;
-  final VoidCallback? onPrescriptionGalleryRequested;
   final ValueChanged<PillCaptureMode>? onPillIdentificationRequested;
   final VoidCallback? onManualMedicationRequested;
+  final Future<void> Function(BuildContext, PrescriptionImageSource)?
+  onRegistrationSourceRequested;
   final VoidCallback? onTodayScheduleRequested;
   final Future<bool> Function(String slotKey, bool completed)?
   onMedicationSlotStatusRequested;
@@ -86,10 +89,9 @@ class InputPrescriptionUI extends StatelessWidget {
     this.caregiverSummary,
     this.caregiverScheduleHint,
     this.nowProvider,
-    required this.onPrescriptionScanRequested,
-    required this.onPrescriptionGalleryRequested,
     required this.onPillIdentificationRequested,
     this.onManualMedicationRequested,
+    this.onRegistrationSourceRequested,
     required this.onTodayScheduleRequested,
     this.onMedicationSlotStatusRequested,
     this.isNextMedicationCompletionLoading = false,
@@ -186,7 +188,7 @@ class InputPrescriptionUI extends StatelessWidget {
                                     cardKey: const ValueKey(
                                       'homePrescriptionAnalysisCard',
                                     ),
-                                    icon: Icons.document_scanner_outlined,
+                                    icon: Icons.medication_outlined,
                                     title: text.prescriptionAnalysis,
                                     subtitle: text.prescriptionAnalysisSubtitle,
                                     tone: _HomeActionTone.primary,
@@ -213,7 +215,7 @@ class InputPrescriptionUI extends StatelessWidget {
                                     cardKey: const ValueKey(
                                       'homeNearbyPharmacyCard',
                                     ),
-                                    icon: Icons.local_pharmacy_outlined,
+                                    icon: Icons.map_outlined,
                                     title: text.nearbyPharmacy,
                                     subtitle: text.nearbyPharmacySubtitle,
                                     tone: _HomeActionTone.lavender,
@@ -345,39 +347,57 @@ class InputPrescriptionUI extends StatelessWidget {
   // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _showAnalysisTaskOptions(BuildContext context) async {
-    final task = await showMedicationCaptureTaskOptions(
+    final isEnglish = userSetting.isEnglish;
+    final register = await showModalBottomSheet<bool>(
       context: context,
-      userSetting: userSetting,
+      isScrollControlled: true,
+      builder: (sheetContext) => MedBuddyOptionSheet(
+        children: [
+          MedBuddyOptionTile(
+            icon: Icons.add_circle_outline,
+            title: isEnglish ? 'Add medication' : '약 등록',
+            subtitle: isEnglish
+                ? 'Add a medication or identify a pill.'
+                : '약봉투, 알약 사진 또는 직접 입력으로 등록해요.',
+            onTap: () => Navigator.pop(sheetContext, true),
+          ),
+          const SizedBox(height: 10),
+          MedBuddyOptionTile(
+            icon: Icons.inventory_2_outlined,
+            title: isEnglish ? 'Manage medications' : '약 관리',
+            subtitle: isEnglish
+                ? 'View and manage saved medications.'
+                : '등록한 약과 복용 기간을 확인하고 관리해요.',
+            onTap: () => Navigator.pop(sheetContext, false),
+          ),
+        ],
+      ),
     );
-
-    if (!context.mounted || task == null) {
-      return;
-    }
-    if (task == MedicationCaptureTask.multiplePills ||
-        task == MedicationCaptureTask.individualPills) {
-      onPillIdentificationRequested?.call(
-        task == MedicationCaptureTask.multiplePills
-            ? PillCaptureMode.singlePhoto
-            : PillCaptureMode.individualPhotos,
+    if (!context.mounted || register == null) return;
+    if (!register) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(builder: (_) => const CheckSavedMedicationUI()),
       );
       return;
     }
-    if (task == MedicationCaptureTask.manual) {
-      onManualMedicationRequested?.call();
-      return;
-    }
-    final source = await showPrescriptionImageSourceOptions(
+    await showMedicationCaptureTaskOptions(
       context: context,
       userSetting: userSetting,
+      onTaskSelected: (pageContext, task) async {
+        if (task == MedicationCaptureTask.multiplePills ||
+            task == MedicationCaptureTask.individualPills) {
+          onPillIdentificationRequested?.call(
+            task == MedicationCaptureTask.multiplePills
+                ? PillCaptureMode.singlePhoto
+                : PillCaptureMode.individualPhotos,
+          );
+        } else if (task == MedicationCaptureTask.manual) {
+          onManualMedicationRequested?.call();
+        }
+      },
+      onSourceSelected: (pageContext, source) async =>
+          onRegistrationSourceRequested?.call(pageContext, source),
     );
-    if (!context.mounted || source == null) {
-      return;
-    }
-    if (source == PrescriptionImageSource.camera) {
-      onPrescriptionScanRequested?.call();
-      return;
-    }
-    onPrescriptionGalleryRequested?.call();
   }
 }
 
@@ -577,7 +597,7 @@ class _HomeActionCard extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisAlignment: MainAxisAlignment.start,
       children: [
         Row(
           children: [
@@ -587,7 +607,7 @@ class _HomeActionCard extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 7),
-        Text(
+        KeepWordsText(
           title,
           maxLines: largeTextGridLayout ? null : 2,
           overflow: largeTextGridLayout
@@ -601,7 +621,7 @@ class _HomeActionCard extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 4),
-        Text(
+        KeepWordsText(
           subtitle,
           maxLines: largeTextGridLayout ? null : 2,
           overflow: largeTextGridLayout
@@ -633,7 +653,7 @@ class _HomeActionCard extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              KeepWordsText(
                 title,
                 maxLines: largeTextGridLayout ? null : 1,
                 overflow: largeTextGridLayout
@@ -646,7 +666,7 @@ class _HomeActionCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 4),
-              Text(
+              KeepWordsText(
                 subtitle,
                 maxLines: largeTextGridLayout ? null : 2,
                 overflow: largeTextGridLayout
@@ -790,13 +810,12 @@ class _HomeText {
   // 함수역할: 처방전·알약 식별·직접 등록을 포함하는 홈 진입점의 이름을 번역한다.
   // 매개변수: 없음. 반환값: 현재 언어의 카드 제목.
   String get prescriptionAnalysis =>
-      isEnglish ? 'Add or Identify Medication' : '약 등록·식별';
+      isEnglish ? 'Add or manage medication' : '약 등록·관리';
   // 함수이름: prescriptionAnalysisSubtitle
   // 함수역할: 약 정보 입력과 식별 방법을 카드 설명으로 안내한다.
   // 매개변수: 없음. 반환값: 현재 언어의 카드 설명.
-  String get prescriptionAnalysisSubtitle => isEnglish
-      ? 'Use a prescription, pill photo, or manual entry'
-      : '처방전·알약 사진 또는 직접 입력으로 등록해요';
+  String get prescriptionAnalysisSubtitle =>
+      isEnglish ? 'Add or manage your medications' : '약을 등록하고 저장한 약을 관리해요';
   // Function Name: healthRecommendation
   // Description: Provides localized wording for "Health Recommendations" using the current language and message inputs.
   // Parameters:

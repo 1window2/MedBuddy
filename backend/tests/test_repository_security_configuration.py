@@ -85,12 +85,12 @@ def test_android_signing_secrets_are_limited_to_exact_release_refs() -> None:
     ).read_text(encoding="utf-8")
 
     assert "github.ref == 'refs/heads/main'" in workflow
-    assert workflow.count("refs/heads/beta/v0.2.4") >= 4
+    assert workflow.count("refs/heads/beta/v0.2.5") >= 4
     assert "refs/heads/beta/*" not in workflow
     assert "refs/tags/v*" not in workflow
     assert "environment: beta-android" in workflow
     assert workflow.count(
-        "github.ref == 'refs/heads/beta/v0.2.4' && inputs.api_base_url"
+        "github.ref == 'refs/heads/beta/v0.2.5' && inputs.api_base_url"
     ) == 2
 
 
@@ -275,6 +275,24 @@ def test_self_hosted_backend_prepares_secret_then_drops_privileges() -> None:
     assert "--no-new-privs" in entrypoint_source
     assert '"$@"' in entrypoint_source
 
+
+# Function Name: test_backend_container_pins_token_checks_and_transport_limits
+# Description:
+# - Pins the production token checks in compose so a backend.env typo cannot turn them off,
+#   bounds WebSocket messages at the transport, and keeps the root healthcheck from importing
+#   modules out of the application directory.
+# Parameters:
+# - None.
+# Returns:
+# - None; pytest reports a failure when one of these settings is dropped.
+def test_backend_container_pins_token_checks_and_transport_limits() -> None:
+    compose = (_REPOSITORY_ROOT / "compose.self-hosted.yml").read_text(encoding="utf-8")
+    dockerfile = (_REPOSITORY_ROOT / "backend/Dockerfile").read_text(encoding="utf-8")
+    assert 'FIREBASE_CHECK_REVOKED_TOKENS: "true"' in compose
+    assert 'FIREBASE_REQUIRE_VERIFIED_EMAIL: "true"' in compose
+    assert "--ws-max-size 65536" in compose
+    assert '"--ws-max-size", "65536"' in dockerfile
+    assert "- python\n        # Isolated mode" in compose and "- -I\n" in compose
 
 # Function Name: test_backend_trusts_forwarded_headers_only_from_private_proxies
 # Description:

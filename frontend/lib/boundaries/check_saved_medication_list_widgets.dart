@@ -134,7 +134,7 @@ class _SavedMedicationNameRow extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    KeepWordsText(
                       displayName,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -282,7 +282,7 @@ class _MedicationDateLine extends StatelessWidget {
   Widget build(BuildContext context) {
     final displayValue = value.trim().isEmpty ? fallback : value.trim();
 
-    return Text(
+    return KeepWordsText(
       '$label: $displayValue',
       softWrap: true,
       style: TextStyle(

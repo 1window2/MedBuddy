@@ -879,8 +879,10 @@ opt 표시된 복약 알림에서 동작 선택
     Patient -> LocalNotification : 바로 복용 또는 10분 미루기
     LocalNotification -> FrontService : 날짜·시간대가 포함된 알림 선택
     FrontService -> UI : MedicationNotificationSelection
-    alt 지난 날짜의 알림
-        UI --> Patient : 처리하지 않고 일정 확인 안내
+    alt 이 앱이 이 계정에 서명한 알림이 아님(다른 앱이 보낸 인텐트 등)
+        UI --> Patient : 기록하지 않고 일정 화면만 엶
+    else 지난 날짜의 알림
+        UI --> Patient : 처리하지 않고 복약 기록에서 그날 기록을 고치도록 안내
     else 바로 복용
         ref over UI,Database : Flow 5의 본인 시간대 전체 완료 처리
     else 10분 미루기

@@ -278,6 +278,23 @@ class ManageLinkedChatTest(unittest.TestCase):
             ["morning", "lunch", "evening"],
         )
 
+    def test_as_needed_medication_has_no_inferred_schedule_slots(self) -> None:
+        self.medication.dosing_mode = "as_needed"
+        self.medication.daily_frequency = "1회"
+        self.db.commit()
+        for user_hash in ("patient-a", "caregiver-a"):
+            response = self.chat.request_medication_contexts(
+                link_id=self.link_id, user_hash=user_hash,
+            )
+            item = response["data"][0]
+            self.assertEqual(item["dosing_mode"], "as_needed")
+            self.assertEqual(item["schedule_slot_keys"], [])
+            schedules = self.chat.request_schedule_contexts(
+                link_id=self.link_id, user_hash=user_hash,
+            )
+            for slot in schedules["data"]:
+                self.assertEqual(slot["medications"], [])
+
     # 함수이름: test_participants_can_open_patient_medication_detail
     # 함수역할:
     # - 양측 참여자가 채팅 약 카드에서 동일 환자의 약명과 효능 상세를 조회하는지 검증한다.

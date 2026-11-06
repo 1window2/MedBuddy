@@ -483,6 +483,52 @@ async def test_request_body_limit_applies_default_to_delete_json_routes() -> Non
 # - None.
 # Returns:
 # - None.
+# Function Name: test_pill_identification_refuses_uploads_beyond_the_in_flight_limit
+# Description:
+# - When the process already holds the limit of pill uploads waiting for analysis, both routes
+#   answer 503 with Retry-After before reading the photo, and the control is not called.
+# Parameters:
+# - monkeypatch (pytest.MonkeyPatch): Sets the in-flight count to the limit.
+# Returns:
+# - None.
+@pytest.mark.anyio
+async def test_pill_identification_refuses_uploads_beyond_the_in_flight_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import api.router as router_module
+
+    control = _RecordingIdentifyPill()
+    app = create_app()
+    app.dependency_overrides[get_identify_pill] = lambda: control
+    app.dependency_overrides[get_registered_principal] = (
+        AuthenticatedPrincipal.development_principal
+    )
+    monkeypatch.setattr(
+        router_module,
+        "_pill_uploads_in_flight",
+        router_module._PILL_UPLOADS_IN_FLIGHT_LIMIT,
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        single = await client.post(
+            "/api/v1/medication/pill-identification/candidates",
+            files={"front": ("front.jpg", b"front-image", "image/jpeg")},
+        )
+        multiple = await client.post(
+            "/api/v1/medication/pill-identification/multiple-candidates",
+            files={"image": ("pills.jpg", b"pills-image", "image/jpeg")},
+        )
+
+    for response in (single, multiple):
+        assert response.status_code == 503
+        assert response.headers["Retry-After"] == "5"
+    assert control.front_image == b""
+    assert router_module._pill_uploads_in_flight == router_module._PILL_UPLOADS_IN_FLIGHT_LIMIT
+
+
 @pytest.mark.anyio
 async def test_pill_identification_accepts_front_and_optional_back_multipart() -> None:
     control = _RecordingIdentifyPill()
