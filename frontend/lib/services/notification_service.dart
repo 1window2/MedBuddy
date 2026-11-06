@@ -1056,10 +1056,12 @@ class NotificationService {
       request.payload,
     )?.scheduleDate;
     if (date == null) return false;
-    final today = DateTime(now.year, now.month, now.day);
-    final yesterday = DateTime(today.year, today.month, today.day - 1);
+    final yesterday = DateTime(now.year, now.month, now.day - 1);
+    // Compare the wall clock of now, not instants: now is in the reminder time zone, while
+    // DateTime() would build midnight in the system zone, which can differ.
+    final minutesSinceMidnight = now.hour * 60 + now.minute;
     return DateTime(date.year, date.month, date.day) == yesterday &&
-        now.isBefore(today.add(_snoozeGraceAfterMidnight));
+        minutesSinceMidnight < _snoozeGraceAfterMidnight.inMinutes;
   }
 
   static const Duration _snoozeGraceAfterMidnight = Duration(hours: 1);
