@@ -64,6 +64,7 @@ class _RetryChatControl extends ManageLinkedChat {
   int historyRequests = 0;
   bool failHistory = false;
   Completer<List<ChatMessage>>? historyGate;
+  Completer<MedicationDetail>? detailGate;
   Map<int?, List<ChatMessage>>? historyPages;
   final historyBoundaries = <int?>[];
   final markedReadIds = <int>[];
@@ -185,6 +186,7 @@ class _RetryChatControl extends ManageLinkedChat {
     required int medicationId,
   }) async {
     detailRequests += 1;
+    if (detailGate != null) return detailGate!.future;
     return MedicationDetail(
       id: medicationId,
       itemName: medicationId == 92 ? '저녁정' : '테스트정',
@@ -842,6 +844,143 @@ ChatMessage _historyShareMessage({
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  for (final patient in [false, true]) {
+    for (final confirming in [false, true]) {
+      testWidgets('열린 공유 흐름에 연동 해제를 반영한다: $patient $confirming', (
+        tester,
+      ) async {
+        final control = _RetryChatControl(failFirstSend: false);
+        final realtime = _FakeRealtimeService();
+        addTearDown(control.dispose);
+        addTearDown(realtime.dispose);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: LinkedChatUI(
+              linkId: 17,
+              currentUserHash: patient ? 'patient-a' : 'caregiver-a',
+              patientHash: 'patient-a',
+              control: control,
+              realtimeService: realtime,
+              careSelectorBuilder: (_) => Scaffold(
+                body: Builder(
+                  builder: (context) => TextButton(
+                    onPressed: () => Navigator.pop(
+                      context,
+                      NearbyCareSelection(
+                        phoneVerified: false,
+                        place: NearbyCarePlace.fromJson({
+                          'pharmacy_id': 'test-place',
+                          'name': '시험 약국',
+                          'address': '서울',
+                          'latitude': 37.55,
+                          'longitude': 126.92,
+                        }),
+                      ),
+                    ),
+                    child: const Text('장소 선택'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final gate = Completer<List<ChatMessage>>();
+        control.historyGate = gate;
+        final previousRequests = control.historyRequests;
+        realtime._states.add(LinkedChatConnectionState.connected);
+        await tester.pump();
+        expect(control.historyRequests, greaterThan(previousRequests));
+        await tester.tap(find.byKey(const ValueKey('chatActions')));
+        await tester.pumpAndSettle();
+        if (confirming) {
+          await tester.tap(find.byKey(const ValueKey('chat-action-3')));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('장소 선택'));
+          await tester.pumpAndSettle();
+        }
+        gate.completeError(ApiRequestException('Link ended', statusCode: 403));
+        await tester.pumpAndSettle();
+        if (confirming) {
+          await tester.tap(find.byKey(const ValueKey('confirmCareShare')));
+          await tester.pumpAndSettle();
+        } else {
+          for (final index in [0, 2, 3, 4, if (!patient) 1]) {
+            expect(
+              tester
+                  .widget<ListTile>(find.byKey(ValueKey('chat-action-$index')))
+                  .enabled,
+              isFalse,
+            );
+          }
+        }
+        expect(control.sendAttempts, 0);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      });
+    }
+  }
+
+  for (final fails in [false, true]) {
+    testWidgets('가려진 채팅의 늦은 약 상세조회가 화면을 열지 않는다: $fails', (tester) async {
+      final control = _RetryChatControl(failFirstSend: false);
+      final realtime = _FakeRealtimeService();
+      addTearDown(control.dispose);
+      addTearDown(realtime.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LinkedChatUI(
+            linkId: 17,
+            currentUserHash: 'patient-a',
+            patientHash: 'patient-a',
+            control: control,
+            realtimeService: realtime,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _selectDoseSlots(tester, ['morning']);
+      final response = Completer<MedicationDetail>();
+      control.detailGate = response;
+      await tester.tap(find.text('테스트정'));
+      await tester.pump();
+      expect(control.detailRequests, 1);
+      final navigator = Navigator.of(tester.element(find.byType(LinkedChatUI)));
+      unawaited(
+        navigator.push<void>(
+          MaterialPageRoute(
+            builder: (_) => const Scaffold(body: Text('다른 화면')),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      if (fails) {
+        response.completeError(StateError('late detail failure'));
+      } else {
+        response.complete(
+          const MedicationDetail(
+            itemName: '테스트정',
+            efficacy: '',
+            usageMethod: '',
+            warning: '',
+          ),
+        );
+      }
+      await tester.pumpAndSettle();
+      expect(find.text('다른 화면'), findsOneWidget);
+      expect(find.text('약 상세정보'), findsNothing);
+      expect(tester.takeException(), isNull);
+      navigator.pop();
+      await tester.pumpAndSettle();
+      control.detailGate = null;
+      await tester.tap(find.text('테스트정'));
+      await tester.pumpAndSettle();
+      expect(control.detailRequests, 2);
+      expect(find.text('약 상세정보'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
   for (final caregiver in [false, true]) {
     testWidgets('+ 메뉴에서 현재 대화로 기록 공유 후 돌아온다: $caregiver', (tester) async {
       SharedPreferences.setMockInitialValues({});

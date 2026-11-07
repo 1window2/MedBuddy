@@ -459,7 +459,9 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   // Description: Rebuilds after a complete independently reconciled history update.
   // Parameters: None. Returns: None; composer state remains presentation-owned.
   void _historyChanged() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    setState(() {});
+    _notifyChatActions();
   }
 
   // 같은 알림 경로를 다시 열어도 초안과 선택을 유지하며 최신 대화로 이동한다.
@@ -721,7 +723,9 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     bool clearComposer = false,
     bool clearMedicationSelection = false,
   }) async {
-    if (_isSending ||
+    if (!mounted ||
+        _history.linkUnavailable ||
+        _isSending ||
         _isDeletingMessages ||
         _isSelectingMessages ||
         body.trim().isEmpty) {
@@ -897,7 +901,8 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   // 함수역할: 약 첨부·복약 확인 요청·병원·약국 검색을 하나의 메뉴로 열고 고른 기능을 실행한다.
   // 매개변수: 없음. 반환값: 고른 기능의 화면이 닫힌 뒤 완료.
   Future<void> _showChatActions() async {
-    if (_isSending ||
+    if (_history.linkUnavailable ||
+        _isSending ||
         _isSelectingMessages ||
         _isDeletingMessages ||
         _isChatActionsOpen) {
@@ -921,7 +926,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     } finally {
       _isChatActionsOpen = false;
     }
-    if (!mounted || action == null) return;
+    if (!mounted || _history.linkUnavailable || action == null) return;
     switch (action) {
       case _ChatAction.medication:
         await _showMedicationSelector();
@@ -949,7 +954,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       icon: Icons.medication_outlined,
       label: _text.selectMedication,
       // 등록 약을 조회하지 못해도 별도 약품 검색으로 첨부할 수 있다.
-      reason: null,
+      reason: _history.linkUnavailable ? _text.linkUnavailableStatus : null,
     ),
     (
       action: _ChatAction.medicationHistory,
@@ -966,26 +971,28 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
         action: _ChatAction.scheduleRequest,
         icon: Icons.schedule_rounded,
         label: _text.scheduleSelectorTitle,
-        reason: switch (_scheduleLoad) {
-          _ChatContextLoad.loading => _text.scheduleLoading,
-          _ChatContextLoad.failed => _text.scheduleLoadFailed,
-          _ChatContextLoad.loaded =>
-            _requestableScheduleContexts.isEmpty
-                ? _text.noRequestableSchedule
-                : null,
-        },
+        reason: _history.linkUnavailable
+            ? _text.linkUnavailableStatus
+            : switch (_scheduleLoad) {
+                _ChatContextLoad.loading => _text.scheduleLoading,
+                _ChatContextLoad.failed => _text.scheduleLoadFailed,
+                _ChatContextLoad.loaded =>
+                  _requestableScheduleContexts.isEmpty
+                      ? _text.noRequestableSchedule
+                      : null,
+              },
       ),
     (
       action: _ChatAction.nearbyHospital,
       icon: Icons.local_hospital_outlined,
       label: _text.findNearbyHospital,
-      reason: null,
+      reason: _history.linkUnavailable ? _text.linkUnavailableStatus : null,
     ),
     (
       action: _ChatAction.nearbyPharmacy,
       icon: Icons.storefront_outlined,
       label: _text.findNearbyPharmacy,
-      reason: null,
+      reason: _history.linkUnavailable ? _text.linkUnavailableStatus : null,
     ),
   ];
 
@@ -1002,7 +1009,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     List<ChatMedicationContext> medications = const [],
     bool hospitals = false,
   }) async {
-    if (_isSending) {
+    if (_isSending || _history.linkUnavailable) {
       return;
     }
     final selection = await Navigator.of(context).push<NearbyCareSelection>(
@@ -1022,7 +1029,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
             ),
       ),
     );
-    if (selection == null || !mounted) {
+    if (selection == null || !mounted || _history.linkUnavailable) {
       return;
     }
     final confirmed = await showDialog<bool>(
@@ -1072,7 +1079,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !mounted || _history.linkUnavailable) return;
     await _sendCareSelection(
       selection,
       hospitals: hospitals,
@@ -1087,7 +1094,13 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     required List<ChatMedicationContext> medications,
     String? requestId,
   }) async {
-    if (_isSending || _isSelectingMessages || _isDeletingMessages) return;
+    if (!mounted ||
+        _history.linkUnavailable ||
+        _isSending ||
+        _isSelectingMessages ||
+        _isDeletingMessages) {
+      return;
+    }
     final messageKind = hospitals
         ? ChatMessageKind.hospitalShare
         : selection.phoneVerified
@@ -1539,7 +1552,9 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   // - medication (ChatMedicationContext): 표시·변환·저장·비교할 약품 데이터.
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _openMedicationDetail(ChatMedicationContext medication) async {
-    if (_loadingMedicationId != null) {
+    if (!_isChatVisible ||
+        _history.linkUnavailable ||
+        _loadingMedicationId != null) {
       return;
     }
     // 함수이름: _openMedicationDetail.setState callback
@@ -1565,6 +1580,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       // - 없음.
       // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
       setState(() => _loadingMedicationId = null);
+      if (!_isChatVisible || _history.linkUnavailable) return;
       await Navigator.of(context).push<void>(
         MaterialPageRoute(
           // 함수이름: _openMedicationDetail.builder callback
@@ -1588,6 +1604,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       // - 없음.
       // 반환값: 별도 결과 없음. 캡처한 상태 변경을 적용한다.
       setState(() => _loadingMedicationId = null);
+      if (!_isChatVisible || _history.linkUnavailable) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(_text.medicationDetailLoadFailed)));
