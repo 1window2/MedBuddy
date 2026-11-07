@@ -4,6 +4,7 @@
 """검색 모드의 범위·시간 예산과 원본 증거 기반 확인 규칙을 외부 전송 없이 검증한다."""
 
 import asyncio
+from collections.abc import Iterable
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -36,7 +37,7 @@ VARIANT_PRODUCT = '대웅에니코프캡슐300mg(메타레핀)'
 # - item_seq: str; 공공 제품 식별자.
 # 반환값:
 # - MedicationDetail; 검색 결과로 사용할 상세.
-def detail(name=PRODUCT, item_seq='1'):
+def detail(name: str=PRODUCT, item_seq: str='1') -> MedicationDetail:
     return MedicationDetail(
         item_name=name, item_seq=item_seq, efficacy='', usage_method='', warning='',
     )
@@ -56,7 +57,7 @@ class RecordingSearchCache:
     # - fail: bool; whether remember raises RuntimeError.
     # Returns:
     # - None.
-    def __init__(self, fail=False):
+    def __init__(self, fail: bool=False) -> None:
         self.fail = fail
         self.remembered = []
 
@@ -67,7 +68,7 @@ class RecordingSearchCache:
     # - details: Iterable[MedicationDetail]; products and candidates returned by search.
     # Returns:
     # - None.
-    async def remember(self, details):
+    async def remember(self, details: Iterable[MedicationDetail]) -> None:
         if self.fail:
             raise RuntimeError('private cache failure')
         self.remembered.extend(details)
@@ -80,7 +81,7 @@ class RecordingSearchCache:
 # - results: tuple[MedicationLookupResult | Exception, ...]; 조회별 응답 또는 오류.
 # 반환값:
 # - CheckMedicationDetail; 외부 조회가 대체된 컨트롤.
-def control_with_results(*results):
+def control_with_results(*results: MedicationLookupResult | Exception) -> CheckMedicationDetail:
     control = object.__new__(CheckMedicationDetail)
     control.text_normalizer = MedicationTextNormalizer()
     control.name_matcher = MedicationNameMatcher()
@@ -95,7 +96,7 @@ def control_with_results(*results):
 # - 없음.
 # 반환값:
 # - tuple; 컨트롤과 호출 횟수를 기록하는 전송기.
-def control_with_empty_sources():
+def control_with_empty_sources() -> tuple[CheckMedicationDetail, SimpleNamespace]:
     transport = SimpleNamespace(request_items=AsyncMock(return_value=([], 0)))
     return CheckMedicationDetail(
         medication_cache=SimpleNamespace(get=AsyncMock(return_value=None), set=AsyncMock()),
@@ -116,7 +117,7 @@ def control_with_empty_sources():
 # - 없음.
 # 반환값:
 # - None.
-def test_schema_defaults_to_balanced_and_accepts_only_named_modes():
+def test_schema_defaults_to_balanced_and_accepts_only_named_modes() -> None:
     assert MedicationRequest(extracted_text=PRODUCT).search_mode == 'balanced'
     for mode in MODES:
         assert MedicationRequest(search_mode=mode).search_mode == mode
@@ -132,7 +133,7 @@ def test_schema_defaults_to_balanced_and_accepts_only_named_modes():
 # - 없음.
 # 반환값:
 # - None.
-def test_direct_product_and_ingredient_queries_precede_all_variants():
+def test_direct_product_and_ingredient_queries_precede_all_variants() -> None:
     normalizer = MedicationTextNormalizer()
     assert normalizer.build_search_keywords(PRODUCT) == [
         PRODUCT, '펠로엔정', '펠로디핀', '펠로엔',
@@ -152,7 +153,7 @@ def test_direct_product_and_ingredient_queries_precede_all_variants():
 # - 없음.
 # 반환값:
 # - None.
-def test_fast_does_not_search_ingredients_or_ocr_variants():
+def test_fast_does_not_search_ingredients_or_ocr_variants() -> None:
     normalizer = MedicationTextNormalizer()
     assert normalizer.build_search_keywords(PRODUCT, search_mode='fast') == [
         PRODUCT, '펠로엔정',
@@ -179,7 +180,7 @@ def test_fast_does_not_search_ingredients_or_ocr_variants():
     ('시험정5mg(성분(미분...', '시험정5mg'),
     ('시험정(성분) 5mg (설명...', '시험정 5mg'),
 ])
-def test_truncated_parentheses_keep_original_and_query_product_first(mode, text, product):
+def test_truncated_parentheses_keep_original_and_query_product_first(mode: str, text: str, product: str) -> None:
     keywords = MedicationTextNormalizer().build_search_keywords(text, search_mode=mode)
     assert keywords[:2] == [text, product]
     assert len(keywords) <= MedicationTextNormalizer.SEARCH_KEYWORD_LIMITS[mode]
@@ -194,7 +195,7 @@ def test_truncated_parentheses_keep_original_and_query_product_first(mode, text,
 # - None.
 @pytest.mark.parametrize('mode', MODES)
 @pytest.mark.anyio
-async def test_truncated_feloen_name_returns_a_candidate_without_auto_confirmation(mode):
+async def test_truncated_feloen_name_returns_a_candidate_without_auto_confirmation(mode: str) -> None:
     original = '펠로엔정(필루비프로펜(미분..'
     product = detail('펠로엔정(펠루비프로펜(미분화))', '202104060')
     control = control_with_results()
@@ -220,7 +221,7 @@ async def test_truncated_feloen_name_returns_a_candidate_without_auto_confirmati
 # - None.
 @pytest.mark.parametrize('mode', MODES)
 @pytest.mark.anyio
-async def test_truncated_parenthesis_search_still_rejects_wrong_strength(mode):
+async def test_truncated_parenthesis_search_still_rejects_wrong_strength(mode: str) -> None:
     original = '시험정5mg(성분(미분..'
     control = control_with_results()
     control._fetch_drug_info.side_effect = None
@@ -237,7 +238,7 @@ async def test_truncated_parenthesis_search_still_rejects_wrong_strength(mode):
 # - 없음.
 # 반환값:
 # - None.
-def test_thorough_extends_balanced_with_ocr_and_inside_variants():
+def test_thorough_extends_balanced_with_ocr_and_inside_variants() -> None:
     normalizer = MedicationTextNormalizer()
     text = '에니코프캡슐(메타레핀정)'
     balanced = normalizer.build_search_keywords(text, search_mode='balanced')
@@ -259,7 +260,7 @@ def test_thorough_extends_balanced_with_ocr_and_inside_variants():
 # - None.
 @pytest.mark.parametrize('mode,budget', [('fast', 2), ('balanced', 4), ('thorough', 8)])
 @pytest.mark.anyio
-async def test_mode_attempt_budgets_are_sequential_and_keep_full_evidence(mode, budget):
+async def test_mode_attempt_budgets_are_sequential_and_keep_full_evidence(mode: str, budget: int) -> None:
     control = control_with_results()
     calls = []
     active = 0
@@ -272,7 +273,7 @@ async def test_mode_attempt_budgets_are_sequential_and_keep_full_evidence(mode, 
     # - reference: str; 원본 비교 기준.
     # 반환값:
     # - MedicationLookupResult; 완전한 빈 조회 결과.
-    async def fetch(keyword, *, reference):
+    async def fetch(keyword: str, *, reference: str) -> MedicationLookupResult:
         nonlocal active
         active += 1
         assert active == 1
@@ -302,7 +303,7 @@ async def test_mode_attempt_budgets_are_sequential_and_keep_full_evidence(mode, 
 # - None.
 @pytest.mark.parametrize('mode,budget', [('fast', 2), ('balanced', 4), ('thorough', 8)])
 @pytest.mark.anyio
-async def test_real_lookup_pipeline_bounds_both_public_sources_without_retries(mode, budget):
+async def test_real_lookup_pipeline_bounds_both_public_sources_without_retries(mode: str, budget: int) -> None:
     control, transport = control_with_empty_sources()
     response = await control.requestMedicationDetail(VARIANT_PRODUCT, search_mode=mode)
     assert response.review_reason == 'not_found'
@@ -328,7 +329,7 @@ async def test_real_lookup_pipeline_bounds_both_public_sources_without_retries(m
     RuntimeError('synthetic API failure'), httpx.ReadTimeout('synthetic HTTP timeout'),
 ])
 @pytest.mark.anyio
-async def test_real_public_boundary_errors_cannot_become_not_found(source, mode, error):
+async def test_real_public_boundary_errors_cannot_become_not_found(source: str, mode: str, error: Exception) -> None:
     control, transport = control_with_empty_sources()
     # 기본 API 오류 뒤에도 허가 API를 확인하며, 그마저 비면 기본 API 오류를 그대로 알린다.
     transport.request_items.side_effect = [error, ([], 0)] if source == 'basic' else [([], 0), error]
@@ -348,7 +349,7 @@ async def test_real_public_boundary_errors_cannot_become_not_found(source, mode,
 # - None.
 @pytest.mark.parametrize('mode', MODES)
 @pytest.mark.anyio
-async def test_basic_public_api_failure_still_falls_back_to_advanced_api(mode):
+async def test_basic_public_api_failure_still_falls_back_to_advanced_api(mode: str) -> None:
     control, transport = control_with_empty_sources()
     transport.request_items.side_effect = [
         RuntimeError('synthetic basic API failure'),
@@ -371,7 +372,7 @@ async def test_basic_public_api_failure_still_falls_back_to_advanced_api(mode):
 # Returns:
 # - None.
 @pytest.mark.anyio
-async def test_thorough_summarises_each_advanced_product_once_per_request():
+async def test_thorough_summarises_each_advanced_product_once_per_request() -> None:
     control, transport = control_with_empty_sources()
     candidate = {'ITEM_SEQ': '9', 'ITEM_NAME': '펠로엔정'}
 
@@ -384,7 +385,7 @@ async def test_thorough_summarises_each_advanced_product_once_per_request():
     # - _: dict; additional transport options, unused.
     # Returns:
     # - tuple[list[dict], int]; advanced candidate and count, otherwise empty.
-    async def request_items(url, params, **_):
+    async def request_items(url: str, params: dict[str, object], **_: bool) -> tuple[list[dict[str, str]], int]:
         return ([candidate], 1) if url == settings.ADVANCED_DRUG_API_BASE_URL else ([], 0)
 
     transport.request_items.side_effect = request_items
@@ -407,7 +408,7 @@ async def test_thorough_summarises_each_advanced_product_once_per_request():
 # - None.
 @pytest.mark.parametrize('mode', MODES)
 @pytest.mark.anyio
-async def test_felodipine_product_query_is_reached_before_typos(mode):
+async def test_felodipine_product_query_is_reached_before_typos(mode: str) -> None:
     control = control_with_results(
         MedicationLookupResult(), MedicationLookupResult([detail()]),
     )
@@ -428,7 +429,7 @@ async def test_felodipine_product_query_is_reached_before_typos(mode):
 # - None.
 @pytest.mark.parametrize('mode', MODES)
 @pytest.mark.anyio
-async def test_single_complete_exact_product_exits_immediately(mode):
+async def test_single_complete_exact_product_exits_immediately(mode: str) -> None:
     control = control_with_results(MedicationLookupResult([detail()]))
     response = await control.requestMedicationDetail(PRODUCT, search_mode=mode)
     assert response.data == [detail()]
@@ -444,7 +445,7 @@ async def test_single_complete_exact_product_exits_immediately(mode):
 # - None.
 @pytest.mark.parametrize('mode', MODES)
 @pytest.mark.anyio
-async def test_only_thorough_continues_after_ambiguous_product(mode):
+async def test_only_thorough_continues_after_ambiguous_product(mode: str) -> None:
     candidate = detail('펠로엔정', 'candidate')
     control = control_with_results(
         MedicationLookupResult([candidate]), MedicationLookupResult([detail()]),
@@ -473,7 +474,7 @@ async def test_only_thorough_continues_after_ambiguous_product(mode):
     ('펠로엔정5mg(펠로디핀)', PRODUCT),
 ])
 @pytest.mark.anyio
-async def test_thorough_upgrades_same_product_to_original_exact_match(original, candidate_name):
+async def test_thorough_upgrades_same_product_to_original_exact_match(original: str, candidate_name: str) -> None:
     candidate = detail(candidate_name, 'same-product')
     exact = detail(original, 'same-product')
     control = control_with_results(
@@ -503,7 +504,7 @@ async def test_thorough_upgrades_same_product_to_original_exact_match(original, 
     '펠로엔서방정5mg(펠로디핀)',
 ])
 @pytest.mark.anyio
-async def test_same_product_never_upgrades_from_corrected_text_against_original(unsafe_name):
+async def test_same_product_never_upgrades_from_corrected_text_against_original(unsafe_name: str) -> None:
     original = '펠로엔정5mg(펠로디핀)'
     candidate = detail('펠로엔정', 'same-product')
     control = control_with_results(
@@ -529,7 +530,7 @@ async def test_same_product_never_upgrades_from_corrected_text_against_original(
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_same_product_exact_upgrade_keeps_incomplete_lookup_confirmation():
+async def test_same_product_exact_upgrade_keeps_incomplete_lookup_confirmation() -> None:
     exact = detail(item_seq='same-product')
     control = control_with_results(
         MedicationLookupResult([detail('펠로엔정', 'same-product')], is_complete=False),
@@ -549,7 +550,7 @@ async def test_same_product_exact_upgrade_keeps_incomplete_lookup_confirmation()
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_same_product_upgrade_preserves_distinct_exact_products_without_downgrade():
+async def test_same_product_upgrade_preserves_distinct_exact_products_without_downgrade() -> None:
     candidate = detail('펠로엔정', 'same-product')
     exact = detail(item_seq='same-product')
     other_exact = detail(item_seq='other-product')
@@ -573,7 +574,7 @@ async def test_same_product_upgrade_preserves_distinct_exact_products_without_do
 # - None.
 @pytest.mark.parametrize('mode', MODES)
 @pytest.mark.anyio
-async def test_ingredient_only_result_never_auto_matches(mode):
+async def test_ingredient_only_result_never_auto_matches(mode: str) -> None:
     candidate = detail('펠로디핀', 'ingredient')
     control = control_with_results(*[MedicationLookupResult([candidate])] * 8)
     response = await control.requestMedicationDetail(PRODUCT, search_mode=mode)
@@ -590,7 +591,7 @@ async def test_ingredient_only_result_never_auto_matches(mode):
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_thorough_accumulates_deduplicates_and_limits_confirmation_candidates():
+async def test_thorough_accumulates_deduplicates_and_limits_confirmation_candidates() -> None:
     candidates = [detail('펠로엔정', str(index)) for index in range(8)]
     control = control_with_results(*[
         MedicationLookupResult(candidates[offset:offset + 3]) for offset in range(4)
@@ -609,7 +610,7 @@ async def test_thorough_accumulates_deduplicates_and_limits_confirmation_candida
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_thorough_does_not_erase_multiple_exact_products_or_partial_failure():
+async def test_thorough_does_not_erase_multiple_exact_products_or_partial_failure() -> None:
     for first in [
         MedicationLookupResult([detail(item_seq='1'), detail(item_seq='2')]),
         MedicationLookupResult([detail()], is_complete=False),
@@ -637,8 +638,8 @@ async def test_thorough_does_not_erase_multiple_exact_products_or_partial_failur
 ])
 @pytest.mark.anyio
 async def test_strength_and_form_checks_use_original_not_corrected_or_broadened_name(
-    mode, unsafe_name,
-):
+    mode: str, unsafe_name: str,
+) -> None:
     original = '펠로엔정5mg(펠로디핀)'
     control = control_with_results()
     control._fetch_drug_info.side_effect = None
@@ -663,7 +664,7 @@ async def test_strength_and_form_checks_use_original_not_corrected_or_broadened_
 # - None.
 @pytest.mark.parametrize('mode', MODES)
 @pytest.mark.anyio
-async def test_missing_strength_in_candidate_preserves_original_for_manual_confirmation(mode):
+async def test_missing_strength_in_candidate_preserves_original_for_manual_confirmation(mode: str) -> None:
     original = '테스트정100mg'
     candidate = detail('테스트정')
     control = control_with_results()
@@ -691,7 +692,7 @@ async def test_missing_strength_in_candidate_preserves_original_for_manual_confi
 @pytest.mark.parametrize('mode', MODES)
 @pytest.mark.parametrize('source', ['local', 'cache', 'basic', 'advanced'])
 @pytest.mark.anyio
-async def test_syrup_package_volume_reaches_manual_selection_from_every_source(mode, source):
+async def test_syrup_package_volume_reaches_manual_selection_from_every_source(mode: str, source: str) -> None:
     original, product = '시네츄라시럽_(15mL)', '시네츄라시럽'
     candidate = detail(product, 'synthetic-syrup')
     control, _ = control_with_empty_sources()
@@ -745,7 +746,7 @@ async def test_syrup_package_volume_reaches_manual_selection_from_every_source(m
     httpx.ReadTimeout('synthetic HTTP timeout'), TimeoutError('synthetic deadline'),
 ])
 @pytest.mark.anyio
-async def test_lookup_errors_propagate_without_not_found_or_retries(mode, error):
+async def test_lookup_errors_propagate_without_not_found_or_retries(mode: str, error: Exception) -> None:
     control = control_with_results(error)
     with pytest.raises(type(error)) as raised:
         await control.requestMedicationDetail(PRODUCT, search_mode=mode)
@@ -761,7 +762,7 @@ async def test_lookup_errors_propagate_without_not_found_or_retries(mode, error)
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_thorough_does_not_hide_error_after_a_candidate():
+async def test_thorough_does_not_hide_error_after_a_candidate() -> None:
     control = control_with_results(
         MedicationLookupResult([detail('펠로엔정')]), ConnectionError('synthetic failure'),
     )
@@ -779,7 +780,7 @@ async def test_thorough_does_not_hide_error_after_a_candidate():
 # - None.
 @pytest.mark.parametrize('mode', MODES)
 @pytest.mark.anyio
-async def test_request_deadline_cancels_pending_lookup_and_is_not_not_found(mode):
+async def test_request_deadline_cancels_pending_lookup_and_is_not_not_found(mode: str) -> None:
     control = control_with_results()
     assert 0 < control.LOOKUP_TIMEOUT_SECONDS < 60
     control.LOOKUP_TIMEOUT_SECONDS = 0.01
@@ -793,7 +794,7 @@ async def test_request_deadline_cancels_pending_lookup_and_is_not_not_found(mode
     # - kwargs: dict; 사용하지 않는 조회 옵션.
     # 반환값:
     # - 정상 반환 없음; 호출자가 취소할 때까지 대기.
-    async def stalled(*args, **kwargs):
+    async def stalled(*args: str, **kwargs: str) -> None:
         nonlocal cancelled
         try:
             await asyncio.Event().wait()
@@ -815,7 +816,7 @@ async def test_request_deadline_cancels_pending_lookup_and_is_not_not_found(mode
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_deadline_is_shared_across_attempts_not_restarted(monkeypatch):
+async def test_deadline_is_shared_across_attempts_not_restarted(monkeypatch: pytest.MonkeyPatch) -> None:
     control = control_with_results(*[MedicationLookupResult()] * 8)
     original_timeout = asyncio.timeout
     deadlines = []
@@ -827,7 +828,7 @@ async def test_deadline_is_shared_across_attempts_not_restarted(monkeypatch):
     # - seconds: float; 요청 전체 제한 시간.
     # 반환값:
     # - asyncio.Timeout; 원래 함수가 생성한 시간 제한 문맥.
-    def track_timeout(seconds):
+    def track_timeout(seconds: float | None) -> asyncio.Timeout:
         deadlines.append(seconds)
         return original_timeout(seconds)
 
@@ -845,7 +846,7 @@ async def test_deadline_is_shared_across_attempts_not_restarted(monkeypatch):
 # Returns:
 # - None.
 @pytest.mark.anyio
-async def test_default_control_passes_balanced_mode_to_the_normalizer():
+async def test_default_control_passes_balanced_mode_to_the_normalizer() -> None:
     control = control_with_results(MedicationLookupResult([detail()]))
     modes = []
     control.text_normalizer = SimpleNamespace(
@@ -865,7 +866,7 @@ async def test_default_control_passes_balanced_mode_to_the_normalizer():
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_invalid_control_mode_fails_before_any_lookup():
+async def test_invalid_control_mode_fails_before_any_lookup() -> None:
     control = control_with_results()
     with pytest.raises(ValueError, match='search mode'):
         await control.requestMedicationDetail(PRODUCT, search_mode='unknown')
@@ -880,7 +881,7 @@ async def test_invalid_control_mode_fails_before_any_lookup():
 # Returns:
 # - None.
 @pytest.mark.anyio
-async def test_route_passes_the_default_mode_explicitly():
+async def test_route_passes_the_default_mode_explicitly() -> None:
     # Function Name: lookup
     # Description:
     # - Asserts the default raw text and balanced mode and returns one synthetic search result.
@@ -889,7 +890,7 @@ async def test_route_passes_the_default_mode_explicitly():
     # - search_mode: str; expected balanced mode.
     # Returns:
     # - MedicationResponse; successful product result.
-    async def lookup(raw_text, *, search_mode):
+    async def lookup(raw_text: str, *, search_mode: str) -> MedicationResponse:
         assert raw_text == PRODUCT and search_mode == 'balanced'
         return MedicationResponse(success=True, message='synthetic', data=[detail()])
 
@@ -910,7 +911,7 @@ async def test_route_passes_the_default_mode_explicitly():
 # - None.
 @pytest.mark.parametrize('mode', MODES)
 @pytest.mark.anyio
-async def test_identify_http_contract_for_modes_and_original_evidence(mode):
+async def test_identify_http_contract_for_modes_and_original_evidence(mode: str) -> None:
     control = SimpleNamespace(requestMedicationDetail=AsyncMock(return_value=MedicationResponse(
         success=True, message='synthetic', data=[],
     )))
@@ -943,7 +944,7 @@ async def test_identify_http_contract_for_modes_and_original_evidence(mode):
 # - None.
 @pytest.mark.parametrize('fail', [False, True])
 @pytest.mark.anyio
-async def test_route_remembers_returned_products_for_chat_attachments(fail):
+async def test_route_remembers_returned_products_for_chat_attachments(fail: bool) -> None:
     # Function Name: lookup
     # Description:
     # - Returns one result and one confirmation candidate for chat-cache recording tests.
@@ -952,7 +953,7 @@ async def test_route_remembers_returned_products_for_chat_attachments(fail):
     # - search_mode: str; requested mode, unused.
     # Returns:
     # - MedicationResponse; result and candidate with confirmation required.
-    async def lookup(raw_text, *, search_mode):
+    async def lookup(raw_text: str, *, search_mode: str) -> MedicationResponse:
         return MedicationResponse(
             success=True, message='synthetic', data=[detail()],
             candidates=[detail('후보정', '2')], requires_confirmation=True,
@@ -981,7 +982,7 @@ async def test_route_remembers_returned_products_for_chat_attachments(fail):
     (RuntimeError('private provider error'), 500),
 ])
 @pytest.mark.anyio
-async def test_route_preserves_failures_as_sanitized_http_errors(error, status):
+async def test_route_preserves_failures_as_sanitized_http_errors(error: Exception, status: int) -> None:
     control = SimpleNamespace(requestMedicationDetail=AsyncMock(side_effect=error))
     with pytest.raises(HTTPException) as raised:
         await identify_medication(MedicationRequest(extracted_text=PRODUCT), control)

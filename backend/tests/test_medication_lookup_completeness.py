@@ -3,7 +3,9 @@
 
 import json
 from collections.abc import Generator
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -50,7 +52,7 @@ def _detail(item_seq: str = "111", *, name: str = PRODUCT_NAME) -> MedicationDet
 # 반환값:
 # - Generator[SimpleNamespace]; 컨트롤·캐시·대체 제공자와 실패 ID 집합.
 @pytest.fixture(params=["public", "local"])
-def lookup_case(request, tmp_path) -> Generator[SimpleNamespace, None, None]:
+def lookup_case(request: pytest.FixtureRequest, tmp_path: Path) -> Generator[SimpleNamespace, None, None]:
     rows = [
         {
             "ITEM_SEQ": item_seq,
@@ -71,7 +73,7 @@ def lookup_case(request, tmp_path) -> Generator[SimpleNamespace, None, None]:
     # - item: dict; 공공 허가 제품 행.
     # 반환값:
     # - MedicationDetail; 실패 대상이면 RuntimeError.
-    async def summarize(drug_name, item):
+    async def summarize(drug_name: str, item: dict[str, Any]) -> MedicationDetail:
         if item["ITEM_SEQ"] in failed_ids:
             raise RuntimeError("synthetic summary failure")
         return _detail(item["ITEM_SEQ"], name=item["ITEM_NAME"])
@@ -139,8 +141,8 @@ def lookup_case(request, tmp_path) -> Generator[SimpleNamespace, None, None]:
 @pytest.mark.anyio
 @pytest.mark.parametrize("failed_id", PRODUCT_IDS)
 async def test_partial_summary_keeps_confirmation_and_recovers_missing_product(
-    lookup_case, failed_id,
-):
+    lookup_case: SimpleNamespace, failed_id: str,
+) -> None:
     case = lookup_case
     case.failed_ids.add(failed_id)
 
@@ -183,7 +185,7 @@ async def test_partial_summary_keeps_confirmation_and_recovers_missing_product(
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_all_candidate_summary_failures_remain_errors_and_retry(lookup_case):
+async def test_all_candidate_summary_failures_remain_errors_and_retry(lookup_case: SimpleNamespace) -> None:
     case = lookup_case
     case.failed_ids.update(PRODUCT_IDS)
 
@@ -209,7 +211,7 @@ async def test_all_candidate_summary_failures_remain_errors_and_retry(lookup_cas
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_complete_single_product_still_auto_matches_and_reuses_summary(lookup_case):
+async def test_complete_single_product_still_auto_matches_and_reuses_summary(lookup_case: SimpleNamespace) -> None:
     case = lookup_case
     if case.source == "local":
         with Session(case.engine) as writer:
@@ -233,7 +235,7 @@ async def test_complete_single_product_still_auto_matches_and_reuses_summary(loo
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_partial_results_cannot_be_written_to_full_result_cache():
+async def test_partial_results_cannot_be_written_to_full_result_cache() -> None:
     redis = FakeRedis()
     cache = MedicationDetailCache(redis_client=redis)
 
@@ -253,7 +255,7 @@ async def test_partial_results_cannot_be_written_to_full_result_cache():
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_legacy_cache_cannot_hide_a_product(lookup_case):
+async def test_legacy_cache_cannot_hide_a_product(lookup_case: SimpleNamespace) -> None:
     case = lookup_case
     old_key = f"drug_info:{PRODUCT_NAME}"
     case.redis.values[old_key] = json.dumps([_detail().getMedicationDetail()])
@@ -276,7 +278,7 @@ async def test_legacy_cache_cannot_hide_a_product(lookup_case):
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_malformed_cached_candidate_is_not_silently_dropped():
+async def test_malformed_cached_candidate_is_not_silently_dropped() -> None:
     redis = FakeRedis()
     cache = MedicationDetailCache(redis_client=redis)
     redis.values[f"drug_info:v2:{PRODUCT_NAME}"] = json.dumps([
@@ -297,7 +299,7 @@ async def test_malformed_cached_candidate_is_not_silently_dropped():
 # - None.
 @pytest.mark.anyio
 @pytest.mark.parametrize("fallback_source", ["public", "cache"])
-async def test_local_partial_result_stays_partial_through_fallback(lookup_case, fallback_source):
+async def test_local_partial_result_stays_partial_through_fallback(lookup_case: SimpleNamespace, fallback_source: str) -> None:
     case = lookup_case
     case.control.local_medication_catalog = SimpleNamespace(
         fetch_drug_info=AsyncMock(return_value=MedicationLookupResult(
@@ -327,7 +329,7 @@ async def test_local_partial_result_stays_partial_through_fallback(lookup_case, 
 # Returns:
 # - None.
 @pytest.mark.anyio
-async def test_later_search_keyword_does_not_erase_earlier_summary_failure(lookup_case):
+async def test_later_search_keyword_does_not_erase_earlier_summary_failure(lookup_case: SimpleNamespace) -> None:
     case = lookup_case
     case.control.text_normalizer = SimpleNamespace(
         normalize_raw_text=lambda value: value,

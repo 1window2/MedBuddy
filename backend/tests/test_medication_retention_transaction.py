@@ -3,15 +3,20 @@
 
 """만료 약 정리와 신규 저장의 원자성 및 계정 삭제와의 직렬화를 검증한다."""
 
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta
+from datetime import date, timedelta
 import os
+from pathlib import Path
 from threading import Event
+from typing import Any, NoReturn
 from uuid import uuid4
 
 from fastapi import HTTPException
 import pytest
 from sqlalchemy import create_engine, event, text
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session
 from sqlalchemy.schema import CreateSchema, DropSchema
 
 from controls.check_saved_medication_control import CheckSavedMedication
@@ -35,7 +40,7 @@ from test_medication_care import medication
 # - overrides: dict; 저장 요청에 덮어쓸 약품 필드.
 # 반환값:
 # - SavedMedicationCreate; 합성 저장 요청.
-def save_request(**overrides):
+def save_request(**overrides: Any) -> SavedMedicationCreate:
     return SavedMedicationCreate(**{
         "patient_hash": "patient-a", "item_name": "new-test-medication", "efficacy": "",
         "use_method": "", "warning_message": "", "daily_frequency": "1", "total_days": "7",
@@ -50,7 +55,7 @@ def save_request(**overrides):
 # - db: Session; 격리 약품 저장 세션.
 # 반환값:
 # - int; 만료 약품 ID.
-def seed_expired(db):
+def seed_expired(db: Session) -> int:
     return medication(db, prescription_date=application_today() - timedelta(days=10), total_days="1").id
 
 
@@ -61,7 +66,7 @@ def seed_expired(db):
 # - db: Session; 격리 약품 저장 세션.
 # 반환값:
 # - CheckSavedMedication; 짧은 보존 기간이 설정된 컨트롤.
-def control_with_retention(db):
+def control_with_retention(db: Session) -> CheckSavedMedication:
     control = CheckSavedMedication(db)
     control.retention_policy = SavedMedicationRetentionPolicy(retention_days_after_end=1)
     return control
@@ -75,7 +80,7 @@ def control_with_retention(db):
 # - monkeypatch: pytest.MonkeyPatch; 테스트 뒤 의존성 교체를 복원한다.
 # 반환값:
 # - None.
-def test_cleanup_and_save_commit_once_and_keep_the_callers_transaction(fk_db, monkeypatch):
+def test_cleanup_and_save_commit_once_and_keep_the_callers_transaction(fk_db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
     expired_id = seed_expired(fk_db)
     fk_db.rollback()
     lock_account_operations(fk_db, ["patient-a"])
@@ -93,7 +98,7 @@ def test_cleanup_and_save_commit_once_and_keep_the_callers_transaction(fk_db, mo
     # - kwargs: dict; commit=False 등 정리 옵션.
     # 반환값:
     # - int; 삭제한 만료 약품 수.
-    def cleanup(*args, **kwargs):
+    def cleanup(*args: Session | str | date | None, **kwargs: bool) -> int:
         assert kwargs["commit"] is False
         count = original(*args, **kwargs)
         assert count == 1 and fk_db.get_transaction() is transaction and not commits
@@ -116,7 +121,7 @@ def test_cleanup_and_save_commit_once_and_keep_the_callers_transaction(fk_db, mo
 # 반환값:
 # - None.
 @pytest.mark.parametrize("failure", ["limit", "insert"])
-def test_failed_save_restores_retention_deletions(fk_db, monkeypatch, failure):
+def test_failed_save_restores_retention_deletions(fk_db: Session, monkeypatch: pytest.MonkeyPatch, failure: str) -> None:
     expired_id = seed_expired(fk_db)
     active_id = medication(fk_db, item_name="active-test").id
     control = control_with_retention(fk_db)
@@ -130,7 +135,7 @@ def test_failed_save_restores_retention_deletions(fk_db, monkeypatch, failure):
         # - 없음.
         # 반환값:
         # - 반환하지 않음; RuntimeError 발생.
-        def fail_commit():
+        def fail_commit() -> NoReturn:
             raise RuntimeError("synthetic-insert-failure")
         monkeypatch.setattr(fk_db, "commit", fail_commit)
     with pytest.raises(HTTPException) as error:
@@ -147,7 +152,7 @@ def test_failed_save_restores_retention_deletions(fk_db, monkeypatch, failure):
 # - monkeypatch: pytest.MonkeyPatch; 테스트 뒤 의존성 교체를 복원한다.
 # 반환값:
 # - None.
-def test_retention_frees_space_before_the_limit_check(fk_db, monkeypatch):
+def test_retention_frees_space_before_the_limit_check(fk_db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
     seed_expired(fk_db)
     monkeypatch.setattr(settings, "SAVED_MEDICATION_MAX_PER_ACCOUNT", 1)
     assert control_with_retention(fk_db).saveMedicationDetail(save_request())["success"]
@@ -161,7 +166,7 @@ def test_retention_frees_space_before_the_limit_check(fk_db, monkeypatch):
 # - fk_db: Session; 외래 키가 활성화된 격리 데이터베이스.
 # 반환값:
 # - None.
-def test_duplicate_save_still_commits_cleanup_without_an_intermediate_commit(fk_db):
+def test_duplicate_save_still_commits_cleanup_without_an_intermediate_commit(fk_db: Session) -> None:
     seed_account(fk_db, "patient-a")
     request = save_request()
     duplicate_id = CheckSavedMedication(fk_db).saveMedicationDetail(request)["id"]
@@ -182,7 +187,7 @@ def test_duplicate_save_still_commits_cleanup_without_an_intermediate_commit(fk_
 # 반환값:
 # - Iterator[Engine]; PostgreSQL 사용 조건이 없으면 pytest.skip.
 @pytest.fixture(params=["sqlite", "postgresql"])
-def transaction_engine(request, tmp_path):
+def transaction_engine(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[Engine]:
     if request.param == "sqlite":
         engine = make_engine(tmp_path)
         try:
@@ -214,7 +219,7 @@ def transaction_engine(request, tmp_path):
 # - transaction_engine: Engine; 격리 SQLite 또는 명시적으로 허용한 PostgreSQL 스키마.
 # 반환값:
 # - None.
-def test_account_deletion_waits_until_cleanup_and_save_commit(transaction_engine):
+def test_account_deletion_waits_until_cleanup_and_save_commit(transaction_engine: Engine) -> None:
     factory = make_session_factory(transaction_engine)
     with factory() as db:
         seed_expired(db)
@@ -227,7 +232,7 @@ def test_account_deletion_waits_until_cleanup_and_save_commit(transaction_engine
     # - 없음.
     # 반환값:
     # - dict; 약품 저장 응답.
-    def save():
+    def save() -> dict[str, object]:
         with factory() as db:
             lock_account_operations(db, ["patient-a"])
             ManageAccount(db).ensureAccount("patient-a")
@@ -242,7 +247,7 @@ def test_account_deletion_waits_until_cleanup_and_save_commit(transaction_engine
             # - kwargs: dict; commit=False 등 정리 옵션.
             # 반환값:
             # - int; 정리된 약품 수.
-            def cleanup(*args, **kwargs):
+            def cleanup(*args: Session | str | date | None, **kwargs: bool) -> int:
                 count = original(*args, **kwargs)
                 cleaned.set()
                 assert resume.wait(10)
@@ -260,7 +265,7 @@ def test_account_deletion_waits_until_cleanup_and_save_commit(transaction_engine
     # - 없음.
     # 반환값:
     # - None.
-    def delete():
+    def delete() -> None:
         with factory() as db:
             deletion_started.set()
             lock_account_operations(db, ["patient-a"])
@@ -298,7 +303,7 @@ def test_account_deletion_waits_until_cleanup_and_save_commit(transaction_engine
 # - transaction_engine: Engine; 격리 SQLite 또는 명시적으로 허용한 PostgreSQL 스키마.
 # 반환값:
 # - None.
-def test_save_cannot_resurrect_data_when_account_deletion_wins(transaction_engine):
+def test_save_cannot_resurrect_data_when_account_deletion_wins(transaction_engine: Engine) -> None:
     factory = make_session_factory(transaction_engine)
     with factory() as db:
         seed_expired(db)
@@ -311,7 +316,7 @@ def test_save_cannot_resurrect_data_when_account_deletion_wins(transaction_engin
     # - 없음.
     # 반환값:
     # - None.
-    def delete():
+    def delete() -> None:
         with factory() as db:
             lock_account_operations(db, ["patient-a"])
             db.get(_UserAccount, "patient-a").deletion_requested_at = utc_now()
@@ -327,7 +332,7 @@ def test_save_cannot_resurrect_data_when_account_deletion_wins(transaction_engin
     # - 없음.
     # 반환값:
     # - dict; 정상 저장 응답. 삭제 완료 시 AccountDeletionPendingError 발생.
-    def save():
+    def save() -> dict[str, object]:
         with factory() as db:
             saving.set()
             lock_account_operations(db, ["patient-a"])

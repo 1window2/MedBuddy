@@ -3,11 +3,14 @@
 
 """개별 약 삭제와 자동 정리에서 건강정보 제거 및 재전송 차단을 검증한다."""
 
+from collections.abc import Callable
 from datetime import timedelta
+from typing import Any, NoReturn
 from uuid import uuid4
 
 from fastapi import HTTPException
 import pytest
+from sqlalchemy.orm import Session
 
 from controls.check_saved_medication_control import CheckSavedMedication
 from controls.manage_account_control import ManageAccount
@@ -28,7 +31,7 @@ from test_medication_care import change, medication, principal, report
 # - operation: Callable; 실패해야 할 재시도·삭제 작업.
 # 반환값:
 # - None.
-def assert_status(code, operation):
+def assert_status(code: int, operation: Callable[[], Any]) -> None:
     with pytest.raises(HTTPException) as error:
         operation()
     assert error.value.status_code == code
@@ -43,7 +46,7 @@ def assert_status(code, operation):
 # 반환값:
 # - None.
 @pytest.mark.parametrize("as_needed", [False, True])
-def test_deleted_dose_receipt_has_no_health_payload_and_never_recreates_record(fk_db, as_needed):
+def test_deleted_dose_receipt_has_no_health_payload_and_never_recreates_record(fk_db: Session, as_needed: bool) -> None:
     med = medication(fk_db, dosing_mode="as_needed" if as_needed else "scheduled", item_name="private-test-name")
     med_id = med.id
     slot = f"as_needed:{uuid4()}" if as_needed else "morning"
@@ -86,7 +89,7 @@ def test_deleted_dose_receipt_has_no_health_payload_and_never_recreates_record(f
 # - None.
 @pytest.mark.parametrize("delete_original", [False, True])
 @pytest.mark.parametrize("legacy", [False, True])
-def test_replacement_receipt_is_invalidated_by_deleting_either_medication(fk_db, delete_original, legacy):
+def test_replacement_receipt_is_invalidated_by_deleting_either_medication(fk_db: Session, delete_original: bool, legacy: bool) -> None:
     old_id = medication(fk_db).id
     request = change()
     care = ManageMedicationCare(fk_db)
@@ -109,7 +112,7 @@ def test_replacement_receipt_is_invalidated_by_deleting_either_medication(fk_db,
 # - fk_db: Session; 외래 키가 활성화된 격리 데이터베이스.
 # 반환값:
 # - None.
-def test_stop_receipt_is_invalidated(fk_db):
+def test_stop_receipt_is_invalidated(fk_db: Session) -> None:
     med_id = medication(fk_db).id
     request = change(action="stop", changes={})
     care = ManageMedicationCare(fk_db)
@@ -127,7 +130,7 @@ def test_stop_receipt_is_invalidated(fk_db):
 # 반환값:
 # - None.
 @pytest.mark.parametrize("legacy", [False, True])
-def test_delete_keeps_unrelated_medication_and_other_account_receipts(fk_db, legacy):
+def test_delete_keeps_unrelated_medication_and_other_account_receipts(fk_db: Session, legacy: bool) -> None:
     ids = [medication(fk_db, item_name=f"test-{index}", patient_hash=owner).id
            for index, owner in enumerate(["patient-a", "patient-a", "patient-b"])]
     care = ManageMedicationCare(fk_db)
@@ -154,7 +157,7 @@ def test_delete_keeps_unrelated_medication_and_other_account_receipts(fk_db, leg
 # 반환값:
 # - None.
 @pytest.mark.parametrize("payload", ["invalid-json", "[]", '{"unknown":"health-data"}'])
-def test_unattributable_legacy_receipts_are_redacted_not_deleted(fk_db, payload):
+def test_unattributable_legacy_receipts_are_redacted_not_deleted(fk_db: Session, payload: str) -> None:
     med_id = medication(fk_db).id
     fk_db.add(_MedicationCareOperation(patient_hash="patient-a", operation_id=str(uuid4()),
         request_hash="a" * 64, response_json=payload))
@@ -173,7 +176,7 @@ def test_unattributable_legacy_receipts_are_redacted_not_deleted(fk_db, payload)
 # 반환값:
 # - None.
 @pytest.mark.parametrize("scoped", [False, True])
-def test_retention_redacts_receipts_in_the_same_transaction_and_rollback_restores_them(fk_db, scoped):
+def test_retention_redacts_receipts_in_the_same_transaction_and_rollback_restores_them(fk_db: Session, scoped: bool) -> None:
     day = application_today() - timedelta(days=10)
     med_id = medication(fk_db, prescription_date=day, total_days="1").id
     care = ManageMedicationCare(fk_db)
@@ -199,7 +202,7 @@ def test_retention_redacts_receipts_in_the_same_transaction_and_rollback_restore
 # 반환값:
 # - None.
 @pytest.mark.parametrize("delete_account", [False, True])
-def test_account_purge_removes_redacted_tombstones_as_well(fk_db, delete_account):
+def test_account_purge_removes_redacted_tombstones_as_well(fk_db: Session, delete_account: bool) -> None:
     med_id = medication(fk_db).id
     care = ManageMedicationCare(fk_db)
     care.update_history(principal(), med_id, application_today(), "morning", report())
@@ -218,7 +221,7 @@ def test_account_purge_removes_redacted_tombstones_as_well(fk_db, delete_account
 # - monkeypatch: pytest.MonkeyPatch; 테스트 뒤 의존성 교체를 복원한다.
 # 반환값:
 # - None.
-def test_failed_medication_delete_rolls_back_receipt_redaction(fk_db, monkeypatch):
+def test_failed_medication_delete_rolls_back_receipt_redaction(fk_db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
     med_id = medication(fk_db).id
     care = ManageMedicationCare(fk_db)
     request = report()
@@ -232,7 +235,7 @@ def test_failed_medication_delete_rolls_back_receipt_redaction(fk_db, monkeypatc
     # - _medication: _SavedMedication; 삭제 대상(오류 주입에 사용하지 않음).
     # 반환값:
     # - 반환하지 않음; RuntimeError 발생.
-    def fail(_medication):
+    def fail(_medication: _SavedMedication) -> NoReturn:
         raise RuntimeError("synthetic-delete-failure")
 
     monkeypatch.setattr(control, "_delete_medication_completions", fail)
@@ -248,7 +251,7 @@ def test_failed_medication_delete_rolls_back_receipt_redaction(fk_db, monkeypatc
 # - fk_db: Session; 외래 키가 활성화된 격리 데이터베이스.
 # 반환값:
 # - None.
-def test_retention_redacts_multiple_legacy_receipts_without_reloading_old_payloads(fk_db):
+def test_retention_redacts_multiple_legacy_receipts_without_reloading_old_payloads(fk_db: Session) -> None:
     day = application_today() - timedelta(days=10)
     identifiers = [medication(fk_db, prescription_date=day, total_days="1", item_name=f"legacy-{i}").id
                    for i in range(2)]

@@ -3,6 +3,7 @@
 #   confirmation contracts.
 import os
 import sys
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
@@ -367,7 +368,7 @@ async def test_request_body_limit_answers_413_for_streamed_body_on_parsed_route(
     # - body (bytes): Complete request body.
     # Returns:
     # - Async iterator over the pieces.
-    async def chunks(body: bytes):
+    async def chunks(body: bytes) -> AsyncIterator[bytes]:
         for start in range(0, len(body), 16):
             yield body[start:start + 16]
 

@@ -42,7 +42,7 @@ from services.prescription_medication_name_verifier import (
     ('세비카에이치씨티정 5/20/12.5mg', '세비카에이치씨티정5/20/12.5밀리그램'),
     ('테스트시럽 5mg/5ml', '테스트시럽1mg/ml'),
 ])
-def test_equivalent_strengths(original, candidate):
+def test_equivalent_strengths(original: str, candidate: str) -> None:
     assert match_conflict(original, candidate) is None
     assert can_auto_match(original, candidate)
 
@@ -75,7 +75,7 @@ def test_equivalent_strengths(original, candidate):
     ('아모잘탄정50mg', '아모잘탄정5/50밀리그램'),
     ('아모잘탄정5/50mg', '아모잘탄정50밀리그램'),
 ])
-def test_unsafe_strength_or_form_is_excluded(original, candidate):
+def test_unsafe_strength_or_form_is_excluded(original: str, candidate: str) -> None:
     assert match_conflict(original, candidate)
     assert not can_auto_match(original, candidate)
     assert MedicationNameMatcher().calculate_score(original, candidate) == 0
@@ -95,7 +95,7 @@ def test_unsafe_strength_or_form_is_excluded(original, candidate):
     ('아모잘탄정5mg/50mg', '아모잘탄정5/50밀리그램'),
     ('아모잘탄정5/50mg', '아모잘탄정50/5밀리그램'),
 ])
-def test_combination_check_only_adds_conflicts(original, candidate) -> None:
+def test_combination_check_only_adds_conflicts(original: str, candidate: str) -> None:
     assert match_conflict(original, candidate) == 'strength_mismatch'
     assert not can_auto_match(original, candidate)
 
@@ -107,7 +107,7 @@ def test_combination_check_only_adds_conflicts(original, candidate) -> None:
 # - 없음.
 # 반환값:
 # - None.
-def test_missing_strength_and_typo_require_confirmation():
+def test_missing_strength_and_typo_require_confirmation() -> None:
     assert not can_auto_match('아스피린정', '바이엘아스피린정500밀리그람')
     assert not can_auto_match('에니코프캡슐300mg', '애니코프캡슐300mg')
 
@@ -124,7 +124,7 @@ def test_missing_strength_and_typo_require_confirmation():
     ('시네츄라시럽_(15mL)', '시네츄라시럽'),
     ('테스트정100mg', '테스트정'),
 ])
-def test_missing_strength_is_only_allowed_for_manual_candidates(original, candidate):
+def test_missing_strength_is_only_allowed_for_manual_candidates(original: str, candidate: str) -> None:
     matcher = MedicationNameMatcher()
     assert match_conflict(original, candidate) == 'strength_unknown'
     assert not matcher.rank_candidates(original, [candidate], str, 5)
@@ -151,7 +151,7 @@ def test_missing_strength_is_only_allowed_for_manual_candidates(original, candid
     ('테스트정5/50mg', '테스트정10/50mg'),
     ('시네츄라시럽_(15mL)', '전혀다른약품정'),
 ])
-def test_manual_candidates_still_reject_conflicts_and_unrelated_names(original, candidate):
+def test_manual_candidates_still_reject_conflicts_and_unrelated_names(original: str, candidate: str) -> None:
     assert not MedicationNameMatcher().rank_candidates(
         original, [candidate], str, 5, allow_unknown_strength=True,
     )
@@ -169,7 +169,7 @@ def test_manual_candidates_still_reject_conflicts_and_unrelated_names(original, 
 @pytest.mark.parametrize('search_text', [
     '타이래놀정500mg', '타이래놀정0.5g', '타이래놀정500.0mg', '타이래놀정５００ｍｇ',
 ])
-def test_equal_strength_gets_the_same_bonus_in_any_notation(search_text) -> None:
+def test_equal_strength_gets_the_same_bonus_in_any_notation(search_text: str) -> None:
     matcher = MedicationNameMatcher()
     assert matcher.calculate_score(search_text, '타이레놀정500밀리그램') == pytest.approx(0.95)
     assert matcher._adjust_dosage_score(0.8, search_text, '타이레놀정500밀리그램') == pytest.approx(0.83)
@@ -197,7 +197,7 @@ def test_missing_strength_gets_no_bonus_and_no_penalty() -> None:
 # - item_seq: str; 합성 제품 ID.
 # 반환값:
 # - MedicationDetail; 후보 비교용 상세.
-def detail(name, item_seq='1'):
+def detail(name: str, item_seq: str = '1') -> MedicationDetail:
     return MedicationDetail(item_seq=item_seq, item_name=name,
                             efficacy='', usage_method='', warning='')
 
@@ -209,7 +209,7 @@ def detail(name, item_seq='1'):
 # - results: list[MedicationDetail]; 대체 조회가 반환할 후보.
 # 반환값:
 # - CheckMedicationDetail; 외부 조회가 교체된 컨트롤.
-def control_with_results(results):
+def control_with_results(results: list[MedicationDetail]) -> CheckMedicationDetail:
     control = object.__new__(CheckMedicationDetail)
     control.text_normalizer = MedicationTextNormalizer()
     control.name_matcher = MedicationNameMatcher()
@@ -224,7 +224,7 @@ def control_with_results(results):
 # - 없음.
 # 반환값:
 # - None.
-def test_original_query_and_strength_survive_search_broadening():
+def test_original_query_and_strength_survive_search_broadening() -> None:
     control = control_with_results([detail('바이엘아스피린정500밀리그람')])
     result = asyncio.run(control.requestMedicationDetail('아스피린정100mg'))
     assert not result.success
@@ -242,7 +242,7 @@ def test_original_query_and_strength_survive_search_broadening():
 # - 없음.
 # 반환값:
 # - None.
-def test_ai_corrected_name_cannot_override_original_strength():
+def test_ai_corrected_name_cannot_override_original_strength() -> None:
     control = control_with_results([detail('바이엘아스피린정500밀리그람')])
     result = asyncio.run(control.requestMedicationDetail(
         '바이엘아스피린정500밀리그람', original_text='아스피린정100mg',
@@ -258,7 +258,7 @@ def test_ai_corrected_name_cannot_override_original_strength():
 # - 없음.
 # 반환값:
 # - None.
-def test_exact_product_is_automatic_but_fuzzy_result_is_review_only():
+def test_exact_product_is_automatic_but_fuzzy_result_is_review_only() -> None:
     name = '바이엘아스피린정500밀리그람'
     control = control_with_results([detail(name)])
     exact = asyncio.run(control.requestMedicationDetail(name))
@@ -277,7 +277,7 @@ def test_exact_product_is_automatic_but_fuzzy_result_is_review_only():
 # - 없음.
 # 반환값:
 # - None.
-def test_same_name_different_product_ids_require_confirmation():
+def test_same_name_different_product_ids_require_confirmation() -> None:
     control = control_with_results([detail('테스트정', '1'), detail('테스트정', '2')])
     result = asyncio.run(control.requestMedicationDetail('테스트정'))
     assert result.requires_confirmation
@@ -292,7 +292,7 @@ def test_same_name_different_product_ids_require_confirmation():
 # 반환값:
 # - None.
 @pytest.mark.parametrize('source', ['local', 'cache'])
-def test_local_and_cached_wrong_strength_cannot_skip_public_lookup(source):
+def test_local_and_cached_wrong_strength_cannot_skip_public_lookup(source: str) -> None:
     control = object.__new__(CheckMedicationDetail)
     wrong = [detail('테스트정500mg')]
     control.name_matcher = MedicationNameMatcher()
@@ -318,7 +318,7 @@ def test_local_and_cached_wrong_strength_cannot_skip_public_lookup(source):
 # - None.
 # Returns:
 # - None.
-def test_ai_choice_cannot_override_strength_even_at_full_confidence():
+def test_ai_choice_cannot_override_strength_even_at_full_confidence() -> None:
     verifier = PrescriptionMedicationNameVerifier()
     candidate = _CatalogMedicationName('테스트정500mg', '테스트정500mg')
     result = verifier._select_ai_verified_corrections(
@@ -335,7 +335,7 @@ def test_ai_choice_cannot_override_strength_even_at_full_confidence():
 # - None.
 # Returns:
 # - None.
-def test_ai_correction_is_rechecked_before_it_is_applied():
+def test_ai_correction_is_rechecked_before_it_is_applied() -> None:
     verifier = PrescriptionMedicationNameVerifier()
     candidate = _CatalogMedicationName('테스트정500mg', '테스트정500mg')
     original = MedicationNameVerification('테스트정100mg', '테스트정100mg', 0, 'unverified')
@@ -375,7 +375,7 @@ def test_local_prefix_match_cannot_turn_100_into_1000() -> None:
 # - 없음.
 # 반환값:
 # - None.
-def test_identical_names_without_ids_keep_different_manufacturers():
+def test_identical_names_without_ids_keep_different_manufacturers() -> None:
     control = control_with_results([
         detail('테스트정', '').model_copy(update={'manufacturer': 'A'}),
         detail('테스트정', '').model_copy(update={'manufacturer': 'B'}),

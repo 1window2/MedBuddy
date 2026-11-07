@@ -1,12 +1,16 @@
 # 파일명: test_check_prescription_change_control.py
 # 역할: 처방 비교의 환자 범위, 비교 기간, 관련 처방 선택 및 약·복용법 변경 분류를 검증한다.
 
+import sqlite3
 import sys
 import unittest
+from collections.abc import Sequence
 from datetime import date, timedelta
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import create_engine, event
+from sqlalchemy.engine import Connection, ExecutionContext
 from sqlalchemy.orm import sessionmaker
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -439,12 +443,12 @@ class CheckPrescriptionChangeTest(unittest.TestCase):
         # Returns:
         # - None.
         def capture_catalog_statement(
-            connection,
-            cursor,
-            statement,
-            parameters,
-            context,
-            executemany,
+            connection: Connection,
+            cursor: sqlite3.Cursor,
+            statement: str,
+            parameters: Sequence[Any] | dict[str, Any],
+            context: ExecutionContext,
+            executemany: bool,
         ) -> None:
             if "drug_approval_infos" in statement:
                 catalog_statements.append(statement)

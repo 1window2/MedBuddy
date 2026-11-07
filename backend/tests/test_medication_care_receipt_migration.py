@@ -29,7 +29,7 @@ from entities.medication_care_entity import _MedicationCareOperation
 # 반환값:
 # - None.
 @pytest.mark.parametrize("delete_original", [False, True])
-def test_upgrade_backfills_legacy_receipts_and_preserves_idempotency(tmp_path, delete_original):
+def test_upgrade_backfills_legacy_receipts_and_preserves_idempotency(tmp_path: Path, delete_original: bool) -> None:
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
     config.attributes["database_url"] = f"sqlite:///{(tmp_path / 'care-receipt-upgrade.db').as_posix()}"
     command.upgrade(config, "c8d3e7a92104")
@@ -100,7 +100,7 @@ def test_upgrade_backfills_legacy_receipts_and_preserves_idempotency(tmp_path, d
 # - tmp_path: Path; 테스트 전용 임시 디렉터리.
 # 반환값:
 # - None.
-def test_receipt_upgrade_processes_multiple_batches(tmp_path):
+def test_receipt_upgrade_processes_multiple_batches(tmp_path: Path) -> None:
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
     config.attributes["database_url"] = f"sqlite:///{(tmp_path / 'care-receipt-batches.db').as_posix()}"
     command.upgrade(config, "c8d3e7a92104")

@@ -10,7 +10,7 @@ import time
 from collections.abc import AsyncIterator
 from datetime import timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import cv2
 import httpx
@@ -2011,7 +2011,7 @@ def test_image_preprocessing_turns_the_image_upright_without_rewriting_exif(
     # - offset: int; EXIF byte offset, unused.
     # Returns:
     # - Never returns; raises AssertionError.
-    def refuse_reencoding(self, offset=8):
+    def refuse_reencoding(self, offset: int = 8) -> NoReturn:
         raise AssertionError("EXIF must not be re-encoded")
 
     monkeypatch.setattr(Image.Exif, "tobytes", refuse_reencoding)
