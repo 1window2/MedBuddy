@@ -21,7 +21,9 @@ Future<http.Response> _unusedRequest(http.Request request) async =>
     http.Response('{}', 200);
 
 // 클래스명: _Links
-// 역할: 서버의 활성 연동과 별칭 변경을 재현한다.
+// 역할: 활성 환자·보호자 연동과 별칭 변경을 재현하는 제어기 대역.
+// 주요 책임: 모의 HTTP 클라이언트로 실제 통신을 막고 테스트가 지정한 연동 목록을 그대로 제공한다.
+// 속성: result (List<PatientCaregiverLink>): 다음 화면 조회가 반환할 변경 가능한 연동 목록.
 class _Links extends LinkPatientCaregiver {
   List<PatientCaregiverLink> result = [];
   // 함수이름: _Links
@@ -57,8 +59,10 @@ NotificationInboxEntry _entry(String payload, {bool chat = true}) =>
       occurredAt: DateTime(2026, 9, 12),
     );
 
-// 함수이름: main
-// 함수역할: 이름 조회·갱신·계정 분리와 실제 제목 표시를 검증한다. 매개변수: 없음. 반환값: 없음.
+// Function Name: main
+// Description: Register peer-name resolution, privacy, account consistency, and live alias/unlinking regressions.
+// Parameters: None.
+// Returns: void: Installs per-test isolation and cleanup and registers assertions.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late _Links links;
@@ -182,14 +186,19 @@ void main() {
     },
   );
 
-  // 함수이름: 미복용 동작 알림 별칭 테스트
-  // 함수역할: 동작 버튼이 있는 미복용 알림(caregiver-v1 경로)에도 활성 환자 별칭을 표시하고, 해석할 수 없는
-  //   경로와 내용 숨김에서는 일반 제목을 유지하는지 검증한다. 매개변수: 없음. 반환값: 검증 완료.
+  // Function Name: test: 'missed-dose action alerts use the patient alias from the versioned payload'
+  // Description: Resolve a versioned missed-dose payload for a linked patient, then exercise hidden details, unknown/malformed payloads, and unlinking.
+  // Parameters: None.
+  // Returns: No value; a valid linked patient uses the current alias without rewriting the historical body, while hidden or unresolved identities retain generic/original titles.
   test(
     'missed-dose action alerts use the patient alias from the versioned payload',
     () async {
       createControls();
       await chats.refresh();
+      // Function Name: missed
+      // Description: Wrap a supplied route in a historical missed-evening-dose notification.
+      // Parameters: payload (String): Versioned, unknown, or malformed caregiver route under test.
+      // Returns: NotificationInboxEntry: Fixed-ID medication alert retaining the original title and missed-dose body.
       NotificationInboxEntry missed(String payload) => NotificationInboxEntry(
         id: 'caregiver:77',
         title: '미복용 일정 확인',
@@ -198,6 +207,10 @@ void main() {
         category: NotificationInboxCategory.medication,
         occurredAt: DateTime(2026, 9, 12),
       );
+      // Function Name: alert
+      // Description: Create a versioned caregiver action context for the fixed evening event while varying patient identity.
+      // Parameters: patientHash (String): Patient to encode in the alert route.
+      // Returns: CaregiverAlertContext: Fixed event/link/date metadata whose payload is used for alias resolution.
       CaregiverAlertContext alert(String patientHash) => CaregiverAlertContext(
         alertId: 5,
         sourceAlertId: 4,
@@ -230,9 +243,10 @@ void main() {
     },
   );
 
-  // 함수이름: 이름 변경 알림 테스트
-  // 함수역할: 채팅 목록이 같은 내용으로 다시 조회될 때는 알림함을 다시 그리게 하지 않고, 별칭이 바뀌거나
-  //   연동이 해제될 때만 알리는지 검증한다. 매개변수: 없음. 반환값: 검증 완료.
+  // Function Name: test: 'inbox is notified only when a peer name or link changes'
+  // Description: Refresh an unchanged chat list twice, change one peer alias, then remove another link while counting inbox listeners.
+  // Parameters: None.
+  // Returns: No value; identical refreshes emit nothing, the alias change emits once, and unlinking emits one additional update.
   test('inbox is notified only when a peer name or link changes', () async {
     createControls();
     await chats.refresh();
@@ -312,8 +326,10 @@ void main() {
     },
   );
 
-  // 함수이름: 환자 관점 테스트
-  // 함수역할: 환자에게 자신의 별칭 대신 채팅 목록의 보호자 이름을 표시한다. 매개변수: 없음. 반환값: 검증 완료.
+  // Function Name: test: 'patient sees the caregiver name and another account is rejected'
+  // Description: Compare patient and caregiver views, set and clear a caregiver alias, apply privacy, and attempt to combine controls from different accounts.
+  // Parameters: None.
+  // Returns: No value; patients see the caregiver alias or localized fallback, caregivers see the patient alias, hidden mode masks identity, and an account mismatch throws ArgumentError.
   test(
     'patient sees the caregiver name and another account is rejected',
     () async {

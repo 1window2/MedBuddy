@@ -9,8 +9,10 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:medbuddy_frontend/services/notification_service.dart';
 import 'package:medbuddy_frontend/services/notification_inbox_store.dart';
 
-// 함수이름: main
-// 함수역할: 실제 Service와 플랫폼 호출 대역을 연결한다. 매개변수: 없음. 반환값: 없음.
+// Function Name: main
+// Description: Register notification-service tests against a captured Android method channel and isolated inbox storage.
+// Parameters: None.
+// Returns: void: Registers setup, cleanup, and delivery/privacy/scheduling assertions.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   debugDefaultTargetPlatformOverride = TargetPlatform.android;
@@ -21,8 +23,10 @@ void main() {
   var switchDuringSchedule = false;
   var active = <Map<String, Object?>>[];
 
-  // 함수이름: setUp 콜백
-  // 함수역할: 기록과 플랫폼 호출을 초기화한다. 매개변수: 없음. 반환값: 없음.
+  // Function Name: setUp
+  // Description: Reset the patient session, privacy flags, captured calls, and active notifications, then install a controllable Android notification-channel handler.
+  // Parameters: None.
+  // Returns: void: Prepares the fixture; show may throw the configured PlatformException and scheduling may switch the active history account.
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
@@ -62,6 +66,10 @@ void main() {
         .setMockMethodCallHandler(channel, null);
   });
 
+  // Function Name: test: 'chat groups by person, expands three previews and resets after reading'
+  // Description: Deliver three summaries for one conversation and one for another, mark the first read, then send a stale and a newer summary.
+  // Parameters: None.
+  // Returns: No value; per-person tags are stable and distinct, three preview lines/counts appear, reading clears the matching tag, stale delivery is ignored, and a later message restarts at one.
   test(
     'chat groups by person, expands three previews and resets after reading',
     () async {
@@ -153,7 +161,15 @@ void main() {
     },
   );
 
+  // Function Name: test: 'reading a chat also removes its slot-check requests up to the read message'
+  // Description: Provide active alerts spanning two conversations, two message positions, and an unrelated channel, then clear chat 7 through message 3.
+  // Parameters: None.
+  // Returns: No value; cancellation includes chat:7:3 but excludes later messages, other chats, and other channels.
   test('reading a chat also removes its slot-check requests up to the read message', () async {
+    // Function Name: notification
+    // Description: Build the platform-shaped active-notification row used to test read-boundary cancellation.
+    // Parameters: id (int): Notification ID; tag (String): Conversation/message tag; channel (String): Android notification channel.
+    // Returns: Map<String, Object?>: Routing fields with unused display/group fields set to null.
     Map<String, Object?> notification(int id, String tag, String channel) => {
       'id': id,
       'tag': tag,
@@ -184,6 +200,10 @@ void main() {
     expect(cancelledTags, isNot(contains('chat:7:2')));
   });
 
+  // Function Name: test: 'chat alert without a summary shows no unread count'
+  // Description: Show an English chat notification with a preview but no grouped summary.
+  // Parameters: None.
+  // Returns: No value; the generic family-message title and preview are delivered without an unread badge count or expanded preview lines.
   test('chat alert without a summary shows no unread count', () async {
     await service.showLinkedChatAlert(
       id: 300,
@@ -199,6 +219,10 @@ void main() {
     expect(android['styleInformation'], isNot(containsPair('lines', anything)));
   });
 
+  // 함수이름: test: 'chat grouping respects privacy and ignores older snapshots'
+  // 함수역할: 기기 내용 숨김으로 이름·미리보기가 있는 요약을 표시한 뒤 오래된 요약과 서버 숨김 요약을 전달한다.
+  // 매개변수: 없음.
+  // 반환값: 반환값 없음; 이름과 비밀 본문은 노출되지 않고 개수만 남으며 오래된 스냅샷은 재표시하지 않고 서버의 숨김 결정도 유지한다.
   test('chat grouping respects privacy and ignores older snapshots', () async {
     service.setShowSensitiveDetails(false);
     await service.showLinkedChatAlert(
@@ -330,6 +354,10 @@ void main() {
   // Chat dose requests must have the same conversation destination in the
   // native notification and inbox; no completion action is synthesized.
   for (final slot in ['morning', 'lunch', 'evening', 'bedtime', 'invalid']) {
+    // 함수이름: test: 'dose request for $slot opens its conversation'
+    // 함수역할: 각 복약 시간대의 확인 요청을 연동 채팅 알림으로 표시하고 시스템·알림함 payload를 해석한다.
+    // 매개변수: 없음.
+    // 반환값: 반환값 없음; 두 payload 모두 chat:17이며 이동 대상은 채팅 열기이고 복약 시간대 동작은 지정되지 않는다.
     test('dose request for $slot opens its conversation', () async {
       await service.showLinkedChatAlert(
         id: 301,

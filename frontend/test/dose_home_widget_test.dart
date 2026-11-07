@@ -95,6 +95,13 @@ void main() {
     await directory.delete(recursive: true);
   });
 
+  // 함수이름: 로컬 완료의 재알림 취소 대상
+  // 함수역할:
+  // - 오늘 아침 오프라인 완료만 취소 대상에 포함하고 다음날·완료 취소·완료 없는 환자 보기에서는 대상이 없는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('local completion cancels only complete slots, including offline writes', () async {
     final initial = await state();
     expect(initial.completedReminderSlots(now), isEmpty);
@@ -107,9 +114,10 @@ void main() {
     expect(caregiver.completedReminderSlots(now), isEmpty);
   });
 
-  // 함수이름: 표시 설정·보류 기록과 무관한 재알림 취소 테스트
-  // 함수역할: 환자 일정 보기로 바꾸거나 관계없는 보류 기록이 있어도 본인이 기기에 기록한 완료 시간대는 재알림 취소 대상인지 검증한다.
-  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // Function Name: completed reminder cancellation scope
+  // Description: Keeps today's completed morning eligible for reminder cancellation across patient-view selection and an unrelated blocked evening operation, without exposing cancellation actions while blocked.
+  // Parameters: None.
+  // Returns: Future<void>; completes the source, date and blocked-operation assertions.
   test('completed reminder slots ignore widget source and blocked records', () async {
     await cache(schedules: [
       medication,
@@ -145,6 +153,13 @@ void main() {
     expect(blocked.completedReminderSlots(now), ['morning']);
   });
 
+  // 함수이름: 부분 완료와 오래된 캐시
+  // 함수역할:
+  // - 시간대의 일부 약만 완료했거나 캐시 날짜가 오래되면 그 시간대 재알림을 취소하지 않는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('partial or stale completion cannot cancel the slot reminder', () async {
     await cache(schedules: [
       medication.copyWith(slotStatuses: {'morning': true, 'evening': false}),
@@ -418,6 +433,7 @@ void main() {
   // 아침부터 마지막 시간대까지 별도 확인 없이 넘어가며 마지막에는 기록 버튼을 없앤다.
   // 함수이름: 하루 시간대 순차 완료 테스트
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // 함수역할: 네 시간대의 완료가 순서대로 네 작업에 저장되고 마지막에는 추가 완료 대신 일정 열기만 제공하는지 검증한다.
   test('morning lunch evening and bedtime advance in order', () async {
     await cache(
       schedules: [
@@ -456,6 +472,7 @@ void main() {
   // 다른 곳에서 완료된 약은 제외하고 표시된 시간대의 남은 약만 기록한다.
   // 함수이름: 미완료 약 선택 테스트
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // 함수역할: 이미 완료한 약을 제외한 ID 92만 아침 작업으로 저장하고 전체 완료 수와 다음 저녁 표시를 갱신하는지 검증한다.
   test('only incomplete medicines in the selected slot are queued', () async {
     await cache(
       schedules: [
@@ -473,6 +490,7 @@ void main() {
   // 직전 화면의 지연된 클릭이 새로 표시된 다음 시간대까지 완료 처리하면 안 된다.
   // 함수이름: 이전 시간대 입력 재수신 테스트
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // 함수역할: 아침 토큰 재전송이 저녁을 완료하지 않고 새 토큰·완료 수·작업 한 건을 유지하는지 검증한다.
   test('replayed previous slot never completes the next slot', () async {
     final morning = await state();
     final evening = (await tap(morning))!;
@@ -484,6 +502,7 @@ void main() {
   // 앱 업데이트 전의 되돌리기 표시와 버튼 토큰은 새 기록을 만들지 않는다.
   // 함수이름: 이전 버전 되돌리기 호환 테스트
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // 함수역할: 구형 undo 상태를 새 위젯에 복원하지 않으며 이전 undo 토큰이 추가 작업을 만들지 않는지 검증한다.
   test(
     'legacy undo state is ignored and stale undo actions cannot write',
     () async {
@@ -542,6 +561,13 @@ void main() {
   // 함수역할: 로그아웃이나 다른 계정 사용 전에 만들어진 복용·취소 버튼을 재로그인 후에도 거부한다.
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 저장했던 복약 기록은 유지한다.
   for (final intermediate in <String?>[null, 'patient-b']) {
+    // 함수이름: 재로그인 후 이전 완료 토큰
+    // 함수역할:
+    // - 로그아웃·다른 계정 경유 후 같은 계정으로 돌아와도 이전 완료 토큰은 거부하고 탐색/작업 토큰은 교체하되 이름 숨김 설정은 유지하는지 확인한다.
+    // 매개변수:
+    // - 없음.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     test('session boundary invalidates old take after $intermediate', () async {
       final before = await state(config: {'hide_names': true});
       await store.activate(intermediate);
@@ -557,6 +583,13 @@ void main() {
       expect(current.data['config']['hide_names'], isTrue);
     });
 
+    // 함수이름: 재로그인 후 이전 취소 토큰
+    // 함수역할:
+    // - 계정 경계를 지난 오래된 취소 토큰이 기존 완료 작업을 취소하지 않고 한 건의 대기 기록과 완료 표시를 유지하는지 확인한다.
+    // 매개변수:
+    // - 없음.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     test(
       'session boundary invalidates old cancel after $intermediate',
       () async {
@@ -818,10 +851,10 @@ void main() {
     expect(value.view['overdue'], isTrue);
     expect((await tap(value))!.view['heading'], '아침 10:30');
   });
-  // 모든 시간이 지난 경우에도 마지막 시간대로 건너뛰지 않고 남은 일정 순서를 지킨다.
-  // 함수이름: 지난 시간대 순서 유지 테스트
-  // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
-  // 알림 직후의 복용은 제때 복용이므로 서버의 미복용 기준과 같은 유예 시간이 지나야 안내한다.
+  // Function Name: missed-dose grace period
+  // Description: Verifies the 08:00 reminder is not overdue at 08:10 but is overdue at 08:30 in the medication timezone.
+  // Parameters: None.
+  // Returns: Future<void>; completes the two time-boundary assertions.
   test('a slot becomes overdue only after the missed-dose grace', () async {
     // 한국 시각 08:10과 08:30(UTC 23:10, 23:30 전날).
     final early = await state(at: DateTime.utc(2026, 9, 20, 23, 10));
@@ -831,6 +864,13 @@ void main() {
     expect(late.view['overdue'], isTrue);
   });
 
+  // 함수이름: 지난 시간대의 순서
+  // 함수역할:
+  // - 두 알림 시각이 모두 지난 뒤에도 아침부터 표시하고 완료 후 저녁으로 이동하며 두 시간대 모두 지연 경고를 유지하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('overdue slots retain their order and warning', () async {
     final late = DateTime.utc(2026, 9, 21, 14);
     final morning = await state(at: late);
@@ -905,6 +945,7 @@ void main() {
   // 완료 시간대를 조회만 하면 기록하지 않고, 취소 버튼을 눌렀을 때만 해당 기록을 바꾼다.
   // 함수이름: 완료 페이지 명시적 취소 테스트
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // 함수역할: 완료 페이지 조회만으로 기록하지 않고 명시적 취소 입력에서만 해당 아침 약을 미완료 작업으로 저장하는지 검증한다.
   test(
     'completed page cancels only its own slot when explicitly tapped',
     () async {
@@ -939,6 +980,7 @@ void main() {
   // 사용자가 넘겨 본 시간대의 토큰은 기본 표시 시간대가 아닌 해당 시간대만 기록한다.
   // 함수이름: 직접 탐색한 시간대 기록 테스트
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // 함수역할: 직접 탐색한 저녁 페이지의 입력은 저녁만 기록하고 기본 표시를 아침으로 유지하며 같은 토큰의 재전송을 거부하는지 검증한다.
   test(
     'a browsed later page records only its own slot and resists replay',
     () async {
@@ -960,6 +1002,7 @@ void main() {
   // 시간대 일부를 앱에서 기록한 경우에도 완료·미완료를 구분하고 남은 약만 제출한다.
   // 함수이름: 일부 완료 시간대 표시 테스트
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // 함수역할: 한 시간대에 완료/미완료 약을 함께 표시하되 실제 전송 대기 작업에는 남은 ID 92만 넣는지 검증한다.
   test(
     'partly taken page shows both statuses and queues only remaining IDs',
     () async {
@@ -988,6 +1031,7 @@ void main() {
   // 페이지를 추가해도 약 이름 숨김이 완료된 약에까지 적용되어야 한다.
   // 함수이름: 모든 페이지 이름 숨김 테스트
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // 함수역할: 이름 숨김은 완료와 미완료 페이지 모두에서 약명을 제거하고 영어 완료/미완료 개수만 표시하는지 검증한다.
   test(
     'privacy setting hides both taken and remaining medicine names on every page',
     () async {
@@ -1009,6 +1053,7 @@ void main() {
   // 새로고침은 조회 위치를 보존하지만 날짜·계정이 바뀌면 이전 선택을 폐기한다.
   // 함수이름: 탐색 위치 유효 범위 테스트
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // 함수역할: 같은 계정·날짜의 새로고침은 탐색 키를 유지하지만 날짜나 계정 변경 시 키와 페이지 상태를 교체하는지 검증한다.
   test(
     'navigation scope is stable for refresh and changes for day or account',
     () async {
@@ -1038,6 +1083,7 @@ void main() {
   // 모든 복약을 기록한 뒤에도 각 시간대의 약과 완료 여부를 다시 볼 수 있다.
   // 함수이름: 전체 완료 후 취소 탐색 테스트
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // 함수역할: 전체 완료 요약 뒤에도 두 시간대의 취소 페이지·토큰은 유지하되 추가 완료용 토큰은 남기지 않는지 검증한다.
   test(
     'all completed slots retain cancellation but no completion tokens',
     () async {
@@ -1061,6 +1107,7 @@ void main() {
   // 날짜 표시는 기기 UTC 날짜가 아닌 복약 기준일에 맞추고 언어 설정을 따른다.
   // 함수이름: 복약 기준일 날짜 표시 테스트
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // 함수역할: 한국 자정 경계에서 복약 날짜와 한국어·영어 날짜 문구 및 UTC 오프셋이 일치하는지 검증한다.
   test(
     'date label follows the medication timezone and language at midnight',
     () async {
@@ -1080,6 +1127,7 @@ void main() {
   // 취소를 중복 수신하거나 재복용 뒤 이전 취소를 수신해도 새 기록에 적용하지 않는다.
   // 함수이름: 중복·오래된 취소 입력 테스트
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // 함수역할: 중복 취소와 재복용 뒤 이전 취소 토큰은 새 완료를 되돌리지 않으며 완료·취소·재완료 작업 세 개만 남기는지 검증한다.
   test(
     'duplicate cancellation and stale tokens cannot undo a later completion',
     () async {
@@ -1113,6 +1161,7 @@ void main() {
   // 완료/취소 토큰은 서로 바꿔서 사용할 수 없다.
   // 함수이름: 토큰과 동작 종류 일치 테스트
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // 함수역할: 완료 토큰을 취소로, 취소 토큰을 완료로 바꿔 보내도 추가 기록이 생성되지 않는지 검증한다.
   test('action kind is bound to its token', () async {
     final before = await state();
     await store.updateWidget(
@@ -1133,6 +1182,7 @@ void main() {
   // 자정 이후에는 이전 날짜의 완료 기록도 위젯으로 수정하지 않는다.
   // 함수이름: 전날 취소 입력 거부 테스트
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // 함수역할: 자정 이후 어제 완료의 취소 토큰을 눌러도 기존 완료 작업 한 건 외에 새 작업이 생기지 않는지 검증한다.
   test(
     'yesterday cancellation does not write or change the operation date',
     () async {
@@ -1145,6 +1195,7 @@ void main() {
   // 다른 계정으로 바뀌거나 로그아웃하면 완료된 페이지의 취소 토큰도 거부한다.
   // 함수이름: 계정 전환·로그아웃 취소 거부 테스트
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // 함수역할: 다른 계정과 로그아웃 상태는 이전 취소 토큰을 null로 거부하고 새 계정에 기록하지 않으며 원래 완료 작업은 보존하는지 검증한다.
   test('cancel token cannot survive an account switch or logout', () async {
     final taken = (await tap(await state()))!;
     final cancel = page(taken, 'morning');
@@ -1159,6 +1210,7 @@ void main() {
   // 새 약이 추가되거나 기존 약이 삭제·미완료로 변경되면 오래된 전체 취소를 거부한다.
   // 함수이름: 취소 대상 일정 변경 테스트
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // 함수역할: 표시 후 약이 삭제·추가되거나 완료 상태가 바뀌면 기존 전체 취소 토큰을 거부하고 작업을 생성하지 않는지 검증한다.
   test(
     'cancel checks the complete displayed medication set and prior status',
     () async {
@@ -1183,6 +1235,7 @@ void main() {
   // 앱에서 완료한 시간대의 모든 약을 취소하되 다른 시간대의 기록은 유지한다.
   // 함수이름: 시간대 전체 취소 범위 테스트
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // 함수역할: 서버에서 완료된 아침 약 두 개를 한 취소 작업에 담되 저녁 완료 상태와 나머지 완료 수는 유지하는지 검증한다.
   test(
     'server-completed slot cancels all its medicines and retains other slots',
     () async {
@@ -1207,6 +1260,7 @@ void main() {
   // 서버가 거부한 기록이 있으면 위젯에서 추가 취소하지 않고 앱 확인으로 유도한다.
   // 함수이름: 서버 거부 후 위젯 취소 제한 테스트
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // 함수역할: 차단된 동기화 작업이 있으면 위젯 취소를 거부하고 앱 열기로 유도하며 기존 작업만 남기고 취소 토큰을 제거하는지 검증한다.
   test('blocked sync rejects cancellation and removes action tokens', () async {
     final taken = (await tap(await state()))!;
     final op = (await store.claim(
@@ -1229,6 +1283,7 @@ void main() {
   // 오프라인 복용→취소→재복용은 앱 재시작 후에도 같은 순서로 한 번씩 전송한다.
   // 함수이름: 오프라인 취소 재시작 복구 테스트
   // 매개변수: 없음. 반환값: 비동기 검증 완료; 불일치 시 테스트 실패.
+  // 함수역할: 디스크 재개방 후에도 완료·취소·재완료를 보존하고 연결 복구 시 서로 다른 ID로 순서대로 전송한 뒤 최종 완료 상태를 유지하는지 검증한다.
   test('offline cancellation survives restart and uploads in order', () async {
     final taken = (await tap(await state()))!;
     final cancelled = (await tap(page(taken, 'morning')))!;

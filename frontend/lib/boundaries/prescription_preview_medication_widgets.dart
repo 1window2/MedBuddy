@@ -4,9 +4,9 @@ part of 'prescription_analysis_preview_ui_boundary.dart';
 // 역할: OCR 복약 정보 표와 약명·일정 수정 대화상자를 제공한다.
 
 // 클래스명: _MedicationScheduleEditField
-// 역할: 표에서 누른 열에 대응하는 초기 입력란을 담당한다.
-// 주요 책임:
-// - 표에서 누른 열에 대응하는 초기 입력란에서 지원하는 선택지를 열거하고 구분한다: medicationName, dosage, dailyFrequency, totalDays, prescriptionDate, scheduleSlots.
+// 역할: OCR 표에서 선택한 편집 시작 항목.
+// 주요 책임: 약명·용량·횟수·일수·날짜·시간대 중 초기 입력란을 지정한다.
+// 속성: medicationName/dosage/dailyFrequency/totalDays/prescriptionDate/scheduleSlots: 입력 항목.
 enum _MedicationScheduleEditField {
   medicationName,
   dosage,
@@ -33,7 +33,9 @@ typedef _MedicationTableEditCallback =
     );
 
 // 클래스명: _PreviewMedicationList
-// 역할: 약별 복약 정보와 후보 확인을 같은 카드에 세로로 배치한다.
+// 역할: 약별 인식 결과와 조회 후보 확인을 세로 카드로 표시한다.
+// 주요 책임: 조회 상태를 행 순서에 맞춰 표시하고 항목별 편집·후보 확인을 부모에게 전달한다.
+// 속성: medicationScheduleList (List<MedicationSchedule>): 일정; lookupStatuses (List<MedicationLookupStatus?>): 같은 순서 상태; matchReviews (Map<int,MedicationMatchReview>): 후보; verifiedScheduleIndexes (Set<int>): 확정; previewText/userSetting: 문구·설정; onEditRequested/onCandidateRequested: 편집 명령.
 class _PreviewMedicationList extends StatelessWidget {
   final List<MedicationSchedule> medicationScheduleList;
   final _PreviewText previewText;
@@ -46,6 +48,10 @@ class _PreviewMedicationList extends StatelessWidget {
   final List<MedicationLookupStatus?> lookupStatuses;
   final void Function(int, MedicationMatchReview)? onCandidateRequested;
 
+  // 함수이름: _PreviewMedicationList
+  // 함수역할: 행 순서가 일치하는 일정·조회 상태와 편집 및 후보 확인 콜백을 받는다.
+  // 매개변수: medicationScheduleList (List<MedicationSchedule>): 일정; previewText (_PreviewText): 문구; userSetting (UserSetting): 설정; onEditRequested (_MedicationTableEditCallback): 편집; verifiedScheduleIndexes (Set<int>): 확정; isMedicationLookupReview (bool): 검토 모드; matchReviews (Map<int,MedicationMatchReview>): 후보; lookupStatuses (List<MedicationLookupStatus?>): 행별 상태; onCandidateRequested (void Function(int,MedicationMatchReview)?): 확인.
+  // 반환값: 새 _PreviewMedicationList.
   const _PreviewMedicationList({
     required this.medicationScheduleList,
     required this.previewText,
@@ -58,6 +64,10 @@ class _PreviewMedicationList extends StatelessWidget {
     required this.onCandidateRequested,
   });
 
+  // 함수이름: build
+  // 함수역할: 일정 순서대로 약품 카드를 세로 배치하고 카드 사이에만 간격을 둔다.
+  // 매개변수: context (BuildContext): 카드 표시 위치.
+  // 반환값: 약품 카드 Column.
   @override
   Widget build(BuildContext context) => Column(
     key: const Key('ocr-medication-list'),
@@ -70,6 +80,10 @@ class _PreviewMedicationList extends StatelessWidget {
     ],
   );
 
+  // Function Name: _buildMedicationCard
+  // Description: Builds one medication review card with lookup status, editable schedule fields and candidate confirmation only when still unverified.
+  // Parameters: context (BuildContext): layout; index (int): aligned schedule/status index; schedule (MedicationSchedule): OCR or edited schedule.
+  // Returns: Review card for the supplied row.
   Widget _buildMedicationCard(
     BuildContext context,
     int index,
@@ -85,6 +99,10 @@ class _PreviewMedicationList extends StatelessWidget {
         review.candidates.isNotEmpty &&
         onCandidateRequested != null;
 
+    // 함수이름: field
+    // 함수역할: 약별 필드에 제목·현재값·선택적 보조 표시를 붙이고 해당 편집 항목으로 연결한다.
+    // 매개변수: suffix/label/value (String): 키 접미사·제목·값; editField (_MedicationScheduleEditField): 수정 항목; extra (Widget?): 보조 내용.
+    // 반환값: 접근성 편집 문구를 포함한 _EditableMedicationCell.
     Widget field(
       String suffix,
       String label,
@@ -264,6 +282,7 @@ class _EditableMedicationCell extends StatelessWidget {
   // - semanticsLabel (String): 스크린 리더가 읽을 콘텐츠 또는 이미지 설명.
   // - onTap (VoidCallback?): 해당 항목의 명시된 주 동작을 실행할 콜백.
   // - child (Widget): 해당 레이아웃 안에 배치할 콘텐츠 위젯.
+  // - alignment (AlignmentGeometry): 셀 안에서 child를 배치할 정렬이며 기본값은 Alignment.centerLeft이다.
   // 반환값: 입력 설정이 반영된 _EditableMedicationCell 인스턴스.
   const _EditableMedicationCell({
     required this.cellKey,
@@ -360,6 +379,8 @@ class _MedicationNameTableValue extends StatelessWidget {
   // - previewText (_PreviewText): 해당 화면 구역의 언어별 표시 문구.
   // - lookupStatus (MedicationLookupStatus?): 약별 조회 결과.
   // - index (int): 원래 처방 목록의 위치.
+  // - toggle (Widget): 상위 약품 구역의 복약 상세 접기·펼치기 버튼.
+  // - onEditRequested (VoidCallback): 이 행의 약품명 수정 화면을 여는 콜백.
   // 반환값: 입력 설정이 반영된 _MedicationNameTableValue 인스턴스.
   const _MedicationNameTableValue({
     required this.schedule,
@@ -459,6 +480,10 @@ class _MedicationNameTableValue extends StatelessWidget {
   }
 }
 
+// 함수이름: _lookupStatusPresentation
+// 함수역할: 확정·후보·미발견·실패·재조회 필요 상태를 문구와 의미 색상으로 변환한다.
+// 매개변수: status (MedicationLookupStatus): 조회 상태; isEnglish (bool): 영어 여부.
+// 반환값: (String, Color, Color): 문구·전경색·배경색.
 (String, Color, Color) _lookupStatusPresentation(
   MedicationLookupStatus status,
   bool isEnglish,
@@ -490,16 +515,28 @@ class _MedicationNameTableValue extends StatelessWidget {
   ),
 };
 
+// 클래스명: _MedicationLookupBadge
+// 역할: 약품 조회 결과의 짧은 상태 배지.
+// 주요 책임: 공통 상태 문구·색상 규칙으로 검토 필요와 실패를 구분한다.
+// 속성: status (MedicationLookupStatus): 상태; isEnglish (bool): 언어.
 class _MedicationLookupBadge extends StatelessWidget {
   final MedicationLookupStatus status;
   final bool isEnglish;
 
+  // 함수이름: _MedicationLookupBadge
+  // 함수역할: 표시할 조회 상태와 언어를 받는다.
+  // 매개변수: key (Key?): 식별 키; status (MedicationLookupStatus): 상태; isEnglish (bool): 언어.
+  // 반환값: 새 _MedicationLookupBadge.
   const _MedicationLookupBadge({
     super.key,
     required this.status,
     required this.isEnglish,
   });
 
+  // 함수이름: build
+  // 함수역할: 조회 상태의 공통 문구와 전경·배경색으로 배지를 만든다.
+  // 매개변수: context (BuildContext): 표시 위치.
+  // 반환값: 중앙 정렬 상태 배지 Container.
   @override
   Widget build(BuildContext context) {
     final (label, foreground, background) = _lookupStatusPresentation(
@@ -537,12 +574,13 @@ class _CorrectionBadge extends StatelessWidget {
   final String label;
   final bool isWarning;
 
-  // 함수이름: _CorrectionBadge
-  // 함수역할: 약명 보정 또는 확인 필요 표식에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - label (String): 입력란·선택지·명령을 구분해 표시할 문구.
-  // - isWarning (bool): 경고 색상과 강조를 사용할지 여부.
-  // 반환값: 입력 설정이 반영된 _CorrectionBadge 인스턴스.
+  // Function Name: _CorrectionBadge
+  // Description: Configure a medication-name correction or review-needed label with optional warning emphasis.
+  // Parameters:
+  // - key (Key?): Identify this badge within the medication row.
+  // - label (String): Correction or review status text to display.
+  // - isWarning (bool): Use warning rather than normal correction styling; defaults to false.
+  // Returns: A configured _CorrectionBadge.
   const _CorrectionBadge({
     super.key,
     required this.label,
@@ -625,10 +663,9 @@ class _MedicationScheduleEditDialog extends StatefulWidget {
 }
 
 // 클래스명: _MedicationScheduleEditDialogState
-// 역할: OCR 약명·조제일·용량·횟수·일수·시간대 편집의 화면 상태를 관리한다.
-// 주요 책임:
-// - 입력 컨트롤러를 생성하고 화면이 닫힐 때 안전하게 정리한다.
-// - 유효한 입력만 MedicationSchedule로 변환해 호출 화면에 반환한다.
+// 역할: OCR 약명과 일정 입력값을 편집하는 대화상자 상태.
+// 주요 책임: 원본값 복원과 입력·시간대 검증을 거쳐 수정 일정을 반환한다.
+// 속성: _formKey (GlobalKey<FormState>): 검증; _nameController/_dosageController/_frequencyController/_daysController/_prescriptionDateController (TextEditingController): 입력; _selectedSlotKeys (Set<String>): 시간대; _restoreOriginalName/_asNeeded (bool): 편집 모드.
 class _MedicationScheduleEditDialogState
     extends State<_MedicationScheduleEditDialog> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
@@ -940,20 +977,23 @@ class _MedicationScheduleEditDialogState
     return match == null ? null : int.tryParse(match.group(1)!);
   }
 
-  // 함수이름: _canonicalDailyFrequency
-  // 함수역할: 하루 횟수를 일정 검토 화면·서버 예시와 같은 "N회" 표기로 만든다. 표기가 섞이면 처방 변경 비교에서 일정이 바뀐 것으로 보인다.
-  // 매개변수: count 하루 복용 횟수. 반환값: "N회" 문자열.
+  // Function Name: _canonicalDailyFrequency
+  // Description: Canonicalizes daily frequency to the same N회 representation used by review and server examples, avoiding false schedule-change comparisons.
+  // Parameters: count (int): doses per day.
+  // Returns: The canonical daily-frequency string.
   String _canonicalDailyFrequency(int count) => '$count회';
 
-  // 함수이름: _isDailyFrequencyUntouched
-  // 함수역할: 횟수 입력이 처음 표시한 값 그대로인지 확인한다.
-  // 매개변수: value 현재 횟수 입력. 반환값: 처음 값과 같으면 true.
+  // Function Name: _isDailyFrequencyUntouched
+  // Description: Checks whether the frequency text is unchanged from the initially displayed value.
+  // Parameters: value (String): current frequency input.
+  // Returns: True when the original frequency text is retained.
   bool _isDailyFrequencyUntouched(String value) =>
       value.trim() == widget.medicationSchedule.intakeTime.trim();
 
-  // 함수이름: _updateDailyFrequency
-  // 함수역할: 횟수가 달라질 때 기본 시간대를 갱신하되 같은 횟수의 사용자 선택은 유지한다.
-  // 매개변수: value 수정된 횟수. 반환값: 없음.
+  // Function Name: _updateDailyFrequency
+  // Description: Updates default dose slots when the dose count changes, preserving custom slots when the count stays the same.
+  // Parameters: value (String): edited frequency.
+  // Returns: None.
   void _updateDailyFrequency(String value) {
     final count = _readDailyFrequency(value);
     // 시간대가 바뀌지 않아도 복용 요일 안내는 입력에 따라 달라진다.
@@ -964,9 +1004,10 @@ class _MedicationScheduleEditDialogState
     });
   }
 
-  // 함수이름: _doseRhythmNotice
-  // 함수역할: 입력한 횟수가 매일 복용이 아니면 일정이 생기는 날과 총 투약일 안의 복용 횟수를 안내한다.
-  // 매개변수: 없음. 반환값: 안내 문구. 매일 복용이면 null.
+  // Function Name: _doseRhythmNotice
+  // Description: Explains scheduled days and course dose count when the entered instruction is not daily.
+  // Parameters: None.
+  // Returns: The rhythm notice, or null for daily dosing.
   String? get _doseRhythmNotice {
     final cycle = readDoseCycle(_frequencyController.text);
     if (cycle.isDaily) return null;
@@ -1022,18 +1063,16 @@ class _MedicationScheduleEditDialogState
     return null;
   }
 
-  // 함수이름: _minimumPrescriptionDate
-  // 함수역할: 공통 복약 일정 한도에서 허용할 가장 이른 처방일(2000년 1월 1일)을 가져온다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: DateTime: 허용 범위 또는 시각 제거 규칙을 반영한 날짜.
+  // Function Name: _minimumPrescriptionDate
+  // Description: Reads the earliest prescription date from shared schedule limits.
+  // Parameters: None.
+  // Returns: The minimum allowed DateTime.
   DateTime get _minimumPrescriptionDate => earliestMedicationStartDate();
 
-  // 함수이름: _maximumPrescriptionDate
-  // 함수역할: 공통 복약 일정 한도에서 가장 늦은 처방일(현재 날짜에서 365일 뒤의 자정)을 가져온다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: DateTime: 허용 범위 또는 시각 제거 규칙을 반영한 날짜.
+  // Function Name: _maximumPrescriptionDate
+  // Description: Reads the latest prescription date from shared schedule limits relative to today.
+  // Parameters: None.
+  // Returns: The maximum allowed DateTime.
   DateTime get _maximumPrescriptionDate =>
       latestMedicationStartDate(DateTime.now());
 
@@ -1204,11 +1243,10 @@ class _PreviewText {
   // 반환값: 입력 설정이 반영된 _PreviewText 인스턴스.
   const _PreviewText(this.language);
 
-  // 함수이름: isEnglish
-  // 함수역할: 공통 언어 판별 규칙으로 언어 코드가 영어인지 확인한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
+  // Function Name: isEnglish
+  // Description: Applies the shared English-language rule to preview/editor labels.
+  // Parameters: None.
+  // Returns: True for an English language code.
   bool get isEnglish => isEnglishLanguage(language);
 
   // 함수이름: back
@@ -1383,19 +1421,22 @@ class _PreviewText {
   String get scheduleSlotRequired => isEnglish
       ? 'Select at least one medication time.'
       : '복약 시간대를 하나 이상 선택해주세요.';
-  // 함수이름: invalidDailyFrequency
-  // 함수역할: 지원하는 횟수 범위를 한국어 또는 영어로 안내한다.
-  // 매개변수: 없음. 반환값: 입력 확인 문구.
+  // Function Name: invalidDailyFrequency
+  // Description: Explains the supported dose-frequency input range.
+  // Parameters: None.
+  // Returns: The localized frequency-validation message.
   String get invalidDailyFrequency => isEnglish
       ? 'Enter a daily frequency from 1 to 4, or a schedule such as "주 1회" or "격일".'
       : '1일 횟수를 1~4회로 입력하거나 "주 1회", "격일"처럼 입력해주세요.';
-  // 함수이름: notDailyBadge
-  // 함수역할: 매일 복용하지 않는 약임을 표에서 알리는 짧은 표시를 한국어 또는 영어로 제공한다.
-  // 매개변수: 없음. 반환값: 표시 문구.
+  // Function Name: notDailyBadge
+  // Description: Marks a medication that is not taken every day in the review table.
+  // Parameters: None.
+  // Returns: The localized non-daily badge.
   String get notDailyBadge => isEnglish ? 'Not daily' : '매일 아님';
-  // 함수이름: doseRhythmNotice
-  // 함수역할: 매일 복용하지 않는 약의 일정이 어떤 날에 생기는지, 총 투약일 안에 몇 번 복용하는지를 한국어 또는 영어로 설명한다.
-  // 매개변수: cycle 복용 주기, startDate 복용 시작일, courseDays 총 투약일(0이면 미입력). 반환값: 안내 문구.
+  // Function Name: doseRhythmNotice
+  // Description: Explains which dates a non-daily schedule uses and how many doses occur within the course.
+  // Parameters: cycle: parsed dose rhythm; startDate: optional first dose date; courseDays: course length, zero when not entered.
+  // Returns: The localized dose-rhythm explanation.
   String doseRhythmNotice(
     DoseCycle cycle, {
     required DateTime? startDate,
@@ -1421,11 +1462,10 @@ class _PreviewText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get medicationStartDate => isEnglish ? 'Start date' : '복용 시작일';
 
-  // 함수이름: slotLabel
-  // 함수역할: 시간대 키를 현재 언어의 공통 시간대 이름으로 바꾸고, 모르는 키는 그대로 돌려준다.
-  // 매개변수:
-  // - slotKey (String): 아침·점심·저녁·취침 전을 구분하는 시간대 키.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: slotLabel
+  // Description: Resolves a dose-slot key to the shared localized name while preserving unknown keys.
+  // Parameters: slotKey (String): dose-slot identifier.
+  // Returns: The localized label or original key.
   String slotLabel(String slotKey) =>
       medicationSlotLabel(slotKey, isEnglish: isEnglish);
 
@@ -1501,11 +1541,10 @@ class _PreviewText {
         : '$fieldLabel 수정. 현재 값: $value';
   }
 
-  // 함수이름: dateValue
-  // 함수역할: 처방일을 연-월-일로 표시하고 값이 없으면 정보 없음 문구를 사용한다.
-  // 매개변수:
-  // - date (DateTime?): 표시·비교 기준이 되는 날짜 또는 이전·현재 값.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: dateValue
+  // Description: Formats the prescription date as year-month-day with a missing-information fallback.
+  // Parameters: date (DateTime?): prescription date.
+  // Returns: The date string or localized missing-information label.
   String dateValue(DateTime? date) => formatJsonDate(date) ?? noInformation;
 
   // 함수이름: title

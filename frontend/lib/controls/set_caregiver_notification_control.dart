@@ -11,15 +11,10 @@ import '../services/api_response_parser.dart';
 // File Name: set_caregiver_notification_control.dart
 // Role: Loads and saves caregiver notification conditions and deadlines per linked patient and schedule slot.
 
-// 클래스명: SetCaregiverNotification
-// 역할: 보호자 알림 설정 조회/변경 요청을 백엔드 control과 연결한다.
-// 주요 책임:
-// - 보호자-환자 쌍의 시간대별 알림 설정을 조회한다.
-// - 보호자가 선택한 시간대의 알림 설정만 저장한다.
-// 속성:
-// - baseUrl (String): 복약 API 기본 주소
-// - caregiverHash (String): 조회·저장 범위를 제한할 보호자 해시
-// - _client (http.Client): 요청에 사용할 HTTP 클라이언트; 주입 여부에 따른 소유권은 생성자 설명 참조
+// Class Name: SetCaregiverNotification
+// Role: Load and save caregiver alert conditions for linked patients.
+// Responsibilities: Scope requests by caregiver and update individual medication slots.
+// Attributes: baseUrl/caregiverHash (String): API and owner scope; _client (http.Client): transport; _ownsClient (bool): cleanup ownership.
 class SetCaregiverNotification {
   final String baseUrl;
   final String caregiverHash;
@@ -41,12 +36,10 @@ class SetCaregiverNotification {
   }) : _client = client ?? AuthenticatedApiClient(),
        _ownsClient = client == null;
 
-  // 함수이름: requestCaregiverNotificationSettings
-  // 함수역할: 한 환자의 모든 복약 시간대 알림 설정을 한 번에 조회한다.
-  // 매개변수:
-  // - patientHash (String): 보호자가 모니터링하는 환자 해시
-  // 반환값:
-  // - 시간대 키로 조회할 수 있는 CaregiverNotification map
+  // Function Name: requestCaregiverNotificationSettings
+  // Description: Fetch all medication-slot alert settings for a patient; request and decoding failures propagate through the guard.
+  // Parameters: patientHash (String): monitored patient.
+  // Returns: Future<Map<String, CaregiverNotification>>: settings keyed by slot.
   Future<Map<String, CaregiverNotification>>
   requestCaregiverNotificationSettings({required String patientHash}) async {
     return ApiResponseParser.guardRequest(
@@ -67,16 +60,10 @@ class SetCaregiverNotification {
     );
   }
 
-  // 함수이름: saveCaregiverNotificationSetting
-  // 함수역할: 보호자 알림 수신 여부를 저장한다.
-  // 매개변수:
-  // - patientHash (String): 보호자가 모니터링하는 환자 해시
-  // - slotKey (String): 저장할 복약 시간대
-  // - mode (CaregiverNotificationMode): 알림 수신 조건
-  // - deadlineHour (int?): 미복약 판정 마감의 24시간제 시
-  // - deadlineMinute (int?): 미복약 판정 마감의 분
-  // 반환값:
-  // - 저장된 CaregiverNotification
+  // Function Name: saveCaregiverNotificationSetting
+  // Description: Persist the alert mode and optional missed-dose deadline for one patient slot.
+  // Parameters: patientHash (String): patient; slotKey (String): slot, default morning; mode (CaregiverNotificationMode): alert condition; deadlineHour/deadlineMinute (int?): deadline components.
+  // Returns: Future<CaregiverNotification>: saved server setting; request/decoding failures propagate.
   Future<CaregiverNotification> saveCaregiverNotificationSetting({
     required String patientHash,
     String slotKey = 'morning',

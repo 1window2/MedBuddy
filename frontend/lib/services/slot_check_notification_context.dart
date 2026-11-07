@@ -6,6 +6,7 @@ import '../entities/medication_schedule_entity.dart';
 
 // 클래스명: SlotCheckNotificationContext
 // 역할: 확인 요청 한 건의 환자·연동·메시지·날짜·시간대를 담고 FCM 데이터와 알림 payload를 오간다.
+// 주요 책임: 버전·계정·날짜·시간대 형식을 검증하고 메시지별 중복 방지 식별자를 유지한다.
 // 속성:
 // - owner (String): 요청을 받은 환자 계정.
 // - linkId (int): 연동 ID.
@@ -21,6 +22,10 @@ class SlotCheckNotificationContext {
   final String scheduleDate;
   final String slotKey;
 
+  // 함수이름: SlotCheckNotificationContext._
+  // 함수역할: fromData에서 검증한 확인 요청 필드를 보관한다.
+  // 매개변수: owner (String) - 환자; linkId/messageId (int) - 연동·메시지; scheduleDate/slotKey (String) - 복약 날짜·시간대.
+  // 반환값: 불변 확인 요청 컨텍스트. 이 생성자는 추가 검증을 수행하지 않는다.
   const SlotCheckNotificationContext._(
     this.owner,
     this.linkId,
@@ -30,11 +35,15 @@ class SlotCheckNotificationContext {
   );
 
   // 함수이름: eventId
-  // 함수역할: 알림 태그와 중복 방지에 쓰는 메시지 식별자를 만든다. 반환값: chat:<연동>:<메시지>.
+  // 함수역할: 알림 태그와 중복 방지에 쓰는 메시지 식별자를 만든다.
+  // 매개변수: 없음.
+  // 반환값: chat:<연동>:<메시지> 형식의 문자열.
   String get eventId => 'chat:$linkId:$messageId';
 
   // 함수이름: payload
-  // 함수역할: 알림 버튼 처리와 본문 탭이 다시 읽을 접두어 붙은 JSON을 만든다. 반환값: 알림 payload.
+  // 함수역할: 알림 버튼 처리와 본문 탭이 다시 읽을 접두어 붙은 JSON을 만든다.
+  // 매개변수: 없음.
+  // 반환값: slot-check-v1 접두사와 요청 식별 정보가 담긴 JSON 문자열.
   String get payload =>
       '$prefix${jsonEncode({'type': 'linked_chat_message', 'message_kind': 'slot_check_request', 'action_version': '1', 'recipient_hash': owner, 'patient_hash': owner, 'link_id': '$linkId', 'message_id': '$messageId', 'event_id': eventId, 'schedule_date': scheduleDate, 'slot_key': slotKey})}';
 

@@ -6,13 +6,10 @@ import '../entities/caregiver_notification_entity.dart';
 import '../entities/medication_notification_selection_entity.dart';
 import 'slot_check_notification_context.dart';
 
-// Class Name: MedicationNotificationPayloadCodec
-// Role: Owns the shared notification payload and action-identifier protocol.
-// Responsibilities:
-// - Decode personal schedules, legacy caregiver routes, versioned caregiver actions, and linked chats.
-// - Reject malformed destinations while keeping cleanup classification prefix-based.
-// Attributes:
-// - Action identifier constants retain the Android notification button contract.
+// 클래스명: MedicationNotificationPayloadCodec
+// 역할: 플랫폼 알림 페이로드를 화면 이동·동작 선택 값으로 변환한다.
+// 주요 책임: 일정·보호자·채팅 문맥의 형식을 검사하고 세션 관련 접두사를 식별한다.
+// 속성: 동작 ID 및 caregiverPayloadPrefix (String): 플랫폼과 공유하는 문자열 상수; 인스턴스 상태 없음.
 class MedicationNotificationPayloadCodec {
   // Function Name: MedicationNotificationPayloadCodec._
   // Description: Prevents instances of the stateless notification protocol utility.
@@ -39,13 +36,10 @@ class MedicationNotificationPayloadCodec {
   // Returns: The payload "chat:<linkId>".
   static String chatPayload(int linkId) => 'chat:$linkId';
 
-  // Function Name: decode
-  // Description: Parses scoped destinations and only accepts actions supported by that payload type.
-  // Parameters:
-  // - payload (String?): Notification wire payload, including legacy undated schedules.
-  // - actionId (String?): Selected platform notification button identifier.
-  // - notificationId (int?): Platform reminder identifier overriding the encoded ID.
-  // Returns: A validated selection, or null when the payload is malformed.
+  // 함수이름: decode
+  // 함수역할: 지원하는 알림 문맥을 해석하고 ID·날짜·태그 형식을 검사한다. 필요 시 복용은 열기만 허용하며 서명 검증 자체는 수행하지 않는다.
+  // 매개변수: payload (String?): 저장된 페이로드; actionId (String?): 누른 동작; notificationId (int?): 일정 페이로드 ID를 대체할 플랫폼 ID.
+  // 반환값: MedicationNotificationSelection?: 해석된 선택; 미지원·잘못된 형식이면 null.
   static MedicationNotificationSelection? decode(
     String? payload, {
     String? actionId,
@@ -151,10 +145,10 @@ class MedicationNotificationPayloadCodec {
     return null;
   }
 
-  // Function Name: isSessionPayload
-  // Description: Classifies MedBuddy prefixes for sign-out cleanup, even when a payload is malformed.
-  // Parameters: payload (String?): Stored platform notification payload.
-  // Returns: Whether session cleanup owns the notification.
+  // 함수이름: isSessionPayload
+  // 함수역할: 페이로드가 현재 사용자 세션에 속하는 지원 접두사인지 검사한다. 내용 유효성까지 검증하지는 않는다.
+  // 매개변수: payload (String?): 알림 페이로드.
+  // 반환값: bool: 일정·보호자·채팅·복약 확인 접두사이면 true.
   static bool isSessionPayload(String? payload) =>
       payload?.startsWith(SlotCheckNotificationContext.prefix) == true ||
       payload?.startsWith('schedule:') == true ||

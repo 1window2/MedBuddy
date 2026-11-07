@@ -92,22 +92,19 @@ const String medicationReminderBackgroundTask =
 const String _medicationReminderBackgroundTag = 'medbuddy_medication_reminder';
 const String _reminderWorkerOwnerKey = 'medbuddy_reminder_worker_owner';
 
-// 클래스명: MedicationReminderRefreshService
-// 역할: 서버 상태를 기준으로 제한된 로컬 복약 알림 기간을 다시 구성한다.
-// 주요 책임:
-// - 현재 사용자의 활성 알림 설정과 복약 일정을 불러온다.
-// - 복용 종료일을 넘지 않는 범위에서 다음 14일 알림을 예약한다.
-// - 서버 설정을 끄지 않고 오래된 로컬 알림만 취소한다.
-// 속성:
-// - _loadSettings (MedicationAlarmSettingsLoader): 시간대별 알림 조건 조회 경계
-// - _loadSchedules (MedicationScheduleLoader): 대상 환자의 복약 일정 조회 경계
-// - _loadTodaySchedules (MedicationScheduleLoader?): 오늘 복용 완료 여부가 담긴 일정 조회 경계
-// - _loadUserSetting (ReminderUserSettingLoader): 알림 허용·표시·언어를 정할 사용자 설정 조회
-// - _registerReminder (MedicationReminderRegistrar): 날짜별 로컬 알림 예약 경계
-// - _cancelReminder (MedicationReminderCanceler): ID 또는 시간대의 로컬 알림 취소 경계
-// - _setPrivacy (ReminderPrivacySetter?): 알림의 민감정보 표시 정책 적용 경계
-// - _now (DateTime Function()): 비교 기준 현재 시각 또는 주입할 시계
-// - _onDispose (VoidCallback?): 소유한 의존성 정리 콜백
+// Class Name: MedicationReminderRefreshService
+// Role: Rebuilds a bounded local reminder window from the owning patient's server state.
+// Responsibilities:
+// - Respect course dates, dose rhythms, completed slots, privacy settings, and reminder ownership.
+// - Cancel obsolete local reminders without changing the server's alarm settings.
+// Attributes:
+// - _loadSettings, _loadSchedules, _loadTodaySchedules, _loadUserSetting: Alarm, course, completion, and preference loaders.
+// - _registerReminder, _cancelReminder: Asynchronous platform scheduling callbacks.
+// - _loadPreferences (ReminderPreferencesLoader): Local language fallback store.
+// - _setPrivacy (ReminderPrivacySetter?): Optional notification-content policy setter.
+// - _now (DateTime Function()): Clock for date and completion guards.
+// - _ownsReminders (Future<bool> Function()?): Account-ownership guard across asynchronous work.
+// - _onDispose (VoidCallback?): Caller-provided dependency cleanup.
 class MedicationReminderRefreshService {
   static const int maximumReminderDatesPerSlot = 14;
 
@@ -123,22 +120,19 @@ class MedicationReminderRefreshService {
   final VoidCallback? _onDispose;
   final Future<bool> Function()? _ownsReminders;
 
-  // 함수이름: MedicationReminderRefreshService
-  // 함수역할: 알림 설정·일정·사용자 설정·저장소 조회와 예약·취소·개인정보 표시·시계 경계를 묶는다.
-  // 매개변수:
-  // - loadSettings (MedicationAlarmSettingsLoader): 시간대별 알림 조건 조회 경계
-  // - loadSchedules (MedicationScheduleLoader): 대상 환자의 복약 일정 조회 경계
-  // - loadTodaySchedules (MedicationScheduleLoader?): 오늘 복용 완료 여부가 담긴 일정 조회 경계. 기간 일정에는 완료 기록이 없으므로, 이미 복용한 시간대의 오늘 알림을 다시 예약하지 않으려면 필요하다.
-  // - loadUserSetting (ReminderUserSettingLoader?): 알림 허용·표시·언어를 정할 사용자 설정 조회
-  // - registerReminder (MedicationReminderRegistrar): 날짜별 로컬 알림 예약 경계
-  // - cancelReminder (MedicationReminderCanceler): ID 또는 시간대의 로컬 알림 취소 경계
-  // - preferencesLoader (ReminderPreferencesLoader): 기기 설정 저장소 제공 경계
-  // - setPrivacy (ReminderPrivacySetter?): 알림의 민감정보 표시 정책 적용 경계
-  // - now (DateTime Function()?): 현재 시각을 제공하는 주입 가능한 시계
-  // - onDispose (VoidCallback?): 소유한 의존성 정리 콜백
-  // - ownsReminders (Future<bool> Function()?): 이 계정이 아직 기기의 알림을 맡고 있는지 확인한다. 로그아웃 뒤에는 false.
-  // 반환값:
-  // - MedicationReminderRefreshService: 초기화된 인스턴스.
+  // Function Name: MedicationReminderRefreshService
+  // Description: Binds data loaders and platform callbacks without reading or scheduling anything yet.
+  // Parameters:
+  // - loadSettings, loadSchedules: Required alarm settings and medication-course loaders.
+  // - loadTodaySchedules (MedicationScheduleLoader?): Optional completion snapshot; course windows alone cannot suppress completed slots.
+  // - loadUserSetting (ReminderUserSettingLoader?): Notification/privacy/language settings; defaults to UserSetting().
+  // - registerReminder, cancelReminder: Required asynchronous reminder writers.
+  // - preferencesLoader (ReminderPreferencesLoader): Local fallback settings; defaults to SharedPreferences.getInstance.
+  // - setPrivacy (ReminderPrivacySetter?): Optional detail-visibility setter.
+  // - now (DateTime Function()?): Clock, defaulting to DateTime.now.
+  // - onDispose (VoidCallback?): Dependency cleanup invoked by dispose.
+  // - ownsReminders (Future<bool> Function()?): Whether this account still owns local reminders; absent means allowed.
+  // Returns: A configured MedicationReminderRefreshService.
   MedicationReminderRefreshService({
     required MedicationAlarmSettingsLoader loadSettings,
     required MedicationScheduleLoader loadSchedules,
@@ -172,10 +166,11 @@ class MedicationReminderRefreshService {
   // 함수이름: synchronize
   // 함수역할: 인증된 서버 상태를 기준으로 모든 로컬 시간대 알림을 갱신한다. 일시적 오류에서는 false를 반환해 Workmanager가 재시도하게 한다.
   //   오늘 이미 모두 복용한 시간대는 오늘 알림을 다시 예약하지 않는다.
+  // - 비동기 조회 뒤와 알림 쓰기 전후에 소유 계정을 확인하고, 소유권을 잃으면 추가 작업을 중단한다.
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - 모든 시간대가 동기화되면 true, 아니면 false
+  // - Future<bool>: 동기화 완료 또는 소유권 상실로 중단하면 true. 조회·예약·취소 오류는 기록하고 false를 반환한다.
   Future<bool> synchronize() async {
     try {
       final results = await Future.wait<Object>([
@@ -288,22 +283,18 @@ class MedicationReminderRefreshService {
     }
   }
 
-  // 함수이름: _stillOwnsReminders
-  // 함수역할: 이 작업의 계정이 아직 기기의 알림을 맡고 있는지 확인한다. 확인할 함수가 없으면 맡은 것으로 본다.
-  // 매개변수: 없음. 반환값: 알림을 예약해도 되면 true.
+  // Function Name: _stillOwnsReminders
+  // Description: Rechecks the worker's account ownership through the injected guard.
+  // Parameters: None.
+  // Returns: Guard result, or true when no guard is supplied; guard errors propagate to synchronize.
   Future<bool> _stillOwnsReminders() async =>
       await _ownsReminders?.call() ?? true;
 
-  // 함수이름: _isSlotCompletedToday
-  // 함수역할: 오늘 일정에서 한 시간대의 약을 모두 복용했는지 판정한다. 조회 도중 날짜가 바뀌었거나 서버의 오늘과
-  //   기기의 오늘이 다르면 완료로 보지 않아, 복용하지 않은 날의 알림이 빠지지 않게 한다.
-  // 매개변수:
-  // - todaySchedules (List<MedicationSchedule>): 완료 여부가 담긴 오늘 일정
-  // - slotKey (String): morning·lunch·evening·bedtime 복약 시간대 키
-  // - requestDay (String): 조회를 시작할 때의 서버 기준 날짜
-  // - now (DateTime): 조회를 마친 뒤의 현재 시각
-  // 반환값:
-  // - bool: 오늘 그 시간대에 약이 있고 모두 복용했으면 true.
+  // Function Name: _isSlotCompletedToday
+  // Description: Suppresses today's reminder only for a nonempty fully completed slot on the same local/server day.
+  // Parameters: todaySchedules (List<MedicationSchedule>) - completion snapshot; slotKey (String) - target slot;
+  // - requestDay (String): Dose day captured before retrieval; now (DateTime): clock after retrieval.
+  // Returns: False across midnight/timezone disagreement or for an empty/incomplete slot; otherwise true.
   static bool _isSlotCompletedToday(
     List<MedicationSchedule> todaySchedules,
     String slotKey, {
@@ -407,6 +398,8 @@ class MedicationReminderRefreshService {
 // Role: Registers reminder-window replenishment for the authenticated patient.
 // Responsibilities:
 // - Replace previous patient work and schedule network-constrained Android refreshes every 12 hours; cancel them at session end.
+// Attributes:
+// - None; static operations use Workmanager and the persisted reminder-owner preference.
 class MedicationReminderBackgroundScheduler {
   // Function Name: MedicationReminderBackgroundScheduler._
   // Description: Restricts periodic medication-reminder scheduling to the static registration and cancellation API.
@@ -429,7 +422,7 @@ class MedicationReminderBackgroundScheduler {
   }
 
   // Function Name: register
-  // Description: Cancels prior reminder-tag work and registers a network-constrained 12-hour refresh task for the normalized patient hash.
+  // Description: Cancels prior reminder-tag work when ownership changes, then creates or updates the patient's network-constrained 12-hour task.
   // Parameters:
   // - patientHash (String): Ownership hash of the patient targeted by lookup, storage, or alerts.
   // Returns:
@@ -462,8 +455,7 @@ class MedicationReminderBackgroundScheduler {
   }
 
   // Function Name: ownsReminders
-  // Description: Reports whether the account still owns this device's reminder work. Sign-out removes the owner before it
-  //   cancels the reminders, so a worker that was already running checks this around each reminder it sets.
+  // Description: Reloads the persisted worker owner so a running refresh can detect cancellation or another account around each reminder write.
   // Parameters:
   // - patientHash (String): Account of the running worker.
   // Returns:

@@ -1,3 +1,6 @@
+// 파일명: notification_channel_language_test.dart
+// 역할: 저장 언어와 연속 변경·부분 실패가 알림 채널 이름에 반영되며 채널 ID와 예약은 유지되는지 검증한다.
+
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -8,9 +11,23 @@ import 'package:medbuddy_frontend/services/app_language_resolver.dart';
 import 'package:medbuddy_frontend/services/notification_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+// 함수이름: main
+// 함수역할:
+// - 저장 언어와 연속 변경·부분 실패가 알림 채널 이름에 반영되며 채널 ID와 예약은 유지되는지 검증한다.
+// 매개변수:
+// - 없음.
+// 반환값:
+// - 없음; 공통 설정과 개별 회귀 사례를 등록한다.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  // 함수이름: test callback
+  // 함수역할:
+  // - 채널 생성 실패와 겹치는 언어 변경을 주입해 최종 영어 이름으로 복구되고 이름·설명 외 옵션과 채널 ID가 그대로인지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('알림 채널은 저장된 언어와 마지막 변경을 반영하며 ID와 예약을 유지한다', () async {
     SharedPreferences.setMockInitialValues({appLanguagePreferenceKey: 'en'});
     debugDefaultTargetPlatformOverride = TargetPlatform.android;

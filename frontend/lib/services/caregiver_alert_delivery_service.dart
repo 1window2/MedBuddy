@@ -1,3 +1,5 @@
+// File Name: caregiver_alert_delivery_service.dart
+// Role: Presents account-owned caregiver deliveries with durable event deduplication.
 // Role: Render missed-dose data deliveries once per account and delivery event.
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,17 +10,18 @@ import 'notification_inbox_store.dart';
 import 'notification_service.dart';
 import 'user_setting_preference_keys.dart';
 
+// Function Name: CaregiverAlertPresenter
+// Description: Presents one validated caregiver alert with localized text through an injected delivery boundary.
+// Parameters: alert (CaregiverAlertContext) - delivery identity; title/body/language (String) - localized notification content and locale.
+// Returns: Display completion Future; failures must propagate so the delivery is not marked as presented.
 typedef CaregiverAlertPresenter = Future<void> Function(
   CaregiverAlertContext alert, String title, String body, String language,
 );
 
-// Class Name: CaregiverAlertDeliveryService
-// Role: Shows each missed-dose delivery once per account even when FCM delivers it to both the foreground and background handlers.
-// Attributes:
-// - _presenting (Set<String>): Delivery markers being shown in this isolate.
-// - markerRetention (Duration): How long a delivery marker is kept before it is pruned.
-// - clock (DateTime Function()): Time source for marker dates; replaced only by tests.
-// - markerKeyPattern (RegExp): Matches every account's delivery marker key; account deletion uses the same shape.
+// 클래스명: CaregiverAlertDeliveryService
+// 역할: 현재 수신자에게 보호자 알림을 표시하고 완료 이벤트 중복 표시를 억제한다.
+// 주요 책임: 활성 사용자·영속 수신 표식·진행 중 표시를 확인하고 오래된 표식을 정리한다.
+// 속성: _presenting (Set<String>): 진행 중 키; markerRetention (Duration): 표식 보존 기간; markerKeyPattern (RegExp): 허용 키; clock (DateTime Function()): 정리 시각.
 class CaregiverAlertDeliveryService {
   static final Set<String> _presenting = {};
   static const Duration markerRetention = Duration(days: 7);
@@ -28,6 +31,10 @@ class CaregiverAlertDeliveryService {
 
   // 정기 완료 알림의 성공한 표시만 계정별로 보존해 재수신·재시작 후 반복 표시를 막는다.
   // 표시 실패는 기록하지 않아 같은 이벤트의 다음 전송에서 다시 표시할 수 있다.
+  // 함수이름: presentCompletionOnce
+  // 함수역할: 현재 수신 계정과 유효한 이벤트 해시를 확인해 이미 표시한 완료 알림은 생략하고 성공한 표시만 기록한다.
+  // 매개변수: recipientHash/eventKey (String) - 수신 계정·64자리 소문자 해시; present (Future<void> Function()) - 실제 표시 함수.
+  // 반환값: 새로 표시하고 기록하면 true, 잘못된 키·다른 계정·중복이면 false. 표시·설정 오류는 전파하고 실행 중 표식은 해제한다.
   static Future<bool> presentCompletionOnce({
     required String recipientHash,
     required String eventKey,
@@ -128,6 +135,10 @@ class CaregiverAlertDeliveryService {
     }
   }
 
+  // Function Name: _present
+  // Description: Delegates a caregiver alert to the notification service with its recipient history scope and stable event ID.
+  // Parameters: alert (CaregiverAlertContext) - validated alert; title/body/language (String) - localized content and locale.
+  // Returns: Platform presentation completion; errors propagate to prevent successful-delivery marking.
   static Future<void> _present(CaregiverAlertContext alert, String title, String body, String language) =>
       NotificationService.instance.showCaregiverAlert(
         id: alert.notificationId, title: title, body: body,

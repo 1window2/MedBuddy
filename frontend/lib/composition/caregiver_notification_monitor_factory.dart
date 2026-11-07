@@ -18,14 +18,10 @@ import '../services/authenticated_api_client.dart';
 import '../services/caregiver_alert_delivery_service.dart';
 
 
-// 함수이름: deliverCaregiverAlert
-// 함수역할: 보호자 알림을 표시하기 직전에 사용자의 현재 설정을 확인한다. 보호자 알림을 꺼 두었으면 표시하지 않고,
-//   켜 두었으면 민감정보 표시 여부를 함께 넘겨 표시하게 한다.
-// 매개변수:
-// - loadSetting (Future<UserSetting> Function()): 알림 허용과 민감정보 표시 설정 조회
-// - notify (Future<void> Function(bool showSensitiveDetails)): 민감정보 표시 여부를 받아 실제 알림을 표시하는 경계
-// 반환값:
-// - Future<bool>: 알림을 표시했으면 true, 사용자가 보호자 알림을 꺼 두어 표시하지 않았으면 false.
+// Function Name: deliverCaregiverAlert
+// Description: Reload notification preferences immediately before delivery; skip disabled alerts and propagate loading or delivery failures.
+// Parameters: loadSetting (Future<UserSetting> Function()): current preferences; notify (Future<void> Function(bool)): delivery with the sensitive-details policy.
+// Returns: Future<bool>: true after delivery, false when caregiver notifications are disabled.
 Future<bool> deliverCaregiverAlert({
   required Future<UserSetting> Function() loadSetting,
   required Future<void> Function(bool showSensitiveDetails) notify,
@@ -39,9 +35,9 @@ Future<bool> deliverCaregiverAlert({
 }
 
 // 클래스명: CaregiverNotificationMonitorFactory
-// 역할: 보호자 복약 감시의 의존성 조립 경계이다.
-// 주요 책임:
-// - 환자 연동·설정·일정 조회와 개인정보 표시 설정을 감시 서비스에 연결하고 소유 자원을 정리한다.
+// 역할: 보호자 복약 감시에 필요한 조회와 알림 경계를 조립한다.
+// 주요 책임: 연동·일정·설정 조회 및 개인정보 정책을 연결하고 직접 만든 자원만 해제한다.
+// 속성: 인스턴스 상태 없음; create가 감시 서비스와 소유 자원을 구성한다.
 class CaregiverNotificationMonitorFactory {
   // 함수이름: CaregiverNotificationMonitorFactory._
   // 함수역할: 보호자 감시 조립을 정적 create 진입점으로만 제공하도록 외부 생성을 막는다.
@@ -51,21 +47,10 @@ class CaregiverNotificationMonitorFactory {
   // - CaregiverNotificationMonitorFactory: 초기화된 인스턴스.
   const CaregiverNotificationMonitorFactory._();
 
-  // 함수이름: create
-  // 함수역할: 보호자별 조회 Control을 만들고 알림 허용·민감정보 설정을 확인하는 전송 콜백과 함께 감시 서비스를 구성한다.
-  // 매개변수:
-  // - caregiverHash (String): 조회·저장 범위를 제한할 보호자 해시
-  // - baseUrl (String): 복약 API 기본 주소
-  // - client (http.Client?): 요청에 사용할 HTTP 클라이언트; 주입 여부에 따른 소유권은 생성자 설명 참조
-  // - sharedMedicationControl (CheckCaregiverMedication?): 세션에서 빌려 쓰는 일정 조회 Control; 감시 종료 시 폐기하지 않는다.
-  // - pollingInterval (Duration): 활성 보호자 연동이 있을 때 확인 간격
-  // - idlePollingInterval (Duration): 활성 보호자 연동이 없을 때의 확인 간격
-  // - requestPermission (bool): 감시 중 운영체제 권한 요청을 수행할지 여부
-  // - monitorCompletionTransitions (bool): 미완료에서 전체 완료로 바뀐 순간을 감시할지 여부
-  // - languageProvider (String Function()?): 알림 생성 시점의 언어 조회 경계
-  // - onCaregiverStatusChanged (ValueChanged<bool>?): 활성 보호자 연동 존재 여부 변경 수신자
-  // 반환값:
-  // - CaregiverNotificationMonitorService: 보호자별 조회 Control을 만들고 알림 허용·민감정보 설정을 확인하는 전송 콜백과 함께 감시 서비스를 구성한다.
+  // Function Name: create
+  // Description: Build caregiver monitoring with current privacy preferences and server-decided missed alerts; disposal releases only factory-owned resources.
+  // Parameters: caregiverHash (String): owner; baseUrl (String): API root; client (http.Client?): borrowed transport, otherwise owned; sharedMedicationControl (CheckCaregiverMedication?): borrowed schedule reader; pollingInterval/idlePollingInterval (Duration): active/idle cadence; requestPermission (bool): allow permission prompt; monitorCompletionTransitions (bool): observe completion; monitorMissedDeadlines (bool): fetch local deliveries in disabled-auth mode, not client-side deadline detection; languageProvider (String Function()?): display locale; onCaregiverStatusChanged (ValueChanged<bool>?): active-link changes.
+  // Returns: CaregiverNotificationMonitorService: configured, not yet started monitor.
   static CaregiverNotificationMonitorService create({
     required String caregiverHash,
     String baseUrl = ApiConfig.baseUrl,

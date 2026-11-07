@@ -27,15 +27,25 @@ import 'user_setting_preference_keys.dart';
 
 // 클래스명: SlotCheckNotificationPlatform
 // 역할: 알림 버튼 처리가 쓰는 저장소·통신·작업 예약·알림 정리를 테스트에서 바꿀 수 있게 모은다.
+// 주요 책임: 공유 저장소 열기, 인증 통신 준비, 복용 전송 예약, 해당 요청 알림 정리를 위임한다.
+// 속성: 고유 상태 없음. 기본 구현은 플랫폼 플러그인과 공유 서비스를 사용한다.
 class SlotCheckNotificationPlatform {
+  // 함수이름: SlotCheckNotificationPlatform
+  // 함수역할: 플랫폼 호출 어댑터를 만든다. 생성만으로 저장소나 네트워크를 열지 않는다.
+  // 매개변수: 없음.
+  // 반환값: 테스트에서 동작을 대체할 수 있는 무상태 어댑터.
   const SlotCheckNotificationPlatform();
 
   // 함수이름: openStore
-  // 함수역할: 다른 엔진과 겹치지 않게 열림 관문을 거쳐 전송 대기 저장소를 연다. 반환값: 저장소.
+  // 함수역할: 복약 확인 동작을 기록할 공유 영속 전송 대기 저장소를 연다.
+  // 매개변수: 없음.
+  // 반환값: Future<DoseOutboxStore>: 열린 저장소; 열기 실패는 전파된다.
   Future<DoseOutboxStore> openStore() => DoseOutboxStore.open();
 
   // 함수이름: openClient
-  // 함수역할: 백그라운드에서도 인증 헤더를 붙이는 통신 수단을 만든다. 반환값: HTTP 클라이언트.
+  // 함수역할: Firebase 인증 모드에서는 런타임 초기화 후 인증 HTTP 클라이언트를 생성한다.
+  // 매개변수: 없음.
+  // 반환값: Future<http.Client>: 호출자가 닫아야 하는 새 클라이언트; 초기화 실패는 전파된다.
   Future<http.Client> openClient() async {
     if (AuthConfig.mode == AuthenticationMode.firebase) {
       await FirebaseRuntimeService.initialize();
@@ -48,8 +58,10 @@ class SlotCheckNotificationPlatform {
   Future<void> scheduleSync(String owner) =>
       DoseSyncBackgroundScheduler.register(owner);
 
-  // 함수이름: dismiss
-  // 함수역할: 확인 요청 알림 하나만 지운다. 매개변수: request 요청, id 알림 ID. 반환값: 정리 완료.
+  // Function Name: dismiss
+  // Description: Dismiss the tagged slot-check notification when a platform ID is available.
+  // Parameters: request (SlotCheckNotificationContext): event tag; id (int?): platform notification ID.
+  // Returns: Future<void>: cancellation completion, no-op for null ID.
   Future<void> dismiss(SlotCheckNotificationContext request, int? id) async {
     if (id == null) return;
     await FlutterLocalNotificationsPlugin().cancel(
@@ -58,15 +70,18 @@ class SlotCheckNotificationPlatform {
     );
   }
 
-  // 함수이름: refreshWidget
-  // 함수역할: 기기에 저장한 복용을 통신 없이 홈 위젯에 반영한다. 반환값: 발행 완료.
+  // Function Name: refreshWidget
+  // Description: Publish the current persisted dose projection to the home widget.
+  // Parameters: None.
+  // Returns: Future<void>: widget publication completion.
   Future<void> refreshWidget() async {
     await DoseHomeWidget.publish();
   }
 
-  // 함수이름: cancel
-  // 함수역할: 기록을 저장한 요청의 알림과 같은 날짜·시간대의 복약 알림을 지운다.
-  // 매개변수: request 요청, id 알림 ID. 반환값: 정리 완료.
+  // Function Name: cancel
+  // Description: Dismiss the request notification and cancel the matching owner's slot reminder for its date.
+  // Parameters: request (SlotCheckNotificationContext): owner, slot, event and date; id (int?): request notification ID.
+  // Returns: Future<void>: both cancellations complete; failures propagate.
   Future<void> cancel(SlotCheckNotificationContext request, int? id) async {
     await dismiss(request, id);
     await NotificationService.instance.cancelReminderForDate(
@@ -113,8 +128,10 @@ class SlotCheckNotificationPlatform {
   }
 }
 
-// 클래스명: SlotCheckNotificationService
-// 역할: 보호자의 시간대 확인 요청 푸시를 표시하고 복용 완료 버튼을 처리한다.
+// Class Name: SlotCheckNotificationService
+// Role: Display and handle linked slot-check notifications under active-owner and current-day guards.
+// Responsibilities: Deduplicate display, record durable dose intent and perform best-effort sync, reminder cancellation and widget refresh.
+// Attributes: platform (SlotCheckNotificationPlatform): injectable side effects; clock (DateTime Function()): day validation clock.
 class SlotCheckNotificationService {
   @visibleForTesting
   static SlotCheckNotificationPlatform platform =
@@ -122,8 +139,10 @@ class SlotCheckNotificationService {
   @visibleForTesting
   static DateTime Function() clock = DateTime.now;
 
-  // 함수이름: _isActiveOwner
-  // 함수역할: 요청의 환자가 이 기기의 현재 계정인지 확인한다. 매개변수: request 요청. 반환값: 같으면 true.
+  // Function Name: _isActiveOwner
+  // Description: Reload preferences before comparing the request owner with the active notification session.
+  // Parameters: request (SlotCheckNotificationContext): expected owner.
+  // Returns: Future<bool>: persisted owner match.
   static Future<bool> _isActiveOwner(
     SlotCheckNotificationContext request,
   ) async {
@@ -133,20 +152,24 @@ class SlotCheckNotificationService {
         request.owner;
   }
 
-  // 함수이름: _isToday
-  // 함수역할: 요청 날짜가 기기의 오늘 복약 날짜인지 확인한다. 매개변수: request 요청. 반환값: 같으면 true.
+  // Function Name: _isToday
+  // Description: Compare the request date with the current application schedule day.
+  // Parameters: request (SlotCheckNotificationContext): dated request.
+  // Returns: bool: current-day match.
   static bool _isToday(SlotCheckNotificationContext request) =>
       request.scheduleDate == doseScheduleDay(clock());
 
-  // 함수이름: _isCurrent
-  // 함수역할: 현재 계정의 오늘 요청인지 확인한다. 매개변수: request 요청. 반환값: 둘 다 맞으면 true.
+  // Function Name: _isCurrent
+  // Description: Require both persisted active ownership and the current schedule day.
+  // Parameters: request (SlotCheckNotificationContext): candidate action.
+  // Returns: Future<bool>: action is current.
   static Future<bool> _isCurrent(SlotCheckNotificationContext request) async =>
       await _isActiveOwner(request) && _isToday(request);
 
-  // 함수이름: display
-  // 함수역할: 현재 계정에 온 확인 요청 푸시를 한 번만 표시한다. 오늘 요청에만 복용 완료 버튼을 붙이고,
-  //   자정을 넘겨 도착한 요청은 버튼 없이 보여 보호자의 메시지가 사라지지 않게 한다.
-  // 매개변수: data FCM 데이터. 반환값: 표시했으면 true.
+  // Function Name: display
+  // Description: Display a valid active-owner request once using an event digest; older/future dates remain visible without the Taken action.
+  // Parameters: data (Map<String, dynamic>): request context, language and optional preview.
+  // Returns: Future<bool>: deduplicated display result; invalid or wrong-owner data returns false.
   static Future<bool> display(Map<String, dynamic> data) async {
     final request = SlotCheckNotificationContext.fromData(data);
     if (request == null || !await _isActiveOwner(request)) return false;
@@ -184,10 +207,10 @@ class SlotCheckNotificationService {
     );
   }
 
-  // 함수이름: handle
-  // 함수역할: 복용 완료 버튼을 오늘 일정의 해당 시간대 기록으로 암호화 대기열에 저장하고 전송을 시도한다.
-  //   날짜가 지난 요청의 버튼은 기록하지 않고 알림만 지워, 눌러도 아무 일이 없는 버튼이 남지 않게 한다.
-  // 매개변수: response 알림 동작 응답. 반환값: 기록을 저장했거나 이미 처리했으면 true.
+  // Function Name: handle
+  // Description: Handle Taken only for today's active owner; restore/refresh cache, record durable intent, then attempt cleanup and synchronization. Dismiss expired requests without recording.
+  // Parameters: response (NotificationResponse): platform action and request payload.
+  // Returns: Future<bool>: true after durable recording, including idempotent replay; false for invalid/stale/failed recording. Post-record side-effect failures are best effort.
   static Future<bool> handle(NotificationResponse response) async {
     if (response.actionId != SlotCheckNotificationContext.actionId) {
       return false;

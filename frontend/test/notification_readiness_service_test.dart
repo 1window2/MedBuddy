@@ -7,6 +7,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:medbuddy_frontend/controls/notification_readiness_control.dart';
 import 'package:medbuddy_frontend/services/notification_service.dart';
 
+// 함수이름: main
+// 함수역할:
+// - 알림·시스템 설정 플랫폼 채널 대역으로 권한 조회와 즉시 테스트 알림의 부수 효과를 검증한다.
+// 매개변수:
+// - 없음.
+// 반환값:
+// - 없음; 플랫폼 준비·복원과 비동기 사례를 등록한다.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const channel = MethodChannel('dexterous.com/flutter/local_notifications');
@@ -25,6 +32,13 @@ void main() {
   bool missingChannel = false;
   bool failShow = false;
 
+  // 함수이름: setUp 콜백
+  // 함수역할:
+  // - Android 플러그인과 두 채널 대역을 설치하고 권한·실패 플래그 및 호출 기록을 기본 상태로 되돌린다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 테스트가 각 권한 조회·표시·설정 이동 결과를 조절할 수 있다.
   setUp(() {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     AndroidFlutterLocalNotificationsPlugin.registerWith();
@@ -81,6 +95,13 @@ void main() {
       return null;
     });
   });
+  // 함수이름: tearDown 콜백
+  // 함수역할:
+  // - 알림 선택 처리기, 두 플랫폼 채널 대역과 Android 플랫폼 강제 설정을 제거한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 다음 테스트에 플랫폼 가정이 남지 않게 한다.
   tearDown(() {
     NotificationService.setNotificationSelectionHandler(null);
     messenger.setMockMethodCallHandler(channel, null);
@@ -88,6 +109,13 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
 
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 세 권한의 허용 상태만 읽고 권한 요청·예약·취소·표시 호출은 발생하지 않는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('점검은 권한을 요청하거나 예약을 변경하지 않는다', () async {
     final state = await service.readReadinessPermissions();
     expect(state.notifications, isTrue);
@@ -106,6 +134,13 @@ void main() {
     );
   });
 
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 차단된 세 권한을 각각 false로 반환하고 테스트 표시는 StateError로 막는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('앱 알림과 복약 채널 차단 및 정확한 알람 미허용을 구분한다', () async {
     permission = false;
     exact = false;
@@ -121,6 +156,13 @@ void main() {
     expect(calls.where((c) => c.method == 'show'), isEmpty);
   });
 
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 조회 오류·채널 누락을 null로 남겨 표시를 막고 독립적인 정확한 알람 허용 값은 보존하는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('확인 실패와 누락된 채널은 허용으로 표시하지 않는다', () async {
     failPermissionRead = true;
     missingChannel = true;
@@ -134,6 +176,13 @@ void main() {
     );
   });
 
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 영어 알림의 전용 ID·태그·채널을 검사하고 빈 페이로드와 없는 동작 때문에 선택 처리나 예약 변경을 유발하지 않는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('실제 테스트 알림은 복약 채널을 사용하지만 동작과 이동 대상이 없다', () async {
     var selections = 0;
     NotificationService.setNotificationSelectionHandler((_) {
@@ -162,6 +211,13 @@ void main() {
     );
   });
 
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 플랫폼 show 오류가 PlatformException으로 호출자에게 전달되어 성공으로 숨겨지지 않는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('테스트 표시 실패를 호출자에게 전달한다', () async {
     failShow = true;
     await expectLater(
@@ -170,6 +226,13 @@ void main() {
     );
   });
 
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - Windows에서는 UnsupportedError를 반환하고 알림 플랫폼에 요청하지 않는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('미지원 환경에서는 테스트 알림을 성공 처리하지 않는다', () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
     await expectLater(
@@ -179,6 +242,13 @@ void main() {
     expect(calls, isEmpty);
   });
 
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 겹친 refresh 호출이 같은 스냅샷을 공유하고 알림 허용 조회를 한 번만 실행하는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('동시에 요청한 기기 권한 조회를 합친다', () async {
     exact = false;
     final control = NotificationReadinessControl(notificationService: service);
@@ -193,6 +263,13 @@ void main() {
     );
   });
 
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 정확한 알람이 허용된 상태에서도 설정 이동 채널만 호출하고 권한 요청은 하지 않는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('켜진 정확한 알림도 권한 요청이 아닌 시스템 설정으로 연결한다', () async {
     final control = NotificationReadinessControl(notificationService: service);
     await control.openExactSettings();
@@ -200,6 +277,13 @@ void main() {
     expect(calls.where((call) => call.method.startsWith('request')), isEmpty);
   });
 
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 설정 변경 미지원 응답을 exactAlarmsEditable=false로 전달하는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('구형 Android의 정확한 시간 권한 변경 지원 여부를 전달한다', () async {
     exact = false;
     exactSettingsSupported = false;
@@ -208,6 +292,13 @@ void main() {
     expect(snapshot.exactAlarmsEditable, isFalse);
   });
 
+  // 함수이름: test 콜백
+  // 함수역할:
+  // - 설정 이동 채널의 PlatformException이 제어기 호출자에게 전달되는지 검증한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('시스템 설정 이동 실패를 성공으로 바꾸지 않는다', () async {
     settingsFail = true;
     final control = NotificationReadinessControl(notificationService: service);

@@ -1,12 +1,17 @@
+// 파일명: slot_check_notification_store.dart
+// 역할: 알림의 복용 확인 버튼 소비와 전송 대기 기록을 원자적으로 저장한다.
 part of 'dose_outbox_store.dart';
 
 // 버튼 소비와 복약 전송 대기를 같은 트랜잭션에 넣어 엔진 간 동시 클릭도 한 번만 반영한다.
+// 클래스명: SlotCheckNotificationStore
+// 역할: 확인 요청 알림의 복용 완료 동작을 계정별 전송 대기 저장소에 연결한다.
+// 주요 책임: 활성 계정·오늘 일정·중복 이벤트·보류 상태를 검사하고 버튼 소비와 복용 기록을 함께 저장한다.
+// 속성: 추가 필드 없음. DoseOutboxStore의 DB·암호화 키·계정 검증 기능을 사용한다.
 extension SlotCheckNotificationStore on DoseOutboxStore {
-  // 함수이름: recordSlotCheck
-  // 함수역할: 활성 계정의 오늘 캐시에서 요청 시간대의 약을 골라 미완료가 있으면 완료 기록을 전송 대기열에
-  //   넣고, 같은 요청의 버튼을 소비한 것으로 표시한다. 막힌 기록이 있거나 날짜·계정이 바뀌면 저장하지 않는다.
-  // 매개변수: request 검증한 확인 요청, clock 오늘 날짜를 정할 시계.
-  // 반환값: 저장했거나 이미 처리한 요청이면 true.
+  // Function Name: recordSlotCheck
+  // Description: Atomically consume a current-day check event and enqueue completion for its valid projected slot; reject stale ownership, invalid schedules or overlapping blocked operations.
+  // Parameters: request (SlotCheckNotificationContext): owner, event, link, slot and date; clock (DateTime Function()): rechecked day boundary.
+  // Returns: Future<bool>: true for a newly recorded or already consumed event; false for failed guards. Storage/crypto errors propagate.
   Future<bool> recordSlotCheck(
     SlotCheckNotificationContext request, {
     required DateTime Function() clock,
@@ -20,6 +25,10 @@ extension SlotCheckNotificationStore on DoseOutboxStore {
           request.scheduleDate != doseWidgetDay(clock())) {
         return false;
       }
+      // 함수이름: read
+      // 함수역할: 복용 확인 트랜잭션에서 현재 계정의 버튼 소비 또는 일정 상태를 복호화한다.
+      // 매개변수: name (String) - 조회할 전체 메타데이터 키.
+      // 반환값: JSON 맵 또는 저장값이 없으면 null. DB·복호화 오류는 전파한다.
       Future<Map<String, dynamic>?> read(String name) async {
         final rows = await tx.query(
           'metadata',

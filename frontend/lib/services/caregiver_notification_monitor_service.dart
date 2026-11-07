@@ -152,27 +152,10 @@ class CaregiverNotificationMonitorService {
   // - bool: 현재 사용자의 활성 보호자 연동 존재 여부
   bool get hasCaregiverLinks => _hasCaregiverLinks;
 
-  // 함수이름: CaregiverNotificationMonitorService
-  // 함수역할: 환자 조회·알림·권한·저장소·시계 경계를 주입하고 활성·유휴 폴링 주기와 완료 변화 감시 정책을 설정한다.
-  // 매개변수:
-  // - caregiverHash (String): 조회·저장 범위를 제한할 보호자 해시
-  // - loadMonitoringSnapshots (CaregiverMonitoringLoader?): 환자별 설정·일정을 통합 조회할 선택적 경계
-  // - loadLinks (CaregiverLinkLoader): 활성 환자·보호자 연동 조회 경계
-  // - loadSettings (CaregiverSettingsLoader): 시간대별 알림 조건 조회 경계
-  // - loadSchedules (CaregiverScheduleLoader): 대상 환자의 복약 일정 조회 경계
-  // - sendAlert (CaregiverAlertSender): 실제 로컬 알림 표시를 수행할 경계
-  // - permissionRequester (NotificationPermissionRequester): 기기 알림 권한 요청 경계
-  // - preferencesLoader (PreferencesLoader): 기기 설정 저장소 제공 경계
-  // - languageProvider (CaregiverLanguageProvider?): 알림 생성 시점의 언어 조회 경계
-  // - now (DateTime Function()?): 현재 시각을 제공하는 주입 가능한 시계
-  // - pollingInterval (Duration): 활성 보호자 연동이 있을 때 확인 간격
-  // - idlePollingInterval (Duration): 활성 보호자 연동이 없을 때의 확인 간격
-  // - requestPermission (bool): 감시 중 운영체제 권한 요청을 수행할지 여부
-  // - monitorCompletionTransitions (bool): 미완료에서 전체 완료로 바뀐 순간을 감시할지 여부
-  // - onCaregiverStatusChanged (ValueChanged<bool>?): 활성 보호자 연동 존재 여부 변경 수신자
-  // - onDispose (VoidCallback?): 소유한 의존성 정리 콜백
-  // 반환값:
-  // - CaregiverNotificationMonitorService: 초기화된 인스턴스.
+  // Function Name: CaregiverNotificationMonitorService
+  // Description: Bind monitoring readers, delivery and persistence boundaries without starting polling.
+  // Parameters: caregiverHash (String): owner; loadMonitoringSnapshots (CaregiverMonitoringLoader?): consolidated reader; loadLinks/loadSettings/loadSchedules: link, per-patient setting and schedule loaders; sendAlert (CaregiverAlertSender): delivery; permissionRequester (NotificationPermissionRequester): permission check; preferencesLoader (PreferencesLoader): persistence; languageProvider (CaregiverLanguageProvider?): locale; now (DateTime Function()?): clock; pollingInterval/idlePollingInterval (Duration): cadence; requestPermission/monitorCompletionTransitions/monitorMissedDeadlines (bool): prompt and alert modes; onCaregiverStatusChanged (ValueChanged<bool>?): link-state callback; onDispose (VoidCallback?): owned-resource cleanup.
+  // Returns: CaregiverNotificationMonitorService: configured, not started monitor.
   CaregiverNotificationMonitorService({
     required this.caregiverHash,
     CaregiverMonitoringLoader? loadMonitoringSnapshots,
@@ -211,13 +194,10 @@ class CaregiverNotificationMonitorService {
   // - String: 언어 제공자가 주입되지 않은 감시에 한국어 기본 코드를 제공한다.
   static String _defaultLanguage() => 'ko';
 
-  // 함수이름: start
-  // 함수역할: 앱 실행 중 즉시 한 번 확인하고 이후 짧은 주기로 상태를 갱신한다. 이 기기에서 만들 알림이 없는
-  //   구성(완료·미복용 감시가 모두 꺼짐)에서는 연동 상태 확인이 한 번 성공하면 주기 확인을 하지 않는다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  // Function Name: start
+  // Description: Mark monitoring started, replace the timer, perform an immediate check and schedule the next eligible check.
+  // Parameters: None.
+  // Returns: Future<void>: initial check and scheduling completion.
   Future<void> start() async {
     _isStarted = true;
     _timer?.cancel();
@@ -225,15 +205,17 @@ class CaregiverNotificationMonitorService {
     _scheduleNextCheck();
   }
 
-  // 함수이름: _deliversAlerts
-  // 함수역할: 이 기기의 확인으로 보호자 알림이 만들어질 수 있는지 알려 준다. 둘 다 꺼져 있으면 알림은 서버 푸시로만 온다.
-  // 매개변수: 없음. 반환값: 완료 변화 또는 미복용 마감 감시가 켜져 있으면 true.
+  // Function Name: _deliversAlerts
+  // Description: Determine whether either completion or missed-deadline alerts are enabled.
+  // Parameters: None.
+  // Returns: bool: true when at least one delivery mode is enabled.
   bool get _deliversAlerts =>
       monitorCompletionTransitions || monitorMissedDeadlines;
 
-  // 함수이름: pause
-  // 함수역할: 앱이 화면에서 사라진 동안 주기 확인을 멈춘다. 진행 중인 확인은 끝까지 수행한다.
-  // 매개변수: 없음. 반환값: 없음.
+  // Function Name: pause
+  // Description: Pause future checks and clear the timer; ignore calls after disposal.
+  // Parameters: None.
+  // Returns: void.
   void pause() {
     if (_isDisposed) {
       return;
@@ -243,10 +225,10 @@ class CaregiverNotificationMonitorService {
     _timer = null;
   }
 
-  // 함수이름: resume
-  // 함수역할: pause로 멈춘 주기 확인을 다시 시작하며 그동안의 변화를 바로 한 번 확인한다. 멈춘 적이 없거나
-  //   start 전이면 아무 일도 하지 않고, 주기 확인이 필요 없는 구성에서는 다시 확인하지 않는다.
-  // 매개변수: 없음. 반환값: 재개에 따른 확인이 끝나면 완료되는 Future.
+  // Function Name: resume
+  // Description: Resume a paused live monitor, checking immediately only when started and delivering alerts or recovering failures.
+  // Parameters: None.
+  // Returns: Future<void>: eligible check and rescheduling completion, otherwise no-op.
   Future<void> resume() async {
     if (_isDisposed || !_isPaused) {
       return;
@@ -539,13 +521,10 @@ class CaregiverNotificationMonitorService {
     }
   }
 
-  // 함수이름: _scheduleNextCheck
-  // 함수역할: 보호자 연결이 있으면 짧은 주기, 없으면 저빈도 주기로 다음 확인을 예약한다. 멈춘 동안에는 예약하지
-  //   않는다. 이 기기에서 만들 알림이 없으면 마지막 확인이 성공한 뒤에는 예약하지 않고, 실패했을 때만 다시 시도한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - 없음.
+  // Function Name: _scheduleNextCheck
+  // Description: Schedule the next check using active/idle cadence and exponential failure backoff, clamped to one second through five minutes; skip paused/disposed or healthy observation-only monitors.
+  // Parameters: None.
+  // Returns: void; replaces the prior timer.
   void _scheduleNextCheck() {
     if (_isDisposed || _isPaused) {
       return;
@@ -653,6 +632,10 @@ class CaregiverNotificationMonitorService {
 
   // 필요시 약은 전체 완료가 아니라 새 복용 건마다 알린다. 첫 조회·알림 재활성화는
   // 기준만 저장하고, 수정되었다가 돌아온 같은 기록은 다시 알리지 않는다.
+  // 함수이름: _checkAsNeededDoses
+  // 함수역할: 오늘의 필요시 복용 이벤트를 이전 활성 스냅샷과 비교해 새 기록만 알리고 확인한 키를 저장한다.
+  // 매개변수: preferences (SharedPreferences): 표시 이력; patientHash (String): 환자; snapshot (CaregiverMonitoringSnapshot): 오늘 이벤트와 알림 설정.
+  // 반환값: 완료 Future. 최초 조회·비교 불가 상태는 기준값만 저장하고 종료·날짜 불일치는 무시하며 표시·저장 오류는 전파한다.
   Future<void> _checkAsNeededDoses(
     SharedPreferences preferences,
     String patientHash,
@@ -697,16 +680,10 @@ class CaregiverNotificationMonitorService {
     await preferences.setBool('$scope.prn_enabled', enabled);
   }
 
-  // 함수이름: _checkSlot
-  // 함수역할: 한 복약 시간대의 완료 변화 또는 미복용 마감 조건만 독립적으로 확인한다.
-  // 매개변수:
-  // - preferences (SharedPreferences): 사용자별 설정·알림 기록을 읽고 쓸 기기 저장소
-  // - patientHash (String): 조회·저장·알림 대상 환자의 소유권 해시
-  // - slotKey (String): morning·lunch·evening·bedtime 복약 시간대 키
-  // - setting (CaregiverNotification): 확인할 환자 시간대의 보호자 알림 모드와 제한 시각
-  // - schedules (List<MedicationSchedule>): 조회·비교·예약에 사용할 복약 일정 목록
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  // Function Name: _checkSlot
+  // Description: Compare same-day, same-mode slot snapshots and run enabled alert checks; disabled settings clear snapshot and notice markers.
+  // Parameters: preferences (SharedPreferences): state store; patientHash/slotKey (String): scope; setting (CaregiverNotification): alert policy; schedules (List<MedicationSchedule>): current doses.
+  // Returns: Future<void>: alert checks and new snapshot persistence; errors propagate.
   Future<void> _checkSlot({
     required SharedPreferences preferences,
     required String patientHash,
@@ -770,18 +747,10 @@ class CaregiverNotificationMonitorService {
     );
   }
 
-  // Function Name: _notifyCompletedSlot
-  // Description: Sends at most one daily slot alert when a nonempty schedule becomes fully completed; individual drug transitions do not create separate alerts, and permission denial leaves the notice unrecorded.
-  // Parameters:
-  // - preferences (SharedPreferences): Device preference store for user settings and alert records.
-  // - scope (String): Alert-history prefix scoped by date, patient, and time slot.
-  // - patientHash (String): Ownership hash of the patient targeted by lookup, storage, or alerts.
-  // - slotKey (String): Medication slot key: morning, lunch, evening, or bedtime.
-  // - previousSnapshot (Map<String, bool>): Previous completion flags stored for the same date and mode.
-  // - currentSnapshot (Map<String, bool>): Current per-course completion flags for the slot.
-  // - dateKey (String): Calendar key for daily snapshots and alert deduplication.
-  // Returns:
-  // - Future<void>: asynchronous completion without a result payload.
+  // 함수이름: _notifyCompletedSlot
+  // 함수역할: 미완료 시간대가 전체 완료로 바뀔 때 권한을 확인해 알리고 같은 날·시간대의 중복 표시를 막는다.
+  // 매개변수: preferences (SharedPreferences): 표식 저장소; scope (String): 저장 키 접두사; patientHash/slotKey/dateKey (String): 환자·시간대·날짜; previousSnapshot/currentSnapshot (Map<String, bool>): 전후 완료 상태.
+  // 반환값: Future<void>: 표시 성공 후 표식 저장; 이미 완료·미완료·중복·권한 거절이면 종료한다.
   Future<void> _notifyCompletedSlot({
     required SharedPreferences preferences,
     required String scope,
@@ -1024,25 +993,20 @@ class CaregiverNotificationMonitorService {
     }
   }
 
-  // 함수이름: _preferenceScope
-  // 함수역할: 보호자·환자·시간대를 결합해 알림 스냅샷과 중복 방지 기록이 섞이지 않는 저장 접두사를 만든다.
-  // 매개변수:
-  // - patientHash (String): 조회·저장·알림 대상 환자의 소유권 해시
-  // - slotKey (String): morning·lunch·evening·bedtime 복약 시간대 키
-  // 반환값:
-  // - String: 보호자·환자·시간대를 결합해 알림 스냅샷과 중복 방지 기록이 섞이지 않는 저장 접두사를 만든다.
+  // Function Name: _preferenceScope
+  // Description: Build the caregiver/patient/slot namespace for persisted monitoring state.
+  // Parameters: patientHash/slotKey (String): patient and medication slot.
+  // Returns: String: alert prefix with normalized caregiver identity.
   String _preferenceScope(String patientHash, String slotKey) {
     final normalizedCaregiver = PatientHash.normalizePatientHash(caregiverHash);
     return '${CaregiverPatientLocalStateService.alertKeyPrefix}'
         '$normalizedCaregiver.$patientHash.$slotKey';
   }
 
-  // 함수이름: _stableNotificationId
-  // 함수역할: 알림 구분 문자열을 FNV 방식으로 접어 보호자 알림용 300000~899999 범위의 안정 ID를 만든다.
-  // 매개변수:
-  // - source (String): 안정적인 알림 ID를 계산할 범위 문자열
-  // 반환값:
-  // - int: 알림 구분 문자열을 FNV 방식으로 접어 보호자 알림용 300000~899999 범위의 안정 ID를 만든다.
+  // Function Name: _stableNotificationId
+  // Description: Map an event identity to the caregiver notification ID range using a stable hash.
+  // Parameters: source (String): event identity.
+  // Returns: int: ID from 300000 through 899999; hash collisions remain possible.
   int _stableNotificationId(String source) {
     return 300000 + (fnv1a31(source) % 600000);
   }
@@ -1070,12 +1034,10 @@ class CaregiverNotificationMonitorService {
 class _CaregiverNotificationText {
   final bool isEnglish;
 
-  // 함수이름: _CaregiverNotificationText
-  // 함수역할: 언어 코드가 en인지 확인해 보호자 알림의 한국어·영어 문구 선택 상태를 만든다.
-  // 매개변수:
-  // - language (String): 표시·음성 안내에 사용할 언어 코드
-  // 반환값:
-  // - _CaregiverNotificationText: 초기화된 인스턴스.
+  // Function Name: _CaregiverNotificationText
+  // Description: Select the supported display language for caregiver alert text.
+  // Parameters: language (String): locale or language code.
+  // Returns: _CaregiverNotificationText: localized text helper.
   _CaregiverNotificationText(String language)
     : isEnglish = isEnglishLanguage(language);
 
@@ -1129,12 +1091,10 @@ class _CaregiverNotificationText {
         '아직 체크되지 않은 일정이 $remainingCount건 있습니다.';
   }
 
-  // 함수이름: slotName
-  // 함수역할: 복약 시간대 키에 맞는 한국어·영어 이름을 제공하고 알 수 없는 키에는 일반 일정 문구를 사용한다.
-  // 매개변수:
-  // - slotKey (String): morning·lunch·evening·bedtime 복약 시간대 키
-  // 반환값:
-  // - String: 복약 시간대 키에 맞는 한국어·영어 이름을 제공하고 알 수 없는 키에는 일반 일정 문구를 사용한다.
+  // Function Name: slotName
+  // Description: Resolve a lowercase localized slot name with a generic schedule fallback.
+  // Parameters: slotKey (String): medication slot.
+  // Returns: String: localized slot label or generic scheduled-dose label.
   String slotName(String slotKey) {
     return medicationSlotLabelOrNull(
           slotKey,

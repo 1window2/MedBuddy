@@ -5,8 +5,10 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../entities/notification_inbox_entity.dart';
 
-// 클래스명: NotificationInboxStore
-// 역할: 알림마다 독립 키를 사용해 전경·백그라운드의 서로 다른 알림 쓰기가 충돌하지 않게 한다.
+// Class Name: NotificationInboxStore
+// Role: Persist notification history and user-specific read/hidden markers.
+// Responsibilities: Retain recent entries, avoid duplicate records and notify subscribers of changes.
+// Attributes: userHash (String): owner; now/loadPreferences: clock and storage boundaries; retention (Duration): 90 days; activeUserKey/changes: shared session marker and change stream.
 class NotificationInboxStore {
   static const activeUserKey = 'notification_inbox_active_user';
   static final changes = StreamController<String>.broadcast();
@@ -16,7 +18,9 @@ class NotificationInboxStore {
   final Future<SharedPreferences> Function() loadPreferences;
 
   // 함수이름: NotificationInboxStore
-  // 함수역할: 계정과 저장·시각 경계를 연결한다. 매개변수: userHash, 선택적 시계·저장소. 반환값: 저장소.
+  // 함수역할: 계정별 알림 저장소에 시계와 설정 저장소 경계를 연결하고 빈 계정은 거절한다.
+  // 매개변수: userHash (String): 비어 있지 않은 소유 계정; now (DateTime Function()?): 보존 기간 판단 시계; loadPreferences (Future<SharedPreferences> Function()?): 저장소 로더.
+  // 반환값: NotificationInboxStore: 구성된 저장소; 공백뿐인 계정은 ArgumentError.
   NotificationInboxStore({
     required this.userHash,
     DateTime Function()? now,
@@ -28,14 +32,17 @@ class NotificationInboxStore {
     }
   }
 
-  // 함수이름: prefixFor
-  // 함수역할: 계정 범위를 키에 구분한다. 계정 삭제도 이 접두사로 지우므로 삭제와 같게 앞뒤 공백을 뺀 해시를
-  //   쓴다. 매개변수: userHash - 계정 해시. 반환값: 인코딩된 접두사.
+  // Function Name: prefixFor
+  // Description: Build a versioned preference namespace from a trimmed, URI-encoded owner.
+  // Parameters: userHash (String): owner identity.
+  // Returns: String: inbox key prefix.
   static String prefixFor(String userHash) =>
       'notification_inbox_v1.${Uri.encodeComponent(userHash.trim())}.';
 
-  // 함수이름: prefix
-  // 함수역할: 이 저장소 계정의 키 접두사를 prefixFor로 만든다. 매개변수: 없음. 반환값: 인코딩된 접두사.
+  // Function Name: prefix
+  // Description: Resolve this store's owner-specific preference namespace.
+  // Parameters: None.
+  // Returns: String: inbox key prefix.
   String get prefix => prefixFor(userHash);
 
   // 함수이름: _preferences
@@ -51,14 +58,16 @@ class NotificationInboxStore {
   String _key(String kind, String id) =>
       '$prefix$kind.${Uri.encodeComponent(id)}';
 
-  // 함수이름: record
-  // 함수역할: 중복 전송은 기존 읽음·삭제 상태를 유지한다. 매개변수: entry. 반환값: 저장 완료.
+  // Function Name: record
+  // Description: Record one notification using the retention and duplicate rules of recordAll.
+  // Parameters: entry (NotificationInboxEntry): received or scheduled notification.
+  // Returns: Future<void>: persistence completion.
   Future<void> record(NotificationInboxEntry entry) => recordAll([entry]);
 
-  // 함수이름: recordAll
-  // 함수역할: 여러 알림을 저장소를 한 번만 다시 읽어 저장하고, 새로 저장한 항목이 있을 때만 변경을 한 번 알린다.
-  //   이미 있는 항목은 record와 같이 읽음·삭제 상태를 유지한 채 건너뛴다.
-  // 매개변수: entries - 저장할 알림들. 반환값: 저장 완료. 저장에 실패하면 StateError.
+  // Function Name: recordAll
+  // Description: Insert only recent, previously unseen notifications; emit a change even if a later insert fails after earlier writes succeeded.
+  // Parameters: entries (Iterable<NotificationInboxEntry>): candidate history entries.
+  // Returns: Future<void>: writes complete; throws when storage rejects an insert.
   Future<void> recordAll(Iterable<NotificationInboxEntry> entries) async {
     final oldest = now().subtract(retention);
     final recent = [
@@ -124,9 +133,10 @@ class NotificationInboxStore {
   // 함수역할: 지정 항목만 읽음으로 남긴다. 매개변수: ids. 반환값: 저장 완료.
   Future<void> markRead(Iterable<String> ids) => _setFlags('read', ids);
 
-  // 함수이름: remove
-  // 함수역할: 알림을 숨기고 저장해 둔 제목·본문·이동 정보를 지운다. 항목 키와 발생 시각은 남겨
-  //   재수신 시 부활을 막고 보관 기간이 지나면 정리되게 한다. 매개변수: ids. 반환값: 저장 완료 또는 저장 오류.
+  // Function Name: remove
+  // Description: Hide selected entries and redact stored content while preserving deduplication identity.
+  // Parameters: ids (Iterable<String>): notification entry IDs.
+  // Returns: Future<void>: redaction completion and change notification; rejected writes throw.
   Future<void> remove(Iterable<String> ids) async {
     final preferences = await _preferences();
     for (final id in ids) {
@@ -143,9 +153,10 @@ class NotificationInboxStore {
     changes.add(userHash);
   }
 
-  // 함수이름: _withoutContent
-  // 함수역할: 삭제한 알림의 저장값에서 내용을 비운 빈 기록을 만든다. 읽을 수 없는 저장값도 같은 형태로 바꾼다.
-  // 매개변수: id - 알림 식별자, stored - 기존 저장 JSON. 반환값: 내용이 없는 항목 JSON.
+  // Function Name: _withoutContent
+  // Description: Remove sensitive content while retaining valid category and time, using safe defaults for malformed stored JSON.
+  // Parameters: id (String): preserved identity; stored (String): existing JSON.
+  // Returns: String: redacted entry JSON with empty title, body and payload.
   String _withoutContent(String id, String stored) {
     Object? category;
     Object? occurredAt;
@@ -187,9 +198,10 @@ class NotificationInboxStore {
     changes.add(userHash);
   }
 
-  // 함수이름: cancelFutureReminders
-  // 함수역할: 아직 오지 않은 복약 예약만 취소하고 지난 기록은 유지한다. 지운 항목이 있을 때만 변경을 알린다.
-  // 매개변수: 선택적 slotKey, id. 반환값: 완료.
+  // Function Name: cancelFutureReminders
+  // Description: Remove future reminder history matching a slot, or an ID when no slot is supplied; skip malformed records.
+  // Parameters: slotKey (String?): preferred slot filter; id (int?): notification-ID filter; neither selects all future reminders.
+  // Returns: Future<void>: history cleanup; does not cancel platform notifications.
   Future<void> cancelFutureReminders({String? slotKey, int? id}) async {
     final preferences = await _preferences();
     var removed = false;

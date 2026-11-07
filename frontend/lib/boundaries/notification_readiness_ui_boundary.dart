@@ -9,21 +9,37 @@ import '../theme/medbuddy_theme.dart';
 import '../widgets/medbuddy_preference_row.dart';
 import '../widgets/medbuddy_setting_toggle.dart';
 
+// 클래스명: NotificationDeviceSettings
+// 역할: 기기 알림 권한과 테스트 알림 설정을 표시한다.
+// 주요 책임: 제어기를 통해 운영체제 설정을 확인하고 필요한 권한 화면을 연다.
+// 속성: control (NotificationReadinessControl): 기기 설정 제어기; isEnglish (bool): 표시 언어.
 class NotificationDeviceSettings extends StatefulWidget {
   final NotificationReadinessControl control;
   final bool isEnglish;
 
+  // 함수이름: NotificationDeviceSettings
+  // 함수역할: 외부 소유 알림 설정 제어기와 표시 언어를 연결한다.
+  // 매개변수: key (Key?): 위젯 키; control (NotificationReadinessControl): 제어기; isEnglish (bool): 영어 여부.
+  // 반환값: 새 NotificationDeviceSettings.
   const NotificationDeviceSettings({
     super.key,
     required this.control,
     required this.isEnglish,
   });
 
+  // 함수이름: createState
+  // 함수역할: 앱 복귀와 설정 작업을 감시할 상태를 만든다.
+  // 매개변수: 없음.
+  // 반환값: 새 _NotificationDeviceSettingsState.
   @override
   State<NotificationDeviceSettings> createState() =>
       _NotificationDeviceSettingsState();
 }
 
+// Class Name: _NotificationDeviceSettingsState
+// Role: Tracks operating-system permission checks and serialized settings actions.
+// Responsibilities: Refreshes on resume and reports platform failures without pretending a permission changed.
+// Attributes: _snapshot (NotificationReadinessSnapshot?): last permission result; _refreshing/_busy (bool): operation locks; _error (String?): action failure.
 class _NotificationDeviceSettingsState extends State<NotificationDeviceSettings>
     with WidgetsBindingObserver {
   NotificationReadinessSnapshot? _snapshot;
@@ -31,8 +47,16 @@ class _NotificationDeviceSettingsState extends State<NotificationDeviceSettings>
   bool _busy = false;
   String? _error;
 
+  // 함수이름: _text
+  // 함수역할: 사용자 언어에 해당하는 설정 안내를 선택한다.
+  // 매개변수: ko/en (String): 한국어·영어 문구.
+  // 반환값: 선택한 문구.
   String _text(String ko, String en) => widget.isEnglish ? en : ko;
 
+  // 함수이름: initState
+  // 함수역할: 앱 복귀 감시를 등록하고 최초 권한 상태를 조회한다.
+  // 매개변수: 없음.
+  // 반환값: 없음. 조회는 비동기로 진행한다.
   @override
   void initState() {
     super.initState();
@@ -40,13 +64,20 @@ class _NotificationDeviceSettingsState extends State<NotificationDeviceSettings>
     unawaited(_refresh());
   }
 
+  // 함수이름: dispose
+  // 함수역할: 앱 수명 감시를 해제한다. 외부에서 받은 제어기는 해제하지 않는다.
+  // 매개변수: 없음.
+  // 반환값: 없음.
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
-  // 시스템 설정에서 돌아오면 화면을 닫았다 열 필요 없이 다시 점검한다.
+  // 함수이름: didChangeAppLifecycleState
+  // 함수역할: 시스템 설정에서 복귀했고 별도 작업이 없으면 권한을 다시 확인한다.
+  // 매개변수: state (AppLifecycleState): 새 앱 상태.
+  // 반환값: 없음.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && !_busy) {
@@ -54,6 +85,10 @@ class _NotificationDeviceSettingsState extends State<NotificationDeviceSettings>
     }
   }
 
+  // 함수이름: _refresh
+  // 함수역할: 중복 조회를 막고 최신 권한 결과를 표시한다. 조회 실패 시 상태를 알 수 없는 것으로 처리한다.
+  // 매개변수: 없음.
+  // 반환값: 조회 종료 후 완료되는 Future<void>; 화면 종료 후 상태를 갱신하지 않는다.
   Future<void> _refresh() async {
     if (_refreshing) return;
     setState(() => _refreshing = true);
@@ -67,7 +102,10 @@ class _NotificationDeviceSettingsState extends State<NotificationDeviceSettings>
     }
   }
 
-  // 연타와 화면 이탈을 처리하고 플랫폼 오류를 사용자 문구로 바꾼다.
+  // 함수이름: _run
+  // 함수역할: 설정 열기·테스트 요청을 직렬화하고 실패를 안내하며 작업 후 권한을 다시 조회한다.
+  // 매개변수: action (Future<void> Function()): 실행 작업; isTest (bool): 테스트 알림 요청 여부.
+  // 반환값: 처리와 재조회 완료; 테스트 성공 문구는 전송 요청이지 수신 확인이 아니다.
   Future<void> _run(
     Future<void> Function() action, {
     bool isTest = false,
@@ -113,6 +151,10 @@ class _NotificationDeviceSettingsState extends State<NotificationDeviceSettings>
     }
   }
 
+  // 함수이름: _permissionToggle
+  // 함수역할: 권한이 확인되면 실제 운영체제 값을 스위치로 표시하고, 미지원·미확인 상태는 설명 행으로 표시한다.
+  // 매개변수: key/title/description (String): 식별자·문구; value (bool?): 실제 권한; openSettings (Future<void> Function()? ): 설정 동작; supported (bool): 지원 여부.
+  // 반환값: 권한 상태를 선행 변경하지 않는 설정 행.
   Widget _permissionToggle({
     required String key,
     required String title,
@@ -148,6 +190,10 @@ class _NotificationDeviceSettingsState extends State<NotificationDeviceSettings>
     );
   }
 
+  // Function Name: build
+  // Description: Builds device permission rows and a test action gated by actual notification/channel support.
+  // Parameters: context (BuildContext): Theme and feedback location.
+  // Returns: Settings column, including unavailable-state and operation-error notices.
   @override
   Widget build(BuildContext context) {
     final control = widget.control;

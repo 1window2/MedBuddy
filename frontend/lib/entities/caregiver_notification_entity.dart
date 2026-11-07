@@ -11,8 +11,8 @@ const List<String> caregiverNotificationSlotKeys = [
 
 // 클래스명: CaregiverNotificationMode
 // 역할: 보호자 알림의 비활성·복약 완료·마감 미복약 조건을 구분한다.
-// 주요 책임:
-// - 서버 전송값을 제공하고 구형 활성화 표현을 완료 알림 모드로 호환 변환한다.
+// 주요 책임: 서버 전송값과 구형 활성화 값의 호환 변환을 제공한다.
+// 속성: wireValue (String): disabled, dose_completed 또는 missed_deadline 전송값.
 enum CaregiverNotificationMode {
   disabled('disabled'),
   doseCompleted('dose_completed'),
@@ -123,12 +123,10 @@ class CaregiverNotification {
         deadlineMinute! <= 59;
   }
 
-  // 함수이름: CaregiverNotification.fromJson
-  // 함수역할: 구형 식별자·활성화 필드 이름을 함께 읽어 시간대별 보호자 알림 설정을 복원한다.
-  // 매개변수:
-  // - json (Map<String, dynamic>): 해당 모델의 서버 응답 또는 저장 JSON 객체
-  // 반환값:
-  // - CaregiverNotification: 필드 검증과 기본값 처리를 거쳐 복원한 레코드.
+  // Function Name: CaregiverNotification.fromJson
+  // Description: Read current and legacy identifiers and alert fields; an explicit mode takes precedence over legacy enabled flags.
+  // Parameters: json (Map<String, dynamic>): server or stored setting.
+  // Returns: CaregiverNotification: normalized setting, defaulting a blank slot to morning.
   factory CaregiverNotification.fromJson(Map<String, dynamic> json) {
     final rawMode =
         json['notification_type'] ??
