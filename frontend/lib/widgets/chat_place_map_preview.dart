@@ -7,6 +7,7 @@ import 'package:flutter_naver_map/flutter_naver_map.dart';
 
 import '../services/naver_map_config.dart';
 import '../theme/medbuddy_theme.dart';
+import 'naver_map_sdk_gate.dart';
 
 class ChatPlaceMapPreview extends StatefulWidget {
   const ChatPlaceMapPreview({
@@ -117,29 +118,32 @@ class _ChatPlaceMapPreviewState extends State<ChatPlaceMapPreview> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          NaverMap(
-            key: ValueKey('chat-map-${widget.latitude}-${widget.longitude}'),
-            options: NaverMapViewOptions(
-              initialCameraPosition: NCameraPosition(
-                target: NLatLng(widget.latitude, widget.longitude),
-                zoom: 15,
+          NaverMapSdkGate(
+            placeholder: const SizedBox.shrink(),
+            builder: (context) => NaverMap(
+              key: ValueKey('chat-map-${widget.latitude}-${widget.longitude}'),
+              options: NaverMapViewOptions(
+                initialCameraPosition: NCameraPosition(
+                  target: NLatLng(widget.latitude, widget.longitude),
+                  zoom: 15,
+                ),
+                scrollGesturesEnable: false,
+                zoomGesturesEnable: false,
+                rotationGesturesEnable: false,
+                tiltGesturesEnable: false,
+                stopGesturesEnable: false,
+                consumeSymbolTapEvents: false,
+                scaleBarEnable: false,
+                indoorLevelPickerEnable: false,
+                locale: Locale(widget.isEnglish ? 'en' : 'ko'),
               ),
-              scrollGesturesEnable: false,
-              zoomGesturesEnable: false,
-              rotationGesturesEnable: false,
-              tiltGesturesEnable: false,
-              stopGesturesEnable: false,
-              consumeSymbolTapEvents: false,
-              scaleBarEnable: false,
-              indoorLevelPickerEnable: false,
-              locale: Locale(widget.isEnglish ? 'en' : 'ko'),
+              onMapReady: (controller) => unawaited(_ready(controller)),
+              onMapLoaded: () {
+                _timeout?.cancel();
+                if (mounted) setState(() => _loaded = true);
+              },
+              onMapTapped: (_, _) => widget.onOpen(),
             ),
-            onMapReady: (controller) => unawaited(_ready(controller)),
-            onMapLoaded: () {
-              _timeout?.cancel();
-              if (mounted) setState(() => _loaded = true);
-            },
-            onMapTapped: (_, _) => widget.onOpen(),
           ),
           if (!_loaded)
             // 지도를 완전히 덮으면 네이티브 렌더링 완료 신호가 오지 않을 수 있다.

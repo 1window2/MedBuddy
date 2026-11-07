@@ -8,7 +8,6 @@ import 'controls/check_caregiver_medication_control.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:home_widget/home_widget.dart';
 
@@ -47,7 +46,7 @@ import 'viewmodels/medbuddy_feature_updates.dart';
 import 'views/home_screen.dart';
 
 // Function Name: main
-// Description: Initializes Flutter and portrait orientation, attempts map and background setup, starts authentication and language state, runs the app, and then initializes notifications with reported bootstrap failures.
+// Description: Initializes Flutter and background setup, starts authentication and language state, runs the app, then starts the map SDK after the first frame and initializes notifications with reported bootstrap failures.
 // Parameters:
 // - None.
 // Returns:
@@ -55,21 +54,7 @@ import 'views/home_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   registerMedBuddyPushBackgroundHandler();
-  await SystemChrome.setPreferredOrientations(const [
-    DeviceOrientation.portraitUp,
-  ]);
-  try {
-    await initializeNaverMap();
-  } catch (error, stackTrace) {
-    FlutterError.reportError(
-      FlutterErrorDetails(
-        exception: error,
-        stack: stackTrace,
-        library: 'MedBuddy bootstrap',
-        context: ErrorDescription('initializing Naver Map'),
-      ),
-    );
-  }
+  // Portrait is fixed by the activity's android:screenOrientation, so startup does not wait for a platform call to repeat it.
   try {
     installDoseHomeWidgetReaders();
     await CaregiverNotificationBackgroundScheduler.initialize();
@@ -90,6 +75,12 @@ Future<void> main() async {
     MedBuddyApp(
       authenticationControl: authenticationControl,
       appLanguageControl: appLanguageControl,
+    ),
+  );
+  // Loading the map library before the first frame delayed every launch; map screens await the same attempt.
+  unawaited(
+    WidgetsBinding.instance.endOfFrame.then(
+      (_) => naverMapStartup.ensureInitialized(),
     ),
   );
   try {

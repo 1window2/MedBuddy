@@ -1,5 +1,5 @@
 // 파일명: MainActivity.kt
-// 역할: Flutter의 요청을 Android 알림 설정과 처방전 카메라 방향 제어로 연결한다.
+// 역할: Flutter의 요청을 Android 알림 설정, 처방전 카메라 방향 제어와 기기 음성 안내로 연결한다.
 
 package com.example.medbuddy_frontend
 
@@ -15,13 +15,14 @@ import java.io.File
 
 // Class Name: MainActivity
 // Role: Adapts Flutter method-channel requests to Android settings and camera orientation.
-// Responsibilities: Register native handlers and restore the orientation saved before camera use.
-// Attributes: settingsChannel/prescriptionCameraChannel identify handlers; orientationBeforePrescriptionCamera preserves the prior policy.
+// Responsibilities: Register native handlers, restore the orientation saved before camera use and release the speech engine with the Flutter engine.
+// Attributes: settingsChannel/prescriptionCameraChannel identify handlers; orientationBeforePrescriptionCamera preserves the prior policy; speechChannel serves voice guidance.
 class MainActivity : FlutterActivity() {
     private val settingsChannel = "com.medbuddy.app/settings"
     private val prescriptionCameraChannel = "com.medbuddy.app/prescription-camera"
     private val dataExportChannel = "com.medbuddy/data_export"
     private var orientationBeforePrescriptionCamera: Int? = null
+    private var speechChannel: LazySpeechChannel? = null
 
     // Function Name: configureFlutterEngine
     // Description: Registers settings and camera-orientation handlers after the standard Flutter engine setup.
@@ -29,6 +30,8 @@ class MainActivity : FlutterActivity() {
     // Returns: Unit; supported calls complete through their MethodChannel result callbacks.
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // 음성 엔진은 앱 시작 때가 아니라 첫 읽기 요청 때 연결한다.
+        speechChannel = LazySpeechChannel(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
         // 함수명: settingsChannel.setMethodCallHandler 콜백
         // 역할: 알림 설정 열기 요청을 처리하고 다른 메서드는 미지원으로 응답한다.
         // 매개변수: call - Flutter 호출 정보; result - 성공 또는 미지원 응답 통로.
@@ -107,6 +110,16 @@ class MainActivity : FlutterActivity() {
                 }
                 result.notImplemented()
             }
+    }
+
+    // Function Name: cleanUpFlutterEngine
+    // Description: Stops voice guidance and releases the speech engine before the Flutter engine is discarded.
+    // Parameters: flutterEngine - engine being cleaned up.
+    // Returns: Unit.
+    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        speechChannel?.dispose()
+        speechChannel = null
+        super.cleanUpFlutterEngine(flutterEngine)
     }
 
     // Function Name: enableSensorOrientationForPrescriptionCamera
