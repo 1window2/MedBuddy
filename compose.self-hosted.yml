@@ -185,9 +185,11 @@ services:
       AUTH_MODE: firebase
       FIREBASE_ALLOW_PHONE_AUTH: "false"
       FIREBASE_ALLOW_ANONYMOUS_AUTH: "true"
-      # Revoked sessions and disabled users stop at once, and a typo in backend.env cannot
-      # turn the check off (the code default is off for local development).
+      # Revoked sessions and disabled users stop within FIREBASE_REVOCATION_CACHE_SECONDS (an
+      # account deleted by this server stops at once), and a typo in backend.env cannot turn
+      # the check off or lengthen the delay (the code default is off for local development).
       FIREBASE_CHECK_REVOKED_TOKENS: "true"
+      FIREBASE_REVOCATION_CACHE_SECONDS: "30"
       FIREBASE_REQUIRE_VERIFIED_EMAIL: "true"
       FIREBASE_APP_CHECK_REQUIRED: "${FIREBASE_APP_CHECK_REQUIRED:-true}"
       FIREBASE_OFF_PLAY_BETA_MODE: "${FIREBASE_OFF_PLAY_BETA_MODE:-false}"

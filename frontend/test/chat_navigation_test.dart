@@ -961,6 +961,63 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+  // 함수이름: link polling pauses while another screen covers home
+  // 함수역할:
+  // - 다른 화면이 홈을 덮은 동안에는 15초 연동 조회를 하지 않고, 홈이 다시 보이면 바로 한 번 조회하는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 시간을 진행한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
+  testWidgets('link polling pauses while another screen covers home', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    _viewport(tester, 390);
+    final links = _Links()..result = [_link(1)];
+    final model = _ViewModel();
+    addTearDown(model.dispose);
+    final navigator = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MedBuddyViewModel>.value(
+        value: model,
+        child: MaterialApp(
+          navigatorKey: navigator,
+          home: HomeScreen(
+            chatListFactory: (hash) => ManageChatList(
+              userHash: hash,
+              linkControl: links,
+              chatControl: _History(),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final initial = links.calls;
+    await tester.pump(const Duration(seconds: 16));
+    expect(links.calls, initial + 1);
+
+    unawaited(
+      navigator.currentState!.push(
+        MaterialPageRoute<void>(builder: (_) => const Scaffold()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    // 50 s puts the old 15 s schedule's next tick within 10 s of the return below.
+    await tester.pump(const Duration(seconds: 50));
+    expect(links.calls, initial + 1);
+
+    navigator.currentState!.pop();
+    await tester.pumpAndSettle();
+    expect(links.calls, initial + 2);
+    // The period restarts on return, so the next read comes 15 s later, not on the old schedule.
+    await tester.pump(const Duration(seconds: 10));
+    expect(links.calls, initial + 2);
+    await tester.pump(const Duration(seconds: 6));
+    expect(links.calls, initial + 3);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   // 함수이름: conversation badges refresh and clear without marking read
   // 함수역할:
   // - 큰 글씨 화면에서 읽지 않은 수를 3과 99+로 표시하되 원래 수 120은 유지하며, 0·조회 실패·연동 삭제 시 배지를 제거하는지 검증한다.

@@ -433,6 +433,16 @@ and plan for this one-time quota reset. Do not point old and new workers at
 different counter stores while both serve traffic. Monitor counter memory/OOM
 errors and increase capacity rather than enabling eviction or flushing counters.
 
+### Revocation check cache
+
+`compose.self-hosted.yml` sets `FIREBASE_REVOCATION_CACHE_SECONDS: "30"` next to
+`FIREBASE_CHECK_REVOKED_TOKENS`. Every request still checks the token's signature and
+expiry locally; the account lookup behind the revocation check (a Google round trip of
+about 0.25-0.35 s from Korea) is reused for 30 seconds per account. A revocation or
+disablement made in Firebase therefore applies within 30 seconds; an account deleted by
+this server is forgotten at once. The value is capped at 60 in the code, and 0 restores
+a lookup on every request. No migration is involved; recreate the backend container.
+
 ### Medication search cache migration
 
 Revision `a9d3c5e71f24`, after `f7a2c9e4b610`, adds `medication_search_cache`: the

@@ -85,3 +85,46 @@ def test_delete_identity_classifies_provider_outage_as_retryable() -> None:
             FirebaseIdentityDeletionBoundary("medbuddy-test").deleteIdentity(
                 "firebase-uid"
             )
+
+# Function Name: test_delete_identity_forgets_cached_token_state
+# Description:
+# - A deleted or already missing identity is forgotten by the token check's account-state cache,
+#   so its tokens are looked up again at once; a failed deletion keeps the cached state.
+# Parameters:
+# - outcome (Exception | None): delete_user result.
+# - forgotten (bool): Whether the cache must be cleared.
+# Returns:
+# - None.
+@pytest.mark.parametrize(
+    ("outcome", "forgotten"),
+    [
+        (None, True),
+        (auth.UserNotFoundError("gone"), True),
+        (RuntimeError("down"), False),
+    ],
+)
+def test_delete_identity_forgets_cached_token_state(
+    outcome: Exception | None, forgotten: bool
+) -> None:
+    with (
+        patch(
+            "boundaries.firebase_identity_boundary.get_firebase_admin_app",
+            return_value=object(),
+        ),
+        patch(
+            "boundaries.firebase_identity_boundary.auth.delete_user",
+            side_effect=outcome,
+        ),
+        patch("boundaries.firebase_identity_boundary.forget_identity_state") as forget,
+    ):
+        boundary = FirebaseIdentityDeletionBoundary("medbuddy-test")
+        if forgotten:
+            boundary.deleteIdentity("firebase-uid")
+        else:
+            with pytest.raises(IdentityDeletionUnavailableError):
+                boundary.deleteIdentity("firebase-uid")
+
+    if forgotten:
+        forget.assert_called_once_with("firebase-uid")
+    else:
+        forget.assert_not_called()

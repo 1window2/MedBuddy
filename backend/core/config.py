@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     AUTH_MODE: Literal["disabled", "firebase"] = "disabled"
     FIREBASE_PROJECT_ID: str = ""
     FIREBASE_CHECK_REVOKED_TOKENS: bool = False
+    # Seconds an account's revocation state is reused between token checks; a revocation made in
+    # Firebase (password reset, console) applies within this time. 0 looks the account up every time.
+    FIREBASE_REVOCATION_CACHE_SECONDS: int = Field(default=30, ge=0, le=60)
     FIREBASE_REQUIRE_VERIFIED_EMAIL: bool = True
     FIREBASE_ALLOW_PHONE_AUTH: bool = False
     FIREBASE_ALLOW_ANONYMOUS_AUTH: bool = False

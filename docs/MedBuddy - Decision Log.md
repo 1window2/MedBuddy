@@ -362,6 +362,22 @@ On a Galaxy Note10 the median cold launch went from 378 ms to 336 ms (24 runs ea
 release builds under a separate test package). Emulator launches looked far slower
 because of shader compilation in emulated GL, which a phone does not show.
 
+## 2026-11-08: revocation state reused for 30 seconds
+
+The owner accepted that a session revoked in Firebase (password reset, console
+disablement) may keep working for up to 30 seconds, in exchange for removing the
+Firebase account lookup from every authenticated request. Signature and expiry are still
+checked on every request, the revocation rule is unchanged (disabled account, or token
+issued before the account's sessions-valid-after time), and an account deleted by this
+server is dropped from the cache at once; a lookup that started before the deletion is
+not stored. The compose file pins the value so a typo cannot lengthen it, and the code
+caps it at 60 seconds.
+
+For link polling only the low-risk part was taken: the home screen's 15-second link
+read pauses while another screen covers home. Slowing the poll for users without links
+was left out, because the patient-code dialog has no refresh of its own and a new link
+would show on the patient's home up to a minute later.
+
 ## Earlier decisions
 
 - 2026-10-21: an as-needed dose can be undone from the save notice (the

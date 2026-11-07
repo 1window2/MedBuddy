@@ -296,6 +296,7 @@ def test_backend_container_pins_token_checks_and_transport_limits() -> None:
     compose = (_REPOSITORY_ROOT / "compose.self-hosted.yml").read_text(encoding="utf-8")
     dockerfile = (_REPOSITORY_ROOT / "backend/Dockerfile").read_text(encoding="utf-8")
     assert 'FIREBASE_CHECK_REVOKED_TOKENS: "true"' in compose
+    assert 'FIREBASE_REVOCATION_CACHE_SECONDS: "30"' in compose
     assert 'FIREBASE_REQUIRE_VERIFIED_EMAIL: "true"' in compose
     assert "--ws-max-size 65536" in compose
     assert '"--ws-max-size", "65536"' in dockerfile

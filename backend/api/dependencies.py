@@ -164,6 +164,7 @@ def get_oidc_token_verifier() -> OIDCTokenVerifier:
             _oidc_token_verifier = OIDCTokenVerifier(
                 settings.FIREBASE_PROJECT_ID,
                 check_revoked=settings.FIREBASE_CHECK_REVOKED_TOKENS,
+                revocation_cache_seconds=settings.FIREBASE_REVOCATION_CACHE_SECONDS,
             )
         return _oidc_token_verifier
 

@@ -7,6 +7,7 @@ from typing import Protocol
 from firebase_admin import auth
 
 from boundaries.firebase_admin_boundary import get_firebase_admin_app
+from boundaries.oidc_token_verifier_boundary import forget_identity_state
 
 
 # Class Name: IdentityDeletionUnavailableError
@@ -70,11 +71,14 @@ class FirebaseIdentityDeletionBoundary:
         try:
             auth.delete_user(normalized_subject, app=self._app)
         except auth.UserNotFoundError:
+            forget_identity_state(normalized_subject)
             return
         except Exception as exc:
             raise IdentityDeletionUnavailableError(
                 "Firebase identity deletion is temporarily unavailable."
             ) from exc
+        # The token check reuses an account's state for a few seconds; a deleted account must not.
+        forget_identity_state(normalized_subject)
 
 
 # Class Name: FirebaseSessionRevocationBoundary

@@ -120,6 +120,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   bool _isForeground = true;
+  // Whether this screen's route was on top at the last dependency change; links refresh when it returns to the top.
+  bool _routeWasCurrent = true;
   bool _featureSearchOpen = false;
   bool _prescriptionExitDialogOpen = false;
   String? _updatingHomeMedicationSlotKey;
@@ -137,6 +139,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _isForeground =
         WidgetsBinding.instance.lifecycleState == null ||
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+  }
+
+  // 함수이름: didChangeDependencies
+  // 함수역할: 홈을 덮던 화면이 닫혀 홈이 다시 맨 위가 되면, 덮여 있는 동안 건너뛴 연동 조회를 바로 하고 주기를 다시 시작한다.
+  // 매개변수: 없음. 반환값: 없음.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final isCurrent = ModalRoute.of(context)?.isCurrent ?? true;
+    if (isCurrent && !_routeWasCurrent && _isForeground && _chatList != null) {
+      // Restarting also moves the next periodic read 15 s after this one.
+      _startChatRefresh();
+    }
+    _routeWasCurrent = isCurrent;
   }
 
   // Function Name: _syncChatControl
@@ -317,9 +333,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _chatRefreshTimer = Timer.periodic(
       const Duration(seconds: 15),
       // 함수이름: 연동 조회 타이머 콜백
-      // 함수역할: 활성 앱의 연동 상태를 갱신한다.
+      // 함수역할: 활성 앱의 연동 상태를 갱신한다. 다른 화면이 홈을 덮고 있으면 결과를 보는 곳이 없으므로 건너뛰고, 홈이 다시 보일 때 didChangeDependencies가 바로 갱신한다.
       // 매개변수: timer: 주기 타이머. 반환값: 없음.
-      (timer) => _refreshChatList(),
+      (timer) {
+        if (ModalRoute.of(context)?.isCurrent ?? true) _refreshChatList();
+      },
     );
   }
 
