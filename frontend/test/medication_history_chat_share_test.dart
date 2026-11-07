@@ -128,10 +128,11 @@ Future<MedicationHistoryControl> _pump(
   MedicationHistoryRange? sharedRange,
   double scale = 1,
   Stream<String?>? changes,
+  int? chatLinkId,
 }) async {
   final history = MedicationHistoryControl(
     patientHash: 'test-patient',
-    readOnly: sharedRange != null,
+    readOnly: sharedRange != null || chatLinkId != null,
     client: MockClient(server.respond),
     now: () => historyTestNow,
     sessionKeyProvider: () => 'test-user',
@@ -157,6 +158,9 @@ Future<MedicationHistoryControl> _pump(
         control: history,
         chatShareControl: share,
         sharedRange: sharedRange,
+        readOnly: chatLinkId != null,
+        chatLinkId: chatLinkId,
+        initiallyShowExport: chatLinkId != null,
       ),
     ),
   );
@@ -194,6 +198,40 @@ void main() {
     DateTime.utc(2026, 10, 16),
     DateTime.utc(2026, 10, 17),
   );
+
+  testWidgets('현재 대화에서 읽기 전용 기록 공유를 열고 수신자를 고정한다', (tester) async {
+    final server = _Server();
+    await _pump(tester, server, chatLinkId: 1);
+    expect(find.byKey(const Key('history-share-chat')), findsOneWidget);
+    expect(server.posts, isEmpty);
+    await tester.tap(find.byKey(const Key('history-share-chat')));
+    await tester.pumpAndSettle();
+    final send = tester.widget<FilledButton>(
+      find.byKey(const Key('history-chat-send')),
+    );
+    expect(send.onPressed, isNotNull);
+    expect(find.byKey(const Key('history-share-recipient-1')), findsOneWidget);
+    expect(find.byKey(const Key('history-share-recipient-2')), findsNothing);
+    expect(server.posts, isEmpty);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(server.posts, isEmpty);
+  });
+
+  testWidgets('현재 대화가 조회 권한 범위에 없으면 다른 대화로 대신 보내지 않는다', (tester) async {
+    final server = _Server();
+    await _pump(tester, server, chatLinkId: 2);
+    await tester.tap(find.byKey(const Key('history-share-chat')));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<FilledButton>(find.byKey(const Key('history-chat-send')))
+          .onPressed,
+      isNull,
+    );
+    expect(find.byType(RadioListTile<int>), findsNothing);
+    expect(server.posts, isEmpty);
+  });
 
   // 31일을 넘으면 채팅 기간 안내가 늘 보이지만 다른 앱 공유 실패는 가려지면 안 된다.
   testWidgets('an external share failure replaces the chat period notice', (

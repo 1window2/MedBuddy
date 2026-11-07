@@ -2,6 +2,7 @@
 // 역할: 채팅 화면의 재전송 중복 방지와 큰 글씨 레이아웃을 검증한다.
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -28,8 +29,10 @@ import 'package:medbuddy_frontend/services/authenticated_api_client.dart';
 import 'package:medbuddy_frontend/services/linked_chat_realtime_service.dart';
 import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/dose_sync_harness.dart';
+import 'medication_history_fixtures.dart';
 
 // 클래스명: _RetryChatControl
 // 역할: 첫 전송 실패, 재시도 식별자와 선택 복약 문맥을 기록하는 채팅 대역.
@@ -834,6 +837,132 @@ ChatMessage _historyShareMessage({
 // 반환값:
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
+  for (final caregiver in [false, true]) {
+    testWidgets('+ 메뉴에서 현재 대화로 기록 공유 후 돌아온다: $caregiver', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final sender = caregiver ? 'caregiver-a' : 'patient-a';
+      final messages = <ChatMessage>[];
+      final control = _RetryChatControl(
+        failFirstSend: false,
+        historyMessages: messages,
+      );
+      final realtime = _FakeRealtimeService();
+      final posts = <Map<String, dynamic>>[];
+      await http.runWithClient(
+        () async {
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: MedBuddyTheme.light(),
+              home: LinkedChatUI(
+                linkId: 17,
+                currentUserHash: sender,
+                patientHash: 'patient-a',
+                control: control,
+                realtimeService: realtime,
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          await tester.enterText(find.byType(TextField), '작성 중인 메시지');
+          await tester.pump();
+          await tester.tap(find.byKey(const Key('chatActions')));
+          await tester.pumpAndSettle();
+          await tester.tap(find.byKey(const Key('chat-action-4')));
+          await tester.pumpAndSettle();
+          final screen = tester.widget<MedicationHistoryUI>(
+            find.byType(MedicationHistoryUI),
+          );
+          expect(screen.patientHash, 'patient-a');
+          expect(screen.currentUserHash, sender);
+          expect(screen.chatLinkId, 17);
+          expect(screen.readOnly, isTrue);
+          expect(screen.initiallyShowExport, isTrue);
+          expect(posts, isEmpty);
+          await tester.tap(find.byKey(const Key('history-share-chat')));
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const Key('history-share-recipient-17')),
+            findsOneWidget,
+          );
+          expect(
+            find.byKey(const Key('history-share-recipient-18')),
+            findsNothing,
+          );
+          expect(posts, isEmpty);
+          await tester.tap(find.byKey(const Key('history-chat-send')));
+          await tester.pumpAndSettle();
+          expect(posts, hasLength(1));
+          expect(posts.single['message_kind'], 'medication_history_share');
+          expect(posts.single.containsKey('patient_hash'), isFalse);
+          expect(posts.single.containsKey('history_context'), isFalse);
+          expect(find.byType(MedicationHistoryUI), findsNothing);
+          expect(
+            find.byKey(const Key('chat-medication-history-card')),
+            findsOneWidget,
+          );
+          expect(
+            tester.widget<TextField>(find.byType(TextField)).controller!.text,
+            '작성 중인 메시지',
+          );
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+        () => MockClient((request) async {
+          if (request.url.path.endsWith('/link/list')) {
+            return historyTestResponse({
+              'data': [
+                for (final id in [17, 18])
+                  {
+                    'link_id': id,
+                    'patient_hash': 'patient-a',
+                    'caregiver_hash': 'caregiver-a',
+                    'link_status': true,
+                    'patient_alias': '환자',
+                    'caregiver_alias': '가족',
+                  },
+              ],
+            });
+          }
+          if (request.method == 'GET') {
+            expect(request.url.queryParameters['patient_hash'], 'patient-a');
+            return historyTestResponse(
+              historyTestBody(
+                start: request.url.queryParameters['start_date']!,
+                end: request.url.queryParameters['end_date']!,
+                items: [],
+              ),
+            );
+          }
+          expect(request.url.path, endsWith('/links/17/messages'));
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          posts.add(body);
+          final result = {
+            'message_id': 99,
+            'link_id': 17,
+            'sender_hash': sender,
+            'client_message_id': body['client_message_id'],
+            'body': body['body'],
+            'created_at': DateTime.now().toUtc().toIso8601String(),
+            'message_kind': 'medication_history_share',
+            'context': {
+              'history_context': {
+                'start_date': body['history_start_date'],
+                'end_date': body['history_end_date'],
+                'taken_count': 0,
+                'skipped_count': 0,
+                'unrecorded_count': 0,
+              },
+            },
+          };
+          messages.add(ChatMessage.fromJson(result));
+          return historyTestResponse({'success': true, 'data': result});
+        }),
+      );
+      await realtime.dispose();
+      control.dispose();
+    });
+  }
+
   for (final (hospital, language, status) in [
     (false, 'ko', 'before_open'),
     (false, 'en', 'closing_soon'),

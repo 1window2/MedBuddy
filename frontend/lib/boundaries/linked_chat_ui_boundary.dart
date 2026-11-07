@@ -910,6 +910,8 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     switch (action) {
       case _ChatAction.medication:
         await _showMedicationSelector();
+      case _ChatAction.medicationHistory:
+        await _shareMedicationHistory();
       case _ChatAction.scheduleRequest:
         await _showScheduleSelector();
       case _ChatAction.nearbyHospital:
@@ -937,6 +939,12 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
         _ChatContextLoad.loaded =>
           _medicationContexts.isEmpty ? _text.noActiveMedication : null,
       },
+    ),
+    (
+      action: _ChatAction.medicationHistory,
+      icon: Icons.history_rounded,
+      label: _text.isEnglish ? 'Share medication history' : '복약 기록 공유',
+      reason: _canOpenMedicationHistory ? null : _text.historyLoadFailed,
     ),
     if (!_isPatient)
       (
@@ -1291,6 +1299,28 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       !_isDeletingMessages &&
       _configuration.currentUserHash.isNotEmpty &&
       _configuration.patientHash.isNotEmpty;
+
+  // 현재 대화의 환자와 수신자를 고정하고 기존 기간·전송 확인 흐름을 재사용한다.
+  Future<void> _shareMedicationHistory() async {
+    if (!_canOpenMedicationHistory || _isSending) return;
+    var shared = false;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => MedicationHistoryUI(
+          patientHash: _configuration.patientHash,
+          currentUserHash: _configuration.currentUserHash,
+          readOnly: true,
+          isEnglish: _text.isEnglish,
+          initiallyShowExport: true,
+          chatLinkId: _configuration.linkId,
+          onChatShared: () => shared = true,
+        ),
+      ),
+    );
+    if (!mounted || !shared) return;
+    await _refreshMessages(showLoading: false, catchUp: true);
+    if (mounted) _scrollToLatest(force: true);
+  }
 
   // 진입 직전에도 현재 대화의 삭제·연동 상태를 확인하며 최신 자료의 권한은 이력 API가 검증한다.
   ChatMessage? _openableCard(ChatMessage message) {
@@ -2416,7 +2446,13 @@ enum _ChatQuickReply { taken, cannotNow, shortage, discomfort }
 // 역할: 채팅 입력창 기능 메뉴의 선택지를 담당한다.
 // 주요 책임:
 // - 약 첨부·복약 확인 요청·병원 찾기·약국 찾기를 구분하며, 순서가 화면 키 chat-action-N의 번호가 된다.
-enum _ChatAction { medication, scheduleRequest, nearbyHospital, nearbyPharmacy }
+enum _ChatAction {
+  medication,
+  scheduleRequest,
+  nearbyHospital,
+  nearbyPharmacy,
+  medicationHistory,
+}
 
 // 약·시간대 목록을 아직 받는 중인지, 받았는지, 받지 못했는지.
 enum _ChatContextLoad { loading, loaded, failed }

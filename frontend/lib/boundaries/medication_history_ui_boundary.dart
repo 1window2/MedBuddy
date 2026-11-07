@@ -41,6 +41,8 @@ class MedicationHistoryUI extends StatefulWidget {
     this.showBackButton = true,
     this.isActive = true,
     this.recordChanges,
+    this.chatLinkId,
+    this.onChatShared,
   });
 
   final String patientHash;
@@ -50,6 +52,9 @@ class MedicationHistoryUI extends StatefulWidget {
   final MedicationHistoryControl? control;
   final String? currentUserHash;
   final ShareMedicationHistory? chatShareControl;
+  // 채팅에서 들어오면 서버가 확인한 현재 연동만 공유 대상으로 표시한다.
+  final int? chatLinkId;
+  final VoidCallback? onChatShared;
   // 채팅에서 연 상세 화면은 공유 기간의 최신 자료만 읽기 전용으로 조회한다.
   final MedicationHistoryRange? sharedRange;
   // 기능 검색에서 공유를 선택해도 전송은 하지 않고 기존 기간·대상 확인창만 연다.
@@ -152,7 +157,11 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
   // 함수역할: 최초 조회가 성공하고 같은 계정 화면일 때만 요청된 내보내기 확인창을 연다.
   Future<void> _loadInitial(MedicationHistoryControl bound) async {
     await _reload();
-    if (!_isCurrent(bound) || !widget.initiallyShowExport || _readOnly) return;
+    if (!_isCurrent(bound) ||
+        !widget.initiallyShowExport ||
+        (_readOnly && widget.chatLinkId == null)) {
+      return;
+    }
     if (_control.snapshot != null) {
       await _export();
     }
@@ -170,6 +179,7 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
         oldWidget.readOnly != widget.readOnly ||
         oldWidget.currentUserHash != widget.currentUserHash ||
         oldWidget.chatShareControl != widget.chatShareControl ||
+        oldWidget.chatLinkId != widget.chatLinkId ||
         // 채팅 카드는 경로가 다시 그려질 때마다 같은 기간의 새 객체를 넘기므로 날짜로 비교한다.
         oldWidget.sharedRange?.start != widget.sharedRange?.start ||
         oldWidget.sharedRange?.end != widget.sharedRange?.end ||
@@ -750,9 +760,15 @@ class _MedicationHistoryUIState extends State<MedicationHistoryUI>
             share: _chatShare!,
             range: exportSnapshot.range,
             isEnglish: widget.isEnglish,
+            linkId: widget.chatLinkId,
           ),
         );
         if (sent != null && _isCurrent(control)) {
+          if (widget.chatLinkId != null) {
+            widget.onChatShared?.call();
+            if (mounted) Navigator.pop(context);
+            return;
+          }
           _message(
             tr('$sent 님과의 채팅에 공유했어요.', 'Shared in your chat with $sent.'),
           );
@@ -1663,11 +1679,13 @@ class _HistoryChatShareDialog extends StatefulWidget {
     required this.share,
     required this.range,
     required this.isEnglish,
+    this.linkId,
   });
   final MedicationHistoryControl history;
   final ShareMedicationHistory share;
   final MedicationHistoryRange range;
   final bool isEnglish;
+  final int? linkId;
 
   @override
   State<_HistoryChatShareDialog> createState() =>
@@ -1699,7 +1717,14 @@ class _HistoryChatShareDialogState extends State<_HistoryChatShareDialog> {
     try {
       final links = await widget.share.loadRecipients();
       if (!mounted) return;
-      setState(() => _recipients = links);
+      setState(() {
+        _recipients = widget.linkId == null
+            ? links
+            : links.where((link) => link.linkId == widget.linkId).toList();
+        if (widget.linkId != null && _recipients.length == 1) {
+          _selected = widget.linkId;
+        }
+      });
     } catch (_) {
       if (mounted) setState(() => _loadFailed = true);
     } finally {
