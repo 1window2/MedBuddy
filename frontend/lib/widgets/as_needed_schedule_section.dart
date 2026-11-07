@@ -632,19 +632,6 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
       final snapshot =
           _control.snapshot ??
           (_lastSnapshot?.range.end == _control.today ? _lastSnapshot : null);
-      // 첫 조회 전에는 빈 필요시 복용 카드와 조작 버튼 대신 로딩만 표시한다.
-      // 이후 재조회는 기존 스냅샷을 유지해 복용 체크마다 카드가 사라지지 않게 한다.
-      if (widget.isActive && snapshot == null && _control.error == null) {
-        return const Padding(
-          padding: EdgeInsets.symmetric(vertical: 24),
-          child: Center(
-            child: CircularProgressIndicator(
-              key: Key('schedule-prn-initial-loading'),
-              color: MedBuddyColors.primary,
-            ),
-          ),
-        );
-      }
       final pending = _control.pendingAsNeededChange;
       final medications = snapshot == null
           ? <MedicationHistoryMedication>[]
@@ -663,6 +650,22 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
                 ),
           );
         }
+      }
+      // 첫 조회 전에는 빈 필요시 복용 카드와 조작 버튼 대신 로딩만 표시한다.
+      // 이후 재조회는 기존 스냅샷을 유지해 복용 체크마다 카드가 사라지지 않게 한다.
+      // 이전 결과가 비어 있으면 재조회 중에도 빈 카드 대신 로딩을 유지한다.
+      if (widget.isActive &&
+          _control.error == null &&
+          (snapshot == null || (_control.busy && medications.isEmpty))) {
+        return const Padding(
+          padding: EdgeInsets.symmetric(vertical: 24),
+          child: Center(
+            child: CircularProgressIndicator(
+              key: Key('schedule-prn-initial-loading'),
+              color: MedBuddyColors.primary,
+            ),
+          ),
+        );
       }
       if (!_control.busy && _control.error == null && medications.isEmpty) {
         return widget.emptyState;
@@ -736,9 +739,7 @@ class _AsNeededScheduleSectionState extends State<AsNeededScheduleSection>
                       backgroundColor: allChecked
                           ? style.color
                           : Colors.transparent,
-                      foregroundColor: allChecked
-                          ? Colors.white
-                          : style.color,
+                      foregroundColor: allChecked ? Colors.white : style.color,
                       side: BorderSide(color: style.color, width: 1.5),
                     ),
                     icon: const Icon(Icons.done_all_rounded, size: 24),
