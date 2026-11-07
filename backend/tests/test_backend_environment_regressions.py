@@ -1,7 +1,10 @@
 # 파일명: test_backend_environment_regressions.py
 # 역할: 테스트 네트워크 격리, 앱 수명주기 정리, 토큰 소유권 이전 경합을 검증한다.
 
+from pathlib import Path
+from sqlite3 import Cursor
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -11,6 +14,7 @@ from redis.asyncio import Redis
 from redis.asyncio.connection import Connection
 from redis.exceptions import ConnectionError as RedisConnectionError
 from sqlalchemy import event
+from sqlalchemy.engine import Connection as SQLAlchemyConnection, ExecutionContext
 
 import main
 from controls.manage_push_token_control import ManagePushToken
@@ -27,7 +31,7 @@ from support.db import make_engine, make_session_factory, seed_account
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_default_test_redis_cannot_open_a_network_connection(monkeypatch):
+async def test_default_test_redis_cannot_open_a_network_connection(monkeypatch: pytest.MonkeyPatch) -> None:
     connect = AsyncMock(side_effect=AssertionError("Unexpected network connection"))
     monkeypatch.setattr(Connection, "_connect", connect)
     client = Redis.from_url("redis://127.0.0.1:6379/0")
@@ -46,7 +50,7 @@ async def test_default_test_redis_cannot_open_a_network_connection(monkeypatch):
 # - 없음.
 # 반환값:
 # - None.
-def test_test_settings_never_inherit_the_developer_redis_url():
+def test_test_settings_never_inherit_the_developer_redis_url() -> None:
     assert settings.REDIS_URL == "redis://127.0.0.1:1/0"
     assert settings.RATE_LIMIT_REDIS_URL == "redis://127.0.0.1:1/0"
 
@@ -58,7 +62,7 @@ def test_test_settings_never_inherit_the_developer_redis_url():
 # - 없음.
 # 반환값:
 # - None.
-def test_default_http_clients_cannot_open_network_connections():
+def test_default_http_clients_cannot_open_network_connections() -> None:
     from urllib.request import urlopen
 
     with pytest.raises(AssertionError, match="disabled in backend tests"):
@@ -78,7 +82,7 @@ def test_default_http_clients_cannot_open_network_connections():
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_async_http_client_blocks_network_but_preserves_fake_transport():
+async def test_async_http_client_blocks_network_but_preserves_fake_transport() -> None:
     async with httpx.AsyncClient() as client:
         with pytest.raises(AssertionError, match="disabled in backend tests"):
             await client.get("https://medbuddy-tests.invalid")
@@ -95,7 +99,7 @@ async def test_async_http_client_blocks_network_but_preserves_fake_transport():
 # 반환값:
 # - tuple; 대체 앱, 작업자 매핑, 종료 함수 매핑.
 @pytest.fixture
-def lifespan_resources(monkeypatch):
+def lifespan_resources(monkeypatch: pytest.MonkeyPatch) -> tuple[SimpleNamespace, dict[str, SimpleNamespace], dict[str, AsyncMock]]:
     workers = {}
     for name in (
         "CaregiverAlertOutboxWorker", "ChatNotificationWorker",
@@ -136,8 +140,8 @@ def lifespan_resources(monkeypatch):
     "PeriodicDataMaintenanceRunner", "redis", "close_pharmacy_boundary",
 ])
 async def test_lifespan_closes_remaining_resources_after_shutdown_failure(
-    lifespan_resources, failure,
-):
+    lifespan_resources: tuple[SimpleNamespace, dict[str, SimpleNamespace], dict[str, AsyncMock]], failure: str,
+) -> None:
     app, workers, closers = lifespan_resources
     failed_close = (
         workers[failure].stop if failure in workers
@@ -169,8 +173,8 @@ async def test_lifespan_closes_remaining_resources_after_shutdown_failure(
     "ChatNotificationWorker", "PeriodicDataMaintenanceRunner",
 ])
 async def test_lifespan_cleans_started_workers_when_later_startup_fails(
-    lifespan_resources, monkeypatch, failure,
-):
+    lifespan_resources: tuple[SimpleNamespace, dict[str, SimpleNamespace], dict[str, AsyncMock]], monkeypatch: pytest.MonkeyPatch, failure: str,
+) -> None:
     app, workers, closers = lifespan_resources
     monkeypatch.setattr(main, failure, Mock(side_effect=RuntimeError("startup failed")))
     with pytest.raises(RuntimeError, match="startup failed"):
@@ -196,7 +200,9 @@ async def test_lifespan_cleans_started_workers_when_later_startup_fails(
 @pytest.mark.parametrize("failure", [
     "CaregiverAlertOutboxWorker", "ChatNotificationWorker", "PeriodicDataMaintenanceRunner",
 ])
-async def test_lifespan_cleans_partially_started_worker(lifespan_resources, failure):
+async def test_lifespan_cleans_partially_started_worker(
+    lifespan_resources: tuple[SimpleNamespace, dict[str, SimpleNamespace], dict[str, AsyncMock]], failure: str,
+) -> None:
     app, workers, closers = lifespan_resources
     workers[failure].start.side_effect = RuntimeError("partial startup failed")
     with pytest.raises(RuntimeError, match="partial startup failed"):
@@ -219,7 +225,7 @@ async def test_lifespan_cleans_partially_started_worker(lifespan_resources, fail
 # - tmp_path: Path; 테스트 전용 임시 디렉터리.
 # 반환값:
 # - None.
-def test_old_account_logout_cannot_disable_a_concurrently_transferred_token(tmp_path):
+def test_old_account_logout_cannot_disable_a_concurrently_transferred_token(tmp_path: Path) -> None:
     engine = make_engine(tmp_path)
     sessions = make_session_factory(engine)
     transferred = False
@@ -242,7 +248,10 @@ def test_old_account_logout_cannot_disable_a_concurrently_transferred_token(tmp_
         # 반환값:
         # - None.
         @event.listens_for(engine, "before_cursor_execute")
-        def transfer_before_revoke(connection, cursor, statement, parameters, context, many):
+        def transfer_before_revoke(
+            connection: SQLAlchemyConnection, cursor: Cursor, statement: str,
+            parameters: tuple[Any, ...] | list[tuple[Any, ...]], context: ExecutionContext, many: bool,
+        ) -> None:
             nonlocal transferred
             if not transferred and statement.startswith("UPDATE device_push_tokens"):
                 transferred = True

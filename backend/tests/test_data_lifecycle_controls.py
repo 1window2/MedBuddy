@@ -2,12 +2,14 @@
 # Role: Regression coverage for retention, account-deletion retries, and memory/Redis
 #   request-rate enforcement.
 
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
+from starlette.types import Receive, Scope, Send
 
 from boundaries.firebase_identity_boundary import IdentityDeletionUnavailableError
 from controls.manage_account_control import (
@@ -54,7 +56,7 @@ from services.saved_medication_retention import SavedMedicationRetentionPolicy
 # 반환값:
 # - 격리 Session을 제공하며 fixture 정리 시 세션과 엔진을 닫음.
 @pytest.fixture
-def db_session():
+def db_session() -> Iterator[Session]:
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -77,7 +79,7 @@ def db_session():
 # - db_session (Session): Isolated SQLAlchemy session supplied by the test fixture.
 # Returns:
 # - None.
-def test_data_maintenance_removes_expired_and_orphaned_rows(db_session) -> None:
+def test_data_maintenance_removes_expired_and_orphaned_rows(db_session: Session) -> None:
     patient_hash = "patient-maintenance"
     db_session.add(_UserAccount(user_hash=patient_hash))
     medication = _SavedMedication(
@@ -141,7 +143,7 @@ def test_data_maintenance_removes_expired_and_orphaned_rows(db_session) -> None:
 # - db_session (Session): Isolated SQLAlchemy session supplied by the test fixture.
 # Returns:
 # - None.
-def test_data_maintenance_keeps_rows_inside_their_retention_window(db_session) -> None:
+def test_data_maintenance_keeps_rows_inside_their_retention_window(db_session: Session) -> None:
     patient_hash = "patient-kept"
     now = datetime.now(UTC).replace(tzinfo=None)
     db_session.add(_UserAccount(user_hash=patient_hash))
@@ -208,7 +210,7 @@ def test_data_maintenance_keeps_rows_inside_their_retention_window(db_session) -
 # - db_session (Session): Isolated SQLAlchemy session supplied by the test fixture.
 # Returns:
 # - None.
-def test_data_maintenance_deletes_only_old_finished_caregiver_alerts(db_session) -> None:
+def test_data_maintenance_deletes_only_old_finished_caregiver_alerts(db_session: Session) -> None:
     patient_hash = "patient-outbox"
     now = datetime.now(UTC).replace(tzinfo=None)
     retention = timedelta(days=settings.CAREGIVER_ALERT_OUTBOX_RETENTION_DAYS)
@@ -266,7 +268,7 @@ def test_data_maintenance_deletes_only_old_finished_caregiver_alerts(db_session)
 # - db_session (Session): 테스트 fixture가 제공한 격리 SQLAlchemy 세션.
 # 반환값:
 # - 없음 (None).
-def test_manage_account_exports_and_deletes_owned_data(db_session) -> None:
+def test_manage_account_exports_and_deletes_owned_data(db_session: Session) -> None:
     control = ManageAccount(db_session)
     user_hash = control.ensureAccount("patient-delete", commit=True)
     db_session.add(
@@ -296,7 +298,7 @@ def test_manage_account_exports_and_deletes_owned_data(db_session) -> None:
 # - db_session (Session): Isolated SQLAlchemy session supplied by the test fixture.
 # Returns:
 # - None.
-def test_account_export_leaves_out_the_name_the_other_participant_set(db_session) -> None:
+def test_account_export_leaves_out_the_name_the_other_participant_set(db_session: Session) -> None:
     from entities.patient_caregiver_link_entity import _PatientCaregiverLink
 
     control = ManageAccount(db_session)
@@ -331,7 +333,7 @@ def test_account_export_leaves_out_the_name_the_other_participant_set(db_session
 # - db_session (Session): Isolated SQLAlchemy session supplied by the test fixture.
 # Returns:
 # - None.
-def test_account_export_leaves_out_the_other_participants_choices(db_session) -> None:
+def test_account_export_leaves_out_the_other_participants_choices(db_session: Session) -> None:
     from entities.caregiver_notification_entity import _CaregiverNotification
     from entities.patient_caregiver_link_entity import _PatientCaregiverLink
     from entities.user_setting_entity import _UserSetting
@@ -406,7 +408,7 @@ class _FailOnceIdentityDeletionBoundary:
 # - db_session (Session): Isolated SQLAlchemy session supplied by the test fixture.
 # Returns:
 # - None.
-def test_firebase_account_deletion_tombstone_allows_safe_retry(db_session) -> None:
+def test_firebase_account_deletion_tombstone_allows_safe_retry(db_session: Session) -> None:
     identity_boundary = _FailOnceIdentityDeletionBoundary()
     control = ManageAccount(
         db_session,
@@ -461,7 +463,7 @@ def test_firebase_account_deletion_tombstone_allows_safe_retry(db_session) -> No
 # - db_session (Session): Isolated SQLAlchemy session supplied by the test fixture.
 # Returns:
 # - None.
-def test_zero_day_retention_preserves_ended_medication_history(db_session) -> None:
+def test_zero_day_retention_preserves_ended_medication_history(db_session: Session) -> None:
     patient_hash = "patient-history"
     db_session.add(_UserAccount(user_hash=patient_hash))
     medication = _SavedMedication(
@@ -495,7 +497,7 @@ def test_zero_day_retention_preserves_ended_medication_history(db_session) -> No
 # - db_session (Session): 테스트 fixture가 제공한 격리 SQLAlchemy 세션.
 # 반환값:
 # - 없음 (None).
-def test_data_maintenance_removes_only_expired_chat_messages(db_session) -> None:
+def test_data_maintenance_removes_only_expired_chat_messages(db_session: Session) -> None:
     now = datetime.now(UTC).replace(tzinfo=None)
     patient_hash = "patient-chat-retention"
     caregiver_hash = "caregiver-chat-retention"
@@ -552,7 +554,7 @@ def test_data_maintenance_removes_only_expired_chat_messages(db_session) -> None
 # - send (Send): 응답 이벤트를 받을 ASGI 전송 함수.
 # 반환값:
 # - 없음 (None).
-async def _empty_asgi_app(scope, receive, send) -> None:
+async def _empty_asgi_app(scope: Scope, receive: Receive, send: Send) -> None:
     return None
 
 

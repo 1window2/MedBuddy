@@ -1,11 +1,16 @@
 # 파일명: test_delayed_action_regressions.py
 # 역할: 삭제·재연동·토큰 재등록 뒤 지연된 요청이 새 리소스를 변경하지 못하도록 검증한다.
 
+from pathlib import Path
+from sqlite3 import Cursor
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import event
+from sqlalchemy.engine import Connection, ExecutionContext
+from sqlalchemy.orm import Session, sessionmaker
 
 from controls.check_saved_medication_control import CheckSavedMedication
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
@@ -33,7 +38,7 @@ from support.db import make_engine, make_session_factory, seed_account, seed_med
 # 반환값:
 # - None.
 @pytest.mark.parametrize("action", ["delete", "complete"])
-def test_deleted_medication_request_cannot_target_new_medication(fk_db, action):
+def test_deleted_medication_request_cannot_target_new_medication(fk_db: Session, action: str) -> None:
     old = seed_medication(fk_db, daily_frequency="1", schedule_slot_keys='["morning"]')
     old_id = old.id
     CheckSavedMedication(fk_db).requestDelete(old_id, "patient-a")
@@ -61,7 +66,7 @@ def test_deleted_medication_request_cannot_target_new_medication(fk_db, action):
 # - db: Session; 격리 계정·채팅 세션.
 # 반환값:
 # - int; 생성된 연동 ID.
-def seed_link(db):
+def seed_link(db: Session) -> int:
     seed_account(db, "patient-a", "caregiver-a")
     link = _PatientCaregiverLink(patient_hash="patient-a", caregiver_hash="caregiver-a", linked=True)
     db.add(link)
@@ -78,7 +83,7 @@ def seed_link(db):
 # - key: str; 메시지 요청 ID와 본문.
 # 반환값:
 # - int; 저장된 메시지 ID.
-def send(db, link_id, key):
+def send(db: Session, link_id: int, key: str) -> int:
     return ManageLinkedChat(db).send_message(
         link_id=link_id, sender_hash="patient-a", client_message_id=key, body=key,
     ).message.message_id
@@ -92,7 +97,7 @@ def send(db, link_id, key):
 # - link_id: int; 환자·보호자 연동 ID.
 # 반환값:
 # - None.
-def relink(db, link_id):
+def relink(db: Session, link_id: int) -> None:
     control = LinkPatientCaregiver(db)
     control.requestUnlink(link_id, "patient-a")
     code = control.generatePatientHash("patient-a")["data"]["patient_code"]
@@ -106,7 +111,7 @@ def relink(db, link_id):
 # - fk_db: Session; 외래 키가 활성화된 격리 데이터베이스.
 # 반환값:
 # - None.
-def test_delayed_message_delete_after_relink_cannot_erase_new_message(fk_db):
+def test_delayed_message_delete_after_relink_cannot_erase_new_message(fk_db: Session) -> None:
     link_id = seed_link(fk_db)
     old_id = send(fk_db, link_id, "before_unlink")
     relink(fk_db, link_id)
@@ -126,7 +131,7 @@ def test_delayed_message_delete_after_relink_cannot_erase_new_message(fk_db):
 # - fk_session_factory: sessionmaker; 격리 데이터베이스의 세션을 생성한다.
 # 반환값:
 # - None.
-def test_old_chat_worker_cannot_finish_replacement_message(fk_session_factory):
+def test_old_chat_worker_cannot_finish_replacement_message(fk_session_factory: sessionmaker[Session]) -> None:
     processor = ProcessChatNotifications(fk_session_factory, lambda: None, AsyncMock(), AsyncMock())
     with fk_session_factory() as db:
         link_id = seed_link(db)
@@ -150,7 +155,7 @@ def test_old_chat_worker_cannot_finish_replacement_message(fk_session_factory):
 # 반환값:
 # - None.
 @pytest.mark.parametrize("registration", ["other_owner", "same_owner", "round_trip"])
-def test_late_push_rejection_preserves_new_registration(tmp_path, registration):
+def test_late_push_rejection_preserves_new_registration(tmp_path: Path, registration: str) -> None:
     engine = make_engine(tmp_path)
     factory = make_session_factory(engine)
     token = "synthetic-delayed-response-token-12345"
@@ -183,7 +188,7 @@ def test_late_push_rejection_preserves_new_registration(tmp_path, registration):
 # - fk_db: Session; 외래 키가 활성화된 격리 데이터베이스.
 # 반환값:
 # - None.
-def test_push_rejection_disables_only_the_observed_registration(fk_db):
+def test_push_rejection_disables_only_the_observed_registration(fk_db: Session) -> None:
     seed_account(fk_db, "patient-a", "patient-b")
     control = ManagePushToken(fk_db)
     control.registerPushToken("patient-a", "observed-token-1234567890", "android")
@@ -203,7 +208,7 @@ def test_push_rejection_disables_only_the_observed_registration(fk_db):
 # - fk_db: Session; 외래 키가 활성화된 격리 데이터베이스.
 # 반환값:
 # - None.
-def test_same_owner_reregistration_with_equal_persisted_timestamp_is_preserved(fk_db):
+def test_same_owner_reregistration_with_equal_persisted_timestamp_is_preserved(fk_db: Session) -> None:
     seed_account(fk_db, "patient-a")
     token = "same-timestamp-registration-token-123"
     control = ManagePushToken(fk_db)
@@ -228,7 +233,7 @@ def test_same_owner_reregistration_with_equal_persisted_timestamp_is_preserved(f
 # - tmp_path: Path; 테스트 전용 임시 디렉터리.
 # 반환값:
 # - None.
-def test_push_cleanup_rechecks_registration_in_the_update(tmp_path):
+def test_push_cleanup_rechecks_registration_in_the_update(tmp_path: Path) -> None:
     engine = make_engine(tmp_path)
     factory = make_session_factory(engine)
     token = "atomic-cleanup-registration-token-123"
@@ -253,7 +258,10 @@ def test_push_cleanup_rechecks_registration_in_the_update(tmp_path):
             # - executemany: bool; 다중 실행 여부(사용하지 않음).
             # 반환값:
             # - None.
-            def renew_before_update(connection, cursor, statement, parameters, context, executemany):
+            def renew_before_update(
+                connection: Connection, cursor: Cursor, statement: str,
+                parameters: tuple[Any, ...] | list[tuple[Any, ...]], context: ExecutionContext, executemany: bool,
+            ) -> None:
                 nonlocal renewed
                 if not renewed and statement.startswith("UPDATE device_push_tokens SET enabled="):
                     renewed = True

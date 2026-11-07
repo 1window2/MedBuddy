@@ -4,6 +4,8 @@
 import importlib.util
 from datetime import datetime
 from pathlib import Path
+from types import ModuleType
+from typing import Any
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -14,6 +16,7 @@ from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from alembic.script import ScriptDirectory
 from sqlalchemy import MetaData, Table, create_engine, inspect, select
+from sqlalchemy.engine import Connection, Engine, Row
 from sqlalchemy.orm import Session
 
 from controls.check_saved_medication_control import CheckSavedMedication
@@ -39,7 +42,7 @@ CATALOG_REVISION = "c5e1a7f3b902"
 # - 없음.
 # 반환값:
 # - ModuleType; upgrade를 직접 호출할 마이그레이션 모듈.
-def migration():
+def migration() -> ModuleType:
     spec = importlib.util.spec_from_file_location(
         "resource_id_migration", ROOT / "migrations/versions/d19e7c4b2a60_preserve_deleted_resource_ids.py",
     )
@@ -55,7 +58,7 @@ def migration():
 # - tmp_path: Path; 테스트 전용 임시 디렉터리.
 # 반환값:
 # - Config; 테스트 데이터베이스 URL이 지정된 설정.
-def config_for(tmp_path):
+def config_for(tmp_path: Path) -> Config:
     config = Config(str(ROOT / "alembic.ini"))
     config.attributes["database_url"] = f"sqlite:///{(tmp_path / 'id-migration.db').as_posix()}"
     return config
@@ -68,7 +71,7 @@ def config_for(tmp_path):
 # - connection: Connection; 검사할 SQLite 연결.
 # 반환값:
 # - dict[str, list[Row]]; 테이블별 전체 행.
-def snapshot(connection):
+def snapshot(connection: Connection) -> dict[str, list[Row[tuple[Any, ...]]]]:
     return {
         table: sorted(connection.exec_driver_sql(f'SELECT * FROM "{table}"').all(), key=repr)
         for table in inspect(connection).get_table_names()
@@ -117,7 +120,7 @@ def seed_historical_medication(db: Session, **overrides: object) -> int:
 # - engine: Engine; 이전 버전 스키마가 적용된 데이터베이스.
 # 반환값:
 # - tuple[int, int, int]; 약품·연동·메시지 ID.
-def seed_history(engine):
+def seed_history(engine: Engine) -> tuple[int, int, int]:
     with Session(engine) as db:
         seed_account(db, "patient-a", "caregiver-a", "unrelated-owner")
         medication_id = seed_historical_medication(db)
@@ -142,7 +145,7 @@ def seed_history(engine):
 # - tmp_path: Path; 테스트 전용 임시 디렉터리.
 # 반환값:
 # - None.
-def test_existing_database_upgrade_preserves_rows_and_prevents_id_reuse(tmp_path):
+def test_existing_database_upgrade_preserves_rows_and_prevents_id_reuse(tmp_path: Path) -> None:
     config = config_for(tmp_path)
     command.upgrade(config, OLD_REVISION)
     engine = create_engine(config.attributes["database_url"])
@@ -182,7 +185,7 @@ def test_existing_database_upgrade_preserves_rows_and_prevents_id_reuse(tmp_path
 # - tmp_path: Path; 테스트 전용 임시 디렉터리.
 # 반환값:
 # - None.
-def test_migration_rejects_populated_foreign_key_connection_before_changes(tmp_path):
+def test_migration_rejects_populated_foreign_key_connection_before_changes(tmp_path: Path) -> None:
     config = config_for(tmp_path)
     command.upgrade(config, OLD_REVISION)
     engine = create_engine(config.attributes["database_url"])
@@ -210,7 +213,7 @@ def test_migration_rejects_populated_foreign_key_connection_before_changes(tmp_p
 # - fk_db: Session; 외래 키가 활성화된 격리 데이터베이스.
 # 반환값:
 # - None.
-def test_repeat_upgrade_does_not_reset_deleted_high_water_marks(fk_engine, fk_db):
+def test_repeat_upgrade_does_not_reset_deleted_high_water_marks(fk_engine: Engine, fk_db: Session) -> None:
     seed_account(fk_db, "patient-a", "caregiver-a")
     medication = seed_medication(fk_db, id=100)
     fk_db.delete(medication)
@@ -240,7 +243,7 @@ def test_repeat_upgrade_does_not_reset_deleted_high_water_marks(fk_engine, fk_db
 # - tmp_path: Path; 테스트 전용 임시 디렉터리.
 # 반환값:
 # - None.
-def test_upgrade_cannot_recover_ids_deleted_before_autoincrement(tmp_path):
+def test_upgrade_cannot_recover_ids_deleted_before_autoincrement(tmp_path: Path) -> None:
     config = config_for(tmp_path)
     command.upgrade(config, OLD_REVISION)
     engine = create_engine(config.attributes["database_url"])
@@ -276,7 +279,7 @@ def test_upgrade_cannot_recover_ids_deleted_before_autoincrement(tmp_path):
 # 반환값:
 # - None.
 @pytest.mark.parametrize("starting_revision", [NEW_REVISION, CATALOG_REVISION, "both"])
-def test_merge_preserves_applied_histories_data_and_deleted_ids(tmp_path, starting_revision):
+def test_merge_preserves_applied_histories_data_and_deleted_ids(tmp_path: Path, starting_revision: str) -> None:
     config = config_for(tmp_path)
     if starting_revision == "both":
         command.upgrade(config, NEW_REVISION)
@@ -311,7 +314,7 @@ def test_merge_preserves_applied_histories_data_and_deleted_ids(tmp_path, starti
         # - 없음.
         # 반환값:
         # - None.
-        def delete_highest_ids():
+        def delete_highest_ids() -> None:
             with Session(engine) as db:
                 medication_id = seed_historical_medication(db, id=900, item_name="deleted-highest")
                 message = _ChatMessage(

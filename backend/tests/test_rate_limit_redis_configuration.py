@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 import yaml
 from redis.exceptions import ConnectionError, OutOfMemoryError, ResponseError
+from starlette.types import Message
 
 import main
 from core.config import Settings
@@ -75,7 +76,7 @@ def test_production_accepts_separate_server_and_explicit_port() -> None:
 # - monkeypatch: pytest.MonkeyPatch; 테스트 뒤 의존성 교체를 복원한다.
 # 반환값:
 # - None.
-def test_app_uses_counter_url_not_cache_url(monkeypatch) -> None:
+def test_app_uses_counter_url_not_cache_url(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(main.settings, "REDIS_URL", "redis://cache:6379/0")
     monkeypatch.setattr(main.settings, "RATE_LIMIT_REDIS_URL", "redis://counters:6379/0")
     application = main.create_app()
@@ -92,7 +93,7 @@ def test_app_uses_counter_url_not_cache_url(monkeypatch) -> None:
 # - None.
 @pytest.mark.anyio
 @pytest.mark.parametrize("policy", ["noeviction", "allkeys-lru", "volatile-lru", ""])
-async def test_readiness_verifies_counter_policy_and_always_closes(policy: str, monkeypatch) -> None:
+async def test_readiness_verifies_counter_policy_and_always_closes(policy: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(main.settings, "RATE_LIMIT_REDIS_URL", "redis://counters:6379/0")
     redis = SimpleNamespace(ping=AsyncMock(return_value=True), config_get=AsyncMock(return_value={"maxmemory-policy": policy}), aclose=AsyncMock())
     with patch("main.Redis.from_url", return_value=redis) as factory:
@@ -145,7 +146,7 @@ async def test_required_counter_oom_and_outage_return_503_without_fallback(error
     # - message: dict; 미들웨어가 보낸 ASGI 응답 이벤트.
     # 반환값:
     # - None.
-    async def send(message):
+    async def send(message: Message) -> None:
         responses.append(message)
 
     for _ in range(2):

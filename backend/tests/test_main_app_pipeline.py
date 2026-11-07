@@ -1657,7 +1657,7 @@ async def test_pharmacy_share_with_a_live_lookup_charges_the_pharmacy_daily_quot
     # - exceeded_detail: str; refusal detail, unused.
     # Returns:
     # - None.
-    async def record(_request, *, user_hash, request_scope, rule, exceeded_detail):
+    async def record(_request: object, *, user_hash: str, request_scope: str, rule: RateLimitRule, exceeded_detail: str) -> None:
         charged.append((request_scope, rule))
 
     monkeypatch.setattr(route_support, "enforce_user_quota", record)

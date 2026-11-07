@@ -3,6 +3,7 @@
 #   schema, the migration head or role settings, and that provisioning is opt-in.
 
 import os
+from typing import Any, NoReturn
 from uuid import uuid4
 
 import pytest
@@ -19,7 +20,7 @@ POSTGRES = os.getenv("MEDBUDDY_RUN_POSTGRES_INTEGRATION") == "1"
 # Description: Without settings nothing changes; one setting alone is refused.
 # Parameters: monkeypatch - environment isolation; capsys - captured output.
 # Returns: None.
-def test_provisioning_is_skipped_until_both_settings_are_present(monkeypatch, capsys) -> None:
+def test_provisioning_is_skipped_until_both_settings_are_present(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.delenv("MEDBUDDY_APP_DB_USER", raising=False)
     monkeypatch.delenv("MEDBUDDY_APP_DB_PASSWORD", raising=False)
     assert provisioning.main() == 0
@@ -48,7 +49,7 @@ def test_role_name_and_password_are_checked_before_any_statement() -> None:
         # - _kwargs: dict; unused SQL options.
         # Returns:
         # - Never returns; raises AssertionError.
-        def execute(self, *_args, **_kwargs):
+        def execute(self, *_args: Any, **_kwargs: Any) -> NoReturn:
             raise AssertionError("no statement may run")
 
     for role, password in (('app"; DROP', "x" * 20), ("App", "x" * 20), ("medbuddy_app", "short")):
