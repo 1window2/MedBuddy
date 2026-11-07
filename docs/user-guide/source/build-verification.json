@@ -148,12 +148,12 @@
     "historical_image_files": "Preserved byte-for-byte; older app and emulator captures are not reclassified as new captures.",
     "limitations": "Synthetic captures do not establish device behavior, server persistence, AI accuracy, push delivery or production release."
   },
-  "capture_changes": "No screenshots were captured, replaced or modified in this revision.",
-  "pdf_sha256": "ccaeed395f0a31a2f5f7ea89c50879f3eaf733f8b8277db3fc2e79329278f520",
-  "markdown_sha256": "0f607118182d4228bab04af2898c1e8b7f87f88fa62dbfc3c0cbdeceeb464c0f",
-  "content_sha256": "e2bcfd75c792670e40493330265618e65062d54ea0cd9f9552d9337c9ef4eb52",
-  "layout_sha256": "f9cfe130fec3930ab0413cb1e257556f286970cfdeaa93a4677330c7feb446f9",
-  "asset_manifest_sha256": "8ee3c8867a679254b685b58da33fdf72cdb6beb9bb9e57f274d57ea8af780240",
+  "capture_changes": "2.6-7 uses a new emulator capture (assets/manual-custom-notice-2026-11-07.png, medbuddy_rc Android 14 debug build against a local disabled-auth backend, interval 3) that shows the restored dose-day notice; no other screenshot changed.",
+  "pdf_sha256": "0c28c79f726d40f074666478ba28f80c9b519c3cd2b936703c91a30188b5da18",
+  "markdown_sha256": "b1b0b0d83b7a561c573caaf1453416ea274f3af0654d43f980f424908a14bd95",
+  "content_sha256": "fa88c98870009c5ff7d4a358a4231a8eb92785b83e3992dd7d9d13e5359b8dfd",
+  "layout_sha256": "be51faa8dbdab4d369ba9cd0787a1eaa993abb9d1d328ca9ce28d510a549c804",
+  "asset_manifest_sha256": "7cdbabafa0aea63f1dc9dc44ef1e85b55e2536da12edf012862bea9918b3691d",
   "fonts_sha256": {
     "NanumBarunGothic.ttf": "9b872773134e2e4d8c0b17021266786576db06c843ede0d0b523b214a450756c",
     "NanumBarunGothicBold.ttf": "39bba4cd9bd2986143825c8654abbb62443914ab33b346c0c929a916f5d98bf2"
@@ -168,7 +168,7 @@
     "pdf_file": "MedBuddy_User_Guide_ko_portrait.pdf",
     "pages": 141,
     "steps": 327,
-    "pdf_sha256": "0530b3de1aedc3a397847e28647e75c40c6db8170a37526101253919b425aab3",
+    "pdf_sha256": "14cf903ac24157d0ffd1ee046ef95568a4cfa8af2a2ac70a19fc7863928fc0e7",
     "internal_links_verified": 196,
     "bookmarks_verified": 94,
     "all_step_text_verified": true,
@@ -179,7 +179,7 @@
     "pdf_file": "MedBuddy_User_Guide_ko.pdf",
     "pages": 134,
     "steps": 327,
-    "pdf_sha256": "ccaeed395f0a31a2f5f7ea89c50879f3eaf733f8b8277db3fc2e79329278f520",
+    "pdf_sha256": "0c28c79f726d40f074666478ba28f80c9b519c3cd2b936703c91a30188b5da18",
     "internal_links_verified": 94,
     "bookmarks_verified": 94,
     "all_step_text_verified": true,
@@ -239,5 +239,26 @@
     "all_step_pages_unchanged": true,
     "landscape_alignment_revision": "All screenshot left edges aligned to step numbers; symmetric outer grid margins.",
     "previous_spacing_measurements": "Enlargement ratios describe the preceding spacing revision, not this left-alignment revision."
+  },
+  "text_update_2026_11_07": {
+    "changed_steps_and_notes": [
+      "2.6-6 필요시 복용 안내",
+      "2.6-7 비매일 주기의 복용일 안내와 새 사진",
+      "5.2 참고: 검색약은 최근 하루 안의 검색 정보로 표시"
+    ],
+    "changed_pages": {
+      "portrait": [
+        27,
+        75
+      ],
+      "landscape": [
+        25,
+        72
+      ]
+    },
+    "comparison": "직전 발행본과 50dpi 전체 페이지 렌더를 비교해 위 쪽만 바뀌었고 쪽수는 세로 141·가로 134로 같다. 바뀐 쪽은 확대해 잘림·겹침이 없음을 확인했다.",
+    "screenshots_changed": [
+      "2.6-7"
+    ]
   }
 }

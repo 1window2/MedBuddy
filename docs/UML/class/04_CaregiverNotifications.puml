@@ -147,7 +147,8 @@ ChatMessageDraft --> ChatMedicationReference : 저장 약 ID와 분리된 표시
 LinkedChatUI --> ChatMedicationReference : 일반 채팅 첨부; 복용 동작 없음
 note bottom of ChatMedicationReference
   품목 코드·제품명·제조사·안전한 이미지 URL만 허용한다.
-  저장 약과 합쳐 최대 10개; 서버 카탈로그 재확정은 아니다.
+  저장 약과 합쳐 최대 10개. 서버는 최근 24시간 약 검색 결과로
+  카드를 다시 만들고, 검색되지 않은 품목은 거절한다(앱은 다시 검색 안내).
   본문·유형·참조가 바뀐 같은 요청 ID는 거절한다.
 end note
 note bottom of ShareMedicationHistory

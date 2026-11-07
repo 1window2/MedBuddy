@@ -1514,20 +1514,20 @@
         "number": 7,
         "crop": [
           45,
-          980,
+          780,
           1035,
-          1550
+          1575
         ],
         "boxes": [
           [
             80,
-            1220,
+            1060,
             1000,
-            1535
+            1560
           ]
         ],
         "callouts": [],
-        "image": "assets/widget-manual-custom-medium-2026-11-07.png"
+        "image": "assets/manual-custom-notice-2026-11-07.png"
       },
       {
         "identity": "ASM-P031:7",

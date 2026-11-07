@@ -2475,6 +2475,17 @@ package "FastAPI Backend" {
             한 날짜 운영시간을 주간 시간표로 추정하지 않는다.
         end note
 
+        class "MedicationSearchCacheRecord" as DBMedicationSearchCache <<ORM: medication_search_cache>> {
+            + item_seq: String
+            + item_name, manufacturer, image_url: String
+            + fetched_at: DateTime
+        }
+        note right of DBMedicationSearchCache
+            약 검색(/identify)이 돌려준 공개 품목 정보만 24시간 보관한다.
+            검색한 계정은 남기지 않는다. 채팅 검색약 카드는
+            이 값으로 다시 만들고, 하루 안에 검색되지 않은 품목은 거절한다.
+        end note
+
         class "PharmacyHolidayScheduleRecord" as DBPharmacyHolidaySchedule <<ORM: pharmacy_holiday_schedules>> {
             + schedule_date: Date
             + pharmacy_id: String
@@ -2893,6 +2904,8 @@ NEMCPharmacyAPI ..> BPharmacyCatalogEntry
 PharmacyCatalogRepository ..> BPharmacyCatalogEntry
 PharmacyCatalogRepository --> DBPharmacyCatalog
 PharmacyCatalogRepository --> DBPharmacySearchCache
+BCheckMedicationDetail ..> DBMedicationSearchCache : 검색 결과 기억(라우터가 별도 세션으로 저장)
+BManageLinkedChat --> DBMedicationSearchCache : 검색약 카드 재구성
 PharmacyCatalogRepository --> DBPharmacyHolidaySchedule
 PharmacyCatalogRepository --> DBPharmacyHolidayFetch
 PharmacyCatalogRepository --> DBKoreanHoliday
