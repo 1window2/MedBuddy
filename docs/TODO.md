@@ -40,8 +40,14 @@ the section that recorded it. Changes are listed in the
 - [ ] Android instrumented tests in CI (an emulator job). Added on 2026-11-07: the
       `instrumented` job of Flutter CI runs `:app:connectedDebugAndroidTest` on an
       API 34 emulator, so the release gate now also needs the home-widget layout and
-      refresh tests. The six tests passed on the local `medbuddy_rc` emulator (API 34);
-      the job itself has not run on GitHub yet.
+      refresh tests. The six tests passed on the local `medbuddy_rc` emulator (API 34,
+      `pixel_7`, 420 dpi). The first GitHub run used the runner's default 160 dpi
+      screen and failed one case, so the job now uses the `pixel_7` profile too.
+- [ ] Owner decision (visual): on a 160 dpi screen the one-row widget (250 x 48 dp,
+      patient, normal text, missed dose) cuts the save-state line by 2 px when the
+      missed-dose note wraps to two lines (CI run 42317116065 on `e7bef59`). It fits
+      on the devices checked so far (420 dpi emulators, Galaxy Note10); not checked at
+      240 or 320 dpi. Changing the row layout would change the widget's look.
 - [x] Guide and UML version marks (2026-11-07): the guide cover, footer and notes
       say 1.0.0 and describe the two 1.0.0 behaviour changes (yesterday's list after
       midnight, the per-account pharmacy limit); the class and overall sequence

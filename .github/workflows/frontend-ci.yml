@@ -101,7 +101,9 @@ jobs:
         ls -l "${APK}"
 
   # The home-widget layout and refresh tests measure real Android fonts and alarms, so they
-  # run on an emulator. API 34 matches the local debug emulator; the layout test reads
+  # run on an emulator. API 34 and the pixel_7 profile (420 dpi) match the local debug
+  # emulator the layout limits were measured on; without a profile the emulator is a 160 dpi
+  # screen, where pixel rounding moves the one-row widget by 2 px. The layout test reads
   # targetCellWidth, which needs API 31 or later. Only the app module is tested: the plugin
   # modules declare no instrumented tests and one of them cannot build its test manifest.
   instrumented:
@@ -155,6 +157,7 @@ jobs:
         api-level: 34
         arch: x86_64
         target: google_apis
+        profile: pixel_7
         emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect
         disable-animations: true
         working-directory: ./frontend/android
