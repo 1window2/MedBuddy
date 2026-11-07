@@ -37,6 +37,14 @@ class ManageChatList extends ChangeNotifier {
   String? _publishedSignature;
   bool _disposed = false;
   bool _isLoading = false;
+  bool _hasResolvedLinks = false;
+
+  // 함수이름: hasResolvedLinks
+  // 함수역할: 현재 계정의 연동 목록을 서버에서 한 번 이상 확인했는지 구분한다.
+  // 매개변수: 없음.
+  // 반환값: 빈 목록도 정상 응답으로 확인했으면 true; 최초 조회 실패는 false.
+  bool get hasResolvedLinks => _hasResolvedLinks;
+
   // Function Name: isLoading
   // Description: Exposes whether an initial or explicitly announced refresh is loading.
   // Parameters: None.
@@ -219,6 +227,7 @@ class ManageChatList extends ChangeNotifier {
           // 서버 순서(연동 ID)의 목록이 잠시 보였다가 다시 바뀌지 않도록 정렬을 마친 뒤 교체한다.
           links.sort((a, b) => _compareLinks(a, b, latestMessages));
           _links = links;
+          _hasResolvedLinks = true;
           _labels = labels;
           _latestMessages = latestMessages;
           _unreadCounts = unreadCounts;
@@ -246,8 +255,9 @@ class ManageChatList extends ChangeNotifier {
   // Function Name: _stateSignature
   // Description: Encodes the ordered visible list state to suppress redundant notifications.
   // Parameters: None.
-  // Returns: A signature covering links, aliases, unread counts, preview errors and visible message fields.
+  // Returns: A signature covering link resolution, links, aliases, unread counts, preview errors and visible message fields.
   String _stateSignature() => jsonEncode([
+    _hasResolvedLinks,
     _hasError,
     for (final link in _links)
       [

@@ -172,6 +172,75 @@ PatientCaregiverLink _link(int id, {String? alias}) => PatientCaregiverLink(
 // Returns:
 // - void; no return value.
 void main() {
+  // 함수이름: unresolved links remain unknown until a successful response
+  // 함수역할: 최초 실패는 연동 없음으로 확정하지 않고, 정상 빈 응답 후의 실패는 마지막 확인 상태를 유지한다.
+  // 매개변수: 없음. 반환값: 상태 전환 검증 완료 Future<void>.
+  test('unresolved links remain unknown until a successful response', () async {
+    final links = _Links()..fail = true;
+    final control = ManageChatList(
+      userHash: 'caregiver',
+      linkControl: links,
+      chatControl: _Previews(),
+      localState: _Labels(),
+    );
+    addTearDown(control.dispose);
+    expect(control.hasResolvedLinks, isFalse);
+
+    await control.refresh();
+    expect(control.hasError, isTrue);
+    expect(control.hasResolvedLinks, isFalse);
+    expect(control.links, isEmpty);
+
+    links.fail = false;
+    await control.refresh();
+    expect(control.hasError, isFalse);
+    expect(control.hasResolvedLinks, isTrue);
+    expect(control.links, isEmpty);
+
+    links.fail = true;
+    await control.refresh();
+    expect(control.hasError, isTrue);
+    expect(control.hasResolvedLinks, isTrue);
+    expect(control.links, isEmpty);
+  });
+
+  // 함수이름: restarting or switching accounts does not reuse resolved links
+  // 함수역할: 기존 계정의 조회 결과가 재시작이나 다른 계정의 연동 확인 상태로 넘어가지 않는지 검증한다.
+  // 매개변수: 없음. 반환값: 각 계정의 초기화·실패 상태 검증 완료 Future<void>.
+  test(
+    'restarting or switching accounts does not reuse resolved links',
+    () async {
+      final links = _Links()..result = [_link(1)];
+      final labels = _Labels();
+      final original = ManageChatList(
+        userHash: 'caregiver',
+        linkControl: links,
+        chatControl: _Previews(),
+        localState: labels,
+      );
+      await original.refresh();
+      expect(original.hasResolvedLinks, isTrue);
+      expect(original.links, hasLength(1));
+      original.dispose();
+
+      links.fail = true;
+      for (final owner in ['caregiver', 'another-account']) {
+        final current = ManageChatList(
+          userHash: owner,
+          linkControl: links,
+          chatControl: _Previews(),
+          localState: labels,
+        );
+        addTearDown(current.dispose);
+        await current.refresh();
+        expect(current.hasResolvedLinks, isFalse);
+        expect(current.hasError, isTrue);
+        expect(current.links, isEmpty);
+        expect(current.latestMessage(1), isNull);
+      }
+    },
+  );
+
   // Function Name: record
   // Description:
   // - Attach a listener that records each published loading flag and ordered link-ID list.
@@ -240,33 +309,36 @@ void main() {
   // - None.
   // Returns:
   // - Future<void>; completes after the asynchronous assertions.
-  test('background polls keep isLoading false; an explicit refresh shows it', () async {
-    final links = _Links()..result = [_link(1)];
-    final control = ManageChatList(
-      userHash: 'caregiver',
-      linkControl: links,
-      chatControl: _Previews(),
-      localState: _Labels(),
-    );
-    addTearDown(control.dispose);
-    final seen = record(control);
+  test(
+    'background polls keep isLoading false; an explicit refresh shows it',
+    () async {
+      final links = _Links()..result = [_link(1)];
+      final control = ManageChatList(
+        userHash: 'caregiver',
+        linkControl: links,
+        chatControl: _Previews(),
+        localState: _Labels(),
+      );
+      addTearDown(control.dispose);
+      final seen = record(control);
 
-    final first = control.refresh();
-    expect(control.isLoading, isTrue);
-    await first;
-    expect(seen, ['L', '1']);
+      final first = control.refresh();
+      expect(control.isLoading, isTrue);
+      await first;
+      expect(seen, ['L', '1']);
 
-    seen.clear();
-    final poll = control.refresh();
-    expect(control.isLoading, isFalse);
-    await poll;
-    expect(seen, isEmpty);
+      seen.clear();
+      final poll = control.refresh();
+      expect(control.isLoading, isFalse);
+      await poll;
+      expect(seen, isEmpty);
 
-    final requested = control.refresh(showLoading: true);
-    expect(control.isLoading, isTrue);
-    await requested;
-    expect(seen, ['L1', '1']);
-  });
+      final requested = control.refresh(showLoading: true);
+      expect(control.isLoading, isTrue);
+      await requested;
+      expect(seen, ['L1', '1']);
+    },
+  );
 
   // Function Name: a failing poll keeps the list and notifies only when the error state changes
   // Description:
@@ -341,7 +413,10 @@ void main() {
         isEnglish: true,
       ),
     );
-    expect(control.peerName(control.links.single, isEnglish: true), 'Patient NT-7');
+    expect(
+      control.peerName(control.links.single, isEnglish: true),
+      'Patient NT-7',
+    );
   });
 
   // Function Name: default caregiver names show only the end of the account hash
@@ -351,31 +426,37 @@ void main() {
   // - None.
   // Returns:
   // - Future<void>; completes after the asynchronous assertions.
-  test('default caregiver names show only the end of the account hash', () async {
-    final links = _Links()
-      ..result = [
-        PatientCaregiverLink(
-          linkId: 9,
-          patientHash: 'usr_patient0000e5b0',
-          caregiverHash: 'usr_ad6f49ec1053a60874b9c485e73e1314',
-          linkStatus: true,
-        ),
-      ];
-    final control = ManageChatList(
-      userHash: 'usr_patient0000e5b0',
-      linkControl: links,
-      chatControl: _Previews(),
-      localState: _Labels(),
-    );
-    addTearDown(control.dispose);
+  test(
+    'default caregiver names show only the end of the account hash',
+    () async {
+      final links = _Links()
+        ..result = [
+          PatientCaregiverLink(
+            linkId: 9,
+            patientHash: 'usr_patient0000e5b0',
+            caregiverHash: 'usr_ad6f49ec1053a60874b9c485e73e1314',
+            linkStatus: true,
+          ),
+        ];
+      final control = ManageChatList(
+        userHash: 'usr_patient0000e5b0',
+        linkControl: links,
+        chatControl: _Previews(),
+        localState: _Labels(),
+      );
+      addTearDown(control.dispose);
 
-    await control.refresh();
-    expect(control.peerName(control.links.single, isEnglish: false), '보호자 1314');
-    expect(
-      control.peerName(control.links.single, isEnglish: true),
-      'Caregiver 1314',
-    );
-  });
+      await control.refresh();
+      expect(
+        control.peerName(control.links.single, isEnglish: false),
+        '보호자 1314',
+      );
+      expect(
+        control.peerName(control.links.single, isEnglish: true),
+        'Caregiver 1314',
+      );
+    },
+  );
 
   // Function Name: default controls use the injected client and report a 401 to its handler
   // Description:
@@ -393,7 +474,9 @@ void main() {
       inner: MockClient((request) async {
         paths.add(request.url.path);
         if (request.url.path.endsWith('/link/list')) {
-          if (rejectLinks) return jsonResponse({'detail': 'expired'}, status: 401);
+          if (rejectLinks) {
+            return jsonResponse({'detail': 'expired'}, status: 401);
+          }
           return jsonResponse({
             'data': [
               {

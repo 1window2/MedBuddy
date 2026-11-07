@@ -217,12 +217,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  // 함수이름: _showChatDestination
+  // 함수역할: 연동 조회 전이나 최초 조회 실패를 연결 해제로 오인하지 않도록 채팅 진입을 유지한다.
+  // 매개변수: 없음.
+  // 반환값: 현재 계정의 연동이 있거나 아직 목록을 확인하지 못했으면 true. 대화 접근 권한과는 별개다.
+  bool get _showChatDestination {
+    final chat = _chatList;
+    return chat != null && (!chat.hasResolvedLinks || chat.links.isNotEmpty);
+  }
+
   // 함수이름: _onChatListChanged
-  // 함수역할: 연동 유무에 따라 탭을 갱신하며 마지막 연동이 사라지면 홈으로 돌아간다.
+  // 함수역할: 연동 조회 상태에 따라 탭을 갱신하며 서버에서 마지막 연동 해제를 확인하면 홈으로 돌아간다.
   // 매개변수: 없음. 반환값: 없음.
   void _onChatListChanged() {
     if (!mounted) return;
     final signature = jsonEncode([
+      _chatList?.hasResolvedLinks,
       _chatList?.hasError,
       _chatList?.links
           .map(
@@ -241,10 +251,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _publishCaregiverWidget();
     setState(
       // 함수이름: 연동 상태 갱신 콜백
-      // 함수역할: 연동 없는 채팅 탭의 방문·선택 상태를 해제한다.
+      // 함수역할: 연동 없음이 확인된 채팅 탭의 방문·선택 상태만 해제한다.
       // 매개변수: 없음. 반환값: 없음.
       () {
-        if (_chatList?.links.isEmpty ?? true) {
+        if (!_showChatDestination) {
           _visitedDestinations.remove(MedBuddyDestination.chat);
           if (_selectedDestination == MedBuddyDestination.chat) {
             _selectedDestination = MedBuddyDestination.home;
@@ -699,14 +709,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   // Function Name: _buildApplicationShell
-  // Description: Builds persistent visited destinations and includes chat only while active links exist.
+  // Description: Builds persistent visited destinations and keeps chat available until the server confirms there are no active links.
   // Parameters: context: Build context; viewModel: Current account state.
   // Returns: The navigation shell with dose-sync notices; back from a non-home destination selects Home.
   Widget _buildApplicationShell(
     BuildContext context,
     MedBuddyViewModel viewModel,
   ) {
-    final showChat = _chatList?.links.isNotEmpty ?? false;
+    final showChat = _showChatDestination;
     final destinations = [
       MedBuddyDestination.home,
       MedBuddyDestination.schedule,
@@ -853,13 +863,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   // Function Name: _selectDestination
-  // Description: Selects an authorized destination and triggers its relevant refresh without waiting for navigation.
+  // Description: Selects an available destination and triggers its relevant refresh without waiting for navigation; conversation access is checked separately.
   // Parameters: destination: Requested bottom-navigation target.
-  // Returns: None; chat without links is refused, revisited schedules reuse recent data, and history selection gets a fresh revision key.
+  // Returns: None; chat with a confirmed empty link list is refused, revisited schedules reuse recent data, and history selection gets a fresh revision key.
   void _selectDestination(MedBuddyDestination destination) {
     if (destination == MedBuddyDestination.home) unawaited(_refreshChatList());
-    if (destination == MedBuddyDestination.chat &&
-        (_chatList?.links.isEmpty ?? true)) {
+    if (destination == MedBuddyDestination.chat && !_showChatDestination) {
       return;
     }
     if (destination == MedBuddyDestination.chat) {

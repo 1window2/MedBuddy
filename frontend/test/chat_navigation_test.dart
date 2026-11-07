@@ -306,6 +306,157 @@ void _viewport(WidgetTester tester, double width) {
 // 반환값:
 // - void; 반환값 없음.
 void main() {
+  for (final language in ['한국어', 'English']) {
+    // 함수이름: cold offline chat remains reachable and recovers
+    // 함수역할: 인터넷 없이 시작해도 채팅과 재시도를 유지하고, 복구 후 대화를 표시하며 실제 연결 해제 때만 홈으로 돌아간다.
+    // 매개변수: tester: 화면과 사용자 입력 검증 도구.
+    // 반환값: 언어별 상태·화면 이동 검증 완료 Future<void>.
+    testWidgets('cold offline chat remains reachable and recovers: $language', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      _viewport(tester, 390);
+      final links = _Links()..fail = true;
+      final model = _ViewModel()..setting = UserSetting(language: language);
+      addTearDown(model.dispose);
+      late ManageChatList control;
+      await tester.pumpWidget(
+        ChangeNotifierProvider<MedBuddyViewModel>.value(
+          value: model,
+          child: MaterialApp(
+            home: HomeScreen(
+              chatListFactory: (hash) => control = ManageChatList(
+                userHash: hash,
+                linkControl: links,
+                chatControl: _History(),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final chatTab = find.byKey(const ValueKey('bottomNavigation-chat'));
+      expect(chatTab, findsOneWidget);
+      await tester.tap(chatTab);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('chatLinkLookupError')), findsOneWidget);
+      expect(find.text('연동된 대화가 없어요'), findsNothing);
+      expect(find.text('No connected chats'), findsNothing);
+      expect(find.byType(LinkedChatUI), findsNothing);
+      expect(
+        find.text(language == 'English' ? 'Retry' : '다시 시도'),
+        findsOneWidget,
+      );
+
+      links
+        ..fail = false
+        ..result = [_link(1)];
+      await tester.tap(find.byKey(const ValueKey('chatLinkLookupRetry')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('chatLinkLookupError')), findsNothing);
+      expect(find.byKey(const ValueKey('chatConversation-1')), findsOneWidget);
+
+      links.fail = true;
+      await control.refresh();
+      await tester.pumpAndSettle();
+      expect(chatTab, findsOneWidget);
+      expect(find.byKey(const ValueKey('chatConversation-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('chatLinkLookupError')), findsOneWidget);
+
+      links
+        ..fail = false
+        ..result = [];
+      await control.refresh();
+      await tester.pumpAndSettle();
+      expect(chatTab, findsNothing);
+      expect(find.byType(InputPrescriptionUI), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    // 함수이름: offline retry notice fits large text
+    // 함수역할: 좁은 화면과 큰 글씨에서도 오프라인 안내와 재시도 버튼이 잘리지 않는지 검증한다.
+    // 매개변수: tester: 화면 크기와 렌더링 검증 도구.
+    // 반환값: 언어별 안내 영역 검증 완료 Future<void>.
+    testWidgets('offline retry notice fits large text: $language', (
+      tester,
+    ) async {
+      _viewport(tester, 320);
+      final control = ManageChatList(
+        userHash: 'caregiver',
+        linkControl: _Links()..fail = true,
+        chatControl: _History(),
+      );
+      addTearDown(control.dispose);
+      await control.refresh();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+            child: ChatListUI(
+              control: control,
+              userSetting: UserSetting(language: language),
+              onManageLinks: _noop,
+            ),
+          ),
+        ),
+      );
+      final notice = tester.getRect(
+        find.byKey(const ValueKey('chatLinkLookupError')),
+      );
+      final retry = tester.getRect(
+        find.byKey(const ValueKey('chatLinkLookupRetry')),
+      );
+      expect(notice.contains(retry.topLeft), isTrue);
+      expect(notice.contains(retry.bottomRight), isTrue);
+      expect(notice.left, greaterThanOrEqualTo(0));
+      expect(notice.right, lessThanOrEqualTo(320));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  // 함수이름: pending initial links allow chat without claiming no connections
+  // 함수역할: 첫 조회 대기 중 채팅 진입을 허용하고 빈 응답이 확정될 때만 채팅 탭을 숨긴다.
+  // 매개변수: tester: 화면과 지연 응답 검증 도구.
+  // 반환값: 대기·빈 응답 전환 검증 완료 Future<void>.
+  testWidgets(
+    'pending initial links allow chat without claiming no connections',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      _viewport(tester, 390);
+      final pending = Completer<List<PatientCaregiverLink>>();
+      final links = _Links()..pending = pending;
+      final model = _ViewModel();
+      addTearDown(model.dispose);
+      await tester.pumpWidget(
+        ChangeNotifierProvider<MedBuddyViewModel>.value(
+          value: model,
+          child: MaterialApp(
+            home: HomeScreen(
+              chatListFactory: (hash) => ManageChatList(
+                userHash: hash,
+                linkControl: links,
+                chatControl: _History(),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('bottomNavigation-chat')));
+      await tester.pump();
+      expect(find.byType(ChatListUI), findsOneWidget);
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+      expect(find.text('연동된 대화가 없어요'), findsNothing);
+      pending.complete([]);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('bottomNavigation-chat')), findsNothing);
+      expect(find.byType(InputPrescriptionUI), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
   // 홈의 두 일정 모드에서 실제 검색 진입과 기존 설정·등록·연동 경로를 검증한다.
   for (final source in ['self', 'patients']) {
     // 함수이름: 기능 찾기는 $source 홈에서도 동일한 안전한 이동을 제공한다
@@ -1223,10 +1374,10 @@ void main() {
                     selectedDestination: MedBuddyDestination.chat,
                     language: language,
                     showChat: true,
-              // Function Name: onDestinationSelected callback
-              // Description: Accept a destination without navigating during the layout check.
-              // Parameters: destination (MedBuddyDestination): selected destination, unused here.
-              // Returns: void; no side effects.
+                    // Function Name: onDestinationSelected callback
+                    // Description: Accept a destination without navigating during the layout check.
+                    // Parameters: destination (MedBuddyDestination): selected destination, unused here.
+                    // Returns: void; no side effects.
                     onDestinationSelected: (destination) {},
                   ),
                 ),
@@ -1245,7 +1396,7 @@ void main() {
             final paragraph = element.renderObject! as RenderParagraph;
             expect(paragraph.didExceedMaxLines, isFalse);
             expect(paragraph.size.height, greaterThan(0));
-          // Navigation labels remain at least 13 logical pixels high in font size.
+            // Navigation labels remain at least 13 logical pixels high in font size.
             expect(
               (element.widget as Text).style!.fontSize,
               greaterThanOrEqualTo(13),

@@ -10,6 +10,7 @@ import '../entities/user_setting_entity.dart';
 import '../services/authenticated_api_client.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/medbuddy_page_header.dart';
+import '../widgets/medbuddy_notice.dart';
 import 'linked_chat_ui_boundary.dart';
 
 // 클래스명: ChatListUI
@@ -76,15 +77,6 @@ class ChatListUI extends StatelessWidget {
               ],
             ),
             if (control.isLoading) const LinearProgressIndicator(minHeight: 2),
-            if (control.hasError)
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  _isEnglish
-                      ? 'Could not refresh connections. Please try again.'
-                      : '연동 목록을 새로 불러오지 못했어요. 다시 시도해주세요.',
-                ),
-              ),
             Expanded(
               child: RefreshIndicator(
                 onRefresh: _refreshRequested,
@@ -92,7 +84,28 @@ class ChatListUI extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
                   physics: const AlwaysScrollableScrollPhysics(),
                   children: [
-                    if (control.links.isEmpty && !control.isLoading)
+                    if (control.hasError)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: MedBuddyNotice(
+                          key: const ValueKey('chatLinkLookupError'),
+                          message: _isEnglish
+                              ? 'Could not check your connections. Check your internet connection and try again.'
+                              : '연동 상태를 확인하지 못했어요. 인터넷 연결을 확인하고 다시 시도해주세요.',
+                          action: OutlinedButton.icon(
+                            key: const ValueKey('chatLinkLookupRetry'),
+                            onPressed: control.isLoading
+                                ? null
+                                : _refreshRequested,
+                            icon: const Icon(Icons.refresh),
+                            label: Text(_isEnglish ? 'Retry' : '다시 시도'),
+                          ),
+                        ),
+                      ),
+                    if (control.hasResolvedLinks &&
+                        control.links.isEmpty &&
+                        !control.hasError &&
+                        !control.isLoading)
                       Padding(
                         padding: const EdgeInsets.all(24),
                         child: Text(
