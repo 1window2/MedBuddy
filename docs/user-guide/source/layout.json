@@ -2468,22 +2468,22 @@
         "number": 4,
         "crop": [
           0,
-          0,
+          136,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
             85,
-            614,
+            756,
             843,
-            774
+            905
           ],
           [
-            754,
-            1738,
-            1053,
-            1872
+            790,
+            1855,
+            1030,
+            1975
           ]
         ],
         "callouts": [
@@ -2496,7 +2496,7 @@
             "text": "잘못 눌렀을 때 실행 취소"
           }
         ],
-        "image": "source/assets/2be32d396f68b936afd40b4f2e84ab17ad9e826cbe9ab385033d07acd70749dc.png"
+        "image": "assets/schedule-offline-undo-1.0.0-2026-11-07.png"
       }
     ]
   },
@@ -2510,20 +2510,20 @@
         "number": 5,
         "crop": [
           0,
-          0,
+          136,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            85,
-            647,
-            180,
-            742
+            75,
+            775,
+            187,
+            885
           ]
         ],
         "callouts": [],
-        "image": "source/assets/2be32d396f68b936afd40b4f2e84ab17ad9e826cbe9ab385033d07acd70749dc.png"
+        "image": "assets/schedule-offline-undo-1.0.0-2026-11-07.png"
       },
       {
         "identity": "ASM-P053:7",
@@ -2776,40 +2776,40 @@
         "number": 1,
         "crop": [
           0,
-          0,
+          136,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
             0,
-            1866,
+            1980,
             1080,
-            2000
+            2106
           ]
         ],
         "callouts": [],
-        "image": "source/assets/2be32d396f68b936afd40b4f2e84ab17ad9e826cbe9ab385033d07acd70749dc.png"
+        "image": "assets/schedule-offline-undo-1.0.0-2026-11-07.png"
       },
       {
         "identity": "ASM-P061:4",
         "number": 2,
         "crop": [
           0,
-          0,
+          136,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            55,
-            614,
-            1025,
-            797
+            30,
+            1320,
+            1050,
+            1460
           ]
         ],
         "callouts": [],
-        "image": "source/assets/886654f161aeb46fcb79d949b0a74e79d0dfff9faa425a7455122036ff2df9c8.png"
+        "image": "assets/schedule-sync-saved-1.0.0-2026-11-07.png"
       }
     ]
   },
@@ -7526,20 +7526,20 @@
         "number": 4,
         "crop": [
           0,
-          0,
+          112,
           1080,
-          2201
+          2337
         ],
         "boxes": [
           [
-            850,
-            658,
-            1005,
-            753
+            880,
+            1030,
+            1050,
+            1130
           ]
         ],
         "callouts": [],
-        "image": "source/assets/05a8354c867ecf06980fc097a12f1a73ffd3d1bee2dfd1a40c8ec48cb6c759f0.png"
+        "image": "assets/system-alarms-allowed-1.0.0-2026-11-07.png"
       }
     ]
   },

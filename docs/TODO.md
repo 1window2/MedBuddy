@@ -53,7 +53,12 @@ the section that recorded it. Changes are listed in the
       midnight, the per-account pharmacy limit); the class and overall sequence
       diagrams and the use case descriptions carry the 1.0.0 changes.
 - [ ] User guide screenshots from earlier versions (0.2.1 to 0.2.4 captures that
-      remain in the guide).
+      remain in the guide). On 2026-11-07 six steps were retaken on the emulator
+      against a local backend (2.6-7, 3.3-4, 3.3-5, 3.6-1, 3.6-2 and 9.9-4, which had
+      shown version 0.2.3). Still old: prescription and pill identification (2.2,
+      2.7-2.10; they need live AI and public-data lookups), the home widgets (6.1,
+      6.2; placed by hand on a launcher), the link screens (4.x; two accounts) and a
+      few settings and place screens whose content has not changed.
 
 ### Owner decisions
 
