@@ -4,13 +4,17 @@
 """주간표 없는 검색 캐시 약국의 신뢰된 당일 공유 스냅샷을 검증한다."""
 
 import asyncio
+from collections.abc import Iterator
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, NoReturn
 from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
 import pytest
+import httpx
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -45,7 +49,7 @@ NOW = datetime(2026, 10, 27, 21, 45, tzinfo=ZoneInfo("Asia/Seoul"))
 # Returns:
 # - Iterator[SimpleNamespace]; isolated chat, search providers, clock, repository and HTTP client.
 @pytest.fixture
-def flow(tmp_path, monkeypatch):
+def flow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleNamespace]:
     """실제 제공자 대신 공개 시험 ID와 가상 좌표를 쓰고 검색부터 저장까지 연결한다."""
     monkeypatch.setattr(settings, "APPLICATION_TIME_ZONE", "Asia/Seoul")
     clock = SimpleNamespace(now=NOW)
@@ -111,7 +115,7 @@ def flow(tmp_path, monkeypatch):
 # - extra: dict; 공유 요청의 덮어쓸 필드.
 # 반환값:
 # - httpx.Response; 공유 성공 또는 거부 응답.
-def send(flow, *, kind="pharmacy_share", sender="patient-share", **extra):
+def send(flow: SimpleNamespace, *, kind: str = "pharmacy_share", sender: str = "patient-share", **extra: Any) -> httpx.Response:
     return flow.client.post(f"{flow.path}?user_hash={sender}", json={
         "client_message_id": "fallback-share-001", "body": "약국 공유", "message_kind": kind,
         "pharmacy_id": "C1110363", **extra,
@@ -125,7 +129,7 @@ def send(flow, *, kind="pharmacy_share", sender="patient-share", **extra):
 # - response: httpx.Response; 공유 요청 결과.
 # 반환값:
 # - dict; 약국 공유 문맥. 비정상 상태는 AssertionError.
-def context(response):
+def context(response: httpx.Response) -> dict[str, Any]:
     assert response.status_code == 200, response.text
     return response.json()["data"]["context"]["pharmacy_context"]
 
@@ -141,7 +145,7 @@ def context(response):
 # - None.
 @pytest.mark.parametrize("kind", ["pharmacy_share", "pharmacy_phone_verified"])
 @pytest.mark.parametrize("sender", ["patient-share", "caregiver-share"])
-def test_empty_catalog_search_cache_share_uses_fresh_exact_id_and_preserves_retry(flow, kind, sender):
+def test_empty_catalog_search_cache_share_uses_fresh_exact_id_and_preserves_retry(flow: SimpleNamespace, kind: str, sender: str) -> None:
     forged = {"status": "closed", "as_of": "2099-01-01T00:00:00Z"}
     first = send(flow, kind=kind, sender=sender, latitude=1, longitude=2,
                  operating_snapshot=forged, pharmacy_operating_snapshot=forged,
@@ -176,7 +180,7 @@ def test_empty_catalog_search_cache_share_uses_fresh_exact_id_and_preserves_retr
 # 반환값:
 # - None.
 @pytest.mark.parametrize("error", [PharmacyApiUnavailableError, PharmacyApiResponseError, TimeoutError])
-def test_provider_failure_keeps_identity_share_with_unknown_status(flow, error):
+def test_provider_failure_keeps_identity_share_with_unknown_status(flow: SimpleNamespace, error: type[Exception]) -> None:
     flow.boundary.searchNearby.side_effect = error("Provider unavailable")
     shared = context(send(flow))
     assert shared["pharmacy_id"] == "C1110363" and shared["name"] == "태평양약국"
@@ -194,7 +198,7 @@ def test_provider_failure_keeps_identity_share_with_unknown_status(flow, error):
 # - monkeypatch: pytest.MonkeyPatch; 테스트 뒤 의존성 교체를 복원한다.
 # 반환값:
 # - None.
-def test_slow_provider_is_cancelled_and_identity_is_still_saved(flow, monkeypatch):
+def test_slow_provider_is_cancelled_and_identity_is_still_saved(flow: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
     cancelled = []
 
     # 함수이름: slow
@@ -204,7 +208,7 @@ def test_slow_provider_is_cancelled_and_identity_is_still_saved(flow, monkeypatc
     # - _: dict; 사용하지 않는 위치 조회 조건.
     # 반환값:
     # - 정상 반환 없음; 호출자가 취소할 때까지 대기.
-    async def slow(**_):
+    async def slow(**_: float | int) -> NoReturn:
         try:
             await asyncio.Event().wait()
         finally:
@@ -225,7 +229,7 @@ def test_slow_provider_is_cancelled_and_identity_is_still_saved(flow, monkeypatc
 # 반환값:
 # - None.
 @pytest.mark.parametrize("calendar_state", ["holiday", "unavailable", "missing", "timeout"])
-def test_live_date_specific_hours_do_not_guess_holiday_or_calendar_status(flow, calendar_state):
+def test_live_date_specific_hours_do_not_guess_holiday_or_calendar_status(flow: SimpleNamespace, calendar_state: str) -> None:
     if calendar_state == "holiday":
         flow.calendar.isHoliday.return_value = True
     elif calendar_state == "missing":
@@ -245,7 +249,7 @@ def test_live_date_specific_hours_do_not_guess_holiday_or_calendar_status(flow, 
 # - flow: SimpleNamespace; isolated search, chat, provider and clock fixtures.
 # Returns:
 # - None.
-def test_live_snapshot_checks_only_todays_calendar(flow):
+def test_live_snapshot_checks_only_todays_calendar(flow: SimpleNamespace) -> None:
     assert context(send(flow))["operating_snapshot"]["status"] == "closing_soon"
     flow.calendar.isHoliday.assert_awaited_once_with(NOW.date())
 
@@ -257,7 +261,7 @@ def test_live_snapshot_checks_only_todays_calendar(flow):
 # - flow: SimpleNamespace; isolated search, chat, provider and clock fixtures.
 # Returns:
 # - None.
-def test_closed_after_todays_hours_does_not_depend_on_yesterday(flow):
+def test_closed_after_todays_hours_does_not_depend_on_yesterday(flow: SimpleNamespace) -> None:
     # 공휴일 다음 날 저녁: 당일 09:00~18:00이 끝났으면 전날과 관계없이 영업 종료다.
     flow.clock.now = NOW.replace(hour=20, minute=0)
     flow.boundary.searchNearby.return_value = [replace(flow.record, start_time="0900", end_time="1800")]
@@ -278,7 +282,7 @@ def test_closed_after_todays_hours_does_not_depend_on_yesterday(flow):
 # 반환값:
 # - None.
 @pytest.mark.parametrize("start,end", [("0900", ""), ("0900", "0900"), ("0900 lunch", "2200")])
-def test_unconfirmed_live_hours_stay_unknown(flow, start, end):
+def test_unconfirmed_live_hours_stay_unknown(flow: SimpleNamespace, start: str, end: str) -> None:
     flow.boundary.searchNearby.return_value = [replace(flow.record, start_time=start, end_time=end)]
     snapshot = context(send(flow))["operating_snapshot"]
     assert snapshot["status"] == "unknown"
@@ -292,7 +296,7 @@ def test_unconfirmed_live_hours_stay_unknown(flow, start, end):
 # - flow: SimpleNamespace; 검색 캐시·채팅 앱·약국 제공자·시계 대역.
 # 반환값:
 # - None.
-def test_snapshot_uses_aware_server_clock_after_lookup_not_cached_search_time(flow):
+def test_snapshot_uses_aware_server_clock_after_lookup_not_cached_search_time(flow: SimpleNamespace) -> None:
     # 함수이름: later
     # 함수역할:
     # - 조회 완료 직전 서버 시계를 UTC로 표현한 마감 시각으로 옮기고 약국을 반환한다.
@@ -300,7 +304,7 @@ def test_snapshot_uses_aware_server_clock_after_lookup_not_cached_search_time(fl
     # - _: dict; 사용하지 않는 위치 조회 조건.
     # 반환값:
     # - list[PharmacyLocationRecord]; 준비된 약국 한 건.
-    async def later(**_):
+    async def later(**_: float | int) -> list[PharmacyLocationRecord]:
         flow.clock.now = NOW.replace(hour=22, minute=0).astimezone(UTC)
         return [flow.record]
 
@@ -320,7 +324,7 @@ def test_snapshot_uses_aware_server_clock_after_lookup_not_cached_search_time(fl
 # 반환값:
 # - None.
 @pytest.mark.parametrize("matches", [0, 2])
-def test_missing_or_ambiguous_exact_id_never_uses_nearest_pharmacy_hours(flow, matches):
+def test_missing_or_ambiguous_exact_id_never_uses_nearest_pharmacy_hours(flow: SimpleNamespace, matches: int) -> None:
     neighbor = replace(flow.record, pharmacy_id="OTHER", start_time="0000", end_time="2400")
     flow.boundary.searchNearby.return_value = [neighbor, *([flow.record] * matches)]
     assert context(send(flow))["operating_snapshot"]["status"] == "unknown"
@@ -333,7 +337,7 @@ def test_missing_or_ambiguous_exact_id_never_uses_nearest_pharmacy_hours(flow, m
 # - flow: SimpleNamespace; 검색 캐시·채팅 앱·약국 제공자·시계 대역.
 # 반환값:
 # - None.
-def test_exact_id_is_found_even_when_not_first_result(flow):
+def test_exact_id_is_found_even_when_not_first_result(flow: SimpleNamespace) -> None:
     flow.boundary.searchNearby.return_value = [replace(flow.record, pharmacy_id="OTHER"), flow.record]
     assert context(send(flow))["operating_snapshot"]["closes_at"] == "2026-10-27T22:00:00+09:00"
 
@@ -348,7 +352,7 @@ def test_exact_id_is_found_even_when_not_first_result(flow):
 # 반환값:
 # - None.
 @pytest.mark.parametrize("case,status", [("outsider", 404), ("missing", 400), ("expired", 400)])
-def test_rejected_share_does_not_call_provider(flow, case, status):
+def test_rejected_share_does_not_call_provider(flow: SimpleNamespace, case: str, status: int) -> None:
     if case == "expired":
         row = flow.db.get(PharmacySearchCacheRecord, "C1110363")
         row.fetched_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=25)
@@ -367,7 +371,7 @@ def test_rejected_share_does_not_call_provider(flow, case, status):
 # - flow: SimpleNamespace; 검색 캐시·채팅 앱·약국 제공자·시계 대역.
 # 반환값:
 # - None.
-def test_external_lookup_has_no_request_transaction_and_store_rechecks_link(flow):
+def test_external_lookup_has_no_request_transaction_and_store_rechecks_link(flow: SimpleNamespace) -> None:
     # 함수이름: revoke
     # 함수역할:
     # - 요청 트랜잭션이 없음을 확인하고 다른 세션에서 연동을 해제한 뒤 약국을 반환한다.
@@ -375,7 +379,7 @@ def test_external_lookup_has_no_request_transaction_and_store_rechecks_link(flow
     # - _: dict; 사용하지 않는 위치 조회 조건.
     # 반환값:
     # - list[PharmacyLocationRecord]; 준비된 약국 한 건.
-    async def revoke(**_):
+    async def revoke(**_: float | int) -> list[PharmacyLocationRecord]:
         assert not flow.db.in_transaction()
         with Session(flow.db.get_bind()) as other:
             other.query(_PatientCaregiverLink).filter_by(id=flow.link_id).update({"linked": False})
@@ -394,7 +398,7 @@ def test_external_lookup_has_no_request_transaction_and_store_rechecks_link(flow
 # - flow: SimpleNamespace; 검색 캐시·채팅 앱·약국 제공자·시계 대역.
 # 반환값:
 # - None.
-def test_store_rechecks_pharmacy_identity_after_provider_lookup(flow):
+def test_store_rechecks_pharmacy_identity_after_provider_lookup(flow: SimpleNamespace) -> None:
     # 함수이름: remove
     # 함수역할:
     # - 다른 세션에서 약국 검색 캐시를 삭제·커밋한 뒤 기존 위치 응답을 반환한다.
@@ -402,7 +406,7 @@ def test_store_rechecks_pharmacy_identity_after_provider_lookup(flow):
     # - _: dict; 사용하지 않는 위치 조회 조건.
     # 반환값:
     # - list[PharmacyLocationRecord]; 삭제 전 조회한 약국 한 건.
-    async def remove(**_):
+    async def remove(**_: float | int) -> list[PharmacyLocationRecord]:
         with Session(flow.db.get_bind()) as other:
             other.query(PharmacySearchCacheRecord).filter_by(pharmacy_id="C1110363").delete()
             other.commit()
@@ -420,7 +424,7 @@ def test_store_rechecks_pharmacy_identity_after_provider_lookup(flow):
 # - flow: SimpleNamespace; 검색 캐시·채팅 앱·약국 제공자·시계 대역.
 # 반환값:
 # - None.
-def test_lookup_crossing_midnight_does_not_reuse_yesterdays_live_hours(flow):
+def test_lookup_crossing_midnight_does_not_reuse_yesterdays_live_hours(flow: SimpleNamespace) -> None:
     # 함수이름: cross_midnight
     # 함수역할:
     # - 서버 시계를 다음 날 00:01로 변경하고 이전 조회의 약국 시간을 반환한다.
@@ -428,7 +432,7 @@ def test_lookup_crossing_midnight_does_not_reuse_yesterdays_live_hours(flow):
     # - _: dict; 사용하지 않는 위치 조회 조건.
     # 반환값:
     # - list[PharmacyLocationRecord]; 이전 날짜의 약국 응답.
-    async def cross_midnight(**_):
+    async def cross_midnight(**_: float | int) -> list[PharmacyLocationRecord]:
         flow.clock.now = datetime(2026, 10, 28, 0, 1, tzinfo=NOW.tzinfo)
         return [flow.record]
 
@@ -445,7 +449,7 @@ def test_lookup_crossing_midnight_does_not_reuse_yesterdays_live_hours(flow):
 # - flow: SimpleNamespace; 검색 캐시·채팅 앱·약국 제공자·시계 대역.
 # 반환값:
 # - None.
-def test_existing_catalog_hours_skip_live_prefetch(flow):
+def test_existing_catalog_hours_skip_live_prefetch(flow: SimpleNamespace) -> None:
     flow.db.add(PharmacyCatalogRecord(
         pharmacy_id="C1110363", name="Catalog Pharmacy", address="시험 주소", telephone="02-000-0000",
         latitude=37.5, longitude=127.0, weekly_hours={"2": ["0900", "2300"]},
@@ -465,7 +469,7 @@ def test_existing_catalog_hours_skip_live_prefetch(flow):
 # - flow: SimpleNamespace; isolated search, chat, provider and clock fixtures.
 # Returns:
 # - None.
-def test_overnight_live_hours_are_not_copied_into_previous_day(flow):
+def test_overnight_live_hours_are_not_copied_into_previous_day(flow: SimpleNamespace) -> None:
     flow.clock.now = NOW.replace(hour=1, minute=30)
     flow.boundary.searchNearby.return_value = [replace(flow.record, start_time="2200", end_time="0200")]
     snapshot = context(send(flow))["operating_snapshot"]
@@ -482,7 +486,7 @@ def test_overnight_live_hours_are_not_copied_into_previous_day(flow):
 # - flow: SimpleNamespace; isolated search, chat, provider and clock fixtures.
 # Returns:
 # - None.
-def test_holiday_lookups_run_alongside_the_location_search(flow):
+def test_holiday_lookups_run_alongside_the_location_search(flow: SimpleNamespace) -> None:
     holiday_started = asyncio.Event()
 
     # Function Name: search
@@ -492,7 +496,7 @@ def test_holiday_lookups_run_alongside_the_location_search(flow):
     # - _: dict; unused search options.
     # Returns:
     # - list[PharmacyLocationRecord]; prepared pharmacy, or TimeoutError if calendar work never starts.
-    async def search(**_):
+    async def search(**_: float | int) -> list[PharmacyLocationRecord]:
         await asyncio.wait_for(holiday_started.wait(), 0.5)
         return [flow.record]
 
@@ -503,7 +507,7 @@ def test_holiday_lookups_run_alongside_the_location_search(flow):
     # - _: date; requested date, unused.
     # Returns:
     # - bool; False.
-    async def holiday(_):
+    async def holiday(_: date) -> bool:
         holiday_started.set()
         return False
 

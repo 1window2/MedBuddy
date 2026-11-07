@@ -7,9 +7,11 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import event, text
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Connection, Engine, ExecutionContext
+from sqlalchemy.engine.interfaces import DBAPICursor
 from sqlalchemy.orm import Session
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -188,7 +190,11 @@ class _CatalogWriteCounter:
     # - conn, cursor, context (object): Remaining event arguments; unused.
     # Returns:
     # - None.
-    def _record(self, conn, cursor, statement, parameters, context, executemany) -> None:
+    def _record(
+        self, conn: Connection, cursor: DBAPICursor, statement: str,
+        parameters: tuple[Any, ...] | list[tuple[Any, ...]],
+        context: ExecutionContext | None, executemany: bool,
+    ) -> None:
         if statement.lstrip().upper().startswith("UPDATE PHARMACY_CATALOG_RECORDS"):
             self.updated_row_counts.append(len(parameters) if executemany else 1)
 

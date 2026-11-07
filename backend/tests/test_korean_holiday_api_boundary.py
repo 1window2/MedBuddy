@@ -47,7 +47,7 @@ async def test_gateway_error_never_becomes_cached_nonholiday() -> None:
     # - request: httpx.Request; 기록할 달력 요청.
     # 반환값:
     # - httpx.Response; 인증 오류 본문.
-    def respond(request):
+    def respond(request: httpx.Request) -> httpx.Response:
         requests.append(request)
         return httpx.Response(200, content=b"<OpenAPI_ServiceResponse><cmmMsgHeader><returnReasonCode>30</returnReasonCode></cmmMsgHeader></OpenAPI_ServiceResponse>")
 

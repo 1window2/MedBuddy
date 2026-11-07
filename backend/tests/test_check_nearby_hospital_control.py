@@ -4,22 +4,25 @@
 """병원 시간표의 미확인 상태·진료과·검색 예산을 검증한다."""
 
 import asyncio
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 import sys
+from typing import Any, NoReturn
 from zoneinfo import ZoneInfo
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from boundaries.holiday_lookup_boundary import HolidayLookupBoundary
 from boundaries.hospital_api_boundary import HospitalApiResponseError, HospitalApiUnavailableError
 from boundaries.pharmacy_api_boundary import PharmacyApiUnavailableError
 from controls.check_nearby_hospital_control import CheckNearbyHospital
 from core.config import settings
 from entities.nearby_hospital_entity import HospitalDetails, HospitalLocationPage, HospitalLocationRecord
-from schemas.hospital import HospitalSearchMode
+from schemas.hospital import HospitalSearchMode, NearbyHospitalResponse
 
 KST = ZoneInfo("Asia/Seoul")
 MONDAY = datetime(2026, 9, 28, 10, tzinfo=KST)
@@ -33,7 +36,7 @@ MONDAY = datetime(2026, 9, 28, 10, tzinfo=KST)
 # 반환값:
 # - str; 비동기 테스트 실행기 asyncio.
 @pytest.fixture
-def anyio_backend():
+def anyio_backend() -> str:
     """asyncio 제어 흐름을 검증한다."""
     return "asyncio"
 
@@ -54,7 +57,7 @@ class Calendar:
     # - holidays: tuple[date, ...]; 공휴일로 취급할 날짜.
     # 반환값:
     # - None.
-    def __init__(self, *holidays, unavailable=False):
+    def __init__(self, *holidays: date, unavailable: bool = False) -> None:
         self.holidays, self.unavailable = holidays, unavailable
 
     # 함수이름: isHoliday
@@ -64,7 +67,7 @@ class Calendar:
     # - value: date; 공휴일 여부를 조회할 날짜.
     # 반환값:
     # - bool; 등록 날짜이면 True. 달력 장애 시 PharmacyApiUnavailableError.
-    async def isHoliday(self, value):
+    async def isHoliday(self, value: date) -> bool:
         """명시된 공휴일만 반환한다."""
         if self.unavailable:
             raise PharmacyApiUnavailableError("calendar unavailable")
@@ -88,7 +91,7 @@ class Boundary:
     # - records: list[HospitalLocationRecord] | None; 위치 목록, 생략하면 상세 ID에서 생성.
     # 반환값:
     # - None.
-    def __init__(self, details, *, size=30, records=None):
+    def __init__(self, details: Mapping[str, HospitalDetails | Exception], *, size: int = 30, records: list[HospitalLocationRecord] | None = None) -> None:
         self.details, self.size = details, size
         self.records = records or [record(identifier) for identifier in details]
         self.pages, self.loads, self.cached = [], [], set()
@@ -102,7 +105,7 @@ class Boundary:
     # - _: dict; 사용하지 않는 검색 조건.
     # 반환값:
     # - HospitalLocationPage; 요청 구간과 원본 행 수.
-    async def fetchNearbyPage(self, *, page_no, page_size, **_):
+    async def fetchNearbyPage(self, *, page_no: int, page_size: int, **_: object) -> HospitalLocationPage:
         """제공자 페이지 크기에 맞춰 다음 구간을 반환한다."""
         self.pages.append((page_no, page_size))
         size = min(page_size, self.size)
@@ -118,7 +121,7 @@ class Boundary:
     # - _: dict; 사용하지 않는 검색 조건.
     # 반환값:
     # - HospitalLocationPage; 요청 구간의 진료과 후보.
-    async def fetchDepartmentPage(self, *, page_no, page_size, **_):
+    async def fetchDepartmentPage(self, *, page_no: int, page_size: int, **_: object) -> HospitalLocationPage:
         """상세와 목록의 진료과가 불일치하는 기존 방어 테스트도 재현한다."""
         size = min(page_size, self.size)
         rows = self.records[(page_no - 1) * size:page_no * size]
@@ -131,7 +134,7 @@ class Boundary:
     # - hospital_id: str; 상세를 조회할 병원 식별자.
     # 반환값:
     # - bool; 이미 상세를 조회한 ID이면 True.
-    def hasCachedDetails(self, hospital_id):
+    def hasCachedDetails(self, hospital_id: str) -> bool:
         """이미 확인한 ID는 새 상세 예산을 쓰지 않는다."""
         return hospital_id in self.cached
 
@@ -142,7 +145,7 @@ class Boundary:
     # - hospital_id: str; 상세를 조회할 병원 식별자.
     # 반환값:
     # - HospitalDetails; 지정된 오류가 있으면 해당 예외 발생.
-    async def fetchDetails(self, hospital_id):
+    async def fetchDetails(self, hospital_id: str) -> HospitalDetails:
         """상세 결과 또는 지정한 오류를 반환한다."""
         self.loads.append(hospital_id)
         self.cached.add(hospital_id)
@@ -160,7 +163,7 @@ class Boundary:
 # - latitude: float; 지도 위도.
 # 반환값:
 # - HospitalLocationRecord; 지정 ID와 위도의 합성 병원 위치.
-def record(identifier="A1", *, latitude=37.5665):
+def record(identifier: str = "A1", *, latitude: float = 37.5665) -> HospitalLocationRecord:
     """공유 지도 표시용 위치를 만든다."""
     return HospitalLocationRecord(identifier, "Test clinic", "서울특별시 중구", "", latitude, 126.978, "의원")
 
@@ -174,7 +177,7 @@ def record(identifier="A1", *, latitude=37.5665):
 # - hours: dict | None; 요일 코드별 시작·종료 시각.
 # 반환값:
 # - HospitalDetails; 진료과와 요일별 시간표.
-def detail(identifier="A1", *, departments=("내과",), hours=None):
+def detail(identifier: str = "A1", *, departments: tuple[str, ...] = ("내과",), hours: dict[str, tuple[str, str]] | None = None) -> HospitalDetails:
     """요일별 상세 운영표를 구성한다."""
     return HospitalDetails(identifier, departments=departments,
                            weekly_hours=tuple((day, *times) for day, times in (hours or {}).items()))
@@ -190,7 +193,7 @@ def detail(identifier="A1", *, departments=("내과",), hours=None):
 # - kwargs: dict; target datetime and search filters.
 # Returns:
 # - Hospital search response with results and completeness metadata.
-async def search(boundary, *, calendar=None, clock=None, **kwargs):
+async def search(boundary: Boundary, *, calendar: HolidayLookupBoundary | None = None, clock: Callable[[], datetime] | None = None, **kwargs: Any) -> NearbyHospitalResponse:
     """명시적 달력과 기준일로 결과를 계산한다. 조회 허용 범위는 고정 시계(기본 MONDAY) 기준이다."""
     control = CheckNearbyHospital(boundary, holiday_boundary=calendar or Calendar(),
                                   clock=clock or (lambda: MONDAY))
@@ -226,7 +229,7 @@ async def search(boundary, *, calendar=None, clock=None, **kwargs):
     ("09xx00", "1800", 12, None, False, False),
 ])
 @pytest.mark.anyio
-async def test_schedule_intervals_unknown_and_24_hours(start, end, hour, opened, late, full):
+async def test_schedule_intervals_unknown_and_24_hours(start: str, end: str, hour: int, opened: bool | None, late: bool, full: bool) -> None:
     """불완전·모호한 시각을 영업 또는 휴무로 단정하지 않는다."""
     result = await search(Boundary({"A1": detail(hours={"1": (start, end)})}),
                           target_datetime=MONDAY.replace(hour=hour))
@@ -245,7 +248,7 @@ async def test_schedule_intervals_unknown_and_24_hours(start, end, hour, opened,
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_yesterday_holiday_carryover_and_close_countdown():
+async def test_yesterday_holiday_carryover_and_close_countdown() -> None:
     """전날 공휴일의 자정 이후 운영 구간도 휴일 표에서 계산한다."""
     result = await search(Boundary({"A1": detail(hours={"8": ("2200", "0200")})}),
                           calendar=Calendar(date(2026, 9, 27)), target_datetime=MONDAY.replace(hour=1))
@@ -261,7 +264,7 @@ async def test_yesterday_holiday_carryover_and_close_countdown():
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_registered_holiday_hours_only_and_no_actual_date_claim():
+async def test_registered_holiday_hours_only_and_no_actual_date_claim() -> None:
     """평일 공휴일에도 공휴일 전용 표만 선택한다."""
     boundary = Boundary({"A1": detail(hours={"1": ("0900", "1800"), "8": ("1000", "1300")}),
                          "A2": detail("A2", hours={"1": ("0900", "1800")})})
@@ -281,7 +284,7 @@ async def test_registered_holiday_hours_only_and_no_actual_date_claim():
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_calendar_outage_unknown_and_excluded_from_operating_modes():
+async def test_calendar_outage_unknown_and_excluded_from_operating_modes() -> None:
     """공휴일 여부를 모르면 평일표를 대신 사용하지 않는다."""
     boundary = Boundary({"A1": detail(hours={"1": ("0900", "2300"), "8": ("0900", "2300")})})
     result = await search(boundary, calendar=Calendar(unavailable=True))
@@ -299,7 +302,7 @@ async def test_calendar_outage_unknown_and_excluded_from_operating_modes():
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_selected_weekend_and_timezone_normalization():
+async def test_selected_weekend_and_timezone_normalization() -> None:
     """주말 검색은 선택한 날짜를 사용하고 UTC는 한국 시각으로 변환한다."""
     boundary = Boundary({"A1": detail(hours={"6": ("0900", "1300"), "1": ("0900", "1800")})})
     assert not (await search(boundary, search_mode=HospitalSearchMode.WEEKEND_HOLIDAY)).data
@@ -325,7 +328,7 @@ async def test_selected_weekend_and_timezone_normalization():
     ("D020", ("진단검사의학과",), True), ("D034", ("구강악안면외과",), True),
 ])
 @pytest.mark.anyio
-async def test_verified_department_names_and_aliases(code, names, match):
+async def test_verified_department_names_and_aliases(code: str, names: tuple[str, ...], match: bool) -> None:
     """진료과명은 정확히 비교하고 공식 코드·명칭 변경만 연결한다."""
     result = await search(Boundary({"A1": detail(departments=names)}), department=code)
     assert bool(result.data) is match
@@ -339,7 +342,7 @@ async def test_verified_department_names_and_aliases(code, names, match):
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_capped_pagination_filter_before_limit_and_deduplication():
+async def test_capped_pagination_filter_before_limit_and_deduplication() -> None:
     """줄어든 페이지 크기로 다음 페이지를 읽고 중복을 제거한 후 제한한다."""
     boundary = Boundary({"A1": detail(departments=("한방내과",)), "A2": detail("A2")},
                         size=1, records=[record("A1"), record("A1"), record("A2")])
@@ -356,7 +359,7 @@ async def test_capped_pagination_filter_before_limit_and_deduplication():
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_detail_budget_partial_and_filter_cache_reuse(monkeypatch):
+async def test_detail_budget_partial_and_filter_cache_reuse(monkeypatch: pytest.MonkeyPatch) -> None:
     """상세 신규 호출 상한을 지키고 필터 변경에 기존 상세를 재사용한다."""
     monkeypatch.setattr(settings, "HOSPITAL_DETAIL_REQUEST_BUDGET", 1)
     boundary = Boundary({"A1": detail(), "A2": detail("A2")})
@@ -378,7 +381,7 @@ async def test_detail_budget_partial_and_filter_cache_reuse(monkeypatch):
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_partial_detail_failure_versus_complete_failure():
+async def test_partial_detail_failure_versus_complete_failure() -> None:
     """일부 상세 실패는 표시하고 모든 상세 실패는 서비스 오류로 반환한다."""
     boundary = Boundary({"A1": detail(), "A2": HospitalApiUnavailableError("failed")})
     result = await search(boundary)
@@ -396,7 +399,7 @@ async def test_partial_detail_failure_versus_complete_failure():
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_radius_before_rounding_and_no_distant_detail_requests():
+async def test_radius_before_rounding_and_no_distant_detail_requests() -> None:
     """반경 밖 병원은 상세 호출 전 제외한다."""
     boundary = Boundary({"A1": detail(), "A2": detail("A2")},
                         records=[record("A2", latitude=38), record("A1")])
@@ -414,7 +417,7 @@ async def test_radius_before_rounding_and_no_distant_detail_requests():
 @pytest.mark.parametrize("kwargs", [{"department": "D999"}, {"limit": 31}, {"max_distance_km": float("nan")},
                                         {"search_mode": "official_late_night"}])
 @pytest.mark.anyio
-async def test_invalid_requests_rejected_before_network(kwargs):
+async def test_invalid_requests_rejected_before_network(kwargs: dict[str, str | int | float]) -> None:
     """미지원 진료과와 잘못된 범위는 빈 성공 응답이 아닌 검증 오류다."""
     boundary = Boundary({"A1": detail()})
     with pytest.raises(ValueError):
@@ -431,7 +434,7 @@ async def test_invalid_requests_rejected_before_network(kwargs):
 # - None.
 @pytest.mark.parametrize("hour", [9, 14])
 @pytest.mark.anyio
-async def test_target_date_window_is_counted_in_calendar_days(hour):
+async def test_target_date_window_is_counted_in_calendar_days(hour: int) -> None:
     """앱 달력이 제공하는 첫날·마지막 날은 현재 시각과 무관하게 허용하고 범위 밖 날짜는 달력·병원 조회 전에 거절한다."""
     now = datetime(2026, 10, 8, hour, tzinfo=KST)
     calendar = Calendar()
@@ -445,7 +448,7 @@ async def test_target_date_window_is_counted_in_calendar_days(hour):
     # - value: date; holiday query date.
     # Returns:
     # - bool returned by the original calendar.
-    async def recording(value):
+    async def recording(value: date) -> bool:
         calendar.seen.append(value)
         return await lookup(value)
 
@@ -470,7 +473,7 @@ async def test_target_date_window_is_counted_in_calendar_days(hour):
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_unknown_department_and_hours_are_incomplete_not_exhaustive():
+async def test_unknown_department_and_hours_are_incomplete_not_exhaustive() -> None:
     """필터 판단 근거가 누락되면 결과 없음도 부분 검색으로 표시한다."""
     boundary = Boundary({"A1": detail(departments=())})
     for filters in ({"department": "D001"}, {"search_mode": HospitalSearchMode.OPEN_AT_TIME}):
@@ -486,7 +489,7 @@ async def test_unknown_department_and_hours_are_incomplete_not_exhaustive():
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_small_all_limit_hydrates_only_visible_result():
+async def test_small_all_limit_hydrates_only_visible_result() -> None:
     """전체 목록의 한 건 요청은 나머지 후보의 상세를 조회하지 않는다."""
     boundary = Boundary({f"A{index}": detail(f"A{index}") for index in range(30)})
     result = await search(boundary, limit=1)
@@ -501,7 +504,7 @@ async def test_small_all_limit_hydrates_only_visible_result():
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_calendar_deadline_preserves_basic_list(monkeypatch):
+async def test_calendar_deadline_preserves_basic_list(monkeypatch: pytest.MonkeyPatch) -> None:
     """달력이 지연되어도 기본 병원 목록은 미확인 시간으로 반환한다."""
     monkeypatch.setattr(settings, "HOSPITAL_CALENDAR_TIMEOUT_SECONDS", 0.01)
 
@@ -519,7 +522,7 @@ async def test_calendar_deadline_preserves_basic_list(monkeypatch):
         # - value: date; 공휴일 여부를 조회할 날짜.
         # 반환값:
         # - 정상 반환 없음; 호출자가 취소할 때까지 대기.
-        async def isHoliday(self, value):
+        async def isHoliday(self, value: date) -> NoReturn:
             await asyncio.Event().wait()
 
     async with asyncio.timeout(0.5):
@@ -535,7 +538,7 @@ async def test_calendar_deadline_preserves_basic_list(monkeypatch):
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_unknown_previous_holiday_does_not_imply_closed():
+async def test_unknown_previous_holiday_does_not_imply_closed() -> None:
     """전날 공휴일 여부가 불명확하면 야간 이월 가능성을 닫힘으로 숨기지 않는다."""
     # 클래스명: PartialCalendar
     # 역할: 전날의 공휴일 여부만 조회할 수 없는 달력.
@@ -551,7 +554,7 @@ async def test_unknown_previous_holiday_does_not_imply_closed():
         # - value: date; 공휴일 여부를 조회할 날짜.
         # 반환값:
         # - bool; 전날에는 PharmacyApiUnavailableError 발생.
-        async def isHoliday(self, value):
+        async def isHoliday(self, value: date) -> bool:
             if value == MONDAY.date() - timedelta(days=1):
                 raise PharmacyApiUnavailableError("previous month unavailable")
             return False
@@ -569,7 +572,7 @@ async def test_unknown_previous_holiday_does_not_imply_closed():
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_operating_notes_are_preserved_and_not_ignored():
+async def test_operating_notes_are_preserved_and_not_ignored() -> None:
     """비정형 휴게시간 안내가 있으면 진료 중을 단정하지 않는다."""
     with_notes = replace(detail(hours={"1": ("0900", "1800")}), operating_notes="점심시간 전화 확인")
     result = await search(Boundary({"A1": with_notes}))
@@ -586,7 +589,7 @@ async def test_operating_notes_are_preserved_and_not_ignored():
 # - None.
 @pytest.mark.parametrize("include_valid", [False, True])
 @pytest.mark.anyio
-async def test_skipped_location_rows_mark_empty_or_populated_results_partial(include_valid):
+async def test_skipped_location_rows_mark_empty_or_populated_results_partial(include_valid: bool) -> None:
     """유효하지 않은 위치 행을 제외하면 빈 결과도 완전한 검색으로 표시하지 않는다."""
     # 클래스명: SkippedRowsBoundary
     # 역할: 잘못된 위치 행이 제거된 페이지 제공자.
@@ -602,7 +605,7 @@ async def test_skipped_location_rows_mark_empty_or_populated_results_partial(inc
         # - _: dict; 사용하지 않는 검색 조건.
         # 반환값:
         # - HospitalLocationPage; 요청 구간과 원본 행 수.
-        async def fetchNearbyPage(self, **_):
+        async def fetchNearbyPage(self, **_: object) -> HospitalLocationPage:
             """원본 행 하나가 검증 중 제외된 페이지를 반환한다."""
             records = (record(),) if include_valid else ()
             raw_count = len(records) + 1
@@ -630,7 +633,7 @@ class PageFailureBoundary(Boundary):
     # - error: Exception; 지정 페이지에서 발생시킬 오류.
     # 반환값:
     # - None.
-    def __init__(self, details, *, failed_page, error):
+    def __init__(self, details: Mapping[str, HospitalDetails | Exception], *, failed_page: int, error: Exception) -> None:
         super().__init__(details, size=1)
         self.failed_page, self.error = failed_page, error
 
@@ -643,7 +646,7 @@ class PageFailureBoundary(Boundary):
     # - kwargs: dict; 검색에 전달할 옵션.
     # 반환값:
     # - HospitalLocationPage; 요청 구간과 원본 행 수.
-    async def fetchNearbyPage(self, *, page_no, page_size, **kwargs):
+    async def fetchNearbyPage(self, *, page_no: int, page_size: int, **kwargs: object) -> HospitalLocationPage:
         """오류 페이지 이후의 추가 조회가 없는지 확인할 수 있게 기록한다."""
         if page_no == self.failed_page:
             self.pages.append((page_no, page_size))
@@ -660,7 +663,7 @@ class PageFailureBoundary(Boundary):
 # - None.
 @pytest.mark.parametrize("error_type", [HospitalApiUnavailableError, HospitalApiResponseError])
 @pytest.mark.anyio
-async def test_later_location_failure_retains_earlier_valid_matches(error_type):
+async def test_later_location_failure_retains_earlier_valid_matches(error_type: type[Exception]) -> None:
     """후속 페이지 장애는 이전 정상 결과를 부분 결과로 보존한다."""
     boundary = PageFailureBoundary(
         {identifier: detail(identifier) for identifier in ("A1", "A2", "A3")},
@@ -686,7 +689,7 @@ async def test_later_location_failure_retains_earlier_valid_matches(error_type):
     {"search_mode": HospitalSearchMode.OPEN_AT_TIME},
 ])
 @pytest.mark.anyio
-async def test_later_location_failure_keeps_empty_unknown_results_partial(error_type, filters):
+async def test_later_location_failure_keeps_empty_unknown_results_partial(error_type: type[Exception], filters: dict[str, HospitalSearchMode]) -> None:
     """이전 후보의 진료과·시간이 불명확해도 후속 장애를 확정적인 결과 없음으로 숨기지 않는다."""
     boundary = PageFailureBoundary(
         {"A1": detail(departments=()), "A2": detail("A2")},
@@ -706,7 +709,7 @@ async def test_later_location_failure_keeps_empty_unknown_results_partial(error_
 # - None.
 @pytest.mark.parametrize("error_type", [HospitalApiUnavailableError, HospitalApiResponseError])
 @pytest.mark.anyio
-async def test_first_location_failure_still_propagates_to_http_error(error_type):
+async def test_first_location_failure_still_propagates_to_http_error(error_type: type[Exception]) -> None:
     """첫 페이지 장애는 부분 성공으로 바꾸지 않고 기존 503·502 매핑으로 전달한다."""
     error = error_type("provider failed")
     boundary = PageFailureBoundary({"A1": detail()}, failed_page=1, error=error)
@@ -724,7 +727,7 @@ async def test_first_location_failure_still_propagates_to_http_error(error_type)
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_weekday_holiday_filter_does_not_call_hospital_provider():
+async def test_weekday_holiday_filter_does_not_call_hospital_provider() -> None:
     """공휴일이 아닌 평일은 병원 API 장애와 무관하게 날짜 변경 대상으로 응답한다."""
     boundary = PageFailureBoundary(
         {"A1": detail()}, failed_page=1, error=HospitalApiUnavailableError("offline"),
@@ -743,7 +746,7 @@ async def test_weekday_holiday_filter_does_not_call_hospital_provider():
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_slow_followup_page_preserves_holiday_results(monkeypatch):
+async def test_slow_followup_page_preserves_holiday_results(monkeypatch: pytest.MonkeyPatch) -> None:
     """후속 위치 조회가 지연돼도 이미 확인한 공휴일 진료 병원은 보존한다."""
     monkeypatch.setattr(settings, "HOSPITAL_SEARCH_TIMEOUT_SECONDS", 1.05)
 
@@ -763,7 +766,7 @@ async def test_slow_followup_page_preserves_holiday_results(monkeypatch):
         # - kwargs: dict; 검색에 전달할 옵션.
         # 반환값:
         # - HospitalLocationPage; 후속 조회는 정상 반환하지 않음.
-        async def fetchNearbyPage(self, *, page_no, page_size, **kwargs):
+        async def fetchNearbyPage(self, *, page_no: int, page_size: int, **kwargs: object) -> HospitalLocationPage:
             if page_no > 1:
                 await asyncio.Event().wait()
             return await super().fetchNearbyPage(page_no=page_no, page_size=page_size, **kwargs)
@@ -786,7 +789,7 @@ async def test_slow_followup_page_preserves_holiday_results(monkeypatch):
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_slow_detail_preserves_completed_holiday_results(monkeypatch):
+async def test_slow_detail_preserves_completed_holiday_results(monkeypatch: pytest.MonkeyPatch) -> None:
     """한 병원의 상세가 늦어도 완료된 결과는 반환하고 대기 작업은 회수한다."""
     monkeypatch.setattr(settings, "HOSPITAL_SEARCH_TIMEOUT_SECONDS", 1.05)
     cancelled = asyncio.Event()
@@ -805,7 +808,7 @@ async def test_slow_detail_preserves_completed_holiday_results(monkeypatch):
         # - hospital_id: str; 상세를 조회할 병원 식별자.
         # 반환값:
         # - HospitalDetails; A2는 호출자 취소까지 대기.
-        async def fetchDetails(self, hospital_id):
+        async def fetchDetails(self, hospital_id: str) -> HospitalDetails:
             if hospital_id == "A2":
                 try:
                     await asyncio.Event().wait()
@@ -831,7 +834,7 @@ async def test_slow_detail_preserves_completed_holiday_results(monkeypatch):
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_first_page_timeout_is_not_an_empty_success(monkeypatch):
+async def test_first_page_timeout_is_not_an_empty_success(monkeypatch: pytest.MonkeyPatch) -> None:
     """위치 정보조차 받지 못한 시간 초과는 결과 없음으로 바꾸지 않는다."""
     monkeypatch.setattr(settings, "HOSPITAL_SEARCH_TIMEOUT_SECONDS", 1.05)
 
@@ -849,7 +852,7 @@ async def test_first_page_timeout_is_not_an_empty_success(monkeypatch):
         # - kwargs: dict; 검색에 전달할 옵션.
         # 반환값:
         # - 정상 반환 없음; 호출자가 취소할 때까지 대기.
-        async def fetchNearbyPage(self, **kwargs):
+        async def fetchNearbyPage(self, **kwargs: object) -> NoReturn:
             await asyncio.Event().wait()
 
     with pytest.raises(HospitalApiUnavailableError):
