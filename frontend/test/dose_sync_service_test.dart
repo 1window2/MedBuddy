@@ -599,28 +599,51 @@ void main() {
   test(
     'stale reads and expired workers cannot overwrite an acknowledged undo',
     () async {
+      final date = doseScheduleDay(now);
+      final completed = medication.copyWith(
+        slotStatuses: {'morning': true},
+        medicationStatus: true,
+      );
       await store.saveCache('patient-a', {
-        'date': '2026-09-21',
-        'schedules': [medication.toJson()],
+        'date': date,
+        'schedules': [completed.toJson()],
       });
       final before = await store.cacheRevision('patient-a');
-      await store.enqueue('patient-a', op('first'));
+      await store.enqueue('patient-a', op('first', completed: false));
       await store.claim('patient-a', 'stale', 0);
       await store.claim('patient-a', 'current', 120001);
-      await store.acknowledge('patient-a', 'first', 'current', {
+      final acknowledgedUndo = {
+        'date': date,
+        'schedules': [medication.toJson()],
         'version': 'current',
-      });
+      };
+      await store.acknowledge(
+        'patient-a',
+        'first',
+        'current',
+        acknowledgedUndo,
+      );
+      expect(await store.readCache('patient-a'), acknowledgedUndo);
+      expect(await store.pending('patient-a'), isEmpty);
+      expect(await store.cacheRevision('patient-a'), before + 1);
       await store.acknowledge('patient-a', 'first', 'stale', {
+        'date': date,
+        'schedules': [completed.toJson()],
         'version': 'stale',
       });
       expect((await store.readCache('patient-a'))!['version'], 'current');
+      expect(await store.readCache('patient-a'), acknowledgedUndo);
       expect(
         await store.saveCache('patient-a', {
+          'date': date,
+          'schedules': [completed.toJson()],
           'version': 'old-read',
         }, expectedRevision: before),
         isFalse,
       );
       expect((await store.readCache('patient-a'))!['version'], 'current');
+      expect(await store.readCache('patient-a'), acknowledgedUndo);
+      expect(await store.cacheRevision('patient-a'), before + 1);
     },
   );
 

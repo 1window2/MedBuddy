@@ -135,7 +135,11 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> _initialize(bool activate) async {
     _store = await openStore();
-    if (activate) await _store!.activate(owner);
+    if (_disposed) return;
+    if (activate) {
+      await _store!.activate(owner, isCurrent: () => !_disposed);
+    }
+    if (_disposed) return;
     await reload();
   }
 

@@ -202,9 +202,11 @@ class DoseOutboxStore {
   // 함수이름: activate
   // 함수역할: 계정 전환과 이전 위젯 버튼 무효화를 함께 저장한다. 복약 전송 대기는 보존한다.
   // 매개변수: owner 활성 계정, null이면 로그아웃. 반환값: 활성 계정 변경 완료 Future.
-  Future<void> activate(String? owner) async {
+  Future<void> activate(String? owner, {bool Function()? isCurrent}) async {
     final next = owner == null ? '' : await ownerKey(owner);
     await db.transaction((tx) async {
+      // 키 계산이나 DB 대기 중 종료된 세션은 새 계정을 덮어쓰지 않는다.
+      if (isCurrent != null && !isCurrent()) return;
       final previous = await _activeToken(tx) ?? '';
       if (previous != next) {
         // 설정은 유지하되 재로그인으로 과거 버튼·환자 탐색·지연 응답이 살아나지 않게 한다.
@@ -540,10 +542,23 @@ class DoseOutboxStore {
       final revision = revisions.isEmpty
           ? 0
           : int.parse(revisions.single['value'] as String);
-      await tx.insert('metadata', {
-        'name': 'cache:$token',
-        'value': encrypted,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      final currentRows = await tx.query(
+        'metadata',
+        where: 'name = ?',
+        whereArgs: ['cache:$token'],
+      );
+      final current = currentRows.isEmpty
+          ? null
+          : await _decrypt(currentRows.single['value'] as String, token);
+      // 자정을 넘겨 도착한 영수증은 확인만 마치고 더 최신 날짜의 캐시를 보존한다.
+      final currentDay = current?['date'] as String? ?? '';
+      final receiptDay = cache['date'] as String? ?? '';
+      if (currentDay.compareTo(receiptDay) <= 0) {
+        await tx.insert('metadata', {
+          'name': 'cache:$token',
+          'value': encrypted,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
       await _bumpRevision(tx, token, revision);
       await tx.delete(
         'operations',
