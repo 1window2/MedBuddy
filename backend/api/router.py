@@ -402,6 +402,7 @@ def register_push_token(
         request.token,
         request.platform,
         request.supports_caregiver_actions,
+        supports_slot_check_actions=request.supports_slot_check_actions,
         sessions_valid_after=(
             revocation.sessionsValidAfter(principal.subject) if revocation else None
         ),

@@ -12,6 +12,8 @@ from boundaries.push_notification_boundary import (
     PushNotificationBoundary,
 )
 from entities.chat_message_entity import _ChatMessage
+from core.application_clock import application_today
+from entities.medication_schedule_entity import MEDICATION_SCHEDULE_SLOT_KEYS
 from services.chat_notification_summary import (
     build_chat_notification_summary, chat_fallback_text, notification_preview,
 )
@@ -75,6 +77,7 @@ class DispatchChatMessageAlert:
     ) -> PushDeliveryResult:
         """상대 기기에 길이를 제한한 실제 채팅 내용을 미리 보여준다."""
         context_payload: object = None
+        action_data: dict[str, str] = {}
         # Recheck queued work before exposing a preview; completed delivery cannot be recalled.
         if message_id is not None:
             row = self.db.get(_ChatMessage, message_id)
@@ -90,6 +93,22 @@ class DispatchChatMessageAlert:
             message_body = str(row.body)
             message_kind = str(row.message_kind)
             context_payload = row.context_payload
+            # 저장된 보호자 요청만 버튼을 제공하며 지연된 과거 날짜를 오늘로 바꾸지 않는다.
+            context = context_payload if isinstance(context_payload, dict) else {}
+            schedule = context.get("schedule_context")
+            schedule = schedule if isinstance(schedule, dict) else {}
+            if (message_kind == "slot_check_request"
+                    and recipient_hash == str(link.patient_hash)
+                    and str(row.sender_hash) == str(link.caregiver_hash)
+                    and schedule.get("slot_key") in MEDICATION_SCHEDULE_SLOT_KEYS
+                    and schedule.get("schedule_date") == application_today().isoformat()):
+                slot_key = schedule["slot_key"]
+                action_data = {
+                    "action_version": "1",
+                    "patient_hash": recipient_hash,
+                    "message_id": str(message_id),
+                    "schedule_date": schedule["schedule_date"],
+                }
         resolver = PushRecipientResolver(self.db)
         recipient = resolver.resolve(recipient_hash)
         if not recipient.tokens:
@@ -124,22 +143,33 @@ class DispatchChatMessageAlert:
                             "chat_count": str(summary["count"])}
         # Firebase 호출이 느려도 풀 연결과 읽기 트랜잭션을 잡고 있지 않도록 먼저 반환한다.
         self.db.rollback()
-        result = self.push_boundary.send_notification(
-            tokens=list(recipient.tokens),
-            title=title,
-            body=notification_body,
-            data={
-                "type": "linked_chat_message",
-                "recipient_hash": recipient_hash,
-                "language": language,
-                **({"event_id": f"chat:{link_id}:{message_id}"}
-                   if message_id is not None else {}),
-                "link_id": str(link_id),
-                "message_preview": preview if show_details else "",
-                "message_kind": message_kind,
-                "slot_key": slot_key or "",
-                **grouped_data,
-            },
+        data = {
+            "type": "linked_chat_message",
+            "recipient_hash": recipient_hash,
+            "language": language,
+            **({"event_id": f"chat:{link_id}:{message_id}"}
+               if message_id is not None else {}),
+            "link_id": str(link_id),
+            "message_preview": preview if show_details else "",
+            "message_kind": message_kind,
+            "slot_key": slot_key or "",
+            **grouped_data,
+        }
+        # 버튼 지원 Android는 직접 알림을 그리고, 나머지는 기존 OS 알림을 유지한다.
+        groups = [(list(recipient.tokens), data)]
+        if action_data:
+            groups = [
+                ([token for token in recipient.tokens if token in recipient.slot_check_action_tokens],
+                 {**data, **action_data, "title": title, "body": notification_body}),
+                ([token for token in recipient.tokens if token not in recipient.slot_check_action_tokens], data),
+            ]
+        results = [self.push_boundary.send_notification(
+            tokens=tokens, title=title, body=notification_body, data=payload,
+        ) for tokens, payload in groups if tokens]
+        result = PushDeliveryResult(
+            success_count=sum(item.success_count for item in results),
+            invalid_tokens=tuple(token for item in results for token in item.invalid_tokens),
+            retryable_failure_count=sum(item.retryable_failure_count for item in results),
         )
         if result.invalid_tokens:
             resolver.disable_invalid(result.invalid_tokens)

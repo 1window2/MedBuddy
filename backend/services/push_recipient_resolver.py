@@ -34,6 +34,7 @@ class PushRecipient:
     user_hash: str
     tokens: tuple[str, ...]
     action_tokens: frozenset[str]
+    slot_check_action_tokens: frozenset[str]
     language: str
     show_details: bool
     caregiver_enabled: bool
@@ -81,7 +82,7 @@ class PushRecipientResolver:
     def __init__(self, db: Session) -> None:
         self.db = db
         self._preferences: dict[str, _RecipientPreferences] = {}
-        self._tokens: dict[str, tuple[tuple[str, bool], ...]] = {}
+        self._tokens: dict[str, tuple[tuple[str, bool, bool], ...]] = {}
         self._token_versions: dict[str, tuple[int, str, str]] = {}
 
     # Function Name: resolve
@@ -96,9 +97,12 @@ class PushRecipientResolver:
         tokens = self._read_tokens(user_hash)
         return PushRecipient(
             user_hash=user_hash,
-            tokens=tuple(token for token, _ in tokens),
+            tokens=tuple(token for token, _, _ in tokens),
             action_tokens=frozenset(
-                token for token, supports_actions in tokens if supports_actions
+                token for token, supports_actions, _ in tokens if supports_actions
+            ),
+            slot_check_action_tokens=frozenset(
+                token for token, _, supports_slot_check in tokens if supports_slot_check
             ),
             language=preferences.language,
             show_details=preferences.show_details,
@@ -225,7 +229,7 @@ class PushRecipientResolver:
     # - user_hash (str): Recipient account.
     # Returns:
     # - (token, supports caregiver actions) pairs.
-    def _read_tokens(self, user_hash: str) -> tuple[tuple[str, bool], ...]:
+    def _read_tokens(self, user_hash: str) -> tuple[tuple[str, bool, bool], ...]:
         tokens = self._tokens.get(user_hash)
         if tokens is not None:
             return tokens
@@ -234,6 +238,8 @@ class PushRecipientResolver:
                 _DevicePushToken.id,
                 _DevicePushToken.token,
                 _DevicePushToken.supports_caregiver_actions,
+                _DevicePushToken.supports_slot_check_actions,
+                _DevicePushToken.platform,
                 _DevicePushToken.registration_version,
             )
             .filter(
@@ -242,7 +248,8 @@ class PushRecipientResolver:
             )
             .all()
         )
-        tokens = tuple((str(row.token), bool(row.supports_caregiver_actions)) for row in rows)
+        tokens = tuple((str(row.token), bool(row.supports_caregiver_actions),
+                        bool(row.supports_slot_check_actions) and row.platform == "android") for row in rows)
         for row in rows:
             self._token_versions[str(row.token)] = (int(row.id), user_hash, row.registration_version)
         self._tokens[user_hash] = tokens

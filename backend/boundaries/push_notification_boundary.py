@@ -162,6 +162,11 @@ class FirebasePushNotificationBoundary:
             else None
         )
         is_chat = data.get("type") == "linked_chat_message"
+        # Android 버튼은 앱의 백그라운드 수신기가 직접 그려야 하므로 OS 자동 표시를 끈다.
+        data_only = data.get("action_version") == "1" and (
+            data.get("type") == "caregiver_slot_missed"
+            or (is_chat and data.get("message_kind") == "slot_check_request")
+        )
         chat_group = data.get("chat_group", "")
         chat_count = None
         if is_chat and re.fullmatch(r"medbuddy-chat-[0-9a-f]{32}", chat_group):
@@ -180,14 +185,12 @@ class FirebasePushNotificationBoundary:
             response = messaging.send_each_for_multicast(
                 messaging.MulticastMessage(
                     tokens=token_batch,
-                    notification=(None if data.get("type") == "caregiver_slot_missed"
-                                  and data.get("action_version") == "1"
+                    notification=(None if data_only
                                   else messaging.Notification(title=title, body=body)),
                     data=data,
                     android=messaging.AndroidConfig(
                         priority="high",
-                        notification=(None if data.get("type") == "caregiver_slot_missed"
-                                      and data.get("action_version") == "1" else messaging.AndroidNotification(
+                        notification=(None if data_only else messaging.AndroidNotification(
                             channel_id="medbuddy_linked_chat" if is_chat else "medbuddy_caregiver_updates",
                             tag=notification_key,
                             notification_count=chat_count,

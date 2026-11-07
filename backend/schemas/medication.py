@@ -273,6 +273,7 @@ class PushTokenRegistration(BaseModel):
     token: str = Field(min_length=16, max_length=_MAX_PUSH_TOKEN_LENGTH)
     platform: str = Field(default="android", pattern=r"^(android|ios)$")
     supports_caregiver_actions: bool = False
+    supports_slot_check_actions: bool = False
 
     # 함수이름: validate_token
     # 함수역할:

@@ -96,6 +96,28 @@ def test_retry_after_undo_never_reapplies(fixture):
     assert db.query(_CaregiverAlertOutbox).count() == 1
 
 
+@pytest.mark.parametrize("with_chat", [False, True])
+def test_notification_repeated_regular_completion_never_emits_another_event(fixture, with_chat):
+    """서로 다른 알림 요청·동일 요청 재전송 모두 완료 상태의 재확인일 뿐 새 완료 이벤트가 아니다."""
+    db, med_id = fixture
+    link_id = None
+    if with_chat:
+        links = LinkPatientCaregiver(db)
+        code = links.generatePatientHash("offline-patient")["data"]["patient_code"]
+        link_id = links.requestPatientCaregiverLink("other-patient", code)["data"]["id"]
+    control = SyncDose(db)
+    first = operation(med_id, operation_id="notification_request_001", link_id=link_id)
+    events, _ = control.apply("offline-patient", first)
+    assert len(events) == 1
+    outbox_ids = [row.id for row in db.query(_CaregiverAlertOutbox).all()]
+    for request in [first, operation(med_id, operation_id="notification_request_002", link_id=link_id)]:
+        events, _ = control.apply("offline-patient", request)
+        assert events == []
+        assert [row.id for row in db.query(_CaregiverAlertOutbox).all()] == outbox_ids
+        assert db.query(_MedicationCompletion).count() == 1
+        assert db.query(_MedicationCompletion).one().completed is True
+
+
 # 함수이름: test_midnight_records_original_day_without_today_or_live_alert
 # 함수역할: 전날 기록을 원래 날짜에 저장하고 오늘 일정과 실시간 보호자 알림에는 반영하지 않는지 검증한다.
 # 매개변수: fixture: 격리 DB와 약 식별자. 반환값: 없음; 불일치 시 단언 실패.

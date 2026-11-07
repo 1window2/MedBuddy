@@ -31,7 +31,7 @@ def test_empty_database_bootstrap_uses_alembic_and_is_repeatable(tmp_path: Path)
                 ).scalar_one()
                 assert "AUTOINCREMENT" in definition.upper()
         assert inspect(engine).has_table("catalog_refresh_state")
-        assert {"supports_caregiver_actions", "registration_version"} <= {
+        assert {"supports_caregiver_actions", "supports_slot_check_actions", "registration_version"} <= {
             column["name"] for column in inspect(engine).get_columns("device_push_tokens")
         }
     finally:
@@ -121,7 +121,7 @@ def test_merge_preserves_both_independently_applied_heads(tmp_path: Path) -> Non
     from alembic.script import ScriptDirectory
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["e6b4d2a9f031"]
+    assert scripts.get_heads() == ["f7a2c9e4b610"]
     assert set(scripts.get_revision("f2c8a6d4e901").down_revision) == {
         "c5e1a7f3b902", "d19e7c4b2a60",
     }
@@ -169,6 +169,40 @@ def test_caregiver_action_capability_preserves_existing_device_tokens(tmp_path: 
         command.upgrade(config, "head")
         with engine.connect() as connection:
             assert connection.execute(select(tokens.c.token)).scalar_one() == "preserve-existing-token"
+    finally:
+        engine.dispose()
+
+
+def test_slot_check_capability_defaults_off_for_existing_action_clients_and_round_trips(tmp_path: Path) -> None:
+    """기존 보호자 버튼 지원 토큰은 업그레이드해도 새 data-only 알림의 대상이 되지 않는다."""
+    url = f"sqlite:///{(tmp_path / 'slot-check-actions.db').as_posix()}"
+    config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    config.attributes["database_url"] = url
+    command.upgrade(config, "e6b4d2a9f031")
+    engine = create_engine(url)
+    now = datetime(2026, 11, 7)
+    try:
+        users = Table("user_accounts", MetaData(), autoload_with=engine)
+        tokens = Table("device_push_tokens", MetaData(), autoload_with=engine)
+        with engine.begin() as connection:
+            connection.execute(users.insert().values(user_hash="patient", created_at=now, updated_at=now))
+            connection.execute(tokens.insert().values(user_hash="patient", token="legacy-actions-token",
+                platform="android", enabled=True, supports_caregiver_actions=True,
+                created_at=now, updated_at=now, registration_version="preserved-version"))
+        for _ in range(2):
+            command.upgrade(config, "head")
+            current = Table("device_push_tokens", MetaData(), autoload_with=engine)
+            with engine.connect() as connection:
+                row = connection.execute(select(current)).mappings().one()
+                assert row["supports_caregiver_actions"] is True
+                assert row["supports_slot_check_actions"] is False
+                assert row["enabled"] is True
+                assert row["token"] == "legacy-actions-token"
+                assert row["registration_version"] == "preserved-version"
+            command.downgrade(config, "e6b4d2a9f031")
+            assert "supports_slot_check_actions" not in {
+                column["name"] for column in inspect(engine).get_columns("device_push_tokens")
+            }
     finally:
         engine.dispose()
 

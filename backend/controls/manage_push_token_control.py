@@ -49,6 +49,7 @@ class ManagePushToken:
         platform: str,
         supports_caregiver_actions: bool = False,
         sessions_valid_after: datetime | None = None,
+        supports_slot_check_actions: bool = False,
     ) -> dict[str, object]:
         normalized_user_hash = normalize_patient_hash(user_hash)
         normalized_token = token.strip()
@@ -72,6 +73,10 @@ class ManagePushToken:
             push_token.enabled = True
 
         push_token.supports_caregiver_actions = supports_caregiver_actions
+        # 구버전 재등록·앱 다운그레이드는 새 기능을 끄며 Android만 직접 표시한다.
+        push_token.supports_slot_check_actions = (
+            supports_slot_check_actions and normalized_platform == "android"
+        )
         # 같은 계정의 재등록도 이전 전송 결과와 구분할 수 있게 갱신한다.
         push_token.registration_version = secrets.token_hex(16)
         if sessions_valid_after is not None:
