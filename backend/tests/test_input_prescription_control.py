@@ -169,6 +169,8 @@ class _RecordingOCRServiceBoundary:
 # Role: Prescription text-analysis double that simulates an external deadline failure.
 # Responsibilities:
 # - Raises an analysis timeout without forwarding prescription text to an external service.
+# Attributes:
+# - None.
 class _TimedOutOCRServiceBoundary:
     # Function Name: extractPrescriptionTextData
     # Description:

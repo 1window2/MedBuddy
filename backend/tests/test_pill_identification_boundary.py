@@ -119,6 +119,8 @@ class _FakeVisionAPI:
 # Responsibilities:
 # - Raises an upstream connection error containing private details to test public-error
 #   sanitization.
+# Attributes:
+# - None.
 class _FailingVisionAPI:
     # Function Name: requestVisualFeatures
     # Description:
@@ -138,6 +140,8 @@ class _FailingVisionAPI:
 # Responsibilities:
 # - Blocks briefly before returning the image unchanged so preprocessing exceeds a short
 #   deadline.
+# Attributes:
+# - None.
 class _SlowImageProcessingBoundary:
     # Function Name: preprocessPillImageWithAssessment
     # Description:
@@ -1513,9 +1517,23 @@ async def test_mfds_api_requires_every_advertised_raw_row() -> None:
 async def test_mfds_api_failure_does_not_expose_the_service_key() -> None:
     import traceback
 
+    # Function Name: handler
+    # Description:
+    # - Returns a provider failure to exercise request error handling without network access.
+    # Parameters:
+    # - _request: httpx.Request; intercepted request, unused.
+    # Returns:
+    # - httpx.Response; HTTP 500.
     def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(500, text="provider failure")
 
+    # Function Name: client_factory
+    # Description:
+    # - Creates a mock-transport client while retaining the requested timeout and connection limits.
+    # Parameters:
+    # - kwargs: dict[str, object]; client options, including timeout and limits.
+    # Returns:
+    # - httpx.AsyncClient; client bound to the failure handler.
     def client_factory(**kwargs: object) -> httpx.AsyncClient:
         return httpx.AsyncClient(
             transport=httpx.MockTransport(handler),
@@ -1557,6 +1575,8 @@ async def test_mfds_api_rejects_oversized_chunked_page_response(
     #   chunks.
     # Responsibilities:
     # - Yields two ten-byte chunks to test cumulative response-size enforcement.
+    # Attributes:
+    # - None.
     class _OversizedStream(httpx.AsyncByteStream):
         # Function Name: __aiter__
         # Description:
@@ -1984,6 +2004,13 @@ def test_image_preprocessing_turns_the_image_upright_without_rewriting_exif(
     buffer = BytesIO()
     Image.new("RGB", (300, 150), (200, 30, 30)).save(buffer, format="PNG", exif=exif)
 
+    # Function Name: refuse_reencoding
+    # Description:
+    # - Fails immediately if image processing attempts to re-encode EXIF metadata.
+    # Parameters:
+    # - offset: int; EXIF byte offset, unused.
+    # Returns:
+    # - Never returns; raises AssertionError.
     def refuse_reencoding(self, offset=8):
         raise AssertionError("EXIF must not be re-encoded")
 

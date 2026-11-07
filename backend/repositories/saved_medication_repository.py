@@ -45,10 +45,10 @@ class SavedMedicationRepository:
             .all()
         )
 
-    # 일정 응답에 필요한 열만 읽고, 사용하지 않는 상세 안내의 지연 조회도 막는다.
     # 함수이름: list_schedule_medications_for_patients
-    # 함수역할: 지정한 환자들의 일정 필드만 일괄 조회한다.
-    # 매개변수: patient_hashes: 호출자가 검증한 환자 범위. 반환값: 약 ID 순서의 ORM 행.
+    # 함수역할: 여러 환자의 일정·복약 상태에 필요한 열만 ID 순으로 일괄 조회한다. 제외된 열의 지연 조회는 차단한다.
+    # 매개변수: patient_hashes (list[str])는 조회할 환자 목록이다.
+    # 반환값: list[_SavedMedication] 제한 열이 로드된 행. 빈 입력이면 조회 없이 빈 목록이며 DB 오류는 전파한다.
     def list_schedule_medications_for_patients(
         self, patient_hashes: list[str],
     ) -> list[_SavedMedication]:
@@ -74,14 +74,10 @@ class SavedMedicationRepository:
             .all()
         )
 
-    # 함수이름: list_schedule_medications_by_patient
-    # 함수역할:
-    # - 한 환자의 저장 약을 일정 계산에 필요한 열만 읽어 ID 오름차순으로 조회한다.
-    # - 모든 열이 필요한 저장·삭제·보존 처리는 list_by_patient를 사용한다.
-    # 매개변수:
-    # - patient_hash (str): 저장 기록의 소유 범위를 제한할 환자 해시.
-    # 반환값:
-    # - 일정 필드만 적재된 해당 환자의 저장 약 목록.
+    # Function Name: list_schedule_medications_by_patient
+    # Description: Delegate one patient's schedule projection to the shared multi-patient query.
+    # Parameters: patient_hash (str) identifies the owner.
+    # Returns: list[_SavedMedication] ordered by ID with only schedule-related columns loaded; database errors propagate.
     def list_schedule_medications_by_patient(
         self, patient_hash: str,
     ) -> list[_SavedMedication]:
@@ -141,13 +137,10 @@ class SavedMedicationRepository:
             .first()
         )
 
-    # 함수이름: count_by_patient
-    # 함수역할:
-    # - 한 환자가 저장해 둔 약의 개수를 센다.
-    # 매개변수:
-    # - patient_hash (str): 저장 기록의 소유 범위를 제한할 환자 해시.
-    # 반환값:
-    # - 저장된 약의 개수.
+    # Function Name: count_by_patient
+    # Description: Count stored medication rows in the patient scope for account-limit checks.
+    # Parameters: patient_hash (str) identifies the owner.
+    # Returns: int row count, including inactive courses; database failures propagate.
     def count_by_patient(self, patient_hash: str) -> int:
         """계정별 저장 한도를 확인할 때 쓰는 개수를 반환한다."""
         return (

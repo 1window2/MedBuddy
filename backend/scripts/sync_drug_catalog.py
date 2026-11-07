@@ -52,6 +52,7 @@ _CATALOG_SYNC_ADVISORY_LOCK_ID = 0x4D45444255444459
 # - Raised when another PostgreSQL catalog synchronization owns the lock.
 # Responsibilities:
 # - Stop competing PostgreSQL workers from publishing overlapping catalog generations.
+# Attributes: Inherited RuntimeError arguments only; the lock itself belongs to the synchronization transaction.
 class CatalogSyncAlreadyRunningError(RuntimeError):
     """Raised when another PostgreSQL catalog synchronization owns the lock."""
 
@@ -61,6 +62,7 @@ class CatalogSyncAlreadyRunningError(RuntimeError):
 # - Raised when an upstream catalog response would publish partial data.
 # Responsibilities:
 # - Abort publication when pagination, volume or identifier reconciliation would replace a complete catalog with incomplete data.
+# Attributes: Inherited RuntimeError arguments only; partial catalog rows are not retained in the exception.
 class CatalogSyncIncompleteError(RuntimeError):
     """Raised when an upstream catalog response would publish partial data."""
 

@@ -51,6 +51,7 @@ class PrescriptionSimilarityResult:
 # - 동일 품목과 동일 성분의 처방 간 겹침을 계산한다.
 # - 효능 문구를 치료 맥락으로 변환해 완전히 교체된 처방을 보조 판정한다.
 # - 보수적인 임계값을 사용해 무관한 처방의 잘못된 비교를 방지한다.
+# 속성: 정규화 정규식과 최소 유사도 상수, 치료 분야별 키워드 표를 클래스 수준에서 공유하며 인스턴스 상태는 두지 않는다.
 class PrescriptionSimilarityService:
     _NON_KEY_PATTERN = re.compile(r"[^0-9a-z가-힣]")
     _DOSAGE_PATTERN = re.compile(

@@ -10,9 +10,10 @@ branch_labels = None
 depends_on = None
 
 
-# 함수이름: upgrade
-# 함수역할: 검색한 계정 정보 없이 품목번호별 공개 표시 정보와 조회 시각을 보관하는 표를 만든다.
-# 매개변수: 없음. 반환값: 없음.
+# Function Name: upgrade
+# Description: Create the authoritative medication search snapshot table and freshness index only when absent, preserving existing locally-created rows.
+# Parameters: None; uses the active Alembic connection.
+# Returns: None; inspection and DDL failures propagate.
 def upgrade() -> None:
     inspector = sa.inspect(op.get_bind())
     if not inspector.has_table("medication_search_cache"):
@@ -30,9 +31,10 @@ def upgrade() -> None:
         op.create_index("ix_medication_search_cache_fetched_at", "medication_search_cache", ["fetched_at"])
 
 
-# 함수이름: downgrade
-# 함수역할: 임시 검색 캐시만 지우고 대화·저장 약·복용 기록은 유지한다.
-# 매개변수: 없음. 반환값: 없음.
+# Function Name: downgrade
+# Description: Remove the medication search freshness index and table, discarding cached product references.
+# Parameters: None; uses the active Alembic connection.
+# Returns: None; DDL failures propagate.
 def downgrade() -> None:
     op.drop_index("ix_medication_search_cache_fetched_at", table_name="medication_search_cache")
     op.drop_table("medication_search_cache")

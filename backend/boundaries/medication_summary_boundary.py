@@ -22,18 +22,10 @@ from entities.medication_lookup_result import MedicationLookupResult
 logger = logging.getLogger(__name__)
 
 
-# Function Name: gather_summaries_keeping_successes
-# Description:
-# - Waits for the AI summaries of several candidate medications and keeps the ones that
-#   succeeded. A failed summary drops only its own candidate: without this, one candidate whose
-#   approval text the AI could not summarise made the whole lookup fail, and the user lost the
-#   candidates that were ready (seen with a provider error on one of three "포사맥스" products).
-#   A medication without a summary is still never returned.
-# Parameters:
-# - summaries (Iterable[Awaitable[MedicationDetail]]): Summary calls, one per candidate.
-# Returns:
-# - Successful summaries in their original order with completeness preserved; raises the first
-#   error when none succeeded. A partial result must not authorize automatic product selection.
+# 함수이름: gather_summaries_keeping_successes
+# 함수역할: 후보 요약을 함께 기다려 성공한 상세는 유지하고 일부 실패를 완전성 표시로 전달한다.
+# 매개변수: summaries (Iterable[Awaitable[MedicationDetail]])는 요약 작업들이다.
+# 반환값: MedicationLookupResult. 일부 실패면 is_complete=False, 전부 실패면 첫 예외를 다시 발생시키며 빈 입력은 완전한 빈 결과다.
 async def gather_summaries_keeping_successes(
     summaries: Iterable[Awaitable[MedicationDetail]],
 ) -> MedicationLookupResult:
@@ -58,14 +50,10 @@ FAILED_SUMMARY_TEXT = "요약 실패"
 MISSING_DETAIL_TEXT = "정보 없음"
 
 
-# 함수이름: read_medication_detail_text
-# 함수역할:
-# - 값을 문자열로 정리하고 None 또는 공백뿐인 값에는 표시용 기본 문구를 적용한다.
-# 매개변수:
-# - value (Any): 공공 약품 필드의 원본 값.
-# - default (str): 값이 없거나 비었을 때 표시할 대체 문구.
-# 반환값:
-# - 공백을 제거한 문자열 또는 default.
+# Function Name: read_medication_detail_text
+# Description: Converts supplied detail values to trimmed text while replacing missing or whitespace-only values with a configured fallback.
+# Parameters: value (Any) is a provider field; default (str) is the missing-detail text.
+# Returns: Nonblank converted text or default; conversion failures from custom objects propagate.
 def read_medication_detail_text(value: Any, default: str = MISSING_DETAIL_TEXT) -> str:
     if value is None:
         return default

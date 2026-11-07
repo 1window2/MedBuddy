@@ -11,9 +11,10 @@ from entities.medication_schedule_entity import normalize_medication_schedule_sl
 from services.medication_dose_rhythm import names_nonpositive_duration
 
 
-# 클래스명: RegimenChanges
-# 역할: 새 약 버전에 반영할 사용자 입력만 허용한다.
-# 속성: 약 이름·복용량·기간·확인 시간대·복용 모드.
+# Class Name: RegimenChanges
+# Role: Contains only editable fields for a new medication regimen version.
+# Responsibilities: Rejects extra/explicit-null fields and validates names, positive duration labels and supported slots.
+# Attributes: item_name, dosage_per_time, daily_frequency, total_days and dosing_mode are optional strings; prescription_date is an optional date; schedule_slot_keys is an optional list[str].
 class RegimenChanges(BaseModel):
     model_config = ConfigDict(extra="forbid")
     # 저장과 같은 이름 길이를 허용해, 저장된 긴 이름의 약도 그대로 변경할 수 있게 한다.
@@ -26,8 +27,9 @@ class RegimenChanges(BaseModel):
     dosing_mode: Literal["scheduled", "as_needed"] | None = None
 
     # 함수이름: validate_name
-    # 함수역할: 공백뿐인 약 이름을 거부한다.
-    # 매개변수: value: 새 이름. 반환값: 앞뒤 공백을 제거한 이름.
+    # 함수역할: 변경 약명의 앞뒤 공백을 제거하고 공백뿐인 값을 거절한다.
+    # 매개변수: value (str | None)는 새 약명이다.
+    # 반환값: 정리된 str 또는 None. 공백뿐인 문자열은 ValueError다.
     @field_validator("item_name")
     @classmethod
     def validate_name(cls, value: str | None) -> str | None:
@@ -35,9 +37,10 @@ class RegimenChanges(BaseModel):
             raise ValueError("A medication name is required.")
         return value.strip() if value is not None else None
 
-    # 함수이름: validate_total_days
-    # 함수역할: 0일 이하의 복용 기간은 끝나지 않는 복용이 되므로 거부한다.
-    # 매개변수: value: 새 총 복용 기간. 반환값: 받은 값 그대로.
+    # Function Name: validate_total_days
+    # Description: Rejects a recognized nonpositive duration instead of letting it become an open-ended regimen.
+    # Parameters: value (str | None) is the proposed duration.
+    # Returns: Unchanged value; raises ValueError for a recognized duration of zero or less.
     @field_validator("total_days")
     @classmethod
     def validate_total_days(cls, value: str | None) -> str | None:
@@ -46,8 +49,9 @@ class RegimenChanges(BaseModel):
         return value
 
     # 함수이름: validate_slots
-    # 함수역할: 미지원 시간대를 조용히 버리지 않고 요청 오류로 처리한다.
-    # 매개변수: value: 시간대 목록. 반환값: 지원 순서의 중복 없는 목록.
+    # 함수역할: 시간대를 고정 순서·중복 없는 형태로 바꾸되 지원하지 않는 값이 사라지는 입력은 거절한다.
+    # 매개변수: value (list[str] | None)는 변경 시간대다.
+    # 반환값: 정규화 목록 또는 None. 정규화 전후 집합이 달라지면 ValueError다.
     @field_validator("schedule_slot_keys")
     @classmethod
     def validate_slots(cls, value: list[str] | None) -> list[str] | None:
@@ -59,8 +63,9 @@ class RegimenChanges(BaseModel):
         return normalized
 
     # 함수이름: reject_null_changes
-    # 함수역할: 명시적 null로 필수 복용 정보를 지우는 모호한 변경을 막는다.
-    # 매개변수: 없음. 반환값: 검증된 변경 정보.
+    # 함수역할: 명시적 null을 변경 없음과 혼동하지 않도록 전달된 필드가 None이면 거절한다.
+    # 매개변수: 없음. model_fields_set의 입력만 검사한다.
+    # 반환값: 현재 RegimenChanges. 명시적 null은 ValueError다.
     @model_validator(mode="after")
     def reject_null_changes(self) -> "RegimenChanges":
         if any(getattr(self, name) is None for name in self.model_fields_set):
@@ -69,8 +74,10 @@ class RegimenChanges(BaseModel):
 
 
 # 클래스명: RegimenChangeRequest
-# 역할: 미래 적용일 기준의 수정·중단·교체를 요청한다.
-# 속성: expected_revision: 조회 버전, operation_id: 재전송 UUID, changes: 새 버전 입력.
+# 역할: 적용일을 지정한 처방 수정·중단·교체 요청을 검증한다.
+# 주요 책임: 추가 필드를 거절하고 동시 수정 버전과 재전송 UUID를 전달한다.
+# 속성: patient_hash (str | None)는 환자, action은 edit/stop/replace, effective_date는 date, expected_revision은 0 이상 StrictInt다.
+#   operation_id는 UUID, changes는 RegimenChanges이며 적용 가능 날짜는 제어 계층에서 판단한다.
 class RegimenChangeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     patient_hash: str | None = Field(default=None, max_length=128)
@@ -82,8 +89,10 @@ class RegimenChangeRequest(BaseModel):
 
 
 # 클래스명: DoseHistoryUpdate
-# 역할: 사용자가 보고한 복용 상태와 실제 복용 시각을 서버 기록 시각과 분리한다.
-# 속성: status: 사용자 보고 상태, actual_taken_at: 시간대 포함 실제 시각, reason: 선택적 사유.
+# 역할: 사용자 복용 보고와 재전송·충돌 방지 입력을 검증한다.
+# 주요 책임: taken에만 시간대 포함 실제 시각을 허용하고 추가 필드를 거절하며 사유를 정리한다.
+# 속성: patient_hash (str | None)는 환자, status는 taken/skipped/unrecorded, actual_taken_at은 datetime | None, reason은 str이다.
+#   expected_revision은 0 이상 StrictInt, operation_id는 UUID다.
 class DoseHistoryUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     patient_hash: str | None = Field(default=None, max_length=128)
@@ -94,8 +103,9 @@ class DoseHistoryUpdate(BaseModel):
     operation_id: UUID
 
     # 함수이름: validate_taken_time
-    # 함수역할: 복용 보고에는 실제 시각을 요구하고 다른 상태의 복용 시각은 거부한다.
-    # 매개변수: 없음. 반환값: 검증된 기록 요청.
+    # 함수역할: taken에는 시간대 정보가 있는 실제 시각을 요구하고 다른 상태의 시각을 거절한 뒤 사유 공백을 정리한다.
+    # 매개변수: 없음. 현재 모델의 상태·실제 시각·사유를 검사한다.
+    # 반환값: 현재 DoseHistoryUpdate. 상태와 시각 계약 불일치는 ValueError다.
     @model_validator(mode="after")
     def validate_taken_time(self) -> "DoseHistoryUpdate":
         if self.status == "taken":

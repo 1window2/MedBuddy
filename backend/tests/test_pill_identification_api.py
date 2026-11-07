@@ -256,6 +256,14 @@ async def test_request_body_limit_counts_streamed_chunks() -> None:
 # - None.
 @pytest.mark.anyio
 async def test_json_body_with_nul_is_refused_with_422() -> None:
+    # Function Name: run
+    # Description:
+    # - Feeds body chunks through the request-size middleware and captures its response status.
+    # Parameters:
+    # - chunks: list[bytes]; incoming request chunks.
+    # - content_type: bytes; request MIME header.
+    # Returns:
+    # - int; emitted HTTP status.
     async def run(chunks: list[bytes], content_type: bytes) -> int:
         messages = iter(
             [
@@ -264,9 +272,25 @@ async def test_json_body_with_nul_is_refused_with_422() -> None:
             ]
         )
 
+        # Function Name: receive
+        # Description:
+        # - Supplies the next prebuilt request chunk to the ASGI middleware.
+        # Parameters:
+        # - None.
+        # Returns:
+        # - Message; next request event, with exhaustion surfacing as an error.
         async def receive() -> Message:
             return next(messages)  # type: ignore[return-value]
 
+        # Function Name: drain_app
+        # Description:
+        # - Drains all body chunks and emits an empty 200 response if the middleware allows them.
+        # Parameters:
+        # - _scope: Scope; request scope, unused.
+        # - app_receive: Receive; incoming body stream.
+        # - send: Send; response event sink.
+        # Returns:
+        # - None.
         async def drain_app(_scope: Scope, app_receive: Receive, send: Send) -> None:
             while True:
                 message = await app_receive()
@@ -277,6 +301,13 @@ async def test_json_body_with_nul_is_refused_with_422() -> None:
 
         sent: list[Message] = []
 
+        # Function Name: send
+        # Description:
+        # - Collects outgoing ASGI response events for status assertions.
+        # Parameters:
+        # - message: Message; outgoing event.
+        # Returns:
+        # - None.
         async def send(message: Message) -> None:
             sent.append(message)
 
@@ -308,6 +339,8 @@ async def test_json_body_with_nul_is_refused_with_422() -> None:
 async def test_request_body_limit_answers_413_for_streamed_body_on_parsed_route() -> None:
     # Class Name: _Note
     # Role: JSON body model that makes FastAPI read and parse the request stream.
+    # Responsibilities:
+    # - Require a text field so the route consumes and validates the JSON request stream.
     # Attributes:
     # - text (str): Arbitrary text payload.
     class _Note(BaseModel):
@@ -475,18 +508,10 @@ async def test_request_body_limit_applies_default_to_delete_json_routes() -> Non
     assert sent[0]["status"] == 413
 
 
-# Function Name: test_pill_identification_accepts_front_and_optional_back_multipart
-# Description:
-# - Accepts front and optional back multipart images while preserving candidate identity,
-#   same-pill status, confidence, and mandatory confirmation.
-# Parameters:
-# - None.
-# Returns:
-# - None.
 # Function Name: test_pill_identification_refuses_uploads_beyond_the_in_flight_limit
 # Description:
-# - When the process already holds the limit of pill uploads waiting for analysis, both routes
-#   answer 503 with Retry-After before reading the photo, and the control is not called.
+# - At the in-flight upload limit, both single-pill and multi-pill routes return 503
+#   with Retry-After: 5, leave the control's front image empty, and preserve the count.
 # Parameters:
 # - monkeypatch (pytest.MonkeyPatch): Sets the in-flight count to the limit.
 # Returns:
@@ -529,6 +554,13 @@ async def test_pill_identification_refuses_uploads_beyond_the_in_flight_limit(
     assert router_module._pill_uploads_in_flight == router_module._PILL_UPLOADS_IN_FLIGHT_LIMIT
 
 
+# Function Name: test_pill_identification_accepts_front_and_optional_back_multipart
+# Description:
+# - Checks front/back multipart delivery and the confident-but-confirmation-required candidate response.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_pill_identification_accepts_front_and_optional_back_multipart() -> None:
     control = _RecordingIdentifyPill()

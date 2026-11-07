@@ -25,22 +25,10 @@ def normalize_catalog_item_name(name: str) -> str:
     return _CATALOG_NAME_WHITESPACE.sub("", name).strip().lower()
 
 
-# Class Name: MedicationDetail
-# Role:
-# - Represents medication detail information shown to the user.
-# Responsibilities:
-# - Carry efficacy, usage, warning, source, and optional guide text.
-# Attributes:
-# - item_seq (str): Canonical public product identifier shared by MFDS datasets.
-# - item_name (str): Public medication item name.
-# - efficacy (str): Medication efficacy summary.
-# - usage_method (str): Medication use method summary.
-# - warning (str): Medication warning summary.
-# - dosage_per_time (str): Optional dose per administration from prescription analysis.
-# - daily_frequency (str): Optional daily frequency from prescription analysis.
-# - total_days (str): Optional total medication days from prescription analysis.
-# - source (str): Data source label.
-# - ai_guide (Optional[str]): Optional AI-generated patient guide.
+# 클래스명: MedicationDetail
+# 역할: 공공 약품 정보와 처방·요약 정보를 API 응답 모델로 표현한다.
+# 주요 책임: use_method와 warning_message 별칭을 유지하고 선택적인 제조사·상호작용·이미지·AI 안내를 함께 전달한다.
+# 속성: item_seq와 item_name은 품목, manufacturer는 제조사, efficacy·usage_method·warning 등은 약품 설명, dosage_per_time·daily_frequency·total_days는 복약 표기, image_url·source·ai_guide는 표시 보조 정보이다.
 class MedicationDetail(BaseModel):
     model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
 

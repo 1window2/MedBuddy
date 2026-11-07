@@ -39,27 +39,18 @@ _TRUNCATION_MARKER = "…"
 _NUMBER_SEPARATORS = ".,/"
 
 
-# 함수이름: _is_number_character
-# 함수역할:
-# - 문자가 용량·횟수 숫자의 일부(숫자, 소수점·자릿수·분수 구분 기호)인지 판정한다.
-# 매개변수:
-# - character (str): 판정할 한 글자.
-# 반환값:
-# - 숫자의 일부이면 True.
+# Function Name: _is_number_character
+# Description: Identifies digits and dose/count separators so truncation does not retain misleading partial numbers.
+# Parameters: character (str) is one character at the truncation boundary.
+# Returns: True for a digit or configured number separator.
 def _is_number_character(character: str) -> bool:
     return character.isdigit() or character in _NUMBER_SEPARATORS
 
 
-# 함수이름: _truncate_to_field_limit
-# 함수역할:
-# - 응답 문자열이 해당 필드에 선언된 max_length를 넘으면 그 길이 이내로 줄이고 끝에 말줄임표를 붙여 잘렸음을 값에 남긴다.
-# - 숫자 중간에서 끊기면 남은 앞자리가 다른 용량·횟수로 읽히므로 끊긴 숫자는 통째로 뺀다.
-# 매개변수:
-# - model (type[BaseModel]): 길이 제한이 선언된 응답 모델.
-# - field_name (str | None): 검증 중인 필드 이름.
-# - value (object): 검증 전 원본 값.
-# 반환값:
-# - 제한 이내로 줄인 문자열; 문자열이 아니거나 제한이 없거나 제한 이내이면 원본 값.
+# Function Name: _truncate_to_field_limit
+# Description: Truncates overlong text with an explicit marker, removing a partly cut numeric suffix to avoid changing apparent doses.
+# Parameters: model (type[BaseModel]) declares constraints; field_name (str | None) selects the field; value (object) is raw input.
+# Returns: Bounded string, or unchanged input when nontext, unconstrained or already within its limit.
 def _truncate_to_field_limit(
     model: type[BaseModel],
     field_name: str | None,
@@ -101,25 +92,13 @@ class MedicationRequest(BaseModel):
     )
 
 
-# Class Name: SavedMedicationCreate
-# Role:
-# - Request DTO for saving a medication snapshot.
-# Responsibilities:
-# - Validate prescription dates, confirmed dose slots and trusted image origins while retaining medication safety guidance.
-# Attributes:
-# - patient_hash (str): Patient ownership key used for saved medication scoping.
-# - item_seq (Optional[str]): Canonical public product identifier used across MFDS datasets.
-# - item_name (str): Medication item name.
-# - efficacy (str): Medication efficacy summary.
-# - use_method (str): Medication use method summary.
-# - warning_message (str): Medication warning summary.
-# - interaction (str): Medication interaction guidance shown in the detail view.
-# - side_effect (str): Medication side-effect guidance shown in the detail view.
-# - storage_method (str): Medication storage guidance shown in the detail view.
-# - dosage_per_time (Optional[str]): Optional dose per administration from prescription analysis.
-# - daily_frequency (Optional[str]): Optional daily frequency from prescription analysis.
-# - total_days (Optional[str]): Optional total medication days from prescription analysis.
-# - ai_guide (Optional[str]): Optional AI-generated patient guide.
+# 클래스명: SavedMedicationCreate
+# 역할: 환자 소유 약 상세와 확인한 복용 지시를 저장하는 요청 모델이다.
+# 주요 책임: 약명·날짜·시간대·이미지 출처를 검증하고 상세 안전정보·처방 배치를 보존한다.
+# 속성: patient_hash (str)는 소유 범위, item_seq·prescription_batch_id (str | None)는 제품·배치, prescription_date (date | None)는 조제일이다.
+#   item_name·efficacy·use_method·warning_message·interaction·side_effect·storage_method는 약명·효능·용법·경고·상호작용·부작용·보관 안내 str이다.
+#   dosage_per_time·daily_frequency·total_days (str | None)는 처방 지시, schedule_slot_keys는 list[str], dosing_mode는 정기/필요시 모드다.
+#   image_url·ai_guide (str | None)는 이미지와 추가 안내다.
 class SavedMedicationCreate(BaseModel):
     patient_hash: str = Field(
         default=DEFAULT_PATIENT_HASH,
@@ -162,13 +141,10 @@ class SavedMedicationCreate(BaseModel):
         max_length=_MAX_DETAIL_TEXT_LENGTH,
     )
 
-    # 함수이름: validate_item_name
-    # 함수역할:
-    # - 약 이름의 앞뒤 공백을 정리하고 공백만 있는 이름은 거부한다.
-    # 매개변수:
-    # - value (str): 저장 요청에 포함된 약 이름.
-    # 반환값:
-    # - 공백을 정리한 약 이름; 비어 있으면 ValueError.
+    # Function Name: validate_item_name
+    # Description: Trims medication names and refuses whitespace-only input.
+    # Parameters: value (str) is the requested name.
+    # Returns: Trimmed name; raises ValueError when empty.
     @field_validator("item_name")
     @classmethod
     def validate_item_name(cls, value: str) -> str:
@@ -177,13 +153,10 @@ class SavedMedicationCreate(BaseModel):
             raise ValueError("A medication name is required.")
         return normalized_name
 
-    # 함수이름: validate_total_days
-    # 함수역할:
-    # - 0일 이하의 복용 기간은 끝나지 않는 복용으로 저장되므로 거부한다. 비어 있으면 기간을 모르는 것으로 둔다.
-    # 매개변수:
-    # - value (Optional[str]): 저장 요청에 포함된 총 복용 기간.
-    # 반환값:
-    # - 받은 값 그대로; 0일 이하면 ValueError.
+    # Function Name: validate_total_days
+    # Description: Rejects explicitly nonpositive duration labels that would otherwise become unknown open-ended courses.
+    # Parameters: value (str | None) is the requested duration.
+    # Returns: Original value; raises ValueError for a recognized nonpositive duration.
     @field_validator("total_days")
     @classmethod
     def validate_total_days(cls, value: Optional[str]) -> Optional[str]:
@@ -247,14 +220,10 @@ class SavedMedicationCreate(BaseModel):
         return value
 
 
-# 클래스명: MedicationStatusUpdate
-# 역할:
-# - 오늘 복용 완료 상태와 선택적인 개별 복용 시간대를 전달한다.
-# 주요 책임:
-# - 전체 약 완료 변경과 특정 시간대 변경을 같은 요청 계약으로 구분한다.
-# 속성:
-# - medication_status (bool): 요청한 복약 완료 여부.
-# - slot_key (Optional[str]): morning, lunch, evening, bedtime 중 복용 시간대 키.
+# Class Name: MedicationStatusUpdate
+# Role: Requests completion changes for all medication slots or one selected slot.
+# Responsibilities: Carries completion intent and an optional expected date for stale-day rejection by the control.
+# Attributes: medication_status (bool) is the target; slot_key (str | None) selects a slot; expected_schedule_date (date | None) asserts the intended day.
 class MedicationStatusUpdate(BaseModel):
     medication_status: bool
     slot_key: Optional[str] = Field(default=None, max_length=32)
@@ -304,11 +273,18 @@ class MedicationAlarmUpdate(BaseModel):
     minute: int = Field(default=0, ge=0, le=59)
 
 
-# 시각을 생략하면 저장값을 유지하고, 시만 입력하면 기존 계약대로 정각을 사용한다.
+# 클래스명: MedicationAlarmDisable
+# 역할: 알림 해제 시 선택적으로 전달하는 시각을 검증한다.
+# 주요 책임: 시각 생략은 저장값 유지로 구분하고 시만 입력한 요청은 정각으로 정규화한다.
+# 속성: hour (int | None)는 0~23, minute (int | None)는 0~59이며 둘 다 생략 가능하다.
 class MedicationAlarmDisable(BaseModel):
     hour: int | None = Field(default=None, ge=0, le=23)
     minute: int | None = Field(default=None, ge=0, le=59)
 
+    # 함수이름: validate_optional_time
+    # 함수역할: 분만 입력한 요청을 거절하고 시가 있는데 분이 없으면 0분을 채운다.
+    # 매개변수: 없음. 현재 모델의 hour·minute을 검사한다.
+    # 반환값: 현재 모델. hour 없이 minute이 있으면 ValueError다.
     @model_validator(mode="after")
     def validate_optional_time(self) -> "MedicationAlarmDisable":
         if self.hour is None and self.minute is not None:
@@ -506,15 +482,10 @@ class CaregiverAliasUpdate(BaseModel):
     )
 
 
-# Class Name: MedicationResponse
-# Role:
-# - Response DTO for medication lookup results.
-# Responsibilities:
-# - Pair lookup success and status text with validated medication detail results.
-# Attributes:
-# - success (bool): Whether lookup found data.
-# - message (str): User-facing result message.
-# - data (list[MedicationDetail]): MedicationDetail result list.
+# 클래스명: MedicationResponse
+# 역할: 약 조회의 확정 결과와 사용자 확인이 필요한 후보를 구분한다.
+# 주요 책임: 성공·안내 문구와 후보 확인 요구·이유를 함께 직렬화한다.
+# 속성: success는 bool, message·review_reason은 str, data·candidates는 list[MedicationDetail], requires_confirmation은 bool이다.
 class MedicationResponse(BaseModel):
     success: bool
     message: str
@@ -546,14 +517,10 @@ class PrescriptionMedicationResponse(BaseModel):
     daily_frequency: str = Field(max_length=_MAX_SHORT_TEXT_LENGTH)
     total_days: str = Field(max_length=_MAX_SHORT_TEXT_LENGTH)
 
-    # 함수이름: truncate_overlong_text
-    # 함수역할:
-    # - 길이 제한이 있는 문자열 필드의 값을 제한 검증 전에 제한 이내로 줄인다.
-    # 매개변수:
-    # - value (object): 검증 전 원본 값.
-    # - info (ValidationInfo): 검증 중인 필드 이름을 담은 문맥.
-    # 반환값:
-    # - 제한 이내 문자열 또는 변경 없는 원본 값.
+    # Function Name: truncate_overlong_text
+    # Description: Enforces response field lengths before validation without leaving partial dose numbers.
+    # Parameters: value (object) is raw input; info (ValidationInfo) identifies the field.
+    # Returns: Marked truncated text or unchanged input when no truncation applies.
     @field_validator("*", mode="before")
     @classmethod
     def truncate_overlong_text(cls, value: object, info: ValidationInfo) -> object:
@@ -580,14 +547,10 @@ class PrescriptionAnalysisResponse(BaseModel):
     parsed_medication_count: int = Field(ge=0)
     skipped_medication_count: int = Field(ge=0)
 
-    # 함수이름: truncate_overlong_text
-    # 함수역할:
-    # - 길이 제한이 있는 문자열 필드의 값을 제한 검증 전에 제한 이내로 줄인다.
-    # 매개변수:
-    # - value (object): 검증 전 원본 값.
-    # - info (ValidationInfo): 검증 중인 필드 이름을 담은 문맥.
-    # 반환값:
-    # - 제한 이내 문자열 또는 변경 없는 원본 값.
+    # Function Name: truncate_overlong_text
+    # Description: Enforces response field lengths before validation without leaving partial dose numbers.
+    # Parameters: value (object) is raw input; info (ValidationInfo) identifies the field.
+    # Returns: Marked truncated text or unchanged input when no truncation applies.
     @field_validator("*", mode="before")
     @classmethod
     def truncate_overlong_text(cls, value: object, info: ValidationInfo) -> object:

@@ -114,6 +114,7 @@ def _count_jpeg_scans(data: bytes, limit: int = MAX_PILL_JPEG_SCANS) -> int:
 # - Signals that a pill photo lacks safe, reliable evidence for analysis.
 # Responsibilities:
 # - Report invalid images, unsafe sizes, multiple pills or insufficient visual quality as retake conditions.
+# Attributes: Inherited exception arguments only; no additional instance state.
 class PillImageQualityError(ValueError):
     """Raised when a pill photo cannot be analyzed safely or reliably."""
 
@@ -123,6 +124,7 @@ class PillImageQualityError(ValueError):
 # - Signals that no usable public pill-catalog snapshot can be served.
 # Responsibilities:
 # - Distinguish unavailable or unsynchronized reference data from image-analysis failures.
+# Attributes: Inherited exception arguments only; no additional instance state.
 class PillCatalogUnavailableError(RuntimeError):
     """Raised when neither MFDS nor the local catalog cache is available."""
 
@@ -132,6 +134,7 @@ class PillCatalogUnavailableError(RuntimeError):
 # - Signals temporary failure of the external visual-attribute service.
 # Responsibilities:
 # - Wrap provider execution errors without exposing SDK details to use-case controls.
+# Attributes: Inherited exception arguments only; no additional instance state.
 class PillVisionUnavailableError(RuntimeError):
     """Raised when the external visual-attribute service is unavailable."""
 
@@ -141,6 +144,7 @@ class PillVisionUnavailableError(RuntimeError):
 # - Signals an invalid visual-analysis response contract.
 # Responsibilities:
 # - Separate malformed or inconsistent provider output from image quality and network availability errors.
+# Attributes: Inherited exception arguments only; no additional instance state.
 class PillVisionResponseError(RuntimeError):
     """Raised when the visual service returns an invalid response contract."""
 
@@ -500,6 +504,7 @@ class PillImageProcessingBoundary:
 # - Extracts visible pill attributes through Gemini without identifying products.
 # Responsibilities:
 # - Send one/two-sided JPEG evidence or one multiple-pill photo with constrained JSON schemas and reject empty output.
+# Attributes: None; callers supply the Gemini client, model and image/schema inputs per request.
 class GeminiPillVisionAPI:
     """External Gemini boundary that extracts only visible pill attributes."""
 
@@ -1054,15 +1059,10 @@ class PillVisionBoundary:
         )
         return intersection / union
 
-    # 함수이름: _extract_visual_features
-    # 함수역할:
-    # - 로컬 전처리 개수와 AI 개수를 교차 확인하고 양면 일치 및 품질 조건을 검증한다.
-    # - 동일 알약 신뢰도가 낮으면 주의 문구를 추가하고, 사용 가능한 특징이 없는 저품질 응답은 재촬영 오류로 처리한다.
-    # 매개변수:
-    # - front_image (bytes): 앞면 원본 사진 바이트.
-    # - back_image (bytes | None): 선택 뒷면 원본 사진 바이트; 없으면 None.
-    # 반환값:
-    # - 검증된 PillVisualFeatures; 품질·응답 형식·외부 서비스 실패는 해당 경계 예외.
+    # Function Name: _extract_visual_features
+    # Description: Preprocesses photos under retained worker capacity, compares local/provider pill counts and validates front/back consistency and usable visual evidence.
+    # Parameters: front_image (bytes) is required; back_image (bytes | None) is the optional reverse photo.
+    # Returns: PillVisualFeatures, with an uncertainty note for weak side agreement; raises image-quality, malformed-response or provider-unavailable errors as appropriate.
     async def _extract_visual_features(
         self,
         front_image: bytes,
@@ -1190,13 +1190,10 @@ class PillVisionBoundary:
             back_pill_count,
         )
 
-    # 함수이름: _preprocess_one_image
-    # 함수역할:
-    # - 개수 판정을 포함한 전처리 API로 한쪽 면을 정규화한다. 주입되는 전처리 경계는 이 API를 반드시 제공해야 한다.
-    # 매개변수:
-    # - image (bytes): 전처리할 한쪽 면의 원본 이미지 바이트.
-    # 반환값:
-    # - 정규화 이미지와 판정 개수; 개수를 확정할 수 없으면 None.
+    # Function Name: _preprocess_one_image
+    # Description: Delegates preprocessing and local pill-count assessment to the image-processing boundary.
+    # Parameters: image (bytes) is an uploaded pill photo.
+    # Returns: (processed image bytes, detected count or None); preprocessing failures propagate.
     def _preprocess_one_image(
         self,
         image: bytes,

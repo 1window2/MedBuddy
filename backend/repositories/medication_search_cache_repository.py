@@ -27,7 +27,9 @@ _MANUFACTURER_MAX_LENGTH = 200
 # - db (Session): Session of the current work.
 class MedicationSearchCacheRepository:
     # Function Name: __init__
-    # Description: Binds the session. Parameters: db: Session of the current work. Returns: None.
+    # Description: Bind the session used to read and persist authoritative medication search snapshots.
+    # Parameters: db (Session) is the caller's database session.
+    # Returns: None.
     def __init__(self, db: Session) -> None:
         self.db = db
 
@@ -105,20 +107,26 @@ class MedicationSearchCacheRepository:
 
 
 # Class Name: AsyncMedicationSearchCache
-# Role: Runs cache writes of the detached medication search in a short-lived worker session.
-# Attributes:
-# - _session_factory (Callable[[], Session]): Creates one independent session per write.
+# Role: Persist detached medication search results outside the event loop.
+# Responsibilities: Run each cache write in a worker-owned session and close it on success or failure.
+# Attributes: _session_factory creates an independent session per write.
 class AsyncMedicationSearchCache:
     # Function Name: __init__
-    # Description: Retains a session factory without opening a transaction.
-    # Parameters: session_factory: Creates one ORM session per operation. Returns: None.
+    # Description: Retain a session factory without opening a database connection.
+    # Parameters: session_factory (Callable[[], Session]) supplies an independent session per asynchronous write.
+    # Returns: None.
     def __init__(self, session_factory: Callable[[], Session]) -> None:
         self._session_factory = session_factory
 
     # Function Name: remember
-    # Description: Saves the search's products off the event loop and away from the request session.
-    # Parameters: details: Products the search returned. Returns: None.
+    # Description: Save the detached search results in a fresh worker session, keeping database work off the event loop.
+    # Parameters: details (list[MedicationDetail]) contains products to cache.
+    # Returns: None; persistence failures propagate after the worker session closes.
     async def remember(self, details: list[MedicationDetail]) -> None:
+        # Function Name: execute
+        # Description: Persists the captured search products using a new worker-owned session, closed even when saving fails.
+        # Parameters: None; captures details and the adapter's session factory.
+        # Returns: None; persistence errors propagate to the asynchronous caller.
         def execute() -> None:
             with self._session_factory() as db:
                 MedicationSearchCacheRepository(db).remember(details)

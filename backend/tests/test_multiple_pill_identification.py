@@ -44,6 +44,8 @@ from main import create_app  # noqa: E402
 #   bytes.
 # Responsibilities:
 # - Wraps the uploaded image in an 800-by-600 preprocessing result for bounding-box tests.
+# Attributes:
+# - None.
 class _CompositionProcessor:
     # Function Name: preprocessMultiplePillImage
     # Description:
@@ -235,6 +237,10 @@ async def test_timed_out_multiple_pill_decode_keeps_its_capacity_slot() -> None:
 
     # Class Name: _BlockedProcessor
     # Role: Image processor double whose decode blocks until the test releases it.
+    # Responsibilities:
+    # - Block image preprocessing until the test releases its worker, then return fixed image dimensions.
+    # Attributes:
+    # - None; the release event is captured from the enclosing test.
     class _BlockedProcessor:
         # Function Name: preprocessMultiplePillImage
         # Description: Blocks the worker thread, then returns a fixed-size result.

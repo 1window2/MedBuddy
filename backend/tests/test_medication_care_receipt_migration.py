@@ -1,3 +1,6 @@
+# 파일명: test_medication_care_receipt_migration.py
+# 역할: 이전 복약 영수증의 약품 연결 복구, 안전한 응답 제거와 배치 이전을 검증한다.
+
 """기존 영수증의 약 연결 복구와 삭제된 약의 응답 제거를 검증한다."""
 
 from datetime import datetime
@@ -17,6 +20,14 @@ from controls.manage_medication_care_control import ManageMedicationCare
 from entities.medication_care_entity import _MedicationCareOperation
 
 
+# 함수이름: test_upgrade_backfills_legacy_receipts_and_preserves_idempotency
+# 함수역할:
+# - 이전 영수증의 약품 연결을 복구하고 삭제·잘못된 소유권 응답은 비식별화하되 요청 키와 재시도 충돌 계약은 유지하는지 확인한다.
+# 매개변수:
+# - tmp_path: Path; 테스트 전용 임시 디렉터리.
+# - delete_original: bool; 연결 복구 후 원래 약품 또는 대체 약품 중 삭제할 대상.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("delete_original", [False, True])
 def test_upgrade_backfills_legacy_receipts_and_preserves_idempotency(tmp_path, delete_original):
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
@@ -82,6 +93,13 @@ def test_upgrade_backfills_legacy_receipts_and_preserves_idempotency(tmp_path, d
         engine.dispose()
 
 
+# 함수이름: test_receipt_upgrade_processes_multiple_batches
+# 함수역할:
+# - 503개의 삭제 약품 영수증을 여러 배치로 이전해도 모든 행을 보존하며 응답을 비식별화하는지 확인한다.
+# 매개변수:
+# - tmp_path: Path; 테스트 전용 임시 디렉터리.
+# 반환값:
+# - None.
 def test_receipt_upgrade_processes_multiple_batches(tmp_path):
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
     config.attributes["database_url"] = f"sqlite:///{(tmp_path / 'care-receipt-batches.db').as_posix()}"

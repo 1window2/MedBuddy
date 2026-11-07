@@ -32,6 +32,8 @@ from entities.prescription_analysis_entity import (  # noqa: E402
 # - Preserves a dotted-I prefix whose casefold expands while removing the following ASCII
 #   medication label.
 # - Rejects a non-object analysis response with ValueError.
+# Attributes:
+# - None.
 class PrescriptionParserTest(unittest.TestCase):
     # Function Name: test_leading_decimal_strength_is_not_stripped_as_a_list_marker
     # Description:

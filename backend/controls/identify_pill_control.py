@@ -99,14 +99,10 @@ class IdentifyPill:
         self.candidate_limit = candidate_limit
         self._ranking_semaphore = ranking_semaphore or asyncio.Semaphore(1)
 
-    # Function Name: requestPillIdentification
-    # Description:
-    # - Returns ranked candidates while keeping confirmation mandatory.
-    # Parameters:
-    # - front_image (bytes): Required front-side pill image bytes.
-    # - back_image (bytes | None): Optional back-side image bytes for the same pill.
-    # Returns:
-    # - Single-pill candidates and observed features with user confirmation always required.
+    # 함수이름: requestPillIdentification
+    # 함수역할: 앞·뒷면 특징 추출과 목록 조회를 동시에 수행한 뒤 후보를 구성한다. 한 작업이 실패하면 남은 작업을 취소하고 원래 오류를 전파한다.
+    # 매개변수: front_image (bytes)는 앞면 이미지, back_image (bytes | None)는 선택적인 뒷면 이미지이다.
+    # 반환값: PillIdentificationResult. 점수와 관계없이 사용자 확인이 필요하다.
     async def requestPillIdentification(
         self,
         front_image: bytes,
@@ -168,10 +164,10 @@ class IdentifyPill:
             )
         return MultiplePillIdentificationResult(observations=tuple(results))
 
-    # 함수이름: _build_result
-    # 함수역할: 기본 후보 경계와 동점인 제품을 최대 100개까지 보존하고 초과 여부를 알린다.
-    # 매개변수: features는 관찰 속성, catalog는 공공 약품 목록이다.
-    # 반환값: 동점 후보와 추가 촬영 필요 여부를 포함하는 확인 필수 결과.
+    # Function Name: _build_result
+    # Description: Rank on a capacity-limited worker, retain candidates tied at the display cutoff, and cap the final response.
+    # Parameters: features (PillVisualFeatures) contains observed appearance; catalog (tuple[PillCatalogEntry, ...]) contains searchable products.
+    # Returns: PillIdentificationResult with confidence and overflow flags; confirmation remains mandatory.
     async def _build_result(
         self,
         features: PillVisualFeatures,

@@ -67,13 +67,10 @@ class CheckSavedMedication:
         self.course_policy = course_policy or MedicationCoursePolicy()
         self.retention_policy = SavedMedicationRetentionPolicy(self.course_policy)
 
-    # Function Name: saveMedicationDetail
-    # Description:
-    # - Persists a selected medication as a saved medication snapshot.
-    # Parameters:
-    # - medication (SavedMedicationCreate): Validated saved medication DTO.
-    # Returns:
-    # - API-compatible success response dictionary.
+    # 함수이름: saveMedicationDetail
+    # 함수역할: 만료 정리와 약품 저장을 같은 트랜잭션에서 처리하고 당일 중복·계정별 수 제한을 검사한다. 실패하면 롤백하며 일반 저장 오류는 HTTP 500으로 바꾼다.
+    # 매개변수: medication (SavedMedicationCreate)은 소유 환자와 약품·일정 정보이다.
+    # 반환값: dict[str, object]. 신규 저장 성공 또는 기존 중복 약품 ID를 반환하고 계정 한도 초과는 HTTP 409로 알린다.
     def saveMedicationDetail(
         self,
         medication: SavedMedicationCreate,
@@ -236,14 +233,10 @@ class CheckSavedMedication:
             ],
         }
 
-    # Function Name: requestDelete
-    # Description:
-    # - Deletes a saved medication by id.
-    # Parameters:
-    # - medication_id (int): Saved medication primary key.
-    # - patient_hash (str): Patient ownership key used to scope deletion.
-    # Returns:
-    # - API-compatible success response dictionary.
+    # 함수이름: requestDelete
+    # 함수역할: 환자 소유 약품을 확인한 후 돌봄 영수증의 상세를 비식별화하고 완료 기록과 약품을 함께 삭제한다. 실패하면 롤백한다.
+    # 매개변수: medication_id (int)는 삭제 대상, patient_hash (str)는 소유 환자 범위이다.
+    # 반환값: dict[str, object] 성공 응답. 조회 오류는 유지하고 일반 삭제 오류는 HTTP 500으로 전달한다.
     def requestDelete(
         self,
         medication_id: int,
@@ -270,13 +263,10 @@ class CheckSavedMedication:
                 detail="Medication could not be deleted.",
             ) from exc
 
-    # Function Name: _to_response_dict
-    # Description:
-    # - Converts a SavedMedication ORM entity into a JSON-serializable API DTO.
-    # Parameters:
-    # - medication (_SavedMedication): SavedMedication entity from persistence layer.
-    # Returns:
-    # - JSON-compatible saved medication dictionary.
+    # 함수이름: _to_response_dict
+    # 함수역할: 저장 약품을 날짜 문자열, 복용 모드·변경 이력, 해석된 시간대 및 안전한 이미지 주소를 포함한 응답으로 변환한다.
+    # 매개변수: medication (_SavedMedication)은 응답에 담을 저장 행이다.
+    # 반환값: dict[str, object]. 선택적 필드는 계약에 따라 빈 문자열 또는 None으로 보존한다.
     def _to_response_dict(
         self,
         medication: _SavedMedication,
@@ -356,13 +346,10 @@ class CheckSavedMedication:
             ),
         ).delete(synchronize_session=False)
 
-    # Function Name: _build_deduplication_key
-    # Description:
-    # - Uses confirmed slots, or frequency-derived slots when absent, to build the shared prescription snapshot fingerprint.
-    # Parameters:
-    # - medication (SavedMedicationCreate): Validated medication snapshot and course fields selected for saving.
-    # Returns:
-    # - Stable deduplication hash for the medication and its course fields.
+    # 함수이름: _build_deduplication_key
+    # 함수역할: 명시 시간대 또는 복용 횟수에서 정한 시간대로 처방·복약 중복 서명을 만든다.
+    # 매개변수: medication (SavedMedicationCreate)은 저장 입력, include_dosing_mode (bool)는 실제 복용 모드를 포함할지 여부이며 False는 이전 정기 복용 서명을 재현한다.
+    # 반환값: str 중복 판정 키.
     def _build_deduplication_key(
         self,
         medication: SavedMedicationCreate,
