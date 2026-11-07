@@ -221,6 +221,7 @@ class KoreanHolidayAPI:
 # - Defines persistent monthly holiday snapshot storage.
 # Responsibilities:
 # - Distinguish a cached empty month from a missing or expired snapshot and replace complete monthly data.
+# Attributes: None required by this protocol; implementations own storage and connection state.
 class KoreanHolidayCache(Protocol):
     # Function Name: get_cached_korean_holidays
     # Description:

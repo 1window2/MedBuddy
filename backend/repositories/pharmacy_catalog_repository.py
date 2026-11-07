@@ -70,14 +70,10 @@ def match_official_designation(
     return designation if expected_name == actual_name.casefold() else None
 
 
-# 클래스명: PharmacyCatalogRepository
-# 역할:
-# - 전국 약국 카탈로그와 날짜별 영업·공휴일 캐시의 DB 접근을 맡는다.
-# 주요 책임:
-# - 근접 후보를 좌표 사각형으로 추리고 카탈로그 및 공식 지정 정보를 갱신한다.
-# - 공휴일 캐시는 조회 시각을 별도로 기록하여 빈 결과와 캐시 부재를 구분한다.
-# 속성:
-# - db (Session): 카탈로그 조회와 교체에 사용할 SQLAlchemy 세션.
+# Class Name: PharmacyCatalogRepository
+# Role: Access the pharmacy catalog and dated operating/calendar caches.
+# Responsibilities: Select geographic candidates, replace catalog/designation data, and track cache timestamps so empty results differ from absent snapshots.
+# Attributes: db (Session) owns catalog and cache queries and writes.
 class PharmacyCatalogRepository:
     """Database adapter for the replaceable public pharmacy catalogue."""
 
@@ -101,13 +97,10 @@ class PharmacyCatalogRepository:
     def count(self) -> int:
         return self.db.query(PharmacyCatalogRecord).count()
 
-    # 함수이름: find_by_id
-    # 함수역할:
-    # - 전국 카탈로그를 우선하고, 없으면 최근 서버 검색에서 검증한 약국 정보로 공유한다.
-    # 매개변수:
-    # - pharmacy_id (str): 조회할 공공 약국 식별자.
-    # 반환값:
-    # - 약국 카탈로그 엔트리 또는 ID가 없으면 None.
+    # Function Name: find_by_id
+    # Description: Prefer the authoritative catalog, falling back to an unexpired public search snapshot; never infer weekly hours from a single-day search result.
+    # Parameters: pharmacy_id (str) is the server-known pharmacy identifier.
+    # Returns: PharmacyCatalogEntry, or None when both sources are absent or the fallback has expired.
     def find_by_id(self, pharmacy_id: str) -> PharmacyCatalogEntry | None:
         """사용자가 보낸 임의 정보 대신 서버의 카탈로그·검색 결과만 사용한다."""
         row = self.db.get(PharmacyCatalogRecord, pharmacy_id)
@@ -125,9 +118,10 @@ class PharmacyCatalogRepository:
             weekly_hours={},
         )
 
-    # 함수이름: cache_search_results
-    # 함수역할: 보완 검색 결과를 별도 캐시에 보관하고 만료된 공개 정보를 정리한다.
-    # 매개변수: pharmacies 서버가 공공 API에서 조회·검증한 결과. 반환값: 없음.
+    # Function Name: cache_search_results
+    # Description: Purge expired search snapshots and upsert public pharmacy details, resolving concurrent first inserts without changing the catalog's count or freshness.
+    # Parameters: pharmacies (list[NearbyPharmacy]) contains search results to retain.
+    # Returns: None; commits on success and rolls back then propagates persistence failures.
     def cache_search_results(self, pharmacies: list[NearbyPharmacy]) -> None:
         """중복 검색은 같은 행을 갱신하며 카탈로그 개수·갱신 시각은 바꾸지 않는다."""
         now = utc_now()
@@ -320,13 +314,10 @@ class PharmacyCatalogRepository:
             raise
         return matched
 
-    # 함수이름: _to_entry
-    # 함수역할:
-    # - 저장된 영업시간 JSON을 요일별 시간 쌍으로 바꾸고 누락된 선택 필드를 안전한 기본값으로 채운다.
-    # 매개변수:
-    # - row (PharmacyCatalogRecord | Row): 변환할 영속 약국 카탈로그 행 또는 같은 열 이름을 가진 조회 결과 행.
-    # 반환값:
-    # - DB 행에서 구성한 PharmacyCatalogEntry.
+    # Function Name: _to_entry
+    # Description: Convert a catalog row/projection to a detached entry, retaining only well-shaped hour pairs and dictionary designation metadata.
+    # Parameters: row (PharmacyCatalogRecord | Row) supplies catalog columns.
+    # Returns: PharmacyCatalogEntry with empty contact text or mappings where optional data is absent.
     @staticmethod
     def _to_entry(row: PharmacyCatalogRecord | Row) -> PharmacyCatalogEntry:
         raw_hours = row.weekly_hours if isinstance(row.weekly_hours, dict) else {}

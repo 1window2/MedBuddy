@@ -30,17 +30,18 @@ _MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 _QUERY_COORDINATE_DECIMALS = 3
 
 
-# 클래스명: PharmacyApiResponseError
-# 역할:
-# - 약국 응답이 기대한 크기 또는 XML 계약을 벗어났음을 나타낸다.
-# 주요 책임:
-# - 신뢰할 수 없는 제공자 응답을 위치 검색 및 카탈로그 제어 흐름에 전달한다.
-# 클래스명: PharmacyApiBudgetExhaustedError
-# 역할: 모든 사용자가 함께 쓰는 하루 위치 조회 예산을 다 쓴 상태를 일시 장애와 구분한다.
+# Class Name: PharmacyApiBudgetExhaustedError
+# Role: Signal exhaustion of today's pharmacy location-query budget.
+# Responsibilities: Distinguish quota refusal from other temporary pharmacy service failures.
+# Attributes: Inherited args contains the failure message.
 class PharmacyApiBudgetExhaustedError(PharmacyApiUnavailableError):
     """오늘의 약국 위치 조회 예산을 모두 사용했을 때 발생한다."""
 
 
+# 클래스명: PharmacyApiResponseError
+# 역할: 약국 제공자의 응답이 기대한 데이터 계약과 다름을 알린다.
+# 주요 책임: 파싱·내용 오류를 일시 가용성 장애와 구분해 상위 응답 처리를 돕는다.
+# 속성: RuntimeError의 오류 메시지 외 추가 상태 없음.
 class PharmacyApiResponseError(RuntimeError):
     """약국 공공데이터 응답 형식이 계약과 다를 때 발생한다."""
 
@@ -50,6 +51,7 @@ class PharmacyApiResponseError(RuntimeError):
 # - Control이 HTTP 구현을 알지 않고 위치 기반 약국 검색을 요청하도록 한다.
 # 주요 책임:
 # - WGS84 좌표와 결과 상한을 받아 약국 위치 레코드 목록을 제공한다.
+# 속성: 계약 자체에 저장 상태는 없으며 실제 연결·저장소는 구현체가 관리한다.
 class PharmacyLookupBoundary(Protocol):
     # 함수이름: searchNearby
     # 함수역할:
@@ -69,27 +71,16 @@ class PharmacyLookupBoundary(Protocol):
     ) -> list[PharmacyLocationRecord]: ...
 
 
-# Class Name: NationalEmergencyMedicalCenterPharmacyAPI
-# Role:
-# - Converts NEMC XML services into pharmacy location and catalog records.
-# Responsibilities:
-# - Reuse HTTP pooling and bound concurrent provider calls.
-# - Keep service keys out of logs and boundary error messages.
-# - Validate response sizes and XML status headers before extracting required fields.
-# Attributes:
-# - _client (AsyncClient | None): Borrowed or lazily created transport.
-# - _client_lock (asyncio.Lock): Guards client creation and release.
-# - _semaphore (asyncio.Semaphore): Provider concurrency cap.
-# - _timeout_seconds (float): Request timeout.
+# 클래스명: NationalEmergencyMedicalCenterPharmacyAPI
+# 역할: 국립중앙의료원 XML 응답을 약국 위치·카탈로그 데이터로 변환한다.
+# 주요 책임: HTTP 연결을 재사용하고 동시 호출·위치 조회 일일 예산·응답 크기를 제한하며 키를 오류에 노출하지 않는다.
+# 속성: _client는 선택적 AsyncClient, _owns_client는 소유 여부, _client_lock·_semaphore는 연결 생성·동시 호출 제어다.
+#   _timeout_seconds는 요청 제한, _date_clock·_budget_date·_daily_location_requests는 날짜별 위치 조회 예산 상태다.
 class NationalEmergencyMedicalCenterPharmacyAPI:
-    # 함수이름: __init__
-    # 함수역할:
-    # - HTTP 클라이언트 소유 여부와 생성 잠금, 공공 API 동시 호출 상한 및 제한 시간을 준비한다.
-    # 매개변수:
-    # - client (httpx.AsyncClient | None): 외부에서 주입한 HTTP 클라이언트; 생략하면 내부에서 생성한다.
-    # - timeout_seconds (float | None): 외부 요청 제한 시간(초); None이면 설정값을 사용한다.
-    # 반환값:
-    # - 없음; 클라이언트 생성은 첫 요청까지 지연한다.
+    # Function Name: __init__
+    # Description: Prepares connection ownership, concurrency limits and a daily location budget without opening an HTTP client.
+    # Parameters: client (AsyncClient | None) is borrowed when supplied; timeout_seconds (float | None) overrides settings; date_clock supplies the budget day, defaulting to the application zone.
+    # Returns: None; the client is created lazily when omitted.
     def __init__(
         self,
         *,
@@ -113,13 +104,10 @@ class NationalEmergencyMedicalCenterPharmacyAPI:
             else settings.PHARMACY_API_TIMEOUT_SECONDS
         )
 
-    # 함수이름: _charge_location_budget
-    # 함수역할:
-    # - 위치 조회 한 건을 하루 예산에 기록하고, 예산을 다 쓴 날에는 제공자를 부르지 않고 거절한다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - 없음; 예산을 넘으면 PharmacyApiBudgetExhaustedError.
+    # Function Name: _charge_location_budget
+    # Description: Resets the per-process counter on a new application day and charges one location attempt before the provider request.
+    # Parameters: None; uses the injected date clock and configured budget.
+    # Returns: None; raises PharmacyApiBudgetExhaustedError when no attempts remain, without incrementing beyond the limit.
     def _charge_location_budget(self) -> None:
         today = self._date_clock()
         if self._budget_date != today:
@@ -129,15 +117,10 @@ class NationalEmergencyMedicalCenterPharmacyAPI:
             raise PharmacyApiBudgetExhaustedError("Pharmacy daily request budget exhausted.")
         self._daily_location_requests += 1
 
-    # 함수이름: searchNearby
-    # 함수역할:
-    # - 현재 좌표에서 가까운 약국을 공공데이터 API에 요청한다.
-    # 매개변수:
-    # - latitude (float): 검색 중심의 WGS84 위도.
-    # - longitude (float): 검색 중심의 WGS84 경도.
-    # - limit (int): 공공 API에서 가져올 최대 약국 수
-    # 반환값:
-    # - 검증된 PharmacyLocationRecord 목록
+    # Function Name: searchNearby
+    # Description: Sends one location page with coarsened coordinates under the shared concurrency/daily budget, then validates response size and parses records.
+    # Parameters: latitude, longitude (float) are caller-validated coordinates; limit (int) is the requested provider page size.
+    # Returns: list[PharmacyLocationRecord]; credential, budget, transport/status and malformed-response failures raise boundary exceptions without exposing the key-bearing URL.
     async def searchNearby(
         self,
         *,
@@ -282,13 +265,10 @@ class NationalEmergencyMedicalCenterPharmacyAPI:
                 )
         return self._client
 
-    # 함수이름: _parse_records
-    # 함수역할:
-    # - XML과 제공자 상태를 검증한 뒤 이름·ID·좌표가 있는 행만 약국 위치 정보로 변환한다.
-    # 매개변수:
-    # - payload (bytes): 공공 위치 검색 API의 XML 응답 바이트.
-    # 반환값:
-    # - 검증된 위치 레코드 목록; 잘못된 XML이나 제공자 실패에는 경계 예외.
+    # Function Name: _parse_records
+    # Description: Parses XML, rejects provider/gateway error headers and skips rows missing identity, name or usable numeric coordinates.
+    # Parameters: payload (bytes) is the size-checked XML response.
+    # Returns: Location records, possibly empty; invalid XML raises PharmacyApiResponseError and rejected provider status raises PharmacyApiUnavailableError.
     @classmethod
     def _parse_records(cls, payload: bytes) -> list[PharmacyLocationRecord]:
         try:

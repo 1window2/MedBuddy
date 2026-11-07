@@ -1,3 +1,5 @@
+# 파일명: hospital_api_boundary.py
+# 역할: 병원 공공 API의 위치·진료과·상세 조회를 호출 제한과 공유 캐시로 보호한다.
 """국립중앙의료원 병원 위치·상세 조회와 제한된 공유 캐시."""
 
 import asyncio
@@ -30,14 +32,26 @@ _MAX_RESPONSE_BYTES = 1024 * 1024
 _QUERY_COORDINATE_DECIMALS = 3
 
 
+# 클래스명: HospitalApiUnavailableError
+# 역할: 병원 제공자에 일시적으로 접근할 수 없음을 알린다.
+# 주요 책임: 인증·통신·할당량 장애를 응답 형식 오류와 구분한다.
+# 속성: RuntimeError의 오류 메시지 외 추가 상태 없음.
 class HospitalApiUnavailableError(RuntimeError):
     """병원 API의 인증·할당량·통신 장애."""
 
 
+# Class Name: HospitalApiBudgetExhaustedError
+# Role: Signals exhaustion of an operation's daily hospital API budget.
+# Responsibilities: Distinguish a budget that resets at local midnight from transient failures.
+# Attributes: Inherited exception arguments; no additional state.
 class HospitalApiBudgetExhaustedError(HospitalApiUnavailableError):
     """오늘 사용할 수 있는 병원 API 호출 예산을 모두 썼다. 서비스 시간대의 자정에 초기화된다."""
 
 
+# 클래스명: HospitalApiResponseError
+# 역할: 제공자 응답을 안전한 병원 데이터로 해석할 수 없음을 알린다.
+# 주요 책임: XML·식별자·페이지 계약 위반을 통신 장애와 구분한다.
+# 속성: RuntimeError의 오류 메시지 외 추가 상태 없음.
 class HospitalApiResponseError(RuntimeError):
     """병원 API의 XML·페이지 응답 계약 오류."""
 
@@ -45,25 +59,42 @@ class HospitalApiResponseError(RuntimeError):
 # 클래스명: HospitalLookupBoundary
 # 역할: 병원 검색 Control이 사용하는 위치·상세 조회 계약.
 # 주요 책임: 제공기관 구현을 분리하고 이미 진행 중인 상세 조회를 예산에서 재사용한다.
+# 속성: 없음. 구현체의 캐시·연결 상태는 이 계약에 노출하지 않는다.
 class HospitalLookupBoundary(Protocol):
-    # 좌표 주변의 한 페이지를 가져온다.
+    # 함수이름: fetchNearbyPage
+    # 함수역할: 좌표 주변의 제공자 위치 목록 한 페이지를 요청하는 계약이다.
+    # 매개변수: latitude, longitude (float)는 좌표, page_no, page_size (int)는 페이지 조건이다.
+    # 반환값: HospitalLocationPage. 구현체의 입력 검증·제공자 오류는 호출자에게 전달한다.
     async def fetchNearbyPage(
         self, *, latitude: float, longitude: float, page_no: int, page_size: int
     ) -> HospitalLocationPage: ...
 
-    # 지역과 진료과를 제공자에게 전달해 해당 과목의 목록부터 조회한다.
+    # 함수이름: fetchDepartmentPage
+    # 함수역할: 지역과 진료과로 먼저 걸러진 병원 목록을 요청하는 계약이다.
+    # 매개변수: province, district, department (str)는 지역·진료과, page_no, page_size (int)는 페이지 조건이다.
+    # 반환값: HospitalLocationPage. 조회 실패는 구현체의 예외로 전달한다.
     async def fetchDepartmentPage(
         self, *, province: str, district: str, department: str,
         page_no: int, page_size: int,
     ) -> HospitalLocationPage: ...
 
-    # 선택한 병원의 주간 운영표와 진료과를 가져온다.
+    # 함수이름: fetchDetails
+    # 함수역할: 선택한 병원의 진료과·주간 운영표를 조회하는 계약이다.
+    # 매개변수: hospital_id (str)는 제공자 병원 식별자다.
+    # 반환값: HospitalDetails. 입력 검증·제공자 오류는 구현체에서 전달한다.
     async def fetchDetails(self, hospital_id: str) -> HospitalDetails: ...
 
-    # 캐시 또는 진행 중 요청은 새 제공자 호출 예산에서 제외한다.
+    # 함수이름: hasCachedDetails
+    # 함수역할: 상세 요청을 새 호출 예산 없이 재사용할 수 있는지 확인한다.
+    # 매개변수: hospital_id (str)는 확인할 병원 식별자다.
+    # 반환값: bool. 유효한 성공·실패 캐시 또는 진행 중 작업이 있으면 True다.
     def hasCachedDetails(self, hospital_id: str) -> bool: ...
 
 
+# 클래스명: _CacheEntry
+# 역할: 병원 조회 결과 또는 재발생시킬 오류 종류를 만료 시각과 함께 보관한다.
+# 주요 책임: 실패도 짧게 공유하여 동일 요청의 반복 호출을 줄인다.
+# 속성: expires_at (float)는 단조 시각, value는 위치·상세 결과, error는 예외 타입 또는 None이다.
 @dataclass(frozen=True)
 class _CacheEntry:
     expires_at: float
@@ -76,7 +107,10 @@ class _CacheEntry:
 # 주요 책임: 동일 요청 병합, 호출 예산 및 응답 크기 제한, 키가 없는 오류 전파.
 # 속성: _cache는 TTL 결과, _inflight는 공유 작업, _daily_requests는 프로세스별·오퍼레이션별 호출 수다.
 class NationalEmergencyMedicalCenterHospitalAPI:
-    # 캐시·진행 요청·연결 풀의 크기를 제한한다.
+    # Function Name: __init__
+    # Description: Initializes bounded caches, shared requests and per-operation daily counters without opening a connection.
+    # Parameters: client (AsyncClient | None) is borrowed when supplied; clock measures TTLs; date_clock selects the budget day.
+    # Returns: None. An omitted date_clock uses the configured application time zone.
     def __init__(
         self,
         *,
@@ -95,7 +129,10 @@ class NationalEmergencyMedicalCenterHospitalAPI:
         self._inflight: dict[tuple, asyncio.Task[_CacheEntry]] = {}
         self._semaphore = asyncio.Semaphore(settings.PUBLIC_API_MAX_CONCURRENCY)
 
-    # 위치 페이지는 날짜·필터와 독립적으로 재사용한다.
+    # Function Name: fetchNearbyPage
+    # Description: Validates pagination and coarsens coordinates before requesting a date-independent cached location page.
+    # Parameters: latitude, longitude (float) are geographic coordinates; page_no, page_size (int) select the bounded page.
+    # Returns: HospitalLocationPage; raises ValueError for invalid bounds and propagates provider/cache failures.
     async def fetchNearbyPage(
         self, *, latitude: float, longitude: float, page_no: int, page_size: int
     ) -> HospitalLocationPage:
@@ -117,7 +154,10 @@ class NationalEmergencyMedicalCenterHospitalAPI:
         assert isinstance(result, HospitalLocationPage)
         return result
 
-    # 병원 ID별 상세 결과를 위치 이동과 필터 변경에도 재사용한다.
+    # 함수이름: fetchDetails
+    # 함수역할: 병원 ID별 상세 캐시를 위치·필터 변경과 무관하게 재사용한다.
+    # 매개변수: hospital_id (str)는 1~32자의 영문·숫자 식별자다.
+    # 반환값: HospitalDetails. 식별자가 잘못되면 ValueError, 조회 실패 시 제공자 예외를 전달한다.
     async def fetchDetails(self, hospital_id: str) -> HospitalDetails:
         if not re.fullmatch(r"[A-Za-z0-9]{1,32}", hospital_id):
             raise ValueError("Invalid hospital identifier.")
@@ -127,7 +167,10 @@ class NationalEmergencyMedicalCenterHospitalAPI:
         assert isinstance(result, HospitalDetails)
         return result
 
-    # 좌표 조회와 캐시를 분리하고 지역·진료과·페이지 조합별 목록을 재사용한다.
+    # 함수이름: fetchDepartmentPage
+    # 함수역할: 지역·진료과·페이지 조합을 검증해 좌표 조회와 별도로 캐시한다.
+    # 매개변수: province, district, department (str)는 지역과 D형 진료과 코드, page_no, page_size (int)는 페이지 조건이다.
+    # 반환값: HospitalLocationPage. 잘못된 조건은 ValueError, 제공자 실패는 해당 예외를 전달한다.
     async def fetchDepartmentPage(
         self, *, province: str, district: str, department: str,
         page_no: int, page_size: int,
@@ -148,7 +191,10 @@ class NationalEmergencyMedicalCenterHospitalAPI:
         assert isinstance(result, HospitalLocationPage)
         return result
 
-    # 실패 캐시와 진행 중 작업도 재사용해 반복 필터의 호출량을 제한한다.
+    # 함수이름: hasCachedDetails
+    # 함수역할: 실패 캐시와 진행 중 작업까지 포함해 상세 조회의 재사용 가능성을 판정한다.
+    # 매개변수: hospital_id (str)는 확인할 병원 식별자다.
+    # 반환값: bool. 만료 전 캐시나 진행 중 작업이 있으면 True이며 조회 자체는 실행하지 않는다.
     def hasCachedDetails(self, hospital_id: str) -> bool:
         key = (_DETAIL_PATH, (("HPID", hospital_id),))
         entry = self._cache.get(key)
@@ -156,7 +202,10 @@ class NationalEmergencyMedicalCenterHospitalAPI:
             entry is not None and entry.expires_at > self._clock()
         )
 
-    # 동일 요청을 합치고 한 호출자의 취소가 공유 작업을 취소하지 않게 한다.
+    # 함수이름: _cached
+    # 함수역할: 동일 요청을 합치고 호출자의 취소로 공유 작업이 취소되지 않게 보호한다.
+    # 매개변수: path (str)는 API 경로, params (dict[str, str])는 캐시 키 재료, ttl (int)은 성공 보관 초다.
+    # 반환값: 위치·상세 결과. 용량 초과나 저장된 실패는 해당 병원 API 예외로 발생시킨다.
     async def _cached(self, path: str, params: dict[str, str], ttl: int):
         key = (path, tuple(sorted(params.items())))
         entry = self._cache.get(key)
@@ -175,7 +224,10 @@ class NationalEmergencyMedicalCenterHospitalAPI:
             raise entry.error("Hospital data is temporarily unavailable.")
         return entry.value
 
-    # 검증된 결과와 짧은 실패 캐시만 보관하며 완료 후 진행 표를 비운다.
+    # Function Name: _load
+    # Description: Fetches and parses under a timeout, caches success or a sanitized failure, and always removes the inflight entry.
+    # Parameters: key (tuple) identifies the shared request; path (str), params (dict[str, str]) select it; ttl (int) is success lifetime in seconds.
+    # Returns: _CacheEntry. Budget exhaustion retains its distinct error type; cancellation and unexpected errors propagate.
     async def _load(self, key: tuple, path: str, params: dict[str, str], ttl: int) -> _CacheEntry:
         try:
             try:
@@ -207,7 +259,10 @@ class NationalEmergencyMedicalCenterHospitalAPI:
         finally:
             self._inflight.pop(key, None)
 
-    # 응답을 제한된 크기로 읽고 키나 요청 URL을 예외에 포함하지 않는다.
+    # Function Name: _request
+    # Description: Charges the operation's daily budget, bounds streaming response size, and validates XML without exposing credentials.
+    # Parameters: path (str) is the provider operation; params (dict[str, str]) excludes the service key added internally.
+    # Returns: Parsed XML Element; raises budget, availability or response errors for quota, transport or contract failures.
     async def _request(self, path: str, params: dict[str, str]) -> ET.Element:
         key = settings.HOSPITAL_API_KEY.strip() or settings.PUBLIC_DATA_API_KEY.strip()
         if not key:
@@ -259,7 +314,10 @@ class NationalEmergencyMedicalCenterHospitalAPI:
             raise HospitalApiResponseError("Hospital response body is missing.")
         return root
 
-    # 원본 행 수로 페이지 끝을 계산하고 잘못된 좌표·식별자는 제외한다.
+    # 함수이름: _parse_page
+    # 함수역할: 페이지 메타데이터를 검증하고 잘못된 좌표·식별자 행은 제외하되 원본 행 수는 유지한다.
+    # 매개변수: root (Element)는 XML, page_no, page_size (int)는 요청한 페이지와 최대 크기다.
+    # 반환값: HospitalLocationPage. 페이지 계약 불일치·예상치 못한 빈 페이지는 HospitalApiResponseError다.
     @staticmethod
     def _parse_page(root: ET.Element, page_no: int, page_size: int) -> HospitalLocationPage:
         try:
@@ -299,7 +357,10 @@ class NationalEmergencyMedicalCenterHospitalAPI:
             ))
         return HospitalLocationPage(tuple(records), total, len(items), actual_size)
 
-    # 응급실 여부를 외래 24시간 진료로 해석하지 않고 주간 시간표만 읽는다.
+    # 함수이름: _parse_details
+    # 함수역할: 식별자를 검증하고 진료과·주간 시간표·공유용 위치를 읽으며 응급실을 24시간 외래로 해석하지 않는다.
+    # 매개변수: root (Element)는 XML, hospital_id (str)는 요청한 식별자다.
+    # 반환값: HospitalDetails. 0건은 빈 상세, 개수·ID 불일치는 HospitalApiResponseError이며 잘못된 위치만 제외한다.
     @staticmethod
     def _parse_details(root: ET.Element, hospital_id: str) -> HospitalDetails:
         items = root.findall("body/items/item")
@@ -354,7 +415,10 @@ class NationalEmergencyMedicalCenterHospitalAPI:
             fetched_at=datetime.now(UTC),
         )
 
-    # 종료 시 진행 중인 공유 작업을 회수하고 내부 소유 연결만 닫는다.
+    # 함수이름: close
+    # 함수역할: 진행 중 작업을 취소·회수하고 캐시를 비운 뒤 내부 소유 연결만 닫는다.
+    # 매개변수: 없음.
+    # 반환값: None. 외부에서 주입한 HTTP 클라이언트는 닫지 않으며 연결 종료 오류는 전달한다.
     async def close(self) -> None:
         tasks = tuple(self._inflight.values())
         for task in tasks:

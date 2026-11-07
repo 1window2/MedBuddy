@@ -1,3 +1,5 @@
+# 파일명: hospital_router.py
+# 역할: 인증·앱 검증을 적용한 병원 검색 요청과 제공자 오류 응답을 연결한다.
 """인증된 사용자의 위치 기반 병원 검색 API."""
 
 import asyncio
@@ -26,7 +28,11 @@ HOSPITAL_BUDGET_EXHAUSTED_DETAIL = "오늘 병원 정보를 조회할 수 있는
 router = APIRouter(dependencies=list(AUTHENTICATED_APP_DEPENDENCIES))
 
 
-# 기존 인증·앱 검증을 유지하고 외부 장애는 키가 없는 고정 문구로 응답한다.
+# Function Name: get_nearby_hospitals
+# Description: Runs authorized hospital lookup under a total timeout and maps provider failures to credential-free HTTP responses.
+# Parameters: latitude, longitude (float) are query coordinates; search_mode selects filtering; target_datetime and department are optional time/code filters;
+#   limit (int) and max_distance_km (float) bound results; control (CheckNearbyHospital) is injected by FastAPI.
+# Returns: NearbyHospitalResponse; HTTP 422 for invalid input, 502 for malformed provider data, or 503 with Retry-After for outage/budget exhaustion.
 @router.get("/nearby", response_model=NearbyHospitalResponse)
 async def get_nearby_hospitals(
     latitude: float = Query(ge=-90, le=90),

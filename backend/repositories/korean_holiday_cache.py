@@ -14,6 +14,7 @@ from repositories.pharmacy_catalog_repository import PharmacyCatalogRepository
 # Class Name: SessionScopedKoreanHolidayCache
 # Role: Thread-safe calendar adapter with operation-scoped sessions.
 # Responsibilities: Never retain a request session or transaction across an await.
+# Attributes: _session_factory creates a fresh ORM session for each calendar-cache operation.
 class SessionScopedKoreanHolidayCache:
     # Function Name: __init__
     # Description: Stores a factory, not a live ORM session.

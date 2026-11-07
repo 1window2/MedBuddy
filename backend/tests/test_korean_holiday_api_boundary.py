@@ -28,11 +28,25 @@ from boundaries.pharmacy_api_boundary import (  # noqa: E402
 )
 
 
+# 함수이름: test_gateway_error_never_becomes_cached_nonholiday
+# 함수역할:
+# - HTTP 200 인증 오류는 공휴일 없음으로 캐시하지 않으며 같은 월의 후속 요청도 실패 캐시로 제한하는지 확인한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - None.
 @pytest.mark.anyio
 async def test_gateway_error_never_becomes_cached_nonholiday() -> None:
     """HTTP 200 인증 오류를 공휴일 없음으로 캐시하지 않고 재시도도 제한한다."""
     requests = []
 
+    # 함수이름: respond
+    # 함수역할:
+    # - 요청을 기록하고 인증 실패 게이트웨이 XML을 HTTP 200으로 반환한다.
+    # 매개변수:
+    # - request: httpx.Request; 기록할 달력 요청.
+    # 반환값:
+    # - httpx.Response; 인증 오류 본문.
     def respond(request):
         requests.append(request)
         return httpx.Response(200, content=b"<OpenAPI_ServiceResponse><cmmMsgHeader><returnReasonCode>30</returnReasonCode></cmmMsgHeader></OpenAPI_ServiceResponse>")
@@ -116,6 +130,8 @@ async def test_holiday_lookup_fails_closed_on_service_error() -> None:
 # - Returns the fixed holiday set only when a 730-day stale allowance is requested; otherwise
 #   reports a cache miss.
 # - Accepts a holiday cache replacement without persisting it in the stale-cache double.
+# Attributes:
+# - None.
 class _StaleHolidayCache:
     # Function Name: get_cached_korean_holidays
     # Description:

@@ -10,6 +10,7 @@ from typing import Protocol
 # - Defines asynchronous public-holiday classification for nearby-care schedule selection.
 # Responsibilities:
 # - Let nearby search select holiday hours without depending on a particular calendar provider.
+# Attributes: None required by this protocol; implementations own storage and connection state.
 class HolidayLookupBoundary(Protocol):
     # Function Name: isHoliday
     # Description:

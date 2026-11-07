@@ -233,6 +233,8 @@ class _FakeHolidayEmergencyBoundary:
 # Role: Emergency-pharmacy roster double that injects malformed-response failures.
 # Responsibilities:
 # - Raises PharmacyApiResponseError to force the bounded stale-roster fallback.
+# Attributes:
+# - None.
 class _MalformedHolidayEmergencyBoundary:
     # Function Name: fetchSchedules
     # Description:
@@ -252,6 +254,8 @@ class _MalformedHolidayEmergencyBoundary:
 # Responsibilities:
 # - Returns no fresh roster below a 45-day allowance, otherwise supplying the requested day's
 #   18:00-23:00 schedule.
+# Attributes:
+# - No additional state; inherits the pharmacy records and call history from _FakePharmacyRepository.
 class _StaleHolidayRepository(_FakePharmacyRepository):
     # Function Name: get_cached_holiday_schedules
     # Description:
@@ -285,6 +289,8 @@ class _StaleHolidayRepository(_FakePharmacyRepository):
 # 역할: 공휴일 조회 장애를 발생시켜 약국 결과의 선택적 부가조회 실패를 재현하는 객체다.
 # 주요 책임:
 # - 공휴일 서비스 사용 불가 오류를 발생시켜 로컬 약국 응답 유지 여부를 검증하게 한다.
+# 속성:
+# - 없음.
 class _UnavailableHolidayBoundary:
     # 함수이름: isHoliday
     # 함수역할:
@@ -487,13 +493,13 @@ async def test_invalid_coordinate_is_rejected_before_api_call() -> None:
     assert boundary.requested_limit == 0
 
 
-# 함수이름: test_empty_catalog_falls_back_to_location_api
-# 함수역할:
-# - 동기화 전 빈 로컬 목록에서는 위치 API를 호출하여 지정 상한의 대체 결과를 반환하는지 검증한다.
-# 매개변수:
-# - 없음.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_empty_catalog_falls_back_to_location_api
+# Description:
+# - Fall back to the location API when the local catalog is empty and respect the requested result limit.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_empty_catalog_falls_back_to_location_api() -> None:
     """동기화 전의 빈 로컬 DB에서도 공공 위치 API로 약국을 조회한다."""
@@ -526,13 +532,13 @@ async def test_empty_catalog_falls_back_to_location_api() -> None:
     assert repository.cached_result_ids == [["fallback"]]
 
 
-# 함수이름: test_holiday_lookup_failure_does_not_block_pharmacy_results
-# 함수역할:
-# - 공휴일 부가 조회가 실패해도 사용 가능한 로컬 약국 결과를 유지하는지 검증한다.
-# 매개변수:
-# - 없음.
-# 반환값:
-# - 없음 (None).
+# Function Name: test_holiday_lookup_failure_does_not_block_pharmacy_results
+# Description:
+# - Keep available local pharmacy results when the supplementary holiday lookup fails.
+# Parameters:
+# - None.
+# Returns:
+# - None.
 @pytest.mark.anyio
 async def test_holiday_lookup_failure_does_not_block_pharmacy_results() -> None:
     """공휴일 부가 조회가 실패해도 로컬 약국 결과는 반환한다."""

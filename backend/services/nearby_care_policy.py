@@ -54,18 +54,11 @@ def normalize_target_datetime(
     return normalized
 
 
-# 함수이름: minutes_until_close
-# 함수역할:
-# - 현재 영업 중일 때 폐점까지 남은 분을 계산한다.
-# 매개변수:
-# - now (datetime): 상태·만료 판정에 사용할 기준 시각.
-# - is_open_now (bool | None): 알려진 영업 여부; 운영 시간이 없으면 None.
-# - start_minutes (int | None): 확인된 경우 자정 이후 분 단위의 오늘 개점 시각.
-# - end_minutes (int | None): 확인된 경우 자정 이후 분 단위의 오늘 폐점 시각.
-# - previous_start_minutes (int | None): 야간 이월 판정에 사용할 전날 개점 시각(분).
-# - previous_end_minutes (int | None): 야간 이월 판정에 사용할 전날 폐점 시각(분).
-# 반환값:
-# - 현재 영업 구간이 끝날 때까지의 분 수; 24시간 영업이거나 영업 중이 아니거나 시각을 계산할 수 없으면 None.
+# Function Name: minutes_until_close
+# Description: Counts minutes left in the applicable open interval, checking yesterday's overnight carryover first.
+# Parameters: now (datetime) is local time; is_open_now (bool | None) must be True; start_minutes, end_minutes (int | None) are today's bounds;
+#   previous_start_minutes, previous_end_minutes (int | None) are yesterday's bounds, all measured from midnight.
+# Returns: Remaining minutes (int), or None when not known open, hours are unavailable, or today's interval is all-day.
 def minutes_until_close(
     *,
     now: datetime,
@@ -97,14 +90,10 @@ def minutes_until_close(
     return None
 
 
-# 함수이름: parse_minutes
-# 함수역할:
-# - 시각에서 숫자를 추출해 시·분 범위를 확인하고 허용된 경우 24:00도 처리한다.
-# 매개변수:
-# - value (str): 공공 약국 API의 시·분 문자열.
-# - allow_24 (bool): 폐점 시각으로 정확히 24:00을 허용할지 여부.
-# 반환값:
-# - 자정 이후 분 수; 잘못된 시각은 None.
+# Function Name: parse_minutes
+# Description: Extracts digits, pads three-digit times and checks hour/minute ranges.
+# Parameters: value (str) is a provider time label; allow_24 (bool) permits exactly 24:00 for closing times.
+# Returns: Minutes since midnight (int), or None for unsupported lengths or out-of-range times.
 def parse_minutes(value: str, *, allow_24: bool = False) -> int | None:
     normalized = "".join(character for character in value if character.isdigit())
     if len(normalized) not in {3, 4}:
@@ -119,6 +108,10 @@ def parse_minutes(value: str, *, allow_24: bool = False) -> int | None:
     return hour * 60 + minute
 
 
+# 함수이름: parse_operating_hours
+# 함수역할: 정확한 두 시각 표기만 허용하고 동일한 시작·종료를 휴무나 종일 운영으로 추정하지 않는다.
+# 매개변수: values (object)는 시작·종료 문자열의 tuple 또는 list여야 한다.
+# 반환값: 분 단위 시각 쌍. 누락·형식 오류·범위 초과·동일 시각이면 (None, None)이다.
 def parse_operating_hours(values: object) -> tuple[int | None, int | None]:
     """명시된 시각 쌍만 읽고 동일한 시작·종료를 휴무나 종일 운영으로 추정하지 않는다."""
     if not isinstance(values, (tuple, list)) or len(values) != 2:
@@ -176,13 +169,10 @@ def is_open_now(
     return False
 
 
-# 함수이름: format_time
-# 함수역할:
-# - 자정 이후 분 수를 HH:MM 표시로 변환하고 1440분은 24:00으로 보존한다.
-# 매개변수:
-# - minutes (int | None): 시각 표시로 변환할 자정 이후 분 수.
-# 반환값:
-# - 표시용 시각 또는 입력이 없을 때 None.
+# Function Name: format_time
+# Description: Formats minute offsets as HH:MM, preserving the endpoint 1440 as 24:00.
+# Parameters: minutes (int | None) is an already-validated offset from midnight.
+# Returns: Display string, or None when no time is available; this helper does not validate ranges.
 def format_time(minutes: int | None) -> str | None:
     if minutes is None:
         return None
@@ -191,16 +181,10 @@ def format_time(minutes: int | None) -> str | None:
     return f"{minutes // 60:02d}:{minutes % 60:02d}"
 
 
-# 함수이름: haversine_distance
-# 함수역할:
-# - 두 위도·경도의 대권 거리를 평균 지구 반지름으로 계산한다.
-# 매개변수:
-# - start_latitude (float): 출발 위치의 위도(도).
-# - start_longitude (float): 출발 위치의 경도(도).
-# - end_latitude (float): 도착 위치의 위도(도).
-# - end_longitude (float): 도착 위치의 경도(도).
-# 반환값:
-# - 두 위치 사이의 거리(km).
+# Function Name: haversine_distance
+# Description: Computes great-circle distance using the mean Earth radius and the haversine formula.
+# Parameters: start_latitude, start_longitude, end_latitude, end_longitude (float) are validated coordinates in degrees.
+# Returns: Distance in kilometers (float); coordinate validation belongs to the caller.
 def haversine_distance(
     start_latitude: float,
     start_longitude: float,
