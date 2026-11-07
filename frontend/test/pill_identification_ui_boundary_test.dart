@@ -120,6 +120,35 @@ class _OversizedImageIdentifyPill extends _FakeIdentifyPill {
   }
 }
 
+// Class Name: _CountingIdentifyPill
+// Role: Identification fixture that counts analysis requests.
+// Responsibilities:
+// - Return the normal candidate and record how many requests reached the control.
+// Attributes: identificationCalls counts requestPillIdentification calls.
+class _CountingIdentifyPill extends _FakeIdentifyPill {
+  int identificationCalls = 0;
+
+  // Function Name: requestPillIdentification
+  // Description:
+  // - Count the request and return the normal candidate.
+  // Parameters:
+  // - frontImage (Uint8List): Front-side pill photo bytes.
+  // - backImage (Uint8List?): Optional reverse-side photo bytes.
+  // Returns:
+  // - The inherited normal identification result.
+  @override
+  Future<PillIdentificationResult> requestPillIdentification({
+    required Uint8List frontImage,
+    Uint8List? backImage,
+  }) {
+    identificationCalls++;
+    return super.requestPillIdentification(
+      frontImage: frontImage,
+      backImage: backImage,
+    );
+  }
+}
+
 // Class Name: _LowConfidenceIdentifyPill
 // Role: Identification fixture that adds a low-confidence image-quality warning.
 // Responsibilities:
@@ -783,6 +812,36 @@ void main() {
     expect(_confirmButton(tester).onPressed, isNotNull);
     await _reviewAndConfirm(tester);
     expect(saves, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  // 함수이름: testWidgets callback
+  // 함수역할:
+  // - 버튼이 다시 그려지기 전에 분석 버튼이 두 번 눌려도 사진 분석을 한 번만 요청하는지 검증한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
+  testWidgets('분석 버튼 연속 호출은 사진 분석을 한 번만 요청한다', (tester) async {
+    _setTallPillViewport(tester);
+    final control = _CountingIdentifyPill();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PillIdentificationUI(
+          userSetting: const UserSetting(),
+          control: control,
+        ),
+      ),
+    );
+    await _addPillPhoto(tester, 0);
+    final identify = tester
+        .widget<FilledButton>(find.byKey(const Key('identify-pill-button')))
+        .onPressed!;
+    identify();
+    identify();
+    await tester.pumpAndSettle();
+    expect(control.identificationCalls, 1);
+    expect(find.text('페라트라정2.5밀리그램(레트로졸)'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

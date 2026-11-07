@@ -1217,7 +1217,8 @@ class _PillIdentificationUIState extends State<PillIdentificationUI> {
   // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
   Future<void> _requestIdentification() async {
     final pendingIndexes = _pendingDraftIndexes;
-    if (!_allDraftsReady || pendingIndexes.isEmpty) {
+    // 버튼이 다시 그려지기 전의 두 번째 탭이 같은 사진을 한 번 더 분석 요청하지 않게 한다.
+    if (_isBusy || !_allDraftsReady || pendingIndexes.isEmpty) {
       return;
     }
     final text = _PillIdentificationText(widget.userSetting.language);
