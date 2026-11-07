@@ -21,6 +21,13 @@ class MedicationCandidateDialog extends StatefulWidget {
 
 class _MedicationCandidateDialogState extends State<MedicationCandidateDialog> {
   MedicationDetail? _selected;
+  bool _isClosing = false;
+
+  void _close([MedicationDetail? selected]) {
+    if (_isClosing || ModalRoute.of(context)?.isCurrent != true) return;
+    _isClosing = true;
+    Navigator.pop(context, selected);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -70,14 +77,12 @@ class _MedicationCandidateDialogState extends State<MedicationCandidateDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => _close(),
           child: Text(english ? 'Cancel' : '취소'),
         ),
         FilledButton(
           key: const Key('confirm-medication-candidate'),
-          onPressed: _selected == null
-              ? null
-              : () => Navigator.pop(context, _selected),
+          onPressed: _selected == null ? null : () => _close(_selected),
           child: Text(english ? 'Confirm this medication' : '이 약으로 확인'),
         ),
       ],
