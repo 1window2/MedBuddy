@@ -51,7 +51,7 @@ from reportlab.platypus import Paragraph
 HERE = Path(__file__).resolve().parent
 SOURCE = HERE.parent / ".build/cover.pdf"
 FONT_DIR = None
-PDF_NAME = "MedBuddy_User_Guide_ko.pdf"
+PDF_NAME = "MedBuddy_User_Guide_ko_portrait.pdf"
 W, H = 595.32, 841.92
 MM = 72 / 25.4
 LEFT, RIGHT = 10 * MM, W - 10 * MM
@@ -417,6 +417,8 @@ def make_plan(content, input_dir=HERE):
             finish_chapter()
         chapter = page["chapter"]
         page["page"] = 2 + len(chunks) + len(pages)
+        if page["kind"] == "divider":
+            continue
         pages.append(page)
         for step in page.get("steps", []):
             identity = step["identity"]
@@ -438,10 +440,10 @@ def make_plan(content, input_dir=HERE):
     require(total <= 9999, "TOC page-number reserve exceeded", total_pages=total)
     layout = dict(
         units="pt unless key ends in _mm or _px", page_size_pt=[W, H],
-        body_bottom_mm=281, row_title_tops_mm=[6, 147.5],
-        image_tops_mm=[14, 155.5], panel_x_mm=[10, 108], panel_width_mm=92,
-        wide_panel_width_mm=190, text_font_size=TEXT_SIZE, text_leading=TEXT_LEADING,
-        max_screenshot_width_mm=61, min_screenshot_width_mm=40,
+        body_bottom_mm=281, caption_position="below screenshot",
+        section_heading_position="top of first and continuation pages",
+        max_steps_per_page=4, text_font_size=TEXT_SIZE, text_leading=TEXT_LEADING,
+        max_screenshot_width_mm=66, min_screenshot_width_mm=40,
         badge_policy="9 pt digits; prefer outside left, then right; clear all targets, captions and badges by 1 pt; paint after photo clipping and frame.",
         footer_policy="Balance/wrap at 9.96 pt in up to two lines; abbreviate only longer footers with ...; retain full headings elsewhere.",
         steps={}, dividers=[], footers=[], references=[],
@@ -510,51 +512,62 @@ def copy_blocks(step, width):
 
 def layout_steps(page, input_dir):
     slots = []
+    row_count = 1 if len(page["steps"]) <= 2 else 2
+    row_gap = 16
+    _, heading_height = paragraph(page["section"], RIGHT - LEFT, 16, 20, True)
+    body_top = 30 + heading_height + 12
+    row_height = (BODY_BOTTOM - body_top - row_gap * (row_count - 1)) / row_count
+    panel_gap = 8 * MM
+    panel_width = (RIGHT - LEFT - panel_gap) / 2
     for index, step in enumerate(page["steps"]):
-        row = index if page.get("wide") else index // 2
-        title_top = (6 + row * 141.5) * MM
-        image_top = title_top + 8 * MM
-        bottom = (139.5 + row * 141.5) * MM
-        panel_width = (190 if page.get("wide") else 92) * MM
-        x = (10 if page.get("wide") else 10 + index % 2 * 98) * MM
+        row = index // 2
+        title_top = body_top + row * (row_height + row_gap)
+        bottom = title_top + row_height
+        panel_x = LEFT + index % 2 * (panel_width + panel_gap)
+        if len(page["steps"]) == 1:
+            panel_x = (W - panel_width) / 2
         title, title_height = paragraph(f'{step["number"]}. {step["label"]}', panel_width,
                                         size=12, leading=15, bold=True)
-        require(title_height <= image_top - title_top - 2, "Step title does not fit fixed title band",
-                identity=step["identity"], page=page["page"], panel_width_pt=panel_width,
-                required_height_pt=title_height, available_height_pt=image_top - title_top - 2)
+        image_top = title_top + title_height + 8
         info = image_info(step, input_dir)
         crop = info["crop_px"]
         aspect = (crop[3] - crop[1]) / (crop[2] - crop[0])
-        available = bottom - image_top
-        chosen = None
-        for half_mm in range(122, 79, -1):
-            width = half_mm / 2 * MM
-            text_width = panel_width - width - GAP
-            _, text_height = copy_blocks(step, text_width)
-            if width * aspect <= available and text_height <= available:
-                chosen = width
-                break
-        require(chosen is not None, "Step copy/screenshot does not fit; shorten copy or use wide=true",
+        _, text_height = copy_blocks(step, panel_width)
+        available = bottom - image_top - 10 - text_height
+        chosen = min((66 if row_count == 1 else 54) * MM, available / aspect)
+        require(chosen >= 40 * MM, "Step copy/screenshot does not fit; shorten copy or use wide=true",
                 identity=step["identity"], page=page["page"], panel_width_pt=panel_width,
                 available_height_pt=available, minimum_image_width_mm=40,
-                required_text_height_at_min_width_pt=text_height,
+                required_text_height_pt=text_height,
                 image_height_at_min_width_pt=40 * MM * aspect, image_size_px=info["image_size_px"])
         slots.append(dict(identity=step["identity"], page=page["page"], slot=index,
-                          x_pt=x, panel_width_pt=panel_width, title_top_pt=title_top,
+                          panel_x_pt=panel_x, panel_width_pt=panel_width, title_top_pt=title_top,
                           title_height_pt=title_height, image_top_pt=image_top,
                           content_bottom_pt=bottom, available_height_pt=available,
                           chosen_width_pt=chosen, aspect=aspect, **info))
-    # One image width per redrawn page keeps all occupied slots aligned.
-    common = min(slot["chosen_width_pt"] for slot in slots)
+    # 한 행의 사진 크기와 설명 시작선을 맞추고 원본 비율을 유지합니다.
+    row_sizes = {}
+    for row in range(row_count):
+        siblings = [s for s in slots if s["slot"] // 2 == row]
+        texts = [copy_blocks(page["steps"][s["slot"]], panel_width)[1] for s in siblings]
+        image_top = max(s["image_top_pt"] for s in siblings)
+        max_aspect = max(s["aspect"] for s in siblings)
+        room = min(s["content_bottom_pt"] for s in siblings) - image_top - 10 - max(texts)
+        common = min((66 if row_count == 1 else 54) * MM, room / max_aspect)
+        row_sizes[row] = common, image_top, image_top + common * max_aspect + 10
     for slot, step in zip(slots, page["steps"]):
+        common, image_top, text_top = row_sizes[slot["slot"] // 2]
         slot.pop("chosen_width_pt")
-        aspect = slot.pop("aspect")
-        text_width = slot["panel_width_pt"] - common - GAP
+        aspect = slot["aspect"]
+        text_width = slot["panel_width_pt"]
         _, text_height = copy_blocks(step, text_width)
+        require(text_top + text_height <= slot["content_bottom_pt"] + 0.01,
+                "Caption exceeds row", identity=step["identity"])
+        require(common >= 40 * MM, "Screenshot too small", identity=step["identity"])
         slot.update(image_width_mm=common / MM, image_height_mm=common * aspect / MM,
-                    text_x_pt=slot["x_pt"] + common + GAP, text_width_pt=text_width,
-                    text_height_pt=text_height)
-        require(text_height <= slot["available_height_pt"], "Common-width copy overflow", identity=step["identity"])
+                    image_top_pt=image_top, x_pt=slot["panel_x_pt"] + (text_width - common) / 2,
+                    text_x_pt=slot["panel_x_pt"], text_width_pt=text_width,
+                    text_top_pt=text_top, text_height_pt=text_height)
     layout_annotations(slots, page.get("wide", False))
     return {slot["identity"]: slot for slot in slots}
 
@@ -577,10 +590,10 @@ def layout_annotations(slots, wide):
                     badge_radius_pt=BADGE_RADIUS, badge_gap_pt=BADGE_GAP)
         targets.extend(boxes)
         copy_areas.extend([
-            [x, H - slot["title_top_pt"] - slot["title_height_pt"],
-             x + slot["panel_width_pt"], H - slot["title_top_pt"]],
-            [slot["text_x_pt"], top - slot["text_height_pt"],
-             x + slot["panel_width_pt"], top],
+            [slot["panel_x_pt"], H - slot["title_top_pt"] - slot["title_height_pt"],
+             slot["panel_x_pt"] + slot["panel_width_pt"], H - slot["title_top_pt"]],
+            [slot["text_x_pt"], H - slot["text_top_pt"] - slot["text_height_pt"],
+             slot["text_x_pt"] + slot["text_width_pt"], H - slot["text_top_pt"]],
         ])
 
     outer_radius = BADGE_RADIUS + BADGE_STROKE / 2
@@ -589,10 +602,9 @@ def layout_annotations(slots, wide):
     placed = []
     for slot in slots:
         # The right column can use its gutter, but never the preceding caption.
-        left = (slot["x_pt"] - 6 * MM + BADGE_GAP
-                if not wide and slot["slot"] % 2 else BADGE_GAP)
-        bounds = [left, H - slot["content_bottom_pt"] + BADGE_GAP,
-                  slot["x_pt"] + slot["panel_width_pt"] - BADGE_GAP,
+        left = slot["panel_x_pt"] + BADGE_GAP
+        bounds = [left, H - slot["text_top_pt"] + BADGE_GAP,
+                  slot["panel_x_pt"] + slot["panel_width_pt"] - BADGE_GAP,
                   H - slot["image_top_pt"] - BADGE_GAP]
         slot["badge_allocation_pt"] = bounds
         boxes = slot["vector_boxes_pt"]
@@ -719,6 +731,12 @@ def draw_divider(c, page, layout):
 
 
 def draw_steps(c, page, plan):
+    c.setFillColorRGB(0.06, 0.38, 0.29)
+    c.setFont(REG, 10)
+    c.drawString(LEFT, H - 22, page["chapter"])
+    heading, heading_height = paragraph(page["section"], RIGHT - LEFT, 16, 20, True)
+    require(heading_height <= 40, "Section heading too tall", section=page["section"])
+    heading.drawOn(c, LEFT, H - 30 - heading_height)
     for step in page["steps"]:
         slot = plan["layout"]["steps"][step["identity"]]
         width, height = slot["image_width_mm"] * MM, slot["image_height_mm"] * MM
@@ -727,7 +745,7 @@ def draw_steps(c, page, plan):
         title, title_height = paragraph(f'{step["number"]}. {step["label"]}', slot["panel_width_pt"],
                                         size=12, leading=15, bold=True)
         c.setFillColorRGB(0, 0, 0)
-        title.drawOn(c, x, H - slot["title_top_pt"] - title_height)
+        title.drawOn(c, slot["panel_x_pt"], H - slot["title_top_pt"] - title_height)
         path = Path(step["image"])
         if not path.is_absolute():
             path = plan["input_dir"] / path
@@ -763,8 +781,9 @@ def draw_steps(c, page, plan):
                                str(index + 1))
         c.restoreState()
         blocks, measured = copy_blocks(step, slot["text_width_pt"])
-        require(measured <= slot["available_height_pt"], "Copy overflow at draw time", identity=step["identity"])
-        cursor = H - top
+        require(slot["text_top_pt"] + measured <= slot["content_bottom_pt"] + 0.01,
+                "Copy overflow at draw time", identity=step["identity"])
+        cursor = H - slot["text_top_pt"]
         for block, block_height, gap in blocks:
             cursor -= gap + block_height
             block.drawOn(c, slot["text_x_pt"], cursor)
@@ -950,10 +969,15 @@ def markdown(plan):
     for entry in plan["entries"]:
         lines.append(("  " if entry["level"] else "") + f'- [{entry["text"]}](#{entry["anchor"]})')
     current_chapter = None
+    current_section = None
     for page in plan["pages"]:
         if page["chapter"] != current_chapter:
             current_chapter = page["chapter"]
             lines.extend(["", f'<a id="{anchor(current_chapter, 0)}"></a>', "", f"## {current_chapter}", ""])
+        if page["kind"] == "steps" and page["section"] != current_section:
+            current_section = page["section"]
+            lines.extend([f'<a id="{anchor(page["section"], 1)}"></a>', "", f'### {page["section"]}', "",
+                          f'[소섹션: PDF {page["page"]}쪽]({PDF_NAME}#page={page["page"]})', ""])
         lines.extend([f'<a id="manual_page_{page["page"]}"></a>', ""])
         if page["kind"] == "divider":
             lines.extend([f'<a id="{anchor(page["section"], 1)}"></a>', "", f'### {page["section"]}', "",

@@ -19,7 +19,7 @@ from reportlab.pdfgen import canvas
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / ".build"
-PDF = "MedBuddy_User_Guide_ko.pdf"
+PDF = "MedBuddy_User_Guide_ko_portrait.pdf"
 SOURCE = ROOT / "source"
 
 
@@ -135,7 +135,7 @@ def collect_content(groups, layout):
             step["alt"] = step["label"] + ": " + step["text"]
             steps.append(step)
         output.append(dict(kind="divider", chapter=group["chapter"], section=group["section"], steps=[]))
-        # Use the original four-slot layout unless a longer explanation needs two wide slots.
+        # Place captions below photos; use two steps only when four do not fit.
         for start in range(0, len(steps), 4):
             batch = steps[start:start + 4]
             page = dict(kind="steps", chapter=group["chapter"], section=group["section"], steps=batch, redraw=True, wide=False, page=0)
@@ -172,9 +172,7 @@ def build(font_dir):
     cover.setFont(layout.BOLD, 30)
     cover.drawCentredString(layout.W / 2, layout.H / 2 - 145, "MedBuddy 사용설명서")
     cover.setFont(layout.REG, 12)
-    cover.drawCentredString(layout.W / 2, layout.H / 2 - 172, "1.0.0 개발 브랜치")
-    cover.setFont(layout.REG, 10)
-    cover.drawCentredString(layout.W / 2, layout.H / 2 - 191, "2026-11-07")
+    cover.drawCentredString(layout.W / 2, layout.H / 2 - 172, "ver 1.0.0")
     layout.draw_footer(cover, layout.footer_layout(1, plan["total_pages"], ""))
     cover.showPage()
     cover.save()
@@ -188,17 +186,23 @@ def build(font_dir):
     rebuilt = parse_markdown(result)
     for key, group in groups.items():
         for before, after in zip(group["steps"], rebuilt[key]["steps"], strict=True):
-            assert before["text"] == after["text"], (key, before["number"])
+            for field in ("number", "label", "text", "callouts", "source_note"):
+                assert before[field] == after[field], (key, before["number"], field)
     reader = PdfReader(BytesIO(pdf))
     all_text = "\n".join(page.extract_text() or "" for page in reader.pages)
     compact = re.sub(r"\s+", "", all_text)
     for page in content:
         for step in page.get("steps", []):
-            assert re.sub(r"\s+", "", step["text"]) in compact, step["identity"]
+            texts = [step["label"], step["text"], step.get("source_note", "")]
+            if len(step.get("boxes", [])) > 1:
+                texts.extend(item["text"] for item in step["callouts"])
+            for value in texts:
+                assert re.sub(r"\s+", "", value) in compact, step["identity"]
     assets = {s["image"]: digest(ROOT / s["image"]) for p in content for s in p.get("steps", [])}
     audit.update(pages=len(reader.pages), subsections=len(groups), steps=sum(len(g["steps"]) for g in groups.values()),
                  pdf_sha256=digest(BUILD / PDF), markdown_sha256=digest(BUILD / "README.md"),
-                 all_step_text_verified=True, baseline_step_ids_preserved=True, visual_qa="pending",
+                 all_step_text_verified=True, all_source_note_text_verified=True,
+                 baseline_step_ids_preserved=True, visual_qa="pending",
                  source_layout_sha256=digest(SOURCE / "layout.json"),
                  fonts={name: digest(font_dir / name) for name in ("NanumBarunGothic.ttf", "NanumBarunGothicBold.ttf")},
                  included_sections=list(groups))

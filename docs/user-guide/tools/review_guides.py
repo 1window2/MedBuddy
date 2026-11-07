@@ -31,7 +31,7 @@ def review(pdf, output):
         page.render(scale=1.35).to_pil().save(path)
         images.append(path)
         page.close()
-    cell_w, cell_h = 430, 640
+    cell_w, cell_h = (520, 390) if width > height else (430, 640)
     sheets = []
     for start in range(0, len(images), 16):
         sheet = Image.new('RGB', (cell_w * 4, cell_h * 4), '#dfe3e3')
