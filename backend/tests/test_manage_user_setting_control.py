@@ -4,12 +4,13 @@
 
 import sys
 import unittest
+from collections.abc import Sequence
 from pathlib import Path
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy import event
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, UOWTransaction, sessionmaker
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
@@ -98,7 +99,7 @@ class ManageUserSettingTest(unittest.TestCase):
         # - instances: object; flush 대상(사용하지 않음).
         # 반환값:
         # - None.
-        def save_newer(session, context, instances):
+        def save_newer(session: Session, context: UOWTransaction, instances: Sequence[object] | None) -> None:
             other.saveUserSetting(
                 "user-a", 20, 1.0, "ko",
                 medication_notifications_enabled=False, expected_revision=1,
@@ -136,7 +137,7 @@ class ManageUserSettingTest(unittest.TestCase):
         # - instances: object; flush targets, unused.
         # Returns:
         # - None.
-        def save_newer(session, context, instances):
+        def save_newer(session: Session, context: UOWTransaction, instances: Sequence[object] | None) -> None:
             flushes.append(1)
             if len(flushes) <= 2:
                 other.saveUserSetting("user-a", 18 + len(flushes), 1.0, "ko")
@@ -171,7 +172,7 @@ class ManageUserSettingTest(unittest.TestCase):
         # - instances: object; flush 대상(사용하지 않음).
         # 반환값:
         # - None.
-        def save_newer(session, context, instances):
+        def save_newer(session: Session, context: UOWTransaction, instances: Sequence[object] | None) -> None:
             ManageUserSetting(other_db).saveUserSetting(
                 "user-a", 20, 1.0, "ko", expected_revision=0,
             )

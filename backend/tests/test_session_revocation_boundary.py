@@ -3,6 +3,9 @@
 
 from datetime import datetime
 from types import SimpleNamespace
+from typing import NoReturn
+
+import pytest
 
 from boundaries import firebase_identity_boundary as boundary_module
 
@@ -12,7 +15,7 @@ from boundaries import firebase_identity_boundary as boundary_module
 #   failure reports no revocation, so registration never fails because of the lookup.
 # Parameters: monkeypatch - replaces the Admin app and the user lookup.
 # Returns: None.
-def test_revocation_time_is_naive_utc_and_failures_report_none(monkeypatch) -> None:
+def test_revocation_time_is_naive_utc_and_failures_report_none(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(boundary_module, "get_firebase_admin_app", lambda _project: object())
     lookup = boundary_module.FirebaseSessionRevocationBoundary("project")
 
@@ -34,7 +37,7 @@ def test_revocation_time_is_naive_utc_and_failures_report_none(monkeypatch) -> N
     # - app: object; Firebase app, unused.
     # Returns:
     # - Never returns; raises RuntimeError.
-    def unavailable(uid, app):
+    def unavailable(uid: str, app: object) -> NoReturn:
         raise RuntimeError("provider down")
 
     monkeypatch.setattr(boundary_module.auth, "get_user", unavailable)

@@ -3,6 +3,7 @@
 #   and request-scoped account locks.
 import asyncio
 import threading
+from collections.abc import Iterator
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -52,7 +53,7 @@ from schemas.prescription_change import (
 # Returns:
 # - Yields an isolated Session; closes the session and engine during fixture cleanup.
 @pytest.fixture
-def db_session():
+def db_session() -> Iterator[Session]:
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -91,7 +92,7 @@ def _principal(subject: str = "firebase-user") -> AuthenticatedPrincipal:
 # - db_session: Session; 권한 컨트롤용 격리 세션.
 # 반환값:
 # - None.
-def test_caregiver_home_aggregate_uses_verified_owner(db_session) -> None:
+def test_caregiver_home_aggregate_uses_verified_owner(db_session: Session) -> None:
     """일괄 조회에서도 전달된 타인 해시 대신 인증된 보호자 범위만 사용한다."""
     principal = _principal("caregiver")
     monitoring = Mock()
@@ -250,7 +251,7 @@ async def _resolve_registered_principal(
 # - None.
 @pytest.mark.anyio
 async def test_deleted_account_only_allows_authenticated_deletion_retry(
-    db_session,
+    db_session: Session,
 ) -> None:
     principal = _principal("deleted-firebase-user")
     db_session.add(
@@ -306,7 +307,7 @@ def test_verified_claims_map_to_stable_internal_user_hash() -> None:
 # - None.
 @pytest.mark.anyio
 async def test_registered_principal_quota_uses_stable_identity_and_route_scope(
-    db_session,
+    db_session: Session,
 ) -> None:
     # Class Name: RotatingTokenVerifier
     # Role: Firebase verifier double that records rotated tokens while resolving them to one
@@ -802,7 +803,7 @@ def test_structured_database_settings_escape_reserved_password_characters() -> N
 # - db_session (Session): Isolated SQLAlchemy session supplied by the test fixture.
 # Returns:
 # - None.
-def test_owner_scope_ignores_untrusted_client_hash(db_session) -> None:
+def test_owner_scope_ignores_untrusted_client_hash(db_session: Session) -> None:
     principal = _principal()
     authorization = AuthorizationControl(db_session)
 
@@ -823,7 +824,7 @@ def test_owner_scope_ignores_untrusted_client_hash(db_session) -> None:
 # - db_session (Session): Isolated SQLAlchemy session supplied by the test fixture.
 # Returns:
 # - None.
-def test_prescription_change_uses_server_authorized_patient_scope(db_session) -> None:
+def test_prescription_change_uses_server_authorized_patient_scope(db_session: Session) -> None:
     principal = _principal()
     authorization = AuthorizationControl(db_session)
 
@@ -882,7 +883,7 @@ def test_prescription_change_uses_server_authorized_patient_scope(db_session) ->
 # - db_session (Session): Isolated SQLAlchemy session supplied by the test fixture.
 # Returns:
 # - None.
-def test_caregiver_scope_requires_active_link(db_session) -> None:
+def test_caregiver_scope_requires_active_link(db_session: Session) -> None:
     principal = _principal("caregiver")
     authorization = AuthorizationControl(db_session)
     patient_hash = "usr_linked_patient"

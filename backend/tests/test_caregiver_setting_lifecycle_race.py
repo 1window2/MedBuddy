@@ -1,11 +1,14 @@
 # 파일명: test_caregiver_setting_lifecycle_race.py
 # 역할: 보호자 설정 저장과 환자의 삭제·연동 해제가 겹쳐도 설정이 다시 남지 않는지 검증한다.
 
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from threading import Event
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy.orm import Session
 
 import controls.set_caregiver_notification_control as notification_module
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
@@ -27,7 +30,7 @@ from support.db import make_engine, make_session_factory, seed_account
 # 반환값:
 # - None.
 @pytest.mark.parametrize("action", ["delete", "unlink"])
-def test_patient_cleanup_does_not_leave_a_late_caregiver_setting(tmp_path, monkeypatch, action):
+def test_patient_cleanup_does_not_leave_a_late_caregiver_setting(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, action: str) -> None:
     engine = make_engine(tmp_path)
     sessions = make_session_factory(engine)
     cleanup_started = Event()
@@ -51,7 +54,7 @@ def test_patient_cleanup_does_not_leave_a_late_caregiver_setting(tmp_path, monke
                 # - 없음.
                 # 반환값:
                 # - None.
-                def cleanup_patient():
+                def cleanup_patient() -> None:
                     with sessions() as deleting:
                         cleanup_started.set()
                         if action == "delete":
@@ -69,7 +72,7 @@ def test_patient_cleanup_does_not_leave_a_late_caregiver_setting(tmp_path, monke
                 # - patient_hash: str; 정리 대상 환자 식별자.
                 # 반환값:
                 # - 기존 조회 함수가 반환하는 설정 행 또는 None.
-                def find_after_cleanup_starts(caregiver_hash, patient_hash):
+                def find_after_cleanup_starts(caregiver_hash: str, patient_hash: str) -> _CaregiverNotification | None:
                     nonlocal cleanup
                     cleanup = workers.submit(cleanup_patient)
                     assert cleanup_started.wait(timeout=2)
@@ -103,7 +106,7 @@ def test_patient_cleanup_does_not_leave_a_late_caregiver_setting(tmp_path, monke
 # 반환값:
 # - None.
 @pytest.mark.parametrize("action,status", [("patient-a", 410), ("caregiver-a", 410), ("unlink", 404)])
-def test_settings_revalidate_after_account_lock_handoff(tmp_path, monkeypatch, action, status):
+def test_settings_revalidate_after_account_lock_handoff(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, action: str, status: int) -> None:
     engine = make_engine(tmp_path)
     sessions = make_session_factory(engine)
     try:
@@ -122,7 +125,7 @@ def test_settings_revalidate_after_account_lock_handoff(tmp_path, monkeypatch, a
             # - participants: Iterable[str]; 잠글 환자·보호자 식별자.
             # 반환값:
             # - None.
-            def cleanup_before_lock(session, participants):
+            def cleanup_before_lock(session: Session, participants: Iterable[str]) -> None:
                 assert not session.in_transaction()
                 with sessions() as deleting:
                     if action == "unlink":
@@ -153,7 +156,7 @@ def test_settings_revalidate_after_account_lock_handoff(tmp_path, monkeypatch, a
 # - monkeypatch: pytest.MonkeyPatch; 테스트 뒤 의존성 교체를 복원한다.
 # 반환값:
 # - None.
-def test_settings_response_does_not_reread_a_row_deleted_after_commit(fk_db, monkeypatch):
+def test_settings_response_does_not_reread_a_row_deleted_after_commit(fk_db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
     seed_account(fk_db, "patient-a", "caregiver-a")
     links = LinkPatientCaregiver(fk_db)
     code = links.generatePatientHash("patient-a")["data"]["patient_code"]
@@ -167,7 +170,7 @@ def test_settings_response_does_not_reread_a_row_deleted_after_commit(fk_db, mon
     # - 없음.
     # 반환값:
     # - None.
-    def commit_then_delete():
+    def commit_then_delete() -> None:
         has_setting = any(isinstance(row, _CaregiverNotification) for row in fk_db.identity_map.values())
         commit()
         if has_setting:

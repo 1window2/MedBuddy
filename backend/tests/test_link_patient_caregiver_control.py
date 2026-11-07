@@ -4,13 +4,14 @@
 
 import sys
 import unittest
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
@@ -490,7 +491,7 @@ class LinkPatientCaregiverTest(unittest.TestCase):
         # - user_hashes: Iterable[str]; accounts whose lock ordering is checked.
         # Returns:
         # - None.
-        def recording_lock(db, user_hashes):
+        def recording_lock(db: Session, user_hashes: Iterable[str]) -> None:
             events.append(("lock", frozenset(user_hashes)))
             real_lock(db, user_hashes)
 
@@ -501,7 +502,7 @@ class LinkPatientCaregiverTest(unittest.TestCase):
         # - patient_hash: str; patient whose active links are counted.
         # Returns:
         # - int; current link count.
-        def recording_count(patient_hash):
+        def recording_count(patient_hash: str) -> list[_PatientCaregiverLink]:
             events.append("count")
             return real_count(patient_hash)
 
@@ -537,7 +538,7 @@ class LinkPatientCaregiverTest(unittest.TestCase):
         # - user_hashes: Iterable[str]; linked participant accounts.
         # Returns:
         # - None.
-        def recording_lock(db, user_hashes):
+        def recording_lock(db: Session, user_hashes: Iterable[str]) -> None:
             locks.append(frozenset(user_hashes))
             real_lock(db, user_hashes)
 

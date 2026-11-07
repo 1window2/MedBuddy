@@ -100,7 +100,7 @@ def test_preserves_medication_and_explicit_prescription_dates(safe: str) -> None
     ("101동 202호", None),
     ("1990-01-01", "[REDACTED]"),
 ])
-def test_identifying_lines_without_medication_are_left_out(private_line, leftover) -> None:
+def test_identifying_lines_without_medication_are_left_out(private_line: str, leftover: str | None) -> None:
     # 약 정보가 없는 식별 줄은 요청 전체를 거부하지 않고 그 줄(날짜는 값)만 빼고 보낸다.
     safe = deidentify_prescription_text(f"{_MEDICATION}\n{private_line}")
     assert safe == (_MEDICATION if leftover is None else f"{_MEDICATION}\n{leftover}")
@@ -213,7 +213,7 @@ async def test_unsafe_text_never_calls_provider_or_control_boundary(source: str)
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_provider_receives_only_redacted_content_and_logs_no_pii(caplog) -> None:
+async def test_provider_receives_only_redacted_content_and_logs_no_pii(caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.INFO)
     generate = AsyncMock(return_value=SimpleNamespace(text="{}"))
     client = SimpleNamespace(aio=SimpleNamespace(models=SimpleNamespace(generate_content=generate)))
@@ -326,7 +326,7 @@ def test_bare_words_are_not_silently_guessed_to_be_patient_names() -> None:
 # 반환값:
 # - None.
 @pytest.mark.anyio
-async def test_privacy_rejection_returns_safe_400_without_external_call(caplog) -> None:
+async def test_privacy_rejection_returns_safe_400_without_external_call(caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.DEBUG)
     extract = AsyncMock()
     control = InputPrescription(

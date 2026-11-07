@@ -5,6 +5,7 @@
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 from api.dependencies import (
     get_authenticated_principal, get_authorization_control, get_manage_user_setting,
@@ -24,7 +25,7 @@ from support.db import seed_account
 # - fk_db: Session; 외래 키가 활성화된 격리 데이터베이스.
 # 반환값:
 # - None.
-def test_setting_http_revision_check_preserves_owner_and_latest_value(fk_db):
+def test_setting_http_revision_check_preserves_owner_and_latest_value(fk_db: Session) -> None:
     principal = AuthenticatedPrincipal(
         subject="synthetic-owner", issuer="test", user_hash="owner",
     )

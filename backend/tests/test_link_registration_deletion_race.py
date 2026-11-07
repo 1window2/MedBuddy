@@ -1,8 +1,12 @@
 # 파일명: test_link_registration_deletion_race.py
 # 역할: 연동 등록의 잠금 전환 중 계정 삭제가 완료되는 경합을 재현한다.
 
+from collections.abc import Iterable
+from pathlib import Path
+
 import pytest
 from fastapi import HTTPException
+from sqlalchemy.orm import Session
 
 import controls.link_patient_caregiver_control as link_module
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
@@ -23,8 +27,8 @@ from support.db import make_engine, make_session_factory, seed_account
 # - None.
 @pytest.mark.parametrize("identity_deleted", [False, True])
 def test_registration_rechecks_deleted_caregiver_after_lock_handoff(
-    tmp_path, monkeypatch, identity_deleted,
-):
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, identity_deleted: bool,
+) -> None:
     engine = make_engine(tmp_path)
     sessions = make_session_factory(engine)
     real_lock = link_module.lock_account_operations
@@ -44,7 +48,7 @@ def test_registration_rechecks_deleted_caregiver_after_lock_handoff(
         # - subject: str; 삭제 대상으로 전달된 외부 신원.
         # 반환값:
         # - None.
-        def deleteIdentity(self, subject):
+        def deleteIdentity(self, subject: str) -> None:
             deleted_subjects.append(subject)
 
     try:
@@ -63,7 +67,7 @@ def test_registration_rechecks_deleted_caregiver_after_lock_handoff(
             # - participants: Iterable[str]; 잠금 대상 계정 식별자.
             # 반환값:
             # - None.
-            def delete_before_lock(session, participants):
+            def delete_before_lock(session: Session, participants: Iterable[str]) -> None:
                 assert not session.in_transaction()
                 with sessions() as deleting:
                     real_lock(deleting, ["caregiver-a"])
