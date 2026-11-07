@@ -1,7 +1,21 @@
+// 파일명: chat_medication_reference_entity.dart
+// 역할: 채팅에 첨부하는 검색약(저장하지 않은 약품)의 표시 정보를 정의한다.
 // 검색약은 저장 약 ID나 복용 일정 없이 참고용 표시 정보만 전달한다.
 import 'medication_detail_entity.dart';
 import 'medication_image_url_entity.dart';
 
+// 한 메시지에 첨부할 수 있는 저장 약과 검색약의 합계. 서버의 MAX_CHAT_MEDICATION_CONTEXTS와 같다.
+const int maxChatMedicationAttachments = 10;
+
+// 클래스명: ChatMedicationReference
+// 역할: 검색 결과 한 품목의 품목기준코드·이름·제조사·사진 주소를 담는다.
+// 주요 책임:
+// - 서버 스키마와 같은 형식·길이 규칙으로 읽고, 사진 주소는 허용한 공공 이미지 주소만 남긴다.
+// 속성:
+// - itemSeq (String): 품목기준코드.
+// - itemName (String): 품목 이름.
+// - manufacturer (String): 제조사. 모르면 빈 문자열.
+// - imageUrl (String): 허용한 공공 이미지 주소. 없으면 빈 문자열.
 class ChatMedicationReference {
   final String itemSeq;
   final String itemName;
@@ -15,6 +29,11 @@ class ChatMedicationReference {
     this.imageUrl = '',
   });
 
+  // 함수이름: ChatMedicationReference.fromDetail
+  // 함수역할: 약 검색 결과를 첨부용 표시 정보로 바꾼다.
+  // 매개변수:
+  // - detail (MedicationDetail): 사용자가 고른 검색 결과.
+  // 반환값: 검증한 ChatMedicationReference. 형식이 맞지 않으면 FormatException.
   factory ChatMedicationReference.fromDetail(MedicationDetail detail) =>
       ChatMedicationReference.fromJson({
         'item_seq': detail.itemSeq,
@@ -23,6 +42,11 @@ class ChatMedicationReference {
         'image_url': detail.imageUrl,
       });
 
+  // 함수이름: ChatMedicationReference.fromJson
+  // 함수역할: 서버 응답이나 첨부 입력을 서버 스키마와 같은 규칙으로 검증해 읽는다.
+  // 매개변수:
+  // - json (Map<String, dynamic>): item_seq·item_name·manufacturer·image_url 값.
+  // 반환값: 검증한 ChatMedicationReference. 형식이 맞지 않으면 FormatException.
   factory ChatMedicationReference.fromJson(Map<String, dynamic> json) {
     final id = (json['item_seq'] as String? ?? '').trim();
     final name = (json['item_name'] as String? ?? '').trim();
@@ -41,6 +65,10 @@ class ChatMedicationReference {
     );
   }
 
+  // 함수이름: toJson
+  // 함수역할: 전송용 JSON으로 바꾼다.
+  // 매개변수: 없음.
+  // 반환값: 서버 스키마의 필드 이름을 쓴 Map.
   Map<String, String> toJson() => {
     'item_seq': itemSeq,
     'item_name': itemName,

@@ -25,9 +25,6 @@ import 'medication_photo_source_sheet.dart';
 import 'medication_search_ui_boundary.dart';
 import '../widgets/medication_thumbnail.dart';
 
-// 파일명: manual_medication_entry_ui_boundary.dart
-// 역할: 사진이나 처방전이 없는 약을 사용자가 직접 등록하는 화면을 제공한다.
-
 // 클래스명: ManualMedicationEntryUI
 // 역할: 사진을 포함한 약품명·처방일·복용 일정 직접 입력을 담당한다.
 // 주요 책임:
@@ -38,11 +35,13 @@ import '../widgets/medication_thumbnail.dart';
 // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
 // - onSaveRequested (Future<MedicationSaveResult> Function(ManualMedicationEntry entry)): 검증한 약품과 복약 정보를 저장할 콜백.
 // - imagePicker (ImagePicker?): 카메라·갤러리 이미지 선택 의존성.
+// - onSavesFinished (Future<void> Function()?): 저장 콜백이 갱신을 생략할 때 저장이 끝난 뒤 한 번 목록·일정·알림을 갱신할 콜백.
 class ManualMedicationEntryUI extends StatefulWidget {
   final UserSetting userSetting;
   final Future<MedicationSaveResult> Function(ManualMedicationEntry entry)
   onSaveRequested;
   final ImagePicker? imagePicker;
+  final Future<void> Function()? onSavesFinished;
 
   // 함수이름: ManualMedicationEntryUI
   // 함수역할: 사진을 포함한 약품명·처방일·복용 일정 직접 입력에 필요한 입력값과 표시 설정을 초기화한다.
@@ -51,32 +50,46 @@ class ManualMedicationEntryUI extends StatefulWidget {
   // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
   // - onSaveRequested (Future<MedicationSaveResult> Function(ManualMedicationEntry entry)): 검증한 약품과 복약 정보를 저장할 콜백.
   // - imagePicker (ImagePicker?): 카메라·갤러리 이미지 선택 의존성.
+  // - onSavesFinished (Future<void> Function()?): 한 번 이상 저장한 뒤 마지막에 호출할 갱신 콜백.
   // 반환값: 입력 설정이 반영된 ManualMedicationEntryUI 인스턴스.
   const ManualMedicationEntryUI({
     super.key,
     required this.userSetting,
     required this.onSaveRequested,
     this.imagePicker,
+    this.onSavesFinished,
   });
 
   // 함수이름: createState
   // 함수역할: 사진을 포함한 약품명·처방일·복용 일정 직접 입력의 입력·표시 상태를 관리할 State 객체를 만든다.
   // 매개변수:
   // - 없음.
-  // 반환값: 새 _ManualMedicationEntryUIState 인스턴스.
+  // 반환값: 새 _ManualMedicationBatchState 인스턴스.
   @override
   State<ManualMedicationEntryUI> createState() => _ManualMedicationBatchState();
 }
 
+// 클래스명: _ManualMedicationBatchState
+// 역할: 여러 약 입력란을 추가·삭제하고 차례로 저장한다.
+// 주요 책임:
+// - 저장한 입력란은 다시 보내지 않고 실패한 입력란부터 재시도하게 한다.
+// - 이미 추가된 약(중복)은 완료로 두되 저장한 약 개수와 구분해 안내한다.
 class _ManualMedicationBatchState extends State<ManualMedicationEntryUI> {
   final _forms = [GlobalKey<_ManualMedicationEntryUIState>()];
   final _completed = <GlobalKey<_ManualMedicationEntryUIState>>{};
+  final _duplicates = <GlobalKey<_ManualMedicationEntryUIState>>{};
+  final _savedNames = <GlobalKey<_ManualMedicationEntryUIState>, String>{};
   bool _isSaving = false;
   bool _isPickingImage = false;
 
   bool get _isEnglish => widget.userSetting.isEnglish;
   _ManualMedicationText get _text => _ManualMedicationText(_isEnglish);
 
+  // 함수이름: _reveal
+  // 함수역할: 다음 프레임 뒤 해당 입력란의 번호와 삭제 버튼이 보이도록 스크롤한다.
+  // 매개변수:
+  // - key (GlobalKey<_ManualMedicationEntryUIState>): 보여 줄 입력란.
+  // 반환값: 스크롤이 끝나면 완료되는 Future<void>.
   Future<void> _reveal(GlobalKey<_ManualMedicationEntryUIState> key) async {
     await WidgetsBinding.instance.endOfFrame;
     final formContext = key.currentContext;
@@ -175,6 +188,11 @@ class _ManualMedicationBatchState extends State<ManualMedicationEntryUI> {
     );
   }
 
+  // 함수이름: _saveAll
+  // 함수역할: 저장하지 않은 입력란을 모두 검증한 뒤 하나씩 저장한다. 실패하면 그 입력란에서 멈추고, 한 번이라도 저장했으면 마지막에 갱신 콜백을 한 번 부른다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 저장과 안내가 끝나면 완료되는 Future<void>.
   Future<void> _saveAll() async {
     if (_isSaving || _isPickingImage) return;
     FocusScope.of(context).unfocus();
@@ -189,32 +207,61 @@ class _ManualMedicationBatchState extends State<ManualMedicationEntryUI> {
     }
     setState(() => _isSaving = true);
     MedicationSaveResult? lastResult;
-    // 이미 저장한 약은 남겨 두고 실패한 약부터 재시도해 중복 요청을 막는다.
-    for (final key in pending) {
-      lastResult = await key.currentState?._submit();
-      if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
-      if (lastResult?.isCompleted != true) {
-        setState(() => _isSaving = false);
-        await _reveal(key);
-        return;
+    var completedThisRun = 0;
+    try {
+      // 이미 저장한 약은 남겨 두고 실패한 약부터 재시도해 중복 요청을 막는다.
+      for (final key in pending) {
+        final name = key.currentState?._medicationNameController.text.trim();
+        lastResult = await key.currentState?._submit();
+        if (lastResult?.isCompleted == true) completedThisRun++;
+        if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
+        if (lastResult?.isCompleted != true) {
+          setState(() => _isSaving = false);
+          await _reveal(key);
+          return;
+        }
+        setState(() {
+          _completed.add(key);
+          _savedNames[key] = name ?? '';
+          if (lastResult?.status == MedicationSaveStatus.duplicate) {
+            _duplicates.add(key);
+          }
+        });
       }
-      setState(() => _completed.add(key));
+    } finally {
+      // 입력란마다 갱신하지 않고 저장이 끝난 뒤(실패·화면 닫힘 포함) 한 번만 갱신한다.
+      if (completedThisRun > 0) await widget.onSavesFinished?.call();
     }
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          _forms.length == 1 &&
-                  lastResult?.status == MedicationSaveStatus.duplicate
-              ? _text.duplicate
-              : _forms.length == 1
-              ? _text.saved
-              : _isEnglish
-              ? '${_completed.length} medications saved.'
-              : '약 ${_completed.length}개의 복약 정보를 저장했습니다.',
-        ),
-      ),
+      SnackBar(content: Text(_savedMessage(lastResult))),
     );
     Navigator.pop(context, true);
+  }
+
+  // 함수이름: _savedMessage
+  // 함수역할: 저장한 약과 이미 추가돼 있던 약을 나눠 저장 결과 안내 문구를 만든다.
+  // 매개변수:
+  // - lastResult (MedicationSaveResult?): 마지막 입력란의 저장 결과.
+  // 반환값: 안내 문구.
+  String _savedMessage(MedicationSaveResult? lastResult) {
+    if (_forms.length == 1) {
+      return lastResult?.status == MedicationSaveStatus.duplicate
+          ? _text.duplicate
+          : _text.saved;
+    }
+    final saved = _completed.length - _duplicates.length;
+    final duplicates = _duplicates.length;
+    return [
+      if (saved > 0)
+        _isEnglish
+            ? '$saved medications saved.'
+            : '약 $saved개의 복약 정보를 저장했습니다.',
+      if (duplicates > 0)
+        _isEnglish
+            ? '$duplicates already saved, not added again.'
+            : '이미 추가된 약 $duplicates개는 다시 저장하지 않았습니다.',
+    ].join(' ');
   }
 
   @override
@@ -287,13 +334,7 @@ class _ManualMedicationBatchState extends State<ManualMedicationEntryUI> {
                           ),
                           const SizedBox(height: 16),
                           if (_completed.contains(_forms[index]))
-                            Text(
-                              _forms[index]
-                                      .currentState
-                                      ?._medicationNameController
-                                      .text ??
-                                  '',
-                            ),
+                            Text(_savedNames[_forms[index]] ?? ''),
                           Offstage(
                             offstage: _completed.contains(_forms[index]),
                             child: AbsorbPointer(
@@ -394,6 +435,8 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
   MedicationDetail? _catalogMedication;
   String _errorMessage = '';
   bool _isSaving = false;
+  // 약 검색 화면을 연 동안 두 번째 탭이 화면을 하나 더 열지 않게 한다.
+  bool _isSearching = false;
   bool _isPickingImage = false;
   // 저장 콜백을 기다리는 동안에만 true. 화면 잠금용 _isSaving과 달리 저장 성공 뒤에는 바로 내려간다.
   bool _isSaveRequestPending = false;
@@ -648,6 +691,11 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
     );
   }
 
+  // 함수이름: _invalidateCatalogSelection
+  // 함수역할: 약 이름을 고치면 검색에서 고른 품목 연결을 끊어 다른 이름이 그 품목으로 저장되지 않게 한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 없음.
   void _invalidateCatalogSelection() {
     if (_catalogMedication != null &&
         _medicationNameController.text.trim() !=
@@ -656,17 +704,29 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
     }
   }
 
+  // 함수이름: _searchMedication
+  // 함수역할: 입력한 이름으로 약 검색을 열고, 사용자가 확인한 품목의 이름과 품목 정보를 입력란에 넣는다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 검색 화면이 닫히면 완료되는 Future<void>.
   Future<void> _searchMedication() async {
-    final selected = await Navigator.push<MedicationDetail>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => MedicationSearchUI(
-          userSetting: widget.userSetting,
-          selectionMode: true,
-          initialQuery: _medicationNameController.text.trim(),
+    if (_isSearching) return;
+    _isSearching = true;
+    final MedicationDetail? selected;
+    try {
+      selected = await Navigator.push<MedicationDetail>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => MedicationSearchUI(
+            userSetting: widget.userSetting,
+            selectionMode: true,
+            initialQuery: _medicationNameController.text.trim(),
+          ),
         ),
-      ),
-    );
+      );
+    } finally {
+      _isSearching = false;
+    }
     if (!mounted || selected == null || _isSaving) return;
     _medicationNameController.text = selected.itemName;
     setState(() => _catalogMedication = selected);
@@ -1032,11 +1092,11 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
     });
   }
 
-  // 함수이름: _submit
-  // 함수역할: 필수 값과 시간대를 검증해 직접 입력 약을 저장하고 중복·실패·완료 결과를 표시한다. 저장 중 재호출은 무시하며 저장 콜백이 예외로 끝나도 저장 중 상태를 해제한다.
+  // 함수이름: _validate
+  // 함수역할: 입력란의 필수 값과 정기 복용의 시간대 선택을 검증하고 오류를 표시한다.
   // 매개변수:
   // - 없음.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // 반환값: 저장할 수 있으면 true.
   bool _validate() {
     final isFormValid = _formKey.currentState?.validate() ?? false;
     if (!_asNeeded && _selectedSlotKeys.isEmpty) {
@@ -1051,6 +1111,11 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
     return isFormValid;
   }
 
+  // 함수이름: _submit
+  // 함수역할: 검증한 입력을 저장 콜백으로 보내고 중복·실패 결과를 입력란에 표시한다. 저장 중 재호출은 무시하며 저장 콜백이 예외로 끝나도 저장 중 상태를 해제한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 저장 결과, 검증 실패나 재호출이면 null.
   Future<MedicationSaveResult?> _submit() async {
     if (!mounted || _isSaving || _isPickingImage || !_validate()) return null;
 
@@ -1300,7 +1365,7 @@ class _ManualMedicationText {
     '격일' => isEnglish ? 'Every other day' : '격일',
     '주 1회' => isEnglish ? 'Once a week' : '주 1회',
     '월 1회' => isEnglish ? 'Once a month' : '월 1회',
-    _ => doseDays,
+    _ => isEnglish ? englishDoseIntervalLabel(doseDays) ?? doseDays : doseDays,
   };
   // 함수이름: slotTitle
   // 함수역할: 현재 언어와 입력값에 맞춰 "복용 시간대" 문구를 제공한다.

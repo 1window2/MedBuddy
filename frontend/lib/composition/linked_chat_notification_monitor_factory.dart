@@ -24,6 +24,9 @@ import '../services/slot_check_notification_context.dart';
 // - messageBody (String): 전송하거나 표시할 메시지·알림 본문
 // - messageKind (ChatMessageKind): 일반·복약·약국 맥락 메시지 유형
 // - slotKey (String?): morning·lunch·evening·bedtime 복약 시간대 키
+// - slotCheck (SlotCheckNotificationContext?): 보호자의 확인 요청이면 복용 완료 버튼에 쓸 검증한 요청
+// - clock (DateTime Function()?): 요청이 오늘 것인지 판단할 시계. 없으면 현재 시각
+// - loadSummary (Future<ChatNotificationSummary?> Function()?): 대화별 미확인 요약을 읽는 함수
 // 반환값:
 // - Future<void>: 알림 비활성화 확인 또는 표시가 완료되는 Future.
 Future<void> deliverLinkedChatAlert({

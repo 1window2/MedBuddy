@@ -46,6 +46,14 @@ void main() {
   // Function Name: duration vector test
   // Description: Every duration label yields the listed number of days.
   // Parameters: None. Returns: None; a mismatch fails the test.
+  test('custom intervals from manual entry read in English', () {
+    expect(englishDoseIntervalLabel('3일마다'), 'Every 3 days');
+    expect(englishDoseIntervalLabel(' 1일마다 '), 'Every day');
+    expect(englishDoseIntervalLabel('격일'), isNull);
+    expect(englishDoseIntervalLabel('0일마다'), isNull);
+    expect(englishDoseIntervalLabel('3일마다, 1일 2회'), isNull);
+  });
+
   test('duration labels are read with their unit', () {
     for (final vector in (vectors['duration'] as List).cast<Map>()) {
       final text = vector['text'] as String;

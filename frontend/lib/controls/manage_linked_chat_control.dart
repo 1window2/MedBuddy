@@ -251,6 +251,7 @@ class ManageLinkedChat {
   // - body (String): 전송하거나 표시할 메시지·알림 본문
   // - medicationId (int?): 대상 저장 복약정보의 식별자
   // - medicationIds (List<int>): 처리할 저장 복약정보 식별자 목록
+  // - medicationReferences (List<ChatMedicationReference>): 일반 메시지에 붙일 저장하지 않은 검색약
   // - messageKind (ChatMessageKind): 일반·복약·약국 맥락 메시지 유형
   // - slotKey (String?): morning·lunch·evening·bedtime 복약 시간대 키
   // - pharmacyId (String?): 공공데이터 또는 서버의 약국 식별자

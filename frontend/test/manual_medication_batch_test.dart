@@ -16,6 +16,10 @@ const saved = MedicationSaveResult(
   status: MedicationSaveStatus.saved,
   message: '',
 );
+const duplicate = MedicationSaveResult(
+  status: MedicationSaveStatus.duplicate,
+  message: '',
+);
 
 Finder field(String suffix, [int index = 0]) =>
     find.byKey(Key('manual-medication-$suffix')).at(index);
@@ -36,6 +40,7 @@ Future<void> enter(WidgetTester tester, Finder target, String value) async {
 Future<void> mount(
   WidgetTester tester, {
   Future<MedicationSaveResult> Function(ManualMedicationEntry)? save,
+  Future<void> Function()? savesFinished,
   String language = 'ko',
   double width = 390,
   double scale = 1,
@@ -55,6 +60,7 @@ Future<void> mount(
       home: ManualMedicationEntryUI(
         userSetting: UserSetting(language: language),
         onSaveRequested: save ?? (_) async => failed,
+        onSavesFinished: savesFinished,
       ),
     ),
   );
@@ -211,6 +217,67 @@ void main() {
       '둘째 약',
       '둘째 약',
     ]);
+  });
+
+  testWidgets('여러 약은 마지막에 한 번만 갱신하고 이미 추가된 약은 저장 개수에서 뺀다', (tester) async {
+    var refreshes = 0;
+    tester.view.physicalSize = const Size(390, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    // 저장 후 화면을 닫아도 안내가 보이도록 아래 화면에서 직접 등록을 연다.
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute<bool>(
+                  builder: (_) => ManualMedicationEntryUI(
+                    userSetting: const UserSetting(),
+                    onSaveRequested: (entry) async =>
+                        entry.medicationName == '둘째 약' ? duplicate : saved,
+                    onSavesFinished: () async => refreshes++,
+                  ),
+                ),
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await enter(tester, field('name'), '첫째 약');
+    await tap(tester, field('add'));
+    await enter(tester, field('name', 1), '둘째 약');
+    await tap(tester, field('save'));
+    expect(refreshes, 1);
+    expect(
+      find.text('약 1개의 복약 정보를 저장했습니다. 이미 추가된 약 1개는 다시 저장하지 않았습니다.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('중간 약이 실패해도 앞서 저장한 약을 위해 한 번 갱신한다', (tester) async {
+    var refreshes = 0;
+    await mount(
+      tester,
+      save: (entry) async => entry.medicationName == '첫째 약' ? saved : failed,
+      savesFinished: () async => refreshes++,
+    );
+    await enter(tester, field('name'), '첫째 약');
+    await tap(tester, field('add'));
+    await enter(tester, field('name', 1), '둘째 약');
+    await tap(tester, field('save'));
+    expect(refreshes, 1);
+    expect(find.text('저장 완료'), findsOneWidget);
+    expect(find.text('첫째 약'), findsOneWidget);
+    await tap(tester, field('save'));
+    // 다시 실패하면 새로 저장한 약이 없으므로 갱신하지 않는다.
+    expect(refreshes, 1);
   });
 
   testWidgets('앞쪽 약을 삭제해도 나머지 약의 입력과 주기가 유지된다', (tester) async {

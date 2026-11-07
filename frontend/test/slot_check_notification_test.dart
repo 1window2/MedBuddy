@@ -79,6 +79,8 @@ class _Platform extends SlotCheckNotificationPlatform {
   Map<String, dynamic>? scheduleResponse;
   int scheduled = 0;
   int cancelled = 0;
+  int dismissed = 0;
+  int widgetRefreshes = 0;
   Future<void> Function()? duringOpen;
   _Platform(this.store);
   @override
@@ -121,6 +123,16 @@ class _Platform extends SlotCheckNotificationPlatform {
   @override
   Future<void> cancel(SlotCheckNotificationContext request, int? id) async {
     cancelled++;
+  }
+
+  @override
+  Future<void> dismiss(SlotCheckNotificationContext request, int? id) async {
+    dismissed++;
+  }
+
+  @override
+  Future<void> refreshWidget() async {
+    widgetRefreshes++;
   }
 }
 
@@ -227,6 +239,31 @@ void main() {
     );
   });
 
+  test('자정을 넘겨 도착한 요청은 버튼 없이 표시한다', () async {
+    SlotCheckNotificationService.clock = () => _now.add(const Duration(days: 1));
+    await medBuddyPushBackgroundHandler(RemoteMessage(data: _data()));
+    expect(shown, hasLength(1));
+    expect((shown.single['platformSpecifics'] as Map)['actions'], isNull);
+  });
+
+  test('지난날 요청의 버튼은 기록하지 않고 알림만 지운다', () async {
+    expect(
+      await SlotCheckNotificationService.handle(
+        _response(_request({'schedule_date': '2026-11-06'})),
+      ),
+      isFalse,
+    );
+    expect(platform.dismissed, 1);
+    expect(
+      await SlotCheckNotificationService.handle(
+        _response(_request({'schedule_date': '2026-11-08'})),
+      ),
+      isFalse,
+    );
+    expect(platform.dismissed, 1);
+    expect(await store.pending('patient'), isEmpty);
+  });
+
   test('서버에서 숨긴 미리보기를 알림 본문으로 복원하지 않는다', () async {
     await medBuddyPushBackgroundHandler(
       RemoteMessage(data: _data({'message_preview': '', 'body': 'private'})),
@@ -248,7 +285,9 @@ void main() {
     expect(pending.single['slot_key'], 'morning');
     expect(pending.single['regimen_revisions'], {'11': 2, '12': 3});
     expect(pending.single['link_id'], 7);
+    expect(pending.single['medication_names'], ['private-one', 'private-two']);
     expect(platform.scheduled, 1);
+    expect(platform.widgetRefreshes, 1);
     expect(navigated, isFalse);
     expect(
       jsonEncode(await db.query('operations')),

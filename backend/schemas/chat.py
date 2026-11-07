@@ -18,6 +18,16 @@ from entities.medication_schedule_entity import MEDICATION_SCHEDULE_SLOT_KEYS
 from entities.medication_image_url_entity import safe_medication_image_url
 
 
+# 클래스명: ChatMedicationReference
+# 역할:
+# - 일반 채팅에 첨부하는 검색약(저장하지 않은 약품)의 표시 스냅샷을 검증한다.
+# 주요 책임:
+# - 정해진 네 필드만 받고 길이·형식을 제한하며, 사진 주소는 허용한 공공 이미지 주소만 남긴다.
+# 속성:
+# - item_seq (str): 품목기준코드.
+# - item_name (str): 품목 이름.
+# - manufacturer (str): 제조사. 모르면 빈 문자열.
+# - image_url (str): 허용한 공공 이미지 주소. 허용하지 않으면 빈 문자열.
 class ChatMedicationReference(BaseModel):
     """저장 약·복용 일정과 무관한 검색 결과의 최소 표시 스냅샷이다."""
 
@@ -28,6 +38,11 @@ class ChatMedicationReference(BaseModel):
     manufacturer: str = Field(default="", max_length=200)
     image_url: str = Field(default="", max_length=2048)
 
+    # 함수이름: normalize_image
+    # 함수역할: 허용한 공공 이미지 주소만 남기고 나머지는 빈 문자열로 바꾼다.
+    # 매개변수:
+    # - value (str): 요청의 사진 주소.
+    # 반환값: 정규화한 주소 또는 빈 문자열.
     @field_validator("image_url")
     @classmethod
     def normalize_image(cls, value: str) -> str:
@@ -85,8 +100,13 @@ class ChatMessageCreate(BaseModel):
     history_start_date: date | None = None
     history_end_date: date | None = None
 
+    # 함수이름: validate_medication_references
+    # 함수역할: 검색약은 다른 구조화 문맥이 없는 일반 텍스트에만 허용하고, 저장 약과 합친 첨부 수를 제한한다.
+    # 매개변수:
+    # - 없음.
+    # 반환값: 검증한 요청 자신.
     @model_validator(mode="after")
-    def validate_medication_references(self):
+    def validate_medication_references(self) -> "ChatMessageCreate":
         if self.medication_references:
             if self.message_kind != CHAT_MESSAGE_KIND_TEXT or any(value is not None for value in (
                 self.slot_key, self.pharmacy_id, self.hospital_id,

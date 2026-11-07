@@ -41,6 +41,9 @@ import '../widgets/keep_words_text.dart';
 // Attributes:
 // - initialSlotKey (String?): Key identifying morning, lunch, evening, or bedtime.
 // - showBackButton (bool): Whether to show the navigation action leaving the screen.
+// - selectionHeader (Widget?): Extra content above the slots in selection mode, such as a search button.
+// - additionalSelectionCount (int): Items already chosen elsewhere (searched medications) counted toward the limit.
+// - maxSelectionCount (int?): Most medications the selection may hold; Confirm is disabled above it.
 class CheckScheduleUI extends StatefulWidget {
   final List<MedicationSchedule>? selectionSchedules;
   final String selectionLanguage;

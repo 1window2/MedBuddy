@@ -1170,7 +1170,7 @@ class _MedicationScheduleReviewText {
     '격일' => isEnglish ? 'Every other day' : '격일',
     '주 1회' => isEnglish ? 'Once a week' : '주 1회',
     '월 1회' => isEnglish ? 'Once a month' : '월 1회',
-    _ => doseDays,
+    _ => isEnglish ? englishDoseIntervalLabel(doseDays) ?? doseDays : doseDays,
   };
   // 함수이름: duration
   // 함수역할: 현재 언어와 입력값에 맞춰 "복용 기간(일)" 문구를 제공한다.

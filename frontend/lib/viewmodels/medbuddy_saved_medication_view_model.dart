@@ -318,27 +318,51 @@ class MedBuddySavedMedicationViewModel {
         : (_isEnglishSetting
               ? 'Medication information saved.'
               : '복약 정보가 성공적으로 저장되었습니다.');
-    if (refreshAfterSave) {
-      await fetchSavedMedicationInfo();
-      if (!_isCurrentSave(generation)) return result;
-      await fetchTodayMedicationSchedule();
-      if (!_isCurrentSave(generation)) return result;
-      await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
-    }
+    if (refreshAfterSave) await _refreshAfterSaves(generation);
     if (!_isCurrentSave(generation)) return result;
     _notifyViewModelListeners();
     return result;
+  }
+
+  // 함수이름: _refreshAfterSaves
+  // 함수역할: 저장 뒤 저장 목록, 오늘 일정, 복약 알림 예약을 차례로 한 번 갱신한다. 계정이 바뀌면 남은 단계를 건너뛴다.
+  // 매개변수:
+  // - generation (int): 저장을 시작할 때의 저장 세대
+  // 반환값:
+  // - 갱신이 끝나면 완료되는 Future.
+  Future<void> _refreshAfterSaves(int generation) async {
+    await fetchSavedMedicationInfo();
+    if (!_isCurrentSave(generation)) return;
+    await fetchTodayMedicationSchedule();
+    if (!_isCurrentSave(generation)) return;
+    await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
+  }
+
+  // 함수이름: refreshAfterMedicationSaves
+  // 함수역할: 여러 약을 갱신 없이 저장한 화면이 마지막에 한 번 목록·일정·알림을 갱신하게 한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 갱신과 화면 알림이 끝나면 완료되는 Future.
+  Future<void> refreshAfterMedicationSaves() async {
+    if (_disposed) return;
+    final generation = _saveGeneration;
+    await _refreshAfterSaves(generation);
+    if (!_isCurrentSave(generation)) return;
+    _notifyViewModelListeners();
   }
 
   // 함수이름: saveManualMedication
   // 함수역할: 사용자가 직접 입력한 약을 공공데이터로 보완한 뒤 기존 저장 흐름으로 전달한다. 공공데이터에서 찾지 못해도 사용자가 입력한 일정은 그대로 저장한다.
   // 매개변수:
   // - entry (ManualMedicationEntry): 사용자가 직접 입력한 약과 일정 및 선택 사진
+  // - refreshAfterSave (bool): 저장 후 목록·일정·알림을 즉시 갱신할지 여부
   // 반환값:
   // - Future<MedicationSaveResult>: 사용자가 직접 입력한 약을 공공데이터로 보완한 뒤 기존 저장 흐름으로 전달한다. 공공데이터에서 찾지 못해도 사용자가 입력한 일정은 그대로 저장한다.
   Future<MedicationSaveResult> saveManualMedication(
-    ManualMedicationEntry entry,
-  ) async {
+    ManualMedicationEntry entry, {
+    bool refreshAfterSave = true,
+  }) async {
     if (_disposed) return _cancelledSaveResult();
     final generation = _saveGeneration;
     final schedule = entry.toMedicationSchedule();
@@ -370,6 +394,7 @@ class MedBuddySavedMedicationViewModel {
       medicationDetail,
       medicationSchedule: schedule,
       localImagePath: entry.localImagePath,
+      refreshAfterSave: refreshAfterSave,
     );
   }
 
@@ -529,11 +554,7 @@ class MedBuddySavedMedicationViewModel {
      */
       (result) => result.status != MedicationSaveStatus.failed,
     )) {
-      await fetchSavedMedicationInfo();
-      if (!_isCurrentSave(generation)) return List.unmodifiable(results);
-      await fetchTodayMedicationSchedule();
-      if (!_isCurrentSave(generation)) return List.unmodifiable(results);
-      await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
+      await _refreshAfterSaves(generation);
     }
     if (!_isCurrentSave(generation)) return List.unmodifiable(results);
     _notifyViewModelListeners();

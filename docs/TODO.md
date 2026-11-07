@@ -177,6 +177,56 @@ were rejected. Fixed or still open from its results:
       already does, or giving the background loops their own small engine, would free
       those slots. Needs a PostgreSQL concurrency test before changing the lock path.
 
+### Review of the 2026-11-07 collaborator commits
+
+Ten commits (`b2ae78a`..`a376728`: slot-check requests with a Taken action on the
+patient's notification, history sharing and searched-medication references in chat,
+standalone medication search, multi-entry manual registration with custom intervals,
+as-needed loading, the 327-step guide) were reviewed the same day in three areas and
+corrected where the defect was verified. The guide PDF and README rebuild to the
+committed hashes.
+
+- [x] Fixed: a slot-check push that reaches the phone after midnight was not shown at
+      all; it is now shown without the Taken button. A Taken tap on a request from an
+      earlier day records nothing and removes the notification instead of leaving a
+      button that does nothing. Reading the chat removes the slot-check notifications
+      up to the read message. The queued dose carries the medication names for the
+      sync status list, and the home widget is republished right after the tap.
+      The action push no longer repeats the title and body the app never reads.
+- [x] Fixed: the standalone medication search showed "check your connection" for every
+      failure, including the daily lookup limit and an expired sign-in; it now uses
+      the same messages as the prescription lookup. Its error and empty texts wrap by
+      word; a double tap on the manual-entry search opens one search screen.
+- [x] Fixed: saving several manual entries refreshed the list, today's schedule and
+      reminders after every entry; it now refreshes once at the end (also after a
+      failure or when the screen closes). A duplicate entry is no longer counted as
+      saved. A custom interval ("N일마다") reads "Every N days" in English.
+- [x] Fixed: the chat history action showed "Could not load the conversation" as the
+      reason it was unavailable; dead texts and an unreachable over-limit check were
+      removed and the attachment limit is one constant (server: 10).
+- [ ] Owner decision: a searched-medication reference card in chat (name, manufacturer,
+      picture) is stored as the sending app wrote it, shown with "검색약 · 미등록". The
+      server cannot verify it: results also come from the live public API, which is not
+      in the catalogue, and the catalogue has no pictures. A real check needs the
+      server to remember the results it returned to that account (as for shared
+      pharmacies) or to accept catalogue items only.
+- [ ] Owner decision (visual): manual entry no longer shows how many dose days a
+      non-daily or custom-interval course gives, nor the as-needed explanation under the
+      dosing choice; the schedule review screen still does. Restoring them would bring
+      back the agreed notice (its texts are still in the code).
+- [ ] Left as it is: two devices with stale caches can each confirm the same slot from
+      a slot-check request, and the server then posts a second "복용을 기록했습니다"
+      message, as the chat Taken reply always has. The request notification stays
+      until read or tapped even when the dose was recorded in the app or widget.
+      Wording differs between the notification button ("복용 완료") and the reminder
+      ("복용했어요"). The guide keeps an unused photo
+      (`notification_settings_2026-10-22.png`) recorded in its verification hashes.
+      An app of this line talking to a 0.2.5 server drops a searched-medication
+      attachment without an error; deploying the server before the app (already the
+      procedure for migration `f7a2c9e4b610`) avoids it.
+- [ ] Device check: the Taken action from a locked phone and with the app closed, a
+      request arriving after midnight, and an offline tap updating the widget.
+
 ### Device checks
 
 - [ ] A snooze across midnight, and sign-out while the 12-hour reminder task runs.

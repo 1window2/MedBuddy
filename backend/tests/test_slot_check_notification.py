@@ -117,7 +117,7 @@ def test_type_only_keeps_private_preview_out_of_action_data(fixture):
     db.commit()
     calls, _ = dispatch(fixture)
     assert calls[0]["data"]["message_preview"] == ""
-    assert "아침 약" not in calls[0]["data"]["body"]
+    assert not any("아침 약" in str(value) for value in calls[0]["data"].values())
 
 
 def test_gateway_uses_high_priority_data_only_for_slot_check_action():

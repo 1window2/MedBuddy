@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, timedelta
 
 from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 from controls.manage_caregiver_alert_control import ManageCaregiverAlert
@@ -36,8 +37,6 @@ from entities.chat_message_entity import (
 from entities.medication_alarm_entity import _MedicationAlarm, default_alarm_time
 from entities.medication_completion_entity import _MedicationCompletion
 from entities.medication_image_url_entity import safe_medication_image_url
-from schemas.chat import ChatMedicationReference
-from pydantic import ValidationError
 from entities.medication_schedule_entity import (
     MEDICATION_SCHEDULE_SLOT_KEYS,
     MEDICATION_SLOT_KOREAN_NAMES,
@@ -55,6 +54,7 @@ from repositories.patient_caregiver_link_repository import (
 )
 from repositories.pharmacy_catalog_repository import PharmacyCatalogRepository
 from repositories.saved_medication_repository import SavedMedicationRepository
+from schemas.chat import ChatMedicationReference
 from services.medication_course_policy import MedicationCoursePolicy
 from services.medication_dosing_mode import medication_dosing_mode
 from services.push_recipient_resolver import PushRecipientResolver
@@ -377,8 +377,23 @@ class ManageLinkedChat:
         ):
             raise HTTPException(409, "The message request ID was already used for a different or deleted history share.")
 
+    # 함수이름: _validate_reference_retry
+    # 함수역할:
+    # - 응답 유실 재시도에서 같은 요청 식별자로 다른 검색약 스냅샷·본문·유형을 보내거나 삭제된 메시지를 되살리지 못하게 한다.
+    # 매개변수:
+    # - existing (_ChatMessage): 같은 요청 식별자로 이미 저장된 메시지.
+    # - references (list[dict[str, object]]): 이번 요청의 검색약 스냅샷.
+    # - body (str): 이번 요청의 본문.
+    # - message_kind (str): 이번 요청의 메시지 유형.
+    # 반환값:
+    # - 없음. 다르면 409를 발생시킨다.
     @staticmethod
-    def _validate_reference_retry(existing, references, body, message_kind):
+    def _validate_reference_retry(
+        existing: _ChatMessage,
+        references: list[dict[str, object]],
+        body: str,
+        message_kind: str,
+    ) -> None:
         """응답 유실 재시도에서 다른 검색약 스냅샷으로 바꾸지 못하게 한다."""
         original = (existing.context_payload or {}).get("medication_references", [])
         if (references or original) and (
@@ -424,10 +439,16 @@ class ManageLinkedChat:
     # - body (str): 호출자가 정리·검증한 본문. HTTP 경로는 ChatMessageCreate.normalize_body를 거치며, 이 함수는 전달받은 값을 그대로 저장한다.
     # - medication_id (int | None): 선택할 저장 약의 식별자.
     # - medication_ids (list[int] | None): 구조화 채팅 카드에 담을 선택적 저장 약 식별자 목록.
+    # - medication_references (list[dict[str, object]] | None): 저장하지 않은 검색약의 표시 스냅샷. 일반 텍스트에만 허용한다.
     # - message_kind (str): 텍스트 또는 구조화 문맥 메시지 유형.
     # - slot_key (str | None): morning, lunch, evening, bedtime 중 복용 시간대 키.
     # - pharmacy_id (str | None): 공공 약국 식별자.
     # - allow_internal (bool): 신뢰된 서버 코드가 내부 전용 구조화 메시지를 생성할 수 있는지 여부.
+    # - source_alert_id (int | None): 보호자 미복약 알림에서 시작한 확인 요청의 원본 알림 식별자.
+    # - hospital_context (dict[str, object] | None): 서버가 검증한 병원 공유 문맥.
+    # - pharmacy_operating_snapshot (dict[str, object] | None): 서버가 만든 약국 운영 상태 스냅샷.
+    # - history_start_date (date | None): 복약 기록 공유의 시작일.
+    # - history_end_date (date | None): 복약 기록 공유의 종료일.
     # 반환값:
     # - 저장 메시지, 상대 수신자와 이번 요청의 신규 생성 여부를 담은 ChatSendResult.
     def send_message(

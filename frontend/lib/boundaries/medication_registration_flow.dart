@@ -38,7 +38,10 @@ Future<void> openMedicationRegistration(BuildContext context) async {
             // 선택한 계정의 저장 작업을 직접 등록 화면에 연결한다.
             builder: (_) => ManualMedicationEntryUI(
               userSetting: viewModel.userSetting,
-              onSaveRequested: viewModel.saveManualMedication,
+              // 여러 약을 저장해도 목록·일정·알림은 마지막에 한 번만 갱신한다.
+              onSaveRequested: (entry) =>
+                  viewModel.saveManualMedication(entry, refreshAfterSave: false),
+              onSavesFinished: viewModel.refreshAfterMedicationSaves,
             ),
           ),
         );

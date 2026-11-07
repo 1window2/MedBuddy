@@ -19,6 +19,7 @@ void main() {
   final calls = <MethodCall>[];
   var failShow = false;
   var switchDuringSchedule = false;
+  var active = <Map<String, Object?>>[];
 
   // 함수이름: setUp 콜백
   // 함수역할: 기록과 플랫폼 호출을 초기화한다. 매개변수: 없음. 반환값: 없음.
@@ -31,14 +32,15 @@ void main() {
     calls.clear();
     failShow = false;
     switchDuringSchedule = false;
+    active = [];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
           calls.add(call);
           if (call.method == 'getNotificationAppLaunchDetails') {
             return {'notificationLaunchedApp': false};
           }
-          if (call.method == 'pendingNotificationRequests' ||
-              call.method == 'getActiveNotifications') {
+          if (call.method == 'getActiveNotifications') return active;
+          if (call.method == 'pendingNotificationRequests') {
             return <dynamic>[];
           }
           if (call.method == 'show' && failShow) {
@@ -118,8 +120,8 @@ void main() {
         linkId: 7,
         throughMessageId: 3,
       );
-      expect(calls.last.method, 'cancel');
-      expect((calls.last.arguments as Map)['tag'], tags.single);
+      final cancel = calls.lastWhere((c) => c.method == 'cancel');
+      expect((cancel.arguments as Map)['tag'], tags.single);
       final before = calls.where((c) => c.method == 'show').length;
       await service.showLinkedChatAlert(
         id: 103,
@@ -150,6 +152,37 @@ void main() {
       expect(calls.where((c) => c.method == 'cancel').length, cancels);
     },
   );
+
+  test('reading a chat also removes its slot-check requests up to the read message', () async {
+    Map<String, Object?> notification(int id, String tag, String channel) => {
+      'id': id,
+      'tag': tag,
+      'channelId': channel,
+      'groupKey': null,
+      'title': null,
+      'body': null,
+      'payload': null,
+    };
+    active = [
+      notification(11, 'chat:7:3', 'medbuddy_linked_chat'),
+      notification(12, 'chat:7:9', 'medbuddy_linked_chat'),
+      notification(13, 'chat:8:2', 'medbuddy_linked_chat'),
+      notification(14, 'chat:7:2', 'other_channel'),
+    ];
+    await service.clearReadChatAlert(
+      owner: 'patient',
+      linkId: 7,
+      throughMessageId: 3,
+    );
+    final cancelledTags = calls
+        .where((c) => c.method == 'cancel')
+        .map((c) => (c.arguments as Map)['tag'])
+        .toList();
+    expect(cancelledTags, contains('chat:7:3'));
+    expect(cancelledTags, isNot(contains('chat:7:9')));
+    expect(cancelledTags, isNot(contains('chat:8:2')));
+    expect(cancelledTags, isNot(contains('chat:7:2')));
+  });
 
   test('chat alert without a summary shows no unread count', () async {
     await service.showLinkedChatAlert(

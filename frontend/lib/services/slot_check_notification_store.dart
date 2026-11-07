@@ -2,6 +2,11 @@ part of 'dose_outbox_store.dart';
 
 // 버튼 소비와 복약 전송 대기를 같은 트랜잭션에 넣어 엔진 간 동시 클릭도 한 번만 반영한다.
 extension SlotCheckNotificationStore on DoseOutboxStore {
+  // 함수이름: recordSlotCheck
+  // 함수역할: 활성 계정의 오늘 캐시에서 요청 시간대의 약을 골라 미완료가 있으면 완료 기록을 전송 대기열에
+  //   넣고, 같은 요청의 버튼을 소비한 것으로 표시한다. 막힌 기록이 있거나 날짜·계정이 바뀌면 저장하지 않는다.
+  // 매개변수: request 검증한 확인 요청, clock 오늘 날짜를 정할 시계.
+  // 반환값: 저장했거나 이미 처리한 요청이면 true.
   Future<bool> recordSlotCheck(
     SlotCheckNotificationContext request, {
     required DateTime Function() clock,
@@ -74,6 +79,8 @@ extension SlotCheckNotificationStore on DoseOutboxStore {
           'schedule_date': request.scheduleDate,
           'slot_key': request.slotKey,
           'medication_ids': ids.cast<int>()..sort(),
+          // 전송 대기 목록의 제목으로만 쓰며 서버로 보내기 전에 뺀다(앱·위젯 기록과 같다).
+          'medication_names': [for (final item in schedules) item.medicationName],
           'completed': true,
           'link_id': request.linkId,
           'regimen_revisions': {

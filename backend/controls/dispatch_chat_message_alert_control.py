@@ -156,11 +156,12 @@ class DispatchChatMessageAlert:
             **grouped_data,
         }
         # 버튼 지원 Android는 직접 알림을 그리고, 나머지는 기존 OS 알림을 유지한다.
+        # 앱은 제목·본문을 언어와 message_preview로 직접 만들므로 데이터에 제목·본문을 다시 싣지 않는다.
         groups = [(list(recipient.tokens), data)]
         if action_data:
             groups = [
                 ([token for token in recipient.tokens if token in recipient.slot_check_action_tokens],
-                 {**data, **action_data, "title": title, "body": notification_body}),
+                 {**data, **action_data}),
                 ([token for token in recipient.tokens if token not in recipient.slot_check_action_tokens], data),
             ]
         results = [self.push_boundary.send_notification(

@@ -534,7 +534,7 @@ class _MedicationRegimenEditorUIState extends State<MedicationRegimenEditorUI> {
     '격일' => _text('격일', 'Every other day'),
     '주 1회' => _text('주 1회', 'Weekly'),
     '월 1회' => _text('월 1회', 'Once a month'),
-    _ => value,
+    _ => _english ? englishDoseIntervalLabel(value) ?? value : value,
   };
 
   Future<void> _pickEffectiveDate() async {

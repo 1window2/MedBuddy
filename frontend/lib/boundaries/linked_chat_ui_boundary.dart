@@ -951,7 +951,11 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       action: _ChatAction.medicationHistory,
       icon: Icons.history_rounded,
       label: _text.isEnglish ? 'Share medication history' : '복약 기록 공유',
-      reason: _canOpenMedicationHistory ? null : _text.historyLoadFailed,
+      reason: _canOpenMedicationHistory
+          ? null
+          : _history.linkUnavailable
+          ? _text.linkUnavailableStatus
+          : _text.historyShareUnavailable,
     ),
     if (!_isPatient)
       (
@@ -1248,7 +1252,7 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
             schedules: selectionSchedules,
             language: _configuration.userSetting.language,
             additionalSelectionCount: references.length,
-            maxSelectionCount: 10,
+            maxSelectionCount: maxChatMedicationAttachments,
             selectionHeader: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               child: Column(
@@ -1355,19 +1359,8 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
         )
         .whereType<ChatMedicationContext>()
         .toList(growable: false);
+    // 첨부 개수 한도는 선택 화면이 확인 버튼을 막아 지킨다.
     if (_history.linkUnavailable) return;
-    if (selected.length + references.length > 10) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _text.isEnglish
-                ? 'Attach up to 10 medications.'
-                : '약은 최대 10개까지 첨부할 수 있어요.',
-          ),
-        ),
-      );
-      return;
-    }
     // 함수이름: _showMedicationSelector.setState callback
     // 함수역할: 연동 사용자 메시지와 복약 관련 첨부의 입력·요청 상태를 `_selectedMedicationContexts = selected; _sendErrorMessage = null`로 갱신한다.
     // 매개변수:
@@ -2584,7 +2577,7 @@ enum _ChatQuickReply { taken, cannotNow, shortage, discomfort }
 // 클래스명: _ChatAction
 // 역할: 채팅 입력창 기능 메뉴의 선택지를 담당한다.
 // 주요 책임:
-// - 약 첨부·복약 확인 요청·병원 찾기·약국 찾기를 구분하며, 순서가 화면 키 chat-action-N의 번호가 된다.
+// - 약 첨부·복약 확인 요청·병원 찾기·약국 찾기·복약 기록 공유를 구분하며, 순서가 화면 키 chat-action-N의 번호가 된다.
 enum _ChatAction {
   medication,
   scheduleRequest,
@@ -4345,6 +4338,14 @@ class _LinkedChatText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get historyLoadFailed =>
       isEnglish ? 'Could not load the conversation.' : '대화 내용을 불러오지 못했습니다.';
+  // 함수이름: historyShareUnavailable
+  // 함수역할: 대화를 불러오는 중이거나 메시지를 고르는 중이라 복약 기록 공유를 지금 열 수 없음을 알린다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 현재 언어의 안내 문구.
+  String get historyShareUnavailable => isEnglish
+      ? 'Medication history cannot be shared right now.'
+      : '지금은 복약 기록을 공유할 수 없습니다.';
   // 함수이름: sendFailed
   // 함수역할: 현재 언어와 입력값에 맞춰 "메시지를 보내지 못했습니다. 다시 눌러주세요." 문구를 제공한다.
   // 매개변수:
@@ -4406,21 +4407,6 @@ class _LinkedChatText {
   String get emptyConversation => isEnglish
       ? 'No messages yet.\nSend a message to start the conversation.'
       : '아직 대화가 없습니다.\n메시지를 보내 대화를 시작해보세요.';
-  // 함수이름: noActiveMedication
-  // 함수역할: 현재 언어와 입력값에 맞춰 "복용 중인 약이 없습니다" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get noActiveMedication =>
-      isEnglish ? 'No active medications' : '복용 중인 약이 없습니다';
-  // 함수이름: medicationsLoading
-  // 함수역할: 기능 메뉴에서 약 목록을 아직 받는 중이라 선택지가 막힌 이유를 알린다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 현재 언어의 안내 문구.
-  String get medicationsLoading => isEnglish
-      ? 'Loading medications...'
-      : '복용 중인 약을 불러오는 중입니다';
   // 함수이름: selectMedication
   // 함수역할: 현재 언어와 입력값에 맞춰 "대화할 약 선택" 문구를 제공한다.
   // 매개변수:

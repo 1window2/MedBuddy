@@ -25,6 +25,8 @@ _TYPE_ONLY_DETAIL_MODE = "type_only"
 # - user_hash (str): Recipient account.
 # - tokens (tuple[str, ...]): Enabled device tokens of the account.
 # - action_tokens (frozenset[str]): The tokens whose device renders caregiver action data itself.
+# - slot_check_action_tokens (frozenset[str]): The Android tokens whose app draws a caregiver
+#   slot-check request with its own Taken action.
 # - language (str): Notification language, "en" or "ko".
 # - show_details (bool): False when the account chose the "type_only" privacy mode.
 # - caregiver_enabled (bool): Whether caregiver medication alerts are wanted.
@@ -67,8 +69,8 @@ class _RecipientPreferences:
 # Attributes:
 # - db (Session): SQLAlchemy session of the current work.
 # - _preferences (dict[str, _RecipientPreferences]): Preferences already read, by account.
-# - _tokens (dict[str, tuple[tuple[str, bool], ...]]): (token, supports actions) pairs already
-#   read, by account.
+# - _tokens (dict[str, tuple[tuple[str, bool, bool], ...]]): (token, supports caregiver actions,
+#   supports slot-check actions) triples already read, by account.
 # Note: Use one instance for one dispatch only. A longer-lived instance would not see a
 #   preference change or a token that moved to another account in the meantime.
 class PushRecipientResolver:
@@ -228,7 +230,7 @@ class PushRecipientResolver:
     # Parameters:
     # - user_hash (str): Recipient account.
     # Returns:
-    # - (token, supports caregiver actions) pairs.
+    # - (token, supports caregiver actions, supports slot-check actions) triples.
     def _read_tokens(self, user_hash: str) -> tuple[tuple[str, bool, bool], ...]:
         tokens = self._tokens.get(user_hash)
         if tokens is not None:

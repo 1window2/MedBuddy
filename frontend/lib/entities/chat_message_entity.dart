@@ -552,6 +552,7 @@ enum ChatDeletionScope { me, everyone }
 // - messageKind (ChatMessageKind): 일반·복약·약국 맥락 메시지 유형
 // - medicationContext (ChatMedicationContext?): 구형 단일 약 첨부 맥락
 // - medicationContexts (List<ChatMedicationContext>): 메시지에 첨부한 여러 약의 맥락
+// - medicationReferences (List<ChatMedicationReference>): 메시지에 첨부한 저장하지 않은 검색약
 // - scheduleContext (ChatScheduleContext?): 메시지에 첨부한 시간대별 복약 진행 정보
 // - pharmacyContext (ChatPharmacyContext?): 메시지에 첨부한 약국 연락처·위치 정보
 // - remainingDays (int?): 복약 맥락의 남은 복용 일수

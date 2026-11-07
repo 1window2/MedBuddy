@@ -36,10 +36,21 @@ extension MedBuddySavedMedicationFacade on MedBuddyViewModel {
 
   // Function Name: saveManualMedication
   // Description: Delegates user-entered medication registration.
-  // Parameters: entry: User-confirmed medication data. Returns: Save outcome.
+  // Parameters: entry: User-confirmed medication data; refreshAfterSave: refresh policy.
+  // Returns: Save outcome.
   Future<MedicationSaveResult> saveManualMedication(
-    ManualMedicationEntry entry,
-  ) => _savedMedications.saveManualMedication(entry);
+    ManualMedicationEntry entry, {
+    bool refreshAfterSave = true,
+  }) => _savedMedications.saveManualMedication(
+    entry,
+    refreshAfterSave: refreshAfterSave,
+  );
+
+  // Function Name: refreshAfterMedicationSaves
+  // Description: Delegates the single refresh after several saves made without one.
+  // Parameters: None. Returns: Completes when the list, schedule and reminders are refreshed.
+  Future<void> refreshAfterMedicationSaves() =>
+      _savedMedications.refreshAfterMedicationSaves();
 
   // Function Name: saveIdentifiedPill
   // Description: Delegates a confirmed identification candidate and schedule.

@@ -1460,7 +1460,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         // 반환값: 약 직접 입력 화면 위젯.
         builder: (context) => ManualMedicationEntryUI(
           userSetting: viewModel.userSetting,
-          onSaveRequested: viewModel.saveManualMedication,
+          // 여러 약을 저장해도 목록·일정·알림은 마지막에 한 번만 갱신한다.
+          onSaveRequested: (entry) =>
+              viewModel.saveManualMedication(entry, refreshAfterSave: false),
+          onSavesFinished: viewModel.refreshAfterMedicationSaves,
         ),
       ),
     );

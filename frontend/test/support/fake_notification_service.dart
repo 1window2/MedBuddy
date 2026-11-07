@@ -101,6 +101,7 @@ class RecordingNotificationService implements NotificationService {
       String language,
       String? messagePreview,
       bool recordHistory,
+      bool withTakenAction,
     })
   >
   slotCheckAlerts = [];
@@ -112,6 +113,7 @@ class RecordingNotificationService implements NotificationService {
     required String language,
     String? messagePreview,
     bool recordHistory = false,
+    bool withTakenAction = true,
   }) async {
     slotCheckAlerts.add((
       request: request,
@@ -119,6 +121,7 @@ class RecordingNotificationService implements NotificationService {
       language: language,
       messagePreview: messagePreview,
       recordHistory: recordHistory,
+      withTakenAction: withTakenAction,
     ));
   }
 

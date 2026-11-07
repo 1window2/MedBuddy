@@ -408,6 +408,18 @@ int readDurationDays(String? rawDuration) {
 // Dose-day directions the registration editors offer. The empty text means every day.
 const List<String> doseDayChoices = ['', '격일', '주 1회', '월 1회'];
 
+// Function Name: englishDoseIntervalLabel
+// Description: Reads a custom interval saved by manual entry as "N일마다" for English screens; the fixed choices keep their own labels.
+// Parameters:
+// - doseDays (String): Stored dose-day direction.
+// Returns: String?: "Every day" or "Every N days", or null when the text is not a custom interval.
+String? englishDoseIntervalLabel(String doseDays) {
+  final match = RegExp(r'^(\d+)일마다$').firstMatch(doseDays.trim());
+  final days = int.tryParse(match?.group(1) ?? '');
+  if (days == null || days <= 0) return null;
+  return days == 1 ? 'Every day' : 'Every $days days';
+}
+
 // Function Name: composeDoseFrequency
 // Description: Joins a dose-day direction and the number of doses on a dose day into the one frequency text the server and the app both read, such as "3회", "주 1회" or "주 1회, 1일 2회".
 // Parameters:

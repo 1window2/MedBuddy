@@ -53,6 +53,7 @@ class _NoopNotificationService implements NotificationService {
     required String language,
     String? messagePreview,
     bool recordHistory = false,
+    bool withTakenAction = true,
   }) async {}
 
   @override

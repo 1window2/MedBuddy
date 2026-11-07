@@ -100,14 +100,44 @@ void main() {
       if (fail) throw StateError('private server details');
       return null;
     });
-    await _search(tester, lookup, english: true);
+    await _search(tester, lookup);
     await tester.pumpAndSettle();
-    expect(find.textContaining('Could not search'), findsOneWidget);
     expect(find.textContaining('private server details'), findsNothing);
+    expect(find.textContaining('찾은 약이 없어요'), findsNothing);
     fail = false;
     await tester.tap(find.byKey(const Key('medication-search-submit')));
     await tester.pumpAndSettle();
-    expect(find.textContaining('No medications found'), findsOneWidget);
+    expect(find.textContaining('찾은 약이 없어요'), findsOneWidget);
+  });
+
+  testWidgets('하루 조회 한도는 연결 문제가 아니라 내일 다시 하라고 안내한다', (tester) async {
+    final lookup = CheckMedicationDetail(
+      client: MockClient(
+        (_) async => http.Response(
+          '{"detail":"오늘 사용할 수 있는 횟수를 모두 사용했습니다. 내일 다시 시도해주세요."}',
+          429,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      ),
+    );
+    addTearDown(lookup.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MedicationSearchUI(
+          userSetting: const UserSetting(),
+          lookupControl: lookup,
+        ),
+      ),
+    );
+    await tester.enterText(
+      find.byKey(const Key('medication-search-query')),
+      '시험약',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('medication-search-submit')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('내일 다시'), findsOneWidget);
+    expect(find.textContaining('연결을 확인'), findsNothing);
   });
 
   testWidgets('독립 검색은 등록하지 않고 기존 상세 화면을 연다', (tester) async {

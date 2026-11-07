@@ -1,3 +1,6 @@
+// File Name: medication_search_ui_boundary.dart
+// Role: Searches medication products by name on their own, or picks one for manual entry.
+
 import 'package:flutter/material.dart';
 
 import '../controls/check_medication_detail_control.dart';
@@ -5,12 +8,18 @@ import '../entities/medication_detail_entity.dart';
 import '../entities/medication_match_review_entity.dart';
 import '../entities/medication_schedule_entity.dart';
 import '../entities/user_setting_entity.dart';
+import '../services/user_facing_error_message.dart';
 import '../theme/medbuddy_theme.dart';
 import '../widgets/medbuddy_page_header.dart';
+import '../widgets/keep_words_text.dart';
 import '../widgets/medbuddy_search_field.dart';
 import '../widgets/medication_thumbnail.dart';
 import 'check_medication_detail_ui_boundary.dart';
 
+// Class Name: MedicationSearchUI
+// Role: Name search over the existing medication lookup.
+// Responsibilities:
+// - Opens a result's detail, or in selection mode returns the confirmed result to the caller.
 class MedicationSearchUI extends StatefulWidget {
   const MedicationSearchUI({
     super.key,
@@ -41,6 +50,10 @@ class _MedicationSearchUIState extends State<MedicationSearchUI> {
 
   bool get _english => widget.userSetting.isEnglish;
 
+  String get _busyMessage => _english
+      ? 'Another search is in progress. Please try again shortly.'
+      : '다른 검색이 진행 중입니다. 잠시 후 다시 검색해 주세요.';
+
   @override
   void initState() {
     super.initState();
@@ -60,6 +73,9 @@ class _MedicationSearchUIState extends State<MedicationSearchUI> {
     super.dispose();
   }
 
+  // Function Name: _queryChanged
+  // Description: Drops results of the previous query; a request in flight stays until it ends.
+  // Parameters: None. Returns: None.
   void _queryChanged() {
     setState(() {
       _generation++;
@@ -70,15 +86,14 @@ class _MedicationSearchUIState extends State<MedicationSearchUI> {
     });
   }
 
+  // Function Name: _search
+  // Description: Looks the query up once per submit and keeps only replies to the current query.
+  // Parameters: None. Returns: Completes when the results or the error are shown.
   Future<void> _search() async {
     final query = _query.text.trim();
     if (_loading || query.isEmpty) return;
     if (_retryAt?.isAfter(DateTime.now()) ?? false) {
-      setState(
-        () => _error = _english
-            ? 'Another search is in progress. Please try again shortly.'
-            : '다른 검색이 진행 중입니다. 잠시 후 다시 검색해 주세요.',
-      );
+      setState(() => _error = _busyMessage);
       return;
     }
     FocusScope.of(context).unfocus();
@@ -103,13 +118,14 @@ class _MedicationSearchUIState extends State<MedicationSearchUI> {
       results = review.candidates;
     } on MedicationLookupBusy catch (busy) {
       _retryAt = busy.retryAt;
-      error = _english
-          ? 'Another search is in progress. Please try again shortly.'
-          : '다른 검색이 진행 중입니다. 잠시 후 다시 검색해 주세요.';
-    } catch (_) {
-      error = _english
-          ? 'Could not search medications. Check your connection and try again.'
-          : '약 정보를 검색하지 못했어요. 연결을 확인하고 다시 시도해 주세요.';
+      error = _busyMessage;
+    } catch (failure) {
+      // 하루 한도·로그인 만료·지연을 연결 문제로 뭉뚱그리지 않고 처방 조회와 같은 안내를 쓴다.
+      error = UserFacingErrorMessage.resolve(
+        failure,
+        isEnglish: _english,
+        context: UserFacingErrorContext.medicationLookup,
+      );
     }
     if (!mounted) return;
     setState(() {
@@ -133,6 +149,11 @@ class _MedicationSearchUIState extends State<MedicationSearchUI> {
     });
   }
 
+  // Function Name: _open
+  // Description: Returns the confirmed result in selection mode, otherwise opens its detail.
+  // Parameters:
+  // - medication (MedicationDetail): Chosen result.
+  // Returns: Completes when the dialog or detail screen closes.
   Future<void> _open(MedicationDetail medication) async {
     if (widget.selectionMode) {
       final confirmed = await showDialog<bool>(
@@ -230,9 +251,9 @@ class _MedicationSearchUIState extends State<MedicationSearchUI> {
                 if (_loading)
                   const Center(child: CircularProgressIndicator())
                 else if (_error != null)
-                  Text(_error!, style: MedBuddyTextStyles.menuBody)
+                  KeepWordsText(_error!, style: MedBuddyTextStyles.menuBody)
                 else if (_searched && _results.isEmpty)
-                  Text(
+                  KeepWordsText(
                     _english
                         ? 'No medications found. Try another name.'
                         : '찾은 약이 없어요. 약 이름을 바꿔 검색해 주세요.',

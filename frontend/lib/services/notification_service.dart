@@ -1447,13 +1447,23 @@ class NotificationService {
     }
   }
 
-  // 확인 요청은 메시지별 알림을 사용해 다른 날짜·시간대의 버튼으로 교체되지 않게 한다.
+  // 함수이름: showSlotCheckAlert
+  // 함수역할: 보호자의 시간대 확인 요청을 메시지별 알림으로 보여 주어 다른 날짜·시간대의 버튼으로 교체되지 않게 한다.
+  // 매개변수:
+  // - request (SlotCheckNotificationContext): 검증한 확인 요청.
+  // - id (int): 알림 ID.
+  // - language (String): 표시 언어 코드.
+  // - messagePreview (String?): 표시해도 되는 메시지 미리보기. 내용 숨김이면 null.
+  // - recordHistory (bool): 알림함에도 기록할지 여부(실시간 경로). 푸시 경로는 따로 기록한다.
+  // - withTakenAction (bool): 오늘 요청이라 복용 완료 버튼을 붙일지 여부.
+  // 반환값: 표시가 끝나면 완료되는 Future. 활성 계정이 다르면 표시하지 않는다.
   Future<void> showSlotCheckAlert({
     required SlotCheckNotificationContext request,
     required int id,
     required String language,
     String? messagePreview,
     bool recordHistory = false,
+    bool withTakenAction = true,
   }) async {
     await initialize();
     final preferences = await preferencesLoader();
@@ -1478,14 +1488,17 @@ class NotificationService {
           priority: Priority.high,
           tag: request.eventId,
           onlyAlertOnce: true,
-          actions: [
-            AndroidNotificationAction(
-              SlotCheckNotificationContext.actionId,
-              english ? 'Taken' : '복용 완료',
-              showsUserInterface: false,
-              cancelNotification: false,
-            ),
-          ],
+          // 날짜가 지난 요청은 오늘 기록으로 받을 수 없으므로 버튼 없이 채팅만 연다.
+          actions: withTakenAction
+              ? [
+                  AndroidNotificationAction(
+                    SlotCheckNotificationContext.actionId,
+                    english ? 'Taken' : '복용 완료',
+                    showsUserInterface: false,
+                    cancelNotification: false,
+                  ),
+                ]
+              : null,
         ),
       ),
       payload: request.payload,
@@ -1675,6 +1688,23 @@ extension LinkedChatNotificationCleanup on NotificationService {
     final tag = await ChatNotificationSummary.groupTag(owner, linkId);
     if (owner != _historyUserHash) return;
     await _plugin.cancel(id: _chatNotificationId(tag), tag: tag);
+    // 보호자의 확인 요청은 메시지별 태그(chat:<연동>:<메시지>)로 따로 표시하므로 읽은 범위의 것도 지운다.
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      for (final active in await _plugin.getActiveNotifications()) {
+        final match = RegExp(r'^chat:(\d+):(\d+)$').firstMatch(active.tag ?? '');
+        if (match == null ||
+            active.channelId != NotificationService._chatChannelId ||
+            int.parse(match.group(1)!) != linkId ||
+            int.parse(match.group(2)!) > throughMessageId) {
+          continue;
+        }
+        if (owner != _historyUserHash) return;
+        await _plugin.cancel(id: active.id ?? 0, tag: active.tag);
+      }
+    } catch (_) {
+      // 표시 중 알림 목록을 읽지 못해도 묶음 채팅 알림 정리는 이미 끝났다.
+    }
   });
 }
 
