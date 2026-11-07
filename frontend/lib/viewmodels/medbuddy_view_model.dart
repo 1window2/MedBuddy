@@ -565,6 +565,7 @@ class MedBuddyViewModel extends ChangeNotifier {
       manageUserSetting: this.manageUserSetting,
       notificationService: this.notificationService,
       refreshMedicationOverview: refreshMedicationOverview,
+      startTodayMedicationInfo: fetchTodayMedicationInfo,
       refreshMedicationSchedule: refreshMedicationSchedule,
       loadMedicationReminderSettings: loadMedicationReminderSettings,
       onChanged: () => _notifyViewModelListeners(MedBuddyFeature.userSetting),

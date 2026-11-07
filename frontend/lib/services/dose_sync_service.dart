@@ -82,6 +82,7 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   bool _windowRefreshAgain = false;
   DoseOutboxStore? _store;
   Future<void>? _initializing;
+  bool _initialized = false;
   bool _activationRequested = false;
   Future<void>? _draining;
   bool _publishing = false;
@@ -165,6 +166,12 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
   List<MedicationSchedule> get schedules =>
       project(hasCache ? _confirmed : const []);
 
+  // 함수이름: isInitialized
+  // 함수역할: 저장소 열기와 첫 재조회가 끝났는지 알려 준다.
+  // 매개변수: 없음.
+  // 반환값: 초기화가 끝났으면 true. 아직이면 다음 initialize가 메모리 상태를 막 다시 읽는다.
+  bool get isInitialized => _initialized;
+
   // 함수이름: initialize
   // 함수역할: 저장소 초기화를 공유하고 실패한 호출은 다음 요청에서 재시도할 수 있게 한다.
   // 매개변수: activate (bool) - 초기화 시 이 계정을 활성화할지 여부. 재시도에도 요청을 유지한다.
@@ -194,6 +201,7 @@ class DoseSyncService extends ChangeNotifier with WidgetsBindingObserver {
     }
     if (_disposed) return;
     await reload();
+    _initialized = true;
   }
 
   // 함수이름: start

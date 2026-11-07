@@ -10,7 +10,8 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart' show StringCharacters;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:timezone/data/latest_all.dart' as timezone_data;
+// Only Asia/Seoul is used and it has no DST, so the 10-year set (decoded in about a tenth of the full set's time before the first frame) is enough.
+import 'package:timezone/data/latest_10y.dart' as timezone_data;
 import 'package:timezone/timezone.dart' as timezone;
 
 import '../entities/json_value_reader.dart';

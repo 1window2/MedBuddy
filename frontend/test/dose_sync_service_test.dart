@@ -959,6 +959,39 @@ void main() {
     expect(service.acceptedRevision, 1);
     expect(notifications, greaterThan(0));
   });
+
+  // Function Name: first schedule load reload test
+  // Description: The first schedule load joins initialization, which has just re-read the store, so it does not re-read it again; later loads still pick up writes from other engines.
+  // Parameters: None.
+  // Returns: Completion of asynchronous assertions.
+  test('the first schedule load does not re-read the store initialization just read', () async {
+    final client = MockClient(
+      (_) async => http.Response(
+        jsonEncode({'success': true, 'data': [medication.toJson()]}),
+        200,
+      ),
+    );
+    final service = _ReloadCountingSyncService(
+      owner: 'patient-a',
+      client: client,
+      openStore: () async => store,
+      clock: () => now,
+    );
+    final viewModel = MedBuddyViewModel(
+      checkSchedule: CheckSchedule(patientHash: 'patient-a', client: client),
+    )..doseSync = service;
+    addTearDown(viewModel.dispose);
+    addTearDown(client.close);
+
+    expect(service.isInitialized, isFalse);
+    await viewModel.fetchTodayMedicationSchedule();
+    expect(service.isInitialized, isTrue);
+    expect(service.reloads, 1);
+    expect(viewModel.todayMedicationScheduleList.single.medicationID, '91');
+
+    await viewModel.fetchTodayMedicationSchedule();
+    expect(service.reloads, 2);
+  });
 }
 
 // Class Name: _FailingClaimStore
@@ -1025,5 +1058,33 @@ class _MidnightStore extends DoseOutboxStore {
     final operations = await super.pending(owner);
     if (await readCache(owner) != null) onSaved();
     return operations;
+  }
+}
+
+// Class Name: _ReloadCountingSyncService
+// Role: Counts store re-reads while keeping the real behaviour.
+// Attributes: reloads (int): Number of reload calls.
+class _ReloadCountingSyncService extends DoseSyncService {
+  int reloads = 0;
+
+  // Function Name: _ReloadCountingSyncService
+  // Description: Forwards construction to the real service.
+  // Parameters: owner, client, openStore, clock: as for DoseSyncService.
+  // Returns: _ReloadCountingSyncService.
+  _ReloadCountingSyncService({
+    required super.owner,
+    required super.client,
+    required super.openStore,
+    required super.clock,
+  });
+
+  // Function Name: reload
+  // Description: Counts the call and re-reads the store.
+  // Parameters: None.
+  // Returns: Completion of the real reload.
+  @override
+  Future<void> reload() {
+    reloads++;
+    return super.reload();
   }
 }

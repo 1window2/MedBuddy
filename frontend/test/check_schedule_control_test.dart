@@ -1,6 +1,7 @@
 // File Name: check_schedule_control_test.dart
 // Role: Regression coverage for schedule queries and patient/slot-scoped completion updates.
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -137,6 +138,63 @@ void main() {
       expect(schedules.single.prescriptionDate, DateTime(2026, 8, 10));
     },
   );
+
+  // Function Name: test callback
+  // Description:
+  // - Expected behavior: concurrent 14-day window reads share one request, each caller still validates its own range, and a later read sends a new request.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  test('concurrent schedule window reads share one request', () async {
+    var requests = 0;
+    final release = Completer<void>();
+    final client = MockClient((http.Request request) async {
+      requests++;
+      await release.future;
+      return http.Response(
+        jsonEncode({
+          'success': true,
+          'window_start': '2026-08-10',
+          'window_end': '2026-08-23',
+          'data': [
+            {
+              'medication_id': '11',
+              'drug_name': 'future-tablet',
+              'prescription_date': '2026-08-10',
+              'total_days': '3 days',
+              'schedule_slot_keys': ['morning'],
+              'patient_hash': 'patient-a',
+            },
+          ],
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    final control = CheckSchedule(
+      baseUrl: 'http://localhost',
+      patientHash: 'patient-a',
+      client: client,
+    );
+
+    final reminderRead = control.requestMedicationScheduleWindow();
+    final offlineRead = control.requestOfflineScheduleWindow(
+      expectedStartDay: '2026-08-10',
+    );
+    final staleRead = control.requestOfflineScheduleWindow(
+      expectedStartDay: '2026-08-11',
+    );
+    release.complete();
+
+    expect(await reminderRead, hasLength(1));
+    expect(await offlineRead, hasLength(1));
+    await expectLater(staleRead, throwsA(isA<StateError>()));
+    expect(requests, 1);
+
+    await control.requestMedicationScheduleWindow();
+    expect(requests, 2);
+  });
 
   // Function Name: test callback
   // Description:

@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 
 import 'api_config.dart';
 import 'auth_config.dart';
+import 'pooled_http_transport.dart';
 
 // Function Name: IdTokenProvider
 // Description: Supplies the current Firebase identity token asynchronously; null is permitted only when the client authentication policy allows it.
@@ -112,7 +113,7 @@ class ApiContractMismatchException implements Exception {
 // 주요 책임:
 // - 토큰 조회 시간을 제한하고 서버 계약 버전을 확인하며 이전 세션의 늦은 401 응답을 무시한다.
 // 속성:
-// - _inner (http.Client): close 시 함께 닫는 HTTP 전송 객체
+// - _inner (http.Client): close 시 함께 닫는 HTTP 전송 객체. 지정하지 않으면 공용 연결 풀을 쓰고 close는 이 클라이언트의 요청만 중단한다
 // - _tokenProvider, _appCheckTokenProvider: 사용자 인증·앱 검증 토큰의 비동기 공급자
 // - _appCheckRequired (bool): 앱 검증 헤더 필요 여부
 // - _onUnauthorized, defaultOnUnauthorized: 인스턴스별·앱 기본 세션 정리 콜백
@@ -137,7 +138,7 @@ class AuthenticatedApiClient extends http.BaseClient {
   // Function Name: AuthenticatedApiClient
   // Description: Wraps a transport client with injected or Firebase-backed token providers, App Check requirements, trusted origin, and optional unauthorized-session handling.
   // Parameters:
-  // - inner (http.Client?): Optional transport; close() closes it even when supplied by the caller.
+  // - inner (http.Client?): Optional transport; close() closes it even when supplied by the caller. Without it the client uses a PooledHttpTransport, which shares kept-alive connections across clients and aborts only this client's requests on close.
   // - tokenProvider (IdTokenProvider?): Asynchronous provider of the current user's identity token.
   // - appCheckTokenProvider (AppCheckTokenProvider?): Asynchronous provider of the current app-attestation token.
   // - appCheckRequired (bool?): Whether requests require App Check attestation.
@@ -152,7 +153,7 @@ class AuthenticatedApiClient extends http.BaseClient {
     bool? appCheckRequired,
     UnauthorizedResponseHandler? onUnauthorized,
     Uri? trustedBaseUri,
-  }) : _inner = inner ?? http.Client(),
+  }) : _inner = inner ?? PooledHttpTransport(),
        _tokenProvider = tokenProvider ?? _firebaseIdToken,
        _appCheckTokenProvider = appCheckTokenProvider ?? _firebaseAppCheckToken,
        _appCheckRequired = appCheckRequired ?? AuthConfig.appCheckRequired,

@@ -198,9 +198,13 @@ class MedBuddyScheduleViewModel {
     if (doseSync != null) {
       try {
         await () async {
+          // The first load joins initialization, which has just re-read the store, so a second reload would repeat it.
+          final wasInitialized = doseSync!.isInitialized;
           cacheRevision = await doseSync!.cacheRevision();
-          await doseSync!.reload();
-          cacheRevision = await doseSync!.cacheRevision();
+          if (wasInitialized) {
+            await doseSync!.reload();
+            cacheRevision = await doseSync!.cacheRevision();
+          }
         }().timeout(_localStoreTimeout);
       } on TimeoutException {
         // 막힌 저장소에 일정 저장까지 기다리면 표시만 더 늦어진다.

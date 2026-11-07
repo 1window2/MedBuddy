@@ -26,10 +26,14 @@ extension MedBuddyApplicationFlows on MedBuddyViewModel {
 
   // Function Name: refreshMedicationOverview
   // Description: Refreshes reminder settings and today's overview before conditional reminder reconciliation.
-  // Parameters: None.
+  // Parameters: startedTodayInfo: today's overview load already started with the settings request, joined instead of starting another; a failed one is retried so its message uses the loaded language.
   // Returns: Completion of the shared read-and-reconcile flow.
-  Future<void> refreshMedicationOverview() =>
-      _refreshScheduleAndReminders(fetchTodayMedicationInfo);
+  Future<void> refreshMedicationOverview({Future<void>? startedTodayInfo}) =>
+      _refreshScheduleAndReminders(() async {
+        if (startedTodayInfo == null) return fetchTodayMedicationInfo();
+        await startedTodayInfo;
+        if (!_schedules.lastLoadSucceeded) await fetchTodayMedicationInfo();
+      });
 
   // Function Name: refreshMedicationSchedule
   // Description: Refreshes full schedules and reminder settings, optionally sharing current or recent successful work.

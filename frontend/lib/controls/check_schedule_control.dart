@@ -15,12 +15,13 @@ import '../services/api_response_parser.dart';
 // 클래스명: CheckSchedule
 // 역할: 환자별 복약 일정과 기간 일정을 조회하고 복용 완료 상태를 저장한다.
 // 주요 책임: 환자 소유권을 요청에 포함하고 응답 모델과 오프라인 기간을 검증한다.
-// 속성: baseUrl/patientHash: API와 환자 범위; _client/_ownsClient: HTTP 연결과 해제 책임.
+// 속성: baseUrl/patientHash: API와 환자 범위; _client/_ownsClient: HTTP 연결과 해제 책임; _windowRequests: 일수별로 진행 중인 기간 일정 요청.
 class CheckSchedule {
   final String baseUrl;
   final String patientHash;
   final http.Client _client;
   final bool _ownsClient;
+  final Map<int, Future<Map<String, dynamic>>> _windowRequests = {};
 
   // Function Name: CheckSchedule
   // Description: Normalizes patient ownership and binds schedule reads and completion updates to an injected or owned authenticated client.
@@ -83,6 +84,34 @@ class CheckSchedule {
     required String expectedStartDay,
   }) => _requestScheduleWindow(days: 14, expectedStartDay: expectedStartDay);
 
+  // 함수이름: _sharedScheduleWindow
+  // 함수역할: 같은 일수의 기간 일정 요청이 진행 중이면 그 응답을 함께 쓴다. 기록 동기화와 알림 동기화가 일정 갱신 직후 같은 14일 일정을 동시에 읽으므로 요청을 한 번만 보낸다. 끝난 응답은 보관하지 않는다.
+  // 매개변수: days: 1~14일.
+  // 반환값: 성공 응답의 JSON 맵 Future. 호출자는 읽기만 한다. 통신·응답 오류는 공유한 모든 호출자에게 전파한다.
+  Future<Map<String, dynamic>> _sharedScheduleWindow(int days) {
+    final pending = _windowRequests[days];
+    if (pending != null) return pending;
+    final request = () async {
+      final response = await _client
+          .get(_buildScheduleUri('schedule/window', {'days': '$days'}))
+          .timeout(const Duration(seconds: 30));
+      final responseBody = ApiResponseParser.requireOkBody(
+        'Schedule window lookup failed',
+        response,
+      );
+      final decodedData = ApiResponseParser.decodeMap(responseBody);
+      if (decodedData['success'] != true || decodedData['data'] is! List) {
+        throw StateError('Schedule window response could not be verified.');
+      }
+      return decodedData;
+    }();
+    _windowRequests[days] = request;
+    request.whenComplete(() {
+      if (identical(_windowRequests[days], request)) _windowRequests.remove(days);
+    }).ignore();
+    return request;
+  }
+
   // 함수이름: _requestScheduleWindow
   // 함수역할: 환자별 기간 일정을 30초 제한으로 읽고 선택적으로 정확한 조회 기간까지 검증한다.
   // 매개변수: days: 1~14일; expectedStartDay: 지정 시 서버 기간과 대조할 시작일.
@@ -99,17 +128,7 @@ class CheckSchedule {
       logName: 'CheckSchedule',
       logMessage: 'Medication schedule window request failed.',
       request: () async {
-        final response = await _client
-            .get(_buildScheduleUri('schedule/window', {'days': '$days'}))
-            .timeout(const Duration(seconds: 30));
-        final responseBody = ApiResponseParser.requireOkBody(
-          'Schedule window lookup failed',
-          response,
-        );
-        final decodedData = ApiResponseParser.decodeMap(responseBody);
-        if (decodedData['success'] != true || decodedData['data'] is! List) {
-          throw StateError('Schedule window response could not be verified.');
-        }
+        final decodedData = await _sharedScheduleWindow(days);
         if (expectedStartDay != null) {
           final start = DateTime.parse(expectedStartDay);
           final end = DateTime(

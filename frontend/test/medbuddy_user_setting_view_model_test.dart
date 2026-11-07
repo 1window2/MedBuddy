@@ -88,7 +88,7 @@ class _Fixture {
     viewModel = MedBuddyUserSettingViewModel(
       manageUserSetting: control,
       notificationService: notifications,
-      refreshMedicationOverview: () async {},
+      refreshMedicationOverview: ({Future<void>? startedTodayInfo}) async {},
       refreshMedicationSchedule: () async => scheduleRefreshes++,
       loadMedicationReminderSettings: ({bool notifyAfterLoad = true}) async {},
       onChanged: () => changes++,
@@ -754,5 +754,60 @@ void main() {
     );
     expect(first.server.stored.medicationNotificationsEnabled, isFalse);
     expect(restarted.control.hasPendingSave, isFalse);
+  });
+
+  // 함수이름: test 콜백
+  // 함수역할: 오늘 일정 로드가 설정 응답을 기다리지 않고 시작되고, 개요 갱신은 그 로드를 이어받는지 검증한다.
+  // 매개변수: 없음.
+  // 반환값: Future<void>; 기대와 다르면 테스트가 실패한다.
+  test('오늘 일정 로드는 설정 요청과 함께 시작되고 개요 갱신이 이어받는다', () async {
+    final settingResponse = Completer<void>();
+    final control = ManageUserSetting(
+      userHash: 'user-a',
+      client: MockClient((request) async {
+        await settingResponse.future;
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': const UserSetting(userHash: 'user-a').toJson(),
+          }),
+          200,
+        );
+      }),
+    );
+    addTearDown(control.dispose);
+    final todayInfo = Completer<void>();
+    var todayStarts = 0;
+    Future<void>? joined;
+    late final MedBuddyUserSettingViewModel viewModel;
+    viewModel = MedBuddyUserSettingViewModel(
+      manageUserSetting: control,
+      notificationService: RecordingNotificationService(),
+      startTodayMedicationInfo: () {
+        todayStarts++;
+        return todayInfo.future;
+      },
+      refreshMedicationOverview: ({Future<void>? startedTodayInfo}) async {
+        joined = startedTodayInfo;
+        await startedTodayInfo;
+      },
+      refreshMedicationSchedule: () async {},
+      loadMedicationReminderSettings: ({bool notifyAfterLoad = true}) async {},
+      onChanged: () {},
+      readEnglish: () => viewModel.userSetting.isEnglish,
+    );
+    addTearDown(viewModel.dispose);
+
+    final load = viewModel.loadUserSetting();
+    await Future<void>.delayed(Duration.zero);
+    expect(todayStarts, 1);
+    expect(joined, isNull);
+
+    settingResponse.complete();
+    todayInfo.complete();
+    await load;
+
+    expect(todayStarts, 1);
+    expect(joined, same(todayInfo.future));
   });
 }

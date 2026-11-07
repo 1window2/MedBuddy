@@ -1,5 +1,7 @@
 // File Name: medbuddy_user_setting_view_model.dart
 // Role: Owns user settings without accessing sibling feature state.
+import 'dart:async';
+
 import '../controls/app_language_control.dart';
 import '../controls/manage_user_setting_control.dart';
 import '../entities/user_setting_entity.dart';
@@ -19,7 +21,9 @@ class MedBuddyUserSettingViewModel {
   UserSetting get userSetting => _userSetting;
   final ManageUserSetting manageUserSetting;
   final NotificationService notificationService;
-  final Future<void> Function() refreshMedicationOverview;
+  final Future<void> Function({Future<void>? startedTodayInfo})
+  refreshMedicationOverview;
+  final Future<void> Function()? startTodayMedicationInfo;
   final Future<void> Function() refreshMedicationSchedule;
   final Future<void> Function({bool notifyAfterLoad})
   loadMedicationReminderSettings;
@@ -33,12 +37,13 @@ class MedBuddyUserSettingViewModel {
   bool _deviceLanguageRetryRequested = false;
   // Function Name: MedBuddyUserSettingViewModel
   // Description: Bind settings persistence and cross-feature refresh callbacks without loading preferences yet.
-  // Parameters: manageUserSetting (ManageUserSetting): persistence; notificationService (NotificationService): platform/privacy updates; refreshMedicationOverview/refreshMedicationSchedule (Future<void> Function()): overview/schedule refresh; loadMedicationReminderSettings (Future<void> Function({bool notifyAfterLoad})): reminder reload with notification policy; onChanged (void Function()): state notification; readEnglish (bool Function()): current locale.
+  // Parameters: manageUserSetting (ManageUserSetting): persistence; notificationService (NotificationService): platform/privacy updates; refreshMedicationOverview (Future<void> Function({Future<void>? startedTodayInfo})): overview refresh that can join a started today-schedule load; startTodayMedicationInfo (Future<void> Function()?): starts today's schedule load while the settings request is in flight; refreshMedicationSchedule (Future<void> Function()): schedule refresh; loadMedicationReminderSettings (Future<void> Function({bool notifyAfterLoad})): reminder reload with notification policy; onChanged (void Function()): state notification; readEnglish (bool Function()): current locale.
   // Returns: MedBuddyUserSettingViewModel: settings state owner.
   MedBuddyUserSettingViewModel({
     required this.manageUserSetting,
     required this.notificationService,
     required this.refreshMedicationOverview,
+    this.startTodayMedicationInfo,
     required this.refreshMedicationSchedule,
     required this.loadMedicationReminderSettings,
     required void Function() onChanged,
@@ -82,13 +87,21 @@ class MedBuddyUserSettingViewModel {
   }
 
   // Function Name: _loadUserSetting
-  // Description: Loads settings unless disposed or a local save remains unsynchronized, then applies privacy and refreshes the overview.
+  // Description: Loads settings unless disposed or a local save remains unsynchronized, then applies privacy and refreshes the overview. Today's schedule does not depend on the settings, so its load starts together with the settings request; reminder settings and reconciliation still wait for the settings.
   // Parameters: None.
   // Returns: Completion after load/refresh; errors propagate and listeners are notified in finally.
   Future<void> _loadUserSetting() async {
     if (_disposed || _hasUnsynchronizedSetting) return;
+    final todayInfo = startTodayMedicationInfo?.call();
     try {
-      final setting = await manageUserSetting.requestUserSetting();
+      final UserSetting setting;
+      try {
+        setting = await manageUserSetting.requestUserSetting();
+      } catch (_) {
+        // The started schedule load still shows today's list; only its result is no longer awaited here.
+        if (todayInfo != null) unawaited(todayInfo.catchError((Object _) {}));
+        rethrow;
+      }
       if (_disposed) return;
       _userSetting = setting;
       _settingLoaded = true;
@@ -100,7 +113,7 @@ class MedBuddyUserSettingViewModel {
       notificationService.setShowSensitiveDetails(
         _userSetting.showNotificationDetails,
       );
-      await refreshMedicationOverview();
+      await refreshMedicationOverview(startedTodayInfo: todayInfo);
     } finally {
       _notifyViewModelListeners();
     }

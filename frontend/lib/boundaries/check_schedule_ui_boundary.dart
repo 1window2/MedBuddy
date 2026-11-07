@@ -140,13 +140,14 @@ class _CheckScheduleUIState extends State<CheckScheduleUI> {
       return;
     }
     // 함수이름: initState.addPostFrameCallback callback
-    // 함수역할: 오늘의 시간대별 복약 체크·알림·첨부 선택에서 캡처된 작업 `context.read<MedBuddyViewModel>(); viewModel.refreshMedicationSchedule()`을 실행한다.
+    // 함수역할: 오늘의 시간대별 복약 체크·알림·첨부 선택에서 캡처된 작업 `context.read<MedBuddyViewModel>(); viewModel.refreshMedicationSchedule(reuseRecent: true)`을 실행한다.
     // 매개변수:
     // - _ (콜백 계약에서 추론): 호출 계약상 전달되지만 본문에서는 사용하지 않는 인수.
     // 반환값: 캡처한 상호작용의 완료. 화면 결과·상태 변경은 연결된 작업에서 처리한다.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final viewModel = context.read<MedBuddyViewModel>();
-      await viewModel.refreshMedicationSchedule();
+      // The launch overview returns the same schedule list, so a first visit within 15 s uses it as a revisit does.
+      await viewModel.refreshMedicationSchedule(reuseRecent: true);
       if (!mounted) {
         return;
       }
