@@ -1341,7 +1341,7 @@ def test_production_api_requires_revocation_and_verified_email_and_no_emulator(
     with pytest.raises(ValueError, match="FIREBASE_AUTH_EMULATOR_HOST"):
         _production_api_settings()
     monkeypatch.delenv("FIREBASE_AUTH_EMULATOR_HOST")
-    monkeypatch.setenv("APP_ENV", "production")
-    monkeypatch.setenv("app_env", "development")
+    # Windows 환경 변수는 대소문자를 구분하지 않아 별도 매핑으로 충돌을 재현한다.
+    monkeypatch.setattr("os.environ", {"APP_ENV": "production", "app_env": "development"})
     with pytest.raises(ValueError, match="Conflicting environment spellings for: APP_ENV"):
         Settings(_env_file=None)
