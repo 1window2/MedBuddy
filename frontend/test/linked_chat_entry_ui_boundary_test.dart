@@ -1,4 +1,5 @@
-// 알림 진입에서도 연동별 역할·별칭을 복원하고 조회 실패 시 채팅을 열지 않는지 검증한다.
+// 파일명: linked_chat_entry_ui_boundary_test.dart
+// 역할: 알림 진입에서도 연동별 역할·별칭을 복원하고 조회 실패 시 채팅을 열지 않는지 검증한다.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -15,7 +16,23 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/services/api_config.dart';
 import 'package:medbuddy_frontend/services/authenticated_api_client.dart';
 
+// 클래스명: _Links
+// 역할: 알림으로 진입할 연동 목록의 지연·실패·재시도를 재현하는 대역.
+// 주요 책임:
+// - 요청 횟수를 기록하고 pending 응답, 실패, 즉시 결과 순서로 조회를 처리한다.
+// 속성:
+// - result (List<PatientCaregiverLink>): 즉시 반환할 연동 목록.
+// - fail (bool): pending이 없을 때 오프라인 예외 발생 여부.
+// - requests (int): 연동 조회 횟수.
+// - pending (Completer<List<PatientCaregiverLink>>?): 테스트가 완료할 선택적 지연 응답.
 class _Links extends LinkPatientCaregiver {
+  // 함수이름: _Links
+  // 함수역할:
+  // - 외부 서버 없이 응답하는 MockClient로 연동 대역을 초기화한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - _Links; 빈 목록과 0회 요청, 실패·대기 응답이 없는 대역.
   _Links() : super(client: MockClient((_) async => http.Response('{}', 200)));
 
   List<PatientCaregiverLink> result = const [];
@@ -23,7 +40,13 @@ class _Links extends LinkPatientCaregiver {
   int requests = 0;
   Completer<List<PatientCaregiverLink>>? pending;
 
-  // 실제 환자 데이터나 네트워크 없이 지연·실패·재시도를 재현한다.
+  // 함수이름: requestLinkScreen
+  // 함수역할:
+  // - 요청을 기록하고 pending이 있으면 기다리며, 없으면 fail에 따라 오류 또는 result를 반환한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<List<PatientCaregiverLink>>; 설정된 목록 또는 지연 응답으로 완료하고 실패 시 StateError를 던진다.
   @override
   Future<List<PatientCaregiverLink>> requestLinkScreen() async {
     requests++;
@@ -33,6 +56,7 @@ class _Links extends LinkPatientCaregiver {
   }
 }
 
+// 알림 진입 시 두 역할의 별칭을 복원할 활성 연동 기준값.
 const _link = PatientCaregiverLink(
   linkId: 17,
   patientHash: 'patient-a',
@@ -42,7 +66,15 @@ const _link = PatientCaregiverLink(
   linkStatus: true,
 );
 
-// 알림에는 연결 ID만 전달하고 화면이 직접 상대 정보와 역할을 확인하게 한다.
+// 함수이름: _pumpEntry
+// 함수역할:
+// - 현재 계정의 연동 17 진입 화면을 표시하고 첫 조회 및 전환 프레임을 진행한다.
+// 매개변수:
+// - tester (WidgetTester): 화면 표시와 시간 진행 도구.
+// - control (ManageChatList): 계정과 연동 조회를 제공하는 컨트롤.
+// - language (String): 기본 ko인 전달 언어.
+// 반환값:
+// - Future<void>; 첫 프레임과 350ms를 진행한 뒤 완료하며 대기 중인 조회까지 기다리지는 않는다.
 Future<void> _pumpEntry(
   WidgetTester tester,
   ManageChatList control, {
@@ -62,18 +94,45 @@ Future<void> _pumpEntry(
   await tester.pump(const Duration(milliseconds: 350));
 }
 
-// 채팅의 실시간 연결까지 종료하고 테스트 환경의 네트워크 제한 타이머를 정리한다.
+// 함수이름: _closeEntry
+// 함수역할:
+// - 진입 화면을 제거한 뒤 20초를 진행하여 남은 작업이 해제된 화면 오류를 발생시키지 않는지 검사한다.
+// 매개변수:
+// - tester (WidgetTester): 화면 제거·시간 진행·예외 검사를 수행한다.
+// 반환값:
+// - Future<void>; 지연 작업 검증 후 완료하며 렌더링 예외가 있으면 실패한다.
 Future<void> _closeEntry(WidgetTester tester) async {
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pump(const Duration(seconds: 20));
   expect(tester.takeException(), isNull);
 }
 
+// Function Name: main
+// Description:
+// - Register chat-entry tests for link-specific roles, pending and failed lookup, ended links, and authenticated-client ownership.
+// Parameters:
+// - None.
+// Returns:
+// - void; no return value.
 void main() {
+  // 함수이름: setUp
+  // 함수역할:
+  // - 테스트마다 저장된 연동 이름·설정을 비워 이전 사례의 기기 상태가 섞이지 않게 한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - void; 반환값 없음.
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   for (final language in ['ko', 'en']) {
     for (final patient in [true, false]) {
+      // 함수이름: notification resolves patient=$patient in $language
+      // 함수역할:
+      // - 한국어·영어와 환자·보호자 역할별로 선택한 연동 17의 상대 이름과 환자 해시를 사용하고, 다른 연동에서 맡은 역할은 섞지 않는지 검증한다.
+      // 매개변수:
+      // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+      // 반환값:
+      // - Future<void>; 비동기 검증 후 완료한다.
       testWidgets('notification resolves patient=$patient in $language', (
         tester,
       ) async {
@@ -107,6 +166,13 @@ void main() {
     }
   }
 
+  // 함수이름: pending lookup never displays caregiver tools by default
+  // 함수역할:
+  // - 연동 조회 중에는 역할을 추측해 채팅이나 보호자 확인 도구를 표시하지 않고, 화면을 닫은 뒤 응답이 와도 다시 열지 않는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets('pending lookup never displays caregiver tools by default', (
     tester,
   ) async {
@@ -126,6 +192,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: lookup failure offers retry without guessing the role
+  // 함수역할:
+  // - 현재 조회가 실패하면 이전 캐시의 역할로 진입하지 않고 재시도를 제공하며, 조회 복구 후 올바른 환자 역할로 여는지 검증한다.
+  // 매개변수:
+  // - tester (WidgetTester): 화면을 표시하고 입력·상태·렌더링 결과를 검사한다.
+  // 반환값:
+  // - Future<void>; 비동기 검증 후 완료한다.
   testWidgets('lookup failure offers retry without guessing the role', (
     tester,
   ) async {
@@ -149,6 +222,13 @@ void main() {
   });
 
   for (final scenario in ['missing', 'inactive', 'other-user', 'no-patient']) {
+    // Function Name: invalid notification link is blocked: $scenario
+    // Description:
+    // - Missing, inactive, unrelated-user, and empty-patient links never open a conversation; successful lookup instead shows an ended-link notice and management action without retry.
+    // Parameters:
+    // - tester (WidgetTester): drives the screen and inspects state, gestures, and rendering.
+    // Returns:
+    // - Future<void>; completes after the asynchronous assertions.
     testWidgets('invalid notification link is blocked: $scenario', (
       tester,
     ) async {
@@ -164,7 +244,7 @@ void main() {
       addTearDown(control.dispose);
       await _pumpEntry(tester, control);
       expect(find.byType(LinkedChatUI), findsNothing);
-      // 조회는 성공했으므로 재시도 대신 연동 종료와 연동 관리 이동을 안내한다.
+    // A successful lookup with no active link offers link management, not a retry.
       expect(find.textContaining('연동이 종료되었어요'), findsOneWidget);
       expect(find.text('다시 시도'), findsNothing);
       expect(find.text('연동 관리 열기'), findsOneWidget);
@@ -172,7 +252,13 @@ void main() {
     });
   }
 
-  // 연동이 해제된 알림을 열면 종료 안내 후 닫기로 이전 화면에 돌아간다.
+  // Function Name: ended link offers close back to the previous screen in English
+  // Description:
+  // - An ended-link entry in English offers management and Close; closing removes the entry route and returns to the original screen.
+  // Parameters:
+  // - tester (WidgetTester): drives the screen and inspects state, gestures, and rendering.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets('ended link offers close back to the previous screen in English', (
     tester,
   ) async {
@@ -183,9 +269,10 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Builder(
-          // 함수이름: 시작 화면 builder
-          // 함수역할: 알림 진입 화면을 위에 띄울 버튼을 만든다.
-          // 매개변수: context: 위젯 트리 위치. 반환값: 시작 버튼.
+            // Function Name: start-screen builder
+            // Description: Build the button that pushes the notification entry screen.
+            // Parameters: context (BuildContext): navigator lookup scope.
+            // Returns: Widget; the entry button.
           builder: (context) => TextButton(
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
@@ -212,8 +299,13 @@ void main() {
     expect(find.text('open'), findsOneWidget);
   });
 
-  // 세션 인증 클라이언트를 넘기면 연동 확인 요청이 그 클라이언트로 나가 401이 세션 처리기에 전달되고,
-  // 빌린 클라이언트는 화면이 닫혀도 닫지 않는다.
+  // Function Name: entry lookup uses the injected session client for a 401
+  // Description:
+  // - Send link lookup through the injected authenticated client, surface its 401 through the session handler, and keep that borrowed client usable after the entry closes.
+  // Parameters:
+  // - tester (WidgetTester): drives the screen and inspects state, gestures, and rendering.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets('entry lookup uses the injected session client for a 401', (
     tester,
   ) async {

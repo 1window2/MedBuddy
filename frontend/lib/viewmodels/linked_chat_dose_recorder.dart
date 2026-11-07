@@ -8,10 +8,9 @@ import '../services/dose_sync_service.dart';
 import 'medbuddy_view_model.dart';
 
 // Class Name: ChatDosePlanStatus
-// Role: Tells the chat screen whether a selection can be recorded as chosen.
-// Responsibilities:
-// - ready: every selected dose exists on the selected day; scheduleChanged: a selected dose or
-//   its day is no longer in the schedule; noSchedule: the selection names no dose slot.
+// Role: Describe whether a chat dose selection can be recorded.
+// Responsibilities: Distinguish valid selections, changed schedules, unsupported as-needed selections and absent dose slots.
+// Attributes: ready/scheduleChanged/asNeededSelected/noSchedule: planning outcomes.
 enum ChatDosePlanStatus { ready, scheduleChanged, asNeededSelected, noSchedule }
 
 // Class Name: ChatDoseRequest

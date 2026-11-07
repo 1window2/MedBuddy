@@ -86,9 +86,9 @@ Future<void> deliverLinkedChatAlert({
 }
 
 // 클래스명: LinkedChatNotificationMonitorFactory
-// 역할: 채팅 감시 서비스와 구체적인 HTTP·WebSocket·알림 구현을 연결한다.
-// 주요 책임:
-// - 채팅 알림 설정을 확인하고 연동별 이벤트 소스 및 자원 정리 콜백을 제공한다.
+// 역할: 채팅 감시 서비스에 HTTP·WebSocket·알림 구현을 연결한다.
+// 주요 책임: 알림 설정을 확인하고 연동별 이벤트 소스 및 생성한 제어기의 정리를 제공한다.
+// 속성: 인스턴스 상태 없음; create가 주입받은 인증 클라이언트를 빌려 사용한다.
 class LinkedChatNotificationMonitorFactory {
   // 함수이름: LinkedChatNotificationMonitorFactory._
   // 함수역할: 가족 채팅 감시 조립을 정적 create 진입점으로만 제공하도록 외부 생성을 막는다.

@@ -12,11 +12,10 @@ import 'link_patient_caregiver_control.dart';
 import 'manage_caregiver_patient_local_state_control.dart';
 import 'manage_linked_chat_control.dart';
 
-// 클래스명: ManageChatList
-// 역할: 대화 목록의 조회 상태를 사용자 단위로 보관하고 기존 연동·채팅 Control에 요청을 위임한다.
-// 주요 책임: 활성 참여자 검증, 별칭 복원, 최근 메시지 조회와 요청 중복·종료 후 응답 방지.
-// 속성: userHash: 소유 계정, links: 활성 연동, latestMessages: 연동별 미리보기,
-//       isEnglish: 별칭이 없는 환자의 기본 표시 이름에 쓸 언어.
+// Class Name: ManageChatList
+// Role: Maintains account-scoped chat previews and link state for conversation lists.
+// Responsibilities: Validate active participants, restore aliases, coalesce refreshes and discard responses after disposal.
+// Attributes: userHash: Owner; isEnglish: Fallback label language; link/message/count maps: Current display state; pending flags: Refresh coordination.
 class ManageChatList extends ChangeNotifier {
   final String userHash;
   // 다음 조회부터 적용된다. 설정 언어가 바뀌면 생성한 쪽에서 갱신한다.
@@ -38,17 +37,22 @@ class ManageChatList extends ChangeNotifier {
   String? _publishedSignature;
   bool _disposed = false;
   bool _isLoading = false;
-  // 외부에서는 읽기만 하고 값은 이 객체만 바꾼다.
+  // Function Name: isLoading
+  // Description: Exposes whether an initial or explicitly announced refresh is loading.
+  // Parameters: None.
+  // Returns: The controller-owned loading flag; silent periodic reads need not set it.
   bool get isLoading => _isLoading;
   bool _hasError = false;
+  // Function Name: hasError
+  // Description: Reports whether the applicable link-list refresh failed.
+  // Parameters: None.
+  // Returns: The list error flag, independent of per-chat preview errors.
   bool get hasError => _hasError;
 
-  // 함수이름: ManageChatList
-  // 함수역할: 계정 범위와 조회 의존성을 고정한다. 주입받은 Control은 호출자가 해제한다.
-  // 매개변수: userHash: 계정 해시, linkControl/chatControl/localState: 테스트 또는 기존 조회 의존성,
-  //           client: 기본 Control이 함께 쓸 HTTP 클라이언트(호출자가 닫는다. 없으면 Control마다 새로 만든다),
-  //           isEnglish: 기본 표시 이름의 언어(기본값 한국어).
-  // 반환값: 사용자별 대화 목록 Control.
+  // Function Name: ManageChatList
+  // Description: Binds account-scoped chat, link and alias dependencies.
+  // Parameters: userHash: Owner; linkControl/chatControl/localState: Optional dependencies; client: Caller-owned shared transport for default controls; isEnglish: Fallback label language.
+  // Returns: A chat-list controller that disposes only controls it creates.
   ManageChatList({
     required this.userHash,
     LinkPatientCaregiver? linkControl,
@@ -75,7 +79,10 @@ class ManageChatList extends ChangeNotifier {
   // 매개변수: linkId: 연동 ID. 반환값: 최근 메시지 또는 null.
   ChatMessage? latestMessage(int linkId) => _latestMessages[linkId];
 
-  // 조회 실패·미조회는 0으로 단정하지 않고 null로 구분한다.
+  // 함수이름: unreadCount
+  // 함수역할: 읽지 않은 메시지 수를 조회 실패나 미조회 상태와 구분해 제공한다.
+  // 매개변수: linkId: 조회할 연동 ID.
+  // 반환값: 확인된 개수 또는 미확인 상태를 나타내는 null.
   int? unreadCount(int linkId) => _unreadCounts[linkId];
 
   // 함수이름: previewFailed
@@ -88,9 +95,10 @@ class ManageChatList extends ChangeNotifier {
   // 매개변수: link: 조회한 연동. 반환값: 보호자이면 true.
   bool isCaregiver(PatientCaregiverLink link) => link.caregiverHash == userHash;
 
-  // 함수이름: peerName
-  // 함수역할: 보호자에게는 서버의 최신 환자 별칭을 우선하고, 환자에게는 보호자 이름을 제공한다.
-  // 매개변수: link, isEnglish: 연동과 표시 언어. 반환값: 대화 상대 표시 이름.
+  // Function Name: peerName
+  // Description: Chooses the peer's active alias with localized, privacy-preserving fallbacks.
+  // Parameters: link: Conversation relationship; isEnglish: Fallback language.
+  // Returns: Patient alias with server precedence for caregivers, otherwise caregiver alias or a label with only the hash suffix.
   String peerName(PatientCaregiverLink link, {required bool isEnglish}) {
     if (isCaregiver(link)) {
       // 서버 값이 있으면 동시 로컬 저장 중의 오래된 캐시로 덮어쓰지 않는다.
@@ -116,11 +124,10 @@ class ManageChatList extends ChangeNotifier {
     return '${isEnglish ? 'Caregiver' : '보호자'} ${suffix.toUpperCase()}';
   }
 
-  // 함수이름: refresh
-  // 함수역할: 중복 요청을 합치고 갱신 중 발생한 연동 변경을 한 번 더 조회한다.
-  // 매개변수: includeMessages: 화면이 보일 때 최근 메시지도 읽을지 여부,
-  //           showLoading: 사용자가 직접 요청한 갱신처럼 진행 표시를 켤지 여부(첫 조회는 항상 켠다).
-  // 반환값: 대기 중인 갱신까지 완료되는 Future.
+  // Function Name: refresh
+  // Description: Coalesces concurrent refresh requests and schedules another pass for changes arriving during a load.
+  // Parameters: includeMessages: Also fetch previews; showLoading: Announce loading, with the first request always announced.
+  // Returns: The shared refresh Future, or an already completed Future after disposal.
   Future<void> refresh({
     bool includeMessages = false,
     bool showLoading = false,
@@ -141,10 +148,10 @@ class ManageChatList extends ChangeNotifier {
     return _pending!;
   }
 
-  // 함수이름: _refreshLoop
-  // 함수역할: 목록·별칭·미리보기를 모두 읽고 정렬한 뒤 한 번에 반영하며 오류 시 마지막 목록을 유지한다.
-  //           표시 내용이 실제로 바뀌었거나 진행 표시를 끌 때만 알린다.
-  // 매개변수: 없음. 반환값: 모든 예약 조회가 끝나면 완료.
+  // Function Name: _refreshLoop
+  // Description: Loads links, aliases and optional previews, then publishes sorted state only when it changes.
+  // Parameters: None.
+  // Returns: Completion after queued refresh passes; list errors preserve prior state, and alias failure falls back to server names.
   Future<void> _refreshLoop() async {
     try {
       do {
@@ -236,9 +243,10 @@ class ManageChatList extends ChangeNotifier {
     }
   }
 
-  // 함수이름: _stateSignature
-  // 함수역할: 화면에 보이는 목록 순서·이름·미리보기·미확인 개수·오류 상태를 비교할 값으로 만든다.
-  // 매개변수: 없음. 반환값: 표시 내용이 같으면 같은 문자열.
+  // Function Name: _stateSignature
+  // Description: Encodes the ordered visible list state to suppress redundant notifications.
+  // Parameters: None.
+  // Returns: A signature covering links, aliases, unread counts, preview errors and visible message fields.
   String _stateSignature() => jsonEncode([
     _hasError,
     for (final link in _links)
@@ -257,10 +265,10 @@ class ManageChatList extends ChangeNotifier {
       ],
   ]);
 
-  // 함수이름: _loadPreview
-  // 함수역할: 읽음 처리 없이 최근 메시지와 미확인 개수를 가져오고 실패한 표시값은 제거한다.
-  // 매개변수: link: 활성 연동, latestMessages/unreadCounts/previewErrors: 이번 조회에서 채울 결과.
-  // 반환값: 해당 미리보기 조회 완료.
+  // Function Name: _loadPreview
+  // Description: Reads a recent message and unread count without marking the conversation read.
+  // Parameters: link: Active relationship; latestMessages/unreadCounts/previewErrors: Mutable results for this refresh.
+  // Returns: Completion after both independent lookups; failures remove uncertain preview/count values.
   Future<void> _loadPreview(
     PatientCaregiverLink link,
     Map<int, ChatMessage> latestMessages,
@@ -293,9 +301,10 @@ class ManageChatList extends ChangeNotifier {
     }
   }
 
-  // 함수이름: _compareLinks
-  // 함수역할: 최근 대화 순서로 정렬하고 메시지가 없으면 연동 ID로 순서를 고정한다.
-  // 매개변수: a, b: 비교할 활성 연동, latestMessages: 정렬 기준 미리보기. 반환값: 정렬 순서.
+  // Function Name: _compareLinks
+  // Description: Orders conversations by most recent message, with link IDs as a deterministic fallback.
+  // Parameters: a/b: Active relationships; latestMessages: Available preview timestamps.
+  // Returns: A comparator result putting conversations with newer messages first.
   int _compareLinks(
     PatientCaregiverLink a,
     PatientCaregiverLink b,

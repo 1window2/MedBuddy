@@ -13,17 +13,17 @@ import 'package:medbuddy_frontend/services/authenticated_api_client.dart';
 import 'package:medbuddy_frontend/services/linked_chat_realtime_service.dart';
 
 // Class Name: _FakeSocket
-// Role: In-memory WebSocket that a test drives from the server side.
+// Role: In-memory WebSocket exposing server frames and client side effects.
 // Responsibilities:
-// - Deliver server frames and the server close to the single listener.
-// - Record what the client sent and how it closed the socket.
+// - Deliver controlled frames and closes while recording client writes, subscription, and delayed close behavior.
 // Attributes:
-// - sent (List<dynamic>): Frames the client added (heartbeat pings).
-// - closeCodes (List<int?>): Code of each client close call, oldest first.
-// - closeGate (Completer<void>?): When set, a client close waits for it.
-// - listened (bool): Whether the service subscribed to this socket.
-// - closeCode, closeReason (int?, String?): Close frame the server sent; null for a dropped
-//   connection.
+// - _incoming (StreamController<dynamic>): source of server frames and stream completion.
+// - sent (List<dynamic>): client frames, including heartbeat pings.
+// - closeCodes (List<int?>): codes passed to client close calls.
+// - closeGate (Completer<void>?): optional barrier delaying client close.
+// - listened (bool): whether the service subscribed.
+// - pingInterval (Duration?): accepted WebSocket setting with no automatic ping behavior.
+// - closeCode (int?), closeReason (String?): most recent server close fields; null represents a dropped connection.
 class _FakeSocket extends Fake implements WebSocket {
   final StreamController<dynamic> _incoming = StreamController<dynamic>();
   final List<dynamic> sent = [];
@@ -41,9 +41,15 @@ class _FakeSocket extends Fake implements WebSocket {
   String? closeReason;
 
   // Function Name: listen
-  // Description: Subscribes the service to the frames a test sends from the server side.
-  // Parameters: onData, onError, onDone, cancelOnError - the Stream.listen contract.
-  // Returns: The subscription on the incoming frames.
+  // Description:
+  // - Mark the socket subscribed and forward the listener configuration to the incoming stream.
+  // Parameters:
+  // - onData (void Function(dynamic)?): handler for server frames.
+  // - onError (Function?): optional stream error handler.
+  // - onDone (void Function()?): optional stream-completion handler.
+  // - cancelOnError (bool?): forwarded stream cancellation policy.
+  // Returns:
+  // - StreamSubscription<dynamic>; subscription to the controlled incoming stream.
   @override
   StreamSubscription<dynamic> listen(
     void Function(dynamic event)? onData, {
@@ -61,14 +67,23 @@ class _FakeSocket extends Fake implements WebSocket {
   }
 
   // Function Name: add
-  // Description: Records a frame sent by the client.
-  // Parameters: data - frame payload. Returns: None.
+  // Description:
+  // - Record a client frame without writing to a network.
+  // Parameters:
+  // - data (dynamic): client payload retained unchanged in sent.
+  // Returns:
+  // - void; no return value.
   @override
   void add(dynamic data) => sent.add(data);
 
   // Function Name: close
-  // Description: Records the client close, optionally waits for closeGate, then ends the stream.
-  // Parameters: code, reason - close frame fields. Returns: Completion of the close handshake.
+  // Description:
+  // - Record the client close code, wait for closeGate when present, and request incoming-stream closure if still open.
+  // Parameters:
+  // - code (int?): optional client close code, recorded even when null.
+  // - reason (String?): accepted close reason, unused by the fake.
+  // Returns:
+  // - Future<dynamic>; completes after initiating stream closure, without waiting for the stream close future.
   @override
   Future<dynamic> close([int? code, String? reason]) async {
     closeCodes.add(code);
@@ -77,13 +92,21 @@ class _FakeSocket extends Fake implements WebSocket {
   }
 
   // Function Name: serverSend
-  // Description: Delivers one JSON text frame from the server.
-  // Parameters: frame - JSON-encodable payload. Returns: None.
+  // Description:
+  // - Encode and enqueue one server text frame for the subscribed service.
+  // Parameters:
+  // - frame (Object): JSON-encodable payload; invalid encodable values or a closed controller raise errors.
+  // Returns:
+  // - void; no return value.
   void serverSend(Object frame) => _incoming.add(jsonEncode(frame));
 
   // Function Name: serverClose
-  // Description: Ends the connection from the server side, with the close frame when one is given.
-  // Parameters: code, reason - close frame fields; omitted for a dropped connection. Returns: None.
+  // Description:
+  // - Set server close metadata and end the incoming stream without awaiting its listeners.
+  // Parameters:
+  // - code (int?), reason (String?): server close fields; omitted values simulate an unclassified drop.
+  // Returns:
+  // - void; no return value.
   void serverClose([int? code, String? reason]) {
     closeCode = code;
     closeReason = reason;
@@ -92,16 +115,24 @@ class _FakeSocket extends Fake implements WebSocket {
 }
 
 // Class Name: _Connector
-// Role: Socket connector fake whose attempts a test completes one by one.
-// Attributes: attempts - pending or completed connects, oldest first; urls - requested URLs.
+// Role: Connector whose individual socket attempts are completed by the test.
+// Responsibilities:
+// - Record requested URLs and return controllable futures without network access.
+// Attributes:
+// - attempts (List<Completer<WebSocket>>): connections in creation order.
+// - urls (List<String>): socket URL for each attempt.
 class _Connector {
   final List<Completer<WebSocket>> attempts = [];
   final List<String> urls = [];
 
   // Function Name: connect
-  // Description: Records the attempt and leaves its completion to the test.
-  // Parameters: url - socket URL; headers - authentication headers (unused).
-  // Returns: A future the test completes with a socket or an error.
+  // Description:
+  // - Record a socket URL and leave connection success or failure under test control.
+  // Parameters:
+  // - url (String): requested socket address.
+  // - headers (Map<String, dynamic>?): authentication headers accepted but not inspected.
+  // Returns:
+  // - Future<WebSocket>; completed or failed through the corresponding attempts entry.
   Future<WebSocket> connect(String url, {Map<String, dynamic>? headers}) {
     urls.add(url);
     final attempt = Completer<WebSocket>();
@@ -111,8 +142,15 @@ class _Connector {
 }
 
 // Class Name: _Fixture
-// Role: A realtime service on a fake connector with its emitted states and events.
-// Attributes: connector - connect fake; states/events - everything the service broadcast.
+// Role: Owns a realtime service, fake connector, and its emitted observations.
+// Responsibilities:
+// - Provide non-network authentication, count credential/session callbacks, and clean up pending attempts.
+// Attributes:
+// - connector (_Connector): controlled socket connector.
+// - states (List<LinkedChatConnectionState>), events (List<Map<String, dynamic>>): service broadcasts in order.
+// - credentialRefreshes, unauthorizedReports (int): authentication callback counts.
+// - _client (AuthenticatedApiClient): owned header/authentication client.
+// - service (LinkedChatRealtimeService): link-17 service for patient-a.
 class _Fixture {
   final _Connector connector = _Connector();
   final List<LinkedChatConnectionState> states = [];
@@ -125,8 +163,12 @@ class _Fixture {
   late final LinkedChatRealtimeService service;
 
   // Function Name: _Fixture
-  // Description: Builds the service with header providers that need no Firebase or network.
-  // Parameters: None. Returns: The fixture, not started.
+  // Description:
+  // - Create the unstarted realtime service with mock authentication, a controlled connector, and listeners recording states and events.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - _Fixture; no connection starts until service.start is called.
   _Fixture() {
     _client = AuthenticatedApiClient(
       inner: MockClient((_) async => http.Response('{}', 200)),
@@ -147,9 +189,13 @@ class _Fixture {
   }
 
   // Function Name: accept
-  // Description: Completes the given connect attempt with a new fake socket.
-  // Parameters: tester - fake-clock driver; attempt - index of the connect attempt.
-  // Returns: The accepted socket after the service processed it.
+  // Description:
+  // - Complete a selected connection attempt with a fresh socket and allow the service to process it.
+  // Parameters:
+  // - tester (WidgetTester): drains fake-clock work after acceptance.
+  // - attempt (int): index of an existing, uncompleted connector attempt.
+  // Returns:
+  // - Future<_FakeSocket>; accepted socket after one pump; invalid or completed indices fail the fixture.
   Future<_FakeSocket> accept(WidgetTester tester, int attempt) async {
     final socket = _FakeSocket();
     connector.attempts[attempt].complete(socket);
@@ -159,9 +205,11 @@ class _Fixture {
 
   // Function Name: dispose
   // Description:
-  // - Stops the service (cancelling its timers), fails connect attempts a test left open so
-  //   their 15 s timeout timers end, and closes the header client.
-  // Parameters: tester - fake-clock driver. Returns: Completion of the disposal.
+  // - Dispose the service, fail unfinished connections so their timeout timers end, drain callbacks, and close the owned authentication client.
+  // Parameters:
+  // - tester (WidgetTester): processes connection-failure cleanup.
+  // Returns:
+  // - Future<void>; completes when the controlled service and client are cleaned up.
   Future<void> dispose(WidgetTester tester) async {
     await service.dispose();
     for (final attempt in connector.attempts) {
@@ -175,11 +223,20 @@ class _Fixture {
 }
 
 // Function Name: main
-// Description: Registers the socket lifecycle tests.
-// Parameters: None. Returns: None.
+// Description:
+// - Register fake-clock socket tests for timeout, reconnect delays, stop/start ordering, and close-code authentication policy.
+// Parameters:
+// - None.
+// Returns:
+// - void; no return value.
 void main() {
-  // The connect attempt is abandoned after 15 s; a socket accepted later would otherwise stay
-  // open unobserved and count against the server's per-user connection limit.
+  // Function Name: a socket accepted after the connect timeout is closed
+  // Description:
+  // - After the 15-second connection timeout, close a late socket without listening to it or reporting connected; retain the scheduled retry and accept its new socket normally.
+  // Parameters:
+  // - tester (WidgetTester): advances the fake clock and drains scheduled asynchronous work.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets('a socket accepted after the connect timeout is closed', (
     tester,
   ) async {
@@ -212,7 +269,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // A late connect that fails must not surface as an unhandled error.
+  // Function Name: a connect that fails after the timeout is ignored
+  // Description:
+  // - A connector failure arriving after its timeout is consumed without becoming an unhandled asynchronous exception.
+  // Parameters:
+  // - tester (WidgetTester): advances the fake clock and drains scheduled asynchronous work.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets('a connect that fails after the timeout is ignored', (
     tester,
   ) async {
@@ -228,8 +291,13 @@ void main() {
     await fixture.dispose(tester);
   });
 
-  // The server accepts and then closes a connection it rejects (limit reached, link removed).
-  // Accepting alone must therefore not reset the delay to one second.
+  // Function Name: backoff grows while the server closes right after accepting
+  // Description:
+  // - Immediate server drops after acceptance increase reconnect delays through 1, 2, 5, and capped 10 seconds; acceptance alone does not reset backoff.
+  // Parameters:
+  // - tester (WidgetTester): advances the fake clock and drains scheduled asynchronous work.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets('backoff grows while the server closes right after accepting', (
     tester,
   ) async {
@@ -258,7 +326,13 @@ void main() {
     await fixture.dispose(tester);
   });
 
-  // chat_ready means the server registered the connection: the next drop starts at 1 s again.
+  // Function Name: chat_ready resets the backoff
+  // Description:
+  // - A chat_ready event is forwarded and resets accumulated reconnect backoff to exactly one second.
+  // Parameters:
+  // - tester (WidgetTester): advances the fake clock and drains scheduled asynchronous work.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets('chat_ready resets the backoff', (tester) async {
     final fixture = _Fixture();
     unawaited(fixture.service.start());
@@ -284,7 +358,13 @@ void main() {
     await fixture.dispose(tester);
   });
 
-  // Without chat_ready, a connection that stayed up for 30 s also counts as healthy.
+  // Function Name: a connection kept for 30 s resets the backoff
+  // Description:
+  // - A connection surviving 30 seconds sends one heartbeat and resets its next reconnect delay to one second.
+  // Parameters:
+  // - tester (WidgetTester): advances the fake clock and drains scheduled asynchronous work.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets('a connection kept for 30 s resets the backoff', (tester) async {
     final fixture = _Fixture();
     unawaited(fixture.service.start());
@@ -307,8 +387,13 @@ void main() {
     await fixture.dispose(tester);
   });
 
-  // setForeground(false) then (true): the earlier stop finishes closing after the new
-  // connection is up and must not report "disconnected" for it.
+  // Function Name: stop followed by start ends connected
+  // Description:
+  // - Starting again while an old stop awaits socket closure keeps the new connection alive; only a later uninterrupted stop reports one disconnect.
+  // Parameters:
+  // - tester (WidgetTester): advances the fake clock and drains scheduled asynchronous work.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets('stop followed by start ends connected', (tester) async {
     final fixture = _Fixture();
     unawaited(fixture.service.start());
@@ -351,7 +436,13 @@ void main() {
     await fixture.dispose(tester);
   });
 
-  // A stop still closing when the owner disposes the service must not add to closed streams.
+  // Function Name: dispose during a pending stop does not throw
+  // Description:
+  // - Disposing during a gated stop must not throw or emit a late disconnected state after the old socket finally closes.
+  // Parameters:
+  // - tester (WidgetTester): advances the fake clock and drains scheduled asynchronous work.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets('dispose during a pending stop does not throw', (tester) async {
     final fixture = _Fixture();
     unawaited(fixture.service.start());
@@ -371,7 +462,13 @@ void main() {
     ]);
   });
 
-  // A stop during a pending connect invalidates it: the socket is closed, never used.
+  // Function Name: a socket accepted after stop is closed and not reconnected
+  // Description:
+  // - A socket accepted after stop is closed without subscription, and no reconnect is attempted during the following 30 seconds.
+  // Parameters:
+  // - tester (WidgetTester): advances the fake clock and drains scheduled asynchronous work.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets('a socket accepted after stop is closed and not reconnected', (
     tester,
   ) async {
@@ -388,8 +485,13 @@ void main() {
 
     await fixture.dispose(tester);
   });
-  // The server closes an accepted stream with 4404 when the link was removed. Reconnecting gets
-  // the same answer, so the client stops instead of knocking every few seconds.
+  // Function Name: a link-removed close stops reconnecting
+  // Description:
+  // - Close code 4404 stops automatic reconnects without reporting unauthorized; an explicit start can attempt the conversation again.
+  // Parameters:
+  // - tester (WidgetTester): advances the fake clock and drains scheduled asynchronous work.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets('a link-removed close stops reconnecting', (tester) async {
     final fixture = _Fixture();
     unawaited(fixture.service.start());
@@ -413,8 +515,13 @@ void main() {
     await fixture.dispose(tester);
   });
 
-  // 4401: one retry with a fresh token; a second 4401 ends the retries and reports the session,
-  // which is the same cleanup an HTTP 401 triggers.
+  // Function Name: an authentication close refreshes the token once, then reports the session
+  // Description:
+  // - The first 4401 close schedules one credential refresh and retry; a second consecutive rejection reports unauthorized and stops reconnecting.
+  // Parameters:
+  // - tester (WidgetTester): advances the fake clock and drains scheduled asynchronous work.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets('an authentication close refreshes the token once, then reports the session', (
     tester,
   ) async {
@@ -442,7 +549,13 @@ void main() {
     await fixture.dispose(tester);
   });
 
-  // A connection that became ready proves the token works, so a later 4401 gets its own retry.
+  // Function Name: chat_ready renews the single authentication retry
+  // Description:
+  // - Receiving chat_ready renews the one-time authentication retry allowance, permitting another refresh after a later 4401 close.
+  // Parameters:
+  // - tester (WidgetTester): advances the fake clock and drains scheduled asynchronous work.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets('chat_ready renews the single authentication retry', (tester) async {
     final fixture = _Fixture();
     unawaited(fixture.service.start());
@@ -464,8 +577,13 @@ void main() {
     await fixture.dispose(tester);
   });
 
-  // 4440: the token used at the handshake expired. The session is fine; reconnect at once with
-  // a fresh token and do not report anything.
+  // Function Name: an expired-credential close reconnects with a fresh token
+  // Description:
+  // - Code 4440 renews credentials and reconnects after each established ready session without reporting an unauthorized account.
+  // Parameters:
+  // - tester (WidgetTester): advances the fake clock and drains scheduled asynchronous work.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets('an expired-credential close reconnects with a fresh token', (tester) async {
     final fixture = _Fixture();
     unawaited(fixture.service.start());
@@ -491,8 +609,13 @@ void main() {
     await fixture.dispose(tester);
   });
 
-  // 4429 carries the seconds to wait as its reason. The client waits that long even when its own
-  // backoff would be shorter, and never longer than five minutes.
+  // Function Name: a quota close waits as long as the server says
+  // Description:
+  // - Honor a 4429 retry delay of 42 seconds, cap an excessive reason at 300 seconds, and use ordinary backoff when no usable delay is supplied.
+  // Parameters:
+  // - tester (WidgetTester): advances the fake clock and drains scheduled asynchronous work.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets('a quota close waits as long as the server says', (tester) async {
     final fixture = _Fixture();
     unawaited(fixture.service.start());
@@ -523,8 +646,13 @@ void main() {
     await fixture.dispose(tester);
   });
 
-  // 4403 (ownership or attestation refused) and 4409 (API contract mismatch) do not heal within
-  // seconds: the client keeps trying, but only once a minute.
+  // Function Name: a refusal close is retried a minute later
+  // Description:
+  // - Refusal codes 4403 and 4409 stay reconnecting but wait exactly one minute before another connection attempt.
+  // Parameters:
+  // - tester (WidgetTester): advances the fake clock and drains scheduled asynchronous work.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets('a refusal close is retried a minute later', (tester) async {
     for (final code in [4403, 4409]) {
       final fixture = _Fixture();
@@ -541,8 +669,13 @@ void main() {
     }
   });
 
-  // Today's server refuses during the handshake: the connect itself fails, no close code arrives,
-  // and the client must simply back off without refreshing or reporting anything.
+  // Function Name: a handshake refusal backs off without reading a close code
+  // Description:
+  // - Handshake exceptions use bounded 1/2/5/10-second reconnect backoff without reading close codes, refreshing credentials, or reporting unauthorized.
+  // Parameters:
+  // - tester (WidgetTester): advances the fake clock and drains scheduled asynchronous work.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   testWidgets('a handshake refusal backs off without reading a close code', (tester) async {
     final fixture = _Fixture();
     unawaited(fixture.service.start());

@@ -396,6 +396,13 @@ void main() {
     expect(source.disposed, isTrue);
   });
 
+  // 함수이름: 확인 요청의 환자·연결 컨텍스트
+  // 함수역할:
+  // - 정상 보호자 요청에만 환자·날짜·이벤트 ID를 담고 일반 메시지나 무관한 발신자는 slotCheck 없이 전달하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('보호자 확인 요청은 환자 연동과 날짜를 포함해 전달한다', () async {
     final source = _FakeLinkedChatEventSource();
     final requests = <SlotCheckNotificationContext?>[];

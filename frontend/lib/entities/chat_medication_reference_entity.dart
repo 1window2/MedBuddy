@@ -22,6 +22,10 @@ class ChatMedicationReference {
   final String manufacturer;
   final String imageUrl;
 
+  // 함수이름: ChatMedicationReference
+  // 함수역할: 복약함 등록과 별개인 약품 참고 첨부의 공개 표시 정보를 보관한다.
+  // 매개변수: itemSeq/itemName: 약품 식별자와 이름; manufacturer/imageUrl: 생략 가능한 제조사와 이미지 주소.
+  // 반환값: 참고 첨부 객체; 직접 생성 시 입력 검증은 하지 않는다.
   const ChatMedicationReference({
     required this.itemSeq,
     required this.itemName,

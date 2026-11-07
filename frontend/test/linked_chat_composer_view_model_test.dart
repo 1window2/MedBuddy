@@ -402,8 +402,22 @@ class _SendControl extends ManageLinkedChat {
       );
 
   // Function Name: sendMessage
-  // Description: Snapshots wire input and returns the selected completion/failure outcome.
-  // Parameters: Existing production message/context/identity fields. Returns: Accepted or gated message; throws on configured failure.
+  // Description:
+  // - Records identity and draft fields, then returns the pending gate, throws a configured failure or creates a message from body.
+  // Parameters:
+  // - sourceAlertId (int?): Accepted source alert; not recorded by this fake.
+  // - linkId (int), clientMessageId (String): Conversation and client request identifiers.
+  // - body (String): Message content.
+  // - medicationId (int?): Primary medication recorded separately.
+  // - medicationIds (List<int>): Attached medication identifiers.
+  // - medicationReferences (List<ChatMedicationReference>): Attached catalog references.
+  // - messageKind (ChatMessageKind): Draft category.
+  // - slotKey (String?): Optional dose slot.
+  // - pharmacyId, hospitalId (String?): Optional shared place identifiers.
+  // - hospitalScheduleDate (String?): Shared hospital visit date.
+  // - historyStartDate, historyEndDate (String?): Accepted history range; not retained in the recorded draft.
+  // Returns:
+  // - Future<ChatMessage>: Gate result or synthetic message; propagates failure or throws StateError when fail is set.
   @override
   Future<ChatMessage> sendMessage({
     int? sourceAlertId,

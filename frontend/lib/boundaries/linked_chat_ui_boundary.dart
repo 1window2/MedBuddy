@@ -41,29 +41,29 @@ import '../widgets/chat_date_divider.dart';
 import '../widgets/chat_place_map_preview.dart';
 import '../widgets/keep_words_text.dart';
 
-// 함수이름: linkedChatRouteName
-// 함수역할: 알림·채팅 목록·연동 화면 어디서 열어도 같은 연동의 채팅 화면이 같은 경로 이름을 쓰게 한다.
-// 매개변수: linkId (int): 채팅 연동 ID. 반환값: 화면 경로 이름.
+// Function Name: linkedChatRouteName
+// Description: Uses one route name for the same linked conversation regardless of notification, list or link-management entry.
+// Parameters: linkId (int): conversation link ID.
+// Returns: The stable conversation route name.
 String linkedChatRouteName(int linkId) => '/linked-chat/$linkId';
 
-// 클래스명: LinkedChatRouteObserver
-// 역할: 화면 스택에 열려 있는 연동 채팅 경로를 추적한다.
-// 주요 책임:
-// - 채팅 알림을 눌렀을 때 이미 열린 대화를 새로 쌓지 않고 기존 화면으로 돌아가게 한다.
-//   채팅 목록·연동 화면에서 연 대화도 같은 경로 이름을 쓰므로 함께 추적된다.
-// 속성:
-// - _open (Map<String, int>): 경로 이름별로 열린 화면 수.
+// Class Name: LinkedChatRouteObserver
+// Role: Open linked-conversation route tracking.
+// Responsibilities: Lets notification navigation reuse an existing conversation instead of stacking a duplicate, including routes opened from lists or link management.
+// Attributes: _open (Map<String, int>): open route count by name.
 class LinkedChatRouteObserver extends NavigatorObserver {
   final Map<String, int> _open = {};
 
-  // 함수이름: isOpen
-  // 함수역할: 해당 연동의 채팅 화면이 스택에 있는지 알려준다.
-  // 매개변수: linkId (int): 채팅 연동 ID. 반환값: 열려 있으면 true.
+  // Function Name: isOpen
+  // Description: Checks whether the linked conversation is already on the route stack.
+  // Parameters: linkId (int): conversation link ID.
+  // Returns: True when at least one matching route is open.
   bool isOpen(int linkId) => (_open[linkedChatRouteName(linkId)] ?? 0) > 0;
 
-  // 함수이름: _track
-  // 함수역할: 채팅 경로가 쌓이거나 빠질 때 열린 화면 수를 갱신한다.
-  // 매개변수: route: 바뀐 경로, change: 더하면 1, 빼면 -1. 반환값: 없음.
+  // Function Name: _track
+  // Description: Adjusts the tracked open count when a linked-chat route enters or leaves the stack.
+  // Parameters: route: changed route; change (int): +1 on entry or -1 on removal.
+  // Returns: None.
   void _track(Route<dynamic>? route, int change) {
     final name = route?.settings.name;
     if (name == null || !name.startsWith('/linked-chat/')) return;
@@ -75,18 +75,34 @@ class LinkedChatRouteObserver extends NavigatorObserver {
     }
   }
 
+  // Function Name: didPush
+  // Description: Registers a pushed route in the per-link open-route count.
+  // Parameters: route (Route<dynamic>): pushed route; previousRoute (Route<dynamic>?): prior route, unused.
+  // Returns: No return value.
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) =>
       _track(route, 1);
 
+  // Function Name: didPop
+  // Description: Removes a popped route from the per-link open-route count.
+  // Parameters: route (Route<dynamic>): popped route; previousRoute (Route<dynamic>?): revealed route, unused.
+  // Returns: No return value.
   @override
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) =>
       _track(route, -1);
 
+  // Function Name: didRemove
+  // Description: Removes a deleted route from the per-link open-route count.
+  // Parameters: route (Route<dynamic>): removed route; previousRoute (Route<dynamic>?): prior route, unused.
+  // Returns: No return value.
   @override
   void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) =>
       _track(route, -1);
 
+  // Function Name: didReplace
+  // Description: Replaces the tracked route contribution so notification routing sees the current open conversation.
+  // Parameters: newRoute/oldRoute (Route<dynamic>?): replacement and replaced routes.
+  // Returns: No return value; null or unrelated routes are ignored by tracking.
   @override
   void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
     _track(oldRoute, -1);
@@ -131,6 +147,9 @@ class LinkedChatUI extends StatelessWidget {
   // - control (ManageLinkedChat?): 화면의 조회·변경 요청을 처리할 컨트롤러.
   // - realtimeService (LinkedChatRealtimeService?): 연동 채팅의 이벤트·연결 상태 스트림 제공자.
   // - apiClient (AuthenticatedApiClient?): 인증 세션을 사용하는 API 요청 클라이언트.
+  // - careSelectorBuilder (Widget Function(bool hospitals)?): 병원 여부를 받아 공유할 시설 선택 화면을 만드는 함수. 생략하면 기본 검색 화면을 사용한다.
+  // - careDetailsBuilder (Widget Function(NearbyCarePlace place, bool hospitals)?): 공유 장소와 병원 여부로 최신 상세 조회 화면을 만드는 함수. 생략하면 기본 검색 화면으로 다시 조회한다.
+  // - latestMessageRequest (Listenable?): 같은 대화의 최신 메시지 이동 요청 신호. 초기화된 채팅이 보일 때 이력을 보충하고 목록 끝으로 이동한다.
   // 반환값: 입력 설정이 반영된 LinkedChatUI 인스턴스.
   const LinkedChatUI({
     super.key,
@@ -177,16 +196,10 @@ class _LinkedChatSessionUI extends StatefulWidget {
   State<_LinkedChatSessionUI> createState() => _LinkedChatUIState();
 }
 
-// Class Name: _LinkedChatUIState
-// Role: Owns composer, selection, navigation and viewport presentation for one account/link session.
-// Responsibilities:
-// - Delegate history/retry/read concurrency to an independently scoped history owner.
-// - Translate presentation ports into viewport/context updates without exposing mutable history.
-// - Dispose history before closing only adapters created by this session.
-// Attributes:
-// - _scrollController: Presentation-only viewport state.
-// - _history: Reconciliation, transport subscriptions and read/retry lifetime owner.
-// - _control/_apiClient/_realtimeService: Borrowed or explicitly owned authenticated adapters.
+// 클래스명: _LinkedChatUIState
+// 역할: 계정·연동 세션의 작성창·선택·이동·화면 표시 상태.
+// 주요 책임: 기록·재시도·읽음 처리의 동시성은 독립 기록 소유자에게 위임하고 표시 포트를 화면에 반영하며 기록을 먼저 종료한 뒤 이 세션 소유 어댑터만 정리한다.
+// 속성: _scrollController: 화면 위치; _history: 기록·전송 구독·읽음/재시도 수명; _control/_apiClient/_realtimeService: 외부 제공 또는 직접 소유 인증 어댑터.
 class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     with WidgetsBindingObserver {
   // Function Name: _configuration
@@ -287,7 +300,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   String? get _errorMessage =>
       _history.historyFailed ? _text.historyLoadFailed : null;
 
-  // 역방향 목록의 0 위치는 메시지 높이와 무관하게 항상 최신 대화다.
+  // 함수이름: _isAtLatest
+  // 함수역할: 스크롤이 연결되지 않았거나 최신 메시지에서 지정 여유 거리 안에 있는지 확인한다.
+  // 매개변수: 없음.
+  // 반환값: 최신 위치로 간주하면 true.
   bool get _isAtLatest =>
       _scrollController.hasClients &&
       _scrollController.position.extentBefore <= 8;
@@ -302,19 +318,17 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
         ModalRoute.of(context)?.isCurrent == true;
   }
 
-  // 함수이름: _text
-  // 함수역할: 현재 언어에 맞는 연동 사용자 채팅과 약품·일정·약국 정보 공유 문구 객체를 만든다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: _LinkedChatText: 현재 화면 언어의 문구 제공 객체.
+  // Function Name: _text
+  // Description: Creates chat and medication/place-sharing copy for the current language.
+  // Parameters: None.
+  // Returns: The current _LinkedChatText provider.
   _LinkedChatText get _text =>
       _LinkedChatText(_configuration.userSetting.language);
 
-  // 함수이름: _isPatient
-  // 함수역할: 현재 사용자 해시가 비어 있지 않은 연결 환자 해시와 같은지 확인한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
+  // Function Name: _isPatient
+  // Description: Checks that the nonempty linked patient hash matches the current account.
+  // Parameters: None.
+  // Returns: True when this participant is the patient.
   bool get _isPatient =>
       _configuration.patientHash.isNotEmpty &&
       _configuration.currentUserHash == _configuration.patientHash;
@@ -334,11 +348,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
         .toList(growable: false);
   }
 
-  // 함수이름: _peerName
-  // 함수역할: 영어 화면에서 기본 가족 이름만 번역하고 지정된 상대 이름은 유지한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: _peerName
+  // Description: Localizes only the default family-member name in English, preserving a custom peer name.
+  // Parameters: None.
+  // Returns: The peer's display name.
   String get _peerName {
     if (_text.isEnglish && _configuration.peerName == '가족') {
       return _text.family;
@@ -455,16 +468,20 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     }
   }
 
-  // Function Name: _historyChanged
-  // Description: Rebuilds after a complete independently reconciled history update.
-  // Parameters: None. Returns: None; composer state remains presentation-owned.
+  // 함수이름: _historyChanged
+  // 함수역할: 살아 있는 화면에 갱신된 이력을 반영하고 열린 기능 메뉴에도 연동 종료 등 새 사용 가능 상태를 통지한다.
+  // 매개변수: 없음.
+  // 반환값: 없음. 작성 중인 초안은 변경하지 않는다.
   void _historyChanged() {
     if (!mounted) return;
     setState(() {});
     _notifyChatActions();
   }
 
-  // 같은 알림 경로를 다시 열어도 초안과 선택을 유지하며 최신 대화로 이동한다.
+  // 함수이름: _onLatestMessageRequested
+  // 함수역할: 알림에서 같은 대화를 요청하면 다음 프레임에 최신 이력을 보충하고 보이는 채팅만 끝으로 이동한다.
+  // 매개변수: 없음.
+  // 반환값: 없음. 초안·선택은 유지하고 초기화 전·숨겨진 화면은 무시한다.
   void _onLatestMessageRequested() {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!_isChatVisible || !_chatInitialized) return;
@@ -474,7 +491,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     WidgetsBinding.instance.ensureVisualUpdate();
   }
 
-  // 알림 진입 신호가 교체될 때 이전 구독이 남지 않게 한다.
+  // Function Name: didUpdateWidget
+  // Description: Replaces the latest-message notification subscription when the session widget receives a different signal.
+  // Parameters: oldWidget (_LinkedChatSessionUI): previous signal owner.
+  // Returns: No return value; the old signal cannot keep triggering this chat.
   @override
   void didUpdateWidget(covariant _LinkedChatSessionUI oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -511,11 +531,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     }
   }
 
-  // 함수이름: dispose
-  // Description: Disposes owned history/presentation resources before owned authenticated adapters.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
+  // Function Name: dispose
+  // Description: Invalidates pending context work, detaches listeners and disposes history/composer/presentation resources before closing only owned authenticated adapters.
+  // Parameters: None.
+  // Returns: None.
   @override
   void dispose() {
     _configuration.latestMessageRequest?.removeListener(
@@ -543,21 +562,19 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     super.dispose();
   }
 
-  // 함수이름: didChangeAppLifecycleState
-  // 함수역할: 앱 복귀 시 실시간 연결·메시지 조회를 재개하고 비활성 상태에서는 연결을 멈춘다.
-  // 매개변수:
-  // - state (AppLifecycleState): Flutter가 전달한 앱의 전경·배경 생명주기 상태.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
+  // Function Name: didChangeAppLifecycleState
+  // Description: Passes foreground state to the history owner so it controls transport and refresh lifetime.
+  // Parameters: state (AppLifecycleState): current app lifecycle state.
+  // Returns: None.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _history.setForeground(state == AppLifecycleState.resumed);
   }
 
-  // 함수이름: _initializeChat
-  // 함수역할: 메시지·약품·시간대 맥락과 실시간 연결을 함께 초기화한 뒤 12초 보완 조회를 시작한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // Function Name: _initializeChat
+  // Description: While mounted, marks chat initialized and concurrently initializes history plus medication and schedule contexts.
+  // Parameters: None.
+  // Returns: Future completing after all three initialization requests.
   Future<void> _initializeChat() async {
     if (!mounted) return;
     _chatInitialized = true;
@@ -568,11 +585,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     ]);
   }
 
-  // 함수이름: _refreshMedicationContexts
-  // 함수역할: 현재 연동 환자의 활성 복약정보를 불러와 메시지에 연결할 수 있게 한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // Function Name: _refreshMedicationContexts
+  // Description: Loads active medication context for the linked patient and rejects results from an obsolete request generation.
+  // Parameters: None.
+  // Returns: Future completing after context loading and eligible screen updates.
   Future<void> _refreshMedicationContexts() async {
     final generation = _requestGeneration;
     try {
@@ -634,11 +650,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     }
   }
 
-  // 함수이름: _refreshScheduleContexts
-  // 함수역할: 채팅에서 공유하거나 확인 요청할 오늘 복약 시간대 상태를 갱신한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // Function Name: _refreshScheduleContexts
+  // Description: Refreshes today's shareable/requestable dose-slot contexts without accepting obsolete session results.
+  // Parameters: None.
+  // Returns: Future completing after schedule-context loading.
   Future<void> _refreshScheduleContexts() async {
     final generation = _requestGeneration;
     try {
@@ -706,10 +721,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     );
   }
 
-  // Function Name: _submitMessage
-  // Description: Adapts current input to the outgoing owner, then applies accepted presentation changes.
-  // Parameters: body/attachments/context fields: Existing outgoing input; requestId: Explicit share retry identity.
-  // Returns: Accepted message, or null for failed/blocked/disposed work. The UI retains drafts on failure.
+  // 함수이름: _submitMessage
+  // 함수역할: 유효한 연동에서 빈 내용·진행 중 작업을 차단하고 메시지를 전송한다. 수락된 결과만 이력에 넣으며 실패 시 초안을 유지한다.
+  // 매개변수: body (String): 본문; medications (List<ChatMedicationContext>): 저장 약; medicationReferences (List<ChatMedicationReference>): 검색 약; messageKind (ChatMessageKind): 유형; slotKey/pharmacyId/hospitalId/hospitalScheduleDate/requestId (String?): 첨부·재시도 정보; clearComposer/clearMedicationSelection (bool): 성공 시 초기화.
+  // 반환값: Future<ChatMessage?>: 수락 메시지 또는 실패·차단 시 null; 화면 종료 뒤에는 화면 상태를 변경하지 않는다.
   Future<ChatMessage?> _submitMessage({
     required String body,
     List<ChatMedicationContext> medications = const [],
@@ -815,9 +830,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     );
   }
 
-  // 선택 화면에서 정한 날짜/시간대/약 조합을 그대로 기록한다.
-  // 검증과 저장은 LinkedChatDoseRecorder가 맡고, 여기서는 진행 표시·오류 문구·선택 정리만 한다.
-  // 시간대별 성공 항목만 선택에서 빼므로 부분 실패 시 미처리 항목만 재시도한다.
+  // 함수이름: _recordSelectedMedicationTaken
+  // 함수역할: 선택한 날짜·약·시간대를 먼저 검증하고 복용 보고를 순차 기록한다. 성공한 시간대만 선택에서 제거해 부분 실패 재시도를 남긴다.
+  // 매개변수: selectedMedications (List<ChatMedicationContext>): 선택 화면에서 확정한 약·시간대.
+  // 반환값: Future<void>; 오류는 안내하며 화면 종료 후에도 확인한 나머지 기록은 계속하고 화면 갱신만 생략한다.
   Future<void> _recordSelectedMedicationTaken(
     List<ChatMedicationContext> selectedMedications,
   ) async {
@@ -898,8 +914,9 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   }
 
   // 함수이름: _showChatActions
-  // 함수역할: 약 첨부·복약 확인 요청·병원·약국 검색을 하나의 메뉴로 열고 고른 기능을 실행한다.
-  // 매개변수: 없음. 반환값: 고른 기능의 화면이 닫힌 뒤 완료.
+  // 함수역할: 연동이 유효하고 다른 작업이 없을 때 기능 메뉴를 열며, 메뉴 종료 후에도 연동 상태를 다시 확인한다.
+  // 매개변수: 없음.
+  // 반환값: 선택 기능 완료 Future<void>; 취소·연동 종료·화면 종료 시 실행하지 않는다.
   Future<void> _showChatActions() async {
     if (_history.linkUnavailable ||
         _isSending ||
@@ -946,8 +963,9 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   }
 
   // 함수이름: _chatActionItems
-  // 함수역할: 현재 역할과 불러온 약·시간대로 기능 메뉴의 선택지와 막힌 이유를 만든다.
-  // 매개변수: 없음. 반환값: 화면 순서의 선택지 목록.
+  // 함수역할: 각 채팅 기능의 사용 불가 이유를 계산하고 연동 종료 시 모든 공유·검색 동작을 막는다.
+  // 매개변수: 없음.
+  // 반환값: 기능·아이콘·문구·선택 불가 사유를 담은 _ChatActionItem 목록.
   List<_ChatActionItem> _chatActionItems() => [
     (
       action: _ChatAction.medication,
@@ -996,15 +1014,16 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     ),
   ];
 
-  // 함수이름: _notifyChatActions
-  // 함수역할: 열린 기능 메뉴가 새 약·시간대 정보를 반영하도록 알린다. 매개변수: 없음. 반환값: 없음.
+  // Function Name: _notifyChatActions
+  // Description: Notifies an open action menu that medication or dose-slot availability has changed.
+  // Parameters: None.
+  // Returns: None.
   void _notifyChatActions() => _chatActionsRevision.value += 1;
 
   // 함수이름: _showPharmacySelector
-  // 함수역할: 병원·약국을 선택한 뒤 수신자와 공유 내용을 확인한다.
-  // 매개변수:
-  // - medications (List<ChatMedicationContext>): 조회·선택·정렬·표시에 사용할 약품 목록.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // 함수역할: 장소 선택과 수신자 확인을 거친 뒤 공유하며 각 비동기 단계 뒤 화면·연동 유효성을 재확인한다.
+  // 매개변수: medications (List<ChatMedicationContext>): 함께 보낼 약; hospitals (bool): 병원 검색 여부.
+  // 반환값: Future<void>; 취소·연동 종료·화면 종료 시 전송하지 않는다.
   Future<void> _showPharmacySelector({
     List<ChatMedicationContext> medications = const [],
     bool hospitals = false,
@@ -1087,7 +1106,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     );
   }
 
-  // 다른 메시지를 보내다 실패해도 장소 공유 자체의 재시도 ID는 유지한다.
+  // 함수이름: _sendCareSelection
+  // 함수역할: 현재 연동에서 장소를 공유하고 실패 시 장소별 재시도 ID와 첨부를 보존한다. 종료된 화면·연동 또는 진행 중 작업에서는 시작하지 않는다.
+  // 매개변수: selection (NearbyCareSelection): 확정 장소; hospitals (bool): 병원 여부; medications (List<ChatMedicationContext>): 첨부 약; requestId (String?): 동일 공유 재시도 ID.
+  // 반환값: 전송 처리 완료 Future<void>; 성공하면 약 선택을 비운다.
   Future<void> _sendCareSelection(
     NearbyCareSelection selection, {
     required bool hospitals,
@@ -1218,11 +1240,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     }
   }
 
-  // 함수이름: _showMedicationSelector
-  // 함수역할: 현재 환자가 복용 중인 약을 사진과 함께 보여주고 대화 대상을 선택한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // Function Name: _showMedicationSelector
+  // Description: Shows the patient's active medications with thumbnails for choosing conversation context.
+  // Parameters: None.
+  // Returns: Future completing when medication selection closes.
   Future<void> _showMedicationSelector() async {
     if (_isSending || _history.linkUnavailable) {
       return;
@@ -1412,6 +1433,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     return _text.caregiverSuggestedMessage(_peerName, medicationNames);
   }
 
+  // 함수이름: _canOpenMedicationHistory
+  // 함수역할: 연동·계정 범위가 유효하고 조회·삭제·메시지 선택 중이 아닌지 확인한다.
+  // 매개변수: 없음.
+  // 반환값: 복약 이력 진입을 허용하면 true.
   bool get _canOpenMedicationHistory =>
       !_history.linkUnavailable &&
       !_isLoading &&
@@ -1420,7 +1445,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
       _configuration.currentUserHash.isNotEmpty &&
       _configuration.patientHash.isNotEmpty;
 
-  // 현재 대화의 환자와 수신자를 고정하고 기존 기간·전송 확인 흐름을 재사용한다.
+  // 함수이름: _shareMedicationHistory
+  // 함수역할: 현재 대화의 환자와 수신자를 고정한 이력 공유 확인을 열고 실제 공유 완료 후에만 대화를 갱신한다.
+  // 매개변수: 없음.
+  // 반환값: 공유 화면 종료와 필요한 최신 이력 보충이 끝나면 완료되는 Future<void>.
   Future<void> _shareMedicationHistory() async {
     if (!_canOpenMedicationHistory || _isSending) return;
     var shared = false;
@@ -1442,7 +1470,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     if (mounted) _scrollToLatest(force: true);
   }
 
-  // 진입 직전에도 현재 대화의 삭제·연동 상태를 확인하며 최신 자료의 권한은 이력 API가 검증한다.
+  // Function Name: _openableCard
+  // Description: Rechecks the live conversation entry before opening a shared card; stale, hidden or deleted messages cannot be opened.
+  // Parameters: message (ChatMessage): previously displayed message.
+  // Returns: Current visible ChatMessage or null when the route/link/message is unavailable.
   ChatMessage? _openableCard(ChatMessage message) {
     if (!_isChatVisible || !_canOpenMedicationHistory) return null;
     final current = _messages
@@ -1453,6 +1484,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
         : current;
   }
 
+  // Function Name: _openSharedHistory
+  // Description: Opens the latest records for a shared date range as read-only patient history.
+  // Parameters: range (MedicationHistoryRange): shared dates to query.
+  // Returns: Future<void> completed when history closes; the history API verifies current access.
   Future<void> _openSharedHistory(MedicationHistoryRange range) =>
       Navigator.of(context).push<void>(
         MaterialPageRoute(
@@ -1465,6 +1500,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
         ),
       );
 
+  // Function Name: _openMedicationHistory
+  // Description: Resolves the current nondeleted history card before opening its date range.
+  // Parameters: message (ChatMessage): tapped card.
+  // Returns: Future<void>; missing or unavailable history attachments are ignored.
   Future<void> _openMedicationHistory(ChatMessage message) async {
     final history = _openableCard(message)?.historyContext;
     if (history == null) return;
@@ -1473,6 +1512,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     );
   }
 
+  // 함수이름: _openSharedPlace
+  // 함수역할: 현재 대화의 살아 있는 장소 카드만 열고 공유 스냅샷은 장소 찾기용으로 전달해 상세를 다시 조회한다.
+  // 매개변수: message (ChatMessage): 누른 장소 카드.
+  // 반환값: 상세 화면 종료 Future<void>; 삭제·연동 종료·숨겨진 화면이면 무시한다.
   Future<void> _openSharedPlace(ChatMessage message) async {
     if (!mounted ||
         !_isChatVisible ||
@@ -1523,11 +1566,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     );
   }
 
-  // 함수이름: _openPatientSchedule
-  // 함수역할: 환자가 채팅의 시간대 카드를 누르면 같은 시간대가 보이는 오늘 일정으로 이동한다.
-  // 매개변수:
-  // - schedule (ChatScheduleContext): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // Function Name: _openPatientSchedule
+  // Description: Revalidates the schedule card and date; a patient today-check request opens the matching schedule slot, otherwise opens read-only history for that day.
+  // Parameters: message (ChatMessage): tapped schedule card.
+  // Returns: Future<void>; unavailable cards and dates outside retention are ignored.
   Future<void> _openPatientSchedule(ChatMessage message) async {
     final current = _openableCard(message);
     final schedule = current?.scheduleContext;
@@ -1547,10 +1589,9 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
   }
 
   // 함수이름: _openMedicationDetail
-  // 함수역할: 중복 조회를 막고 연동 범위의 약 상세를 조회한 뒤 상세 화면을 열거나 오류를 안내한다.
-  // 매개변수:
-  // - medication (ChatMedicationContext): 표시·변환·저장·비교할 약품 데이터.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // 함수역할: 채팅이 보이고 연동이 유효할 때 약품 상세를 조회한다. 조회 후에도 같은 조건을 확인해 이동 또는 실패 안내를 제한한다.
+  // 매개변수: medication (ChatMedicationContext): 상세를 조회할 첨부 약.
+  // 반환값: 조회와 상세 화면 종료 Future<void>; 중복 조회·화면 이탈·연동 종료는 이동하지 않는다.
   Future<void> _openMedicationDetail(ChatMedicationContext medication) async {
     if (!_isChatVisible ||
         _history.linkUnavailable ||
@@ -1621,6 +1662,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
 
   bool _messageActionsOpen = false;
 
+  // 함수이름: _showMessageActions
+  // 함수역할: 메시지 복사·선택 메뉴를 한 번 열고 결과 처리 전에 삭제와 연동 상태를 다시 확인한다.
+  // 매개변수: id (int): 대상 메시지 ID.
+  // 반환값: Future<void>; 선택 모드에서는 선택만 토글하고 복사 오류는 안내한다.
   Future<void> _showMessageActions(int id) async {
     if (_isSending || _isDeletingMessages || _messageActionsOpen) return;
     if (_isSelectingMessages) {
@@ -1713,11 +1758,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     });
   }
 
-  // 함수이름: _confirmMessageDeletion
-  // 함수역할: 선택 메시지의 전체 삭제 가능 여부를 확인하고 확정한 개인·공유 범위로 삭제하며 실패 시 선택을 유지한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // Function Name: _confirmMessageDeletion
+  // Description: Checks whether selected messages can be deleted for everyone, confirms the personal/shared scope and keeps selection on failure.
+  // Parameters: None.
+  // Returns: Future completing after confirmation and any deletion request.
   Future<void> _confirmMessageDeletion() async {
     if (_isDeletingMessages || _selectedMessageIds.isEmpty) return;
     final ids = _selectedMessageIds.toList(growable: false);
@@ -1893,11 +1937,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     });
   }
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 연동 사용자 메시지와 복약 관련 첨부 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 연동 사용자 메시지와 복약 관련 첨부에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Displays linked messages, medication attachments, connection state and composer or selection actions for the current session.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -2272,11 +2315,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     );
   }
 
-  // 함수이름: _buildLinkUnavailableNotice
-  // 함수역할: 상대가 연동을 해제했거나 접근 권한이 사라진 대화에서 입력창 대신 그 사실을 알린다. 다시 눌러도 보낼 수 없는 메시지를 계속 시도하지 않게 한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 연동 사용자 메시지와 복약 관련 첨부에 쓰는 위젯 트리.
+  // Function Name: _buildLinkUnavailableNotice
+  // Description: Replaces the composer when the link ended or access was lost, explaining why retrying cannot send messages.
+  // Parameters: None.
+  // Returns: The link-unavailable notice.
   Widget _buildLinkUnavailableNotice() {
     return Material(
       color: Colors.white,
@@ -2573,11 +2615,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     );
   }
 
-  // 함수이름: _connectionLabel
-  // 함수역할: 실시간 연결·연결 중·재연결·끊김 상태를 현지화 문구로 변환한다. 연동이 해제된 대화는 연결 상태 대신 그 사실을 알린다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: _connectionLabel
+  // Description: Localizes live, connecting, reconnecting or disconnected transport state, prioritizing ended-link status.
+  // Parameters: None.
+  // Returns: The current connection/link label.
   String get _connectionLabel {
     if (_history.linkUnavailable) return _text.linkUnavailableStatus;
     return switch (_connectionState) {
@@ -2590,15 +2631,15 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
 }
 
 // 클래스명: _ChatQuickReply
-// 역할: 빠른 답장 문구와 복약 행동 종류를 담당한다.
-// 주요 책임:
-// - 빠른 답장 문구와 복약 행동 종류에서 지원하는 선택지를 열거하고 구분한다: taken, cannotNow, shortage, discomfort.
+// 역할: 복약 관련 빠른 답장 종류.
+// 주요 책임: 복용 완료·지금 어려움·약 부족·불편감의 메시지 흐름을 구별한다.
+// 속성: taken/cannotNow/shortage/discomfort: 답장 유형.
 enum _ChatQuickReply { taken, cannotNow, shortage, discomfort }
 
 // 클래스명: _ChatAction
-// 역할: 채팅 입력창 기능 메뉴의 선택지를 담당한다.
-// 주요 책임:
-// - 약 첨부·복약 확인 요청·병원 찾기·약국 찾기·복약 기록 공유를 구분하며, 순서가 화면 키 chat-action-N의 번호가 된다.
+// 역할: 채팅 기능 메뉴의 동작 종류.
+// 주요 책임: 약 첨부·일정 확인 요청·병원·약국·기록 공유를 구분하며 열거 순서를 화면 키에 사용한다.
+// 속성: medication/scheduleRequest/nearbyHospital/nearbyPharmacy/medicationHistory: 기능 값.
 enum _ChatAction {
   medication,
   scheduleRequest,
@@ -2607,7 +2648,10 @@ enum _ChatAction {
   medicationHistory,
 }
 
-// 약·시간대 목록을 아직 받는 중인지, 받았는지, 받지 못했는지.
+// Class Name: _ChatContextLoad
+// Role: Load state for medication or schedule context attached to chat.
+// Responsibilities: Distinguishes in-flight, successful and failed context retrieval for action availability.
+// Attributes: loading/loaded/failed: context states.
 enum _ChatContextLoad { loading, loaded, failed }
 
 typedef _ChatActionItem = ({
@@ -2617,24 +2661,24 @@ typedef _ChatActionItem = ({
   String? reason,
 });
 
-// 클래스명: _ChatActionSheet
-// 역할: 채팅 기능 메뉴의 선택지를 한 줄에 하나씩 보여준다.
-// 주요 책임:
-// - 큰 글씨에서도 라벨이 한 줄을 넓게 쓰도록 세로 목록으로 배치한다.
-// - 막힌 선택지는 누를 수 없게 하고 그 이유를 라벨 아래에 알린다.
-// 속성:
-// - items (List<_ChatActionItem>): 화면 순서의 선택지.
-// - onSelected (ValueChanged<_ChatAction>): 고른 선택지를 돌려주는 콜백.
+// Class Name: _ChatActionSheet
+// Role: Vertical chat-action chooser.
+// Responsibilities: Keeps labels readable at large text scales and explains disabled actions beneath their labels.
+// Attributes: items (List<_ChatActionItem>): ordered choices; onSelected: chosen chat command.
 class _ChatActionSheet extends StatelessWidget {
   final List<_ChatActionItem> items;
   final ValueChanged<_ChatAction> onSelected;
 
-  // 함수이름: _ChatActionSheet
-  // 함수역할: 선택지와 선택 콜백을 보관한다. 매개변수: items, onSelected. 반환값: 시트 내용.
+  // Function Name: _ChatActionSheet
+  // Description: Stores ordered chat actions and their selection callback.
+  // Parameters: items (List<_ChatActionItem>): choices; onSelected (ValueChanged<_ChatAction>): chosen command.
+  // Returns: A _ChatActionSheet.
   const _ChatActionSheet({required this.items, required this.onSelected});
 
-  // 함수이름: build
-  // 함수역할: 선택지를 배치한다. 매개변수: context. 반환값: 시트 내용.
+  // Function Name: build
+  // Description: Places each chat action on its own row with its icon, label and any disabled reason.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) => SafeArea(
     child: SingleChildScrollView(
@@ -2745,6 +2789,10 @@ class _QuickReplyBar extends StatelessWidget {
 // - contexts (List<ChatScheduleContext>): 채팅에 첨부하거나 선택할 초기 복약 맥락 목록.
 // 역할: 여러 시간대 중 기록할 항목을 누르면 별도 확인 없이 선택을 반환한다.
 
+// Class Name: _ScheduleContextSelector
+// Role: Dose-slot context chooser for chat.
+// Responsibilities: Returns the tapped schedule context directly without a second confirmation.
+// Attributes: contexts (List<ChatScheduleContext>): selectable slot summaries; text: localized copy.
 class _ScheduleContextSelector extends StatelessWidget {
   final List<ChatScheduleContext> contexts;
   final _LinkedChatText text;
@@ -2757,11 +2805,10 @@ class _ScheduleContextSelector extends StatelessWidget {
   // 반환값: 입력 설정이 반영된 _ScheduleContextSelector 인스턴스.
   const _ScheduleContextSelector({required this.contexts, required this.text});
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 채팅에 연결할 복약 일정 요약 선택 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 채팅에 연결할 복약 일정 요약 선택에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Displays dose-slot summaries and returns the tapped context to the caller.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -2909,14 +2956,10 @@ class _MessageScheduleContext extends StatelessWidget {
   }
 }
 
-// 클래스명: _ScheduleSummaryContent
-// 역할: 약품 수·완료 상태와 시간대별 복약 요약을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 약품 수·완료 상태와 시간대별 복약 요약 위젯을 구성한다.
-// 속성:
-// - schedule (ChatScheduleContext): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-// - foreground (Color): 문자·아이콘·상태 가이드에 적용할 전경 또는 강조 색상.
-// - trailing (Widget?): 행 끝에 배치할 보조 콘텐츠.
+// Class Name: _ScheduleSummaryContent
+// Role: Dose-slot medication-count and completion summary.
+// Responsibilities: Combines slot identity, medication count and completion state with optional trailing content.
+// Attributes: schedule (ChatScheduleContext): summary; foreground (Color): content color; trailing (Widget?): optional end content; text: labels.
 class _ScheduleSummaryContent extends StatelessWidget {
   final ChatScheduleContext schedule;
   final _LinkedChatText text;
@@ -2938,11 +2981,10 @@ class _ScheduleSummaryContent extends StatelessWidget {
     this.trailing,
   });
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 약품 수·완료 상태와 시간대별 복약 요약 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 약품 수·완료 상태와 시간대별 복약 요약에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Shows the dose-slot summary, medication count and completion state with optional trailing content.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final total = schedule.totalCount;
@@ -3031,11 +3073,12 @@ class _MedicationShortageContext extends StatelessWidget {
   final VoidCallback onFindHospitalRequested;
 
   // 함수이름: _MedicationShortageContext
-  // 함수역할: 약 부족 알림과 약국 찾기 동작에 필요한 입력값과 표시 설정을 초기화한다.
+  // 함수역할: 약 부족 알림과 병원·약국 찾기 동작에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
   // - message (ChatMessage): 본문·발신자·시각·읽음 상태·첨부를 담은 메시지.
   // - text (_LinkedChatText): 해당 화면 구역의 언어별 표시 문구.
   // - onFindPharmacyRequested (VoidCallback): 주변 약국 검색을 여는 콜백.
+  // - onFindHospitalRequested (VoidCallback): 부족한 약의 첨부 맥락을 유지하며 주변 병원 선택을 여는 콜백.
   // 반환값: 입력 설정이 반영된 _MedicationShortageContext 인스턴스.
   const _MedicationShortageContext({
     required this.message,
@@ -3094,19 +3137,17 @@ class _MedicationShortageContext extends StatelessWidget {
   }
 }
 
-// 클래스명: _MedicationSafetyGuidance
-// 역할: 복약 대화의 안전 안내 문구를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 복약 대화의 안전 안내 문구 위젯을 구성한다.
-// 속성:
+// Class Name: _MedicationSafetyGuidance
+// Role: Medication conversation safety guidance.
+// Responsibilities: Displays the localized safety reminder alongside medication-related chat content.
+// Attributes: text (_LinkedChatText): safety guidance copy.
 class _MedicationSafetyGuidance extends StatelessWidget {
   final _LinkedChatText text;
 
-  // 함수이름: _MedicationSafetyGuidance
-  // 함수역할: 복약 대화의 안전 안내 문구에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - text (_LinkedChatText): 해당 화면 구역의 언어별 표시 문구.
-  // 반환값: 입력 설정이 반영된 _MedicationSafetyGuidance 인스턴스.
+  // Function Name: _MedicationSafetyGuidance
+  // Description: Supplies the safety reminder's localized copy.
+  // Parameters: text (_LinkedChatText): chat safety labels.
+  // Returns: A _MedicationSafetyGuidance.
   const _MedicationSafetyGuidance({required this.text});
 
   // 함수이름: build
@@ -3164,13 +3205,14 @@ class _MessagePharmacyContext extends StatelessWidget {
   final VoidCallback onDetailsRequested;
 
   // 함수이름: _MessagePharmacyContext
-  // 함수역할: 메시지에 공유된 약국과 전화 확인 상태에 필요한 입력값과 표시 설정을 초기화한다.
+  // 함수역할: 메시지에 공유된 병원·약국과 전화 확인 상태에 필요한 입력값과 표시 설정을 초기화한다.
   // 매개변수:
-  // - pharmacy (ChatPharmacyContext): 표시하거나 전화·길찾기·공유할 약국.
+  // - pharmacy (ChatPlaceContext): 전화·길찾기·상세 조회에 사용할 공유 병원 또는 약국.
   // - phoneVerified (bool): 사용자가 전화로 운영 여부를 확인했는지 여부.
   // - text (_LinkedChatText): 해당 화면 구역의 언어별 표시 문구.
-  // - onCallRequested (VoidCallback): 해당 약국으로 전화 연결을 요청할 콜백.
-  // - onDirectionsRequested (VoidCallback): 해당 약국의 길찾기를 요청할 콜백.
+  // - onCallRequested (VoidCallback): 공유 병원·약국으로 전화 연결을 요청할 콜백.
+  // - onDirectionsRequested (VoidCallback): 공유 병원·약국의 길찾기를 요청할 콜백.
+  // - onDetailsRequested (VoidCallback): 공유 장소의 최신 상세 정보를 다시 조회할 화면을 여는 콜백.
   // 반환값: 입력 설정이 반영된 _MessagePharmacyContext 인스턴스.
   const _MessagePharmacyContext({
     required this.pharmacy,
@@ -3579,13 +3621,10 @@ class _MessageMedicationContext extends StatelessWidget {
   }
 }
 
-// 클래스명: _MedicationThumbnail
-// 역할: 약품 사진과 사진 부재·불러오기 실패 대체 표시를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 약품 사진과 사진 부재·불러오기 실패 대체 표시 위젯을 구성한다.
-// 속성:
-// - imageUrl (String): 검증 후 사용할 약품 이미지 네트워크 URL.
-// - size (double): 위젯 또는 캔버스의 표시 크기.
+// Class Name: _MedicationThumbnail
+// Role: Medication thumbnail with unavailable-image fallback.
+// Responsibilities: Validates the image URL and replaces missing or failed images without disrupting the row.
+// Attributes: imageUrl (String): remote photo; size (double): thumbnail dimensions.
 class _MedicationThumbnail extends StatelessWidget {
   final String imageUrl;
   final double size;
@@ -3598,11 +3637,10 @@ class _MedicationThumbnail extends StatelessWidget {
   // 반환값: 입력 설정이 반영된 _MedicationThumbnail 인스턴스.
   const _MedicationThumbnail({required this.imageUrl, required this.size});
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 약품 사진과 사진 부재·불러오기 실패 대체 표시 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 약품 사진과 사진 부재·불러오기 실패 대체 표시에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Displays a validated medication image at the requested size, falling back for an absent URL or load failure.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final fallback = Container(
@@ -3646,8 +3684,15 @@ class _MedicationThumbnail extends StatelessWidget {
   }
 }
 
-// 공유 유형 제목은 내 정보 화면과 같은 제목 크기·굵기로 표시한다.
+// 클래스명: _ChatContentHeading
+// 역할: 공유 카드의 유형 제목과 아이콘을 표시한다.
+// 주요 책임: 공통 제목 크기를 유지하고 긴 제목은 남은 폭 안에서 줄바꿈한다.
+// 속성: title (String): 제목; icon (IconData): 유형; color (Color): 표시색.
 class _ChatContentHeading extends StatelessWidget {
+  // 함수이름: _ChatContentHeading
+  // 함수역할: 공유 유형 제목·아이콘·색상을 받는다.
+  // 매개변수: title (String): 제목; icon (IconData): 아이콘; color (Color): 색.
+  // 반환값: 새 _ChatContentHeading.
   const _ChatContentHeading({
     required this.title,
     required this.icon,
@@ -3658,6 +3703,10 @@ class _ChatContentHeading extends StatelessWidget {
   final IconData icon;
   final Color color;
 
+  // 함수이름: build
+  // 함수역할: 아이콘 옆에 가용 폭을 사용하는 유형 제목을 배치한다.
+  // 매개변수: context (BuildContext): 글자 배율 위치.
+  // 반환값: 공유 유형 제목 Row.
   @override
   Widget build(BuildContext context) => Row(
     children: [
@@ -3679,7 +3728,10 @@ class _ChatContentHeading extends StatelessWidget {
   );
 }
 
-// 일정 카드의 날짜를 기록 달력 날짜로 읽는다. 기록은 최근 90일만 열 수 있으므로 그 밖의 날짜는 null이다.
+// Function Name: _readableScheduleDay
+// Description: Parses a schedule date and limits access to retained days through Korean today.
+// Parameters: schedule (ChatScheduleContext): shared schedule with date text.
+// Returns: Normalized day, or null for malformed, expired or future dates.
 DateTime? _readableScheduleDay(ChatScheduleContext schedule) {
   final parsed = DateTime.tryParse(schedule.scheduleDate);
   if (parsed == null) return null;
@@ -3691,18 +3743,29 @@ DateTime? _readableScheduleDay(ChatScheduleContext schedule) {
       : day;
 }
 
-// 공유 당시 집계는 읽기 전용으로 표시하고 최신 기록 이동만 제공한다.
+// 클래스명: _MessageMedicationHistoryContext
+// 역할: 공유 당시 집계와 최신 이력 진입을 표시하는 읽기 전용 카드.
+// 주요 책임: 보관 기간이 지난 공유는 진입을 비활성화하고 안내한다.
+// 속성: history (ChatMedicationHistoryContext): 공유 집계; text (_LinkedChatText): 문구; onPressed (VoidCallback?): 최신 조회.
 class _MessageMedicationHistoryContext extends StatelessWidget {
   final ChatMedicationHistoryContext history;
   final _LinkedChatText text;
   final VoidCallback? onPressed;
 
+  // 함수이름: _MessageMedicationHistoryContext
+  // 함수역할: 공유 집계·표시 문구와 선택적 최신 조회 동작을 연결한다.
+  // 매개변수: history (ChatMedicationHistoryContext): 집계; text (_LinkedChatText): 문구; onPressed (VoidCallback?): 진입.
+  // 반환값: 새 _MessageMedicationHistoryContext.
   const _MessageMedicationHistoryContext({
     required this.history,
     required this.text,
     required this.onPressed,
   });
 
+  // 함수이름: build
+  // 함수역할: 공유 기간·집계·기준 시점을 표시하고 90일 보관 한계 밖의 기간은 최신 기록 버튼을 막는다.
+  // 매개변수: context (BuildContext): 카드 표시 위치.
+  // 반환값: 읽기 전용 이력 공유 카드.
   @override
   Widget build(BuildContext context) {
     const foreground = MedBuddyColors.textStrong;
@@ -3855,10 +3918,13 @@ class _MessageBubble extends StatelessWidget {
   // - text (_LinkedChatText): 해당 화면 구역의 언어별 표시 문구.
   // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
   // - onMedicationPressed (ValueChanged<ChatMedicationContext>): 대상 약품의 상세 정보 또는 복용 가이드를 여는 콜백.
-  // - onSchedulePressed (ValueChanged<ChatScheduleContext>?): 오늘 복약 일정 화면을 여는 콜백.
-  // - onPharmacyCallRequested (ValueChanged<ChatPharmacyContext>): 해당 약국으로 전화 연결을 요청할 콜백.
-  // - onPharmacyDirectionsRequested (ValueChanged<ChatPharmacyContext>): 해당 약국의 길찾기를 요청할 콜백.
-  // - onFindPharmacyRequested (ValueChanged<ChatMedicationContext>): 주변 약국 검색을 여는 콜백.
+  // - onSchedulePressed (ValueChanged<ChatMessage>?): 원본 메시지의 일정 맥락으로 복약 화면을 여는 콜백. 권한이 없으면 null이다.
+  // - onPharmacyCallRequested (ValueChanged<ChatPlaceContext>): 공유 병원·약국으로 전화 연결을 요청할 콜백.
+  // - onPharmacyDirectionsRequested (ValueChanged<ChatPlaceContext>): 공유 병원·약국의 길찾기를 요청할 콜백.
+  // - onFindPharmacyRequested (ValueChanged<List<ChatMedicationContext>>): 첨부 약품 목록을 유지하며 주변 약국 선택을 여는 콜백.
+  // - onHistoryPressed (ValueChanged<ChatMessage>?): 이력 공유 메시지의 기간별 복약 기록을 여는 콜백. 권한이 없으면 null이다.
+  // - onPlaceDetailsRequested (ValueChanged<ChatMessage>): 공유 시설의 종류와 원래 메시지를 전달해 최신 상세 화면을 여는 콜백.
+  // - onFindHospitalRequested (ValueChanged<List<ChatMedicationContext>>): 부족한 약의 첨부 목록을 유지한 채 병원 선택을 여는 콜백.
   // 반환값: 입력 설정이 반영된 _MessageBubble 인스턴스.
   const _MessageBubble({
     required this.message,
@@ -4116,12 +4182,10 @@ class _MessageBubble extends StatelessWidget {
   }
 }
 
-// 클래스명: _LinkedChatText
-// 역할: 연동 사용자 채팅과 약품·일정·약국 정보 공유에 쓰는 한국어·영어 문구를 담당한다.
-// 주요 책임:
-// - 연동 사용자 채팅과 약품·일정·약국 정보 공유에 쓰는 한국어·영어 문구의 언어를 선택하고 안내에 필요한 값을 문구에 반영한다.
-// 속성:
-// - language (String): 화면 문구를 선택할 언어 코드.
+// Class Name: _LinkedChatText
+// Role: Localized linked-chat and attachment copy.
+// Responsibilities: Formats conversation status and medication, schedule and nearby-place sharing messages.
+// Attributes: language (String): selected language code.
 class _LinkedChatText {
   final String language;
 
@@ -4132,14 +4196,16 @@ class _LinkedChatText {
   // 반환값: 입력 설정이 반영된 _LinkedChatText 인스턴스.
   const _LinkedChatText(this.language);
 
-  // 함수이름: isEnglish
-  // 함수역할: 언어 코드의 공백과 대소문자를 정리한 뒤 en 접두어로 영어 여부를 판별한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
+  // Function Name: isEnglish
+  // Description: Normalizes the language code and checks its English prefix.
+  // Parameters: None.
+  // Returns: True when the normalized code begins with en.
   bool get isEnglish => isEnglishLanguage(language);
 
-  // 일반 대화는 그대로 두고 기능으로 공유한 정보에는 유형 제목을 한 번만 붙인다.
+  // 함수이름: sharedContentHeading
+  // 함수역할: 일반 대화는 제목 없이 두고 공유 동작·첨부 종류에 맞는 제목과 아이콘을 선택한다.
+  // 매개변수: message (ChatMessage): 표시할 메시지.
+  // 반환값: (String, IconData) 또는 별도 이력 카드·일반 대화이면 null.
   (String, IconData)? sharedContentHeading(ChatMessage message) {
     if (message.historyContext != null) return null;
     final action = switch (message.messageKind) {
@@ -4189,16 +4255,44 @@ class _LinkedChatText {
     return null;
   }
 
+  // 함수이름: medicationHistory
+  // 함수역할: 공유 복약 기록 구역의 제목을 현재 언어로 제공한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 복약 기록 제목.
   String get medicationHistory => isEnglish ? 'Medication history' : '복약 기록';
+  // Function Name: asNeededNotRecordable
+  // Description: Selects the notice directing as-needed recording to the schedule in the current language.
+  // Parameters: None.
+  // Returns: Localized display text.
   String get asNeededNotRecordable => isEnglish
       ? 'Record as-needed doses from the schedule, then try again without them.'
       : '필요시 약은 일정의 필요시 복용에서 기록하고, 선택에서 뺀 뒤 다시 시도해 주세요.';
+  // 함수이름: copyMessage
+  // 함수역할: 메시지 복사 명령를 현재 언어로 제공한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 문구.
   String get copyMessage => isEnglish ? 'Copy' : '복사';
+  // 함수이름: messageCopied
+  // 함수역할: 메시지 복사 성공 안내를 현재 언어로 제공한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 문구.
   String get messageCopied => isEnglish ? 'Message copied.' : '메시지를 복사했어요.';
+  // 함수이름: copyFailed
+  // 함수역할: 메시지 복사 실패 안내를 현재 언어로 제공한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 문구.
   String get copyFailed =>
       isEnglish ? 'Could not copy the message.' : '메시지를 복사하지 못했어요.';
+  // 함수이름: sharedStatus
+  // 함수역할: 공유 당시 운영 상태 라벨를 현재 언어로 제공한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 문구.
   String get sharedStatus => isEnglish ? 'Status when sent' : '보낸 시점 운영 상태';
 
+  // Function Name: placeOperatingStatus
+  // Description: Formats the operating snapshot at sending time in Korean wall time, distinguishing past closing from upcoming opening/closing.
+  // Parameters: place (ChatPlaceContext): shared place and optional snapshot.
+  // Returns: Localized status; unknown/missing times do not imply current operation.
   String placeOperatingStatus(ChatPlaceContext place) {
     final snapshot = place.operatingSnapshot;
     final status = switch (snapshot?.status) {
@@ -4230,21 +4324,53 @@ class _LinkedChatText {
         : '$status · $time ${closing ? '종료' : '시작'}';
   }
 
+  // 함수이름: viewLatestRecords
+  // 함수역할: 공유 시점의 기록 대신 최신 기록을 조회하는 동작의 문구를 제공한다.
+  // 매개변수: 없음.
+  // 반환값: 언어에 맞는 최신 기록 보기 문구.
   String get viewLatestRecords =>
       isEnglish ? 'View latest records' : '최신 기록 보기';
+  // Function Name: historyExpired
+  // Description: Selects the expired-history access notice in the current language.
+  // Parameters: None.
+  // Returns: Localized display text.
   String get historyExpired => isEnglish
       ? 'Records older than 90 days can no longer be opened.'
       : '90일이 지난 기록은 더 이상 열 수 없어요.';
 
+  // 함수이름: findNearbyHospital
+  // 함수역할: 주변 병원 검색 명령를 현재 언어로 제공한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 문구.
   String get findNearbyHospital => isEnglish ? 'Find hospitals' : '병원 찾기';
+  // 함수이름: shareCareTitle
+  // 함수역할: 장소 공유 확인 제목를 현재 언어로 제공한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 문구.
   String get shareCareTitle => isEnglish ? 'Share place' : '장소 공유';
+  // 함수이름: shareRecipient
+  // 함수역할: 장소 공유 확인창의 수신자 이름을 표시한다.
+  // 매개변수: name (String): 상대 이름.
+  // 반환값: 현재 언어의 수신자 라벨.
   String shareRecipient(String name) =>
       isEnglish ? 'Send to: $name' : '받는 사람: $name';
+  // 함수이름: careDate
+  // 함수역할: 선택한 병원 조회 날짜를 언어별 날짜 형식으로 표시한다.
+  // 매개변수: date (DateTime): 진료 조회 날짜.
+  // 반환값: 진료 날짜 안내.
   String careDate(DateTime date) => isEnglish
       ? 'Consultation date: ${date.toIso8601String().split('T').first}'
       : '진료 날짜: ${date.year}년 ${date.month}월 ${date.day}일';
+  // 함수이름: hospitalShareBody
+  // 함수역할: 확정한 병원 이름을 장소 공유 본문에 넣는다.
+  // 매개변수: name (String): 병원 이름.
+  // 반환값: 현재 언어의 병원 공유 본문.
   String hospitalShareBody(String name) =>
       isEnglish ? 'I am sharing $name.' : '$name 병원 정보를 공유해요.';
+  // 함수이름: hospitalHoursNotice
+  // 함수역할: 방문 전 전화 확인과 예약 미확정 안내를 현재 언어로 제공한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 문구.
   String get hospitalHoursNotice => isEnglish
       ? 'Hours may change. Call before visiting. This is not a reservation.'
       : '진료시간은 변경될 수 있어요. 방문 전 전화로 확인해주세요. 예약이 확정된 것은 아니에요.';
@@ -4268,12 +4394,24 @@ class _LinkedChatText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get cancel => isEnglish ? 'Cancel' : '취소';
 
+  // 함수이름: selectionScheduleChanged
+  // 함수역할: 선택 이후 일정이 변경된 안내를 현재 언어로 제공한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 문구.
   String get selectionScheduleChanged => isEnglish
       ? 'The selected schedule has changed. Please select the medication again.'
       : '선택한 복약 일정이 변경되었습니다. 약을 다시 선택해주세요.';
+  // 함수이름: noConfirmableSchedule
+  // 함수역할: 복용 완료로 기록할 시간대가 없는 안내를 현재 언어로 제공한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 문구.
   String get noConfirmableSchedule => isEnglish
       ? 'No current schedule was found for the selected medication.'
       : '선택한 약의 오늘 일정을 찾지 못했습니다. 약 목록을 다시 확인해주세요.';
+  // 함수이름: takenSaveFailed
+  // 함수역할: 복용 기록 저장 실패 안내를 현재 언어로 제공한다.
+  // 매개변수: 없음.
+  // 반환값: 한국어 또는 영어 문구.
   String get takenSaveFailed => isEnglish
       ? 'Could not confirm the record. Check your connection and try again.'
       : '복용 기록의 저장을 확인하지 못했습니다. 연결 상태를 확인한 뒤 다시 시도해주세요.';
@@ -4359,19 +4497,17 @@ class _LinkedChatText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get historyLoadFailed =>
       isEnglish ? 'Could not load the conversation.' : '대화 내용을 불러오지 못했습니다.';
-  // 함수이름: medicationReferencesExpired
-  // 함수역할: 첨부한 검색약의 검색 결과가 서버에서 만료되어 다시 검색해야 함을 알린다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 현재 언어의 안내 문구.
+  // Function Name: medicationReferencesExpired
+  // Description: Explains that attached medication-search references expired on the server and must be searched again.
+  // Parameters: None.
+  // Returns: The localized expired-reference recovery message.
   String get medicationReferencesExpired => isEnglish
       ? 'The searched medication has expired. Search for it again and attach it.'
       : '검색한 약 정보가 만료되었습니다. 약을 다시 검색해 첨부해 주세요.';
-  // 함수이름: historyShareUnavailable
-  // 함수역할: 대화를 불러오는 중이거나 메시지를 고르는 중이라 복약 기록 공유를 지금 열 수 없음을 알린다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 현재 언어의 안내 문구.
+  // Function Name: historyShareUnavailable
+  // Description: Explains why record sharing is unavailable during history loading or message selection.
+  // Parameters: None.
+  // Returns: The localized sharing-unavailable message.
   String get historyShareUnavailable => isEnglish
       ? 'Medication history cannot be shared right now.'
       : '지금은 복약 기록을 공유할 수 없습니다.';
@@ -4472,17 +4608,15 @@ class _LinkedChatText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get disconnected => isEnglish ? 'Disconnected' : '연결 끊김';
-  // 함수이름: linkUnavailableStatus
-  // 함수역할: 현재 언어와 입력값에 맞춰 "연동 해제됨" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: linkUnavailableStatus
+  // Description: Labels a conversation whose link is no longer active.
+  // Parameters: None.
+  // Returns: The localized ended-link status.
   String get linkUnavailableStatus => isEnglish ? 'Link ended' : '연동 해제됨';
-  // 함수이름: linkUnavailable
-  // 함수역할: 현재 언어와 입력값에 맞춰 연동이 해제되어 대화를 이어갈 수 없다는 안내 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: linkUnavailable
+  // Description: Explains that the ended link prevents further conversation.
+  // Parameters: None.
+  // Returns: The localized link-unavailable notice.
   String get linkUnavailable => isEnglish
       ? 'This link has ended, so messages can no longer be sent here. Check the link under Patient/Caregiver link.'
       : '연동이 해제되어 이 대화에서는 더 이상 메시지를 보낼 수 없습니다. 환자·보호자 연동에서 확인해주세요.';
@@ -4586,11 +4720,10 @@ class _LinkedChatText {
     };
   }
 
-  // 함수이름: onlyCaregiverCanRequest
-  // 함수역할: 현재 언어와 입력값에 맞춰 "복약 확인 요청은 연결된 보호자만 보낼 수 있습니다." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: onlyCaregiverCanRequest
+  // Description: Explains that only the linked caregiver can request dose confirmation.
+  // Parameters: None.
+  // Returns: The localized role-restriction message.
   String get onlyCaregiverCanRequest => isEnglish
       ? 'Only the linked caregiver can send a check request.'
       : '복약 확인 요청은 연동된 보호자만 보낼 수 있습니다.';
@@ -4601,27 +4734,24 @@ class _LinkedChatText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get scheduleSelectorTitle =>
       isEnglish ? 'Today\'s medication times' : '오늘의 복약 시간대';
-  // 함수이름: noRequestableSchedule
-  // 함수역할: 기능 메뉴에서 확인을 요청할 시간대가 없어 선택지가 막힌 이유를 알린다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 현재 언어의 안내 문구.
+  // Function Name: noRequestableSchedule
+  // Description: Explains why the request action is disabled when no dose slot is requestable.
+  // Parameters: None.
+  // Returns: The localized no-requestable-slot reason.
   String get noRequestableSchedule => isEnglish
       ? 'No medication times to check today'
       : '오늘 확인을 요청할 시간대가 없습니다';
-  // 함수이름: scheduleLoading
-  // 함수역할: 기능 메뉴에서 오늘 시간대를 아직 받는 중이라 선택지가 막힌 이유를 알린다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 현재 언어의 안내 문구.
+  // Function Name: scheduleLoading
+  // Description: Explains why dose actions remain unavailable while today's slots are loading.
+  // Parameters: None.
+  // Returns: The localized slot-loading reason.
   String get scheduleLoading => isEnglish
       ? 'Loading today\'s medication times...'
       : '오늘 복약 시간대를 불러오는 중입니다';
-  // 함수이름: scheduleLoadFailed
-  // 함수역할: 기능 메뉴에서 오늘 시간대를 받지 못해 선택지가 막힌 이유를 알린다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 현재 언어의 안내 문구.
+  // Function Name: scheduleLoadFailed
+  // Description: Explains why dose actions are disabled after today's slot query failed.
+  // Parameters: None.
+  // Returns: The localized slot-load failure reason.
   String get scheduleLoadFailed => isEnglish
       ? 'Could not load today\'s medication times.'
       : '오늘 복약 시간대를 불러오지 못했습니다.';
@@ -4633,11 +4763,10 @@ class _LinkedChatText {
   String get scheduleSelectorCaregiverDescription => isEnglish
       ? 'Choose a time to ask the patient to check their medication.'
       : '확인이 필요한 시간대를 선택해 환자에게 알려주세요.';
-  // 함수이름: slotLabel
-  // 함수역할: 현재 언어와 입력값에 맞춰 "취침 전" 문구를 제공한다.
-  // 매개변수:
-  // - slotKey (String): 아침·점심·저녁·취침 전을 구분하는 시간대 키.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: slotLabel
+  // Description: Maps a dose-slot key to its localized name.
+  // Parameters: slotKey (String): morning, lunch, evening or bedtime.
+  // Returns: The localized slot label.
   String slotLabel(String slotKey) {
     return medicationSlotLabel(
       slotKey,
@@ -4669,12 +4798,10 @@ class _LinkedChatText {
   String slotCheckRequestBody(String slotKey) => isEnglish
       ? 'Please check your ${slotLabel(slotKey).toLowerCase()} medication.'
       : '${slotLabel(slotKey)} 복약을 확인해주세요.';
-  // 함수이름: remainingCourse
-  // 함수역할: 현재 언어와 입력값에 맞춰 "남은 복용 기간을 계산하지 못했습니다." 문구를 제공한다.
-  // 매개변수:
-  // - days (int?): 복용 기간의 일수 또는 이를 표현한 원본 문구.
-  // - endDate (DateTime?): 복용 기간의 마지막 날짜.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: remainingCourse
+  // Description: Formats remaining dose days and the course end date, or explains why the course could not be calculated.
+  // Parameters: days (int?): remaining days; endDate (DateTime?): course end.
+  // Returns: Localized remaining-course text, or the unavailable message if either value is null.
   String remainingCourse(int? days, DateTime? endDate) {
     if (days == null || endDate == null) {
       return isEnglish

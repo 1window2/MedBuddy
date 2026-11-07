@@ -59,6 +59,13 @@ Widget _selectionApp({
 // 매개변수: 없음. 반환값: 없음.
 void main() {
   for (final language in ['ko', 'en']) {
+    // 함수이름: 필요시 약의 독립 선택
+    // 함수역할:
+    // - 두 언어에서 필요시 약을 정기 시간대 없이 선택·반환하며 아침 선택 항목을 만들지 않는지 확인한다.
+    // 매개변수:
+    // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     testWidgets(
       'PRN is selected separately and returned without a regular slot $language',
       (tester) async {

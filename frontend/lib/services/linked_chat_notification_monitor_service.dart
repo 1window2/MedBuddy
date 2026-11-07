@@ -36,6 +36,7 @@ typedef LinkedChatEventSourceFactory =
 // - messageBody (String): 전송하거나 표시할 메시지·알림 본문
 // - messageKind (ChatMessageKind): 일반·복약·약국 맥락 메시지 유형
 // - slotKey (String?): morning·lunch·evening·bedtime 복약 시간대 키
+// - slotCheck (SlotCheckNotificationContext?): 환자에게 복용 완료 동작을 제공할 검증된 보호자 요청 문맥
 // 반환값:
 // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
 typedef LinkedChatAlertSender =
@@ -66,7 +67,7 @@ typedef LinkedChatPermissionRequester = Future<bool> Function();
 // - _loadLinks (LinkedChatLinkLoader): 활성 환자·보호자 연동 조회 경계
 // - _eventSourceFactory (LinkedChatEventSourceFactory): 연동 ID별 이벤트 소스 생성 경계
 // - _sendAlert (LinkedChatAlertSender): 실제 로컬 알림 표시를 수행할 경계
-// - _requestPermission (LinkedChatPermissionRequester): 감시 중 운영체제 권한 요청을 수행할지 여부
+// - _requestPermission (LinkedChatPermissionRequester): 기기 알림 표시 권한을 요청하는 비동기 경계
 // - linkRefreshInterval (Duration): 활성 채팅 연동 목록 갱신 간격
 // - requestPermission (bool): 감시 중 운영체제 권한 요청을 수행할지 여부
 // - _onDispose (VoidCallback?): 소유한 의존성 정리 콜백
@@ -153,7 +154,7 @@ class LinkedChatNotificationMonitorService {
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - 연동 목록을 정상적으로 반영했으면 true
+  // - Future<bool>: 연동 목록 반영을 마치면 true; 해제·중복 갱신·조회 실패이면 false. 개별 연결 시작 실패는 내부 기록 후 계속하므로 모든 소켓의 연결 성공을 보장하지 않는다.
   Future<bool> refreshNow() async {
     if (_isDisposed || _isRefreshing) {
       return false;
@@ -399,7 +400,7 @@ class LinkedChatNotificationMonitorService {
   // 매개변수:
   // - messageKey (String): 연동과 메시지 ID를 합친 중복 방지 키
   // 반환값:
-  // - bool: 처음 본 연동·메시지 키만 등록하고 중복 방지 기록이 200개를 넘으면 가장 오래된 키부터 버린다.
+  // - bool: 새 키를 등록했으면 true, 이미 기억 중인 키이면 false.
   bool _rememberMessage(String messageKey) {
     if (!_notifiedMessageKeys.add(messageKey)) {
       return false;
@@ -415,7 +416,7 @@ class LinkedChatNotificationMonitorService {
   // 매개변수:
   // - 없음.
   // 반환값:
-  // - Future<bool>: 권한 요청 생략 정책을 적용하고 진행 중 권한 요청 또는 최초 결과를 재사용한다.
+  // - Future<bool>: 요청 생략 시 true, 그 외에는 공유 권한 요청 결과; 요청 오류는 호출자에게 전파된다.
   Future<bool> _ensureNotificationPermission() async {
     if (!requestPermission) {
       return true;

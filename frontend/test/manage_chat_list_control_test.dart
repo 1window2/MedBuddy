@@ -20,27 +20,42 @@ import 'package:medbuddy_frontend/services/caregiver_patient_local_state_service
 import 'support/json_http.dart';
 
 // Function Name: _unused
-// Description: Answers requests of fakes that override every operation the tests reach.
-// Parameters: request - intercepted request (unused). Returns: An empty 200 response.
+// Description:
+// - Answer any otherwise unused fake transport call without reaching a server.
+// Parameters:
+// - request (http.Request): intercepted request; its contents are ignored.
+// Returns:
+// - Future<http.Response>; HTTP 200 with an empty JSON object.
 Future<http.Response> _unused(http.Request request) async =>
     http.Response('{}', 200);
 
 // Class Name: _Links
-// Role: Link lookup fake returning the links a test sets, in server (link ID) order.
-// Responsibilities: Fail on demand so the kept-list behavior can be observed.
-// Attributes: result - links of the next lookup; fail - whether the next lookup throws.
+// Role: Configurable link-list source for chat-list polling.
+// Responsibilities:
+// - Return the configured ordering or simulate an offline lookup.
+// Attributes:
+// - result (List<PatientCaregiverLink>): links returned unchanged; the test controls their order.
+// - fail (bool): when true, lookup throws StateError.
 class _Links extends LinkPatientCaregiver {
   // Function Name: _Links
-  // Description: Creates the fake without a reachable server.
-  // Parameters: None. Returns: The link fake.
+  // Description:
+  // - Create a link-control fake backed by an inert mock client.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - _Links; empty result list with failure disabled.
   _Links() : super(client: MockClient(_unused));
 
   List<PatientCaregiverLink> result = const [];
   bool fail = false;
 
   // Function Name: requestLinkScreen
-  // Description: Returns the configured links or fails like an offline lookup.
-  // Parameters: None. Returns: The links; throws StateError when fail is set.
+  // Description:
+  // - Return the current configured links, or throw StateError when the offline switch is set.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<List<PatientCaregiverLink>>; result without reordering or filtering.
   @override
   Future<List<PatientCaregiverLink>> requestLinkScreen() async {
     if (fail) throw StateError('offline');
@@ -49,21 +64,33 @@ class _Links extends LinkPatientCaregiver {
 }
 
 // Class Name: _Previews
-// Role: Chat fake returning one latest message and an unread count per link.
-// Attributes: createdAt - latest message time per link; unread - unread count per link.
+// Role: Supplies independent last-message times and unread counts for each chat.
+// Responsibilities:
+// - Generate deterministic previews without loading message history from a server.
+// Attributes:
+// - createdAt (Map<int, DateTime>): latest-message time keyed by link ID.
+// - unread (Map<int, int>): unread count keyed by link ID, defaulting to zero.
 class _Previews extends ManageLinkedChat {
   // Function Name: _Previews
-  // Description: Creates the fake for the caregiver account used by the tests.
-  // Parameters: None. Returns: The preview fake.
+  // Description:
+  // - Create a preview provider scoped to the caregiver test account with an inert mock client.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - _Previews; empty preview-time and unread-count maps.
   _Previews() : super(userHash: 'caregiver', client: MockClient(_unused));
 
   final Map<int, DateTime> createdAt = {};
   final Map<int, int> unread = {};
 
   // Function Name: requestHistory
-  // Description: Returns the configured latest message of the link, if any.
-  // Parameters: linkId - conversation; beforeMessageId, limit - unused paging inputs.
-  // Returns: Zero or one message.
+  // Description:
+  // - Return one synthetic latest message when the link has a configured time, otherwise return no history.
+  // Parameters:
+  // - linkId (int): link used to select the timestamp and construct message identifiers.
+  // - beforeMessageId (int?), limit (int): accepted pagination inputs, ignored by this single-preview fake.
+  // Returns:
+  // - Future<List<ChatMessage>>; zero or one deterministic message.
   @override
   Future<List<ChatMessage>> requestHistory({
     required int linkId,
@@ -82,23 +109,34 @@ class _Previews extends ManageLinkedChat {
   ];
 
   // Function Name: requestUnreadSummary
-  // Description: Returns the configured unread count of the link.
-  // Parameters: linkId - conversation. Returns: The unread summary, zero by default.
+  // Description:
+  // - Read the configured unread count without requesting or changing message history.
+  // Parameters:
+  // - linkId (int): link whose unread count is requested.
+  // Returns:
+  // - Future<ChatUnreadSummary>; configured count or zero when absent.
   @override
   Future<ChatUnreadSummary> requestUnreadSummary({required int linkId}) async =>
       ChatUnreadSummary(count: unread[linkId] ?? 0);
 }
 
 // Class Name: _Labels
-// Role: Label-store fake that records the language the control asked for.
-// Attributes: languages - isEnglish value of each loadLabels call, oldest first.
+// Role: Label-store double that observes requested display languages.
+// Responsibilities:
+// - Record each language lookup and force the chat list to use fallback names.
+// Attributes:
+// - languages (List<bool>): isEnglish arguments in lookup order.
 class _Labels extends ManageCaregiverPatientLocalState {
   final List<bool> languages = [];
 
   // Function Name: loadLabels
-  // Description: Records the requested language and returns no stored label.
-  // Parameters: caregiverHash, links - unused scope; isEnglish - requested fallback language.
-  // Returns: An empty label map.
+  // Description:
+  // - Record the requested language and return no saved labels.
+  // Parameters:
+  // - caregiverHash (String), links (List<PatientCaregiverLink>): accepted lookup scope, unused by this fake.
+  // - isEnglish (bool): language flag appended to languages, default false.
+  // Returns:
+  // - Future<Map<String, String>>; an empty label map.
   @override
   Future<Map<String, String>> loadLabels({
     required String caregiverHash,
@@ -111,9 +149,13 @@ class _Labels extends ManageCaregiverPatientLocalState {
 }
 
 // Function Name: _link
-// Description: Builds an active link between the test caregiver and patient-<id>.
-// Parameters: id - link ID; alias - server-side patient alias, if any.
-// Returns: The link.
+// Description:
+// - Build an active link from the test caregiver to a patient derived from its ID.
+// Parameters:
+// - id (int): link ID and suffix of the patient account.
+// - alias (String?): optional server-side patient name; null and empty strings exercise fallback names.
+// Returns:
+// - PatientCaregiverLink; active caregiver-to-patient link.
 PatientCaregiverLink _link(int id, {String? alias}) => PatientCaregiverLink(
   linkId: id,
   patientHash: 'patient-$id',
@@ -123,10 +165,20 @@ PatientCaregiverLink _link(int id, {String? alias}) => PatientCaregiverLink(
 );
 
 // Function Name: main
-// Description: Registers the chat-list control tests; no network, storage or timers are used.
-// Parameters: None. Returns: None.
+// Description:
+// - Register controlled chat-list polling tests for publication order, loading/error transitions, fallback labels, and borrowed authenticated clients.
+// Parameters:
+// - None.
+// Returns:
+// - void; no return value.
 void main() {
-  // Each notify is logged as "<L when loading><link IDs in published order>".
+  // Function Name: record
+  // Description:
+  // - Attach a listener that records each published loading flag and ordered link-ID list.
+  // Parameters:
+  // - control (ManageChatList): observable list controller to monitor.
+  // Returns:
+  // - List<String>; live log with an L prefix while loading, followed by comma-separated link IDs.
   List<String> record(ManageChatList control) {
     final seen = <String>[];
     control.addListener(() {
@@ -138,7 +190,13 @@ void main() {
     return seen;
   }
 
-  // G1: the server order (link ID) must never be published before the recency order.
+  // Function Name: a poll publishes the sorted list once and stays silent when nothing changed
+  // Description:
+  // - Publish recency-sorted links once after initial loading, stay silent on unchanged polls, and notify once when either message recency or unread counts change.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   test('a poll publishes the sorted list once and stays silent when nothing '
       'changed', () async {
     final links = _Links()..result = [_link(1), _link(2)];
@@ -175,7 +233,13 @@ void main() {
     expect(control.unreadCount(2), 4);
   });
 
-  // G1: only the first load and an explicit refresh show the progress bar.
+  // Function Name: background polls keep isLoading false; an explicit refresh shows it
+  // Description:
+  // - Show loading for the initial request and explicit refresh only; unchanged background polls neither set isLoading nor notify listeners.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   test('background polls keep isLoading false; an explicit refresh shows it', () async {
     final links = _Links()..result = [_link(1)];
     final control = ManageChatList(
@@ -204,7 +268,13 @@ void main() {
     expect(seen, ['L1', '1']);
   });
 
-  // G1: a failed poll keeps the last list and reports the error state change once.
+  // Function Name: a failing poll keeps the list and notifies only when the error state changes
+  // Description:
+  // - Keep the last links and previews through repeated lookup failures, notify only on error-state changes, then remove stale previews when recovery drops a link.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   test('a failing poll keeps the list and notifies only when the error state '
       'changes', () async {
     final links = _Links()..result = [_link(1), _link(2)];
@@ -236,8 +306,13 @@ void main() {
     expect(control.latestMessage(2), isNull);
   });
 
-  // F3/G8: label lookups use the language the creator set on the control; the fallback for a
-  // cleared server alias uses the language the caller asks peerName for.
+  // Function Name: default patient names follow the display language
+  // Description:
+  // - Pass the current display language to label loading and use the requested language for fallback patient names when the server alias is empty.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   test('default patient names follow the display language', () async {
     final links = _Links()..result = [_link(7, alias: '')];
     final labels = _Labels();
@@ -269,8 +344,13 @@ void main() {
     expect(control.peerName(control.links.single, isEnglish: true), 'Patient NT-7');
   });
 
-  // A patient sees a caregiver without an alias by the last four characters of the account
-  // hash, as the link screen does, and never by the full internal identifier.
+  // Function Name: default caregiver names show only the end of the account hash
+  // Description:
+  // - Fallback caregiver labels expose only the final four account-hash characters in Korean or English, not the full internal identifier.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   test('default caregiver names show only the end of the account hash', () async {
     final links = _Links()
       ..result = [
@@ -297,8 +377,13 @@ void main() {
     );
   });
 
-  // G2: both default controls must send through the injected session client, so a 401 on
-  // the link list or on a preview reaches the session's unauthorized handler.
+  // Function Name: default controls use the injected client and report a 401 to its handler
+  // Description:
+  // - Route both default link and preview controls through the injected authenticated client so each 401 reaches its handler, while disposal leaves that borrowed client usable.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - Future<void>; completes after the asynchronous assertions.
   test('default controls use the injected client and report a 401 to its '
       'handler', () async {
     var unauthorized = 0;
