@@ -57,7 +57,7 @@ def digest(path: Path) -> str:
 # 함수이름: parse_markdown
 # 함수역할: 원문의 소절·단계·강조 설명·참고를 읽어 작성 순서대로 묶는다.
 # 매개변수: text(str)는 설명서 Markdown 원문이다.
-# 반환값: 소절별 OrderedDict. 소절 수나 필수 형식이 맞지 않으면 AssertionError.
+# 반환값: 소절별 OrderedDict. 식별자 중복이나 단계 번호가 잘못되면 AssertionError.
 def parse_markdown(text: str) -> OrderedDict[str, dict[str, Any]]:
     """Parse this manual's explicit headings, numbered steps and linked reference notes."""
     sections = OrderedDict()
@@ -71,6 +71,7 @@ def parse_markdown(text: str) -> OrderedDict[str, dict[str, Any]]:
             step = note = None
         match = re.match(r"^### (\d+\.\d+ .+)$", line)
         if match:
+            assert match[1].split()[0] not in sections, "Duplicate subsection: " + match[1]
             current = dict(chapter=chapter, section=match[1], steps=[])
             sections[match[1].split()[0]] = current
             step = note = None
@@ -116,7 +117,11 @@ def parse_markdown(text: str) -> OrderedDict[str, dict[str, Any]]:
             target = sections[section]["steps"][number - 1]
             assert target["number"] == number
             target["source_note"] = (target["source_note"] + "\n\n" + body).strip()
-    assert len(sections) == 84
+    assert sections, "The guide must contain at least one subsection."
+    for key, group in sections.items():
+        assert group["chapter"].split()[0] == key.split(".")[0], key
+        numbers = [item["number"] for item in group["steps"]]
+        assert numbers and numbers == list(range(1, len(numbers) + 1)), key
     return sections
 
 
