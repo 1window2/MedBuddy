@@ -1,5 +1,5 @@
 // 파일명: MainActivity.kt
-// 역할: Flutter의 요청을 Android 알림 설정과 처방전 카메라 방향 제어로 연결한다.
+// 역할: Flutter의 요청을 Android 알림 설정, 카메라 방향 제어와 복약 기록 공유로 연결한다.
 
 package com.example.medbuddy_frontend
 
@@ -13,20 +13,20 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
-// Class Name: MainActivity
-// Role: Adapts Flutter method-channel requests to Android settings and camera orientation.
-// Responsibilities: Register native handlers and restore the orientation saved before camera use.
-// Attributes: settingsChannel/prescriptionCameraChannel identify handlers; orientationBeforePrescriptionCamera preserves the prior policy.
+// 클래스명: MainActivity
+// 역할: Flutter 요청을 Android 설정·카메라 회전·텍스트 공유 기능에 연결한다.
+// 주요 책임: 채널을 등록하고 카메라 회전 복원, 공유 입력 검증과 오류 응답을 처리한다.
+// 속성: 세 채널 이름(String)은 요청 통로이며 orientationBeforePrescriptionCamera(Int?)는 이전 회전 정책이다.
 class MainActivity : FlutterActivity() {
     private val settingsChannel = "com.medbuddy.app/settings"
     private val prescriptionCameraChannel = "com.medbuddy.app/prescription-camera"
     private val dataExportChannel = "com.medbuddy/data_export"
     private var orientationBeforePrescriptionCamera: Int? = null
 
-    // Function Name: configureFlutterEngine
-    // Description: Registers settings and camera-orientation handlers after the standard Flutter engine setup.
-    // Parameters: flutterEngine - engine whose messenger receives the app's method-channel calls.
-    // Returns: Unit; supported calls complete through their MethodChannel result callbacks.
+    // 함수이름: configureFlutterEngine
+    // 함수역할: 기본 엔진 설정 후 알림·카메라·기록 공유 채널을 등록한다.
+    // 매개변수: flutterEngine(FlutterEngine)은 앱 요청을 받을 메시지 통로를 제공한다.
+    // 반환값: Unit. 지원하는 요청은 채널별 성공·오류 응답으로 완료한다.
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         // 함수명: settingsChannel.setMethodCallHandler 콜백
@@ -71,7 +71,10 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
-        // 함수역할: 사용자 확인을 거친 복약 기록 글을 Android 공유 창에 전달하고, 이전 버전이 남긴 내보내기 캐시를 지운다.
+        // 함수이름: dataExportChannel.setMethodCallHandler 콜백
+        // 함수역할: 기록 텍스트를 공유 창에 전달하거나 이전 버전의 내보내기 캐시를 지운다.
+        // 매개변수: call(MethodCall)은 content·subject 또는 정리 요청, result(MethodChannel.Result)는 응답 통로다.
+        // 반환값: Unit. 입력·정리·공유 실패는 각 오류 코드로, 미지원 요청은 notImplemented로 응답한다.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, dataExportChannel)
             .setMethodCallHandler { call, result ->
                 if (call.method == "clearExports") {
@@ -161,7 +164,10 @@ class MainActivity : FlutterActivity() {
             .getOrElse { startActivity(fallbackIntent) }
     }
 
-    // 이미 허용된 권한도 변경할 수 있도록 권한 요청 대신 설정 화면을 직접 연다.
+    // 함수이름: openExactReminderSettings
+    // 함수역할: 이미 허용된 정확한 알림 권한도 변경할 수 있도록 Android 설정을 직접 연다.
+    // 매개변수: 없음. 현재 기기의 Android 버전과 앱 패키지를 사용한다.
+    // 반환값: Unit. Android 12 미만에서는 IllegalStateException, 설정 실행 오류는 호출자에게 전달한다.
     private fun openExactReminderSettings() {
         check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
         val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {

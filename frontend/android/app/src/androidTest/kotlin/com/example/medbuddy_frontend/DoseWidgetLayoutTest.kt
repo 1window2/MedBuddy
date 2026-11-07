@@ -20,11 +20,13 @@ import kotlin.math.roundToInt
 // 역할: 실제 Android 글꼴 측정으로 최소 높이와 큰 글씨에서 위젯 잘림을 확인한다.
 // 클래스명: DoseWidgetLayoutTest
 // 주요 책임: 런처 크기 계약, 상태별 텍스트 영역과 조작 버튼의 크기를 검증한다.
+// 속성: 없음. 각 시험에서 표시 전용 RemoteViews를 새로 만든다.
 @RunWith(AndroidJUnit4::class)
 class DoseWidgetLayoutTest {
-    // 함수이름: providerKeepsTargetWithinResizeBounds
-    // 함수역할: 기본 높이와 회전별 최소 높이를 분리해 4 x 1 요청이 무시되는 회귀를 막는다.
-    // 매개변수: 없음. 반환값: 없음, 잘못된 크기 선언에서 실패한다.
+    // Function Name: providerKeepsTargetWithinResizeBounds
+    // Description: Checks the 48dp minimum height and 4x1 target-cell metadata used by launchers.
+    // Parameters: None; reads the installed widget provider resource.
+    // Returns: Unit; fails if the declared minimum or target size changes.
     @Test fun providerKeepsTargetWithinResizeBounds() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         context.resources.getXml(R.xml.dose_home_widget_info).use { parser ->
@@ -43,9 +45,10 @@ class DoseWidgetLayoutTest {
         }
     }
 
-    // 함수이름: resizedContentFitsWithoutShrinkingActionTargets
-    // 함수역할: 크기·글자 배율·로그인 상태별 배치를 실측하며 계정이나 기록은 변경하지 않는다.
-    // 매개변수: 없음. 반환값: 없음, 잘린 내용 또는 축소된 핵심 버튼에서 실패한다.
+    // Function Name: resizedContentFitsWithoutShrinkingActionTargets
+    // Description: Measures layouts across heights, widths, font scales and account states without recording doses.
+    // Parameters: None; creates display-only widgets on Android's UI thread.
+    // Returns: Unit; aggregates clipping, hidden-state and undersized-action failures before asserting.
     @Test fun resizedContentFitsWithoutShrinkingActionTargets() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val failures = mutableListOf<String>()
@@ -110,9 +113,10 @@ class DoseWidgetLayoutTest {
         assertTrue(failures.joinToString("\n\n"), failures.isEmpty())
     }
 
-    // 함수이름: shown
-    // 함수역할: 한 줄 배치처럼 해당 뷰가 없는 배치를 숨김으로 취급한다.
-    // 매개변수: root 측정한 위젯, id 뷰 ID. 반환값: 뷰가 있고 보이는지 여부.
+    // Function Name: shown
+    // Description: Treats a view absent from a compact layout as hidden.
+    // Parameters: root (View) is the measured widget; id (Int) identifies the child.
+    // Returns: Boolean, true only when the child and every ancestor are visible.
     private fun shown(root: View, id: Int): Boolean = root.findViewById<View>(id)?.let { isVisible(it) } ?: false
 
     // 함수이름: isVisible
@@ -121,10 +125,10 @@ class DoseWidgetLayoutTest {
     private fun isVisible(view: View): Boolean = view.visibility == View.VISIBLE &&
         ((view.parent as? View)?.let { isVisible(it) } ?: true)
 
-    // 함수이름: sampleViews
-    // 함수역할: 네트워크 요청과 복용 기록이 없는 표시 전용 시험 상태를 만든다.
-    // 매개변수: context 리소스 환경, state 상태 이름, undo 가장 긴 버튼 문구(복용 완료 취소) 사용 여부,
-    //           layout 기본 또는 한 줄 배치. 반환값: 대표 내용과 표시 여부.
+    // Function Name: sampleViews
+    // Description: Builds display-only fixture state without network requests or medication writes.
+    // Parameters: context (Context), state (String), undo (Boolean), layout (Int) select resources and longest labels.
+    // Returns: RemoteViews populated with representative patient, caregiver or signed-out content.
     private fun sampleViews(context: Context, state: String, undo: Boolean, layout: Int): RemoteViews {
         val known = state != "signed-out"
         return RemoteViews(context.packageName, layout).apply {
