@@ -501,11 +501,11 @@ class CheckSchedule:
         self,
         *,
         patient_hash: str,
-        schedule_date,
-        target_slot_keys,
-        active_medications,
-        completion_rows_by_medication_id,
-        previous_slot_completion_states,
+        schedule_date: date,
+        target_slot_keys: list[str],
+        active_medications: list[_SavedMedication],
+        completion_rows_by_medication_id: dict[int, list[_MedicationCompletion]],
+        previous_slot_completion_states: dict[str, bool],
         alertable: bool,
     ) -> list[dict[str, str | int]]:
         if not alertable:
