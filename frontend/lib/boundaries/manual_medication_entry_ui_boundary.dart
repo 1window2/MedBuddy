@@ -82,6 +82,7 @@ class _ManualMedicationBatchState extends State<ManualMedicationEntryUI> {
   final _savedNames = <GlobalKey<_ManualMedicationEntryUIState>, String>{};
   bool _isSaving = false;
   bool _isPickingImage = false;
+  bool _needsRefresh = false;
 
   bool get _isEnglish => widget.userSetting.isEnglish;
   _ManualMedicationText get _text => _ManualMedicationText(_isEnglish);
@@ -195,7 +196,12 @@ class _ManualMedicationBatchState extends State<ManualMedicationEntryUI> {
   // - 없음.
   // 반환값: 저장과 안내가 끝나면 완료되는 Future<void>.
   Future<void> _saveAll() async {
-    if (_isSaving || _isPickingImage) return;
+    if (!mounted ||
+        _isSaving ||
+        _isPickingImage ||
+        ModalRoute.of(context)?.isCurrent != true) {
+      return;
+    }
     FocusScope.of(context).unfocus();
     final pending = _forms.where((key) => !_completed.contains(key)).toList();
     GlobalKey<_ManualMedicationEntryUIState>? firstInvalid;
@@ -208,18 +214,19 @@ class _ManualMedicationBatchState extends State<ManualMedicationEntryUI> {
     }
     setState(() => _isSaving = true);
     MedicationSaveResult? lastResult;
-    var completedThisRun = 0;
+    GlobalKey<_ManualMedicationEntryUIState>? failedForm;
+    var refreshFailed = false;
+    var allSaved = false;
     try {
       // 이미 저장한 약은 남겨 두고 실패한 약부터 재시도해 중복 요청을 막는다.
       for (final key in pending) {
         final name = key.currentState?._medicationNameController.text.trim();
         lastResult = await key.currentState?._submit();
-        if (lastResult?.isCompleted == true) completedThisRun++;
-        if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
+        if (lastResult?.isCompleted == true) _needsRefresh = true;
+        if (!mounted) return;
         if (lastResult?.isCompleted != true) {
-          setState(() => _isSaving = false);
-          await _reveal(key);
-          return;
+          failedForm = key;
+          break;
         }
         setState(() {
           _completed.add(key);
@@ -228,14 +235,48 @@ class _ManualMedicationBatchState extends State<ManualMedicationEntryUI> {
             _duplicates.add(key);
           }
         });
+        if (ModalRoute.of(context)?.isCurrent != true) return;
       }
+      allSaved = failedForm == null;
     } finally {
       // 입력란마다 갱신하지 않고 저장이 끝난 뒤(실패·화면 닫힘 포함) 한 번만 갱신한다.
-      if (completedThisRun > 0) await widget.onSavesFinished?.call();
+      try {
+        if (_needsRefresh) {
+          await widget.onSavesFinished?.call();
+          _needsRefresh = false;
+        }
+      } catch (_) {
+        // 저장 성공은 유지하고 다음 시도에서 실패한 갱신만 다시 수행한다.
+        refreshFailed = true;
+      } finally {
+        // 저장을 마치고 닫히는 화면은 전환이 끝날 때까지 재요청을 막는다.
+        if (mounted &&
+            (!allSaved ||
+                refreshFailed ||
+                ModalRoute.of(context)?.isCurrent != true)) {
+          setState(() => _isSaving = false);
+        }
+      }
     }
     if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
+    if (refreshFailed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _isEnglish
+                ? 'Saved medications are kept, but the list could not be refreshed. Tap save to retry.'
+                : '저장한 약은 유지되지만 목록을 갱신하지 못했습니다. 저장을 눌러 다시 시도해 주세요.',
+          ),
+        ),
+      );
+      return;
+    }
+    if (failedForm != null) {
+      await _reveal(failedForm);
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(_savedMessage(lastResult))),
+      SnackBar(content: Text(_savedMessage())),
     );
     Navigator.pop(context, true);
   }
@@ -243,11 +284,11 @@ class _ManualMedicationBatchState extends State<ManualMedicationEntryUI> {
   // 함수이름: _savedMessage
   // 함수역할: 저장한 약과 이미 추가돼 있던 약을 나눠 저장 결과 안내 문구를 만든다.
   // 매개변수:
-  // - lastResult (MedicationSaveResult?): 마지막 입력란의 저장 결과.
+  // - 없음.
   // 반환값: 안내 문구.
-  String _savedMessage(MedicationSaveResult? lastResult) {
+  String _savedMessage() {
     if (_forms.length == 1) {
-      return lastResult?.status == MedicationSaveStatus.duplicate
+      return _duplicates.contains(_forms.single)
           ? _text.duplicate
           : _text.saved;
     }
@@ -1198,8 +1239,6 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
       _discardPickedImage(submittedImagePath);
       return result;
     }
-    // 뒤로가기 전환 중에는 mounted가 참이어도 아래 화면을 다시 닫으면 안 된다.
-    if (ModalRoute.of(context)?.isCurrent != true) return result;
     final completedResult = result;
     if (completedResult == null || !completedResult.isCompleted) {
       // 함수이름: _submit.setState callback

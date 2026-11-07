@@ -920,6 +920,7 @@ void main() {
       '직접입력약',
     );
     final save = find.byKey(const Key('manual-medication-save'));
+    final saveRequested = tester.widget<FilledButton>(save).onPressed!;
     await tester.tap(save);
     await tester.pump();
     expect(find.text('저장 중...'), findsOneWidget);
@@ -939,6 +940,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
     expect(save, findsOneWidget);
     expect(tester.widget<FilledButton>(save).onPressed, isNull);
+    // 이전 프레임의 콜백이 다시 호출되어도 아래 화면까지 닫지 않는다.
+    saveRequested();
+    await tester.pump();
     await tester.pumpAndSettle();
 
     expect(requestCount, 1);

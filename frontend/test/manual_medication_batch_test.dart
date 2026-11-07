@@ -68,6 +68,91 @@ Future<void> mount(
 }
 
 void main() {
+  testWidgets('일부 저장 후 갱신이 끝나기 전에는 재저장할 수 없다', (tester) async {
+    final refresh = Completer<void>();
+    var saves = 0;
+    await mount(
+      tester,
+      save: (_) async => ++saves == 1 ? saved : failed,
+      savesFinished: () => refresh.future,
+    );
+    await enter(tester, field('name'), '첫째 약');
+    await tap(tester, field('add'));
+    await enter(tester, field('name', 1), '둘째 약');
+    await tester.tap(field('save'));
+    await tester.pump();
+    expect(saves, 2);
+    expect(tester.widget<FilledButton>(field('save')).onPressed, isNull);
+    expect(tester.widget<OutlinedButton>(field('add')).onPressed, isNull);
+    refresh.complete();
+    await tester.pumpAndSettle();
+    expect(tester.widget<FilledButton>(field('save')).onPressed, isNotNull);
+    await tap(tester, field('save'));
+    expect(saves, 3);
+  });
+
+  testWidgets('저장 후 갱신 실패는 저장한 약을 다시 보내지 않고 재시도한다', (tester) async {
+    var saves = 0;
+    var refreshes = 0;
+    final navigator = GlobalKey<NavigatorState>();
+    tester.view.physicalSize = const Size(390, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: navigator,
+        home: const Scaffold(body: Text('등록 전 화면')),
+      ),
+    );
+    unawaited(
+      navigator.currentState!.push<bool>(
+        MaterialPageRoute(
+          builder: (_) => ManualMedicationEntryUI(
+            userSetting: const UserSetting(),
+            onSaveRequested: (_) async {
+              saves++;
+              return saved;
+            },
+            onSavesFinished: () async {
+              if (++refreshes == 1) throw StateError('refresh failed');
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await enter(tester, field('name'), '이미 저장한 약');
+    await tap(tester, field('save'));
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('목록을 갱신하지 못했습니다'), findsOneWidget);
+    expect(tester.widget<FilledButton>(field('save')).onPressed, isNotNull);
+    // 하단 안내가 사라진 뒤 실제로 누를 수 있는 저장 버튼을 재시도한다.
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    await tap(tester, field('save'));
+    expect(saves, 1);
+    expect(refreshes, 2);
+    expect(find.text('등록 전 화면'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('화면 폐기 뒤 갱신 실패도 처리되지 않은 예외를 남기지 않는다', (tester) async {
+    final refresh = Completer<void>();
+    await mount(
+      tester,
+      save: (_) async => saved,
+      savesFinished: () => refresh.future,
+    );
+    await enter(tester, field('name'), '저장할 약');
+    await tester.tap(field('save'));
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox.shrink());
+    refresh.completeError(StateError('late refresh failure'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('약 이름과 복용량 제목 아래의 간격을 동일하게 유지한다', (tester) async {
     await mount(tester);
     final nameGap =
