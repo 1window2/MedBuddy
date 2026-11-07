@@ -4,10 +4,11 @@
 import logging
 
 from fastapi import HTTPException
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from controls.link_patient_caregiver_control import LinkPatientCaregiver
+from core.account_database_lock import ACCOUNT_BUSY_DETAIL, lock_account_operations
 from entities.caregiver_notification_entity import (
     CAREGIVER_NOTIFICATION_MODE_DISABLED,
     CAREGIVER_NOTIFICATION_MODE_MISSED_DEADLINE,
@@ -20,6 +21,7 @@ from entities.caregiver_notification_entity import (
     normalize_notification_slot,
 )
 from entities.patient_hash_entity import normalize_patient_hash
+from entities.user_account_entity import _UserAccount
 
 logger = logging.getLogger(__name__)
 
@@ -217,6 +219,7 @@ class SetCaregiverNotification:
         )
 
         try:
+            self._lock_notification_scope(normalized_caregiver_hash, normalized_patient_hash)
             setting = self._find_setting(
                 normalized_caregiver_hash,
                 normalized_patient_hash,
@@ -257,6 +260,38 @@ class SetCaregiverNotification:
                 status_code=500,
                 detail="Caregiver notification setting could not be saved.",
             ) from exc
+
+    # 함수이름: _lock_notification_scope
+    # 함수역할: 두 계정 잠금 안에서 삭제·연동을 재확인하고 설정 저장까지 유지한다.
+    # 매개변수: caregiver_hash, patient_hash: 정규화된 참여자 식별자.
+    # 반환값: 없음. 삭제 410, 연동 실패 403/404, 잠금 실패 503.
+    def _lock_notification_scope(self, caregiver_hash: str, patient_hash: str) -> None:
+        if self.db.new or self.db.dirty or self.db.deleted:
+            raise RuntimeError("Notification settings require a clean database session.")
+        # 인증 단계에서 만든 계정은 보존하고, 단일 계정 잠금을 풀어 정렬된 순서로 다시 잡는다.
+        self.db.commit()
+        try:
+            lock_account_operations(self.db, (caregiver_hash, patient_hash))
+            self.db.expire_all()
+            deleted_account = (
+                self.db.query(_UserAccount.user_hash)
+                .filter(
+                    _UserAccount.user_hash.in_((caregiver_hash, patient_hash)),
+                    _UserAccount.deletion_requested_at.is_not(None),
+                )
+                .first()
+            )
+            if deleted_account is not None:
+                raise HTTPException(410, "This MedBuddy account has been deleted.")
+            self._resolve_scope(caregiver_hash, patient_hash)
+        except OperationalError as exc:
+            self.db.rollback()
+            raise HTTPException(
+                503, ACCOUNT_BUSY_DETAIL, headers={"Retry-After": "5"},
+            ) from exc
+        except BaseException:
+            self.db.rollback()
+            raise
 
     # Function Name: _resolve_scope
     # Description:
@@ -329,6 +364,7 @@ class SetCaregiverNotification:
         deadline_hour: int | None,
         deadline_minute: int | None,
     ) -> dict[str, object]:
+        self._lock_notification_scope(caregiver_hash, patient_hash)
         setting = self._find_setting(caregiver_hash, patient_hash)
         if setting is None:
             raise HTTPException(
@@ -393,13 +429,15 @@ class SetCaregiverNotification:
         setting.alert_option = setting_state.notification_type
         setting.deadline_hour = setting_state.deadline_hour
         setting.deadline_minute = setting_state.deadline_minute
-        self.db.commit()
-        self.db.refresh(setting)
-        return self._success_response(
+        # 잠금 해제 뒤 환자 삭제가 먼저 끝나도 응답 때문에 삭제된 행을 다시 읽지 않는다.
+        self.db.flush()
+        response = self._success_response(
             "Caregiver notification setting was saved.",
             setting,
             slot_key,
         )
+        self.db.commit()
+        return response
 
     # 함수이름: _normalize_slot
     # 함수역할:
