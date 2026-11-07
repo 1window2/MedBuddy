@@ -12,6 +12,7 @@ import 'package:medbuddy_frontend/boundaries/nearby_pharmacy_map_widget.dart';
 import 'package:medbuddy_frontend/entities/nearby_care_entity.dart';
 import 'package:medbuddy_frontend/services/naver_map_config.dart';
 import 'package:medbuddy_frontend/services/nearby_care_marker_diff.dart';
+import 'package:medbuddy_frontend/widgets/naver_map_sdk_gate.dart';
 
 // Class Name: _QueueTestMap
 // Role: Mounts the existing map state without a native platform view.
@@ -70,14 +71,15 @@ class _QueueTestMapElement extends StatefulElement {
   _QueueTestMapElement(super.widget);
 
   // Function Name: build
-  // Description: Captures callbacks before replacing only the native child with a host-safe box.
+  // Description: Captures callbacks before replacing only the native child with a host-safe box. The map is taken from the SDK gate's builder, so no SDK initialization runs.
   // Parameters: None. Returns: A box; all synchronization remains production-owned.
   @override
   Widget build() {
     final tree = super.build() as Semantics;
     final container = tree.child! as Container;
     final stack = container.child! as Stack;
-    map = stack.children.whereType<NaverMap>().single;
+    final gate = stack.children.whereType<NaverMapSdkGate>().single;
+    map = gate.builder(this) as NaverMap;
     return const SizedBox(width: 400, height: 400);
   }
 }
