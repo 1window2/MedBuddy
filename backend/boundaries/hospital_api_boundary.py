@@ -206,7 +206,9 @@ class NationalEmergencyMedicalCenterHospitalAPI:
     # 함수역할: 동일 요청을 합치고 호출자의 취소로 공유 작업이 취소되지 않게 보호한다.
     # 매개변수: path (str)는 API 경로, params (dict[str, str])는 캐시 키 재료, ttl (int)은 성공 보관 초다.
     # 반환값: 위치·상세 결과. 용량 초과나 저장된 실패는 해당 병원 API 예외로 발생시킨다.
-    async def _cached(self, path: str, params: dict[str, str], ttl: int):
+    async def _cached(
+        self, path: str, params: dict[str, str], ttl: int,
+    ) -> HospitalLocationPage | HospitalDetails | None:
         key = (path, tuple(sorted(params.items())))
         entry = self._cache.get(key)
         if entry is not None and entry.expires_at > self._clock():

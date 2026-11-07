@@ -11,7 +11,7 @@ from boundaries.hospital_api_boundary import (
     HospitalApiResponseError, HospitalApiUnavailableError, HospitalLookupBoundary,
 )
 from core.config import settings
-from entities.nearby_hospital_entity import HospitalLocationRecord
+from entities.nearby_hospital_entity import HospitalLocationPage, HospitalLocationRecord
 from services.nearby_care_policy import haversine_distance
 
 _PROVINCES = {
@@ -87,7 +87,7 @@ async def find_department_candidates(
     # 함수역할: 위치 페이지에서 지역을 모으고 제외된 행·불명확한 주소가 있으면 partial을 설정한다.
     # 매개변수: page (HospitalLocationPage)는 주소 표본 페이지다.
     # 반환값: None. 외부 regions와 partial만 갱신한다.
-    def remember(page):
+    def remember(page: HospitalLocationPage) -> None:
         """주소 누락·유효하지 않은 행은 검색 범위가 불완전함을 나타낸다."""
         nonlocal partial
         partial |= page.row_count != len(page.records)
@@ -109,7 +109,7 @@ async def find_department_candidates(
     # 함수역할: 유효한 보조 좌표의 첫 페이지를 공통 마감 안에 조회한다.
     # 매개변수: lat, lon (float)은 표본 좌표다.
     # 반환값: HospitalLocationPage 또는 None. 좌표 범위 초과·마감·알려진 제공자 실패를 None으로 처리한다.
-    async def probe(lat, lon):
+    async def probe(lat: float, lon: float) -> HospitalLocationPage | None:
         """보조 지역 탐색 실패는 이미 찾은 지역을 버리지 않는다."""
         if (asyncio.get_running_loop().time() >= deadline
                 or not -90 <= lat <= 90 or not -180 <= lon <= 180):

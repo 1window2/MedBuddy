@@ -293,7 +293,9 @@ class CheckNearbyHospital:
     # 함수역할: 허용된 병원의 상세만 조회하고 알려진 제공자 오류를 결과로 보존한다.
     # 매개변수: hospital_id (str)는 병원 ID, allowed (bool)는 이번 검색의 상세 호출 허용 여부다.
     # 반환값: HospitalDetails 또는 가용성·응답 예외 객체. 미허용이면 빈 상세이며 예상 밖 예외는 전달한다.
-    async def _load_details(self, hospital_id: str, allowed: bool):
+    async def _load_details(
+        self, hospital_id: str, allowed: bool,
+    ) -> HospitalDetails | HospitalApiUnavailableError | HospitalApiResponseError:
         if not allowed:
             return HospitalDetails(hospital_id)
         try:
@@ -305,7 +307,12 @@ class CheckNearbyHospital:
     # 함수역할: 상세를 동시에 조회해 완료된 결과를 유지하고 마감 뒤 남은 작업을 취소·회수한다.
     # 매개변수: candidates (목록)는 병원·거리 쌍, detail_ids (집합)는 상세 조회 허용 ID, deadline (단조 시각)은 루프 기준 마감이다.
     # 반환값: 입력 순서의 상세·예외 목록. 미완료 건은 시간 초과 오류 객체이며 예상 밖 작업 오류는 전파한다.
-    async def _load_details_with_deadline(self, candidates, detail_ids, deadline):
+    async def _load_details_with_deadline(
+        self,
+        candidates: list[tuple[HospitalLocationRecord, float]],
+        detail_ids: set[str],
+        deadline: float,
+    ) -> list[HospitalDetails | HospitalApiUnavailableError | HospitalApiResponseError]:
         if not candidates:
             return []
         tasks = [asyncio.create_task(
