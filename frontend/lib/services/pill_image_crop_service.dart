@@ -8,7 +8,9 @@ import 'package:image/image.dart' as img;
 import '../entities/pill_identification_entity.dart';
 
 // 클래스명: PillImageCropService
-// 역할: UI 스레드 밖에서 검증된 영역을 자르고 디스크에는 사진을 저장하지 않는다.
+// 역할: 알약 후보의 경계 상자를 이미지에서 잘라낸다.
+// 주요 책임: 이미지 디코딩·자르기 작업을 compute 실행 경계로 넘겨 UI 작업을 줄인다.
+// 속성: 인스턴스 상태 없음; 이미지 바이트와 PillBoundingBox를 입력받는다.
 class PillImageCropService {
   // 함수이름: PillImageCropService
   // 함수역할: 상태 없는 영역 추출기를 만든다. 매개변수: 없음. 반환값: 서비스.

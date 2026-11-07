@@ -13,6 +13,9 @@ import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/entities/prescription_flow_entity.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 
+// 테스트 자료: _candidate
+// 역할: 두 검토 카드가 공유하는 약품 후보로, 확정 여부와 후보 창 취소를 검사한다.
+
 const _candidate = MedicationDetail(
   itemName: '시험약 A',
   manufacturer: '시험 제약',
@@ -21,11 +24,23 @@ const _candidate = MedicationDetail(
   warning: '',
 );
 
+// 함수이름: main
+// 함수역할: 처방 검토 카드의 접기·후보 선택·조회 상태·접근성과 분석 진행 애니메이션 검증을 등록한다.
+// 매개변수: 없음.
+// 반환값: void: 공통 글꼴 준비와 각 테스트를 등록한다.
 void main() {
+  // 함수이름: testWidgets: 'review details start open and candidate action survives folding'
+  // 함수역할: 후보 검토 카드가 열린 상태에서 시작해 접은 채 후보 창을 취소하고 용량이 바뀐 화면으로 갱신한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 후보 버튼은 접혀도 동작하고 확정 콜백은 호출되지 않으며 접힘이 유지된 뒤 펼치면 변경 용량 2정이 보인다.
   testWidgets(
     'review details start open and candidate action survives folding',
     (tester) async {
       var candidateRequests = 0;
+      // 함수이름: preview
+      // 함수역할: 같은 약 카드와 후보 목록을 유지하면서 용량만 바꿀 수 있는 검토 화면을 만든다.
+      // 매개변수: updated (bool): true이면 용량 2정, 아니면 1정.
+      // 반환값: Widget: 후보 확정 횟수를 기록하는 MaterialApp.
       Widget preview({bool updated = false}) => MaterialApp(
         home: PrescriptionAnalysisPreviewUI(
           userSetting: const UserSetting(),
@@ -73,6 +88,10 @@ void main() {
     },
   );
 
+  // 함수이름: setUpAll
+  // 함수역할: 환경 변수로 지정한 글꼴을 여러 테스트 글꼴 이름으로 등록하고 Material 아이콘 글꼴을 준비한다.
+  // 매개변수: 없음; MEDBUDDY_TEST_FONT 환경 변수의 파일 경로를 읽는다.
+  // 반환값: Future<void>: 변수가 없으면 즉시 종료하며 파일·에셋 읽기나 글꼴 로딩 실패는 테스트 준비 오류로 전파한다.
   setUpAll(() async {
     final font = Platform.environment['MEDBUDDY_TEST_FONT'];
     if (font == null) return;
@@ -86,6 +105,10 @@ void main() {
   });
 
   for (final english in [false, true]) {
+    // 함수이름: testWidgets: '필요시 복용은 2x2 표의 시간대 칸에 표시한다 english=$english'
+    // 함수역할: 한국어·영어에서 필요시 복용 약 하나를 검토 표에 표시한다.
+    // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+    // 반환값: 반환값 없음; 시간대 칸에 필요시 문구가 있고 별도 횟수 칸·비매일 복용 배지는 없으며 렌더링 예외가 없다.
     testWidgets('필요시 복용은 2x2 표의 시간대 칸에 표시한다 english=$english', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -118,6 +141,10 @@ void main() {
       expect(tester.takeException(), isNull);
     });
     for (final large in [false, true]) {
+      // 함수이름: testWidgets: 'lookup statuses and two digit numbers fit english=$english large=$large'
+      // 함수역할: 한국어·영어와 보통·큰 글씨 조합으로 12개 약에 조회 상태별 문구·색·배경을 배치한다.
+      // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+      // 반환값: 반환값 없음; 이력 없는 행은 흰 배경이며 상태 배지가 없고 각 상태 배지는 카드 폭 안에 들어가며 마지막 번호 12가 잘 표시된다.
       testWidgets(
         'lookup statuses and two digit numbers fit english=$english large=$large',
         (tester) async {
@@ -222,6 +249,10 @@ void main() {
         },
       );
 
+      // 함수이름: testWidgets: 'vertical medication cards and inline candidates english=$english large=$large'
+      // 함수역할: 긴 약명과 보정 원문, 미확정·확정 후보를 가진 두 카드를 언어·글자 크기별로 렌더링하고 후보 창을 취소한다.
+      // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+      // 반환값: 반환값 없음; 번호·편집·접기·상태 정렬과 2열 정보 표가 화면 안에 맞고 원문·확정 약 후보 버튼은 숨겨지며 취소는 후보를 확정하지 않는다. 선택적 미리보기 환경에서는 골든도 비교한다.
       testWidgets(
         'vertical medication cards and inline candidates english=$english large=$large',
         (tester) async {
@@ -366,6 +397,10 @@ void main() {
             expect(rect.right, lessThanOrEqualTo(size.width));
           }
           if (!large) {
+            // 함수이름: fieldRect
+            // 함수역할: 첫 번째 약의 지정 정보 칸을 찾아 정렬 검증용 화면 좌표를 읽는다.
+            // 매개변수: name (String): ocr-table-cell-0 키에 붙일 필드 이름.
+            // 반환값: Rect: 해당 위젯의 경계; 찾기 조건이 단일 위젯을 가리키지 않으면 테스트가 실패한다.
             Rect fieldRect(String name) =>
                 tester.getRect(find.byKey(Key('ocr-table-cell-0-$name')));
             expect(fieldRect('dosage').center.dy, fieldRect('days').center.dy);
@@ -440,6 +475,10 @@ void main() {
         },
       );
 
+      // 함수이름: testWidgets: 'OCR editor spacing english=$english large=$large'
+      // 함수역할: 언어·글자 크기별로 OCR 편집창을 열고 필드 간격을 검사한 뒤 키보드 하단 여백을 적용한다.
+      // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+      // 반환값: 반환값 없음; 지정 필드 사이 간격이 15 이상이고 복용일 칸까지 스크롤할 수 있으며 예외 없이 취소한다. 미리보기 옵션을 켜면 골든도 비교한다.
       testWidgets('OCR editor spacing english=$english large=$large', (
         tester,
       ) async {
@@ -506,6 +545,10 @@ void main() {
     }
   }
 
+  // 함수이름: testWidgets: 'analysis progress bar animates to completed count'
+  // 함수역할: 총 5개 중 완료 수를 1에서 3으로 바꾸며 진행 막대의 전환 시간을 나눠 진행한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 처음 0.2, 전환 중 0.2와 0.6 사이, 완료 후 0.6이며 미리보기 옵션을 켜면 골든도 비교한다.
   testWidgets('analysis progress bar animates to completed count', (
     tester,
   ) async {
@@ -513,6 +556,10 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
+    // 함수이름: screen
+    // 함수역할: 총 분석 수는 5로 고정하고 완료 수만 주입한 약 분석 진행 화면을 만든다.
+    // 매개변수: count (int): 완료한 약 개수.
+    // 반환값: Widget: 진행 비율 애니메이션을 관찰할 MaterialApp.
     Widget screen(int count) => MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: MedBuddyTheme.light(),

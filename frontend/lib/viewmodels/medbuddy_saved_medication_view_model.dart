@@ -17,10 +17,10 @@ import 'saved_medication_batch_delete_result.dart';
 // 파일명: medbuddy_saved_medication_view_model.dart
 // 역할: 저장된 복약정보의 저장, 조회, 단건·일괄 삭제 상태를 관리한다.
 
-// 클래스명: MedBuddySavedMedicationViewModel
-// 역할: 저장 약 등록·조회·삭제와 기기 사진 연결 상태를 확장한다.
-// 주요 책임:
-// - 수동 입력·알약 후보를 기존 저장 흐름에 연결하고 부분 실패를 보존하며 성공 후 일정과 알림을 갱신한다.
+// Class Name: MedBuddySavedMedicationViewModel
+// Role: Owns saved-medication list state, device photos and regimen-change workflows.
+// Responsibilities: Preserve partial save/delete outcomes, reject stale account work and refresh schedules/reminders after changes.
+// Attributes: Query/save/image boundaries and patientHash define ownership; generations guard asynchronous work; lists, feedback and in-flight regimen maps hold state.
 class MedBuddySavedMedicationViewModel {
   final CheckSavedMedication checkSavedMedication;
   final CheckMedicationDetail checkMedicationDetail;
@@ -46,9 +46,9 @@ class MedBuddySavedMedicationViewModel {
   final Map<int, String> _regimenOperationIds = {};
 
   // Function Name: MedBuddySavedMedicationViewModel
-  // Description: Binds borrowed controls and narrow cross-feature refresh operations.
-  // Parameters: Controls, patient scope, locale reader, refresh and notification callbacks.
-  // Returns: An independent saved-medication state owner.
+  // Description: Bind borrowed catalog/save controls and cross-feature refresh operations for one patient.
+  // Parameters: checkSavedMedication (CheckSavedMedication): persistence; checkMedicationDetail (CheckMedicationDetail): catalog lookup; manualMedicationImageStore (ManualMedicationImageStore): device photos; patientHash (String): owner; readEnglishSetting (bool Function()): locale; fetchTodayMedicationSchedule (Future<void> Function()): schedule reload; invalidateSchedule (Future<void> Function()? ): invalidate old projection; suspendSchedule (Future<Object?> Function()? ): suspend and capture backup; restoreSchedule (Future<void> Function(Object?)?): restore backup; synchronizeReminders (Future<void> Function()): reminder refresh; onChanged (void Function(String)): feature updates.
+  // Returns: MedBuddySavedMedicationViewModel: independent saved-medication state owner.
   MedBuddySavedMedicationViewModel({
     required this.checkSavedMedication,
     required this.checkMedicationDetail,
@@ -99,9 +99,10 @@ class MedBuddySavedMedicationViewModel {
     if (!_disposed) _onChanged(_statusMessage);
   }
 
-  // Function Name: clear
-  // Description: Clears account data and invalidates pending list/image results.
-  // Parameters: None. Returns: None.
+  // 함수이름: clear
+  // 함수역할: 저장·조회 세대를 바꿔 이전 응답을 무효화하고 계정별 목록·오류·변경 요청 추적을 비운다.
+  // 매개변수: 없음.
+  // 반환값: 없음; 진행 중 원격 요청 자체를 취소하지는 않는다.
   void clear() {
     _saveGeneration++;
     _loadGeneration++;
@@ -121,10 +122,17 @@ class MedBuddySavedMedicationViewModel {
     clear();
   }
 
-  // 목록 재조회와 별도로 계정 초기화 전 저장의 후속 작업을 차단한다.
+  // 함수이름: _isCurrentSave
+  // 함수역할: 목록 재조회와 별개로 저장 작업의 계정 세대가 여전히 유효한지 확인한다.
+  // 매개변수: generation: 저장 시작 시 기록한 세대 번호.
+  // 반환값: 종료되지 않았고 현재 저장 세대와 같으면 true.
   bool _isCurrentSave(int generation) =>
       !_disposed && generation == _saveGeneration;
 
+  // 함수이름: _cancelledSaveResult
+  // 함수역할: 현재 언어에 맞는 저장 취소 결과를 만든다.
+  // 매개변수: 없음.
+  // 반환값: 실패 상태의 MedicationSaveResult; 서버 저장을 실행하거나 취소하지 않는다.
   MedicationSaveResult _cancelledSaveResult() => MedicationSaveResult(
     status: MedicationSaveStatus.failed,
     message: _isEnglishSetting
@@ -132,7 +140,10 @@ class MedBuddySavedMedicationViewModel {
         : '복약 정보 저장이 취소되었습니다.',
   );
 
-  // 동일 약의 중복 조작을 합치고 계정 변경 이후에는 이전 요청의 갱신을 반영하지 않는다.
+  // 함수이름: changeMedicationRegimen
+  // 함수역할: 같은 약의 동일 요청 ID는 공유하고 서로 다른 동시 변경은 충돌로 반환한다.
+  // 매개변수: medicationId: 변경 약 ID; change: 적용할 변경 의도.
+  // 반환값: 변경 결과 Future; 종료된 모델은 cancelled이며 완료 후 해당 진행 요청만 제거한다.
   Future<MedicationRegimenResult> changeMedicationRegimen(
     int medicationId,
     MedicationRegimenChange change,
@@ -169,6 +180,10 @@ class MedBuddySavedMedicationViewModel {
     return request;
   }
 
+  // Function Name: _applyRegimenChange
+  // Description: Applies a guarded regimen change, copies an edited medication's photo and refreshes affected state.
+  // Parameters: medicationId: Original ID; change: Stable request; generation: Owning save generation.
+  // Returns: A result distinguishing save success from refresh failure; stale account generations return cancelled and photo-copy failure does not undo a successful change.
   Future<MedicationRegimenResult> _applyRegimenChange(
     int medicationId,
     MedicationRegimenChange change,
@@ -254,15 +269,10 @@ class MedBuddySavedMedicationViewModel {
     return result;
   }
 
-  // 함수이름: saveMedicationInfo
-  // 함수역할: 약 상세 정보와 선택적 복약 스케줄을 저장 API로 전달하고 저장 목록을 갱신한다.
-  // 매개변수:
-  // - medicationInfo (MedicationDetail): 저장할 약 상세 정보
-  // - medicationSchedule (MedicationSchedule?): OCR에서 추출된 선택적 복약 일정
-  // - localImagePath (String): 서버에 전송하지 않는 기기 전용 약 사진 경로
-  // - refreshAfterSave (bool): 저장 후 목록·일정·알림을 즉시 갱신할지 여부
-  // 반환값:
-  // - 저장 성공·중복·실패 상태와 안내 메시지 및 저장 ID를 담은 MedicationSaveResult의 Future.
+  // Function Name: saveMedicationInfo
+  // Description: Saves medication details and optional schedule/photo, then conditionally refreshes dependent state.
+  // Parameters: medicationInfo: Detail data; medicationSchedule: Optional OCR/manual schedule; localImagePath: Device-only photo; refreshAfterSave: Whether to refresh immediately.
+  // Returns: The save/duplicate/failure result; stale generations skip follow-up effects, and local photo failure does not reverse server success.
   Future<MedicationSaveResult> saveMedicationInfo(
     MedicationDetail medicationInfo, {
     MedicationSchedule? medicationSchedule,
@@ -324,12 +334,10 @@ class MedBuddySavedMedicationViewModel {
     return result;
   }
 
-  // 함수이름: _refreshAfterSaves
-  // 함수역할: 저장 뒤 저장 목록, 오늘 일정, 복약 알림 예약을 차례로 한 번 갱신한다. 계정이 바뀌면 남은 단계를 건너뛴다.
-  // 매개변수:
-  // - generation (int): 저장을 시작할 때의 저장 세대
-  // 반환값:
-  // - 갱신이 끝나면 완료되는 Future.
+  // Function Name: _refreshAfterSaves
+  // Description: Refreshes the saved list, today's schedule and reminders in order while account ownership remains current.
+  // Parameters: generation: Save generation captured before the refresh.
+  // Returns: Completion; stops before later stages after invalidation and propagates refresh errors.
   Future<void> _refreshAfterSaves(int generation) async {
     await fetchSavedMedicationInfo();
     if (!_isCurrentSave(generation)) return;
@@ -338,12 +346,10 @@ class MedBuddySavedMedicationViewModel {
     await _synchronizeMedicationReminderSchedulesIfScheduleIsFresh();
   }
 
-  // 함수이름: refreshAfterMedicationSaves
-  // 함수역할: 여러 약을 갱신 없이 저장한 화면이 마지막에 한 번 목록·일정·알림을 갱신하게 한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - 갱신과 화면 알림이 끝나면 완료되는 Future.
+  // Function Name: refreshAfterMedicationSaves
+  // Description: Runs one shared refresh after a caller has saved multiple medications without per-save refresh.
+  // Parameters: None.
+  // Returns: Completion after list/schedule/reminder refresh and notification, unless disposed or invalidated.
   Future<void> refreshAfterMedicationSaves() async {
     if (_disposed) return;
     final generation = _saveGeneration;
@@ -352,13 +358,10 @@ class MedBuddySavedMedicationViewModel {
     _notifyViewModelListeners();
   }
 
-  // 함수이름: saveManualMedication
-  // 함수역할: 사용자가 직접 입력한 약을 공공데이터로 보완한 뒤 기존 저장 흐름으로 전달한다. 공공데이터에서 찾지 못해도 사용자가 입력한 일정은 그대로 저장한다.
-  // 매개변수:
-  // - entry (ManualMedicationEntry): 사용자가 직접 입력한 약과 일정 및 선택 사진
-  // - refreshAfterSave (bool): 저장 후 목록·일정·알림을 즉시 갱신할지 여부
-  // 반환값:
-  // - Future<MedicationSaveResult>: 사용자가 직접 입력한 약을 공공데이터로 보완한 뒤 기존 저장 흐름으로 전달한다. 공공데이터에서 찾지 못해도 사용자가 입력한 일정은 그대로 저장한다.
+  // Function Name: saveManualMedication
+  // Description: Preserves an explicitly selected catalog item, otherwise attempts lookup and falls back to manual data.
+  // Parameters: entry: User-entered medication, schedule and photo; refreshAfterSave: Immediate-refresh policy.
+  // Returns: A save result; lookup failure does not prevent manual registration, but account changes cancel further work.
   Future<MedicationSaveResult> saveManualMedication(
     ManualMedicationEntry entry, {
     bool refreshAfterSave = true,
@@ -464,13 +467,10 @@ class MedBuddySavedMedicationViewModel {
     );
   }
 
-  // 함수이름: _findCatalogDetailByItemSeq
-  // 함수역할: 확인이 필요한 조회 후보 중 사용자가 고른 품목번호와 같은 제품의 상세 정보를 찾는다.
-  // 매개변수:
-  // - candidates (List<MedicationDetail>): 이름 조회가 확정하지 못하고 돌려준 제품 후보
-  // - itemSeq (String): 사용자가 선택한 낱알약 후보의 품목번호
-  // 반환값:
-  // - MedicationDetail?: 품목번호가 같은 후보. 품목번호가 비어 있거나 같은 후보가 없으면 null.
+  // Function Name: _findCatalogDetailByItemSeq
+  // Description: Finds the candidate matching the user's chosen catalog identifier.
+  // Parameters: candidates: Unresolved catalog results; itemSeq: Selected product ID.
+  // Returns: The first exact trimmed-ID match, or null for blank/missing IDs.
   static MedicationDetail? _findCatalogDetailByItemSeq(
     List<MedicationDetail> candidates,
     String itemSeq,
@@ -487,13 +487,10 @@ class MedBuddySavedMedicationViewModel {
     return null;
   }
 
-  // 함수이름: _isDifferentCatalogItem
-  // 함수역할: 조회한 상세 정보가 사용자가 고른 후보와 다른 제품인지 품목번호로 판단한다. 어느 한쪽 품목번호가 비어 있으면 비교할 수 없으므로 다른 제품으로 보지 않는다.
-  // 매개변수:
-  // - lookedUpItemSeq (String): 이름 조회가 반환한 상세 정보의 품목번호
-  // - chosenItemSeq (String): 사용자가 선택한 낱알약 후보의 품목번호
-  // 반환값:
-  // - bool: 두 품목번호가 모두 있고 서로 다르면 true.
+  // Function Name: _isDifferentCatalogItem
+  // Description: Detects a definite product mismatch only when both catalog identifiers are known.
+  // Parameters: lookedUpItemSeq: Lookup result; chosenItemSeq: User choice.
+  // Returns: True for two nonempty unequal trimmed IDs; missing IDs cannot establish a mismatch.
   static bool _isDifferentCatalogItem(
     String lookedUpItemSeq,
     String chosenItemSeq,
@@ -503,12 +500,10 @@ class MedBuddySavedMedicationViewModel {
     return lookedUp.isNotEmpty && chosen.isNotEmpty && lookedUp != chosen;
   }
 
-  // 함수이름: saveIdentifiedPills
-  // 함수역할: 여러 낱알약 저장 요청을 순서대로 처리하고 저장 목록과 오늘 일정을 마지막에 한 번만 갱신한다. 일부 약의 저장이 실패해도 나머지 요청을 계속 처리해 각 결과를 원래 순서대로 반환한다.
-  // 매개변수:
-  // - requests (List<IdentifiedPillSaveRequest>): 입력 순서를 보존할 알약 저장 요청 목록
-  // 반환값:
-  // - Future<List<MedicationSaveResult>>: 여러 낱알약 저장 요청을 순서대로 처리하고 저장 목록과 오늘 일정을 마지막에 한 번만 갱신한다. 일부 약의 저장이 실패해도 나머지 요청을 계속 처리해 각 결과를 원래 순서대로 반환한다.
+  // Function Name: saveIdentifiedPills
+  // Description: Saves pill requests sequentially, retaining each outcome and refreshing once if any save completes.
+  // Parameters: requests: Ordered candidate-and-schedule requests.
+  // Returns: An unmodifiable result list in input order; individual exceptions become failures and invalidated remaining work becomes cancelled.
   Future<List<MedicationSaveResult>> saveIdentifiedPills(
     List<IdentifiedPillSaveRequest> requests,
   ) async {
@@ -561,12 +556,10 @@ class MedBuddySavedMedicationViewModel {
     return List<MedicationSaveResult>.unmodifiable(results);
   }
 
-  // 함수이름: fetchSavedMedicationInfo
-  // 함수역할: 저장된 복약 정보 목록을 서버에서 가져와 화면 상태에 반영한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  // Function Name: fetchSavedMedicationInfo
+  // Description: Loads server rows before resolving device photos, rejecting obsolete load generations.
+  // Parameters: None.
+  // Returns: Completion of list loading; failures preserve prior rows with error state, while photo reconciliation runs asynchronously.
   Future<void> fetchSavedMedicationInfo() async {
     if (_disposed) return;
     final generation = ++_loadGeneration;
@@ -630,12 +623,10 @@ class MedBuddySavedMedicationViewModel {
     return result.allSucceeded;
   }
 
-  // 함수이름: requestDeleteSavedMedications
-  // 함수역할: 중복 ID를 제거해 삭제를 병렬 요청하고 성공 항목만 목록·기기 사진에서 제거한 뒤 일정과 알림을 갱신하며 성공·실패 수를 반환한다.
-  // 매개변수:
-  // - savedMedicationIds (Iterable<int>): 처리할 저장 복약정보 식별자 목록
-  // 반환값:
-  // - Future<SavedMedicationBatchDeleteResult>: 중복 ID를 제거해 삭제를 병렬 요청하고 성공 항목만 목록·기기 사진에서 제거한 뒤 일정과 알림을 갱신하며 성공·실패 수를 반환한다.
+  // Function Name: requestDeleteSavedMedications
+  // Description: Deletes unique medication IDs concurrently and removes only successful items from visible state.
+  // Parameters: savedMedicationIds: Requested stored IDs; duplicates are removed.
+  // Returns: Success/failure counts after applicable schedule/reminder refresh; individual delete exceptions count as failures and photo cleanup is asynchronous.
   Future<SavedMedicationBatchDeleteResult> requestDeleteSavedMedications(
     Iterable<int> savedMedicationIds,
   ) async {
@@ -701,10 +692,10 @@ class MedBuddySavedMedicationViewModel {
     );
   }
 
-  // 응답 유실도 서버에서는 변경됐을 수 있다. 변경 중에는 일일/기간 캐시를 비우고, 적용된
-  // 변경(또는 예외로 결과를 모르는 경우) 뒤에는 그대로 비운다. 적용되지 않은 실패 뒤에는 비우기
-  // 전 일정을 되돌려, 오프라인에서 실패한 수정 때문에 오늘 기록할 일정이 사라지지 않게 한다.
-  // 응답만 잃고 실제로 적용된 변경이라도 서버가 바뀐 처방의 오프라인 기록을 거부한다.
+  // Function Name: _changingRegimen
+  // Description: Suspends schedule caches while a regimen mutation is uncertain, restoring them only after a definite non-applied result.
+  // Parameters: action: Mutation; applied: Whether the returned result means schedules must be invalidated.
+  // Returns: The action result; exceptions keep caches invalidated, account changes before the action throw, and restoration/invalidation errors propagate.
   Future<T> _changingRegimen<T>(
     Future<T> Function() action, {
     required bool Function(T result) applied,
@@ -735,12 +726,10 @@ class MedBuddySavedMedicationViewModel {
     }
   }
 
-  // 함수이름: _carryOverLocalImagePaths
-  // 함수역할: 새로 받은 서버 목록에 현재 목록이 이미 알고 있는 기기 사진 경로를 저장 ID 기준으로 이어 붙인다. 실제 파일 확인과 정리는 뒤따르는 사진 조회가 맡는다.
-  // 매개변수:
-  // - fetchedMedicationList (List<MedicationDetail>): 기기 사진 경로가 비어 있는 서버 목록
-  // 반환값:
-  // - List<MedicationDetail>: 알고 있던 사진 경로를 유지한 목록. 이어 붙일 경로가 없으면 받은 목록 그대로.
+  // Function Name: _carryOverLocalImagePaths
+  // Description: Carries known device-photo paths into fresh server rows by saved medication ID.
+  // Parameters: fetchedMedicationList: Server list before filesystem verification.
+  // Returns: Rows with preserved known paths, or the original list when no paths are known; later loading verifies files.
   List<MedicationDetail> _carryOverLocalImagePaths(
     List<MedicationDetail> fetchedMedicationList,
   ) {
@@ -768,13 +757,10 @@ class MedBuddySavedMedicationViewModel {
         .toList(growable: false);
   }
 
-  // 함수이름: _attachLocalMedicationImages
-  // 함수역할: 저장 약 ID별 기기 사진을 조회해 상세 모델에 붙이고 고아 사진을 정리하며 사진 처리 실패 시 원래 목록을 유지한다.
-  // 매개변수:
-  // - medicationList (List<MedicationDetail>): 사진 경로를 연결할 저장 약 목록
-  // - listRequestedAt (DateTime?): 목록 조회를 시작한 시각. 이후에 쓴 사진은 고아로 지우지 않는다.
-  // 반환값:
-  // - Future<List<MedicationDetail>>: 저장 약 ID별 기기 사진을 조회해 상세 모델에 붙이고 고아 사진을 정리하며 사진 처리 실패 시 원래 목록을 유지한다.
+  // Function Name: _attachLocalMedicationImages
+  // Description: Resolves account-owned photos and removes orphans without deleting images newer than the list request.
+  // Parameters: medicationList: Saved rows; listRequestedAt: Optional protected-write cutoff.
+  // Returns: Photo-enriched rows, or the original list on any image-store failure.
   Future<List<MedicationDetail>> _attachLocalMedicationImages(
     List<MedicationDetail> medicationList, {
     DateTime? listRequestedAt,
@@ -834,14 +820,10 @@ class MedBuddySavedMedicationViewModel {
     }
   }
 
-  // 함수이름: _refreshLocalMedicationImages
-  // 함수역할: 비동기로 찾은 사진 경로를 현재 목록의 같은 저장 ID에만 반영해 늦은 사진 조회가 삭제된 항목을 복원하지 않게 한다. 이어 붙여 둔 경로 중 파일이 사라진 것은 비우고, 달라진 경로가 없으면 알림을 보내지 않는다.
-  // 매개변수:
-  // - fetchedMedicationList (List<MedicationDetail>): 사진 경로를 연결할 저장 약 목록
-  // - generation (int): 이 목록을 요청한 조회 세대. 새 조회가 시작되면 결과를 버린다.
-  // - listRequestedAt (DateTime): 목록 조회를 시작한 시각. 이후에 쓴 사진은 지우지 않는다.
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  // Function Name: _refreshLocalMedicationImages
+  // Description: Reconciles resolved image paths only into still-present rows of the current load generation.
+  // Parameters: fetchedMedicationList: Source server rows; generation: Load owner; listRequestedAt: Orphan-cleanup cutoff.
+  // Returns: Completion; stale/failed/unchanged image reads do not notify or restore deleted medications.
   Future<void> _refreshLocalMedicationImages(
     List<MedicationDetail> fetchedMedicationList,
     int generation,

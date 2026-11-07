@@ -13,9 +13,16 @@ import '../services/api_config.dart';
 import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
 
-// 같은 계정의 선행 요청이 끝나면 제한된 횟수로 다시 조회할 수 있다.
+// 클래스명: MedicationLookupBusy
+// 역할: 선행 약품 조회가 진행 중이어서 일정 시간 뒤 재시도해야 함을 나타낸다.
+// 주요 책임: 조회 호출자가 제한된 재시도를 예약할 수 있도록 재개 시각을 제공한다.
+// 속성: retryAt: 생성 시각에 대기 시간을 더한 DateTime.
 class MedicationLookupBusy implements Exception {
   final DateTime retryAt;
+  // 함수이름: MedicationLookupBusy
+  // 함수역할: 현재 시각을 기준으로 다음 약품 조회가 가능한 시각을 계산한다.
+  // 매개변수: delay: 재시도까지 기다릴 Duration.
+  // 반환값: retryAt이 설정된 예외 객체; 직접 대기하거나 재시도하지 않는다.
   MedicationLookupBusy(Duration delay) : retryAt = DateTime.now().add(delay);
 }
 
@@ -37,13 +44,10 @@ class CheckMedicationDetail {
   final bool _ownsClient;
   final String Function()? _readSearchMode;
 
-  // Function Name: CheckMedicationDetail
-  // Description: Binds medication-name detail lookup to the configured backend and an injected or owned authenticated HTTP client.
-  // Parameters:
-  // - baseUrl (String): Base URL of the medication API.
-  // - client (http.Client?): HTTP transport; constructor documentation specifies ownership for injected clients.
-  // Returns:
-  // - CheckMedicationDetail: the initialized instance.
+  // 함수이름: CheckMedicationDetail
+  // 함수역할: 약품 조회용 API 연결과 현재 검색 모드 읽기 함수를 구성한다.
+  // 매개변수: baseUrl: API 주소; client: 선택적 호출자 소유 HTTP 연결; readSearchMode: 요청 시 검색 모드를 읽는 함수.
+  // 반환값: 조회 제어 객체; 연결을 생략하면 인증 클라이언트를 만들고 직접 해제한다.
   CheckMedicationDetail({
     this.baseUrl = ApiConfig.baseUrl,
     http.Client? client,
@@ -158,13 +162,10 @@ class CheckMedicationDetail {
     }
   }
 
-  // 함수이름: _messageForStatus
-  // 함수역할: 인증 만료, 요청 거절, 조회 결과 없음, 시간 초과, 과부하, 하루 한도 소진과 서버 오류를 구분해 다음 행동에 필요한 안내를 만든다.
-  // 매개변수:
-  // - statusCode (int): 오류 안내를 선택할 HTTP 상태 코드
-  // - detail (String?): 서버가 보낸 detail 문구. 하루 한도 429를 순간 과부하와 구분하는 데 쓴다.
-  // 반환값:
-  // - String?: 상태 코드에 대응하는 전용 안내. 전용 안내가 없는 상태 코드는 null.
+  // Function Name: _messageForStatus
+  // Description: Selects Korean user guidance for authentication, lookup, timeout, quota and server failures.
+  // Parameters: statusCode: HTTP status; detail: Optional server detail, used to distinguish a daily quota from temporary rate limiting.
+  // Returns: A dedicated message, or null for an unmapped status.
   String? _messageForStatus(int statusCode, [String? detail]) {
     if (statusCode == 401) {
       return '로그인 정보가 만료되었습니다. 다시 로그인해주세요.';

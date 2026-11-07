@@ -6,9 +6,9 @@ import 'package:flutter/material.dart';
 // 역할: 처방전 촬영 가이드와 실제 이미지 자르기가 공유할 좌표를 계산한다.
 
 // 클래스명: PrescriptionGuideLayout
-// 역할: 촬영 안내 영역과 실제 이미지 자르기가 공유하는 좌표 계산 경계이다.
-// 주요 책임:
-// - 화면 방향별 안내 배치를 계산하고 cover 미리보기의 가이드 영역을 원본 정규화 좌표로 역변환한다.
+// 역할: 처방전 촬영 화면의 방향과 가이드 영역을 계산한다.
+// 주요 책임: 뷰포트·카메라 방향에 맞는 가로 배치 및 정규화된 촬영 영역을 제공한다.
+// 속성: prescriptionAspectRatio (double): 문서 비율; 가로 가이드 폭·높이 비율 및 패널 최소·최대 폭 상수.
 class PrescriptionGuideLayout {
   static const double prescriptionAspectRatio = 1.5;
   static const double landscapeGuideWidthFactor = 0.90;

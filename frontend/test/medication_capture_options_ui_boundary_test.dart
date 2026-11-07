@@ -12,6 +12,13 @@ void main() {
     for (final multiple in [true, false]) {
       // 함수역할: 좁은 화면과 큰 글씨에서도 시트 하나로 방식을 선택하고 정확한 작업을 전달한다.
       // 매개변수: tester. 반환값: 선택 결과와 레이아웃 검사 완료.
+      // 함수이름: 촬영 작업 선택과 단계 뒤로가기
+      // 함수역할:
+      // - 좁은 화면·큰 글씨·두 언어에서 시스템 뒤로가기가 이전 단계를 복원하고 단일/다중 작업만 전달하며 등록 화면을 유지하는지 확인한다.
+      // 매개변수:
+      // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+      // 반환값:
+      // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
       testWidgets('촬영 방식 선택 $language $multiple', (tester) async {
         tester.view.physicalSize = const Size(320, 640);
         tester.view.devicePixelRatio = 1;

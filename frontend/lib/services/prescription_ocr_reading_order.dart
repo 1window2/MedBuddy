@@ -3,20 +3,23 @@
 
 import 'dart:ui' show Rect;
 
-// 클래스명: PrescriptionOcrReadingOrder
-// 역할: 줄 좌표만으로 패널(세로 여백으로 나뉜 열)과 행을 찾아 읽는 순서를 정한다. 줄 내용은 합치거나 바꾸지 않는다.
-// 책임:
-// - 약봉투처럼 약 이름·효능·용법 열이 따로 인식되어도 같은 행의 줄을 이웃하게 둔다.
-// - 왼쪽 영수증과 오른쪽 복약안내처럼 세로 여백으로 나뉜 패널의 줄은 같은 높이여도 한 행으로 묶지 않는다.
+// Class Name: PrescriptionOcrReadingOrder
+// Role: Orders selected OCR lines using page gutters, row overlap, and visual alignment without changing their text.
+// Responsibilities: Keep nearby medication/direction lines together, partition gutters, and align similarly centered rows across panels.
+// Attributes: None; ordering is calculated from caller-supplied line rectangles and selected indexes.
 class PrescriptionOcrReadingOrder {
+  // Function Name: PrescriptionOcrReadingOrder._
+  // Description: Restricts this stateless ordering utility to its static API.
+  // Parameters: None.
+  // Returns: A private utility instance with no state.
   const PrescriptionOcrReadingOrder._();
 
-  // 함수이름: order
-  // 함수역할: 남길 줄의 번호를 행 순서(위→아래, 같은 행은 패널·왼쪽→오른쪽)로 돌려준다.
-  // 매개변수:
-  // - boxes (List<Rect>): 인식한 모든 줄의 좌표. 가린 줄도 패널 경계를 찾는 데 쓴다.
-  // - keep (List<int>): 전송할 줄 번호. 반환값도 이 번호만 담는다.
-  // 반환값: 읽는 순서로 정렬한 줄 번호. 좌표로 판단할 수 없으면 입력 순서를 그대로 돌려준다.
+  // Function Name: order
+  // Description: Groups lines by gutter-separated panels and overlapping rows, then aligns similarly centered rows across panels.
+  // Parameters: boxes (List<Rect>) - all OCR boxes, including omitted lines used to detect gutters;
+  // - keep (List<int>): Valid indexes into boxes for lines to retain.
+  // Returns: Retained indexes in visual row/panel/left-to-right order; fewer than two lines or nonpositive median height preserves order.
+  // - Invalid indexes or an empty boxes list with multiple retained indexes can throw; input coordinates are not validated here.
   static List<int> order(List<Rect> boxes, List<int> keep) {
     if (keep.length < 2) return List.of(keep);
     final heights = [for (final box in boxes) box.height]..sort();
@@ -32,6 +35,10 @@ class PrescriptionOcrReadingOrder {
       if (left - reach >= lineHeight * 2) gutters.add((left + reach) / 2);
       if (right > reach) reach = right;
     }
+    // Function Name: panelOf
+    // Description: Assigns a line to the panel containing its horizontal center.
+    // Parameters: box (Rect) - OCR line rectangle.
+    // Returns: Number of detected gutter midpoints strictly left of the center.
     int panelOf(Rect box) =>
         gutters.where((gutter) => box.center.dx > gutter).length;
 

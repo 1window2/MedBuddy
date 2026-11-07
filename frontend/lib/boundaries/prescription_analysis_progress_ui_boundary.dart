@@ -30,13 +30,9 @@ class PrescriptionAnalysisProgressUI extends StatefulWidget {
   final PrescriptionRecognitionStage recognitionStage;
 
   // 함수이름: PrescriptionAnalysisProgressUI
-  // 함수역할: OCR 인식과 약품 분석의 활성 단계에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - key (Key?): 위젯을 구분하고 상태를 유지할 식별 키.
-  // - activeStep (AnalysisProgressStep): 현재 진행 중이거나 실패한 처방 분석 단계.
-  // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-  // - onBackRequested (VoidCallback): 이전 단계로 이동하거나 현재 화면을 닫을 때 실행할 콜백.
-  // 반환값: 입력 설정이 반영된 PrescriptionAnalysisProgressUI 인스턴스.
+  // 함수역할: 분석 단계·언어·복귀 동작과 약품 조회 건수 및 OCR 하위 단계를 받는다.
+  // 매개변수: key (Key?): 키; activeStep (AnalysisProgressStep): 분석 단계; userSetting (UserSetting): 설정; onBackRequested (VoidCallback): 복귀; completedMedicationCount/totalMedicationCount (int): 건수; recognitionStage (PrescriptionRecognitionStage): OCR 단계.
+  // 반환값: 새 PrescriptionAnalysisProgressUI.
   const PrescriptionAnalysisProgressUI({
     super.key,
     required this.activeStep,
@@ -47,24 +43,44 @@ class PrescriptionAnalysisProgressUI extends StatefulWidget {
     this.recognitionStage = PrescriptionRecognitionStage.recognizingText,
   });
 
+  // 함수이름: createState
+  // 함수역할: OCR 완료 표시의 짧은 전환 상태를 관리할 객체를 만든다.
+  // 매개변수: 없음.
+  // 반환값: 새 _PrescriptionAnalysisProgressUIState.
   @override
   State<PrescriptionAnalysisProgressUI> createState() =>
       _PrescriptionAnalysisProgressUIState();
 }
 
+// 클래스명: _PrescriptionAnalysisProgressUIState
+// 역할: 서버 처리와 별개로 OCR 완료를 잠깐 표시한다.
+// 주요 책임: 접근성 애니메이션 설정을 따르고 타이머가 실제 약품 조회를 지연시키지 않게 한다.
+// 속성: _completionTimer (Timer?): 표시 종료 예약; _finishingRecognition (bool): 완료 단계 표시 여부.
 class _PrescriptionAnalysisProgressUIState
     extends State<PrescriptionAnalysisProgressUI> {
   Timer? _completionTimer;
   bool _finishingRecognition = false;
 
+  // 함수이름: _visibleStep
+  // 함수역할: 짧은 OCR 완료 표시 중에는 인식 단계로 유지하고 그 외에는 실제 활성 단계를 사용한다.
+  // 매개변수: 없음.
+  // 반환값: 화면에 표시할 AnalysisProgressStep.
   AnalysisProgressStep get _visibleStep => _finishingRecognition
       ? AnalysisProgressStep.prescriptionRecognition
       : widget.activeStep;
+  // 함수이름: _visibleRecognitionStage
+  // 함수역할: 짧은 완료 표시 중에는 completed, 그 외에는 실제 OCR 진행 단계를 선택한다.
+  // 매개변수: 없음.
+  // 반환값: 화면에 표시할 PrescriptionRecognitionStage.
   PrescriptionRecognitionStage get _visibleRecognitionStage =>
       _finishingRecognition
       ? PrescriptionRecognitionStage.completed
       : widget.recognitionStage;
 
+  // 함수이름: didUpdateWidget
+  // 함수역할: OCR에서 약품 분석으로 바뀔 때 애니메이션이 허용된 경우에만 완료 상태를 500ms 표시한다.
+  // 매개변수: oldWidget (PrescriptionAnalysisProgressUI): 이전 분석 단계.
+  // 반환값: 없음. 이전 타이머를 취소하며 서버 요청은 지연하지 않는다.
   @override
   void didUpdateWidget(covariant PrescriptionAnalysisProgressUI oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -82,6 +98,10 @@ class _PrescriptionAnalysisProgressUIState
     }
   }
 
+  // 함수이름: dispose
+  // 함수역할: OCR 완료 표시 타이머를 취소해 종료된 화면을 갱신하지 않게 한다.
+  // 매개변수: 없음.
+  // 반환값: 없음.
   @override
   void dispose() {
     _completionTimer?.cancel();
@@ -297,11 +317,10 @@ class _ProgressStepLabel extends StatelessWidget {
   // 반환값: 입력 설정이 반영된 _ProgressStepLabel 인스턴스.
   const _ProgressStepLabel({required this.label, required this.active});
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 분석 단계 이름과 활성 강조 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 분석 단계 이름과 활성 강조에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Displays an analysis-stage label with active-stage emphasis.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     return Text(
@@ -333,11 +352,10 @@ class _ProgressText {
   // 반환값: 입력 설정이 반영된 _ProgressText 인스턴스.
   const _ProgressText(this.language);
 
-  // 함수이름: isEnglish
-  // 함수역할: 공통 언어 판별 규칙으로 언어 코드가 영어인지 확인한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
+  // Function Name: isEnglish
+  // Description: Applies the shared English-language rule to analysis progress copy.
+  // Parameters: None.
+  // Returns: True for an English language code.
   bool get isEnglish => isEnglishLanguage(language);
 
   // 함수이름: back
@@ -367,10 +385,18 @@ class _ProgressText {
   String get analyzingMedication =>
       isEnglish ? 'Analyzing medication info...' : '약물 정보 분석 중...';
 
+  // 함수이름: checked
+  // 함수역할: 전체 약품 중 조회 완료된 개수를 현재 언어로 표시한다.
+  // 매개변수: completed/total (int): 완료·전체 개수.
+  // 반환값: 조회 건수 진행 문구.
   String checked(int completed, int total) => isEnglish
       ? '$completed of $total medication lookups completed'
       : '약 $total개 중 $completed개 조회 완료';
 
+  // 함수이름: recognitionProgress
+  // 함수역할: OCR 진행 단계의 라벨과 정해진 단계 진행률을 백분율로 표시한다.
+  // 매개변수: stage (PrescriptionRecognitionStage): 현재 인식 단계.
+  // 반환값: 현재 언어의 단계 백분율과 이름.
   String recognitionProgress(PrescriptionRecognitionStage stage) {
     final label = switch (stage) {
       PrescriptionRecognitionStage.recognizingText =>

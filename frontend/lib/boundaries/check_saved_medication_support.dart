@@ -3,12 +3,10 @@ part of 'check_saved_medication_ui_boundary.dart';
 // 파일명: check_saved_medication_support.dart
 // 역할: 저장 약품 사진·삭제 대화상자, 날짜 그룹 및 현지화 문구를 제공한다.
 
-// 클래스명: _MedicationImageDialog
-// 역할: 저장 약 사진과 불러오기 실패 안내를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 저장 약 사진과 불러오기 실패 안내 위젯을 구성한다.
-// 속성:
-// - medication (MedicationDetail): 표시·변환·저장·비교할 약품 데이터.
+// Class Name: _MedicationImageDialog
+// Role: Saved medication image dialog.
+// Responsibilities: Loads the medication photo and provides a visible failure state.
+// Attributes: medication (MedicationDetail): local/remote image source; text (_SavedMedicationText): viewer and error labels.
 class _MedicationImageDialog extends StatelessWidget {
   final MedicationDetail medication;
   final _SavedMedicationText text;
@@ -24,11 +22,10 @@ class _MedicationImageDialog extends StatelessWidget {
     required this.text,
   });
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 저장 약 사진과 불러오기 실패 안내 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 저장 약 사진과 불러오기 실패 안내에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Displays the saved medication photo with a close action and load-failure fallback.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final imageUrl = safeMedicationImageUrl(medication.imageUrl);
@@ -126,11 +123,10 @@ class _MedicationImageDialog extends StatelessWidget {
     );
   }
 
-  // 함수이름: _buildImageLoadFailure
-  // 함수역할: 약 사진 대화상자에 불러오기 실패 문구를 표시한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 저장 약 사진과 불러오기 실패 안내에 쓰는 위젯 트리.
+  // Function Name: _buildImageLoadFailure
+  // Description: Builds the localized photo-load failure display inside the dialog.
+  // Parameters: None.
+  // Returns: The image failure widget.
   Widget _buildImageLoadFailure() {
     return Padding(
       padding: const EdgeInsets.all(28),
@@ -147,27 +143,24 @@ class _MedicationImageDialog extends StatelessWidget {
   }
 }
 
-// 클래스명: _DeleteConfirmationDialog
-// 역할: 약품 삭제 확정·취소 선택을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 약품 삭제 확정·취소 선택 위젯을 구성한다.
+// Class Name: _DeleteConfirmationDialog
+// Role: Confirmation before removing saved medication and its dose records.
+// Responsibilities: Shows the affected count and returns explicit confirmation or cancellation.
+// Attributes: text (_SavedMedicationText): localized warning/actions; count (int): affected medication count.
 class _DeleteConfirmationDialog extends StatelessWidget {
   final _SavedMedicationText text;
   final int count;
 
-  // 함수이름: _DeleteConfirmationDialog
-  // 함수역할: 약품 삭제 확정·취소 선택에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - text (_SavedMedicationText): 해당 화면 구역의 언어별 표시 문구.
-  // - count (int): 삭제할 약 개수. 확인 문구에 표시한다.
-  // 반환값: 입력 설정이 반영된 _DeleteConfirmationDialog 인스턴스.
+  // Function Name: _DeleteConfirmationDialog
+  // Description: Supplies deletion confirmation copy for the number of selected medications.
+  // Parameters: text (_SavedMedicationText): labels and warning; count (int): medications to delete.
+  // Returns: A _DeleteConfirmationDialog.
   const _DeleteConfirmationDialog({required this.text, required this.count});
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 약품 삭제 확정·취소 선택 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 약품 삭제 확정·취소 선택에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Shows the deletion warning and confirm/cancel actions without performing deletion itself.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     return Dialog(
@@ -259,14 +252,10 @@ class _DeleteConfirmationDialog extends StatelessWidget {
   }
 }
 
-// 클래스명: _SavedMedicationGroup
-// 역할: 같은 날짜에 속한 약품 묶음을 담당한다.
-// 주요 책임:
-// - 그룹 날짜를 연-월-일로 표시하고 날짜가 없으면 오늘을 사용한다.
-// - 선택 날짜 기준으로 약품을 묶고 지정한 오름차순·내림차순으로 그룹을 정렬한다.
-// 속성:
-// - date (DateTime?): 표시·비교 기준이 되는 날짜 또는 이전·현재 값.
-// - medications (List<MedicationDetail>): 조회·선택·정렬·표시에 사용할 약품 목록.
+// Class Name: _SavedMedicationGroup
+// Role: Medications grouped by a selected date basis.
+// Responsibilities: Groups and orders medication entries and formats the group heading, using today when its date is absent.
+// Attributes: date (DateTime?): group date; medications (List<MedicationDetail>): members.
 class _SavedMedicationGroup {
   final DateTime? date;
   final List<MedicationDetail> medications;
@@ -279,11 +268,10 @@ class _SavedMedicationGroup {
   // 반환값: 입력 설정이 반영된 _SavedMedicationGroup 인스턴스.
   const _SavedMedicationGroup({required this.date, required this.medications});
 
-  // 함수이름: displayDate
-  // 함수역할: 그룹 날짜를 다른 검토 화면과 같은 연-월-일(2026-10-01)로 표시하고 날짜가 없으면 오늘을 사용한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: displayDate
+  // Description: Formats the group date as year-month-day, falling back to today when absent.
+  // Parameters: None.
+  // Returns: The formatted date heading.
   String get displayDate {
     final value = date ?? DateTime.now();
     return '${value.year}-${_twoDigits(value.month)}-${_twoDigits(value.day)}';
@@ -379,12 +367,10 @@ class _SavedMedicationGroup {
   }
 }
 
-// 클래스명: _SavedMedicationText
-// 역할: 저장 약품 사진·삭제 대화상자, 날짜 그룹 및 현지화 문구에 쓰는 한국어·영어 문구를 담당한다.
-// 주요 책임:
-// - 저장 약품 사진·삭제 대화상자, 날짜 그룹 및 현지화 문구에 쓰는 한국어·영어 문구의 언어를 선택하고 안내에 필요한 값을 문구에 반영한다.
-// 속성:
-// - language (String): 화면 문구를 선택할 언어 코드.
+// Class Name: _SavedMedicationText
+// Role: Localized cabinet, image and deletion copy.
+// Responsibilities: Formats dates, counts and deletion consequences consistently with cabinet actions.
+// Attributes: language (String): selected language code.
 class _SavedMedicationText {
   final String language;
 
@@ -395,21 +381,22 @@ class _SavedMedicationText {
   // 반환값: 입력 설정이 반영된 _SavedMedicationText 인스턴스.
   const _SavedMedicationText(this.language);
 
-  // 함수이름: isEnglish
-  // 함수역할: 언어 코드가 영어 표시 대상인지 앱 공통 기준으로 확인한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
+  // Function Name: isEnglish
+  // Description: Applies the shared English-language-code rule to cabinet text.
+  // Parameters: None.
+  // Returns: True for an English language code.
   bool get isEnglish => isEnglishLanguage(language);
 
-  // 함수이름: title
-  // 함수역할: 현재 언어와 입력값에 맞춰 "복약함" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: title
+  // Description: Names the medication cabinet screen.
+  // Parameters: None.
+  // Returns: The localized cabinet title.
   String get title => isEnglish ? 'Medications' : '복약함';
 
-  // 함수역할: 복약함 제목 아래 표시할 간단한 설명을 반환한다. 목록에 없는 복용 기록은 약속하지 않는다. 매개변수: 없음.
+  // Function Name: subtitle
+  // Description: Describes the saved medication list without promising dose-record features absent from this view.
+  // Parameters: None.
+  // Returns: Localized saved-medication subtitle.
   String get subtitle =>
       isEnglish ? 'View saved medication.' : '저장한 약과 복용 기간을 확인합니다.';
 
@@ -429,8 +416,10 @@ class _SavedMedicationText {
   // 함수역할: 빈 필터 결과의 복구 동작을 제공한다. 매개변수: 없음. 반환값: 버튼 문구.
   String get showAll => isEnglish ? 'View all' : '전체 보기';
 
-  // 함수이름: registerMedication
-  // 함수역할: 홈의 약 등록·관리에서 고르는 '약 등록'과 같은 이름을 표시한다. 매개변수: 없음. 반환값: 버튼 문구.
+  // Function Name: registerMedication
+  // Description: Names medication registration consistently with the home registration action.
+  // Parameters: None.
+  // Returns: The localized registration button label.
   String get registerMedication => isEnglish ? 'Add medication' : '약 등록';
 
   // 함수이름: deleting
@@ -511,14 +500,18 @@ class _SavedMedicationText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get emptyMessage =>
       isEnglish ? 'No saved medication information.' : '저장된 복약정보가 없습니다.';
-  // 함수이름: loadFailedMessage
-  // 함수역할: 저장 목록 조회에 실패했음을 저장된 약이 없는 안내와 구분해 알린다. 매개변수: 없음. 반환값: 안내 문구.
+  // Function Name: loadFailedMessage
+  // Description: Reports a cabinet query failure without implying that no medications are saved.
+  // Parameters: None.
+  // Returns: The localized load-failure explanation.
   String get loadFailedMessage => isEnglish
       ? 'Could not load saved medication information.'
       : '저장된 복약 정보를 불러오지 못했습니다.';
 
-  // 함수이름: retry
-  // 함수역할: 저장 목록을 다시 조회하는 동작을 제공한다. 매개변수: 없음. 반환값: 버튼 문구.
+  // Function Name: retry
+  // Description: Labels the action that retries the saved-medication query.
+  // Parameters: None.
+  // Returns: The localized retry label.
   String get retry => isEnglish ? 'Try again' : '다시 시도';
 
   // 함수이름: noInformation
@@ -539,18 +532,15 @@ class _SavedMedicationText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get medicationPeriod => isEnglish ? 'Medication period' : '복용기간';
-  // 함수이름: nextDoseDay
-  // 함수역할: 현재 언어와 입력값에 맞춰 "다음 복용일" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: nextDoseDay
+  // Description: Labels the upcoming dose-date field.
+  // Parameters: None.
+  // Returns: The localized next-dose-day label.
   String get nextDoseDay => isEnglish ? 'Next dose day' : '다음 복용일';
-  // 함수이름: nextDoseDayValue
-  // 함수역할: 다음 복용일을 오늘이면 "오늘", 아니면 월/일과 요일로 표시한다.
-  // 매개변수:
-  // - day (DateTime): 표시할 복용일.
-  // - today (DateTime): 오늘 날짜.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: nextDoseDayValue
+  // Description: Displays today as a relative label, otherwise the month/day and weekday.
+  // Parameters: day (DateTime): upcoming dose day; today (DateTime): comparison date.
+  // Returns: The localized dose-day text.
   String nextDoseDayValue(DateTime day, DateTime today) {
     if (day.year == today.year && day.month == today.month && day.day == today.day) {
       return isEnglish ? 'Today' : '오늘';
@@ -577,17 +567,15 @@ class _SavedMedicationText {
   String get imageLoadFailed => isEnglish
       ? 'The medication image could not be loaded.'
       : '약 사진을 불러올 수 없습니다.';
-  // 함수이름: delete
-  // 함수역할: 현재 언어와 입력값에 맞춰 날짜 묶음 머리글의 "삭제" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: delete
+  // Description: Labels deletion in a date-group header.
+  // Parameters: None.
+  // Returns: The localized delete label.
   String get delete => isEnglish ? 'Delete' : '삭제';
-  // 함수이름: medicationCount
-  // 함수역할: 날짜 묶음에 포함된 약 개수를 언어에 맞춰 표기한다.
-  // 매개변수:
-  // - count (int): 묶음의 약 개수.
-  // 반환값: "2개" 또는 "2 items" 형식의 문구.
+  // Function Name: medicationCount
+  // Description: Formats a date group's medication count with the appropriate item unit.
+  // Parameters: count (int): medications in the group.
+  // Returns: Localized item-count text.
   String medicationCount(int count) =>
       isEnglish ? '$count ${count == 1 ? 'item' : 'items'}' : '$count개';
   // 함수이름: deleteSelected
@@ -633,25 +621,21 @@ class _SavedMedicationText {
         : '삭제 성공: ${result.successCount}개. 실패: ${result.failureCount}개.';
   }
 
-  // 함수이름: deleteMessage
-  // 함수역할: 삭제할 약 개수와 함께 복용 기록도 지워진다는 사실과 기록을 남기는 중단 방법을 안내한다.
-  // 매개변수:
-  // - count (int): 삭제할 약 개수.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  // 서버는 삭제한 약의 복용 기록도 지우므로, 기록을 남기려면 중단을 쓰도록 미리 알린다.
+  // Function Name: deleteMessage
+  // Description: Warns that server deletion also removes dose records and recommends discontinuing instead when records must be retained.
+  // Parameters: count (int): medications selected for deletion.
+  // Returns: The localized confirmation warning including the count.
   String deleteMessage(int count) => isEnglish
       ? 'Delete $count medication${count == 1 ? '' : 's'}?\n${count == 1 ? 'Its' : 'Their'} dose records are deleted too and cannot be restored. To keep the records, use "Stop as prescribed" instead.'
       : '선택한 약 $count개를 삭제할까요?\n${count == 1 ? '이 약의' : '이 약들의'} 복용 기록도 함께 삭제되며 되돌릴 수 없습니다. 기록을 남기려면 \'처방에 따른 복용 중단\'을 이용하세요.';
-  // 함수이름: deleteAction
-  // 함수역할: 삭제 확인 버튼의 "삭제" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: deleteAction
+  // Description: Labels the destructive confirmation action.
+  // Parameters: None.
+  // Returns: The localized delete confirmation label.
   String get deleteAction => isEnglish ? 'Delete' : '삭제';
-  // 함수이름: cancelAction
-  // 함수역할: 삭제 확인 취소 버튼의 "취소" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: cancelAction
+  // Description: Labels cancellation of medication deletion.
+  // Parameters: None.
+  // Returns: The localized cancel label.
   String get cancelAction => isEnglish ? 'Cancel' : '취소';
 }

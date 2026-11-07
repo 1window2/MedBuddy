@@ -33,9 +33,9 @@ class LocalPrescriptionOcrResult {
 }
 
 // 클래스명: PrescriptionLocalOcrBoundary
-// 역할: 이미지 입력 Control이 사용할 로컬 인식·마스킹 계약이다.
-// 주요 책임:
-// - ML Kit 구현에 의존하지 않고 파일 경로에서 비식별 텍스트와 미리보기 영역을 얻도록 한다.
+// 역할: 처방전 이미지의 로컬 문자 인식과 개인정보 가림 결과를 제공하는 계약이다.
+// 주요 책임: 이미지 경로를 받아 안전한 텍스트·영역 결과 또는 실패를 반환하도록 한다.
+// 속성: 저장 상태 없음; recognizeAndMask 비동기 경계만 노출한다.
 abstract interface class PrescriptionLocalOcrBoundary {
   // 함수이름: recognizeAndMask
   // 함수역할: 로컬 처방전 파일에서 개인정보를 제거한 텍스트와 미리보기 영역을 얻는 비동기 인식 계약을 제공한다.
@@ -46,15 +46,10 @@ abstract interface class PrescriptionLocalOcrBoundary {
   Future<LocalPrescriptionOcrResult> recognizeAndMask(String imagePath);
 }
 
-// 클래스명: PrescriptionLocalOcrService
-// 역할: 기기 내 ML Kit로 처방전 텍스트와 위치를 읽고 민감정보를 제거한다.
-// 주요 책임:
-// - 한글 OCR을 외부 서버 전송 전에 수행한다.
-// - 환자 식별 라벨과 주민번호·연락처·이메일 패턴을 민감정보로 분류한다.
-// - 민감정보 줄은 서버 전송 텍스트에서 제외하고 미리보기에는 마스킹 영역만 남긴다.
-// 속성:
-// - _textRecognizer (TextRecognizer): 기기 내 한글 OCR 인식기
-// - _privacyFilter (PrescriptionPrivacyFilter): OCR 개인정보 라벨·식별자 제거 규칙
+// Class Name: PrescriptionLocalOcrService
+// Role: Extract locally recognized prescription text with privacy filtering and preview regions.
+// Responsibilities: Mask sensitive lines/identifiers and order remaining text by document layout.
+// Attributes: _textRecognizer (TextRecognizer): OCR engine; _privacyFilter (PrescriptionPrivacyFilter): masking rules; _maximumPreviewRegions (int): 80 nonsensitive regions, without capping sensitive regions.
 class PrescriptionLocalOcrService implements PrescriptionLocalOcrBoundary {
   static const int _maximumPreviewRegions = 80;
 
@@ -76,12 +71,10 @@ class PrescriptionLocalOcrService implements PrescriptionLocalOcrBoundary {
            TextRecognizer(script: TextRecognitionScript.korean),
        _privacyFilter = privacyFilter ?? const PrescriptionPrivacyFilter();
 
-  // 함수이름: recognizeAndMask
-  // 함수역할: 이미지에서 텍스트와 좌표를 읽고 민감정보가 제거된 결과를 반환한다.
-  // 매개변수:
-  // - imagePath (String): 카메라 또는 갤러리에서 선택한 로컬 이미지 경로
-  // 반환값:
-  // - 비식별 OCR 텍스트와 화면 표시 영역
+  // Function Name: recognizeAndMask
+  // Description: Recognize image text, mask sensitive content and sort safe lines into reading order; fail when no usable nonsensitive text remains.
+  // Parameters: imagePath (String): local prescription image path.
+  // Returns: Future<LocalPrescriptionOcrResult>: masked text and immutable regions; OCR/file failures and empty-safe-text errors propagate.
   @override
   Future<LocalPrescriptionOcrResult> recognizeAndMask(String imagePath) async {
     final inputImage = InputImage.fromFilePath(imagePath);
@@ -218,13 +211,10 @@ class PrescriptionLocalOcrService implements PrescriptionLocalOcrBoundary {
   }
 }
 
-// 클래스명: PrescriptionPrivacyFilter
-// 역할: 기기에서 인식한 처방전 문자열 중 외부 전송이 금지된 개인정보를 판별한다.
-// 주요 책임:
-// - 개인정보 라벨과 주민등록번호·연락처·이메일 패턴을 탐지한다.
-// - 개인정보 라벨과 값이 서로 다른 줄로 인식된 경우 라벨 수만큼 뒤따르는 값 줄도 제거하도록 알려준다.
-// - 값 자리에 약 행이 온 경우에는 약 행을 값으로 보지 않아 약이 분석에서 빠지지 않게 한다.
-// - 안전한 복약 문구에 섞인 직접 식별자만 대체 문구로 치환한다.
+// Class Name: PrescriptionPrivacyFilter
+// Role: Identify prescription text that may contain personal information.
+// Responsibilities: Detect sensitive labels and adjacent value rows, retain medication rows, and mask inline identifiers.
+// Attributes: Static RegExp fields: sensitive/neutral labels, medication cues and identifier/value patterns; no instance state.
 class PrescriptionPrivacyFilter {
   static final RegExp _sensitiveLabelPattern = RegExp(
     // "성 명"은 앞 글자가 한글이 아닐 때만 라벨로 본다. "서방성 명…" 같은 약 문구를 지우지 않기 위해서다.
@@ -300,13 +290,10 @@ class PrescriptionPrivacyFilter {
         _emailPattern.hasMatch(text);
   }
 
-  // 함수이름: sensitiveLineFlags
-  // 함수역할: 인식한 줄 순서대로 개인정보 여부를 판정한다. 값 없이 라벨만 있는 줄이 이어지면 그 라벨 수만큼 뒤따르는 줄도 값으로 보고 가린다.
-  // - 라벨 줄 묶음에 개인정보 라벨이 하나라도 있으면 함께 나열된 나이·성별 라벨도 값 줄 수에 포함한다.
-  // - 값 줄 하나에 나이·성별 값이 함께 적혀 있으면 기다리던 나이·성별 라벨 수 안에서 그만큼 더 줄인다.
-  // - 한 줄에 라벨이 여럿인 머리행 바로 다음 줄은 값도 한 줄에 붙어 인식됐을 수 있으므로 그 줄에 담긴 값 수만큼 한꺼번에 줄인다.
-  // - 값 자리에 약 행이 오면 라벨과 값의 짝이 깨진 것이므로 남은 수를 버리고 약 행은 가리지 않는다.
-  // 매개변수: lines: 공백을 정리한 OCR 줄 목록. 반환값: 각 줄을 가려야 하는지 나타내는 같은 길이의 목록.
+  // Function Name: sensitiveLineFlags
+  // Description: Track sensitive label runs and following value rows, stopping pending masking at medication-like rows.
+  // Parameters: lines (List<String>): OCR lines in recognition order.
+  // Returns: List<bool>: sensitivity flag aligned with each input line.
   List<bool> sensitiveLineFlags(List<String> lines) {
     final flags = <bool>[];
     var pendingValueLines = 0;
@@ -371,22 +358,18 @@ class PrescriptionPrivacyFilter {
     return flags;
   }
 
-  // 함수이름: _sensitiveLabelCount
-  // 함수역할: 한 줄에 들어 있는 개인정보 라벨 수를 센다. "수진자 성명"처럼 이어 쓴 라벨은 하나로 센다.
-  // 매개변수:
-  // - text (String): 기기 OCR이 인식한 한 줄
-  // 반환값:
-  // - int: 개인정보 라벨 수.
+  // Function Name: _sensitiveLabelCount
+  // Description: Count occurrences of recognized sensitive labels.
+  // Parameters: text (String): OCR line.
+  // Returns: int: matching label count.
   int _sensitiveLabelCount(String text) {
     return _sensitiveLabelPattern.allMatches(text).length;
   }
 
-  // 함수이름: _isLabelOnlyLine
-  // 함수역할: 개인정보 라벨과 나이·성별 라벨, 구분 기호만으로 이루어져 값이 없는 줄인지 판별한다.
-  // 매개변수:
-  // - text (String): 기기 OCR이 인식한 한 줄
-  // 반환값:
-  // - bool: 라벨이 하나 이상 있고 라벨 외의 글자가 없으면 true.
+  // Function Name: _isLabelOnlyLine
+  // Description: Check whether a line contains only sensitive/neutral labels and separators.
+  // Parameters: text (String): OCR line.
+  // Returns: bool: true only when a recognized label exists and no value text remains.
   bool _isLabelOnlyLine(String text) {
     if (!_sensitiveLabelPattern.hasMatch(text) &&
         !_neutralLabelPattern.hasMatch(text)) {
@@ -399,26 +382,18 @@ class PrescriptionPrivacyFilter {
         .isEmpty;
   }
 
-  // 함수이름: _looksLikeMedicationRow
-  // 함수역할: 용량·횟수 단위나 제형 표기가 있어 환자 정보 값이 아니라 약 행으로 볼 수 있는 줄인지 판별한다.
-  // 매개변수:
-  // - text (String): 기기 OCR이 인식한 한 줄
-  // 반환값:
-  // - bool: 약 행으로 보이면 true.
+  // Function Name: _looksLikeMedicationRow
+  // Description: Detect dosage units or medication-form cues that end pending personal-value masking.
+  // Parameters: text (String): OCR line.
+  // Returns: bool: medication-row pattern match.
   bool _looksLikeMedicationRow(String text) {
     return _medicationRowPattern.hasMatch(text);
   }
 
-  // 함수이름: _valueCountsInLine
-  // 함수역할: 값 줄 하나에 라벨 몇 개의 값이 들어 있는지를 나이·성별 값과 그 밖의 값으로 나눠 센다.
-  // - 성별 낱말과 "75세"는 나이·성별 값으로 센다. 단위 없는 1~3자리 숫자는 줄 전체가 그 숫자이거나, 성별·나이 값과 함께 있거나, 머리행 다음 줄에서 단어 하나 뒤에 붙은 경우에만 나이로 본다(주소의 번지 제외).
-  // - 보통은 그 밖의 값을 줄당 하나로 센다. 머리행 바로 다음 줄(joinedRow)에서는 주민등록번호·생년월일·연락처·이메일을 각각 하나로, 한글로 적힌 나머지(이름·주소)를 묶어 하나로 센다.
-  // - 확실한 값만 세므로 덜 셀 수는 있어도 더 세지는 않는다. 덜 세면 다음 줄을 더 가릴 뿐 개인정보가 남지 않는다.
-  // 매개변수:
-  // - text (String): 값이 들어 있는 OCR 한 줄
-  // - joinedRow (bool): 한 줄에 라벨이 여럿인 머리행 바로 다음 줄인지 여부
-  // 반환값:
-  // - ({int ageAndGender, int others}): 나이·성별 값 수와 그 밖의 값 수.
+  // Function Name: _valueCountsInLine
+  // Description: Estimate neutral age/gender values and other personal-value groups for consuming pending label rows.
+  // Parameters: text (String): OCR value line; joinedRow (bool): multiple labels may share one value row.
+  // Returns: ({int ageAndGender, int others}): estimated value-group counts.
   ({int ageAndGender, int others}) _valueCountsInLine(
     String text, {
     required bool joinedRow,

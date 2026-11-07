@@ -131,6 +131,10 @@ void main() {
 // 클래스명: _RegistrationFlow
 // 역할: OCR·HTTP 외부 경계만 대체하고 앱의 실제 분석·저장·조회 Control을 연결한다.
 // 주요 책임: 테스트 요청을 기록하고 부분 실패·저장 응답 유실·조회 실패를 재현한다.
+// 속성: client (MockClient), model (MedBuddyViewModel): 연결된 통신 대역과 실제 화면 모델.
+// - rows (List<Map<String, dynamic>>): 저장된 약 응답; saveAttempts (List<String>): 저장 시도 이름.
+// - failedSaves (Set<String>): 거부할 약 이름; today (String): 테스트 기준 날짜 문자열.
+// - loseSaveResponse, failSchedule (bool): 저장 응답 유실·일정 조회 실패 스위치.
 class _RegistrationFlow {
   late final MockClient client;
   late final MedBuddyViewModel model;
@@ -261,6 +265,7 @@ class _RegistrationFlow {
 // 클래스명: _LocalOcr
 // 역할: 카메라·문자 인식 엔진 없이 비식별 텍스트를 제공하는 테스트 경계.
 // 주요 책임: 실제 개인정보나 처방 이미지를 외부로 보내지 않고 후속 등록 경로를 시험한다.
+// 속성: 없음; 고정 비식별 텍스트와 빈 영역을 반환한다.
 class _LocalOcr implements PrescriptionLocalOcrBoundary {
   // 함수이름: recognizeAndMask
   // 함수역할: 주어진 촬영 파일의 인식 결과를 고정된 비식별 시험 문구로 대체한다.

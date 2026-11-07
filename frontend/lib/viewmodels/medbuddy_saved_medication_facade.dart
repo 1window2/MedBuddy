@@ -4,10 +4,14 @@ part of 'medbuddy_view_model.dart';
 // Role: Compatibility-only forwarding; saved-medication state belongs to its feature.
 
 // Class Name: MedBuddySavedMedicationFacade
-// Role: Keeps existing screen and prescription call sites stable.
-// Responsibilities: Forward operations without accessing feature-private state.
+// Role: Keep existing callers compatible with the saved-medication feature owner.
+// Responsibilities: Forward public saved-medication operations without duplicating feature state.
+// Attributes: No extension-owned fields; _savedMedications belongs to the host MedBuddyViewModel.
 extension MedBuddySavedMedicationFacade on MedBuddyViewModel {
-  // 저장 약 변경도 기존 일정·알림 갱신 경로를 함께 사용한다.
+  // 함수이름: changeMedicationRegimen
+  // 함수역할: 저장 약의 적용일 기반 변경을 기존 일정·알림 갱신 경로와 함께 실행하도록 위임한다.
+  // 매개변수: medicationId: 변경할 저장 약 ID; change: 재시도 시 유지할 변경 요청.
+  // 반환값: 변경과 후속 갱신 결과 Future.
   Future<MedicationRegimenResult> changeMedicationRegimen(
     int medicationId,
     MedicationRegimenChange change,
@@ -19,9 +23,9 @@ extension MedBuddySavedMedicationFacade on MedBuddyViewModel {
   bool get hasSavedMedicationLoadError => _savedMedications.hasLoadError;
 
   // Function Name: saveMedicationInfo
-  // Description: Delegates a medication and optional schedule to the feature.
-  // Parameters: Medication, schedule, local image and refresh policy.
-  // Returns: Save outcome.
+  // Description: Delegate medication persistence and optional refresh to the saved-medication feature.
+  // Parameters: medicationInfo (MedicationDetail): catalog/detail data; medicationSchedule (MedicationSchedule?): reviewed schedule; localImagePath (String): device photo; refreshAfterSave (bool): refresh after persistence.
+  // Returns: Future<MedicationSaveResult>: save outcome from the feature owner.
   Future<MedicationSaveResult> saveMedicationInfo(
     MedicationDetail medicationInfo, {
     MedicationSchedule? medicationSchedule,
@@ -53,8 +57,9 @@ extension MedBuddySavedMedicationFacade on MedBuddyViewModel {
       _savedMedications.refreshAfterMedicationSaves();
 
   // Function Name: saveIdentifiedPill
-  // Description: Delegates a confirmed identification candidate and schedule.
-  // Parameters: Candidate, schedule and refresh policy. Returns: Save outcome.
+  // Description: Delegate a confirmed identification candidate and schedule to the save owner.
+  // Parameters: candidate (PillIdentificationCandidate): confirmed medication; medicationSchedule (MedicationSchedule): reviewed doses; refreshAfterSave (bool): refresh after persistence.
+  // Returns: Future<MedicationSaveResult>: save outcome.
   Future<MedicationSaveResult> saveIdentifiedPill(
     PillIdentificationCandidate candidate,
     MedicationSchedule medicationSchedule, {

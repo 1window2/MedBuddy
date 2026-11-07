@@ -33,14 +33,10 @@ class GuidedPrescriptionCameraUI extends StatefulWidget {
   final Future<List<CameraDescription>> Function()? cameraListProvider;
   final Future<bool> Function()? appSettingsOpener;
 
-  // 함수이름: GuidedPrescriptionCameraUI
-  // 함수역할: 실시간 거리 가이드와 처방전 촬영 결과 반환에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - key (Key?): 위젯을 구분하고 상태를 유지할 식별 키.
-  // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-  // - cameraListProvider (Future<List<CameraDescription>> Function()?): 테스트 등에서 바꿀 카메라 목록 조회 함수.
-  // - appSettingsOpener (Future<bool> Function()?): 테스트 등에서 바꿀 앱 설정 열기 함수.
-  // 반환값: 입력 설정이 반영된 GuidedPrescriptionCameraUI 인스턴스.
+  // Function Name: GuidedPrescriptionCameraUI
+  // Description: Configures guided prescription capture with optional camera enumeration and settings-opening dependencies for tests.
+  // Parameters: key: identity; userSetting: language/display preferences; cameraListProvider: optional camera lookup; appSettingsOpener: optional OS settings launcher.
+  // Returns: A GuidedPrescriptionCameraUI.
   const GuidedPrescriptionCameraUI({
     super.key,
     required this.userSetting,
@@ -58,12 +54,10 @@ class GuidedPrescriptionCameraUI extends StatefulWidget {
       _GuidedPrescriptionCameraUIState();
 }
 
-// Class Name: _GuidedPrescriptionCameraUIState
-// Role: Manages state for live framing guidance and prescription-photo capture results.
-// Responsibilities:
-// - Releases the camera when inactive, paused, or detached and reinitializes it on resume.
-// - Waits for sensor orientation activation before restoring portrait orientation.
-// - Schedules camera initialization on the serialized lifecycle queue.
+// 클래스명: _GuidedPrescriptionCameraUIState
+// 역할: 실시간 처방전 프레임 안내와 확정 사진을 관리한다.
+// 주요 책임: 앱 수명에 맞춰 카메라를 해제·복구하고 촬영 사진의 방향·영역 처리를 연결한다.
+// 속성: _cameraController (CameraController?): 카메라; _frameAnalyzer (PrescriptionFrameAnalyzer): 프레임 분석; _cameraLifecycleCoordinator (CameraLifecycleCoordinator): 수명; _guideStatus (PrescriptionCameraGuideStatus): 안내 상태.
 class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
     with WidgetsBindingObserver {
   static const Duration _analysisInterval = Duration(milliseconds: 650);
@@ -90,11 +84,10 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
   DeviceOrientation? _lastCameraOrientation;
   late final Future<void> _orientationActivation;
 
-  // 함수이름: _isEnglish
-  // 함수역할: 언어 코드의 공백과 대소문자를 정리한 뒤 en 접두어로 영어 여부를 판별한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
+  // Function Name: _isEnglish
+  // Description: Normalizes the language code and checks its English prefix.
+  // Parameters: None.
+  // Returns: True when the normalized code begins with en.
   bool get _isEnglish => widget.userSetting.isEnglish;
 
   // 함수이름: _text
@@ -104,11 +97,10 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
   // 반환값: _GuidedCameraText: 현재 화면 언어의 문구 제공 객체.
   _GuidedCameraText get _text => _GuidedCameraText(_isEnglish);
 
-  // Function Name: initState
-  // Description: Observes app lifecycle, activates sensor orientation, starts camera initialization, and removes guide crops an earlier flow left behind.
-  // Parameters:
-  // - None.
-  // Returns: None; updates state or performs the documented action.
+  // 함수이름: initState
+  // 함수역할: 앱 생명주기를 관찰하고 센서 방향 감지와 카메라 초기화를 시작하며 이전 흐름이 남긴 가이드 자르기 파일을 정리한다.
+  // 매개변수: 없음.
+  // 반환값: 없음.
   @override
   void initState() {
     super.initState();
@@ -261,11 +253,10 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
     return _cameraLifecycleCoordinator.schedule(_releaseCameraNow);
   }
 
-  // Function Name: _releaseCameraNow
-  // Description: Invalidates the current camera generation and disposes the controller.
-  // Parameters:
-  // - None.
-  // Returns: Future<void> completing when the requested interaction or refresh finishes.
+  // 함수이름: _releaseCameraNow
+  // 함수역할: 카메라 요청 세대를 올려 이전 작업을 무효화한 뒤 현재 카메라 제어기를 해제한다.
+  // 매개변수: 없음.
+  // 반환값: 카메라 정리가 완료되는 Future<void>.
   Future<void> _releaseCameraNow() async {
     _cameraGeneration += 1;
     await _disposeCurrentController();
@@ -508,22 +499,20 @@ class _GuidedPrescriptionCameraUIState extends State<GuidedPrescriptionCameraUI>
     });
   }
 
-  // 함수이름: _isPermissionError
-  // 함수역할: 카메라 오류 코드가 권한 거부·제한인지 판별한다.
-  // 매개변수:
-  // - error (CameraException): 판별할 카메라 실패 정보.
-  // 반환값: 권한 거부·제한이면 true, 아니면 false.
+  // Function Name: _isPermissionError
+  // Description: Recognizes camera permission denial or restriction error codes.
+  // Parameters: error (CameraException): camera failure to classify.
+  // Returns: True for a permission denial/restriction.
   bool _isPermissionError(CameraException error) {
     return error.code == 'CameraAccessDenied' ||
         error.code == 'CameraAccessDeniedWithoutPrompt' ||
         error.code == 'CameraAccessRestricted';
   }
 
-  // 함수이름: _openAppSettings
-  // 함수역할: 영구 거부된 카메라 권한을 바꿀 수 있게 운영체제의 앱 설정 화면을 연다. 돌아오면 생명주기 복귀에서 카메라를 다시 초기화한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 설정 화면 열기 요청이 끝나면 완료되는 Future<void>. 열지 못해도 예외를 밖으로 던지지 않는다.
+  // Function Name: _openAppSettings
+  // Description: Opens OS app settings to change denied camera permission; lifecycle resume retries camera initialization.
+  // Parameters: None.
+  // Returns: Future completing after the launch attempt; launch errors are handled locally.
   Future<void> _openAppSettings() async {
     try {
       final opener =
@@ -1108,11 +1097,10 @@ class _GuidedCameraText {
   String get permissionDenied => isEnglish
       ? 'Camera permission is required. Enable it in system settings.'
       : '카메라 권한이 필요합니다. 시스템 설정에서 권한을 허용해주세요.';
-  // 함수이름: openSettings
-  // 함수역할: 현재 언어로 "설정 열기" 버튼 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: openSettings
+  // Description: Labels the action opening system app settings for camera permissions.
+  // Parameters: None.
+  // Returns: The localized open-settings label.
   String get openSettings => isEnglish ? 'Open settings' : '설정 열기';
   // 함수이름: captureFailed
   // 함수역할: 현재 언어와 입력값에 맞춰 "사진을 촬영하지 못했습니다." 문구를 제공한다.

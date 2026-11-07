@@ -28,9 +28,23 @@ class _FakeTextRecognizer implements TextRecognizer {
   // - _FakeTextRecognizer: 초기화된 인스턴스.
   _FakeTextRecognizer(this.recognizedText);
 
+  // Function Name: script
+  // Description:
+  // - Identifies the fake recognizer as the Korean script implementation.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - TextRecognitionScript.korean.
   @override
   TextRecognitionScript get script => TextRecognitionScript.korean;
 
+  // Function Name: id
+  // Description:
+  // - Provides a stable recognizer identifier without a native instance.
+  // Parameters:
+  // - None.
+  // Returns:
+  // - String: fake-text-recognizer.
   @override
   String get id => 'fake-text-recognizer';
 
@@ -217,6 +231,13 @@ void main() {
     );
   });
 
+  // 함수이름: test callback
+  // 함수역할:
+  // - 복약 문구 속 전화번호·이메일·주민번호 원문을 제거하고 각 종류의 제거 표시로 바꾸는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - 없음; 기대값과 다르면 테스트가 실패한다.
   test('복약 문구에 섞인 직접 식별자는 원문을 남기지 않는다', () {
     final masked = filter.maskInlineIdentifiers(
       '문의 010-1234-5678, user@example.com, 900101-1234567',

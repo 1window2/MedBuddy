@@ -179,15 +179,10 @@ class PillIdentificationResult {
   // 서버 상한 밖에도 동점 후보가 있어 추가 사진이 필요한지 나타낸다.
   final bool hasMoreCandidates;
 
-  // Function Name: PillIdentificationResult
-  // Description: Bundles observed features and candidate rankings with confidence and explicit user-confirmation requirements.
-  // Parameters:
-  // - isConfident (bool): Server confidence judgment for the identification result.
-  // - requiresConfirmation (bool): Contract flag requiring user confirmation before saving.
-  // - observedFeatures (PillVisualFeatures): Pill appearance and quality observed in the photo.
-  // - candidates (List<PillIdentificationCandidate>): Candidates to inspect for a match.
-  // Returns:
-  // - PillIdentificationResult: the initialized instance.
+  // 함수이름: PillIdentificationResult
+  // 함수역할: 식별 신뢰도와 사용자 확인 필요 여부를 후보 목록 및 관찰 특징과 함께 보관한다.
+  // 매개변수: isConfident/requiresConfirmation (bool): 신뢰도·확인 필요 여부; observedFeatures (PillVisualFeatures): 관찰 특징; candidates (List<PillIdentificationCandidate>): 후보; hasMoreCandidates (bool): 추가 후보 존재 여부.
+  // 반환값: PillIdentificationResult: 제공된 식별 결과.
   const PillIdentificationResult({
     required this.isConfident,
     required this.requiresConfirmation,
@@ -477,12 +472,10 @@ double _readRequiredScore(dynamic value, String fieldName) {
   return score;
 }
 
-// Function Name: _readStrings
-// Description: Converts list entries to trimmed nonempty strings and uses an empty list for nonlist input.
-// Parameters:
-// - value (dynamic): Raw response field to decode into the documented return type.
-// Returns:
-// - List<String>: trimmed, nonempty list entries; an empty list for nonlist input.
+// 함수이름: _readStrings
+// 함수역할: 목록 항목을 공백 정리한 문자열로 바꾸고 null·빈 문자열을 제외한다.
+// 매개변수: value (dynamic): 문자열 목록으로 해석할 응답 값.
+// 반환값: List<String>: 불변 문자열 목록; 목록이 아니면 빈 목록.
 List<String> _readStrings(dynamic value) {
   if (value is! List) {
     return const [];

@@ -16,10 +16,9 @@ import 'medication_registration_flow.dart';
 // 역할: 약 조합 기반 건강 관리 추천 화면을 구성한다.
 
 // 클래스명: HealthRecommendationUI
-// 역할: 건강 추천의 로딩·오류·완료 결과를 담당한다.
-// 주요 책임:
-// - 화면 진입 시 건강 관리 추천 API 요청을 시작한다.
-// - 추천 생성 중, 성공, 실패 상태를 사용자에게 보여준다.
+// 역할: 저장 약 조합에 대한 건강 관리 추천 화면.
+// 주요 책임: 추천 조회 상태를 표시할 State를 만들고 조회·재시도를 기존 ViewModel에 맡긴다.
+// 속성: 추가 필드 없음. 위젯 트리의 MedBuddyViewModel을 사용한다.
 class HealthRecommendationUI extends StatefulWidget {
   // 함수이름: HealthRecommendationUI
   // 함수역할: 건강 추천의 로딩·오류·완료 결과에 필요한 입력값과 표시 설정을 초기화한다.
@@ -38,10 +37,9 @@ class HealthRecommendationUI extends StatefulWidget {
 }
 
 // 클래스명: _HealthRecommendationUIState
-// 역할: 건강 추천의 로딩·오류·완료 결과의 화면 상태를 관리한다.
-// 주요 책임:
-// - 건강 추천 제목·뒤로가기와 요청 상태별 본문을 배치한다.
-// - 요청 전·로딩·오류·성공을 구분해 추천 콘텐츠 또는 재시도를 표시한다.
+// 역할: 추천 조회와 약 등록 진입 상태를 관리한다.
+// 주요 책임: 첫 요청·진행·오류·결과를 구분하고 등록 화면 중복 진입을 막는다.
+// 속성: _hasRequestedRecommendation (bool): 최초 요청 여부; _openingRegistration (bool): 등록 흐름 진행 중.
 class _HealthRecommendationUIState extends State<HealthRecommendationUI> {
   bool _hasRequestedRecommendation = false;
   bool _openingRegistration = false;
@@ -147,12 +145,10 @@ class _HealthRecommendationUIState extends State<HealthRecommendationUI> {
     );
   }
 
-  // 함수이름: _buildContent
-  // 함수역할: 요청 전·로딩·오류·성공을 구분해 추천 콘텐츠 또는 재시도를 표시한다.
-  // 매개변수:
-  // - viewModel (MedBuddyViewModel): 화면 상태·사용자 설정·복약 작업을 제공하는 ViewModel.
-  // - text (_HealthRecommendationText): 해당 화면 구역의 언어별 표시 문구.
-  // 반환값: 건강 추천의 로딩·오류·완료 결과에 쓰는 위젯 트리.
+  // Function Name: _buildContent
+  // Description: Selects not-requested, loading, failure/retry or completed health recommendation content.
+  // Parameters: viewModel (MedBuddyViewModel): recommendation request state; text: localized labels.
+  // Returns: The matching recommendation-state widget.
   Widget _buildContent(
     MedBuddyViewModel viewModel,
     _HealthRecommendationText text,
@@ -185,9 +181,9 @@ class _HealthRecommendationUIState extends State<HealthRecommendationUI> {
 }
 
 // 클래스명: _HealthRecommendationLoading
-// 역할: 건강 추천 생성 중 진행 표시를 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 건강 추천 생성 중 진행 표시 위젯을 구성한다.
+// 역할: 추천 생성 중 제목·진행 표시와 대기 안내.
+// 주요 책임: 결과가 준비되기 전 대기 상태를 언어별로 표시한다.
+// 속성: text (_HealthRecommendationText): 제목·대기 문구.
 class _HealthRecommendationLoading extends StatelessWidget {
   final _HealthRecommendationText text;
 
@@ -265,12 +261,10 @@ class _HealthRecommendationLoading extends StatelessWidget {
   }
 }
 
-// 클래스명: _HealthRecommendationContent
-// 역할: 식사·운동 추천과 주의사항 본문을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 식사·운동 추천과 주의사항 본문 위젯을 구성한다.
-// 속성:
-// - recommendation (HealthRecommendation): 화면에 반영할 작업 결과 또는 요약·추천 데이터.
+// Class Name: _HealthRecommendationContent
+// Role: Diet, exercise and caution content.
+// Responsibilities: Preserves recommendation text and separates the caution section in a scrollable body.
+// Attributes: recommendation (HealthRecommendation): dietary, activity and caution content; text: localized headings.
 class _HealthRecommendationContent extends StatelessWidget {
   final HealthRecommendation recommendation;
   final _HealthRecommendationText text;
@@ -286,11 +280,10 @@ class _HealthRecommendationContent extends StatelessWidget {
     required this.text,
   });
 
-  // 함수이름: build
-  // 함수역할: 좌우 20 여백으로 식사·운동 원문과 주의사항을 스크롤 가능한 본문에 배치한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 식사·운동 추천과 주의사항 본문에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Places diet and exercise recommendations with cautions in a scrollable body using consistent horizontal spacing.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final bottomSafeArea = MediaQuery.viewPaddingOf(context).bottom;
@@ -509,10 +502,10 @@ class _CautionCard extends StatelessWidget {
   }
 }
 
-// Class Name: _CautionItem
-// Role: Represents one emphasized health-recommendation caution.
-// Responsibilities:
-// - Composes one emphasized health-recommendation caution using the display values and actions supplied by its parent.
+// 클래스명: _CautionItem
+// 역할: 추천 결과의 주의사항 한 항목.
+// 주요 책임: 원문을 중간 굵기로 강조하고 가용 폭에 맞춰 줄바꿈한다.
+// 속성: text (String): 주의 문구.
 class _CautionItem extends StatelessWidget {
   final String text;
 
@@ -703,12 +696,10 @@ class _HealthRecommendationError extends StatelessWidget {
   }
 }
 
-// 클래스명: _HealthRecommendationText
-// 역할: 건강 관리 추천 요청과 식사·운동·주의사항 표시에 쓰는 한국어·영어 문구를 담당한다.
-// 주요 책임:
-// - 건강 관리 추천 요청과 식사·운동·주의사항 표시에 쓰는 한국어·영어 문구의 언어를 선택하고 안내에 필요한 값을 문구에 반영한다.
-// 속성:
-// - language (String): 화면 문구를 선택할 언어 코드.
+// Class Name: _HealthRecommendationText
+// Role: Localized health-recommendation copy.
+// Responsibilities: Labels request states, registration and diet/exercise/caution sections.
+// Attributes: language (String): selected language code.
 class _HealthRecommendationText {
   final String language;
 
@@ -719,11 +710,10 @@ class _HealthRecommendationText {
   // 반환값: 입력 설정이 반영된 _HealthRecommendationText 인스턴스.
   const _HealthRecommendationText(this.language);
 
-  // 함수이름: isEnglish
-  // 함수역할: 언어 코드가 영어 표시 대상인지 앱 공통 기준으로 판별한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
+  // Function Name: isEnglish
+  // Description: Uses the shared language rule for recommendation copy.
+  // Parameters: None.
+  // Returns: True for an English language code.
   bool get isEnglish => isEnglishLanguage(language);
 
   // 함수이름: title
@@ -793,7 +783,9 @@ class _HealthRecommendationText {
       ? 'Add your medications to get health recommendations based on what you take.'
       : '약을 등록하면 복용 중인 약에 맞는 건강 관리 추천을 받을 수 있어요.';
 
-  // 함수이름: registerMedication
-  // 함수역할: 홈의 약 등록·관리에서 고르는 '약 등록'과 같은 이름을 표시한다. 매개변수: 없음. 반환값: 언어별 버튼 이름.
+  // Function Name: registerMedication
+  // Description: Names registration consistently with the medication-registration action on home.
+  // Parameters: None.
+  // Returns: The localized registration label.
   String get registerMedication => isEnglish ? 'Add medication' : '약 등록';
 }

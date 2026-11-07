@@ -8,12 +8,10 @@ import 'package:path_provider/path_provider.dart';
 // 파일명: manual_medication_image_store.dart
 // 역할: 직접 등록한 알약 사진을 앱 내부 전용 저장소에서 관리한다.
 
-// 클래스명: ManualMedicationImageStore
-// 역할: 서버에 원본 사진을 보내지 않고 저장 복약 정보 식별자와 로컬 사진을 연결한다.
-// 주요 책임:
-// - 선택한 사진의 방향과 크기를 정규화해 앱 내부 폴더에 저장한다.
-// - 저장 목록 조회 시 사진 경로를 복원한다.
-// - 약 삭제 또는 보존기간 만료 뒤 남은 사진 파일을 함께 정리한다.
+// Class Name: ManualMedicationImageStore
+// Role: Persist local medication photos in patient-scoped application storage.
+// Responsibilities: Encode bounded JPEGs, resolve/copy images without overwriting existing targets, and remove obsolete files.
+// Attributes: _maximumImageDimension (int): 1600-pixel encoding bound; _directoryName (String): storage directory; no per-instance state.
 class ManualMedicationImageStore {
   static const int _maximumImageDimension = 1600;
   static const String _directoryName = 'manual_medication_images';
@@ -54,6 +52,10 @@ class ManualMedicationImageStore {
   }
 
   // 디코딩·방향 보정·압축은 화면을 그리는 실행 흐름 밖에서 처리한다.
+  // 함수이름: _encodeMedicationImage
+  // 함수역할: 사진 방향을 반영하고 긴 변의 최대 크기를 제한해 품질 86 JPEG로 변환한다.
+  // 매개변수: sourcePath (String) - 읽을 로컬 이미지 경로.
+  // 반환값: JPEG 바이트 Future. 파일 오류는 전파하고 읽을 수 없는 이미지 형식은 FormatException으로 알린다.
   static Future<Uint8List> _encodeMedicationImage(String sourcePath) async {
     final sourceBytes = await File(sourcePath).readAsBytes();
     final decodedImage = image_library.decodeImage(sourceBytes);
@@ -99,14 +101,10 @@ class ManualMedicationImageStore {
     return await imageFile.exists() ? imageFile.path : '';
   }
 
-  // 함수이름: copyImage
-  // 함수역할: 처방 변경으로 새 ID가 생긴 같은 약에 기존 로컬 사진을 복사한다. 이전 기록 행의 사진은 유지한다.
-  // 매개변수:
-  // - patientHash (String): 조회·저장·알림 대상 환자의 소유권 해시
-  // - fromMedicationId (int): 사진이 연결된 이전 저장 복약정보의 식별자
-  // - toMedicationId (int): 새로 생긴 저장 복약정보의 식별자
-  // 반환값:
-  // - Future<void>: 이전 사진이 없거나 대상이 이미 사진을 가지면 아무것도 바꾸지 않는다.
+  // Function Name: copyImage
+  // Description: Copy an existing source image only to a distinct positive medication ID without a saved image.
+  // Parameters: patientHash (String): owner; fromMedicationId/toMedicationId (int): source and target.
+  // Returns: Future<void>: copy completion or no-op for invalid/missing/existing targets; file errors propagate.
   Future<void> copyImage({
     required String patientHash,
     required int fromMedicationId,
@@ -149,14 +147,10 @@ class ManualMedicationImageStore {
     }
   }
 
-  // 함수이름: removeOrphanImages
-  // 함수역할: 환자 폴더의 JPEG 중 현재 저장 약 ID 집합에 속하지 않거나 ID를 읽을 수 없는 고아 사진을 제거한다.
-  // 매개변수:
-  // - patientHash (String): 조회·저장·알림 대상 환자의 소유권 해시
-  // - activeMedicationIds (Set<int>): 사진을 유지할 현재 저장 약 ID 집합
-  // - keepWrittenAfter (DateTime?): 이 시각 이후에 쓴 사진은 목록이 아직 모르는 새 약일 수 있어 유지한다.
-  // 반환값:
-  // - Future<void>: 별도의 결과 데이터 없이 비동기 완료를 알리는 Future.
+  // Function Name: removeOrphanImages
+  // Description: Delete orphan JPEGs in the patient's image directory while optionally preserving files written during a concurrent load.
+  // Parameters: patientHash (String): owner; activeMedicationIds (Set<int>): retained IDs; keepWrittenAfter (DateTime?): retain files modified at or after this cutoff.
+  // Returns: Future<void>: cleanup completion; file errors propagate.
   Future<void> removeOrphanImages({
     required String patientHash,
     required Set<int> activeMedicationIds,

@@ -1,4 +1,5 @@
-// 긴 처방전에서도 하단의 재조회·부분 진행 동작에 바로 접근할 수 있는지 검증한다.
+// 파일명: prescription_review_actions_test.dart
+// 역할: 긴 처방전에서도 하단의 재조회·부분 진행 동작에 바로 접근할 수 있는지 검증한다.
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,7 +10,21 @@ import 'package:medbuddy_frontend/entities/prescription_flow_entity.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
 import 'package:medbuddy_frontend/theme/medbuddy_theme.dart';
 
+// 함수이름: main
+// 함수역할:
+// - 한영·큰 글씨 화면에서 긴 검토 목록과 고정 하단 동작의 접근성을 검증한다.
+// 매개변수:
+// - 없음.
+// 반환값:
+// - 없음; 등록된 사례와 준비·정리 훅은 테스트 프레임워크에서 실행한다.
 void main() {
+  // 함수이름: setUpAll callback
+  // 함수역할:
+  // - MEDBUDDY_TEST_FONT가 주어지면 한영 테스트 글꼴과 MaterialIcons를 로드하여 선택적 기준 이미지 비교의 글꼴 차이를 줄인다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   setUpAll(() async {
     final font = Platform.environment['MEDBUDDY_TEST_FONT'];
     if (font == null) return;
@@ -23,6 +38,13 @@ void main() {
   });
   for (final english in [false, true]) {
     for (final large in [false, true]) {
+      // 함수이름: testWidgets callback
+      // 함수역할:
+      // - 12개 약 검토에서도 재조회·부분 진행 버튼이 스크롤 없이 보이고 한 약 검증 뒤에만 진행을 허용하며 취소는 유지, 확인은 한 번만 진행하는지 검증한다.
+      // 매개변수:
+      // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+      // 반환값:
+      // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
       testWidgets('하단 두 버튼은 스크롤 없이 보인다 en=$english large=$large', (
         tester,
       ) async {

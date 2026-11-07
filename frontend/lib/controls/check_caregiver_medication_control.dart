@@ -26,14 +26,10 @@ typedef CaregiverMedicationInfo = ({
   List<MedicationSchedule> todayMedicationScheduleList,
 });
 
-// 클래스명: CheckCaregiverMedication
-// 역할: 연동된 환자의 복약 정보를 보호자 범위에서 읽기 전용으로 조회한다.
-// 주요 책임:
-// - 보호자 해시로 조회 범위를 지정하고 저장 약·오늘 일정·통합 감시 응답을 모델로 변환한다.
-// 속성:
-// - baseUrl (String): 복약 API 기본 주소
-// - caregiverHash (String): 조회·저장 범위를 제한할 보호자 해시
-// - _client (http.Client): 요청에 사용할 HTTP 클라이언트; 주입 여부에 따른 소유권은 생성자 설명 참조
+// Class Name: CheckCaregiverMedication
+// Role: Queries linked-patient medication data within a caregiver account.
+// Responsibilities: Decode and validate authorized snapshots, share concurrent schedule reads and retain brief same-day results.
+// Attributes: baseUrl/caregiverHash define request scope; _client is injected or owned; schedule fields track in-flight and recent reads.
 class CheckCaregiverMedication {
   final String baseUrl;
   final String caregiverHash;
@@ -59,10 +55,10 @@ class CheckCaregiverMedication {
   }) : _client = client ?? AuthenticatedApiClient(),
        _ownsClient = client == null;
 
-  // Function Name: requestScheduleSnapshot
-  // Description: Read aggregate linked-patient schedules independently of alert preferences.
-  // Parameters: links - optional Home scope filter; null keeps all authorized active links.
-  // Returns: Scoped snapshots; failures propagate instead of becoming empty schedules.
+  // 함수이름: requestScheduleSnapshot
+  // 함수역할: 알림 설정과 무관한 환자 일정 일괄 조회를 공유하고 요청한 연동 범위로 결과를 제한한다.
+  // 매개변수: links: 허용할 연동 목록; null이면 응답의 전체 승인된 연동을 유지한다.
+  // 반환값: 연동별 스냅샷 Future; 조회 실패는 빈 목록으로 바꾸지 않고 전파한다.
   Future<List<CaregiverMonitoringSnapshot>> requestScheduleSnapshot({
     List<PatientCaregiverLink>? links,
   }) async {
@@ -74,6 +70,10 @@ class CheckCaregiverMedication {
         .toList(growable: false);
   }
 
+  // 함수이름: _loadScheduleSnapshot
+  // 함수역할: 기존 최근 결과를 지운 뒤 일정을 읽고 조회 중 날짜가 바뀌지 않은 경우에만 재사용 캐시에 보관한다.
+  // 매개변수: 없음.
+  // 반환값: 수신한 일정 스냅샷; 종료되거나 자정을 지나도 반환은 하되 캐시하지 않는다.
   Future<List<CaregiverMonitoringSnapshot>> _loadScheduleSnapshot() async {
     final started = DateTime.now();
     _recentSchedules = null;
@@ -86,6 +86,10 @@ class CheckCaregiverMedication {
     return snapshots;
   }
 
+  // 함수이름: _sameDay
+  // 함수역할: 두 시각의 연·월·일 필드가 같은지 확인한다.
+  // 매개변수: a, b: 비교할 DateTime; 시간대 변환은 수행하지 않는다.
+  // 반환값: 달력 날짜 필드가 모두 같으면 true.
   bool _sameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
 
@@ -108,6 +112,10 @@ class CheckCaregiverMedication {
     return _requestSnapshot('monitoring');
   }
 
+  // Function Name: _requestSnapshot
+  // Description: Fetches and decodes a caregiver snapshot with a 30-second timeout and ownership validation.
+  // Parameters: resource: Caregiver endpoint suffix, such as schedules.
+  // Returns: Authorized snapshots; transport, status, malformed payload and cross-scope responses fail through the request guard.
   Future<List<CaregiverMonitoringSnapshot>> _requestSnapshot(String resource) async {
     return ApiResponseParser.guardRequest(
       operation: 'Caregiver monitoring lookup failed',
@@ -226,12 +234,10 @@ class CheckCaregiverMedication {
     );
   }
 
-  // Function Name: dispose
-  // Description: Closes the HTTP client only when this control created it; injected clients remain owned by the caller.
-  // Parameters:
-  // - None.
-  // Returns:
-  // - No return value.
+  // 함수이름: dispose
+  // 함수역할: 최근 일정 캐시를 비우고 객체를 종료 상태로 만든 뒤 소유한 HTTP 연결만 닫는다.
+  // 매개변수: 없음.
+  // 반환값: 없음; 주입 클라이언트는 닫지 않는다.
   void dispose() {
     _disposed = true;
     _recentSchedules = null;

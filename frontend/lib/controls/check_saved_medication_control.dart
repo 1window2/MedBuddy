@@ -18,22 +18,27 @@ import '../services/api_response_parser.dart';
 import 'medication_history_control.dart';
 
 // 클래스명: MedicationSaveStatus
-// 역할: 저장 요청의 성공·중복·실패 상태를 구분한다.
-// 주요 책임:
-// - 화면이 재저장 필요 여부와 완료 상태를 일관되게 판단할 수 있도록 결과 범주를 제공한다.
+// 역할: 약 저장 요청의 성공·중복·실패를 구분한다.
+// 주요 책임: 재저장 필요 여부와 화면 완료 상태의 판단 기준을 제공한다.
+// 속성: saved/duplicate/failed: 새 저장·기존 저장·실패 상태.
 enum MedicationSaveStatus { saved, duplicate, failed }
 
-// 클래스명: MedicationSaveFailureKind
-// 역할: 실패한 저장의 원인 범주를 구분해 화면이 서버 원문 대신 자기 언어의 안내 문구를 고르게 한다.
-// 주요 책임:
-// - none: 실패가 아닌 결과(저장·중복).
-// - limitReached: 계정당 저장 가능한 약 수(기본 300개)를 넘어 서버가 409로 거절함.
-// - network: 응답 지연·연결 실패로 서버 응답을 받지 못함.
-// - other: 그 밖의 서버 거절·응답 형식 오류·저장 취소.
+// Class Name: MedicationSaveFailureKind
+// Role: Categorizes medication-save failures for localized UI feedback.
+// Responsibilities: Separate capacity limits, network uncertainty and other rejection without exposing server text.
+// Attributes: none: Nonfailure; limitReached: Account capacity; network: Unconfirmed transport result; other: Remaining failures.
 enum MedicationSaveFailureKind { none, limitReached, network, other }
 
+// 클래스명: MedicationRegimenAction
+// 역할: 적용일 이후 복약 계획에 수행할 변경 종류를 구분한다.
+// 주요 책임: 부분 수정, 복용 중단, 다른 계획으로 교체를 요청 본문에 구분해 전달한다.
+// 속성: edit: 수정; stop: 중단; replace: 교체.
 enum MedicationRegimenAction { edit, stop, replace }
 
+// 클래스명: MedicationRegimenFailure
+// 역할: 복약 계획 변경의 성공과 실패 원인을 화면 안내용으로 구분한다.
+// 주요 책임: 충돌, 기록 보존 제약, 권한·대상·통신·입력·세션 실패를 표현한다.
+// 속성: none은 성공이며 나머지 값은 각각 재시도나 재확인이 필요한 실패 범주다.
 enum MedicationRegimenFailure {
   none,
   conflict,
@@ -45,7 +50,10 @@ enum MedicationRegimenFailure {
   cancelled,
 }
 
-// 같은 확정 요청을 재시도할 때 ID와 본문을 보존해 중복 변경을 막는다.
+// 클래스명: MedicationRegimenChange
+// 역할: 동일한 확정 변경을 재시도할 때 요청 ID와 본문을 유지한다.
+// 주요 책임: 적용일과 예상 리비전을 포함해 중복 처리와 동시 변경 검증에 필요한 값을 전달한다.
+// 속성: action/effectiveDate: 변경 종류와 적용일; expectedRevision/operationId: 충돌 및 중복 검사 값; changes: 변경 필드.
 class MedicationRegimenChange {
   final MedicationRegimenAction action;
   final DateTime effectiveDate;
@@ -53,6 +61,10 @@ class MedicationRegimenChange {
   final String operationId;
   final Map<String, dynamic> changes;
 
+  // Function Name: MedicationRegimenChange
+  // Description: Captures a stable regimen-change request, generating an operation ID when absent.
+  // Parameters: action/effectiveDate/expectedRevision: Change intent and concurrency guard; operationId: Reusable request ID; changes: Field map.
+  // Returns: A request with an unmodifiable map and direct list values; deeper nested values are not recursively frozen.
   MedicationRegimenChange({
     required this.action,
     required this.effectiveDate,
@@ -67,6 +79,10 @@ class MedicationRegimenChange {
                : entry.value,
        });
 
+  // 함수이름: toJson
+  // 함수역할: 환자 소유권과 변경 정보를 서버 요청 키로 직렬화한다.
+  // 매개변수: patientHash: 변경 대상 환자 해시.
+  // 반환값: 적용일을 날짜 문자열로 표현한 JSON용 맵.
   Map<String, dynamic> toJson(String patientHash) => {
     'patient_hash': patientHash,
     'action': action.name,
@@ -77,12 +93,20 @@ class MedicationRegimenChange {
   };
 }
 
+// 클래스명: MedicationRegimenResult
+// 역할: 복약 계획 변경 결과와 저장 후 새로고침 실패를 분리해 전달한다.
+// 주요 책임: 실패 범주로 사용자 안내를 선택하고 확정된 약 ID와 리비전을 보존한다.
+// 속성: failure: 변경 결과; medicationId/revision: 서버 확정 값; refreshFailed: 후속 조회 실패 여부.
 class MedicationRegimenResult {
   final MedicationRegimenFailure failure;
   final int? medicationId;
   final int? revision;
   final bool refreshFailed;
 
+  // 함수이름: MedicationRegimenResult
+  // 함수역할: 변경 결과를 보관하며 실패를 생략하면 성공으로 취급한다.
+  // 매개변수: failure: 실패 범주; medicationId/revision: 선택적 확정 값; refreshFailed: 저장 후 조회 실패 여부.
+  // 반환값: 불변 결과 객체; 성공 여부에 따른 ID 필수 검증은 하지 않는다.
   const MedicationRegimenResult({
     this.failure = MedicationRegimenFailure.none,
     this.medicationId,
@@ -90,8 +114,16 @@ class MedicationRegimenResult {
     this.refreshFailed = false,
   });
 
+  // 함수이름: success
+  // 함수역할: 후속 조회 실패와 관계없이 변경 요청 자체가 성공했는지 판단한다.
+  // 매개변수: 없음.
+  // 반환값: failure가 none이면 true.
   bool get success => failure == MedicationRegimenFailure.none;
 
+  // 함수이름: message
+  // 함수역할: 변경 결과에 맞는 한국어 또는 영어 안내를 선택한다.
+  // 매개변수: english: 영어 안내 사용 여부.
+  // 반환값: 실패 원인별 안내 또는 저장 성공 안내; 후속 조회 실패는 저장 취소로 표현하지 않는다.
   String message(bool english) => switch (failure) {
     MedicationRegimenFailure.none =>
       refreshFailed
@@ -132,30 +164,20 @@ class MedicationRegimenResult {
   };
 }
 
-// 클래스명: MedicationSaveResult
-// 역할: 약 저장 상태와 사용자 메시지, 저장된 항목 ID를 함께 전달한다.
-// 주요 책임:
-// - 중복 결과도 완료로 취급하고 후속 일정 갱신에 사용할 저장 식별자를 보존한다.
-// 속성:
-// - status (MedicationSaveStatus): 약 저장의 성공·중복·실패 상태
-// - message (String): 사용자에게 표시하거나 오류로 보존할 안내 문구
-// - savedMedicationId (int?): 대상 저장 복약정보의 식별자
-// - failureKind (MedicationSaveFailureKind): 실패 원인 범주. 실패가 아니면 none, 지정하지 않은 실패는 other로 읽는다.
+// Class Name: MedicationSaveResult
+// Role: Carries save status, user feedback and an optional persisted medication ID.
+// Responsibilities: Treat duplicate saves as completed and normalize failure categories for UI messaging.
+// Attributes: status/message describe the outcome; savedMedicationId identifies the saved row; _failureKind stores the supplied category.
 class MedicationSaveResult {
   final MedicationSaveStatus status;
   final String message;
   final int? savedMedicationId;
   final MedicationSaveFailureKind _failureKind;
 
-  // 함수이름: MedicationSaveResult
-  // 함수역할: 약 저장의 성공·중복·실패 상태와 안내 메시지 및 선택적인 저장 ID를 함께 보존한다.
-  // 매개변수:
-  // - status (MedicationSaveStatus): 약 저장의 성공·중복·실패 상태
-  // - message (String): 사용자에게 표시하거나 오류로 보존할 안내 문구
-  // - savedMedicationId (int?): 대상 저장 복약정보의 식별자
-  // - failureKind (MedicationSaveFailureKind): 실패 원인 범주. 생략하면 실패 결과는 other로 취급한다.
-  // 반환값:
-  // - MedicationSaveResult: 초기화된 인스턴스.
+  // Function Name: MedicationSaveResult
+  // Description: Stores a medication-save outcome without performing persistence.
+  // Parameters: status: Saved, duplicate or failed; message: User feedback; savedMedicationId: Optional row ID; failureKind: Optional failure category.
+  // Returns: An immutable result; an uncategorized failure is exposed as other.
   const MedicationSaveResult({
     required this.status,
     required this.message,
@@ -163,12 +185,10 @@ class MedicationSaveResult {
     MedicationSaveFailureKind failureKind = MedicationSaveFailureKind.none,
   }) : _failureKind = failureKind;
 
-  // 함수이름: failureKind
-  // 함수역할: 실패한 저장의 원인 범주를 알려 준다. 실패가 아닌 결과는 none, 원인을 지정하지 않은 실패는 other다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - MedicationSaveFailureKind: 화면이 안내 문구를 고를 실패 범주.
+  // Function Name: failureKind
+  // Description: Normalizes failure categories so nonfailed results always report none.
+  // Parameters: None.
+  // Returns: none for success/duplicate, other for an uncategorized failure, otherwise the supplied category.
   MedicationSaveFailureKind get failureKind {
     if (status != MedicationSaveStatus.failed) {
       return MedicationSaveFailureKind.none;
@@ -190,16 +210,10 @@ class MedicationSaveResult {
   }
 }
 
-// 클래스명: CheckSavedMedication
-// 역할: 분석된 약 상세 정보와 OCR 복약 일정을 저장 목록에 반영한다.
-// 주요 책임:
-// - 약 상세 정보와 OCR 일정 정보를 합쳐 저장 요청을 만든다.
-// - 저장된 복약 정보 목록을 조회한다.
-// - 사용자가 선택한 저장 항목을 삭제한다.
-// 속성:
-// - baseUrl (String): 복약 API 기본 주소
-// - patientHash (String): 조회·저장·알림 대상 환자의 소유권 해시
-// - _client (http.Client): 요청에 사용할 HTTP 클라이언트; 주입 여부에 따른 소유권은 생성자 설명 참조
+// Class Name: CheckSavedMedication
+// Role: Manages patient-scoped saved medications and effective-date regimen changes.
+// Responsibilities: Combine analyzed details with schedules, load and delete saved rows, and submit revision-guarded changes.
+// Attributes: baseUrl/patientHash identify API scope; _client and _ownsClient determine transport lifetime.
 class CheckSavedMedication {
   final String baseUrl;
   final String patientHash;
@@ -355,7 +369,10 @@ class CheckSavedMedication {
     return savePayload;
   }
 
-  // 약 삭제를 사용하지 않고 적용일 이후의 처방만 변경한다.
+  // 함수이름: changeRegimen
+  // 함수역할: 이전 기록을 삭제하지 않는 적용일 기반 복약 계획 변경을 요청한다.
+  // 매개변수: medicationId: 양수 저장 약 ID; change: 동일 재시도에 재사용할 변경 요청.
+  // 반환값: 성공 ID·리비전 또는 분류된 실패; 잘못된 ID·리비전은 invalid, 통신·불명확한 성공 응답은 network로 반환한다.
   Future<MedicationRegimenResult> changeRegimen(
     int medicationId,
     MedicationRegimenChange change,
@@ -429,12 +446,10 @@ class CheckSavedMedication {
     return fallbackValue.trim();
   }
 
-  // 함수이름: requestSavedMedicationInfo
-  // 함수역할: 저장 약 목록을 조회하며 실패하거나 목록이 누락된 응답은 오류로 구분한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - Future<List<MedicationDetail>>: 성공적으로 조회한 목록. 확인 실패 시 StateError.
+  // Function Name: requestSavedMedicationInfo
+  // Description: Loads saved medications without conflating lookup failure with an empty pillbox.
+  // Parameters: None.
+  // Returns: A Future containing validated MedicationDetail rows; timeout, non-OK and malformed responses fail through the request guard.
   Future<List<MedicationDetail>> requestSavedMedicationInfo() async {
     // 원래 예외를 함께 전달해 화면이 응답 지연·연결 실패 같은 원인별 안내를 고를 수 있게 한다.
     return ApiResponseParser.guardRequest(

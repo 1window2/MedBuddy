@@ -21,6 +21,7 @@ import 'package:path_provider_platform_interface/path_provider_platform_interfac
 // Role: Image-picker substitute with a preselected file or cancellation result.
 // Responsibilities:
 // - Return the configured selection while ignoring real platform image-selection options.
+// Attributes: image (XFile?): Fixed selection, or null for cancellation.
 class _FakeImagePicker extends ImagePicker {
   final XFile? image;
 
@@ -68,6 +69,7 @@ class _FakeImagePicker extends ImagePicker {
 // 역할: 지정된 마스킹 텍스트와 OCR 영역을 제공하는 로컬 인식 대역.
 // 주요 책임:
 // - 실제 이미지 처리 없이 주입한 OCR 텍스트와 영역을 제공한다.
+// 속성: result (LocalPrescriptionOcrResult): 매번 반환할 마스킹 텍스트와 영역.
 class _FakePrescriptionLocalOcrBoundary
     implements PrescriptionLocalOcrBoundary {
   final LocalPrescriptionOcrResult result;
@@ -103,6 +105,7 @@ class _FakePrescriptionLocalOcrBoundary
 // Role: OCR stub with explicit start and completion barriers for file-lifetime checks.
 // Responsibilities:
 // - Signal OCR start and wait for test release before returning masked prescription text.
+// Attributes: started, allowCompletion (Completer<void>): OCR-start signal and test-controlled release gate.
 class _BlockingPrescriptionLocalOcrBoundary
     implements PrescriptionLocalOcrBoundary {
   final Completer<void> started = Completer<void>();
@@ -210,6 +213,7 @@ Future<void> _disposeControl(InputPrescription control) async {
 // Role: HTTP client with an immediately available header and delayed response body.
 // Responsibilities:
 // - Delay the JSON response body by 100 ms to exercise body-read timeouts.
+// Attributes: No additional state; each response creates its own delayed body stream.
 class _DelayedResponseBodyClient extends http.BaseClient {
   // Function Name: send
   // Description:
@@ -279,6 +283,13 @@ class _AbortAwareClient extends http.BaseClient {
 // Returns:
 // - No value; the test framework executes the registered cases.
 void main() {
+  // 함수이름: test callback
+  // 함수역할:
+  // - 로컬 OCR과 서버 응답 게이트에 따라 진행 단계를 순서대로 알리고 서버 실패 시 완료 단계를 알리지 않는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test(
     'OCR progress reports actual boundaries and never completes on server failure',
     () async {
@@ -1433,6 +1444,13 @@ void main() {
     expect(client.wasAborted, isTrue);
   });
 
+  // 함수이름: test callback
+  // 함수역할:
+  // - 제어기를 폐기하지 않고 대기 요청을 취소하면 분석 Future가 StateError로 끝나고 진행 중 HTTP 요청에 중단이 전달되는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test(
     'cancelPendingRequests aborts analysis without disposing control',
     () async {

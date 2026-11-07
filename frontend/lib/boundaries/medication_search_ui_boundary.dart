@@ -16,11 +16,15 @@ import '../widgets/medbuddy_search_field.dart';
 import '../widgets/medication_thumbnail.dart';
 import 'check_medication_detail_ui_boundary.dart';
 
-// Class Name: MedicationSearchUI
-// Role: Name search over the existing medication lookup.
-// Responsibilities:
-// - Opens a result's detail, or in selection mode returns the confirmed result to the caller.
+// 클래스명: MedicationSearchUI
+// 역할: 약 이름으로 제품을 찾고 상세 보기 또는 수동 등록용 선택을 제공한다.
+// 주요 책임: 조회 결과를 표시하고 선택 모드에서는 사용자의 약품 확인을 받는다.
+// 속성: userSetting (UserSetting): 표시·검색 설정; selectionMode (bool): 선택 반환 여부; initialQuery (String): 초기 검색어; lookupControl (CheckMedicationDetail?): 외부 소유 조회기.
 class MedicationSearchUI extends StatefulWidget {
+  // 함수이름: MedicationSearchUI
+  // 함수역할: 검색어와 화면 모드를 설정하며 주입된 조회기의 소유권은 호출자에게 남긴다.
+  // 매개변수: key (Key?): 위젯 키; userSetting (UserSetting): 설정; selectionMode (bool): 선택 모드; initialQuery (String): 검색어; lookupControl (CheckMedicationDetail?): 조회기.
+  // 반환값: 새 MedicationSearchUI.
   const MedicationSearchUI({
     super.key,
     required this.userSetting,
@@ -34,10 +38,18 @@ class MedicationSearchUI extends StatefulWidget {
   final String initialQuery;
   final CheckMedicationDetail? lookupControl;
 
+  // 함수이름: createState
+  // 함수역할: 검색 요청과 결과 선택을 관리할 상태를 만든다.
+  // 매개변수: 없음.
+  // 반환값: 새 _MedicationSearchUIState.
   @override
   State<MedicationSearchUI> createState() => _MedicationSearchUIState();
 }
 
+// 클래스명: _MedicationSearchUIState
+// 역할: 검색 결과와 조회·화면 전환의 중복 실행을 관리한다.
+// 주요 책임: 이전 검색어의 응답을 버리고 후보 확인창의 중복 열기·닫기를 막는다.
+// 속성: _generation (int): 요청 세대; _results (List<MedicationDetail>): 현재 후보; _retryAt (DateTime?): 재시도 가능 시각; _isOpening (bool): 결과 화면 진행 여부.
 class _MedicationSearchUIState extends State<MedicationSearchUI> {
   late final TextEditingController _query;
   late final CheckMedicationDetail _lookup;
@@ -49,12 +61,24 @@ class _MedicationSearchUIState extends State<MedicationSearchUI> {
   String? _error;
   DateTime? _retryAt;
 
+  // 함수이름: _english
+  // 함수역할: 현재 사용자 설정에서 검색 화면의 언어를 읽는다.
+  // 매개변수: 없음.
+  // 반환값: 영어 설정이면 true.
   bool get _english => widget.userSetting.isEnglish;
 
+  // Function Name: _busyMessage
+  // Description: Chooses the retry notice used while the lookup service is occupied.
+  // Parameters: None.
+  // Returns: Localized busy-search message.
   String get _busyMessage => _english
       ? 'Another search is in progress. Please try again shortly.'
       : '다른 검색이 진행 중입니다. 잠시 후 다시 검색해 주세요.';
 
+  // 함수이름: initState
+  // 함수역할: 초기 검색어를 넣고 검색 모드 설정을 읽는 조회기를 연결한다.
+  // 매개변수: 없음.
+  // 반환값: 없음. 외부 조회기가 없을 때만 내부 조회기를 만든다.
   @override
   void initState() {
     super.initState();
@@ -66,6 +90,10 @@ class _MedicationSearchUIState extends State<MedicationSearchUI> {
         );
   }
 
+  // 함수이름: dispose
+  // 함수역할: 응답 세대를 무효화하고 입력기와 직접 만든 조회기를 해제한다.
+  // 매개변수: 없음.
+  // 반환값: 없음. 주입된 조회기는 해제하지 않는다.
   @override
   void dispose() {
     _generation++;
@@ -74,9 +102,10 @@ class _MedicationSearchUIState extends State<MedicationSearchUI> {
     super.dispose();
   }
 
-  // Function Name: _queryChanged
-  // Description: Drops results of the previous query; a request in flight stays until it ends.
-  // Parameters: None. Returns: None.
+  // 함수이름: _queryChanged
+  // 함수역할: 검색어가 바뀌면 이전 검색 결과를 지우되 진행 중인 요청의 잠금은 그 요청이 끝날 때까지 유지한다.
+  // 매개변수: 없음.
+  // 반환값: 없음.
   void _queryChanged() {
     setState(() {
       _generation++;
@@ -150,11 +179,10 @@ class _MedicationSearchUIState extends State<MedicationSearchUI> {
     });
   }
 
-  // Function Name: _open
-  // Description: Returns the confirmed result in selection mode, otherwise opens its detail.
-  // Parameters:
-  // - medication (MedicationDetail): Chosen result.
-  // Returns: Completes when the dialog or detail screen closes.
+  // 함수이름: _open
+  // 함수역할: 현재 화면에서 결과 열기를 한 번만 진행하고 완료·예외 시 잠금을 해제한다.
+  // 매개변수: medication (MedicationDetail): 선택한 검색 결과.
+  // 반환값: 상세 화면 또는 선택 확인이 끝나면 완료; 진행 중·비활성 경로이면 즉시 완료.
   Future<void> _open(MedicationDetail medication) async {
     if (_isOpening || !mounted || ModalRoute.of(context)?.isCurrent != true) {
       return;
@@ -167,9 +195,17 @@ class _MedicationSearchUIState extends State<MedicationSearchUI> {
     }
   }
 
+  // 함수이름: _openResult
+  // 함수역할: 선택 모드에서는 확인 후 현재 검색 화면에만 약품을 반환하고, 일반 모드에서는 상세 화면을 연다.
+  // 매개변수: medication (MedicationDetail): 표시하거나 반환할 후보.
+  // 반환값: 취소·화면 이탈 시 반환하지 않고 완료되는 Future<void>.
   Future<void> _openResult(MedicationDetail medication) async {
     if (widget.selectionMode) {
       var dismissed = false;
+      // 함수이름: close
+      // 함수역할: 현재 확인창을 한 번만 닫아 연속 탭으로 검색 화면까지 닫히지 않게 한다.
+      // 매개변수: dialogContext (BuildContext): 확인창 위치; confirmed (bool): 선택 확정 여부.
+      // 반환값: 없음. 확인창 결과로 confirmed를 전달한다.
       void close(BuildContext dialogContext, bool confirmed) {
         if (dismissed || ModalRoute.of(dialogContext)?.isCurrent != true) {
           return;
@@ -230,6 +266,10 @@ class _MedicationSearchUIState extends State<MedicationSearchUI> {
     );
   }
 
+  // Function Name: build
+  // Description: Displays the query field, loading/error/empty states and selectable medication results.
+  // Parameters: context (BuildContext): Theme and navigation location.
+  // Returns: Search Scaffold; submit is disabled while loading or the query is empty.
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: MedBuddyColors.pageBackground,

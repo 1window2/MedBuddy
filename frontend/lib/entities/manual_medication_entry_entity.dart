@@ -5,13 +5,10 @@ import 'medication_schedule_entity.dart';
 // 파일명: manual_medication_entry_entity.dart
 // 역할: 사용자가 직접 입력한 약 이름과 복용 일정을 하나의 값 객체로 보관한다.
 
-// 함수이름: inclusiveMedicationCourseDays
-// 함수역할: 시작일과 종료일의 연·월·일만 UTC 날짜로 옮겨 양 끝을 포함한 복용 일수를 계산한다. 현지 시각의 차이를 쓰지 않으므로 서머타임 전환일이 기간에 끼어도 하루가 줄지 않는다.
-// 매개변수:
-// - startDate (DateTime): 양 끝을 포함한 복용 기간의 시작일
-// - endDate (DateTime): 시작일과 함께 포함하여 계산할 복용 종료일
-// 반환값:
-// - int: 시각을 무시하고 시작일과 종료일을 모두 포함한 일수.
+// Function Name: inclusiveMedicationCourseDays
+// Description: Count inclusive calendar days using UTC copies of date components so daylight-saving changes cannot shorten a course.
+// Parameters: startDate/endDate (DateTime): inclusive endpoints; time components are ignored.
+// Returns: int: date difference plus one; reversed dates are not validated.
 int inclusiveMedicationCourseDays(DateTime startDate, DateTime endDate) {
   final normalizedStart = DateTime.utc(
     startDate.year,
@@ -60,6 +57,7 @@ class ManualMedicationEntry {
   // - scheduleSlotKeys (List<String>): 명시적으로 선택한 복약 시간대 키 목록
   // - doseDays (String): 복용 주기 지시. 빈 문자열은 매일 복용
   // - localImagePath (String): 서버에 전송하지 않는 기기 전용 약 사진 경로
+  // - dosingMode (String): 정기·필요시 복용 유형; catalogMedication (MedicationDetail?): 검색에서 선택한 공공 약품 상세정보.
   // 반환값:
   // - ManualMedicationEntry: 초기화된 인스턴스.
   const ManualMedicationEntry({
@@ -75,12 +73,10 @@ class ManualMedicationEntry {
     this.catalogMedication,
   });
 
-  // 함수이름: totalDays
-  // 함수역할: 시작일과 종료일의 시각을 제거하고 양 끝 날짜를 포함한 복용 일수를 계산한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - int: 시작일과 종료일의 시각을 제거하고 양 끝 날짜를 포함한 복용 일수를 계산한다.
+  // Function Name: totalDays
+  // Description: Count both course endpoints using calendar dates, ignoring time-of-day and daylight-saving offsets.
+  // Parameters: None.
+  // Returns: int: inclusive medication-course days.
   int get totalDays => inclusiveMedicationCourseDays(startDate, endDate);
 
   // 함수이름: dosage

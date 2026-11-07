@@ -54,6 +54,7 @@ class CheckCaregiverMedicationUI extends StatefulWidget {
   // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
   // - control (CheckCaregiverMedication?): 화면의 조회·변경 요청을 처리할 컨트롤러.
   // - notificationControl (SetCaregiverNotification?): 보호자 알림 조회·저장을 처리할 컨트롤러.
+  // - historyControl (MedicationHistoryControl?): 필요시 복용 이력을 조회할 주입 제어기. 생략하면 이력 위젯의 기본 제어기를 사용한다.
   // 반환값: 입력 설정이 반영된 CheckCaregiverMedicationUI 인스턴스.
   const CheckCaregiverMedicationUI({
     super.key,
@@ -76,18 +77,10 @@ class CheckCaregiverMedicationUI extends StatefulWidget {
       _CheckCaregiverMedicationUIState();
 }
 
-// 클래스명: _CheckCaregiverMedicationUIState
-// 역할: 환자별 복약 완료 상태와 시간대별 보호자 알림의 화면 상태를 관리한다.
-// 주요 책임:
-// - 초기 로딩·오류·일정 부재를 구분하고 시간대별 환자 약 목록을 표시한다.
-// - 앱이 전면에 있고 이 화면이 현재 경로일 때만 15초마다 환자 복약 상태를 갱신하고, 다시 보이게 되면 즉시 갱신한다.
-// - 보호자 알림 설정은 처음 열 때와 앱 복귀 때 조회하고, 조회에 실패했으면 알림 버튼을 누를 때 다시 조회한다.
-// - 로컬에 저장된 환자 별칭을 읽고 표시 값이 달라진 경우 반영한다.
-// 속성:
-// - _slots (List<_CaregiverScheduleSlot>): 시간대별 약품과 표시 정의를 묶은 목록.
-// - _control (CheckCaregiverMedication): 화면의 조회·변경 요청을 처리할 컨트롤러.
-// - _notificationControl (SetCaregiverNotification): 보호자 알림 조회·저장을 처리할 컨트롤러.
-// - _lastSynchronizedAt (DateTime?): 마지막으로 환자 상태를 성공적으로 갱신한 시각.
+// Class Name: _CheckCaregiverMedicationUIState
+// Role: Patient medication status and caregiver alert state.
+// Responsibilities: Separates loading, errors and empty schedules; polls medication status every 15 seconds only while foreground and current, refreshes on visibility, and loads alert settings initially or on app resume with explicit retry after failure.
+// Attributes: _slots: dose groups; _control: medication queries; _notificationControl: alert persistence; _lastSynchronizedAt: last successful refresh; _refreshTimer: visible-screen polling.
 class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
     with WidgetsBindingObserver {
   static const Duration _refreshInterval = Duration(seconds: 15);
@@ -129,18 +122,16 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
   bool _reloadNotificationSettingsWhenVisible = false;
   late String _patientLabel;
 
-  // 함수이름: _isEnglish
-  // 함수역할: 사용자 설정의 언어가 앱 공통 기준으로 영어인지 판별한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
+  // Function Name: _isEnglish
+  // Description: Reads the shared language choice from user settings.
+  // Parameters: None.
+  // Returns: True when English is selected.
   bool get _isEnglish => widget.userSetting.isEnglish;
 
-  // 함수이름: initState
-  // 함수역할: 환자 별칭·조회 컨트롤러를 준비하고 앱 생명주기 관찰과 복약·알림 초기 조회를 시작한다. 15초 주기 갱신은 화면 표시 여부가 정해지는 didChangeDependencies에서 시작한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
+  // Function Name: initState
+  // Description: Initializes patient aliases and query controllers, observes app lifecycle and starts initial medication and alert queries; visibility-dependent polling begins in didChangeDependencies.
+  // Parameters: None.
+  // Returns: None.
   @override
   void initState() {
     super.initState();
@@ -167,11 +158,10 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
     unawaited(_loadPatientLabel());
   }
 
-  // 함수이름: didChangeDependencies
-  // 함수역할: 이 화면이 현재 경로인지 다시 판정한다. 다른 화면·대화상자가 위에 열리거나 닫히면 경로 상태가 바뀌어 이 함수가 다시 호출된다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
+  // Function Name: didChangeDependencies
+  // Description: Rechecks whether this route is current and updates polling; a standalone widget without a route is treated as visible.
+  // Parameters: None.
+  // Returns: None.
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -180,11 +170,10 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
     _applyScreenVisibility();
   }
 
-  // 함수이름: didChangeAppLifecycleState
-  // 함수역할: 앱이 전면을 벗어나면 주기 갱신을 멈추고, 전면으로 돌아오면 다시 시작하면서 알림 설정도 다시 읽게 한다.
-  // 매개변수:
-  // - state (AppLifecycleState): Flutter가 전달한 앱의 전경·배경 생명주기 상태.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
+  // Function Name: didChangeAppLifecycleState
+  // Description: Stops polling outside the foreground and rereads alert settings when resuming.
+  // Parameters: state (AppLifecycleState): new foreground/background state.
+  // Returns: None.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final isResumed = state == AppLifecycleState.resumed;
@@ -198,11 +187,10 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
     _applyScreenVisibility();
   }
 
-  // 함수이름: _applyScreenVisibility
-  // 함수역할: 앱이 전면에 있고 이 화면이 현재 경로일 때만 15초 주기 갱신을 유지한다. 가려졌던 화면이 다시 보이면 다음 주기를 기다리지 않고 즉시 환자 복약 상태를 읽는다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
+  // Function Name: _applyScreenVisibility
+  // Description: Keeps the 15-second timer only while the app is resumed and this route is current; refreshes medication status immediately when becoming visible.
+  // Parameters: None.
+  // Returns: None.
   void _applyScreenVisibility() {
     final isVisible = _isAppResumed && _isRouteCurrent;
     final wasVisible = _wasScreenVisible;
@@ -237,11 +225,10 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
     }
   }
 
-  // 함수이름: dispose
-  // 함수역할: 생명주기 관찰과 _refreshTimer, _control, _notificationControl 관련 자원을 정리하고 화면 수명 종료 처리를 수행한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
+  // Function Name: dispose
+  // Description: Removes the lifecycle observer, cancels polling and disposes only controllers owned by this screen.
+  // Parameters: None.
+  // Returns: None.
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -255,11 +242,10 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
     super.dispose();
   }
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 환자별 복약 완료 상태와 시간대별 보호자 알림 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 환자별 복약 완료 상태와 시간대별 보호자 알림에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Displays patient dose completion by time slot, as-needed medication and caregiver alert settings, with distinct loading, error and empty states.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final schedules =
@@ -457,7 +443,10 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
     );
   }
 
-  // 정기 일정이 없는 환자도 필요시 약과 오늘 기록한 횟수는 확인할 수 있다.
+  // 함수이름: _asNeededSection
+  // 함수역할: 정기 일정 유무와 관계없이 환자의 필요시 약·당일 기록을 읽기 전용으로 표시한다.
+  // 매개변수: emptyState (Widget): 필요시 약이 없을 때 표시.
+  // 반환값: 앱·경로 가시성과 새로고침 상태를 전달한 AsNeededScheduleSection.
   Widget _asNeededSection({Widget emptyState = const SizedBox.shrink()}) =>
       AsNeededScheduleSection(
         key: ValueKey('caregiver-as-needed-${widget.patientHash}'),
@@ -491,11 +480,10 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
         ),
       );
 
-  // 함수이름: _refreshOnTimer
-  // 함수역할: 주기 갱신 시점에 화면이 여전히 보이는지 다시 확인하고 환자 복약 상태만 조회한다. 알림 설정은 보호자 본인만 바꾸므로 주기마다 읽지 않는다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 없음. 위 동작의 상태 변경 또는 화면 처리를 수행한다.
+  // Function Name: _refreshOnTimer
+  // Description: Refreshes medication status only if still mounted, foreground and on the current route; does not poll caregiver alert settings.
+  // Parameters: None.
+  // Returns: None.
   void _refreshOnTimer() {
     // 경로 변경 통지가 아직 반영되지 않았더라도 가려진 화면은 조회하지 않는다.
     if (!mounted ||
@@ -506,11 +494,10 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
     unawaited(_requestPatientMedicationInfo(silent: true));
   }
 
-  // 함수이름: _loadPatientLabel
-  // 함수역할: 로컬에 저장된 환자 별칭을 읽고 표시 값이 달라진 경우 반영한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // Function Name: _loadPatientLabel
+  // Description: Loads the caregiver/patient-specific local alias and updates it only while mounted and when changed.
+  // Parameters: None.
+  // Returns: Future completing after the alias lookup.
   Future<void> _loadPatientLabel() async {
     final label = await _localStateControl.loadLabel(
       caregiverHash: widget.caregiverHash,
@@ -608,12 +595,10 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
     }
   }
 
-  // 함수이름: _requestCaregiverNotificationSettings
-  // 함수역할: 환자별 알림 설정 조회를 한 번에 하나만 실행한다. 이미 조회 중이면 그 결과를 함께 기다리고, 사용자가 요청한 조회는 진행 표시를 보여준 뒤 앞선 조회가 실패했으면 오류를 안내하도록 다시 조회한다.
-  // 매개변수:
-  // - showError (bool): 조회 실패를 사용자에게 바로 안내할지 여부.
-  // - silent (bool): 별도 로딩 표시 없이 배경 갱신할지 여부.
-  // 반환값: 성공하면 true, 실패하거나 요청을 수행하지 못하면 false로 완료되는 Future.
+  // Function Name: _requestCaregiverNotificationSettings
+  // Description: Shares an in-flight alert query; an explicit visible retry can rerun a failed silent query to surface its error.
+  // Parameters: showError (bool): report query failure; silent (bool): suppress loading indicator.
+  // Returns: Future<bool> indicating query success.
   Future<bool> _requestCaregiverNotificationSettings({
     bool showError = false,
     bool silent = false,
@@ -658,12 +643,10 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
     }
   }
 
-  // 함수이름: _loadCaregiverNotificationSettings
-  // 함수역할: 환자별 알림 설정을 조회해 반영하고 요청 시 오류를 안내한다. 조회 중에 설정 저장이 시작되었거나 끝났으면 오래된 조회 결과를 버린다.
-  // 매개변수:
-  // - showError (bool): 조회 실패를 사용자에게 바로 안내할지 여부.
-  // - silent (bool): 별도 로딩 표시 없이 배경 갱신할지 여부.
-  // 반환값: 성공하면 true, 실패하면 false로 완료되는 Future.
+  // Function Name: _loadCaregiverNotificationSettings
+  // Description: Loads patient-specific alert rules and optionally reports failure; rejects results made stale by an intervening save revision.
+  // Parameters: showError (bool): show failure feedback; silent (bool): suppress loading indicator.
+  // Returns: Future<bool> indicating an accepted successful load.
   Future<bool> _loadCaregiverNotificationSettings({
     required bool showError,
     required bool silent,
@@ -758,12 +741,10 @@ class _CheckCaregiverMedicationUIState extends State<CheckCaregiverMedicationUI>
     await _saveCaregiverNotificationSetting(slot, selectedSetting);
   }
 
-  // 함수이름: _saveCaregiverNotificationSetting
-  // 함수역할: 시간대별 알림 조건·마감 시각을 저장하고 진행·성공·실패 상태를 반영한다. 저장 전후로 설정 판 번호를 올려 그 사이의 조회 결과가 저장값을 덮어쓰지 않게 한다.
-  // 매개변수:
-  // - slot (_CaregiverScheduleSlot): 복약 시간대의 식별·시각·표시 정보.
-  // - selectedSetting (CaregiverNotification): 표시하거나 편집할 복약 시간대의 알림 설정.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // Function Name: _saveCaregiverNotificationSetting
+  // Description: Saves the selected time-slot alert and reflects progress or failure; advances the revision before and after saving so overlapping reads cannot overwrite it.
+  // Parameters: slot (_CaregiverScheduleSlot): target dose slot; selectedSetting (CaregiverNotification): chosen rule and deadline.
+  // Returns: Future completing after persistence and feedback.
   Future<void> _saveCaregiverNotificationSetting(
     _CaregiverScheduleSlot slot,
     CaregiverNotification selectedSetting,
@@ -1018,15 +999,10 @@ class _CaregiverSynchronizationBanner extends StatelessWidget {
   }
 }
 
-// 클래스명: _CaregiverTimeSlotCard
-// 역할: 시간대별 환자 약 목록과 보호자 알림 설정을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 시간대별 환자 약 목록과 보호자 알림 설정 위젯을 구성한다.
-// 속성:
-// - slot (_CaregiverScheduleSlot): 복약 시간대의 식별·시각·표시 정보.
-// - isEnglish (bool): 영어 문구를 선택할지 여부; false이면 한국어.
-// - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-// - medications (List<MedicationSchedule>): 조회·선택·정렬·표시에 사용할 약품 목록.
+// Class Name: _CaregiverTimeSlotCard
+// Role: A dose-slot group with caregiver alert controls.
+// Responsibilities: Displays patient medications and the caregiver alert rule without presenting it as the patient dose time.
+// Attributes: slot: dose group; isEnglish: labels; userSetting: display/global alert settings; medications: rows; notificationSetting: slot alert rule.
 class _CaregiverTimeSlotCard extends StatelessWidget {
   // Function Name: _alertTimingLabel
   // Description: Describe this caregiver's alert rule, never a patient's dose time.
@@ -1090,11 +1066,10 @@ class _CaregiverTimeSlotCard extends StatelessWidget {
     required this.onMedicationTap,
   });
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 시간대별 환자 약 목록과 보호자 알림 설정 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 시간대별 환자 약 목록과 보호자 알림 설정에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Groups medication rows under the slot style and exposes the effective caregiver alert state, respecting the global alert switch.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final style = slot.style;
@@ -1165,8 +1140,15 @@ class _CaregiverTimeSlotCard extends StatelessWidget {
   }
 }
 
-// 정기 복용과 필요시 복용에 같은 크기와 활성 색의 보호자 알림 버튼을 사용한다.
+// Class Name: _CaregiverNotificationButton
+// Role: A consistent caregiver notification action for scheduled and as-needed slots.
+// Responsibilities: Shows progress in a fixed touch area and distinguishes active notification styling.
+// Attributes: slot (_CaregiverScheduleSlot): slot styling/name; isEnglish/isLoading/enabled (bool): language/progress/alert state; onPressed (VoidCallback): edit action.
 class _CaregiverNotificationButton extends StatelessWidget {
+  // 함수이름: _CaregiverNotificationButton
+  // 함수역할: 시간대와 알림 활성·진행 상태 및 편집 명령을 받는다.
+  // 매개변수: slot (_CaregiverScheduleSlot): 시간대; isEnglish/isLoading/enabled (bool): 표시 상태; onPressed (VoidCallback): 편집.
+  // 반환값: 새 _CaregiverNotificationButton.
   const _CaregiverNotificationButton({
     required this.slot,
     required this.isEnglish,
@@ -1181,6 +1163,10 @@ class _CaregiverNotificationButton extends StatelessWidget {
   final bool enabled;
   final VoidCallback onPressed;
 
+  // Function Name: build
+  // Description: Renders a fixed 48dp area containing progress or an accessible notification settings button.
+  // Parameters: context (BuildContext): Layout location.
+  // Returns: SizedBox.square; enabled controls alert styling, not callback availability.
   @override
   // 다른 조작 버튼과 같이 48dp 터치 영역을 보장한다.
   Widget build(BuildContext context) => SizedBox.square(
@@ -1216,15 +1202,10 @@ class _CaregiverNotificationButton extends StatelessWidget {
   );
 }
 
-// 클래스명: _CaregiverMedicationRow
-// 역할: 환자 약 한 건의 복용량·체크 상태와 상세 진입을 담당한다.
-// 주요 책임:
-// - 부모가 전달한 표시값과 동작을 반영해 환자 약 한 건의 복용량·체크 상태와 상세 진입 위젯을 구성한다.
-// 속성:
-// - schedule (MedicationSchedule): 약품명·용량·일수·시간대·완료 상태를 담은 복약 일정.
-// - slotKey (String): 아침·점심·저녁·취침 전을 구분하는 시간대 키.
-// - isEnglish (bool): 영어 문구를 선택할지 여부; false이면 한국어.
-// - onTap (VoidCallback): 해당 항목의 명시된 주 동작을 실행할 콜백.
+// Class Name: _CaregiverMedicationRow
+// Role: A read-only patient dose row linked to details.
+// Responsibilities: Communicates dose completion visually and through accessibility semantics.
+// Attributes: schedule (MedicationSchedule): medication and completion; slotKey (String): dose slot; isEnglish (bool): labels; onTap (VoidCallback): open details.
 class _CaregiverMedicationRow extends StatelessWidget {
   final MedicationSchedule schedule;
   final String slotKey;
@@ -1246,11 +1227,10 @@ class _CaregiverMedicationRow extends StatelessWidget {
     required this.onTap,
   });
 
-  // 함수이름: build
-  // 함수역할: 현재 입력값과 상태를 반영해 환자 약 한 건의 복용량·체크 상태와 상세 진입 화면을 구성한다.
-  // 매개변수:
-  // - context (BuildContext): 테마·접근성 설정·화면 이동을 참조할 위젯 트리 위치.
-  // 반환값: 환자 약 한 건의 복용량·체크 상태와 상세 진입에 쓰는 위젯 트리.
+  // Function Name: build
+  // Description: Shows medication name and dosage with slot completion in both styling and spoken semantics; tapping opens details.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final isCompleted = schedule.isSlotCompleted(slotKey);
@@ -1318,16 +1298,16 @@ class _CaregiverMedicationRow extends StatelessWidget {
 class _CaregiverScheduleSlot {
   final String key;
 
-  // 함수이름: _CaregiverScheduleSlot
-  // 함수역할: 복약 시간대 키를 _CaregiverScheduleSlot 인스턴스에 담는다.
-  // 매개변수:
-  // - key (String): 복약 시간대를 구분하는 식별 문자열.
-  // 반환값: 입력 설정이 반영된 _CaregiverScheduleSlot 인스턴스.
+  // Function Name: _CaregiverScheduleSlot
+  // Description: Stores the dose-slot key used to resolve shared labels and styling.
+  // Parameters: key (String): dose-slot identifier.
+  // Returns: A _CaregiverScheduleSlot.
   const _CaregiverScheduleSlot({required this.key});
 
-  // 함수이름: style
-  // 함수역할: 시간대 키에 맞는 공통 색상·옅은 배경·아이콘을 반환한다.
-  // 매개변수: 없음. 반환값: MedBuddySlotStyle.
+  // Function Name: style
+  // Description: Resolves the shared icon and colors for this dose-slot key.
+  // Parameters: None.
+  // Returns: The corresponding MedBuddySlotStyle.
   MedBuddySlotStyle get style => MedBuddySlotStyle.of(key);
 
   // 함수이름: title

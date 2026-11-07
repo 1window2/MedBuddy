@@ -10,7 +10,9 @@ import '../services/authenticated_api_client.dart';
 import '../services/api_response_parser.dart';
 
 // 클래스명: NoActiveMedicationsError
-// 역할: 서버가 확인한 복용 약 없음 상태를 통신·권한·추천 생성 실패와 구분한다.
+// 역할: 서버가 확인한 복용 약 없음 상태를 일반 조회 실패와 구분한다.
+// 주요 책임: UI가 빈 복약 상태를 별도로 안내하도록 StateError 유형을 제공한다.
+// 속성: 상속된 message: 고정된 복용 약 없음 설명.
 class NoActiveMedicationsError extends StateError {
   // 함수이름: NoActiveMedicationsError
   // 함수역할: 빈 복용 약 상태를 전달한다. 매개변수: 없음. 반환값: 상태 오류.
@@ -48,12 +50,10 @@ class CheckHealthRecommendation {
        _client = client ?? AuthenticatedApiClient(),
        _ownsClient = client == null;
 
-  // 함수이름: requestHealthRecommendation
-  // 함수역할: 현재 복용 중인 약 조합을 바탕으로 건강 관리 추천을 요청한다.
-  // 매개변수:
-  // - language (String): 추천 문장 생성에 사용할 언어 코드
-  // 반환값:
-  // - HealthRecommendation 인스턴스
+  // Function Name: requestHealthRecommendation
+  // Description: Request recommendations for current medication; distinguish the specific no-medication 404 from HTTP, transport and malformed-response failures.
+  // Parameters: language (String): recommendation language, default ko.
+  // Returns: Future<HealthRecommendation>: parsed recommendation; throws NoActiveMedicationsError only for the recognized empty-medication response.
   Future<HealthRecommendation> requestHealthRecommendation({
     String language = 'ko',
   }) async {

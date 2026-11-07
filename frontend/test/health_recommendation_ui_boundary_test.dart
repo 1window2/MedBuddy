@@ -18,6 +18,9 @@ import 'package:medbuddy_frontend/widgets/medbuddy_page_header.dart';
 
 // 클래스명: _HealthControl
 // 역할: 약 없음·오류·정상 응답을 전환하는 건강 추천 대역.
+// 주요 책임: 조회 횟수를 세고 약 없음·실패·지정 추천 응답을 재현한다.
+// 속성: empty, fail (bool): 빈 추천·실패 선택; calls (int): 조회 횟수.
+// - response (HealthRecommendation): 정상 조회에서 돌려줄 추천 내용.
 class _HealthControl extends CheckHealthRecommendation {
   bool empty = true;
   bool fail = false;
@@ -44,12 +47,20 @@ class _HealthControl extends CheckHealthRecommendation {
 
 // 클래스명: _GalleryInput
 // 역할: 실제 사진 선택 없이 기존 갤러리 흐름 호출을 확인한다.
+// 주요 책임: 갤러리 호출을 세고 선택 성공 또는 취소를 재현한다.
+// 속성: calls (int): 요청 횟수; selected (bool): 선택 콜백과 빈 인식 목록을 반환할지 여부.
 class _GalleryInput extends InputPrescription {
   int calls = 0;
   bool selected = false;
 
   // 함수이름: requestPrescriptionImageFromGallery
-  // 함수역할: 갤러리 요청을 세고 취소를 반환한다. 매개변수: onImageSelected. 반환값: 취소 결과.
+  // 함수역할:
+  // - 갤러리 호출을 세고 selected가 참이면 선택을 알린 뒤 빈 인식 목록을, 아니면 취소 결과를 반환한다.
+  // 매개변수:
+  // - onImageSelected (PrescriptionImageSelectedCallback?): 선택 성공 시 호출할 알림.
+  // - onProgress (PrescriptionRecognitionProgressCallback?): 인터페이스 호환용 인자; 이 대역에서는 호출하지 않는다.
+  // 반환값:
+  // - Future<List<MedicationSchedule>?>: 선택 시 빈 목록, 취소 시 null.
   @override
   Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
     PrescriptionImageSelectedCallback? onImageSelected,
@@ -66,6 +77,8 @@ class _GalleryInput extends InputPrescription {
 
 // 클래스명: _ViewModel
 // 역할: 건강 추천 제어기와 언어를 주입해 등록 화면을 검증한다.
+// 주요 책임: 주입된 제어기를 연결하고 저장소 조회 없이 화면 언어를 고정한다.
+// 속성: language (String): userSetting에 사용할 언어 코드.
 class _ViewModel extends MedBuddyViewModel {
   final String language;
 
@@ -249,6 +262,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: 사진 선택 후 등록 화면 종료
+  // 함수역할:
+  // - 건강 추천에서 처방전 갤러리를 열어 사진 선택을 완료하면 입력을 한 번 호출하고 등록 경로를 닫아 홈으로 돌아오는지 확인한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   testWidgets('사진을 선택한 경우에만 등록 화면을 닫고 분석 화면을 보여준다', (tester) async {
     final input = _GalleryInput()..selected = true;
     final model = _ViewModel(_HealthControl(), input: input);

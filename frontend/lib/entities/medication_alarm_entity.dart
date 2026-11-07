@@ -7,16 +7,10 @@ import 'json_value_reader.dart';
 // 서버가 보호자 미복용 알림을 미루는 CAREGIVER_MISSED_DOSE_GRACE_MINUTES 기본값과 같다.
 const int missedDoseGraceMinutes = 30;
 
-// 클래스명: MedicationAlarm
-// 역할: 환자와 복약 시간대에 속한 알림 시각 및 활성화 상태를 표현한다.
-// 주요 책임:
-// - 서버 설정을 변환하고 환자별 안정 ID와 구형 시간대 ID를 제공한다.
-// 속성:
-// - patientHash (String): 조회·저장·알림 대상 환자의 소유권 해시
-// - slotKey (String): morning·lunch·evening·bedtime 복약 시간대 키
-// - hour (int): 24시간제 지역 시각의 시
-// - minute (int): 지역 시각의 분
-// - enabled (bool): 적용하거나 보존할 기능·알림 활성 상태
+// Class Name: MedicationAlarm
+// Role: Represent the reminder time and enabled state for one patient slot.
+// Responsibilities: Read legacy/current settings and provide disabled slot defaults.
+// Attributes: patientHash/slotKey (String): owner and slot; hour/minute (int): local reminder time; enabled (bool): scheduling preference.
 class MedicationAlarm {
   final String patientHash;
   final String slotKey;

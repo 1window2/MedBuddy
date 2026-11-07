@@ -28,23 +28,17 @@ import 'package:medbuddy_frontend/viewmodels/medbuddy_view_model.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// Class Name: _CancelledGalleryInputPrescription
-// Role: Gallery-input stub that records selection attempts and simulates cancellation.
-// Responsibilities:
-// - Count gallery requests and model user cancellation without selecting an image.
-// Attributes:
-// - requestCount (int): Number of intercepted control requests.
+// 클래스명: _CancelledGalleryInputPrescription
+// 역할: 갤러리에서 이미지를 고르지 않고 취소하는 처방 입력 대역.
+// 주요 책임: 요청 횟수를 기록하고 선택·진행 콜백 없이 null을 반환한다.
+// 속성: requestCount (int): 갤러리 선택 요청 횟수.
 class _CancelledGalleryInputPrescription extends InputPrescription {
   int requestCount = 0;
 
-  // Function Name: requestPrescriptionImageFromGallery
-  // Description:
-  // - Count gallery requests and model user cancellation without selecting an image.
-  // Parameters:
-  // - onImageSelected (PrescriptionImageSelectedCallback?): Callback announcing that an image has been
-  //   selected. Accepted but not consumed by this fixture.
-  // Returns:
-  // - Null, indicating no prescription image was selected.
+  // 함수이름: requestPrescriptionImageFromGallery
+  // 함수역할: 갤러리 호출 횟수만 늘려 사용자가 이미지 선택을 취소한 결과를 재현한다.
+  // 매개변수: onImageSelected (PrescriptionImageSelectedCallback?): 호출하지 않는 선택 콜백; onProgress (PrescriptionRecognitionProgressCallback?): 호출하지 않는 인식 진행 콜백.
+  // 반환값: Future<List<MedicationSchedule>?>: 항상 null이며 인식을 시작하지 않는다.
   @override
   Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
     PrescriptionImageSelectedCallback? onImageSelected,
@@ -59,6 +53,10 @@ class _CancelledGalleryInputPrescription extends InputPrescription {
 // 함수역할: 등록·정렬·선택 삭제와 작은 화면 접근성 회귀 검사를 등록한다.
 // 매개변수: 없음. 반환값: 없음; 각 테스트가 기대 동작을 검증한다.
 void main() {
+  // Function Name: testWidgets: '날짜별 접기 상태는 검색과 목록 갱신 뒤에도 서로 독립적이다'
+  // Description: Collapse dated groups independently, search across a collapsed group, then clear the query and reverse the loaded items.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: No value; search temporarily reveals matches, the saved collapse states survive refresh, and no deletion or widget exception occurs.
   testWidgets('날짜별 접기 상태는 검색과 목록 갱신 뒤에도 서로 독립적이다', (tester) async {
     final model = await _pumpSelectionApp(tester, initialFilter: 'all');
     final items = [
@@ -119,6 +117,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: testWidgets: '접힌 날짜도 선택 수를 표시하고 펼치면 선택을 유지한다'
+  // 함수역할: 같은 날짜의 두 약 중 하나를 선택한 뒤 날짜 묶음을 접었다가 다시 펼친다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 접힌 머리글은 1개 선택을 표시하고 다시 펼쳐도 각 체크 상태가 유지되며 삭제하지 않는다.
   testWidgets('접힌 날짜도 선택 수를 표시하고 펼치면 선택을 유지한다', (tester) async {
     final model = await _pumpSelectionApp(tester, initialFilter: 'all');
     await model.replaceMedications([
@@ -162,6 +164,10 @@ void main() {
   });
 
   for (final language in ['ko', 'en']) {
+    // 함수이름: testWidgets: '중단과 교체 상태는 큰 글씨에서도 색과 상태명으로 구분한다 $language'
+    // 함수역할: 한국어·영어의 작은 화면과 글자 배율 2에서 오늘·내일의 중단 및 처방 변경 상태를 순회한다.
+    // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+    // 반환값: 반환값 없음; 현재 중단·변경·예정 상태의 색, 변경 문구, 효력 날짜와 상태 배지가 맞고 화면 예외가 없다.
     testWidgets('중단과 교체 상태는 큰 글씨에서도 색과 상태명으로 구분한다 $language', (tester) async {
       final model = await _pumpSelectionApp(
         tester,
@@ -226,6 +232,10 @@ void main() {
     });
   }
 
+  // Function Name: testWidgets: '기본 복약함은 중단한 약의 정보와 중단일을 삭제 전까지 보여준다'
+  // Description: Show a stopped medicine in the all/ended filters, open its detail, then confirm deletion after checking the record-loss warning and cancel-button order.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: No value; the active filter hides it, its stop date remains visible until deletion, and only ID 1 is removed.
   testWidgets('기본 복약함은 중단한 약의 정보와 중단일을 삭제 전까지 보여준다', (tester) async {
     final model = await _pumpSelectionApp(tester, initialFilter: 'all');
     final today = MedicationHistoryDates.today(DateTime.now());
@@ -269,6 +279,10 @@ void main() {
     expect(find.text('약 1'), findsNothing);
   });
 
+  // 함수이름: testWidgets: '복용 중 필터에서 중단해도 결과 약을 전체 목록에 남긴다'
+  // 함수역할: 복용 중 목록의 관리 메뉴에서 중단을 제출하고 확인한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 필터가 전체로 바뀌고 중단일·상태가 기록된 약이 삭제 없이 남는다.
   testWidgets('복용 중 필터에서 중단해도 결과 약을 전체 목록에 남긴다', (tester) async {
     final model = await _pumpSelectionApp(tester);
     await tester.tap(find.byKey(const Key('saved-medication-actions-1')));
@@ -286,6 +300,10 @@ void main() {
     expect(model.control.medications.first.stoppedOn, isNotNull);
   });
 
+  // 함수이름: testWidgets: '미래 중단은 중단 예정으로 표시하고 종료 필터에서 제외한다'
+  // 함수역할: 내일 중단할 약을 전체·복용 중·종료 필터에서 조회한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 내일의 중단 예정 문구를 표시하고 복용 중에는 포함하되 종료에서는 제외한다.
   testWidgets('미래 중단은 중단 예정으로 표시하고 종료 필터에서 제외한다', (tester) async {
     final model = await _pumpSelectionApp(tester, initialFilter: 'all');
     final tomorrow = MedicationHistoryDates.today(
@@ -305,8 +323,10 @@ void main() {
     expect(find.text('약 1'), findsNothing);
   });
 
-  // 서버 날짜(YYYY-MM-DD)는 기기 자정으로 읽히므로, 한국처럼 UTC보다 빠른 시간대에서
-  // 마지막 복용일이 이미 종료로 보이던 회귀를 막는다(TZ=Asia/Seoul에서 실행해 확인).
+  // Function Name: testWidgets: '마지막 복용일과 오늘 중단은 기기 날짜로 판단한다'
+  // Description: Use device-midnight dates for a one-day course and a stop effective today, guarding the server-date regression in zones ahead of UTC such as Asia/Seoul.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: No value; today's last dose is not ended, today's stop is effective rather than scheduled, and only the stopped item appears in the ended filter.
   testWidgets('마지막 복용일과 오늘 중단은 기기 날짜로 판단한다', (tester) async {
     final model = await _pumpSelectionApp(tester, initialFilter: 'all');
     final today = MedicationHistoryDates.today(DateTime.now());
@@ -331,6 +351,10 @@ void main() {
     expect(find.text('약 2'), findsOneWidget);
   });
 
+  // 함수이름: testWidgets: '복약함 관리 메뉴에서 기록을 지우지 않는 변경 화면을 연다'
+  // 함수역할: 약 관리 메뉴의 수정·중단·변경 항목을 차례로 열고 각각 뒤로 이동한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 각 동작이 처방 변경 편집 화면을 열고 뒤로 가면 복약함으로 복귀한다.
   testWidgets('복약함 관리 메뉴에서 기록을 지우지 않는 변경 화면을 연다', (tester) async {
     await _pumpSelectionApp(tester);
     await tester.tap(find.byKey(const Key('saved-medication-actions-1')));
@@ -346,6 +370,10 @@ void main() {
     expect(find.byType(CheckSavedMedicationUI), findsOneWidget);
   });
 
+  // 함수이름: testWidgets: '약 상세를 연속으로 눌러도 한 번 뒤로가면 목록으로 돌아온다'
+  // 함수역할: 약 상세를 빠르게 두 번 누른 뒤 한 번 뒤로 이동하고 다시 연다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 상세 경로가 중복되지 않고 복약함 복귀 및 재진입이 가능하다.
   testWidgets('약 상세를 연속으로 눌러도 한 번 뒤로가면 목록으로 돌아온다', (tester) async {
     await _pumpSelectionApp(tester);
     final medication = find.text('약 1');
@@ -365,6 +393,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 함수이름: testWidgets: '조회 조건은 현재 값 세 줄로 표시하고 취소하면 기존 조건을 유지한다'
+  // 함수역할: 현재 조회 조건·정렬·표시 설정이 있는 필터 창을 연 뒤 취소한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 현재 값 행이 표시되고 복용 중 필터와 기존 약 목록이 유지된다.
   testWidgets('조회 조건은 현재 값 세 줄로 표시하고 취소하면 기존 조건을 유지한다', (tester) async {
     await _pumpFilterApp(tester);
     await tester.tap(find.byKey(const Key('saved-medication-filter-selector')));
@@ -390,10 +422,10 @@ void main() {
     expect(find.text('종료약'), findsNothing);
   });
 
-  // 함수역할: 검색어와 조회 상태를 모두 통과한 약만 전체 선택 삭제되는지 검증한다.
-  // 함수이름: 다음 복용일 표시 테스트
-  // 함수역할: 매일 복용하지 않는 약만 다음 복용일을 표시하고, 오늘이 복용일이면 "오늘"로 알린다.
-  // 매개변수: tester. 반환값: 없음; 기대와 다르면 실패한다.
+  // Function Name: testWidgets: '매일 복용하지 않는 약은 다음 복용일을 표시한다'
+  // Description: Load daily and non-daily courses against the Korean calendar day and check tomorrow, today, and a four-week course.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: No value; only non-daily rows show the next dose, tomorrow includes its weekday, and four weeks ends 27 days after the start.
   testWidgets('매일 복용하지 않는 약은 다음 복용일을 표시한다', (tester) async {
     await _pumpFilterApp(tester, nonDaily: true);
     // UTC 날짜가 한국 날짜와 다른 시간(한국 0~9시)에도 같은 기준일로 기대값을 만든다.
@@ -419,7 +451,15 @@ void main() {
     );
     expect(find.text('다음 복용일: 오늘'), findsOneWidget);
     // "4주"는 일정과 같은 규칙으로 28일로 읽는다.
+    // Function Name: twoDigits
+    // Description: Pad a calendar component for the expected course-date label.
+    // Parameters: value (int): Month or day number.
+    // Returns: String: Decimal digits padded on the left to at least two characters.
     String twoDigits(int value) => value.toString().padLeft(2, '0');
+    // Function Name: fullDate
+    // Description: Compose a full calendar-date expectation without time-zone conversion.
+    // Parameters: day (DateTime): Calendar date to display.
+    // Returns: String: Year, two-digit month, and two-digit day joined by hyphens.
     String fullDate(DateTime day) =>
         '${day.year}-${twoDigits(day.month)}-${twoDigits(day.day)}';
     final end = DateTime(now.year, now.month, now.day + 27);
@@ -433,6 +473,10 @@ void main() {
     );
   });
 
+  // 함수이름: testWidgets: '검색한 약만 선택하며 검색어를 바꾸면 숨겨진 선택을 비운다'
+  // 함수역할: 검색 결과의 약을 선택한 후 검색어를 바꾸고 새로 보이는 약만 선택해 삭제한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 숨겨진 선택이 0개로 초기화되고 최종 삭제 ID는 2 하나다.
   testWidgets('검색한 약만 선택하며 검색어를 바꾸면 숨겨진 선택을 비운다', (tester) async {
     final model = await _pumpSelectionApp(tester);
     await tester.enterText(
@@ -454,7 +498,10 @@ void main() {
     expect(model.deletedIds, [2]);
   });
 
-  // 함수역할: 검색 결과 부재와 사진 없음이 삭제 동작으로 오해되지 않는지 확인한다.
+  // Function Name: testWidgets: '사진 없는 약은 약 아이콘 자리표시이며 빈 검색은 전체 보기로 복구한다'
+  // Description: Render medicines without photos, search for an absent name, then recover through Show All.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: No value; a medication placeholder replaces broken-image/close icons, registration dates stay hidden, and clearing the empty search restores the list.
   testWidgets('사진 없는 약은 약 아이콘 자리표시이며 빈 검색은 전체 보기로 복구한다', (tester) async {
     await _pumpSelectionApp(tester);
     expect(
@@ -489,9 +536,10 @@ void main() {
     );
   });
 
-  // 함수이름: 공통 제목 테스트
-  // 함수역할: 복약함은 탭이 아닌 하위 화면이므로 뒤로가기가 있는 공통 헤더를 쓴다.
-  // 매개변수: tester. 반환값: 검증 완료.
+  // Function Name: testWidgets: '복약함 제목은 뒤로가기가 있는 공통 헤더이다'
+  // Description: Render the cabinet as a subordinate page and inspect its shared page header.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: No value; the header is not prominent, supplies a back callback, and shows the saved-medicine subtitle.
   testWidgets('복약함 제목은 뒤로가기가 있는 공통 헤더이다', (tester) async {
     await _pumpSelectionApp(tester);
     final header = tester.widget<MedBuddyPageHeader>(
@@ -615,9 +663,10 @@ void main() {
     expect(find.text('복약 선택'), findsNothing);
   });
 
-  // 함수이름: 갱신 후 삭제 재검증 테스트
-  // 함수역할: 확인 창을 연 뒤 숨겨진 약은 삭제 직전에도 제외한다.
-  // 매개변수: tester. 반환값: 검증 완료.
+  // Function Name: testWidgets: '삭제 확인 중 목록이 바뀌면 보이지 않는 ID를 제외한다'
+  // Description: Open deletion confirmation for selected rows, then replace the list before confirming.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: No value; the deletion rechecks visibility and sends only the still-visible ID 1.
   testWidgets('삭제 확인 중 목록이 바뀌면 보이지 않는 ID를 제외한다', (tester) async {
     final model = await _pumpSelectionApp(tester);
     await _startSavedSelection(tester);
@@ -639,9 +688,10 @@ void main() {
     );
   });
 
-  // 함수이름: 선택 삭제 부분 실패 테스트
-  // 함수역할: 실제 ViewModel의 혼합 삭제 결과와 실패 항목 재선택을 검증한다.
-  // 매개변수: tester. 반환값: 검증 완료.
+  // Function Name: testWidgets: '선택 일괄 삭제의 실패 항목은 선택을 유지한다'
+  // Description: Use the real view model with one successful delete and one HTTP failure, then confirm a selected batch.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: No value; the mixed-result message reports one success and one failure, and the failed row remains selected for retry.
   testWidgets('선택 일괄 삭제의 실패 항목은 선택을 유지한다', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final client = MockClient(_mixedDeleteResponse);
@@ -684,9 +734,10 @@ void main() {
     );
   });
 
-  // 함수이름: 삭제 확인 중 문구 테스트
-  // 함수역할: 확인창이 열린 동안에는 아직 삭제하지 않으므로 '삭제 중'이라고 표시하지 않는지 검증한다.
-  // 매개변수: tester. 반환값: 검증 완료.
+  // Function Name: testWidgets: '삭제 확인창이 열린 동안에는 삭제 중으로 표시하지 않는다'
+  // Description: Hold deletion behind a completer after opening and then confirming the delete dialog.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: No value; the busy label is absent during confirmation, appears during the request, and clears after completion.
   testWidgets('삭제 확인창이 열린 동안에는 삭제 중으로 표시하지 않는다', (tester) async {
     final model = await _pumpSelectionApp(tester);
     model.deleteGate = Completer<void>();
@@ -703,9 +754,10 @@ void main() {
     expect(find.text('삭제 중...'), findsNothing);
   });
 
-  // 함수이름: 삭제 중 조작 차단 테스트
-  // 함수역할: 대기 중인 삭제는 선택·조건·뒤로가기와 중복 삭제를 막는다.
-  // 매개변수: tester. 반환값: 검증 완료.
+  // Function Name: testWidgets: '삭제 진행 중에는 조작과 화면 이탈을 막는다'
+  // Description: Leave a two-item deletion pending while attempting selection, filtering, back navigation, and a repeated delete.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: No value; controls are disabled, the route and selection mode stay active until completion, and exactly two item requests occur.
   testWidgets('삭제 진행 중에는 조작과 화면 이탈을 막는다', (tester) async {
     final model = await _pumpSelectionApp(tester);
     model.deleteGate = Completer<void>();
@@ -811,9 +863,10 @@ void main() {
   });
 
   for (final language in ['ko', 'en']) {
-    // 함수이름: 선택 모드 큰 글씨 테스트
-    // 함수역할: 작은 화면의 두 배 글씨에서도 날짜·개수·삭제 버튼을 끝까지 표시한다.
-    // 매개변수: tester. 반환값: 검증 완료.
+    // Function Name: testWidgets: '선택과 날짜 정보는 큰 글씨에서도 잘리지 않는다: $language'
+    // Description: Use a 320-by-640 viewport and doubled text in each language, then enter selection mode.
+    // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+    // Returns: No value; the delete footer stays 280 pixels wide within the viewport and the date remains untruncated in the muted text color without layout exceptions.
     testWidgets('선택과 날짜 정보는 큰 글씨에서도 잘리지 않는다: $language', (tester) async {
       await _pumpSelectionApp(
         tester,
@@ -927,9 +980,10 @@ void main() {
     });
   }
 
-  // 함수이름: 첫 조회 실패 테스트
-  // 함수역할: 조회에 실패한 복약함을 약이 없는 상태로 표시하지 않고 오류와 다시 시도를 제공하며, 다시 시도가 성공하면 목록을 표시한다.
-  // 매개변수: tester. 반환값: 검증 완료.
+  // Function Name: testWidgets: '첫 조회에 실패하면 빈 복약함 대신 오류와 다시 시도를 표시한다'
+  // Description: Fail the initial load and a retry, then clear the injected error and retry again.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: No value; failures show an error/retry rather than an empty cabinet or registration action, and recovery displays the medicines and removes the error.
   testWidgets('첫 조회에 실패하면 빈 복약함 대신 오류와 다시 시도를 표시한다', (tester) async {
     final model = await _pumpSelectionApp(
       tester,
@@ -954,9 +1008,10 @@ void main() {
     expect(find.text('저장된 복약 정보를 불러오지 못했습니다.'), findsNothing);
   });
 
-  // 함수이름: 목록 유지 테스트
-  // 함수역할: 이미 표시한 목록의 새로 고침이 실패해도 목록을 지우거나 오류 화면으로 바꾸지 않는다.
-  // 매개변수: tester. 반환값: 검증 완료.
+  // Function Name: testWidgets: '표시 중인 목록은 새로 고침이 실패해도 유지한다'
+  // Description: Load the cabinet successfully, inject a read error, and refresh the existing list.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: No value; the displayed medicine remains and no full-page retry action replaces the list.
   testWidgets('표시 중인 목록은 새로 고침이 실패해도 유지한다', (tester) async {
     final model = await _pumpSelectionApp(tester);
     model.control.loadFailure = StateError('저장된 복약 정보 조회 실패 (500): boom');
@@ -967,9 +1022,10 @@ void main() {
   });
 
   for (final language in ['ko', 'en']) {
-    // 함수이름: 조회 실패 접근성 테스트
-    // 함수역할: 작은 화면의 두 배 글씨에서도 조회 실패 안내와 다시 시도 버튼이 넘치지 않는다.
-    // 매개변수: tester. 반환값: 검증 완료.
+    // Function Name: testWidgets: '조회 실패 안내와 다시 시도는 큰 글씨를 수용한다: $language'
+    // Description: Render an initial-load error in a 320-by-640 viewport with doubled text for each language.
+    // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+    // Returns: No value; the localized failure and retry remain visible, the retry spans x=20 to x=300 within the viewport, and no layout exception occurs.
     testWidgets('조회 실패 안내와 다시 시도는 큰 글씨를 수용한다: $language', (tester) async {
       await _pumpSelectionApp(
         tester,
@@ -1114,13 +1170,10 @@ void main() {
     });
   }
 
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: 빈 저장 목록의 촬영 버튼은 세 가지 약 등록 방식을 제공한다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // 함수이름: testWidgets: '빈 저장 목록의 촬영 버튼은 세 가지 약 등록 방식을 제공한다'
+  // 함수역할: 빈 목록의 등록 버튼을 열어 약봉투·처방전, 낱알약 식별, 직접 등록 선택지를 확인하고 낱알약 식별을 선택한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 선택 전에는 식별 화면이 없고 선택한 뒤에만 열린다.
   testWidgets('빈 저장 목록의 촬영 버튼은 세 가지 약 등록 방식을 제공한다', (tester) async {
     tester.view.physicalSize = const Size(360, 800);
     tester.view.devicePixelRatio = 1;
@@ -1165,13 +1218,10 @@ void main() {
     expect(find.byType(PillIdentificationUI), findsOneWidget);
   });
 
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: 빈 저장 목록에서 처방전 분석을 선택하면 이미지 출처를 고른다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // 함수이름: testWidgets: '빈 저장 목록에서 처방전 분석을 선택하면 이미지 출처를 고른다'
+  // 함수역할: 빈 복약함에서 등록을 누른 후 약봉투·처방전 등록을 선택한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 카메라 촬영과 갤러리 선택 출처가 함께 표시된다.
   testWidgets('빈 저장 목록에서 처방전 분석을 선택하면 이미지 출처를 고른다', (tester) async {
     tester.view.physicalSize = const Size(360, 800);
     tester.view.devicePixelRatio = 1;
@@ -1205,13 +1255,10 @@ void main() {
     expect(find.text('갤러리에서 선택'), findsOneWidget);
   });
 
-  // Function Name: testWidgets callback
-  // Description:
-  // - Expected behavior: embedded empty cabinet keeps the root route during gallery input.
-  // Parameters:
-  // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
-  // Returns:
-  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  // Function Name: testWidgets: 'embedded empty cabinet keeps the root route during gallery input'
+  // Description: Mount the empty cabinet inside a root scaffold and cancel the gallery picker after choosing prescription registration.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: No value; one gallery request occurs, the registration page remains open, and the original embedded root stays in the route tree.
   testWidgets(
     'embedded empty cabinet keeps the root route during gallery input',
     (tester) async {
@@ -1298,13 +1345,10 @@ void main() {
     expect(find.byTooltip('알림 설정'), findsNothing);
   });
 
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: 약 사진 팝업은 작은 화면과 큰 글자에서도 이미지 영역을 제한한다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // 함수이름: testWidgets: '약 사진 팝업은 작은 화면과 큰 글자에서도 이미지 영역을 제한한다'
+  // 함수역할: 작은 화면과 큰 글자 설정에서 저장 약의 사진 버튼을 눌러 확대 창을 연다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 이미지 대화상자와 뷰어가 생성되고 레이아웃 예외가 없다.
   testWidgets('약 사진 팝업은 작은 화면과 큰 글자에서도 이미지 영역을 제한한다', (tester) async {
     tester.view.physicalSize = const Size(320, 520);
     tester.view.devicePixelRatio = 1;
@@ -1516,13 +1560,10 @@ void main() {
     },
   );
 
-  // 함수이름: testWidgets 콜백
-  // 함수역할:
-  // - 기대 동작: 영문 저장 목록은 작은 화면과 큰 글자에서도 넘치지 않는다.
-  // 매개변수:
-  // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
-  // 반환값:
-  // - Future<void>; 모든 기대 조건 확인 후 완료되며 불일치 시 테스트가 실패한다.
+  // 함수이름: testWidgets: '영문 저장 목록은 작은 화면과 큰 글자에서도 넘치지 않는다'
+  // 함수역할: 320 너비의 작은 화면에 큰 글자 배율과 영어를 적용해 날짜 정렬용 저장 약 목록을 표시한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; Medications 제목이 표시되고 렌더링 예외가 없다.
   testWidgets('영문 저장 목록은 작은 화면과 큰 글자에서도 넘치지 않는다', (tester) async {
     tester.view.physicalSize = const Size(320, 640);
     tester.view.devicePixelRatio = 1;
@@ -1587,23 +1628,29 @@ Future<void> _chooseSavedFilter(WidgetTester tester, String mode) async {
   await _applySavedFilter(tester);
 }
 
-// 함수역할: 선택한 조회/정렬 조건을 확정한다. 매개변수: tester. 반환값: 적용 완료.
+// 함수이름: _applySavedFilter
+// 함수역할: 선택한 조회 조건을 적용하고 시트 종료와 목록 갱신을 기다린다.
+// 매개변수: tester (WidgetTester): 조건 적용 버튼을 조작할 테스트 제어기.
+// 반환값: Future<void>: 적용 후 화면 안정화 완료.
 Future<void> _applySavedFilter(WidgetTester tester) async {
   await tester.pumpAndSettle();
   await tester.tap(find.byKey(const Key('saved-medication-filter-apply')));
   await tester.pumpAndSettle();
 }
 
-// 함수이름: _pumpFilterApp
-// 함수이름: _koreaToday
-// 함수역할: 앱의 복약 기준인 한국 날짜를 기기 자정 값으로 돌려준다. 매개변수: 없음. 반환값: 오늘 날짜.
+// Function Name: _koreaToday
+// Description: Take the app's current Korean calendar day and reconstruct it at device-local midnight for date-only fixtures.
+// Parameters: None.
+// Returns: DateTime: Local midnight with the Korean day's year, month, and day.
 DateTime _koreaToday() {
   final day = MedicationHistoryDates.today(DateTime.now());
   return DateTime(day.year, day.month, day.day);
 }
 
-// 함수역할: 오늘 기준의 복용 중·종료·예정 약과 접근성 설정으로 필터 화면을 준비한다.
-// 매개변수: tester, onlyEnded, language, textScale, small. 반환값: 화면 로딩 완료.
+// 함수이름: _pumpFilterApp
+// 함수역할: 한국 날짜 기준의 진행·종료·예정 약을 제공하는 모의 서버와 화면을 만들고 지정한 조회 상태를 적용한다.
+// 매개변수: tester (WidgetTester): 화면 제어기; onlyEnded (bool): 진행·예정 약 제외; nonDaily (bool): 격일·주 1회 약 추가; language (String): 표시 언어; textScale (double): 글자 배율; small (bool): 320x640 화면 사용; initialFilter (String): 초기 조회 조건, all이면 추가 선택 생략.
+// 반환값: Future<void>: 목록 로딩과 초기 필터 적용 완료; 테스트 종료 시 화면 크기와 모델을 정리한다.
 Future<void> _pumpFilterApp(
   WidgetTester tester, {
   bool onlyEnded = false,
@@ -1854,9 +1901,9 @@ Map<String, dynamic> _savedMedicationJson(
 }
 
 // 클래스명: _SelectionTestControl
-// 역할: 목록 조회와 개별 삭제만 대체해 기존 ViewModel의 일괄 삭제를 검증한다.
-// 주요 책임: 삭제 ID를 기록하고 대기·목록 교체를 제어한다.
-// 속성: medications는 응답 목록, deleteGate는 대기 신호, deletedIds는 실제 삭제 요청이다.
+// 역할: 실제 ViewModel의 목록·선택 삭제·중단 흐름을 외부 통신 없이 제어한다.
+// 주요 책임: 목록 복사 또는 조회 오류를 반환하고 삭제 대기·요청 ID·중단 효력일 갱신을 재현한다.
+// 속성: medications: 응답 약 목록; deletedIds: 삭제 요청 기록; deleteGate: 삭제 완료 대기 신호; loadFailure: 주입할 조회 오류.
 class _SelectionTestControl extends CheckSavedMedication {
   List<MedicationDetail> medications;
   final List<int> deletedIds = [];
@@ -1868,6 +1915,10 @@ class _SelectionTestControl extends CheckSavedMedication {
   // 함수역할: 외부 요청 없는 조회 목록을 받는다. 매개변수: medications. 반환값: 테스트 제어기.
   _SelectionTestControl(this.medications);
 
+  // 함수이름: changeRegimen
+  // 함수역할: 대상 약의 중단일을 요청 효력일로 바꾸고 고정 개정 번호로 처방 변경 성공을 재현한다.
+  // 매개변수: medicationId (int): 변경할 약 ID; change (MedicationRegimenChange): 적용할 효력일을 담은 요청.
+  // 반환값: Future<MedicationRegimenResult>: 요청 ID와 revision 1; 일치하는 약이 없어도 같은 성공 결과를 반환한다.
   @override
   Future<MedicationRegimenResult> changeRegimen(
     int medicationId,
@@ -1886,9 +1937,10 @@ class _SelectionTestControl extends CheckSavedMedication {
     return MedicationRegimenResult(medicationId: medicationId, revision: 1);
   }
 
-  // 함수이름: requestSavedMedicationInfo
-  // 함수역할: 파싱을 거치지 않아 잘못된 ID도 UI에서 검증하며, 지정된 실패가 있으면 그 오류를 던진다.
-  // 매개변수: 없음. 반환값: 현재 약 목록.
+  // Function Name: requestSavedMedicationInfo
+  // Description: Return an unparsed copy of the fixture list so invalid IDs reach UI validation, or throw the injected load failure.
+  // Parameters: None.
+  // Returns: Future<List<MedicationDetail>>: A new list containing the fixture items; fails with loadFailure when set.
   @override
   Future<List<MedicationDetail>> requestSavedMedicationInfo() async {
     final failure = loadFailure;
@@ -1979,9 +2031,10 @@ MedicationDetail _selectionMedication(int? id, {int offsetDays = 0}) {
   );
 }
 
-// 함수이름: _pumpSelectionApp
-// 함수역할: 선택 회귀 검사를 위한 루트 또는 하위 화면을 준비한다.
-// 매개변수: tester, invalidIds, submenu, language, textScale, small, loadFailure(첫 조회를 실패시킬 오류), home(루트 화면을 대신할 호스트). 반환값: 제어 가능한 ViewModel.
+// Function Name: _pumpSelectionApp
+// Description: Mount a controllable selection fixture as a root or pushed route, with optional bad IDs, loading failure, and accessibility settings.
+// Parameters: tester (WidgetTester): Test harness; invalidIds (bool): Include null/zero/negative IDs; submenu (bool): Push from a parent page; language (String): Locale; textScale (double): Text multiplier; small (bool): Use 320x640; loadFailure (Object?): Inject an initial read error; home (Widget?): Override the root host; initialFilter (String): Filter applied unless all, a load error, or a custom home prevents it.
+// Returns: Future<_SelectionTestViewModel>: Mounted model for later list changes and deletion inspection; teardown restores viewport settings and disposes it.
 Future<_SelectionTestViewModel> _pumpSelectionApp(
   WidgetTester tester, {
   bool invalidIds = false,
@@ -2089,14 +2142,17 @@ Future<void> _toggleSavedAll(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-// 함수이름: _dialogButton
-// 함수역할: 화면의 같은 이름 버튼과 구분해 삭제 확인 창 안의 버튼만 찾는다.
-// 매개변수: label: 버튼 문구. 반환값: 확인 창 안의 버튼 문구 Finder.
+// Function Name: _dialogButton
+// Description: Restrict a text finder to dialog descendants so similarly labeled page controls are not tapped.
+// Parameters: label (String): Exact visible dialog text.
+// Returns: Finder: Matching text descendants of Dialog widgets.
 Finder _dialogButton(String label) =>
     find.descendant(of: find.byType(Dialog), matching: find.text(label));
 
-// 함수이름: _deleteSavedSelection
-// 함수역할: 하단 삭제 요청과 한국어 확인을 수행한다. 매개변수: tester. 반환값: 삭제 완료.
+// Function Name: _deleteSavedSelection
+// Description: Request deletion of the selected rows and accept the Korean confirmation dialog.
+// Parameters: tester (WidgetTester): Harness with a mounted, selected cabinet.
+// Returns: Future<void>: Both taps and ensuing frame settling complete.
 Future<void> _deleteSavedSelection(WidgetTester tester) async {
   await tester.tap(find.byKey(const Key('saved-medication-delete-selected')));
   await tester.pumpAndSettle();
@@ -2104,7 +2160,10 @@ Future<void> _deleteSavedSelection(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-// 함수역할: 현재 값 행을 눌러 해당 조건의 선택창을 연다.
+// 함수이름: _openFilterRow
+// 함수역할: 현재 값 행을 화면 안으로 스크롤한 뒤 눌러 조건 선택창을 연다.
+// 매개변수: tester (WidgetTester): 화면 제어기; row (String): saved-medication-$row-row 키에 들어갈 조건 식별자.
+// 반환값: Future<void>: 선택창의 화면 안정화 완료.
 Future<void> _openFilterRow(WidgetTester tester, String row) async {
   final finder = find.byKey(ValueKey('saved-medication-$row-row'));
   await tester.ensureVisible(finder);

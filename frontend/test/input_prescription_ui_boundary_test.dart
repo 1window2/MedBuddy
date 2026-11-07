@@ -29,14 +29,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/fake_notification_service.dart';
 
-// Class Name: _CountingCheckSchedule
-// Role: Schedule stub that counts destination-triggered refreshes.
-// Responsibilities:
-// - Count each schedule read while keeping the destination empty.
-// Attributes:
-// - requestCount (int): Number of intercepted control requests.
-// - slotWrites/writtenSlots: Completion states and slot keys passed to writes.
-// - failWrites/writeGate: Simulated failure and optional delayed response.
+// 클래스명: _CountingCheckSchedule
+// 역할: 홈·일정 화면의 조회 횟수와 시간대 복용 기록 저장을 관찰하는 일정 대역.
+// 주요 책임: 빈 일정으로 조회를 계수하고 시간대·상태 쓰기를 기록하며 저장 실패 또는 지연을 재현한다.
+// 속성: requestCount: 일정 조회 횟수; slotWrites/writtenSlots: 요청 상태·시간대 기록; failWrites: 저장 실패 여부; writeGate: 저장 완료 대기 신호.
 class _CountingCheckSchedule extends CheckSchedule {
   int requestCount = 0;
   final List<bool> slotWrites = [];
@@ -44,11 +40,10 @@ class _CountingCheckSchedule extends CheckSchedule {
   bool failWrites = false;
   Completer<void>? writeGate;
 
-  // Function Name: updateMedicationSlotStatus
-  // Description: Record the requested slot/state and simulate failure or delay.
-  // Parameters: slotKey/medicationStatus - requested write; expectedScheduleDate
-  //   is accepted for interface compatibility and is not used by this stub.
-  // Returns: An empty snapshot after the gate opens; throws when failWrites is set.
+  // 함수이름: updateMedicationSlotStatus
+  // 함수역할: 시간대와 상태를 기록한 후 실패를 주입하거나 완료 신호를 기다려 홈 저장 흐름을 재현한다.
+  // 매개변수: slotKey (String): 저장할 시간대; medicationStatus (bool): 완료 여부; expectedScheduleDate (String?): 인터페이스 호환용 날짜이며 대역에서는 사용하지 않는다.
+  // 반환값: Future<List<MedicationSchedule>>: 빈 일정 목록; failWrites이면 StateError, 대기 신호가 실패하면 해당 오류를 전파한다.
   @override
   Future<List<MedicationSchedule>> updateMedicationSlotStatus(
     String slotKey,
@@ -99,8 +94,15 @@ class _CountingCheckSavedMedication extends CheckSavedMedication {
   }
 }
 
-// 선택 모드를 실제 홈 셸 안에서 검증할 수 있도록 활성 약 한 개를 제공한다.
+// 클래스명: _SelectableCheckSavedMedication
+// 역할: 홈 셸의 복약함 선택 모드에 사용할 활성 약 한 개를 제공한다.
+// 주요 책임: 실제 서버 조회 없이 오늘 시작하는 7일 약을 반환해 뒤로가기 단계를 검증한다.
+// 속성: 자체 속성 없음; 조회마다 고정 ID 1의 약을 만든다.
 class _SelectableCheckSavedMedication extends CheckSavedMedication {
+  // 함수이름: requestSavedMedicationInfo
+  // 함수역할: 현재 시각부터 7일간 복용하는 선택용 약 한 개를 새로 만든다.
+  // 매개변수: 없음.
+  // 반환값: Future<List<MedicationDetail>>: ID 1의 선택 테스트 약을 담은 목록.
   @override
   Future<List<MedicationDetail>> requestSavedMedicationInfo() async => [
     MedicationDetail(
@@ -146,14 +148,10 @@ class _HomeReminderViewModel extends MedBuddyViewModel {
   Map<String, MedicationAlarm> get medicationReminderSettings => reminders;
 }
 
-// Function Name: main
-// Description:
-// - Register regression cases for home actions, shell navigation, accessibility, and dose-dashboard
-//   priorities.
-// Parameters:
-// - None.
-// Returns:
-// - No value; the test framework executes the registered cases.
+// 함수이름: main
+// 함수역할: 홈 작업 메뉴, 하단 탐색, 복용 기록 저장·안내 시각, 큰 글씨와 다음 복약 우선순위 회귀 테스트를 등록한다.
+// 매개변수: 없음.
+// 반환값: void: 각 위젯 검증을 테스트 프레임워크에 등록한다.
 void main() {
   for (final width in [280.0, 390.0]) {
     for (final scale in [1.0, 2.0]) {
@@ -211,10 +209,10 @@ void main() {
     }
   }
 
-  // Function Name: home completion review test
-  // Description: Opening the schedule after a home completion refreshes it without undoing the recorded slot.
-  // Parameters: tester - widget rendering and interaction harness.
-  // Returns: Completion of asynchronous assertions; mismatches fail the test.
+  // 함수이름: testWidgets: 'home bulk completion offers review without resetting the slot'
+  // 함수역할: 홈에서 아침 복용 완료를 저장한 뒤 안내의 일정 확인을 누른다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; true 저장은 한 번 유지되고 실행 취소는 없으며 일정 조회만 한 번 추가되어 완료 기록을 되돌리지 않는다.
   testWidgets('home bulk completion offers review without resetting the slot', (
     tester,
   ) async {
@@ -242,9 +240,10 @@ void main() {
   });
 
   for (final fail in [false, true]) {
-    // 함수이름: 홈 시간대 취소 테스트
-    // 함수역할: 취소 대상과 저장 결과 전달을 확인하고 실패해도 처리 중 상태가 해제되는지 검증한다.
-    // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료.
+    // Function Name: testWidgets: '홈 복용 취소는 선택 시간대만 기존 저장 경로에 전달한다: $fail'
+    // Description: Request an evening-only completion cancellation with either a successful or failing write stub.
+    // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+    // Returns: No value; only evening/false is written, the returned boolean and notice match success/failure, notices last at least five seconds, and loading always clears.
     testWidgets('홈 복용 취소는 선택 시간대만 기존 저장 경로에 전달한다: $fail', (tester) async {
       _setViewport(tester, const Size(390, 844));
       final schedule = _CountingCheckSchedule()..failWrites = fail;
@@ -575,9 +574,10 @@ void main() {
   });
 
   for (final language in ['ko', 'en']) {
-    // 함수이름: 기록 안내 접근성 테스트
-    // 함수역할: 큰 글씨와 한국어·영어에서도 안내 전체를 스크롤로 읽을 수 있는지 검증한다.
-    // 매개변수: tester: 화면 조작·검증 도구. 반환값: 비동기 검증 완료.
+    // Function Name: testWidgets: '큰 글씨에서도 저장 알림의 주의 문구가 잘리지 않는다: $language'
+    // Description: Record an evening dose on a 320-by-700 viewport at double text scale in Korean and English, then scroll the safety notice.
+    // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+    // Returns: No value; the notice is not line-truncated, occupies more than 240 pixels of width within the viewport, and its View action sits below the readable text without exceptions.
     testWidgets('큰 글씨에서도 저장 알림의 주의 문구가 잘리지 않는다: $language', (tester) async {
       _setViewport(tester, const Size(320, 700));
       final viewModel = _HomeReminderViewModel(
@@ -649,13 +649,11 @@ void main() {
       MaterialApp(
         home: InputPrescriptionUI(
           userSetting: const UserSetting(language: 'ko'),
-          // Function Name: onPillIdentificationRequested callback
-          // Description:
-          // - Record pill-identification navigation so the test can assert the action was dispatched.
-          // Parameters:
-          // - None.
-          // Returns:
-          // - No value; the callback completes after its recorded side effects.
+          // 함수이름: onPillIdentificationRequested 콜백
+          // 함수역할: 선택한 촬영 모드는 사용하지 않고 낱알약 식별 요청 여부를 기록한다.
+          // 매개변수: mode (PillCaptureMode): 요청된 촬영 모드이며 이 대역에서는 소비하지 않는다.
+          // 반환값: void: pillTaskRequested를 true로 바꾼다.
+
           onPillIdentificationRequested: (mode) {
             pillTaskRequested = true;
           },
@@ -755,13 +753,10 @@ void main() {
     await tester.pump(const Duration(seconds: 20));
   });
 
-  // Function Name: testWidgets callback
-  // Description:
-  // - Expected behavior: home owns navigation into loose-pill identification.
-  // Parameters:
-  // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
-  // Returns:
-  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  // 함수이름: testWidgets: 'home owns navigation into loose-pill identification'
+  // 함수역할: 실제 HomeScreen이 제공한 낱알약 식별 콜백을 singlePhoto 모드로 호출한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 식별 화면이 열리고 전달한 촬영 모드가 유지된다.
   testWidgets('home owns navigation into loose-pill identification', (
     tester,
   ) async {
@@ -793,6 +788,10 @@ void main() {
 
   // 홈 선택창에서 고른 병원·약국만 해당 지도 화면으로 연결한다.
   for (final hospitals in [true, false]) {
+    // 함수이름: testWidgets: 'home selects nearby care hospitals=$hospitals'
+    // 함수역할: 홈의 주변 의료시설 동작을 호출한 뒤 병원 또는 약국 선택지를 누르고 화면을 종료한다.
+    // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+    // 반환값: 반환값 없음; 선택 전에는 시설 화면이 없고 선택한 hospitals 값의 일반 조회 화면이 열리며 종료 후 지연 예외가 없다.
     testWidgets('home selects nearby care hospitals=$hospitals', (
       tester,
     ) async {
@@ -865,13 +864,10 @@ void main() {
     await tester.pump(const Duration(seconds: 20));
   });
 
-  // Function Name: testWidgets callback
-  // Description:
-  // - Expected behavior: schedule revisits request a refresh that can reuse recent data.
-  // Parameters:
-  // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
-  // Returns:
-  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  // 함수이름: testWidgets: 'schedule destination requests cache-aware refresh on revisit'
+  // 함수역할: 일정 탭에 재방문하고 확정된 일정 변경을 적용한 뒤 다시 방문한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 최근 조회는 첫 두 방문에 한 번만 수행하고 변경으로 캐시가 무효화된 다음 방문에서는 두 번째 조회를 수행한다.
   testWidgets('schedule destination requests cache-aware refresh on revisit', (
     tester,
   ) async {
@@ -915,13 +911,10 @@ void main() {
     expect(checkSchedule.requestCount, 2);
   });
 
-  // Function Name: testWidgets callback
-  // Description:
-  // - Expected behavior: medication cabinet refreshes whenever it is revisited.
-  // Parameters:
-  // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
-  // Returns:
-  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  // 함수이름: testWidgets: 'medication cabinet refreshes whenever it is revisited'
+  // 함수역할: 홈의 약 등록·관리 메뉴에서 복약함에 진입하고 뒤로 나온 뒤 다시 진입한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 저장 약 조회 횟수가 첫 진입 1회에서 재진입 2회로 늘어난다.
   testWidgets('medication cabinet refreshes whenever it is revisited', (
     tester,
   ) async {
@@ -955,6 +948,10 @@ void main() {
     expect(checkSavedMedication.requestCount, 2);
   });
 
+  // 함수이름: testWidgets: '복약함 뒤로가기는 선택만 취소하고 두 번째에 홈으로 이동한다'
+  // 함수역할: 실제 홈 셸의 복약함에서 선택 모드를 켜고 시스템 뒤로가기를 두 번 보낸다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 첫 뒤로가기는 선택 표시를 없애고 두 번 모두 홈 탭 선택을 유지하며 화면 종료 후에도 예외가 없다.
   testWidgets('복약함 뒤로가기는 선택만 취소하고 두 번째에 홈으로 이동한다', (tester) async {
     SharedPreferences.setMockInitialValues({});
     _setViewport(tester, const Size(390, 844));
@@ -1003,13 +1000,10 @@ void main() {
     await tester.pump(const Duration(seconds: 20));
   });
 
-  // Function Name: testWidgets callback
-  // Description:
-  // - Expected behavior: bottom navigation exposes four labelled destinations.
-  // Parameters:
-  // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
-  // Returns:
-  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  // 함수이름: testWidgets: 'bottom navigation exposes four labelled destinations'
+  // 함수역할: 한국어 하단 탐색의 네 목적지와 일정 버튼을 검사하고 일정을 누른다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 홈·일정·복약 기록·내 정보만 보이고 등록 동작은 없으며 일정 콜백과 높이 48 이상 터치 영역을 제공한다.
   testWidgets('bottom navigation exposes four labelled destinations', (
     tester,
   ) async {
@@ -1062,6 +1056,10 @@ void main() {
   // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
   for (final language in ['ko', 'en']) {
     for (final scale in [1.0, 1.7]) {
+      // 함수이름: testWidgets: 'bottom navigation aligns icons and labels $language $scale'
+      // 함수역할: 언어·글자 배율별로 채팅을 포함한 모든 하단 목적지의 아이콘과 문구 위치를 비교한다.
+      // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+      // 반환값: 반환값 없음; 아이콘 중심과 문구 상단이 각각 0.01 오차 안에서 정렬되고 문구는 줄바꿈 없는 한 줄이며 렌더링 예외가 없다.
       testWidgets(
         'bottom navigation aligns icons and labels $language $scale',
         (tester) async {
@@ -1124,6 +1122,10 @@ void main() {
     }
   }
 
+  // Function Name: testWidgets: 'bottom navigation follows accessible text scaling'
+  // Description: Render bottom navigation with inherited double text scaling in a short viewport.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: No value; navigation grows beyond 80 pixels, the Home label does not override the text scaler, and layout raises no exception.
   testWidgets('bottom navigation follows accessible text scaling', (
     tester,
   ) async {
@@ -1160,13 +1162,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // Function Name: testWidgets callback
-  // Description:
-  // - Verify that quick-action cards have equal heights and distinct icons.
-  // Parameters:
-  // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
-  // Returns:
-  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  // 함수이름: testWidgets: '빠른 기능 카드는 서로 같은 높이와 고유한 아이콘을 제공한다'
+  // 함수역할: 390 너비 홈에서 주변 약국·건강 정보 카드 높이와 건강·설정 아이콘을 확인한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 두 카드 높이가 같고 각 기능 아이콘이 하나씩 있으며 렌더링 예외가 없다.
   testWidgets('빠른 기능 카드는 서로 같은 높이와 고유한 아이콘을 제공한다', (tester) async {
     tester.view.physicalSize = const Size(390, 1200);
     tester.view.devicePixelRatio = 1;
@@ -1178,12 +1177,10 @@ void main() {
         home: InputPrescriptionUI(
           userSetting: const UserSetting(language: 'ko'),
           // 함수이름: onPillIdentificationRequested 콜백
-          // 함수역할:
-          // - 알약 식별 화면 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
-          // 매개변수:
-          // - 없음.
-          // 반환값:
-          // - 없음; 외부 동작을 수행하지 않는다.
+          // 함수역할: 홈 카드 배치를 검사할 수 있도록 식별 진입 콜백을 제공하되 이동은 실행하지 않는다.
+          // 매개변수: mode (PillCaptureMode): 요청된 촬영 모드이며 이 대역에서는 소비하지 않는다.
+          // 반환값: void: 외부 동작 없이 종료한다.
+
           onPillIdentificationRequested: (mode) {},
           // Function Name: onTodayScheduleRequested callback
           // Description:
@@ -1227,9 +1224,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 함수이름: 약국·알림 독립 배치 테스트
-  // 함수역할: 약국 콜백 유무와 관계없이 두 카드의 자리를 유지하고 알림 카드가 중복되지 않는지 확인한다.
-  // 매개변수: tester: 위젯 테스트 도구. 반환값: 네 카드 배치 검증 완료.
+  // 함수이름: testWidgets: '약국과 복약 알림 카드는 서로 다른 자리를 유지한다'
+  // 함수역할: 주변 의료시설 콜백이 없는 홈을 만든 뒤 콜백을 연결해 다시 렌더링한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 첫 화면에 주변 시설·환경설정 카드가 각각 있고 콜백 연결 후에도 주변 시설 카드가 하나만 남으며 예외가 없다.
   testWidgets('약국과 복약 알림 카드는 서로 다른 자리를 유지한다', (tester) async {
     tester.view.physicalSize = const Size(390, 1200);
     tester.view.devicePixelRatio = 1;
@@ -1244,12 +1242,10 @@ void main() {
         home: InputPrescriptionUI(
           userSetting: const UserSetting(language: 'ko'),
           // 함수이름: onPillIdentificationRequested 콜백
-          // 함수역할:
-          // - 알약 식별 화면 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
-          // 매개변수:
-          // - 없음.
-          // 반환값:
-          // - 없음; 외부 동작을 수행하지 않는다.
+          // 함수역할: 홈 카드 배치를 검사할 수 있도록 식별 진입 콜백을 제공하되 이동은 실행하지 않는다.
+          // 매개변수: mode (PillCaptureMode): 요청된 촬영 모드이며 이 대역에서는 소비하지 않는다.
+          // 반환값: void: 외부 동작 없이 종료한다.
+
           onPillIdentificationRequested: (mode) {},
           // Function Name: onTodayScheduleRequested callback
           // Description:
@@ -1303,9 +1299,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 함수이름: 홈 영어 표시 테스트
-  // 함수역할: 변경한 약 등록·식별과 알림 설정 카드의 제목·설명에 영어 설정이 적용되는지 확인한다.
-  // 매개변수: tester: 위젯 테스트 도구. 반환값: 번역 검증 완료.
+  // 함수이름: testWidgets: '영어 설정은 메인 화면 제목과 설명에 함께 반영된다'
+  // 함수역할: 영어 설정의 홈에서 약 등록·관리, 환경설정, 주변 병원·약국 제목과 소개 문구를 확인한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 지정한 영어 제목·설명은 표시되고 한글·영문 빠른 기능 제목은 표시되지 않는다.
   testWidgets('영어 설정은 메인 화면 제목과 설명에 함께 반영된다', (tester) async {
     tester.view.physicalSize = const Size(390, 1000);
     tester.view.devicePixelRatio = 1;
@@ -1317,12 +1314,10 @@ void main() {
         home: InputPrescriptionUI(
           userSetting: const UserSetting(language: 'en'),
           // 함수이름: onPillIdentificationRequested 콜백
-          // 함수역할:
-          // - 알약 식별 화면 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
-          // 매개변수:
-          // - 없음.
-          // 반환값:
-          // - 없음; 외부 동작을 수행하지 않는다.
+          // 함수역할: 홈 카드 배치를 검사할 수 있도록 식별 진입 콜백을 제공하되 이동은 실행하지 않는다.
+          // 매개변수: mode (PillCaptureMode): 요청된 촬영 모드이며 이 대역에서는 소비하지 않는다.
+          // 반환값: void: 외부 동작 없이 종료한다.
+
           onPillIdentificationRequested: (mode) {},
           // Function Name: onTodayScheduleRequested callback
           // Description:
@@ -1523,13 +1518,10 @@ void main() {
     }
   }
 
-  // Function Name: testWidgets callback
-  // Description:
-  // - Expected behavior: compact subtitles wrap without shrinking inside FittedBox.
-  // Parameters:
-  // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
-  // Returns:
-  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  // Function Name: testWidgets: 'compact subtitles wrap without shrinking inside FittedBox'
+  // Description: Render the compact English home and inspect its food/activity guidance subtitle.
+  // Parameters: tester (WidgetTester): widget rendering, input and frame control.
+  // Returns: No value; the subtitle allows two lines at font size 11, has no FittedBox ancestor, and renders without exception.
   testWidgets('compact subtitles wrap without shrinking inside FittedBox', (
     tester,
   ) async {
@@ -1554,13 +1546,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // Function Name: testWidgets callback
-  // Description:
-  // - Expected behavior: dashboard chooses the earliest alarm and localizes its slot.
-  // Parameters:
-  // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
-  // Returns:
-  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  // 함수이름: testWidgets: 'dashboard chooses the earliest alarm and localizes its slot'
+  // 함수역할: 영어 홈에서 아침 알림은 20시, 점심 알림은 12시로 설정하고 현재 시각을 10시로 고정한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 이름 순서보다 실제 알림 시각이 빠른 점심 약을 영어 상태·시각 문구로 표시한다.
   testWidgets('dashboard chooses the earliest alarm and localizes its slot', (
     tester,
   ) async {
@@ -1612,13 +1601,10 @@ void main() {
     expect(find.textContaining('점심 12:00'), findsNothing);
   });
 
-  // Function Name: testWidgets callback
-  // Description:
-  // - Expected behavior: dashboard represents every due medication and disabled alarm.
-  // Parameters:
-  // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
-  // Returns:
-  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  // 함수이름: testWidgets: 'dashboard represents every due medication and disabled alarm'
+  // 함수역할: 같은 점심 시간대의 약 두 개와 꺼진 알림을 오전 10시 홈에 제공한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 복약 요약은 점심 미복용과 첫 약 외 1개를 표시하되 다음 알림 제목이나 두 번째 약명을 따로 표시하지 않는다.
   testWidgets('dashboard represents every due medication and disabled alarm', (
     tester,
   ) async {
@@ -1748,13 +1734,10 @@ void main() {
     }
   }
 
-  // Function Name: testWidgets callback
-  // Description:
-  // - Expected behavior: dashboard uses an overdue-specific status message.
-  // Parameters:
-  // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
-  // Returns:
-  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  // 함수이름: testWidgets: 'dashboard uses an overdue-specific status message'
+  // 함수역할: 오전 8시 미복용 약만 있는 홈의 현재 시각을 밤 11시로 고정한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 미복용 확인과 시간대·약명은 보이고 제때 복용하거나 꾸준히 복용 중이라는 일반 안내는 보이지 않는다.
   testWidgets('dashboard uses an overdue-specific status message', (
     tester,
   ) async {
@@ -1797,13 +1780,10 @@ void main() {
     expect(find.text('오늘도 복약을 꾸준히 이어가고 있어요'), findsNothing);
   });
 
-  // Function Name: testWidgets callback
-  // Description:
-  // - Expected behavior: dashboard marks the next medication slot from one large action.
-  // Parameters:
-  // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
-  // Returns:
-  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  // 함수이름: testWidgets: 'dashboard marks the next medication slot from one large action'
+  // 함수역할: 점심 12:30 약 두 개를 오전 10시 홈에 제공한 뒤 큰 복용 완료 버튼을 누른다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 선택한 시간대는 lunch이고 저장 콜백에 완료 true를 전달하며 위젯 예외가 없다.
   testWidgets('dashboard marks the next medication slot from one large action', (
     tester,
   ) async {
@@ -1870,13 +1850,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // Function Name: testWidgets callback
-  // Description:
-  // - Expected behavior: dashboard prioritizes a future dose over an overdue dose.
-  // Parameters:
-  // - tester (WidgetTester): Widget harness for rendering, interaction, and assertions.
-  // Returns:
-  // - Future<void>; completes when the scenario assertions pass, or fails with the test error.
+  // 함수이름: testWidgets: 'dashboard prioritizes a future dose over an overdue dose'
+  // 함수역할: 오전 10시에 지난 아침 8시 약과 예정된 점심 12시 약을 함께 제공한다.
+  // 매개변수: tester (WidgetTester): 화면 생성·입력·프레임 제어.
+  // 반환값: 반환값 없음; 점심 페이지·미복용 상태·약명부터 표시하고 지나간 아침 요약이나 추가 복용 경고는 첫 요약에 나타나지 않는다.
   testWidgets('dashboard prioritizes a future dose over an overdue dose', (
     tester,
   ) async {
@@ -1981,12 +1958,10 @@ InputPrescriptionUI _home({
     nowProvider: nowProvider,
     onMedicationSlotStatusRequested: onMedicationSlotStatusRequested,
     // 함수이름: onPillIdentificationRequested 콜백
-    // 함수역할:
-    // - 알약 식별 화면 이동 명령을 테스트 화면에 유지하되 실제 동작은 수행하지 않는다.
-    // 매개변수:
-    // - 없음.
-    // 반환값:
-    // - 없음; 외부 동작을 수행하지 않는다.
+    // 함수역할: 홈 카드 배치를 검사할 수 있도록 식별 진입 콜백을 제공하되 이동은 실행하지 않는다.
+    // 매개변수: mode (PillCaptureMode): 요청된 촬영 모드이며 이 대역에서는 소비하지 않는다.
+    // 반환값: void: 외부 동작 없이 종료한다.
+
     onPillIdentificationRequested: (mode) {},
     // Function Name: onTodayScheduleRequested callback
     // Description:

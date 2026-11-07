@@ -26,17 +26,10 @@ import 'medication_search_ui_boundary.dart';
 import '../widgets/keep_words_text.dart';
 import '../widgets/medication_thumbnail.dart';
 
-// 클래스명: ManualMedicationEntryUI
-// 역할: 사진을 포함한 약품명·처방일·복용 일정 직접 입력을 담당한다.
-// 주요 책임:
-// - 필수 입력과 날짜 범위를 화면에서 검증한다.
-// - 카메라 또는 갤러리에서 선택한 알약 사진을 미리 보여준다.
-// - 검증된 입력을 ManualMedicationEntry로 묶어 기존 저장 흐름에 전달한다.
-// 속성:
-// - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-// - onSaveRequested (Future<MedicationSaveResult> Function(ManualMedicationEntry entry)): 검증한 약품과 복약 정보를 저장할 콜백.
-// - imagePicker (ImagePicker?): 카메라·갤러리 이미지 선택 의존성.
-// - onSavesFinished (Future<void> Function()?): 저장 콜백이 갱신을 생략할 때 저장이 끝난 뒤 한 번 목록·일정·알림을 갱신할 콜백.
+// Class Name: ManualMedicationEntryUI
+// Role: Manual medication details, photo and schedule entry.
+// Responsibilities: Validates required fields and dates, previews an optional camera/gallery photo and sends a ManualMedicationEntry through the save flow.
+// Attributes: userSetting: display preferences; onSaveRequested: save with structured outcome; imagePicker: optional picker dependency; onSavesFinished: optional final refresh when saves defer it.
 class ManualMedicationEntryUI extends StatefulWidget {
   final UserSetting userSetting;
   final Future<MedicationSaveResult> Function(ManualMedicationEntry entry)
@@ -44,15 +37,10 @@ class ManualMedicationEntryUI extends StatefulWidget {
   final ImagePicker? imagePicker;
   final Future<void> Function()? onSavesFinished;
 
-  // 함수이름: ManualMedicationEntryUI
-  // 함수역할: 사진을 포함한 약품명·처방일·복용 일정 직접 입력에 필요한 입력값과 표시 설정을 초기화한다.
-  // 매개변수:
-  // - key (Key?): 위젯을 구분하고 상태를 유지할 식별 키.
-  // - userSetting (UserSetting): 언어·접근성·복약 알림 표시와 저장에 사용할 사용자 설정.
-  // - onSaveRequested (Future<MedicationSaveResult> Function(ManualMedicationEntry entry)): 검증한 약품과 복약 정보를 저장할 콜백.
-  // - imagePicker (ImagePicker?): 카메라·갤러리 이미지 선택 의존성.
-  // - onSavesFinished (Future<void> Function()?): 한 번 이상 저장한 뒤 마지막에 호출할 갱신 콜백.
-  // 반환값: 입력 설정이 반영된 ManualMedicationEntryUI 인스턴스.
+  // Function Name: ManualMedicationEntryUI
+  // Description: Binds manual-entry display settings, image selection and persistence callbacks.
+  // Parameters: key: identity; userSetting: preferences; onSaveRequested: validated-entry save; imagePicker: optional camera/gallery picker; onSavesFinished: optional refresh after at least one save.
+  // Returns: A ManualMedicationEntryUI.
   const ManualMedicationEntryUI({
     super.key,
     required this.userSetting,
@@ -71,10 +59,9 @@ class ManualMedicationEntryUI extends StatefulWidget {
 }
 
 // 클래스명: _ManualMedicationBatchState
-// 역할: 여러 약 입력란을 추가·삭제하고 차례로 저장한다.
-// 주요 책임:
-// - 저장한 입력란은 다시 보내지 않고 실패한 입력란부터 재시도하게 한다.
-// - 이미 추가된 약(중복)은 완료로 두되 저장한 약 개수와 구분해 안내한다.
+// 역할: 여러 입력란을 순차 저장하고 실패한 저장 또는 목록 갱신을 재시도한다.
+// 주요 책임: 완료·중복 약품을 재전송하지 않고 저장 성공과 후속 갱신 실패를 구분한다.
+// 속성: _forms (List<GlobalKey<_ManualMedicationEntryUIState>>): 입력란; _completed/_duplicates (Set): 완료·중복; _savedNames (Map): 완료 약명; _isSaving/_isPickingImage/_needsRefresh (bool): 작업·갱신 상태.
 class _ManualMedicationBatchState extends State<ManualMedicationEntryUI> {
   final _forms = [GlobalKey<_ManualMedicationEntryUIState>()];
   final _completed = <GlobalKey<_ManualMedicationEntryUIState>>{};
@@ -84,7 +71,15 @@ class _ManualMedicationBatchState extends State<ManualMedicationEntryUI> {
   bool _isPickingImage = false;
   bool _needsRefresh = false;
 
+  // 함수이름: _isEnglish
+  // 함수역할: 현재 사용자 설정에서 직접 등록 화면의 언어를 읽는다.
+  // 매개변수: 없음.
+  // 반환값: 영어 설정이면 true.
   bool get _isEnglish => widget.userSetting.isEnglish;
+  // 함수이름: _text
+  // 함수역할: 현재 언어에 맞는 직접 등록 문구 묶음을 만든다.
+  // 매개변수: 없음.
+  // 반환값: _ManualMedicationText.
   _ManualMedicationText get _text => _ManualMedicationText(_isEnglish);
 
   // 함수이름: _reveal
@@ -191,10 +186,9 @@ class _ManualMedicationBatchState extends State<ManualMedicationEntryUI> {
   }
 
   // 함수이름: _saveAll
-  // 함수역할: 저장하지 않은 입력란을 모두 검증한 뒤 하나씩 저장한다. 실패하면 그 입력란에서 멈추고, 한 번이라도 저장했으면 마지막에 갱신 콜백을 한 번 부른다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 저장과 안내가 끝나면 완료되는 Future<void>.
+  // 함수역할: 현재 경로에서 미완료 입력을 검증·순차 저장한다. 완료한 약은 유지하며, 갱신 실패 시 저장 요청 없이 갱신만 재시도할 수 있게 한다.
+  // 매개변수: 없음.
+  // 반환값: 저장·갱신에 모두 성공하면 true로 경로를 닫는다. 실패하면 안내 후 입력을 유지하며 Future<void>가 완료된다.
   Future<void> _saveAll() async {
     if (!mounted ||
         _isSaving ||
@@ -306,6 +300,10 @@ class _ManualMedicationBatchState extends State<ManualMedicationEntryUI> {
     ].join(' ');
   }
 
+  // Function Name: build
+  // Description: Displays individually keyed medication forms, add/remove actions and validation/save state in a scrollable manual-entry screen.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: MedBuddyColors.pageBackground,
@@ -424,6 +422,10 @@ class _ManualMedicationBatchState extends State<ManualMedicationEntryUI> {
   );
 }
 
+// 클래스명: _ManualMedicationForm
+// 역할: 일괄 등록에서 약 한 건의 입력과 저장 의존성을 전달한다.
+// 주요 책임: 입력 상태를 별도로 유지하고 사진 선택 중임을 부모에게 알린다.
+// 속성: userSetting (UserSetting): 설정; onSaveRequested (Future<MedicationSaveResult> Function(ManualMedicationEntry)): 저장; onImageBusyChanged (ValueChanged<bool>): 사진 선택 상태; imagePicker (ImagePicker?): 선택기.
 class _ManualMedicationForm extends StatefulWidget {
   final UserSetting userSetting;
   final Future<MedicationSaveResult> Function(ManualMedicationEntry)
@@ -431,6 +433,10 @@ class _ManualMedicationForm extends StatefulWidget {
   final ImagePicker? imagePicker;
   final ValueChanged<bool> onImageBusyChanged;
 
+  // 함수이름: _ManualMedicationForm
+  // 함수역할: 약 한 건의 설정·저장 함수와 사진 선택 상태 통지를 연결한다.
+  // 매개변수: key (Key?): 입력란 키; userSetting (UserSetting): 설정; onSaveRequested: 저장 콜백; onImageBusyChanged (ValueChanged<bool>): 사진 상태 통지; imagePicker (ImagePicker?): 선택기.
+  // 반환값: 새 _ManualMedicationForm.
   const _ManualMedicationForm({
     super.key,
     required this.userSetting,
@@ -439,22 +445,18 @@ class _ManualMedicationForm extends StatefulWidget {
     this.imagePicker,
   });
 
+  // 함수이름: createState
+  // 함수역할: 일괄 저장 중에도 약별 입력을 독립적으로 유지할 상태를 만든다.
+  // 매개변수: 없음.
+  // 반환값: 새 _ManualMedicationEntryUIState.
   @override
   State<_ManualMedicationForm> createState() => _ManualMedicationEntryUIState();
 }
 
-// 클래스명: _ManualMedicationEntryUIState
-// 역할: 사진을 포함한 약품명·처방일·복용 일정 직접 입력의 화면 상태를 관리한다.
-// 주요 책임:
-// - 사용자가 입력한 정보로 일정을 저장한다는 안내를 표시한다.
-// - 선택 사진 또는 빈 사진 영역과 사진 추가 동작을 배치한다.
-// - 직접 입력 약품에 선택 사진을 추가할 수 있는 빈 영역을 표시한다.
-// 속성:
-// - _imagePicker (ImagePicker): 카메라·갤러리 이미지 선택 의존성.
-// - _endDate (DateTime): 복용 기간의 마지막 날짜.
-// - _doseDays (String): 선택한 복용 주기 지시. 빈 문자열은 매일 복용.
-// - _isSaving (bool): 해당 저장·분석·복약 갱신 요청이 진행 중인지 여부.
-// - _isSaveRequestPending (bool): 저장 콜백의 응답을 기다리는 중인지 여부.
+// Class Name: _ManualMedicationEntryUIState
+// Role: One manual medication form and its pending operations.
+// Responsibilities: Maintains photo, date and dose-cycle inputs, validates before saving and keeps save progress distinct from awaiting the persistence callback.
+// Attributes: _imagePicker: photo dependency; _endDate: final dose date; _doseDays: cycle instruction; _isSaving/_isSaveRequestPending: save lifecycle.
 class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
   static const List<String> _dosageUnits = medicationEntryDoseUnits;
 
@@ -483,11 +485,10 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
   // 저장 콜백을 기다리는 동안에만 true. 화면 잠금용 _isSaving과 달리 저장 성공 뒤에는 바로 내려간다.
   bool _isSaveRequestPending = false;
 
-  // 함수이름: _isEnglish
-  // 함수역할: 사용자 설정의 공통 언어 판정으로 영어 여부를 판별한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
+  // Function Name: _isEnglish
+  // Description: Reads English selection from the supplied user settings.
+  // Parameters: None.
+  // Returns: True when English is selected.
   bool get _isEnglish => widget.userSetting.isEnglish;
 
   // 함수이름: _text
@@ -615,11 +616,10 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
     );
   }
 
-  // 함수이름: _buildEmptyPhoto
-  // 함수역할: 직접 입력 약품에 선택 사진을 추가할 수 있는 빈 영역을 표시한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 사진을 포함한 약품명·처방일·복용 일정 직접 입력에 쓰는 위젯 트리.
+  // Function Name: _buildEmptyPhoto
+  // Description: Offers photo attachment when the manual medication has no selected image.
+  // Parameters: None.
+  // Returns: The empty-photo area and add-photo action.
   Widget _buildEmptyPhoto() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
@@ -745,11 +745,10 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
     }
   }
 
-  // 함수이름: _searchMedication
-  // 함수역할: 입력한 이름으로 약 검색을 열고, 사용자가 확인한 품목의 이름과 품목 정보를 입력란에 넣는다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 검색 화면이 닫히면 완료되는 Future<void>.
+  // Function Name: _searchMedication
+  // Description: Searches using the entered medication name and fills name and product data only from the confirmed selection.
+  // Parameters: None.
+  // Returns: Future completing after search navigation returns.
   Future<void> _searchMedication() async {
     if (_isSearching) return;
     _isSearching = true;
@@ -808,11 +807,10 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
     );
   }
 
-  // 함수이름: _buildDateSection
-  // 함수역할: 복용 시작·종료 날짜와 계산된 복용 기간을 표시한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 사진을 포함한 약품명·처방일·복용 일정 직접 입력에 쓰는 위젯 트리.
+  // Function Name: _buildDateSection
+  // Description: Displays start/end dates and their calculated medication duration.
+  // Parameters: None.
+  // Returns: The dose-period section.
   Widget _buildDateSection() {
     return MedicationEntryPeriodFields(
       title: _text.periodTitle,
@@ -844,11 +842,10 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
     );
   }
 
-  // 함수이름: _buildDoseDaysSection
-  // 함수역할: 매일·격일·주 1회·월 1회 중 복용 주기를 고르게 하고, 매일이 아니면 어느 날에 일정과 알림이 만들어지는지 안내한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 사진을 포함한 약품명·처방일·복용 일정 직접 입력에 쓰는 위젯 트리.
+  // Function Name: _buildDoseDaysSection
+  // Description: Offers dose-cycle choices and explains which dates receive schedules/reminders for non-daily dosing.
+  // Parameters: None.
+  // Returns: The dose-cycle selector and applicable notice.
   Widget _buildDoseDaysSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -915,12 +912,10 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
     );
   }
 
-  // 함수이름: _doseCycleNotice
-  // 함수역할: 매일이 아닌 주기(사용자 지정 간격 포함)를 고르면 복용 기간 안에서 어느 날 일정과 알림이
-  //   만들어지는지 저장 전에 알려 줄 문구를 만든다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 안내 문구. 매일 복용이거나 간격이 아직 올바르지 않으면 null.
+  // Function Name: _doseCycleNotice
+  // Description: Explains scheduled days within the date range for non-daily cycles, including custom intervals.
+  // Parameters: None.
+  // Returns: The cycle notice, or null for daily dosing or an invalid interval.
   String? _doseCycleNotice() {
     final String doseDays;
     if (_customCycle) {
@@ -981,11 +976,10 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
     );
   }
 
-  // 함수이름: _buildErrorNotice
-  // 함수역할: 직접 입력 오류를 스크린 리더가 알 수 있는 live region에 표시한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 사진을 포함한 약품명·처방일·복용 일정 직접 입력에 쓰는 위젯 트리.
+  // Function Name: _buildErrorNotice
+  // Description: Exposes manual-entry validation failure in an accessibility live region.
+  // Parameters: None.
+  // Returns: The error notice widget.
   Widget _buildErrorNotice() {
     return Semantics(
       liveRegion: true,
@@ -1041,6 +1035,10 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
     }
   }
 
+  // 함수이름: _pickImage
+  // 함수역할: 사진 출처와 파일을 선택한다. 선택기 실패는 기존 사진을 유지하며 안내하고, 교체·화면 종료 시 쓰지 않는 임시 파일을 정리한다.
+  // 매개변수: 없음.
+  // 반환값: 선택·취소·실패 처리가 끝나면 완료되는 Future<void>.
   Future<void> _pickImage() async {
     final source = await showMedicationPhotoSourceOptions(
       context: context,
@@ -1110,11 +1108,10 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
     _discardPickedImage(removedPath);
   }
 
-  // 함수이름: _discardPickedImage
-  // 함수역할: 더 쓰지 않는 선택 사진의 임시 사본을 지운다. 앱 임시 폴더 밖의 파일은 건드리지 않으며 실패해도 화면 흐름을 막지 않는다.
-  // 매개변수:
-  // - path (String): 선택기가 돌려준 사진 경로. 비어 있으면 아무것도 하지 않는다.
-  // 반환값: 없음. 삭제는 기다리지 않고 진행한다.
+  // Function Name: _discardPickedImage
+  // Description: Requests best-effort deletion of an unused picked-photo copy only inside the app temporary directory.
+  // Parameters: path (String): picker path; empty paths are ignored.
+  // Returns: None; cleanup runs without awaiting and does not block the form on failure.
   static void _discardPickedImage(String path) {
     if (path.isEmpty) {
       return;
@@ -1122,11 +1119,10 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
     unawaited(deleteAppTempFile(path));
   }
 
-  // 함수이름: _selectDate
-  // 함수역할: 허용 범위 안의 시작·종료 날짜를 선택하고 시작일 이후로 종료일을 보정한다.
-  // 매개변수:
-  // - selectsStartDate (bool): 종료일 대신 시작일을 편집할지 여부.
-  // 반환값: 요청한 상호작용 또는 갱신 처리가 끝나면 완료되는 Future<void>.
+  // Function Name: _selectDate
+  // Description: Chooses a start/end date within allowed limits and keeps the end date no earlier than the start.
+  // Parameters: selectsStartDate (bool): edit the start rather than end date.
+  // Returns: Future completing after date selection or cancellation.
   Future<void> _selectDate(bool selectsStartDate) async {
     final currentDate = selectsStartDate ? _startDate : _endDate;
     final firstDate = selectsStartDate
@@ -1191,10 +1187,9 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
   }
 
   // 함수이름: _submit
-  // 함수역할: 검증한 입력을 저장 콜백으로 보내고 중복·실패 결과를 입력란에 표시한다. 저장 중 재호출은 무시하며 저장 콜백이 예외로 끝나도 저장 중 상태를 해제한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 저장 결과, 검증 실패나 재호출이면 null.
+  // 함수역할: 검증한 약 한 건을 저장한다. 실패·예외는 오류 안내와 재시도 상태로 바꾸고, 완료한 입력은 잠가 일괄 재시도에서 중복 저장을 막는다.
+  // 매개변수: 없음.
+  // 반환값: 저장 결과; 검증 실패·진행 중·콜백 예외는 null. 화면 종료 후에도 받은 결과를 부모에게 돌려주며 임시 사진을 정리한다.
   Future<MedicationSaveResult?> _submit() async {
     if (!mounted || _isSaving || _isPickingImage || !_validate()) return null;
 
@@ -1269,12 +1264,10 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
   }
 }
 
-// 클래스명: _ManualMedicationText
-// 역할: 약품명·사진·기간·복약 시간대 직접 입력에 쓰는 한국어·영어 문구를 담당한다.
-// 주요 책임:
-// - 약품명·사진·기간·복약 시간대 직접 입력에 쓰는 한국어·영어 문구의 언어를 선택하고 안내에 필요한 값을 문구에 반영한다.
-// 속성:
-// - isEnglish (bool): 영어 문구를 선택할지 여부; false이면 한국어.
+// Class Name: _ManualMedicationText
+// Role: Localized manual-medication entry copy.
+// Responsibilities: Formats photo, name, duration, cycle and save-validation messages.
+// Attributes: isEnglish (bool): language choice.
 class _ManualMedicationText {
   final bool isEnglish;
 
@@ -1418,17 +1411,15 @@ class _ManualMedicationText {
   // - days (int): 복용 기간의 일수 또는 이를 표현한 원본 문구.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String periodSummary(int days) => isEnglish ? '$days day(s)' : '총 $days일 복용';
-  // 함수이름: doseDaysTitle
-  // 함수역할: 현재 언어와 입력값에 맞춰 "복용 주기" 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: doseDaysTitle
+  // Description: Labels the dosing-cycle selection field.
+  // Parameters: None.
+  // Returns: The localized dose-cycle heading.
   String get doseDaysTitle => isEnglish ? 'Dose days' : '복용 주기';
-  // 함수이름: doseDaysValue
-  // 함수역할: 복용 주기 선택지를 현재 언어의 문구로 바꾼다.
-  // 매개변수:
-  // - doseDays (String): 복용 주기 지시. 빈 문자열은 매일 복용.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: doseDaysValue
+  // Description: Formats the selected dosing-cycle instruction for display.
+  // Parameters: doseDays (String): stored cycle instruction; empty means daily.
+  // Returns: The localized cycle label.
   String doseDaysValue(String doseDays) => switch (doseDays) {
     '' => isEnglish ? 'Every day' : '매일',
     '격일' => isEnglish ? 'Every other day' : '격일',
@@ -1449,11 +1440,10 @@ class _ManualMedicationText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get slotRequired =>
       isEnglish ? 'Choose at least one time slot.' : '복용 시간대를 한 개 이상 선택해주세요.';
-  // 함수이름: slotLabel
-  // 함수역할: 현재 언어와 입력값에 맞춰 "취침 전" 문구를 제공한다.
-  // 매개변수:
-  // - key (String): 위젯을 구분하고 상태를 유지할 식별 키.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: slotLabel
+  // Description: Maps a dose-slot key to its localized label.
+  // Parameters: key (String): morning, lunch, evening or bedtime slot.
+  // Returns: The dose-slot label.
   String slotLabel(String key) {
     return medicationSlotLabel(key, isEnglish: isEnglish);
   }
@@ -1490,11 +1480,10 @@ class _ManualMedicationText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get saveFailed =>
       isEnglish ? 'Could not save the medication plan.' : '복약 정보를 저장하지 못했습니다.';
-  // 함수이름: saveFailureMessage
-  // 함수역할: 저장 실패 범주에 맞는 현재 언어의 안내를 고른다. 서버가 보낸 원문은 언어가 맞지 않을 수 있어 쓰지 않는다.
-  // 매개변수:
-  // - kind (MedicationSaveFailureKind): 저장 실패 범주.
-  // 반환값: 저장 한도·연결 실패 안내, 그 밖에는 일반 저장 실패 문구.
+  // Function Name: saveFailureMessage
+  // Description: Maps a structured save failure to local copy rather than exposing potentially mismatched server-language text.
+  // Parameters: kind (MedicationSaveFailureKind): failure category.
+  // Returns: Limit, connection or generic save-failure guidance.
   String saveFailureMessage(MedicationSaveFailureKind kind) {
     return switch (kind) {
       MedicationSaveFailureKind.limitReached =>
@@ -1509,11 +1498,10 @@ class _ManualMedicationText {
     };
   }
 
-  // 함수이름: photoSelectionFailed
-  // 함수역할: 현재 언어와 입력값에 맞춰 "사진을 불러오지 못했습니다. 카메라와 사진 접근 권한을 확인한 뒤 다시 시도해주세요." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
+  // Function Name: photoSelectionFailed
+  // Description: Explains photo selection failure and directs the user to check camera/photo permissions before retrying.
+  // Parameters: None.
+  // Returns: The localized photo-recovery message.
   String get photoSelectionFailed => isEnglish
       ? 'Could not load the photo. Check camera and photo access, then try again.'
       : '사진을 불러오지 못했습니다. 카메라와 사진 접근 권한을 확인한 뒤 다시 시도해주세요.';

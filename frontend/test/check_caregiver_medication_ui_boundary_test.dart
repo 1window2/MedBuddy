@@ -18,7 +18,18 @@ import 'package:medbuddy_frontend/widgets/medbuddy_page_header.dart';
 import 'medication_history_fixtures.dart';
 
 // 정기 일정이 없이 필요시 약만 있는 환자도 같은 조회 화면으로 확인한다.
+// 클래스명: _AsNeededOnlyCaregiverControl
+// 역할: 정기 일정 없이 필요시 이력만 표시할 환자 조회 대역.
+// 주요 책임: 저장 약과 정기 일정을 비워 필요시 영역을 독립 검증한다.
+// 속성: 추가 상태 없음; 기본 보호자 범위는 부모 대역에서 상속한다.
 class _AsNeededOnlyCaregiverControl extends _FakeCaregiverMedicationControl {
+  // 함수이름: requestPatientMedicationInfo
+  // 함수역할:
+  // - 선택한 환자의 빈 저장 약·정기 일정 응답을 즉시 제공한다.
+  // 매개변수:
+  // - patientHash (String): 응답에 담을 환자 범위.
+  // 반환값:
+  // - Future<CaregiverMedicationInfo>: caregiver-a와 선택 환자의 빈 복약 정보.
   @override
   Future<CaregiverMedicationInfo> requestPatientMedicationInfo({
     required String patientHash,
@@ -34,6 +45,7 @@ class _AsNeededOnlyCaregiverControl extends _FakeCaregiverMedicationControl {
 // 역할: 아침만 완료한 환자 일정을 제공하는 보호자 조회 대역.
 // 주요 책임:
 // - 선택 환자의 아침 완료·점심 및 저녁 미완료 상태를 외부 조회 없이 제공한다.
+// 속성: 추가 상태 없음; 보호자 범위는 부모 제어기에 설정한다.
 class _FakeCaregiverMedicationControl extends CheckCaregiverMedication {
   // 함수이름: _FakeCaregiverMedicationControl
   // 함수역할:
@@ -77,26 +89,27 @@ class _FakeCaregiverMedicationControl extends CheckCaregiverMedication {
 // 역할: 보호자 화면의 시간대별 알림 상태를 고정하는 알림 조회 대역.
 // 주요 책임:
 // - 선택 환자와 시간대를 유지한 기본 보호자 알림 설정을 제공한다.
-// - 모든 지원 시간대 중 아침에만 복용 완료 알림을 활성화한다.
+// - 아침에는 주입한 설정을 우선 사용하고, 없으면 완료 알림을 활성화하며 나머지는 끈다.
+// 속성: morning (CaregiverNotification?): 아침 기본 완료 알림을 대신할 선택적 설정.
 class _FakeCaregiverNotificationControl extends SetCaregiverNotification {
   final CaregiverNotification? morning;
-  // 함수이름: _FakeCaregiverNotificationControl
-  // 함수역할:
-  // - 보호자 caregiver-a의 로컬 알림 범위를 초기화한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값:
-  // - 고정 보호자 범위의 알림 대역.
+  // Function Name: _FakeCaregiverNotificationControl
+  // Description:
+  // - Binds the fixture to caregiver-a and optionally overrides the morning notification rule.
+  // Parameters:
+  // - morning (CaregiverNotification?): Supplied morning rule; null uses the default completion alert.
+  // Returns:
+  // - _FakeCaregiverNotificationControl with the requested override.
   _FakeCaregiverNotificationControl({this.morning})
     : super(baseUrl: 'http://localhost', caregiverHash: 'caregiver-a');
 
   // 함수이름: requestCaregiverNotificationSettings
   // 함수역할:
-  // - 모든 지원 시간대 중 아침에만 복용 완료 알림을 활성화한다.
+  // - 아침에는 주입한 설정 또는 기본 완료 알림을 제공하고 나머지 시간대는 비활성화한다.
   // 매개변수:
   // - patientHash (String): 요청 데이터 범위를 제한하는 환자 식별자.
   // 반환값:
-  // - 아침 활성 및 나머지 비활성 설정을 시간대별로 담은 맵.
+  // - 아침의 선택 설정 또는 기본 활성 설정과 나머지 비활성 설정을 담은 맵.
   @override
   Future<Map<String, CaregiverNotification>>
   requestCaregiverNotificationSettings({required String patientHash}) async {
@@ -308,6 +321,13 @@ Future<void> _pumpCaregiverScreen(
 // - 없음; 등록된 사례는 테스트 프레임워크가 실행한다.
 void main() {
   for (final onlyAsNeeded in [false, true]) {
+    // 함수이름: testWidgets callback
+    // 함수역할:
+    // - 필요시 복용은 읽기 전용으로 표시하고 완료 알림 켜기·끄기만 허용하며 주기 조회로 횟수를 갱신하고 403 이후 이전 약을 숨기는지 확인한다.
+    // 매개변수:
+    // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     testWidgets('보호자 필요시 약 조회와 자동 갱신은 읽기 전용이다 only=$onlyAsNeeded', (
       tester,
     ) async {
@@ -437,6 +457,13 @@ void main() {
   for (final language in ['en', 'ko']) {
     for (final format in ['12h', '24h']) {
       for (final mode in CaregiverNotificationMode.values) {
+        // Function Name: testWidgets callback
+        // Description:
+        // - Checks localized caregiver alert rules and deadline clock formatting at double text scale for every mode without layout errors.
+        // Parameters:
+        // - tester (WidgetTester): Drives the widget tree and advances the test clock.
+        // Returns:
+        // - Future<void>: Completes the checks; an unexpected result fails the test.
         testWidgets('alert label $language $format $mode', (tester) async {
           final setting = UserSetting(language: language, timeFormat: format);
           await tester.pumpWidget(
@@ -626,6 +653,13 @@ void main() {
     await tester.pump();
   });
 
+  // 함수이름: testWidgets callback
+  // 함수역할:
+  // - 환자 일정과 같은 헤더·배경·진행률 스타일, 이력 진입 및 읽기 전용 표시가 유지되는지 확인한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   testWidgets('보호자 헤더는 환자 일정의 배경과 진행률 스타일을 따른다', (tester) async {
     await _pumpCaregiverScreen(
       tester,
@@ -687,6 +721,13 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  // 함수이름: testWidgets callback
+  // 함수역할:
+  // - 전체 보호자 알림을 끄면 종과 설명은 비활성 상태를 나타내지만 시간대 설정 창은 여전히 열리는지 확인한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   testWidgets('보호자 전체 알림이 꺼지면 종 아이콘과 안내도 함께 꺼진다', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

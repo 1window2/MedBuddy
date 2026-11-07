@@ -373,6 +373,13 @@ MedicationDetail _catalogDetail(String itemSeq, {String imageUrl = ''}) =>
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  // 함수이름: test callback
+  // 함수역할:
+  // - 이전 계정 저장 응답이 늦게 끝나도 새 계정 흐름의 상태·변경 횟수를 덮어쓰거나 목록·일정·알림을 다시 갱신하지 않는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test(
     'old save acknowledgement cannot overwrite a new account flow',
     () async {
@@ -396,6 +403,13 @@ void main() {
     },
   );
 
+  // 함수이름: test callback
+  // 함수역할:
+  // - 폐기된 모델의 직접·수동·식별약 저장은 미완료 결과를 반환하고 조회·저장·변경 알림을 실행하지 않는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('disposed save entry points send no lookup or save requests', () async {
     final harness = _Harness((_) async => null);
     harness.model.dispose();
@@ -425,6 +439,13 @@ void main() {
 
   for (final dispose in [false, true]) {
     for (final stage in ['lookup', 'save', 'image', 'list', 'schedule']) {
+      // 함수이름: test callback
+      // 함수역할:
+      // - 각 저장 단계에서 계정 초기화 또는 폐기가 일어나면 이미 시작한 단계까지만 완료하고 후속 저장·갱신·상태 알림을 중단하는지 확인한다.
+      // 매개변수:
+      // - 없음.
+      // 반환값:
+      // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
       test(
         'save stops after $stage when account ends (dispose=$dispose)',
         () async {
@@ -455,6 +476,13 @@ void main() {
                       ? '/unused/photo.jpg'
                       : '',
                 );
+          // 함수이름: hasStarted
+          // 함수역할:
+          // - 선택한 지연 단계가 실제로 시작되었는지 대역의 호출 기록에서 판단한다.
+          // 매개변수:
+          // - 없음; stage와 harness를 캡처한다.
+          // 반환값:
+          // - bool: 해당 단계의 호출 기록이 있으면 true.
           bool hasStarted() => switch (stage) {
             'lookup' => harness.lookup.requestedNames.isNotEmpty,
             'save' => harness.saved.savedDetails.isNotEmpty,
@@ -490,6 +518,13 @@ void main() {
     }
   }
 
+  // 함수이름: test callback
+  // 함수역할:
+  // - 첫 식별약 조회 중 계정을 초기화하면 두 결과 모두 미완료가 되고 후속 조회·저장·목록·일정·알림 갱신이 실행되지 않는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test(
     'identified batch stops lookups and refresh after account clear',
     () async {
@@ -690,6 +725,14 @@ void main() {
         addTearDown(harness.model.dispose);
         harness.saved.failingNames.add('rejected pill');
         harness.saved.throwingNames.add('crashing pill');
+        // Function Name: request
+        // Description:
+        // - Creates a batch request whose confirmed candidate and schedule share the supplied name.
+        // Parameters:
+        // - itemSeq (String): Confirmed catalog code.
+        // - name (String): Candidate and schedule name.
+        // Returns:
+        // - IdentifiedPillSaveRequest for one batch entry.
         IdentifiedPillSaveRequest request(String itemSeq, String name) =>
             IdentifiedPillSaveRequest(
               candidate: PillIdentificationCandidate(
@@ -755,6 +798,13 @@ void main() {
   });
 
   group('manual entry', () {
+    // 함수이름: test callback
+    // 함수역할:
+    // - 이미 선택한 카탈로그 약은 이름 재조회 없이 품목 코드와 이미지를 보존해 저장하고 입력한 용량·시간대를 일정에 반영하는지 확인한다.
+    // 매개변수:
+    // - 없음.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     test(
       'selected catalog product is preserved without another lookup',
       () async {

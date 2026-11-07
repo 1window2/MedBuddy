@@ -19,15 +19,10 @@ import '../widgets/keep_words_text.dart';
 // 파일명: input_prescription_ui_boundary.dart
 // 역할: MedBuddy 홈 화면과 처방전 입력 진입점을 구성한다.
 
-// Class Name: InputPrescriptionUI
-// Role: Represents medication status and quick medication input or lookup actions.
-// Responsibilities:
-// - Applies the user's home wording and text size.
-// - Offers camera and gallery prescription input.
-// Attributes:
-// - userSetting (UserSetting): User settings for language, accessibility, medication reminders, and persistence.
-// - todayMedicationScheduleList (List<MedicationSchedule>): Medication schedules for review, display, or slot grouping.
-// - medicationReminderSettings (Map<String, MedicationAlarm>): Reminder settings indexed by dose-slot key.
+// 클래스명: InputPrescriptionUI
+// 역할: 홈의 복약 현황과 약 등록·조회 진입 화면.
+// 주요 책임: 사용자 언어·글씨 설정을 적용하고 처방전 카메라·갤러리 입력 등 주요 기능으로 연결한다.
+// 속성: userSetting: 표시 설정; todayMedicationScheduleList: 오늘 일정; medicationReminderSettings: 시간대별 알림; 콜백: 기능별 진입 동작.
 class InputPrescriptionUI extends StatelessWidget {
   final UserSetting userSetting;
   final List<MedicationSchedule> todayMedicationScheduleList;
@@ -55,29 +50,27 @@ class InputPrescriptionUI extends StatelessWidget {
   final VoidCallback? onFeatureSearchRequested;
   final int unreadNotificationCount;
 
-  // Function Name: InputPrescriptionUI
-  // Description: Initializes medication status and quick medication input or lookup actions with the supplied configuration.
-  // Parameters:
-  // - key (Key?): Widget identity used to distinguish elements and preserve state.
-  // - userSetting (UserSetting): User settings for language, accessibility, medication reminders, and persistence.
-  // - todayMedicationScheduleList (List<MedicationSchedule>): Medication schedules for review, display, or slot grouping.
-  // - medicationReminderSettings (Map<String, MedicationAlarm>): Reminder settings indexed by dose-slot key.
-  // - todayMedicationCompletedCount (int): Number of completed doses.
-  // - todayMedicationTotalCount (int): Total scheduled doses or operation items.
-  // - isTodayScheduleLoading (bool): Whether to show the in-progress state.
-  // - hasTodayScheduleLoadError (bool): Whether today's schedule failed to load, so an empty list is unknown rather than "no medication".
-  // - nowProvider (DateTime Function()?): Clock function; the device's current time is used when omitted.
-  // - onPrescriptionScanRequested (VoidCallback?): Callback requesting prescription capture or recapture through the guided camera.
-  // - onPrescriptionGalleryRequested (VoidCallback?): Callback selecting a prescription photo from the gallery.
-  // - onPillIdentificationRequested (ValueChanged<PillCaptureMode>?): 선택한 촬영 방식의 알약 식별을 여는 콜백.
-  // - onManualMedicationRequested (VoidCallback?): Callback opening manual medication and schedule entry.
-  // - onTodayScheduleRequested (VoidCallback?): Callback opening today's medication schedule.
-  // - onMedicationSlotStatusRequested (Future<bool> Function(String, bool)?): Updates the selected dose slot and returns whether the change was saved.
-  // - isNextMedicationCompletionLoading (bool): Whether the associated save, analysis, or medication update is in progress.
-  // - onNearbyPharmacyRequested (VoidCallback?): Callback opening the nearby hospital/pharmacy chooser.
-  // - onHealthRecommendationRequested (VoidCallback?): Callback opening health recommendations.
-  // - onUserSettingRequested (VoidCallback?): Callback opening user settings.
-  // Returns: Initialized InputPrescriptionUI instance.
+  // 함수이름: InputPrescriptionUI
+  // 함수역할: 본인 또는 가족 복약 현황과 약 등록·검색·알림함 진입 동작을 홈 화면에 연결한다.
+  // 매개변수:
+  // - key (Key?): 홈 위젯 식별 키.
+  // - userSetting (UserSetting): 언어·접근성·복약 표시 설정.
+  // - todayMedicationScheduleList (List<MedicationSchedule>): 오늘 표시할 복약 일정.
+  // - medicationReminderSettings (Map<String, MedicationAlarm>): 시간대별 알림 설정.
+  // - todayMedicationCompletedCount, todayMedicationTotalCount (int): 완료·전체 복용 횟수.
+  // - isTodayScheduleLoading, hasTodayScheduleLoadError (bool): 조회 진행과 실패 여부. 실패를 약 없음으로 표시하지 않는다.
+  // - caregiverSummary, caregiverScheduleHint (Widget?): 본인 복약 요약을 대신할 가족 현황과 대시보드 아래에 추가할 가족 일정 안내.
+  // - nowProvider (DateTime Function()?): 일정 판단용 시계. 생략하면 기기 시각을 사용한다.
+  // - onPillIdentificationRequested (ValueChanged<PillCaptureMode>?): 선택한 촬영 방식으로 알약 식별을 여는 동작.
+  // - onManualMedicationRequested (VoidCallback?): 직접 약 입력을 여는 동작.
+  // - onRegistrationSourceRequested (Future<void> Function(BuildContext, PrescriptionImageSource)?): 등록 화면의 문맥과 선택한 사진 출처를 받아 등록 흐름을 진행하는 동작.
+  // - onTodayScheduleRequested (VoidCallback?): 오늘 복약 일정 진입 동작.
+  // - onMedicationSlotStatusRequested (Future<bool> Function(String, bool)?): 시간대와 완료 여부를 저장하고 성공 여부를 반환하는 동작.
+  // - isNextMedicationCompletionLoading (bool): 다음 복용 완료 처리가 진행 중인지 여부.
+  // - onNearbyPharmacyRequested, onHealthRecommendationRequested, onUserSettingRequested (VoidCallback?): 주변 병원·약국 선택, 건강 안내, 사용자 설정 진입 동작.
+  // - onNotificationsRequested, onFeatureSearchRequested (VoidCallback?): 알림함과 기능 검색 진입 동작.
+  // - unreadNotificationCount (int): 알림함 버튼에 표시할 미확인 알림 수이며 기본값은 0이다.
+  // 반환값: 현황과 진입 동작이 연결된 홈 화면. 생성 시 조회·저장을 실행하지 않는다.
   const InputPrescriptionUI({
     super.key,
     required this.userSetting,
@@ -104,11 +97,10 @@ class InputPrescriptionUI extends StatelessWidget {
     this.unreadNotificationCount = 0,
   });
 
-  // 함수이름: build
-  // 함수역할: 복약 현황과 빠른 기능을 표시하고, 큰 글씨에서는 설명 길이에 맞춰 카드 높이를 정한다.
-  // 매개변수:
-  // - context (BuildContext): 화면 크기와 접근성 배율을 제공하는 위젯 위치.
-  // 반환값: 복약 현황과 입력·조회 기능을 포함한 스크롤 가능한 홈 화면.
+  // Function Name: build
+  // Description: Displays medication progress and quick actions with content-sized cards that retain descriptions at large text scales.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final text = _HomeText(userSetting.language);
@@ -419,8 +411,10 @@ class InputPrescriptionUI extends StatelessWidget {
   }
 }
 
-// 클래스명: _HomeHeader
-// 역할: 홈 제목과 알림함 진입 버튼, 미확인 알림 개수를 표시한다.
+// Class Name: _HomeHeader
+// Role: Home heading with feature search and unread-notification access.
+// Responsibilities: Keeps the title separate from optional action callbacks and unread count.
+// Attributes: text (_HomeText): labels; onNotificationsPressed/onSearchPressed (VoidCallback?): actions; unreadCount (int): unread total.
 class _HomeHeader extends StatelessWidget {
   final _HomeText text;
   final VoidCallback? onNotificationsPressed;
@@ -433,6 +427,7 @@ class _HomeHeader extends StatelessWidget {
   // - text (_HomeText): 해당 화면 구역의 언어별 표시 문구.
   // - onNotificationsPressed (VoidCallback?): 알림함을 여는 콜백.
   // - unreadCount (int): 아직 확인하지 않은 알림 개수.
+  // - onSearchPressed (VoidCallback?): 기능 검색을 여는 동작. null이면 검색 버튼을 표시하지 않는다.
   // 반환값: 입력 설정이 반영된 _HomeHeader 인스턴스.
   const _HomeHeader({
     required this.text,
@@ -510,9 +505,9 @@ class _HomeHeader extends StatelessWidget {
 }
 
 // Class Name: _HomeActionTone
-// Role: Represents the filled primary action and the icon tints of white home quick actions.
-// Responsibilities:
-// - Distinguishes the green primary card from mint, lavender and butter icon tints.
+// Role: Color variants for primary and secondary home actions.
+// Responsibilities: Distinguishes the filled primary action from lightly accented quick actions.
+// Attributes: primary/mint/lavender/butter: visual variants.
 enum _HomeActionTone { primary, mint, lavender, butter }
 
 // Class Name: _HomeActionCard
@@ -535,14 +530,10 @@ class _HomeActionCard extends StatelessWidget {
   final UserSetting userSetting;
   final VoidCallback? onTap;
 
-  // 함수이름: _HomeActionCard
-  // 함수역할: 동일한 제목·설명을 일반 글씨와 큰 글씨 모두에서 사용할 기능 카드를 만든다.
-  // 매개변수:
-  // - cardKey (Key?), icon (IconData), title, subtitle (String): 카드 식별자와 표시할 내용.
-  // - tone (_HomeActionTone), compact (bool): 색상과 두 열 카드 사용 여부.
-  // - largeTextGridLayout (bool): 제목과 설명을 줄 수 제한 없이 표시할지 여부.
-  // - userSetting (UserSetting), onTap (VoidCallback?): 사용자 설정과 기능 실행 동작.
-  // 반환값: 초기화된 홈 기능 카드.
+  // Function Name: _HomeActionCard
+  // Description: Configures a home action whose full title and description remain available at normal and large text sizes.
+  // Parameters: cardKey: identity; icon/title/subtitle: content; tone: action colors; compact: grid layout; largeTextGridLayout: unrestricted wrapping; userSetting: display settings; onTap: optional action.
+  // Returns: A _HomeActionCard.
   const _HomeActionCard({
     this.cardKey,
     required this.icon,
@@ -555,10 +546,10 @@ class _HomeActionCard extends StatelessWidget {
     required this.onTap,
   });
 
-  // 함수이름: build
-  // 함수역할: 기능별 색상을 적용하고 목록형 또는 두 열 카드의 전체 설명을 구성한다.
-  // 매개변수: context (BuildContext): 접근성 배율과 테마를 상속하는 위젯 위치.
-  // 반환값: 제목·설명·아이콘·이동 화살표를 포함한 기능 카드.
+  // Function Name: build
+  // Description: Applies action-specific colors and displays the full description in either list or two-column layout.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final background = tone == _HomeActionTone.primary
@@ -606,11 +597,10 @@ class _HomeActionCard extends StatelessWidget {
     );
   }
 
-  // 함수이름: _buildCompactContent
-  // 함수역할: 큰 글씨에서도 아이콘·화살표·제목·설명을 유지하고 텍스트를 자연스럽게 줄바꿈한다.
-  // 매개변수:
-  // - foreground, secondary, accent (Color): 제목·설명·아이콘에 사용할 색상.
-  // 반환값: 고정 높이에 맞춰 축소하지 않는 카드 내부 위젯.
+  // Function Name: _buildCompactContent
+  // Description: Retains icon, arrow, title and description with natural wrapping rather than shrinking text into a fixed height.
+  // Parameters: foreground/secondary/accent (Color): title, description and icon colors.
+  // Returns: The content-sized compact-card body.
   Widget _buildCompactContent(Color foreground, Color secondary, Color accent) {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -656,11 +646,10 @@ class _HomeActionCard extends StatelessWidget {
     );
   }
 
-  // 함수이름: _buildListContent
-  // 함수역할: 좁은 화면의 한 열 카드에서도 큰 글씨의 제목과 설명을 생략하지 않는다.
-  // 매개변수:
-  // - foreground, secondary, accent (Color): 제목·설명·아이콘 색상.
-  // 반환값: 내용 높이만큼 늘어나는 목록형 카드 내부 위젯.
+  // Function Name: _buildListContent
+  // Description: Keeps the title and description complete in a narrow single-column action row.
+  // Parameters: foreground/secondary/accent (Color): title, description and icon colors.
+  // Returns: A list-style body that grows with its content.
   Widget _buildListContent(Color foreground, Color secondary, Color accent) {
     return Row(
       children: [
@@ -762,9 +751,9 @@ class _ActionIcon extends StatelessWidget {
 }
 
 // Class Name: _ActionArrow
-// Role: Marks a home action card as tappable with a light forward arrow.
-// Attributes:
-// - color (Color): Arrow color matching the card's accent.
+// Role: A noninteractive forward cue on a home action card.
+// Responsibilities: Indicates navigation without introducing a separate button background.
+// Attributes: color (Color): card-matched arrow color.
 class _ActionArrow extends StatelessWidget {
   final Color color;
 
@@ -793,12 +782,10 @@ class _ActionArrow extends StatelessWidget {
   }
 }
 
-// Class Name: _HomeText
-// Role: Represents localized wording for the home medication dashboard and medication input entry points.
-// Responsibilities:
-// - Selects Korean or English labels and interpolates message values for localized wording for the home medication dashboard and medication input entry points.
-// Attributes:
-// - language (String): Language code selecting visible wording.
+// 클래스명: _HomeText
+// 역할: 홈 복약 현황과 입력 진입점의 현지화 문구.
+// 주요 책임: 선택 언어로 기능명·설명·복약 현황 안내를 제공한다.
+// 속성: language (String): 표시 언어 코드.
 class _HomeText {
   final String language;
 
@@ -809,18 +796,19 @@ class _HomeText {
   // 반환값: 입력 설정이 반영된 _HomeText 인스턴스.
   const _HomeText(this.language);
 
-  // 함수이름: isEnglish
-  // 함수역할: 공통 언어 판별 규칙으로 언어 코드가 영어인지 확인한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 설명한 조건을 만족하면 true, 아니면 false.
+  // Function Name: isEnglish
+  // Description: Applies the shared English-language rule to home labels.
+  // Parameters: None.
+  // Returns: True for an English language code.
   bool get isEnglish => isEnglishLanguage(language);
 
   // 함수이름: userSettings
   // 함수역할: 환경설정 카드 제목을 번역한다. 매개변수: 없음. 반환값: 제목.
   String get userSettings => isEnglish ? 'Settings' : '환경설정';
-  // 함수이름: userSettingsSubtitle
-  // 함수역할: 환경설정 범위를 표시한다. 매개변수: 없음. 반환값: 설명.
+  // Function Name: userSettingsSubtitle
+  // Description: Describes the preferences available from the user-settings action.
+  // Parameters: None.
+  // Returns: The localized settings subtitle.
   String get userSettingsSubtitle => isEnglish
       ? 'Adjust text, language and notifications'
       : '글자 크기·언어·알림을 설정해요';
@@ -921,10 +909,10 @@ class _HomeEncouragementPanel extends StatelessWidget {
     this.isCompletionLoading = false,
   });
 
-  // 함수이름: build
-  // 함수역할: 복약 진행률과 시간대별 간단한 요약을 표시하고 선택한 시간대를 기록한다.
-  // 매개변수: context (BuildContext): 접근성 배율과 화면 테마를 제공하는 문맥.
-  // 반환값: 여백은 유지하면서 내용에 따라 높이가 정해지는 복약 현황 패널.
+  // Function Name: build
+  // Description: Shows dose progress and per-slot summaries while tracking the selected slot and allowing the panel to grow with content.
+  // Parameters: context (BuildContext): theme, accessibility and navigation scope.
+  // Returns: The described widget tree.
   @override
   Widget build(BuildContext context) {
     final isEnglish = userSetting.isEnglish;

@@ -28,14 +28,14 @@ import 'package:provider/provider.dart';
 class _EmptyGalleryInputPrescription extends InputPrescription {
   int galleryRequestCount = 0;
 
-  // Function Name: requestPrescriptionImageFromGallery
-  // Description:
-  // - Count gallery retries, signal selection, and complete recognition without medication rows.
-  // Parameters:
-  // - onImageSelected (PrescriptionImageSelectedCallback?): Callback announcing that an image has been
-  //   selected.
-  // Returns:
-  // - An empty recognized-schedule list.
+  // 함수이름: requestPrescriptionImageFromGallery
+  // 함수역할:
+  // - 갤러리 재시도 횟수를 늘리고 이미지 선택을 알린 뒤 인식 항목 없는 결과를 제공한다.
+  // 매개변수:
+  // - onImageSelected (PrescriptionImageSelectedCallback?): 선택 알림 콜백.
+  // - onProgress (PrescriptionRecognitionProgressCallback?): 받지만 호출하지 않는 진행 알림 콜백.
+  // 반환값:
+  // - Future<List<MedicationSchedule>?>: 빈 일정 목록.
   @override
   Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
     PrescriptionImageSelectedCallback? onImageSelected,
@@ -50,16 +50,17 @@ class _EmptyGalleryInputPrescription extends InputPrescription {
 // Class Name: _SuccessfulGalleryInputPrescription
 // Role: Gallery-recognition fixture with one successfully recognized prescription item.
 // Responsibilities:
-// - Signal image selection and supply a three-day, three-times-daily tablet schedule.
+// - Signal image selection and supply one three-times-daily tablet schedule.
+// Attributes: No additional state; selection and recognized rows are supplied directly.
 class _SuccessfulGalleryInputPrescription extends InputPrescription {
-  // Function Name: requestPrescriptionImageFromGallery
-  // Description:
-  // - Signal image selection and supply a three-day, three-times-daily tablet schedule.
-  // Parameters:
-  // - onImageSelected (PrescriptionImageSelectedCallback?): Callback announcing that an image has been
-  //   selected.
-  // Returns:
-  // - One recognized medication schedule.
+  // 함수이름: requestPrescriptionImageFromGallery
+  // 함수역할:
+  // - 이미지 선택을 알린 뒤 하루 세 번 복용하는 고정 약 일정을 제공한다.
+  // 매개변수:
+  // - onImageSelected (PrescriptionImageSelectedCallback?): 선택 알림 콜백.
+  // - onProgress (PrescriptionRecognitionProgressCallback?): 받지만 호출하지 않는 진행 알림 콜백.
+  // 반환값:
+  // - Future<List<MedicationSchedule>?>: test-tablet 일정 한 건.
   @override
   Future<List<MedicationSchedule>?> requestPrescriptionImageFromGallery({
     PrescriptionImageSelectedCallback? onImageSelected,
@@ -81,6 +82,7 @@ class _SuccessfulGalleryInputPrescription extends InputPrescription {
 // Role: Gallery-recognition fixture that reports one OCR row excluded from the recognized schedule.
 // Responsibilities:
 // - Reuse the successful schedule while exposing a skipped-row count for the recognition notice.
+// Attributes: No additional state; the skipped count is always one.
 class _SkippedRowGalleryInputPrescription
     extends _SuccessfulGalleryInputPrescription {
   // Function Name: lastSkippedMedicationCount
@@ -98,6 +100,7 @@ class _SkippedRowGalleryInputPrescription
 // Role: Successful medication-detail fixture for analysis-result navigation.
 // Responsibilities:
 // - Resolve the recognized medication name to fixed efficacy, usage, and warning text.
+// Attributes: No additional state; detail fields are built from the requested name.
 class _SuccessfulMedicationDetail extends CheckMedicationDetail {
   // Function Name: requestMedicationDetail
   // Description:
@@ -124,6 +127,7 @@ class _SuccessfulMedicationDetail extends CheckMedicationDetail {
 // Responsibilities:
 // - Keep saving pending until the test releases its completion barrier.
 // - Return an empty cabinet after the controlled save without backend access.
+// Attributes: saveCompleter (Completer<MedicationSaveResult>): Releases the pending save result.
 class _DeferredSavedMedication extends CheckSavedMedication {
   final Completer<MedicationSaveResult> saveCompleter =
       Completer<MedicationSaveResult>();
@@ -163,6 +167,7 @@ class _DeferredSavedMedication extends CheckSavedMedication {
 // Role: Empty schedule fixture for the analysis flow's destination refresh.
 // Responsibilities:
 // - Complete schedule refresh successfully without any due medications.
+// Attributes: No additional state; the read always returns an empty list.
 class _EmptySchedule extends CheckSchedule {
   // Function Name: requestTodayMedicationSchedule
   // Description:
@@ -445,7 +450,7 @@ void main() {
 
   // 함수이름: testWidgets 콜백
   // 함수역할:
-  // - 처방 결과 화면에서 시스템 뒤로가기를 누르면 홈으로 돌아가는지 검증한다.
+  // - 자동 약품 조회 뒤 별도 성공 안내 없이 편집 가능한 1차 검토를 열고 결과 전환을 확인한다.
   // 매개변수:
   // - tester (WidgetTester): 화면 렌더링·조작·기대 조건 검사를 위한 위젯 테스트 제어기.
   // 반환값:
@@ -544,6 +549,13 @@ void main() {
   });
 
   for (final systemBack in [false, true]) {
+    // 함수이름: testWidgets callback
+    // 함수역할:
+    // - 시스템·화면 뒤로가기 모두 1차 검토 이탈을 확인하고 취소하면 분석 성공 상태를 유지하며 나가기 승인 후 idle로 전환하는지 확인한다.
+    // 매개변수:
+    // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     testWidgets('1차 검토 이탈 시 확인하고 취소하면 결과를 유지한다: $systemBack', (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
@@ -592,6 +604,13 @@ void main() {
     });
   }
 
+  // 함수이름: testWidgets callback
+  // 함수역할:
+  // - 최종 결과에서 시스템 뒤로가기를 취소하면 결과를 유지하고 재시도 후 나가기를 승인하면 idle 상태와 홈 화면으로 돌아가는지 확인한다.
+  // 매개변수:
+  // - tester(WidgetTester): 화면과 테스트 시계를 제어하는 도구.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   testWidgets('system back from prescription result returns to home', (
     tester,
   ) async {

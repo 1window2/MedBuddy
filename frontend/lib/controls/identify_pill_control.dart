@@ -16,10 +16,10 @@ import '../services/api_response_parser.dart';
 import '../services/app_temp_file.dart';
 import '../services/pill_image_crop_service.dart';
 
-// 클래스명: PillIdentificationFailure
-// 역할: 알약 사진 선택·검증·식별 중 발생할 수 있는 실패 원인을 구분한다.
-// 주요 책임:
-// - 화면 안내와 재시도 여부가 파일 오류, 호출 제한, 시간 초과와 서버 오류를 구별하게 한다.
+// Class Name: PillIdentificationFailure
+// Role: Distinguish image-selection, validation and remote identification failures.
+// Responsibilities: Let callers choose recovery guidance without parsing error text.
+// Attributes: emptyImage/oversizedImage/fileUnreadable: local file failures; timedOut/rateLimited/serviceUnavailable: request failures; invalidPhoto/invalidResponse: unusable input or result.
 enum PillIdentificationFailure {
   emptyImage,
   oversizedImage,
@@ -380,12 +380,10 @@ class IdentifyPill {
     );
   }
 
-  // 함수이름: _parseRetryAfter
-  // 함수역할: 초 단위 또는 HTTP 날짜 형식의 Retry-After 값을 안전한 대기시간으로 변환한다.
-  // 매개변수:
-  // - rawValue (String?): 서버 Retry-After 헤더 원문
-  // 반환값:
-  // - Duration?: 초 단위 또는 HTTP 날짜 형식의 Retry-After 값을 안전한 대기시간으로 변환한다.
+  // Function Name: _parseRetryAfter
+  // Description: Parse Retry-After seconds or an HTTP date; clamp expired or nonpositive delays to one second.
+  // Parameters: rawValue (String?): response header value.
+  // Returns: Duration?: retry delay, or null for missing or invalid headers.
   static Duration? _parseRetryAfter(String? rawValue) {
     final value = rawValue?.trim();
     if (value == null || value.isEmpty) {

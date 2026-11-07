@@ -39,6 +39,13 @@ Future<Object?> _lookup(Future<http.Response> Function() respond) {
 // - No value; the test framework executes the registered cases.
 void main() {
   for (final mode in ['fast', 'balanced', 'thorough', 'invalid']) {
+    // 함수이름: test callback
+    // 함수역할:
+    // - 요청에 선택한 검색 모드와 정규화 전후 약명을 보존하고 알 수 없는 모드는 balanced로 보내는지 확인한다.
+    // 매개변수:
+    // - 없음.
+    // 반환값:
+    // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
     test('검색 모드 $mode 전달 중 원본 약명과 함량을 유지한다', () async {
       Map<String, dynamic>? payload;
       final client = MockClient((request) async {
@@ -61,6 +68,13 @@ void main() {
       expect(payload!['original_text'], '펠로엔정(펠로디핀) 5mg');
     });
   }
+  // 함수이름: test callback
+  // 함수역할:
+  // - 검색 모드를 매 요청마다 다시 읽어 기본값, fast, thorough 순서로 전송하는지 확인한다.
+  // 매개변수:
+  // - 없음.
+  // 반환값:
+  // - Future<void>: 비동기 검증 완료; 기대값과 다르면 테스트가 실패한다.
   test('검색 모드를 요청마다 읽고 기본값은 보통이다', () async {
     String? selected;
     final modes = <String>[];
