@@ -27,10 +27,12 @@ Input is a JSON list, in chapter/subsection order:
 """
 
 from collections import Counter, OrderedDict
+from collections.abc import Iterable, Sequence
 from copy import copy, deepcopy
 from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 from xml.sax.saxutils import escape
 import argparse
 import json
@@ -39,9 +41,10 @@ import re
 import sys
 
 from PIL import Image
-from pypdf import PdfReader, PdfWriter
+from pypdf import PageObject, PdfReader, PdfWriter
 from pypdf.annotations import Link
 from pypdf.generic import ContentStream, NameObject
+from pypdf.types import OutlineType
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
@@ -81,7 +84,7 @@ class LayoutError(ValueError):
     # 함수역할: 오류 설명과 진단 정보를 하나의 예외에 묶는다.
     # 매개변수: message(str)는 오류 설명, details(object)는 추가 측정값이다.
     # 반환값: None. JSON으로 직렬화할 수 없는 진단 값은 TypeError를 발생시킨다.
-    def __init__(self, message, **details):
+    def __init__(self, message: str, **details: object) -> None:
         self.details = dict(message=message, **details)
         super().__init__(json.dumps(self.details, ensure_ascii=True))
 
@@ -90,7 +93,7 @@ class LayoutError(ValueError):
 # 함수역할: 입력·배치의 필수 조건을 검사한다.
 # 매개변수: condition(bool)은 충족 여부, message(str)와 details(object)는 실패 정보다.
 # 반환값: 충족하면 None, 실패하면 LayoutError를 발생시킨다.
-def require(condition, message, **details):
+def require(condition: object, message: str, **details: object) -> None:
     if not condition:
         raise LayoutError(message, **details)
 
@@ -99,7 +102,7 @@ def require(condition, message, **details):
 # 함수역할: 승인된 일반·굵은 글꼴을 PDF 엔진에 한 번만 등록한다.
 # 매개변수: 없음. 모듈의 FONT_DIR(Path 또는 str) 설정을 사용한다.
 # 반환값: None. 설정이나 글꼴 파일이 없으면 LayoutError를 발생시킨다.
-def register_fonts():
+def register_fonts() -> None:
     if REG in pdfmetrics.getRegisteredFontNames() and BOLD in pdfmetrics.getRegisteredFontNames():
         return
     require(FONT_DIR is not None, "Pass --font-dir through rebuild_guide.py")
@@ -114,7 +117,7 @@ def register_fonts():
 # 함수역할: 공개할 문자열에서 개인 경로와 제어 문자를 거부한다.
 # 매개변수: text(str)는 검사 대상, identity(str)는 오류에 표시할 항목 식별자다.
 # 반환값: 원문 str. 잘못된 형식이나 비공개 정보가 있으면 LayoutError를 발생시킨다.
-def check_public(text, identity):
+def check_public(text: str, identity: str) -> str:
     require(isinstance(text, str), "Expected text", identity=identity)
     require(not LOCAL_PATH.search(text), "Local path in published text", identity=identity)
     require(not re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", text),
@@ -126,7 +129,10 @@ def check_public(text, identity):
 # 함수역할: 입력을 마크업이 아닌 일반 문장으로 처리하고 문단 높이를 측정한다.
 # 매개변수: text(str), width·size·leading(float, pt), bold(bool)는 문장과 서식이다.
 # 반환값: (Paragraph, 높이 float). 유효하지 않은 폭이면 LayoutError를 발생시킨다.
-def paragraph(text, width, size=TEXT_SIZE, leading=TEXT_LEADING, bold=False):
+def paragraph(
+    text: str, width: float, size: float = TEXT_SIZE,
+    leading: float = TEXT_LEADING, bold: bool = False,
+) -> tuple[Paragraph, float]:
     require(width > 0, "Nonpositive paragraph width", width_pt=width)
     style = ParagraphStyle(
         "manual", fontName=BOLD if bold else REG, fontSize=size,
@@ -144,7 +150,7 @@ def paragraph(text, width, size=TEXT_SIZE, leading=TEXT_LEADING, bold=False):
 # 함수역할: 글꼴의 실제 너비를 기준으로 문장을 줄바꿈한다.
 # 매개변수: text(str), width(float, pt), font(str), size(float, pt)는 문장과 측정 조건이다.
 # 반환값: 줄별 문자열 list[str]. 한 글자도 들어가지 않으면 LayoutError를 발생시킨다.
-def wrap_lines(text, width, font, size):
+def wrap_lines(text: str, width: float, font: str, size: float) -> list[str]:
     """Measured CJK wrapping, preferring whitespace when there is a useful break."""
     lines = []
     for block in text.split("\n"):
@@ -171,7 +177,7 @@ def wrap_lines(text, width, font, size):
 # 함수역할: 자동으로 두 줄이 된 문장의 줄 길이를 공백 위치를 우선해 균형 있게 맞춘다.
 # 매개변수: text(str), width(float, pt), font(str), size(float, pt)는 문장과 측정 조건이다.
 # 반환값: list[str]. 명시적인 줄바꿈과 두 줄이 아닌 결과는 그대로 유지한다.
-def balanced_lines(text, width, font, size):
+def balanced_lines(text: str, width: float, font: str, size: float) -> list[str]:
     lines = wrap_lines(text, width, font, size)
     if len(lines) != 2 or "\n" in text:
         return lines
@@ -191,7 +197,7 @@ def balanced_lines(text, width, font, size):
 # 함수역할: 가운데 쪽 번호를 침범하지 않도록 바닥글을 배치하고 긴 제목은 축약한다.
 # 매개변수: page·total(int)은 현재·전체 쪽 수, label(str)은 소제목이다.
 # 반환값: 좌표·줄·축약 여부를 담은 dict. 배치가 불가능하면 LayoutError를 발생시킨다.
-def footer_layout(page, total, label):
+def footer_layout(page: int, total: int, label: str) -> dict[str, Any]:
     number = f"{page} / {total}"
     number_right = W / 2 + pdfmetrics.stringWidth(number, REG, FOOTER_SIZE) / 2
     label_left = number_right + 12
@@ -224,7 +230,7 @@ def footer_layout(page, total, label):
 # Description: Draws the measured footer inside a tagged PDF artifact for later replacement.
 # Parameters: c (Canvas) is the drawing target; record (dict) is the footer_layout result.
 # Returns: None. Restores the canvas graphics state after drawing.
-def draw_footer(c, record):
+def draw_footer(c: canvas.Canvas, record: dict[str, Any]) -> None:
     c.saveState()
     c._code.append("/Artifact << /Type /Pagination /Subtype /Footer >> BDC")
     c.setFillColorRGB(0, 0, 0)
@@ -242,7 +248,7 @@ def draw_footer(c, record):
 # 함수역할: 기존 PDF의 태그된 바닥글만 제거하고 본문 명령은 보존한다.
 # 매개변수: page(PageObject)는 수정 대상, reader(PdfReader)는 원본 문서다.
 # 반환값: 보존 검증용 dict. 바닥글 태그가 정확히 하나가 아니면 LayoutError를 발생시킨다.
-def strip_original_footer(page, reader):
+def strip_original_footer(page: PageObject, reader: PdfReader) -> dict[str, int | str]:
     """Retain every body operator; remove only the approved tagged footer."""
     stream = ContentStream(page.get_contents(), reader)
     kept, skip_depth, removed = [], 0, 0
@@ -273,7 +279,7 @@ def strip_original_footer(page, reader):
 # 함수역할: 제목의 숫자 접두사를 장·소절 링크 식별자로 변환한다.
 # 매개변수: text(str)는 비어 있지 않은 제목, level(int)은 장(0) 또는 소절 수준이다.
 # 반환값: 링크 식별자 str. 숫자 접두사가 아니면 LayoutError, 빈 제목이면 IndexError다.
-def anchor(text, level):
+def anchor(text: str, level: int) -> str:
     key = text.split()[0]
     require(re.fullmatch(r"\d+(?:\.\d+)*", key) is not None,
             "Heading must begin with its numeric identifier", heading=text)
@@ -284,7 +290,7 @@ def anchor(text, level):
 # 함수역할: 목차를 높이 기준으로 나누되 장과 첫 소절은 같은 쪽에 둔다.
 # 매개변수: entries(list[dict])는 제목과 수준을 담은 목차 항목이다.
 # 반환값: 줄과 좌표가 포함된 쪽별 list[list[dict]]. 항목이 너무 크면 LayoutError를 발생시킨다.
-def toc_chunks(entries):
+def toc_chunks(entries: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
     chunks, current, top = [], [], TOC_FIRST
     # Reserve four page-number digits so wrapping does not depend on pagination.
     reserved = pdfmetrics.stringWidth("8888", REG, 11) + 12
@@ -317,7 +323,7 @@ def toc_chunks(entries):
 # 함수역할: 중복을 제거한 번호를 정렬하고 연속 번호를 범위로 묶는다.
 # 매개변수: numbers(Iterable[int])는 단계 번호다.
 # 반환값: '1~3, 5' 형식의 str. 입력이 비어 있으면 빈 문자열이다.
-def number_ranges(numbers):
+def number_ranges(numbers: Iterable[int]) -> str:
     values = sorted(set(numbers))
     groups = []
     for value in values:
@@ -332,7 +338,9 @@ def number_ranges(numbers):
 # 함수역할: 참고 문구에 연결된 단계들을 실제 출력 쪽별 링크로 묶는다.
 # 매개변수: item(dict)은 참고 항목, locations(dict)는 단계별 위치다.
 # 반환값: 링크 문구·목적지의 list[dict]. 다른 소절을 가리키면 LayoutError를 발생시킨다.
-def reference_parts(item, locations):
+def reference_parts(
+    item: dict[str, Any], locations: dict[str, dict[str, Any]],
+) -> list[dict[str, str | int]]:
     grouped = OrderedDict()
     for identity in item["identities"]:
         loc = locations[identity]
@@ -350,7 +358,7 @@ def reference_parts(item, locations):
 # 함수역할: 참고 항목의 링크·본문·여백을 포함한 높이를 측정한다.
 # 매개변수: item(dict)은 link_parts와 text를 포함한 참고 항목이다.
 # 반환값: 링크 줄과 본문·전체 높이(pt)의 dict.
-def reference_metrics(item):
+def reference_metrics(item: dict[str, Any]) -> dict[str, Any]:
     link_lines = [wrap_lines(part["text"], 184 * MM, BOLD, 11) for part in item["link_parts"]]
     _, text_height = paragraph(item["text"], 184 * MM, size=12, leading=17)
     height = sum(len(lines) * 15 for lines in link_lines) + 3 * MM + text_height + 7 * MM
@@ -361,7 +369,9 @@ def reference_metrics(item):
 # 함수역할: 참고 항목의 위치를 갱신하고 장 끝의 참고 페이지로 나눈다.
 # 매개변수: items(list[dict]), chapter(str), start_page(int)는 항목·장 제목·시작 쪽이다.
 # 반환값: 쪽별 list[dict]. 한 항목이 페이지보다 크면 LayoutError를 발생시킨다.
-def paginate_references(items, chapter, start_page):
+def paginate_references(
+    items: list[dict[str, Any]], chapter: str, start_page: int,
+) -> list[dict[str, Any]]:
     result, current, top = [], [], 22 * MM
     limit = 278 * MM
     for item in items:
@@ -388,7 +398,7 @@ def paginate_references(items, chapter, start_page):
 # 함수역할: 장 순서, 단계 식별자, 캡처 좌표와 설명 연결에 필요한 입력 구조를 검사한다.
 # 매개변수: content(list[dict])는 설명서 페이지 원본이며 직접 수정하지 않는다.
 # 반환값: (본문 복사본 list[dict], 제외한 옛 참고 페이지 수 int). 오류 시 LayoutError.
-def validate_content(content):
+def validate_content(content: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
     require(isinstance(content, list), "Input must be a list of pages")
     body, chapters, sections, identities, numbers = [], set(), set(), set(), set()
     current_chapter = current_section = None
@@ -462,7 +472,9 @@ def validate_content(content):
 # 함수역할: 목차·본문·참고의 쪽 번호와 캡처 배치를 렌더링 전에 확정한다.
 # 매개변수: content(list[dict])는 입력 페이지, input_dir(Path)은 상대 이미지 경로 기준이다.
 # 반환값: 배치·링크·전체 쪽 수를 담은 dict. 구조·배치 오류 시 LayoutError를 발생시킨다.
-def make_plan(content, input_dir=HERE):
+def make_plan(
+    content: list[dict[str, Any]], input_dir: Path | str = HERE,
+) -> dict[str, Any]:
     register_fonts()
     body, ignored = validate_content(content)
     entries, seen = [], set()
@@ -484,7 +496,7 @@ def make_plan(content, input_dir=HERE):
     # 함수역할: 현재 장에 모인 참고 항목을 페이지에 추가하고 누적 목록을 비운다.
     # 매개변수: 없음. 바깥 함수의 notes·locations·pages·chapter를 사용한다.
     # 반환값: None. 참고 항목이 없으면 아무것도 추가하지 않는다.
-    def finish_chapter():
+    def finish_chapter() -> None:
         if not notes:
             return
         items = list(notes.values())
@@ -543,7 +555,7 @@ def make_plan(content, input_dir=HERE):
 # 함수역할: 캡처와 자르기 영역을 검증하고 표시 영역 안으로 강조 상자를 제한한다.
 # 매개변수: step(dict)은 이미지·crop·boxes 정보, input_dir(Path)은 경로 기준이다.
 # 반환값: 이미지 크기·해시·강조 좌표의 dict. 파일·좌표 오류 시 LayoutError를 발생시킨다.
-def image_info(step, input_dir):
+def image_info(step: dict[str, Any], input_dir: Path) -> dict[str, Any]:
     identity = step["identity"]
     require(isinstance(step.get("image"), str) and step["image"], "Missing screenshot", identity=identity)
     path = Path(step["image"])
@@ -586,7 +598,9 @@ def image_info(step, input_dir):
 # 함수역할: 단계 설명과 여러 강조 상자의 번호별 설명을 측정한다.
 # 매개변수: step(dict)은 단계, width(float, pt)는 설명 영역 너비다.
 # 반환값: (문단·높이·간격 목록, 전체 높이 float).
-def copy_blocks(step, width):
+def copy_blocks(
+    step: dict[str, Any], width: float,
+) -> tuple[list[tuple[Paragraph, float, int]], float]:
     blocks = [(step["text"], False)]
     if len(step.get("boxes", [])) > 1:
         blocks += [(f'{c["box_index"] + 1}. {c["text"]}', False)
@@ -604,7 +618,7 @@ def copy_blocks(step, width):
 # 함수역할: 행별 캡처 폭과 설명 시작점을 맞추고 번호 표식을 겹치지 않게 배치한다.
 # 매개변수: page(dict)는 단계 페이지, input_dir(Path)은 캡처 경로 기준이다.
 # 반환값: 단계 식별자별 배치 dict. 최소 캡처 크기나 본문 범위를 지킬 수 없으면 LayoutError.
-def layout_steps(page, input_dir):
+def layout_steps(page: dict[str, Any], input_dir: Path) -> dict[str, dict[str, Any]]:
     slots = []
     row_count = 1 if len(page["steps"]) <= 2 else 2
     row_gap = 16
@@ -670,7 +684,7 @@ def layout_steps(page, input_dir):
 # 함수역할: 번호 원의 중심과 사각형의 가장 가까운 지점 사이 거리를 계산한다.
 # 매개변수: cx·cy(float)는 중심, rect(Sequence[float])는 좌·하·우·상 좌표다.
 # 반환값: 거리 float. 중심이 사각형 안에 있으면 0이다.
-def circle_rect_distance(cx, cy, rect):
+def circle_rect_distance(cx: float, cy: float, rect: Sequence[float]) -> float:
     return math.hypot(max(rect[0] - cx, 0, cx - rect[2]),
                       max(rect[1] - cy, 0, cy - rect[3]))
 
@@ -679,7 +693,7 @@ def circle_rect_distance(cx, cy, rect):
 # 함수역할: 강조 상자·문장·다른 번호와 겹치지 않는 번호 원 위치를 탐색한다.
 # 매개변수: slots(list[dict])는 갱신할 배치, wide(bool)는 현재 내부에서 사용하지 않는다.
 # 반환값: None. 유효한 배치가 없으면 LayoutError를 발생시킨다.
-def layout_annotations(slots, wide):
+def layout_annotations(slots: list[dict[str, Any]], wide: bool) -> None:
     targets, copy_areas = [], []
     for slot in slots:
         x, top = slot["x_pt"], H - slot["image_top_pt"]
@@ -757,7 +771,7 @@ def layout_annotations(slots, wide):
         # 함수역할: 후보가 적은 번호부터 선택하고 충돌 시 되돌아가 다른 위치를 탐색한다.
         # 매개변수: 없음. 바깥 함수의 options·chosen·separation을 사용한다.
         # 반환값: 전체 번호 배치에 성공하면 True, 가능한 조합이 없으면 False.
-        def choose():
+        def choose() -> bool:
             if len(chosen) == len(options):
                 return True
             viable = {}
@@ -787,7 +801,9 @@ def layout_annotations(slots, wide):
 # 함수역할: 페이지 안의 클릭 영역인지 확인한 후 내부 링크를 누적한다.
 # 매개변수: annotations(list[dict]), rect(Sequence[float], pt), target(int)은 목록·영역·목적지다.
 # 반환값: None. 영역이 페이지를 벗어나거나 뒤집혀 있으면 LayoutError를 발생시킨다.
-def add_link(annotations, rect, target):
+def add_link(
+    annotations: list[dict[str, Any]], rect: Sequence[float], target: int,
+) -> None:
     require(0 <= rect[0] < rect[2] <= W and 0 <= rect[1] < rect[3] <= H,
             "Invalid navigation hitbox", target_page=target, rect_pt=rect)
     annotations.append(dict(rect=list(rect), target=target))
@@ -797,7 +813,10 @@ def add_link(annotations, rect, target):
 # 함수역할: 목차 제목·점선·쪽 번호를 그리고 클릭 영역을 추가한다.
 # 매개변수: c(Canvas), entries(list[dict]), annotations(list[dict])는 대상과 측정된 목차·링크다.
 # 반환값: None. 제목과 쪽 번호가 겹치면 LayoutError를 발생시킨다.
-def draw_toc(c, entries, annotations):
+def draw_toc(
+    c: canvas.Canvas, entries: list[dict[str, Any]],
+    annotations: list[dict[str, Any]],
+) -> None:
     c.setFillColorRGB(0, 0, 0)
     c.setFont(BOLD, 19)
     c.drawString(LEFT, H - 34, "\ucc28\ub840")
@@ -828,7 +847,7 @@ def draw_toc(c, entries, annotations):
 # 함수역할: 장·소절 제목을 중앙에 배치하고 측정 결과를 기록한다.
 # 매개변수: c(Canvas), page(dict), layout(dict)는 출력 대상·페이지·배치 기록이다.
 # 반환값: None. 제목이 허용 높이를 벗어나면 LayoutError를 발생시킨다.
-def draw_divider(c, page, layout):
+def draw_divider(c: canvas.Canvas, page: dict[str, Any], layout: dict[str, Any]) -> None:
     chapter = balanced_lines(page["chapter"], 190 * MM, BOLD, 32)
     section = balanced_lines(page["section"], 190 * MM, BOLD, 24)
     height = len(chapter) * 40 + 10 * MM + len(section) * 32
@@ -852,7 +871,7 @@ def draw_divider(c, page, layout):
 # 함수역할: 측정된 위치에 캡처·벡터 강조 상자·번호·설명을 순서대로 그린다.
 # 매개변수: c(Canvas), page(dict), plan(dict)는 출력 대상·단계 페이지·확정 배치다.
 # 반환값: None. 캡처 해시 변경이나 설명 넘침이 발견되면 LayoutError를 발생시킨다.
-def draw_steps(c, page, plan):
+def draw_steps(c: canvas.Canvas, page: dict[str, Any], plan: dict[str, Any]) -> None:
     c.setFillColorRGB(0.06, 0.38, 0.29)
     c.setFont(REG, 10)
     c.drawString(LEFT, H - 22, page["chapter"])
@@ -915,7 +934,10 @@ def draw_steps(c, page, plan):
 # 함수역할: 참고 설명과 밑줄 링크를 그리고 링크·배치 기록을 갱신한다.
 # 매개변수: c(Canvas), page(dict), annotations(list[dict]), layout(dict)는 출력·참고·기록 대상이다.
 # 반환값: None. 본문이 측정 영역을 벗어나면 LayoutError를 발생시킨다.
-def draw_references(c, page, annotations, layout):
+def draw_references(
+    c: canvas.Canvas, page: dict[str, Any], annotations: list[dict[str, Any]],
+    layout: dict[str, Any],
+) -> None:
     c.setFillColorRGB(0, 0, 0)
     c.setFont(BOLD, 18)
     c.drawString(LEFT, H - 6 * MM - 18, "\ucc38\uace0")
@@ -949,7 +971,9 @@ def draw_references(c, page, annotations, layout):
 # 함수역할: 보존할 원본 페이지와 새 본문을 합치고 링크·책갈피를 검증한다.
 # 매개변수: plan(dict)은 확정 배치, source(Path 또는 str)는 승인된 원본 PDF다.
 # 반환값: (PDF bytes, 탐색 정보 dict, 검증 결과 dict). 검증 실패 시 LayoutError.
-def render_pdf(plan, source=SOURCE):
+def render_pdf(
+    plan: dict[str, Any], source: Path | str = SOURCE,
+) -> tuple[bytes, dict[str, Any], dict[str, Any]]:
     require(Path(source).is_file(), "Approved source PDF is missing")
     for key in ("dividers", "references", "footers"):
         plan["layout"][key] = []
@@ -1051,7 +1075,9 @@ def render_pdf(plan, source=SOURCE):
 # 함수역할: 출력 PDF의 쪽 수·크기·내부 링크·책갈피·메타데이터를 대조한다.
 # 매개변수: data(bytes), plan(dict), annotations(dict)는 PDF와 기대 배치·링크다.
 # 반환값: 구조 검증 결과 dict. 불일치 시 LayoutError이며 시각적 검증은 별도로 필요하다.
-def verify_pdf(data, plan, annotations):
+def verify_pdf(
+    data: bytes, plan: dict[str, Any], annotations: dict[int, list[dict[str, Any]]],
+) -> dict[str, int | bool]:
     reader = PdfReader(BytesIO(data))
     require(len(reader.pages) == plan["total_pages"], "Written PDF page count differs")
     require(reader.metadata.get("/Author") == "MedBuddy", "Unexpected PDF author")
@@ -1079,7 +1105,7 @@ def verify_pdf(data, plan, annotations):
     # 함수역할: 중첩 책갈피를 순회해 제목과 목적지 쪽 번호를 outlines에 누적한다.
     # 매개변수: items(list)는 PDF 책갈피와 하위 목록이다.
     # 반환값: None.
-    def visit(items):
+    def visit(items: OutlineType) -> None:
         for item in items:
             if isinstance(item, list):
                 visit(item)
@@ -1097,7 +1123,7 @@ def verify_pdf(data, plan, annotations):
 # 함수역할: PDF와 같은 단계·참고·링크를 가진 Markdown 본문을 만든다.
 # 매개변수: plan(dict)은 쪽 번호와 단계가 확정된 배치다.
 # 반환값: Markdown str. 개인 경로나 제어 문자가 있으면 LayoutError를 발생시킨다.
-def markdown(plan):
+def markdown(plan: dict[str, Any]) -> str:
     lines = [
         '<img src="../../frontend/assets/app_icon/medbuddy_logo.png" width="120" alt="MedBuddy \ub85c\uace0">',
         "", "# MedBuddy \uc0ac\uc6a9\uc124\uba85\uc11c", "",
@@ -1147,7 +1173,7 @@ def markdown(plan):
 # 함수역할: 내부 캡처 경로와 작업 메타데이터를 제외한 공개용 페이지 목록을 만든다.
 # 매개변수: pages(list[dict])는 완성된 페이지 계획이다.
 # 반환값: list[dict]. 남은 공개 필드에 개인 경로가 있으면 LayoutError를 발생시킨다.
-def public_pages(pages):
+def public_pages(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     # Exclude capture paths, XML, tokens, old notes, previews, and private assembly metadata.
     result = []
     for page in pages:
@@ -1173,7 +1199,7 @@ def public_pages(pages):
 # 함수역할: 검증 기록을 UTF-8 JSON과 마지막 줄바꿈으로 저장한다.
 # 매개변수: path(Path)는 출력 파일, value(object)는 JSON 직렬화 가능한 값이다.
 # 반환값: None. 파일 쓰기·직렬화 오류는 호출자에게 전달한다.
-def dump(path, value):
+def dump(path: Path, value: object) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
 
 
@@ -1181,7 +1207,7 @@ def dump(path, value):
 # 함수역할: 입력을 렌더링해 작업 하위 디렉터리에 저장하고 성공·실패 기록을 남긴다.
 # 매개변수: argv(list[str] 또는 None)는 명령행 인수이며 None이면 프로세스 인수를 사용한다.
 # 반환값: 성공 0, 렌더링 실패 1. 인수·출력 경로 오류는 렌더링 예외 처리 밖에서 발생한다.
-def main(argv=None):
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--input", type=Path, default=HERE / "content.json", help="List of divider/steps pages")
     parser.add_argument("--out", type=Path, default=Path("candidate"), help="Output directory, relative to input directory")

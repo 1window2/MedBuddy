@@ -37,7 +37,7 @@ ink = tuple(sorted(c[i] for c in inks)[len(inks) // 2] for i in range(3))
 # Description: Recovers the green mark's opacity by unblending its red channel from white; nonopaque source pixels are treated as outside the tile.
 # Parameters: p is an RGBA pixel tuple; the sampled global ink color provides the contrast reference.
 # Returns: Opacity between 0.0 and 1.0, assuming the sampled ink differs from white in its red channel.
-def alpha(p):
+def alpha(p: tuple[int, int, int, int]) -> float:
     if p[3] < 255:
         return 0.0  # outside the tile
     # Unblend from white on the channel with the most contrast (red).
@@ -119,7 +119,10 @@ print('heart notch x %.1f (cross centre x %.1f), centre of mass y %.1f (height m
 # Description: Scales the extracted mark onto a transparent canvas and places the heart anchor at its center, optionally shrinking to a clear-margin bound.
 # Parameters: canvas_dp, radius_dp and optional half_dp are logical sizes; density converts them to pixels; colour is an RGB tuple.
 # Returns: (RGBA image, mark width dp, mark height dp, farthest reach dp); requires the previously extracted global mark/anchor geometry.
-def layer(canvas_dp, radius_dp, density, colour, half_dp=None):
+def layer(
+    canvas_dp: float, radius_dp: float, density: float,
+    colour: tuple[int, int, int], half_dp: float | None = None,
+) -> tuple[Image.Image, float, float, float]:
     size = int(round(canvas_dp * density))
     scale = radius_dp * density / radius
     if half_dp is not None:
