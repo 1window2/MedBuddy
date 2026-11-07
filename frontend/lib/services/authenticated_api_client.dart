@@ -124,6 +124,7 @@ class AuthenticatedApiClient extends http.BaseClient {
   final bool _appCheckRequired;
   final UnauthorizedResponseHandler? _onUnauthorized;
   final Uri _trustedBaseUri;
+  bool _closed = false;
 
   // Session-cleanup callback used by clients constructed without `onUnauthorized`.
   // The app shell sets it while it is mounted, so every screen-owned client reports
@@ -206,10 +207,25 @@ class AuthenticatedApiClient extends http.BaseClient {
       await response.stream.drain<void>();
       throw ApiContractMismatchException(serverContract);
     }
-    if (response.statusCode == 401) {
+    if (response.statusCode == 401 &&
+        !_closed &&
+        await _stillUsesAuthorization(request.headers['Authorization']) &&
+        !_closed) {
       await (_onUnauthorized ?? defaultOnUnauthorized)?.call();
     }
     return response;
+  }
+
+  Future<bool> _stillUsesAuthorization(String? authorization) async {
+    try {
+      final token = (await _tokenProvider().timeout(_authenticationTimeout))
+          ?.trim();
+      final current = token == null || token.isEmpty ? null : 'Bearer $token';
+      return authorization == current;
+    } catch (_) {
+      // 현재 인증을 확인하지 못한 경우 이전 요청으로 새 세션을 종료하지 않는다.
+      return false;
+    }
   }
 
   // Function Name: reportUnauthorized
@@ -305,6 +321,7 @@ class AuthenticatedApiClient extends http.BaseClient {
   // - No return value.
   @override
   void close() {
+    _closed = true;
     _inner.close();
   }
 }
