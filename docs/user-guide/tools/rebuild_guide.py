@@ -172,7 +172,7 @@ def build(font_dir):
     cover.setFont(layout.BOLD, 30)
     cover.drawCentredString(layout.W / 2, layout.H / 2 - 145, "MedBuddy 사용설명서")
     cover.setFont(layout.REG, 12)
-    cover.drawCentredString(layout.W / 2, layout.H / 2 - 172, "0.2.5 개발 브랜치 | 2026-11-06")
+    cover.drawCentredString(layout.W / 2, layout.H / 2 - 172, "1.0.0 출시 후보 개발 브랜치 | 2026-11-07")
     layout.draw_footer(cover, layout.footer_layout(1, plan["total_pages"], ""))
     cover.showPage()
     cover.save()

@@ -89,6 +89,7 @@ def test_ci_and_release_keep_their_verification_commands() -> None:
         "run: flutter build apk --release --no-pub --target-platform android-arm,android-arm64\n",
         "- name: Verify APK native ABIs\n",
         APK_ABI_CHECK,
+        "script: ./gradlew :app:connectedDebugAndroidTest -Ptarget-platform=android-x64\n",
     ):
         assert command in frontend, command
     backend = _workflow("backend-ci.yml")
@@ -115,13 +116,11 @@ def test_dormant_cloud_workflows_stay_disabled() -> None:
 # Function Name: test_flutter_sdk_pin_is_identical_in_ci_and_signing
 # Description: The signed artifact must be built with the Flutter version that CI analyzed and tested.
 # Parameters: None.
-# Returns: None; fails if either workflow pins a different version or more than one.
+# Returns: None; fails if a CI job pins another version than the single signing pin.
 def test_flutter_sdk_pin_is_identical_in_ci_and_signing() -> None:
-    pins = {
-        name: re.findall(r"flutter-version: '([0-9.]+)'", _workflow(name))
-        for name in ("frontend-ci.yml", "release-android.yml")
-    }
-    assert pins["frontend-ci.yml"] == pins["release-android.yml"] and len(pins["frontend-ci.yml"]) == 1
+    ci = re.findall(r"flutter-version: '([0-9.]+)'", _workflow("frontend-ci.yml"))
+    signing = re.findall(r"flutter-version: '([0-9.]+)'", _workflow("release-android.yml"))
+    assert len(signing) == 1 and len(ci) == 2 and set(ci) == set(signing)
 
 # Function Name: test_third_party_actions_are_pinned_to_a_commit
 # Description: An action outside GitHub's own "actions" organisation must be referenced by a full

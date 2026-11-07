@@ -37,11 +37,17 @@ the section that recorded it. Changes are listed in the
       (`scripts/provision_database_roles.py`, opt-in through
       `MEDBUDDY_APP_DB_USER`/`MEDBUDDY_APP_DB_PASSWORD`, see Production
       Deployment); switching production needs the owner to add the two settings.
-- [ ] Android instrumented tests in CI (an emulator job).
-- [ ] User guide screenshots from earlier versions, and the guide and UML version
-      marks. With the next guide rebuild, also describe the 1.0.0 behaviour changes:
-      a tap on yesterday's list after midnight asks to tap again, and nearby
-      pharmacy search has a daily limit per account.
+- [ ] Android instrumented tests in CI (an emulator job). Added on 2026-11-07: the
+      `instrumented` job of Flutter CI runs `:app:connectedDebugAndroidTest` on an
+      API 34 emulator, so the release gate now also needs the home-widget layout and
+      refresh tests. The six tests passed on the local `medbuddy_rc` emulator (API 34);
+      the job itself has not run on GitHub yet.
+- [x] Guide and UML version marks (2026-11-07): the guide cover, footer and notes
+      say 1.0.0 and describe the two 1.0.0 behaviour changes (yesterday's list after
+      midnight, the per-account pharmacy limit); the class and overall sequence
+      diagrams and the use case descriptions carry the 1.0.0 changes.
+- [ ] User guide screenshots from earlier versions (0.2.1 to 0.2.4 captures that
+      remain in the guide).
 
 ### Owner decisions
 

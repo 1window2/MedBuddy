@@ -4,7 +4,7 @@ skinparam defaultFontName Nanum Gothic
 scale max 16000*16000
 left to right direction
 
-title beta/v0.2.4 핵심 Class Diagram
+title beta/v1.0.0 핵심 Class Diagram
 
 skinparam classAttributeIconSize 0
 skinparam linetype ortho
@@ -1697,7 +1697,7 @@ package "FastAPI Backend" {
 
         class "ManagePushToken" as BManagePushToken <<Control: FCM Token 관리>> {
             - db: Session
-            + registerPushToken(user_hash, token, platform): dict
+            + registerPushToken(user_hash, token, platform, supports_caregiver_actions, sessions_valid_after): dict
             + unregisterPushToken(user_hash, token): dict
         }
 
@@ -1721,7 +1721,7 @@ package "FastAPI Backend" {
             + {static} from_verified_claims(claims): AuthenticatedPrincipal
         }
 
-        note "api/dependencies.py module functions\nverify_app_check_token()\nget_authenticated_principal()\nget_recently_authenticated_principal()\n_lock_account_operation()\nget_registered_principal()" as BAccountDependencies
+        note "api/dependencies.py module functions\nverify_app_check_token()\nget_authenticated_principal()\nget_recently_authenticated_principal()\n_lock_account_operation()\nget_registered_principal()\nget_session_revocation_boundary()" as BAccountDependencies
         class "AccountOperationLocks" as AccountOperationLocks <<Service: SQLite request ownership>> {
             + active_scope_count: int
             + hold(user_hash, timeout): AsyncContextManager
@@ -1963,6 +1963,10 @@ package "FastAPI Backend" {
 
         class "FirebaseIdentityDeletionBoundary" as FirebaseIdentityDeletionBoundary <<Wrapper: Firebase 계정 삭제>> {
             + deleteIdentity(subject): void
+        }
+
+        class "FirebaseSessionRevocationBoundary" as FirebaseSessionRevocationBoundary <<Wrapper: Firebase 세션 취소 시각>> {
+            + sessionsValidAfter(subject): datetime?
         }
 
         class "OCRServiceBoundary" as OCRServiceBoundary <<Wrapper: Gemini 처방 구조화>> {
@@ -2954,6 +2958,7 @@ BManageAccount o-- IdentityDeletionBoundary
 FirebaseIdentityDeletionBoundary ..|> IdentityDeletionBoundary
 BAccountDependencies ..> OIDCTokenVerifier : ID Token 검증
 BAccountDependencies ..> AppCheckTokenVerifier : App Check Token 검증
+BAccountDependencies ..> FirebaseSessionRevocationBoundary : push-token 등록에 세션 취소 시각 전달
 BAccountDependencies --> BAuthenticatedPrincipal : identity 생성 및 freshness policy
 BAccountDependencies ..> BManageAccount : tombstone registration
 BAccountDependencies --> DBUserAccount : transaction lock scope
