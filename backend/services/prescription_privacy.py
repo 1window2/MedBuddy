@@ -1,3 +1,5 @@
+# 파일명: prescription_privacy.py
+# 역할: 외부 분석에 보낼 처방전 텍스트에서 식별자 구역을 제거하고 모호한 입력을 차단한다.
 """외부 처방전 분석 전 개인정보 구역과 직접 식별자를 검사한다."""
 
 import re
@@ -69,10 +71,18 @@ _REJECT_MESSAGE = (
 MAX_PRESCRIPTION_LINE_LENGTH = 500
 
 
+# 클래스명: PrescriptionPrivacyError
+# 역할: 처방 정보와 개인정보를 안전하게 분리할 수 없음을 알린다.
+# 주요 책임: 외부 분석 전에 재촬영·영역 재선택이 필요한 입력을 거절한다.
+# 속성: ValueError의 안내 메시지 외 추가 상태 없음.
 class PrescriptionPrivacyError(ValueError):
     """개인정보를 안전하게 분리할 수 없어 외부 전송을 중단한다."""
 
 
+# Function Name: deidentify_prescription_text
+# Description: Normalizes OCR text, removes labeled private sections, redacts direct identifiers and unlabeled dates, then checks the remaining text again.
+# Parameters: text (str) is the full OCR result; prescription-date labels and clearly separated medication rows may be retained.
+# Returns: Nonempty filtered text; raises PrescriptionPrivacyError for ambiguous mixed rows, unsupported controls, length limits or remaining identifiers.
 def deidentify_prescription_text(text: str) -> str:
     """식별자 라벨 구역을 제외하고 안전하게 분리된 처방 정보만 반환한다."""
     normalized = unicodedata.normalize("NFKC", text).replace("\r\n", "\n").replace("\r", "\n")

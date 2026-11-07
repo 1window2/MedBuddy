@@ -14,13 +14,10 @@ from entities.user_setting_entity import UserSetting, _UserSetting
 logger = logging.getLogger(__name__)
 
 
-# 클래스명: ManageUserSetting
-# 역할:
-# - 사용자별 접근성·언어·기본 복약 시각과 알림 표시 설정을 검증하고 저장한다.
-# 주요 책임:
-# - 입력 허용 범위를 확인하고 기존 설정을 기본값으로 보완하며 동시 생성 충돌 뒤에는 기존 행을 갱신한다.
-# 속성:
-# - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
+# Class Name: ManageUserSetting
+# Role: Validates and persists accessibility, language, home-schedule and notification preferences.
+# Responsibilities: Supplies unsaved defaults, normalizes allowed values, tracks optimistic revisions and resolves legacy concurrent-creation retries.
+# Attributes: db (Session) owns setting queries and commits.
 class ManageUserSetting:
     # Function Name: __init__
     # Description:
@@ -32,13 +29,10 @@ class ManageUserSetting:
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    # Function Name: requestUserSetting
-    # Description:
-    # - Returns persisted user settings or a default setting if none exists yet.
-    # Parameters:
-    # - user_hash (str): User ownership key used to scope settings.
-    # Returns:
-    # - API-compatible user setting dictionary.
+    # 함수이름: requestUserSetting
+    # 함수역할: 정규화한 사용자 범위의 설정을 읽고 저장 전이면 기본 설정과 revision 0을 반환한다.
+    # 매개변수: user_hash (str)는 조회 계정 식별자다.
+    # 반환값: 설정·revision 성공 응답. 기본값을 DB에 저장하지 않으며 조회 오류는 전달한다.
     def requestUserSetting(
         self,
         user_hash: str = DEFAULT_PATIENT_HASH,
@@ -69,8 +63,9 @@ class ManageUserSetting:
     # - default_evening_time (str): HH:MM 형식의 기본 저녁 알림 시각.
     # - default_bedtime (str): HH:MM 형식의 기본 취침 전 알림 시각.
     # - expected_revision (int | None): 저장 기준 서버 버전. 구형 클라이언트는 생략한다.
+    # - home_schedule_source (str | None): self 또는 patients로 홈 일정 출처를 변경하며 None은 기존 선택을 유지한다.
     # 반환값:
-    # - 저장된 사용자 설정을 담은 성공 응답.
+    # - 새 revision과 설정을 담은 성공 응답. 잘못된 값은 400, 버전 충돌은 409, 저장 실패는 500이다.
     def saveUserSetting(
         self,
         user_hash: str,
@@ -181,13 +176,10 @@ class ManageUserSetting:
                 detail="User settings could not be saved.",
             ) from exc
 
-    # Function Name: _find_setting
-    # Description:
-    # - Finds the preference row belonging to one user scope.
-    # Parameters:
-    # - user_hash (str): Account ownership scope for the operation.
-    # Returns:
-    # - Stored setting row, or None before the first save.
+    # 함수이름: _find_setting
+    # 함수역할: 사용자 설정을 DB에서 다시 읽어 세션에 이미 있는 행의 오래된 값도 갱신한다.
+    # 매개변수: user_hash (str)는 조회 계정 식별자다.
+    # 반환값: _UserSetting 또는 저장 전이면 None. DB 오류는 전달한다.
     def _find_setting(self, user_hash: str) -> _UserSetting | None:
         return (
             self.db.query(_UserSetting)
@@ -196,30 +188,22 @@ class ManageUserSetting:
             .first()
         )
 
-    # 함수역할: 서버 버전이 바뀐 저장을 거절하고 최신 의도만 재시도할 기준을 반환한다.
+    # 함수이름: _revision_conflict
+    # 함수역할: 저장 버전 충돌을 표현하는 예외 객체를 구성하며 직접 발생시키지는 않는다.
+    # 매개변수: revision (int)은 클라이언트가 재조회·재시도 판단에 사용할 현재 서버 버전이다.
+    # 반환값: settings_revision_conflict 코드와 revision을 담은 HTTP 409 예외.
     def _revision_conflict(self, revision: int) -> HTTPException:
         return HTTPException(
             status_code=409,
             detail={"code": "settings_revision_conflict", "revision": revision},
         )
 
-    # 함수이름: _update_existing_setting_after_conflict
-    # 함수역할:
-    # - 동시 생성으로 이미 생긴 사용자 설정 행을 다시 조회해 요청 값을 적용한다.
-    # 매개변수:
-    # - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
-    # - font_size (int): 지원하는 접근성 범위의 표시 글자 크기.
-    # - reading_speed (float): 음성 읽기 속도 배율.
-    # - language (str): 요청한 한국어 또는 영어 콘텐츠 언어.
-    # - language_mode (str): 명시적 언어 또는 시스템 언어 사용 설정.
-    # - time_format (str): 사용자가 선택한 12시간제·24시간제 표시.
-    # - medication_notifications_enabled (bool): 복약 알림 전체 활성 여부.
-    # - caregiver_notifications_enabled (bool): 보호자 알림 전체 활성 여부.
-    # - chat_notifications_enabled (bool): 새 채팅 메시지 알림 전체 활성 여부.
-    # - notification_detail_mode (str): 알림 미리보기의 전체 내용·종류만 표시 모드.
-    # - default_times (dict[str, str]): 복용 시간대별 기본 알림 시각.
-    # 반환값:
-    # - 저장된 설정 응답; 충돌 행이 없으면 HTTP 409.
+    # Function Name: _update_existing_setting_after_conflict
+    # Description: Re-reads a concurrently created/updated row, reapplies normalized legacy-client settings and increments revision; a second stale write is reported as conflict.
+    # Parameters: user_hash (str), font_size (int), reading_speed (float), language, language_mode and time_format (str) identify normalized accessibility values;
+    #   medication_notifications_enabled, caregiver_notifications_enabled, chat_notifications_enabled (bool) toggle categories; notification_detail_mode (str) controls previews;
+    #   default_times (dict[str, str]) maps slots to HH:MM; home_schedule_source (str | None) updates or retains the home source.
+    # Returns: Committed preference envelope with revision; missing row or StaleDataError yields HTTP 409, other persistence errors propagate.
     def _update_existing_setting_after_conflict(
         self,
         user_hash: str,
@@ -437,15 +421,10 @@ class ManageUserSetting:
         row.default_evening_time = setting.default_evening_time
         row.default_bedtime = setting.default_bedtime
 
-    # Function Name: _success_response
-    # Description:
-    # - Serializes the preference entity and attaches a user-facing operation message.
-    # Parameters:
-    # - message (str): User-facing operation status message.
-    # - setting (UserSetting): Complete accessibility, language, notification and reminder-time state.
-    # - revision (int): Committed preference version, or zero before the first save.
-    # Returns:
-    # - Success envelope containing the complete user settings.
+    # 함수이름: _success_response
+    # 함수역할: 사용자 설정 엔티티와 서버 버전을 동일한 성공 응답으로 직렬화한다.
+    # 매개변수: message (str)는 안내, setting (UserSetting)은 설정, revision (int)은 저장 버전이며 기본값 0은 저장 전이다.
+    # 반환값: success·message·data·revision dict. DB 조회나 변경은 하지 않는다.
     def _success_response(
         self,
         message: str,

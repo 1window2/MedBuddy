@@ -42,15 +42,12 @@ def utc_now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-# 클래스명: LinkPatientCaregiverTest
-# 역할: 환자 코드 발급·소모와 연동별 환자 선택, 권한 및 별칭 관리를 검증하는 테스트 모음이다.
-# 주요 책임:
-# - 보호자가 저장한 별칭을 연동 목록에서도 유지하고 빈 별칭으로 지울 수 있는지 검증한다.
-# - 연동에 참여하지 않은 다른 보호자의 별칭 변경을 404로 거절하는지 검증한다.
-# 속성:
-# - engine (Engine): 격리 인메모리 SQLite 엔진.
-# - db (Session): 이 테스트의 DB 상태만 보관하는 SQLAlchemy 세션.
-# - control (LinkPatientCaregiver): 운영 상태와 분리하여 검증할 유스케이스 control.
+# Class Name: LinkPatientCaregiverTest
+# Role: Tests patient-code issuance, link authorization, participant aliases, and account link limits.
+# Responsibilities:
+# - Verify alias privacy, code consumption and invalidation, and account locking around registration and unlinking.
+# Attributes:
+# - engine (Engine): isolated SQLite engine. db (Session): test session. control (LinkPatientCaregiver): link control under test.
 class LinkPatientCaregiverTest(unittest.TestCase):
     # Function Name: setUp
     # Description:
@@ -378,9 +375,13 @@ class LinkPatientCaregiverTest(unittest.TestCase):
         self.assertEqual(context.exception.status_code, 404)
 
 
-    # 함수이름: test_patient_caregiver_alias_is_independent_and_persistent
-    # 함수역할: 환자 별칭과 보호자 별칭의 독립 저장, 재조회 및 해제를 확인한다.
-    # 매개변수: 없음. 반환값: 없음.
+    # Function Name: test_patient_caregiver_alias_is_independent_and_persistent
+    # Description:
+    # - Persist each participant's independent alias across reads and allow clearing it.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_patient_caregiver_alias_is_independent_and_persistent(self) -> None:
         code = self.control.generatePatientHash("patient-a")["data"]["patient_code"]
         link = self.control.requestPatientCaregiverLink("guardian-a", code)["data"]
@@ -407,9 +408,13 @@ class LinkPatientCaregiverTest(unittest.TestCase):
             "어머니",
         )
 
-    # 함수이름: test_unlink_response_hides_the_other_participants_alias
-    # 함수역할: 연동 해제 응답도 해제한 사람이 붙인 별칭만 담는지 확인한다.
-    # 매개변수: 없음. 반환값: 없음.
+    # Function Name: test_unlink_response_hides_the_other_participants_alias
+    # Description:
+    # - Expose only the unlinking participant's own alias in the unlink response.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_unlink_response_hides_the_other_participants_alias(self) -> None:
         code = self.control.generatePatientHash("patient-a")["data"]["patient_code"]
         link = self.control.requestPatientCaregiverLink("guardian-a", code)["data"]
@@ -419,10 +424,13 @@ class LinkPatientCaregiverTest(unittest.TestCase):
         self.assertEqual(removed["caregiver_alias"], "딸")
         self.assertIsNone(removed["patient_alias"])
 
-    # 함수이름: test_link_is_refused_once_an_account_holds_the_maximum
-    # 함수역할: 환자나 보호자의 활성 연동이 한도에 이르면 새 연동을 409로 거절하고 코드를 소모하지 않으며,
-    #   연동 하나를 해제하면 새 코드로 다시 연동할 수 있는지 확인한다.
-    # 매개변수: 없음. 반환값: 없음.
+    # Function Name: test_link_is_refused_once_an_account_holds_the_maximum
+    # Description:
+    # - Reject links above either account limit with HTTP 409 without consuming the code, and allow linking again after a link is removed.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_link_is_refused_once_an_account_holds_the_maximum(self) -> None:
         with patch.object(settings, "PATIENT_CAREGIVER_LINK_MAX_PER_ACCOUNT", 2):
             links = [
@@ -460,10 +468,13 @@ class LinkPatientCaregiverTest(unittest.TestCase):
         self.assertEqual(caregiver_refused.exception.status_code, 409)
         self.assertTrue(accepted["success"])
 
-    # 함수이름: test_registration_counts_links_under_both_account_locks
-    # 함수역할: 코드 등록이 환자와 보호자 계정을 함께 잠근 뒤 코드를 다시 읽고 연동 수를 세는지 확인한다.
-    #   두 보호자가 한 환자의 두 코드를 동시에 등록해도 환자 잠금에서 차례가 정해져 한도를 넘지 않는다.
-    # 매개변수: 없음. 반환값: 없음.
+    # Function Name: test_registration_counts_links_under_both_account_locks
+    # Description:
+    # - Count active links and reread the code only after locking both participant accounts.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_registration_counts_links_under_both_account_locks(self) -> None:
         import controls.link_patient_caregiver_control as module
 
@@ -471,10 +482,25 @@ class LinkPatientCaregiverTest(unittest.TestCase):
         real_lock = module.lock_account_operations
         real_count = self.control.link_repository.list_active_for_patient
 
+        # Function Name: recording_lock
+        # Description:
+        # - Records the accounts locked before invoking the real account-operation lock.
+        # Parameters:
+        # - db: Session; link operation session.
+        # - user_hashes: Iterable[str]; accounts whose lock ordering is checked.
+        # Returns:
+        # - None.
         def recording_lock(db, user_hashes):
             events.append(("lock", frozenset(user_hashes)))
             real_lock(db, user_hashes)
 
+        # Function Name: recording_count
+        # Description:
+        # - Records when link counting occurs and delegates to the real patient-link count.
+        # Parameters:
+        # - patient_hash: str; patient whose active links are counted.
+        # Returns:
+        # - int; current link count.
         def recording_count(patient_hash):
             events.append("count")
             return real_count(patient_hash)
@@ -488,10 +514,13 @@ class LinkPatientCaregiverTest(unittest.TestCase):
         self.assertEqual(events[0], ("lock", frozenset({"patient-a", "guardian-a"})))
         self.assertIn("count", events[1:])
 
-    # 함수이름: test_unlink_runs_under_both_account_locks
-    # 함수역할: 해제가 두 참여자 계정을 함께 잠근 뒤 연동을 다시 읽어 지우는지, 그사이 다른 요청이 해제했으면
-    #   404로 끝나는지 확인한다.
-    # 매개변수: 없음. 반환값: 없음.
+    # Function Name: test_unlink_runs_under_both_account_locks
+    # Description:
+    # - Reread and remove the link under both account locks, returning HTTP 404 when another request already removed it.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_unlink_runs_under_both_account_locks(self) -> None:
         import controls.link_patient_caregiver_control as module
 
@@ -500,6 +529,14 @@ class LinkPatientCaregiverTest(unittest.TestCase):
         locks: list[frozenset[str]] = []
         real_lock = module.lock_account_operations
 
+        # Function Name: recording_lock
+        # Description:
+        # - Records each account set before invoking the real lock during unlink.
+        # Parameters:
+        # - db: Session; unlink session.
+        # - user_hashes: Iterable[str]; linked participant accounts.
+        # Returns:
+        # - None.
         def recording_lock(db, user_hashes):
             locks.append(frozenset(user_hashes))
             real_lock(db, user_hashes)
@@ -512,10 +549,13 @@ class LinkPatientCaregiverTest(unittest.TestCase):
         self.assertEqual(locks, [frozenset({"patient-a", "guardian-a"})])
         self.assertEqual(gone.exception.status_code, 404)
 
-    # 함수이름: test_unlink_invalidates_codes_issued_before_it
-    # 함수역할: 해제 전에 발급한 다른 코드로 해제된 보호자가 다시 연동할 수 없고, 해제 뒤 새로 발급한 코드로는
-    #   다시 연동할 수 있는지 확인한다.
-    # 매개변수: 없음. 반환값: 없음.
+    # Function Name: test_unlink_invalidates_codes_issued_before_it
+    # Description:
+    # - Invalidate codes issued before unlinking while allowing a freshly issued code to establish a new link.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_unlink_invalidates_codes_issued_before_it(self) -> None:
         earlier = self.control.generatePatientHash("patient-a")["data"]["patient_code"]
         redeemed = self.control.generatePatientHash("patient-a")["data"]["patient_code"]

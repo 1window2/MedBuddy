@@ -98,6 +98,15 @@ def test_deleted_account_token_keeps_its_verified_claims() -> None:
     verifier = _verifier_without_firebase_initialization()
     claims = {"uid": "gone-user", "iss": "https://securetoken.google.com/medbuddy-test"}
 
+    # Function Name: verify
+    # Description:
+    # - Simulates a deleted user only when revocation checking is enabled, otherwise returning verified claims.
+    # Parameters:
+    # - token: str; token, unused.
+    # - app: object; Firebase app, unused.
+    # - check_revoked: bool; whether to simulate deleted-user lookup.
+    # Returns:
+    # - dict[str, object]; fixture claims, or UserNotFoundError when checking revocation.
     def verify(token: str, *, app: object, check_revoked: bool) -> dict[str, object]:
         if check_revoked:
             raise auth.UserNotFoundError("deleted")

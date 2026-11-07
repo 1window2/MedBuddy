@@ -174,6 +174,8 @@ def test_preflight_command_reads_only_expected_google_resources(
     # Class Name: Opener
     # Role: Recording Google transport double.
     # Responsibilities: Verify GET-only, fixed hosts, credential headers and finite timeouts.
+    # Attributes:
+    # - None.
     class Opener:
         # Function Name: open
         # Description: Return live-shaped Android/Integrity responses for the command's two reads.
@@ -216,6 +218,8 @@ def test_preflight_rejects_bad_http_json_and_redirects_without_disclosure(
     # Class Name: Opener
     # Role: Failed Google transport double.
     # Responsibilities: Simulate denial/error responses without real credentials or network.
+    # Attributes:
+    # - None.
     class Opener:
         # Function Name: open
         # Description: Raise or return the selected credential-bearing failure.
@@ -311,10 +315,16 @@ def _fake_tool(path: Path, body: str) -> None:
     path.chmod(0o700)
 
 
-# Function Name: test_actual_build_and_signature_scripts_share_artifact_plan
-# Description: Execute workflow Bash with fake external tools for Play-only, dual-channel and off-Play builds.
-# Parameters: tmp_path: Isolated files; policy, distribution, build_apk: Normalized artifact expectations.
-# Returns: None.
+# 함수이름: test_actual_build_and_signature_scripts_share_artifact_plan
+# 함수역할:
+# - 외부 도구 대역으로 실제 빌드·서명 스크립트를 실행하여 배포 방식별 APK·AAB 산출물과 검증·업로드 계획의 일치를 확인한다.
+# 매개변수:
+# - tmp_path: Path; 테스트 전용 임시 디렉터리.
+# - policy: str; 직접 배포 APK의 App Check 정책 값.
+# - distribution: str; Play 전용·병행·외부 배포 선택값.
+# - build_apk: str; 직접 배포 APK 생성 여부를 나타내는 true 또는 false.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("policy,distribution,build_apk", [
     ("true", "play", "false"), ("true", "both", "true"), ("false", "play", "true"),
 ])

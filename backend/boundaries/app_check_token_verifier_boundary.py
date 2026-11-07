@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 # - Signals an untrusted device-attestation token.
 # Responsibilities:
 # - Separate invalid or empty tokens from retryable verifier outages.
+# Attributes: Inherited exception arguments only; no additional instance state.
 class AppCheckTokenVerificationError(Exception):
     """Raised when a device-attestation token cannot be trusted."""
 
@@ -29,6 +30,7 @@ class AppCheckTokenVerificationError(Exception):
 # - Signals a temporary inability to verify device attestations.
 # Responsibilities:
 # - Expose signing-key connection failures and unexpected provider errors to callers.
+# Attributes: Inherited exception arguments only; no additional instance state.
 class AppCheckTokenVerificationUnavailableError(Exception):
     """Raised when the external verifier cannot complete verification."""
 

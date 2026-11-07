@@ -84,6 +84,13 @@ def _principal(subject: str = "firebase-user") -> AuthenticatedPrincipal:
     )
 
 
+# 함수이름: test_caregiver_home_aggregate_uses_verified_owner
+# 함수역할:
+# - 일괄 조회는 전달된 타인 해시 대신 인증된 보호자 범위와 전체 일정 옵션을 사용하는지 확인한다.
+# 매개변수:
+# - db_session: Session; 권한 컨트롤용 격리 세션.
+# 반환값:
+# - None.
 def test_caregiver_home_aggregate_uses_verified_owner(db_session) -> None:
     """일괄 조회에서도 전달된 타인 해시 대신 인증된 보호자 범위만 사용한다."""
     principal = _principal("caregiver")
@@ -1031,6 +1038,8 @@ def test_app_check_verification_failure_is_classified(
     #   failure.
     # Responsibilities:
     # - Raises the selected verification error without inspecting or forwarding the token.
+    # Attributes:
+    # - None.
     class FailingVerifier:
         # Function Name: verifyToken
         # Description:
@@ -1149,18 +1158,45 @@ def test_only_account_deletion_accepts_the_token_of_a_deleted_account() -> None:
         "email_verified": True,
     }
 
+    # Class Name: DeletedAccountVerifier
+    # Role: Simulates a valid token whose external identity has been deleted.
+    # Responsibilities:
+    # - Raises DeletedIdentityTokenError with the captured verified claims.
+    # Attributes:
+    # - None.
     class DeletedAccountVerifier:
+        # Function Name: verifyIdToken
+        # Description:
+        # - Raises the deleted-identity error with the fixture claims for every token.
+        # Parameters:
+        # - token: str; presented token, unused.
+        # Returns:
+        # - Never returns; raises DeletedIdentityTokenError.
         def verifyIdToken(self, token: str) -> dict[str, object]:
             raise DeletedIdentityTokenError(claims)
 
     app = FastAPI()
 
+    # Function Name: delete_account
+    # Description:
+    # - Echoes the authenticated subject from the test deletion route to observe retry admission.
+    # Parameters:
+    # - principal: AuthenticatedPrincipal; injected authentication result.
+    # Returns:
+    # - dict[str, str]; authenticated subject.
     @app.delete("/api/v1/auth/account-data")
     def delete_account(
         principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
     ) -> dict[str, str]:
         return {"subject": principal.subject}
 
+    # Function Name: session
+    # Description:
+    # - Echoes the authenticated subject from the ordinary session route to test its stricter admission.
+    # Parameters:
+    # - principal: AuthenticatedPrincipal; injected authentication result.
+    # Returns:
+    # - dict[str, str]; authenticated subject.
     @app.get("/api/v1/auth/session")
     def session(
         principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
@@ -1198,6 +1234,8 @@ def test_firebase_verifier_outage_returns_retryable_service_error() -> None:
     # Responsibilities:
     # - Raises TokenVerificationUnavailableError to exercise retryable authentication
     #   failures.
+    # Attributes:
+    # - None.
     class UnavailableVerifier:
         # Function Name: verifyIdToken
         # Description:
@@ -1323,13 +1361,12 @@ def test_password_provider_still_requires_verified_email() -> None:
     assert denied.value.status_code == 403
 
 
-# Function Name: test_production_api_requires_revocation_and_verified_email_and_no_emulator
-# Description:
-# - Production refuses to start without the revocation and verified-email checks, with the
-#   Firebase Auth emulator variable set, or with two spellings of one setting.
-# Parameters:
-# - monkeypatch (pytest.MonkeyPatch): Sets and clears process environment variables.
-# Returns:
+# 함수이름: test_production_api_requires_revocation_and_verified_email_and_no_emulator
+# 함수역할:
+# - 운영 API가 토큰 취소·이메일 검증 비활성화, 인증 에뮬레이터, 중복 설정 키를 거부하는지 검증한다.
+# 매개변수:
+# - monkeypatch: pytest.MonkeyPatch; 테스트 뒤 의존성 교체를 복원한다.
+# 반환값:
 # - None.
 def test_production_api_requires_revocation_and_verified_email_and_no_emulator(
     monkeypatch: pytest.MonkeyPatch,

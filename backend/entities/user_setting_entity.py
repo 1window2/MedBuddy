@@ -149,6 +149,7 @@ class UserSetting(BaseModel):
     # - default_lunch_time (str): HH:MM 형식의 기본 점심 알림 시각.
     # - default_evening_time (str): HH:MM 형식의 기본 저녁 알림 시각.
     # - default_bedtime (str): HH:MM 형식의 기본 취침 전 알림 시각.
+    #   home_schedule_source (str | None)는 홈 출처이며 None·빈 값은 기존 선택을 유지한다.
     # 반환값:
     # - 요청 값이 반영된 새 UserSetting; 원본은 변경하지 않는다.
     def updateUserSetting(

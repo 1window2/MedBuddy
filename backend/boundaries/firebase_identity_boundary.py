@@ -14,6 +14,7 @@ from boundaries.firebase_admin_boundary import get_firebase_admin_app
 # - Signals a retryable failure to delete an external Firebase identity.
 # Responsibilities:
 # - Allow account controls to distinguish provider outages from idempotent success.
+# Attributes: Inherited exception arguments only; no additional instance state.
 class IdentityDeletionUnavailableError(RuntimeError):
     """Raised when Firebase cannot complete a retryable identity deletion."""
 
@@ -23,6 +24,7 @@ class IdentityDeletionUnavailableError(RuntimeError):
 # - Defines the external identity deletion contract used by ManageAccount.
 # Responsibilities:
 # - Require deletion by verified UID and allow an already absent identity to count as success.
+# Attributes: None required by this protocol; implementations own storage and connection state.
 class IdentityDeletionBoundary(Protocol):
     # Function Name: deleteIdentity
     # Description:
@@ -85,8 +87,9 @@ class FirebaseIdentityDeletionBoundary:
 # - _app (App): Shared Firebase Admin application.
 class FirebaseSessionRevocationBoundary:
     # Function Name: __init__
-    # Description: Reuse the configured project's Admin app.
-    # Parameters: project_id (str): Firebase project ID. Returns: None.
+    # Description: Reuses the configured project's shared Firebase Admin app for identity operations.
+    # Parameters: project_id (str) is the Firebase project ID.
+    # Returns: None; Admin initialization/configuration errors propagate.
     def __init__(self, project_id: str) -> None:
         self._app = get_firebase_admin_app(project_id)
 

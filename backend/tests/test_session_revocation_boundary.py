@@ -26,6 +26,14 @@ def test_revocation_time_is_naive_utc_and_failures_report_none(monkeypatch) -> N
     ))
     assert lookup.sessionsValidAfter("uid-1") is None
 
+    # Function Name: unavailable
+    # Description:
+    # - Simulates a provider outage during refresh-token revocation.
+    # Parameters:
+    # - uid: str; external user identifier, unused.
+    # - app: object; Firebase app, unused.
+    # Returns:
+    # - Never returns; raises RuntimeError.
     def unavailable(uid, app):
         raise RuntimeError("provider down")
 

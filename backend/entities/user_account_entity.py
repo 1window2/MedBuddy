@@ -19,26 +19,20 @@ def utc_now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-# 함수이름: as_naive_utc
-# 함수역할:
-# - 시간대가 있는 시각은 UTC로 변환한 뒤 시간대 정보를 제거하여 DB 저장값과 비교 가능하게 한다.
-# 매개변수:
-# - value (datetime): 정규화할 시각; 시간대 정보가 없으면 이미 UTC로 간주한다.
-# 반환값:
-# - 시간대 정보가 없는 UTC datetime; 원래 naive 값은 그대로 반환한다.
+# Function Name: as_naive_utc
+# Description: Convert an aware timestamp to UTC and remove timezone metadata; already-naive values are treated as UTC and left unchanged.
+# Parameters: value (datetime) is the timestamp to normalize for database storage.
+# Returns: datetime without tzinfo.
 def as_naive_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value
     return value.astimezone(UTC).replace(tzinfo=None)
 
 
-# 함수이름: utc_isoformat
-# 함수역할:
-# - DB의 시간대 없는 UTC 시각 또는 시간대가 있는 시각을 명시적인 UTC ISO 문자열로 변환한다.
-# 매개변수:
-# - value (datetime | None): 변환할 시각; 시간대 정보가 없으면 UTC로 간주한다.
-# 반환값:
-# - UTC 오프셋을 포함한 ISO 8601 문자열, 입력이 None이면 None.
+# Function Name: utc_isoformat
+# Description: Serialize aware timestamps in UTC and interpret naive timestamps as UTC.
+# Parameters: value (datetime | None) is the optional database timestamp.
+# Returns: str ISO timestamp with UTC offset, or None for an absent value.
 def utc_isoformat(value: datetime | None) -> str | None:
     if value is None:
         return None

@@ -103,22 +103,25 @@ def catalog_engine(tmp_path: Path) -> Generator[Engine, None, None]:
         engine.dispose()
 
 
-# Function Name: test_detached_approval_summary_is_persisted_and_reused
-# Description:
-# - Persists generated fields from closed read-worker snapshots and reuses them without a second AI call.
-# Parameters:
-# - catalog_engine (Engine): File-backed synthetic catalog.
-# Returns:
-# - None; assertions verify identity, persisted guidance and no borrowed request transaction.
+# 함수이름: test_detached_approval_summary_is_persisted_and_reused
+# 함수역할:
+# - 읽기 작업자가 닫힌 뒤 분리된 결과로 생성한 요약을 저장하고 두 번째 AI 호출 없이 재사용하는지 검증한다.
+# 매개변수:
+# - catalog_engine: Engine; 파일 기반 격리 합성 약품 목록.
+# 반환값:
+# - None.
 def test_detached_approval_summary_is_persisted_and_reused(catalog_engine: Engine) -> None:
     generator = SimpleNamespace(summarize_advanced_item=AsyncMock(side_effect=_summarize))
     with Session(catalog_engine) as request_db:
         catalog = LocalMedicationCatalog(request_db, generator)
 
-        # Function Name: scenario
-        # Description: Checks detached read results, then generates and reuses one persisted summary.
-        # Parameters: None.
-        # Returns: None; assertions verify both generated and cached responses.
+        # 함수이름: scenario
+        # 함수역할:
+        # - 분리된 조회 결과로 요약을 한 번 생성·저장한 뒤 캐시 응답이 재사용되는지 검증한다.
+        # 매개변수:
+        # - 없음.
+        # 반환값:
+        # - None.
         async def scenario() -> None:
             basic, approval = await catalog._search_catalog(PRODUCT_NAME)
             assert basic == []
@@ -200,13 +203,13 @@ def test_control_does_not_reuse_closed_request_session_after_summary_wait(
         assert reader.query(_DrugApprovalInfo).one().summary_efficacy == "generated effect"
 
 
-# Function Name: test_connection_bound_request_is_not_retained_by_workers
-# Description:
-# - Composes from a request Connection, closes it and verifies workers use independent Engine connections.
-# Parameters:
-# - catalog_engine (Engine): File-backed synthetic catalog.
-# Returns:
-# - None; assertions fail if a closed request Connection reaches read or write workers.
+# 함수이름: test_connection_bound_request_is_not_retained_by_workers
+# 함수역할:
+# - 요청 연결을 닫아도 작업자가 별도의 엔진 연결로 읽고 저장하는지 검증한다.
+# 매개변수:
+# - catalog_engine: Engine; 파일 기반 격리 합성 약품 목록.
+# 반환값:
+# - None.
 def test_connection_bound_request_is_not_retained_by_workers(catalog_engine: Engine) -> None:
     generator = SimpleNamespace(summarize_advanced_item=AsyncMock(side_effect=_summarize))
     with catalog_engine.connect() as connection:
@@ -218,14 +221,14 @@ def test_connection_bound_request_is_not_retained_by_workers(catalog_engine: Eng
         assert reader.query(_DrugApprovalInfo).one().summary_efficacy == "generated effect"
 
 
-# Function Name: test_summary_is_not_written_over_changed_catalog_documents
-# Description:
-# - Changes the authoritative product documents during the LLM wait and rejects stale guidance caching.
-# Parameters:
-# - catalog_engine (Engine): File-backed synthetic catalog.
-# - changed_field (str | None): Product/source column replaced, or None to delete the row during generation.
-# Returns:
-# - None; current request guidance remains available, but deleted/refreshed records receive no stale cache fields.
+# 함수이름: test_summary_is_not_written_over_changed_catalog_documents
+# 함수역할:
+# - AI 대기 중 원본 제품이 변경·삭제되면 현재 안내는 반환하되 오래된 요약은 저장하지 않는지 검증한다.
+# 매개변수:
+# - catalog_engine: Engine; 파일 기반 격리 합성 약품 목록.
+# - changed_field: str | None; 교체할 제품·원문 열 이름이며 None이면 행을 삭제한다.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("changed_field", [
     "item_seq", "item_name", "entp_name", "efficacy_doc", "use_method_doc", "warning_doc", "raw_json", None,
 ])
@@ -258,14 +261,14 @@ def test_summary_is_not_written_over_changed_catalog_documents(
             assert stored is not None and stored.summary_efficacy is None
 
 
-# Function Name: test_summary_cache_failure_keeps_guidance_and_sanitizes_logs
-# Description:
-# - Rejects cache UPDATE and verifies the transaction is rolled back without exposing payloads or failing guidance.
-# Parameters:
-# - catalog_engine (Engine): File-backed synthetic catalog.
-# - caplog (pytest.LogCaptureFixture): Captured catalog warning messages.
-# Returns:
-# - None; generated guidance survives and failed cache fields remain empty.
+# 함수이름: test_summary_cache_failure_keeps_guidance_and_sanitizes_logs
+# 함수역할:
+# - 요약 UPDATE 실패를 롤백하고 안내 응답은 유지하며 로그에 원문이나 매개변수가 노출되지 않는지 검증한다.
+# 매개변수:
+# - catalog_engine: Engine; 파일 기반 격리 합성 약품 목록.
+# - caplog: LogCaptureFixture; 발생한 로그를 수집한다.
+# 반환값:
+# - None.
 def test_summary_cache_failure_keeps_guidance_and_sanitizes_logs(
     catalog_engine: Engine,
     caplog: pytest.LogCaptureFixture,
@@ -295,13 +298,13 @@ def test_summary_cache_failure_keeps_guidance_and_sanitizes_logs(
         event.remove(catalog_engine, "before_cursor_execute", reject_summary_update)
 
 
-# Function Name: test_summary_write_runs_off_loop_and_keeps_request_session_unused
-# Description:
-# - Blocks a real cache UPDATE in a worker and confirms the event loop and request session remain independent.
-# Parameters:
-# - catalog_engine (Engine): File-backed synthetic catalog.
-# Returns:
-# - None; verifies worker thread ownership, response completion and no request transaction.
+# 함수이름: test_summary_write_runs_off_loop_and_keeps_request_session_unused
+# 함수역할:
+# - 요약 저장을 작업 스레드에서 막아도 이벤트 루프가 진행되고 요청 세션은 사용되지 않는지 검증한다.
+# 매개변수:
+# - catalog_engine: Engine; 파일 기반 격리 합성 약품 목록.
+# 반환값:
+# - None.
 def test_summary_write_runs_off_loop_and_keeps_request_session_unused(catalog_engine: Engine) -> None:
     entered, release = threading.Event(), threading.Event()
     worker_threads: list[int] = []
@@ -324,10 +327,13 @@ def test_summary_write_runs_off_loop_and_keeps_request_session_unused(catalog_en
         with Session(catalog_engine) as request_db:
             catalog = LocalMedicationCatalog(request_db, generator)
 
-            # Function Name: scenario
-            # Description: Keeps running on-loop while persistence is blocked outside it.
-            # Parameters: None.
-            # Returns: None; the worker must finish only after this coroutine releases it.
+            # 함수이름: scenario
+            # 함수역할:
+            # - 저장 작업자가 대기하는 동안 이벤트 루프를 진행시킨 뒤 작업자를 해제하여 응답 완료를 확인한다.
+            # 매개변수:
+            # - 없음.
+            # 반환값:
+            # - None.
             async def scenario() -> None:
                 lookup = asyncio.create_task(catalog.fetch_drug_info(PRODUCT_NAME))
                 assert await asyncio.wait_for(asyncio.to_thread(entered.wait, 2), 3)
@@ -414,13 +420,13 @@ def test_cancelled_lookup_closes_its_worker_without_reusing_request_session(
         event.remove(catalog_engine, "checkin", observe_worker_checkin)
 
 
-# Function Name: test_connection_local_memory_catalog_never_commits_request_session
-# Description:
-# - Retains the local in-memory read fallback while skipping unsafe optional summary persistence.
-# Parameters:
-# - monkeypatch (pytest.MonkeyPatch): Rejects borrowed-session commits after synthetic data insertion.
-# Returns:
-# - None; guidance is returned without committing the caller's still-open read transaction.
+# 함수이름: test_connection_local_memory_catalog_never_commits_request_session
+# 함수역할:
+# - 연결 전용 메모리 DB에서는 요청 세션을 커밋하지 않고 로컬 조회 안내만 반환하는지 검증한다.
+# 매개변수:
+# - monkeypatch: pytest.MonkeyPatch; 테스트 뒤 의존성 교체를 복원한다.
+# 반환값:
+# - None.
 def test_connection_local_memory_catalog_never_commits_request_session(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -509,16 +515,15 @@ def test_summary_write_bounds_lock_wait_on_postgresql() -> None:
     )
 
 
-# Function Name: test_failed_summary_is_returned_but_not_persisted
-# Description:
-# - Returns the generated guidance of this request but stores nothing when a summary field is
-#   blank or holds the failure placeholder, so the next lookup asks for a summary again.
-# Parameters:
-# - catalog_engine (Engine): File-backed synthetic catalog.
-# - failed_field (str): MedicationDetail field the generator could not fill.
-# - failed_text (str): Text returned for that field.
-# Returns:
-# - None; the stored summary columns stay empty and the generator is called for each lookup.
+# 함수이름: test_failed_summary_is_returned_but_not_persisted
+# 함수역할:
+# - 요약 필드가 비거나 실패 문구이면 현재 응답만 반환하고 저장하지 않아 다음 조회에서 다시 생성하는지 검증한다.
+# 매개변수:
+# - catalog_engine: Engine; 파일 기반 격리 합성 약품 목록.
+# - failed_field: str; 생성에 실패한 MedicationDetail 필드.
+# - failed_text: str; 해당 필드의 빈 값 또는 실패 안내.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("failed_field", ["efficacy", "usage_method", "warning"])
 @pytest.mark.parametrize("failed_text", [SUMMARY_FAILURE_PLACEHOLDER, "", "  "])
 def test_failed_summary_is_returned_but_not_persisted(
@@ -552,15 +557,14 @@ def test_failed_summary_is_returned_but_not_persisted(
         ) == (None, None, None, None)
 
 
-# Function Name: test_stored_failure_placeholder_is_regenerated
-# Description:
-# - Treats a row that already stores the failure placeholder as having no summary: the lookup
-#   generates guidance again and replaces the stored fields.
-# Parameters:
-# - catalog_engine (Engine): File-backed synthetic catalog.
-# - stored_field (str): Summary column holding the placeholder from an earlier failed answer.
-# Returns:
-# - None; fails if the placeholder is served as a stored summary or stays in the row.
+# 함수이름: test_stored_failure_placeholder_is_regenerated
+# 함수역할:
+# - 과거 실패 문구가 저장된 요약을 재생성하여 응답과 저장 필드를 교체하는지 검증한다.
+# 매개변수:
+# - catalog_engine: Engine; 파일 기반 격리 합성 약품 목록.
+# - stored_field: str; 과거 실패 안내가 저장된 요약 열.
+# 반환값:
+# - None.
 @pytest.mark.parametrize("stored_field", [
     "summary_efficacy", "summary_use_method", "summary_warning_message",
 ])
@@ -634,13 +638,12 @@ def _stored_summary(engine: Engine) -> tuple[str | None, str | None, str | None,
         )
 
 
-# Function Name: test_partial_summary_is_stored_and_reused_inside_the_retry_period
-# Description:
-# - A summary in which the AI left one field out is stored and served from the catalog on the
-#   next lookup, so repeated lookups inside the retry period cost one AI request.
-# Parameters:
-# - catalog_engine (Engine): File-backed synthetic catalog.
-# Returns:
+# 함수이름: test_partial_summary_is_stored_and_reused_inside_the_retry_period
+# 함수역할:
+# - 일부 필드만 생성된 요약을 저장하고 재시도 기간에는 추가 AI 호출 없이 재사용하는지 검증한다.
+# 매개변수:
+# - catalog_engine: Engine; 파일 기반 격리 합성 약품 목록.
+# 반환값:
 # - None.
 def test_partial_summary_is_stored_and_reused_inside_the_retry_period(
     catalog_engine: Engine,
@@ -666,14 +669,13 @@ def test_partial_summary_is_stored_and_reused_inside_the_retry_period(
     assert second.details[0].warning == "정보 없음"
 
 
-# Function Name: test_partial_summary_is_completed_after_the_retry_period
-# Description:
-# - Once the retry period has passed, a lookup asks for the summary again, stores the completed
-#   fields and serves them; the lookup after that uses the stored summary.
-# Parameters:
-# - catalog_engine (Engine): File-backed synthetic catalog.
-# Returns:
-# - None; fails if a partial summary stays until the source document changes.
+# 함수이름: test_partial_summary_is_completed_after_the_retry_period
+# 함수역할:
+# - 재시도 기간 후 빠진 요약 필드를 채워 저장하고 이후 조회에서는 완성된 요약을 재사용하는지 검증한다.
+# 매개변수:
+# - catalog_engine: Engine; 파일 기반 격리 합성 약품 목록.
+# 반환값:
+# - None.
 def test_partial_summary_is_completed_after_the_retry_period(catalog_engine: Engine) -> None:
     _store_partial_summary(catalog_engine, PARTIAL_SUMMARY_RETRY_AFTER + timedelta(minutes=1))
     generator = SimpleNamespace(summarize_advanced_item=AsyncMock(side_effect=_summarize))
@@ -690,12 +692,12 @@ def test_partial_summary_is_completed_after_the_retry_period(catalog_engine: Eng
     )
 
 
-# Function Name: test_fresh_partial_summary_is_not_requested_again
-# Description:
-# - Inside the retry period a stored partial summary is served without an AI request.
-# Parameters:
-# - catalog_engine (Engine): File-backed synthetic catalog.
-# Returns:
+# 함수이름: test_fresh_partial_summary_is_not_requested_again
+# 함수역할:
+# - 재시도 기간 안의 부분 요약은 AI 호출 없이 저장값으로 제공하는지 검증한다.
+# 매개변수:
+# - catalog_engine: Engine; 파일 기반 격리 합성 약품 목록.
+# 반환값:
 # - None.
 def test_fresh_partial_summary_is_not_requested_again(catalog_engine: Engine) -> None:
     _store_partial_summary(catalog_engine, PARTIAL_SUMMARY_RETRY_AFTER - timedelta(hours=1))
@@ -707,14 +709,13 @@ def test_fresh_partial_summary_is_not_requested_again(catalog_engine: Engine) ->
     assert (details.details[0].efficacy, details.details[0].warning) == ("stored effect", "정보 없음")
 
 
-# Function Name: test_summary_missing_only_what_the_source_lacks_is_never_requested_again
-# Description:
-# - A field without a source document has nothing to summarize: the stored summary is complete
-#   and is served without an AI request however old it is.
-# Parameters:
-# - catalog_engine (Engine): File-backed synthetic catalog.
-# - warning_doc (str | None): Empty forms of the source warning document.
-# Returns:
+# 함수이름: test_summary_missing_only_what_the_source_lacks_is_never_requested_again
+# 함수역할:
+# - 원문 자체가 없는 필드만 비어 있으면 완성된 요약으로 취급하여 오래되어도 재요청하지 않는지 검증한다.
+# 매개변수:
+# - catalog_engine: Engine; 파일 기반 격리 합성 약품 목록.
+# - warning_doc: str | None; None·빈 문자열·공백 등 없는 경고 원문의 표현.
+# 반환값:
 # - None.
 @pytest.mark.parametrize("warning_doc", [None, "", "정보 없음"])
 def test_summary_missing_only_what_the_source_lacks_is_never_requested_again(
@@ -730,13 +731,12 @@ def test_summary_missing_only_what_the_source_lacks_is_never_requested_again(
     assert "저장된 AI 요약" in details.details[0].source
 
 
-# Function Name: test_failed_retry_keeps_the_stored_summary_and_restarts_the_period
-# Description:
-# - When the AI cannot be reached for the retry, the stored partial summary is returned instead
-#   of an error and its write time is renewed, so the next lookup does not ask the AI again.
-# Parameters:
-# - catalog_engine (Engine): File-backed synthetic catalog.
-# Returns:
+# 함수이름: test_failed_retry_keeps_the_stored_summary_and_restarts_the_period
+# 함수역할:
+# - AI 재시도 실패 시 기존 부분 요약을 유지하고 시도 시각을 갱신하여 즉시 재요청하지 않는지 검증한다.
+# 매개변수:
+# - catalog_engine: Engine; 파일 기반 격리 합성 약품 목록.
+# 반환값:
 # - None.
 def test_failed_retry_keeps_the_stored_summary_and_restarts_the_period(
     catalog_engine: Engine,
@@ -758,13 +758,12 @@ def test_failed_retry_keeps_the_stored_summary_and_restarts_the_period(
     assert datetime.now(UTC).replace(tzinfo=None) - written_at < timedelta(minutes=5)
 
 
-# Function Name: test_retry_keeps_stored_text_of_a_field_the_new_answer_leaves_out
-# Description:
-# - A retry that fills the missing field but leaves another one out does not lose text: the
-#   stored text of that field is kept in the response and in the catalog.
-# Parameters:
-# - catalog_engine (Engine): File-backed synthetic catalog.
-# Returns:
+# 함수이름: test_retry_keeps_stored_text_of_a_field_the_new_answer_leaves_out
+# 함수역할:
+# - 재시도가 누락 필드를 채우면서 다른 필드를 빠뜨려도 그 필드의 기존 저장 내용을 응답과 DB에 유지하는지 검증한다.
+# 매개변수:
+# - catalog_engine: Engine; 파일 기반 격리 합성 약품 목록.
+# 반환값:
 # - None.
 def test_retry_keeps_stored_text_of_a_field_the_new_answer_leaves_out(
     catalog_engine: Engine,

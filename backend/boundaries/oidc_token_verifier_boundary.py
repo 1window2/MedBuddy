@@ -15,6 +15,7 @@ from boundaries.firebase_admin_boundary import get_firebase_admin_app
 # - Signals an invalid, expired or otherwise untrusted identity token.
 # Responsibilities:
 # - Classify rejected credentials separately from temporary verification outages.
+# Attributes: Inherited exception arguments only; no additional instance state.
 class TokenVerificationError(Exception):
     """Raised when an external identity token cannot be trusted."""
 
@@ -30,6 +31,10 @@ class TokenVerificationError(Exception):
 class DeletedIdentityTokenError(TokenVerificationError):
     """Raised when the token is valid but its Firebase account has been deleted."""
 
+    # Function Name: __init__
+    # Description: Retains verified token claims so account cleanup can identify a deleted Firebase identity without treating it as an active account.
+    # Parameters: claims (dict[str, object]) were verified without the revocation lookup.
+    # Returns: None; initializes the exception message and stores the supplied claims.
     def __init__(self, claims: dict[str, object]) -> None:
         super().__init__("The Firebase account of this token has been deleted.")
         self.claims = claims
@@ -40,6 +45,7 @@ class DeletedIdentityTokenError(TokenVerificationError):
 # - Signals that the identity provider could not complete verification.
 # Responsibilities:
 # - Preserve retryable provider failures without exposing SDK exceptions to controls.
+# Attributes: Inherited exception arguments only; no additional instance state.
 class TokenVerificationUnavailableError(Exception):
     """Raised when the external identity verifier cannot complete its work."""
 

@@ -35,10 +35,9 @@ logger = logging.getLogger(__name__)
 
 
 # Class Name: AccountDeletionPendingError
-# Role:
-# - Raised when a deleted identity tries to recreate its data scope.
-# Responsibilities:
-# - Prevent a durable deletion marker from being mistaken for an account that can be recreated.
+# Role: Reject access that would recreate a deletion-marked account.
+# Responsibilities: Distinguish pending deletion from a normal missing account.
+# Attributes: Inherited args contains the failure message.
 class AccountDeletionPendingError(RuntimeError):
     """Raised when a deleted identity tries to recreate its data scope."""
 
@@ -105,13 +104,10 @@ class ManageAccount:
                 self.db.flush()
         return normalized_user_hash
 
-    # 함수이름: exportAccountData
-    # 함수역할:
-    # - 사용자가 소유하거나 보호자로 참여한 데이터를 JSON 응답용으로 묶는다.
-    # 매개변수:
-    # - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
-    # 반환값:
-    # - 사용자 범위에 속한 복약·연동·채팅·알림·설정의 JSON 호환 내보내기 응답.
+    # Function Name: exportAccountData
+    # Description: Ensure the account and collect its medication, care, link, alarm, chat and preference data; caregiver preferences are exported only for their owner and deleted chat views stay excluded.
+    # Parameters: user_hash (str) identifies the account being exported.
+    # Returns: dict[str, object] containing success and account-scoped data; account-state and database failures propagate.
     def exportAccountData(self, user_hash: str) -> dict[str, object]:
         normalized_user_hash = self.ensureAccount(user_hash)
         saved_medications = self.medication_repository.list_by_patient(
