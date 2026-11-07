@@ -104,6 +104,7 @@ from controls.set_notification_control import SetNotification
 from controls.sync_dose_control import SyncDose
 from entities.authenticated_principal_entity import AuthenticatedPrincipal
 from repositories.async_pharmacy_catalog import AsyncPharmacyCatalog
+from repositories.medication_search_cache_repository import AsyncMedicationSearchCache
 from repositories.korean_holiday_cache import SessionScopedKoreanHolidayCache
 
 logger = logging.getLogger(__name__)
@@ -970,6 +971,19 @@ def get_check_medication_detail(
         pill_image_api=_pill_image_api,
         summary_generator=_get_medication_summary_generator(),
     )
+
+
+# 함수이름: get_medication_search_cache
+# 함수역할:
+# - 약 검색 결과의 공개 품목 정보를 요청 세션과 분리된 작업 세션으로 저장하는 캐시를 만든다.
+# 매개변수:
+# - db (Session): 현재 요청의 SQLAlchemy 세션. 연결 정보만 빌려 쓴다.
+# 반환값:
+# - 독립적인 작업 세션을 쓰는 AsyncMedicationSearchCache.
+def get_medication_search_cache(
+    db: Session = Depends(get_db),
+) -> AsyncMedicationSearchCache:
+    return AsyncMedicationSearchCache(sessionmaker(bind=db.get_bind()))
 
 
 # 함수이름: get_check_nearby_pharmacy

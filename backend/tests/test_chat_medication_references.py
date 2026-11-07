@@ -3,16 +3,31 @@ import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
 
+from datetime import timedelta
+
 from controls.manage_linked_chat_control import ManageLinkedChat
 from entities.chat_message_entity import _ChatMessage
 from entities.medication_completion_entity import _MedicationCompletion
+from entities.medication_detail_entity import MedicationDetail, MedicationSearchCacheRecord
 from entities.patient_caregiver_link_entity import _PatientCaregiverLink
 from entities.saved_medication_entity import _SavedMedication
+from entities.user_account_entity import utc_now
+from repositories.medication_search_cache_repository import MedicationSearchCacheRepository
 from schemas.chat import ChatMessageCreate
 from support.db import seed_account, seed_medication
 
 
 REFERENCE = {"item_seq": "202600001", "item_name": "검색정 10mg", "manufacturer": "제조사", "image_url": ""}
+OTHER = {"item_seq": "202600002", "item_name": "다른정 5mg", "manufacturer": "다른 제조사", "image_url": ""}
+
+
+def remember(db, *references):
+    MedicationSearchCacheRepository(db).remember([
+        MedicationDetail(item_seq=item["item_seq"], item_name=item["item_name"],
+                         manufacturer=item["manufacturer"], image_url=item["image_url"],
+                         efficacy="", use_method="", warning_message="")
+        for item in references
+    ])
 
 
 @pytest.fixture
@@ -21,6 +36,7 @@ def chat(fk_db):
     link = _PatientCaregiverLink(patient_hash="patient-a", caregiver_hash="caregiver-a", linked=True)
     fk_db.add(link)
     fk_db.commit()
+    remember(fk_db, REFERENCE, OTHER)
     return ManageLinkedChat(fk_db), link
 
 
@@ -64,8 +80,42 @@ def test_reference_keeps_saved_medication_authorization(chat):
 def test_reference_retry_cannot_change_snapshot(chat):
     send(chat)
     with pytest.raises(HTTPException) as failure:
-        send(chat, medication_references=[{**REFERENCE, "item_name": "다른 약"}])
+        send(chat, medication_references=[OTHER])
     assert failure.value.status_code == 409
+
+
+def test_reference_card_is_rebuilt_from_the_server_search_result(chat):
+    forged = {**REFERENCE, "item_name": "식약처 안내: 하루 6정까지", "manufacturer": "MedBuddy 공식 확인",
+              "image_url": "https://nedrug.mfds.go.kr/pbp/cmn/itemImageDownload/other"}
+    result = send(chat, medication_references=[forged, forged])
+    assert result.message.context_payload["medication_references"] == [REFERENCE]
+
+
+@pytest.mark.parametrize("age", [None, timedelta(hours=25)])
+def test_reference_needs_a_search_from_the_last_day(chat, age):
+    db = chat[0].db
+    if age is None:
+        reference = {**REFERENCE, "item_seq": "NOT_SEARCHED"}
+    else:
+        reference = REFERENCE
+        db.get(MedicationSearchCacheRecord, REFERENCE["item_seq"]).fetched_at = utc_now() - age
+        db.commit()
+    with pytest.raises(HTTPException) as failure:
+        send(chat, medication_references=[reference])
+    assert failure.value.status_code == 400
+    assert db.query(_ChatMessage).count() == 0
+
+
+def test_search_cache_keeps_public_fields_only_and_prunes_old_rows(fk_db):
+    remember(fk_db, REFERENCE)
+    fk_db.get(MedicationSearchCacheRecord, REFERENCE["item_seq"]).fetched_at = utc_now() - timedelta(days=2)
+    fk_db.commit()
+    remember(fk_db, OTHER, {**OTHER, "item_seq": ""}, {**OTHER, "item_seq": "x" * 65})
+    rows = fk_db.query(MedicationSearchCacheRecord).all()
+    assert [row.item_seq for row in rows] == [OTHER["item_seq"]]
+    assert set(MedicationSearchCacheRecord.__table__.columns.keys()) == {
+        "item_seq", "item_name", "manufacturer", "image_url", "fetched_at",
+    }
 
 
 @pytest.mark.parametrize("extra", [
@@ -94,7 +144,8 @@ def test_reference_rejects_dose_context_and_combined_limit(chat, changes):
 
 
 def test_reference_image_is_sanitized_and_delete_redacts_snapshot(chat):
-    result = send(chat, medication_references=[{**REFERENCE, "image_url": "https://tracking.example/x"}])
+    remember(chat[0].db, {**REFERENCE, "image_url": "https://tracking.example/x"})
+    result = send(chat)
     assert result.message.context_payload["medication_references"][0]["image_url"] == ""
     hidden = result.message.model_copy(update={"hidden_for_me": True})
     assert hidden.to_response_dict()["context"] is None

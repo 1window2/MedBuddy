@@ -23,6 +23,7 @@ import '../services/app_temp_file.dart';
 import '../theme/medbuddy_theme.dart';
 import 'medication_photo_source_sheet.dart';
 import 'medication_search_ui_boundary.dart';
+import '../widgets/keep_words_text.dart';
 import '../widgets/medication_thumbnail.dart';
 
 // 클래스명: ManualMedicationEntryUI
@@ -508,7 +509,6 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
             keyPrefix: 'manual-medication',
             isAsNeeded: _asNeeded,
             isEnglish: _isEnglish,
-            showDescription: false,
             onChanged: _isSaving
                 ? null
                 : (value) => setState(() {
@@ -840,6 +840,8 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
             controller: _intervalController,
             enabled: !_isSaving,
             keyboardType: TextInputType.number,
+            // 간격을 바꾸면 아래 복용일 안내도 바로 바꾼다.
+            onChanged: (_) => setState(() {}),
             decoration: InputDecoration(
               labelText: _isEnglish ? 'Interval (days)' : '복용 간격 (일)',
               hintText: '1~$maxDoseIntervalDays',
@@ -856,7 +858,43 @@ class _ManualMedicationEntryUIState extends State<_ManualMedicationForm> {
             },
           ),
         ],
+        if (_doseCycleNotice() case final notice?) ...[
+          const SizedBox(height: 8),
+          KeepWordsText(
+            notice,
+            key: const Key('manual-medication-dose-days-notice'),
+            style: const TextStyle(
+              color: MedBuddyColors.textMuted,
+              fontSize: 13,
+              height: 1.4,
+            ),
+          ),
+        ],
       ],
+    );
+  }
+
+  // 함수이름: _doseCycleNotice
+  // 함수역할: 매일이 아닌 주기(사용자 지정 간격 포함)를 고르면 복용 기간 안에서 어느 날 일정과 알림이
+  //   만들어지는지 저장 전에 알려 줄 문구를 만든다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 안내 문구. 매일 복용이거나 간격이 아직 올바르지 않으면 null.
+  String? _doseCycleNotice() {
+    final String doseDays;
+    if (_customCycle) {
+      final days = int.tryParse(_intervalController.text.trim());
+      if (days == null || days < 1 || days > maxDoseIntervalDays) return null;
+      doseDays = '$days일마다';
+    } else {
+      doseDays = _doseDays;
+    }
+    if (doseDays.isEmpty) return null;
+    return describeDoseCycle(
+      readDoseCycle(doseDays),
+      isEnglish: _isEnglish,
+      startDate: _startDate,
+      courseDays: inclusiveMedicationCourseDays(_startDate, _endDate),
     );
   }
 
@@ -1347,14 +1385,6 @@ class _ManualMedicationText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get doseDaysTitle => isEnglish ? 'Dose days' : '복용 주기';
-  // 함수이름: doseDaysDescription
-  // 함수역할: 현재 언어와 입력값에 맞춰 "매일 복용하는 약이 아니면 복용 주기를 골라주세요." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get doseDaysDescription => isEnglish
-      ? 'Choose the dose days if the medication is not taken every day.'
-      : '매일 복용하는 약이 아니면 복용 주기를 골라주세요.';
   // 함수이름: doseDaysValue
   // 함수역할: 복용 주기 선택지를 현재 언어의 문구로 바꾼다.
   // 매개변수:
@@ -1373,14 +1403,6 @@ class _ManualMedicationText {
   // - 없음.
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get slotTitle => isEnglish ? 'When to take' : '복용 시간대';
-  // 함수이름: slotDescription
-  // 함수역할: 현재 언어와 입력값에 맞춰 "복약 안내에 적힌 시간대를 모두 선택해주세요." 문구를 제공한다.
-  // 매개변수:
-  // - 없음.
-  // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
-  String get slotDescription => isEnglish
-      ? 'Choose every time slot shown on the medication instructions.'
-      : '복약 안내에 적힌 시간대를 모두 선택해주세요.';
   // 함수이름: slotRequired
   // 함수역할: 현재 언어와 입력값에 맞춰 "복용 시간대를 한 개 이상 선택해주세요." 문구를 제공한다.
   // 매개변수:

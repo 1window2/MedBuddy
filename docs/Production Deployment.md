@@ -427,6 +427,17 @@ and plan for this one-time quota reset. Do not point old and new workers at
 different counter stores while both serve traffic. Monitor counter memory/OOM
 errors and increase capacity rather than enabling eviction or flushing counters.
 
+### Medication search cache migration
+
+Revision `a9d3c5e71f24`, after `f7a2c9e4b610`, adds `medication_search_cache`: the
+public product fields (item number, name, manufacturer, allowed image address) that the
+medication search returned, with the time it last returned them. It holds no account,
+query or device data. A searched medication attached to a chat message is rebuilt from
+this table, and an item not returned by a search in the last 24 hours is refused, so
+the sending app cannot choose the name or picture shown to the other person. Rows older
+than a day are removed on each search. Apply it with the slot-check migration before
+starting the updated backend; a downgrade drops only this cache.
+
 ### Slot-check action capability migration
 
 Revision `f7a2c9e4b610`, after `e6b4d2a9f031`, adds the non-null
@@ -641,8 +652,9 @@ docker compose --env-file deploy/.env -f compose.self-hosted.yml \
   exec -T backend alembic current
 ```
 
-The reported head must be `f7a2c9e4b610` for this source revision (after
-`e6b4d2a9f031`, the medication receipt migration, `c8d3e7a92104`, the medication
+The reported head must be `a9d3c5e71f24` for this source revision (after
+`f7a2c9e4b610`, the slot-check action capability, `e6b4d2a9f031`, the medication
+receipt migration, `c8d3e7a92104`, the medication
 care migration, and `ab29d71c4e60`, the settings
 revision migration). The
 v0.2.0 tail adds the shared pharmacy catalog (`8f2c6d4a1b90`), pharmacy schedule provenance and holiday

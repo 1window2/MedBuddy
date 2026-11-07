@@ -331,6 +331,16 @@ a dose through the exported launcher activity.
   email carries over to whoever proves it later. The fix (an identity epoch per
   account) changes sign-up behaviour and waits for the owner's decision.
 
+## 2026-11-07: searched medications in chat are rebuilt on the server
+
+The owner chose server verification of searched-medication cards. The server keeps
+only public product fields per item number for 24 hours, as the shared-pharmacy cache
+does, rather than a per-account record of what each user searched: that would be new
+health-related personal data, and per-item public data is enough to stop a sender from
+choosing the name, manufacturer or picture. A card whose item no search returned in
+the last day is refused; results from the live public API work because the search
+stores whatever it returned, not only catalogue items.
+
 ## Earlier decisions
 
 - 2026-10-21: an as-needed dose can be undone from the save notice (the

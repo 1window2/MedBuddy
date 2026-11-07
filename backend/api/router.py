@@ -26,6 +26,7 @@ from api.dependencies import (
     AUTHENTICATED_APP_DEPENDENCIES,
     get_authorization_control,
     get_check_medication_detail,
+    get_medication_search_cache,
     get_check_prescription_change,
     get_check_schedule,
     get_check_saved_medication,
@@ -62,6 +63,7 @@ from boundaries.pill_identification_boundary import (
     PillVisionResponseError,
     PillVisionUnavailableError,
 )
+from repositories.medication_search_cache_repository import AsyncMedicationSearchCache
 from controls.check_medication_detail_control import CheckMedicationDetail
 from controls.check_prescription_change_control import CheckPrescriptionChange
 from controls.authorization_control import AuthorizationControl
@@ -462,6 +464,7 @@ def unregister_push_token(
 # Parameters:
 # - request (MedicationRequest): MedicationRequest containing extracted text.
 # - check_medication_detail (CheckMedicationDetail): CheckMedicationDetail injected by FastAPI.
+# - search_cache (AsyncMedicationSearchCache): Remembers the returned public products for chat attachments.
 # Returns:
 # - MedicationResponse DTO.
 @router.post("/identify", response_model=MedicationResponse)
@@ -470,6 +473,7 @@ async def identify_medication(
     check_medication_detail: CheckMedicationDetail = Depends(
         get_check_medication_detail
     ),
+    search_cache: AsyncMedicationSearchCache = Depends(get_medication_search_cache),
 ) -> MedicationResponse:
     if not request.extracted_text:
         raise HTTPException(status_code=400, detail="추출된 텍스트가 없습니다.")
@@ -480,7 +484,7 @@ async def identify_medication(
         client_value_errors=True,
     ):
         try:
-            return await check_medication_detail.requestMedicationDetail(
+            response = await check_medication_detail.requestMedicationDetail(
                 request.extracted_text,
                 **({'original_text': request.original_text} if request.original_text else {}),
                 search_mode=request.search_mode,
@@ -489,6 +493,12 @@ async def identify_medication(
             raise HTTPException(
                 status_code=504, detail="약품 정보 조회 시간이 초과되었습니다. 다시 시도해 주세요.",
             ) from exc
+    # 채팅에 검색약을 첨부하면 이 공개 정보로 카드를 다시 만든다. 저장 실패가 검색 결과를 숨기지 않는다.
+    try:
+        await search_cache.remember([*response.data, *response.candidates])
+    except Exception:
+        logger.exception("Medication search cache could not be updated.")
+    return response
 
 
 # Function Name: check_prescription_change

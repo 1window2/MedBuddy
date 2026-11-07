@@ -156,3 +156,27 @@ class _DrugApprovalInfo(Base):
     raw_json = Column(Text, nullable=False)
     catalog_sync_token = Column(String(36), index=True, nullable=True)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+# Class Name: MedicationSearchCacheRecord
+# Role:
+# - Public product details that the medication search returned, kept briefly so a searched
+#   medication attached to a chat message is shown from server data, not from the sender's app.
+# Responsibilities:
+# - Keep only public catalogue fields keyed by item number; never the searching account.
+# Attributes:
+# - item_seq (String(64)): Public item number.
+# - item_name (String(300)): Product name as returned by the search.
+# - manufacturer (String(200)): Manufacturer as returned by the search.
+# - image_url (String(2048)): Allowed public image address, or an empty string.
+# - fetched_at (DateTime): When a search last returned the product (naive UTC).
+class MedicationSearchCacheRecord(Base):
+    """검색한 계정 정보 없이 공개 품목 정보만 24시간 재사용한다."""
+
+    __tablename__ = "medication_search_cache"
+
+    item_seq = Column(String(length=64), primary_key=True)
+    item_name = Column(String(length=300), nullable=False)
+    manufacturer = Column(String(length=200), nullable=False, default="")
+    image_url = Column(String(length=2048), nullable=False, default="")
+    fetched_at = Column(DateTime, nullable=False, index=True)

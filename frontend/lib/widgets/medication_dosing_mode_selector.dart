@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/medbuddy_theme.dart';
+import 'keep_words_text.dart';
 
 // 등록 경로가 달라도 같은 복용 유형과 알림 제외 안내를 제공한다.
 class MedicationDosingModeSelector extends StatelessWidget {
@@ -8,7 +9,6 @@ class MedicationDosingModeSelector extends StatelessWidget {
   final bool isEnglish;
   final ValueChanged<bool>? onChanged;
   final String keyPrefix;
-  final bool showDescription;
 
   const MedicationDosingModeSelector({
     super.key,
@@ -16,7 +16,6 @@ class MedicationDosingModeSelector extends StatelessWidget {
     required this.isEnglish,
     required this.onChanged,
     required this.keyPrefix,
-    this.showDescription = true,
   });
 
   @override
@@ -46,9 +45,9 @@ class MedicationDosingModeSelector extends StatelessWidget {
           ),
         ],
       ),
-      if (isAsNeeded && showDescription) ...[
+      if (isAsNeeded) ...[
         const SizedBox(height: 8),
-        Text(
+        KeepWordsText(
           isEnglish
               ? 'Excluded from scheduled dose and missed-dose reminders. Follow your prescription when taking it.'
               : '정해진 시간의 복용 알림과 미복약 알림에서 제외됩니다. 복용할 때는 처방·복약지도를 따라 주세요.',

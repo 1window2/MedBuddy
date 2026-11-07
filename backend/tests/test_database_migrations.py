@@ -121,7 +121,7 @@ def test_merge_preserves_both_independently_applied_heads(tmp_path: Path) -> Non
     from alembic.script import ScriptDirectory
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["f7a2c9e4b610"]
+    assert scripts.get_heads() == ["a9d3c5e71f24"]
     assert set(scripts.get_revision("f2c8a6d4e901").down_revision) == {
         "c5e1a7f3b902", "d19e7c4b2a60",
     }

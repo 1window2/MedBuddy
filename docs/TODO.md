@@ -204,16 +204,18 @@ committed hashes.
 - [x] Fixed: the chat history action showed "Could not load the conversation" as the
       reason it was unavailable; dead texts and an unreachable over-limit check were
       removed and the attachment limit is one constant (server: 10).
-- [ ] Owner decision: a searched-medication reference card in chat (name, manufacturer,
-      picture) is stored as the sending app wrote it, shown with "검색약 · 미등록". The
-      server cannot verify it: results also come from the live public API, which is not
-      in the catalogue, and the catalogue has no pictures. A real check needs the
-      server to remember the results it returned to that account (as for shared
-      pharmacies) or to accept catalogue items only.
-- [ ] Owner decision (visual): manual entry no longer shows how many dose days a
-      non-daily or custom-interval course gives, nor the as-needed explanation under the
-      dosing choice; the schedule review screen still does. Restoring them would bring
-      back the agreed notice (its texts are still in the code).
+- [x] Owner decision (2026-11-07): a searched-medication reference card in chat was
+      stored as the sending app wrote it. The server now remembers the public product
+      fields its search returned (24 hours, by item number, no account data, like the
+      shared-pharmacy cache), rebuilds each card from them and refuses an item not
+      searched in that time; the app clears it and asks for a new search. Migration
+      `a9d3c5e71f24`.
+- [x] Owner decision (2026-11-07, preview approved): manual entry shows again how many
+      dose days a non-daily course gives, now also for a custom interval, and the
+      as-needed explanation; both wrap by word. The two section hints the collaborator
+      also removed stay removed.
+- [x] Owner decision (2026-11-07): the collaborator's additions belong to the 1.0.0
+      scope.
 - [ ] Left as it is: two devices with stale caches can each confirm the same slot from
       a slot-check request, and the server then posts a second "복용을 기록했습니다"
       message, as the chat Taken reply always has. The request notification stays

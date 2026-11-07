@@ -7,6 +7,7 @@ import 'package:medbuddy_frontend/controls/check_saved_medication_control.dart';
 import 'package:medbuddy_frontend/entities/manual_medication_entry_entity.dart';
 import 'package:medbuddy_frontend/entities/medication_dose_rhythm.dart';
 import 'package:medbuddy_frontend/entities/user_setting_entity.dart';
+import 'package:medbuddy_frontend/widgets/keep_words_text.dart';
 
 const failed = MedicationSaveResult(
   status: MedicationSaveStatus.failed,
@@ -180,7 +181,8 @@ void main() {
     await enter(tester, field('name'), '필요시 시험약');
     await tap(tester, field('dose-days-custom'));
     await tap(tester, field('as-needed'));
-    expect(find.textContaining('정해진 시간의 복용 알림과'), findsNothing);
+    // 필요시 복용은 정해진 알림에서 빠진다는 안내를 보여 주고, 숨겨진 시간대 안내는 없다.
+    expect(find.textContaining('정해진 시간의 복용 알림과'), findsOneWidget);
     expect(find.textContaining('복약 안내에 적힌 시간대를'), findsNothing);
     await tap(tester, field('save'));
     expect(submitted!.dosingMode, 'as_needed');
@@ -217,6 +219,23 @@ void main() {
       '둘째 약',
       '둘째 약',
     ]);
+  });
+
+  testWidgets('사용자 지정 간격과 필요시 복용도 저장 전 안내를 보여 준다', (tester) async {
+    await mount(tester);
+    final notice = find.byKey(const Key('manual-medication-dose-days-notice'));
+    await tap(tester, field('dose-days-custom'));
+    expect(notice, findsNothing);
+    await enter(tester, field('interval'), '3');
+    expect(notice, findsOneWidget);
+    expect(
+      tester.widget<KeepWordsText>(notice).data,
+      contains('3일마다'),
+    );
+    await enter(tester, field('interval'), '0');
+    expect(notice, findsNothing);
+    await tap(tester, field('as-needed'));
+    expect(find.textContaining('미복약 알림에서 제외'), findsOneWidget);
   });
 
   testWidgets('여러 약은 마지막에 한 번만 갱신하고 이미 추가된 약은 저장 개수에서 뺀다', (tester) async {

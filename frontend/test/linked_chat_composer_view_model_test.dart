@@ -10,6 +10,7 @@ import 'package:http/testing.dart';
 import 'package:medbuddy_frontend/controls/manage_linked_chat_control.dart';
 import 'package:medbuddy_frontend/entities/chat_message_draft_entity.dart';
 import 'package:medbuddy_frontend/entities/chat_message_entity.dart';
+import 'package:medbuddy_frontend/services/api_response_parser.dart';
 import 'package:medbuddy_frontend/viewmodels/linked_chat_composer_view_model.dart';
 
 // Function Name: main
@@ -42,6 +43,33 @@ void main() {
     ).readAsStringSync();
     expect(ui, isNot(contains('_control.sendMessage(')));
     expect(ui, isNot(contains('_pendingMedicationIdsSignature')));
+  });
+
+  // Function Name: expired searched medication test
+  // Description: Only the server's refusal of an attached searched medication asks for a new search.
+  // Parameters: None. Returns: Asynchronous assertions.
+  test('an expired searched medication is told apart from other failures', () async {
+    final fixture = _ComposerFixture();
+    addTearDown(fixture.dispose);
+    const reference = ChatMedicationReference(itemSeq: '1', itemName: '검색정');
+    final refusal = ApiRequestException(
+      '메시지를 보내지 못했습니다',
+      statusCode: 400,
+      detail: '검색한 약 정보가 만료되었습니다. 약을 다시 검색해 첨부해 주세요.',
+    );
+    fixture.control.failure = refusal;
+    await fixture.model.send(
+      ChatMessageDraft(body: 'Hello', medicationReferences: [reference]),
+    );
+    expect(fixture.model.medicationReferencesExpired, isTrue);
+    await fixture.model.send(ChatMessageDraft(body: 'Hello'));
+    expect(fixture.model.medicationReferencesExpired, isFalse);
+    fixture.control.failure = null;
+    await fixture.model.send(
+      ChatMessageDraft(body: 'Hello', medicationReferences: [reference]),
+    );
+    expect(fixture.model.sendFailed, isTrue);
+    expect(fixture.model.medicationReferencesExpired, isFalse);
   });
 
   // Function Name: immutable payload and primary-order test
@@ -361,6 +389,7 @@ class _SendControl extends ManageLinkedChat {
       >[];
   Completer<ChatMessage>? gate;
   bool fail = true;
+  Object? failure;
   bool disposed = false;
 
   // Function Name: _SendControl
@@ -409,6 +438,7 @@ class _SendControl extends ManageLinkedChat {
     ));
     final pending = gate;
     if (pending != null) return pending.future;
+    if (failure case final error?) throw error;
     if (fail) throw StateError('Temporary failure');
     return _message(body);
   }

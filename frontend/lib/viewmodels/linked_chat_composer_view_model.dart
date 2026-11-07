@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import '../controls/manage_linked_chat_control.dart';
+import '../services/api_response_parser.dart';
 import '../entities/chat_message_draft_entity.dart';
 import '../entities/chat_message_entity.dart';
 
@@ -25,6 +26,7 @@ class LinkedChatComposerViewModel extends ChangeNotifier {
   String? _pendingRequestId;
   bool _isSending = false;
   bool _sendFailed = false;
+  bool _referencesExpired = false;
   bool _disposed = false;
 
   // Function Name: LinkedChatComposerViewModel
@@ -47,6 +49,12 @@ class LinkedChatComposerViewModel extends ChangeNotifier {
   // Description: Exposes technical failure for localization by the presentation boundary.
   // Parameters: None. Returns: Whether the last accepted send failed.
   bool get sendFailed => _sendFailed;
+
+  // Function Name: medicationReferencesExpired
+  // Description: Tells that the last send failed because the server no longer holds a recent search
+  //   result for an attached searched medication, so the user must search for it again.
+  // Parameters: None. Returns: Whether the last failure was that refusal.
+  bool get medicationReferencesExpired => _referencesExpired;
 
   // Function Name: pendingRequestId
   // Description: Exposes the last attempted identity for a presentation-owned explicit share retry.
@@ -81,6 +89,7 @@ class LinkedChatComposerViewModel extends ChangeNotifier {
     if (_disposed || _isSending || draft.body.isEmpty) return null;
     _isSending = true;
     _sendFailed = false;
+    _referencesExpired = false;
     notifyListeners();
     try {
       final pending = _pendingDraft;
@@ -108,8 +117,16 @@ class LinkedChatComposerViewModel extends ChangeNotifier {
       if (_disposed) return null;
       resetRetry();
       return message;
-    } catch (_) {
-      if (!_disposed) _sendFailed = true;
+    } catch (error) {
+      if (!_disposed) {
+        _sendFailed = true;
+        // 서버는 최근 24시간 검색 결과에 없는 검색약 첨부를 400과 이 안내로 거절한다.
+        _referencesExpired =
+            draft.medicationReferences.isNotEmpty &&
+            error is ApiRequestException &&
+            error.statusCode == 400 &&
+            error.detail.contains('다시 검색');
+      }
       return null;
     } finally {
       if (!_disposed) {
@@ -127,6 +144,7 @@ class LinkedChatComposerViewModel extends ChangeNotifier {
     _disposed = true;
     _isSending = false;
     _sendFailed = false;
+    _referencesExpired = false;
     resetRetry();
     super.dispose();
   }

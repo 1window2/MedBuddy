@@ -53,6 +53,7 @@ from repositories.patient_caregiver_link_repository import (
     PatientCaregiverLinkRepository,
 )
 from repositories.pharmacy_catalog_repository import PharmacyCatalogRepository
+from repositories.medication_search_cache_repository import MedicationSearchCacheRepository
 from repositories.saved_medication_repository import SavedMedicationRepository
 from schemas.chat import ChatMedicationReference
 from services.medication_course_policy import MedicationCoursePolicy
@@ -377,6 +378,27 @@ class ManageLinkedChat:
         ):
             raise HTTPException(409, "The message request ID was already used for a different or deleted history share.")
 
+    # 함수이름: _rebuild_medication_references
+    # 함수역할:
+    # - 검색약 카드의 이름·제조사·사진을 보낸 앱의 값이 아니라 최근 24시간 안에 서버가 약 검색 결과로
+    #   돌려준 공개 품목 정보로 다시 만든다. 같은 품목은 한 번만 남긴다.
+    # 매개변수:
+    # - references (list[dict[str, object]]): 형식을 검증한 요청의 검색약 목록.
+    # 반환값:
+    # - 서버 값으로 다시 만든 검색약 목록. 최근 검색 결과에 없는 품목이 있으면 400.
+    def _rebuild_medication_references(
+        self, references: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        if not references:
+            return []
+        item_seqs = list(dict.fromkeys(str(item["item_seq"]) for item in references))
+        known = MedicationSearchCacheRepository(self.db).find(item_seqs)
+        if any(item_seq not in known for item_seq in item_seqs):
+            raise HTTPException(
+                400, "검색한 약 정보가 만료되었습니다. 약을 다시 검색해 첨부해 주세요.",
+            )
+        return [{"item_seq": item_seq, **known[item_seq]} for item_seq in item_seqs]
+
     # 함수이름: _validate_reference_retry
     # 함수역할:
     # - 응답 유실 재시도에서 같은 요청 식별자로 다른 검색약 스냅샷·본문·유형을 보내거나 삭제된 메시지를 되살리지 못하게 한다.
@@ -484,6 +506,7 @@ class ManageLinkedChat:
                           for item in (medication_references or [])]
         except ValidationError as exc:
             raise HTTPException(400, "Invalid medication reference.") from exc
+        references = self._rebuild_medication_references(references)
         if references and (message_kind != CHAT_MESSAGE_KIND_TEXT or any(value is not None for value in (
             slot_key, pharmacy_id, hospital_context, source_alert_id, pharmacy_operating_snapshot,
         ))):

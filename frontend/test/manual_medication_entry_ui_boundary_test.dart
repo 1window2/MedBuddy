@@ -658,9 +658,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(weekly);
     await tester.pumpAndSettle();
+    // 저장 전에 기간 안의 복용일을 알려 준다(기본 기간은 오늘 하루).
     expect(
       find.byKey(const Key('manual-medication-dose-days-notice')),
-      findsNothing,
+      findsOneWidget,
     );
     final eveningSlot = find.byKey(const Key('manual-medication-slot-evening'));
     await tester.ensureVisible(eveningSlot);

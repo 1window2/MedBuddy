@@ -435,6 +435,10 @@ class _LinkedChatUIState extends State<_LinkedChatSessionUI>
     setState(() {
       if (_composer.isSending) {
         _sendErrorMessage = null;
+      } else if (_composer.medicationReferencesExpired) {
+        // 다시 보내도 같은 이유로 거절되므로 만료된 검색약을 빼고 다시 검색하게 한다.
+        _selectedMedicationReferences = const [];
+        _sendErrorMessage = _text.medicationReferencesExpired;
       } else if (_composer.sendFailed) {
         _sendErrorMessage = _text.sendFailed;
       }
@@ -4338,6 +4342,14 @@ class _LinkedChatText {
   // 반환값: 위 규칙으로 선택·가공한 표시 문구 또는 식별 문자열.
   String get historyLoadFailed =>
       isEnglish ? 'Could not load the conversation.' : '대화 내용을 불러오지 못했습니다.';
+  // 함수이름: medicationReferencesExpired
+  // 함수역할: 첨부한 검색약의 검색 결과가 서버에서 만료되어 다시 검색해야 함을 알린다.
+  // 매개변수:
+  // - 없음.
+  // 반환값: 현재 언어의 안내 문구.
+  String get medicationReferencesExpired => isEnglish
+      ? 'The searched medication has expired. Search for it again and attach it.'
+      : '검색한 약 정보가 만료되었습니다. 약을 다시 검색해 첨부해 주세요.';
   // 함수이름: historyShareUnavailable
   // 함수역할: 대화를 불러오는 중이거나 메시지를 고르는 중이라 복약 기록 공유를 지금 열 수 없음을 알린다.
   // 매개변수:

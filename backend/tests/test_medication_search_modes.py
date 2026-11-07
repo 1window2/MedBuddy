@@ -9,7 +9,7 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from pydantic import ValidationError
 
-from api.dependencies import get_check_medication_detail
+from api.dependencies import get_check_medication_detail, get_medication_search_cache
 from api.router import identify_medication
 from boundaries.public_drug_api_boundary import PublicDrugLargeAPI, PublicDrugSmallAPI
 from controls.check_medication_detail_control import CheckMedicationDetail
@@ -29,6 +29,17 @@ def detail(name=PRODUCT, item_seq='1'):
     return MedicationDetail(
         item_name=name, item_seq=item_seq, efficacy='', usage_method='', warning='',
     )
+
+
+class RecordingSearchCache:
+    def __init__(self, fail=False):
+        self.fail = fail
+        self.remembered = []
+
+    async def remember(self, details):
+        if self.fail:
+            raise RuntimeError('private cache failure')
+        self.remembered.extend(details)
 
 
 def control_with_results(*results):
@@ -566,7 +577,7 @@ async def test_route_passes_the_default_mode_explicitly():
     control = SimpleNamespace(requestMedicationDetail=lookup)
     for fields in [{}, {'search_mode': 'balanced'}]:
         response = await identify_medication(
-            MedicationRequest(extracted_text=PRODUCT, **fields), control,
+            MedicationRequest(extracted_text=PRODUCT, **fields), control, RecordingSearchCache(),
         )
         assert response.data == [detail()]
 
@@ -580,6 +591,7 @@ async def test_identify_http_contract_for_modes_and_original_evidence(mode):
     app = FastAPI()
     app.post('/identify')(identify_medication)
     app.dependency_overrides[get_check_medication_detail] = lambda: control
+    app.dependency_overrides[get_medication_search_cache] = RecordingSearchCache
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url='http://test',
     ) as client:
@@ -594,6 +606,24 @@ async def test_identify_http_contract_for_modes_and_original_evidence(mode):
         })
         assert invalid.status_code == 422
         assert control.requestMedicationDetail.await_count == 1
+
+
+@pytest.mark.parametrize('fail', [False, True])
+@pytest.mark.anyio
+async def test_route_remembers_returned_products_for_chat_attachments(fail):
+    async def lookup(raw_text, *, search_mode):
+        return MedicationResponse(
+            success=True, message='synthetic', data=[detail()],
+            candidates=[detail('후보정', '2')], requires_confirmation=True,
+        )
+
+    cache = RecordingSearchCache(fail=fail)
+    response = await identify_medication(
+        MedicationRequest(extracted_text=PRODUCT), SimpleNamespace(requestMedicationDetail=lookup), cache,
+    )
+    # 캐시 저장이 실패해도 검색 결과는 그대로 돌려준다.
+    assert [item.item_seq for item in response.data + response.candidates] == ['1', '2']
+    assert [item.item_seq for item in cache.remembered] == ([] if fail else ['1', '2'])
 
 
 @pytest.mark.parametrize('error,status', [
