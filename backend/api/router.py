@@ -136,30 +136,21 @@ auth_router = APIRouter(
 logger = logging.getLogger(__name__)
 
 
-# 클래스명: _CaregiverPatientScope
-# 역할:
-# - 보호자 전용 경로가 다루는 보호자와 환자 범위를 한 번 확정해 전달한다.
-# 속성:
-# - caregiver_hash (str): 인증 주체 본인으로 확인된 보호자 계정 식별자.
-# - patient_hash (str): 그 보호자에 연동된 것으로 확인된 환자 식별자.
+# Class Name: _CaregiverPatientScope
+# Role: Carries the authorized caregiver and linked patient for caregiver-only routes.
+# Responsibilities: Keeps both scope decisions together after dependency-level authorization.
+# Attributes: caregiver_hash (str) is the authenticated owner; patient_hash (str) is the verified linked patient.
 @dataclass(frozen=True)
 class _CaregiverPatientScope:
     caregiver_hash: str
     patient_hash: str
 
 
-# 함수이름: _resolve_caregiver_patient_scope
-# 함수역할:
-# - 보호자 식별자가 인증 주체 본인인지 확인한 뒤 환자가 그 보호자에 연동되어 있는지 확인한다.
-# - 보호자 전용 경로들이 같은 순서의 권한 확인을 각자 반복하지 않도록 의존성으로 제공한다.
-# 매개변수:
-# - patient_hash (str): 경로에 지정된 환자 식별자.
-# - caregiver_hash (str | None): 환자와 연동된 보호자 계정 식별자.
-# - guardian_hash (str | None): 보호자 범위를 지정하는 기존 호환 식별자.
-# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
-# - authorization (AuthorizationControl): 환자·보호자 데이터 접근 범위 판정 Control.
-# 반환값:
-# - 권한이 확인된 보호자·환자 범위.
+# Function Name: _resolve_caregiver_patient_scope
+# Description: Resolves the caller's own caregiver scope before requiring an active link to the requested patient.
+# Parameters: patient_hash (str) is the target; caregiver_hash or legacy guardian_hash (str | None) asserts the owner;
+#   principal (AuthenticatedPrincipal), authorization (AuthorizationControl) are injected authentication/scope dependencies.
+# Returns: _CaregiverPatientScope; mismatched owner or unlinked patient errors propagate.
 def _resolve_caregiver_patient_scope(
     patient_hash: str,
     caregiver_hash: str | None = None,
@@ -254,6 +245,10 @@ def _admit_pill_upload() -> Iterator[None]:
         _pill_uploads_in_flight -= 1
 
 
+# Function Name: _pill_identification_errors
+# Description: Preserves HTTP errors and translates pill-image/provider failures without logging image content or provider exception details.
+# Parameters: log_message (str) is the unexpected-error format; invalid_response_detail, timeout_detail and failure_detail (str) are safe client messages.
+# Returns: Context manager yielding None; maps quality, availability, response, timeout and unexpected failures to HTTP 422, 503, 502, 504 and 500.
 @contextmanager
 def _pill_identification_errors(
     log_message: str,
@@ -302,13 +297,10 @@ async def _read_pill_image(upload: UploadFile, too_large_detail: str) -> bytes:
     return content
 
 
-# 클래스명: OCRParseRequest
-# 역할:
-# - 기기에서 개인정보를 제거한 처방전 OCR 텍스트를 전달받는다.
-# 주요 책임:
-# - 원본 이미지 대신 기기에서 비식별 처리한 텍스트만 분석 경계에 전달한다.
-# 속성:
-# - text (str): 프론트엔드에서 정제한 비식별 OCR 텍스트
+# Class Name: OCRParseRequest
+# Role: Accepts text rather than raw images for the prescription-analysis endpoint.
+# Responsibilities: Enforces nonempty input and the prescription text length limit; server privacy validation still occurs in the control.
+# Attributes: text (str) is the device-filtered OCR content, not proof that de-identification succeeded.
 class OCRParseRequest(BaseModel):
     text: str = Field(min_length=1, max_length=MAX_PRESCRIPTION_TEXT_LENGTH)
 
@@ -388,8 +380,9 @@ def delete_account_data(
 # - request (PushTokenRegistration): 기기 FCM 토큰과 플랫폼 등록 요청.
 # - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
 # - manage_push_token (ManagePushToken): 기기 푸시 토큰 등록·해제 Control.
+# - revocation (FirebaseSessionRevocationBoundary | None): 세션 취소 기준을 조회해 오래된 다른 기기 등록을 비활성화하도록 전달한다.
 # 반환값:
-# - 토큰 등록 결과
+# - 토큰 등록 결과. 취소 조회·저장 오류는 전달하며 인증 계정 범위는 principal에서만 가져온다.
 @auth_router.post("/push-token")
 def register_push_token(
     request: PushTokenRegistration,
@@ -411,6 +404,10 @@ def register_push_token(
     )
 
 
+# Function Name: snooze_caregiver_alert
+# Description: Resolves the authenticated recipient's own scope before scheduling or replaying a durable follow-up delivery.
+# Parameters: alert_id (int) identifies the source; user_hash (str | None) is an optional scope assertion; principal, authorization and manage_caregiver_alert are injected dependencies.
+# Returns: Snooze receipt with created flag; ownership, expired-source and stale-action HTTP errors propagate.
 @router.post("/caregiver-alerts/{alert_id}/snooze")
 def snooze_caregiver_alert(
     alert_id: int, user_hash: str | None = None,
@@ -423,6 +420,10 @@ def snooze_caregiver_alert(
     return manage_caregiver_alert.snooze(alert_id, caregiver)
 
 
+# Function Name: local_caregiver_alert_deliveries
+# Description: Exposes eligible server-released events only in nonproduction disabled-auth demo mode.
+# Parameters: user_hash (str | None) is the requested owner; principal, authorization and manage_caregiver_alert are injected scope/delivery dependencies.
+# Returns: Success envelope of action contexts; HTTP 404 outside demo mode and scope errors otherwise propagate.
 @router.get("/caregiver-alerts/local-deliveries")
 def local_caregiver_alert_deliveries(
     user_hash: str | None = None,
@@ -732,6 +733,11 @@ def update_medication_slot_status(
     return response
 
 
+# Function Name: sync_dose_operation
+# Description: Applies an idempotent owner-only offline dose operation, publishes any chat receipt and returns today's schedule before queuing completion alerts.
+# Parameters: payload (DoseSyncRequest) holds the queued operation; request supplies quotas/publication; background_tasks defers alerts; patient_hash asserts owner scope;
+#   principal, authorization, check_schedule and sync_dose are injected authentication and use-case dependencies.
+# Returns: Success envelope with operation ID, current date and schedules; ownership, quota, stale-revision and conflicting-retry errors propagate.
 @router.post("/schedule/completion-operations")
 async def sync_dose_operation(
     payload: DoseSyncRequest,
@@ -773,19 +779,11 @@ async def sync_dose_operation(
     return response
 
 
-# 함수이름: update_medication_status
-# 함수역할:
-# - 오늘 복약 상태를 저장하고 새 시간대 완료 아웃박스 처리를 응답 이후로 예약한다.
-# 매개변수:
-# - medication_id (int): 선택할 저장 약의 식별자.
-# - request (MedicationStatusUpdate): 원하는 복용 완료 여부와 선택적 시간대.
-# - background_tasks (BackgroundTasks): 응답 이후 알림 전송을 예약할 작업 큐.
-# - patient_hash (str | None): 작업 대상 환자의 데이터 소유 범위 식별자.
-# - principal (AuthenticatedPrincipal): 서버가 검증한 인증 주체와 계정 범위.
-# - authorization (AuthorizationControl): 환자·보호자 데이터 접근 범위 판정 Control.
-# - check_schedule (CheckSchedule): 복약 일정과 시간대별 완료 상태 Control.
-# 반환값:
-# - 갱신된 약의 오늘 복용 일정과 완료 상태.
+# Function Name: update_medication_status
+# Description: Resolves patient scope, applies a dated medication/slot completion change and queues durable completion events after the response.
+# Parameters: medication_id (int), request (MedicationStatusUpdate) select the change; background_tasks defers dispatch; patient_hash (str | None) selects scope;
+#   principal, authorization and check_schedule are the injected identity/scope/schedule controls.
+# Returns: Updated today's medication schedule/status; authorization, stale-date and persistence errors propagate.
 @router.patch("/schedule/{medication_id}/status")
 def update_medication_status(
     medication_id: int,
@@ -898,20 +896,11 @@ def save_medication_alarm(
     )
 
 
-# Function Name: disable_medication_alarm
-# Description:
-# - Disables one medication alarm setting for a schedule slot. A body with a time, sent when the
-#   user also changed the time in the same save, is stored with the disabled alarm; clients that
-#   send no body keep the stored time.
-# Parameters:
-# - slot_key (str): Medication schedule time slot from the route path.
-# - request (MedicationAlarmUpdate | None): Optional newly chosen alarm time.
-# - patient_hash (str | None): Patient ownership key used to scope alarm setting update.
-# - principal (AuthenticatedPrincipal): Server-verified identity and trusted account scope.
-# - authorization (AuthorizationControl): Patient/guardian access-scope resolver.
-# - set_notification (SetNotification): SetNotification injected by FastAPI.
-# Returns:
-# - API-compatible medication alarm dictionary.
+# 함수이름: disable_medication_alarm
+# 함수역할: 허용된 환자 범위의 시간대 알림을 해제하며 선택적으로 전달된 시각을 함께 저장한다.
+# 매개변수: slot_key (str)는 시간대, request (MedicationAlarmDisable | None)는 선택적 시각, patient_hash (str | None)는 환자 범위다.
+#   principal (AuthenticatedPrincipal), authorization (AuthorizationControl), set_notification (SetNotification)은 인증·권한·설정 의존성이다.
+# 반환값: 알림 설정 응답. 시각을 생략하면 저장값을 유지하고 범위·설정 검증 오류는 전달한다.
 @router.patch("/notification/settings/{slot_key}/disable")
 def disable_medication_alarm(
     slot_key: str,
@@ -1034,10 +1023,10 @@ async def get_health_recommendation(
         get_check_health_recommendation
     ),
 ) -> dict[str, object]:
-    # 권한 조회도 같은 작업 안에서 연결을 반환해 다음 작업의 실행 자리를 기다리지 않는다.
     # 함수이름: resolve_recommendation_owner
-    # 함수역할: 현재 요청의 환자 범위를 확인한 후 읽기 transaction을 끝낸다.
-    # 매개변수: 없음. 반환값: 허가된 환자 식별자, 권한 실패 시 HTTPException.
+    # 함수역할: 보호자 조회를 허용하는 환자 범위를 확인하고 성공·실패 모두 읽기 트랜잭션을 반환한다.
+    # 매개변수: 없음. 외부 principal·patient_hash·authorization을 사용한다.
+    # 반환값: 허가된 환자 식별자 str. 권한 오류는 전달하며 DB가 있으면 finally에서 rollback한다.
     def resolve_recommendation_owner() -> str:
         try:
             return authorization.resolvePatientScope(
@@ -1063,14 +1052,10 @@ async def get_health_recommendation(
         )
 
 
-# 함수이름: get_caregiver_notification_settings
-# 함수역할:
-# - 연동 권한을 확인하고 보호자·환자의 모든 시간대 알림 설정을 조회한다.
-# 매개변수:
-# - scope (_CaregiverPatientScope): 인증된 보호자와 그 보호자에 연동된 환자로 확정한 요청 범위.
-# - set_caregiver_notification (SetCaregiverNotification): 연동 환자별 보호자 알림 설정 Control.
-# 반환값:
-# - 시간대별 보호자 알림 설정 목록 응답.
+# Function Name: get_caregiver_notification_settings
+# Description: Fetches every slot's effective caregiver settings for a dependency-authorized pair.
+# Parameters: scope (_CaregiverPatientScope) contains both owners; set_caregiver_notification (SetCaregiverNotification) handles preferences.
+# Returns: Slot-setting envelope; control validation/database errors propagate.
 @router.get("/caregiver-notification/settings/{patient_hash}/slots")
 def get_caregiver_notification_settings(
     scope: _CaregiverPatientScope = Depends(_resolve_caregiver_patient_scope),
@@ -1084,15 +1069,10 @@ def get_caregiver_notification_settings(
     )
 
 
-# 함수이름: get_caregiver_notification_setting
-# 함수역할:
-# - 연동 권한을 확인하고 선택 시간대의 보호자 알림 설정을 조회한다.
-# 매개변수:
-# - scope (_CaregiverPatientScope): 인증된 보호자와 그 보호자에 연동된 환자로 확정한 요청 범위.
-# - slot_key (str): morning, lunch, evening, bedtime 중 복용 시간대 키.
-# - set_caregiver_notification (SetCaregiverNotification): 연동 환자별 보호자 알림 설정 Control.
-# 반환값:
-# - 선택 시간대 알림 설정 응답.
+# Function Name: get_caregiver_notification_setting
+# Description: Fetches one slot's effective caregiver preference through current and legacy-compatible routes.
+# Parameters: scope (_CaregiverPatientScope) is authorized; slot_key (str) selects the dose slot; set_caregiver_notification is the preference control.
+# Returns: Selected setting envelope; unsupported slots, invalidated links and database failures propagate.
 @router.get("/caregiver-notification/settings/{patient_hash}")
 @router.get(
     "/guardian-alert/settings/{patient_hash}",
@@ -1112,16 +1092,11 @@ def get_caregiver_notification_setting(
     )
 
 
-# 함수이름: save_caregiver_notification_setting
-# 함수역할:
-# - 연동 권한을 확인한 뒤 선택 시간대의 알림 모드와 마감 시각을 저장한다.
-# 매개변수:
-# - scope (_CaregiverPatientScope): 인증된 보호자와 그 보호자에 연동된 환자로 확정한 요청 범위.
-# - request (CaregiverNotificationUpdate): 알림 모드·활성 상태와 선택적 미복용 마감 시각.
-# - slot_key (str): morning, lunch, evening, bedtime 중 복용 시간대 키.
-# - set_caregiver_notification (SetCaregiverNotification): 연동 환자별 보호자 알림 설정 Control.
-# 반환값:
-# - 저장된 시간대 알림 설정 응답.
+# Function Name: save_caregiver_notification_setting
+# Description: Saves one linked patient's alert mode/deadline under the authorized caregiver's scope through current and legacy routes.
+# Parameters: request (CaregiverNotificationUpdate) supplies mode/enable/deadline values; scope (_CaregiverPatientScope) selects the pair;
+#   slot_key (str) selects the slot; set_caregiver_notification (SetCaregiverNotification) validates and persists it.
+# Returns: Saved-setting envelope; invalid values, changed account/link state and persistence errors propagate.
 @router.put("/caregiver-notification/settings/{patient_hash}")
 @router.put(
     "/guardian-alert/settings/{patient_hash}",
@@ -1201,7 +1176,11 @@ def get_caregiver_monitoring_snapshot(
     )
 
 
-# 보호자 홈과 위젯은 약 상세 대신 연동된 환자의 오늘 일정만 일괄 조회한다.
+# 함수이름: get_caregiver_schedule_snapshot
+# 함수역할: 보호자 본인 범위를 확인하고 홈·위젯용 연동 환자의 오늘 일정을 일괄 조회한다.
+# 매개변수: caregiver_hash (str | None)는 요청 계정, principal (AuthenticatedPrincipal)은 인증 주체다.
+#   authorization (AuthorizationControl)은 소유 범위, monitoring_control (CheckCaregiverMonitoring)은 일정 집계를 담당한다.
+# 반환값: 알림 비활성 환자 일정도 포함한 모니터링 dict. 권한·조회 오류는 전달한다.
 @router.get("/caregiver/schedules")
 def get_caregiver_schedule_snapshot(
     caregiver_hash: str | None = None,
@@ -1401,14 +1380,10 @@ def delete_medication(
     return check_saved_medication.requestDelete(drug_id, authorized_patient_hash)
 
 
-# 함수이름: analyze_masked_prescription_text
-# 함수역할:
-# - 기기에서 개인정보를 제거한 OCR 텍스트를 구조화된 처방 정보로 분석한다.
-# 매개변수:
-# - request (OCRParseRequest): 기기에서 개인정보를 제거한 OCR 텍스트 요청.
-# - input_prescription (InputPrescription): 비식별 처방 텍스트를 분석하는 Control.
-# 반환값:
-# - API 호환 처방 분석 결과
+# Function Name: analyze_masked_prescription_text
+# Description: Delegates device-filtered OCR text to the server privacy/analysis control and distinguishes invalid input from upstream timeout or malformed analysis.
+# Parameters: request (OCRParseRequest) supplies text; input_prescription (InputPrescription) is the injected use-case controller.
+# Returns: Prescription analysis dict; timeout becomes HTTP 504, malformed provider output 502, client value errors 400 and unexpected failures 500.
 @router.post(
     "/analyze-prescription-text",
     response_model=PrescriptionAnalysisResponse,

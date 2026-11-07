@@ -10,8 +10,9 @@ depends_on = None
 
 
 # 함수이름: upgrade
-# 함수역할: 기존 행은 NULL로 유지하며 선택적인 보호자 별칭 열을 추가한다.
-# 매개변수: 없음. 반환값: 없음.
+# 함수역할: 환자·보호자 연결 테이블에 보호자 별칭 열이 없을 때만 추가하여 기존 별칭 데이터를 보존한다.
+# 매개변수: 없음. Alembic의 현재 연결을 사용한다.
+# 반환값: 없음. 스키마 변경 실패는 전파한다.
 def upgrade() -> None:
     columns = sa.inspect(op.get_bind()).get_columns("patient_caregiver_links")
     if "caregiver_alias" not in {column["name"] for column in columns}:
@@ -22,8 +23,9 @@ def upgrade() -> None:
 
 
 # 함수이름: downgrade
-# 함수역할: 이 변경이 추가한 보호자 별칭 열만 제거한다.
-# 매개변수: 없음. 반환값: 없음.
+# 함수역할: 연결 테이블에서 보호자 별칭 열과 그 데이터를 배치 변경 방식으로 제거한다.
+# 매개변수: 없음. Alembic의 현재 연결을 사용한다.
+# 반환값: 없음. 스키마 변경 실패는 전파한다.
 def downgrade() -> None:
     with op.batch_alter_table("patient_caregiver_links") as batch_op:
         batch_op.drop_column("caregiver_alias")

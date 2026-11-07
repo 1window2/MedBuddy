@@ -342,16 +342,11 @@ def get_recently_authenticated_principal(
     return principal
 
 
-# Function Name: _lock_account_operation
-# Description:
-# - Serializes each authenticated account request with account deletion.
-# - Uses a transaction-scoped PostgreSQL advisory lock in beta deployments and a short SQLite write transaction while registering the account scope.
-# - SQLite request-lifetime serialization is provided by the per-account lock retained by get_registered_principal because endpoint controls commit.
-# Parameters:
-# - db (Session): Request-scoped SQLAlchemy session shared by endpoint controls.
-# - user_hash (str): Server-derived account scope used only as a lock namespace.
-# Returns:
-# - None. PostgreSQL holds the lock for its transaction; SQLite holds it until account registration commits inside _register_account_scope.
+# 함수이름: _lock_account_operation
+# 함수역할: 아직 트랜잭션이 없는 인증 요청에서 계정 삭제와 직렬화할 계정 DB 잠금을 획득한다.
+# 매개변수: db (Session)는 요청 세션, user_hash (str)는 서버가 검증한 계정 잠금 범위다.
+# 반환값: None. 기존 트랜잭션이면 추가 잠금 없이 반환하며 획득 오류는 전달한다.
+# 비고: PostgreSQL 잠금은 트랜잭션 수명, SQLite 요청 전체 직렬화는 get_registered_principal의 계정 잠금이 담당한다.
 def _lock_account_operation(db: Session, user_hash: str) -> None:
     if db.in_transaction():
         return
@@ -378,10 +373,10 @@ def _register_account_scope(db: Session, user_hash: str) -> None:
         db.commit()
 
 
-# 외부 조회 등록과 연결 반환을 한 작업으로 묶어 중간에 연결을 빌린 채 대기하지 않는다.
 # 함수이름: _register_detached_lookup_scope
-# 함수역할: 인증 계정 등록을 commit하고 실패·취소 시 rollback한다.
-# 매개변수: db: 요청 세션, user_hash: 인증된 계정 식별자. 반환값: 없음.
+# 함수역할: 외부 조회용 계정 등록과 commit을 한 작업으로 묶어 연결을 반환하고 실패·취소 시 rollback한다.
+# 매개변수: db (Session)는 요청 세션, user_hash (str)는 검증된 계정 식별자다.
+# 반환값: None. 등록·commit 실패를 rollback 뒤 다시 전달한다.
 def _register_detached_lookup_scope(db: Session, user_hash: str) -> None:
     try:
         _register_account_scope(db, user_hash)
@@ -599,9 +594,9 @@ async def enforce_address_quota(
 
 
 # Function Name: _enforce_quota
-# Description: Shared body of the account and address quotas.
-# Parameters: identity (str): Counter identity; the rest as for enforce_user_quota.
-# Returns: None; raises HTTP 429 when the quota is used up and 503 when storage is unavailable.
+# Description: Consumes a quota unit in the application store and maps exhaustion or unavailable storage to retryable HTTP responses.
+# Parameters: request (Request) locates the store; identity and request_scope (str) name the counter; rule (RateLimitRule) defines the window; exceeded_detail (str) is safe rejection text.
+# Returns: None when allowed; raises HTTP 429 with remaining wait or HTTP 503 with five-second Retry-After on store failure.
 async def _enforce_quota(
     request: Request,
     *,
@@ -760,7 +755,10 @@ async def close_pharmacy_boundary() -> None:
             )
 
 
-# 병원 경계의 공유 캐시와 연결을 서버 종료 시 회수한다.
+# 함수이름: close_hospital_boundary
+# 함수역할: 서버 종료 시 공유 병원 조회 작업·캐시·내부 소유 HTTP 연결을 회수한다.
+# 매개변수: 없음. 프로세스 공용 _hospital_api를 사용한다.
+# 반환값: None. 경계의 연결 종료 오류는 호출자에게 전달한다.
 async def close_hospital_boundary() -> None:
     await _hospital_api.close()
 
@@ -973,26 +971,20 @@ def get_check_medication_detail(
     )
 
 
-# 함수이름: get_medication_search_cache
-# 함수역할:
-# - 약 검색 결과의 공개 품목 정보를 요청 세션과 분리된 작업 세션으로 저장하는 캐시를 만든다.
-# 매개변수:
-# - db (Session): 현재 요청의 SQLAlchemy 세션. 연결 정보만 빌려 쓴다.
-# 반환값:
-# - 독립적인 작업 세션을 쓰는 AsyncMedicationSearchCache.
+# Function Name: get_medication_search_cache
+# Description: Builds an async search-result cache whose workers create sessions from the request database's bind rather than sharing its active session.
+# Parameters: db (Session) supplies the database bind.
+# Returns: AsyncMedicationSearchCache; construction does not read or write cached products.
 def get_medication_search_cache(
     db: Session = Depends(get_db),
 ) -> AsyncMedicationSearchCache:
     return AsyncMedicationSearchCache(sessionmaker(bind=db.get_bind()))
 
 
-# 함수이름: get_check_nearby_pharmacy
-# 함수역할:
-# - 공유 약국 API와 DB 카탈로그·공휴일 캐시를 연결해 위치 기반 조회를 구성한다.
-# 매개변수:
-# - db (Session): 현재 작업에 사용할 SQLAlchemy 세션.
-# 반환값:
-# - 독립적인 작업 세션을 사용하는 CheckNearbyPharmacy.
+# Function Name: get_check_nearby_pharmacy
+# Description: Composes shared pharmacy/holiday providers with isolated-session catalog and persistent holiday-cache adapters.
+# Parameters: db (Session) supplies the common bind for worker session factories.
+# Returns: CheckNearbyPharmacy; no location lookup is performed during composition.
 def get_check_nearby_pharmacy(
     db: Session = Depends(get_db),
 ) -> CheckNearbyPharmacy:
@@ -1008,7 +1000,10 @@ def get_check_nearby_pharmacy(
     )
 
 
-# 요청 DB의 검증된 공휴일 캐시만 공유하고 약국 당번표와 지정 정보는 사용하지 않는다.
+# Function Name: get_check_nearby_hospital
+# Description: Builds hospital lookup with a persistent holiday cache whose sessions use the request database's bind, without sharing its active session across async lookups.
+# Parameters: db (Session) is injected only to derive the cache session factory.
+# Returns: CheckNearbyHospital using shared provider boundaries and isolated holiday-cache sessions; no search is performed here.
 def get_check_nearby_hospital(
     db: Session = Depends(get_db),
 ) -> CheckNearbyHospital:

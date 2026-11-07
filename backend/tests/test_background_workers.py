@@ -53,6 +53,8 @@ async def _wait_until(condition: Callable[[], bool], timeout: float = 3.0) -> No
 # Class Name: _BrokenSession
 # Role: A session whose work and whose cleanup both fail, as after a connection lost in the
 #   middle of a rollback.
+# Responsibilities:
+# - Fail every requested session operation so worker cleanup failures cannot mask recovery behavior.
 # Attributes:
 # - None.
 class _BrokenSession:
@@ -66,7 +68,8 @@ class _BrokenSession:
     def __getattr__(self, name: str) -> Callable[..., None]:
         # Function Name: fail
         # Description: Raises for any use of the session.
-        # Parameters: Ignored.
+        # Parameters: _args (tuple[object, ...]) and _kwargs (dict[str, object])
+        # accept and ignore any session method arguments.
         # Returns: Never returns.
         def fail(*_args: object, **_kwargs: object) -> None:
             raise RuntimeError(f"connection lost during {name}")
@@ -76,6 +79,8 @@ class _BrokenSession:
 
 # Class Name: _FailingCycles
 # Role: Replacement for a worker's synchronous cycle that counts its calls and always raises.
+# Responsibilities:
+# - Increment the cycle count before injecting failure to verify the worker continues polling.
 # Attributes:
 # - calls (int): Number of cycles started.
 class _FailingCycles:
@@ -260,6 +265,8 @@ def test_outbox_worker_queues_again_after_delivery_failed(fk_session_factory) ->
 
 # Class Name: _CountingMaintenance
 # Role: Maintenance service double that counts its runs and can fail them.
+# Responsibilities:
+# - Count maintenance runs and either return fixed totals or raise the configured exception.
 # Attributes:
 # - runs (int): Number of runOnce calls.
 # - error (Exception | None): Raised by every run when set.
@@ -359,6 +366,8 @@ async def test_maintenance_runner_starts_one_task_and_stop_ends_the_wait(
 
 # Class Name: _CountingChatProcessor
 # Role: Chat job processor double that counts polls and can fail them.
+# Responsibilities:
+# - Count chat-job polls and either return the scripted completion count or raise the configured exception.
 # Attributes:
 # - polls (int): Number of run_once calls.
 # - error (Exception | None): Raised by every poll when set.

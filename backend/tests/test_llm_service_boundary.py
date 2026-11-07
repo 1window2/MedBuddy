@@ -191,6 +191,8 @@ class _FakeClient:
 #   message.
 # - Rejects an answer without diet and exercise text, retries a failed attempt once and never
 #   retries a timeout.
+# Attributes:
+# - None.
 class LLMServiceTimeoutTest(unittest.IsolatedAsyncioTestCase):
     # Function Name: test_timeout_uses_configured_default
     # Description:

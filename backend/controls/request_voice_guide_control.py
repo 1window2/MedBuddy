@@ -7,10 +7,9 @@ from entities.medication_detail_entity import MedicationDetail
 
 
 # Class Name: RequestVoiceGuide
-# Role:
-# - Requests voice guide generation.
-# Responsibilities:
-# - Validate the speech language and reject empty medication guide text before returning it to the caller.
+# Role: Prepare localized medication guide text for client speech playback.
+# Responsibilities: Accept Korean or English and reject empty source text; does not synthesize audio.
+# Attributes: None; each request supplies its medication details.
 class RequestVoiceGuide:
     # Function Name: requestVoiceGuide
     # Description:
@@ -19,7 +18,7 @@ class RequestVoiceGuide:
     # - medication_detail (MedicationDetail): Medication detail entity used as guide source data.
     # - language (str): User setting language code.
     # Returns:
-    # - API-compatible voice guide dictionary.
+    # - API-compatible guide text and language; HTTP 400 for unsupported language or empty source text.
     def requestVoiceGuide(
         self,
         medication_detail: MedicationDetail,

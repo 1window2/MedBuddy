@@ -198,6 +198,8 @@ EXPECTED_BODY_LIMITS = {
 # - Return verified-email password claims for any ID token, authenticated just now, or one day
 #   ago when the token starts with "stale-".
 # - Accept exactly one App Check token and reject every other value.
+# Attributes:
+# - None.
 class _FakeFirebaseVerifier:
     # Function Name: verifyIdToken
     # Description:
@@ -232,6 +234,8 @@ class _FakeFirebaseVerifier:
 
 # Class Name: _RecordingIdentityDeletion
 # Role: Replaces the Firebase identity-deletion boundary so account deletion stays local.
+# Responsibilities:
+# - Record requested identity deletions without contacting Firebase.
 # Attributes:
 # - deleted_subjects (list[str]): Firebase subjects whose identity deletion was requested.
 class _RecordingIdentityDeletion:
@@ -329,6 +333,8 @@ class _RecordingRateLimitStore(RequestRateLimitStore):
 
 # Class Name: _Pipeline
 # Role: What the `pipeline` fixture hands to a test.
+# Responsibilities:
+# - Expose the isolated application, database, quotas, and external-service fakes used by full-request tests.
 # Attributes:
 # - app (FastAPI): Application built by main.create_app() for this test.
 # - engine (Engine): Foreign-key-enforcing SQLite file engine behind get_db.
@@ -359,6 +365,13 @@ class _Pipeline:
 _SECONDS_TO_LOCAL_MIDNIGHT = 86_400 - (int(_QUOTA_CLOCK_SECONDS) + 9 * 3_600) % 86_400
 
 
+# Function Name: quota_clock
+# Description:
+# - Freezes wall-clock quota windows while preserving the real monotonic clock.
+# Parameters:
+# - monkeypatch: pytest.MonkeyPatch; restores temporary dependency replacements.
+# Returns:
+# - float; fixed quota clock seconds.
 @pytest.fixture
 def quota_clock(monkeypatch: pytest.MonkeyPatch) -> float:
     monkeypatch.setattr(
@@ -418,6 +431,10 @@ def pipeline(
 
     # Class Name: _CountingGeminiClient
     # Role: FakeGeminiClient that registers each construction with the fixture.
+    # Responsibilities:
+    # - Register each constructed fake in the enclosing fixture while retaining its scripted SDK behavior.
+    # Attributes:
+    # - Inherited FakeGeminiClient request, response, and close state; construction history is held by the fixture.
     class _CountingGeminiClient(FakeGeminiClient):
         # Function Name: __init__
         # Description:
@@ -1008,6 +1025,10 @@ async def test_pending_external_lookup_does_not_block_the_same_account(
 
     # Class Name: _ParkedPharmacySearch
     # Role: Pharmacy control whose provider call does not answer until the test releases it.
+    # Responsibilities:
+    # - Signal provider entry, wait for the external release event, then raise a route-validation error.
+    # Attributes:
+    # - None; synchronization events belong to the enclosing test.
     class _ParkedPharmacySearch:
         # Function Name: requestNearbyPharmacySearch
         # Description:
@@ -1059,6 +1080,10 @@ async def test_body_limits_apply_to_the_mounted_upload_and_json_routes(
 ) -> None:
     # Class Name: _RejectingIdentifyPill
     # Role: Pill control that proves the upload reached the route and then refuses it.
+    # Responsibilities:
+    # - Raise ValueError for either single- or multiple-pill requests after upload handling.
+    # Attributes:
+    # - None.
     class _RejectingIdentifyPill:
         # Function Name: requestPillIdentification
         # Description:
@@ -1621,6 +1646,17 @@ async def test_pharmacy_share_with_a_live_lookup_charges_the_pharmacy_daily_quot
 
     charged: list[tuple[str, RateLimitRule]] = []
 
+    # Function Name: record
+    # Description:
+    # - Captures the charged request scope and rule without consuming a real quota.
+    # Parameters:
+    # - _request: Request; unused HTTP request.
+    # - user_hash: str; charged identity, unused.
+    # - request_scope: str; quota scope being recorded.
+    # - rule: RateLimitRule; applied quota rule.
+    # - exceeded_detail: str; refusal detail, unused.
+    # Returns:
+    # - None.
     async def record(_request, *, user_hash, request_scope, rule, exceeded_detail):
         charged.append((request_scope, rule))
 

@@ -196,13 +196,10 @@ def _verify_catalog_database() -> None:
         _verify_catalog_seed(connection)
 
 
-# Function Name: _ping_required_redis
-# Description:
-# - Performs a tightly bounded Redis ping and always closes the temporary connection.
-# Parameters:
-# - None.
-# Returns:
-# - None.
+# 함수이름: _ping_required_redis
+# 함수역할: 짧은 시간 제한으로 필수 Redis 연결과 noeviction 정책을 확인하고 성공·실패와 관계없이 연결을 닫는다.
+# 매개변수: 없음. 설정의 제한용 Redis 주소를 사용한다.
+# 반환값: 없음. ping 거부나 잘못된 메모리 정책은 RuntimeError이며 연결·설정 조회 오류도 전파한다.
 async def _ping_required_redis() -> None:
     redis = Redis.from_url(
         settings.rate_limit_redis_url,

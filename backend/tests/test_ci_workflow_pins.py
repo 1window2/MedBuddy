@@ -75,10 +75,13 @@ def test_signing_jobs_keep_the_exact_ref_condition() -> None:
     assert "        run: python3 scripts/check_release_ci.py\n" in workflow
 
 
-# Function Name: test_ci_and_release_keep_their_verification_commands
-# Description: The commands whose success the release gate treats as evidence must stay in the workflows.
-# Parameters: None.
-# Returns: None; fails if a verification command or the direct-APK ABI assertion is missing.
+# 함수이름: test_ci_and_release_keep_their_verification_commands
+# 함수역할:
+# - 릴리스 통과 근거인 검증 명령과 직접 배포 APK의 ABI 검사가 CI·릴리스 작업에 유지되는지 검증한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - None.
 def test_ci_and_release_keep_their_verification_commands() -> None:
     frontend = _workflow("frontend-ci.yml")
     for command in (

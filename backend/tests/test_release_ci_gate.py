@@ -63,7 +63,9 @@ def test_signing_job_depends_on_secret_free_ci_gate() -> None:
 
 # Function Name: test_gate_command_requires_both_workflows_and_fails_closed
 # Description: Exercise real command orchestration without network access or real credentials.
-# Parameters: monkeypatch - isolated environment/hooks; failure - second-workflow failure mode.
+# Parameters: monkeypatch (pytest.MonkeyPatch): isolated environment/hooks;
+# capsys (pytest.CaptureFixture): captured output used to detect credential disclosure;
+# failure (str | None): second-workflow failure mode, or None for success.
 # Returns: None; fails on accepted bad evidence or credential disclosure.
 @pytest.mark.parametrize("failure", [None, "network", "malformed", "pending"])
 def test_gate_command_requires_both_workflows_and_fails_closed(

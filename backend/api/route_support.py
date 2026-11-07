@@ -27,13 +27,10 @@ from services.chat_connection_manager import ChatConnectionManager
 logger = logging.getLogger(__name__)
 
 
-# 함수이름: get_chat_connection_manager
-# 함수역할:
-# - 애플리케이션에 등록된 채팅 실시간 연결 관리자를 반환한다.
-# 매개변수:
-# - request (Request): 현재 FastAPI 요청
-# 반환값:
-# - 초기화된 ChatConnectionManager
+# Function Name: get_chat_connection_manager
+# Description: Retrieves the initialized application-wide socket registry without creating a replacement.
+# Parameters: request (Request) supplies application state.
+# Returns: ChatConnectionManager; raises RuntimeError when missing or the wrong type.
 def get_chat_connection_manager(request: Request) -> ChatConnectionManager:
     """애플리케이션 단위 실시간 연결 관리자를 반환한다."""
     manager = getattr(request.app.state, "chat_connection_manager", None)
@@ -42,14 +39,10 @@ def get_chat_connection_manager(request: Request) -> ChatConnectionManager:
     return manager
 
 
-# 함수이름: process_completion_alert
-# 함수역할:
-# - 복약 체크와 함께 저장된 아웃박스 요청을 별도 DB 세션에서 즉시 처리한다.
-# - 실패한 요청은 아웃박스 작업자가 다시 처리하므로 여기서는 예외를 격리한다.
-# 매개변수:
-# - outbox_id (int): 보호자 알림 아웃박스의 영속 기록 식별자.
-# 반환값:
-# - 없음.
+# Function Name: process_completion_alert
+# Description: Processes one durable completion event in a new session; logs dispatch errors so the outbox worker can retry without failing the completed request.
+# Parameters: outbox_id (int) identifies the committed event.
+# Returns: None; processing exceptions are isolated and the session closes, while session creation/closure errors can propagate.
 def process_completion_alert(outbox_id: int) -> None:
     db = SessionLocal()
     try:
@@ -90,14 +83,10 @@ def queue_completion_alerts(
         db.rollback()
 
 
-# 함수이름: enforce_chat_daily_quota
-# 함수역할:
-# - 한도 검사에 도달한 사용자의 채팅 전송 시도 횟수를 일일 한도로 제한한다. 중복 전송과 이후 검증·저장에 실패한 시도도 한도를 소비한다.
-# 매개변수:
-# - request (Request): 애플리케이션 공유 상태에 접근할 FastAPI 요청.
-# - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
-# 반환값:
-# - 없음. 제한 초과 시 HTTP 오류를 발생시킨다.
+# Function Name: enforce_chat_daily_quota
+# Description: Charges a chat attempt against the account's daily budget, including retries and attempts whose later validation/save may fail.
+# Parameters: request (Request) locates shared quota state; user_hash (str) identifies the authenticated account.
+# Returns: None when allowed or limiting is disabled; raises HTTP 429 for exhaustion or 503 for required-store failure.
 async def enforce_chat_daily_quota(
     *,
     request: Request,
@@ -114,15 +103,10 @@ async def enforce_chat_daily_quota(
     )
 
 
-# 함수이름: enforce_hospital_share_daily_quota
-# 함수역할:
-# - 채팅에서 병원을 공유할 때도 공공 병원 API를 조회하므로, 병원 검색과 같은 계정별 하루 한도를 소비한다.
-#   채팅 한도만 적용하면 한 계정이 임의의 병원 ID로 전체 사용자가 함께 쓰는 하루 조회 예산을 소진할 수 있다.
-# 매개변수:
-# - request (Request): 애플리케이션 공유 상태에 접근할 FastAPI 요청.
-# - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
-# 반환값:
-# - 없음. 제한 초과 시 HTTP 429를 발생시킨다.
+# Function Name: enforce_hospital_share_daily_quota
+# Description: Charges hospital sharing to the same daily account budget as hospital search so chat cannot bypass provider-cost limits.
+# Parameters: request (Request) supplies quota state; user_hash (str) is the authenticated account.
+# Returns: None on allowance; quota/store HTTP failures propagate.
 async def enforce_hospital_share_daily_quota(
     *,
     request: Request,
@@ -133,15 +117,10 @@ async def enforce_hospital_share_daily_quota(
     )
 
 
-# 함수이름: enforce_pharmacy_share_daily_quota
-# 함수역할:
-# - 영업시간을 실시간으로 조회해야 하는 약국 공유도 모든 사용자가 함께 쓰는 약국 조회 예산을 쓰므로,
-#   주변 약국 검색과 같은 계정별 하루 한도를 소비한다.
-# 매개변수:
-# - request (Request): 애플리케이션 공유 상태에 접근할 FastAPI 요청.
-# - user_hash (str): 작업 대상 계정의 데이터 소유 범위 식별자.
-# 반환값:
-# - 없음. 제한 초과 시 HTTP 429를 발생시킨다.
+# Function Name: enforce_pharmacy_share_daily_quota
+# Description: Charges live pharmacy-share lookups against the nearby-pharmacy search budget.
+# Parameters: request (Request) supplies quota state; user_hash (str) is the authenticated account.
+# Returns: None on allowance; quota/store HTTP failures propagate.
 async def enforce_pharmacy_share_daily_quota(
     *,
     request: Request,
@@ -152,9 +131,10 @@ async def enforce_pharmacy_share_daily_quota(
     )
 
 
-# 함수이름: _enforce_search_daily_quota
-# 함수역할: 검색 경로의 하루 한도 규칙을 찾아 같은 계정 카운터에 한 번 기록한다.
-# 매개변수: request, user_hash: 위와 같다. search_path: 한도 규칙을 가진 검색 경로. 반환값: 없음.
+# Function Name: _enforce_search_daily_quota
+# Description: Resolves the selected GET search route's daily rule and charges the same account counter used by search.
+# Parameters: request (Request) supplies the store; user_hash (str) is authenticated; search_path (str) is the canonical search route.
+# Returns: None when allowed, unconfigured or limiting is disabled; exhaustion/storage failures propagate as HTTP errors.
 async def _enforce_search_daily_quota(
     *,
     request: Request,

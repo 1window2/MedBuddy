@@ -1,6 +1,6 @@
 #!/bin/sh
 # File Name: docker-entrypoint.sh
-# Role: Prepares root-owned runtime secrets and starts the API as an unprivileged user.
+# Role: Copies mounted credentials into a private medbuddy-owned runtime directory, then drops privileges for the API command.
 
 set -eu
 
@@ -13,11 +13,13 @@ if [ -z "${credential_source}" ] || [ ! -r "${credential_source}" ]; then
   exit 1
 fi
 
+# The non-root process reads this restricted copy, not the original mounted secret.
 install -d -m 0700 -o medbuddy -g medbuddy "${runtime_directory}"
 install -m 0400 -o medbuddy -g medbuddy \
   "${credential_source}" "${runtime_credential}"
 export GOOGLE_APPLICATION_CREDENTIALS="${runtime_credential}"
 
+# Replace the bootstrap process so signals reach the API without retaining root capabilities.
 exec setpriv \
   --reuid=medbuddy \
   --regid=medbuddy \

@@ -434,6 +434,10 @@ class Settings(BaseSettings):
             raise ValueError("APPLICATION_TIME_ZONE must be a valid IANA time zone.") from exc
         return normalized_time_zone
 
+    # 함수이름: validate_rate_limit_redis_url
+    # 함수역할: 선택적 제한 저장소 URL의 공백을 정리하고 Redis 스킴·호스트·포트와 쿼리/fragment 부재를 검증한다.
+    # 매개변수: value (str)는 환경 설정 URL이며 빈 문자열은 허용한다.
+    # 반환값: 정리된 str. 잘못된 URL은 자격증명을 포함하지 않는 ValueError로 거절한다.
     @field_validator("RATE_LIMIT_REDIS_URL")
     @classmethod
     def validate_rate_limit_redis_url(cls, value: str) -> str:
@@ -455,6 +459,10 @@ class Settings(BaseSettings):
             raise ValueError("RATE_LIMIT_REDIS_URL must be a Redis URL without query or fragment.")
         return normalized
 
+    # 함수이름: rate_limit_redis_url
+    # 함수역할: 제한 전용 Redis 설정이 없으면 기존 공용 Redis 설정을 사용한다.
+    # 매개변수: 없음.
+    # 반환값: 선택된 URL str. 두 설정 모두 없으면 빈 문자열로 로컬 대체 경로를 유지한다.
     @property
     def rate_limit_redis_url(self) -> str:
         # 기존 로컬 실행은 별도 설정 없이 메모리 대체 동작을 그대로 사용한다.

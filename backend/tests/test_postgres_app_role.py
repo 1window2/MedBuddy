@@ -33,7 +33,21 @@ def test_provisioning_is_skipped_until_both_settings_are_present(monkeypatch, ca
 # Description: A quoted or upper-case role name and a short password are refused in Python.
 # Parameters: None. Returns: None.
 def test_role_name_and_password_are_checked_before_any_statement() -> None:
+    # Class Name: _NoConnection
+    # Role: Connection double that forbids SQL execution for invalid role setup.
+    # Responsibilities:
+    # - Fails the test if any statement reaches the database.
+    # Attributes:
+    # - None.
     class _NoConnection:
+        # Function Name: execute
+        # Description:
+        # - Rejects every statement to prove invalid setup is refused before database work.
+        # Parameters:
+        # - _args: tuple; unused SQL positional arguments.
+        # - _kwargs: dict; unused SQL options.
+        # Returns:
+        # - Never returns; raises AssertionError.
         def execute(self, *_args, **_kwargs):
             raise AssertionError("no statement may run")
 

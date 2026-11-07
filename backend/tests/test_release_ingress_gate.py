@@ -55,6 +55,8 @@ def test_ingress_command_probes_without_credentials_and_fails_closed(
     # Class Name: Opener
     # Role: HTTP transport double for unauthenticated probes.
     # Responsibilities: Record requested routes and return API denials or an HTML edge block.
+    # Attributes:
+    # - None.
     class Opener:
         # Function Name: open
         # Description: Verify finite timeout and absent credentials, then return the selected denial.

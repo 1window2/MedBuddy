@@ -49,17 +49,10 @@ class RateLimitRule:
     window_seconds: int
 
 
-# 함수이름: resolve_rate_limit_rule
-# 함수역할:
-# - 실제 요청 경로를 고정 경로 또는 매개변수 경로 규칙과 연결한다.
-# - 별도 규칙이 없는 인증 API에도 읽기·쓰기 기본 제한을 적용한다.
-# 매개변수:
-# - method (str): HTTP 메서드
-# - path (str): 실제 또는 FastAPI 정규 경로
-# - rules (Mapping[tuple[str, str], RateLimitRule] | None): 우선 적용할 경로별 제한 규칙
-# - collapse_default_scope (bool): 기본 제한 카운터를 메서드별 공통 범위로 묶을지 여부
-# 반환값:
-# - 적용 규칙과 카운터를 공유할 정규 경로 또는 None
+# Function Name: resolve_rate_limit_rule
+# Description: Chooses an exact rule, then a matching template, then an authenticated-API method default; optional collapsing shares the default counter across paths.
+# Parameters: method and path (str) identify the request; rules (Mapping | None) overrides the configured rules; collapse_default_scope (bool) groups defaults.
+# Returns: (RateLimitRule, canonical counter scope), or None outside covered routes/methods.
 def resolve_rate_limit_rule(
     method: str,
     path: str,
@@ -95,23 +88,10 @@ def resolve_rate_limit_rule(
     return default_rule, canonical_path
 
 
-# 함수이름: resolve_daily_quota
-# 함수역할:
-# - 하루 단위 비용 상한이 걸린 경로이면 그 한도와 카운터 공유 범위를 돌려준다.
-# - 한도는 호출 시점의 설정에서 읽는다.
-# 매개변수:
-# - method (str): HTTP 메서드
-# - path (str): 접두사를 포함한 전체 경로 템플릿
-# 반환값:
-# - 하루 한도 규칙과 같은 묶음의 경로가 함께 쓰는 카운터 범위. 대상 경로가 아니면 None.
-# 함수이름: _window_offset_seconds
-# 함수역할:
-# - 하루 단위 창을 서비스 시간대의 자정에 맞추기 위해 현재 UTC 오프셋(초)을 돌려준다.
-#   하루보다 짧은 창은 자정과 무관하므로 0을 돌려준다.
-# 매개변수:
-# - rule (RateLimitRule): 창 길이를 확인할 제한 규칙.
-# 반환값:
-# - 서비스 시간대의 현재 UTC 오프셋(초); 하루 창이 아니면 0.
+# Function Name: _window_offset_seconds
+# Description: Aligns daily windows with the current application-zone midnight while leaving shorter windows UTC-aligned.
+# Parameters: rule (RateLimitRule) supplies the window length.
+# Returns: Current UTC offset in seconds for a daily rule, otherwise 0; also 0 if the clock has no offset.
 def _window_offset_seconds(rule: RateLimitRule) -> int:
     if rule.window_seconds != _DAILY_WINDOW_SECONDS:
         return 0
@@ -119,6 +99,10 @@ def _window_offset_seconds(rule: RateLimitRule) -> int:
     return int(offset.total_seconds()) if offset is not None else 0
 
 
+# Function Name: resolve_daily_quota
+# Description: Selects a configured daily quota only for explicitly registered costly routes.
+# Parameters: method (str) is normalized to uppercase; path (str) is matched exactly, with an empty value treated as slash.
+# Returns: (RateLimitRule, daily group key), or None for unlisted routes; invalid configured limits propagate during conversion.
 def resolve_daily_quota(method: str, path: str) -> tuple[RateLimitRule, str] | None:
     """비용이 큰 경로에만 적용하는 하루 한도를 반환한다."""
     quota = DAILY_QUOTA_ROUTES.get((method.upper(), path or "/"))
@@ -131,20 +115,10 @@ def resolve_daily_quota(method: str, path: str) -> tuple[RateLimitRule, str] | N
     )
 
 
-# 함수이름: mounted_route_template
-# 함수역할:
-# - include_router(prefix=...)로 붙인 라우터의 route.path는 접두사가 빠진 상대 템플릿이므로,
-#   실제 요청 경로의 앞쪽 조각(접두사)과 템플릿을 이어 전체 경로 템플릿을 만든다.
-# - 템플릿이 차지하는 뒤쪽 조각은 실제 값이 아닌 {이름} 그대로 남기므로, 호출자가 고른
-#   경로 값이 사용자별 카운터 키나 정책 조회에 들어가지 않는다.
-# - 접두사 자체에 경로 매개변수가 있거나 템플릿에 여러 조각을 받는 {이름:path}가 있으면
-#   그 조각은 실제 값으로 남는다. 현재 라우터에는 두 경우 모두 없다.
-# 매개변수:
-# - route_template (str | None): 일치한 route의 경로 템플릿; 접두사가 없을 수 있다.
-# - concrete_path (str): 접두사를 포함한 실제 요청 URL 경로.
-# 반환값:
-# - 접두사를 포함한 전체 경로 템플릿. 템플릿이 없거나 실제 경로보다 조각이 많으면
-#   실제 경로를 그대로 반환한다.
+# Function Name: mounted_route_template
+# Description: Reconstructs a full template by prepending the concrete path's leading segments, keeping parameter names in the template suffix.
+# Parameters: route_template (str | None) may omit a mounted prefix; concrete_path (str) is the full request path.
+# Returns: Joined template, or the concrete path when no usable template exists. Parameterized prefixes/path converters are not generalized by this segment-count approach.
 def mounted_route_template(route_template: str | None, concrete_path: str) -> str:
     """상대 route 템플릿에 실제 경로의 마운트 접두사를 붙여 반환한다."""
     if not route_template:
@@ -203,6 +177,7 @@ def _canonicalize_api_path(path: str) -> str:
 # - Defines the asynchronous Redis operations needed by the quota store.
 # Responsibilities:
 # - Provide atomic script execution and connection closure without coupling callers to a concrete Redis client.
+# Attributes: None required by the protocol; implementations own connection state.
 class AsyncRateLimitRedis(Protocol):
     # Function Name: eval
     # Description:
@@ -435,18 +410,10 @@ def request_ip_identity(scope: Scope) -> str:
     return f"ip:{address}"
 
 
-# 클래스명: RequestRateLimitMiddleware
-# 역할:
-# - 경로별 고정 시간창의 광범위한 요청 IP 제한을 적용한다.
-# 주요 책임:
-# - Redis가 연결된 환경에서는 여러 서버 인스턴스가 같은 카운터를 공유한다.
-# - 로컬 개발에서 Redis를 사용할 수 없으면 프로세스 메모리 카운터로 대체한다.
-# - 운영에서 Redis가 필수이면 저장소 장애를 재시도 가능한 503으로 변환한다.
-# - 검증된 사용자별 제한은 인증 의존성이 같은 저장소에 별도로 적용한다.
-# 속성:
-# - store (RequestRateLimitStore): 공통 요청 카운터 저장소.
-# - rules (dict): 메서드와 경로별 기본 정책.
-# - enabled (bool): IP 제한 적용 여부.
+# Class Name: RequestRateLimitMiddleware
+# Role: Applies broad per-IP limits before authentication while authenticated dependencies enforce account quotas separately.
+# Responsibilities: Shares counters through Redis, uses the configured local fallback, and responds with retryable 503 when required quota storage is unavailable.
+# Attributes: app is the downstream ASGI callable; store (RequestRateLimitStore), rules (dict) and enabled (bool) configure enforcement; _IP_LIMIT_MULTIPLIER broadens account rules.
 class RequestRateLimitMiddleware:
     _IP_LIMIT_MULTIPLIER = IP_LIMIT_MULTIPLIER
 
@@ -473,17 +440,10 @@ class RequestRateLimitMiddleware:
         self.rules = dict(rules)
         self.store = store
 
-    # 함수이름: __call__
-    # 함수역할:
-    # - IP별로 기본 정책의 20배 한도를 적용하고 초과는 429, 필수 저장소 장애는 503으로 응답한다.
-    # - IP별 하루 한도는 여기서 세지 않는다. 인증 전에 24시간짜리 카운터를 남기면 인증되지 않은
-    #   주소마다 키가 하루씩 쌓여 저장소를 채울 수 있으므로, 인증 의존성이 계정 검증 뒤에 센다.
-    # 매개변수:
-    # - scope (Scope): 요청 경로와 헤더를 포함한 ASGI 연결 정보.
-    # - receive (Receive): 다음 수신 메시지를 읽는 ASGI 콜백.
-    # - send (Send): 응답 메시지를 내보내는 ASGI 콜백.
-    # 반환값:
-    # - 없음; 허용된 요청은 하위 앱으로 전달하고 거부 응답에는 Retry-After를 포함한다.
+    # Function Name: __call__
+    # Description: Enforces the broad IP window, returning 429 on exhaustion or 503 on required-store failure; daily account quotas remain in authenticated dependencies to avoid long-lived anonymous keys.
+    # Parameters: scope (Scope), receive (Receive), send (Send) are the ASGI connection and message callbacks.
+    # Returns: None; allowed/uncovered/non-HTTP requests reach the downstream app, and rejected requests include Retry-After.
     async def __call__(
         self,
         scope: Scope,
@@ -541,8 +501,9 @@ class RequestRateLimitMiddleware:
         await self.app(scope, receive, send)
 
     # Function Name: _request_ip_identity
-    # Description: The middleware's name for request_ip_identity.
-    # Parameters: scope (Scope): ASGI connection metadata. Returns: The address identity.
+    # Description: Delegates IP identity extraction to the shared trusted-connection policy.
+    # Parameters: scope (Scope) supplies ASGI connection metadata.
+    # Returns: Address identity string used for the middleware's quota counter.
     @staticmethod
     def _request_ip_identity(scope: Scope) -> str:
         return request_ip_identity(scope)

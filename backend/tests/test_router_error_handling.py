@@ -63,6 +63,8 @@ _DEVELOPMENT_AUTHORIZATION = AuthorizationControl(db=None)  # type: ignore[arg-t
 # Role: Saved-medication control double that raises an expected not-found HTTP error.
 # Responsibilities:
 # - Raises HTTP 404 for missing patient medications to test router status preservation.
+# Attributes:
+# - None.
 class _MissingSavedMedicationControl:
     # Function Name: requestSavedMedicationInfo
     # Description:
@@ -83,6 +85,8 @@ class _MissingSavedMedicationControl:
 # Role: Schedule control double that raises an expected not-found HTTP error.
 # Responsibilities:
 # - Raises HTTP 404 for a missing patient schedule to test router status preservation.
+# Attributes:
+# - None.
 class _MissingScheduleControl:
     # Function Name: requestTodayMedicationSchedule
     # Description:
@@ -104,6 +108,8 @@ class _MissingScheduleControl:
 #   tests.
 # Responsibilities:
 # - Raises a runtime error with sensitive database text that the router must not expose.
+# Attributes:
+# - None.
 class _FailingSavedMedicationControl:
     # Function Name: requestSavedMedicationInfo
     # Description:
@@ -120,63 +126,63 @@ class _FailingSavedMedicationControl:
         raise RuntimeError("sensitive database details")
 
 
-# 클래스명: _RecordingRequestSession
-# 역할: 라우터가 요청 세션의 트랜잭션을 끝냈는지 기록하는 세션 대역이다.
-# 속성:
-# - rollback_count (int): rollback() 호출 횟수.
+# Class Name: _RecordingRequestSession
+# Role: Records request-session transaction release by the route.
+# Responsibilities:
+# - Count rollback calls without opening a real database connection.
+# Attributes:
+# - rollback_count (int): number of rollback requests.
 class _RecordingRequestSession:
-    # 함수이름: __init__
-    # 함수역할:
-    # - 호출 횟수를 0으로 준비한다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - 없음 (None).
+    # Function Name: __init__
+    # Description:
+    # - Initialize the request-session rollback counter.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def __init__(self) -> None:
         self.rollback_count = 0
 
-    # 함수이름: rollback
-    # 함수역할:
-    # - 트랜잭션 종료 요청을 한 건 기록한다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - 없음 (None).
+    # Function Name: rollback
+    # Description:
+    # - Record one request to end the transaction.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def rollback(self) -> None:
         self.rollback_count += 1
 
 
-# 클래스명: _RecordingStatusControl
-# 역할: 복약 상태 갱신 성공과 전달할 완료 이벤트를 제공하는 라우터 테스트용 control이다.
-# 주요 책임:
-# - 지정 약 ID를 담은 성공 응답을 제공하여 백그라운드 알림 예약을 검증하게 한다.
-# - 로컬 환자의 아침 완료와 outbox ID가 포함된 단일 이벤트를 제공한다.
-# 속성:
-# - db (_RecordingRequestSession): 라우터가 트랜잭션을 끝내는 요청 세션 대역.
-# - expected_schedule_dates (list[date | None]): 라우터가 전달한 기대 복약 날짜 목록.
+# Class Name: _RecordingStatusControl
+# Role: Provides successful medication updates and pending completion events to route tests.
+# Responsibilities:
+# - Capture expected schedule dates and expose a morning completion event with an outbox identifier.
+# Attributes:
+# - db (_RecordingRequestSession): transaction-release recorder. expected_schedule_dates (list[date | None]): dates forwarded by the route.
 class _RecordingStatusControl:
-    # 함수이름: __init__
-    # 함수역할:
-    # - 요청 세션 대역과 빈 날짜 기록을 준비한다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - 없음 (None).
+    # Function Name: __init__
+    # Description:
+    # - Prepare a recording request session and an empty collection of forwarded schedule dates.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def __init__(self) -> None:
         self.db = _RecordingRequestSession()
         self.expected_schedule_dates: list[date | None] = []
 
-    # 함수이름: updateMedicationStatus
-    # 함수역할:
-    # - 지정 약 ID를 담은 성공 응답을 제공하여 백그라운드 알림 예약을 검증하게 한다.
-    # 매개변수:
-    # - medication_id (int): 완료 또는 미완료로 변경할 저장 약 ID.
-    # - medication_status (bool): 요청한 복약 완료 여부.
-    # - patient_hash (str): 약 또는 연동 데이터 범위를 식별할 환자 소유자 해시.
-    # - slot_key (str | None): 복약 시간대 키 또는 약 전체 상태 변경을 뜻하는 None.
-    # - expected_schedule_date (date | None): 요청이 가리키는 복약 날짜.
-    # 반환값:
-    # - dict[str, object]: 요청한 약 ID를 포함한 성공 응답.
+    # Function Name: updateMedicationStatus
+    # Description:
+    # - Record the expected schedule date and return success for the requested medication.
+    # Parameters:
+    # - medication_id: int; medication identifier echoed in the response.
+    # - medication_status: bool; requested completion state, accepted by the fake.
+    # - patient_hash: str; patient scope, accepted by the fake.
+    # - slot_key: str | None; selected slot or whole-medication update.
+    # - expected_schedule_date: date | None; date recorded for forwarding assertions.
+    # Returns:
+    # - dict[str, object]; successful response containing the medication identifier.
     def updateMedicationStatus(
         self,
         medication_id: int,
@@ -478,10 +484,12 @@ async def _call_route(call: object) -> object:
     return result
 
 
-# 클래스명: RouterErrorHandlingTest
-# 역할: control 오류의 HTTP 변환, 민감정보 숨김, 업로드 제한 및 알림 예약을 검증하는 비동기 테스트 모음이다.
-# 주요 책임:
-# - 복약 상태 성공 응답에서 보호자 푸시를 즉시 실행하지 않고 백그라운드 작업 한 건으로 예약하는지 검증한다.
+# Class Name: RouterErrorHandlingTest
+# Role: Tests asynchronous route error handling and post-response work.
+# Responsibilities:
+# - Verify HTTP error mapping, privacy, upload limits, and deferred caregiver notification scheduling.
+# Attributes:
+# - None; each test constructs its own controls and request objects.
 class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
     # Function Name: test_saved_medication_lookup_preserves_control_http_error
     # Description:
@@ -540,14 +548,13 @@ class RouterErrorHandlingTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(context.exception.status_code, 500)
         self.assertNotIn("sensitive", str(context.exception.detail))
 
-    # 함수이름: test_medication_status_response_queues_caregiver_push_in_background
-    # 함수역할:
-    # - 복약 상태 성공 응답에서 보호자 푸시를 즉시 실행하지 않고 백그라운드 작업 한 건으로 예약하는지 검증한다.
-    # - 예약한 뒤 요청 세션의 트랜잭션을 끝내고, 요청의 기대 복약 날짜를 control에 전달하는지도 검증한다.
-    # 매개변수:
-    # - 없음.
-    # 반환값:
-    # - 없음 (None).
+    # Function Name: test_medication_status_response_queues_caregiver_push_in_background
+    # Description:
+    # - Queue one caregiver push as background work, release the request transaction, and forward the expected schedule date.
+    # Parameters:
+    # - None.
+    # Returns:
+    # - None.
     def test_medication_status_response_queues_caregiver_push_in_background(
         self,
     ) -> None:

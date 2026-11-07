@@ -12,6 +12,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 # - Signals that a streamed request has exceeded its byte budget.
 # Responsibilities:
 # - Unwind downstream body reads so middleware can emit a generic HTTP 413 response.
+# Attributes: Inherited exception arguments only; no additional state.
 class _RequestBodyTooLarge(Exception):
     """Internal control-flow signal raised while receiving a request body."""
 
@@ -22,6 +23,7 @@ class _RequestBodyTooLarge(Exception):
 # Responsibilities:
 # - Unwind downstream body reads so middleware can answer 422: PostgreSQL text columns cannot
 #   store NUL, and without this check such text reached the database and failed with 500.
+# Attributes: Inherited exception arguments only; no body content is retained.
 class _RequestBodyHasNul(Exception):
     """Internal control-flow signal raised while receiving a JSON request body."""
 

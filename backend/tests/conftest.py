@@ -67,17 +67,13 @@ def _uses_external_database() -> bool:
     )
 
 
-# Function Name: _isolate_test_environment
-# Description:
-# - Puts the backend root and the tests directory on sys.path, then sets the environment
-#   (including a Redis address that cannot be reached, so no test touches a local Redis)
-#   described in the file header before core.config reads it.
-# - Refuses to continue when the settings were already loaded with the developer database,
-#   because the environment set here could no longer take effect.
-# Parameters:
-# - None.
-# Returns:
-# - None; raises pytest.UsageError in the refused case.
+# 함수이름: _isolate_test_environment
+# 함수역할:
+# - 백엔드와 테스트 경로 및 격리 환경 변수를 설정하고, 개발자 DB 설정이 이미 로드되었으면 실행을 거부한다.
+# 매개변수:
+# - 없음.
+# 반환값:
+# - None; 격리할 수 없으면 pytest.UsageError를 발생시킨다.
 def _isolate_test_environment() -> None:
     global _run_directory
 
@@ -113,18 +109,39 @@ def _isolate_test_environment() -> None:
 _isolate_test_environment()
 
 
+# 함수이름: _block_external_redis
+# 함수역할:
+# - 모든 Redis 비동기 연결을 차단하고 주입된 대체 객체는 유지하도록 자동 적용한다.
+# 매개변수:
+# - monkeypatch: pytest.MonkeyPatch; 테스트 뒤 의존성 교체를 복원한다.
+# 반환값:
+# - None.
 @pytest.fixture(autouse=True)
 def _block_external_redis(monkeypatch: pytest.MonkeyPatch) -> None:
     from redis.asyncio.connection import AbstractConnection
     from redis.exceptions import ConnectionError as RedisConnectionError
 
     # 직접 생성한 클라이언트도 실제 Redis에 닿지 않으며, 주입한 대체 객체는 유지한다.
+    # 함수이름: reject_connection
+    # 함수역할:
+    # - 실제 Redis 연결 대신 RedisConnectionError를 발생시킨다.
+    # 매개변수:
+    # - 없음.
+    # 반환값:
+    # - 반환하지 않음; RedisConnectionError 발생.
     async def reject_connection(self: object) -> None:
         raise RedisConnectionError("Redis network connections are disabled in backend tests.")
 
     monkeypatch.setattr(AbstractConnection, "connect", reject_connection)
 
 
+# 함수이름: _block_external_http
+# 함수역할:
+# - 실제 HTTP 전송만 차단하여 ASGI·MockTransport 기반 테스트는 계속 허용한다.
+# 매개변수:
+# - monkeypatch: pytest.MonkeyPatch; 테스트 뒤 의존성 교체를 복원한다.
+# 반환값:
+# - None.
 @pytest.fixture(autouse=True)
 def _block_external_http(monkeypatch: pytest.MonkeyPatch) -> None:
     import httpx
@@ -132,9 +149,25 @@ def _block_external_http(monkeypatch: pytest.MonkeyPatch) -> None:
     import urllib.request
 
     # 인메모리 ASGI·MockTransport는 유지하고 실제 HTTP 전송만 차단한다.
+    # 함수이름: reject_request
+    # 함수역할:
+    # - 동기 HTTP 전송 시도에 AssertionError를 발생시켜 외부 요청을 탐지한다.
+    # 매개변수:
+    # - args: tuple[object, ...]; 차단할 전송 함수의 위치 인수.
+    # - kwargs: dict[str, object]; 차단할 전송 함수의 키워드 인수.
+    # 반환값:
+    # - 반환하지 않음; AssertionError 발생.
     def reject_request(*args: object, **kwargs: object) -> None:
         raise AssertionError("HTTP network connections are disabled in backend tests.")
 
+    # 함수이름: reject_async_request
+    # 함수역할:
+    # - 비동기 HTTP 전송에서도 동기 차단 함수와 같은 AssertionError를 발생시킨다.
+    # 매개변수:
+    # - args: tuple[object, ...]; 차단할 비동기 전송의 위치 인수.
+    # - kwargs: dict[str, object]; 차단할 비동기 전송의 키워드 인수.
+    # 반환값:
+    # - 반환하지 않음; AssertionError 발생.
     async def reject_async_request(*args: object, **kwargs: object) -> None:
         reject_request()
 
